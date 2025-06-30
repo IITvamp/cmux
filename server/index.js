@@ -80,28 +80,6 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("kill-line", ({ terminalId }) => {
-    const terminals = clientTerminals.get(socket.id);
-    if (terminals) {
-      const ptyProcess = terminals.get(terminalId);
-      if (ptyProcess) {
-        // Send ctrl+u (0x15) to kill from cursor to beginning of line
-        ptyProcess.write("\x15");
-      }
-    }
-  });
-
-  socket.on("clear-terminal", ({ terminalId }) => {
-    const terminals = clientTerminals.get(socket.id);
-    if (terminals) {
-      const ptyProcess = terminals.get(terminalId);
-      if (ptyProcess) {
-        // Send ctrl+l (0x0c) to clear the terminal
-        ptyProcess.write("\x0c");
-      }
-    }
-  });
-
   socket.on("disconnect", () => {
     console.log("Client disconnected:", socket.id);
     const terminals = clientTerminals.get(socket.id);
