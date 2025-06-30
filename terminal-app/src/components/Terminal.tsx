@@ -2,17 +2,25 @@ import { useEffect, useRef } from 'react';
 import { Terminal as XTerm } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
-import { io, Socket } from 'socket.io-client';
+import { Socket } from 'socket.io-client';
 import '@xterm/xterm/css/xterm.css';
 
-export function Terminal() {
+interface TerminalProps {
+  terminalId: string;
+  socket: Socket | null;
+  isActive: boolean;
+}
+
+export function Terminal({ terminalId, socket, isActive }: TerminalProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
-  const socketRef = useRef<Socket | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
+  const isInitializedRef = useRef(false);
 
   useEffect(() => {
-    if (!terminalRef.current) return;
+    if (!terminalRef.current || !socket || isInitializedRef.current) return;
+    
+    isInitializedRef.current = true;
 
     const terminal = new XTerm({
       cursorBlink: true,
@@ -55,36 +63,27 @@ export function Terminal() {
     fitAddonRef.current = fitAddon;
     xtermRef.current = terminal;
 
-    const socket = io('http://localhost:3001');
-    socketRef.current = socket;
+    const handleOutput = ({ terminalId: id, data }: { terminalId: string; data: string }) => {
+      if (id === terminalId) {
+        terminal.write(data);
+      }
+    };
 
-    socket.on('connect', () => {
-      console.log('Connected to terminal server');
-      socket.emit('create-terminal', {
-        cols: terminal.cols,
-        rows: terminal.rows
-      });
-    });
+    const handleExit = ({ terminalId: id, exitCode }: { terminalId: string; exitCode: number }) => {
+      if (id === terminalId) {
+        terminal.write(`\r\n[Process exited with code ${exitCode}]\r\n`);
+      }
+    };
 
-    socket.on('terminal-output', (data: string) => {
-      terminal.write(data);
-    });
-
-    socket.on('terminal-exit', ({ exitCode }: { exitCode: number }) => {
-      terminal.write(`\r\n[Process exited with code ${exitCode}]\r\n`);
-    });
-
-    socket.on('disconnect', () => {
-      console.log('Disconnected from terminal server');
-      terminal.write('\r\n[Connection lost]\r\n');
-    });
+    socket.on('terminal-output', handleOutput);
+    socket.on('terminal-exit', handleExit);
 
     terminal.onData((data) => {
-      socket.emit('terminal-input', data);
+      socket.emit('terminal-input', { terminalId, data });
     });
 
     terminal.onResize(({ cols, rows }) => {
-      socket.emit('resize', { cols, rows });
+      socket.emit('resize', { terminalId, cols, rows });
     });
 
     const handleResize = () => {
@@ -97,10 +96,18 @@ export function Terminal() {
 
     return () => {
       window.removeEventListener('resize', handleResize);
-      socket.disconnect();
+      socket.off('terminal-output', handleOutput);
+      socket.off('terminal-exit', handleExit);
       terminal.dispose();
+      isInitializedRef.current = false;
     };
-  }, []);
+  }, [terminalId, socket]);
+
+  useEffect(() => {
+    if (isActive && fitAddonRef.current) {
+      fitAddonRef.current.fit();
+    }
+  }, [isActive]);
 
   return (
     <div 

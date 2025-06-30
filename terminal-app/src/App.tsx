@@ -1,4 +1,4 @@
-import { Terminal } from './components/Terminal';
+import { TerminalManager } from './components/TerminalManager';
 import './App.css';
 
 function App() {
@@ -8,7 +8,7 @@ function App() {
         <h1>Terminal</h1>
       </header>
       <main className="app-main">
-        <Terminal />
+        <TerminalManager />
       </main>
     </div>
   );

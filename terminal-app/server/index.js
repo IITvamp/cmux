@@ -2,6 +2,7 @@ import { Server } from 'socket.io';
 import { spawn } from 'node-pty';
 import { createServer } from 'http';
 import { platform } from 'os';
+import { randomUUID } from 'crypto';
 
 const httpServer = createServer();
 const io = new Server(httpServer, {
@@ -11,13 +12,15 @@ const io = new Server(httpServer, {
   }
 });
 
-const terminals = new Map();
+const clientTerminals = new Map();
 
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
+  clientTerminals.set(socket.id, new Map());
 
   socket.on('create-terminal', ({ cols, rows }) => {
-    const shell = platform() === 'win32' ? 'powershell.exe' : 'bash';
+    const terminalId = randomUUID();
+    const shell = platform() === 'win32' ? 'powershell.exe' : 'zsh';
     const ptyProcess = spawn(shell, [], {
       name: 'xterm-color',
       cols: cols || 80,
@@ -26,41 +29,63 @@ io.on('connection', (socket) => {
       env: process.env
     });
 
-    terminals.set(socket.id, ptyProcess);
+    const terminals = clientTerminals.get(socket.id);
+    terminals.set(terminalId, ptyProcess);
 
     ptyProcess.onData((data) => {
-      socket.emit('terminal-output', data);
+      socket.emit('terminal-output', { terminalId, data });
     });
 
     ptyProcess.onExit(({ exitCode, signal }) => {
-      console.log(`Terminal exited with code ${exitCode} and signal ${signal}`);
-      socket.emit('terminal-exit', { exitCode, signal });
-      terminals.delete(socket.id);
+      console.log(`Terminal ${terminalId} exited with code ${exitCode} and signal ${signal}`);
+      socket.emit('terminal-exit', { terminalId, exitCode, signal });
+      terminals.delete(terminalId);
     });
 
-    console.log(`Terminal created for ${socket.id}`);
+    socket.emit('terminal-created', { terminalId });
+    console.log(`Terminal ${terminalId} created for ${socket.id}`);
   });
 
-  socket.on('terminal-input', (data) => {
-    const ptyProcess = terminals.get(socket.id);
-    if (ptyProcess) {
-      ptyProcess.write(data);
+  socket.on('terminal-input', ({ terminalId, data }) => {
+    const terminals = clientTerminals.get(socket.id);
+    if (terminals) {
+      const ptyProcess = terminals.get(terminalId);
+      if (ptyProcess) {
+        ptyProcess.write(data);
+      }
     }
   });
 
-  socket.on('resize', ({ cols, rows }) => {
-    const ptyProcess = terminals.get(socket.id);
-    if (ptyProcess) {
-      ptyProcess.resize(cols, rows);
+  socket.on('resize', ({ terminalId, cols, rows }) => {
+    const terminals = clientTerminals.get(socket.id);
+    if (terminals) {
+      const ptyProcess = terminals.get(terminalId);
+      if (ptyProcess) {
+        ptyProcess.resize(cols, rows);
+      }
+    }
+  });
+
+  socket.on('close-terminal', ({ terminalId }) => {
+    const terminals = clientTerminals.get(socket.id);
+    if (terminals) {
+      const ptyProcess = terminals.get(terminalId);
+      if (ptyProcess) {
+        ptyProcess.kill();
+        terminals.delete(terminalId);
+        console.log(`Terminal ${terminalId} closed`);
+      }
     }
   });
 
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
-    const ptyProcess = terminals.get(socket.id);
-    if (ptyProcess) {
-      ptyProcess.kill();
-      terminals.delete(socket.id);
+    const terminals = clientTerminals.get(socket.id);
+    if (terminals) {
+      terminals.forEach((ptyProcess) => {
+        ptyProcess.kill();
+      });
+      clientTerminals.delete(socket.id);
     }
   });
 });
