@@ -41,7 +41,7 @@ export function useXTerm({ options, addons, listeners }: UseXTermProps = {}) {
     const instance = new Terminal({
       fontFamily:
         "Menlo, Monaco, operator mono,SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace",
-      fontSize: 14,
+      fontSize: 12,
       theme: {
         background: "#1e1e1e",
         foreground: "#d4d4d4",
@@ -64,7 +64,8 @@ export function useXTerm({ options, addons, listeners }: UseXTermProps = {}) {
         brightWhite: "#e5e5e5",
       },
       // cursorStyle: "underline",
-      cursorBlink: false,
+      cursorStyle: "bar",
+      cursorBlink: true,
       scrollback: 1000000,
       ...options,
     });
@@ -107,6 +108,30 @@ export function useXTerm({ options, addons, listeners }: UseXTermProps = {}) {
     if (l?.customKeyEventHandler) {
       instance.attachCustomKeyEventHandler(l.customKeyEventHandler);
     }
+
+    // Add keyboard shortcuts
+    // instance.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+    //   // Command+Backspace to delete from cursor to beginning of line (like ctrl+u)
+    //   if (event.metaKey && event.key === "Backspace") {
+    //     // Send ctrl+u (0x15) to the backend by pasting it as user input
+    //     // instance.paste("\x15", false);
+    //     instance.write("\x1b[2K\r");
+    //     event.preventDefault();
+    //     return false;
+    //   }
+
+    //   // Command+K to clear terminal but keep current line
+    //   if (event.metaKey && event.key.toLowerCase() === "k") {
+    //     event.preventDefault();
+    //     // Clear scrollback on the client
+    //     instance.clear();
+    //     // Send ctrl+l (0x0c) to backend so it refreshes the prompt
+    //     // instance.paste("\x0c", false);
+    //     return false;
+    //   }
+
+    //   return true;
+    // });
 
     if (terminalRef.current) {
       instance.open(terminalRef.current);

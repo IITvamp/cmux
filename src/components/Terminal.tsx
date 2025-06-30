@@ -60,6 +60,26 @@ export function Terminal({ terminalId, socket }: TerminalProps) {
       socket.emit("resize", { terminalId, cols, rows });
     });
 
+    terminal.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+      // Command+Backspace to delete from cursor to beginning of line (like ctrl+u)
+      if (event.metaKey && event.key === "Backspace") {
+        // Send kill-line command via socket
+        socket.emit("kill-line", { terminalId });
+        event.preventDefault();
+        return false;
+      }
+
+      // Command+K to clear terminal
+      if (event.metaKey && event.key.toLowerCase() === "k") {
+        event.preventDefault();
+        // Send clear-terminal command via socket
+        socket.emit("clear-terminal", { terminalId });
+        return false;
+      }
+
+      return true;
+    });
+
     const handleResize = () => {
       if (fitAddon) {
         fitAddon.fit();
