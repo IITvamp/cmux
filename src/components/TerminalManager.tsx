@@ -117,7 +117,11 @@ export function TerminalManager() {
               activeTerminalId === terminal.id ? "active" : ""
             }`}
           >
-            <Terminal terminalId={terminal.id} socket={socketRef.current} />
+            <Terminal
+              terminalId={terminal.id}
+              socket={socketRef.current}
+              isActive={activeTerminalId === terminal.id}
+            />
           </div>
         ))}
         {terminals.length === 0 && (

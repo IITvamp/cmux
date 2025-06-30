@@ -12,9 +12,10 @@ import { useXTerm } from "./xterm/use-xterm";
 interface TerminalProps {
   terminalId: string;
   socket: Socket<ServerToClientEvents, ClientToServerEvents> | null;
+  isActive: boolean;
 }
 
-export function Terminal({ terminalId, socket }: TerminalProps) {
+export function Terminal({ terminalId, socket, isActive }: TerminalProps) {
   const fitAddon = useMemo(() => new FitAddon(), []);
   const webLinksAddon = useMemo(() => new WebLinksAddon(), []);
   const addons = useMemo(
@@ -92,6 +93,12 @@ export function Terminal({ terminalId, socket }: TerminalProps) {
       terminal.dispose();
     };
   }, [terminalId, socket, terminal, fitAddon]);
+
+  useEffect(() => {
+    if (isActive && terminal) {
+      fitAddon.fit();
+    }
+  }, [isActive, fitAddon, terminal]);
 
   return (
     <div
