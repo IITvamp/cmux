@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
-import { Terminal } from './Terminal';
-import { io, Socket } from 'socket.io-client';
+import { useEffect, useRef, useState } from "react";
+import { io, Socket } from "socket.io-client";
+import { Terminal } from "./Terminal";
 
 interface TerminalInstance {
   id: string;
@@ -14,16 +14,16 @@ export function TerminalManager() {
   const terminalCountRef = useRef(0);
 
   useEffect(() => {
-    const socket = io('http://localhost:3001');
+    const socket = io("http://localhost:3001");
     socketRef.current = socket;
 
-    socket.on('connect', () => {
-      console.log('Connected to terminal server');
+    socket.on("connect", () => {
+      console.log("Connected to terminal server");
       createNewTerminal();
     });
 
-    socket.on('disconnect', () => {
-      console.log('Disconnected from terminal server');
+    socket.on("disconnect", () => {
+      console.log("Disconnected from terminal server");
     });
 
     return () => {
@@ -33,36 +33,39 @@ export function TerminalManager() {
 
   const createNewTerminal = () => {
     if (!socketRef.current) return;
-    
+
     terminalCountRef.current += 1;
     const newTerminal: TerminalInstance = {
-      id: '', // Will be set by server
-      name: `Terminal ${terminalCountRef.current}`
+      id: "", // Will be set by server
+      name: `Terminal ${terminalCountRef.current}`,
     };
 
-    socketRef.current.emit('create-terminal', { cols: 80, rows: 24 });
-    
-    socketRef.current.once('terminal-created', ({ terminalId }: { terminalId: string }) => {
-      newTerminal.id = terminalId;
-      setTerminals(prev => [...prev, newTerminal]);
-      setActiveTerminalId(terminalId);
-    });
+    socketRef.current.emit("create-terminal", { cols: 80, rows: 24 });
+
+    socketRef.current.once(
+      "terminal-created",
+      ({ terminalId }: { terminalId: string }) => {
+        newTerminal.id = terminalId;
+        setTerminals((prev) => [...prev, newTerminal]);
+        setActiveTerminalId(terminalId);
+      }
+    );
   };
 
   const closeTerminal = (terminalId: string) => {
     if (!socketRef.current) return;
-    
-    socketRef.current.emit('close-terminal', { terminalId });
-    
-    setTerminals(prev => {
-      const newTerminals = prev.filter(t => t.id !== terminalId);
-      
+
+    socketRef.current.emit("close-terminal", { terminalId });
+
+    setTerminals((prev) => {
+      const newTerminals = prev.filter((t) => t.id !== terminalId);
+
       if (activeTerminalId === terminalId && newTerminals.length > 0) {
         setActiveTerminalId(newTerminals[newTerminals.length - 1].id);
       } else if (newTerminals.length === 0) {
         setActiveTerminalId(null);
       }
-      
+
       return newTerminals;
     });
   };
@@ -70,10 +73,12 @@ export function TerminalManager() {
   return (
     <div className="terminal-manager">
       <div className="terminal-tabs">
-        {terminals.map(terminal => (
+        {terminals.map((terminal) => (
           <div
             key={terminal.id}
-            className={`terminal-tab ${activeTerminalId === terminal.id ? 'active' : ''}`}
+            className={`terminal-tab ${
+              activeTerminalId === terminal.id ? "active" : ""
+            }`}
             onClick={() => setActiveTerminalId(terminal.id)}
           >
             <span className="tab-name">{terminal.name}</span>
@@ -98,16 +103,14 @@ export function TerminalManager() {
         </button>
       </div>
       <div className="terminal-content">
-        {terminals.map(terminal => (
+        {terminals.map((terminal) => (
           <div
             key={terminal.id}
-            className={`terminal-pane ${activeTerminalId === terminal.id ? 'active' : ''}`}
+            className={`terminal-pane ${
+              activeTerminalId === terminal.id ? "active" : ""
+            }`}
           >
-            <Terminal
-              terminalId={terminal.id}
-              socket={socketRef.current}
-              isActive={activeTerminalId === terminal.id}
-            />
+            <Terminal terminalId={terminal.id} socket={socketRef.current} />
           </div>
         ))}
         {terminals.length === 0 && (

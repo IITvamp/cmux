@@ -1,8 +1,8 @@
-import { Server } from 'socket.io';
-import { spawn } from 'node-pty';
-import { createServer } from 'http';
-import { platform } from 'os';
 import { randomUUID } from 'crypto';
+import { createServer } from 'http';
+import { spawn } from 'node-pty';
+import { platform } from 'os';
+import { Server } from 'socket.io';
 
 const httpServer = createServer();
 const io = new Server(httpServer, {
@@ -22,7 +22,7 @@ io.on('connection', (socket) => {
     const terminalId = randomUUID();
     const shell = platform() === 'win32' ? 'powershell.exe' : 'zsh';
     const ptyProcess = spawn(shell, [], {
-      name: 'xterm-color',
+      name: 'xterm-256color',
       cols: cols || 80,
       rows: rows || 24,
       cwd: process.env.HOME,
