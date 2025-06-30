@@ -97,6 +97,7 @@ export function Terminal({ terminalId, socket, isActive }: TerminalProps) {
   useEffect(() => {
     if (isActive && terminal) {
       fitAddon.fit();
+      terminal.focus();
     }
   }, [isActive, fitAddon, terminal]);
 
