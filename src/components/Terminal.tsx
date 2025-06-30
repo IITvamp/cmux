@@ -3,11 +3,15 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 import { useEffect, useMemo } from "react";
 import { Socket } from "socket.io-client";
+import type {
+  ClientToServerEvents,
+  ServerToClientEvents,
+} from "../shared/socket-schemas";
 import { useXTerm } from "./xterm/use-xterm";
 
 interface TerminalProps {
   terminalId: string;
-  socket: Socket | null;
+  socket: Socket<ServerToClientEvents, ClientToServerEvents> | null;
 }
 
 export function Terminal({ terminalId, socket }: TerminalProps) {
@@ -28,10 +32,7 @@ export function Terminal({ terminalId, socket }: TerminalProps) {
     const handleOutput = ({
       terminalId: id,
       data,
-    }: {
-      terminalId: string;
-      data: string;
-    }) => {
+    }: Parameters<ServerToClientEvents["terminal-output"]>[0]) => {
       if (id === terminalId) {
         terminal.write(data);
       }
@@ -40,10 +41,7 @@ export function Terminal({ terminalId, socket }: TerminalProps) {
     const handleExit = ({
       terminalId: id,
       exitCode,
-    }: {
-      terminalId: string;
-      exitCode: number;
-    }) => {
+    }: Parameters<ServerToClientEvents["terminal-exit"]>[0]) => {
       if (id === terminalId) {
         terminal.write(`\r\n[Process exited with code ${exitCode}]\r\n`);
       }

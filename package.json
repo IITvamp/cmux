@@ -1,14 +1,17 @@
 {
-  "name": "terminal-app",
+  "name": "node-vite-pty",
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "workspaces": [
+    "server"
+  ],
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "server": "cd server && npm run dev"
+    "server": "npm run dev --workspace=server"
   },
   "dependencies": {
     "@xterm/addon-fit": "^0.10.0",
@@ -16,7 +19,8 @@
     "@xterm/xterm": "^5.5.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "socket.io-client": "^4.8.1"
+    "socket.io-client": "^4.8.1",
+    "zod": "^3.25.67"
   },
   "devDependencies": {
     "@eslint/js": "^9.29.0",

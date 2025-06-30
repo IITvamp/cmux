@@ -1,5 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { io, Socket } from "socket.io-client";
+import type {
+  ClientToServerEvents,
+  ServerToClientEvents,
+} from "../shared/socket-schemas";
 import { Terminal } from "./Terminal";
 
 interface TerminalInstance {
@@ -10,11 +14,17 @@ interface TerminalInstance {
 export function TerminalManager() {
   const [terminals, setTerminals] = useState<TerminalInstance[]>([]);
   const [activeTerminalId, setActiveTerminalId] = useState<string | null>(null);
-  const socketRef = useRef<Socket | null>(null);
+  const socketRef = useRef<Socket<
+    ServerToClientEvents,
+    ClientToServerEvents
+  > | null>(null);
   const terminalCountRef = useRef(0);
 
   useEffect(() => {
-    const socket = io("http://localhost:3001");
+    const socket = io("http://localhost:3001") as Socket<
+      ServerToClientEvents,
+      ClientToServerEvents
+    >;
     socketRef.current = socket;
 
     socket.on("connect", () => {
@@ -42,14 +52,11 @@ export function TerminalManager() {
 
     socketRef.current.emit("create-terminal", { cols: 80, rows: 24 });
 
-    socketRef.current.once(
-      "terminal-created",
-      ({ terminalId }: { terminalId: string }) => {
-        newTerminal.id = terminalId;
-        setTerminals((prev) => [...prev, newTerminal]);
-        setActiveTerminalId(terminalId);
-      }
-    );
+    socketRef.current.once("terminal-created", ({ terminalId }) => {
+      newTerminal.id = terminalId;
+      setTerminals((prev) => [...prev, newTerminal]);
+      setActiveTerminalId(terminalId);
+    });
   };
 
   const closeTerminal = (terminalId: string) => {
