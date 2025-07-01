@@ -40,9 +40,6 @@ echo -e "${GREEN}Starting backend server on port 3001...${NC}"
 (cd server && npm run dev) &
 SERVER_PID=$!
 
-# Wait a moment for the server to start
-sleep 2
-
 # Start the frontend
 echo -e "${GREEN}Starting frontend on port 5173...${NC}"
 npm run dev &

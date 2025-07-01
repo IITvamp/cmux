@@ -16,8 +16,7 @@ import {
   type InterServerEvents,
   type ServerToClientEvents,
   type SocketData,
-} from "../src/shared/socket-schemas.ts";
-import { setupHmr } from "./setupHmr.ts";
+} from "../../src/shared/socket-schemas.ts";
 
 const httpServer = createServer();
 
@@ -186,9 +185,67 @@ io.on("connection", (socket) => {
 });
 
 const PORT = process.env.PORT || 3001;
-httpServer.listen(PORT, () => {
+const server = httpServer.listen(PORT, () => {
   console.log(`Terminal server listening on port ${PORT}`);
 });
 
-// Setup HMR
-setupHmr({ httpServer, io, globalTerminals });
+let isCleaningUp = false;
+let isCleanedUp = false;
+
+// Hot reload support
+if (import.meta.hot) {
+  import.meta.hot.dispose(async () => {
+    if (isCleaningUp || isCleanedUp) {
+      console.log("Cleanup already in progress or completed, skipping...");
+      return;
+    }
+
+    isCleaningUp = true;
+    console.log("Cleaning up terminals and server...");
+
+    // Kill all running terminals
+    globalTerminals.forEach((terminal, id) => {
+      console.log(`Killing terminal ${id}`);
+      try {
+        terminal.pty.kill();
+      } catch (error) {
+        console.error(`Error killing terminal ${id}:`, error);
+      }
+    });
+    globalTerminals.clear();
+
+    // Close socket.io
+    console.log("Closing socket.io server...");
+    await new Promise<void>((resolve) => {
+      io.close(() => {
+        console.log("Socket.io server closed");
+        resolve();
+      });
+    });
+
+    // Close HTTP server only if it's still listening
+    console.log("Closing HTTP server...");
+    await new Promise<void>((resolve) => {
+      if (server.listening) {
+        server.close((error) => {
+          if (error) {
+            console.error("Error closing HTTP server:", error);
+          } else {
+            console.log("HTTP server closed");
+          }
+          resolve();
+        });
+      } else {
+        console.log("HTTP server already closed");
+        resolve();
+      }
+    });
+
+    isCleanedUp = true;
+    console.log("Cleanup completed");
+  });
+
+  import.meta.hot.accept(() => {
+    console.log("Hot reload triggered");
+  });
+}

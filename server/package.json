@@ -2,15 +2,15 @@
   "name": "terminal-server",
   "version": "1.0.0",
   "description": "Terminal server for xterm.js",
-  "main": "index.ts",
+  "main": "src/index.ts",
   "type": "module",
   "scripts": {
-    "start": "vite-node index.ts",
-    "dev": "vite-node --watch index.ts",
-    "start-deno": "deno run -A index.ts",
-    "dev-deno": "deno run -A --watch-hmr index.ts",
-    "start-bun": "bun run index.ts",
-    "dev-bun": "bun run --hot index.ts"
+    "start": "vite-node src/index.ts",
+    "dev": "vite-node --watch src/index.ts",
+    "start-deno": "deno run -A src/index.ts",
+    "dev-deno": "deno run -A --watch-hmr src/index.ts",
+    "start-bun": "bun run src/index.ts",
+    "dev-bun": "bun run --hot src/index.ts"
   },
   "dependencies": {
     "@xterm/headless": "^5.5.0",
