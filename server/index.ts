@@ -54,9 +54,8 @@ io.on("connection", (socket) => {
     // Send properly rendered terminal state
     const terminalState = terminal.serializeAddon.serialize();
     if (terminalState) {
-      // Clear the client terminal first, then send the full state
-      socket.emit("terminal-clear", { terminalId });
-      socket.emit("terminal-output", { terminalId, data: terminalState });
+      // Send terminal restore event with serialized state
+      socket.emit("terminal-restore", { terminalId, data: terminalState });
     }
   });
 

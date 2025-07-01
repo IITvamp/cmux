@@ -167,6 +167,18 @@ export const TerminalContextProvider: React.FC<
     );
 
     socketRef.current.on(
+      "terminal-restore",
+      ({ terminalId, data }: { terminalId: string; data: string }) => {
+        const terminal = terminalsRef.current.get(terminalId);
+        if (terminal) {
+          // Clear and restore terminal state in one operation
+          terminal.xterm.reset();
+          terminal.xterm.write(data);
+        }
+      }
+    );
+
+    socketRef.current.on(
       "terminal-closed",
       ({ terminalId }: { terminalId: string }) => {
         const terminal = terminalsRef.current.get(terminalId);

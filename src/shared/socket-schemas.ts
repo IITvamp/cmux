@@ -46,6 +46,11 @@ export const TerminalClearSchema = z.object({
   terminalId: z.string().uuid(),
 });
 
+export const TerminalRestoreSchema = z.object({
+  terminalId: z.string().uuid(),
+  data: z.string(),
+});
+
 // Type exports
 export type CreateTerminal = z.infer<typeof CreateTerminalSchema>;
 export type TerminalInput = z.infer<typeof TerminalInputSchema>;
@@ -56,6 +61,7 @@ export type TerminalOutput = z.infer<typeof TerminalOutputSchema>;
 export type TerminalExit = z.infer<typeof TerminalExitSchema>;
 export type TerminalClosed = z.infer<typeof TerminalClosedSchema>;
 export type TerminalClear = z.infer<typeof TerminalClearSchema>;
+export type TerminalRestore = z.infer<typeof TerminalRestoreSchema>;
 
 // Socket.io event map types
 export interface ClientToServerEvents {
@@ -71,6 +77,7 @@ export interface ServerToClientEvents {
   "terminal-exit": (data: TerminalExit) => void;
   "terminal-closed": (data: TerminalClosed) => void;
   "terminal-clear": (data: TerminalClear) => void;
+  "terminal-restore": (data: TerminalRestore) => void;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
