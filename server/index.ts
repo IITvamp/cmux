@@ -4,7 +4,6 @@ import xtermHeadless from "@xterm/headless";
 const { Terminal } = xtermHeadless;
 
 import { spawn, type IPty } from "node-pty";
-import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { platform } from "node:os";
 import { Server } from "socket.io";
@@ -63,8 +62,13 @@ io.on("connection", (socket) => {
 
   socket.on("create-terminal", (data) => {
     try {
-      const { cols, rows } = CreateTerminalSchema.parse(data);
-      const terminalId = randomUUID();
+      const { cols, rows, id } = CreateTerminalSchema.parse(data);
+      // ensure id does not conflict with existing terminal
+      if (id && globalTerminals.has(id)) {
+        console.error(`Terminal ${id} already exists`);
+        return;
+      }
+      const terminalId = id || crypto.randomUUID();
 
       // Check if terminal already exists (shouldn't happen with UUID)
       if (globalTerminals.has(terminalId)) {

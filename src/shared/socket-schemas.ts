@@ -2,6 +2,7 @@ import { z } from "zod";
 
 // Client to Server Events
 export const CreateTerminalSchema = z.object({
+  id: z.string().optional(),
   cols: z.number().int().positive().default(80),
   rows: z.number().int().positive().default(24),
 });

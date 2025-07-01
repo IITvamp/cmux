@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState, useCallback } from "react";
-import { useTerminals } from "./useTerminals";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { TerminalInstance } from "../contexts/TerminalContext";
+import { useTerminals } from "./useTerminals";
 
 interface UseTerminalOptions {
   id?: string;
@@ -17,9 +17,16 @@ interface UseTerminalReturn {
   isReady: boolean;
 }
 
-export const useTerminal = (options: UseTerminalOptions = {}): UseTerminalReturn => {
+export const useTerminal = (
+  options: UseTerminalOptions = {}
+): UseTerminalReturn => {
   const { id, name, autoCreate = true, onExit } = options;
-  const { terminals, createTerminal: contextCreateTerminal, removeTerminal: contextRemoveTerminal, getTerminal } = useTerminals();
+  const {
+    terminals,
+    createTerminal: contextCreateTerminal,
+    removeTerminal: contextRemoveTerminal,
+    getTerminal,
+  } = useTerminals();
   const [terminalId, setTerminalId] = useState<string | undefined>(id);
   const [isReady, setIsReady] = useState(false);
   const onExitRef = useRef(onExit);

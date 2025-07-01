@@ -6,35 +6,33 @@ import "./TerminalManager.css";
 export function TerminalManager() {
   const { terminals, createTerminal, removeTerminal } = useTerminals();
   const [activeTerminalId, setActiveTerminalId] = useState<string | null>(null);
+  const hasInitializedRef = useRef(false);
 
-  // useEffect(() => {
-  //   if (terminals.size === 0) {
-  //     createTerminal();
-  //   }
-  // }, [terminals.size, createTerminal]);
-
+  // Only run once on mount to select first terminal if any exist
   useEffect(() => {
-    if (activeTerminalId && !terminals.has(activeTerminalId)) {
-      const terminalIds = Array.from(terminals.keys());
-      if (terminalIds.length > 0) {
-        setActiveTerminalId(terminalIds[terminalIds.length - 1]);
-      } else {
-        setActiveTerminalId(null);
-      }
-    } else if (!activeTerminalId && terminals.size > 0) {
+    if (!hasInitializedRef.current && terminals.size > 0 && !activeTerminalId) {
+      console.log("initializing");
       const firstTerminalId = Array.from(terminals.keys())[0];
       setActiveTerminalId(firstTerminalId);
+      hasInitializedRef.current = true;
     }
-  }, [terminals, activeTerminalId]);
+  }, [terminals.size, activeTerminalId, terminals]);
 
   const handleCreateTerminal = () => {
-    createTerminal();
-    // The terminal will be created asynchronously and added to the terminals map
-    // The useEffect will handle setting it as active when it appears
+    const newTerminalId = createTerminal();
+    setActiveTerminalId(newTerminalId);
   };
 
   const handleCloseTerminal = (terminalId: string) => {
     removeTerminal(terminalId);
+    const terminalIds = Array.from(terminals.keys()).filter(
+      (id) => id !== terminalId
+    );
+    if (terminalIds.length > 0) {
+      setActiveTerminalId(terminalIds[terminalIds.length - 1]);
+    } else {
+      setActiveTerminalId(null);
+    }
   };
 
   const terminalsArray = Array.from(terminals.values());
