@@ -54,8 +54,17 @@ export function Terminal({
       }
     };
 
+    const handleClear = ({
+      terminalId: id,
+    }: Parameters<ServerToClientEvents["terminal-clear"]>[0]) => {
+      if (id === terminalId) {
+        terminal.clear();
+      }
+    };
+
     socket.on("terminal-output", handleOutput);
     socket.on("terminal-exit", handleExit);
+    socket.on("terminal-clear", handleClear);
 
     terminal.onData((data) => {
       socket.emit("terminal-input", { terminalId, data });
@@ -96,6 +105,7 @@ export function Terminal({
       window.removeEventListener("resize", handleResize);
       socket.off("terminal-output", handleOutput);
       socket.off("terminal-exit", handleExit);
+      socket.off("terminal-clear", handleClear);
       terminal.dispose();
     };
   }, [terminalId, socket, terminal, fitAddon]);

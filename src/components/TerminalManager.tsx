@@ -204,6 +204,18 @@ export function TerminalManager() {
     };
   }, []);
 
+  // useEffect(() => {
+  //   // emit resize event to server
+  //   if (!socketRef.current || !activeTerminalId) return;
+  //   const terminal = terminalsRef.current.get(activeTerminalId);
+  //   if (!terminal) return;
+  //   socketRef.current.emit("resize", {
+  //     terminalId: activeTerminalId,
+  //     cols: terminal.xterm.cols,
+  //     rows: terminal.xterm.rows,
+  //   });
+  // }, [activeTerminalId]);
+
   const createNewTerminal = () => {
     if (!socketRef.current) return;
     socketRef.current.emit("create-terminal", { cols: 80, rows: 24 });

@@ -1,3 +1,5 @@
+import { SerializeAddon } from "@xterm/addon-serialize";
+import { Terminal } from "@xterm/headless";
 import { randomUUID } from "crypto";
 import { createServer } from "http";
 import { spawn, type IPty } from "node-pty";
@@ -33,34 +35,12 @@ interface GlobalTerminal {
   pty: IPty;
   scrollback: string[];
   maxScrollbackLines: number;
+  headlessTerminal: Terminal;
+  serializeAddon: SerializeAddon;
 }
 
 const globalTerminals = new Map<string, GlobalTerminal>();
-const MAX_SCROLLBACK_LINES = 10000;
-
-// Helper function to add data to scrollback buffer
-function addToScrollback(terminal: GlobalTerminal, data: string) {
-  // Split data by newlines but keep the newline characters
-  const lines = data.split(/(\r?\n)/);
-  
-  for (const line of lines) {
-    if (line.length > 0) {
-      terminal.scrollback.push(line);
-    }
-  }
-  
-  // Trim scrollback if it exceeds max lines
-  if (terminal.scrollback.length > terminal.maxScrollbackLines) {
-    terminal.scrollback = terminal.scrollback.slice(
-      terminal.scrollback.length - terminal.maxScrollbackLines
-    );
-  }
-}
-
-// Helper function to get scrollback as a single string
-function getScrollbackString(terminal: GlobalTerminal): string {
-  return terminal.scrollback.join("");
-}
+const MAX_SCROLLBACK_LINES = 100000;
 
 io.on("connection", (socket) => {
   console.log("Client connected:", socket.id);
@@ -68,11 +48,13 @@ io.on("connection", (socket) => {
   // Send existing terminals to the new client
   globalTerminals.forEach((terminal, terminalId) => {
     socket.emit("terminal-created", { terminalId });
-    
-    // Send scrollback history
-    const scrollback = getScrollbackString(terminal);
-    if (scrollback) {
-      socket.emit("terminal-output", { terminalId, data: scrollback });
+
+    // Send properly rendered terminal state
+    const terminalState = terminal.serializeAddon.serialize();
+    if (terminalState) {
+      // Clear the client terminal first, then send the full state
+      socket.emit("terminal-clear", { terminalId });
+      socket.emit("terminal-output", { terminalId, data: terminalState });
     }
   });
 
@@ -80,7 +62,7 @@ io.on("connection", (socket) => {
     try {
       const { cols, rows } = CreateTerminalSchema.parse(data);
       const terminalId = randomUUID();
-      
+
       // Check if terminal already exists (shouldn't happen with UUID)
       if (globalTerminals.has(terminalId)) {
         console.error(`Terminal ${terminalId} already exists`);
@@ -96,18 +78,31 @@ io.on("connection", (socket) => {
         env: process.env,
       });
 
+      // Create headless terminal for proper rendering
+      const headlessTerminal = new Terminal({
+        cols: cols || 80,
+        rows: rows || 24,
+        scrollback: MAX_SCROLLBACK_LINES,
+        allowProposedApi: true,
+      });
+      const serializeAddon = new SerializeAddon();
+
+      headlessTerminal.loadAddon(serializeAddon);
+
       const terminal: GlobalTerminal = {
         pty: ptyProcess,
         scrollback: [],
         maxScrollbackLines: MAX_SCROLLBACK_LINES,
+        headlessTerminal,
+        serializeAddon,
       };
 
       globalTerminals.set(terminalId, terminal);
 
       ptyProcess.onData((data) => {
-        // Add to scrollback buffer
-        addToScrollback(terminal, data);
-        
+        // Write to headless terminal for proper rendering
+        headlessTerminal.write(data);
+
         // Broadcast to all connected clients
         io.emit("terminal-output", { terminalId, data });
       });
@@ -116,10 +111,10 @@ io.on("connection", (socket) => {
         console.log(
           `Terminal ${terminalId} exited with code ${exitCode} and signal ${signal}`
         );
-        
+
         // Broadcast exit to all clients
         io.emit("terminal-exit", { terminalId, exitCode, signal });
-        
+
         // Keep terminal in memory for scrollback, but mark as exited
         // You might want to clean up after some time
       });
@@ -136,7 +131,7 @@ io.on("connection", (socket) => {
     try {
       const { terminalId, data } = TerminalInputSchema.parse(inputData);
       const terminal = globalTerminals.get(terminalId);
-      
+
       if (terminal && terminal.pty) {
         terminal.pty.write(data);
       }
@@ -149,9 +144,10 @@ io.on("connection", (socket) => {
     try {
       const { terminalId, cols, rows } = ResizeSchema.parse(resizeData);
       const terminal = globalTerminals.get(terminalId);
-      
+
       if (terminal && terminal.pty) {
         terminal.pty.resize(cols, rows);
+        terminal.headlessTerminal.resize(cols, rows);
       }
     } catch (error) {
       console.error("Invalid resize data:", error);
@@ -162,11 +158,11 @@ io.on("connection", (socket) => {
     try {
       const { terminalId } = CloseTerminalSchema.parse(closeData);
       const terminal = globalTerminals.get(terminalId);
-      
+
       if (terminal && terminal.pty) {
         terminal.pty.kill();
         globalTerminals.delete(terminalId);
-        
+
         // Broadcast terminal closure to all clients
         io.emit("terminal-closed", { terminalId });
         console.log(`Global terminal ${terminalId} closed`);
