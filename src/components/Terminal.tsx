@@ -1,7 +1,7 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Socket } from "socket.io-client";
 import type {
   ClientToServerEvents,
@@ -13,9 +13,15 @@ interface TerminalProps {
   terminalId: string;
   socket: Socket<ServerToClientEvents, ClientToServerEvents> | null;
   isActive: boolean;
+  initialScrollback?: string[];
 }
 
-export function Terminal({ terminalId, socket, isActive }: TerminalProps) {
+export function Terminal({
+  terminalId,
+  socket,
+  isActive,
+  initialScrollback,
+}: TerminalProps) {
   const fitAddon = useMemo(() => new FitAddon(), []);
   const webLinksAddon = useMemo(() => new WebLinksAddon(), []);
   const addons = useMemo(
@@ -93,6 +99,19 @@ export function Terminal({ terminalId, socket, isActive }: TerminalProps) {
       terminal.dispose();
     };
   }, [terminalId, socket, terminal, fitAddon]);
+
+  const hasWrittenInitialScrollback = useRef(false);
+  useEffect(() => {
+    if (!terminal) return;
+    if (
+      initialScrollback &&
+      initialScrollback.length > 0 &&
+      !hasWrittenInitialScrollback.current
+    ) {
+      terminal.write(initialScrollback.join(""));
+      hasWrittenInitialScrollback.current = true;
+    }
+  }, [initialScrollback, terminal, hasWrittenInitialScrollback]);
 
   useEffect(() => {
     if (isActive && terminal) {

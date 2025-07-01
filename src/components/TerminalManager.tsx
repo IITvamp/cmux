@@ -53,12 +53,13 @@ export function TerminalManager() {
 
       // Create xterm instance
       const xterm = new XTerm({
-        fontSize: 14,
-        fontFamily: '"Cascadia Code", "Courier New", monospace',
+        fontSize: 12,
+        fontFamily:
+          "Menlo, Monaco, operator mono,SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace",
         theme: {
           background: "#1e1e1e",
-          foreground: "#cccccc",
-          cursor: "#ffffff",
+          foreground: "#d4d4d4",
+          cursor: "#aeafad",
           black: "#000000",
           red: "#cd3131",
           green: "#0dbc79",
@@ -76,6 +77,7 @@ export function TerminalManager() {
           brightCyan: "#29b8db",
           brightWhite: "#e5e5e5",
         },
+        cursorStyle: "bar",
         cursorBlink: true,
         allowProposedApi: true,
       });
