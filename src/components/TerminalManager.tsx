@@ -142,10 +142,8 @@ export function TerminalManager() {
           return prev;
         }
 
-        // Set as active if it's the first terminal
-        if (prev.length === 0) {
-          setActiveTerminalId(() => terminalId);
-        }
+        // Always set the new terminal as active
+        setActiveTerminalId(() => terminalId);
 
         return [...prev, terminal];
       });
