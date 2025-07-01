@@ -1,9 +1,12 @@
 import { SerializeAddon } from "@xterm/addon-serialize";
-import { Terminal } from "@xterm/headless";
-import { randomUUID } from "crypto";
-import { createServer } from "http";
+
+import xtermHeadless from "@xterm/headless";
+const { Terminal } = xtermHeadless;
+
 import { spawn, type IPty } from "node-pty";
-import { platform } from "os";
+import { randomUUID } from "node:crypto";
+import { createServer } from "node:http";
+import { platform } from "node:os";
 import { Server } from "socket.io";
 import {
   CloseTerminalSchema,
@@ -35,7 +38,7 @@ interface GlobalTerminal {
   pty: IPty;
   scrollback: string[];
   maxScrollbackLines: number;
-  headlessTerminal: Terminal;
+  headlessTerminal: xtermHeadless.Terminal;
   serializeAddon: SerializeAddon;
 }
 
@@ -182,3 +185,19 @@ const PORT = process.env.PORT || 3001;
 httpServer.listen(PORT, () => {
   console.log(`Terminal server listening on port ${PORT}`);
 });
+
+// Hot reload support
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    console.log("Cleaning up terminals and server...");
+
+    // Kill all running terminals
+    globalTerminals.forEach((terminal, id) => {
+      console.log(`Killing terminal ${id}`);
+      terminal.pty.kill();
+    });
+
+    io.close();
+    httpServer.close();
+  });
+}

@@ -6,12 +6,16 @@
   "type": "module",
   "scripts": {
     "start": "vite-node index.ts",
-    "dev": "vite-node --watch index.ts"
+    "dev": "vite-node --watch index.ts",
+    "start-deno": "deno run -A index.ts",
+    "dev-deno": "deno run -A --watch-hmr index.ts",
+    "start-bun": "bun run index.ts",
+    "dev-bun": "bun run --hot index.ts"
   },
   "dependencies": {
     "@xterm/headless": "^5.5.0",
     "ansi-escape-sequences": "^6.2.4",
-    "node-pty": "^1.0.0",
+    "node-pty": "^1.1.0-beta34",
     "socket.io": "^4.7.5",
     "vite-node": "^3.2.4",
     "zod": "^3.25.67"
