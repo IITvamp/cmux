@@ -11,11 +11,11 @@ export interface TerminalInstance {
 }
 
 export interface TerminalContextType {
-  terminals: TerminalInstance[];
-  activeTerminalId: string | null;
-  setActiveTerminalId: (id: string | null) => void;
-  createNewTerminal: () => void;
-  closeTerminal: (id: string) => void;
+  terminals: Map<string, TerminalInstance>;
+  createTerminal: (id?: string, name?: string) => string;
+  removeTerminal: (id: string) => void;
+  getTerminal: (id: string) => TerminalInstance | undefined;
+  updateTerminal: (id: string, updates: Partial<TerminalInstance>) => void;
 }
 
 export const TerminalContext = createContext<TerminalContextType | null>(null);
