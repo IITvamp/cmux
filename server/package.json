@@ -5,12 +5,14 @@
   "main": "index.ts",
   "type": "module",
   "scripts": {
-    "start": "node --experimental-strip-types index.ts",
-    "dev": "node --experimental-strip-types --watch index.ts"
+    "start": "vite-node index.ts",
+    "dev": "vite-node --watch index.ts"
   },
   "dependencies": {
+    "ansi-escape-sequences": "^6.2.4",
     "node-pty": "^1.0.0",
     "socket.io": "^4.7.5",
+    "vite-node": "^3.2.4",
     "zod": "^3.25.67"
   }
 }
