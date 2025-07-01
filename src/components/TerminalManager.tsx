@@ -299,10 +299,11 @@ function TerminalView({ terminal, isActive }: TerminalViewProps) {
       }
     };
 
-    window.addEventListener("resize", handleResize);
+    const resizeObserver = new ResizeObserver(handleResize);
+    resizeObserver.observe(terminalRef.current);
 
     return () => {
-      window.removeEventListener("resize", handleResize);
+      resizeObserver.disconnect();
     };
   }, [terminal]);
 
