@@ -12,7 +12,7 @@ export function TitleBar() {
 
       {/* Title */}
       <div className="text-xs font-medium text-neutral-900 dark:text-neutral-100 leading-none">
-        Manaflow
+        coderouter
       </div>
     </div>
   );

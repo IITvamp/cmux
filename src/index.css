@@ -1,118 +1,212 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *));
-
-#root {
-  height: 100vh;
-  margin: 0;
-  padding: 0;
-}
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {
+
   --radius-sm: calc(var(--radius) - 4px);
+
   --radius-md: calc(var(--radius) - 2px);
+
   --radius-lg: var(--radius);
+
   --radius-xl: calc(var(--radius) + 4px);
+
   --color-background: var(--background);
+
   --color-foreground: var(--foreground);
+
   --color-card: var(--card);
+
   --color-card-foreground: var(--card-foreground);
+
   --color-popover: var(--popover);
+
   --color-popover-foreground: var(--popover-foreground);
+
   --color-primary: var(--primary);
+
   --color-primary-foreground: var(--primary-foreground);
+
   --color-secondary: var(--secondary);
+
   --color-secondary-foreground: var(--secondary-foreground);
+
   --color-muted: var(--muted);
+
   --color-muted-foreground: var(--muted-foreground);
+
   --color-accent: var(--accent);
+
   --color-accent-foreground: var(--accent-foreground);
+
   --color-destructive: var(--destructive);
+
   --color-border: var(--border);
+
   --color-input: var(--input);
+
   --color-ring: var(--ring);
+
   --color-chart-1: var(--chart-1);
+
   --color-chart-2: var(--chart-2);
+
   --color-chart-3: var(--chart-3);
+
   --color-chart-4: var(--chart-4);
+
   --color-chart-5: var(--chart-5);
+
   --color-sidebar: var(--sidebar);
+
   --color-sidebar-foreground: var(--sidebar-foreground);
+
   --color-sidebar-primary: var(--sidebar-primary);
+
   --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+
   --color-sidebar-accent: var(--sidebar-accent);
+
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+
   --color-sidebar-border: var(--sidebar-border);
+
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
 :root {
+
   --radius: 0.625rem;
+
   --background: oklch(1 0 0);
+
   --foreground: oklch(0.145 0 0);
+
   --card: oklch(1 0 0);
+
   --card-foreground: oklch(0.145 0 0);
+
   --popover: oklch(1 0 0);
+
   --popover-foreground: oklch(0.145 0 0);
+
   --primary: oklch(0.205 0 0);
+
   --primary-foreground: oklch(0.985 0 0);
+
   --secondary: oklch(0.97 0 0);
+
   --secondary-foreground: oklch(0.205 0 0);
+
   --muted: oklch(0.97 0 0);
+
   --muted-foreground: oklch(0.556 0 0);
+
   --accent: oklch(0.97 0 0);
+
   --accent-foreground: oklch(0.205 0 0);
+
   --destructive: oklch(0.577 0.245 27.325);
+
   --border: oklch(0.922 0 0);
+
   --input: oklch(0.922 0 0);
+
   --ring: oklch(0.708 0 0);
+
   --chart-1: oklch(0.646 0.222 41.116);
+
   --chart-2: oklch(0.6 0.118 184.704);
+
   --chart-3: oklch(0.398 0.07 227.392);
+
   --chart-4: oklch(0.828 0.189 84.429);
+
   --chart-5: oklch(0.769 0.188 70.08);
+
   --sidebar: oklch(0.985 0 0);
+
   --sidebar-foreground: oklch(0.145 0 0);
+
   --sidebar-primary: oklch(0.205 0 0);
+
   --sidebar-primary-foreground: oklch(0.985 0 0);
+
   --sidebar-accent: oklch(0.97 0 0);
+
   --sidebar-accent-foreground: oklch(0.205 0 0);
+
   --sidebar-border: oklch(0.922 0 0);
+
   --sidebar-ring: oklch(0.708 0 0);
 }
 
 .dark {
+
   --background: oklch(0.145 0 0);
+
   --foreground: oklch(0.985 0 0);
+
   --card: oklch(0.205 0 0);
+
   --card-foreground: oklch(0.985 0 0);
+
   --popover: oklch(0.205 0 0);
+
   --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
+
+  --primary: oklch(.48 0.22 282);
+  /* --primary: #6848A3; */
+
+  /* --primary-foreground: oklch(0.205 0 0); */
+  --primary-foreground: oklch(0.985 0 0);
+
   --secondary: oklch(0.269 0 0);
+
   --secondary-foreground: oklch(0.985 0 0);
+
   --muted: oklch(0.269 0 0);
+
   --muted-foreground: oklch(0.708 0 0);
+
   --accent: oklch(0.269 0 0);
+
   --accent-foreground: oklch(0.985 0 0);
+
   --destructive: oklch(0.704 0.191 22.216);
+
   --border: oklch(1 0 0 / 10%);
+
   --input: oklch(1 0 0 / 15%);
+
   --ring: oklch(0.556 0 0);
+
   --chart-1: oklch(0.488 0.243 264.376);
+
   --chart-2: oklch(0.696 0.17 162.48);
+
   --chart-3: oklch(0.769 0.188 70.08);
+
   --chart-4: oklch(0.627 0.265 303.9);
+
   --chart-5: oklch(0.645 0.246 16.439);
+
   --sidebar: oklch(0.205 0 0);
+
   --sidebar-foreground: oklch(0.985 0 0);
+
   --sidebar-primary: oklch(0.488 0.243 264.376);
+
   --sidebar-primary-foreground: oklch(0.985 0 0);
+
   --sidebar-accent: oklch(0.269 0 0);
+
   --sidebar-accent-foreground: oklch(0.985 0 0);
+
   --sidebar-border: oklch(1 0 0 / 10%);
+
   --sidebar-ring: oklch(0.556 0 0);
 }
 
@@ -123,4 +217,159 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+/* Lexical Editor Styles */
+.editor-container {
+  @apply relative;
+}
+
+.editor-input {
+  @apply min-h-[60px] relative;
+}
+
+.editor-placeholder {
+  @apply text-neutral-500 overflow-hidden text-ellipsis select-none pointer-events-none absolute top-0 left-0 w-full;
+}
+
+.editor-paragraph {
+  @apply m-0 relative;
+}
+
+.editor-heading-h1 {
+  @apply text-2xl font-bold mb-3 mt-5;
+}
+
+.editor-heading-h2 {
+  @apply text-xl font-bold mb-2.5 mt-4;
+}
+
+.editor-heading-h3 {
+  @apply text-lg font-bold mb-2 mt-3;
+}
+
+.editor-quote {
+  @apply my-2 mx-5 text-sm text-neutral-500 border-l-4 border-neutral-300 dark:border-neutral-700 pl-4;
+}
+
+.editor-list-ol {
+  @apply pl-6 my-0 mx-0;
+  list-style-type: decimal;
+}
+
+.editor-list-ul {
+  @apply pl-6 my-0 mx-0;
+  list-style-type: none;
+}
+
+.editor-list-ul .editor-listitem {
+  @apply relative;
+}
+
+.editor-list-ul .editor-listitem:before {
+  content: "-";
+  @apply absolute -left-4 text-neutral-500 dark:text-neutral-400;
+}
+
+.editor-listitem {
+  @apply ml-0 my-0.5 relative;
+}
+
+.editor-nested-listitem {
+  @apply list-none;
+}
+
+.editor-nested-listitem:before,
+.editor-nested-listitem:after {
+  display: none;
+}
+
+.editor-link {
+  @apply text-blue-500 dark:text-blue-400 underline cursor-pointer;
+}
+
+.editor-text-bold {
+  @apply font-bold;
+}
+
+.editor-text-italic {
+  @apply italic;
+}
+
+.editor-text-underline {
+  @apply underline;
+}
+
+.editor-text-strikethrough {
+  @apply line-through;
+}
+
+.editor-text-underlineStrikethrough {
+  @apply underline line-through;
+}
+
+.editor-text-code {
+  @apply bg-neutral-100 dark:bg-neutral-800 px-1 py-0.5 font-mono text-sm rounded;
+}
+
+.editor-code {
+  @apply bg-neutral-100 dark:bg-neutral-800 font-mono block py-2 px-2 overflow-x-auto relative my-2 rounded text-sm;
+  tab-size: 2;
+}
+
+.editor-code:before {
+  content: attr(data-gutter);
+  position: absolute;
+  background-color: #eee;
+  left: 0;
+  top: 0;
+  border-right: 1px solid #ccc;
+  padding: 8px;
+  color: #777;
+  white-space: pre-wrap;
+  text-align: right;
+  min-width: 25px;
+}
+
+.editor-code:after {
+  content: attr(data-highlight-language);
+  position: absolute;
+  top: 0;
+  right: 3px;
+  padding: 3px;
+  font-size: 10px;
+  text-transform: uppercase;
+  color: #999;
+}
+
+.editor-tokenComment {
+  @apply text-neutral-500;
+}
+
+.editor-tokenPunctuation {
+  @apply text-neutral-600 dark:text-neutral-400;
+}
+
+.editor-tokenProperty {
+  @apply text-blue-600 dark:text-blue-400;
+}
+
+.editor-tokenSelector {
+  @apply text-purple-600 dark:text-purple-400;
+}
+
+.editor-tokenOperator {
+  @apply text-orange-600 dark:text-orange-400;
+}
+
+.editor-tokenAttr {
+  @apply text-green-600 dark:text-green-400;
+}
+
+.editor-tokenVariable {
+  @apply text-red-600 dark:text-red-400;
+}
+
+.editor-tokenFunction {
+  @apply text-blue-600 dark:text-blue-400;
 }

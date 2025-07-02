@@ -150,7 +150,7 @@ function DashboardComponent() {
           ]
         : [];
 
-  const fanoutOptions = ["1x", "1.25x", "1.5x", "2x", "3x", "5x"];
+  const fanoutOptions = ["1x", "2x", "3x", "5x"];
 
   // Detect operating system for keyboard shortcut display
   const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
