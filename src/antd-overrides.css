@@ -1,0 +1,159 @@
+/* macOS-style animations: no enter, fade-only exit */
+
+/* Hide dropdown when not visible */
+.ant-select-dropdown-hidden {
+  display: none !important;
+}
+
+/* Remove enter/appear animations completely */
+.ant-select-dropdown.ant-slide-up-enter,
+.ant-select-dropdown.ant-slide-up-appear,
+.ant-select-dropdown.ant-slide-down-enter,
+.ant-select-dropdown.ant-slide-down-appear,
+.ant-select-dropdown.ant-slide-up-enter-active,
+.ant-select-dropdown.ant-slide-up-appear-active,
+.ant-select-dropdown.ant-slide-down-enter-active,
+.ant-select-dropdown.ant-slide-down-appear-active {
+  animation: none !important;
+  transition: none !important;
+  opacity: 1 !important;
+  transform: none !important;
+}
+
+/* Fade-only exit animation - macOS uses ~250ms for context menus */
+.ant-select-dropdown.ant-slide-up-leave,
+.ant-select-dropdown.ant-slide-down-leave {
+  animation: antd-fade-out 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards !important;
+}
+
+.ant-select-dropdown.ant-slide-up-leave-active,
+.ant-select-dropdown.ant-slide-down-leave-active {
+  animation: antd-fade-out 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards !important;
+}
+
+/* Define fade-out only animation */
+@keyframes antd-fade-out {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+    transform: none;
+  }
+}
+
+/* Override any transform-based animations */
+.ant-select-dropdown {
+  transform-origin: center !important;
+}
+
+/* Ensure dropdown content doesn't have unwanted transitions */
+.ant-select-dropdown .rc-virtual-list,
+.ant-select-dropdown .ant-select-item {
+  transition: background-color 0.1s ease;
+}
+
+/* Linear-style minimal dropdown styling */
+.ant-select-dropdown {
+  /* Minimal border and shadow */
+  border: 1px solid rgb(229 229 229); /* neutral-200 */
+  border-radius: 8px;
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+  overflow: hidden;
+  background: white;
+}
+
+/* Dark mode dropdown */
+.dark .ant-select-dropdown {
+  background: rgb(23 23 23); /* neutral-900 */
+  border-color: rgb(38 38 38); /* neutral-800 */
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.3), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+}
+
+/* Individual select items */
+.ant-select-item {
+  /* margin: 1px 2px 2px 2px; Creates gap between items */
+  border-radius: 6px;
+  font-size: 14px;
+  color: rgb(64 64 64); /* neutral-700 */
+}
+
+.ant-select-item:last-child {
+  margin-bottom: 2px;
+}
+
+.ant-select-item:first-child {
+  margin-top: 2px;
+}
+
+/* Dark mode items */
+.dark .ant-select-item {
+  color: rgb(229 229 229); /* neutral-200 */
+}
+
+/* Hover state */
+.ant-select-item-option-active:not(.ant-select-item-option-disabled) {
+  background-color: rgb(245 245 245); /* neutral-100 */
+}
+
+.dark .ant-select-item-option-active:not(.ant-select-item-option-disabled) {
+  background-color: rgb(38 38 38); /* neutral-800 */
+}
+
+/* Selected state */
+.ant-select-item-option-selected {
+  background-color: rgb(245 245 245); /* neutral-100 */
+  color: rgb(23 23 23); /* neutral-900 */
+  font-weight: 500;
+}
+
+.dark .ant-select-item-option-selected {
+  background-color: rgb(38 38 38); /* neutral-800 */
+  color: rgb(250 250 250); /* neutral-50 */
+}
+
+/* Disabled state */
+.ant-select-item-option-disabled {
+  color: rgb(163 163 163); /* neutral-400 */
+  cursor: not-allowed;
+}
+
+.dark .ant-select-item-option-disabled {
+  color: rgb(82 82 82); /* neutral-600 */
+}
+
+/* Remove default Ant Design selected checkmark */
+.ant-select-item-option-selected .ant-select-item-option-state {
+  display: none;
+}
+
+/* Custom border radius for select inputs */
+.ant-select.antd-select-custom.rounded-2xl .ant-select-selector,
+.ant-select.antd-select-custom.\!rounded-2xl .ant-select-selector {
+  border-radius: 12px !important;
+}
+
+/* Match tag border radius to select pill border radius */
+.ant-select.antd-select-custom.rounded-2xl .ant-select-selection-item,
+.ant-select.antd-select-custom.\!rounded-2xl .ant-select-selection-item {
+  border-radius: 8px !important;
+}
+
+/* Minimal scrollbar */
+.ant-select-dropdown ::-webkit-scrollbar {
+  width: 6px;
+}
+
+.ant-select-dropdown ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.ant-select-dropdown ::-webkit-scrollbar-thumb {
+  background-color: rgb(212 212 212); /* neutral-300 */
+  border-radius: 3px;
+}
+
+.dark .ant-select-dropdown ::-webkit-scrollbar-thumb {
+  background-color: rgb(64 64 64); /* neutral-700 */
+}

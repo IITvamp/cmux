@@ -7,6 +7,7 @@ APP_DIR="$(dirname "$SCRIPT_DIR")"
 # Colors for output
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
+RED='\033[0;31m'
 NC='\033[0m' # No Color
 
 echo -e "${BLUE}Starting Terminal App Development Environment...${NC}"
@@ -17,7 +18,7 @@ cd "$APP_DIR"
 # Function to cleanup on exit
 cleanup() {
     echo -e "\n${BLUE}Shutting down...${NC}"
-    kill $SERVER_PID $CLIENT_PID 2>/dev/null
+    kill $SERVER_PID $CLIENT_PID $CONVEX_PID 2>/dev/null
     exit
 }
 
@@ -45,9 +46,15 @@ echo -e "${GREEN}Starting frontend on port 5173...${NC}"
 npm run dev &
 CLIENT_PID=$!
 
+# Start convex dev and log to both stdout and file
+echo -e "${GREEN}Starting convex dev...${NC}"
+(source ~/.nvm/nvm.sh && nvm use 18 && bunx convex dev --local 2>&1 | tee logs/convex.log) &
+CONVEX_PID=$!
+
 echo -e "${GREEN}Terminal app is running!${NC}"
 echo -e "${BLUE}Frontend: http://localhost:5173${NC}"
 echo -e "${BLUE}Backend: http://localhost:3001${NC}"
+echo -e "${BLUE}Convex: http://localhost:3212${NC}"
 echo -e "\nPress Ctrl+C to stop all services"
 
 # Wait for both processes
