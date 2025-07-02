@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect } from "react";
 import { io, Socket } from "socket.io-client";
 import { SocketContext } from "./socket-context";
 
@@ -16,29 +16,30 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
   children,
   url = "http://localhost:3001",
 }) => {
-  const socketRef = useRef<Socket | null>(null);
+  const [socket, setSocket] = React.useState<Socket | null>(null);
   const [isConnected, setIsConnected] = React.useState(false);
 
   useEffect(() => {
-    socketRef.current = io(url, { transports: ["websocket"] });
+    const newSocket = io(url, { transports: ["websocket"] });
+    setSocket(newSocket);
 
-    socketRef.current.on("connect", () => {
+    newSocket.on("connect", () => {
       console.log("Socket connected");
       setIsConnected(true);
     });
 
-    socketRef.current.on("disconnect", () => {
+    newSocket.on("disconnect", () => {
       console.log("Socket disconnected");
       setIsConnected(false);
     });
 
     return () => {
-      socketRef.current?.disconnect();
+      newSocket.disconnect();
     };
   }, [url]);
 
   const contextValue: SocketContextType = {
-    socket: socketRef.current,
+    socket,
     isConnected,
   };
 

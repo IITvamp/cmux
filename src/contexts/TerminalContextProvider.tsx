@@ -125,7 +125,6 @@ export const TerminalContextProvider: React.FC<
       "terminal-output",
       ({ terminalId, data }: { terminalId: string; data: string }) => {
         const terminal = terminalsRef.current.get(terminalId);
-        console.log("gyat data", data);
         if (terminal) {
           terminal.xterm.write(data);
         }
@@ -180,6 +179,15 @@ export const TerminalContextProvider: React.FC<
     });
 
     return () => {
+      // Clean up socket event listeners
+      socket.off("terminal-created");
+      socket.off("terminal-output");
+      socket.off("terminal-exit");
+      socket.off("terminal-clear");
+      socket.off("terminal-restore");
+      socket.off("terminal-closed");
+      
+      // Dispose terminals
       terminalsRef.current.forEach((terminal) => {
         terminal.xterm.dispose();
       });

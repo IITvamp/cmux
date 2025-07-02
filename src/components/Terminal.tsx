@@ -2,23 +2,16 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 import { useEffect, useMemo, useRef } from "react";
-import { Socket } from "socket.io-client";
-import type {
-  ClientToServerEvents,
-  ServerToClientEvents,
-} from "../shared/socket-schemas";
 import { useXTerm } from "./xterm/use-xterm";
 
 interface TerminalProps {
   terminalId: string;
-  socket: Socket<ServerToClientEvents, ClientToServerEvents> | null;
   isActive: boolean;
   initialScrollback?: string[];
 }
 
 export function Terminal({
   terminalId,
-  socket,
   isActive,
   initialScrollback,
 }: TerminalProps) {
@@ -34,63 +27,7 @@ export function Terminal({
   });
 
   useEffect(() => {
-    if (!terminal || !socket) return;
-
-    const handleOutput = ({
-      terminalId: id,
-      data,
-    }: Parameters<ServerToClientEvents["terminal-output"]>[0]) => {
-      if (id === terminalId) {
-        terminal.write(data);
-      }
-    };
-
-    const handleExit = ({
-      terminalId: id,
-      exitCode,
-    }: Parameters<ServerToClientEvents["terminal-exit"]>[0]) => {
-      if (id === terminalId) {
-        terminal.write(`\r\n[Process exited with code ${exitCode}]\r\n`);
-      }
-    };
-
-    const handleClear = ({
-      terminalId: id,
-    }: Parameters<ServerToClientEvents["terminal-clear"]>[0]) => {
-      if (id === terminalId) {
-        terminal.clear();
-      }
-    };
-
-    socket.on("terminal-output", handleOutput);
-    socket.on("terminal-exit", handleExit);
-    socket.on("terminal-clear", handleClear);
-
-    terminal.onData((data) => {
-      socket.emit("terminal-input", { terminalId, data });
-    });
-
-    terminal.onResize(({ cols, rows }) => {
-      socket.emit("resize", { terminalId, cols, rows });
-    });
-
-    terminal.attachCustomKeyEventHandler((event: KeyboardEvent) => {
-      // Command+Backspace to delete from cursor to beginning of line (like ctrl+u)
-      if (event.metaKey && event.key === "Backspace") {
-        socket.emit("terminal-input", { terminalId, data: "\x15" });
-        event.preventDefault();
-        return false;
-      }
-
-      // Command+K to clear terminal
-      if (event.metaKey && event.key.toLowerCase() === "k") {
-        event.preventDefault();
-        socket.emit("terminal-input", { terminalId, data: "\x0c" });
-        return false;
-      }
-
-      return true;
-    });
+    if (!terminal) return;
 
     const handleResize = () => {
       if (fitAddon) {
@@ -103,12 +40,9 @@ export function Terminal({
 
     return () => {
       window.removeEventListener("resize", handleResize);
-      socket.off("terminal-output", handleOutput);
-      socket.off("terminal-exit", handleExit);
-      socket.off("terminal-clear", handleClear);
       terminal.dispose();
     };
-  }, [terminalId, socket, terminal, fitAddon]);
+  }, [terminal, fitAddon]);
 
   const hasWrittenInitialScrollback = useRef(false);
   useEffect(() => {
