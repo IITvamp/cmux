@@ -47,19 +47,16 @@ const MAX_SCROLLBACK_LINES = 100000;
 io.on("connection", (socket) => {
   console.log("Client connected:", socket.id);
 
-  // Send existing terminals to the new client after a small delay to ensure socket is ready
-  setTimeout(() => {
-    globalTerminals.forEach((terminal, terminalId) => {
-      socket.emit("terminal-created", { terminalId });
+  globalTerminals.forEach((terminal, terminalId) => {
+    socket.emit("terminal-created", { terminalId });
 
-      // Send properly rendered terminal state
-      const terminalState = terminal.serializeAddon.serialize();
-      if (terminalState) {
-        // Send terminal restore event with serialized state
-        socket.emit("terminal-restore", { terminalId, data: terminalState });
-      }
-    });
-  }, 100);
+    // Send properly rendered terminal state
+    const terminalState = terminal.serializeAddon.serialize();
+    if (terminalState) {
+      // Send terminal restore event with serialized state
+      socket.emit("terminal-restore", { terminalId, data: terminalState });
+    }
+  });
 
   socket.on("create-terminal", (data) => {
     try {
