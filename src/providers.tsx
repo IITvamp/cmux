@@ -1,4 +1,5 @@
 import { ThemeProvider } from "@/components/theme/theme-provider";
+import { SocketProvider } from "@/contexts/socket/socket-provider";
 import { convex, queryClient } from "@/query-client";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { ConfigProvider, theme, type ThemeConfig } from "antd";
@@ -66,7 +67,7 @@ export function Providers({ children }: ProvidersProps) {
       <ConfigProvider theme={antdTheme}>
         <ConvexProvider client={convex}>
           <QueryClientProvider client={queryClient}>
-            {children}
+            <SocketProvider>{children}</SocketProvider>
           </QueryClientProvider>
         </ConvexProvider>
       </ConfigProvider>

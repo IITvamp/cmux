@@ -3,148 +3,136 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal as XTerm } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { io, Socket } from "socket.io-client";
 import type { TerminalInstance } from "./TerminalContext";
 import { TerminalContext } from "./TerminalContext";
+import { useSocket } from "./socket/use-socket";
 
 interface TerminalContextProviderProps {
   children: React.ReactNode;
-  socketUrl?: string;
 }
 
 export const TerminalContextProvider: React.FC<
   TerminalContextProviderProps
-> = ({ children, socketUrl = "http://localhost:3001" }) => {
+> = ({ children }) => {
   const [terminals, setTerminals] = useState<Map<string, TerminalInstance>>(
     new Map()
   );
-  const socketRef = useRef<Socket | null>(null);
+  const { socket } = useSocket();
   const nextTerminalNumber = useRef(1);
   const terminalsRef = useRef<Map<string, TerminalInstance>>(new Map());
 
   useEffect(() => {
-    socketRef.current = io(socketUrl, {
-      transports: ["websocket"],
-    });
+    if (!socket) return;
 
-    socketRef.current.on("connect", () => {
-      console.log("Connected to socket server");
-    });
+    socket.on("terminal-created", ({ terminalId }: { terminalId: string }) => {
+      console.log("Terminal created on server:", terminalId);
 
-    socketRef.current.on("disconnect", () => {
-      console.log("Disconnected from socket server");
-    });
+      // Check if we already have this terminal
+      if (terminalsRef.current.has(terminalId)) {
+        console.log("Terminal already exists:", terminalId);
+        return;
+      }
 
-    socketRef.current.on(
-      "terminal-created",
-      ({ terminalId }: { terminalId: string }) => {
-        console.log("Terminal created on server:", terminalId);
+      const terminalName = `Terminal ${nextTerminalNumber.current}`;
+      nextTerminalNumber.current++;
 
-        // Check if we already have this terminal
-        if (terminalsRef.current.has(terminalId)) {
-          console.log("Terminal already exists:", terminalId);
-          return;
+      const xterm = new XTerm({
+        fontSize: 12,
+        fontFamily:
+          "Menlo, Monaco, operator mono,SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace",
+        theme: {
+          background: "#1e1e1e",
+          foreground: "#d4d4d4",
+          cursor: "#aeafad",
+          black: "#000000",
+          red: "#cd3131",
+          green: "#0dbc79",
+          yellow: "#e5e510",
+          blue: "#2472c8",
+          magenta: "#bc3fbc",
+          cyan: "#11a8cd",
+          white: "#e5e5e5",
+          brightBlack: "#666666",
+          brightRed: "#f14c4c",
+          brightGreen: "#23d18b",
+          brightYellow: "#f5f543",
+          brightBlue: "#3b8eea",
+          brightMagenta: "#d670d6",
+          brightCyan: "#29b8db",
+          brightWhite: "#e5e5e5",
+        },
+        cursorStyle: "bar",
+        cursorBlink: true,
+        allowProposedApi: true,
+        scrollback: 10000,
+      });
+
+      const fitAddon = new FitAddon();
+      xterm.loadAddon(fitAddon);
+      xterm.loadAddon(new WebLinksAddon());
+
+      const newTerminal: TerminalInstance = {
+        id: terminalId,
+        name: terminalName,
+        xterm,
+        fitAddon,
+        elementRef: null,
+      };
+
+      // Update ref immediately to ensure it's available for subsequent events
+      terminalsRef.current = new Map(terminalsRef.current);
+      terminalsRef.current.set(terminalId, newTerminal);
+
+      setTerminals((prev) => {
+        const newMap = new Map(prev);
+        newMap.set(terminalId, newTerminal);
+        return newMap;
+      });
+
+      xterm.onData((data) => {
+        console.log("Terminal input:", data);
+        socket?.emit("terminal-input", { terminalId, data });
+      });
+
+      xterm.onResize(({ cols, rows }) => {
+        socket?.emit("resize", { terminalId, cols, rows });
+      });
+
+      xterm.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+        if (event.metaKey && event.key === "Backspace") {
+          socket?.emit("terminal-input", {
+            terminalId,
+            data: "\x15",
+          });
+          event.preventDefault();
+          return false;
         }
 
-        const terminalName = `Terminal ${nextTerminalNumber.current}`;
-        nextTerminalNumber.current++;
+        if (event.metaKey && event.key.toLowerCase() === "k") {
+          event.preventDefault();
+          socket?.emit("terminal-input", {
+            terminalId,
+            data: "\x0c",
+          });
+          return false;
+        }
 
-        const xterm = new XTerm({
-          fontSize: 12,
-          fontFamily:
-            "Menlo, Monaco, operator mono,SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace",
-          theme: {
-            background: "#1e1e1e",
-            foreground: "#d4d4d4",
-            cursor: "#aeafad",
-            black: "#000000",
-            red: "#cd3131",
-            green: "#0dbc79",
-            yellow: "#e5e510",
-            blue: "#2472c8",
-            magenta: "#bc3fbc",
-            cyan: "#11a8cd",
-            white: "#e5e5e5",
-            brightBlack: "#666666",
-            brightRed: "#f14c4c",
-            brightGreen: "#23d18b",
-            brightYellow: "#f5f543",
-            brightBlue: "#3b8eea",
-            brightMagenta: "#d670d6",
-            brightCyan: "#29b8db",
-            brightWhite: "#e5e5e5",
-          },
-          cursorStyle: "bar",
-          cursorBlink: true,
-          allowProposedApi: true,
-          scrollback: 10000,
-        });
+        return true;
+      });
+    });
 
-        const fitAddon = new FitAddon();
-        xterm.loadAddon(fitAddon);
-        xterm.loadAddon(new WebLinksAddon());
-
-        const newTerminal: TerminalInstance = {
-          id: terminalId,
-          name: terminalName,
-          xterm,
-          fitAddon,
-          elementRef: null,
-        };
-
-        // Update ref immediately to ensure it's available for subsequent events
-        terminalsRef.current = new Map(terminalsRef.current);
-        terminalsRef.current.set(terminalId, newTerminal);
-
-        setTerminals((prev) => {
-          const newMap = new Map(prev);
-          newMap.set(terminalId, newTerminal);
-          return newMap;
-        });
-
-        xterm.onData((data) => {
-          socketRef.current?.emit("terminal-input", { terminalId, data });
-        });
-
-        xterm.onResize(({ cols, rows }) => {
-          socketRef.current?.emit("resize", { terminalId, cols, rows });
-        });
-
-        xterm.attachCustomKeyEventHandler((event: KeyboardEvent) => {
-          if (event.metaKey && event.key === "Backspace") {
-            socketRef.current?.emit("terminal-input", {
-              terminalId,
-              data: "\x15",
-            });
-            event.preventDefault();
-            return false;
-          }
-
-          if (event.metaKey && event.key.toLowerCase() === "k") {
-            event.preventDefault();
-            socketRef.current?.emit("terminal-input", {
-              terminalId,
-              data: "\x0c",
-            });
-            return false;
-          }
-
-          return true;
-        });
-      }
-    );
-
-    socketRef.current.on(
+    socket.on(
       "terminal-output",
       ({ terminalId, data }: { terminalId: string; data: string }) => {
         const terminal = terminalsRef.current.get(terminalId);
+        console.log("gyat data", data);
         if (terminal) {
           terminal.xterm.write(data);
         }
       }
     );
 
-    socketRef.current.on(
+    socket.on(
       "terminal-exit",
       ({ terminalId, exitCode }: { terminalId: string; exitCode: number }) => {
         const terminal = terminalsRef.current.get(terminalId);
@@ -156,17 +144,14 @@ export const TerminalContextProvider: React.FC<
       }
     );
 
-    socketRef.current.on(
-      "terminal-clear",
-      ({ terminalId }: { terminalId: string }) => {
-        const terminal = terminalsRef.current.get(terminalId);
-        if (terminal) {
-          terminal.xterm.clear();
-        }
+    socket.on("terminal-clear", ({ terminalId }: { terminalId: string }) => {
+      const terminal = terminalsRef.current.get(terminalId);
+      if (terminal) {
+        terminal.xterm.clear();
       }
-    );
+    });
 
-    socketRef.current.on(
+    socket.on(
       "terminal-restore",
       ({ terminalId, data }: { terminalId: string; data: string }) => {
         const terminal = terminalsRef.current.get(terminalId);
@@ -178,61 +163,63 @@ export const TerminalContextProvider: React.FC<
       }
     );
 
-    socketRef.current.on(
-      "terminal-closed",
-      ({ terminalId }: { terminalId: string }) => {
-        const terminal = terminalsRef.current.get(terminalId);
-        if (terminal) {
-          terminal.xterm.dispose();
-          // Update ref immediately
-          terminalsRef.current = new Map(terminalsRef.current);
-          terminalsRef.current.delete(terminalId);
-        }
-
-        setTerminals((prev) => {
-          const newTerminals = new Map(prev);
-          newTerminals.delete(terminalId);
-          return newTerminals;
-        });
+    socket.on("terminal-closed", ({ terminalId }: { terminalId: string }) => {
+      const terminal = terminalsRef.current.get(terminalId);
+      if (terminal) {
+        terminal.xterm.dispose();
+        // Update ref immediately
+        terminalsRef.current = new Map(terminalsRef.current);
+        terminalsRef.current.delete(terminalId);
       }
-    );
+
+      setTerminals((prev) => {
+        const newTerminals = new Map(prev);
+        newTerminals.delete(terminalId);
+        return newTerminals;
+      });
+    });
 
     return () => {
       terminalsRef.current.forEach((terminal) => {
         terminal.xterm.dispose();
       });
       terminalsRef.current.clear();
-      socketRef.current?.disconnect();
     };
-  }, [socketUrl]);
+  }, [socket]);
 
-  const createTerminal = useCallback((id?: string): string => {
-    if (!id) {
-      id = crypto.randomUUID();
-    }
-    // Request server to create a new terminal
-    socketRef.current?.emit("create-terminal", { cols: 80, rows: 24, id });
-    return id;
-  }, []);
+  const createTerminal = useCallback(
+    (id?: string): string => {
+      if (!id) {
+        id = crypto.randomUUID();
+      }
+      // Request server to create a new terminal
+      socket?.emit("create-terminal", { cols: 80, rows: 24, id });
+      return id;
+    },
+    [socket]
+  );
 
-  const removeTerminal = useCallback((id: string) => {
-    const terminal = terminalsRef.current.get(id);
+  const removeTerminal = useCallback(
+    (id: string) => {
+      const terminal = terminalsRef.current.get(id);
 
-    if (terminal) {
-      terminal.xterm.dispose();
-      socketRef.current?.emit("close-terminal", { terminalId: id });
+      if (terminal) {
+        terminal.xterm.dispose();
+        socket?.emit("close-terminal", { terminalId: id });
 
-      // Update ref immediately
-      terminalsRef.current = new Map(terminalsRef.current);
-      terminalsRef.current.delete(id);
+        // Update ref immediately
+        terminalsRef.current = new Map(terminalsRef.current);
+        terminalsRef.current.delete(id);
 
-      setTerminals((prev) => {
-        const newTerminals = new Map(prev);
-        newTerminals.delete(id);
-        return newTerminals;
-      });
-    }
-  }, []);
+        setTerminals((prev) => {
+          const newTerminals = new Map(prev);
+          newTerminals.delete(id);
+          return newTerminals;
+        });
+      }
+    },
+    [socket]
+  );
 
   const getTerminal = useCallback(
     (id: string): TerminalInstance | undefined => {
