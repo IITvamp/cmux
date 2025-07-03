@@ -1,5 +1,7 @@
 import { createServer } from "node:http";
 import { Server } from "socket.io";
+import { ConvexClient } from "convex/browser";
+import { api } from "../../convex/_generated/api.js";
 import {
   CloseTerminalSchema,
   CreateTerminalSchema,
@@ -27,6 +29,12 @@ const io = new Server<
     methods: ["GET", "POST"],
   },
 });
+
+// Initialize Convex client
+// Load from parent directory's .env.local since server runs from subdirectory
+const CONVEX_URL = process.env.VITE_CONVEX_URL || "http://127.0.0.1:3212";
+console.log("Connecting to Convex at:", CONVEX_URL);
+const convex = new ConvexClient(CONVEX_URL);
 
 // Global terminal storage - shared across all connections
 const globalTerminals = new Map<string, GlobalTerminal>();
@@ -61,27 +69,31 @@ io.on("connection", (socket) => {
   });
 
   socket.on("start-task", async (data, callback) => {
-    const taskId = crypto.randomUUID();
-    
     try {
       const taskData = StartTaskSchema.parse(data);
       
-      // Setup workspace and create terminal in parallel
-      const [workspaceResult] = await Promise.all([
-        setupProjectWorkspace({
-          repoUrl: taskData.repoUrl,
-          branch: taskData.branch,
-        }),
-        // Add any Convex mutations/queries here if needed
-      ]);
+      // Setup workspace first
+      const workspaceResult = await setupProjectWorkspace({
+        repoUrl: taskData.repoUrl,
+        branch: taskData.branch,
+      });
 
       if (!workspaceResult.success || !workspaceResult.worktreePath) {
         callback({
-          taskId,
+          taskId: "error",
           error: workspaceResult.error || "Failed to setup workspace",
         });
         return;
       }
+
+      // Create task in Convex database
+      const taskId = await convex.mutation(api.tasks.create, {
+        text: taskData.taskDescription.substring(0, 100), // First 100 chars as summary
+        description: taskData.taskDescription,
+        projectFullName: taskData.projectFullName,
+        branch: taskData.branch || "main",
+        worktreePath: workspaceResult.worktreePath,
+      });
 
       // Create terminal for the Claude session
       const terminalId = crypto.randomUUID();
@@ -97,7 +109,7 @@ io.on("connection", (socket) => {
 
       if (!terminal) {
         callback({
-          taskId,
+          taskId: taskId as string,
           error: "Failed to create terminal for Claude session",
         });
         return;
@@ -105,15 +117,15 @@ io.on("connection", (socket) => {
 
       // Return success via callback
       callback({
-        taskId,
+        taskId: taskId as string,
         worktreePath: workspaceResult.worktreePath,
         terminalId,
       });
 
     } catch (error) {
-      console.error("Invalid start-task data:", error);
+      console.error("Error in start-task:", error);
       callback({
-        taskId,
+        taskId: "error",
         error: error instanceof Error ? error.message : "Unknown error",
       });
     }
