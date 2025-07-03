@@ -7,6 +7,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useSocket } from "@/contexts/socket/use-socket";
+import type { TaskError, TaskStarted } from "@/shared/socket-schemas";
 import { type Repo } from "@/types/task";
 import { convexQuery } from "@convex-dev/react-query";
 import { useQuery } from "@tanstack/react-query";
@@ -72,7 +74,9 @@ function DashboardComponent() {
   // Actions to fetch data from GitHub
   const fetchRepos = useAction(api.githubActions.fetchAndStoreRepos);
   const fetchBranches = useAction(api.githubActions.fetchBranches);
-  const setupWorkspace = useAction(api.gitActions.setupProjectWorkspace);
+  
+  // Get socket connection
+  const { socket } = useSocket();
 
   const handleStartTask = useCallback(async () => {
     if (!selectedProject[0] || !taskDescription.trim()) {
@@ -85,34 +89,27 @@ function DashboardComponent() {
 
     setIsStartingTask(true);
     try {
-      const result = await setupWorkspace({
+      // Emit Socket.IO event to start task with acknowledgement
+      socket?.emit("start-task", {
         repoUrl,
         branch,
+        taskDescription,
+        projectFullName: selectedProject[0],
+      }, (response: TaskStarted | TaskError) => {
+        setIsStartingTask(false);
+        
+        if ("error" in response) {
+          console.error("Task error:", response.error);
+        } else {
+          console.log("Task started:", response);
+          // Navigate to terminal view or handle task started
+        }
       });
-
-      if (result.success && result.worktreePath) {
-        console.log("Workspace created at:", result.worktreePath);
-
-        // // Create task and execute first run
-        // const taskId = await createAndExecuteTask.mutateAsync({
-        //   text: taskDescription.substring(0, 100), // First 100 chars as summary
-        //   description: taskDescription,
-        //   projectFullName: selectedProject[0],
-        //   branch: branch,
-        //   worktreePath: result.worktreePath,
-        // });
-
-        // // Navigate to task detail view
-        // navigate({ to: "/task/$taskId", params: { taskId } });
-      } else {
-        console.error("Failed to setup workspace:", result.error);
-      }
     } catch (error) {
-      console.error("Error setting up workspace:", error);
-    } finally {
+      console.error("Error starting task:", error);
       setIsStartingTask(false);
     }
-  }, [selectedProject, taskDescription, selectedBranch, setupWorkspace]);
+  }, [selectedProject, taskDescription, selectedBranch, socket]);
 
   // Fetch repos on mount if none exist
   useEffect(() => {

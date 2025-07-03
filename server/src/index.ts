@@ -1,22 +1,18 @@
-import { SerializeAddon } from "@xterm/addon-serialize";
-
-import xtermHeadless from "@xterm/headless";
-const { Terminal } = xtermHeadless;
-
-import { spawn, type IPty } from "node-pty";
 import { createServer } from "node:http";
-import { platform } from "node:os";
 import { Server } from "socket.io";
 import {
   CloseTerminalSchema,
   CreateTerminalSchema,
   ResizeSchema,
   TerminalInputSchema,
+  StartTaskSchema,
   type ClientToServerEvents,
   type InterServerEvents,
   type ServerToClientEvents,
   type SocketData,
 } from "../../src/shared/socket-schemas.ts";
+import { setupProjectWorkspace } from "./workspace.ts";
+import { createTerminal, type GlobalTerminal } from "./terminal.ts";
 
 const httpServer = createServer();
 
@@ -33,16 +29,7 @@ const io = new Server<
 });
 
 // Global terminal storage - shared across all connections
-interface GlobalTerminal {
-  pty: IPty;
-  scrollback: string[];
-  maxScrollbackLines: number;
-  headlessTerminal: xtermHeadless.Terminal;
-  serializeAddon: SerializeAddon;
-}
-
 const globalTerminals = new Map<string, GlobalTerminal>();
-const MAX_SCROLLBACK_LINES = 100000;
 
 io.on("connection", (socket) => {
   console.log("Client connected:", socket.id);
@@ -61,74 +48,74 @@ io.on("connection", (socket) => {
   socket.on("create-terminal", (data) => {
     try {
       const { cols, rows, id } = CreateTerminalSchema.parse(data);
-      // ensure id does not conflict with existing terminal
       if (id && globalTerminals.has(id)) {
         console.error(`Terminal ${id} already exists`);
         return;
       }
       const terminalId = id || crypto.randomUUID();
+      
+      createTerminal(terminalId, globalTerminals, io, { cols, rows });
+    } catch (error) {
+      console.error("Invalid create-terminal data:", error);
+    }
+  });
 
-      // Check if terminal already exists (shouldn't happen with UUID)
-      if (globalTerminals.has(terminalId)) {
-        console.error(`Terminal ${terminalId} already exists`);
+  socket.on("start-task", async (data, callback) => {
+    const taskId = crypto.randomUUID();
+    
+    try {
+      const taskData = StartTaskSchema.parse(data);
+      
+      // Setup workspace and create terminal in parallel
+      const [workspaceResult] = await Promise.all([
+        setupProjectWorkspace({
+          repoUrl: taskData.repoUrl,
+          branch: taskData.branch,
+        }),
+        // Add any Convex mutations/queries here if needed
+      ]);
+
+      if (!workspaceResult.success || !workspaceResult.worktreePath) {
+        callback({
+          taskId,
+          error: workspaceResult.error || "Failed to setup workspace",
+        });
         return;
       }
 
-      const shell = platform() === "win32" ? "powershell.exe" : "zsh";
-      const ptyProcess = spawn(shell, [], {
-        name: "xterm-256color",
-        cols: cols || 80,
-        rows: rows || 24,
-        cwd: process.env.HOME,
-        env: process.env,
+      // Create terminal for the Claude session
+      const terminalId = crypto.randomUUID();
+      const terminal = createTerminal(terminalId, globalTerminals, io, {
+        cwd: workspaceResult.worktreePath,
+        command: "claude",
+        args: ["--dangerously-skip-permissions", taskData.taskDescription],
+        env: {
+          ...process.env,
+          PROMPT: taskData.taskDescription,
+        } as Record<string, string>,
       });
 
-      // Create headless terminal for proper rendering
-      const headlessTerminal = new Terminal({
-        cols: cols || 80,
-        rows: rows || 24,
-        scrollback: MAX_SCROLLBACK_LINES,
-        allowProposedApi: true,
-      });
-      const serializeAddon = new SerializeAddon();
+      if (!terminal) {
+        callback({
+          taskId,
+          error: "Failed to create terminal for Claude session",
+        });
+        return;
+      }
 
-      headlessTerminal.loadAddon(serializeAddon);
-
-      const terminal: GlobalTerminal = {
-        pty: ptyProcess,
-        scrollback: [],
-        maxScrollbackLines: MAX_SCROLLBACK_LINES,
-        headlessTerminal,
-        serializeAddon,
-      };
-
-      globalTerminals.set(terminalId, terminal);
-
-      ptyProcess.onData((data) => {
-        // Write to headless terminal for proper rendering
-        headlessTerminal.write(data);
-
-        // Broadcast to all connected clients
-        io.emit("terminal-output", { terminalId, data });
+      // Return success via callback
+      callback({
+        taskId,
+        worktreePath: workspaceResult.worktreePath,
+        terminalId,
       });
 
-      ptyProcess.onExit(({ exitCode, signal }) => {
-        console.log(
-          `Terminal ${terminalId} exited with code ${exitCode} and signal ${signal}`
-        );
-
-        // Broadcast exit to all clients
-        io.emit("terminal-exit", { terminalId, exitCode, signal });
-
-        // Keep terminal in memory for scrollback, but mark as exited
-        // You might want to clean up after some time
-      });
-
-      // Broadcast terminal creation to all clients
-      io.emit("terminal-created", { terminalId });
-      console.log(`Global terminal ${terminalId} created`);
     } catch (error) {
-      console.error("Invalid create-terminal data:", error);
+      console.error("Invalid start-task data:", error);
+      callback({
+        taskId,
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
     }
   });
 
