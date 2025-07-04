@@ -193,14 +193,6 @@ function LayoutComponent() {
             </svg>
             Settings
           </Link>
-
-          <Link
-            to="/profile"
-            className="flex items-center px-3 py-2 mt-1 text-sm font-medium rounded-lg text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors [&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800 [&.active]:text-neutral-900 dark:[&.active]:text-neutral-100"
-          >
-            <div className="w-5 h-5 mr-3 bg-neutral-300 dark:bg-neutral-600 rounded-full"></div>
-            <span className="flex-1">John Doe</span>
-          </Link>
         </div>
       </div>
 
