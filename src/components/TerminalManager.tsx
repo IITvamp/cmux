@@ -110,6 +110,7 @@ export function TerminalView({ terminal, isActive }: TerminalViewProps) {
     terminal.fitAddon.fit();
 
     const handleResize = () => {
+      console.log("resizing");
       if (terminal.fitAddon) {
         terminal.fitAddon.fit();
       }
@@ -117,9 +118,11 @@ export function TerminalView({ terminal, isActive }: TerminalViewProps) {
 
     const resizeObserver = new ResizeObserver(handleResize);
     resizeObserver.observe(terminalRef.current);
+    window.addEventListener("resize", handleResize);
 
     return () => {
       resizeObserver.disconnect();
+      window.removeEventListener("resize", handleResize);
     };
   }, [terminal]);
 
@@ -131,7 +134,7 @@ export function TerminalView({ terminal, isActive }: TerminalViewProps) {
   }, [isActive, terminal]);
 
   return (
-    <div className={`terminal-pane ${isActive ? "active" : ""}`}>
+    <div className={`w-full h-full`}>
       <div
         ref={terminalRef}
         style={{

@@ -87,20 +87,6 @@
   background-color: #1e1e1e;
 }
 
-.terminal-pane {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  padding: 8px;
-  display: none;
-}
-
-.terminal-pane.active {
-  display: block;
-}
-
 .no-terminals {
   display: flex;
   flex-direction: column;

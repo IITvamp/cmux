@@ -95,6 +95,7 @@ export const TerminalContextProvider: React.FC<
       });
 
       xterm.onResize(({ cols, rows }) => {
+        console.log("resizing to server");
         socket?.emit("resize", { terminalId, cols, rows });
       });
 
@@ -186,7 +187,7 @@ export const TerminalContextProvider: React.FC<
       socket.off("terminal-clear");
       socket.off("terminal-restore");
       socket.off("terminal-closed");
-      
+
       // Dispose terminals
       terminalsRef.current.forEach((terminal) => {
         terminal.xterm.dispose();
