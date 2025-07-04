@@ -1,6 +1,5 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { api } from "./_generated/api";
 
 export const get = query({
   args: {},
@@ -10,7 +9,7 @@ export const get = query({
 });
 
 export const create = mutation({
-  args: { 
+  args: {
     text: v.string(),
     description: v.optional(v.string()),
     projectFullName: v.optional(v.string()),
@@ -29,14 +28,7 @@ export const create = mutation({
       createdAt: now,
       updatedAt: now,
     });
-    
-    // Automatically create the first task run with the task description
-    const prompt = args.description || args.text;
-    await ctx.runMutation(api.taskRuns.create, {
-      taskId,
-      prompt,
-    });
-    
+
     return taskId;
   },
 });
@@ -92,19 +84,21 @@ export const createVersion = mutation({
     taskId: v.id("tasks"),
     diff: v.string(),
     summary: v.string(),
-    files: v.array(v.object({
-      path: v.string(),
-      changes: v.string(),
-    })),
+    files: v.array(
+      v.object({
+        path: v.string(),
+        changes: v.string(),
+      })
+    ),
   },
   handler: async (ctx, args) => {
     const existingVersions = await ctx.db
       .query("taskVersions")
       .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
       .collect();
-    
+
     const version = existingVersions.length + 1;
-    
+
     const versionId = await ctx.db.insert("taskVersions", {
       taskId: args.taskId,
       version,
@@ -113,9 +107,9 @@ export const createVersion = mutation({
       files: args.files,
       createdAt: Date.now(),
     });
-    
+
     await ctx.db.patch(args.taskId, { updatedAt: Date.now() });
-    
+
     return versionId;
   },
 });

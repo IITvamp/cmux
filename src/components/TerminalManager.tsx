@@ -93,7 +93,7 @@ interface TerminalViewProps {
   isActive: boolean;
 }
 
-function TerminalView({ terminal, isActive }: TerminalViewProps) {
+export function TerminalView({ terminal, isActive }: TerminalViewProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const isAttachedRef = useRef(false);
 

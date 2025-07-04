@@ -1,20 +1,20 @@
+import { ConvexClient } from "convex/browser";
 import { createServer } from "node:http";
 import { Server } from "socket.io";
-import { ConvexClient } from "convex/browser";
 import { api } from "../../convex/_generated/api.js";
 import {
   CloseTerminalSchema,
   CreateTerminalSchema,
   ResizeSchema,
-  TerminalInputSchema,
   StartTaskSchema,
+  TerminalInputSchema,
   type ClientToServerEvents,
   type InterServerEvents,
   type ServerToClientEvents,
   type SocketData,
 } from "../../src/shared/socket-schemas.ts";
-import { setupProjectWorkspace } from "./workspace.ts";
 import { createTerminal, type GlobalTerminal } from "./terminal.ts";
+import { getWorktreePath, setupProjectWorkspace } from "./workspace.ts";
 
 const httpServer = createServer();
 
@@ -61,7 +61,7 @@ io.on("connection", (socket) => {
         return;
       }
       const terminalId = id || crypto.randomUUID();
-      
+
       createTerminal(terminalId, globalTerminals, io, { cols, rows });
     } catch (error) {
       console.error("Invalid create-terminal data:", error);
@@ -71,12 +71,34 @@ io.on("connection", (socket) => {
   socket.on("start-task", async (data, callback) => {
     try {
       const taskData = StartTaskSchema.parse(data);
-      
-      // Setup workspace first
-      const workspaceResult = await setupProjectWorkspace({
+
+      // First get worktree info (generates branch name and paths)
+      const worktreeInfo = await getWorktreePath({
         repoUrl: taskData.repoUrl,
         branch: taskData.branch,
       });
+
+      // Create task in Convex database first
+      const taskId = await convex.mutation(api.tasks.create, {
+        text: taskData.taskDescription.substring(0, 100), // First 100 chars as summary
+        description: taskData.taskDescription,
+        projectFullName: taskData.projectFullName,
+        branch: taskData.branch || "main",
+        worktreePath: worktreeInfo.worktreePath,
+      });
+
+      // Run workspace setup and task run creation in parallel
+      const [workspaceResult, taskRunId] = await Promise.all([
+        setupProjectWorkspace({
+          repoUrl: taskData.repoUrl,
+          branch: taskData.branch,
+          worktreeInfo,
+        }),
+        convex.mutation(api.taskRuns.create, {
+          taskId,
+          prompt: taskData.taskDescription,
+        }),
+      ]);
 
       if (!workspaceResult.success || !workspaceResult.worktreePath) {
         callback({
@@ -86,17 +108,8 @@ io.on("connection", (socket) => {
         return;
       }
 
-      // Create task in Convex database
-      const taskId = await convex.mutation(api.tasks.create, {
-        text: taskData.taskDescription.substring(0, 100), // First 100 chars as summary
-        description: taskData.taskDescription,
-        projectFullName: taskData.projectFullName,
-        branch: taskData.branch || "main",
-        worktreePath: workspaceResult.worktreePath,
-      });
-
       // Create terminal for the Claude session
-      const terminalId = crypto.randomUUID();
+      const terminalId = taskRunId;
       const terminal = createTerminal(terminalId, globalTerminals, io, {
         cwd: workspaceResult.worktreePath,
         command: "claude",
@@ -118,10 +131,9 @@ io.on("connection", (socket) => {
       // Return success via callback
       callback({
         taskId: taskId as string,
-        worktreePath: workspaceResult.worktreePath,
+        worktreePath: workspaceResult.worktreePath!,
         terminalId,
       });
-
     } catch (error) {
       console.error("Error in start-task:", error);
       callback({
