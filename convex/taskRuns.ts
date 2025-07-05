@@ -1,6 +1,11 @@
 import { v } from "convex/values";
-import { mutation, query, internalMutation, internalQuery } from "./_generated/server";
-import { Doc } from "./_generated/dataModel";
+import { type Doc } from "./_generated/dataModel";
+import {
+  internalMutation,
+  internalQuery,
+  mutation,
+  query,
+} from "./_generated/server.ts";
 
 // Create a new task run
 export const create = mutation({
@@ -34,7 +39,9 @@ export const getByTask = query({
       .collect();
 
     // Build tree structure
-    type TaskRunWithChildren = Doc<"taskRuns"> & { children: TaskRunWithChildren[] };
+    type TaskRunWithChildren = Doc<"taskRuns"> & {
+      children: TaskRunWithChildren[];
+    };
     const runMap = new Map<string, TaskRunWithChildren>();
     const rootRuns: TaskRunWithChildren[] = [];
 
@@ -71,7 +78,12 @@ export const getByTask = query({
 export const updateStatus = internalMutation({
   args: {
     id: v.id("taskRuns"),
-    status: v.union(v.literal("pending"), v.literal("running"), v.literal("completed"), v.literal("failed")),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("running"),
+      v.literal("completed"),
+      v.literal("failed")
+    ),
     exitCode: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
@@ -109,8 +121,10 @@ export const appendLog = internalMutation({
       throw new Error("Task run not found");
     }
 
-    console.log(`[appendLog] Adding ${args.content.length} chars to task run ${args.id}`);
-    
+    console.log(
+      `[appendLog] Adding ${args.content.length} chars to task run ${args.id}`
+    );
+
     await ctx.db.patch(args.id, {
       log: run.log + args.content,
       updatedAt: Date.now(),
@@ -174,7 +188,12 @@ export const getById = internalQuery({
 export const updateStatusPublic = mutation({
   args: {
     id: v.id("taskRuns"),
-    status: v.union(v.literal("pending"), v.literal("running"), v.literal("completed"), v.literal("failed")),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("running"),
+      v.literal("completed"),
+      v.literal("failed")
+    ),
     exitCode: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
@@ -212,8 +231,10 @@ export const appendLogPublic = mutation({
       throw new Error("Task run not found");
     }
 
-    console.log(`[appendLog] Adding ${args.content.length} chars to task run ${args.id}`);
-    
+    console.log(
+      `[appendLog] Adding ${args.content.length} chars to task run ${args.id}`
+    );
+
     await ctx.db.patch(args.id, {
       log: run.log + args.content,
       updatedAt: Date.now(),

@@ -10,11 +10,7 @@ interface TerminalProps {
   initialScrollback?: string[];
 }
 
-export function Terminal({
-  terminalId,
-  isActive,
-  initialScrollback,
-}: TerminalProps) {
+export function Terminal({ isActive, initialScrollback }: TerminalProps) {
   const fitAddon = useMemo(() => new FitAddon(), []);
   const webLinksAddon = useMemo(() => new WebLinksAddon(), []);
   const addons = useMemo(

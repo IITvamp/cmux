@@ -1,9 +1,15 @@
 import { Link } from "@tanstack/react-router";
 import clsx from "clsx";
 import { formatDistanceToNow } from "date-fns";
-import { ChevronRight, Circle, CheckCircle, XCircle, Loader2 } from "lucide-react";
+import {
+  CheckCircle,
+  ChevronRight,
+  Circle,
+  Loader2,
+  XCircle,
+} from "lucide-react";
 import { useState } from "react";
-import { Doc } from "convex/_generated/dataModel";
+import { type Doc } from "../../convex/_generated/dataModel";
 
 interface TaskRunWithChildren extends Doc<"taskRuns"> {
   children: TaskRunWithChildren[];
@@ -51,27 +57,37 @@ export function TaskTree({ task, level = 0 }: TaskTreeProps) {
             )}
           />
         </button>
-        
-        <div className={clsx(
-          "w-4 h-4 mr-2 rounded flex items-center justify-center flex-shrink-0",
-          task.isCompleted
-            ? "bg-green-100 dark:bg-green-900/30"
-            : "bg-blue-100 dark:bg-blue-900/30"
-        )}>
-          <span className={clsx(
-            "text-[10px] font-medium",
+
+        <div
+          className={clsx(
+            "w-4 h-4 mr-2 rounded flex items-center justify-center flex-shrink-0",
             task.isCompleted
-              ? "text-green-600 dark:text-green-400"
-              : "text-blue-600 dark:text-blue-400"
-          )}>
+              ? "bg-green-100 dark:bg-green-900/30"
+              : "bg-blue-100 dark:bg-blue-900/30"
+          )}
+        >
+          <span
+            className={clsx(
+              "text-[10px] font-medium",
+              task.isCompleted
+                ? "text-green-600 dark:text-green-400"
+                : "text-blue-600 dark:text-blue-400"
+            )}
+          >
             {task.text.substring(0, 1).toUpperCase()}
           </span>
         </div>
-        
+
         <div className="flex-1 min-w-0">
-          <p className="truncate text-neutral-700 dark:text-neutral-300">{task.text}</p>
+          <p className="truncate text-neutral-700 dark:text-neutral-300">
+            {task.text}
+          </p>
           <p className="text-xs text-neutral-500 dark:text-neutral-500">
-            {task.createdAt ? formatDistanceToNow(new Date(task.createdAt), { addSuffix: true }) : 'Recently'}
+            {task.createdAt
+              ? formatDistanceToNow(new Date(task.createdAt), {
+                  addSuffix: true,
+                })
+              : "Recently"}
           </p>
         </div>
       </Link>
@@ -79,7 +95,12 @@ export function TaskTree({ task, level = 0 }: TaskTreeProps) {
       {isExpanded && hasRuns && (
         <div>
           {task.runs!.map((run) => (
-            <TaskRunTree key={run._id} run={run} level={level + 1} taskId={task._id} />
+            <TaskRunTree
+              key={run._id}
+              run={run}
+              level={level + 1}
+              taskId={task._id}
+            />
           ))}
         </div>
       )}
@@ -134,9 +155,7 @@ function TaskRunTree({ run, level, taskId }: TaskRunTreeProps) {
           />
         </button>
 
-        <div className="mr-2 flex-shrink-0">
-          {statusIcon}
-        </div>
+        <div className="mr-2 flex-shrink-0">{statusIcon}</div>
 
         <div className="flex-1 min-w-0">
           <p className="truncate text-neutral-600 dark:text-neutral-400">
@@ -151,7 +170,12 @@ function TaskRunTree({ run, level, taskId }: TaskRunTreeProps) {
       {isExpanded && hasChildren && (
         <div>
           {run.children.map((childRun) => (
-            <TaskRunTree key={childRun._id} run={childRun} level={level + 1} taskId={taskId} />
+            <TaskRunTree
+              key={childRun._id}
+              run={childRun}
+              level={level + 1}
+              taskId={taskId}
+            />
           ))}
         </div>
       )}

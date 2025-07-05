@@ -12,7 +12,9 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "server": "npm run dev --workspace=server",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "run-p typecheck:*",
+    "typecheck:app": "tsc --noEmit -p tsconfig.app.json",
+    "typecheck:server": "cd server && tsc --noEmit",
     "generate-routes": "tsr generate"
   },
   "dependencies": {
@@ -63,6 +65,7 @@
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
     "globals": "^16.2.0",
+    "npm-run-all": "^4.1.5",
     "tw-animate-css": "^1.3.4",
     "typescript": "~5.8.3",
     "typescript-eslint": "^8.34.1",

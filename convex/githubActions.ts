@@ -3,8 +3,8 @@
 import { exec } from "child_process";
 import { v } from "convex/values";
 import { promisify } from "util";
-import { internal } from "./_generated/api";
-import { action } from "./_generated/server";
+import { internal } from "./_generated/api.ts";
+import { action } from "./_generated/server.ts";
 
 const execAsync = promisify(exec);
 
@@ -33,7 +33,9 @@ const ghApi = {
 
   // Get user repos
   async getUserRepos(): Promise<string[]> {
-    const output = await this.exec('gh api user/repos --paginate --jq ".[].full_name"');
+    const output = await this.exec(
+      'gh api user/repos --paginate --jq ".[].full_name"'
+    );
     return output.split("\n").filter(Boolean);
   },
 
@@ -45,13 +47,17 @@ const ghApi = {
 
   // Get organization repos
   async getOrgRepos(org: string): Promise<string[]> {
-    const output = await this.exec(`gh api orgs/${org}/repos --paginate --jq ".[].full_name"`);
+    const output = await this.exec(
+      `gh api orgs/${org}/repos --paginate --jq ".[].full_name"`
+    );
     return output.split("\n").filter(Boolean);
   },
 
   // Get repo branches
   async getRepoBranches(repo: string): Promise<string[]> {
-    const output = await this.exec(`gh api repos/${repo}/branches --paginate --jq ".[].name"`);
+    const output = await this.exec(
+      `gh api repos/${repo}/branches --paginate --jq ".[].name"`
+    );
     return output.split("\n").filter(Boolean);
   },
 };
@@ -62,10 +68,14 @@ export const testGhAuth = action({
     try {
       // Run all commands in parallel
       const [authStatus, whoami, home, ghConfig] = await Promise.all([
-        execWithEnv("gh auth status").then(r => r.stdout).catch(e => e.message),
-        execWithEnv("whoami").then(r => r.stdout),
-        execWithEnv("echo $HOME").then(r => r.stdout),
-        execWithEnv('ls -la ~/.config/gh/ || echo "No gh config"').then(r => r.stdout),
+        execWithEnv("gh auth status")
+          .then((r) => r.stdout)
+          .catch((e) => e.message),
+        execWithEnv("whoami").then((r) => r.stdout),
+        execWithEnv("echo $HOME").then((r) => r.stdout),
+        execWithEnv('ls -la ~/.config/gh/ || echo "No gh config"').then(
+          (r) => r.stdout
+        ),
       ]);
 
       return {
@@ -133,7 +143,7 @@ export const fetchAndStoreRepos = action({
 
       // Clear existing repos
       const existingRepos = await ctx.runQuery(internal.github.getAllRepos);
-      
+
       // Delete all existing repos in parallel
       await Promise.all(
         existingRepos.map((repo) =>

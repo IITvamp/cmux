@@ -1,19 +1,22 @@
-import { query, internalQuery, internalMutation } from "./_generated/server";
 import { v } from "convex/values";
+import { internalMutation, internalQuery, query } from "./_generated/server.ts";
 
 export const getReposByOrg = query({
   args: {},
   handler: async (ctx) => {
     const repos = await ctx.db.query("repos").collect();
-    
+
     // Group by organization
-    const reposByOrg = repos.reduce((acc, repo) => {
-      if (!acc[repo.org]) {
-        acc[repo.org] = [];
-      }
-      acc[repo.org].push(repo);
-      return acc;
-    }, {} as Record<string, typeof repos>);
+    const reposByOrg = repos.reduce(
+      (acc, repo) => {
+        if (!acc[repo.org]) {
+          acc[repo.org] = [];
+        }
+        acc[repo.org].push(repo);
+        return acc;
+      },
+      {} as Record<string, typeof repos>
+    );
 
     return reposByOrg;
   },

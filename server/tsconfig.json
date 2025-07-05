@@ -21,7 +21,12 @@
     "sourceMap": true,
     "allowSyntheticDefaultImports": true,
     "allowImportingTsExtensions": true,
-    "noEmit": true
+    "noEmit": true,
+    // paths
+    "baseUrl": ".",
+    "paths": {
+      "convex-gen/*": ["../convex/_generated/*"]
+    }
   },
   "include": ["**/*.ts", "../src/shared/**/*.ts"],
   "exclude": ["node_modules", "dist"],

@@ -2,7 +2,7 @@
 
 import { v } from "convex/values";
 import { api } from "./_generated/api";
-import { Id } from "./_generated/dataModel";
+import { type Id } from "./_generated/dataModel";
 import { action } from "./_generated/server";
 
 // This action is deprecated in favor of the tRPC endpoint.
@@ -18,10 +18,10 @@ export const createAndExecute = action({
   handler: async (ctx, args): Promise<string> => {
     // Create the task
     const taskId: Id<"tasks"> = await ctx.runMutation(api.tasks.create, args);
-    
+
     // Note: Task execution is now handled by the tRPC endpoint
     // which spawns the Claude process directly in Node.js
-    
+
     return taskId;
   },
 });
