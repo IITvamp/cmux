@@ -1,10 +1,18 @@
 import { SerializeAddon } from "@xterm/addon-serialize";
 import xtermHeadless from "@xterm/headless";
-const { Terminal } = xtermHeadless;
 import { spawn, type IPty } from "node-pty";
 import { platform } from "node:os";
 import type { Server } from "socket.io";
-import type { ServerToClientEvents, ClientToServerEvents, InterServerEvents, SocketData } from "../../src/shared/socket-schemas.ts";
+import { api } from "../../convex/_generated/api.js";
+import type { Id } from "../../convex/_generated/dataModel.js";
+import type {
+  ClientToServerEvents,
+  InterServerEvents,
+  ServerToClientEvents,
+  SocketData,
+} from "../../src/shared/socket-schemas.ts";
+import { convex } from "./utils/convexClient.ts";
+const { Terminal } = xtermHeadless;
 
 export interface GlobalTerminal {
   pty: IPty;
@@ -12,6 +20,8 @@ export interface GlobalTerminal {
   maxScrollbackLines: number;
   headlessTerminal: xtermHeadless.Terminal;
   serializeAddon: SerializeAddon;
+  logBuffer?: string;
+  logDebounceTimer?: NodeJS.Timeout;
 }
 
 const MAX_SCROLLBACK_LINES = 100000;
@@ -19,7 +29,12 @@ const MAX_SCROLLBACK_LINES = 100000;
 export function createTerminal(
   terminalId: string,
   globalTerminals: Map<string, GlobalTerminal>,
-  io: Server<ClientToServerEvents, ServerToClientEvents, InterServerEvents, SocketData>,
+  io: Server<
+    ClientToServerEvents,
+    ServerToClientEvents,
+    InterServerEvents,
+    SocketData
+  >,
   options: {
     cols?: number;
     rows?: number;
@@ -27,6 +42,7 @@ export function createTerminal(
     env?: Record<string, string>;
     command?: string;
     args?: string[];
+    taskRunId?: Id<"taskRuns"> | string;
   } = {}
 ): GlobalTerminal | null {
   if (globalTerminals.has(terminalId)) {
@@ -40,11 +56,12 @@ export function createTerminal(
     cwd = process.env.HOME,
     env = process.env as Record<string, string>,
     command,
-    args = []
+    args = [],
+    taskRunId,
   } = options;
 
   const shell = command || (platform() === "win32" ? "powershell.exe" : "zsh");
-  
+
   const ptyProcess = spawn(shell, args, {
     name: "xterm-256color",
     cols,
@@ -59,7 +76,7 @@ export function createTerminal(
     scrollback: MAX_SCROLLBACK_LINES,
     allowProposedApi: true,
   });
-  
+
   const serializeAddon = new SerializeAddon();
   headlessTerminal.loadAddon(serializeAddon);
 
@@ -69,22 +86,70 @@ export function createTerminal(
     maxScrollbackLines: MAX_SCROLLBACK_LINES,
     headlessTerminal,
     serializeAddon,
+    logBuffer: "",
   };
 
   globalTerminals.set(terminalId, terminal);
 
+  // Function to flush the log buffer to Convex
+  const flushLogBuffer = async () => {
+    if (!taskRunId || !terminal.logBuffer) {
+      return;
+    }
+
+    const bufferToFlush = terminal.logBuffer;
+    terminal.logBuffer = "";
+
+    try {
+      await convex.mutation(api.taskRuns.appendLogPublic, {
+        id: taskRunId as Id<"taskRuns">,
+        content: bufferToFlush,
+      });
+    } catch (error) {
+      console.error("Failed to append log to Convex:", error);
+      // Re-add the buffer if the mutation failed
+      terminal.logBuffer = bufferToFlush + terminal.logBuffer;
+    }
+  };
+
   ptyProcess.onData((data) => {
     headlessTerminal.write(data);
     io.emit("terminal-output", { terminalId, data });
+
+    // Buffer the output for Convex logging
+    if (taskRunId) {
+      terminal.logBuffer = (terminal.logBuffer || "") + data;
+
+      // Clear any existing debounce timer
+      if (terminal.logDebounceTimer) {
+        clearTimeout(terminal.logDebounceTimer);
+      }
+
+      // Set a new debounce timer (100ms as requested)
+      terminal.logDebounceTimer = setTimeout(() => {
+        flushLogBuffer();
+      }, 100);
+    }
   });
 
-  ptyProcess.onExit(({ exitCode, signal }) => {
-    console.log(`Terminal ${terminalId} exited with code ${exitCode} and signal ${signal}`);
+  ptyProcess.onExit(async ({ exitCode, signal }) => {
+    console.log(
+      `Terminal ${terminalId} exited with code ${exitCode} and signal ${signal}`
+    );
+
+    // Flush any remaining buffered logs before exit
+    if (terminal.logDebounceTimer) {
+      clearTimeout(terminal.logDebounceTimer);
+    }
+    if (terminal.logBuffer) {
+      await flushLogBuffer();
+    }
+
     io.emit("terminal-exit", { terminalId, exitCode, signal });
   });
 
   io.emit("terminal-created", { terminalId });
   console.log(`Global terminal ${terminalId} created`);
-  
+
   return terminal;
 }

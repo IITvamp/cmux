@@ -1,4 +1,3 @@
-import { ConvexClient } from "convex/browser";
 import { createServer } from "node:http";
 import { Server } from "socket.io";
 import { api } from "../../convex/_generated/api.js";
@@ -14,6 +13,7 @@ import {
   type SocketData,
 } from "../../src/shared/socket-schemas.ts";
 import { createTerminal, type GlobalTerminal } from "./terminal.ts";
+import { convex } from "./utils/convexClient.ts";
 import { getWorktreePath, setupProjectWorkspace } from "./workspace.ts";
 
 const httpServer = createServer();
@@ -29,12 +29,6 @@ const io = new Server<
     methods: ["GET", "POST"],
   },
 });
-
-// Initialize Convex client
-// Load from parent directory's .env.local since server runs from subdirectory
-const CONVEX_URL = process.env.VITE_CONVEX_URL || "http://127.0.0.1:3212";
-console.log("Connecting to Convex at:", CONVEX_URL);
-const convex = new ConvexClient(CONVEX_URL);
 
 // Global terminal storage - shared across all connections
 const globalTerminals = new Map<string, GlobalTerminal>();
