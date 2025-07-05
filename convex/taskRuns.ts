@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { type Doc } from "./_generated/dataModel";
+import { type Doc } from "./_generated/dataModel.ts";
 import {
   internalMutation,
   internalQuery,

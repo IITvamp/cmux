@@ -1,9 +1,9 @@
 "use node";
 
 import { v } from "convex/values";
-import { api } from "./_generated/api";
-import { type Id } from "./_generated/dataModel";
-import { action } from "./_generated/server";
+import { api } from "./_generated/api.ts";
+import { type Id } from "./_generated/dataModel.ts";
+import { action } from "./_generated/server.ts";
 
 // This action is deprecated in favor of the tRPC endpoint.
 // Kept for backward compatibility but will be removed in the future.
