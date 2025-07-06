@@ -27,13 +27,8 @@ trap cleanup EXIT INT TERM
 
 # Check if node_modules exist, if not install dependencies
 if [ ! -d "node_modules" ]; then
-    echo -e "${BLUE}Installing frontend dependencies...${NC}"
+    echo -e "${BLUE}Installing dependencies...${NC}"
     npm install
-fi
-
-if [ ! -d "apps/server/node_modules" ]; then
-    echo -e "${BLUE}Installing server dependencies...${NC}"
-    cd apps/server && npm install && cd ../..
 fi
 
 # Start the backend server

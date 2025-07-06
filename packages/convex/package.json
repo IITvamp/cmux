@@ -15,6 +15,7 @@
       "types": "./_generated/api.d.ts"
     },
     "./dataModel": {
+      "import": "./_generated/dataModel.d.ts",
       "types": "./_generated/dataModel.d.ts"
     }
   },
