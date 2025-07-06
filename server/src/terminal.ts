@@ -3,14 +3,14 @@ import xtermHeadless from "@xterm/headless";
 import { spawn, type IPty } from "node-pty";
 import { platform } from "node:os";
 import type { Server } from "socket.io";
-import { api } from "../../convex/_generated/api.js";
-import type { Id } from "../../convex/_generated/dataModel.js";
+import { api } from "@coderouter/convex/api";
+import type { Id } from "@coderouter/convex/dataModel";
 import type {
   ClientToServerEvents,
   InterServerEvents,
   ServerToClientEvents,
   SocketData,
-} from "../../src/shared/socket-schemas.ts";
+} from "@coderouter/shared";
 import { convex } from "./utils/convexClient.ts";
 const { Terminal } = xtermHeadless;
 

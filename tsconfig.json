@@ -1,15 +1,8 @@
 {
   "files": [],
-  // "include": ["src","convex", "shared", "server"],
   "references": [
-    { "path": "./tsconfig.app.json" },
+    { "path": "./packages/client/tsconfig.json" },
+    { "path": "./server/tsconfig.json" },
     { "path": "./tsconfig.node.json" }
-  ],
-  "compilerOptions": {
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["./src/*"],
-      "convex-gen/*": ["./convex/_generated/*"]
-    }
-  }
+  ]
 }

@@ -3,8 +3,8 @@ import { useTerminals } from "@/hooks/useTerminals";
 import { createFileRoute } from "@tanstack/react-router";
 import "@xterm/xterm/css/xterm.css";
 import { useQuery } from "convex/react";
-import { api } from "../../convex/_generated/api";
-import { type Id } from "../../convex/_generated/dataModel";
+import { api } from "@coderouter/convex/api";
+import { type Id } from "@coderouter/convex/dataModel";
 
 export const Route = createFileRoute("/_layout/task/$taskId/run/$runId")({
   component: TaskRunComponent,

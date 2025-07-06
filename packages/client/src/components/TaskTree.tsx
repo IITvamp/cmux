@@ -9,7 +9,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useState } from "react";
-import { type Doc } from "../../convex/_generated/dataModel";
+import { type Doc } from "@coderouter/convex/dataModel";
 
 interface TaskRunWithChildren extends Doc<"taskRuns"> {
   children: TaskRunWithChildren[];

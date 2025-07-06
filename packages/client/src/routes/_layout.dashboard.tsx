@@ -8,13 +8,13 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useSocket } from "@/contexts/socket/use-socket";
-import type { TaskError, TaskStarted } from "@/shared/socket-schemas";
+import type { TaskError, TaskStarted } from "@coderouter/shared";
 import { type Repo } from "@/types/task";
 import { convexQuery } from "@convex-dev/react-query";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import clsx from "clsx";
-import { api } from "convex-gen/api";
+import { api } from "@coderouter/convex/api";
 import { useAction } from "convex/react";
 import { Command, Loader2, Mic } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";

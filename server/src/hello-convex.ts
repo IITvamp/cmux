@@ -1,3 +1,3 @@
-import { type DataModel } from "../../convex/_generated/dataModel.ts";
+import { type DataModel } from "@coderouter/convex/dataModel";
 
 export type Task = DataModel["tasks"];

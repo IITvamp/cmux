@@ -1,8 +1,8 @@
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { useState } from "react";
-import { api } from "../../convex/_generated/api";
-import { type Id } from "../../convex/_generated/dataModel";
+import { api } from "@coderouter/convex/api";
+import { type Id } from "@coderouter/convex/dataModel";
 
 export const Route = createFileRoute("/_layout/task/$taskId")({
   component: TaskDetailPage,

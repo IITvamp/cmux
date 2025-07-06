@@ -8,7 +8,7 @@
     "verbatimModuleSyntax": false,
     "lib": ["ES2022"],
     "outDir": "./dist",
-    "rootDir": "..",
+    "rootDir": ".",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -23,12 +23,9 @@
     "allowImportingTsExtensions": true,
     "noEmit": true,
     // paths
-    "baseUrl": ".",
-    "paths": {
-      "convex-gen/*": ["../convex/_generated/*"]
-    }
+    "baseUrl": "."
   },
-  "include": ["**/*.ts", "../src/shared/**/*.ts"],
+  "include": ["**/*.ts"],
   "exclude": ["node_modules", "dist"],
   "references": []
 }

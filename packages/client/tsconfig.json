@@ -26,9 +26,8 @@
     /* Paths */
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"],
-      "convex-gen/*": ["./convex/_generated/*"],
+      "@/*": ["./src/*"]
     }
   },
-  "include": ["src", "convex"]
+  "include": ["src"]
 }

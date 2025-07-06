@@ -2,10 +2,9 @@ import { TaskTree } from "@/components/TaskTree";
 import { TitleBar } from "@/components/TitleBar";
 import { type TaskWithRuns } from "@/types/task";
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
-import { api } from "../../convex/_generated/api";
-// import { type Doc } from "convex-gen/dataModel";
+import { api } from "@coderouter/convex/api";
 import { useQuery } from "convex/react";
-import { type Doc } from "../../convex/_generated/dataModel";
+import { type Doc } from "@coderouter/convex/dataModel";
 
 export const Route = createFileRoute("/_layout")({
   component: LayoutComponent,

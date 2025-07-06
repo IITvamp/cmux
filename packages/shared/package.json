@@ -1,0 +1,17 @@
+{
+  "name": "@coderouter/shared",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "main": "./src/socket-schemas.ts",
+  "types": "./src/socket-schemas.ts",
+  "exports": {
+    ".": {
+      "import": "./src/socket-schemas.ts",
+      "types": "./src/socket-schemas.ts"
+    }
+  },
+  "dependencies": {
+    "zod": "^3.25.67"
+  }
+}

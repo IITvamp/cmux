@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { Server } from "socket.io";
-import { api } from "../../convex/_generated/api.js";
+import { api } from "@coderouter/convex/api";
 import {
   CloseTerminalSchema,
   CreateTerminalSchema,
@@ -11,7 +11,7 @@ import {
   type InterServerEvents,
   type ServerToClientEvents,
   type SocketData,
-} from "../../src/shared/socket-schemas.ts";
+} from "@coderouter/shared";
 import { createTerminal, type GlobalTerminal } from "./terminal.ts";
 import { convex } from "./utils/convexClient.ts";
 import { getWorktreePath, setupProjectWorkspace } from "./workspace.ts";
