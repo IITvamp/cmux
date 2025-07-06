@@ -12,7 +12,7 @@
     "build": "npm run build --workspace=@coderouter/client",
     "lint": "npm run lint --workspace=@coderouter/client",
     "preview": "npm run preview --workspace=@coderouter/client",
-    "server": "npm run dev --workspace=coderouter-server",
+    "server": "npm run dev --workspace=@coderouter/server",
     "typecheck": "run-p typecheck:*",
     "typecheck:client": "npm run typecheck --workspace=@coderouter/client",
     "typecheck:server": "cd apps/server && tsc --noEmit",

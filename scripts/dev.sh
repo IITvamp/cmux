@@ -43,7 +43,7 @@ CLIENT_PID=$!
 
 # Start convex dev and log to both stdout and file
 echo -e "${GREEN}Starting convex dev...${NC}"
-(source ~/.nvm/nvm.sh && nvm use 18 && bunx convex dev --local 2>&1 | tee logs/convex.log) &
+(cd packages/convex && source ~/.nvm/nvm.sh && nvm use 18 && bunx convex dev --local 2>&1 | tee ../../logs/convex.log) &
 CONVEX_PID=$!
 
 echo -e "${GREEN}Terminal app is running!${NC}"
