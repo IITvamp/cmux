@@ -1,11 +1,11 @@
 import { v } from "convex/values";
-import { type Doc } from "./_generated/dataModel.ts";
+import { type Doc } from "./_generated/dataModel";
 import {
   internalMutation,
   internalQuery,
   mutation,
   query,
-} from "./_generated/server.ts";
+} from "./_generated/server";
 
 // Create a new task run
 export const create = mutation({

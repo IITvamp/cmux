@@ -3,8 +3,8 @@
 import { exec } from "child_process";
 import { v } from "convex/values";
 import { promisify } from "util";
-import { internal } from "./_generated/api.ts";
-import { action } from "./_generated/server.ts";
+import { internal } from "./_generated/api";
+import { action } from "./_generated/server";
 
 const execAsync = promisify(exec);
 

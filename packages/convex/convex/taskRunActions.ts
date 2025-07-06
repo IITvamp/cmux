@@ -1,7 +1,7 @@
 "use node";
 
 import { v } from "convex/values";
-import { action } from "./_generated/server.ts";
+import { action } from "./_generated/server";
 
 // This action is deprecated in favor of the tRPC endpoint.
 // Kept for backward compatibility but will be removed in the future.

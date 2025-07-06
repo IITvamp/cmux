@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { internalMutation, internalQuery, query } from "./_generated/server.ts";
+import { internalMutation, internalQuery, query } from "./_generated/server";
 
 export const getReposByOrg = query({
   args: {},
