@@ -1,4 +1,4 @@
-import { type Doc } from "../../convex/_generated/dataModel.ts";
+import { type Doc } from "../../convex/_generated/dataModel";
 
 export interface TaskRunWithChildren extends Doc<"taskRuns"> {
   children: TaskRunWithChildren[];
