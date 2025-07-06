@@ -31,14 +31,14 @@ if [ ! -d "node_modules" ]; then
     npm install
 fi
 
-if [ ! -d "server/node_modules" ]; then
+if [ ! -d "apps/server/node_modules" ]; then
     echo -e "${BLUE}Installing server dependencies...${NC}"
-    cd server && npm install && cd ..
+    cd apps/server && npm install && cd ../..
 fi
 
 # Start the backend server
 echo -e "${GREEN}Starting backend server on port 3001...${NC}"
-(cd server && npm run dev) &
+(cd apps/server && npm run dev) &
 SERVER_PID=$!
 
 # Start the frontend

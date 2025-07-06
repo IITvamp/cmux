@@ -13,8 +13,8 @@
     "dev-bun": "bun run --hot src/index.ts"
   },
   "dependencies": {
-    "@coderouter/convex": "file:../packages/convex",
-    "@coderouter/shared": "file:../packages/shared",
+    "@coderouter/convex": "file:../../packages/convex",
+    "@coderouter/shared": "file:../../packages/shared",
     "@xterm/headless": "^5.5.0",
     "ansi-escape-sequences": "^6.2.4",
     "convex": "^1.25.2",

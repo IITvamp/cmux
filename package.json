@@ -4,18 +4,18 @@
   "version": "0.0.0",
   "type": "module",
   "workspaces": [
-    "packages/*",
-    "server"
+    "apps/*",
+    "packages/*"
   ],
   "scripts": {
     "dev": "npm run dev --workspace=@coderouter/client",
     "build": "npm run build --workspace=@coderouter/client",
     "lint": "npm run lint --workspace=@coderouter/client",
     "preview": "npm run preview --workspace=@coderouter/client",
-    "server": "npm run dev --workspace=server",
+    "server": "npm run dev --workspace=coderouter-server",
     "typecheck": "run-p typecheck:*",
     "typecheck:client": "npm run typecheck --workspace=@coderouter/client",
-    "typecheck:server": "cd server && tsc --noEmit",
+    "typecheck:server": "cd apps/server && tsc --noEmit",
     "generate-routes": "npm run generate-routes --workspace=@coderouter/client"
   },
   "devDependencies": {

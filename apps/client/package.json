@@ -12,8 +12,8 @@
     "generate-routes": "tsr generate"
   },
   "dependencies": {
-    "@coderouter/convex": "file:../convex",
-    "@coderouter/shared": "file:../shared",
+    "@coderouter/convex": "file:../../packages/convex",
+    "@coderouter/shared": "file:../../packages/shared",
     "@convex-dev/react-query": "^0.0.0-alpha.11",
     "@lexical/code": "^0.32.1",
     "@lexical/history": "^0.32.1",
