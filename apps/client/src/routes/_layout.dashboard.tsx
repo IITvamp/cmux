@@ -359,7 +359,7 @@ function DashboardComponent() {
           {/* Task List */}
           {tasksQuery.data && tasksQuery.data.length > 0 && (
             <div className="mt-6">
-              <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-2">
+              <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-2 select-none">
                 All Tasks
               </h2>
               <div className="space-y-1">
@@ -367,7 +367,7 @@ function DashboardComponent() {
                   <div
                     key={task._id}
                     className={clsx(
-                      "relative group flex items-center gap-2.5 px-3 py-2 border rounded-lg transition-all cursor-pointer",
+                      "relative group flex items-center gap-2.5 px-3 py-2 border rounded-lg transition-all cursor-pointer select-none",
                       // Check if this is an optimistic update (temporary ID)
                       task._id.includes("-") && task._id.length === 36
                         ? "bg-white/50 dark:bg-neutral-700/30 border-neutral-200 dark:border-neutral-500/15 animate-pulse"

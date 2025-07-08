@@ -1,10 +1,10 @@
 import { TaskTree } from "@/components/TaskTree";
 import { TitleBar } from "@/components/TitleBar";
 import { type TaskWithRuns } from "@/types/task";
-import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
 import { api } from "@coderouter/convex/api";
-import { useQuery } from "convex/react";
 import { type Doc } from "@coderouter/convex/dataModel";
+import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
+import { useQuery } from "convex/react";
 
 export const Route = createFileRoute("/_layout")({
   component: LayoutComponent,
@@ -68,7 +68,7 @@ function LayoutComponent() {
         <nav className="flex-1 px-3 py-4 space-y-1">
           <Link
             to="/dashboard"
-            className="flex items-center px-3 py-2 text-sm font-medium rounded-lg text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors [&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800 [&.active]:text-neutral-900 dark:[&.active]:text-neutral-100"
+            className="flex items-center px-3 py-2 text-sm font-medium rounded-lg text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors [&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800 [&.active]:text-neutral-900 dark:[&.active]:text-neutral-100 select-none"
           >
             <svg
               className="w-5 h-5 mr-3 text-neutral-400 dark:text-neutral-500"
@@ -149,7 +149,7 @@ function LayoutComponent() {
           */}
 
           <div className="pt-6">
-            <p className="px-3 text-xs font-semibold text-neutral-400 dark:text-neutral-500 uppercase tracking-wider">
+            <p className="px-3 text-xs font-semibold text-neutral-400 dark:text-neutral-500 uppercase tracking-wider select-none">
               Recent Tasks
             </p>
             <div className="mt-3 space-y-0.5">
@@ -158,7 +158,7 @@ function LayoutComponent() {
                   <TaskTree key={task._id} task={task} />
                 ))
               ) : (
-                <p className="px-3 py-2 text-sm text-neutral-500 dark:text-neutral-400">
+                <p className="px-3 py-2 text-sm text-neutral-500 dark:text-neutral-400 select-none">
                   No recent tasks
                 </p>
               )}
@@ -170,7 +170,7 @@ function LayoutComponent() {
         <div className="p-3 border-t border-neutral-200 dark:border-neutral-900">
           <Link
             to="/settings"
-            className="flex items-center px-3 py-2 text-sm font-medium rounded-lg text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors [&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800 [&.active]:text-neutral-900 dark:[&.active]:text-neutral-100"
+            className="flex items-center px-3 py-2 text-sm font-medium rounded-lg text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors [&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800 [&.active]:text-neutral-900 dark:[&.active]:text-neutral-100 select-none"
           >
             <svg
               className="w-5 h-5 mr-3 text-neutral-400 dark:text-neutral-500"

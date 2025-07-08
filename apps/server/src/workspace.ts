@@ -1,10 +1,7 @@
-import { exec } from "child_process";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
-import { promisify } from "util";
-
-const execAsync = promisify(exec);
+import { RepositoryManager } from "./repositoryManager.js";
 
 interface WorkspaceResult {
   success: boolean;
@@ -46,14 +43,6 @@ function extractRepoName(repoUrl: string): string {
   return parts[parts.length - 1] || "unknown-repo";
 }
 
-async function checkIfRepoExists(repoPath: string): Promise<boolean> {
-  try {
-    await fs.access(path.join(repoPath, ".git"));
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 export async function getWorktreePath(args: {
   repoUrl: string;
@@ -90,44 +79,25 @@ export async function setupProjectWorkspace(args: {
   try {
     const { worktreeInfo } = args;
     const baseBranch = args.branch || "main";
+    const repoManager = RepositoryManager.getInstance();
 
     await fs.mkdir(worktreeInfo.projectPath, { recursive: true });
     await fs.mkdir(worktreeInfo.worktreesPath, { recursive: true });
 
-    const repoExists = await checkIfRepoExists(worktreeInfo.originPath);
-
-    if (!repoExists) {
-      console.log(`Cloning repository ${args.repoUrl} with depth 1...`);
-      await execAsync(
-        `git clone --depth 1 "${args.repoUrl}" "${worktreeInfo.originPath}"`
-      );
-    } else {
-      console.log(`Repository already exists, fetching latest changes...`);
-      try {
-        await execAsync(`git fetch --depth 1 origin ${baseBranch}`, {
-          cwd: worktreeInfo.originPath,
-        });
-      } catch (error) {
-        console.warn("Failed to fetch latest changes:", error);
-      }
-    }
-
-    console.log(
-      `Creating worktree with new branch ${worktreeInfo.branchName}...`
+    // Use RepositoryManager to handle clone/fetch with deduplication
+    await repoManager.ensureRepository(
+      args.repoUrl,
+      worktreeInfo.originPath,
+      baseBranch
     );
-    try {
-      await execAsync(
-        `git worktree add -b "${worktreeInfo.branchName}" "${worktreeInfo.worktreePath}" origin/${baseBranch}`,
-        { cwd: worktreeInfo.originPath }
-      );
-    } catch (error) {
-      if (error instanceof Error && error.message.includes("already exists")) {
-        throw new Error(
-          `Worktree already exists at ${worktreeInfo.worktreePath}`
-        );
-      }
-      throw error;
-    }
+
+    // Create the worktree
+    await repoManager.createWorktree(
+      worktreeInfo.originPath,
+      worktreeInfo.worktreePath,
+      worktreeInfo.branchName,
+      baseBranch
+    );
 
     return { success: true, worktreePath: worktreeInfo.worktreePath };
   } catch (error) {

@@ -11,7 +11,7 @@ import type {
   ServerToClientEvents,
   SocketData,
 } from "@coderouter/shared";
-import { convex } from "./utils/convexClient.ts";
+import { convex } from "./utils/convexClient.js";
 const { Terminal } = xtermHeadless;
 
 export interface GlobalTerminal {

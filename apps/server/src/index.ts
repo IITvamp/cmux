@@ -1,4 +1,3 @@
-import { api } from "@coderouter/convex/api";
 import {
   CloseTerminalSchema,
   CreateTerminalSchema,
@@ -12,9 +11,8 @@ import {
 } from "@coderouter/shared";
 import { createServer } from "node:http";
 import { Server } from "socket.io";
-import { createTerminal, type GlobalTerminal } from "./terminal.ts";
-import { convex } from "./utils/convexClient.ts";
-import { getWorktreePath, setupProjectWorkspace } from "./workspace.ts";
+import { spawnAllAgents } from "./agentSpawner.js";
+import { createTerminal, type GlobalTerminal } from "./terminal.js";
 
 const httpServer = createServer();
 
@@ -69,61 +67,43 @@ io.on("connection", (socket) => {
       const taskData = StartTaskSchema.parse(data);
       console.log("starting task!", taskData);
 
-      // First get worktree info (generates branch name and paths)
-      const worktreeInfo = await getWorktreePath({
-        repoUrl: taskData.repoUrl,
-        branch: taskData.branch,
-      });
-
       // Use the taskId provided by the client
       const taskId = taskData.taskId;
 
-      // Run workspace setup and task run creation in parallel
-      const [workspaceResult, taskRunId] = await Promise.all([
-        setupProjectWorkspace({
-          repoUrl: taskData.repoUrl,
-          branch: taskData.branch,
-          worktreeInfo,
-        }),
-        convex.mutation(api.taskRuns.create, {
-          taskId,
-          prompt: taskData.taskDescription,
-        }),
-      ]);
-
-      if (!workspaceResult.success || !workspaceResult.worktreePath) {
-        callback({
-          taskId: "error",
-          error: workspaceResult.error || "Failed to setup workspace",
-        });
-        return;
-      }
-
-      // Create terminal for the Claude session
-      const terminalId = taskRunId;
-      const terminal = createTerminal(terminalId, globalTerminals, io, {
-        cwd: workspaceResult.worktreePath,
-        command: "claude",
-        args: ["--dangerously-skip-permissions", taskData.taskDescription],
-        env: {
-          ...process.env,
-          PROMPT: taskData.taskDescription,
-        } as Record<string, string>,
+      // Spawn all agents in parallel (each will create its own taskRun)
+      const agentResults = await spawnAllAgents(taskId, globalTerminals, io, {
+        repoUrl: taskData.repoUrl,
+        branch: taskData.branch,
+        taskDescription: taskData.taskDescription,
       });
 
-      if (!terminal) {
+      // Check if at least one agent spawned successfully
+      const successfulAgents = agentResults.filter((result) => result.success);
+      if (successfulAgents.length === 0) {
         callback({
-          taskId,
-          error: "Failed to create terminal for Claude session",
+          taskId: "error",
+          error: "Failed to spawn any agents",
         });
         return;
       }
 
-      // Return success via callback
+      // Log results for debugging
+      agentResults.forEach((result) => {
+        if (result.success) {
+          console.log(
+            `Successfully spawned ${result.agentName} with terminal ${result.terminalId}`
+          );
+        } else {
+          console.error(`Failed to spawn ${result.agentName}: ${result.error}`);
+        }
+      });
+
+      // Return the first successful agent's info (you might want to modify this to return all)
+      const primaryAgent = successfulAgents[0];
       callback({
         taskId,
-        worktreePath: workspaceResult.worktreePath!,
-        terminalId,
+        worktreePath: primaryAgent.worktreePath,
+        terminalId: primaryAgent.terminalId,
       });
     } catch (error) {
       console.error("Error in start-task:", error);
