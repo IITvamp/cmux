@@ -6,7 +6,8 @@ export const get = query({
     projectFullName: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    let query = ctx.db.query("tasks");
+    let query = ctx.db.query("tasks")
+      .filter((q) => q.neq(q.field("isArchived"), true));
 
     if (args.projectFullName) {
       query = query.filter((q) =>
@@ -86,6 +87,17 @@ export const getVersions = query({
       .query("taskVersions")
       .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
       .collect();
+  },
+});
+
+export const archive = mutation({
+  args: { id: v.id("tasks") },
+  handler: async (ctx, args) => {
+    const task = await ctx.db.get(args.id);
+    if (task === null) {
+      throw new Error("Task not found");
+    }
+    await ctx.db.patch(args.id, { isArchived: true, updatedAt: Date.now() });
   },
 });
 

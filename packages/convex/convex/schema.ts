@@ -5,6 +5,7 @@ export default defineSchema({
   tasks: defineTable({
     text: v.string(),
     isCompleted: v.boolean(),
+    isArchived: v.optional(v.boolean()),
     description: v.optional(v.string()),
     projectFullName: v.optional(v.string()),
     branch: v.optional(v.string()),

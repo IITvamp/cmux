@@ -13,10 +13,10 @@ import { api } from "@coderouter/convex/api";
 import type { Doc } from "@coderouter/convex/dataModel";
 import { convexQuery } from "@convex-dev/react-query";
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useAction, useMutation } from "convex/react";
-import { Command, Loader2, Mic } from "lucide-react";
+import { Archive, Command, Loader2, Mic } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 export const Route = createFileRoute("/_layout/dashboard")({
@@ -71,13 +71,8 @@ function DashboardComponent() {
     enabled: !!selectedProject[0],
   });
 
-  // Fetch tasks for selected project
-  const tasksQuery = useQuery({
-    ...convexQuery(api.tasks.get, {
-      projectFullName: selectedProject[0],
-    }),
-    enabled: !!selectedProject[0],
-  });
+  // Fetch tasks for all projects
+  const tasksQuery = useQuery(convexQuery(api.tasks.get, {}));
 
   const { socket } = useSocket();
 
@@ -88,9 +83,7 @@ function DashboardComponent() {
   // Mutation to create tasks with optimistic update
   const createTask = useMutation(api.tasks.create).withOptimisticUpdate(
     (localStore, args) => {
-      const currentTasks = localStore.getQuery(api.tasks.get, {
-        projectFullName: args.projectFullName,
-      });
+      const currentTasks = localStore.getQuery(api.tasks.get, {});
 
       if (currentTasks !== undefined) {
         const now = Date.now();
@@ -103,19 +96,21 @@ function DashboardComponent() {
           branch: args.branch,
           worktreePath: args.worktreePath,
           isCompleted: false,
+          isArchived: false,
           createdAt: now,
           updatedAt: now,
         };
 
         // Add the new task at the beginning (since we order by desc)
-        localStore.setQuery(
-          api.tasks.get,
-          { projectFullName: args.projectFullName },
-          [optimisticTask, ...currentTasks]
-        );
+        localStore.setQuery(api.tasks.get, {}, [
+          optimisticTask,
+          ...currentTasks,
+        ]);
       }
     }
   );
+
+  const archiveTask = useMutation(api.tasks.archive);
 
   const handleStartTask = useCallback(async () => {
     if (!selectedProject[0] || !taskDescription.trim()) {
@@ -224,6 +219,9 @@ function DashboardComponent() {
 
   const fanoutOptions = ["1x", "2x", "3x", "5x"];
 
+  const navigate = useNavigate();
+  const [hoveredTaskId, setHoveredTaskId] = useState<string | null>(null);
+
   // Detect operating system for keyboard shortcut display
   const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
   const shortcutKey = isMac ? "⌘" : "Ctrl";
@@ -236,7 +234,7 @@ function DashboardComponent() {
   }, [selectedProject, taskDescription, isStartingTask, handleStartTask]);
 
   return (
-    <div className="flex flex-col h-full bg-neutral-50 dark:bg-neutral-900/60">
+    <div className="flex flex-col bg-neutral-50 dark:bg-neutral-900/60">
       {/* Main content area */}
       <div className="flex-1 flex justify-center px-8 pt-60">
         <div className="w-full max-w-4xl">
@@ -371,35 +369,45 @@ function DashboardComponent() {
           </div>
 
           {/* Task List */}
-          {selectedProject[0] &&
-            tasksQuery.data &&
-            tasksQuery.data.length > 0 && (
-              <div className="mt-6">
-                <div className="space-y-2">
-                  {tasksQuery.data.map((task: Doc<"tasks">) => (
+          {tasksQuery.data && tasksQuery.data.length > 0 && (
+            <div className="mt-6">
+              <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-3">
+                All Tasks
+              </h2>
+              <div className="space-y-2">
+                {tasksQuery.data.map((task: Doc<"tasks">) => (
+                  <div
+                    key={task._id}
+                    className={clsx(
+                      "relative group flex items-center gap-3 p-4 border rounded-xl transition-all cursor-pointer",
+                      // Check if this is an optimistic update (temporary ID)
+                      task._id.includes("-") && task._id.length === 36
+                        ? "bg-white/50 dark:bg-neutral-700/30 border-neutral-200 dark:border-neutral-500/15 animate-pulse"
+                        : "bg-white dark:bg-neutral-700/50 border-neutral-200 dark:border-neutral-500/15 hover:border-neutral-300 dark:hover:border-neutral-500/30"
+                    )}
+                    onMouseEnter={() => setHoveredTaskId(task._id)}
+                    onMouseLeave={() => setHoveredTaskId(null)}
+                    onClick={() =>
+                      navigate({
+                        to: "/task/$taskId",
+                        params: { taskId: task._id },
+                      })
+                    }
+                  >
                     <div
-                      key={task._id}
                       className={clsx(
-                        "flex items-center gap-3 p-4 border rounded-xl transition-all",
-                        // Check if this is an optimistic update (temporary ID)
-                        task._id.includes("-") && task._id.length === 36
-                          ? "bg-white/50 dark:bg-neutral-700/30 border-neutral-200 dark:border-neutral-500/15 animate-pulse"
-                          : "bg-white dark:bg-neutral-700/50 border-neutral-200 dark:border-neutral-500/15 hover:border-neutral-300 dark:hover:border-neutral-500/30"
+                        "w-2 h-2 rounded-full flex-shrink-0",
+                        task.isCompleted
+                          ? "bg-green-500"
+                          : task._id.includes("-") && task._id.length === 36
+                            ? "bg-yellow-500"
+                            : "bg-blue-500 animate-pulse"
                       )}
-                    >
-                      <div
-                        className={clsx(
-                          "w-2 h-2 rounded-full",
-                          task.isCompleted
-                            ? "bg-green-500"
-                            : task._id.includes("-") && task._id.length === 36
-                              ? "bg-yellow-500"
-                              : "bg-blue-500 animate-pulse"
-                        )}
-                      />
+                    />
+                    <div className="flex-1 min-w-0">
                       <span
                         className={clsx(
-                          "text-[15px]",
+                          "text-[15px] block",
                           task.isCompleted
                             ? "text-neutral-500 dark:text-neutral-400 line-through"
                             : "text-neutral-900 dark:text-neutral-100"
@@ -407,16 +415,46 @@ function DashboardComponent() {
                       >
                         {task.text}
                       </span>
-                      {task.updatedAt && (
-                        <span className="ml-auto text-xs text-neutral-400 dark:text-neutral-500">
-                          {new Date(task.updatedAt).toLocaleTimeString()}
+                      {(task.projectFullName || task.branch) && (
+                        <span className="text-xs text-neutral-400 dark:text-neutral-500">
+                          {task.projectFullName && (
+                            <span>{task.projectFullName}</span>
+                          )}
+                          {task.projectFullName && task.branch && " • "}
+                          {task.branch && task.branch !== "main" && (
+                            <span>{task.branch}</span>
+                          )}
                         </span>
                       )}
                     </div>
-                  ))}
-                </div>
+                    {task.updatedAt && (
+                      <span className="text-xs text-neutral-400 dark:text-neutral-500">
+                        {new Date(task.updatedAt).toLocaleTimeString()}
+                      </span>
+                    )}
+                    {hoveredTaskId === task._id && !task._id.includes("-") && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          archiveTask({ id: task._id });
+                        }}
+                        className={clsx(
+                          "absolute right-2 p-1.5 rounded-lg",
+                          "bg-neutral-100 dark:bg-neutral-700",
+                          "text-neutral-600 dark:text-neutral-400",
+                          "hover:bg-neutral-200 dark:hover:bg-neutral-600",
+                          "transition-colors"
+                        )}
+                        title="Archive task"
+                      >
+                        <Archive className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                ))}
               </div>
-            )}
+            </div>
+          )}
         </div>
       </div>
     </div>
