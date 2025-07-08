@@ -90,12 +90,10 @@ export const TerminalContextProvider: React.FC<
       });
 
       xterm.onData((data) => {
-        console.log("Terminal input:", data);
         socket?.emit("terminal-input", { terminalId, data });
       });
 
       xterm.onResize(({ cols, rows }) => {
-        console.log("resizing to server");
         socket?.emit("resize", { terminalId, cols, rows });
       });
 

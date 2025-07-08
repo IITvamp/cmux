@@ -16,7 +16,7 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useAction, useMutation } from "convex/react";
-import { Archive, Command, Loader2, Mic } from "lucide-react";
+import { Archive, Command, Mic } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 export const Route = createFileRoute("/_layout/dashboard")({
@@ -334,20 +334,8 @@ function DashboardComponent() {
                         variant="default"
                         className="!h-7"
                         onClick={handleStartTask}
-                        disabled={
-                          isStartingTask ||
-                          !selectedProject[0] ||
-                          !taskDescription.trim()
-                        }
                       >
-                        {isStartingTask ? (
-                          <>
-                            <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                            Starting...
-                          </>
-                        ) : (
-                          "Start task"
-                        )}
+                        Start task
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent
