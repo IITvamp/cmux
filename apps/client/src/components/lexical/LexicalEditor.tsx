@@ -1,4 +1,4 @@
-import { $getRoot } from "lexical";
+import { $getRoot, $createParagraphNode } from "lexical";
 
 import { CodeNode } from "@lexical/code";
 import { AutoLinkNode, LinkNode } from "@lexical/link";
@@ -18,7 +18,7 @@ import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
 import { HeadingNode, QuoteNode } from "@lexical/rich-text";
 import clsx from "clsx";
 import { COMMAND_PRIORITY_HIGH, KEY_ENTER_COMMAND } from "lexical";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 const theme = {
   ltr: "ltr",
@@ -113,6 +113,27 @@ function KeyboardCommandPlugin({ onSubmit }: { onSubmit?: () => void }) {
   return null;
 }
 
+// Plugin to clear editor when value prop is empty
+function ClearEditorPlugin({ value }: { value?: string }) {
+  const [editor] = useLexicalComposerContext();
+  const previousValue = useRef(value);
+
+  useEffect(() => {
+    if (value === "" && previousValue.current !== "") {
+      editor.update(() => {
+        const root = $getRoot();
+        root.clear();
+        const paragraph = $createParagraphNode();
+        root.append(paragraph);
+        paragraph.select();
+      });
+    }
+    previousValue.current = value;
+  }, [editor, value]);
+
+  return null;
+}
+
 interface LexicalEditorProps {
   placeholder?: string;
   onChange?: (text: string) => void;
@@ -120,6 +141,7 @@ interface LexicalEditorProps {
   contentEditableClassName?: string;
   padding?: React.CSSProperties;
   onSubmit?: () => void;
+  value?: string;
 }
 
 export default function LexicalEditor({
@@ -129,6 +151,7 @@ export default function LexicalEditor({
   contentEditableClassName,
   padding,
   onSubmit,
+  value,
 }: LexicalEditorProps) {
   const initialConfig = {
     namespace: "TaskEditor",
@@ -185,6 +208,7 @@ export default function LexicalEditor({
         <LinkPlugin />
         <MarkdownShortcutPlugin transformers={TRANSFORMERS} />
         <KeyboardCommandPlugin onSubmit={onSubmit} />
+        <ClearEditorPlugin value={value} />
       </div>
     </LexicalComposer>
   );

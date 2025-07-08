@@ -2,9 +2,19 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 
 export const get = query({
-  args: {},
-  handler: async (ctx) => {
-    return await ctx.db.query("tasks").collect();
+  args: {
+    projectFullName: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    let query = ctx.db.query("tasks");
+
+    if (args.projectFullName) {
+      query = query.filter((q) =>
+        q.eq(q.field("projectFullName"), args.projectFullName)
+      );
+    }
+
+    return await query.order("desc").collect();
   },
 });
 

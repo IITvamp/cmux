@@ -20,6 +20,7 @@
     }
   },
   "dependencies": {
-    "convex": "^1.25.2"
+    "convex": "^1.25.2",
+    "socket.io-client": "^4.8.1"
   }
 }

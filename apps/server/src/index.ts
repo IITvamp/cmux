@@ -1,5 +1,3 @@
-import { createServer } from "node:http";
-import { Server } from "socket.io";
 import { api } from "@coderouter/convex/api";
 import {
   CloseTerminalSchema,
@@ -12,6 +10,8 @@ import {
   type ServerToClientEvents,
   type SocketData,
 } from "@coderouter/shared";
+import { createServer } from "node:http";
+import { Server } from "socket.io";
 import { createTerminal, type GlobalTerminal } from "./terminal.ts";
 import { convex } from "./utils/convexClient.ts";
 import { getWorktreePath, setupProjectWorkspace } from "./workspace.ts";
@@ -65,6 +65,7 @@ io.on("connection", (socket) => {
   socket.on("start-task", async (data, callback) => {
     try {
       const taskData = StartTaskSchema.parse(data);
+      console.log("starting task!", taskData);
 
       // First get worktree info (generates branch name and paths)
       const worktreeInfo = await getWorktreePath({
@@ -72,14 +73,8 @@ io.on("connection", (socket) => {
         branch: taskData.branch,
       });
 
-      // Create task in Convex database first
-      const taskId = await convex.mutation(api.tasks.create, {
-        text: taskData.taskDescription.substring(0, 100), // First 100 chars as summary
-        description: taskData.taskDescription,
-        projectFullName: taskData.projectFullName,
-        branch: taskData.branch || "main",
-        worktreePath: worktreeInfo.worktreePath,
-      });
+      // Use the taskId provided by the client
+      const taskId = taskData.taskId;
 
       // Run workspace setup and task run creation in parallel
       const [workspaceResult, taskRunId] = await Promise.all([
@@ -116,7 +111,7 @@ io.on("connection", (socket) => {
 
       if (!terminal) {
         callback({
-          taskId: taskId as string,
+          taskId,
           error: "Failed to create terminal for Claude session",
         });
         return;
@@ -124,7 +119,7 @@ io.on("connection", (socket) => {
 
       // Return success via callback
       callback({
-        taskId: taskId as string,
+        taskId,
         worktreePath: workspaceResult.worktreePath!,
         terminalId,
       });

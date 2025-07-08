@@ -1,8 +1,8 @@
+import { api } from "@coderouter/convex/api";
+import { type Id } from "@coderouter/convex/dataModel";
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { useState } from "react";
-import { api } from "@coderouter/convex/api";
-import { type Id } from "@coderouter/convex/dataModel";
 
 export const Route = createFileRoute("/_layout/task/$taskId")({
   component: TaskDetailPage,
@@ -35,6 +35,7 @@ function TaskDetailPage() {
     runs?.forEach((run) => traverse(run));
     return result;
   };
+  console.log("task", taskRuns);
 
   const flatRuns = flattenRuns(taskRuns || []);
 

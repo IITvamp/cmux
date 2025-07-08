@@ -27,6 +27,7 @@ export const StartTaskSchema = z.object({
   branch: z.string().optional(),
   taskDescription: z.string(),
   projectFullName: z.string(),
+  taskId: z.string(),
 });
 
 // Server to Client Events

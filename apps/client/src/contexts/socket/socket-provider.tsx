@@ -1,9 +1,13 @@
+import type {
+  ClientToServerEvents,
+  ServerToClientEvents,
+} from "@coderouter/shared";
 import React, { useEffect } from "react";
 import { io, Socket } from "socket.io-client";
 import { SocketContext } from "./socket-context";
 
 export interface SocketContextType {
-  socket: Socket | null;
+  socket: Socket<ServerToClientEvents, ClientToServerEvents> | null;
   isConnected: boolean;
 }
 
@@ -16,7 +20,9 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
   children,
   url = "http://localhost:3001",
 }) => {
-  const [socket, setSocket] = React.useState<Socket | null>(null);
+  const [socket, setSocket] = React.useState<
+    SocketContextType["socket"] | null
+  >(null);
   const [isConnected, setIsConnected] = React.useState(false);
 
   useEffect(() => {

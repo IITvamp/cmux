@@ -8,14 +8,14 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useSocket } from "@/contexts/socket/use-socket";
-import type { TaskError, TaskStarted } from "@coderouter/shared";
 import { type Repo } from "@/types/task";
+import { api } from "@coderouter/convex/api";
+import type { Doc } from "@coderouter/convex/dataModel";
 import { convexQuery } from "@convex-dev/react-query";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import clsx from "clsx";
-import { api } from "@coderouter/convex/api";
-import { useAction } from "convex/react";
+import { useAction, useMutation } from "convex/react";
 import { Command, Loader2, Mic } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
@@ -71,45 +71,120 @@ function DashboardComponent() {
     enabled: !!selectedProject[0],
   });
 
+  // Fetch tasks for selected project
+  const tasksQuery = useQuery({
+    ...convexQuery(api.tasks.get, {
+      projectFullName: selectedProject[0],
+    }),
+    enabled: !!selectedProject[0],
+  });
+
+  const { socket } = useSocket();
+
   // Actions to fetch data from GitHub
   const fetchRepos = useAction(api.githubActions.fetchAndStoreRepos);
   const fetchBranches = useAction(api.githubActions.fetchBranches);
-  
-  // Get socket connection
-  const { socket } = useSocket();
+
+  // Mutation to create tasks with optimistic update
+  const createTask = useMutation(api.tasks.create).withOptimisticUpdate(
+    (localStore, args) => {
+      const currentTasks = localStore.getQuery(api.tasks.get, {
+        projectFullName: args.projectFullName,
+      });
+
+      if (currentTasks !== undefined) {
+        const now = Date.now();
+        const optimisticTask = {
+          _id: crypto.randomUUID() as Doc<"tasks">["_id"],
+          _creationTime: now,
+          text: args.text,
+          description: args.description,
+          projectFullName: args.projectFullName,
+          branch: args.branch,
+          worktreePath: args.worktreePath,
+          isCompleted: false,
+          createdAt: now,
+          updatedAt: now,
+        };
+
+        // Add the new task at the beginning (since we order by desc)
+        localStore.setQuery(
+          api.tasks.get,
+          { projectFullName: args.projectFullName },
+          [optimisticTask, ...currentTasks]
+        );
+      }
+    }
+  );
 
   const handleStartTask = useCallback(async () => {
     if (!selectedProject[0] || !taskDescription.trim()) {
       console.error("Please select a project and enter a task description");
       return;
     }
+    if (!socket) {
+      console.error("Socket not connected");
+      return;
+    }
 
-    const repoUrl = `https://github.com/${selectedProject[0]}.git`;
     const branch = selectedBranch[0] || "main";
+    const projectFullName = selectedProject[0];
+    if (!projectFullName) {
+      console.error("Please select a project");
+      return;
+    }
 
     setIsStartingTask(true);
     try {
-      // Emit Socket.IO event to start task with acknowledgement
-      socket?.emit("start-task", {
-        repoUrl,
+      // Create task in Convex - this will also start the task via socket.io
+      const taskId = await createTask({
+        text: taskDescription,
+        projectFullName,
         branch,
-        taskDescription,
-        projectFullName: selectedProject[0],
-      }, (response: TaskStarted | TaskError) => {
-        setIsStartingTask(false);
-        
-        if ("error" in response) {
-          console.error("Task error:", response.error);
-        } else {
-          console.log("Task started:", response);
-          // Navigate to terminal view or handle task started
-        }
       });
+
+      // setIsStartingTask(false);
+
+      // Clear input after successful task creation
+      setTaskDescription("");
+      // Force editor to clear
+      handleTaskDescriptionChange("");
+      const repoUrl = `https://github.com/${projectFullName}.git`;
+
+      socket.emit(
+        "start-task",
+        {
+          repoUrl,
+          branch,
+          taskDescription,
+          projectFullName,
+          taskId,
+        },
+        (response) => {
+          // if (err) {
+          //   console.error("Task start error:", err);
+          // }
+          console.log("response", response);
+          if ("error" in response) {
+            console.error("Task start error:", response.error);
+          } else {
+            console.log("Task started:", response);
+          }
+        }
+      );
+      console.log("Task created:", taskId);
     } catch (error) {
       console.error("Error starting task:", error);
       setIsStartingTask(false);
     }
-  }, [selectedProject, taskDescription, selectedBranch, socket]);
+  }, [
+    selectedProject,
+    taskDescription,
+    selectedBranch,
+    createTask,
+    handleTaskDescriptionChange,
+    socket,
+  ]);
 
   // Fetch repos on mount if none exist
   useEffect(() => {
@@ -174,6 +249,7 @@ function DashboardComponent() {
               placeholder="Describe a task"
               onChange={handleTaskDescriptionChange}
               onSubmit={handleSubmit}
+              value={taskDescription}
               padding={{
                 paddingLeft: "14px",
                 paddingRight: "16px",
@@ -293,6 +369,54 @@ function DashboardComponent() {
               </div>
             </div>
           </div>
+
+          {/* Task List */}
+          {selectedProject[0] &&
+            tasksQuery.data &&
+            tasksQuery.data.length > 0 && (
+              <div className="mt-6">
+                <div className="space-y-2">
+                  {tasksQuery.data.map((task: Doc<"tasks">) => (
+                    <div
+                      key={task._id}
+                      className={clsx(
+                        "flex items-center gap-3 p-4 border rounded-xl transition-all",
+                        // Check if this is an optimistic update (temporary ID)
+                        task._id.includes("-") && task._id.length === 36
+                          ? "bg-white/50 dark:bg-neutral-700/30 border-neutral-200 dark:border-neutral-500/15 animate-pulse"
+                          : "bg-white dark:bg-neutral-700/50 border-neutral-200 dark:border-neutral-500/15 hover:border-neutral-300 dark:hover:border-neutral-500/30"
+                      )}
+                    >
+                      <div
+                        className={clsx(
+                          "w-2 h-2 rounded-full",
+                          task.isCompleted
+                            ? "bg-green-500"
+                            : task._id.includes("-") && task._id.length === 36
+                              ? "bg-yellow-500"
+                              : "bg-blue-500 animate-pulse"
+                        )}
+                      />
+                      <span
+                        className={clsx(
+                          "text-[15px]",
+                          task.isCompleted
+                            ? "text-neutral-500 dark:text-neutral-400 line-through"
+                            : "text-neutral-900 dark:text-neutral-100"
+                        )}
+                      >
+                        {task.text}
+                      </span>
+                      {task.updatedAt && (
+                        <span className="ml-auto text-xs text-neutral-400 dark:text-neutral-500">
+                          {new Date(task.updatedAt).toLocaleTimeString()}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
         </div>
       </div>
     </div>
