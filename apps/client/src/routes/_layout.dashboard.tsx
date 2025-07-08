@@ -223,7 +223,7 @@ function DashboardComponent() {
   const [hoveredTaskId, setHoveredTaskId] = useState<string | null>(null);
 
   // Detect operating system for keyboard shortcut display
-  const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
+  const isMac = navigator.userAgent.toUpperCase().indexOf("MAC") >= 0;
   const shortcutKey = isMac ? "⌘" : "Ctrl";
 
   // Handle Command+Enter keyboard shortcut
@@ -234,7 +234,7 @@ function DashboardComponent() {
   }, [selectedProject, taskDescription, isStartingTask, handleStartTask]);
 
   return (
-    <div className="flex flex-col bg-neutral-50 dark:bg-neutral-900/60">
+    <div className="flex flex-col min-h-full bg-neutral-50 dark:bg-neutral-900/60">
       {/* Main content area */}
       <div className="flex-1 flex justify-center px-8 pt-60">
         <div className="w-full max-w-4xl">
@@ -371,15 +371,15 @@ function DashboardComponent() {
           {/* Task List */}
           {tasksQuery.data && tasksQuery.data.length > 0 && (
             <div className="mt-6">
-              <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-3">
+              <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-2">
                 All Tasks
               </h2>
-              <div className="space-y-2">
+              <div className="space-y-1">
                 {tasksQuery.data.map((task: Doc<"tasks">) => (
                   <div
                     key={task._id}
                     className={clsx(
-                      "relative group flex items-center gap-3 p-4 border rounded-xl transition-all cursor-pointer",
+                      "relative group flex items-center gap-2.5 px-3 py-2 border rounded-lg transition-all cursor-pointer",
                       // Check if this is an optimistic update (temporary ID)
                       task._id.includes("-") && task._id.length === 36
                         ? "bg-white/50 dark:bg-neutral-700/30 border-neutral-200 dark:border-neutral-500/15 animate-pulse"
@@ -396,7 +396,7 @@ function DashboardComponent() {
                   >
                     <div
                       className={clsx(
-                        "w-2 h-2 rounded-full flex-shrink-0",
+                        "w-1.5 h-1.5 rounded-full flex-shrink-0",
                         task.isCompleted
                           ? "bg-green-500"
                           : task._id.includes("-") && task._id.length === 36
@@ -404,10 +404,10 @@ function DashboardComponent() {
                             : "bg-blue-500 animate-pulse"
                       )}
                     />
-                    <div className="flex-1 min-w-0">
+                    <div className="flex-1 min-w-0 flex items-center gap-2">
                       <span
                         className={clsx(
-                          "text-[15px] block",
+                          "text-[14px] truncate",
                           task.isCompleted
                             ? "text-neutral-500 dark:text-neutral-400 line-through"
                             : "text-neutral-900 dark:text-neutral-100"
@@ -415,12 +415,16 @@ function DashboardComponent() {
                       >
                         {task.text}
                       </span>
-                      {(task.projectFullName || task.branch) && (
-                        <span className="text-xs text-neutral-400 dark:text-neutral-500">
+                      {(task.projectFullName ||
+                        (task.branch && task.branch !== "main")) && (
+                        <span className="text-[11px] text-neutral-400 dark:text-neutral-500 flex-shrink-0">
                           {task.projectFullName && (
-                            <span>{task.projectFullName}</span>
+                            <span>{task.projectFullName.split("/")[1]}</span>
                           )}
-                          {task.projectFullName && task.branch && " • "}
+                          {task.projectFullName &&
+                            task.branch &&
+                            task.branch !== "main" &&
+                            "/"}
                           {task.branch && task.branch !== "main" && (
                             <span>{task.branch}</span>
                           )}
@@ -428,8 +432,11 @@ function DashboardComponent() {
                       )}
                     </div>
                     {task.updatedAt && (
-                      <span className="text-xs text-neutral-400 dark:text-neutral-500">
-                        {new Date(task.updatedAt).toLocaleTimeString()}
+                      <span className="text-[11px] text-neutral-400 dark:text-neutral-500 flex-shrink-0">
+                        {new Date(task.updatedAt).toLocaleTimeString([], {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
                       </span>
                     )}
                     {hoveredTaskId === task._id && !task._id.includes("-") && (
@@ -439,15 +446,15 @@ function DashboardComponent() {
                           archiveTask({ id: task._id });
                         }}
                         className={clsx(
-                          "absolute right-2 p-1.5 rounded-lg",
+                          "absolute right-2 p-1 rounded",
                           "bg-neutral-100 dark:bg-neutral-700",
                           "text-neutral-600 dark:text-neutral-400",
                           "hover:bg-neutral-200 dark:hover:bg-neutral-600",
-                          "transition-colors"
+                          "transition-colors opacity-0 group-hover:opacity-100"
                         )}
                         title="Archive task"
                       >
-                        <Archive className="w-4 h-4" />
+                        <Archive className="w-3.5 h-3.5" />
                       </button>
                     )}
                   </div>
