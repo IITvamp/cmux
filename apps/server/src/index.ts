@@ -63,7 +63,9 @@ io.on("connection", (socket) => {
   });
 
   socket.on("start-task", async (data, callback) => {
+    console.log("skibidi start task");
     try {
+      console.log("got data", data);
       const taskData = StartTaskSchema.parse(data);
       console.log("starting task!", taskData);
 

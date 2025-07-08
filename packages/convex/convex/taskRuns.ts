@@ -16,7 +16,7 @@ export const create = mutation({
   },
   handler: async (ctx, args) => {
     const now = Date.now();
-    const taskRun = await ctx.db.insert("taskRuns", {
+    const taskRunId = await ctx.db.insert("taskRuns", {
       taskId: args.taskId,
       parentRunId: args.parentRunId,
       prompt: args.prompt,
@@ -25,7 +25,7 @@ export const create = mutation({
       createdAt: now,
       updatedAt: now,
     });
-    return taskRun;
+    return taskRunId;
   },
 });
 
