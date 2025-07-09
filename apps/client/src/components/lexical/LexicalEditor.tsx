@@ -1,4 +1,4 @@
-import { $getRoot, $createParagraphNode } from "lexical";
+import { $createParagraphNode, $getRoot } from "lexical";
 
 import { CodeNode } from "@lexical/code";
 import { AutoLinkNode, LinkNode } from "@lexical/link";
