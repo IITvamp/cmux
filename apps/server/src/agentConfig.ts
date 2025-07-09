@@ -44,4 +44,9 @@ export const AGENT_CONFIGS: AgentConfig[] = [
       prompt,
     ],
   },
+  {
+    name: "opencode",
+    command: "bunx",
+    args: (prompt: string) => ["opencode-ai", "--prompt", prompt],
+  },
 ];

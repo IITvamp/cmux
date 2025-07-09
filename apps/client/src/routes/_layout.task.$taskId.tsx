@@ -1,8 +1,14 @@
 import { api } from "@coderouter/convex/api";
 import { type Id } from "@coderouter/convex/dataModel";
-import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  Link,
+  Outlet,
+  useChildMatches,
+  useNavigate,
+} from "@tanstack/react-router";
 import { useQuery } from "convex/react";
-import { useState } from "react";
+import { useEffect } from "react";
 
 export const Route = createFileRoute("/_layout/task/$taskId")({
   component: TaskDetailPage,
@@ -17,7 +23,16 @@ function TaskDetailPage() {
   const taskRuns = useQuery(api.taskRuns.getByTask, {
     taskId: taskId as Id<"tasks">,
   });
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+
+  // Get the deepest matched child to extract runId if present
+  const childMatches = useChildMatches();
+  const deepestMatch = childMatches[childMatches.length - 1];
+  const deepestMatchParams = deepestMatch?.params as
+    | { runId: string }
+    | undefined;
+  const activeRunId = deepestMatchParams?.runId as string | undefined;
+
+  const navigate = useNavigate();
 
   // Flatten the task runs tree structure for tab display
   const flattenRuns = (
@@ -39,10 +54,17 @@ function TaskDetailPage() {
 
   const flatRuns = flattenRuns(taskRuns || []);
 
-  // Auto-select first run if none selected
-  if (flatRuns.length > 0 && !selectedRunId) {
-    setSelectedRunId(flatRuns[0]._id);
-  }
+  // If no runId is in the URL yet, automatically navigate to the first one so
+  // that the details pane shows something useful.
+  useEffect(() => {
+    if (flatRuns.length > 0 && !activeRunId) {
+      navigate({
+        to: "/task/$taskId/run/$runId",
+        params: { taskId, runId: flatRuns[0]._id },
+        replace: true,
+      });
+    }
+  }, [flatRuns, activeRunId, taskId, navigate]);
 
   if (!task || !taskRuns) {
     return <div className="p-8">Loading...</div>;
@@ -70,11 +92,11 @@ function TaskDetailPage() {
                 to="/task/$taskId/run/$runId"
                 params={{ taskId, runId: run._id }}
                 className={`px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
-                  selectedRunId === run._id
+                  activeRunId === run._id
                     ? "text-blue-600 dark:text-blue-400 border-blue-600 dark:border-blue-400"
                     : "text-neutral-600 dark:text-neutral-400 border-transparent hover:text-neutral-900 dark:hover:text-neutral-100"
                 }`}
-                onClick={() => setSelectedRunId(run._id)}
+                // No onClick needed; active class controlled by URL
               >
                 <span style={{ paddingLeft: `${run.depth * 12}px` }}>
                   Run {index + 1}

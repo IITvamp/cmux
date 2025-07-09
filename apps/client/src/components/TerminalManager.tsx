@@ -149,15 +149,7 @@ export function TerminalView({ terminal, isActive }: TerminalViewProps) {
 
     terminal.fitAddon.fit();
 
-    // Some layouts render the container with 0×0 first and expand on the next
-    // tick causing the initial fit calculation to be wrong.  Schedule a few
-    // follow-up fits to catch the final size.
-    for (let i = 1; i <= 3; i++) {
-      requestAnimationFrame(() => terminal.fitAddon.fit());
-    }
-
     const handleResize = () => {
-      console.log("resizing");
       if (terminal.fitAddon) {
         terminal.fitAddon.fit();
       }

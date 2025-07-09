@@ -1,10 +1,10 @@
 import { TerminalView } from "@/components/TerminalManager";
 import { useTerminals } from "@/hooks/useTerminals";
+import { api } from "@coderouter/convex/api";
+import { type Id } from "@coderouter/convex/dataModel";
 import { createFileRoute } from "@tanstack/react-router";
 import "@xterm/xterm/css/xterm.css";
 import { useQuery } from "convex/react";
-import { api } from "@coderouter/convex/api";
-import { type Id } from "@coderouter/convex/dataModel";
 
 export const Route = createFileRoute("/_layout/task/$taskId/run/$runId")({
   component: TaskRunComponent,
@@ -74,7 +74,7 @@ function TaskRunComponent() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-auto">
         <div className="flex flex-col h-full space-y-6">
           <div className="flex flex-col flex-1 grow">
             {terminal ? (
