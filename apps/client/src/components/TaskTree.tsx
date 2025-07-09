@@ -1,3 +1,4 @@
+import { type Doc } from "@coderouter/convex/dataModel";
 import { Link } from "@tanstack/react-router";
 import clsx from "clsx";
 import { formatDistanceToNow } from "date-fns";
@@ -9,14 +10,13 @@ import {
   XCircle,
 } from "lucide-react";
 import { useState } from "react";
-import { type Doc } from "@coderouter/convex/dataModel";
 
 interface TaskRunWithChildren extends Doc<"taskRuns"> {
   children: TaskRunWithChildren[];
 }
 
 interface TaskWithRuns extends Doc<"tasks"> {
-  runs?: TaskRunWithChildren[];
+  runs: TaskRunWithChildren[];
 }
 
 interface TaskTreeProps {
@@ -29,7 +29,7 @@ export function TaskTree({ task, level = 0 }: TaskTreeProps) {
   const hasRuns = task.runs && task.runs.length > 0;
 
   return (
-    <div className="select-none">
+    <div className="select-none flex flex-col gap-px">
       <Link
         to="/task/$taskId"
         params={{ taskId: task._id }}
@@ -94,7 +94,7 @@ export function TaskTree({ task, level = 0 }: TaskTreeProps) {
 
       {isExpanded && hasRuns && (
         <div>
-          {task.runs!.map((run) => (
+          {task.runs.map((run) => (
             <TaskRunTree
               key={run._id}
               run={run}
@@ -168,7 +168,7 @@ function TaskRunTree({ run, level, taskId }: TaskRunTreeProps) {
       </Link>
 
       {isExpanded && hasChildren && (
-        <div>
+        <div className="flex flex-col gap-px">
           {run.children.map((childRun) => (
             <TaskRunTree
               key={childRun._id}

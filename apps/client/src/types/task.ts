@@ -5,7 +5,7 @@ export interface TaskRunWithChildren extends Doc<"taskRuns"> {
 }
 
 export interface TaskWithRuns extends Doc<"tasks"> {
-  runs?: TaskRunWithChildren[];
+  runs: TaskRunWithChildren[];
 }
 
 export interface Repo {

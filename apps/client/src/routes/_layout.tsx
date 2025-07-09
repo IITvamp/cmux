@@ -32,7 +32,7 @@ function LayoutComponent() {
   const tasksWithRuns: TaskWithRuns[] = recentTasks.map(
     (task: Doc<"tasks">, index: number) => ({
       ...task,
-      runs: index === 0 ? taskRuns : undefined,
+      runs: index === 0 ? taskRuns || [] : [],
     })
   );
 
