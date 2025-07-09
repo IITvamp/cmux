@@ -1,5 +1,6 @@
 import { api } from "@coderouter/convex/api";
 import { type Id } from "@coderouter/convex/dataModel";
+import { useClipboard } from "@mantine/hooks";
 import {
   createFileRoute,
   Link,
@@ -23,6 +24,7 @@ function TaskDetailPage() {
   const taskRuns = useQuery(api.taskRuns.getByTask, {
     taskId: taskId as Id<"tasks">,
   });
+  const clipboard = useClipboard({ timeout: 2000 });
 
   // Get the deepest matched child to extract runId if present
   const childMatches = useChildMatches();
@@ -66,6 +68,12 @@ function TaskDetailPage() {
     }
   }, [flatRuns, activeRunId, taskId, navigate]);
 
+  const handleCopyTaskText = () => {
+    if (task?.text) {
+      clipboard.copy(task.text);
+    }
+  };
+
   if (!task || !taskRuns) {
     return <div className="p-8">Loading...</div>;
   }
@@ -73,9 +81,40 @@ function TaskDetailPage() {
   return (
     <div className="flex flex-col h-full">
       <div className="border-b border-neutral-200 dark:border-neutral-700 px-3 pb-2">
-        <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 truncate">
-          {task.text}
-        </h1>
+        <div className="relative group">
+          <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 truncate pr-8">
+            {task.text}
+          </h1>
+          <button
+            onClick={handleCopyTaskText}
+            className="absolute right-0 top-0 p-1 text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 transition-all duration-200 opacity-0 group-hover:opacity-100"
+            title={clipboard.copied ? "Copied!" : "Copy task text"}
+          >
+            {clipboard.copied ? (
+              <svg
+                className="w-4 h-4 text-green-500"
+                fill="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z" />
+              </svg>
+            ) : (
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+                />
+              </svg>
+            )}
+          </button>
+        </div>
         {task.description && (
           <p className="text-sm text-neutral-500 dark:text-neutral-400 mt-1">
             {task.description}
