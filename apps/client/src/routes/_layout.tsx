@@ -214,6 +214,7 @@ function LayoutComponent() {
             console.log(`[USER NOTE] ${msg}`);
           }
         }}
+        className="hidden"
         style={{
           position: "fixed",
           bottom: "16px",
