@@ -23,15 +23,13 @@ function TaskRunComponent() {
     <div className="flex flex-row h-full">
       <div className="flex-1 overflow-auto">
         <div className="flex flex-col h-full space-y-6">
-          <div className="flex flex-col flex-1 grow">
+          <div className="flex flex-col flex-1 grow h-full">
             {terminal ? (
-              <div className="w-full h-full flex flex-col">
-                <TerminalView
-                  key={terminal.id}
-                  terminal={terminal}
-                  isActive={true}
-                />
-              </div>
+              <TerminalView
+                key={terminal.id}
+                terminal={terminal}
+                isActive={true}
+              />
             ) : (
               <div className="flex-1 min-h-0 bg-black rounded-lg overflow-hidden">
                 <div className="text-white">Loading...</div>
@@ -40,7 +38,7 @@ function TaskRunComponent() {
           </div>
         </div>
       </div>
-      <div>git diff</div>
+      <div className="min-w-[100px] p-4">imagine a git diff interface here</div>
     </div>
   );
 }

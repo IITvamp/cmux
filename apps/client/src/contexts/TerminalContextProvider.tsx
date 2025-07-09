@@ -62,7 +62,7 @@ export const TerminalContextProvider: React.FC<
           brightWhite: "#e5e5e5",
         },
         cursorStyle: "bar",
-        cursorBlink: true,
+        cursorBlink: false,
         allowProposedApi: true,
         scrollback: 10000,
       });

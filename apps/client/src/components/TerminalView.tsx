@@ -1,4 +1,5 @@
 import type { TerminalInstance } from "@/contexts/TerminalContext";
+import { useSocket } from "@/contexts/socket/use-socket";
 import clsx from "clsx";
 import { useEffect, useRef } from "react";
 
@@ -10,6 +11,7 @@ export interface TerminalViewProps {
 export function TerminalView({ terminal, isActive }: TerminalViewProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const isAttachedRef = useRef(false);
+  const { socket } = useSocket();
 
   useEffect(() => {
     if (!terminalRef.current) return;
@@ -19,18 +21,18 @@ export function TerminalView({ terminal, isActive }: TerminalViewProps) {
     // call `xterm.open` a second time.  Calling `open` twice on the same
     // xterm instance is a no-op and, in some versions, results in the terminal
     // not rendering at all after it has been re-mounted.  By re-parenting the
-    // previously attached element we preserve the terminal’s state while
+    // previously attached element we preserve the terminal's state while
     // ensuring it is visible in the newly mounted view.
     if (terminal.elementRef) {
       // If the previous container is different from the one React just
       // rendered we try to move the xterm DOM node.  We need to make sure we
-      // don’t create an invalid DOM hierarchy (e.g. appending an ancestor
+      // don't create an invalid DOM hierarchy (e.g. appending an ancestor
       // into its own descendant).
       const prev = terminal.elementRef;
       const next = terminalRef.current;
 
       if (prev !== next) {
-        // Guard against cycles – only move when it’s safe.
+        // Guard against cycles – only move when it's safe.
         if (!prev.contains(next) && !next.contains(prev)) {
           next.appendChild(prev);
           console.log(
@@ -63,7 +65,10 @@ export function TerminalView({ terminal, isActive }: TerminalViewProps) {
 
     const handleResize = () => {
       if (terminal.fitAddon) {
+        console.log("SKIP");
+        console.log(terminal.xterm.cols, terminal.xterm.rows);
         terminal.fitAddon.fit();
+        console.log("proposed", terminal.fitAddon.proposeDimensions());
       }
     };
 
@@ -78,19 +83,25 @@ export function TerminalView({ terminal, isActive }: TerminalViewProps) {
   }, [terminal]);
 
   useEffect(() => {
-    if (isActive && terminal.xterm) {
+    if (isActive && terminal.xterm && socket) {
       terminal.fitAddon.fit();
+      socket.emit("resize", {
+        terminalId: terminal.id,
+        cols: terminal.xterm.cols,
+        rows: terminal.xterm.rows,
+      });
       terminal.xterm.focus();
     }
-  }, [isActive, terminal]);
+  }, [isActive, terminal, socket]);
 
   return (
-    <div className={clsx(`w-full h-full`, !isActive && "hidden")}>
+    <div className={clsx(`flex flex-col grow`, !isActive && "hidden")}>
       <div
         ref={terminalRef}
+        className="flex grow"
         style={{
-          width: "100%",
-          height: "100%",
+          // width: "100%",
+          // height: "100%",
           backgroundColor: "#1e1e1e",
         }}
       />

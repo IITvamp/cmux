@@ -128,6 +128,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("resize", (resizeData) => {
+    console.log("resize event received", resizeData);
     try {
       const { terminalId, cols, rows } = ResizeSchema.parse(resizeData);
       const terminal = globalTerminals.get(terminalId);
