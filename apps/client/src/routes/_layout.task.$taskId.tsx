@@ -53,7 +53,6 @@ function TaskDetailPage() {
     runs?.forEach((run) => traverse(run));
     return result;
   };
-  console.log("task", taskRuns);
 
   const flatRuns = flattenRuns(taskRuns || []);
 
