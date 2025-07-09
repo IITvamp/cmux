@@ -98,16 +98,63 @@ export function TerminalView({ terminal, isActive }: TerminalViewProps) {
   const isAttachedRef = useRef(false);
 
   useEffect(() => {
-    if (!terminalRef.current || isAttachedRef.current) return;
+    if (!terminalRef.current) return;
 
-    terminal.xterm.open(terminalRef.current);
-    isAttachedRef.current = true;
+    // If this terminal has already been attached to a DOM element in the past
+    // we simply move that element into the new container instead of trying to
+    // call `xterm.open` a second time.  Calling `open` twice on the same
+    // xterm instance is a no-op and, in some versions, results in the terminal
+    // not rendering at all after it has been re-mounted.  By re-parenting the
+    // previously attached element we preserve the terminal’s state while
+    // ensuring it is visible in the newly mounted view.
 
-    if (terminal.elementRef !== terminalRef.current) {
+    if (terminal.elementRef) {
+      // If the previous container is different from the one React just
+      // rendered we try to move the xterm DOM node.  We need to make sure we
+      // don’t create an invalid DOM hierarchy (e.g. appending an ancestor
+      // into its own descendant).
+
+      const prev = terminal.elementRef;
+      const next = terminalRef.current;
+
+      if (prev !== next) {
+        // Guard against cycles – only move when it’s safe.
+        if (!prev.contains(next) && !next.contains(prev)) {
+          next.appendChild(prev);
+          console.log(
+            `[TerminalView] Re-attached existing terminal element for ${terminal.id}`
+          );
+        } else {
+          // Fallback: perform a fresh mount.
+          prev.innerHTML = "";
+          terminal.xterm.open(next);
+          console.log(
+            `[TerminalView] Performed fallback open for terminal ${terminal.id}`
+          );
+        }
+
+        // Update reference so we know the new container.
+        terminal.elementRef = next;
+      }
+    } else {
+      // First time mounting – perform the initial `open`.
+      terminal.xterm.open(terminalRef.current);
       terminal.elementRef = terminalRef.current;
+      console.log(
+        `[TerminalView] Initial open performed for terminal ${terminal.id}`
+      );
     }
 
+    isAttachedRef.current = true;
+
     terminal.fitAddon.fit();
+
+    // Some layouts render the container with 0×0 first and expand on the next
+    // tick causing the initial fit calculation to be wrong.  Schedule a few
+    // follow-up fits to catch the final size.
+    for (let i = 1; i <= 3; i++) {
+      requestAnimationFrame(() => terminal.fitAddon.fit());
+    }
 
     const handleResize = () => {
       console.log("resizing");
@@ -130,6 +177,11 @@ export function TerminalView({ terminal, isActive }: TerminalViewProps) {
     if (isActive && terminal.xterm) {
       terminal.fitAddon.fit();
       terminal.xterm.focus();
+
+      // Extra scheduled fits when a tab becomes active in case it was hidden
+      // (display:none) previously.
+      requestAnimationFrame(() => terminal.fitAddon.fit());
+      requestAnimationFrame(() => terminal.fitAddon.fit());
     }
   }, [isActive, terminal]);
 
