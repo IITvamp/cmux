@@ -138,6 +138,7 @@ io.on("connection", (socket) => {
       }
     } catch (error) {
       console.error("Invalid resize data:", error);
+      console.error("here's the invalid resizeData", resizeData);
     }
   });
 

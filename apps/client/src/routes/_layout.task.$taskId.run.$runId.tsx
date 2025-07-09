@@ -1,4 +1,4 @@
-import { TerminalView } from "@/components/TerminalManager";
+import { TerminalView } from "@/components/TerminalView";
 import { useTerminals } from "@/hooks/useTerminals";
 import { api } from "@coderouter/convex/api";
 import { type Id } from "@coderouter/convex/dataModel";
@@ -12,7 +12,7 @@ export const Route = createFileRoute("/_layout/task/$taskId/run/$runId")({
 
 function TaskRunComponent() {
   const { runId } = Route.useParams();
-  const taskRun = useQuery(api.taskRuns.subscribe, {
+  useQuery(api.taskRuns.subscribe, {
     id: runId as Id<"taskRuns">,
   });
 
@@ -26,7 +26,11 @@ function TaskRunComponent() {
           <div className="flex flex-col flex-1 grow">
             {terminal ? (
               <div className="w-full h-full flex flex-col">
-                <TerminalView terminal={terminal} isActive={true} />
+                <TerminalView
+                  key={terminal.id}
+                  terminal={terminal}
+                  isActive={true}
+                />
               </div>
             ) : (
               <div className="flex-1 min-h-0 bg-black rounded-lg overflow-hidden">
