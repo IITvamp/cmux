@@ -1,3 +1,4 @@
+import { GitDiffView } from "@/components/GitDiffView";
 import { TerminalView } from "@/components/TerminalView";
 import { useTerminals } from "@/hooks/useTerminals";
 import { api } from "@coderouter/convex/api";
@@ -12,12 +13,15 @@ export const Route = createFileRoute("/_layout/task/$taskId/run/$runId")({
 
 function TaskRunComponent() {
   const { runId } = Route.useParams();
-  useQuery(api.taskRuns.subscribe, {
+  const taskRun = useQuery(api.taskRuns.subscribe, {
     id: runId as Id<"taskRuns">,
   });
 
   const { terminals } = useTerminals();
   const terminal = terminals.get(runId);
+
+  // Get workspace path from taskRun data
+  const workspacePath = taskRun?.worktreePath || null;
 
   return (
     <div className="flex flex-row h-full">
@@ -31,14 +35,18 @@ function TaskRunComponent() {
                 isActive={true}
               />
             ) : (
-              <div className="flex-1 min-h-0 bg-black rounded-lg overflow-hidden">
+              <div className="flex-1 min-h-0 bg-black overflow-hidden">
                 <div className="text-white">Loading...</div>
               </div>
             )}
           </div>
         </div>
       </div>
-      <div className="min-w-[100px] p-4">imagine a git diff interface here</div>
+      {workspacePath && (
+        <div className="w-1/2 border-l">
+          <GitDiffView workspacePath={workspacePath} className="h-full" />
+        </div>
+      )}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import {
   ResizeSchema,
   StartTaskSchema,
   TerminalInputSchema,
+  GitFullDiffRequestSchema,
   type ClientToServerEvents,
   type InterServerEvents,
   type ServerToClientEvents,
@@ -13,6 +14,7 @@ import { createServer } from "node:http";
 import { Server } from "socket.io";
 import { spawnAllAgents } from "./agentSpawner.js";
 import { createTerminal, type GlobalTerminal } from "./terminal.js";
+import { GitDiffManager } from "./gitDiff.js";
 
 const httpServer = createServer();
 
@@ -30,6 +32,9 @@ const io = new Server<
 
 // Global terminal storage - shared across all connections
 const globalTerminals = new Map<string, GlobalTerminal>();
+
+// Git diff manager instance
+const gitDiffManager = new GitDiffManager();
 
 io.on("connection", (socket) => {
   console.log("Client connected:", socket.id);
@@ -100,6 +105,15 @@ io.on("connection", (socket) => {
 
       // Return the first successful agent's info (you might want to modify this to return all)
       const primaryAgent = successfulAgents[0];
+      
+      // Set up file watching for git changes
+      gitDiffManager.watchWorkspace(primaryAgent.worktreePath, (changedPath) => {
+        io.emit("git-file-changed", { 
+          workspacePath: primaryAgent.worktreePath,
+          filePath: changedPath 
+        });
+      });
+      
       callback({
         taskId,
         worktreePath: primaryAgent.worktreePath,
@@ -178,6 +192,33 @@ io.on("connection", (socket) => {
     }
   });
 
+  // Keep old handlers for backwards compatibility but they're not used anymore
+  socket.on("git-status", async () => {
+    socket.emit("git-status-response", { files: [], error: "Not implemented - use git-full-diff instead" });
+  });
+
+  socket.on("git-diff", async () => {
+    socket.emit("git-diff-response", { 
+      path: "",
+      diff: [],
+      error: "Not implemented - use git-full-diff instead"
+    });
+  });
+
+  socket.on("git-full-diff", async (data) => {
+    try {
+      const { workspacePath } = GitFullDiffRequestSchema.parse(data);
+      const diff = await gitDiffManager.getFullDiff(workspacePath);
+      socket.emit("git-full-diff-response", { diff });
+    } catch (error) {
+      console.error("Error getting full git diff:", error);
+      socket.emit("git-full-diff-response", { 
+        diff: "",
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
   socket.on("disconnect", () => {
     console.log("Client disconnected:", socket.id);
     // No need to kill terminals on disconnect since they're global
@@ -213,6 +254,9 @@ if (import.meta.hot) {
       }
     });
     globalTerminals.clear();
+
+    // Clean up git diff manager
+    gitDiffManager.dispose();
 
     // Close socket.io
     console.log("Closing socket.io server...");

@@ -17,6 +17,7 @@
     "@coderouter/shared": "file:../../packages/shared",
     "@xterm/headless": "^5.5.0",
     "ansi-escape-sequences": "^6.2.4",
+    "chokidar": "^4.0.3",
     "convex": "^1.25.2",
     "node-pty": "^1.1.0-beta34",
     "socket.io": "^4.7.5",

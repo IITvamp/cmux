@@ -20,6 +20,7 @@ export default defineSchema({
     summary: v.optional(v.string()), // Markdown summary of the run
     status: v.union(v.literal("pending"), v.literal("running"), v.literal("completed"), v.literal("failed")),
     log: v.string(), // CLI output log, will be appended to in real-time
+    worktreePath: v.optional(v.string()), // Path to the git worktree for this run
     createdAt: v.number(),
     updatedAt: v.number(),
     completedAt: v.optional(v.number()),

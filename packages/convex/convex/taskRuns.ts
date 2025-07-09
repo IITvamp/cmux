@@ -176,6 +176,20 @@ export const updateExitCode = internalMutation({
   },
 });
 
+// Update worktree path for a task run
+export const updateWorktreePath = mutation({
+  args: {
+    id: v.id("taskRuns"),
+    worktreePath: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.id, {
+      worktreePath: args.worktreePath,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
 // Internal query to get a task run by ID
 export const getById = internalQuery({
   args: { id: v.id("taskRuns") },

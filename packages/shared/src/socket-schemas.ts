@@ -70,6 +70,57 @@ export const TaskErrorSchema = z.object({
   error: z.string(),
 });
 
+// Git diff events
+export const GitStatusRequestSchema = z.object({
+  workspacePath: z.string(),
+});
+
+export const GitDiffRequestSchema = z.object({
+  workspacePath: z.string(),
+  filePath: z.string(),
+});
+
+export const GitFullDiffRequestSchema = z.object({
+  workspacePath: z.string(),
+});
+
+export const GitFileSchema = z.object({
+  path: z.string(),
+  status: z.enum(['added', 'modified', 'deleted', 'renamed']),
+  additions: z.number(),
+  deletions: z.number(),
+});
+
+export const DiffLineSchema = z.object({
+  type: z.enum(['addition', 'deletion', 'context', 'header']),
+  content: z.string(),
+  lineNumber: z.object({
+    old: z.number().optional(),
+    new: z.number().optional(),
+  }).optional(),
+});
+
+export const GitStatusResponseSchema = z.object({
+  files: z.array(GitFileSchema),
+  error: z.string().optional(),
+});
+
+export const GitDiffResponseSchema = z.object({
+  path: z.string(),
+  diff: z.array(DiffLineSchema),
+  error: z.string().optional(),
+});
+
+export const GitFileChangedSchema = z.object({
+  workspacePath: z.string(),
+  filePath: z.string(),
+});
+
+export const GitFullDiffResponseSchema = z.object({
+  diff: z.string(),
+  error: z.string().optional(),
+});
+
 // Type exports
 export type CreateTerminal = z.infer<typeof CreateTerminalSchema>;
 export type TerminalInput = z.infer<typeof TerminalInputSchema>;
@@ -84,6 +135,15 @@ export type TerminalClear = z.infer<typeof TerminalClearSchema>;
 export type TerminalRestore = z.infer<typeof TerminalRestoreSchema>;
 export type TaskStarted = z.infer<typeof TaskStartedSchema>;
 export type TaskError = z.infer<typeof TaskErrorSchema>;
+export type GitStatusRequest = z.infer<typeof GitStatusRequestSchema>;
+export type GitDiffRequest = z.infer<typeof GitDiffRequestSchema>;
+export type GitFile = z.infer<typeof GitFileSchema>;
+export type DiffLine = z.infer<typeof DiffLineSchema>;
+export type GitStatusResponse = z.infer<typeof GitStatusResponseSchema>;
+export type GitDiffResponse = z.infer<typeof GitDiffResponseSchema>;
+export type GitFileChanged = z.infer<typeof GitFileChangedSchema>;
+export type GitFullDiffRequest = z.infer<typeof GitFullDiffRequestSchema>;
+export type GitFullDiffResponse = z.infer<typeof GitFullDiffResponseSchema>;
 
 // Socket.io event map types
 export interface ClientToServerEvents {
@@ -92,6 +152,9 @@ export interface ClientToServerEvents {
   resize: (data: Resize) => void;
   "close-terminal": (data: CloseTerminal) => void;
   "start-task": (data: StartTask, callback: (response: TaskStarted | TaskError) => void) => void;
+  "git-status": (data: GitStatusRequest) => void;
+  "git-diff": (data: GitDiffRequest) => void;
+  "git-full-diff": (data: GitFullDiffRequest) => void;
 }
 
 export interface ServerToClientEvents {
@@ -103,6 +166,10 @@ export interface ServerToClientEvents {
   "terminal-restore": (data: TerminalRestore) => void;
   "task-started": (data: TaskStarted) => void;
   "task-error": (data: TaskError) => void;
+  "git-status-response": (data: GitStatusResponse) => void;
+  "git-diff-response": (data: GitDiffResponse) => void;
+  "git-file-changed": (data: GitFileChanged) => void;
+  "git-full-diff-response": (data: GitFullDiffResponse) => void;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type

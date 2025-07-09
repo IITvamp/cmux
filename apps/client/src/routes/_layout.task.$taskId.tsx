@@ -82,7 +82,7 @@ function TaskDetailPage() {
     <div className="flex flex-col h-full">
       <div className="border-b border-neutral-200 dark:border-neutral-700 px-3 pb-2">
         <div className="relative group">
-          <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100 truncate pr-8">
+          <h1 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 truncate pr-8">
             {task.text}
           </h1>
           <button

@@ -72,6 +72,12 @@ export async function spawnAgent(
       };
     }
 
+    // Update the task run with the worktree path
+    await convex.mutation(api.taskRuns.updateWorktreePath, {
+      id: taskRunId,
+      worktreePath: workspaceResult.worktreePath,
+    });
+
     // Use taskRunId as terminal ID
     const terminalId = taskRunId;
 
