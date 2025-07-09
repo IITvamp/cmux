@@ -8,6 +8,7 @@ import {
   useChildMatches,
   useNavigate,
 } from "@tanstack/react-router";
+import clsx from "clsx";
 import { useQuery } from "convex/react";
 import { useEffect } from "react";
 
@@ -130,11 +131,12 @@ function TaskDetailPage() {
                 key={run._id}
                 to="/task/$taskId/run/$runId"
                 params={{ taskId, runId: run._id }}
-                className={`px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
+                className={clsx(
+                  "px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors select-none",
                   activeRunId === run._id
                     ? "text-blue-600 dark:text-blue-400 border-blue-600 dark:border-blue-400"
                     : "text-neutral-600 dark:text-neutral-400 border-transparent hover:text-neutral-900 dark:hover:text-neutral-100"
-                }`}
+                )}
                 // No onClick needed; active class controlled by URL
               >
                 <span style={{ paddingLeft: `${run.depth * 12}px` }}>

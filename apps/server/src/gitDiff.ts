@@ -10,15 +10,22 @@ export class GitDiffManager {
   async getFullDiff(workspacePath: string): Promise<string> {
     try {
       // Run git diff with color to get all changes
-      const { stdout } = await execAsync("git diff --color=always HEAD", {
-        cwd: workspacePath,
-        maxBuffer: 10 * 1024 * 1024, // 10MB buffer for large diffs
-        env: {
-          ...process.env,
-          FORCE_COLOR: "1",
-          GIT_PAGER: "cat", // Disable pager
-        },
-      });
+      const { stdout, stderr } = await execAsync(
+        "git diff --color=always HEAD",
+        {
+          cwd: workspacePath,
+          maxBuffer: 10 * 1024 * 1024, // 10MB buffer for large diffs
+          env: {
+            ...process.env,
+            FORCE_COLOR: "1",
+            GIT_PAGER: "cat", // Disable pager
+          },
+        }
+      );
+
+      if (stderr) {
+        console.error("Git diff stderr:", stderr);
+      }
 
       return stdout || "";
     } catch (error) {

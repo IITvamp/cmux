@@ -19,8 +19,7 @@ function LayoutComponent() {
       ?.sort(
         (a: Doc<"tasks">, b: Doc<"tasks">) =>
           (b.createdAt || 0) - (a.createdAt || 0)
-      )
-      ?.slice(0, 5) || [];
+      ) || [];
 
   // Fetch task runs for each task
   const taskRuns = useQuery(
@@ -197,7 +196,7 @@ function LayoutComponent() {
         </div>
 
         {/* Main Content Area - Floating Panel Effect */}
-        <div className="flex flex-col p-1.5 grow">
+        <div className="flex flex-col p-1.5 grow min-w-0">
           <div className="flex flex-col grow overflow-hidden bg-white dark:bg-neutral-800 rounded-md border border-neutral-200 dark:border-neutral-800/80 h-full">
             {/* <TitleBar /> */}
             <Outlet />

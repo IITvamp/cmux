@@ -236,7 +236,7 @@ function DashboardComponent() {
   return (
     <div className="flex flex-col min-h-full bg-neutral-50 dark:bg-neutral-900/60">
       {/* Main content area */}
-      <div className="flex-1 flex justify-center px-8 pt-60">
+      <div className="flex-1 flex justify-center px-4 pt-60">
         <div className="w-full max-w-4xl">
           <div
             className={clsx(
@@ -405,7 +405,7 @@ function DashboardComponent() {
                       </span>
                       {(task.projectFullName ||
                         (task.branch && task.branch !== "main")) && (
-                        <span className="text-[11px] text-neutral-400 dark:text-neutral-500 flex-shrink-0">
+                        <span className="text-[11px] text-neutral-400 dark:text-neutral-500 flex-shrink-0 ml-auto mr-0">
                           {task.projectFullName && (
                             <span>{task.projectFullName.split("/")[1]}</span>
                           )}
@@ -420,7 +420,7 @@ function DashboardComponent() {
                       )}
                     </div>
                     {task.updatedAt && (
-                      <span className="text-[11px] text-neutral-400 dark:text-neutral-500 flex-shrink-0">
+                      <span className="text-[11px] text-neutral-400 dark:text-neutral-500 flex-shrink-0 ml-auto mr-0">
                         {new Date(task.updatedAt).toLocaleTimeString([], {
                           hour: "2-digit",
                           minute: "2-digit",
