@@ -83,16 +83,8 @@ export function TerminalView({ terminal, isActive }: TerminalViewProps) {
   useEffect(() => {
     if (!isActive || !terminal.xterm || !socket) return;
     terminal.xterm.focus();
-
-    const proposed = terminal.fitAddon.proposeDimensions();
-    if (!proposed) return;
-
-    // socket.emit("resize", {
-    //   terminalId: terminal.id,
-    //   cols: proposed.cols,
-    //   rows: proposed.rows,
-    // });
-    terminal.xterm.resize(proposed.cols, proposed.rows);
+    terminal.fitAddon.fit();
+    console.log(terminal.xterm.cols, terminal.xterm.rows);
   }, [isActive, terminal, socket]);
 
   return (
@@ -101,27 +93,9 @@ export function TerminalView({ terminal, isActive }: TerminalViewProps) {
         ref={terminalRef}
         className="flex grow"
         style={{
-          // width: "100%",
-          // height: "100%",
           backgroundColor: "#1e1e1e",
         }}
       />
-      <button
-        onClick={async () => {
-          if (!socket) {
-            alert("no socket");
-            return;
-          }
-          if (!terminalRef.current) {
-            alert("no terminalRef.current");
-            return;
-          }
-          terminal.fitAddon.fit();
-        }}
-        className="absolute top-0 right-0"
-      >
-        force refit
-      </button>
     </div>
   );
 }

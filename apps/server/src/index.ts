@@ -139,6 +139,18 @@ io.on("connection", (socket) => {
         );
         globalTerminals.delete(terminalId);
       } else if (terminal && terminal.pty) {
+        // if its the same, dont resize
+        // const isSame =
+        //   terminal.headlessTerminal.cols === cols &&
+        //   terminal.headlessTerminal.rows === rows;
+        // if (isSame) {
+        //   return;
+        // }
+
+        // TODO: this is a hack to get the terminal to resize. If it's the same size, the frontend gets messed up. The code above doesn't work either.
+        terminal.pty.resize(cols - 1, rows - 1);
+        terminal.headlessTerminal.resize(cols - 1, rows - 1);
+
         terminal.pty.resize(cols, rows);
         terminal.headlessTerminal.resize(cols, rows);
       }
