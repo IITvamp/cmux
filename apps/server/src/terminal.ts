@@ -149,6 +149,10 @@ export function createTerminal(
       await flushLogBuffer();
     }
 
+    // Clean up the terminal from global storage
+    // globalTerminals.delete(terminalId);
+    console.log(`Terminal ${terminalId} removed from globalTerminals`);
+
     io.emit("terminal-exit", { terminalId, exitCode, signal });
   });
 

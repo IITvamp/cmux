@@ -94,6 +94,7 @@ export const TerminalContextProvider: React.FC<
       });
 
       xterm.onResize(({ cols, rows }) => {
+        console.log("xterm.onResize (socket.emit)", { cols, rows });
         socket?.emit("resize", { terminalId, cols, rows });
       });
 

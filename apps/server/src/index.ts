@@ -133,7 +133,12 @@ io.on("connection", (socket) => {
       const { terminalId, cols, rows } = ResizeSchema.parse(resizeData);
       const terminal = globalTerminals.get(terminalId);
 
-      if (terminal && terminal.pty) {
+      if (terminal && terminal.pty && !terminal.pty.pid) {
+        console.warn(
+          `Terminal ${terminalId} has no PID, likely already exited`
+        );
+        globalTerminals.delete(terminalId);
+      } else if (terminal && terminal.pty) {
         terminal.pty.resize(cols, rows);
         terminal.headlessTerminal.resize(cols, rows);
       }

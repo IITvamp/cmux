@@ -65,10 +65,8 @@ export function TerminalView({ terminal, isActive }: TerminalViewProps) {
 
     const handleResize = () => {
       if (terminal.fitAddon) {
-        console.log("SKIP");
-        console.log(terminal.xterm.cols, terminal.xterm.rows);
+        console.log("call fit first");
         terminal.fitAddon.fit();
-        console.log("proposed", terminal.fitAddon.proposeDimensions());
       }
     };
 
@@ -83,19 +81,22 @@ export function TerminalView({ terminal, isActive }: TerminalViewProps) {
   }, [terminal]);
 
   useEffect(() => {
-    if (isActive && terminal.xterm && socket) {
-      terminal.fitAddon.fit();
-      socket.emit("resize", {
-        terminalId: terminal.id,
-        cols: terminal.xterm.cols,
-        rows: terminal.xterm.rows,
-      });
-      terminal.xterm.focus();
-    }
+    if (!isActive || !terminal.xterm || !socket) return;
+    terminal.xterm.focus();
+
+    const proposed = terminal.fitAddon.proposeDimensions();
+    if (!proposed) return;
+
+    // socket.emit("resize", {
+    //   terminalId: terminal.id,
+    //   cols: proposed.cols,
+    //   rows: proposed.rows,
+    // });
+    terminal.xterm.resize(proposed.cols, proposed.rows);
   }, [isActive, terminal, socket]);
 
   return (
-    <div className={clsx(`flex flex-col grow`, !isActive && "hidden")}>
+    <div className={clsx(`flex flex-col grow relative`, !isActive && "hidden")}>
       <div
         ref={terminalRef}
         className="flex grow"
@@ -105,6 +106,22 @@ export function TerminalView({ terminal, isActive }: TerminalViewProps) {
           backgroundColor: "#1e1e1e",
         }}
       />
+      <button
+        onClick={async () => {
+          if (!socket) {
+            alert("no socket");
+            return;
+          }
+          if (!terminalRef.current) {
+            alert("no terminalRef.current");
+            return;
+          }
+          terminal.fitAddon.fit();
+        }}
+        className="absolute top-0 right-0"
+      >
+        force refit
+      </button>
     </div>
   );
 }
