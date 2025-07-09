@@ -1,8 +1,3 @@
-import { SerializeAddon } from "@xterm/addon-serialize";
-import xtermHeadless from "@xterm/headless";
-import { spawn, type IPty } from "node-pty";
-import { platform } from "node:os";
-import type { Server } from "socket.io";
 import { api } from "@coderouter/convex/api";
 import type { Id } from "@coderouter/convex/dataModel";
 import type {
@@ -11,6 +6,11 @@ import type {
   ServerToClientEvents,
   SocketData,
 } from "@coderouter/shared";
+import { SerializeAddon } from "@xterm/addon-serialize";
+import xtermHeadless from "@xterm/headless";
+import { spawn, type IPty } from "node-pty";
+import { platform } from "node:os";
+import type { Server } from "socket.io";
 import { convex } from "./utils/convexClient.js";
 const { Terminal } = xtermHeadless;
 
@@ -93,6 +93,10 @@ export function createTerminal(
 
   // Function to flush the log buffer to Convex
   const flushLogBuffer = async () => {
+    const disabled = true;
+    if (disabled) {
+      return;
+    }
     if (!taskRunId || !terminal.logBuffer) {
       return;
     }

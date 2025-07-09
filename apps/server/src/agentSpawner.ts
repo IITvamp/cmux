@@ -133,10 +133,13 @@ export async function spawnAllAgents(
     taskDescription: string;
   }
 ): Promise<AgentSpawnResult[]> {
-  // Spawn all agents in parallel
-  const spawnPromises = AGENT_CONFIGS.map((agent: AgentConfig) =>
-    spawnAgent(agent, taskId, globalTerminals, io, options)
-  );
+  // Spawn agents sequentially to avoid git lock conflicts
+  const results: AgentSpawnResult[] = [];
+  
+  for (const agent of AGENT_CONFIGS) {
+    const result = await spawnAgent(agent, taskId, globalTerminals, io, options);
+    results.push(result);
+  }
 
-  return Promise.all(spawnPromises);
+  return results;
 }
