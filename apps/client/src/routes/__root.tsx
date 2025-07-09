@@ -36,9 +36,9 @@ function DevTools() {
 
 function RootComponent() {
   return (
-    <div className="flex flex-col h-screen">
+    <div className="flex flex-col">
       {/* <TitleBar /> */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex flex-col grow overflow-hidden h-screen">
         <Outlet />
       </div>
       <DevTools />

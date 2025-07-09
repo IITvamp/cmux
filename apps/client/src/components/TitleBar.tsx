@@ -1,7 +1,7 @@
 export function TitleBar() {
   return (
     <div
-      className="h-[26px] border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-center relative select-none"
+      className="min-h-[20px] border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-center relative select-none"
       style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
     >
       {/* Traffic light placeholder - will be handled by macOS */}

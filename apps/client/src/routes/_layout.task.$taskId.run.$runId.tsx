@@ -11,42 +11,40 @@ export const Route = createFileRoute("/_layout/task/$taskId/run/$runId")({
   component: TaskRunComponent,
 });
 
-function TaskRunComponent() {
-  const { runId } = Route.useParams();
+function TaskGitDiffView({ runId }: { runId: string }) {
   const taskRun = useQuery(api.taskRuns.subscribe, {
     id: runId as Id<"taskRuns">,
   });
+  const workspacePath = taskRun?.worktreePath;
+  if (!workspacePath) {
+    return (
+      <div className="flex-1 min-h-0 bg-black overflow-hidden">
+        <div className="text-white">Loading...</div>
+      </div>
+    );
+  }
+  return <GitDiffView workspacePath={workspacePath} className="h-full" />;
+}
 
+function TaskRunComponent() {
+  const { runId } = Route.useParams();
   const { terminals } = useTerminals();
   const terminal = terminals.get(runId);
 
-  // Get workspace path from taskRun data
-  const workspacePath = taskRun?.worktreePath || null;
-
   return (
-    <div className="flex flex-row h-full">
-      <div className="flex-1 overflow-auto">
-        <div className="flex flex-col h-full space-y-6">
-          <div className="flex flex-col flex-1 grow h-full">
-            {terminal ? (
-              <TerminalView
-                key={terminal.id}
-                terminal={terminal}
-                isActive={true}
-              />
-            ) : (
-              <div className="flex-1 min-h-0 bg-black overflow-hidden">
-                <div className="text-white">Loading...</div>
-              </div>
-            )}
+    <div className="flex flex-row grow min-h-0">
+      <div className="flex flex-col flex-1 overflow-hidden">
+        {terminal ? (
+          <TerminalView key={terminal.id} terminal={terminal} isActive={true} />
+        ) : (
+          <div className="flex-1 min-h-0 bg-black overflow-hidden">
+            <div className="text-white">Loading...</div>
           </div>
-        </div>
+        )}
       </div>
-      {workspacePath && (
-        <div className="w-1/2 border-l">
-          <GitDiffView workspacePath={workspacePath} className="h-full" />
-        </div>
-      )}
+      <div className="flex-1 border-l">
+        <TaskGitDiffView runId={runId} />
+      </div>
     </div>
   );
 }

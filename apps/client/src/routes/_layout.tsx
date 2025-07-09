@@ -1,5 +1,4 @@
 import { TaskTree } from "@/components/TaskTree";
-import { TitleBar } from "@/components/TitleBar";
 import { type TaskWithRuns } from "@/types/task";
 import { api } from "@coderouter/convex/api";
 import { type Doc } from "@coderouter/convex/dataModel";
@@ -40,7 +39,7 @@ function LayoutComponent() {
 
   return (
     <>
-      <div className="flex h-full bg-neutral-50 dark:bg-neutral-900">
+      <div className="flex flex-row grow bg-neutral-50 dark:bg-neutral-900 h-full">
         {/* Left Sidebar */}
         <div className="w-[240px] bg-neutral-50 dark:bg-neutral-900 flex flex-col">
           {/* Logo/Brand */}
@@ -198,13 +197,11 @@ function LayoutComponent() {
         </div>
 
         {/* Main Content Area - Floating Panel Effect */}
-        <div className="flex-1 flex flex-col overflow-hidden p-1.5">
-          <main className="flex flex-col overflow-hidden flex-1 bg-white dark:bg-neutral-800 rounded-md border border-neutral-200 dark:border-neutral-800/80">
-            <TitleBar />
-            <div className="flex-1 overflow-y-auto">
-              <Outlet />
-            </div>
-          </main>
+        <div className="flex flex-col p-1.5 grow">
+          <div className="flex flex-col grow overflow-hidden bg-white dark:bg-neutral-800 rounded-md border border-neutral-200 dark:border-neutral-800/80 h-full">
+            {/* <TitleBar /> */}
+            <Outlet />
+          </div>
         </div>
       </div>
 

@@ -91,7 +91,7 @@ export function TerminalView({ terminal, isActive }: TerminalViewProps) {
     <div className={clsx(`flex flex-col grow relative`, !isActive && "hidden")}>
       <div
         ref={terminalRef}
-        className="flex grow"
+        className="w-full h-full"
         style={{
           backgroundColor: "#1e1e1e",
         }}
