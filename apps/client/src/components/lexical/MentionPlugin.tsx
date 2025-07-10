@@ -46,22 +46,22 @@ function MentionMenu({ files, selectedIndex, onSelect, position, hasRepository, 
   return createPortal(
     <div
       ref={menuRef}
-      className="absolute z-50 w-80 max-h-60 overflow-y-auto bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-md shadow-lg"
+      className="absolute z-50 w-72 max-h-48 overflow-y-auto bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-md shadow-lg"
       style={{
         top: position.top,
         left: position.left,
       }}
     >
       {isLoading ? (
-        <div className="px-3 py-4 text-sm text-neutral-500 dark:text-neutral-400 flex items-center gap-2">
-          <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+        <div className="px-2.5 py-2 text-xs text-neutral-500 dark:text-neutral-400 flex items-center gap-2">
+          <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
           </svg>
           Loading files...
         </div>
       ) : files.length === 0 ? (
-        <div className="px-3 py-2 text-sm text-neutral-500 dark:text-neutral-400">
+        <div className="px-2.5 py-1.5 text-xs text-neutral-500 dark:text-neutral-400">
           {hasRepository ? "No files found" : "Please select a project to see files"}
         </div>
       ) : (
@@ -69,7 +69,7 @@ function MentionMenu({ files, selectedIndex, onSelect, position, hasRepository, 
           <button
             key={file.relativePath}
             onClick={() => onSelect(file)}
-            className={`w-full text-left px-3 py-2 text-sm flex items-center gap-2 transition-colors ${
+            className={`w-full text-left px-2.5 py-1 text-xs flex items-center gap-1.5 transition-colors ${
               index === selectedIndex 
                 ? "bg-blue-100 dark:bg-blue-900/30 text-blue-900 dark:text-blue-100" 
                 : "hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-900 dark:text-neutral-100"
@@ -79,7 +79,7 @@ function MentionMenu({ files, selectedIndex, onSelect, position, hasRepository, 
             <img 
               src={`https://cdn.jsdelivr.net/gh/vscode-icons/vscode-icons/icons/${getIconForFile(file.name)}`}
               alt=""
-              className="w-4 h-4 flex-shrink-0"
+              className="w-3 h-3 flex-shrink-0"
             />
             <span className="truncate">{file.relativePath}</span>
           </button>
