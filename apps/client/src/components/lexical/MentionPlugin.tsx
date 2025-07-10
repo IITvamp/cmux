@@ -3,6 +3,7 @@ import {
   $getSelection,
   $isRangeSelection,
   $isTextNode,
+  BLUR_COMMAND,
   COMMAND_PRIORITY_HIGH,
   KEY_ARROW_DOWN_COMMAND,
   KEY_ARROW_UP_COMMAND,
@@ -354,6 +355,18 @@ export function MentionPlugin({ repoUrl, branch }: MentionPluginProps) {
       COMMAND_PRIORITY_HIGH
     );
 
+    // Hide menu on blur
+    const removeBlur = editor.registerCommand(
+      BLUR_COMMAND,
+      () => {
+        if (isShowingMenuRef.current) {
+          hideMenu();
+        }
+        return false;
+      },
+      COMMAND_PRIORITY_HIGH
+    );
+
     document.addEventListener("keydown", handleKeyDown);
 
     return () => {
@@ -361,6 +374,7 @@ export function MentionPlugin({ repoUrl, branch }: MentionPluginProps) {
       removeArrowUp();
       removeEnter();
       removeEscape();
+      removeBlur();
       document.removeEventListener("keydown", handleKeyDown);
     };
   }, [editor, selectFile, hideMenu]);
