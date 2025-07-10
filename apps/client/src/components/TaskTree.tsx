@@ -29,7 +29,7 @@ export function TaskTree({ task, level = 0 }: TaskTreeProps) {
   const hasRuns = task.runs && task.runs.length > 0;
 
   return (
-    <div className="select-none flex flex-col gap-px">
+    <div className="select-none flex flex-col gap-[1.5px]">
       <Link
         to="/task/$taskId"
         params={{ taskId: task._id }}
@@ -93,7 +93,7 @@ export function TaskTree({ task, level = 0 }: TaskTreeProps) {
       </Link>
 
       {isExpanded && hasRuns && (
-        <div>
+        <div className="flex flex-col gap-[1.5px]">
           {task.runs.map((run) => (
             <TaskRunTree
               key={run._id}
@@ -159,7 +159,19 @@ function TaskRunTree({ run, level, taskId }: TaskRunTreeProps) {
 
         <div className="flex-1 min-w-0">
           <p className="truncate text-neutral-600 dark:text-neutral-400">
-            {run.summary || run.prompt.substring(0, 50) + "..."}
+            {(() => {
+              // Extract agent name from prompt if it exists
+              const agentMatch = run.prompt.match(/\(([^)]+)\)$/);
+              const agentName = agentMatch ? agentMatch[1] : null;
+
+              if (run.summary) {
+                return run.summary;
+              } else if (agentName) {
+                return agentName;
+              } else {
+                return run.prompt.substring(0, 50) + "...";
+              }
+            })()}
           </p>
           <p className="text-[10px] text-neutral-500 dark:text-neutral-500">
             {formatDistanceToNow(new Date(run.createdAt), { addSuffix: true })}

@@ -99,7 +99,9 @@ export const GitDiffView: React.FC<GitDiffViewProps> = ({
             dangerouslySetInnerHTML={{ __html: htmlContent }}
           />
         ) : (
-          <div className="text-neutral-500">No changes to display</div>
+          <div className="text-neutral-400 text-sm py-8 text-center">
+            No changes to display
+          </div>
         )}
       </div>
     </div>
