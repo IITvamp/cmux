@@ -8,6 +8,7 @@ export interface AgentConfig {
     displayName: string;
     description?: string;
   }[];
+  waitForString?: string;
 }
 
 export const AGENT_CONFIGS: AgentConfig[] = [
@@ -48,16 +49,13 @@ export const AGENT_CONFIGS: AgentConfig[] = [
   {
     name: "gemini-2.5-flash",
     command: "bunx",
-    args: (prompt: string) => [
+    args: (_prompt: string) => [
       "@google/gemini-cli",
       "--model",
       "gemini-2.5-flash",
       "--yolo",
-      // Using --prompt launches in non-interactive mode, which is not what we want
-      // "--prompt",
-      // prompt,
-      // This part needs to be refactored. We need to wait until we receive the terminal output and check for "Type your message" and then send the prompt directly to stdin.
     ],
+    waitForString: "Type your message",
     requiredApiKeys: [
       {
         envVar: "GEMINI_API_KEY",
@@ -69,14 +67,13 @@ export const AGENT_CONFIGS: AgentConfig[] = [
   {
     name: "gemini-2.5-pro",
     command: "bunx",
-    args: (prompt: string) => [
+    args: (_prompt: string) => [
       "@google/gemini-cli",
       "--model",
       "gemini-2.5-pro",
       "--yolo",
-      "--prompt",
-      prompt,
     ],
+    waitForString: "Type your message",
     requiredApiKeys: [
       {
         envVar: "GEMINI_API_KEY",

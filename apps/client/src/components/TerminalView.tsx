@@ -35,16 +35,10 @@ export function TerminalView({ terminal, isActive }: TerminalViewProps) {
         // Guard against cycles – only move when it's safe.
         if (!prev.contains(next) && !next.contains(prev)) {
           next.appendChild(prev);
-          console.log(
-            `[TerminalView] Re-attached existing terminal element for ${terminal.id}`
-          );
         } else {
           // Fallback: perform a fresh mount.
           prev.innerHTML = "";
           terminal.xterm.open(next);
-          console.log(
-            `[TerminalView] Performed fallback open for terminal ${terminal.id}`
-          );
         }
 
         // Update reference so we know the new container.
@@ -54,9 +48,6 @@ export function TerminalView({ terminal, isActive }: TerminalViewProps) {
       // First time mounting – perform the initial `open`.
       terminal.xterm.open(terminalRef.current);
       terminal.elementRef = terminalRef.current;
-      console.log(
-        `[TerminalView] Initial open performed for terminal ${terminal.id}`
-      );
     }
 
     isAttachedRef.current = true;
@@ -65,7 +56,6 @@ export function TerminalView({ terminal, isActive }: TerminalViewProps) {
 
     const handleResize = () => {
       if (terminal.fitAddon) {
-        console.log("call fit first");
         terminal.fitAddon.fit();
       }
     };
@@ -84,7 +74,6 @@ export function TerminalView({ terminal, isActive }: TerminalViewProps) {
     if (!isActive || !terminal.xterm || !socket) return;
     terminal.xterm.focus();
     terminal.fitAddon.fit();
-    console.log(terminal.xterm.cols, terminal.xterm.rows);
   }, [isActive, terminal, socket]);
 
   return (

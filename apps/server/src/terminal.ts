@@ -43,6 +43,8 @@ export function createTerminal(
     command?: string;
     args?: string[];
     taskRunId?: Id<"taskRuns"> | string;
+    waitForString?: string;
+    prompt?: string;
   } = {}
 ): GlobalTerminal | null {
   if (globalTerminals.has(terminalId)) {
@@ -58,6 +60,8 @@ export function createTerminal(
     command,
     args = [],
     taskRunId,
+    waitForString,
+    prompt,
   } = options;
 
   const shell = command || (platform() === "win32" ? "powershell.exe" : "zsh");
@@ -127,9 +131,42 @@ export function createTerminal(
     }
   };
 
+  let waitingForString = !!waitForString;
+  let accumulatedOutput = "";
+
   ptyProcess.onData((data) => {
     headlessTerminal.write(data);
     io.emit("terminal-output", { terminalId, data });
+
+    // If we're waiting for a specific string, accumulate the output
+    if (waitingForString && waitForString) {
+      accumulatedOutput += data;
+
+      // Check if the accumulated output contains the string we're waiting for
+      if (accumulatedOutput.includes(waitForString)) {
+        console.log(
+          `Found waitForString "${waitForString}" in terminal ${terminalId}`
+        );
+        waitingForString = false;
+
+        // Send the prompt to stdin
+        if (prompt) {
+          setTimeout(() => {
+            console.log(`Sending prompt to stdin for terminal ${terminalId}`);
+            // First send the prompt text
+            ptyProcess.write(prompt);
+            // Then send Enter key separately after a small delay
+            setTimeout(() => {
+              console.log(`Sending Enter key for terminal ${terminalId}`);
+              ptyProcess.write("\r");
+            }, 100);
+          }, 1000); // Small delay to ensure the terminal is ready
+        }
+
+        // Clear accumulated output to save memory
+        accumulatedOutput = "";
+      }
+    }
 
     // Save data to scrollback for incremental persistence
     terminal.scrollback.push(data);

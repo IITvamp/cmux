@@ -126,7 +126,9 @@ function SettingsComponent() {
           actions.push(`saved ${savedCount} key${savedCount > 1 ? "s" : ""}`);
         }
         if (deletedCount > 0) {
-          actions.push(`removed ${deletedCount} key${deletedCount > 1 ? "s" : ""}`);
+          actions.push(
+            `removed ${deletedCount} key${deletedCount > 1 ? "s" : ""}`
+          );
         }
         toast.success(`Successfully ${actions.join(" and ")}`);
       } else {
@@ -143,7 +145,7 @@ function SettingsComponent() {
   return (
     <>
       <TitleBar title="Settings" />
-      <div className="flex flex-col grow overflow-auto">
+      <div className="flex flex-col grow overflow-auto select-none">
         <div className="p-6 max-w-3xl">
           {/* Header */}
           <div className="mb-6">

@@ -110,6 +110,8 @@ export async function spawnAgent(
       args: agent.args(options.taskDescription),
       env: envVars,
       taskRunId,
+      waitForString: agent.waitForString,
+      prompt: agent.waitForString ? options.taskDescription : undefined,
     });
 
     if (!terminal) {

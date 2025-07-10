@@ -16,6 +16,8 @@
     "typecheck": "run-p typecheck:*",
     "typecheck:client": "npm run typecheck --workspace=@coderouter/client",
     "typecheck:server": "cd apps/server && tsc --noEmit",
+    "typecheck:shared": "cd packages/shared && tsc --noEmit",
+    "typecheck:convex": "cd packages/convex && tsc --noEmit",
     "generate-routes": "npm run generate-routes --workspace=@coderouter/client"
   },
   "devDependencies": {
