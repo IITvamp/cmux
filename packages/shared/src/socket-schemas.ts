@@ -28,6 +28,7 @@ export const StartTaskSchema = z.object({
   taskDescription: z.string(),
   projectFullName: z.string(),
   taskId: z.string(),
+  selectedAgents: z.array(z.string()).optional(),
 });
 
 // Server to Client Events

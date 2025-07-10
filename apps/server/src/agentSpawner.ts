@@ -6,7 +6,7 @@ import type {
   SocketData,
 } from "@coderouter/shared";
 import { createTerminal, type GlobalTerminal } from "./terminal.js";
-import { AGENT_CONFIGS, type AgentConfig } from "./agentConfig.js";
+import { AGENT_CONFIGS, type AgentConfig } from "@coderouter/shared/agentConfig";
 import { getWorktreePath, setupProjectWorkspace } from "./workspace.js";
 import type { Id } from "@coderouter/convex/dataModel";
 import { api } from "@coderouter/convex/api";
@@ -137,12 +137,18 @@ export async function spawnAllAgents(
     repoUrl: string;
     branch?: string;
     taskDescription: string;
+    selectedAgents?: string[];
   }
 ): Promise<AgentSpawnResult[]> {
   // Spawn agents sequentially to avoid git lock conflicts
   const results: AgentSpawnResult[] = [];
   
-  for (const agent of AGENT_CONFIGS) {
+  // If selectedAgents is provided, filter AGENT_CONFIGS to only include selected agents
+  const agentsToSpawn = options.selectedAgents 
+    ? AGENT_CONFIGS.filter(agent => options.selectedAgents!.includes(agent.name))
+    : AGENT_CONFIGS;
+  
+  for (const agent of agentsToSpawn) {
     const result = await spawnAgent(agent, taskId, globalTerminals, io, options);
     results.push(result);
   }

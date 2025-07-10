@@ -9,6 +9,7 @@ interface AntdMultiSelectProps {
   singleSelect?: boolean;
   className?: string;
   loading?: boolean;
+  maxTagCount?: number;
 }
 
 export default function AntdMultiSelect({
@@ -19,6 +20,7 @@ export default function AntdMultiSelect({
   singleSelect,
   className,
   loading,
+  maxTagCount,
 }: AntdMultiSelectProps) {
   const selectProps: SelectProps = {
     mode: singleSelect ? undefined : "multiple",
@@ -43,6 +45,14 @@ export default function AntdMultiSelect({
       minWidth: singleSelect ? undefined : 200,
     },
     loading,
+    // Apply maxTagCount settings for multi-select
+    ...(singleSelect ? {} : {
+      ...(maxTagCount !== undefined ? {
+        maxTagCount,
+        maxTagPlaceholder: (omitted) => 
+          omitted.length ? `+${omitted.length} more` : null
+      } : {}),
+    }),
   };
 
   return <Select {...selectProps} />;

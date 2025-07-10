@@ -81,6 +81,7 @@ io.on("connection", (socket) => {
         repoUrl: taskData.repoUrl,
         branch: taskData.branch,
         taskDescription: taskData.taskDescription,
+        selectedAgents: taskData.selectedAgents,
       });
 
       // Check if at least one agent spawned successfully

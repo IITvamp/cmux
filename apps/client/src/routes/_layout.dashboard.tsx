@@ -11,6 +11,7 @@ import { useSocket } from "@/contexts/socket/use-socket";
 import { type Repo } from "@/types/task";
 import { api } from "@coderouter/convex/api";
 import type { Doc } from "@coderouter/convex/dataModel";
+import { AGENT_CONFIGS } from "@coderouter/shared/agentConfig";
 import { convexQuery } from "@convex-dev/react-query";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
@@ -29,7 +30,7 @@ function DashboardComponent() {
     return stored ? JSON.parse(stored) : [];
   });
   const [selectedBranch, setSelectedBranch] = useState<string[]>([]);
-  const [selectedFanout, setSelectedFanout] = useState<string[]>(["1x"]);
+  const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
   const [taskDescription, setTaskDescription] = useState<string>("");
   const [isStartingTask, setIsStartingTask] = useState(false);
 
@@ -55,9 +56,9 @@ function DashboardComponent() {
     setSelectedBranch(newBranches);
   }, []);
 
-  // Callback for fanout selection changes
-  const handleFanoutChange = useCallback((newFanout: string[]) => {
-    setSelectedFanout(newFanout);
+  // Callback for agent selection changes
+  const handleAgentChange = useCallback((newAgents: string[]) => {
+    setSelectedAgents(newAgents);
   }, []);
 
   // Fetch repos grouped by org
@@ -154,6 +155,7 @@ function DashboardComponent() {
           taskDescription,
           projectFullName,
           taskId,
+          selectedAgents: selectedAgents.length > 0 ? selectedAgents : undefined,
         },
         (response) => {
           // if (err) {
@@ -176,6 +178,7 @@ function DashboardComponent() {
     selectedProject,
     taskDescription,
     selectedBranch,
+    selectedAgents,
     createTask,
     handleTaskDescriptionChange,
     socket,
@@ -217,7 +220,7 @@ function DashboardComponent() {
           ]
         : [];
 
-  const fanoutOptions = ["1x", "2x", "3x", "5x"];
+  const agentOptions = AGENT_CONFIGS.map(agent => agent.name);
 
   const navigate = useNavigate();
   const [hoveredTaskId, setHoveredTaskId] = useState<string | null>(null);
@@ -269,6 +272,7 @@ function DashboardComponent() {
                   placeholder="Select project..."
                   className="!min-w-[300px] !max-w-[500px] !rounded-2xl"
                   loading={reposQuery.isLoading}
+                  maxTagCount={1}
                   // singleSelect={true}
                   // className={clsx(
                   //   "!border !border-neutral-200 dark:!border-0",
@@ -297,12 +301,13 @@ function DashboardComponent() {
                 />
 
                 <AntdMultiSelect
-                  options={fanoutOptions}
-                  value={selectedFanout}
-                  onChange={handleFanoutChange}
-                  placeholder="Fanout..."
-                  singleSelect={true}
-                  className="!min-w-[120px] !rounded-2xl"
+                  options={agentOptions}
+                  value={selectedAgents}
+                  onChange={handleAgentChange}
+                  placeholder="Select agents..."
+                  singleSelect={false}
+                  maxTagCount={1}
+                  className="!min-w-[200px] !rounded-2xl"
                   // className={clsx(
                   //   "!border !border-neutral-200 dark:!border-0",
                   //   "bg-neutral-100 dark:bg-neutral-700 dark:hover:bg-neutral-600/90 aria-expanded:bg-neutral-600/90 transition",

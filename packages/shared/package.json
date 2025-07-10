@@ -9,6 +9,10 @@
     ".": {
       "import": "./src/socket-schemas.ts",
       "types": "./src/socket-schemas.ts"
+    },
+    "./agentConfig": {
+      "import": "./src/agentConfig.ts",
+      "types": "./src/agentConfig.ts"
     }
   },
   "dependencies": {
