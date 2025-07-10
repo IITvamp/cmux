@@ -1,4 +1,4 @@
-export function TitleBar() {
+export function TitleBar({ title }: { title: string }) {
   return (
     <div
       className="min-h-[20px] border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-center relative select-none"
@@ -12,7 +12,7 @@ export function TitleBar() {
 
       {/* Title */}
       <div className="text-xs font-medium text-neutral-900 dark:text-neutral-100 leading-none">
-        coderouter
+        {title}
       </div>
     </div>
   );

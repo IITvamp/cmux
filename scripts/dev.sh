@@ -44,9 +44,16 @@ CLIENT_PID=$!
 # Create logs directory if it doesn't exist
 mkdir -p "$APP_DIR/logs"
 
+# Check if Convex backend state exists, if not run setup
+# In devcontainer, we need to check the actual backend state directory
+if [ ! -d "$HOME/.convex/anonymous-convex-backend-state/anonymous-coderouter" ]; then
+    echo -e "${BLUE}Convex backend state not found. Running setup...${NC}"
+    bash "$SCRIPT_DIR/setup-convex.sh"
+fi
+
 # Start convex dev and log to both stdout and file
 echo -e "${GREEN}Starting convex dev...${NC}"
-(cd packages/convex && source ~/.nvm/nvm.sh && nvm use 18 && bun x convex dev --local 2>&1 | tee ../../logs/convex.log) &
+(cd packages/convex && source ~/.nvm/nvm.sh && nvm use 18 && bun x convex dev --local --local-force-upgrade 2>&1 | tee ../../logs/convex.log) &
 CONVEX_PID=$!
 
 echo -e "${GREEN}Terminal app is running!${NC}"

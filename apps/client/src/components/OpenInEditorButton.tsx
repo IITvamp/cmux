@@ -65,7 +65,7 @@ export function OpenInEditorButton({ workspacePath }: OpenInEditorButtonProps) {
       <div className="flex items-center h-8 bg-neutral-800 rounded-md overflow-hidden border border-neutral-700 shadow-sm">
         <button
           onClick={handleOpenInEditor}
-          className="flex items-center gap-2 px-3 py-0 h-full text-sm bg-transparent hover:bg-neutral-700 text-neutral-200 transition-colors flex-1"
+          className="flex items-center gap-2 px-3 py-0 h-full text-sm bg-transparent hover:bg-neutral-700 text-neutral-200 transition-colors flex-1 select-none"
         >
           <ExternalLink className="w-4 h-4" />
           Open in {editors.find((e) => e.id === selectedEditor)?.name}
@@ -81,7 +81,7 @@ export function OpenInEditorButton({ workspacePath }: OpenInEditorButtonProps) {
         </button>
       </div>
       {isDropdownOpen && (
-        <div className="absolute right-0 mt-1 w-40 bg-neutral-800 border border-neutral-700 rounded-md shadow-lg z-20">
+        <div className="absolute right-0 mt-1 w-40 bg-neutral-800 border border-neutral-700 rounded-md shadow-lg z-20 select-none">
           {editors.map((editor) => (
             <button
               key={editor.id}

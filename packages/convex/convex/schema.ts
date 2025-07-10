@@ -54,4 +54,12 @@ export default defineSchema({
     content: v.string(), // Log content chunk
   })
     .index("by_taskRun", ["taskRunId"]),
+  apiKeys: defineTable({
+    envVar: v.string(), // e.g. "GEMINI_API_KEY"
+    value: v.string(), // The actual API key value (encrypted in a real app)
+    displayName: v.string(), // e.g. "Gemini API Key"
+    description: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_envVar", ["envVar"]),
 });

@@ -1,16 +1,19 @@
-import type { Server } from "socket.io";
+import { api } from "@coderouter/convex/api";
+import type { Id } from "@coderouter/convex/dataModel";
 import type {
   ClientToServerEvents,
   InterServerEvents,
   ServerToClientEvents,
   SocketData,
 } from "@coderouter/shared";
+import {
+  AGENT_CONFIGS,
+  type AgentConfig,
+} from "@coderouter/shared/agentConfig";
+import type { Server } from "socket.io";
 import { createTerminal, type GlobalTerminal } from "./terminal.js";
-import { AGENT_CONFIGS, type AgentConfig } from "@coderouter/shared/agentConfig";
-import { getWorktreePath, setupProjectWorkspace } from "./workspace.js";
-import type { Id } from "@coderouter/convex/dataModel";
-import { api } from "@coderouter/convex/api";
 import { convex } from "./utils/convexClient.js";
+import { getWorktreePath, setupProjectWorkspace } from "./workspace.js";
 
 export interface AgentSpawnResult {
   agentName: string;
@@ -81,16 +84,31 @@ export async function spawnAgent(
     // Use taskRunId as terminal ID
     const terminalId = taskRunId;
 
+    // Fetch API keys from Convex
+    const apiKeys = await convex.query(api.apiKeys.getAllForAgents);
+
+    // Build environment variables including API keys
+    const envVars: Record<string, string> = {
+      ...process.env,
+      ...agent.env,
+      PROMPT: options.taskDescription,
+    } as Record<string, string>;
+
+    // Add required API keys from Convex
+    if (agent.requiredApiKeys) {
+      for (const keyConfig of agent.requiredApiKeys) {
+        if (apiKeys[keyConfig.envVar]) {
+          envVars[keyConfig.envVar] = apiKeys[keyConfig.envVar];
+        }
+      }
+    }
+
     // Create terminal for the agent
     const terminal = createTerminal(terminalId, globalTerminals, io, {
       cwd: workspaceResult.worktreePath,
       command: agent.command,
       args: agent.args(options.taskDescription),
-      env: {
-        ...process.env,
-        ...agent.env,
-        PROMPT: options.taskDescription,
-      } as Record<string, string>,
+      env: envVars,
       taskRunId,
     });
 
@@ -142,14 +160,22 @@ export async function spawnAllAgents(
 ): Promise<AgentSpawnResult[]> {
   // Spawn agents sequentially to avoid git lock conflicts
   const results: AgentSpawnResult[] = [];
-  
+
   // If selectedAgents is provided, filter AGENT_CONFIGS to only include selected agents
-  const agentsToSpawn = options.selectedAgents 
-    ? AGENT_CONFIGS.filter(agent => options.selectedAgents!.includes(agent.name))
+  const agentsToSpawn = options.selectedAgents
+    ? AGENT_CONFIGS.filter((agent) =>
+        options.selectedAgents!.includes(agent.name)
+      )
     : AGENT_CONFIGS;
-  
+
   for (const agent of agentsToSpawn) {
-    const result = await spawnAgent(agent, taskId, globalTerminals, io, options);
+    const result = await spawnAgent(
+      agent,
+      taskId,
+      globalTerminals,
+      io,
+      options
+    );
     results.push(result);
   }
 

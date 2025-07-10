@@ -95,7 +95,12 @@ export const GitDiffView: React.FC<GitDiffViewProps> = ({
       <div className="flex-1 overflow-auto p-2">
         {diffContent ? (
           <div
-            className="text-xs font-mono"
+            className="text-xs font-mono whitespace-pre"
+            style={{
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-all",
+              fontFamily: "monospace",
+            }}
             dangerouslySetInnerHTML={{ __html: htmlContent }}
           />
         ) : (
