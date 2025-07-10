@@ -45,20 +45,7 @@ export const AGENT_CONFIGS: AgentConfig[] = [
     ],
   },
   {
-    name: "codex-o3",
-    command: "codex",
-    args: (prompt: string) => [
-      "--model",
-      "o3",
-      "--sandbox",
-      "danger-full-access",
-      "--ask-for-approval",
-      "never",
-      prompt,
-    ],
-  },
-  {
-    name: "opencode",
+    name: "opencode-sonnet-4",
     command: "bunx",
     args: (prompt: string) => ["opencode-ai", "--prompt", prompt],
   },

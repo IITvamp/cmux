@@ -45,7 +45,7 @@ export function TaskTree({ task, level = 0 }: TaskTreeProps) {
             setIsExpanded(!isExpanded);
           }}
           className={clsx(
-            "w-4 h-4 mr-1 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded transition-colors",
+            "w-4 h-4 mr-1 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded transition-colors grid place-content-center",
             !hasRuns && "invisible"
           )}
           style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
