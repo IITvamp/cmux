@@ -74,6 +74,36 @@ function TaskDetailPage() {
     }
   };
 
+  // Keyboard shortcuts for navigating between runs
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Check for Ctrl+1-9 (or Cmd on Mac)
+      if ((e.ctrlKey || e.metaKey) && e.key >= '1' && e.key <= '9') {
+        e.preventDefault();
+        const keyNum = parseInt(e.key);
+        let runIndex: number;
+        
+        if (keyNum === 9) {
+          // 9 navigates to the last run
+          runIndex = flatRuns.length - 1;
+        } else {
+          // 1-8 navigate to corresponding run (0-based index)
+          runIndex = keyNum - 1;
+        }
+        
+        if (flatRuns[runIndex]) {
+          navigate({
+            to: "/task/$taskId/run/$runId",
+            params: { taskId, runId: flatRuns[runIndex]._id },
+          });
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [flatRuns, taskId, navigate]);
+
   if (!task || !taskRuns) {
     return <div className="p-8">Loading...</div>;
   }
