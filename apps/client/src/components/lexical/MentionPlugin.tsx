@@ -69,7 +69,7 @@ function MentionMenu({ files, selectedIndex, onSelect, position, hasRepository, 
           <button
             key={file.relativePath}
             onClick={() => onSelect(file)}
-            className={`w-full text-left px-2.5 py-1 text-xs flex items-center gap-1.5 transition-colors ${
+            className={`w-full text-left px-2.5 py-1 text-xs flex items-center gap-1.5 ${
               index === selectedIndex 
                 ? "bg-blue-100 dark:bg-blue-900/30 text-blue-900 dark:text-blue-100" 
                 : "hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-900 dark:text-neutral-100"
@@ -270,8 +270,12 @@ export function MentionPlugin({ repoUrl, branch }: MentionPluginProps) {
 
   // Handle keyboard navigation
   useEffect(() => {
-    const handleArrowDown = () => {
+    const handleArrowDown = (event?: KeyboardEvent) => {
       if (!isShowingMenuRef.current) return false;
+      if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
       setSelectedIndex((prev) => {
         const maxIndex = filteredFilesRef.current.length - 1;
         return prev < maxIndex ? prev + 1 : 0;
@@ -279,8 +283,12 @@ export function MentionPlugin({ repoUrl, branch }: MentionPluginProps) {
       return true;
     };
 
-    const handleArrowUp = () => {
+    const handleArrowUp = (event?: KeyboardEvent) => {
       if (!isShowingMenuRef.current) return false;
+      if (event) {
+        event.preventDefault();
+        event.stopPropagation();
+      }
       setSelectedIndex((prev) => {
         const maxIndex = filteredFilesRef.current.length - 1;
         return prev > 0 ? prev - 1 : maxIndex;
@@ -333,13 +341,13 @@ export function MentionPlugin({ repoUrl, branch }: MentionPluginProps) {
 
     const removeArrowDown = editor.registerCommand(
       KEY_ARROW_DOWN_COMMAND,
-      handleArrowDown,
+      (event) => handleArrowDown(event || undefined),
       COMMAND_PRIORITY_HIGH
     );
 
     const removeArrowUp = editor.registerCommand(
       KEY_ARROW_UP_COMMAND,
-      handleArrowUp,
+      (event) => handleArrowUp(event || undefined),
       COMMAND_PRIORITY_HIGH
     );
 
