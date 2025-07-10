@@ -10,8 +10,6 @@
 
 import type * as github from "../github.js";
 import type * as githubActions from "../githubActions.js";
-import type * as taskActions from "../taskActions.js";
-import type * as taskRunActions from "../taskRunActions.js";
 import type * as taskRuns from "../taskRuns.js";
 import type * as tasks from "../tasks.js";
 
@@ -32,8 +30,6 @@ import type {
 declare const fullApi: ApiFromModules<{
   github: typeof github;
   githubActions: typeof githubActions;
-  taskActions: typeof taskActions;
-  taskRunActions: typeof taskRunActions;
   taskRuns: typeof taskRuns;
   tasks: typeof tasks;
 }>;

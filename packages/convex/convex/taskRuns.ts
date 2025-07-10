@@ -198,7 +198,6 @@ export const getById = internalQuery({
   },
 });
 
-// Public mutation to update task run status (for tRPC usage)
 export const updateStatusPublic = mutation({
   args: {
     id: v.id("taskRuns"),
@@ -233,7 +232,6 @@ export const updateStatusPublic = mutation({
   },
 });
 
-// Public mutation to append to task run log (for tRPC usage)
 export const appendLogPublic = mutation({
   args: {
     id: v.id("taskRuns"),
