@@ -7,30 +7,20 @@ export interface AgentConfig {
 
 export const AGENT_CONFIGS: AgentConfig[] = [
   {
-    name: "claude-default",
+    name: "claude-sonnet",
     command: "claude",
     args: (prompt: string) => ["--dangerously-skip-permissions", prompt],
   },
-  // {
-  //   name: "claude-opus",
-  //   command: "claude",
-  //   args: (prompt: string) => [
-  //     "--dangerously-skip-permissions",
-  //     "--model",
-  //     "claude-opus-4-20250514",
-  //     prompt,
-  //   ],
-  // },
-  // {
-  //   name: "claude-sonnet",
-  //   command: "claude",
-  //   args: (prompt: string) => [
-  //     "--dangerously-skip-permissions",
-  //     "--model",
-  //     "claude-sonnet-4-20250514",
-  //     prompt,
-  //   ],
-  // },
+  {
+    name: "claude-opus",
+    command: "claude",
+    args: (prompt: string) => [
+      "--dangerously-skip-permissions",
+      "--model",
+      "claude-opus-4-20250514",
+      prompt,
+    ],
+  },
   {
     name: "codex-o3",
     command: "codex",
@@ -41,21 +31,34 @@ export const AGENT_CONFIGS: AgentConfig[] = [
       "danger-full-access",
       "--ask-for-approval",
       "never",
+      "--skip-git-repo-check",
       prompt,
     ],
   },
   {
-    name: "opencode-sonnet-4",
+    name: "opencode-sonnet",
     command: "bunx",
     args: (prompt: string) => ["opencode-ai", "--prompt", prompt],
   },
   {
-    name: "gemini",
+    name: "gemini-2.5-flash",
     command: "bunx",
     args: (prompt: string) => [
       "@google/gemini-cli",
       "--model",
-      "gemini-2.0-flash",
+      "gemini-2.5-flash",
+      "--yolo",
+      "--prompt",
+      prompt,
+    ],
+  },
+  {
+    name: "gemini-2.5-pro",
+    command: "bunx",
+    args: (prompt: string) => [
+      "@google/gemini-cli",
+      "--model",
+      "gemini-2.5-pro",
       "--yolo",
       "--prompt",
       prompt,

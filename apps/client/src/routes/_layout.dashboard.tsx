@@ -30,7 +30,10 @@ function DashboardComponent() {
     return stored ? JSON.parse(stored) : [];
   });
   const [selectedBranch, setSelectedBranch] = useState<string[]>([]);
-  const [selectedAgents, setSelectedAgents] = useState<string[]>([]);
+  const [selectedAgents, setSelectedAgents] = useState<string[]>(() => {
+    const stored = localStorage.getItem("selectedAgents");
+    return stored ? JSON.parse(stored) : ["claude-sonnet"];
+  });
   const [taskDescription, setTaskDescription] = useState<string>("");
   const [isStartingTask, setIsStartingTask] = useState(false);
 
@@ -59,6 +62,7 @@ function DashboardComponent() {
   // Callback for agent selection changes
   const handleAgentChange = useCallback((newAgents: string[]) => {
     setSelectedAgents(newAgents);
+    localStorage.setItem("selectedAgents", JSON.stringify(newAgents));
   }, []);
 
   // Fetch repos grouped by org
@@ -155,7 +159,8 @@ function DashboardComponent() {
           taskDescription,
           projectFullName,
           taskId,
-          selectedAgents: selectedAgents.length > 0 ? selectedAgents : undefined,
+          selectedAgents:
+            selectedAgents.length > 0 ? selectedAgents : undefined,
         },
         (response) => {
           // if (err) {
@@ -220,7 +225,7 @@ function DashboardComponent() {
           ]
         : [];
 
-  const agentOptions = AGENT_CONFIGS.map(agent => agent.name);
+  const agentOptions = AGENT_CONFIGS.map((agent) => agent.name);
 
   const navigate = useNavigate();
   const [hoveredTaskId, setHoveredTaskId] = useState<string | null>(null);

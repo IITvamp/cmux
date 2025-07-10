@@ -40,19 +40,24 @@ export default function AntdMultiSelect({
       popup: {
         root: "min-w-[200px]",
       },
+      root: "tabular-nums",
     },
     style: {
       minWidth: singleSelect ? undefined : 200,
     },
     loading,
     // Apply maxTagCount settings for multi-select
-    ...(singleSelect ? {} : {
-      ...(maxTagCount !== undefined ? {
-        maxTagCount,
-        maxTagPlaceholder: (omitted) => 
-          omitted.length ? `+${omitted.length} more` : null
-      } : {}),
-    }),
+    ...(singleSelect
+      ? {}
+      : {
+          ...(maxTagCount !== undefined
+            ? {
+                maxTagCount,
+                maxTagPlaceholder: (omitted) =>
+                  omitted.length ? `+${omitted.length} more` : null,
+              }
+            : {}),
+        }),
   };
 
   return <Select {...selectProps} />;
