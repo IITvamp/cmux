@@ -43,7 +43,7 @@
       "onAutoForward": "openBrowser"
     }
   },
-  "postCreateCommand": "npm install",
+  "postCreateCommand": "sudo chown -R node:node /workspaces/coderouter/node_modules /workspaces/coderouter/packages/convex/node_modules && npm install",
   "postStartCommand": "bash scripts/dev.sh",
   "remoteUser": "node",
   "features": {

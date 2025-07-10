@@ -47,13 +47,17 @@ RUN echo 'export NVM_DIR="$HOME/.nvm"' >> ~/.zshrc && \
     echo '[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"' >> ~/.zshrc
 
 # Set up the workspace
-WORKDIR /workspace
+WORKDIR /workspaces/coderouter
 
 # Install global npm packages using Node 22
 RUN . "$NVM_DIR/nvm.sh" && nvm use 22 && npm install -g npm@latest
 
 # Set up shell
 ENV SHELL=/bin/zsh
+
+# Create node_modules directories with correct permissions
+RUN mkdir -p /workspaces/coderouter/node_modules /workspaces/coderouter/packages/convex/node_modules && \
+    chown -R node:node /workspaces/coderouter
 
 # Copy and set entrypoint
 COPY --chown=node:node entrypoint.sh /usr/local/bin/entrypoint.sh
