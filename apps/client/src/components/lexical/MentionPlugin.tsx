@@ -1,4 +1,6 @@
+import type { FileInfo } from "@coderouter/shared";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
+import clsx from "clsx";
 import {
   $getSelection,
   $isRangeSelection,
@@ -13,9 +15,8 @@ import {
 } from "lexical";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { FileInfo } from "@coderouter/shared";
-import { useSocket } from "../../contexts/socket/use-socket";
 import { getIconForFile } from "vscode-icons-js";
+import { useSocket } from "../../contexts/socket/use-socket";
 
 const MENTION_TRIGGER = "@";
 
@@ -28,18 +29,26 @@ interface MentionMenuProps {
   isLoading: boolean;
 }
 
-function MentionMenu({ files, selectedIndex, onSelect, position, hasRepository, isLoading }: MentionMenuProps) {
+function MentionMenu({
+  files,
+  selectedIndex,
+  onSelect,
+  position,
+  hasRepository,
+  isLoading,
+}: MentionMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (menuRef.current && selectedIndex >= 0) {
-      const selectedElement = menuRef.current.children[selectedIndex] as HTMLElement;
+      const selectedElement = menuRef.current.children[
+        selectedIndex
+      ] as HTMLElement;
       if (selectedElement) {
         selectedElement.scrollIntoView({ block: "nearest" });
       }
     }
   }, [selectedIndex]);
-
 
   if (!position) return null;
 
@@ -54,29 +63,48 @@ function MentionMenu({ files, selectedIndex, onSelect, position, hasRepository, 
     >
       {isLoading ? (
         <div className="px-2.5 py-2 text-xs text-neutral-500 dark:text-neutral-400 flex items-center gap-2">
-          <svg className="animate-spin h-3 w-3" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          <svg
+            className="animate-spin h-3 w-3"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+            ></circle>
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            ></path>
           </svg>
           Loading files...
         </div>
       ) : files.length === 0 ? (
         <div className="px-2.5 py-1.5 text-xs text-neutral-500 dark:text-neutral-400">
-          {hasRepository ? "No files found" : "Please select a project to see files"}
+          {hasRepository
+            ? "No files found"
+            : "Please select a project to see files"}
         </div>
       ) : (
         files.map((file, index) => (
           <button
             key={file.relativePath}
             onClick={() => onSelect(file)}
-            className={`w-full text-left px-2.5 py-1 text-xs flex items-center gap-1.5 ${
-              index === selectedIndex 
-                ? "bg-blue-100 dark:bg-blue-900/30 text-blue-900 dark:text-blue-100" 
+            className={clsx(
+              "w-full text-left px-2.5 py-1 text-xs flex items-center gap-1.5",
+              index === selectedIndex
+                ? "bg-blue-100 dark:bg-blue-900/30 text-blue-900 dark:text-blue-100"
                 : "hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-900 dark:text-neutral-100"
-            }`}
+            )}
             type="button"
           >
-            <img 
+            <img
               src={`https://cdn.jsdelivr.net/gh/vscode-icons/vscode-icons/icons/${getIconForFile(file.name)}`}
               alt=""
               className="w-3 h-3 flex-shrink-0"
@@ -98,7 +126,10 @@ interface MentionPluginProps {
 export function MentionPlugin({ repoUrl, branch }: MentionPluginProps) {
   const [editor] = useLexicalComposerContext();
   const [isShowingMenu, setIsShowingMenu] = useState(false);
-  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const [menuPosition, setMenuPosition] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
   const [searchText, setSearchText] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [files, setFiles] = useState<FileInfo[]>([]);
@@ -112,26 +143,29 @@ export function MentionPlugin({ repoUrl, branch }: MentionPluginProps) {
     if (repoUrl && socket) {
       setIsLoading(true);
       socket.emit("list-files", { repoUrl, branch: branch || "main" });
-      
+
       // Set a timeout to stop loading after 30 seconds
       const timeoutId = setTimeout(() => {
         setIsLoading(false);
       }, 30000);
-      
-      const handleFilesResponse = (data: { files: FileInfo[]; error?: string }) => {
+
+      const handleFilesResponse = (data: {
+        files: FileInfo[];
+        error?: string;
+      }) => {
         clearTimeout(timeoutId);
         setIsLoading(false);
         if (!data.error) {
           // Filter to only show actual files, not directories
-          const fileList = data.files.filter(f => !f.isDirectory);
+          const fileList = data.files.filter((f) => !f.isDirectory);
           setFiles(fileList);
         } else {
           setFiles([]);
         }
       };
-      
+
       socket.on("list-files-response", handleFilesResponse);
-      
+
       return () => {
         clearTimeout(timeoutId);
         socket.off("list-files-response", handleFilesResponse);
@@ -146,7 +180,7 @@ export function MentionPlugin({ repoUrl, branch }: MentionPluginProps) {
   // Filter files based on search text
   useEffect(() => {
     if (searchText) {
-      const filtered = files.filter(file =>
+      const filtered = files.filter((file) =>
         file.relativePath.toLowerCase().includes(searchText.toLowerCase())
       );
       setFilteredFiles(filtered);
@@ -169,14 +203,14 @@ export function MentionPlugin({ repoUrl, branch }: MentionPluginProps) {
     (file: FileInfo) => {
       // Store the trigger node before it gets cleared
       const currentTriggerNode = triggerNodeRef.current;
-      
+
       editor.update(() => {
         const selection = $getSelection();
-        
+
         if ($isRangeSelection(selection) && currentTriggerNode) {
           const triggerText = currentTriggerNode.getTextContent();
           const mentionStartIndex = triggerText.lastIndexOf(MENTION_TRIGGER);
-          
+
           if (mentionStartIndex !== -1) {
             // Replace @ and search text with @filename and a space
             currentTriggerNode.spliceText(
@@ -209,7 +243,7 @@ export function MentionPlugin({ repoUrl, branch }: MentionPluginProps) {
 
       const text = node.getTextContent();
       const offset = selection.anchor.offset;
-      
+
       // Find the last @ before the cursor
       let mentionStartIndex = -1;
       for (let i = offset - 1; i >= 0; i--) {
@@ -298,10 +332,10 @@ export function MentionPlugin({ repoUrl, branch }: MentionPluginProps) {
 
     const handleEnter = (event?: KeyboardEvent) => {
       if (!isShowingMenuRef.current) return false;
-      
+
       const files = filteredFilesRef.current;
       const index = selectedIndexRef.current;
-      
+
       if (files.length > 0 && files[index]) {
         if (event) {
           event.preventDefault();
