@@ -96,18 +96,25 @@ export function createTerminal(
       return;
     }
 
+    // Nothing new to flush
+    if (terminal.scrollback.length === 0) {
+      return;
+    }
+
     try {
-      // Serialize the entire terminal state with all formatting
-      const serializedTerminal = terminal.serializeAddon.serialize();
-      
-      // Split serialized data into chunks of ~500KB to stay well under 1MB limit
+      // Join all pending chunks since last flush
+      const pendingData = terminal.scrollback.join("");
+      // Clear the in-memory buffer so that only new data is captured next time
+      terminal.scrollback = [];
+
+      // Split data into chunks of ~500KB to stay well under 1MB limit
       const CHUNK_SIZE = 500 * 1024; // 500KB per chunk
       const chunks: string[] = [];
-      
-      for (let i = 0; i < serializedTerminal.length; i += CHUNK_SIZE) {
-        chunks.push(serializedTerminal.slice(i, i + CHUNK_SIZE));
+
+      for (let i = 0; i < pendingData.length; i += CHUNK_SIZE) {
+        chunks.push(pendingData.slice(i, i + CHUNK_SIZE));
       }
-      
+
       // Append each chunk - Convex will automatically add _creationTime
       for (const chunk of chunks) {
         await convex.mutation(api.taskRunLogChunks.appendChunkPublic, {
@@ -123,6 +130,13 @@ export function createTerminal(
   ptyProcess.onData((data) => {
     headlessTerminal.write(data);
     io.emit("terminal-output", { terminalId, data });
+
+    // Save data to scrollback for incremental persistence
+    terminal.scrollback.push(data);
+    if (terminal.scrollback.length > terminal.maxScrollbackLines) {
+      // Remove oldest entry to cap memory usage
+      terminal.scrollback.shift();
+    }
 
     // Debounce saving to Convex
     if (taskRunId) {
