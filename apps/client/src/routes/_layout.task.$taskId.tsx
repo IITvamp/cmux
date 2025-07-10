@@ -77,8 +77,11 @@ function TaskDetailPage() {
   // Keyboard shortcuts for navigating between runs
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Check for Ctrl+1-9 (or Cmd on Mac)
-      if ((e.ctrlKey || e.metaKey) && e.key >= '1' && e.key <= '9') {
+      // Check for Ctrl+1-9 on macOS, Alt+1-9 on Windows/Linux
+      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+      const modifierPressed = isMac ? e.ctrlKey : e.altKey;
+      
+      if (modifierPressed && e.key >= '1' && e.key <= '9') {
         e.preventDefault();
         const keyNum = parseInt(e.key);
         let runIndex: number;

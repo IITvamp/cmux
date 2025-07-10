@@ -121,6 +121,15 @@ export const GitFullDiffResponseSchema = z.object({
   error: z.string().optional(),
 });
 
+export const OpenInEditorSchema = z.object({
+  editor: z.enum(['vscode', 'cursor', 'windsurf']),
+  path: z.string(),
+});
+
+export const OpenInEditorErrorSchema = z.object({
+  error: z.string(),
+});
+
 // Type exports
 export type CreateTerminal = z.infer<typeof CreateTerminalSchema>;
 export type TerminalInput = z.infer<typeof TerminalInputSchema>;
@@ -144,6 +153,8 @@ export type GitDiffResponse = z.infer<typeof GitDiffResponseSchema>;
 export type GitFileChanged = z.infer<typeof GitFileChangedSchema>;
 export type GitFullDiffRequest = z.infer<typeof GitFullDiffRequestSchema>;
 export type GitFullDiffResponse = z.infer<typeof GitFullDiffResponseSchema>;
+export type OpenInEditor = z.infer<typeof OpenInEditorSchema>;
+export type OpenInEditorError = z.infer<typeof OpenInEditorErrorSchema>;
 
 // Socket.io event map types
 export interface ClientToServerEvents {
@@ -155,6 +166,7 @@ export interface ClientToServerEvents {
   "git-status": (data: GitStatusRequest) => void;
   "git-diff": (data: GitDiffRequest) => void;
   "git-full-diff": (data: GitFullDiffRequest) => void;
+  "open-in-editor": (data: OpenInEditor) => void;
 }
 
 export interface ServerToClientEvents {
@@ -170,6 +182,7 @@ export interface ServerToClientEvents {
   "git-diff-response": (data: GitDiffResponse) => void;
   "git-file-changed": (data: GitFileChanged) => void;
   "git-full-diff-response": (data: GitFullDiffResponse) => void;
+  "open-in-editor-error": (data: OpenInEditorError) => void;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type

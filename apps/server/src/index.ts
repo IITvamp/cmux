@@ -5,6 +5,7 @@ import {
   StartTaskSchema,
   TerminalInputSchema,
   GitFullDiffRequestSchema,
+  OpenInEditorSchema,
   type ClientToServerEvents,
   type InterServerEvents,
   type ServerToClientEvents,
@@ -214,6 +215,44 @@ io.on("connection", (socket) => {
       console.error("Error getting full git diff:", error);
       socket.emit("git-full-diff-response", { 
         diff: "",
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
+  socket.on("open-in-editor", async (data) => {
+    try {
+      const { editor, path } = OpenInEditorSchema.parse(data);
+      const { exec } = await import("child_process");
+      
+      let command: string;
+      switch (editor) {
+        case "vscode":
+          command = `code "${path}"`;
+          break;
+        case "cursor":
+          command = `cursor "${path}"`;
+          break;
+        case "windsurf":
+          command = `windsurf "${path}"`;
+          break;
+        default:
+          throw new Error(`Unknown editor: ${editor}`);
+      }
+      
+      exec(command, (error) => {
+        if (error) {
+          console.error(`Error opening ${editor}:`, error);
+          socket.emit("open-in-editor-error", { 
+            error: `Failed to open ${editor}: ${error.message}` 
+          });
+        } else {
+          console.log(`Successfully opened ${path} in ${editor}`);
+        }
+      });
+    } catch (error) {
+      console.error("Error opening editor:", error);
+      socket.emit("open-in-editor-error", { 
         error: error instanceof Error ? error.message : "Unknown error"
       });
     }

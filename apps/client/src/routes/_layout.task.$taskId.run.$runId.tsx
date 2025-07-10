@@ -1,4 +1,5 @@
 import { GitDiffView } from "@/components/GitDiffView";
+import { OpenInEditorButton } from "@/components/OpenInEditorButton";
 import { TerminalView } from "@/components/TerminalView";
 import { useTerminals } from "@/hooks/useTerminals";
 import { api } from "@coderouter/convex/api";
@@ -16,6 +17,7 @@ function TaskGitDiffView({ runId }: { runId: string }) {
     id: runId as Id<"taskRuns">,
   });
   const workspacePath = taskRun?.worktreePath;
+
   if (!workspacePath) {
     return (
       <div className="flex-1 min-h-0 bg-black overflow-hidden">
@@ -23,7 +25,15 @@ function TaskGitDiffView({ runId }: { runId: string }) {
       </div>
     );
   }
-  return <GitDiffView workspacePath={workspacePath} className="h-full" />;
+
+  return (
+    <div className="relative h-full">
+      <div className="absolute top-2 right-2 z-10">
+        <OpenInEditorButton workspacePath={workspacePath} />
+      </div>
+      <GitDiffView workspacePath={workspacePath} className="h-full" />
+    </div>
+  );
 }
 
 function TaskRunComponent() {
