@@ -1,3 +1,4 @@
+import { createTerminalOptions } from "@coderouter/shared/terminal-config";
 import {
   Terminal,
   type ITerminalAddon,
@@ -38,37 +39,11 @@ export function useXTerm({ options, addons, listeners }: UseXTermProps = {}) {
   }, [listeners]);
 
   useEffect(() => {
-    const instance = new Terminal({
-      fontFamily:
-        "Menlo, Monaco, operator mono,SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace",
-      fontSize: 12,
-      theme: {
-        background: "#1e1e1e",
-        foreground: "#d4d4d4",
-        cursor: "#aeafad",
-        black: "#000000",
-        red: "#cd3131",
-        green: "#0dbc79",
-        yellow: "#e5e510",
-        blue: "#2472c8",
-        magenta: "#bc3fbc",
-        cyan: "#11a8cd",
-        white: "#e5e5e5",
-        brightBlack: "#666666",
-        brightRed: "#f14c4c",
-        brightGreen: "#23d18b",
-        brightYellow: "#f5f543",
-        brightBlue: "#3b8eea",
-        brightMagenta: "#d670d6",
-        brightCyan: "#29b8db",
-        brightWhite: "#e5e5e5",
-      },
-      // cursorStyle: "underline",
-      cursorStyle: "bar",
+    const instance = new Terminal(createTerminalOptions({
       cursorBlink: true,
       scrollback: 1000000,
       ...options,
-    });
+    }));
 
     // Load optional addons
     addons?.forEach((addon) => instance.loadAddon(addon));

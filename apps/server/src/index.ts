@@ -1,27 +1,27 @@
 import {
   CloseTerminalSchema,
   CreateTerminalSchema,
+  GitFullDiffRequestSchema,
+  ListFilesRequestSchema,
+  OpenInEditorSchema,
   ResizeSchema,
   StartTaskSchema,
   TerminalInputSchema,
-  GitFullDiffRequestSchema,
-  OpenInEditorSchema,
-  ListFilesRequestSchema,
   type ClientToServerEvents,
+  type FileInfo,
   type InterServerEvents,
   type ServerToClientEvents,
   type SocketData,
-  type FileInfo,
 } from "@coderouter/shared";
+import { minimatch } from "minimatch";
+import { promises as fs } from "node:fs";
 import { createServer } from "node:http";
+import path from "node:path";
 import { Server } from "socket.io";
 import { spawnAllAgents } from "./agentSpawner.js";
-import { createTerminal, type GlobalTerminal } from "./terminal.js";
 import { GitDiffManager } from "./gitDiff.js";
-import { promises as fs } from "node:fs";
-import path from "node:path";
-import { minimatch } from "minimatch";
 import { RepositoryManager } from "./repositoryManager.js";
+import { createTerminal, type GlobalTerminal } from "./terminal.js";
 import { getWorktreePath } from "./workspace.js";
 
 const httpServer = createServer();
@@ -114,15 +114,18 @@ io.on("connection", (socket) => {
 
       // Return the first successful agent's info (you might want to modify this to return all)
       const primaryAgent = successfulAgents[0];
-      
+
       // Set up file watching for git changes
-      gitDiffManager.watchWorkspace(primaryAgent.worktreePath, (changedPath) => {
-        io.emit("git-file-changed", { 
-          workspacePath: primaryAgent.worktreePath,
-          filePath: changedPath 
-        });
-      });
-      
+      gitDiffManager.watchWorkspace(
+        primaryAgent.worktreePath,
+        (changedPath) => {
+          io.emit("git-file-changed", {
+            workspacePath: primaryAgent.worktreePath,
+            filePath: changedPath,
+          });
+        }
+      );
+
       callback({
         taskId,
         worktreePath: primaryAgent.worktreePath,
@@ -151,7 +154,6 @@ io.on("connection", (socket) => {
   });
 
   socket.on("resize", (resizeData) => {
-    console.log("resize event received", resizeData);
     try {
       const { terminalId, cols, rows } = ResizeSchema.parse(resizeData);
       const terminal = globalTerminals.get(terminalId);
@@ -203,14 +205,17 @@ io.on("connection", (socket) => {
 
   // Keep old handlers for backwards compatibility but they're not used anymore
   socket.on("git-status", async () => {
-    socket.emit("git-status-response", { files: [], error: "Not implemented - use git-full-diff instead" });
+    socket.emit("git-status-response", {
+      files: [],
+      error: "Not implemented - use git-full-diff instead",
+    });
   });
 
   socket.on("git-diff", async () => {
-    socket.emit("git-diff-response", { 
+    socket.emit("git-diff-response", {
       path: "",
       diff: [],
-      error: "Not implemented - use git-full-diff instead"
+      error: "Not implemented - use git-full-diff instead",
     });
   });
 
@@ -221,9 +226,9 @@ io.on("connection", (socket) => {
       socket.emit("git-full-diff-response", { diff });
     } catch (error) {
       console.error("Error getting full git diff:", error);
-      socket.emit("git-full-diff-response", { 
+      socket.emit("git-full-diff-response", {
         diff: "",
-        error: error instanceof Error ? error.message : "Unknown error"
+        error: error instanceof Error ? error.message : "Unknown error",
       });
     }
   });
@@ -232,7 +237,7 @@ io.on("connection", (socket) => {
     try {
       const { editor, path } = OpenInEditorSchema.parse(data);
       const { exec } = await import("child_process");
-      
+
       let command: string;
       switch (editor) {
         case "vscode":
@@ -247,12 +252,12 @@ io.on("connection", (socket) => {
         default:
           throw new Error(`Unknown editor: ${editor}`);
       }
-      
+
       exec(command, (error) => {
         if (error) {
           console.error(`Error opening ${editor}:`, error);
-          socket.emit("open-in-editor-error", { 
-            error: `Failed to open ${editor}: ${error.message}` 
+          socket.emit("open-in-editor-error", {
+            error: `Failed to open ${editor}: ${error.message}`,
           });
         } else {
           console.log(`Successfully opened ${path} in ${editor}`);
@@ -260,8 +265,8 @@ io.on("connection", (socket) => {
       });
     } catch (error) {
       console.error("Error opening editor:", error);
-      socket.emit("open-in-editor-error", { 
-        error: error instanceof Error ? error.message : "Unknown error"
+      socket.emit("open-in-editor-error", {
+        error: error instanceof Error ? error.message : "Unknown error",
       });
     }
   });
@@ -269,30 +274,37 @@ io.on("connection", (socket) => {
   socket.on("list-files", async (data) => {
     try {
       const { repoUrl, branch, pattern } = ListFilesRequestSchema.parse(data);
-      
+
       // Get the origin path for this repository
       const worktreeInfo = await getWorktreePath({ repoUrl, branch });
-      
+
       // Ensure directories exist
       await fs.mkdir(worktreeInfo.projectPath, { recursive: true });
-      
+
       const repoManager = RepositoryManager.getInstance();
-      
+
       // Ensure the repository is cloned/fetched with deduplication
-      await repoManager.ensureRepository(repoUrl, worktreeInfo.originPath, branch || "main");
-      
+      await repoManager.ensureRepository(
+        repoUrl,
+        worktreeInfo.originPath,
+        branch || "main"
+      );
+
       // Check if the origin directory exists
       try {
         await fs.access(worktreeInfo.originPath);
       } catch {
-        console.error("Origin directory does not exist:", worktreeInfo.originPath);
-        socket.emit("list-files-response", { 
+        console.error(
+          "Origin directory does not exist:",
+          worktreeInfo.originPath
+        );
+        socket.emit("list-files-response", {
           files: [],
-          error: "Repository directory not found"
+          error: "Repository directory not found",
         });
         return;
       }
-      
+
       const ignoredPatterns = [
         "**/node_modules/**",
         "**/.git/**",
@@ -310,23 +322,27 @@ io.on("connection", (socket) => {
         "**/yarn-error.log*",
       ];
 
-      async function walkDir(dir: string, baseDir: string): Promise<FileInfo[]> {
+      async function walkDir(
+        dir: string,
+        baseDir: string
+      ): Promise<FileInfo[]> {
         const files: FileInfo[] = [];
-        
+
         try {
           const entries = await fs.readdir(dir, { withFileTypes: true });
-          
+
           for (const entry of entries) {
             const fullPath = path.join(dir, entry.name);
             const relativePath = path.relative(baseDir, fullPath);
-            
+
             // Check if path should be ignored
-            const shouldIgnore = ignoredPatterns.some(pattern => 
-              minimatch(relativePath, pattern) || minimatch(fullPath, pattern)
+            const shouldIgnore = ignoredPatterns.some(
+              (pattern) =>
+                minimatch(relativePath, pattern) || minimatch(fullPath, pattern)
             );
-            
+
             if (shouldIgnore) continue;
-            
+
             // Check if matches the optional pattern filter
             if (pattern && !minimatch(relativePath, pattern)) {
               // For directories, we still need to recurse in case files inside match
@@ -336,7 +352,7 @@ io.on("connection", (socket) => {
               }
               continue;
             }
-            
+
             if (entry.isDirectory()) {
               files.push({
                 path: fullPath,
@@ -344,7 +360,7 @@ io.on("connection", (socket) => {
                 isDirectory: true,
                 relativePath,
               });
-              
+
               // Recurse into subdirectory
               const subFiles = await walkDir(fullPath, baseDir);
               files.push(...subFiles);
@@ -360,26 +376,29 @@ io.on("connection", (socket) => {
         } catch (error) {
           console.error(`Error reading directory ${dir}:`, error);
         }
-        
+
         return files;
       }
-      
+
       // List files from the origin directory
-      const fileList = await walkDir(worktreeInfo.originPath, worktreeInfo.originPath);
-      
+      const fileList = await walkDir(
+        worktreeInfo.originPath,
+        worktreeInfo.originPath
+      );
+
       // Sort files: directories first, then alphabetically
       fileList.sort((a, b) => {
         if (a.isDirectory && !b.isDirectory) return -1;
         if (!a.isDirectory && b.isDirectory) return 1;
         return a.relativePath.localeCompare(b.relativePath);
       });
-      
+
       socket.emit("list-files-response", { files: fileList });
     } catch (error) {
       console.error("Error listing files:", error);
-      socket.emit("list-files-response", { 
+      socket.emit("list-files-response", {
         files: [],
-        error: error instanceof Error ? error.message : "Unknown error"
+        error: error instanceof Error ? error.message : "Unknown error",
       });
     }
   });

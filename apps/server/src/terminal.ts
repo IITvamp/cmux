@@ -6,6 +6,7 @@ import type {
   ServerToClientEvents,
   SocketData,
 } from "@coderouter/shared";
+import { SERVER_TERMINAL_CONFIG } from "@coderouter/shared/terminal-config";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import xtermHeadless from "@xterm/headless";
 import { spawn, type IPty } from "node-pty";
@@ -23,7 +24,7 @@ export interface GlobalTerminal {
   logDebounceTimer?: NodeJS.Timeout;
 }
 
-const MAX_SCROLLBACK_LINES = 100000;
+const MAX_SCROLLBACK_LINES = SERVER_TERMINAL_CONFIG.scrollback;
 
 export function createTerminal(
   terminalId: string,
@@ -50,8 +51,8 @@ export function createTerminal(
   }
 
   const {
-    cols = 80,
-    rows = 24,
+    cols = SERVER_TERMINAL_CONFIG.cols,
+    rows = SERVER_TERMINAL_CONFIG.rows,
     cwd = process.env.HOME,
     env = process.env as Record<string, string>,
     command,
@@ -72,8 +73,8 @@ export function createTerminal(
   const headlessTerminal = new Terminal({
     cols,
     rows,
-    scrollback: MAX_SCROLLBACK_LINES,
-    allowProposedApi: true,
+    scrollback: SERVER_TERMINAL_CONFIG.scrollback,
+    allowProposedApi: SERVER_TERMINAL_CONFIG.allowProposedApi,
   });
 
   const serializeAddon = new SerializeAddon();

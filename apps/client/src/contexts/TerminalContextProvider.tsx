@@ -1,3 +1,4 @@
+import { DEFAULT_TERMINAL_CONFIG } from "@coderouter/shared/terminal-config";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal as XTerm } from "@xterm/xterm";
@@ -36,36 +37,7 @@ export const TerminalContextProvider: React.FC<
       const terminalName = `Terminal ${nextTerminalNumber.current}`;
       nextTerminalNumber.current++;
 
-      const xterm = new XTerm({
-        fontSize: 12,
-        fontFamily:
-          "Menlo, Monaco, operator mono,SFMono-Regular,Consolas,Liberation Mono,Menlo,monospace",
-        theme: {
-          background: "#1e1e1e",
-          foreground: "#d4d4d4",
-          cursor: "#aeafad",
-          black: "#000000",
-          red: "#cd3131",
-          green: "#0dbc79",
-          yellow: "#e5e510",
-          blue: "#2472c8",
-          magenta: "#bc3fbc",
-          cyan: "#11a8cd",
-          white: "#e5e5e5",
-          brightBlack: "#666666",
-          brightRed: "#f14c4c",
-          brightGreen: "#23d18b",
-          brightYellow: "#f5f543",
-          brightBlue: "#3b8eea",
-          brightMagenta: "#d670d6",
-          brightCyan: "#29b8db",
-          brightWhite: "#e5e5e5",
-        },
-        cursorStyle: "bar",
-        cursorBlink: false,
-        allowProposedApi: true,
-        scrollback: 10000,
-      });
+      const xterm = new XTerm(DEFAULT_TERMINAL_CONFIG);
 
       const fitAddon = new FitAddon();
       xterm.loadAddon(fitAddon);

@@ -13,9 +13,16 @@
     "./agentConfig": {
       "import": "./src/agentConfig.ts",
       "types": "./src/agentConfig.ts"
+    },
+    "./terminal-config": {
+      "import": "./src/terminal-config.ts",
+      "types": "./src/terminal-config.ts"
     }
   },
   "dependencies": {
     "zod": "^3.25.67"
+  },
+  "devDependencies": {
+    "@xterm/xterm": "^5.5.0"
   }
 }

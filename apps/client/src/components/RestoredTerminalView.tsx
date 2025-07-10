@@ -1,5 +1,6 @@
 import { api } from "@coderouter/convex/api";
 import { type Id } from "@coderouter/convex/dataModel";
+import { createTerminalOptions } from "@coderouter/shared/terminal-config";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal as XTerm } from "@xterm/xterm";
@@ -25,35 +26,10 @@ export function RestoredTerminalView({ runId }: RestoredTerminalViewProps) {
     if (!terminalRef.current) return;
 
     // Create xterm instance with same theme as TerminalView
-    const xterm = new XTerm({
-      fontFamily: "Menlo, Monaco, 'Courier New', monospace",
-      fontSize: 12,
-      theme: {
-        background: "#1e1e1e",
-        foreground: "#d4d4d4",
-        cursor: "#d4d4d4",
-        black: "#000000",
-        red: "#cd3131",
-        green: "#0dbc79",
-        yellow: "#e5e510",
-        blue: "#2472c8",
-        magenta: "#bc3fbc",
-        cyan: "#11a8cd",
-        white: "#e5e5e5",
-        brightBlack: "#666666",
-        brightRed: "#f14c4c",
-        brightGreen: "#23d18b",
-        brightYellow: "#f5f543",
-        brightBlue: "#3b8eea",
-        brightMagenta: "#d670d6",
-        brightCyan: "#29b8db",
-        brightWhite: "#e5e5e5",
-      },
-      cursorStyle: "bar",
-      cursorBlink: false,
+    const xterm = new XTerm(createTerminalOptions({
       scrollback: 100000,
       convertEol: true,
-    });
+    }));
 
     const fitAddon = new FitAddon();
     const webLinksAddon = new WebLinksAddon();
