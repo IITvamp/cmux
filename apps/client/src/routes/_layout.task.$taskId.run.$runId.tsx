@@ -1,5 +1,6 @@
 import { GitDiffView } from "@/components/GitDiffView";
 import { OpenInEditorButton } from "@/components/OpenInEditorButton";
+import { RestoredTerminalView } from "@/components/RestoredTerminalView";
 import { TerminalView } from "@/components/TerminalView";
 import { useTerminals } from "@/hooks/useTerminals";
 import { api } from "@coderouter/convex/api";
@@ -47,9 +48,7 @@ function TaskRunComponent() {
         {terminal ? (
           <TerminalView key={terminal.id} terminal={terminal} isActive={true} />
         ) : (
-          <div className="flex-1 min-h-0 bg-black overflow-hidden">
-            <div className="text-white">Loading...</div>
-          </div>
+          <RestoredTerminalView runId={runId} />
         )}
       </div>
       <div className="flex-1 border-l">

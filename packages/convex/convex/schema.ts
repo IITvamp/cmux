@@ -49,4 +49,9 @@ export default defineSchema({
     repo: v.string(),
     name: v.string(),
   }).index("by_repo", ["repo"]),
+  taskRunLogChunks: defineTable({
+    taskRunId: v.id("taskRuns"),
+    content: v.string(), // Log content chunk
+  })
+    .index("by_taskRun", ["taskRunId"]),
 });

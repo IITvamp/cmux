@@ -20,7 +20,6 @@ export interface GlobalTerminal {
   maxScrollbackLines: number;
   headlessTerminal: xtermHeadless.Terminal;
   serializeAddon: SerializeAddon;
-  logBuffer?: string;
   logDebounceTimer?: NodeJS.Timeout;
 }
 
@@ -86,33 +85,37 @@ export function createTerminal(
     maxScrollbackLines: MAX_SCROLLBACK_LINES,
     headlessTerminal,
     serializeAddon,
-    logBuffer: "",
   };
 
   globalTerminals.set(terminalId, terminal);
 
   // Function to flush the log buffer to Convex
   const flushLogBuffer = async () => {
-    const disabled = true;
-    if (disabled) {
+    if (!taskRunId) {
       return;
     }
-    if (!taskRunId || !terminal.logBuffer) {
-      return;
-    }
-
-    const bufferToFlush = terminal.logBuffer;
-    terminal.logBuffer = "";
 
     try {
-      await convex.mutation(api.taskRuns.appendLogPublic, {
-        id: taskRunId as Id<"taskRuns">,
-        content: bufferToFlush,
-      });
+      // Serialize the entire terminal state with all formatting
+      const serializedTerminal = terminal.serializeAddon.serialize();
+      
+      // Split serialized data into chunks of ~500KB to stay well under 1MB limit
+      const CHUNK_SIZE = 500 * 1024; // 500KB per chunk
+      const chunks: string[] = [];
+      
+      for (let i = 0; i < serializedTerminal.length; i += CHUNK_SIZE) {
+        chunks.push(serializedTerminal.slice(i, i + CHUNK_SIZE));
+      }
+      
+      // Append each chunk - Convex will automatically add _creationTime
+      for (const chunk of chunks) {
+        await convex.mutation(api.taskRunLogChunks.appendChunkPublic, {
+          taskRunId: taskRunId as Id<"taskRuns">,
+          content: chunk,
+        });
+      }
     } catch (error) {
-      console.error("Failed to append log to Convex:", error);
-      // Re-add the buffer if the mutation failed
-      terminal.logBuffer = bufferToFlush + terminal.logBuffer;
+      console.error("Failed to append log chunks to Convex:", error);
     }
   };
 
@@ -120,16 +123,14 @@ export function createTerminal(
     headlessTerminal.write(data);
     io.emit("terminal-output", { terminalId, data });
 
-    // Buffer the output for Convex logging
+    // Debounce saving to Convex
     if (taskRunId) {
-      terminal.logBuffer = (terminal.logBuffer || "") + data;
-
       // Clear any existing debounce timer
       if (terminal.logDebounceTimer) {
         clearTimeout(terminal.logDebounceTimer);
       }
 
-      // Set a new debounce timer (100ms as requested)
+      // Set a new debounce timer (100ms)
       terminal.logDebounceTimer = setTimeout(() => {
         flushLogBuffer();
       }, 100);
@@ -141,13 +142,11 @@ export function createTerminal(
       `Terminal ${terminalId} exited with code ${exitCode} and signal ${signal}`
     );
 
-    // Flush any remaining buffered logs before exit
+    // Flush any remaining logs before exit
     if (terminal.logDebounceTimer) {
       clearTimeout(terminal.logDebounceTimer);
     }
-    if (terminal.logBuffer) {
-      await flushLogBuffer();
-    }
+    await flushLogBuffer();
 
     // Clean up the terminal from global storage
     // globalTerminals.delete(terminalId);
