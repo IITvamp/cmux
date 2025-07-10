@@ -54,7 +54,7 @@ export default function AntdMultiSelect({
             ? {
                 maxTagCount,
                 maxTagPlaceholder: (omitted) =>
-                  omitted.length ? `+${omitted.length} more` : null,
+                  omitted.length ? `+${omitted.length}` : null,
               }
             : {}),
         }),

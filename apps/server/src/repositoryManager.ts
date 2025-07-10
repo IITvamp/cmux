@@ -52,28 +52,26 @@ export class RepositoryManager {
       if (existingClone && Date.now() - existingClone.timestamp < this.OPERATION_CACHE_TIME) {
         console.log(`Reusing existing clone operation for ${repoUrl}`);
         await existingClone.promise;
-        return;
+      } else {
+        const clonePromise = this.cloneRepository(repoUrl, originPath);
+        this.operations.set(cloneKey, {
+          promise: clonePromise,
+          timestamp: Date.now(),
+        });
+
+        await clonePromise;
       }
-
-      const clonePromise = this.cloneRepository(repoUrl, originPath);
-      this.operations.set(cloneKey, {
-        promise: clonePromise,
-        timestamp: Date.now(),
-      });
-
-      await clonePromise;
+    }
+    
+    // Always fetch and checkout the requested branch
+    const fetchKey = this.getCacheKey(repoUrl, `fetch:${branch}`);
+    const existingFetch = this.operations.get(fetchKey);
+    
+    if (existingFetch && Date.now() - existingFetch.timestamp < this.OPERATION_CACHE_TIME) {
+      console.log(`Reusing existing fetch operation for ${repoUrl} branch ${branch}`);
+      await existingFetch.promise;
     } else {
-      // Fetch operation
-      const fetchKey = this.getCacheKey(repoUrl, `fetch:${branch}`);
-      const existingFetch = this.operations.get(fetchKey);
-      
-      if (existingFetch && Date.now() - existingFetch.timestamp < this.OPERATION_CACHE_TIME) {
-        console.log(`Reusing existing fetch operation for ${repoUrl} branch ${branch}`);
-        await existingFetch.promise;
-        return;
-      }
-
-      const fetchPromise = this.fetchBranch(originPath, branch);
+      const fetchPromise = this.fetchAndCheckoutBranch(originPath, branch);
       this.operations.set(fetchKey, {
         promise: fetchPromise,
         timestamp: Date.now(),
@@ -113,6 +111,55 @@ export class RepositoryManager {
     } catch (error) {
       console.warn("Failed to fetch latest changes:", error);
       // Don't throw - fetch failures are often not critical
+    }
+  }
+
+  private async fetchAndCheckoutBranch(originPath: string, branch: string): Promise<void> {
+    console.log(`Fetching and checking out branch ${branch}...`);
+    try {
+      // First check what branch we're currently on
+      const { stdout: currentBranch } = await execAsync(`git rev-parse --abbrev-ref HEAD`, {
+        cwd: originPath,
+        encoding: 'utf8'
+      });
+      
+      const trimmedCurrentBranch = currentBranch.trim();
+      
+      if (trimmedCurrentBranch === branch) {
+        // Already on the requested branch, just pull latest
+        console.log(`Already on branch ${branch}, pulling latest changes...`);
+        try {
+          await execAsync(`git pull --depth 1 origin ${branch}`, {
+            cwd: originPath,
+          });
+        } catch (pullError) {
+          console.warn(`Failed to pull latest changes for ${branch}:`, pullError);
+          // Continue anyway - we have the branch checked out
+        }
+      } else {
+        // Fetch and checkout different branch
+        try {
+          // Try to fetch the branch without specifying local name
+          await execAsync(`git fetch --depth 1 origin ${branch}`, {
+            cwd: originPath,
+          });
+          
+          // Checkout the branch
+          await execAsync(`git checkout -B ${branch} origin/${branch}`, {
+            cwd: originPath,
+          });
+        } catch (checkoutError) {
+          // If branch doesn't exist remotely, try just checking out locally
+          await execAsync(`git checkout ${branch}`, {
+            cwd: originPath,
+          });
+        }
+      }
+      
+      console.log(`Successfully on branch ${branch}`);
+    } catch (error) {
+      console.warn(`Failed to fetch/checkout branch ${branch}, falling back to current branch:`, error);
+      // Don't throw - we'll use whatever branch is currently checked out
     }
   }
 

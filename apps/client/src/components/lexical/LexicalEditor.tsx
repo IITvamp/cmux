@@ -19,6 +19,7 @@ import { HeadingNode, QuoteNode } from "@lexical/rich-text";
 import clsx from "clsx";
 import { COMMAND_PRIORITY_HIGH, KEY_ENTER_COMMAND } from "lexical";
 import { useEffect, useRef } from "react";
+import { MentionPlugin } from "./MentionPlugin";
 
 const theme = {
   ltr: "ltr",
@@ -142,6 +143,8 @@ interface LexicalEditorProps {
   padding?: React.CSSProperties;
   onSubmit?: () => void;
   value?: string;
+  repoUrl?: string;
+  branch?: string;
 }
 
 export default function LexicalEditor({
@@ -152,6 +155,8 @@ export default function LexicalEditor({
   padding,
   onSubmit,
   value,
+  repoUrl,
+  branch,
 }: LexicalEditorProps) {
   const initialConfig = {
     namespace: "TaskEditor",
@@ -209,6 +214,7 @@ export default function LexicalEditor({
         <MarkdownShortcutPlugin transformers={TRANSFORMERS} />
         <KeyboardCommandPlugin onSubmit={onSubmit} />
         <ClearEditorPlugin value={value} />
+        <MentionPlugin repoUrl={repoUrl} branch={branch} />
       </div>
     </LexicalComposer>
   );

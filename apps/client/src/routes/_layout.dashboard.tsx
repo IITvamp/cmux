@@ -256,6 +256,8 @@ function DashboardComponent() {
               onChange={handleTaskDescriptionChange}
               onSubmit={handleSubmit}
               value={taskDescription}
+              repoUrl={selectedProject[0] ? `https://github.com/${selectedProject[0]}.git` : undefined}
+              branch={effectiveSelectedBranch[0]}
               padding={{
                 paddingLeft: "14px",
                 paddingRight: "16px",

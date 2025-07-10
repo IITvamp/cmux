@@ -131,6 +131,25 @@ export const OpenInEditorErrorSchema = z.object({
   error: z.string(),
 });
 
+// File listing events
+export const ListFilesRequestSchema = z.object({
+  repoUrl: z.string(),
+  branch: z.string().optional().default("main"),
+  pattern: z.string().optional(), // Optional glob pattern for filtering
+});
+
+export const FileInfoSchema = z.object({
+  path: z.string(),
+  name: z.string(),
+  isDirectory: z.boolean(),
+  relativePath: z.string(),
+});
+
+export const ListFilesResponseSchema = z.object({
+  files: z.array(FileInfoSchema),
+  error: z.string().optional(),
+});
+
 // Type exports
 export type CreateTerminal = z.infer<typeof CreateTerminalSchema>;
 export type TerminalInput = z.infer<typeof TerminalInputSchema>;
@@ -156,6 +175,9 @@ export type GitFullDiffRequest = z.infer<typeof GitFullDiffRequestSchema>;
 export type GitFullDiffResponse = z.infer<typeof GitFullDiffResponseSchema>;
 export type OpenInEditor = z.infer<typeof OpenInEditorSchema>;
 export type OpenInEditorError = z.infer<typeof OpenInEditorErrorSchema>;
+export type ListFilesRequest = z.infer<typeof ListFilesRequestSchema>;
+export type FileInfo = z.infer<typeof FileInfoSchema>;
+export type ListFilesResponse = z.infer<typeof ListFilesResponseSchema>;
 
 // Socket.io event map types
 export interface ClientToServerEvents {
@@ -168,6 +190,7 @@ export interface ClientToServerEvents {
   "git-diff": (data: GitDiffRequest) => void;
   "git-full-diff": (data: GitFullDiffRequest) => void;
   "open-in-editor": (data: OpenInEditor) => void;
+  "list-files": (data: ListFilesRequest) => void;
 }
 
 export interface ServerToClientEvents {
@@ -184,6 +207,7 @@ export interface ServerToClientEvents {
   "git-file-changed": (data: GitFileChanged) => void;
   "git-full-diff-response": (data: GitFullDiffResponse) => void;
   "open-in-editor-error": (data: OpenInEditorError) => void;
+  "list-files-response": (data: ListFilesResponse) => void;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type

@@ -6,16 +6,23 @@ import {
   TerminalInputSchema,
   GitFullDiffRequestSchema,
   OpenInEditorSchema,
+  ListFilesRequestSchema,
   type ClientToServerEvents,
   type InterServerEvents,
   type ServerToClientEvents,
   type SocketData,
+  type FileInfo,
 } from "@coderouter/shared";
 import { createServer } from "node:http";
 import { Server } from "socket.io";
 import { spawnAllAgents } from "./agentSpawner.js";
 import { createTerminal, type GlobalTerminal } from "./terminal.js";
 import { GitDiffManager } from "./gitDiff.js";
+import { promises as fs } from "node:fs";
+import path from "node:path";
+import { minimatch } from "minimatch";
+import { RepositoryManager } from "./repositoryManager.js";
+import { getWorktreePath } from "./workspace.js";
 
 const httpServer = createServer();
 
@@ -254,6 +261,124 @@ io.on("connection", (socket) => {
     } catch (error) {
       console.error("Error opening editor:", error);
       socket.emit("open-in-editor-error", { 
+        error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
+  socket.on("list-files", async (data) => {
+    try {
+      const { repoUrl, branch, pattern } = ListFilesRequestSchema.parse(data);
+      
+      // Get the origin path for this repository
+      const worktreeInfo = await getWorktreePath({ repoUrl, branch });
+      
+      // Ensure directories exist
+      await fs.mkdir(worktreeInfo.projectPath, { recursive: true });
+      
+      const repoManager = RepositoryManager.getInstance();
+      
+      // Ensure the repository is cloned/fetched with deduplication
+      await repoManager.ensureRepository(repoUrl, worktreeInfo.originPath, branch || "main");
+      
+      // Check if the origin directory exists
+      try {
+        await fs.access(worktreeInfo.originPath);
+      } catch {
+        console.error("Origin directory does not exist:", worktreeInfo.originPath);
+        socket.emit("list-files-response", { 
+          files: [],
+          error: "Repository directory not found"
+        });
+        return;
+      }
+      
+      const ignoredPatterns = [
+        "**/node_modules/**",
+        "**/.git/**",
+        "**/dist/**",
+        "**/build/**",
+        "**/.next/**",
+        "**/coverage/**",
+        "**/.turbo/**",
+        "**/.vscode/**",
+        "**/.idea/**",
+        "**/tmp/**",
+        "**/.DS_Store",
+        "**/npm-debug.log*",
+        "**/yarn-debug.log*",
+        "**/yarn-error.log*",
+      ];
+
+      async function walkDir(dir: string, baseDir: string): Promise<FileInfo[]> {
+        const files: FileInfo[] = [];
+        
+        try {
+          const entries = await fs.readdir(dir, { withFileTypes: true });
+          
+          for (const entry of entries) {
+            const fullPath = path.join(dir, entry.name);
+            const relativePath = path.relative(baseDir, fullPath);
+            
+            // Check if path should be ignored
+            const shouldIgnore = ignoredPatterns.some(pattern => 
+              minimatch(relativePath, pattern) || minimatch(fullPath, pattern)
+            );
+            
+            if (shouldIgnore) continue;
+            
+            // Check if matches the optional pattern filter
+            if (pattern && !minimatch(relativePath, pattern)) {
+              // For directories, we still need to recurse in case files inside match
+              if (entry.isDirectory()) {
+                const subFiles = await walkDir(fullPath, baseDir);
+                files.push(...subFiles);
+              }
+              continue;
+            }
+            
+            if (entry.isDirectory()) {
+              files.push({
+                path: fullPath,
+                name: entry.name,
+                isDirectory: true,
+                relativePath,
+              });
+              
+              // Recurse into subdirectory
+              const subFiles = await walkDir(fullPath, baseDir);
+              files.push(...subFiles);
+            } else {
+              files.push({
+                path: fullPath,
+                name: entry.name,
+                isDirectory: false,
+                relativePath,
+              });
+            }
+          }
+        } catch (error) {
+          console.error(`Error reading directory ${dir}:`, error);
+        }
+        
+        return files;
+      }
+      
+      // List files from the origin directory
+      const fileList = await walkDir(worktreeInfo.originPath, worktreeInfo.originPath);
+      
+      // Sort files: directories first, then alphabetically
+      fileList.sort((a, b) => {
+        if (a.isDirectory && !b.isDirectory) return -1;
+        if (!a.isDirectory && b.isDirectory) return 1;
+        return a.relativePath.localeCompare(b.relativePath);
+      });
+      
+      socket.emit("list-files-response", { files: fileList });
+    } catch (error) {
+      console.error("Error listing files:", error);
+      socket.emit("list-files-response", { 
+        files: [],
         error: error instanceof Error ? error.message : "Unknown error"
       });
     }
