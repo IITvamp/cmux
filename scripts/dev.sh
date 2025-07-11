@@ -53,7 +53,7 @@ fi
 
 # Start convex dev and log to both stdout and file
 echo -e "${GREEN}Starting convex dev...${NC}"
-(CONVEX_AGENT_MODE=anonymous && cd packages/convex && source ~/.nvm/nvm.sh && nvm use 18 && bun x convex dev 2>&1 | tee ../../logs/convex.log) &
+(cd packages/convex && source ~/.nvm/nvm.sh && nvm use 18 && CONVEX_AGENT_MODE=anonymous bun x convex dev 2>&1 | tee ../../logs/convex.log) &
 CONVEX_PID=$!
 
 echo -e "${GREEN}Terminal app is running!${NC}"
