@@ -53,13 +53,13 @@ fi
 
 # Start convex dev and log to both stdout and file
 echo -e "${GREEN}Starting convex dev...${NC}"
-(cd packages/convex && source ~/.nvm/nvm.sh && nvm use 18 && bun x convex dev --local --local-force-upgrade 2>&1 | tee ../../logs/convex.log) &
+(CONVEX_AGENT_MODE=anonymous && cd packages/convex && source ~/.nvm/nvm.sh && nvm use 18 && bun x convex dev 2>&1 | tee ../../logs/convex.log) &
 CONVEX_PID=$!
 
 echo -e "${GREEN}Terminal app is running!${NC}"
 echo -e "${BLUE}Frontend: http://localhost:5173${NC}"
 echo -e "${BLUE}Backend: http://localhost:3001${NC}"
-echo -e "${BLUE}Convex: http://localhost:3212${NC}"
+echo -e "${BLUE}Convex: http://localhost:3210${NC}"
 echo -e "\nPress Ctrl+C to stop all services"
 
 # Wait for both processes

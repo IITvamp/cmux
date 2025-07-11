@@ -28,13 +28,13 @@
       }
     }
   },
-  "forwardPorts": [3001, 3212, 5173],
+  "forwardPorts": [3001, 3210, 5173],
   "portsAttributes": {
     "3001": {
       "label": "Backend Server",
       "onAutoForward": "notify"
     },
-    "3212": {
+    "3210": {
       "label": "Convex Dev Server",
       "onAutoForward": "notify"
     },

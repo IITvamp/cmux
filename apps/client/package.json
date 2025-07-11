@@ -38,7 +38,7 @@
     "antd": "^5.26.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "convex": "^1.25.2",
+    "convex": "1.26.0-alpha.4",
     "date-fns": "^4.1.0",
     "lexical": "^0.32.1",
     "lucide-react": "^0.525.0",

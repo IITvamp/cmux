@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "vite-node src/index.ts",
-    "dev": "VITE_CONVEX_URL=http://127.0.0.1:3212 vite-node --watch src/index.ts",
+    "dev": "VITE_CONVEX_URL=http://127.0.0.1:3210 vite-node --watch src/index.ts",
     "start-deno": "deno run -A src/index.ts",
     "dev-deno": "deno run -A --watch-hmr src/index.ts",
     "start-bun": "bun run src/index.ts",
@@ -18,7 +18,7 @@
     "@xterm/headless": "^5.5.0",
     "ansi-escape-sequences": "^6.2.4",
     "chokidar": "^4.0.3",
-    "convex": "^1.25.2",
+    "convex": "1.26.0-alpha.4",
     "minimatch": "^10.0.3",
     "node-pty": "^1.1.0-beta34",
     "socket.io": "^4.7.5",
