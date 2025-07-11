@@ -45,6 +45,7 @@ export function createTerminal(
     taskRunId?: Id<"taskRuns"> | string;
     waitForString?: string;
     prompt?: string;
+    enterKeySequence?: string;
   } = {}
 ): GlobalTerminal | null {
   if (globalTerminals.has(terminalId)) {
@@ -62,6 +63,7 @@ export function createTerminal(
     taskRunId,
     waitForString,
     prompt,
+    enterKeySequence = "\r", // Default to carriage return
   } = options;
 
   const shell = command || (platform() === "win32" ? "powershell.exe" : "zsh");
@@ -153,14 +155,27 @@ export function createTerminal(
         if (prompt) {
           setTimeout(() => {
             console.log(`Sending prompt to stdin for terminal ${terminalId}`);
-            // First send the prompt text
-            ptyProcess.write(prompt);
-            // Then send Enter key separately after a small delay
-            setTimeout(() => {
-              console.log(`Sending Enter key for terminal ${terminalId}`);
-              ptyProcess.write("\r");
-            }, 100);
-          }, 1000); // Small delay to ensure the terminal is ready
+
+            // Send character by character to simulate typing
+            let charIndex = 0;
+            const sendNextChar = () => {
+              if (charIndex < prompt.length) {
+                const char = prompt[charIndex];
+                ptyProcess.write(char);
+                charIndex++;
+              } else {
+                // After all characters are sent, send Enter
+                setTimeout(() => {
+                  console.log(
+                    `Sending Enter key (${JSON.stringify(enterKeySequence)}) for terminal ${terminalId}`
+                  );
+                  ptyProcess.write(enterKeySequence);
+                }, 100);
+              }
+            };
+
+            sendNextChar();
+          }, 1500); // Wait 1.5 seconds to ensure terminal is ready
         }
 
         // Clear accumulated output to save memory

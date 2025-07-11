@@ -112,6 +112,7 @@ export async function spawnAgent(
       taskRunId,
       waitForString: agent.waitForString,
       prompt: agent.waitForString ? options.taskDescription : undefined,
+      enterKeySequence: agent.enterKeySequence,
     });
 
     if (!terminal) {

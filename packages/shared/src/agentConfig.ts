@@ -9,6 +9,7 @@ export interface AgentConfig {
     description?: string;
   }[];
   waitForString?: string;
+  enterKeySequence?: string; // Custom enter key sequence, defaults to "\r"
 }
 
 export const AGENT_CONFIGS: AgentConfig[] = [
@@ -49,13 +50,15 @@ export const AGENT_CONFIGS: AgentConfig[] = [
   {
     name: "gemini-2.5-flash",
     command: "bunx",
-    args: (_prompt: string) => [
+    args: (prompt: string) => [
       "@google/gemini-cli",
       "--model",
       "gemini-2.5-flash",
       "--yolo",
+      "--prompt",
+      prompt,
     ],
-    waitForString: "Type your message",
+    // waitForString: "Type your message",
     requiredApiKeys: [
       {
         envVar: "GEMINI_API_KEY",
@@ -67,13 +70,15 @@ export const AGENT_CONFIGS: AgentConfig[] = [
   {
     name: "gemini-2.5-pro",
     command: "bunx",
-    args: (_prompt: string) => [
+    args: (prompt: string) => [
       "@google/gemini-cli",
       "--model",
       "gemini-2.5-pro",
       "--yolo",
+      "--prompt",
+      prompt,
     ],
-    waitForString: "Type your message",
+    // waitForString: "Type your message",
     requiredApiKeys: [
       {
         envVar: "GEMINI_API_KEY",
