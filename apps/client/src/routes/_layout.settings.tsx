@@ -25,6 +25,8 @@ function SettingsComponent() {
   >({});
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [isSaving, setIsSaving] = useState(false);
+  const [worktreePath, setWorktreePath] = useState<string>("");
+  const [originalWorktreePath, setOriginalWorktreePath] = useState<string>("");
 
   // Get all required API keys from agent configs
   const requiredApiKeys = Array.from(
@@ -43,6 +45,14 @@ function SettingsComponent() {
     },
   });
 
+  // Query workspace settings
+  const { data: workspaceSettings } = useQuery({
+    queryKey: ["workspaceSettings"],
+    queryFn: async () => {
+      return await convex.query(api.workspaceSettings.get);
+    },
+  });
+
   // Initialize form values when data loads
   useEffect(() => {
     if (existingKeys) {
@@ -54,6 +64,14 @@ function SettingsComponent() {
       setOriginalApiKeyValues(values);
     }
   }, [existingKeys]);
+
+  // Initialize worktree path when data loads
+  useEffect(() => {
+    if (workspaceSettings !== undefined) {
+      setWorktreePath(workspaceSettings?.worktreePath || "");
+      setOriginalWorktreePath(workspaceSettings?.worktreePath || "");
+    }
+  }, [workspaceSettings]);
 
   // Mutation to save API keys
   const saveApiKeyMutation = useMutation({
@@ -77,12 +95,17 @@ function SettingsComponent() {
 
   // Check if there are any changes
   const hasChanges = () => {
+    // Check worktree path changes
+    const worktreePathChanged = worktreePath !== originalWorktreePath;
+
     // Check all required API keys for changes
-    return requiredApiKeys.some((keyConfig) => {
+    const apiKeysChanged = requiredApiKeys.some((keyConfig) => {
       const currentValue = apiKeyValues[keyConfig.envVar] || "";
       const originalValue = originalApiKeyValues[keyConfig.envVar] || "";
       return currentValue !== originalValue;
     });
+
+    return worktreePathChanged || apiKeysChanged;
   };
 
   const saveApiKeys = async () => {
@@ -91,6 +114,14 @@ function SettingsComponent() {
     try {
       let savedCount = 0;
       let deletedCount = 0;
+
+      // Save worktree path if changed
+      if (worktreePath !== originalWorktreePath) {
+        await convex.mutation(api.workspaceSettings.update, {
+          worktreePath: worktreePath || undefined,
+        });
+        setOriginalWorktreePath(worktreePath);
+      }
 
       for (const key of requiredApiKeys) {
         const value = apiKeyValues[key.envVar] || "";
@@ -191,6 +222,41 @@ function SettingsComponent() {
                       System
                     </button>
                   </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Worktree Path */}
+            <div className="bg-white dark:bg-neutral-950 rounded-lg border border-neutral-200 dark:border-neutral-800">
+              <div className="px-4 py-3 border-b border-neutral-200 dark:border-neutral-800">
+                <h2 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                  Worktree Location
+                </h2>
+              </div>
+              <div className="p-4">
+                <div>
+                  <label
+                    htmlFor="worktreePath"
+                    className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2"
+                  >
+                    Custom Worktree Path
+                  </label>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-3">
+                    Specify where to store git worktrees. Leave empty to use the
+                    default location. You can use ~ for your home directory.
+                  </p>
+                  <input
+                    type="text"
+                    id="worktreePath"
+                    value={worktreePath}
+                    onChange={(e) => setWorktreePath(e.target.value)}
+                    className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100"
+                    placeholder="~/my-custom-worktrees"
+                    autoComplete="off"
+                  />
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-2">
+                    Default location: ~/cmux-worktrees
+                  </p>
                 </div>
               </div>
             </div>

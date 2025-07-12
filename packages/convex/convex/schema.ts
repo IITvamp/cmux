@@ -62,4 +62,9 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_envVar", ["envVar"]),
+  workspaceSettings: defineTable({
+    worktreePath: v.optional(v.string()), // Custom path for git worktrees
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }),
 });

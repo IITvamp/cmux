@@ -1,5 +1,5 @@
-import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
+import { mutation, query } from "./_generated/server";
 
 export const getAll = query({
   args: {},
@@ -75,11 +75,11 @@ export const getAllForAgents = query({
   handler: async (ctx) => {
     const apiKeys = await ctx.db.query("apiKeys").collect();
     const keyMap: Record<string, string> = {};
-    
+
     for (const key of apiKeys) {
       keyMap[key.envVar] = key.value;
     }
-    
+
     return keyMap;
   },
 });

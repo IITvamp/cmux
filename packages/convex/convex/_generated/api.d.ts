@@ -14,6 +14,7 @@ import type * as githubActions from "../githubActions.js";
 import type * as taskRunLogChunks from "../taskRunLogChunks.js";
 import type * as taskRuns from "../taskRuns.js";
 import type * as tasks from "../tasks.js";
+import type * as workspaceSettings from "../workspaceSettings.js";
 
 import type {
   ApiFromModules,
@@ -36,6 +37,7 @@ declare const fullApi: ApiFromModules<{
   taskRunLogChunks: typeof taskRunLogChunks;
   taskRuns: typeof taskRuns;
   tasks: typeof tasks;
+  workspaceSettings: typeof workspaceSettings;
 }>;
 declare const fullApiWithMounts: typeof fullApi;
 

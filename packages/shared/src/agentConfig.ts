@@ -45,7 +45,24 @@ export const AGENT_CONFIGS: AgentConfig[] = [
   {
     name: "opencode-sonnet",
     command: "bunx",
-    args: (prompt: string) => ["opencode-ai", "--prompt", prompt],
+    args: (prompt: string) => [
+      "opencode-ai@latest",
+      "--model",
+      "sonnet",
+      "--prompt",
+      prompt,
+    ],
+  },
+  {
+    name: "opencode-kimi-k2",
+    command: "bunx",
+    args: (prompt: string) => [
+      "opencode-ai@latest",
+      "--model",
+      "kimi-k2",
+      "--prompt",
+      prompt,
+    ],
   },
   {
     name: "gemini-2.5-flash",
