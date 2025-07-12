@@ -15,23 +15,31 @@ export interface AgentConfig {
 export const AGENT_CONFIGS: AgentConfig[] = [
   {
     name: "claude-sonnet",
-    command: "claude",
-    args: (prompt: string) => ["--dangerously-skip-permissions", prompt],
+    command: "bunx",
+    args: (prompt: string) => [
+      "@anthropic-ai/claude-code",
+      "--model",
+      "claude-sonnet-4-20250514",
+      "--dangerously-skip-permissions",
+      prompt,
+    ],
   },
   {
     name: "claude-opus",
-    command: "claude",
+    command: "bunx",
     args: (prompt: string) => [
-      "--dangerously-skip-permissions",
+      "@anthropic-ai/claude-code",
       "--model",
       "claude-opus-4-20250514",
+      "--dangerously-skip-permissions",
       prompt,
     ],
   },
   {
     name: "codex-o3",
-    command: "codex",
+    command: "bunx",
     args: (prompt: string) => [
+      "@openai/codex",
       "--model",
       "o3",
       "--sandbox",
