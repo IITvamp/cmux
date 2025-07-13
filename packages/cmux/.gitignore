@@ -1,5 +1,6 @@
 node_modules/
 dist/
+upload-artifact/
 *.log
 .DS_Store
 .env

@@ -14,11 +14,13 @@
   "scripts": {
     "build": "tsc",
     "build:app": "echo 'Vite app should be built and copied to public/'",
-    "prepublishOnly": "npm run build",
     "start": "node dist/index.js",
     "dev": "tsx watch src/index.ts",
-    "test": "tsx src/test-env-leak.ts",
-    "typecheck": "tsc --noEmit"
+    "test": "tsx scripts/test-env-leak.ts",
+    "typecheck": "tsc --noEmit",
+    "prepare-publish": "npm run build && tsx scripts/prepare-publish.ts",
+    "check-publish": "tsx scripts/check-upload-artifact.ts",
+    "secure-publish": "npm run prepare-publish && npm run check-publish && echo 'Ready to publish! Run: cd upload-artifact && npm publish'"
   },
   "keywords": [
     "socket.io",

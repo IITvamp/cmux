@@ -53,7 +53,8 @@ function checkForEnvLeaks(): void {
         }
         
         // Check file contents for sensitive patterns
-        if (item.name.endsWith('.js') || item.name.endsWith('.ts') || item.name.endsWith('.json')) {
+        if ((item.name.endsWith('.js') || item.name.endsWith('.ts') || item.name.endsWith('.json')) && 
+            !item.name.includes('test-env-leak') && !item.name.includes('check-publish-security')) {
           try {
             const content = fs.readFileSync(fullPath, 'utf-8');
             for (const pattern of sensitivePatterns) {
