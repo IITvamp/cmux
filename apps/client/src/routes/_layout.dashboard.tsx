@@ -17,7 +17,7 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useAction, useMutation } from "convex/react";
-import { Archive, Command, Mic } from "lucide-react";
+import { Archive, Cloud, Command, HardDrive, Mic } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 export const Route = createFileRoute("/_layout/dashboard")({
@@ -36,6 +36,10 @@ function DashboardComponent() {
   });
   const [taskDescription, setTaskDescription] = useState<string>("");
   const [isStartingTask, setIsStartingTask] = useState(false);
+  const [isCloudMode, setIsCloudMode] = useState<boolean>(() => {
+    const stored = localStorage.getItem("isCloudMode");
+    return stored ? JSON.parse(stored) : true;
+  });
 
   // Callback for task description changes
   const handleTaskDescriptionChange = useCallback((value: string) => {
@@ -161,6 +165,7 @@ function DashboardComponent() {
           taskId,
           selectedAgents:
             selectedAgents.length > 0 ? selectedAgents : undefined,
+          isCloudMode,
         },
         (response) => {
           // if (err) {
@@ -187,6 +192,7 @@ function DashboardComponent() {
     createTask,
     handleTaskDescriptionChange,
     socket,
+    isCloudMode,
   ]);
 
   // Fetch repos on mount if none exist
@@ -326,6 +332,48 @@ function DashboardComponent() {
               </div>
 
               <div className="flex items-center gap-2.5">
+                {/* Cloud/Local Mode Toggle */}
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => {
+                          const newMode = !isCloudMode;
+                          setIsCloudMode(newMode);
+                          localStorage.setItem("isCloudMode", JSON.stringify(newMode));
+                        }}
+                        className={clsx(
+                          "relative flex items-center h-5 w-9 rounded-full transition-colors",
+                          "border border-neutral-200 dark:border-neutral-600",
+                          isCloudMode
+                            ? "bg-blue-500 dark:bg-blue-600"
+                            : "bg-neutral-200 dark:bg-neutral-700"
+                        )}
+                      >
+                        <span
+                          className={clsx(
+                            "absolute flex items-center justify-center h-4 w-4 rounded-full bg-white dark:bg-neutral-200 shadow-sm transition-transform",
+                            isCloudMode ? "translate-x-4" : "translate-x-0.5"
+                          )}
+                        >
+                          {isCloudMode ? (
+                            <Cloud className="w-2.5 h-2.5 text-blue-500" />
+                          ) : (
+                            <HardDrive className="w-2.5 h-2.5 text-neutral-600" />
+                          )}
+                        </span>
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent
+                      side="bottom"
+                      className="bg-black text-white border-black [&>*:last-child]:bg-black [&>*:last-child]:fill-black"
+                      style={{ "--primary": "black" } as React.CSSProperties}
+                    >
+                      {isCloudMode ? "Cloud Mode" : "Local Mode"}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+
                 <button
                   className={clsx(
                     "p-1.5 rounded-full",
