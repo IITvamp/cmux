@@ -16,6 +16,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { getIconForFile } from "vscode-icons-js";
+import fuzzysort from "fuzzysort";
 import { useSocket } from "../../contexts/socket/use-socket";
 
 const MENTION_TRIGGER = "@";
@@ -132,29 +133,21 @@ export function MentionPlugin({ repoUrl, branch }: MentionPluginProps) {
   } | null>(null);
   const [searchText, setSearchText] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [files, setFiles] = useState<FileInfo[]>([]);
   const [filteredFiles, setFilteredFiles] = useState<FileInfo[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const triggerNodeRef = useRef<TextNode | null>(null);
   const { socket } = useSocket();
-  const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Fetch files based on search text (with debouncing)
+  // Fetch all files once when repository URL is available
   useEffect(() => {
-    if (repoUrl && socket && isShowingMenu) {
-      // Clear any existing timeout
-      if (searchDebounceRef.current) {
-        clearTimeout(searchDebounceRef.current);
-      }
-
-      // Debounce the search request
-      searchDebounceRef.current = setTimeout(() => {
-        setIsLoading(true);
-        socket.emit("list-files", { 
-          repoUrl, 
-          branch: branch || "main",
-          pattern: searchText || undefined // Send pattern for fuzzy search
-        });
-      }, 150); // 150ms debounce
+    if (repoUrl && socket) {
+      setIsLoading(true);
+      socket.emit("list-files", { 
+        repoUrl, 
+        branch: branch || "main"
+        // Don't send pattern - we want all files
+      });
 
       const handleFilesResponse = (data: {
         files: FileInfo[];
@@ -164,27 +157,41 @@ export function MentionPlugin({ repoUrl, branch }: MentionPluginProps) {
         if (!data.error) {
           // Filter to only show actual files, not directories
           const fileList = data.files.filter((f) => !f.isDirectory);
-          setFilteredFiles(fileList);
-          setSelectedIndex(0);
+          setFiles(fileList);
         } else {
-          setFilteredFiles([]);
+          setFiles([]);
         }
       };
 
       socket.on("list-files-response", handleFilesResponse);
 
       return () => {
-        if (searchDebounceRef.current) {
-          clearTimeout(searchDebounceRef.current);
-        }
         socket.off("list-files-response", handleFilesResponse);
       };
     } else if (!repoUrl) {
       // If no repository URL, set empty files list
-      setFilteredFiles([]);
+      setFiles([]);
       setIsLoading(false);
     }
-  }, [repoUrl, branch, socket, searchText, isShowingMenu]);
+  }, [repoUrl, branch, socket]);
+
+  // Filter files based on search text using fuzzysort
+  useEffect(() => {
+    if (searchText) {
+      // Use fuzzysort for fuzzy matching
+      const results = fuzzysort.go(searchText, files, {
+        key: 'relativePath',
+        threshold: -10000, // Show all results
+        limit: 50 // Limit for performance
+      });
+      
+      setFilteredFiles(results.map(result => result.obj));
+      setSelectedIndex(0);
+    } else {
+      setFilteredFiles(files);
+      setSelectedIndex(0);
+    }
+  }, [searchText, files]);
 
   const hideMenu = useCallback(() => {
     setIsShowingMenu(false);
