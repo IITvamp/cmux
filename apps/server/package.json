@@ -19,6 +19,7 @@
     "ansi-escape-sequences": "^6.2.4",
     "chokidar": "^4.0.3",
     "convex": "1.26.0-alpha.4",
+    "fuzzysort": "^3.1.0",
     "minimatch": "^10.0.3",
     "node-pty": "^1.1.0-beta34",
     "socket.io": "^4.7.5",

@@ -14,6 +14,7 @@ import {
   type SocketData,
 } from "@coderouter/shared";
 import { minimatch } from "minimatch";
+import fuzzysort from "fuzzysort";
 import { promises as fs } from "node:fs";
 import { createServer } from "node:http";
 import path from "node:path";
@@ -343,24 +344,19 @@ io.on("connection", (socket) => {
 
             if (shouldIgnore) continue;
 
-            // Check if matches the optional pattern filter
-            if (pattern && !minimatch(relativePath, pattern)) {
-              // For directories, we still need to recurse in case files inside match
-              if (entry.isDirectory()) {
-                const subFiles = await walkDir(fullPath, baseDir);
-                files.push(...subFiles);
-              }
-              continue;
-            }
-
-            if (entry.isDirectory()) {
+            // Skip pattern matching here - we'll do fuzzy matching later
+            // For directories, we still need to recurse to get all files
+            if (entry.isDirectory() && !pattern) {
+              // Only add directory if no pattern (for browsing)
               files.push({
                 path: fullPath,
                 name: entry.name,
                 isDirectory: true,
                 relativePath,
               });
+            }
 
+            if (entry.isDirectory()) {
               // Recurse into subdirectory
               const subFiles = await walkDir(fullPath, baseDir);
               files.push(...subFiles);
@@ -381,17 +377,41 @@ io.on("connection", (socket) => {
       }
 
       // List files from the origin directory
-      const fileList = await walkDir(
+      let fileList = await walkDir(
         worktreeInfo.originPath,
         worktreeInfo.originPath
       );
 
-      // Sort files: directories first, then alphabetically
-      fileList.sort((a, b) => {
-        if (a.isDirectory && !b.isDirectory) return -1;
-        if (!a.isDirectory && b.isDirectory) return 1;
-        return a.relativePath.localeCompare(b.relativePath);
-      });
+      // Apply fuzzysort fuzzy matching if pattern is provided
+      if (pattern) {
+        // Prepare file paths for fuzzysort
+        const filePaths = fileList.map(f => f.relativePath);
+        
+        // Use fuzzysort to search and sort files
+        const results = fuzzysort.go(pattern, filePaths, {
+          threshold: -10000, // Show all results, even poor matches
+          limit: 1000, // Limit results for performance
+        });
+        
+        // Create a map for quick lookup
+        const fileMap = new Map(fileList.map(f => [f.relativePath, f]));
+        
+        // Rebuild fileList based on fuzzysort results
+        fileList = results.map(result => fileMap.get(result.target)!).filter(Boolean);
+        
+        // Add any files that didn't match at the end (if we want to show all files)
+        // Uncomment if you want to show non-matching files at the bottom
+        // const matchedPaths = new Set(results.map(r => r.target));
+        // const unmatchedFiles = fileList.filter(f => !matchedPaths.has(f.relativePath));
+        // fileList = [...fileList, ...unmatchedFiles];
+      } else {
+        // Only sort by directory/name when there's no search query
+        fileList.sort((a, b) => {
+          if (a.isDirectory && !b.isDirectory) return -1;
+          if (!a.isDirectory && b.isDirectory) return 1;
+          return a.relativePath.localeCompare(b.relativePath);
+        });
+      }
 
       socket.emit("list-files-response", { files: fileList });
     } catch (error) {

@@ -105,7 +105,7 @@ function MentionMenu({
             type="button"
           >
             <img
-              src={`https://cdn.jsdelivr.net/gh/vscode-icons/vscode-icons/icons/${getIconForFile(file.name)}`}
+              src={`https://cdn.jsdelivr.net/gh/vscode-icons/vscode-icons/icons/${file.name === 'Dockerfile' ? 'file_type_docker.svg' : getIconForFile(file.name)}`}
               alt=""
               className="w-3 h-3 flex-shrink-0"
             />
@@ -132,64 +132,59 @@ export function MentionPlugin({ repoUrl, branch }: MentionPluginProps) {
   } | null>(null);
   const [searchText, setSearchText] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
-  const [files, setFiles] = useState<FileInfo[]>([]);
   const [filteredFiles, setFilteredFiles] = useState<FileInfo[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const triggerNodeRef = useRef<TextNode | null>(null);
   const { socket } = useSocket();
+  const searchDebounceRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Fetch files when repository URL is available
+  // Fetch files based on search text (with debouncing)
   useEffect(() => {
-    if (repoUrl && socket) {
-      setIsLoading(true);
-      socket.emit("list-files", { repoUrl, branch: branch || "main" });
+    if (repoUrl && socket && isShowingMenu) {
+      // Clear any existing timeout
+      if (searchDebounceRef.current) {
+        clearTimeout(searchDebounceRef.current);
+      }
 
-      // Set a timeout to stop loading after 30 seconds
-      const timeoutId = setTimeout(() => {
-        setIsLoading(false);
-      }, 30000);
+      // Debounce the search request
+      searchDebounceRef.current = setTimeout(() => {
+        setIsLoading(true);
+        socket.emit("list-files", { 
+          repoUrl, 
+          branch: branch || "main",
+          pattern: searchText || undefined // Send pattern for fuzzy search
+        });
+      }, 150); // 150ms debounce
 
       const handleFilesResponse = (data: {
         files: FileInfo[];
         error?: string;
       }) => {
-        clearTimeout(timeoutId);
         setIsLoading(false);
         if (!data.error) {
           // Filter to only show actual files, not directories
           const fileList = data.files.filter((f) => !f.isDirectory);
-          setFiles(fileList);
+          setFilteredFiles(fileList);
+          setSelectedIndex(0);
         } else {
-          setFiles([]);
+          setFilteredFiles([]);
         }
       };
 
       socket.on("list-files-response", handleFilesResponse);
 
       return () => {
-        clearTimeout(timeoutId);
+        if (searchDebounceRef.current) {
+          clearTimeout(searchDebounceRef.current);
+        }
         socket.off("list-files-response", handleFilesResponse);
       };
-    } else {
+    } else if (!repoUrl) {
       // If no repository URL, set empty files list
-      setFiles([]);
+      setFilteredFiles([]);
       setIsLoading(false);
     }
-  }, [repoUrl, branch, socket]);
-
-  // Filter files based on search text
-  useEffect(() => {
-    if (searchText) {
-      const filtered = files.filter((file) =>
-        file.relativePath.toLowerCase().includes(searchText.toLowerCase())
-      );
-      setFilteredFiles(filtered);
-      setSelectedIndex(0);
-    } else {
-      setFilteredFiles(files);
-      setSelectedIndex(0);
-    }
-  }, [searchText, files]);
+  }, [repoUrl, branch, socket, searchText, isShowingMenu]);
 
   const hideMenu = useCallback(() => {
     setIsShowingMenu(false);
