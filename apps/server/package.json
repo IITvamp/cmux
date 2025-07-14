@@ -10,19 +10,23 @@
     "start-deno": "deno run -A src/index.ts",
     "dev-deno": "deno run -A --watch-hmr src/index.ts",
     "start-bun": "bun run src/index.ts",
-    "dev-bun": "bun run --hot src/index.ts"
+    "dev-bun": "bun run --hot src/index.ts",
+    "daytona": "bun x vite-node scripts/hello-daytona.ts"
   },
   "dependencies": {
     "@coderouter/convex": "file:../../packages/convex",
     "@coderouter/shared": "file:../../packages/shared",
+    "@daytonaio/sdk": "^0.22.1",
     "@xterm/headless": "^5.5.0",
     "ansi-escape-sequences": "^6.2.4",
     "chokidar": "^4.0.3",
     "convex": "1.26.0-alpha.4",
+    "dotenv": "^16.6.1",
     "fuzzysort": "^3.1.0",
     "minimatch": "^10.0.3",
     "node-pty": "^1.1.0-beta34",
     "socket.io": "^4.7.5",
+    "tar": "^7.4.3",
     "vite-node": "^3.2.4",
     "zod": "^3.25.67"
   }
