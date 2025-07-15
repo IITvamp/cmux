@@ -3,12 +3,12 @@
   "version": "1.0.0",
   "type": "module",
   "private": true,
-  "main": "./src/socket-schemas.ts",
-  "types": "./src/socket-schemas.ts",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
   "exports": {
     ".": {
-      "import": "./src/socket-schemas.ts",
-      "types": "./src/socket-schemas.ts"
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
     },
     "./agentConfig": {
       "import": "./src/agentConfig.ts",
@@ -17,6 +17,10 @@
     "./terminal-config": {
       "import": "./src/terminal-config.ts",
       "types": "./src/terminal-config.ts"
+    },
+    "./worker-schemas": {
+      "import": "./src/worker-schemas.ts",
+      "types": "./src/worker-schemas.ts"
     }
   },
   "dependencies": {

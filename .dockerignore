@@ -1,0 +1,31 @@
+# Dependency directories
+node_modules/
+.nyc_output/
+.pnpm-store/
+.yarn/
+.yarn-cache/
+.bun-install-cache/
+
+# Build artifacts
+dist/
+build/
+coverage/
+
+# Logs and debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# OS & editor junk
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment files
+.env
+.env.*
