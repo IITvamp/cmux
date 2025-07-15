@@ -7,39 +7,39 @@ try {
   // fake the cwd to be worker dir
   // process.chdir(path.join(import.meta.dirname, ".."));
 
-  // const image = Image.fromDockerfile("Dockerfile");
-  const image = Image.base("docker:28.3.2-dind")
-    .runCommands(
-      "apk add --no-cache curl python3 make g++ linux-headers bash nodejs npm"
-    )
-    .runCommands("which npm && npm --version")
-    .runCommands("curl -fsSL https://bun.sh/install | bash")
-    .runCommands("which bun && bun --version")
-    .addLocalDir("apps", "/coderouter/apps")
-    .addLocalDir("packages", "/coderouter/packages")
-    .addLocalFile("package.json", "/coderouter/package.json")
-    .addLocalFile("package-lock.json", "/coderouter/package-lock.json")
-    .runCommands("npm install")
-    .env({
-      PATH: "/root/.bun/bin:$PATH",
-    })
-    .runCommands("mkdir -p /builtins")
-    .runCommands(
-      "bun build /coderouter/apps/worker/src/index.ts --target node --outdir /builtins/build"
-    )
-    .runCommands("cp -r /coderouter/apps/worker/build /builtins/build")
-    .addLocalFile(
-      "apps/worker/wait-for-docker.sh",
-      "/usr/local/bin/wait-for-docker.sh"
-    )
-    .addLocalFile("apps/worker/start-up.sh", "/usr/local/bin/startup.sh")
-    .runCommands("mkdir -p /workspace")
-    .env({
-      NODE_ENV: "production",
-      WORKER_PORT: "3002",
-      MANAGEMENT_PORT: "3003",
-    })
-    .entrypoint(["/startup.sh"]);
+  const image = Image.fromDockerfile("Dockerfile");
+  // const image = Image.base("docker:28.3.2-dind")
+  //   .runCommands(
+  //     "apk add --no-cache curl python3 make g++ linux-headers bash nodejs npm"
+  //   )
+  //   .runCommands("which npm && npm --version")
+  //   .runCommands("curl -fsSL https://bun.sh/install | bash")
+  //   .runCommands("which bun && bun --version")
+  //   .addLocalDir("apps", "/coderouter/apps")
+  //   .addLocalDir("packages", "/coderouter/packages")
+  //   .addLocalFile("package.json", "/coderouter/package.json")
+  //   .addLocalFile("package-lock.json", "/coderouter/package-lock.json")
+  //   .runCommands("npm install")
+  //   .env({
+  //     PATH: "/root/.bun/bin:$PATH",
+  //   })
+  //   .runCommands("mkdir -p /builtins")
+  //   .runCommands(
+  //     "bun build /coderouter/apps/worker/src/index.ts --target node --outdir /builtins/build"
+  //   )
+  //   .runCommands("cp -r /coderouter/apps/worker/build /builtins/build")
+  //   .addLocalFile(
+  //     "apps/worker/wait-for-docker.sh",
+  //     "/usr/local/bin/wait-for-docker.sh"
+  //   )
+  //   .addLocalFile("apps/worker/start-up.sh", "/usr/local/bin/startup.sh")
+  //   .runCommands("mkdir -p /workspace")
+  //   .env({
+  //     NODE_ENV: "production",
+  //     WORKER_PORT: "3002",
+  //     MANAGEMENT_PORT: "3003",
+  //   })
+  //   .entrypoint(["/startup.sh"]);
 
   console.log("skibidi");
   const fk = await daytona.snapshot.create(

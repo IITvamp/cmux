@@ -1,0 +1,9 @@
+{
+  "name": "@coderouter/scripts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "morphcloud": "^0.0.14"
+  }
+}
