@@ -14,9 +14,11 @@ try {
     )
     .runCommands("which npm && npm --version")
     .runCommands("curl -fsSL https://bun.sh/install | bash")
-    .addLocalDir("apps/worker", "/coderouter/apps/worker")
-    .addLocalDir("packages/shared", "/coderouter/packages/shared")
+    .runCommands("which bun && bun --version")
+    .addLocalDir("apps", "/coderouter/apps")
+    .addLocalDir("packages", "/coderouter/packages")
     .addLocalFile("package.json", "/coderouter/package.json")
+    .addLocalFile("package-lock.json", "/coderouter/package-lock.json")
     .runCommands("npm install")
     .env({
       PATH: "/root/.bun/bin:$PATH",
