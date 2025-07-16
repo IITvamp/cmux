@@ -1,4 +1,8 @@
 import { Daytona, Image } from "@daytonaio/sdk";
+import { execSync } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { io } from "socket.io-client";
 
 try {
@@ -7,7 +11,61 @@ try {
   // fake the cwd to be worker dir
   // process.chdir(path.join(import.meta.dirname, ".."));
 
-  const image = Image.fromDockerfile("Dockerfile");
+  // make a copy of the entire dir in a /tmp dir, using git ls-files to respect gitignore
+  const tmpDir = path.join(os.tmpdir(), "coderouter");
+
+  // Remove existing tmp dir if it exists
+  if (fs.existsSync(tmpDir)) {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+
+  // Create the tmp directory
+  fs.mkdirSync(tmpDir, { recursive: true });
+
+  // Get list of tracked files from git
+  const gitFiles = execSync("git ls-files", { encoding: "utf8" })
+    .trim()
+    .split("\n")
+    .filter(Boolean);
+
+  // Copy each tracked file
+  let totalSize = 0;
+  for (const file of gitFiles) {
+    const srcPath = path.resolve(file);
+    const destPath = path.join(tmpDir, file);
+
+    // Create directory if it doesn't exist
+    const destDir = path.dirname(destPath);
+    if (!fs.existsSync(destDir)) {
+      fs.mkdirSync(destDir, { recursive: true });
+    }
+
+    // Copy the file
+    fs.copyFileSync(srcPath, destPath);
+
+    // Add to total size
+    const stats = fs.statSync(destPath);
+    totalSize += stats.size;
+  }
+
+  // Format size in human readable format
+  const formatSize = (bytes: number) => {
+    const units = ["B", "KB", "MB", "GB"];
+    let size = bytes;
+    let unitIndex = 0;
+    while (size >= 1024 && unitIndex < units.length - 1) {
+      size /= 1024;
+      unitIndex++;
+    }
+    return `${size.toFixed(2)} ${units[unitIndex]}`;
+  };
+
+  console.log(
+    `copied ${gitFiles.length} tracked files (${formatSize(totalSize)}) to`,
+    tmpDir
+  );
+
+  const image = Image.fromDockerfile(path.join(tmpDir, "Dockerfile"));
   // const image = Image.base("docker:28.3.2-dind")
   //   .runCommands(
   //     "apk add --no-cache curl python3 make g++ linux-headers bash nodejs npm"
@@ -41,16 +99,17 @@ try {
   //   })
   //   .entrypoint(["/startup.sh"]);
 
-  console.log("skibidi");
-  const fk = await daytona.snapshot.create(
-    {
-      name: `coderouter-worker-${Date.now()}`,
-      image,
-    },
-    { onLogs: console.log, timeout: 10000 }
-  );
-  console.log("snapshot created", fk);
+  // console.log("skibidi");
+  // const fk = await daytona.snapshot.create(
+  //   {
+  //     name: `coderouter-worker-${Date.now()}`,
+  //     image,
+  //   },
+  //   { onLogs: console.log, timeout: 10000 }
+  // );
+  // console.log("snapshot created", fk);
 
+  console.log("starting sandbox");
   const sandbox = await daytona.create(
     {
       image,

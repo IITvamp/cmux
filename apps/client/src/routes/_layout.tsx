@@ -3,7 +3,8 @@ import { type TaskWithRuns } from "@/types/task";
 import { api } from "@coderouter/convex/api";
 import { type Doc } from "@coderouter/convex/dataModel";
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
-import { useQuery } from "convex/react";
+import { useQueries, useQuery } from "convex/react";
+import { useMemo } from "react";
 
 export const Route = createFileRoute("/_layout")({
   component: LayoutComponent,
@@ -13,27 +14,45 @@ function LayoutComponent() {
   const tasks = useQuery(api.tasks.get, {});
 
   // Sort tasks by creation date (newest first) and take the latest 5
-  const recentTasks =
-    tasks
-      ?.filter((task: Doc<"tasks">) => task.createdAt)
-      ?.sort(
-        (a: Doc<"tasks">, b: Doc<"tasks">) =>
-          (b.createdAt || 0) - (a.createdAt || 0)
-      ) || [];
+  const recentTasks = useMemo(() => {
+    return (
+      tasks
+        ?.filter((task: Doc<"tasks">) => task.createdAt)
+        ?.sort(
+          (a: Doc<"tasks">, b: Doc<"tasks">) =>
+            (b.createdAt || 0) - (a.createdAt || 0)
+        ) || []
+    );
+  }, [tasks]);
 
-  // Fetch task runs for each task
-  const taskRuns = useQuery(
-    api.taskRuns.getByTask,
-    recentTasks.length > 0 ? { taskId: recentTasks[0]._id } : "skip"
-  );
+  // Create queries object for all recent tasks with memoization
+  const taskRunQueries = useMemo(() => {
+    return recentTasks.reduce(
+      (acc, task) => ({
+        ...acc,
+        [task._id]: {
+          query: api.taskRuns.getByTask,
+          args: { taskId: task._id },
+        },
+      }),
+      {} as Record<
+        string,
+        { query: typeof api.taskRuns.getByTask; args: { taskId: string } }
+      >
+    );
+  }, [recentTasks]);
 
-  // For now, we'll fetch runs for the first task only to avoid too many queries
-  // In a real app, you might want to batch these or fetch on-demand
-  const tasksWithRuns: TaskWithRuns[] = recentTasks.map(
-    (task: Doc<"tasks">, index: number) => ({
-      ...task,
-      runs: index === 0 ? taskRuns || [] : [],
-    })
+  // Fetch task runs for all recent tasks using useQueries
+  const taskRunResults = useQueries(taskRunQueries);
+
+  // Map tasks with their respective runs
+  const tasksWithRuns: TaskWithRuns[] = useMemo(
+    () =>
+      recentTasks.map((task: Doc<"tasks">) => ({
+        ...task,
+        runs: taskRunResults[task._id] || [],
+      })),
+    [recentTasks, taskRunResults]
   );
 
   return (
@@ -64,10 +83,32 @@ function LayoutComponent() {
           </div>
 
           {/* Navigation */}
-          <nav className="flex-1 px-3 py-4 space-y-1">
+          <nav className="flex-1 flex flex-col overflow-hidden">
+            <div className="px-3 py-4 space-y-1 flex-shrink-0">
+              <Link
+                to="/dashboard"
+                className="flex items-center px-3 py-2 text-sm font-medium rounded-lg text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors [&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800 [&.active]:text-neutral-900 dark:[&.active]:text-neutral-100 select-none"
+              >
+                <svg
+                  className="w-5 h-5 mr-3 text-neutral-400 dark:text-neutral-500"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+                New task
+              </Link>
+
+              {/* Temporarily comment out routes that don't exist yet
             <Link
-              to="/dashboard"
-              className="flex items-center px-3 py-2 text-sm font-medium rounded-lg text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors [&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800 [&.active]:text-neutral-900 dark:[&.active]:text-neutral-100 select-none"
+              to="/inbox"
+              className="flex items-center px-3 py-2 text-sm font-medium rounded-lg text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors [&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800 [&.active]:text-neutral-900 dark:[&.active]:text-neutral-100"
             >
               <svg
                 className="w-5 h-5 mr-3 text-neutral-400 dark:text-neutral-500"
@@ -79,88 +120,71 @@ function LayoutComponent() {
                   strokeLinecap="round"
                   strokeLinejoin="round"
                   strokeWidth={2}
-                  d="M12 4v16m8-8H4"
+                  d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
                 />
               </svg>
-              New task
+              Inbox
             </Link>
 
-            {/* Temporarily comment out routes that don't exist yet
-          <Link
-            to="/inbox"
-            className="flex items-center px-3 py-2 text-sm font-medium rounded-lg text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors [&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800 [&.active]:text-neutral-900 dark:[&.active]:text-neutral-100"
-          >
-            <svg
-              className="w-5 h-5 mr-3 text-neutral-400 dark:text-neutral-500"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+            <Link
+              to="/issues"
+              className="flex items-center px-3 py-2 text-sm font-medium rounded-lg text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors [&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800 [&.active]:text-neutral-900 dark:[&.active]:text-neutral-100"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
-              />
-            </svg>
-            Inbox
-          </Link>
+              <svg
+                className="w-5 h-5 mr-3 text-neutral-400 dark:text-neutral-500"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                />
+              </svg>
+              Issues
+            </Link>
 
-          <Link
-            to="/issues"
-            className="flex items-center px-3 py-2 text-sm font-medium rounded-lg text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors [&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800 [&.active]:text-neutral-900 dark:[&.active]:text-neutral-100"
-          >
-            <svg
-              className="w-5 h-5 mr-3 text-neutral-400 dark:text-neutral-500"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+            <Link
+              to="/projects"
+              className="flex items-center px-3 py-2 text-sm font-medium rounded-lg text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors [&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800 [&.active]:text-neutral-900 dark:[&.active]:text-neutral-100"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-              />
-            </svg>
-            Issues
-          </Link>
-
-          <Link
-            to="/projects"
-            className="flex items-center px-3 py-2 text-sm font-medium rounded-lg text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors [&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800 [&.active]:text-neutral-900 dark:[&.active]:text-neutral-100"
-          >
-            <svg
-              className="w-5 h-5 mr-3 text-neutral-400 dark:text-neutral-500"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+              <svg
+                className="w-5 h-5 mr-3 text-neutral-400 dark:text-neutral-500"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
               />
             </svg>
             Projects
           </Link>
           */}
+            </div>
 
-            <div className="pt-6">
-              <p className="px-3 text-xs font-medium text-neutral-400 dark:text-neutral-500 uppercase tracking-wide select-none">
-                Recent Tasks
-              </p>
-              <div className="mt-1 space-y-0.5">
-                {tasksWithRuns.length > 0 ? (
-                  tasksWithRuns.map((task: TaskWithRuns) => (
-                    <TaskTree key={task._id} task={task} />
-                  ))
-                ) : (
-                  <p className="px-3 py-2 text-sm text-neutral-500 dark:text-neutral-400 select-none">
-                    No recent tasks
-                  </p>
-                )}
+            {/* Scrollable Recent Tasks Section */}
+            <div className="flex-1 overflow-y-auto px-3 pb-4">
+              <div className="pt-6">
+                <p className="px-3 text-xs font-medium text-neutral-400 dark:text-neutral-500 uppercase tracking-wide select-none">
+                  Recent Tasks
+                </p>
+                <div className="mt-1 space-y-0.5">
+                  {tasksWithRuns.length > 0 ? (
+                    tasksWithRuns.map((task) => (
+                      <TaskTree key={task._id} task={task} />
+                    ))
+                  ) : (
+                    <p className="px-3 py-2 text-sm text-neutral-500 dark:text-neutral-400 select-none">
+                      No recent tasks
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
           </nav>

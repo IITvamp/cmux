@@ -17,7 +17,7 @@
   "dependencies": {
     "@coderouter/convex": "file:../../packages/convex",
     "@coderouter/shared": "file:../../packages/shared",
-    "@daytonaio/sdk": "^0.23.0",
+    "@daytonaio/sdk": "^0.22.1",
     "@xterm/headless": "^5.5.0",
     "ansi-escape-sequences": "^6.2.4",
     "chokidar": "^4.0.3",

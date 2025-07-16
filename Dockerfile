@@ -20,7 +20,8 @@ RUN npm install
 RUN ls /coderouter
 RUN ls /coderouter/apps/worker
 
-RUN bun build /coderouter/apps/worker/src/index.ts --target node --outdir /coderouter/apps/worker/build
+# Build without bundling native modules
+RUN bun build /coderouter/apps/worker/src/index.ts --target node --outdir /coderouter/apps/worker/build --external node-pty
 
 # Move artefacts to runtime location
 RUN mkdir -p /builtins && \
@@ -32,6 +33,9 @@ RUN mkdir -p /builtins && \
 # Workspace
 RUN mkdir -p /workspace
 WORKDIR /builtins
+
+# Install node-pty natively in the container
+RUN npm install node-pty
 
 # Environment
 ENV NODE_ENV=production

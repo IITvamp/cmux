@@ -1,5 +1,5 @@
 import { type Doc } from "@coderouter/convex/dataModel";
-import { Link } from "@tanstack/react-router";
+import { Link, useRouterState } from "@tanstack/react-router";
 import clsx from "clsx";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -25,7 +25,14 @@ interface TaskTreeProps {
 }
 
 export function TaskTree({ task, level = 0 }: TaskTreeProps) {
-  const [isExpanded, setIsExpanded] = useState(true);
+  // Get the current route to determine if this task is selected
+  const routerState = useRouterState();
+  const isTaskSelected = routerState.location.pathname.includes(
+    `/task/${task._id}`
+  );
+
+  // Default to collapsed unless this task is selected
+  const [isExpanded, setIsExpanded] = useState(isTaskSelected);
   const hasRuns = task.runs && task.runs.length > 0;
 
   return (
