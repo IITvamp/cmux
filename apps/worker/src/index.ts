@@ -3,26 +3,27 @@ import {
   CreateTerminalSchema,
   ResizeSchema,
   TerminalInputSchema,
+  WorkerCloseTerminalSchema,
+  WorkerCreateTerminalSchema,
+  WorkerResizeTerminalSchema,
+  WorkerTerminalInputSchema,
   type ClientToServerEvents,
   type InterServerEvents,
   type ServerToClientEvents,
-  type SocketData,
-  type WorkerRegister,
-  type WorkerHeartbeat,
   type ServerToWorkerEvents,
+  type SocketData,
+  type WorkerHeartbeat,
+  type WorkerRegister,
   type WorkerToServerEvents,
-  WorkerCreateTerminalSchema,
-  WorkerTerminalInputSchema,
-  WorkerResizeTerminalSchema,
-  WorkerCloseTerminalSchema,
 } from "@coderouter/shared";
 import { SERVER_TERMINAL_CONFIG } from "@coderouter/shared/terminal-config";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import xtermHeadless from "@xterm/headless";
 import { spawn, type IPty } from "node-pty";
 import { createServer } from "node:http";
-import { platform, cpus, totalmem } from "node:os";
+import { cpus, platform, totalmem } from "node:os";
 import { Server, type Socket } from "socket.io";
+import { Agent, fetch } from "undici";
 
 const { Terminal } = xtermHeadless;
 
@@ -37,8 +38,45 @@ interface WorkerTerminal {
 const WORKER_ID = process.env.WORKER_ID || `worker-${Date.now()}`;
 const WORKER_PORT = parseInt(process.env.WORKER_PORT || "3002", 10);
 const MANAGEMENT_PORT = parseInt(process.env.MANAGEMENT_PORT || "3003", 10);
-const CONTAINER_IMAGE = process.env.CONTAINER_IMAGE || "coderouter/worker:latest";
+const CONTAINER_IMAGE =
+  process.env.CONTAINER_IMAGE || "coderouter/worker:latest";
 const CONTAINER_VERSION = process.env.CONTAINER_VERSION || "1.0.0";
+
+// Check Docker readiness using undici with retries
+async function checkDockerReadiness(): Promise<boolean> {
+  const agent = new Agent({
+    connect: {
+      socketPath: "/var/run/docker.sock",
+    },
+  });
+
+  const maxRetries = 100; // 10 seconds / 0.1 seconds
+  const retryDelay = 100; // 100ms
+
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const response = await fetch("http://localhost/_ping", {
+        dispatcher: agent,
+        signal: AbortSignal.timeout(1000), // 1 second timeout per attempt
+      });
+
+      if (response.ok) {
+        agent.close();
+        return true;
+      }
+    } catch (_error) {
+      // Ignore errors and retry
+    }
+
+    // Wait before retrying (except on last attempt)
+    if (i < maxRetries - 1) {
+      await new Promise((resolve) => setTimeout(resolve, retryDelay));
+    }
+  }
+
+  agent.close();
+  return false;
+}
 
 // Terminal storage
 const terminals = new Map<string, WorkerTerminal>();
@@ -61,24 +99,27 @@ const clientIO = new Server<
 });
 
 // Socket.IO server for main server connection (worker acts as server)
-const managementIO = new Server<
-  ServerToWorkerEvents,
-  WorkerToServerEvents
->(managementHttpServer, {
-  cors: {
-    origin: "*", // In production, restrict this to main server URL
-    methods: ["GET", "POST"],
-  },
-});
+const managementIO = new Server<ServerToWorkerEvents, WorkerToServerEvents>(
+  managementHttpServer,
+  {
+    cors: {
+      origin: "*", // In production, restrict this to main server URL
+      methods: ["GET", "POST"],
+    },
+  }
+);
 
 // Track connected main server
-let mainServerSocket: Socket<ServerToWorkerEvents, WorkerToServerEvents> | null = null;
+let mainServerSocket: Socket<
+  ServerToWorkerEvents,
+  WorkerToServerEvents
+> | null = null;
 
 // Worker statistics
 function getWorkerStats(): WorkerHeartbeat {
   const totalMem = totalmem();
   const usedMem = process.memoryUsage().heapUsed;
-  
+
   return {
     workerId: WORKER_ID,
     timestamp: Date.now(),
@@ -91,7 +132,9 @@ function getWorkerStats(): WorkerHeartbeat {
 }
 
 // Send registration info when main server connects
-function registerWithMainServer(socket: Socket<ServerToWorkerEvents, WorkerToServerEvents>) {
+function registerWithMainServer(
+  socket: Socket<ServerToWorkerEvents, WorkerToServerEvents>
+) {
   const registration: WorkerRegister = {
     workerId: WORKER_ID,
     capabilities: {
@@ -107,7 +150,7 @@ function registerWithMainServer(socket: Socket<ServerToWorkerEvents, WorkerToSer
       platform: platform(),
     },
   };
-  
+
   socket.emit("worker:register", registration);
   console.log(`Worker ${WORKER_ID} sent registration to main server`);
 }
@@ -116,7 +159,7 @@ function registerWithMainServer(socket: Socket<ServerToWorkerEvents, WorkerToSer
 managementIO.on("connection", (socket) => {
   console.log(`Main server connected to worker ${WORKER_ID}`);
   mainServerSocket = socket;
-  
+
   // Send registration immediately
   registerWithMainServer(socket);
 
@@ -182,7 +225,7 @@ managementIO.on("connection", (socket) => {
         terminal.pty.kill();
         terminals.delete(validated.terminalId);
         clientIO.emit("terminal-closed", { terminalId: validated.terminalId });
-        
+
         socket.emit("worker:terminal-closed", {
           workerId: WORKER_ID,
           terminalId: validated.terminalId,
@@ -190,6 +233,25 @@ managementIO.on("connection", (socket) => {
       }
     } catch (error) {
       console.error("Error closing terminal from main server:", error);
+    }
+  });
+
+  socket.on("worker:check-docker", async (callback) => {
+    console.log(`Worker ${WORKER_ID} checking Docker readiness`);
+
+    try {
+      // Check if Docker socket is accessible
+      const dockerReady = await checkDockerReadiness();
+
+      callback({
+        ready: dockerReady,
+        message: dockerReady ? "Docker is ready" : "Docker is not ready",
+      });
+    } catch (error) {
+      callback({
+        ready: false,
+        message: `Error checking Docker: ${error instanceof Error ? error.message : "Unknown error"}`,
+      });
     }
   });
 
@@ -211,7 +273,7 @@ clientIO.on("connection", (socket) => {
   // Send existing terminals to new connections
   terminals.forEach((terminal, terminalId) => {
     socket.emit("terminal-created", { terminalId });
-    
+
     // Send terminal state
     const terminalState = terminal.serializeAddon.serialize();
     if (terminalState) {
@@ -222,19 +284,19 @@ clientIO.on("connection", (socket) => {
   socket.on("create-terminal", (data) => {
     try {
       const { cols, rows, id } = CreateTerminalSchema.parse(data);
-      
+
       if (id && terminals.has(id)) {
         console.error(`Terminal ${id} already exists`);
         return;
       }
-      
+
       const terminalId = id || crypto.randomUUID();
       const terminal = createTerminal(terminalId, { cols, rows });
-      
+
       if (terminal) {
         clientIO.emit("terminal-created", { terminalId });
         console.log(`Terminal ${terminalId} created on worker ${WORKER_ID}`);
-        
+
         // Notify main server if connected
         if (mainServerSocket) {
           mainServerSocket.emit("worker:terminal-created", {
@@ -268,7 +330,9 @@ clientIO.on("connection", (socket) => {
 
       if (terminal && terminal.pty) {
         if (!terminal.pty.pid) {
-          console.warn(`Terminal ${terminalId} has no PID, likely already exited`);
+          console.warn(
+            `Terminal ${terminalId} has no PID, likely already exited`
+          );
           terminals.delete(terminalId);
         } else {
           // Resize hack similar to main server
@@ -293,7 +357,7 @@ clientIO.on("connection", (socket) => {
         terminals.delete(terminalId);
         clientIO.emit("terminal-closed", { terminalId });
         console.log(`Terminal ${terminalId} closed on worker ${WORKER_ID}`);
-        
+
         // Notify main server if connected
         if (mainServerSocket) {
           mainServerSocket.emit("worker:terminal-closed", {
@@ -377,7 +441,7 @@ function createTerminal(
   ptyProcess.onData((data) => {
     headlessTerminal.write(data);
     clientIO.emit("terminal-output", { terminalId, data });
-    
+
     // Also send to main server if connected
     if (mainServerSocket) {
       mainServerSocket.emit("worker:terminal-output", {
@@ -393,10 +457,10 @@ function createTerminal(
     console.log(
       `Terminal ${terminalId} exited with code ${exitCode} and signal ${signal}`
     );
-    
+
     terminals.delete(terminalId);
     clientIO.emit("terminal-exit", { terminalId, exitCode, signal });
-    
+
     // Notify main server if connected
     if (mainServerSocket) {
       mainServerSocket.emit("worker:terminal-exit", {
@@ -414,28 +478,35 @@ function createTerminal(
 // Heartbeat interval (send stats every 30 seconds)
 setInterval(() => {
   const stats = getWorkerStats();
-  
+
   if (mainServerSocket) {
     mainServerSocket.emit("worker:heartbeat", stats);
   } else {
-    console.log(`Worker ${WORKER_ID} heartbeat (main server not connected):`, stats);
+    console.log(
+      `Worker ${WORKER_ID} heartbeat (main server not connected):`,
+      stats
+    );
   }
 }, 30000);
 
 // Start servers
 clientHttpServer.listen(WORKER_PORT, () => {
-  console.log(`Worker ${WORKER_ID} client server listening on port ${WORKER_PORT}`);
+  console.log(
+    `Worker ${WORKER_ID} client server listening on port ${WORKER_PORT}`
+  );
 });
 
 managementHttpServer.listen(MANAGEMENT_PORT, () => {
-  console.log(`Worker ${WORKER_ID} management server listening on port ${MANAGEMENT_PORT}`);
+  console.log(
+    `Worker ${WORKER_ID} management server listening on port ${MANAGEMENT_PORT}`
+  );
   console.log(`Waiting for main server to connect...`);
 });
 
 // Graceful shutdown
 function gracefulShutdown() {
   console.log(`Worker ${WORKER_ID} shutting down...`);
-  
+
   // Kill all terminals
   terminals.forEach((terminal, id) => {
     console.log(`Killing terminal ${id}`);
@@ -451,7 +522,7 @@ function gracefulShutdown() {
   clientIO.close(() => {
     console.log("Client Socket.IO server closed");
   });
-  
+
   managementIO.close(() => {
     console.log("Management Socket.IO server closed");
   });
@@ -459,7 +530,7 @@ function gracefulShutdown() {
   clientHttpServer.close(() => {
     console.log("Client HTTP server closed");
   });
-  
+
   managementHttpServer.close(() => {
     console.log("Management HTTP server closed");
     process.exit(0);

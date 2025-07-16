@@ -1,0 +1,1 @@
+[ ] instead of using node-pty, install openvscode directly and make an extension that lets us interact with vscode's terminal and everything via socketio. like the extension needs to expose a socketio server that we can connect to and then we can send commands to the terminal and get the output back.

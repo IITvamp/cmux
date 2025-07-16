@@ -21,6 +21,10 @@ RUN ls /coderouter
 RUN ls /coderouter/apps/worker
 
 # Build without bundling native modules
+# We exclude node-pty because it contains platform-specific compiled C++ code.
+# The .node file compiled on the host (e.g., macOS ARM64) won't work in the 
+# container (Linux AMD64). By marking it as external, we can install it 
+# separately inside the container for the correct architecture.
 RUN bun build /coderouter/apps/worker/src/index.ts --target node --outdir /coderouter/apps/worker/build --external node-pty
 
 # Move artefacts to runtime location
@@ -35,6 +39,8 @@ RUN mkdir -p /workspace
 WORKDIR /builtins
 
 # Install node-pty natively in the container
+# This ensures the native module is compiled for the container's architecture
+# (linux/amd64) rather than the build host's architecture
 RUN npm install node-pty
 
 # Environment

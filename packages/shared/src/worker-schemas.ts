@@ -114,6 +114,12 @@ export type WorkerTerminalCreated = z.infer<typeof WorkerTerminalCreatedSchema>;
 export type WorkerTerminalClosed = z.infer<typeof WorkerTerminalClosedSchema>;
 
 // Socket.io event maps for Server <-> Worker communication
+// Docker readiness response type
+export interface DockerReadinessResponse {
+  ready: boolean;
+  message?: string;
+}
+
 export interface ServerToWorkerEvents {
   // Terminal operations from server to worker
   "worker:create-terminal": (data: WorkerCreateTerminal) => void;
@@ -125,6 +131,9 @@ export interface ServerToWorkerEvents {
   "worker:terminal-assignment": (data: TerminalAssignment) => void;
   "worker:command": (data: ServerToWorkerCommand) => void;
   "worker:shutdown": () => void;
+  
+  // Health check events with acknowledgment
+  "worker:check-docker": (callback: (response: DockerReadinessResponse) => void) => void;
 }
 
 export interface WorkerToServerEvents {
