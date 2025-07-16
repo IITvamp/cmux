@@ -5,6 +5,10 @@ import { setTimeout as delay } from "timers/promises";
 const CONTAINER_NAME = "coderouter-worker-test";
 const IMAGE_NAME = "coderouter-worker";
 
+// Parse command line arguments
+const args = process.argv.slice(2);
+const keepAlive = args.includes('--keep-alive') || args.includes('-k');
+
 // Timing utilities
 const timings = {
   testStart: 0,
@@ -123,6 +127,7 @@ async function setupDockerContainer() {
   console.log("Container configuration:");
   console.log("  - Port 3002: Worker client port");
   console.log("  - Port 3003: Worker management port");
+  console.log("  - Port 2376: OpenVSCode server");
   console.log("  - Privileged mode: Enabled (for Docker-in-Docker)");
 
   const dockerRun = spawn(
@@ -137,6 +142,8 @@ async function setupDockerContainer() {
       "3002:3002",
       "-p",
       "3003:3003",
+      "-p",
+      "2376:2376",
       "-e",
       "NODE_ENV=production",
       "-e",
@@ -410,11 +417,26 @@ async function testWorker() {
     clearTestTimeout();
     logProgress("Test completed successfully!");
 
-    // Clean up
+    // Disconnect sockets
     await delay(1000);
     managementSocket.disconnect();
     clientSocket.disconnect();
-    cleanup();
+
+    // Handle keep-alive mode
+    if (keepAlive) {
+      console.log("\n🔧 KEEP-ALIVE MODE");
+      console.log("================");
+      console.log("Container is still running. You can:");
+      console.log("  - Connect to OpenVSCode at http://localhost:2376");
+      console.log("  - Test worker on ports 3002 (client) and 3003 (management)");
+      console.log("  - Run commands in the container: docker exec -it " + CONTAINER_NAME + " sh");
+      console.log("\nPress Ctrl+C to stop and cleanup...\n");
+      
+      // Wait indefinitely
+      await new Promise(() => {}); // This will only resolve on SIGINT
+    } else {
+      cleanup();
+    }
   } catch (error) {
     console.error("\n❌ Test failed:", error);
     endTiming("Command Execution");
@@ -456,13 +478,25 @@ process.on("SIGTERM", cleanup);
 (async () => {
   console.log("\n🚀 CODEROUTER WORKER TEST");
   console.log("========================\n");
+  
+  if (keepAlive) {
+    console.log("Running in KEEP-ALIVE mode");
+    console.log("Container will stay running after tests complete\n");
+  }
+  
   console.log("This test will:");
   console.log("1. Build the Docker image");
   console.log("2. Start a worker container");
   console.log("3. Connect via Socket.IO");
   console.log("4. Create a terminal");
   console.log("5. Execute a test command");
-  console.log("6. Verify the output\n");
+  console.log("6. Verify the output");
+  
+  if (keepAlive) {
+    console.log("7. Keep container running for manual testing");
+  }
+  
+  console.log("\nUsage: node test-worker.mjs [--keep-alive | -k]\n");
 
   startTiming("Total Test");
 
