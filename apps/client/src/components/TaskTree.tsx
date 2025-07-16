@@ -1,5 +1,5 @@
 import { type Doc } from "@coderouter/convex/dataModel";
-import { Link, useRouterState } from "@tanstack/react-router";
+import { Link, useLocation } from "@tanstack/react-router";
 import clsx from "clsx";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -9,7 +9,7 @@ import {
   Loader2,
   XCircle,
 } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 interface TaskRunWithChildren extends Doc<"taskRuns"> {
   children: TaskRunWithChildren[];
@@ -24,16 +24,40 @@ interface TaskTreeProps {
   level?: number;
 }
 
+// Extract the display text logic to avoid re-creating it on every render
+function getRunDisplayText(run: TaskRunWithChildren): string {
+  if (run.summary) {
+    return run.summary;
+  }
+
+  // Extract agent name from prompt if it exists
+  const agentMatch = run.prompt.match(/\(([^)]+)\)$/);
+  const agentName = agentMatch ? agentMatch[1] : null;
+
+  if (agentName) {
+    return agentName;
+  }
+
+  return run.prompt.substring(0, 50) + "...";
+}
+
 export function TaskTree({ task, level = 0 }: TaskTreeProps) {
   // Get the current route to determine if this task is selected
-  const routerState = useRouterState();
-  const isTaskSelected = routerState.location.pathname.includes(
-    `/task/${task._id}`
+  const location = useLocation();
+  const isTaskSelected = useMemo(
+    () => location.pathname.includes(`/task/${task._id}`),
+    [location.pathname, task._id]
   );
 
   // Default to collapsed unless this task is selected
   const [isExpanded, setIsExpanded] = useState(isTaskSelected);
   const hasRuns = task.runs && task.runs.length > 0;
+
+  // Memoize the toggle handler
+  const handleToggle = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsExpanded((prev) => !prev);
+  }, []);
 
   return (
     <div className="select-none flex flex-col gap-[1.5px]">
@@ -47,10 +71,7 @@ export function TaskTree({ task, level = 0 }: TaskTreeProps) {
         style={{ paddingLeft: `${8 + level * 16}px` }}
       >
         <button
-          onClick={(e) => {
-            e.preventDefault();
-            setIsExpanded(!isExpanded);
-          }}
+          onClick={handleToggle}
           className={clsx(
             "w-4 h-4 mr-1 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded transition-colors grid place-content-center",
             !hasRuns && "invisible"
@@ -125,6 +146,15 @@ function TaskRunTree({ run, level, taskId }: TaskRunTreeProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const hasChildren = run.children.length > 0;
 
+  // Memoize the display text to avoid recalculating on every render
+  const displayText = useMemo(() => getRunDisplayText(run), [run]);
+
+  // Memoize the toggle handler
+  const handleToggle = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsExpanded((prev) => !prev);
+  }, []);
+
   const statusIcon = {
     pending: <Circle className="w-3 h-3 text-neutral-400" />,
     running: <Loader2 className="w-3 h-3 text-blue-500 animate-spin" />,
@@ -144,10 +174,7 @@ function TaskRunTree({ run, level, taskId }: TaskRunTreeProps) {
         style={{ paddingLeft: `${8 + level * 16}px` }}
       >
         <button
-          onClick={(e) => {
-            e.preventDefault();
-            setIsExpanded(!isExpanded);
-          }}
+          onClick={handleToggle}
           className={clsx(
             "w-4 h-4 mr-1 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded transition-colors",
             !hasChildren && "invisible"
@@ -166,19 +193,7 @@ function TaskRunTree({ run, level, taskId }: TaskRunTreeProps) {
 
         <div className="flex-1 min-w-0">
           <p className="truncate text-neutral-600 dark:text-neutral-400">
-            {(() => {
-              // Extract agent name from prompt if it exists
-              const agentMatch = run.prompt.match(/\(([^)]+)\)$/);
-              const agentName = agentMatch ? agentMatch[1] : null;
-
-              if (run.summary) {
-                return run.summary;
-              } else if (agentName) {
-                return agentName;
-              } else {
-                return run.prompt.substring(0, 50) + "...";
-              }
-            })()}
+            {displayText}
           </p>
           <p className="text-[10px] text-neutral-500 dark:text-neutral-500">
             {formatDistanceToNow(new Date(run.createdAt), { addSuffix: true })}
