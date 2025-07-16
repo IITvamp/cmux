@@ -97,7 +97,8 @@ async function setupDockerContainer() {
   console.log("This may take a few minutes on first run...");
 
   try {
-    execSync(`docker build --platform=linux/amd64 -t ${IMAGE_NAME} .`, {
+    // Build for the native platform (no --platform flag)
+    execSync(`docker build -t ${IMAGE_NAME} .`, {
       stdio: "inherit",
       cwd: process.cwd(),
     });
@@ -127,7 +128,7 @@ async function setupDockerContainer() {
   console.log("Container configuration:");
   console.log("  - Port 3002: Worker client port");
   console.log("  - Port 3003: Worker management port");
-  console.log("  - Port 2376: OpenVSCode server");
+  console.log("  - Port 2376: code-server (VS Code in browser)");
   console.log("  - Privileged mode: Enabled (for Docker-in-Docker)");
 
   const dockerRun = spawn(
@@ -427,9 +428,10 @@ async function testWorker() {
       console.log("\n🔧 KEEP-ALIVE MODE");
       console.log("================");
       console.log("Container is still running. You can:");
-      console.log("  - Connect to OpenVSCode at http://localhost:2376");
+      console.log("  - Connect to OpenVSCode (check container logs for URL with token)");
       console.log("  - Test worker on ports 3002 (client) and 3003 (management)");
       console.log("  - Run commands in the container: docker exec -it " + CONTAINER_NAME + " sh");
+      console.log("\nTo see OpenVSCode URL: docker logs " + CONTAINER_NAME + " | grep 'Web UI'");
       console.log("\nPress Ctrl+C to stop and cleanup...\n");
       
       // Wait indefinitely
