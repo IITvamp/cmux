@@ -98,7 +98,7 @@ async function setupDockerContainer() {
 
   try {
     // Build for the native platform (no --platform flag)
-    execSync(`docker build -t ${IMAGE_NAME} .`, {
+    execSync(`docker build -t ${IMAGE_NAME} --platform=linux/amd64 .`, {
       stdio: "inherit",
       cwd: process.cwd(),
     });
@@ -419,16 +419,16 @@ async function testWorker() {
     logProgress("Test completed successfully!");
 
     // Disconnect sockets
-    await delay(1000);
-    managementSocket.disconnect();
-    clientSocket.disconnect();
+    // await delay(1000);
+    // managementSocket.disconnect();
+    // clientSocket.disconnect();
 
     // Handle keep-alive mode
     if (keepAlive) {
       console.log("\n🔧 KEEP-ALIVE MODE");
       console.log("================");
       console.log("Container is still running. You can:");
-      console.log("  - Connect to OpenVSCode (check container logs for URL with token)");
+      console.log("  - Connect to OpenVSCode (http://localhost:2376)");
       console.log("  - Test worker on ports 3002 (client) and 3003 (management)");
       console.log("  - Run commands in the container: docker exec -it " + CONTAINER_NAME + " sh");
       console.log("\nTo see OpenVSCode URL: docker logs " + CONTAINER_NAME + " | grep 'Web UI'");
