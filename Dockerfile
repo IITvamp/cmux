@@ -17,9 +17,6 @@ WORKDIR /coderouter
 # Install Node deps and build the worker
 RUN npm install
 
-RUN ls /coderouter
-RUN ls /coderouter/apps/worker
-
 # Build without bundling native modules
 # We exclude node-pty because it contains platform-specific compiled C++ code.
 # The .node file compiled on the host (e.g., macOS ARM64) won't work in the 
@@ -42,6 +39,7 @@ WORKDIR /builtins
 # This ensures the native module is compiled for the container's architecture
 # (linux/amd64) rather than the build host's architecture
 RUN npm install node-pty
+RUN npm install -g @openai/codex @anthropic-ai/claude-code @google/gemini-cli opencode-ai codebuff @devcontainers/cli
 
 # Environment
 ENV NODE_ENV=production
