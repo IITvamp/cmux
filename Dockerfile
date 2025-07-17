@@ -121,16 +121,6 @@ COPY --parents **/package.json .npmrc package-lock.json .
 RUN --mount=type=cache,target=/root/.npm npm i
 COPY . .
 
-# Build vscode extension
-RUN (cd /coderouter/packages/vscode-extension && bun run package && cp coderouter-extension-0.0.1.vsix /tmp/coderouter-extension-0.0.1.vsix)
-
-# Install VS Code extensions
-# COPY packages/vscode-extension/coderouter-extension-0.0.1.vsix /tmp/
-RUN /app/openvscode-server/bin/openvscode-server --install-extension /tmp/coderouter-extension-0.0.1.vsix && \
-    /app/openvscode-server/bin/openvscode-server --install-extension vscode.git && \
-    /app/openvscode-server/bin/openvscode-server --install-extension vscode.github && \
-    rm /tmp/coderouter-extension-0.0.1.vsix
-
 # Build without bundling native modules
 RUN bun build /coderouter/apps/worker/src/index.ts --target node --outdir /coderouter/apps/worker/build --external node-pty
 
@@ -147,6 +137,19 @@ WORKDIR /builtins
 
 # Install node-pty natively in the container
 RUN npm install node-pty
+
+WORKDIR /coderouter/packages/vscode-extension
+# Build vscode extension
+RUN bun run package && cp coderouter-extension-0.0.1.vsix /tmp/coderouter-extension-0.0.1.vsix
+
+# Install VS Code extensions
+# COPY packages/vscode-extension/coderouter-extension-0.0.1.vsix /tmp/
+RUN /app/openvscode-server/bin/openvscode-server --install-extension /tmp/coderouter-extension-0.0.1.vsix && \
+    /app/openvscode-server/bin/openvscode-server --install-extension vscode.git && \
+    /app/openvscode-server/bin/openvscode-server --install-extension vscode.github && \
+    rm /tmp/coderouter-extension-0.0.1.vsix
+
+WORKDIR /
 
 # Environment
 ENV NODE_ENV=production
