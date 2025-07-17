@@ -186,7 +186,7 @@ EOF
 RUN chmod +x /startup.sh
 
 # Volume for docker storage
-VOLUME /var/lib/docker
+# VOLUME /var/lib/docker
 
 # Ports
 EXPOSE 2375 2376 3002 3003

@@ -3,7 +3,7 @@ import { io } from "socket.io-client";
 import { setTimeout as delay } from "timers/promises";
 
 const CONTAINER_NAME = "coderouter-worker-test";
-const IMAGE_NAME = "coderouter-worker";
+const IMAGE_NAME = "coderouter-worker:0.0.1";
 
 // Parse command line arguments
 const args = process.argv.slice(2);
