@@ -119,24 +119,28 @@ EOF
 WORKDIR /coderouter
 COPY --parents **/package.json .npmrc package-lock.json .
 RUN --mount=type=cache,target=/root/.npm npm i
+
+# Pre-install node-pty in the target location with cache
+RUN mkdir -p /builtins && \
+    cp /coderouter/apps/worker/package.json /builtins/package.json
+WORKDIR /builtins
+RUN --mount=type=cache,target=/root/.npm npm install node-pty
+
+WORKDIR /coderouter
 COPY . .
 
 # Build without bundling native modules
-RUN bun build /coderouter/apps/worker/src/index.ts --target node --outdir /coderouter/apps/worker/build --external node-pty
-
-# Move artefacts to runtime location
-RUN mkdir -p /builtins && \
-    cp -r ./apps/worker/build /builtins/build && \
-    cp ./apps/worker/package.json /builtins/package.json && \
-    cp ./apps/worker/wait-for-docker.sh /usr/local/bin/ && \
+RUN bun build /coderouter/apps/worker/src/index.ts \
+    --target node \
+    --outdir /coderouter/apps/worker/build \
+    --external node-pty && \
+    echo "Built worker" && \
+    cp -r /coderouter/apps/worker/build /builtins/build && \
+    cp /coderouter/apps/worker/wait-for-docker.sh /usr/local/bin/ && \
     chmod +x /usr/local/bin/wait-for-docker.sh
 
 # Workspace
 RUN mkdir -p /workspace
-WORKDIR /builtins
-
-# Install node-pty natively in the container
-RUN npm install node-pty
 
 WORKDIR /coderouter/packages/vscode-extension
 # Build vscode extension
@@ -148,6 +152,10 @@ RUN /app/openvscode-server/bin/openvscode-server --install-extension /tmp/codero
     /app/openvscode-server/bin/openvscode-server --install-extension vscode.git && \
     /app/openvscode-server/bin/openvscode-server --install-extension vscode.github && \
     rm /tmp/coderouter-extension-0.0.1.vsix
+
+# Create VS Code user settings
+RUN mkdir -p /root/.config/Code/User && \
+    echo '{"workbench.startupEditor": "none"}' > /root/.config/Code/User/settings.json
 
 WORKDIR /
 

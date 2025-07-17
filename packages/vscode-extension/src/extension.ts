@@ -17,7 +17,7 @@ export function activate(context: vscode.ExtensionContext) {
       name: "cmux",
       location: vscode.TerminalLocation.Panel,
     });
-    terminal.show();
+    // terminal.show();
 
     // // Split the editor area first
     // await vscode.commands.executeCommand("workbench.action.splitEditor");
@@ -25,11 +25,19 @@ export function activate(context: vscode.ExtensionContext) {
     // Open git changes view
     await vscode.commands.executeCommand("git.viewChanges");
 
+    // poll until terminal is ready
+    // while (terminal.exitStatus === undefined) {
+    //   await new Promise((resolve) => setTimeout(resolve, 1000));
+    // }
+    // vscode.window.terminals.find((t) => t.name === "cmux");
+
+    console.log(terminal);
+
     // Send command to terminal
-    terminal.sendText("bun x opencode-ai");
+    // terminal.sendText("bun x opencode-ai");
 
     // Focus back on terminal
-    terminal.show();
+    // terminal.show();
   });
 
   context.subscriptions.push(disposable);
