@@ -32,7 +32,8 @@
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
-    "test": "vscode-test"
+    "test": "vscode-test",
+    "package": "vsce package --allow-missing-repository --no-dependencies"
   },
   "devDependencies": {
     "@types/vscode": "^1.74.0",
@@ -43,6 +44,7 @@
     "eslint": "^8.56.0",
     "typescript": "^5.3.3",
     "@vscode/test-cli": "^0.0.4",
-    "@vscode/test-electron": "^2.3.8"
+    "@vscode/test-electron": "^2.3.8",
+    "@vscode/vsce": "^3.2.1"
   }
 }

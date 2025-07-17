@@ -1,4 +1,5 @@
 import { execSync, spawn } from "child_process";
+import fs from "fs";
 import { io } from "socket.io-client";
 import { setTimeout as delay } from "timers/promises";
 
@@ -7,7 +8,35 @@ const IMAGE_NAME = "coderouter-worker:0.0.1";
 
 // Parse command line arguments
 const args = process.argv.slice(2);
-const keepAlive = args.includes('--keep-alive') || args.includes('-k');
+const keepAlive = args.includes("--keep-alive") || args.includes("-k");
+
+// Parse workspace path argument
+let workspacePath = null;
+const workspaceIndex = args.findIndex(
+  (arg) => arg === "--workspace" || arg === "--workspace-path"
+);
+if (workspaceIndex !== -1 && workspaceIndex + 1 < args.length) {
+  workspacePath = args[workspaceIndex + 1];
+
+  // Validate workspace path exists
+  try {
+    if (!fs.existsSync(workspacePath)) {
+      console.error(`❌ Workspace path does not exist: ${workspacePath}`);
+      process.exit(1);
+    }
+    const stats = fs.statSync(workspacePath);
+    if (!stats.isDirectory()) {
+      console.error(`❌ Workspace path is not a directory: ${workspacePath}`);
+      process.exit(1);
+    }
+  } catch (error) {
+    console.error(
+      `❌ Cannot access workspace path: ${workspacePath}`,
+      error.message
+    );
+    process.exit(1);
+  }
+}
 
 // Timing utilities
 const timings = {
@@ -131,32 +160,41 @@ async function setupDockerContainer() {
   console.log("  - Port 2376: code-server (VS Code in browser)");
   console.log("  - Privileged mode: Enabled (for Docker-in-Docker)");
 
-  const dockerRun = spawn(
-    "docker",
-    [
-      "run",
-      "--rm",
-      "--name",
-      CONTAINER_NAME,
-      "--privileged",
-      "-p",
-      "3002:3002",
-      "-p",
-      "3003:3003",
-      "-p",
-      "2376:2376",
-      "-e",
-      "NODE_ENV=production",
-      "-e",
-      "WORKER_PORT=3002",
-      "-e",
-      "MANAGEMENT_PORT=3003",
-      IMAGE_NAME,
-    ],
-    {
-      stdio: "inherit",
-    }
-  );
+  if (workspacePath) {
+    console.log(`  - Workspace mount: ${workspacePath} -> /root/workspace`);
+  }
+
+  // Build docker run arguments
+  const dockerArgs = [
+    "run",
+    "--rm",
+    "--name",
+    CONTAINER_NAME,
+    "--privileged",
+    "-p",
+    "3002:3002",
+    "-p",
+    "3003:3003",
+    "-p",
+    "2376:2376",
+    "-e",
+    "NODE_ENV=production",
+    "-e",
+    "WORKER_PORT=3002",
+    "-e",
+    "MANAGEMENT_PORT=3003",
+  ];
+
+  // Add volume mount if workspace path is provided
+  if (workspacePath) {
+    dockerArgs.push("-v", `${workspacePath}:/root/workspace`);
+  }
+
+  dockerArgs.push(IMAGE_NAME);
+
+  const dockerRun = spawn("docker", dockerArgs, {
+    stdio: "inherit",
+  });
 
   dockerRun.on("error", (error) => {
     console.error("\n✗ Failed to start Docker container:", error);
@@ -429,11 +467,26 @@ async function testWorker() {
       console.log("================");
       console.log("Container is still running. You can:");
       console.log("  - Connect to OpenVSCode (http://localhost:2376)");
-      console.log("  - Test worker on ports 3002 (client) and 3003 (management)");
-      console.log("  - Run commands in the container: docker exec -it " + CONTAINER_NAME + " sh");
-      console.log("\nTo see OpenVSCode URL: docker logs " + CONTAINER_NAME + " | grep 'Web UI'");
+      console.log(
+        "  - Test worker on ports 3002 (client) and 3003 (management)"
+      );
+      console.log(
+        "  - Run commands in the container: docker exec -it " +
+          CONTAINER_NAME +
+          " sh"
+      );
+      if (workspacePath) {
+        console.log(
+          `  - Access mounted workspace at /root/workspace (from ${workspacePath})`
+        );
+      }
+      console.log(
+        "\nTo see OpenVSCode URL: docker logs " +
+          CONTAINER_NAME +
+          " | grep 'Web UI'"
+      );
       console.log("\nPress Ctrl+C to stop and cleanup...\n");
-      
+
       // Wait indefinitely
       await new Promise(() => {}); // This will only resolve on SIGINT
     } else {
@@ -480,12 +533,16 @@ process.on("SIGTERM", cleanup);
 (async () => {
   console.log("\n🚀 CODEROUTER WORKER TEST");
   console.log("========================\n");
-  
+
   if (keepAlive) {
     console.log("Running in KEEP-ALIVE mode");
     console.log("Container will stay running after tests complete\n");
   }
-  
+
+  if (workspacePath) {
+    console.log(`Mounting workspace: ${workspacePath} -> /root/workspace\n`);
+  }
+
   console.log("This test will:");
   console.log("1. Build the Docker image");
   console.log("2. Start a worker container");
@@ -493,12 +550,20 @@ process.on("SIGTERM", cleanup);
   console.log("4. Create a terminal");
   console.log("5. Execute a test command");
   console.log("6. Verify the output");
-  
+
   if (keepAlive) {
     console.log("7. Keep container running for manual testing");
   }
-  
-  console.log("\nUsage: node test-worker.mjs [--keep-alive | -k]\n");
+
+  console.log(
+    "\nUsage: node test-worker.mjs [--keep-alive | -k] [--workspace <path>]\n"
+  );
+  console.log("Options:");
+  console.log("  --keep-alive, -k      Keep container running after tests");
+  console.log(
+    "  --workspace <path>    Mount local path to /root/workspace in container"
+  );
+  console.log("");
 
   startTiming("Total Test");
 

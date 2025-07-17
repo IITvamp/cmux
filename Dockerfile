@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7-labs
 FROM ubuntu:22.04
 
 ARG VERSION
@@ -36,7 +37,8 @@ RUN update-alternatives --set iptables /usr/sbin/iptables-legacy && \
     update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
 
 # Install Docker
-RUN set -eux; \
+RUN <<-'EOF'
+    set -eux; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
         amd64) dockerArch='x86_64' ;; \
@@ -48,9 +50,11 @@ RUN set -eux; \
     rm docker.tgz; \
     dockerd --version; \
     docker --version
+EOF
 
 # Install docker-init (tini)
-RUN set -eux; \
+RUN <<-'EOF'
+    set -eux; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
         amd64) tiniArch='amd64' ;; \
@@ -59,10 +63,14 @@ RUN set -eux; \
     esac; \
     wget -O /usr/local/bin/docker-init "https://github.com/krallin/tini/releases/download/v0.19.0/tini-${tiniArch}"; \
     chmod +x /usr/local/bin/docker-init
+EOF
 
 # Install Bun
 RUN curl -fsSL https://bun.sh/install | bash
 ENV PATH="/root/.bun/bin:$PATH"
+
+# Install global packages early
+RUN bun add -g @openai/codex @anthropic-ai/claude-code @google/gemini-cli opencode-ai codebuff @devcontainers/cli
 
 # Install openvscode-server
 RUN if [ -z ${CODE_RELEASE+x} ]; then \
@@ -86,13 +94,11 @@ RUN if [ -z ${CODE_RELEASE+x} ]; then \
     /app/openvscode-server/ --strip-components=1 && \
   rm -rf /tmp/openvscode-server.tar.gz
 
-# Install VS Code extension
-COPY packages/vscode-extension/coderouter-extension-0.0.1.vsix /tmp/
-RUN /app/openvscode-server/bin/openvscode-server --install-extension /tmp/coderouter-extension-0.0.1.vsix && \
-    rm /tmp/coderouter-extension-0.0.1.vsix
+
 
 # Create modprobe script (required for DinD)
-RUN cat > /usr/local/bin/modprobe << 'EOF'
+RUN <<-'EOF'
+cat > /usr/local/bin/modprobe << 'SCRIPT'
 #!/bin/sh
 set -eu
 # "modprobe" without modprobe
@@ -105,15 +111,25 @@ done
 # remove /usr/local/... from PATH so we can exec the real modprobe as a last resort
 export PATH='/usr/sbin:/usr/bin:/sbin:/bin'
 exec modprobe "$@"
+SCRIPT
+chmod +x /usr/local/bin/modprobe
 EOF
-RUN chmod +x /usr/local/bin/modprobe
 
-# Application source
-COPY . /coderouter
+# Copy package.json files for monorepo dependency installation
 WORKDIR /coderouter
+COPY --parents **/package.json .npmrc package-lock.json .
+RUN --mount=type=cache,target=/root/.npm npm i
+COPY . .
 
-# Install Node deps and build the worker
-RUN npm install
+# Build vscode extension
+RUN (cd /coderouter/packages/vscode-extension && bun run package && cp coderouter-extension-0.0.1.vsix /tmp/coderouter-extension-0.0.1.vsix)
+
+# Install VS Code extensions
+# COPY packages/vscode-extension/coderouter-extension-0.0.1.vsix /tmp/
+RUN /app/openvscode-server/bin/openvscode-server --install-extension /tmp/coderouter-extension-0.0.1.vsix && \
+    /app/openvscode-server/bin/openvscode-server --install-extension vscode.git && \
+    /app/openvscode-server/bin/openvscode-server --install-extension vscode.github && \
+    rm /tmp/coderouter-extension-0.0.1.vsix
 
 # Build without bundling native modules
 RUN bun build /coderouter/apps/worker/src/index.ts --target node --outdir /coderouter/apps/worker/build --external node-pty
@@ -131,7 +147,6 @@ WORKDIR /builtins
 
 # Install node-pty natively in the container
 RUN npm install node-pty
-RUN npm install -g @openai/codex @anthropic-ai/claude-code @google/gemini-cli opencode-ai codebuff @devcontainers/cli
 
 # Environment
 ENV NODE_ENV=production
@@ -142,18 +157,21 @@ ENV container=docker
 ENV DOCKER_TLS_CERTDIR=""
 
 # Create supervisor config for dockerd
-RUN mkdir -p /etc/supervisor/conf.d && \
-    cat > /etc/supervisor/conf.d/dockerd.conf << 'EOF'
+RUN <<-'EOF'
+mkdir -p /etc/supervisor/conf.d
+cat > /etc/supervisor/conf.d/dockerd.conf << 'CONFIG'
 [program:dockerd]
 command=/usr/local/bin/dockerd
 autostart=true
 autorestart=true
 stderr_logfile=/var/log/dockerd.err.log
 stdout_logfile=/var/log/dockerd.out.log
+CONFIG
 EOF
 
 # Startup script with proper DinD initialization
-RUN cat > /startup.sh << 'EOF'
+RUN <<-'EOF'
+cat > /startup.sh << 'SCRIPT'
 #!/bin/bash
 set -e
 
@@ -181,12 +199,21 @@ fi
 wait-for-docker.sh
 
 # Start OpenVSCode server on port 2376 without authentication
-/app/openvscode-server/bin/openvscode-server --host 0.0.0.0 --port 2376 --without-connection-token &
+/app/openvscode-server/bin/openvscode-server \
+  --host 0.0.0.0 \
+  --port 2376 \
+  --without-connection-token \
+  --disable-workspace-trust \
+  --disable-telemetry \
+  --disable-updates \
+  /root/workspace \
+  &
 
 # Start the worker
 exec docker-init -- node /builtins/build/index.js
+SCRIPT
+chmod +x /startup.sh
 EOF
-RUN chmod +x /startup.sh
 
 # Volume for docker storage
 # VOLUME /var/lib/docker
@@ -195,4 +222,5 @@ RUN chmod +x /startup.sh
 EXPOSE 2375 2376 3002 3003
 
 ENTRYPOINT ["/startup.sh"]
+# ENTRYPOINT ["sleep", "infinity"]
 CMD []
