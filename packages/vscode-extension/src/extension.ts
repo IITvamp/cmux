@@ -8,7 +8,14 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.window.showInformationMessage('Hello World from CodeRouter!');
     });
 
+    let runOpenCodeCommand = vscode.commands.registerCommand('coderouter.runOpenCode', () => {
+        const terminal = vscode.window.createTerminal('OpenCode AI');
+        terminal.show();
+        terminal.sendText('bun x opencode-ai');
+    });
+
     context.subscriptions.push(disposable);
+    context.subscriptions.push(runOpenCodeCommand);
 }
 
 export function deactivate() {
