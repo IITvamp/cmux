@@ -1,7 +1,5 @@
-# Base image - Ubuntu with proper glibc support
 FROM ubuntu:22.04
 
-# set version label
 ARG VERSION
 ARG CODE_RELEASE
 ARG DOCKER_VERSION=28.3.2
