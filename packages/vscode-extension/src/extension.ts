@@ -5,9 +5,10 @@ export function activate(context: vscode.ExtensionContext) {
 
   let disposable = vscode.commands.registerCommand(
     "coderouter.helloWorld",
-    () => {
+    async () => {
       console.log("Hello World from CodeRouter!");
       vscode.window.showInformationMessage("Hello World from CodeRouter!");
+      await vscode.commands.executeCommand("workbench.action.closeAllEditors");
     }
   );
 

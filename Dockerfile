@@ -154,8 +154,12 @@ RUN /app/openvscode-server/bin/openvscode-server --install-extension /tmp/codero
     rm /tmp/coderouter-extension-0.0.1.vsix
 
 # Create VS Code user settings
-RUN mkdir -p /root/.config/Code/User && \
-    echo '{"workbench.startupEditor": "none"}' > /root/.config/Code/User/settings.json
+RUN mkdir -p /root/.openvscode-server/data/User && \
+    echo '{"workbench.startupEditor": "none"}' > /root/.openvscode-server/data/User/settings.json && \
+    mkdir -p /root/.openvscode-server/data/User/profiles/default-profile && \
+    echo '{"workbench.startupEditor": "none"}' > /root/.openvscode-server/data/User/profiles/default-profile/settings.json && \
+    mkdir -p /root/.openvscode-server/data/Machine && \
+    echo '{"workbench.startupEditor": "none"}' > /root/.openvscode-server/data/Machine/settings.json
 
 WORKDIR /
 
@@ -217,6 +221,7 @@ wait-for-docker.sh
   --disable-workspace-trust \
   --disable-telemetry \
   --disable-updates \
+  --profile default-profile \
   /root/workspace \
   &
 

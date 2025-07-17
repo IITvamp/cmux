@@ -9,9 +9,11 @@ yarn-error.log*
 # Build outputs
 dist
 build
+out
 .next
 .nuxt
 .vuepress/dist
+.tanstack
 
 # Environment files
 .env

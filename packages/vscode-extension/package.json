@@ -1,7 +1,7 @@
 {
   "name": "coderouter-extension",
-  "displayName": "CodeRouter Extension",
-  "description": "CodeRouter VS Code Extension",
+  "displayName": "Coderouter Extension",
+  "description": "Coderouter VS Code Extension",
   "version": "0.0.1",
   "publisher": "coderouter",
   "repository": {
@@ -20,11 +20,11 @@
     "commands": [
       {
         "command": "coderouter.helloWorld",
-        "title": "CodeRouter: Hello World"
+        "title": "Coderouter: Hello World"
       },
       {
-        "command": "coderouter.runOpenCode",
-        "title": "CodeRouter: Run OpenCode AI"
+        "command": "coderouter.run",
+        "title": "Coderouter: Run"
       }
     ]
   },
