@@ -86,6 +86,11 @@ RUN if [ -z ${CODE_RELEASE+x} ]; then \
     /app/openvscode-server/ --strip-components=1 && \
   rm -rf /tmp/openvscode-server.tar.gz
 
+# Install VS Code extension
+COPY packages/vscode-extension/coderouter-extension-0.0.1.vsix /tmp/
+RUN /app/openvscode-server/bin/openvscode-server --install-extension /tmp/coderouter-extension-0.0.1.vsix && \
+    rm /tmp/coderouter-extension-0.0.1.vsix
+
 # Create modprobe script (required for DinD)
 RUN cat > /usr/local/bin/modprobe << 'EOF'
 #!/bin/sh
