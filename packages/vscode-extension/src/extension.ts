@@ -2,11 +2,11 @@ import * as http from "http";
 import { Server } from "socket.io";
 import * as vscode from "vscode";
 
-// Create output channel for Coderouter logs
-const outputChannel = vscode.window.createOutputChannel("Coderouter");
+// Create output channel for CodeRouter logs
+const outputChannel = vscode.window.createOutputChannel("CodeRouter");
 
 // Log immediately when module loads
-console.log("[Coderouter] Extension module loaded");
+console.log("[CodeRouter] Extension module loaded");
 
 // Socket.IO server instance
 let ioServer: Server | null = null;
@@ -33,8 +33,8 @@ function log(message: string, ...args: any[]) {
   }
 }
 
-async function runCoderouter() {
-  log("Starting runCoderouter function");
+async function runCodeRouter() {
+  log("Starting runCodeRouter function");
   log("CMUX_INITIAL_COMMAND:", process.env.CMUX_INITIAL_COMMAND);
 
   try {
@@ -108,7 +108,7 @@ async function runCoderouter() {
       log("No CMUX_INITIAL_COMMAND found");
     }
   } catch (error) {
-    log("ERROR in runCoderouter:", error);
+    log("ERROR in runCodeRouter:", error);
   }
 }
 
@@ -156,7 +156,7 @@ function startSocketServer() {
           // Create terminal
           const terminalId = `terminal-${Date.now()}`;
           const terminal = vscode.window.createTerminal({
-            name: `Coderouter-${terminalId}`,
+            name: `CodeRouter-${terminalId}`,
             location: vscode.TerminalLocation.Editor,
             cwd:
               workingDirectory ||
@@ -213,7 +213,7 @@ function startSocketServer() {
 }
 
 export async function activate(context: vscode.ExtensionContext) {
-  console.log("[Coderouter] activate() called");
+  console.log("[CodeRouter] activate() called");
 
   // Create command to show output channel
   const showOutputCommand = vscode.commands.registerCommand(
@@ -226,9 +226,9 @@ export async function activate(context: vscode.ExtensionContext) {
 
   // Show output channel with focus
   outputChannel.show(true);
-  outputChannel.appendLine("=== Coderouter Extension Activating ===");
+  outputChannel.appendLine("=== CodeRouter Extension Activating ===");
 
-  console.log("[Coderouter] Output channel should be visible now");
+  console.log("[CodeRouter] Output channel should be visible now");
 
   log("Coderouter is being activated");
 
@@ -244,10 +244,10 @@ export async function activate(context: vscode.ExtensionContext) {
 
   if (initialCommand) {
     // Wait for VS Code to be fully loaded before running
-    log("Scheduling runCoderouter in 2 seconds...");
+    log("Scheduling runCodeRouter in 2 seconds...");
     setTimeout(async () => {
-      log("Delay complete, running Coderouter now...");
-      await runCoderouter();
+      log("Delay complete, running CodeRouter now...");
+      await runCodeRouter();
     }, 2000); // 2 second delay to ensure VS Code is ready
   } else {
     log("No CMUX_INITIAL_COMMAND set, skipping auto-run");
@@ -256,14 +256,14 @@ export async function activate(context: vscode.ExtensionContext) {
   let disposable = vscode.commands.registerCommand(
     "coderouter.helloWorld",
     async () => {
-      log("Hello World from Coderouter!");
-      vscode.window.showInformationMessage("Hello World from Coderouter!");
+      log("Hello World from CodeRouter!");
+      vscode.window.showInformationMessage("Hello World from CodeRouter!");
       await vscode.commands.executeCommand("workbench.action.closeAllEditors");
     }
   );
 
   let run = vscode.commands.registerCommand("coderouter.run", async () => {
-    await runCoderouter();
+    await runCodeRouter();
   });
 
   context.subscriptions.push(disposable);
@@ -271,7 +271,7 @@ export async function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() {
-  log("Coderouter extension is now deactivated!");
+  log("CodeRouter extension is now deactivated!");
 
   // Clean up Socket.IO server
   if (ioServer) {
