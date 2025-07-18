@@ -2,21 +2,30 @@
 # dependencies = [
 #   "morphcloud",
 #   "requests",
+#   "tqdm",
+#   "python-dotenv",
 # ]
 # ///
 
 #!/usr/bin/env python3
 """
-Setup script for creating a Morph Cloud VM with Docker and BuildKit support.
-Demonstrates multi-stage builds and parallel execution in BuildKit.
+Port of coderouter Dockerfile to Morph Cloud VM.
+Sets up Node.js, Bun, OpenVSCode server, and global packages.
 """
 
+import fnmatch
 import os
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
+from threading import Lock
 
-import requests
+from dotenv import load_dotenv
 from morphcloud.api import MorphCloudClient
+from tqdm import tqdm
+
+load_dotenv()
 
 
 def run_ssh_command(instance, command, sudo=False, print_output=True):
@@ -39,385 +48,566 @@ def run_ssh_command(instance, command, sudo=False, print_output=True):
     return result
 
 
-def setup_docker_environment(instance):
-    """Set up Docker with BuildKit"""
-    print("\n--- Setting up Docker environment ---")
+def read_ignore_patterns(ignore_file):
+    """Read patterns from .gitignore or .dockerignore file"""
+    patterns = []
+    if os.path.exists(ignore_file):
+        with open(ignore_file, "r") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    patterns.append(line)
+    return patterns
 
-    # Install Docker and essentials
+
+def should_ignore_gitignore(path, patterns, root_dir):
+    """Check if a path should be ignored based on gitignore patterns (recursive)"""
+    # Convert path to relative path from root_dir
+    try:
+        rel_path = os.path.relpath(path, root_dir)
+    except ValueError:
+        rel_path = path
+
+    # Check patterns against the path and all its parent directories
+    path_parts = Path(rel_path).parts
+
+    for pattern in patterns:
+        # Remove leading slash for consistent matching
+        pattern = pattern.lstrip("/")
+
+        # Check if pattern matches the full path
+        if fnmatch.fnmatch(rel_path, pattern):
+            return True
+
+        # Check if pattern matches any part of the path (for recursive matching)
+        for i in range(len(path_parts)):
+            partial_path = "/".join(path_parts[i:])
+            if fnmatch.fnmatch(partial_path, pattern):
+                return True
+
+            # Also check individual directory/file names
+            if fnmatch.fnmatch(path_parts[i], pattern):
+                return True
+
+    return False
+
+
+def should_ignore_dockerignore(path, patterns, root_dir):
+    """Check if a path should be ignored based on dockerignore patterns (non-recursive)"""
+    # Convert path to relative path from root_dir
+    try:
+        rel_path = os.path.relpath(path, root_dir)
+    except ValueError:
+        rel_path = path
+
+    for pattern in patterns:
+        # Remove leading slash for consistent matching
+        pattern = pattern.lstrip("/")
+
+        # Direct match from root
+        if fnmatch.fnmatch(rel_path, pattern):
+            return True
+
+    return False
+
+
+def get_files_to_upload(local_dir, gitignore_patterns=None, dockerignore_patterns=None):
+    """Get list of files to upload, respecting ignore patterns"""
+    if gitignore_patterns is None:
+        gitignore_patterns = []
+    if dockerignore_patterns is None:
+        dockerignore_patterns = []
+
+    files_to_upload = []
+
+    for root, dirs, files in os.walk(local_dir):
+        # Filter directories based on patterns
+        filtered_dirs = []
+        for d in dirs:
+            dir_path = os.path.join(root, d)
+
+            # Skip if ignored by gitignore (recursive) or dockerignore (non-recursive)
+            if should_ignore_gitignore(dir_path, gitignore_patterns, local_dir):
+                continue
+            if should_ignore_dockerignore(dir_path, dockerignore_patterns, local_dir):
+                continue
+
+            filtered_dirs.append(d)
+
+        # Update dirs in-place to affect os.walk recursion
+        dirs[:] = filtered_dirs
+
+        # Check files
+        for file in files:
+            file_path = os.path.join(root, file)
+
+            # Skip if ignored
+            if should_ignore_gitignore(file_path, gitignore_patterns, local_dir):
+                continue
+            if should_ignore_dockerignore(file_path, dockerignore_patterns, local_dir):
+                continue
+
+            # Skip very large files
+            try:
+                if os.path.getsize(file_path) > 100 * 1024 * 1024:  # 100MB
+                    print(
+                        f"Skipping large file: {os.path.relpath(file_path, local_dir)}"
+                    )
+                    continue
+            except OSError:
+                continue
+
+            files_to_upload.append(file_path)
+
+    return files_to_upload
+
+
+def upload_file_sftp(sftp, local_path, remote_path, pbar=None):
+    """Upload a single file via SFTP with progress tracking"""
+    # Create remote directory if needed
+    remote_dir = os.path.dirname(remote_path)
+    if remote_dir:
+        try:
+            sftp.stat(remote_dir)
+        except FileNotFoundError:
+            # Create parent directories recursively
+            dirs_to_create = []
+            current = remote_dir
+            while current and current != "/":
+                try:
+                    sftp.stat(current)
+                    break
+                except FileNotFoundError:
+                    dirs_to_create.append(current)
+                    current = os.path.dirname(current)
+
+            # Create directories in reverse order (parent first)
+            for dir_path in reversed(dirs_to_create):
+                try:
+                    sftp.mkdir(dir_path)
+                except OSError:
+                    pass  # Directory might already exist
+
+    # Upload file
+    sftp.put(local_path, remote_path)
+
+    # Preserve executable permissions
+    if os.access(local_path, os.X_OK):
+        sftp.chmod(remote_path, 0o755)
+
+    if pbar:
+        pbar.update(1)
+
+
+def upload_directory_sftp(
+    instance, local_dir, remote_dir, show_progress=True, max_workers=8
+):
+    """Upload a directory via SFTP, respecting .gitignore and .dockerignore"""
+    # Read ignore patterns
+    gitignore_patterns = read_ignore_patterns(os.path.join(local_dir, ".gitignore"))
+    dockerignore_patterns = read_ignore_patterns(
+        os.path.join(local_dir, ".dockerignore")
+    )
+
+    # Always ignore .git directory
+    gitignore_patterns.append(".git")
+    gitignore_patterns.append(".git/**")
+
+    # Get list of files to upload
+    print(f"Scanning files in {local_dir}...")
+    files_to_upload = get_files_to_upload(
+        local_dir, gitignore_patterns, dockerignore_patterns
+    )
+
+    if not files_to_upload:
+        print("No files to upload.")
+        return
+
+    print(f"Found {len(files_to_upload)} files to upload")
+    print(f"Using {max_workers} parallel workers")
+
+    # Upload files via SFTP with parallel workers
+    # Create progress bar
+    if show_progress:
+        pbar = tqdm(total=len(files_to_upload), desc="Uploading files", unit="file")
+        pbar_lock = Lock()
+    else:
+        pbar = None
+        pbar_lock = None
+
+    # Create a list to track failed uploads
+    failed_uploads = []
+    failed_lock = Lock()
+
+    def upload_single_file(local_path):
+        """Upload a single file in a thread"""
+        # Calculate relative path
+        rel_path = os.path.relpath(local_path, local_dir)
+        remote_path = os.path.join(remote_dir, rel_path).replace("\\", "/")
+
+        try:
+            # Each thread needs its own SSH/SFTP connection
+            with instance.ssh() as ssh:
+                sftp = ssh._client.open_sftp()
+                try:
+                    upload_file_sftp(sftp, local_path, remote_path, pbar=None)
+
+                    # Update progress bar thread-safely
+                    if pbar:
+                        with pbar_lock:
+                            pbar.update(1)
+
+                    return True, rel_path
+                finally:
+                    sftp.close()
+        except Exception as e:
+            with failed_lock:
+                failed_uploads.append((rel_path, str(e)))
+            return False, f"{rel_path}: {e}"
+
+    # Create remote directory first
+    with instance.ssh() as ssh:
+        sftp = ssh._client.open_sftp()
+        try:
+            sftp.mkdir(remote_dir)
+        except OSError:
+            pass  # Directory might already exist
+        finally:
+            sftp.close()
+
+    # Upload files in parallel
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all upload tasks
+        futures = {
+            executor.submit(upload_single_file, local_path): local_path
+            for local_path in files_to_upload
+        }
+
+        # Process completed uploads
+        for future in as_completed(futures):
+            success, result = future.result()
+            if not success:
+                tqdm.write(f"Failed to upload: {result}")
+
+    if pbar:
+        pbar.close()
+
+    # Report results
+    successful_uploads = len(files_to_upload) - len(failed_uploads)
+    print(f"\nSuccessfully uploaded {successful_uploads} files")
+
+    if failed_uploads:
+        print(f"Failed to upload {len(failed_uploads)} files:")
+        for rel_path, error in failed_uploads[:5]:  # Show first 5 failures
+            print(f"  - {rel_path}: {error}")
+        if len(failed_uploads) > 5:
+            print(f"  ... and {len(failed_uploads) - 5} more")
+
+
+def upload_file(instance, local_path, remote_path):
+    """Upload a single file via SFTP"""
+    with instance.ssh() as ssh:
+        sftp = ssh._client.open_sftp()
+
+        try:
+            # Create remote directory if needed
+            remote_dir = os.path.dirname(remote_path)
+            if remote_dir:
+                try:
+                    sftp.stat(remote_dir)
+                except FileNotFoundError:
+                    sftp.mkdir(remote_dir)
+
+            # Upload file
+            print(f"Uploading {local_path} to {remote_path}")
+            sftp.put(local_path, remote_path)
+
+            # Preserve executable permissions
+            if os.access(local_path, os.X_OK):
+                sftp.chmod(remote_path, 0o755)
+
+        finally:
+            sftp.close()
+
+
+def setup_base_environment(instance):
+    """Install base dependencies"""
+    print("\n--- Installing base dependencies ---")
+
     run_ssh_command(
         instance,
         "DEBIAN_FRONTEND=noninteractive apt-get update && "
-        "DEBIAN_FRONTEND=noninteractive apt-get install -y "
-        "docker.io python3-docker git curl",
+        "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "
+        "ca-certificates curl wget git python3 make g++ bash nano net-tools "
+        "sudo supervisor openssl pigz xz-utils unzip && "
+        "rm -rf /var/lib/apt/lists/*",
         sudo=True,
     )
 
-    # Enable BuildKit for faster builds
+
+def setup_nodejs(instance):
+    """Install Node.js 22.x"""
+    print("\n--- Installing Node.js 22.x ---")
+
     run_ssh_command(
         instance,
-        "mkdir -p /etc/docker && "
-        'echo \'{"features":{"buildkit":true}}\' > /etc/docker/daemon.json && '
-        "echo 'DOCKER_BUILDKIT=1' >> /etc/environment",
+        "curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && "
+        "apt-get install -y nodejs && "
+        "rm -rf /var/lib/apt/lists/*",
         sudo=True,
     )
 
-    # Restart Docker and make sure it's running
-    run_ssh_command(instance, "systemctl restart docker", sudo=True)
-
-    # Wait for Docker to be fully started
-    print("Waiting for Docker to be ready...")
-    for i in range(5):
-        result = run_ssh_command(
-            instance,
-            "docker info >/dev/null 2>&1 || echo 'not ready'",
-            sudo=True,
-            print_output=False,
-        )
-        if result.exit_code == 0 and "not ready" not in result.stdout:
-            print("Docker is ready")
-            break
-        print(f"Waiting for Docker... ({i+1}/5)")
-        time.sleep(3)
+    # Verify installation
+    result = run_ssh_command(instance, "node --version", print_output=True)
+    print(f"Node.js installed: {result.stdout.strip()}")
 
 
-def create_health_check_app(instance):
-    """Create a simple Python health check web server"""
-    print("\n--- Creating health check application ---")
+def setup_bun(instance):
+    """Install Bun"""
+    print("\n--- Installing Bun ---")
 
-    # Create health_check.py
-    health_check_py = """#!/usr/bin/env python3
-import http.server
-import socketserver
-import json
-import os
-from datetime import datetime
-import socket
+    run_ssh_command(instance, "curl -fsSL https://bun.sh/install | bash")
 
-PORT = 8080
+    # Add Bun to PATH for current session
+    run_ssh_command(instance, 'echo "export PATH=/root/.bun/bin:$PATH" >> ~/.bashrc')
 
-class HealthCheckHandler(http.server.SimpleHTTPRequestHandler):
-    def do_GET(self):
-        if self.path == '/health' or self.path == '/':
-            self.send_response(200)
-            self.send_header('Content-Type', 'application/json')
-            self.end_headers()
-            
-            health_data = {
-                'status': 'healthy',
-                'timestamp': datetime.now().isoformat(),
-                'container': socket.gethostname(),
-                'environment': {k: v for k, v in os.environ.items() if not k.startswith('_')},
-                'services': {
-                    'health_check': 'running on port 8080',
-                    'web_server': 'running on port 8081'
-                }
-            }
-            
-            self.wfile.write(json.dumps(health_data, indent=2).encode())
-        else:
-            self.send_response(404)
-            self.end_headers()
-            self.wfile.write(b'Not Found')
-    
-    def log_message(self, format, *args):
-        print(f"[{datetime.now().isoformat()}] {format % args}")
-
-print(f"Starting health check server on port {PORT}")
-with socketserver.TCPServer(("", PORT), HealthCheckHandler) as httpd:
-    print("Health check server running. Access /health endpoint for health status.")
-    httpd.serve_forever()
-"""
-
-    run_ssh_command(instance, f"cat > health_check.py << 'EOF'\n{health_check_py}\nEOF")
-    print("Created health_check.py server")
+    # Verify installation
+    result = run_ssh_command(
+        instance, "/root/.bun/bin/bun --version", print_output=True
+    )
+    print(f"Bun installed: {result.stdout.strip()}")
 
 
-def create_index_html(instance):
-    """Create index.html with morph labs message and orange cat SVG"""
-    print("\n--- Creating index.html ---")
+def install_global_packages(instance):
+    """Install global packages with Bun"""
+    print("\n--- Installing global packages ---")
 
-    index_html = """<!DOCTYPE html>
-<html>
-<head>
-    <title>Morph Labs Demo</title>
-    <style>
-        body {
-            font-family: sans-serif;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-            margin: 0;
-            background-color: #f5f5f5;
-        }
-        h1 {
-            color: #333;
-            text-align: center;
-            max-width: 800px;
-            line-height: 1.4;
-        }
-        .cat-container {
-            margin: 2rem;
-            max-width: 300px;
-        }
-    </style>
-</head>
-<body>
-    <h1>anything you want can be built with morph labs</h1>
-    <div class="cat-container">
-        <!-- Orange Cat SVG -->
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-            <path fill="#FF9800" d="M448,96c0-35.3-28.7-64-64-64c-6.6,0-13,1-19,2.9C341.9,13.7,307.6,0,270.1,0
-            c-37.5,0-71.8,13.7-94.9,34.9c-6-1.9-12.4-2.9-19-2.9c-35.3,0-64,28.7-64,64c0,23.7,12.9,44.3,32,55.4v28.6
-            c-19.1,11.1-32,31.7-32,55.4c0,35.3,28.7,64,64,64c2.4,0,4.8-0.1,7.1-0.4c17.3,24.9,45.9,41.4,78.5,42.3
-            c0.1,0,0.3,0,0.4,0h64c0.1,0,0.3,0,0.4,0c32.6-0.9,61.2-17.4,78.5-42.3c2.3,0.3,4.7,0.4,7.1,0.4c35.3,0,64-28.7,64-64
-            c0-23.7-12.9-44.3-32-55.4v-28.6C435.1,140.3,448,119.7,448,96z"/>
-            <path fill="#FFA726" d="M383.5,192c-2.5,0-4.9,0.2-7.3,0.6C354.8,166.5,324.1,151,290,151h-68
-            c-34.1,0-64.8,15.5-86.2,41.6c-2.4-0.4-4.8-0.6-7.3-0.6c-26.5,0-48,21.5-48,48s21.5,48,48,48c1.6,0,3.2-0.1,4.7-0.3
-            C151.4,312.9,183.9,335,222,335h68c38.1,0,70.6-22.1,88.8-47.3c1.5,0.2,3.1,0.3,4.7,0.3c26.5,0,48-21.5,48-48
-            S410,192,383.5,192z"/>
-            <circle fill="#784719" cx="176" cy="208" r="24"/>
-            <circle fill="#784719" cx="336" cy="208" r="24"/>
-            <circle fill="#FFFFFF" cx="176" cy="200" r="8"/>
-            <circle fill="#FFFFFF" cx="336" cy="200" r="8"/>
-            <path fill="#4D342E" d="M336,276.1h-4c-6.6,0-12-5.4-12-12v-8c0-6.6,5.4-12,12-12h4c6.6,0,12,5.4,12,12v8
-            C348,270.7,342.6,276.1,336,276.1z"/>
-            <path fill="#4D342E" d="M176,276.1h-4c-6.6,0-12-5.4-12-12v-8c0-6.6,5.4-12,12-12h4c6.6,0,12,5.4,12,12v8
-            C188,270.7,182.6,276.1,176,276.1z"/>
-            <path fill="#E65100" d="M284,252.1h-56c-4.4,0-8-3.6-8-8s3.6-8,8-8h56c4.4,0,8,3.6,8,8S288.4,252.1,284,252.1z"/>
-        </svg>
-    </div>
-</body>
-</html>
-"""
+    packages = [
+        "@openai/codex",
+        "@anthropic-ai/claude-code",
+        "@google/gemini-cli",
+        "opencode-ai",
+        "codebuff",
+        "@devcontainers/cli",
+    ]
 
-    # Create directory for web content
-    run_ssh_command(instance, "mkdir -p www")
-
-    # Create index.html
-    run_ssh_command(instance, f"cat > www/index.html << 'EOF'\n{index_html}\nEOF")
-    print("Created index.html with orange cat SVG")
-
-
-def create_entrypoint_script(instance):
-    """Create entrypoint script to run both servers"""
-    print("\n--- Creating entrypoint script ---")
-
-    entrypoint_sh = """#!/bin/bash
-# Start the health check server in the background
-python3 /app/health_check.py &
-HEALTH_PID=$!
-
-# Start a simple HTTP server for the index.html in the background
-cd /app/www && python3 -m http.server 8081 &
-HTTP_PID=$!
-
-echo "Health check server started on port 8080 (PID: $HEALTH_PID)"
-echo "HTTP server started on port 8081 (PID: $HTTP_PID)"
-
-# Handle termination
-trap 'kill $HEALTH_PID $HTTP_PID; exit' SIGTERM SIGINT
-
-# Keep the container running
-wait
-"""
-
-    run_ssh_command(instance, f"cat > entrypoint.sh << 'EOF'\n{entrypoint_sh}\nEOF")
-    run_ssh_command(instance, "chmod +x entrypoint.sh")
-    print("Created entrypoint.sh script")
-
-
-def create_requirements_file(instance):
-    """Create requirements.txt file"""
-    print("\n--- Creating requirements.txt ---")
-
-    requirements = """requests==2.28.1
-"""
-
-    run_ssh_command(instance, f"cat > requirements.txt << 'EOF'\n{requirements}\nEOF")
-    print("Created requirements.txt")
-
-
-def create_dockerfile(instance):
-    """Create a multi-stage Dockerfile with BuildKit features"""
-    print("\n--- Creating BuildKit-optimized Dockerfile ---")
-
-    dockerfile = """# syntax=docker/dockerfile:1.4
-FROM ubuntu:22.04 AS base
-
-# Base dependencies
-RUN apt-get update && apt-get install -y \\
-    curl \\
-    && rm -rf /var/lib/apt/lists/*
-
-# Python stage
-FROM base AS python-builder
-RUN apt-get update && apt-get install -y \\
-    python3 \\
-    python3-pip \\
-    && rm -rf /var/lib/apt/lists/*
-
-# Install Python dependencies
-WORKDIR /build
-COPY requirements.txt .
-RUN pip3 install --upgrade pip && \\
-    pip3 install -r requirements.txt
-
-# Web content stage
-FROM base AS web-content
-WORKDIR /build/www
-COPY www/ .
-
-# Final image
-FROM python-builder AS final
-WORKDIR /app
-
-# Copy Python application
-COPY health_check.py .
-RUN chmod +x health_check.py
-
-# Copy web content
-COPY --from=web-content /build/www ./www
-
-# Copy entrypoint script
-COPY entrypoint.sh .
-RUN chmod +x entrypoint.sh
-
-# Expose ports
-EXPOSE 8080 8081
-
-# Health check
-HEALTHCHECK --interval=5s --timeout=3s --start-period=5s --retries=3 \\
-    CMD curl -f http://localhost:8080/health || exit 1
-
-# Set entrypoint
-ENTRYPOINT ["/app/entrypoint.sh"]
-"""
-
-    run_ssh_command(instance, f"cat > Dockerfile << 'EOF'\n{dockerfile}\nEOF")
-    print("Created BuildKit-optimized Dockerfile")
-
-
-def build_and_run_container(instance):
-    """Build and run the Docker container with BuildKit"""
-    print("\n--- Building Docker image with BuildKit ---")
-    build_result = run_ssh_command(
-        instance,
-        "DOCKER_BUILDKIT=1 docker build --progress=plain -t morph-demo:latest .",
-        sudo=True,
+    run_ssh_command(
+        instance, f"/root/.bun/bin/bun add -g {' '.join(packages)}", print_output=True
     )
 
-    if build_result.exit_code != 0:
-        print("Failed to build Docker image")
-        return None
 
-    print("\n--- Starting container ---")
-    # Expose both HTTP services
-    instance.expose_http_service("health-check", 8080)
-    instance.expose_http_service("web-server", 8081)
-    print("Exposed HTTP services on ports 8080 and 8081")
+def setup_openvscode_server(instance):
+    """Install OpenVSCode server"""
+    print("\n--- Installing OpenVSCode server ---")
 
-    # Run container with environment variables
+    # Get latest release version
     result = run_ssh_command(
         instance,
-        "docker run -d -p 8080:8080 -p 8081:8081 "
-        "-e APP_ENV=production "
-        "-e APP_VERSION=1.0.0 "
-        "--name morph-demo morph-demo:latest",
-        sudo=True,
-    )
-
-    if result.exit_code != 0:
-        print("Failed to start container")
-        return None
-
-    container_id = result.stdout.strip()
-
-    # Verify container is running
-    time.sleep(2)
-    check_result = run_ssh_command(
-        instance,
-        f"docker ps -q --filter id={container_id}",
-        sudo=True,
+        'curl -sX GET "https://api.github.com/repos/gitpod-io/openvscode-server/releases/latest" | '
+        "grep \"tag_name\" | awk -F'\"' '{print $4}' | sed 's|^openvscode-server-v||'",
         print_output=False,
     )
 
-    if not check_result.stdout.strip():
-        print("\nWarning: Container started but exited immediately.")
-        print("Container logs:")
-        run_ssh_command(instance, f"docker logs {container_id}", sudo=True)
-        return None
+    code_release = result.stdout.strip()
+    print(f"Latest OpenVSCode server version: {code_release}")
 
-    print(f"\nContainer {container_id} is running")
+    # Detect architecture
+    result = run_ssh_command(instance, "dpkg --print-architecture", print_output=False)
+    arch = result.stdout.strip()
 
-    # Show running containers
-    print("\nRunning containers:")
-    run_ssh_command(instance, "docker ps", sudo=True)
+    if arch == "amd64":
+        arch_name = "x64"
+    elif arch == "arm64":
+        arch_name = "arm64"
+    else:
+        print(f"Unsupported architecture: {arch}")
+        return
 
-    return container_id
+    # Download and extract OpenVSCode server
+    run_ssh_command(
+        instance,
+        f"mkdir -p /app/openvscode-server && "
+        f"curl -L -o /tmp/openvscode-server.tar.gz "
+        f'"https://github.com/gitpod-io/openvscode-server/releases/download/openvscode-server-v{code_release}/'
+        f'openvscode-server-v{code_release}-linux-{arch_name}.tar.gz" && '
+        f"tar xf /tmp/openvscode-server.tar.gz -C /app/openvscode-server/ --strip-components=1 && "
+        f"rm -rf /tmp/openvscode-server.tar.gz",
+        sudo=True,
+    )
+
+    print("OpenVSCode server installed successfully")
 
 
-def wait_for_health_check(client, instance, max_retries=20, delay=3):
-    """Wait for both health check and web server to be available (at least 1 minute)"""
-    instance = client.instances.get(instance.id)  # Refresh instance info
+def setup_workspace(instance, workspace_path):
+    """Upload workspace files and build the application"""
+    print("\n--- Setting up workspace ---")
 
-    health_url = None
-    web_url = None
+    # Create workspace directory
+    run_ssh_command(instance, f"mkdir -p {workspace_path}", sudo=True)
 
-    for service in instance.networking.http_services:
-        if service.name == "health-check":
-            health_url = f"{service.url}/health"
-        elif service.name == "web-server":
-            web_url = service.url
+    # Get the project root (4 levels up from this script)
+    script_dir = Path(__file__).resolve()
+    project_root = script_dir.parent.parent.parent.parent
 
-    if not health_url or not web_url:
-        print("❌ Could not find expected HTTP service URLs")
-        return False
+    print(f"Uploading project files from {project_root}...")
 
-    print(f"Checking health endpoint: {health_url}")
-    health_ok = False
+    # Upload the entire project respecting .gitignore and .dockerignore
+    upload_directory_sftp(instance, str(project_root), workspace_path)
 
-    for i in range(max_retries):
-        try:
-            response = requests.get(health_url, timeout=5)
-            if response.status_code == 200:
-                print(f"✅ Health endpoint available (status {response.status_code})")
-                print(f"Response: {response.json()}")
-                health_ok = True
-                break
-            print(f"Attempt {i+1}/{max_retries}: HTTP status {response.status_code}")
-        except requests.RequestException as e:
-            print(f"Attempt {i+1}/{max_retries}: {str(e)}")
+    print("Project files uploaded successfully")
 
-        time.sleep(delay)
+    # Install npm dependencies with cache mount
+    print("\n--- Installing npm dependencies ---")
+    run_ssh_command(instance, f"sh -c 'cd {workspace_path} && npm install'", sudo=True)
 
-    print(f"\nChecking web server: {web_url}")
-    web_ok = False
+    # Pre-install node-pty in /builtins location (matching Dockerfile)
+    print("\n--- Setting up /builtins ---")
+    run_ssh_command(
+        instance,
+        f"mkdir -p /builtins && "
+        f"cp {workspace_path}/apps/worker/package.json /builtins/package.json",
+        sudo=True,
+    )
 
-    for i in range(max_retries):
-        try:
-            response = requests.get(web_url, timeout=5)
-            if response.status_code == 200:
-                print(f"✅ Web server available (status {response.status_code})")
-                web_ok = True
-                break
-            print(f"Attempt {i+1}/{max_retries}: HTTP status {response.status_code}")
-        except requests.RequestException as e:
-            print(f"Attempt {i+1}/{max_retries}: {str(e)}")
+    # Install node-pty in /builtins
+    run_ssh_command(instance, "sh -c 'cd /builtins && npm install node-pty'", sudo=True)
 
-        time.sleep(delay)
+    # Build the worker
+    print("\n--- Building worker application ---")
+    run_ssh_command(
+        instance,
+        f"sh -c 'cd {workspace_path} && "
+        f"/root/.bun/bin/bun build {workspace_path}/apps/worker/src/index.ts "
+        f"--target node --outdir {workspace_path}/apps/worker/build --external node-pty'",
+        sudo=True,
+    )
 
-    return health_ok and web_ok
+    # Copy build output to /builtins
+    run_ssh_command(
+        instance, f"cp -r {workspace_path}/apps/worker/build /builtins/build", sudo=True
+    )
+
+    # Copy wait-for-docker.sh to /usr/local/bin
+    run_ssh_command(
+        instance,
+        f"cp {workspace_path}/apps/worker/wait-for-docker.sh /usr/local/bin/ && "
+        f"chmod +x /usr/local/bin/wait-for-docker.sh",
+        sudo=True,
+    )
+
+
+def build_vscode_extension(instance, workspace_path):
+    """Build the VS Code extension"""
+    print("\n--- Building VS Code extension ---")
+
+    # Change to the vscode extension directory first
+    run_ssh_command(
+        instance,
+        f"sh -c 'cd {workspace_path}/packages/vscode-extension && "
+        f"/root/.bun/bin/bun install && "  # Install dependencies first
+        f"/root/.bun/bin/bun run package'",
+        sudo=True,
+    )
+
+    # Copy to temp location
+    run_ssh_command(
+        instance,
+        f"cp {workspace_path}/packages/vscode-extension/coderouter-extension-0.0.1.vsix "
+        f"/tmp/coderouter-extension-0.0.1.vsix",
+        sudo=True,
+    )
+
+
+def install_vscode_extensions(instance):
+    """Install VS Code extensions"""
+    print("\n--- Installing VS Code extensions ---")
+
+    extensions = ["/tmp/coderouter-extension-0.0.1.vsix", "vscode.git", "vscode.github"]
+
+    for ext in extensions:
+        run_ssh_command(
+            instance,
+            f"/app/openvscode-server/bin/openvscode-server --install-extension {ext}",
+            sudo=True,
+        )
+
+    # Clean up
+    run_ssh_command(instance, "rm -f /tmp/coderouter-extension-0.0.1.vsix", sudo=True)
+
+
+def setup_vscode_settings(instance):
+    """Create VS Code user settings"""
+    print("\n--- Setting up VS Code settings ---")
+
+    settings = '{"workbench.startupEditor": "none"}'
+
+    dirs = [
+        "/root/.openvscode-server/data/User",
+        "/root/.openvscode-server/data/User/profiles/default-profile",
+        "/root/.openvscode-server/data/Machine",
+    ]
+
+    for dir_path in dirs:
+        run_ssh_command(instance, f"mkdir -p {dir_path}", sudo=True)
+        run_ssh_command(
+            instance,
+            f"sh -c 'echo \\'{settings}\\' > {dir_path}/settings.json'",
+            sudo=True,
+        )
+
+
+def create_startup_script(instance):
+    """Create startup script for the application"""
+    print("\n--- Creating startup script ---")
+
+    startup_script = """#!/bin/bash
+set -e
+
+# Create log directory
+mkdir -p /var/log/openvscode
+
+# Log environment variables for debugging
+echo "[Startup] Environment variables:" > /var/log/openvscode/startup.log
+env >> /var/log/openvscode/startup.log
+
+# Start OpenVSCode server on port 2376 without authentication
+echo "[Startup] Starting OpenVSCode server..." >> /var/log/openvscode/startup.log
+/app/openvscode-server/bin/openvscode-server \\
+  --host 0.0.0.0 \\
+  --port 2376 \\
+  --without-connection-token \\
+  --disable-workspace-trust \\
+  --disable-telemetry \\
+  --disable-updates \\
+  --profile default-profile \\
+  --verbose \\
+  /root/workspace \\
+  > /var/log/openvscode/server.log 2>&1 &
+
+echo "[Startup] OpenVSCode server started, logs available at /var/log/openvscode/server.log" >> /var/log/openvscode/startup.log
+
+# Start the worker
+export NODE_ENV=production
+export WORKER_PORT=3002
+export MANAGEMENT_PORT=3003
+
+exec node /builtins/build/index.js
+"""
+
+    run_ssh_command(
+        instance, f"cat > /startup.sh << 'EOF'\n{startup_script}\nEOF", sudo=True
+    )
+
+    run_ssh_command(instance, "chmod +x /startup.sh", sudo=True)
 
 
 def main():
     client = MorphCloudClient()
 
     # VM configuration
-    VCPUS = 2
-    MEMORY = 2048
-    DISK_SIZE = 4096
+    VCPUS = 4
+    MEMORY = 8192
+    DISK_SIZE = 20480
 
     print("Creating snapshot...")
     snapshot = client.snapshots.create(
@@ -430,53 +620,118 @@ def main():
     instance = client.instances.start(snapshot.id)
 
     try:
-        # Setup Docker environment with BuildKit
-        setup_docker_environment(instance)
+        # Install base dependencies
+        setup_base_environment(instance)
 
-        # Create application files
-        create_health_check_app(instance)
-        create_index_html(instance)
-        create_entrypoint_script(instance)
-        create_requirements_file(instance)
-        create_dockerfile(instance)
+        # Install Node.js
+        setup_nodejs(instance)
 
-        # Build and run container with BuildKit
-        container_id = build_and_run_container(instance)
-        if not container_id:
-            return
+        # Install Bun
+        setup_bun(instance)
 
-        # Display information
-        print("\nSetup complete!")
-        print(f"Instance ID: {instance.id}")
-        print(f"Container ID: {container_id}")
+        # Install global packages
+        install_global_packages(instance)
 
-        # Check health endpoint and web server (wait at least 1 minute)
-        print("\nChecking services (waiting at least 1 minute)...")
-        if wait_for_health_check(client, instance):
-            print("\n✅ All services are up and running!")
+        # Install OpenVSCode server
+        setup_openvscode_server(instance)
+
+        # Setup workspace
+        workspace_path = "/coderouter"
+        setup_workspace(instance, workspace_path)
+
+        # Build VS Code extension
+        build_vscode_extension(instance, workspace_path)
+
+        # Install VS Code extensions
+        install_vscode_extensions(instance)
+
+        # Setup VS Code settings
+        setup_vscode_settings(instance)
+
+        # Create startup script
+        create_startup_script(instance)
+
+        # Create workspace directory for OpenVSCode
+        run_ssh_command(instance, "mkdir -p /root/workspace", sudo=True)
+
+        # Expose HTTP services
+        instance.expose_http_service("openvscode", 2376)
+        instance.expose_http_service("worker", 3002)
+        instance.expose_http_service("management", 3003)
+
+        print("\n--- Starting services ---")
+        # Run the startup script in the background
+        run_ssh_command(
+            instance, "nohup /startup.sh > /var/log/startup.log 2>&1 &", sudo=True
+        )
+
+        # Wait a bit for services to start
+        print("Waiting for services to start...")
+        time.sleep(10)
+
+        # Check if services are running
+        print("\n--- Checking services ---")
+
+        # Check OpenVSCode server
+        result = run_ssh_command(
+            instance,
+            "ps aux | grep openvscode-server | grep -v grep",
+            sudo=True,
+            print_output=False,
+        )
+        if result.stdout:
+            print("✅ OpenVSCode server is running")
         else:
-            print("\n⚠️ Some services might not be fully operational")
+            print("❌ OpenVSCode server is not running")
+            # Show logs
+            run_ssh_command(
+                instance, "cat /var/log/openvscode/server.log | tail -20", sudo=True
+            )
 
-        print("\nURLs to access:")
+        # Check worker
+        result = run_ssh_command(
+            instance,
+            "ps aux | grep 'node /builtins/build/index.js' | grep -v grep",
+            sudo=True,
+            print_output=False,
+        )
+        if result.stdout:
+            print("✅ Worker is running")
+        else:
+            print("❌ Worker is not running")
+            # Show startup logs
+            run_ssh_command(instance, "cat /var/log/startup.log | tail -20", sudo=True)
+
+        print("\n✅ Setup complete!")
+        print(f"Instance ID: {instance.id}")
+
+        # Get service URLs
         instance = client.instances.get(instance.id)  # Refresh instance info
+        print("\nService URLs:")
         for service in instance.networking.http_services:
             print(f"- {service.name}: {service.url}")
 
         print("\nUseful commands:")
-        print(f"SSH access: morphcloud instance ssh {instance.id}")
+        print(f"- SSH to instance: morphcloud instance ssh {instance.id}")
         print(
-            f"View logs: morphcloud instance ssh {instance.id} -- sudo docker logs {container_id}"
+            f"- View OpenVSCode logs: morphcloud instance ssh {instance.id} -- sudo cat /var/log/openvscode/server.log"
         )
         print(
-            f"Stop container: morphcloud instance ssh {instance.id} -- sudo docker stop {container_id}"
+            f"- View startup logs: morphcloud instance ssh {instance.id} -- sudo cat /var/log/startup.log"
+        )
+        print(
+            f"- Restart services: morphcloud instance ssh {instance.id} -- sudo /startup.sh"
         )
 
+        # let the user interact with the instance and wait for them to press enter
+        input("Press Enter to continue to final snapshot...")
+
         # Create final snapshot
-        print("\nCreating final snapshot of configured environment...")
-        snapshot = instance.snapshot()
-        print(f"Final snapshot created: {snapshot.id}")
+        print("\nCreating final snapshot...")
+        final_snapshot = instance.snapshot()
+        print(f"Final snapshot created: {final_snapshot.id}")
         print(
-            f"You can start new instances from this snapshot with: morphcloud instance start {snapshot.id}"
+            f"Start new instances with: morphcloud instance start {final_snapshot.id}"
         )
 
     except Exception as e:
