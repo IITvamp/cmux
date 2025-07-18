@@ -33,6 +33,33 @@ function log(message: string, ...args: any[]) {
   }
 }
 
+async function openMultiDiffEditor() {
+  // Get the Git extension
+  const gitExtension = vscode.extensions.getExtension("vscode.git");
+  if (!gitExtension) {
+    vscode.window.showErrorMessage("Git extension not found");
+    return;
+  }
+
+  const git = gitExtension.exports;
+  const api = git.getAPI(1);
+
+  // Get the first repository (or you can select a specific one)
+  const repository = api.repositories[0];
+  if (!repository) {
+    vscode.window.showErrorMessage("No Git repository found");
+    return;
+  }
+
+  // The resource group IDs are: 'index', 'workingTree', 'untracked', 'merge'
+  // You can open the working tree changes view even if empty
+  await vscode.commands.executeCommand("_workbench.openScmMultiDiffEditor", {
+    title: `Git: Changes`,
+    repositoryUri: vscode.Uri.file(repository.rootUri.fsPath),
+    resourceGroupId: "workingTree",
+  });
+}
+
 async function runCodeRouter() {
   log("Starting runCodeRouter function");
   log("CMUX_INITIAL_COMMAND:", process.env.CMUX_INITIAL_COMMAND);
@@ -68,10 +95,8 @@ async function runCodeRouter() {
 
     // Open git changes view
     log("Opening git changes view...");
-    await vscode.commands.executeCommand(
-      "_workbench.openScmMultiDiffEditor",
-      {}
-    );
+    await openMultiDiffEditor();
+    // await vscode.commands.executeCommand("_workbench.openMultiDiffEditor", {});
     // await vscode.commands.executeCommand("git.viewChanges");
 
     // Then split the editor area (this will create a split to the right)
