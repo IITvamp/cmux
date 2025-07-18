@@ -31,14 +31,14 @@
     ]
   },
   "scripts": {
-    "vscode:prepublish": "bun run compile",
-    "compile-bun": "bun build src/extension.ts --target node --outdir ./out --external vscode",
-    "compile": "tsc -p ./",
+    "vscode:prepublish": "bun run compile-bun",
+    "compile-bun": "bun build src/extension.ts --target node --outdir ./out --external vscode --minify --format cjs",
+    "compile-tsc": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
     "test": "vscode-test",
-    "package": "vsce package --allow-missing-repository --no-dependencies"
+    "package": "vsce package --allow-missing-repository --no-dependencies --allow-star-activation"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.6",
