@@ -68,7 +68,11 @@ async function runCodeRouter() {
 
     // Open git changes view
     log("Opening git changes view...");
-    await vscode.commands.executeCommand("git.viewChanges");
+    await vscode.commands.executeCommand(
+      "_workbench.openScmMultiDiffEditor",
+      {}
+    );
+    // await vscode.commands.executeCommand("git.viewChanges");
 
     // Then split the editor area (this will create a split to the right)
     log("Splitting editor...");
@@ -236,7 +240,7 @@ export async function activate(context: vscode.ExtensionContext) {
   await vscode.commands.executeCommand("workbench.action.closeAllEditors");
 
   // Start Socket.IO server
-  // startSocketServer();
+  startSocketServer();
 
   // Check for initial command on startup
   const initialCommand = process.env.CMUX_INITIAL_COMMAND;
