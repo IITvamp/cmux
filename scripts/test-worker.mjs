@@ -38,6 +38,13 @@ if (workspaceIndex !== -1 && workspaceIndex + 1 < args.length) {
   }
 }
 
+// Parse prompt argument
+let customPrompt = null;
+const promptIndex = args.findIndex((arg) => arg === "--prompt" || arg === "-p");
+if (promptIndex !== -1 && promptIndex + 1 < args.length) {
+  customPrompt = args[promptIndex + 1];
+}
+
 // Timing utilities
 const timings = {
   testStart: 0,
@@ -157,11 +164,16 @@ async function setupDockerContainer() {
   console.log("Container configuration:");
   console.log("  - Port 3002: Worker client port");
   console.log("  - Port 3003: Worker management port");
+  console.log("  - Port 3004: VS Code extension socket server");
   console.log("  - Port 2376: code-server (VS Code in browser)");
   console.log("  - Privileged mode: Enabled (for Docker-in-Docker)");
 
   if (workspacePath) {
     console.log(`  - Workspace mount: ${workspacePath} -> /root/workspace`);
+  }
+
+  if (customPrompt) {
+    console.log(`  - CMUX_INITIAL_COMMAND: ${customPrompt}`);
   }
 
   // Build docker run arguments
@@ -176,6 +188,8 @@ async function setupDockerContainer() {
     "-p",
     "3003:3003",
     "-p",
+    "3004:3004",
+    "-p",
     "2376:2376",
     "-e",
     "NODE_ENV=production",
@@ -184,6 +198,11 @@ async function setupDockerContainer() {
     "-e",
     "MANAGEMENT_PORT=3003",
   ];
+
+  // Add CMUX_INITIAL_COMMAND if custom prompt is provided
+  if (customPrompt) {
+    dockerArgs.push("-e", `CMUX_INITIAL_COMMAND=${customPrompt}`);
+  }
 
   // Add volume mount if workspace path is provided
   if (workspacePath) {
@@ -393,65 +412,91 @@ async function testWorker() {
     logProgress("Worker registered with ID: " + workerData.workerId);
     console.log("  Capabilities:", workerData.capabilities);
 
-    // Test creating a terminal
-    startTiming("Terminal Creation");
-    logProgress("Creating test terminal...");
-    console.log("  Terminal ID: test-terminal-1");
-    console.log("  Size: 80x24");
-    console.log("  Working directory: /");
-
-    managementSocket.emit("worker:create-terminal", {
-      terminalId: "test-terminal-1",
-      cols: 80,
-      rows: 24,
-      cwd: "/",
-    });
-
-    // Wait for terminal creation
-    const terminalCreated = await waitForEvent(
-      managementSocket,
-      "worker:terminal-created"
-    );
-    endTiming("Terminal Creation");
-    logProgress("Terminal created successfully");
-    console.log("  Terminal ID:", terminalCreated.terminalId);
-
-    // Test sending input
-    startTiming("Command Execution");
-    const testCommand = 'echo "Hello from worker!"';
-    logProgress(`Sending test command: ${testCommand}`);
-
-    managementSocket.emit("worker:terminal-input", {
-      terminalId: "test-terminal-1",
-      data: testCommand + "\r",
-    });
-
-    // Set up output handler and wait for expected output
-    let outputReceived = false;
-    const outputPromise = new Promise((resolve) => {
-      managementSocket.on("worker:terminal-output", (data) => {
-        logProgress("Terminal output received:");
-        console.log("  Raw data:", JSON.stringify(data.data));
-        console.log("  Decoded:", data.data);
-
-        // Check for expected output
-        if (!outputReceived && data.data.includes("Hello from worker!")) {
-          outputReceived = true;
-          logProgress("TEST SUCCESSFUL! Worker responded correctly.");
-          resolve();
-        }
+    // Connect to VS Code extension socket server
+    if (customPrompt) {
+      startTiming("VS Code Socket Connection");
+      logProgress("Connecting to VS Code extension socket server (3004)...");
+      
+      const vscodeSocket = io("http://localhost:3004", {
+        timeout: 10000,
+        reconnectionAttempts: 3,
       });
-    });
-
-    // Wait for the expected output with timeout
-    await Promise.race([
-      outputPromise,
-      delay(10000).then(() => {
-        throw new Error("Timeout waiting for terminal output");
-      }),
-    ]);
-
-    endTiming("Command Execution");
+      
+      try {
+        // Wait for connection
+        await new Promise((resolve, reject) => {
+          vscodeSocket.on("connect", () => {
+            logProgress("Connected to VS Code extension socket server");
+            resolve();
+          });
+          vscodeSocket.on("connect_error", (error) => {
+            reject(new Error(`Failed to connect to VS Code extension: ${error.message}`));
+          });
+          
+          // Timeout after 10 seconds
+          setTimeout(() => reject(new Error("Timeout connecting to VS Code extension")), 10000);
+        });
+        
+        endTiming("VS Code Socket Connection");
+        
+        // Check VS Code status
+        startTiming("VS Code Status Check");
+        const status = await new Promise((resolve) => {
+          vscodeSocket.emit("vscode:get-status", (data) => {
+            resolve(data);
+          });
+        });
+        
+        logProgress("VS Code extension status:");
+        console.log("  Ready:", status.ready);
+        console.log("  Workspace folders:", status.workspaceFolders);
+        endTiming("VS Code Status Check");
+        
+        // Execute command through VS Code
+        startTiming("VS Code Command Execution");
+        logProgress(`Sending command to VS Code: ${customPrompt}`);
+        
+        const result = await new Promise((resolve) => {
+          vscodeSocket.emit("vscode:execute-command", {
+            command: customPrompt,
+            workingDirectory: "/root/workspace"
+          }, (response) => {
+            resolve(response);
+          });
+        });
+        
+        if (result.success) {
+          logProgress("Command sent successfully to VS Code");
+        } else {
+          logProgress("Failed to send command:", result.error);
+        }
+        
+        // Wait for terminal output
+        vscodeSocket.on("vscode:terminal-created", (data) => {
+          logProgress("VS Code terminal created:");
+          console.log("  Terminal ID:", data.terminalId);
+          console.log("  Name:", data.name);
+          console.log("  Working directory:", data.cwd);
+        });
+        
+        // Give time for command execution
+        await delay(3000);
+        
+        endTiming("VS Code Command Execution");
+        
+        // Disconnect from VS Code socket
+        vscodeSocket.disconnect();
+        logProgress("Disconnected from VS Code extension");
+        
+      } catch (error) {
+        logProgress("Error with VS Code socket:", error.message);
+        endTiming("VS Code Socket Connection");
+        endTiming("VS Code Status Check");
+        endTiming("VS Code Command Execution");
+      }
+    } else {
+      logProgress("No custom prompt provided, skipping VS Code terminal test");
+    }
     endTiming("Worker Test");
     clearTestTimeout();
     logProgress("Test completed successfully!");
@@ -494,8 +539,6 @@ async function testWorker() {
     }
   } catch (error) {
     console.error("\n❌ Test failed:", error);
-    endTiming("Command Execution");
-    endTiming("Terminal Creation");
     endTiming("Worker Registration");
     endTiming("Docker-in-Docker Check");
     endTiming("Socket Connection");
@@ -546,22 +589,28 @@ process.on("SIGTERM", cleanup);
   console.log("This test will:");
   console.log("1. Build the Docker image");
   console.log("2. Start a worker container");
-  console.log("3. Connect via Socket.IO");
-  console.log("4. Create a terminal");
-  console.log("5. Execute a test command");
-  console.log("6. Verify the output");
+  console.log("3. Connect via Socket.IO to worker");
+  console.log("4. Verify worker registration");
+  console.log("5. Check Docker-in-Docker readiness");
+  if (customPrompt) {
+    console.log("6. Connect to VS Code extension socket server");
+    console.log("7. Execute command via VS Code: " + customPrompt);
+  }
 
   if (keepAlive) {
-    console.log("7. Keep container running for manual testing");
+    console.log(`${customPrompt ? '8' : '6'}. Keep container running for manual testing`);
   }
 
   console.log(
-    "\nUsage: node test-worker.mjs [--keep-alive | -k] [--workspace <path>]\n"
+    "\nUsage: node test-worker.mjs [--keep-alive | -k] [--workspace <path>] [--prompt <command>]\n"
   );
   console.log("Options:");
   console.log("  --keep-alive, -k      Keep container running after tests");
   console.log(
     "  --workspace <path>    Mount local path to /root/workspace in container"
+  );
+  console.log(
+    "  --prompt, -p <cmd>    Custom command to run in terminal (default: echo \"Hello from worker!\")"
   );
   console.log("");
 

@@ -163,10 +163,6 @@ RUN mkdir -p /root/.openvscode-server/data/User && \
 
 WORKDIR /
 
-# Environment
-ENV NODE_ENV=production
-ENV WORKER_PORT=3002
-ENV MANAGEMENT_PORT=3003
 # Docker-in-Docker environment
 ENV container=docker
 ENV DOCKER_TLS_CERTDIR=""
@@ -213,7 +209,15 @@ fi
 # Wait for Docker daemon
 wait-for-docker.sh
 
+# Create log directory
+mkdir -p /var/log/openvscode
+
+# Log environment variables for debugging
+echo "[Startup] Environment variables:" > /var/log/openvscode/startup.log
+env >> /var/log/openvscode/startup.log
+
 # Start OpenVSCode server on port 2376 without authentication
+echo "[Startup] Starting OpenVSCode server..." >> /var/log/openvscode/startup.log
 /app/openvscode-server/bin/openvscode-server \
   --host 0.0.0.0 \
   --port 2376 \
@@ -222,10 +226,17 @@ wait-for-docker.sh
   --disable-telemetry \
   --disable-updates \
   --profile default-profile \
+  --verbose \
   /root/workspace \
-  &
+  > /var/log/openvscode/server.log 2>&1 &
+
+echo "[Startup] OpenVSCode server started, logs available at /var/log/openvscode/server.log" >> /var/log/openvscode/startup.log
 
 # Start the worker
+export NODE_ENV=production
+export WORKER_PORT=3002
+export MANAGEMENT_PORT=3003
+
 exec docker-init -- node /builtins/build/index.js
 SCRIPT
 chmod +x /startup.sh
@@ -235,7 +246,7 @@ EOF
 # VOLUME /var/lib/docker
 
 # Ports
-EXPOSE 2375 2376 3002 3003
+EXPOSE 2375 2376 3002 3003 3004
 
 ENTRYPOINT ["/startup.sh"]
 # ENTRYPOINT ["sleep", "infinity"]
