@@ -87,18 +87,20 @@ export const GitFullDiffRequestSchema = z.object({
 
 export const GitFileSchema = z.object({
   path: z.string(),
-  status: z.enum(['added', 'modified', 'deleted', 'renamed']),
+  status: z.enum(["added", "modified", "deleted", "renamed"]),
   additions: z.number(),
   deletions: z.number(),
 });
 
 export const DiffLineSchema = z.object({
-  type: z.enum(['addition', 'deletion', 'context', 'header']),
+  type: z.enum(["addition", "deletion", "context", "header"]),
   content: z.string(),
-  lineNumber: z.object({
-    old: z.number().optional(),
-    new: z.number().optional(),
-  }).optional(),
+  lineNumber: z
+    .object({
+      old: z.number().optional(),
+      new: z.number().optional(),
+    })
+    .optional(),
 });
 
 export const GitStatusResponseSchema = z.object({
@@ -123,7 +125,7 @@ export const GitFullDiffResponseSchema = z.object({
 });
 
 export const OpenInEditorSchema = z.object({
-  editor: z.enum(['vscode', 'cursor', 'windsurf']),
+  editor: z.enum(["vscode", "cursor", "windsurf"]),
   path: z.string(),
 });
 
@@ -181,11 +183,18 @@ export type ListFilesResponse = z.infer<typeof ListFilesResponseSchema>;
 
 // Socket.io event map types
 export interface ClientToServerEvents {
-  "create-terminal": (data: CreateTerminal) => void;
-  "terminal-input": (data: TerminalInput) => void;
-  resize: (data: Resize) => void;
-  "close-terminal": (data: CloseTerminal) => void;
-  "start-task": (data: StartTask, callback: (response: TaskStarted | TaskError) => void) => void;
+  // Terminal operations
+  "create-terminal": (data: z.infer<typeof CreateTerminalSchema>) => void;
+  "terminal-input": (data: z.infer<typeof TerminalInputSchema>) => void;
+  resize: (data: z.infer<typeof ResizeSchema>) => void;
+  "close-terminal": (data: z.infer<typeof CloseTerminalSchema>) => void;
+  "clear-terminal": (data: { terminalId: string }) => void;
+  "get-terminal-state": (data: { terminalId: string }) => void;
+  "get-active-terminals": () => void;
+  "start-task": (
+    data: StartTask,
+    callback: (response: TaskStarted | TaskError) => void
+  ) => void;
   "git-status": (data: GitStatusRequest) => void;
   "git-diff": (data: GitDiffRequest) => void;
   "git-full-diff": (data: GitFullDiffRequest) => void;
@@ -200,6 +209,9 @@ export interface ServerToClientEvents {
   "terminal-closed": (data: TerminalClosed) => void;
   "terminal-clear": (data: TerminalClear) => void;
   "terminal-restore": (data: TerminalRestore) => void;
+  "active-terminals": (
+    data: Array<{ terminalId: string; taskId?: string }>
+  ) => void;
   "task-started": (data: TaskStarted) => void;
   "task-error": (data: TaskError) => void;
   "git-status-response": (data: GitStatusResponse) => void;

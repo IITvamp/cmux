@@ -371,6 +371,16 @@ clientIO.on("connection", (socket) => {
     }
   });
 
+  socket.on("get-active-terminals", () => {
+    const activeTerminals = Array.from(terminals.entries()).map(
+      ([id, terminal]) => ({
+        terminalId: id,
+        taskId: terminal.taskId,
+      })
+    );
+    socket.emit("active-terminals", activeTerminals);
+  });
+
   socket.on("disconnect", () => {
     console.log(`Client disconnected from worker ${WORKER_ID}:`, socket.id);
   });
@@ -406,7 +416,31 @@ function createTerminal(
 
   const shell = command || (platform() === "win32" ? "powershell.exe" : "bash");
 
-  const ptyProcess = spawn(shell, args, {
+  // Create tmux session directly - tmux will handle existing sessions
+  const tmuxArgs: string[] = [];
+
+  // Always use 'new-session' - tmux will attach if session exists
+  tmuxArgs.push("new-session", "-A", "-s", terminalId);
+  // Add the dimensions
+  tmuxArgs.push("-x", cols.toString(), "-y", rows.toString());
+
+  // If a command is provided, add it
+  if (command) {
+    tmuxArgs.push(command);
+    if (args.length > 0) {
+      tmuxArgs.push(...args);
+    }
+  } else {
+    // If no command, use shell
+    tmuxArgs.push(shell);
+  }
+
+  console.log(
+    `Creating/attaching tmux session ${terminalId} with args:`,
+    tmuxArgs
+  );
+
+  const ptyProcess = spawn("tmux", tmuxArgs, {
     name: "xterm-256color",
     cols,
     rows,

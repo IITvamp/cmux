@@ -47,7 +47,7 @@ echo "[Startup] Starting OpenVSCode server..." >> /var/log/openvscode/startup.lo
 
 echo "[Startup] OpenVSCode server started, logs available at /var/log/openvscode/server.log" >> /var/log/openvscode/startup.log
 
-# Wait for OpenVSCode server to be ready and open workspace
+# Wait for OpenVSCode server to be ready
 echo "[Startup] Waiting for OpenVSCode server to be ready..." >> /var/log/openvscode/startup.log
 MAX_RETRIES=30
 RETRY_DELAY=1
@@ -55,20 +55,7 @@ retry_count=0
 
 while [ $retry_count -lt $MAX_RETRIES ]; do
     if curl -s -f "http://localhost:2376/?folder=/root/workspace" > /dev/null 2>&1; then
-        echo "[Startup] Successfully connected to OpenVSCode server and opened workspace" >> /var/log/openvscode/startup.log
-        
-        # Launch Google Chrome to visit the URL
-        echo "[Startup] Launching Google Chrome to visit the workspace URL..." >> /var/log/openvscode/startup.log
-        google-chrome-stable \
-            --headless \
-            --no-sandbox \
-            --disable-gpu \
-            --disable-dev-shm-usage \
-            --dump-dom \
-            "http://localhost:2376/?folder=/root/workspace" \
-            > /var/log/openvscode/chrome-output.log 2>&1 &
-        
-        echo "[Startup] Chrome launched, output available at /var/log/openvscode/chrome-output.log" >> /var/log/openvscode/startup.log
+        echo "[Startup] Successfully connected to OpenVSCode server" >> /var/log/openvscode/startup.log
         break
     fi
     

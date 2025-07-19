@@ -412,7 +412,61 @@ async function testWorker() {
     logProgress("Worker registered with ID: " + workerData.workerId);
     console.log("  Capabilities:", workerData.capabilities);
 
-    // Connect to VS Code extension socket server
+    // Create a terminal via worker
+    startTiming("Terminal Creation");
+    logProgress("Creating terminal via worker...");
+
+    const terminalId = `test-terminal-${Date.now()}`;
+    const testCommand = customPrompt || 'echo "Hello from worker terminal!"';
+
+    // Track terminal output
+    let terminalOutput = "";
+    clientSocket.on("terminal-output", (data) => {
+      if (data.terminalId === terminalId) {
+        terminalOutput += data.data;
+        // Print terminal output line by line
+        const lines = data.data.split("\n").filter((line) => line.trim());
+        lines.forEach((line) => {
+          console.log(`  [Terminal ${terminalId}] ${line}`);
+        });
+      }
+    });
+
+    // Request terminal creation from main server
+    managementSocket.emit("worker:create-terminal", {
+      terminalId,
+      cols: 80,
+      rows: 24,
+      cwd: workspacePath ? "/root/workspace" : undefined,
+      command: "/bin/bash",
+      args: ["-c", testCommand],
+    });
+
+    // Wait for terminal creation confirmation
+    await new Promise((resolve, reject) => {
+      managementSocket.once("worker:terminal-created", (data) => {
+        if (data.terminalId === terminalId) {
+          logProgress(`Terminal created successfully: ${terminalId}`);
+          resolve(data);
+        }
+      });
+
+      managementSocket.once("worker:error", (data) => {
+        reject(new Error(`Failed to create terminal: ${data.error}`));
+      });
+
+      setTimeout(() => {
+        reject(new Error("Timeout waiting for terminal creation"));
+      }, 10000);
+    });
+
+    endTiming("Terminal Creation");
+
+    // Wait a bit for command output
+    logProgress("Waiting for terminal output...");
+    await delay(3000);
+
+    // Connect to VS Code extension socket server (if terminal was created)
     if (customPrompt) {
       startTiming("VS Code Socket Connection");
       logProgress("Connecting to VS Code extension socket server (3004)...");
@@ -613,14 +667,15 @@ process.on("SIGTERM", cleanup);
   console.log("3. Connect via Socket.IO to worker");
   console.log("4. Verify worker registration");
   console.log("5. Check Docker-in-Docker readiness");
+  console.log("6. Create a terminal via worker and execute command");
   if (customPrompt) {
-    console.log("6. Connect to VS Code extension socket server");
-    console.log("7. Execute command via VS Code: " + customPrompt);
+    console.log("7. Connect to VS Code extension socket server");
+    console.log("8. Execute command via VS Code: " + customPrompt);
   }
 
   if (keepAlive) {
     console.log(
-      `${customPrompt ? "8" : "6"}. Keep container running for manual testing`
+      `${customPrompt ? "9" : "7"}. Keep container running for manual testing`
     );
   }
 

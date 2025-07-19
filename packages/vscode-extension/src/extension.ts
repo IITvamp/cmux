@@ -1,5 +1,6 @@
 import * as http from "http";
 import { Server } from "socket.io";
+import { io } from "socket.io-client";
 import * as vscode from "vscode";
 
 // Create output channel for CodeRouter logs
@@ -60,84 +61,103 @@ async function openMultiDiffEditor() {
   });
 }
 
-async function runCodeRouter() {
-  log("Starting runCodeRouter function");
-  log("CMUX_INITIAL_COMMAND:", process.env.CMUX_INITIAL_COMMAND);
+async function connectToWorkerTerminals() {
+  log("Connecting to worker to get active terminals");
 
   try {
-    // Check current workspace
-    const workspaceFolders = vscode.workspace.workspaceFolders;
-    if (workspaceFolders) {
-      log(
-        "Current workspace folders:",
-        workspaceFolders.map((f) => f.uri.fsPath)
-      );
-    } else {
-      log("No workspace folder open");
-    }
-
-    // Ensure we have a workspace open
-    if (!workspaceFolders || workspaceFolders.length === 0) {
-      log("Opening /root/workspace as workspace...");
-      const workspaceUri = vscode.Uri.file("/root/workspace");
-      await vscode.commands.executeCommand(
-        "vscode.openFolder",
-        workspaceUri,
-        false
-      );
-      log("Workspace opened, waiting for it to load...");
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-    }
-
-    // Option 1: Always open Source Control view (works even with no changes)
-    log("Opening SCM view...");
-    await vscode.commands.executeCommand("workbench.view.scm");
-
-    // Open git changes view
-    log("Opening git changes view...");
-    await openMultiDiffEditor();
-    // await vscode.commands.executeCommand("_workbench.openMultiDiffEditor", {});
-    // await vscode.commands.executeCommand("git.viewChanges");
-
-    // Then split the editor area (this will create a split to the right)
-    log("Splitting editor...");
-    await vscode.commands.executeCommand("workbench.action.splitEditor");
-
-    // Create and show terminal with a command that runs immediately
-    // This will appear in the left split (the newly created one)
-    log("Creating terminal...");
-
-    // Get the workspace folder path
-    const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-    const cwd = workspaceFolder
-      ? workspaceFolder.uri.fsPath
-      : "/root/workspace";
-    log("Terminal will be created in directory:", cwd);
-
-    const terminal = vscode.window.createTerminal({
-      name: "cmux",
-      location: vscode.TerminalLocation.Editor,
-      cwd: cwd,
-      env: process.env,
+    // Connect to worker socket server
+    const workerSocket = io("http://localhost:3002", {
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 1000,
     });
-    log("Terminal created, showing it...");
-    terminal.show();
-    log("Terminal shown successfully");
 
-    // Send the command after terminal is ready
-    const commandToRun = process.env.CMUX_INITIAL_COMMAND;
-    if (commandToRun) {
-      log("Sending command to terminal:", commandToRun);
-      // Add a small delay to ensure terminal is ready
-      setTimeout(() => {
-        terminal.sendText(commandToRun);
-        log("Command sent to terminal");
-      }, 500);
-    } else {
-      log("No CMUX_INITIAL_COMMAND found");
-    }
+    workerSocket.on("connect", () => {
+      log("Connected to worker socket server");
+
+      // Request active terminals
+      workerSocket.emit("get-active-terminals");
+    });
+
+    workerSocket.on(
+      "active-terminals",
+      async (terminals: Array<{ terminalId: string; taskId?: string }>) => {
+        log(`Received ${terminals.length} active terminals from worker`);
+
+        if (terminals.length === 0) {
+          log("No active terminals found");
+          return;
+        }
+
+        // Open workspace if needed
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders || workspaceFolders.length === 0) {
+          log("Opening /root/workspace as workspace...");
+          const workspaceUri = vscode.Uri.file("/root/workspace");
+          await vscode.commands.executeCommand(
+            "vscode.openFolder",
+            workspaceUri,
+            false
+          );
+          log("Workspace opened, waiting for it to load...");
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+        }
+
+        // Open Source Control view
+        log("Opening SCM view...");
+        await vscode.commands.executeCommand("workbench.view.scm");
+
+        // Open git changes view
+        log("Opening git changes view...");
+        await openMultiDiffEditor();
+
+        // Create terminals for each tmux session
+        for (let i = 0; i < terminals.length; i++) {
+          const terminalInfo = terminals[i];
+          log(
+            `Creating terminal ${i + 1}/${terminals.length} for tmux session ${terminalInfo.terminalId}`
+          );
+
+          // Split editor only for terminals after the first one
+          if (i > 0) {
+            await vscode.commands.executeCommand(
+              "workbench.action.splitEditor"
+            );
+          }
+
+          const terminal = vscode.window.createTerminal({
+            name: `Session: ${terminalInfo.terminalId}`,
+            location: vscode.TerminalLocation.Editor,
+            cwd: "/root/workspace",
+            env: process.env,
+          });
+
+          terminal.show();
+
+          // Store terminal reference
+          activeTerminals.set(terminalInfo.terminalId, terminal);
+
+          // Attach to tmux session
+          setTimeout(() => {
+            terminal.sendText(
+              `tmux attach-session -t ${terminalInfo.terminalId}`
+            );
+            log(`Attached to tmux session ${terminalInfo.terminalId}`);
+          }, 500);
+        }
+
+        log(`Created ${terminals.length} terminal(s) successfully`);
+
+        // Disconnect from worker after getting terminals
+        workerSocket.disconnect();
+      }
+    );
+
+    workerSocket.on("connect_error", (error) => {
+      log("Failed to connect to worker:", error.message);
+    });
   } catch (error) {
-    log("ERROR in runCodeRouter:", error);
+    log("Error connecting to worker terminals:", error);
   }
 }
 
@@ -267,20 +287,12 @@ export async function activate(context: vscode.ExtensionContext) {
   // Start Socket.IO server
   startSocketServer();
 
-  // Check for initial command on startup
-  const initialCommand = process.env.CMUX_INITIAL_COMMAND;
-  log("Initial command from env:", initialCommand || "(not set)");
-
-  if (initialCommand) {
-    // Wait for VS Code to be fully loaded before running
-    log("Scheduling runCodeRouter in 2 seconds...");
-    setTimeout(async () => {
-      log("Delay complete, running CodeRouter now...");
-      await runCodeRouter();
-    }, 2000); // 2 second delay to ensure VS Code is ready
-  } else {
-    log("No CMUX_INITIAL_COMMAND set, skipping auto-run");
-  }
+  // Connect to worker terminals on startup
+  log("Scheduling connection to worker terminals in 2 seconds...");
+  setTimeout(async () => {
+    log("Delay complete, connecting to worker terminals now...");
+    await connectToWorkerTerminals();
+  }, 2000); // 2 second delay to ensure VS Code is ready
 
   let disposable = vscode.commands.registerCommand(
     "coderouter.helloWorld",
@@ -292,7 +304,7 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   let run = vscode.commands.registerCommand("coderouter.run", async () => {
-    await runCodeRouter();
+    await connectToWorkerTerminals();
   });
 
   context.subscriptions.push(disposable);
