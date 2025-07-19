@@ -64,6 +64,21 @@ async function openMultiDiffEditor() {
 async function connectToWorkerTerminals() {
   log("Connecting to worker to get active terminals");
 
+  // Check if we're in the correct workspace
+  const workspaceFolders = vscode.workspace.workspaceFolders;
+  if (workspaceFolders && workspaceFolders.length > 0) {
+    const currentWorkspace = workspaceFolders[0].uri.fsPath;
+    if (currentWorkspace !== "/root/workspace") {
+      log(
+        `Not in /root/workspace (current: ${currentWorkspace}), skipping terminal setup`
+      );
+      return;
+    }
+  } else {
+    log("No workspace folder open, skipping terminal setup");
+    return;
+  }
+
   try {
     // Connect to worker socket server
     const workerSocket = io("http://localhost:3002", {
@@ -84,23 +99,19 @@ async function connectToWorkerTerminals() {
       async (terminals: Array<{ terminalId: string; taskId?: string }>) => {
         log(`Received ${terminals.length} active terminals from worker`);
 
+        // Always ensure at least one terminal exists
         if (terminals.length === 0) {
-          log("No active terminals found");
-          return;
+          log("No active terminals found, creating default tmux session");
+          terminals = [{ terminalId: "default" }];
         }
 
-        // Open workspace if needed
-        const workspaceFolders = vscode.workspace.workspaceFolders;
-        if (!workspaceFolders || workspaceFolders.length === 0) {
-          log("Opening /root/workspace as workspace...");
-          const workspaceUri = vscode.Uri.file("/root/workspace");
-          await vscode.commands.executeCommand(
-            "vscode.openFolder",
-            workspaceUri,
-            false
-          );
-          log("Workspace opened, waiting for it to load...");
-          await new Promise((resolve) => setTimeout(resolve, 1000));
+        // if an existing editor is called "bash", early return
+        const activeEditors = vscode.window.visibleTextEditors;
+        for (const editor of activeEditors) {
+          if (editor.document.fileName === "bash") {
+            log("Bash editor already exists, skipping terminal setup");
+            return;
+          }
         }
 
         // Open Source Control view
@@ -118,7 +129,7 @@ async function connectToWorkerTerminals() {
             `Creating terminal ${i + 1}/${terminals.length} for tmux session ${terminalInfo.terminalId}`
           );
 
-          // Split editor only for terminals after the first one
+          // Don't split editor for first terminal
           if (i > 0) {
             await vscode.commands.executeCommand(
               "workbench.action.splitEditor"
@@ -143,10 +154,31 @@ async function connectToWorkerTerminals() {
               `tmux attach-session -t ${terminalInfo.terminalId}`
             );
             log(`Attached to tmux session ${terminalInfo.terminalId}`);
-          }, 500);
+          }, 0);
         }
 
         log(`Created ${terminals.length} terminal(s) successfully`);
+
+        // After all terminals are created, ensure the terminal is active and move to right group
+        setTimeout(async () => {
+          // Focus on the terminal tab
+          if (activeTerminals.size > 0) {
+            const firstTerminal = activeTerminals.values().next().value;
+            if (firstTerminal) {
+              firstTerminal.show();
+            }
+          }
+
+          // Move the active editor (terminal) to the right group
+          log("Moving terminal editor to right group");
+          await vscode.commands.executeCommand(
+            "workbench.action.moveEditorToRightGroup"
+          );
+
+          // Ensure output panel is hidden
+          log("Hiding output panel");
+          await vscode.commands.executeCommand("workbench.action.closePanel");
+        }, 0);
 
         // Disconnect from worker after getting terminals
         workerSocket.disconnect();
@@ -273,33 +305,28 @@ export async function activate(context: vscode.ExtensionContext) {
   );
   context.subscriptions.push(showOutputCommand);
 
-  // Show output channel with focus
-  outputChannel.show(true);
+  // Log activation without showing output channel
   outputChannel.appendLine("=== CodeRouter Extension Activating ===");
 
-  log("[CodeRouter] Output channel should be visible now");
+  log("[CodeRouter] Extension activated, output channel ready");
+
+  // Ensure output panel is hidden on activation
+  vscode.commands.executeCommand("workbench.action.closePanel");
 
   log("Coderouter is being activated");
-
-  // close all editors
-  await vscode.commands.executeCommand("workbench.action.closeAllEditors");
 
   // Start Socket.IO server
   startSocketServer();
 
   // Connect to worker terminals on startup
   log("Scheduling connection to worker terminals in 2 seconds...");
-  setTimeout(async () => {
-    log("Delay complete, connecting to worker terminals now...");
-    await connectToWorkerTerminals();
-  }, 2000); // 2 second delay to ensure VS Code is ready
+  await connectToWorkerTerminals();
 
   let disposable = vscode.commands.registerCommand(
     "coderouter.helloWorld",
     async () => {
       log("Hello World from CodeRouter!");
       vscode.window.showInformationMessage("Hello World from CodeRouter!");
-      await vscode.commands.executeCommand("workbench.action.closeAllEditors");
     }
   );
 
