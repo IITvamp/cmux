@@ -13,8 +13,10 @@ Port of coderouter Dockerfile to Morph Cloud VM.
 Sets up Node.js, Bun, OpenVSCode server, and global packages.
 """
 
+import argparse
 import fnmatch
 import os
+import signal
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -26,6 +28,29 @@ from morphcloud.api import MorphCloudClient
 from tqdm import tqdm
 
 load_dotenv()
+
+# Global variable to store the instance for cleanup
+current_instance = None
+
+
+def signal_handler(signum, frame):
+    """Handle Ctrl+C and other signals to ensure instance cleanup"""
+    global current_instance
+    if current_instance:
+        print(
+            f"\n\nReceived signal {signum}. Stopping instance {current_instance.id}..."
+        )
+        try:
+            current_instance.stop()
+            print("Instance stopped successfully")
+        except Exception as e:
+            print(f"Error stopping instance: {e}")
+    sys.exit(1)
+
+
+# Register signal handlers
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
 
 
 def run_ssh_command(instance, command, sudo=False, print_output=True):
@@ -111,7 +136,9 @@ def should_ignore_dockerignore(path, patterns, root_dir):
     return False
 
 
-def get_files_to_upload(local_dir, gitignore_patterns=None, dockerignore_patterns=None):
+def get_files_to_upload(
+    local_dir, gitignore_patterns=None, dockerignore_patterns=None, debug=False
+):
     """Get list of files to upload, respecting ignore patterns"""
     if gitignore_patterns is None:
         gitignore_patterns = []
@@ -119,17 +146,39 @@ def get_files_to_upload(local_dir, gitignore_patterns=None, dockerignore_pattern
         dockerignore_patterns = []
 
     files_to_upload = []
+    ignored_files = []  # Track ignored files for debugging
+    large_files = []  # Track large files for debugging
+
+    if debug:
+        print(f"\nDEBUG: Gitignore patterns: {gitignore_patterns}")
+        print(f"DEBUG: Dockerignore patterns: {dockerignore_patterns}")
+        print(f"DEBUG: Scanning directory: {local_dir}")
 
     for root, dirs, files in os.walk(local_dir):
         # Filter directories based on patterns
         filtered_dirs = []
         for d in dirs:
             dir_path = os.path.join(root, d)
+            rel_dir_path = os.path.relpath(dir_path, local_dir)
 
             # Skip if ignored by gitignore (recursive) or dockerignore (non-recursive)
-            if should_ignore_gitignore(dir_path, gitignore_patterns, local_dir):
-                continue
-            if should_ignore_dockerignore(dir_path, dockerignore_patterns, local_dir):
+            gitignore_match = should_ignore_gitignore(
+                dir_path, gitignore_patterns, local_dir
+            )
+            dockerignore_match = should_ignore_dockerignore(
+                dir_path, dockerignore_patterns, local_dir
+            )
+
+            if gitignore_match or dockerignore_match:
+                if debug:
+                    reason = []
+                    if gitignore_match:
+                        reason.append("gitignore")
+                    if dockerignore_match:
+                        reason.append("dockerignore")
+                    print(
+                        f"DEBUG: Ignoring directory: {rel_dir_path} (reason: {', '.join(reason)})"
+                    )
                 continue
 
             filtered_dirs.append(d)
@@ -140,24 +189,64 @@ def get_files_to_upload(local_dir, gitignore_patterns=None, dockerignore_pattern
         # Check files
         for file in files:
             file_path = os.path.join(root, file)
+            rel_file_path = os.path.relpath(file_path, local_dir)
 
-            # Skip if ignored
-            if should_ignore_gitignore(file_path, gitignore_patterns, local_dir):
-                continue
-            if should_ignore_dockerignore(file_path, dockerignore_patterns, local_dir):
+            # Check if ignored
+            gitignore_match = should_ignore_gitignore(
+                file_path, gitignore_patterns, local_dir
+            )
+            dockerignore_match = should_ignore_dockerignore(
+                file_path, dockerignore_patterns, local_dir
+            )
+
+            if gitignore_match or dockerignore_match:
+                reason = []
+                if gitignore_match:
+                    reason.append("gitignore")
+                if dockerignore_match:
+                    reason.append("dockerignore")
+                ignored_files.append((rel_file_path, ", ".join(reason)))
+                if debug:
+                    print(
+                        f"DEBUG: Ignoring file: {rel_file_path} (reason: {', '.join(reason)})"
+                    )
                 continue
 
             # Skip very large files
             try:
-                if os.path.getsize(file_path) > 100 * 1024 * 1024:  # 100MB
-                    print(
-                        f"Skipping large file: {os.path.relpath(file_path, local_dir)}"
-                    )
+                file_size = os.path.getsize(file_path)
+                if file_size > 100 * 1024 * 1024:  # 100MB
+                    large_files.append((rel_file_path, file_size))
+                    if debug:
+                        print(
+                            f"DEBUG: Skipping large file: {rel_file_path} ({file_size / (1024 * 1024):.1f}MB)"
+                        )
                     continue
             except OSError:
                 continue
 
             files_to_upload.append(file_path)
+            if debug:
+                print(f"DEBUG: Will upload: {rel_file_path}")
+
+    # Print summary
+    if debug:
+        print("\nDEBUG SUMMARY:")
+        print(f"  - Files to upload: {len(files_to_upload)}")
+        print(f"  - Files ignored: {len(ignored_files)}")
+        print(f"  - Large files skipped: {len(large_files)}")
+
+        if ignored_files:
+            print("\nSample ignored files (first 10):")
+            for rel_path, reason in ignored_files[:10]:
+                print(f"  - {rel_path} ({reason})")
+            if len(ignored_files) > 10:
+                print(f"  ... and {len(ignored_files) - 10} more")
+
+        if large_files:
+            print("\nLarge files skipped:")
+            for rel_path, size in large_files:
+                print(f"  - {rel_path} ({size / (1024 * 1024):.1f}MB)")
 
     return files_to_upload
 
@@ -200,7 +289,7 @@ def upload_file_sftp(sftp, local_path, remote_path, pbar=None):
 
 
 def upload_directory_sftp(
-    instance, local_dir, remote_dir, show_progress=True, max_workers=8
+    instance, local_dir, remote_dir, show_progress=True, max_workers=8, debug=False
 ):
     """Upload a directory via SFTP, respecting .gitignore and .dockerignore"""
     # Read ignore patterns
@@ -213,10 +302,14 @@ def upload_directory_sftp(
     gitignore_patterns.append(".git")
     gitignore_patterns.append(".git/**")
 
+    if debug:
+        print(f"\nDEBUG: Found .gitignore with {len(gitignore_patterns)} patterns")
+        print(f"DEBUG: Found .dockerignore with {len(dockerignore_patterns)} patterns")
+
     # Get list of files to upload
     print(f"Scanning files in {local_dir}...")
     files_to_upload = get_files_to_upload(
-        local_dir, gitignore_patterns, dockerignore_patterns
+        local_dir, gitignore_patterns, dockerignore_patterns, debug=debug
     )
 
     if not files_to_upload:
@@ -339,7 +432,7 @@ def setup_base_environment(instance):
         "DEBIAN_FRONTEND=noninteractive apt-get update && "
         "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "
         "ca-certificates curl wget git python3 make g++ bash nano net-tools "
-        "sudo supervisor openssl pigz xz-utils unzip chromium chromium-driver && "
+        "sudo supervisor openssl pigz xz-utils unzip chromium chromium-driver tmux && "
         "rm -rf /var/lib/apt/lists/*",
         sudo=True,
     )
@@ -430,6 +523,7 @@ def install_global_packages(instance):
         "opencode-ai",
         "codebuff",
         "@devcontainers/cli",
+        "@sourcegraph/amp",
     ]
 
     run_ssh_command(
@@ -479,7 +573,7 @@ def setup_openvscode_server(instance):
     print("OpenVSCode server installed successfully")
 
 
-def setup_workspace(instance, workspace_path):
+def setup_workspace(instance, workspace_path, debug=False):
     """Upload workspace files and build the application"""
     print("\n--- Setting up workspace ---")
 
@@ -493,7 +587,7 @@ def setup_workspace(instance, workspace_path):
     print(f"Uploading project files from {project_root}...")
 
     # Upload the entire project respecting .gitignore and .dockerignore
-    upload_directory_sftp(instance, str(project_root), workspace_path)
+    upload_directory_sftp(instance, str(project_root), workspace_path, debug=debug)
 
     print("Project files uploaded successfully")
 
@@ -617,51 +711,84 @@ def warmup_vscode(instance):
 
 
 def create_startup_script(instance):
-    """Create startup script for the application"""
-    print("\n--- Creating startup script ---")
+    """Copy startup script from repository"""
+    print("\n--- Copying startup script ---")
 
-    startup_script = """#!/bin/bash
-set -e
-
-# Create log directory
-mkdir -p /var/log/openvscode
-
-# Log environment variables for debugging
-echo "[Startup] Environment variables:" > /var/log/openvscode/startup.log
-env >> /var/log/openvscode/startup.log
-
-# Start OpenVSCode server on port 2376 without authentication
-echo "[Startup] Starting OpenVSCode server..." >> /var/log/openvscode/startup.log
-/app/openvscode-server/bin/openvscode-server \\
-  --host 0.0.0.0 \\
-  --port 2376 \\
-  --without-connection-token \\
-  --disable-workspace-trust \\
-  --disable-telemetry \\
-  --disable-updates \\
-  --profile default-profile \\
-  --verbose \\
-  /root/workspace \\
-  > /var/log/openvscode/server.log 2>&1 &
-
-echo "[Startup] OpenVSCode server started, logs available at /var/log/openvscode/server.log" >> /var/log/openvscode/startup.log
-
-# Start the worker
-export NODE_ENV=production
-export WORKER_PORT=3002
-export MANAGEMENT_PORT=3003
-
-exec node /builtins/build/index.js
-"""
-
+    # The startup.sh file is already uploaded as part of the workspace
     run_ssh_command(
-        instance, f"cat > /startup.sh << 'EOF'\n{startup_script}\nEOF", sudo=True
+        instance,
+        "cp /coderouter/startup.sh /startup.sh && chmod +x /startup.sh",
+        sudo=True,
     )
 
-    run_ssh_command(instance, "chmod +x /startup.sh", sudo=True)
+
+def test_ignore_patterns():
+    """Test function to debug ignore patterns without uploading"""
+    print("=== TESTING IGNORE PATTERNS ===")
+
+    # Get the project root (4 levels up from this script)
+    script_dir = Path(__file__).resolve()
+    project_root = script_dir.parent.parent.parent.parent
+
+    print(f"Project root: {project_root}")
+
+    # Read ignore patterns
+    gitignore_file = os.path.join(project_root, ".gitignore")
+    dockerignore_file = os.path.join(project_root, ".dockerignore")
+
+    gitignore_patterns = read_ignore_patterns(gitignore_file)
+    dockerignore_patterns = read_ignore_patterns(dockerignore_file)
+
+    # Always ignore .git directory
+    gitignore_patterns.append(".git")
+    gitignore_patterns.append(".git/**")
+
+    print(f"\nGitignore file: {gitignore_file}")
+    print(f"Gitignore patterns ({len(gitignore_patterns)}):")
+    for i, pattern in enumerate(gitignore_patterns, 1):
+        print(f"  {i:2d}. {pattern}")
+
+    print(f"\nDockerignore file: {dockerignore_file}")
+    print(f"Dockerignore patterns ({len(dockerignore_patterns)}):")
+    for i, pattern in enumerate(dockerignore_patterns, 1):
+        print(f"  {i:2d}. {pattern}")
+
+    # Test the file scanning with debug enabled
+    print("\n=== SCANNING FILES WITH DEBUG ===")
+    files_to_upload = get_files_to_upload(
+        str(project_root), gitignore_patterns, dockerignore_patterns, debug=True
+    )
+
+    print("\n=== FINAL SUMMARY ===")
+    print(f"Total files that would be uploaded: {len(files_to_upload)}")
+
+    # Show all files that would be uploaded
+    print("\nAll files to upload:")
+    for i, file_path in enumerate(files_to_upload, 1):
+        rel_path = os.path.relpath(file_path, project_root)
+        print(f"  {i:3d}. {rel_path}")
 
 
 def main():
+    global current_instance
+
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description="Build coderouter on Morph Cloud")
+    parser.add_argument(
+        "--debug", action="store_true", help="Enable debug output during upload"
+    )
+    parser.add_argument(
+        "--test-patterns",
+        action="store_true",
+        help="Test ignore patterns without uploading (debug only)",
+    )
+    args = parser.parse_args()
+
+    # If testing patterns, just run the test and exit
+    if args.test_patterns:
+        test_ignore_patterns()
+        return
+
     client = MorphCloudClient()
 
     # VM configuration
@@ -677,55 +804,57 @@ def main():
     )
 
     print(f"Starting instance from snapshot {snapshot.id}...")
-    instance = client.instances.start(snapshot.id)
+    current_instance = client.instances.start(snapshot.id)
 
     try:
         # Install base dependencies
-        setup_base_environment(instance)
+        setup_base_environment(current_instance)
 
         # Setup Docker environment
-        setup_docker_environment(instance)
+        setup_docker_environment(current_instance)
 
         # Install Node.js
-        setup_nodejs(instance)
+        setup_nodejs(current_instance)
 
         # Install Bun
-        setup_bun(instance)
+        setup_bun(current_instance)
 
         # Install global packages
-        install_global_packages(instance)
+        install_global_packages(current_instance)
 
         # Install OpenVSCode server
-        setup_openvscode_server(instance)
+        setup_openvscode_server(current_instance)
 
-        # Setup workspace
+        # Setup workspace (pass debug flag)
         workspace_path = "/coderouter"
-        setup_workspace(instance, workspace_path)
+        setup_workspace(current_instance, workspace_path, debug=args.debug)
 
         # Build VS Code extension
-        build_vscode_extension(instance, workspace_path)
+        build_vscode_extension(current_instance, workspace_path)
 
         # Install VS Code extensions
-        install_vscode_extensions(instance)
+        install_vscode_extensions(current_instance)
 
         # Setup VS Code settings
-        setup_vscode_settings(instance)
+        setup_vscode_settings(current_instance)
 
         # Create startup script
-        create_startup_script(instance)
+        create_startup_script(current_instance)
 
         # Create workspace directory for OpenVSCode
-        run_ssh_command(instance, "mkdir -p /root/workspace", sudo=True)
+        run_ssh_command(current_instance, "mkdir -p /root/workspace", sudo=True)
 
         # Expose HTTP services
-        instance.expose_http_service("openvscode", 2376)
-        instance.expose_http_service("worker", 3002)
-        instance.expose_http_service("management", 3003)
+        current_instance.expose_http_service("openvscode", 2376)
+        current_instance.expose_http_service("worker", 3002)
+        current_instance.expose_http_service("management", 3003)
 
         print("\n--- Starting services ---")
         # Run the startup script in the background
         run_ssh_command(
-            instance, "nohup /startup.sh > /var/log/startup.log 2>&1 &", sudo=True
+            current_instance,
+            "nohup /startup.sh > /var/log/startup.log 2>&1 &",
+            sudo=True,
         )
 
         # Wait a bit for services to start
@@ -737,7 +866,7 @@ def main():
 
         # Check OpenVSCode server
         result = run_ssh_command(
-            instance,
+            current_instance,
             "ps aux | grep openvscode-server | grep -v grep",
             sudo=True,
             print_output=False,
@@ -748,12 +877,14 @@ def main():
             print("❌ OpenVSCode server is not running")
             # Show logs
             run_ssh_command(
-                instance, "cat /var/log/openvscode/server.log | tail -20", sudo=True
+                current_instance,
+                "cat /var/log/openvscode/server.log | tail -20",
+                sudo=True,
             )
 
         # Check worker
         result = run_ssh_command(
-            instance,
+            current_instance,
             "ps aux | grep 'node /builtins/build/index.js' | grep -v grep",
             sudo=True,
             print_output=False,
@@ -763,33 +894,37 @@ def main():
         else:
             print("❌ Worker is not running")
             # Show startup logs
-            run_ssh_command(instance, "cat /var/log/startup.log | tail -20", sudo=True)
+            run_ssh_command(
+                current_instance, "cat /var/log/startup.log | tail -20", sudo=True
+            )
 
         # Warm up VS Code
-        warmup_vscode(instance)
+        warmup_vscode(current_instance)
 
         print("\n✅ Setup complete!")
-        print(f"Instance ID: {instance.id}")
+        print(f"Instance ID: {current_instance.id}")
 
         # Get service URLs
-        instance = client.instances.get(instance.id)  # Refresh instance info
+        current_instance = client.instances.get(
+            current_instance.id
+        )  # Refresh instance info
         print("\nService URLs:")
-        for service in instance.networking.http_services:
+        for service in current_instance.networking.http_services:
             if service.name == "openvscode":
                 print(f"- OpenVSCode: {service.url}/?folder=/root/workspace")
                 continue
             print(f"- {service.name}: {service.url}")
 
         print("\nUseful commands:")
-        print(f"- SSH to instance: morphcloud instance ssh {instance.id}")
+        print(f"- SSH to instance: morphcloud instance ssh {current_instance.id}")
         print(
-            f"- View OpenVSCode logs: morphcloud instance ssh {instance.id} -- sudo cat /var/log/openvscode/server.log"
+            f"- View OpenVSCode logs: morphcloud instance ssh {current_instance.id} -- sudo cat /var/log/openvscode/server.log"
         )
         print(
-            f"- View startup logs: morphcloud instance ssh {instance.id} -- sudo cat /var/log/startup.log"
+            f"- View startup logs: morphcloud instance ssh {current_instance.id} -- sudo cat /var/log/startup.log"
         )
         print(
-            f"- Restart services: morphcloud instance ssh {instance.id} -- sudo /startup.sh"
+            f"- Restart services: morphcloud instance ssh {current_instance.id} -- sudo /startup.sh"
         )
 
         # let the user interact with the instance and wait for them to press enter
@@ -797,15 +932,20 @@ def main():
 
         # Create final snapshot
         print("\nCreating final snapshot...")
-        final_snapshot = instance.snapshot()
+        final_snapshot = current_instance.snapshot()
         print(f"Final snapshot created: {final_snapshot.id}")
         print(
             f"Start new instances with: morphcloud instance start {final_snapshot.id}"
         )
 
+        # Kill the instance
+        print("\nStopping instance...")
+        current_instance.stop()
+        print("Instance stopped")
+
     except Exception as e:
         print(f"\nError: {e}")
-        print(f"\nFor troubleshooting: morphcloud instance ssh {instance.id}")
+        print(f"\nFor troubleshooting: morphcloud instance ssh {current_instance.id}")
         raise
 
 

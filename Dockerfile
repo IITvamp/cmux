@@ -72,7 +72,7 @@ RUN curl -fsSL https://bun.sh/install | bash
 ENV PATH="/root/.bun/bin:$PATH"
 
 # Install global packages early
-RUN bun add -g @openai/codex @anthropic-ai/claude-code @google/gemini-cli opencode-ai codebuff @devcontainers/cli
+RUN bun add -g @openai/codex @anthropic-ai/claude-code @google/gemini-cli opencode-ai codebuff @devcontainers/cli @sourcegraph/amp
 
 # Install openvscode-server
 RUN if [ -z ${CODE_RELEASE+x} ]; then \
@@ -117,21 +117,38 @@ SCRIPT
 chmod +x /usr/local/bin/modprobe
 EOF
 
-# Copy package.json files for monorepo dependency installation
+# Copy package files for monorepo dependency installation
 WORKDIR /coderouter
-COPY --parents **/package.json .npmrc package-lock.json .
-RUN --mount=type=cache,target=/root/.npm npm i
+COPY package.json package-lock.json .npmrc ./
+COPY apps/worker/package.json ./apps/worker/
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/vscode-extension/package.json ./packages/vscode-extension/
 
-# Pre-install node-pty in the target location with cache
+# Install dependencies with cache
+RUN --mount=type=cache,target=/root/.npm npm ci
+
+# Pre-install node-pty in the target location
 RUN mkdir -p /builtins && \
     cp /coderouter/apps/worker/package.json /builtins/package.json
 WORKDIR /builtins
 RUN --mount=type=cache,target=/root/.npm npm install node-pty
 
+# Copy source files needed for build
 WORKDIR /coderouter
-COPY . .
+# Copy shared package source
+COPY packages/shared/src ./packages/shared/src
 
-# Build without bundling native modules
+# Copy worker source and scripts
+COPY apps/worker/src ./apps/worker/src
+COPY apps/worker/tsconfig.json ./apps/worker/
+COPY apps/worker/wait-for-docker.sh ./apps/worker/
+
+# Copy VS Code extension source
+COPY packages/vscode-extension/src ./packages/vscode-extension/src
+COPY packages/vscode-extension/tsconfig.json ./packages/vscode-extension/
+COPY packages/vscode-extension/.vscodeignore ./packages/vscode-extension/
+
+# Build worker without bundling native modules
 RUN bun build /coderouter/apps/worker/src/index.ts \
     --target node \
     --outdir /coderouter/apps/worker/build \
@@ -144,15 +161,13 @@ RUN bun build /coderouter/apps/worker/src/index.ts \
 # Workspace
 RUN mkdir -p /workspace
 
-WORKDIR /coderouter/packages/vscode-extension
 # Build vscode extension
+WORKDIR /coderouter/packages/vscode-extension
 RUN bun run package && cp coderouter-extension-0.0.1.vsix /tmp/coderouter-extension-0.0.1.vsix
 
 # Install VS Code extensions
 # COPY packages/vscode-extension/coderouter-extension-0.0.1.vsix /tmp/
 RUN /app/openvscode-server/bin/openvscode-server --install-extension /tmp/coderouter-extension-0.0.1.vsix && \
-    /app/openvscode-server/bin/openvscode-server --install-extension vscode.git && \
-    /app/openvscode-server/bin/openvscode-server --install-extension vscode.github && \
     rm /tmp/coderouter-extension-0.0.1.vsix
 
 # Create VS Code user settings
@@ -182,7 +197,7 @@ stdout_logfile=/var/log/dockerd.out.log
 CONFIG
 EOF
 
-# Copy startup script
+# Copy startup script (must be after all other build steps)
 COPY startup.sh /startup.sh
 RUN chmod +x /startup.sh
 

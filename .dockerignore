@@ -103,3 +103,6 @@ jspm_packages/
 .tern-port
 
 .venv
+
+# VS Code extension packages
+*.vsix

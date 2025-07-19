@@ -6,7 +6,7 @@
   "publisher": "coderouter",
   "repository": {
     "type": "git",
-    "url": "https://github.com/coderouter/coderouter"
+    "url": "https://github.com/lawrencecchen/coderouter"
   },
   "engines": {
     "vscode": "^1.101.2"
@@ -15,7 +15,7 @@
     "Other"
   ],
   "activationEvents": [
-    "*"
+    "onStartupFinished"
   ],
   "main": "./out/extension.js",
   "contributes": {

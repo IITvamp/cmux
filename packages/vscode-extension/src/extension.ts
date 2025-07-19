@@ -205,7 +205,7 @@ function startSocketServer() {
           // Create terminal
           const terminalId = `terminal-${Date.now()}`;
           const terminal = vscode.window.createTerminal({
-            name: `CodeRouter-${terminalId}`,
+            name: `Coderouter-${terminalId}`,
             location: vscode.TerminalLocation.Editor,
             cwd:
               workingDirectory ||
