@@ -25,7 +25,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pigz \
     xz-utils \
     unzip \
+    gnupg \
     && rm -rf /var/lib/apt/lists/*
+
+# Install Google Chrome
+RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - && \
+    echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list && \
+    apt-get update && \
+    apt-get install -y google-chrome-stable && \
+    rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 22.x
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
@@ -180,67 +188,9 @@ stdout_logfile=/var/log/dockerd.out.log
 CONFIG
 EOF
 
-# Startup script with proper DinD initialization
-RUN <<-'EOF'
-cat > /startup.sh << 'SCRIPT'
-#!/bin/bash
-set -e
-
-# DinD setup (based on official docker:dind)
-# Mount necessary filesystems
-if [ -d /sys/kernel/security ] && ! mountpoint -q /sys/kernel/security; then
-    mount -t securityfs none /sys/kernel/security || {
-        echo >&2 'Could not mount /sys/kernel/security.'
-        echo >&2 'AppArmor detection and --privileged mode might break.'
-    }
-fi
-
-# cgroup v2: enable nesting
-if [ -f /sys/fs/cgroup/cgroup.controllers ]; then
-    mkdir -p /sys/fs/cgroup/init
-    xargs -rn1 < /sys/fs/cgroup/cgroup.procs > /sys/fs/cgroup/init/cgroup.procs 2>/dev/null || :
-    sed -e 's/ / +/g' -e 's/^/+/' < /sys/fs/cgroup/cgroup.controllers \
-        > /sys/fs/cgroup/cgroup.subtree_control 2>/dev/null || :
-fi
-
-# Start supervisor to manage dockerd
-/usr/bin/supervisord -n >> /dev/null 2>&1 &
-
-# Wait for Docker daemon
-wait-for-docker.sh
-
-# Create log directory
-mkdir -p /var/log/openvscode
-
-# Log environment variables for debugging
-echo "[Startup] Environment variables:" > /var/log/openvscode/startup.log
-env >> /var/log/openvscode/startup.log
-
-# Start OpenVSCode server on port 2376 without authentication
-echo "[Startup] Starting OpenVSCode server..." >> /var/log/openvscode/startup.log
-/app/openvscode-server/bin/openvscode-server \
-  --host 0.0.0.0 \
-  --port 2376 \
-  --without-connection-token \
-  --disable-workspace-trust \
-  --disable-telemetry \
-  --disable-updates \
-  --profile default-profile \
-  --verbose \
-  /root/workspace \
-  > /var/log/openvscode/server.log 2>&1 &
-
-echo "[Startup] OpenVSCode server started, logs available at /var/log/openvscode/server.log" >> /var/log/openvscode/startup.log
-
-# Start the worker
-export NODE_ENV=production
-export WORKER_PORT=3002
-export MANAGEMENT_PORT=3003
-
-exec docker-init -- node /builtins/build/index.js
-SCRIPT
-chmod +x /startup.sh
-EOF
+# Copy startup script
+COPY startup.sh /startup.sh
+RUN chmod +x /startup.sh
 
 # Volume for docker storage
 # VOLUME /var/lib/docker

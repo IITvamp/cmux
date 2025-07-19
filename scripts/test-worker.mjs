@@ -3,7 +3,7 @@ import fs from "fs";
 import { io } from "socket.io-client";
 import { setTimeout as delay } from "timers/promises";
 
-const CONTAINER_NAME = "coderouter-worker-test";
+const CONTAINER_NAME = "coderouter-worker-test-2";
 const IMAGE_NAME = "coderouter-worker:0.0.1";
 
 // Parse command line arguments
@@ -416,12 +416,12 @@ async function testWorker() {
     if (customPrompt) {
       startTiming("VS Code Socket Connection");
       logProgress("Connecting to VS Code extension socket server (3004)...");
-      
+
       const vscodeSocket = io("http://localhost:3004", {
         timeout: 10000,
         reconnectionAttempts: 3,
       });
-      
+
       try {
         // Wait for connection
         await new Promise((resolve, reject) => {
@@ -430,15 +430,22 @@ async function testWorker() {
             resolve();
           });
           vscodeSocket.on("connect_error", (error) => {
-            reject(new Error(`Failed to connect to VS Code extension: ${error.message}`));
+            reject(
+              new Error(
+                `Failed to connect to VS Code extension: ${error.message}`
+              )
+            );
           });
-          
+
           // Timeout after 10 seconds
-          setTimeout(() => reject(new Error("Timeout connecting to VS Code extension")), 10000);
+          setTimeout(
+            () => reject(new Error("Timeout connecting to VS Code extension")),
+            10000
+          );
         });
-        
+
         endTiming("VS Code Socket Connection");
-        
+
         // Check VS Code status
         startTiming("VS Code Status Check");
         const status = await new Promise((resolve) => {
@@ -446,31 +453,35 @@ async function testWorker() {
             resolve(data);
           });
         });
-        
+
         logProgress("VS Code extension status:");
         console.log("  Ready:", status.ready);
         console.log("  Workspace folders:", status.workspaceFolders);
         endTiming("VS Code Status Check");
-        
+
         // Execute command through VS Code
         startTiming("VS Code Command Execution");
         logProgress(`Sending command to VS Code: ${customPrompt}`);
-        
+
         const result = await new Promise((resolve) => {
-          vscodeSocket.emit("vscode:execute-command", {
-            command: customPrompt,
-            workingDirectory: "/root/workspace"
-          }, (response) => {
-            resolve(response);
-          });
+          vscodeSocket.emit(
+            "vscode:execute-command",
+            {
+              command: customPrompt,
+              workingDirectory: "/root/workspace",
+            },
+            (response) => {
+              resolve(response);
+            }
+          );
         });
-        
+
         if (result.success) {
           logProgress("Command sent successfully to VS Code");
         } else {
           logProgress("Failed to send command:", result.error);
         }
-        
+
         // Wait for terminal output
         vscodeSocket.on("vscode:terminal-created", (data) => {
           logProgress("VS Code terminal created:");
@@ -478,16 +489,15 @@ async function testWorker() {
           console.log("  Name:", data.name);
           console.log("  Working directory:", data.cwd);
         });
-        
+
         // Give time for command execution
         await delay(3000);
-        
+
         endTiming("VS Code Command Execution");
-        
+
         // Disconnect from VS Code socket
         vscodeSocket.disconnect();
         logProgress("Disconnected from VS Code extension");
-        
       } catch (error) {
         logProgress("Error with VS Code socket:", error.message);
         endTiming("VS Code Socket Connection");
@@ -515,11 +525,6 @@ async function testWorker() {
       console.log(
         "  - Test worker on ports 3002 (client) and 3003 (management)"
       );
-      console.log(
-        "  - Run commands in the container: docker exec -it " +
-          CONTAINER_NAME +
-          " sh"
-      );
       if (workspacePath) {
         console.log(
           `  - Access mounted workspace at /root/workspace (from ${workspacePath})`
@@ -530,10 +535,26 @@ async function testWorker() {
           CONTAINER_NAME +
           " | grep 'Web UI'"
       );
-      console.log("\nPress Ctrl+C to stop and cleanup...\n");
+      console.log("\n🐚 Spawning interactive shell inside container...\n");
 
-      // Wait indefinitely
-      await new Promise(() => {}); // This will only resolve on SIGINT
+      // Spawn interactive shell
+      const shell = spawn(
+        "docker",
+        ["exec", "-it", CONTAINER_NAME, "/bin/bash"],
+        {
+          stdio: "inherit",
+        }
+      );
+
+      shell.on("exit", (code) => {
+        console.log(`\n✅ Shell exited with code ${code}`);
+        cleanup();
+      });
+
+      shell.on("error", (error) => {
+        console.error("\n❌ Failed to spawn shell:", error);
+        cleanup();
+      });
     } else {
       cleanup();
     }
@@ -598,7 +619,9 @@ process.on("SIGTERM", cleanup);
   }
 
   if (keepAlive) {
-    console.log(`${customPrompt ? '8' : '6'}. Keep container running for manual testing`);
+    console.log(
+      `${customPrompt ? "8" : "6"}. Keep container running for manual testing`
+    );
   }
 
   console.log(
@@ -610,7 +633,7 @@ process.on("SIGTERM", cleanup);
     "  --workspace <path>    Mount local path to /root/workspace in container"
   );
   console.log(
-    "  --prompt, -p <cmd>    Custom command to run in terminal (default: echo \"Hello from worker!\")"
+    '  --prompt, -p <cmd>    Custom command to run in terminal (default: echo "Hello from worker!")'
   );
   console.log("");
 

@@ -339,10 +339,51 @@ def setup_base_environment(instance):
         "DEBIAN_FRONTEND=noninteractive apt-get update && "
         "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends "
         "ca-certificates curl wget git python3 make g++ bash nano net-tools "
-        "sudo supervisor openssl pigz xz-utils unzip && "
+        "sudo supervisor openssl pigz xz-utils unzip chromium chromium-driver && "
         "rm -rf /var/lib/apt/lists/*",
         sudo=True,
     )
+
+
+def setup_docker_environment(instance):
+    """Set up Docker with BuildKit"""
+    print("\n--- Setting up Docker environment ---")
+
+    # Install Docker and essentials
+    run_ssh_command(
+        instance,
+        "DEBIAN_FRONTEND=noninteractive apt-get update && "
+        "DEBIAN_FRONTEND=noninteractive apt-get install -y "
+        "docker.io python3-docker git curl",
+        sudo=True,
+    )
+
+    # Enable BuildKit for faster builds
+    run_ssh_command(
+        instance,
+        "mkdir -p /etc/docker && "
+        'echo \'{"features":{"buildkit":true}}\' > /etc/docker/daemon.json && '
+        "echo 'DOCKER_BUILDKIT=1' >> /etc/environment",
+        sudo=True,
+    )
+
+    # Restart Docker and make sure it's running
+    run_ssh_command(instance, "systemctl restart docker", sudo=True)
+
+    # Wait for Docker to be fully started
+    print("Waiting for Docker to be ready...")
+    for i in range(5):
+        result = run_ssh_command(
+            instance,
+            "docker info >/dev/null 2>&1 || echo 'not ready'",
+            sudo=True,
+            print_output=False,
+        )
+        if result.exit_code == 0 and "not ready" not in result.stdout:
+            print("Docker is ready")
+            break
+        print(f"Waiting for Docker... ({i + 1}/5)")
+        time.sleep(3)
 
 
 def setup_nodejs(instance):
@@ -522,7 +563,8 @@ def install_vscode_extensions(instance):
     """Install VS Code extensions"""
     print("\n--- Installing VS Code extensions ---")
 
-    extensions = ["/tmp/coderouter-extension-0.0.1.vsix", "vscode.git", "vscode.github"]
+    # extensions = ["/tmp/coderouter-extension-0.0.1.vsix", "vscode.git", "vscode.github"]
+    extensions = ["/tmp/coderouter-extension-0.0.1.vsix"]
 
     for ext in extensions:
         run_ssh_command(
@@ -554,6 +596,24 @@ def setup_vscode_settings(instance):
             f"sh -c 'echo \\'{settings}\\' > {dir_path}/settings.json'",
             sudo=True,
         )
+
+
+def warmup_vscode(instance):
+    """Warm up VS Code with headless Chrome"""
+    print("\n--- Warming up VS Code with headless Chrome ---")
+
+    # Fixed version: combine all commands into a single line
+    warmup_command = (
+        "chromium --headless --disable-gpu --no-sandbox --disable-dev-shm-usage --disable-setuid-sandbox "
+        "http://localhost:2376/?folder=/root/workspace & "
+        "CHROME_PID=$! && "
+        'echo "Chrome started with PID $CHROME_PID, waiting 10 seconds for VS Code to warm up..." && '
+        "sleep 10 && "
+        "kill $CHROME_PID 2>/dev/null || true && "
+        'echo "VS Code warm-up complete!"'
+    )
+
+    run_ssh_command(instance, warmup_command, sudo=True)
 
 
 def create_startup_script(instance):
@@ -622,6 +682,9 @@ def main():
     try:
         # Install base dependencies
         setup_base_environment(instance)
+
+        # Setup Docker environment
+        setup_docker_environment(instance)
 
         # Install Node.js
         setup_nodejs(instance)
@@ -702,6 +765,9 @@ def main():
             # Show startup logs
             run_ssh_command(instance, "cat /var/log/startup.log | tail -20", sudo=True)
 
+        # Warm up VS Code
+        warmup_vscode(instance)
+
         print("\n✅ Setup complete!")
         print(f"Instance ID: {instance.id}")
 
@@ -709,6 +775,9 @@ def main():
         instance = client.instances.get(instance.id)  # Refresh instance info
         print("\nService URLs:")
         for service in instance.networking.http_services:
+            if service.name == "openvscode":
+                print(f"- OpenVSCode: {service.url}/?folder=/root/workspace")
+                continue
             print(f"- {service.name}: {service.url}")
 
         print("\nUseful commands:")

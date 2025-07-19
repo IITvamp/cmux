@@ -242,7 +242,7 @@ function startSocketServer() {
 }
 
 export async function activate(context: vscode.ExtensionContext) {
-  console.log("[CodeRouter] activate() called");
+  log("[CodeRouter] activate() called");
 
   // Create command to show output channel
   const showOutputCommand = vscode.commands.registerCommand(
@@ -257,7 +257,7 @@ export async function activate(context: vscode.ExtensionContext) {
   outputChannel.show(true);
   outputChannel.appendLine("=== CodeRouter Extension Activating ===");
 
-  console.log("[CodeRouter] Output channel should be visible now");
+  log("[CodeRouter] Output channel should be visible now");
 
   log("Coderouter is being activated");
 
