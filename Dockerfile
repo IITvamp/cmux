@@ -205,7 +205,7 @@ RUN chmod +x /startup.sh
 # VOLUME /var/lib/docker
 
 # Ports
-EXPOSE 2375 2376 3002 3003 3004
+EXPOSE 2375 2376 2377 2378
 
 ENTRYPOINT ["/startup.sh"]
 # ENTRYPOINT ["sleep", "infinity"]

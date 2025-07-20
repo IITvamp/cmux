@@ -2,9 +2,9 @@ import { io } from 'socket.io-client';
 
 console.log('=== Testing Worker Container ===\n');
 
-// Connect to worker management port
-const managementSocket = io('http://localhost:3003');
-const clientSocket = io('http://localhost:3002');
+// Connect to worker namespaces
+const managementSocket = io('http://localhost:2377/management');
+const clientSocket = io('http://localhost:2377/client');
 
 let testsPassed = 0;
 const totalTests = 3;

@@ -94,8 +94,7 @@ try {
   //   .runCommands("mkdir -p /workspace")
   //   .env({
   //     NODE_ENV: "production",
-  //     WORKER_PORT: "3002",
-  //     MANAGEMENT_PORT: "3003",
+  //     WORKER_PORT: "2377",
   //   })
   //   .entrypoint(["/startup.sh"]);
 
@@ -140,7 +139,7 @@ try {
   // Verify devcontainer CLI is installed
   await runCommand("devcontainer --version");
 
-  const { url } = await sandbox.getPreviewLink(3003);
+  const { url } = await sandbox.getPreviewLink(2377);
 
   const managementSocket = io(url);
 
@@ -193,7 +192,7 @@ try {
   });
 
   // Also test client connection
-  const clientSocket = io("http://localhost:3002");
+  const clientSocket = io("http://localhost:2377/client");
 
   clientSocket.on("connect", () => {
     console.log("Connected to worker client port");

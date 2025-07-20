@@ -35,11 +35,10 @@ WORKDIR /builtins
 
 # Environment
 ENV NODE_ENV=production
-ENV WORKER_PORT=3002
-ENV MANAGEMENT_PORT=3003
+ENV WORKER_PORT=2377
 
 # Ports
-EXPOSE 2375 3002 3003
+EXPOSE 2375 2377
 
 # Startup script
 RUN cat > /startup.sh << 'EOF'

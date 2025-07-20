@@ -12,9 +12,11 @@ console.log("[CodeRouter] Extension module loaded");
 // Socket.IO server instance
 let ioServer: Server | null = null;
 let httpServer: http.Server | null = null;
+let workerSocket: ReturnType<typeof io> | null = null;
 
 // Track active terminals
 const activeTerminals = new Map<string, vscode.Terminal>();
+let isSetupComplete = false;
 
 function log(message: string, ...args: any[]) {
   const timestamp = new Date().toISOString();
@@ -61,141 +63,166 @@ async function openMultiDiffEditor() {
   });
 }
 
-async function connectToWorkerTerminals() {
-  log("Connecting to worker to get active terminals");
+async function setupTerminalsFromWorker(terminals: Array<{ terminalId: string; taskId?: string }>) {
+  log(`Received ${terminals.length} active terminals from worker`);
 
-  // Check if we're in the correct workspace
-  const workspaceFolders = vscode.workspace.workspaceFolders;
-  if (workspaceFolders && workspaceFolders.length > 0) {
-    const currentWorkspace = workspaceFolders[0].uri.fsPath;
-    if (currentWorkspace !== "/root/workspace") {
-      log(
-        `Not in /root/workspace (current: ${currentWorkspace}), skipping terminal setup`
-      );
-      return;
-    }
-  } else {
-    log("No workspace folder open, skipping terminal setup");
+  // Filter to only use the default terminal
+  terminals = terminals.filter(t => t.terminalId === "default");
+  log(`Filtered to ${terminals.length} default terminal(s)`);
+
+  // Prevent duplicate setup
+  if (isSetupComplete) {
+    log("Setup already complete, skipping");
     return;
   }
 
-  try {
-    // Connect to worker socket server
-    const workerSocket = io("http://localhost:3002", {
-      reconnection: true,
-      reconnectionAttempts: 5,
-      reconnectionDelay: 1000,
+  // If no default terminal exists, create one
+  if (terminals.length === 0) {
+    log("No default terminal found, creating one...");
+    workerSocket!.emit("create-terminal", {
+      id: "default",
+      cols: 80,
+      rows: 24
     });
+    
+    // Wait for terminal creation and request list again
+    setTimeout(() => {
+      workerSocket!.emit("get-active-terminals");
+    }, 1000);
+    return;
+  }
 
-    workerSocket.on("connect", () => {
-      log("Connected to worker socket server");
+  // if an existing editor is called "bash", early return
+  const activeEditors = vscode.window.visibleTextEditors;
+  for (const editor of activeEditors) {
+    if (editor.document.fileName === "bash") {
+      log("Bash editor already exists, skipping terminal setup");
+      return;
+    }
+  }
 
-      // Request active terminals
-      workerSocket.emit("get-active-terminals");
-    });
+  isSetupComplete = true; // Set this BEFORE creating UI elements to prevent race conditions
 
-    workerSocket.on(
-      "active-terminals",
-      async (terminals: Array<{ terminalId: string; taskId?: string }>) => {
-        log(`Received ${terminals.length} active terminals from worker`);
+  // Open Source Control view
+  log("Opening SCM view...");
+  await vscode.commands.executeCommand("workbench.view.scm");
 
-        // Always ensure at least one terminal exists
-        if (terminals.length === 0) {
-          log("No active terminals found, creating default tmux session");
-          terminals = [{ terminalId: "default" }];
-        }
+  // Open git changes view
+  log("Opening git changes view...");
+  await openMultiDiffEditor();
 
-        // if an existing editor is called "bash", early return
-        const activeEditors = vscode.window.visibleTextEditors;
-        for (const editor of activeEditors) {
-          if (editor.document.fileName === "bash") {
-            log("Bash editor already exists, skipping terminal setup");
-            return;
-          }
-        }
-
-        // Open Source Control view
-        log("Opening SCM view...");
-        await vscode.commands.executeCommand("workbench.view.scm");
-
-        // Open git changes view
-        log("Opening git changes view...");
-        await openMultiDiffEditor();
-
-        // Create terminals for each tmux session
-        for (let i = 0; i < terminals.length; i++) {
-          const terminalInfo = terminals[i];
-          log(
-            `Creating terminal ${i + 1}/${terminals.length} for tmux session ${terminalInfo.terminalId}`
-          );
-
-          // Don't split editor for first terminal
-          if (i > 0) {
-            await vscode.commands.executeCommand(
-              "workbench.action.splitEditor"
-            );
-          }
-
-          const terminal = vscode.window.createTerminal({
-            name: `Session: ${terminalInfo.terminalId}`,
-            location: vscode.TerminalLocation.Editor,
-            cwd: "/root/workspace",
-            env: process.env,
-          });
-
-          terminal.show();
-
-          // Store terminal reference
-          activeTerminals.set(terminalInfo.terminalId, terminal);
-
-          // Attach to tmux session
-          setTimeout(() => {
-            terminal.sendText(
-              `tmux attach-session -t ${terminalInfo.terminalId}`
-            );
-            log(`Attached to tmux session ${terminalInfo.terminalId}`);
-          }, 0);
-        }
-
-        log(`Created ${terminals.length} terminal(s) successfully`);
-
-        // After all terminals are created, ensure the terminal is active and move to right group
-        setTimeout(async () => {
-          // Focus on the terminal tab
-          if (activeTerminals.size > 0) {
-            const firstTerminal = activeTerminals.values().next().value;
-            if (firstTerminal) {
-              firstTerminal.show();
-            }
-          }
-
-          // Move the active editor (terminal) to the right group
-          log("Moving terminal editor to right group");
-          await vscode.commands.executeCommand(
-            "workbench.action.moveEditorToRightGroup"
-          );
-
-          // Ensure output panel is hidden
-          log("Hiding output panel");
-          await vscode.commands.executeCommand("workbench.action.closePanel");
-        }, 0);
-
-        // Disconnect from worker after getting terminals
-        workerSocket.disconnect();
-      }
+  // Create terminals for each tmux session
+  for (let i = 0; i < terminals.length; i++) {
+    const terminalInfo = terminals[i];
+    log(
+      `Creating terminal ${i + 1}/${terminals.length} for tmux session ${terminalInfo.terminalId}`
     );
 
-    workerSocket.on("connect_error", (error) => {
-      log("Failed to connect to worker:", error.message);
+    // Split editor for additional terminals
+    if (i > 0) {
+      await vscode.commands.executeCommand(
+        "workbench.action.splitEditor"
+      );
+    }
+
+    const terminal = vscode.window.createTerminal({
+      name: `Session: ${terminalInfo.terminalId}`,
+      location: vscode.TerminalLocation.Editor,
+      cwd: "/root/workspace",
+      env: process.env,
     });
-  } catch (error) {
-    log("Error connecting to worker terminals:", error);
+
+    terminal.show();
+
+    // Store terminal reference
+    activeTerminals.set(terminalInfo.terminalId, terminal);
+
+    // Attach to tmux session with a small delay to ensure it's ready
+    setTimeout(() => {
+      terminal.sendText(
+        `tmux attach-session -t ${terminalInfo.terminalId}`
+      );
+      log(`Attached to tmux session ${terminalInfo.terminalId}`);
+    }, 500); // 500ms delay to ensure tmux session is ready
   }
+
+  log(`Created ${terminals.length} terminal(s) successfully`);
+
+  // After all terminals are created, ensure the terminal is active and move to right group
+  setTimeout(async () => {
+    // Focus on the terminal tab
+    if (activeTerminals.size > 0) {
+      const firstTerminal = activeTerminals.values().next().value;
+      if (firstTerminal) {
+        firstTerminal.show();
+      }
+    }
+
+    // Move the active editor (terminal) to the right group
+    log("Moving terminal editor to right group");
+    await vscode.commands.executeCommand(
+      "workbench.action.moveEditorToRightGroup"
+    );
+
+    // Ensure terminal has focus
+    await vscode.commands.executeCommand(
+      "workbench.action.terminal.focus"
+    );
+
+    log("Terminal setup complete");
+  }, 100);
+}
+
+function connectToWorker() {
+  if (workerSocket && workerSocket.connected) {
+    log("Worker socket already connected");
+    return;
+  }
+
+  log("Creating worker socket connection...");
+  
+  // Clean up existing socket if any
+  if (workerSocket) {
+    workerSocket.removeAllListeners();
+    workerSocket.disconnect();
+  }
+  
+  workerSocket = io("http://localhost:2377/client", {
+    reconnection: true,
+    reconnectionAttempts: 5,
+    reconnectionDelay: 1000,
+  });
+
+  // Set up event handlers only once
+  workerSocket.once("connect", () => {
+    log("Connected to worker socket server");
+    // Request terminals only on first connection
+    if (!isSetupComplete) {
+      log("Requesting active terminals...");
+      workerSocket!.emit("get-active-terminals");
+    }
+  });
+
+  workerSocket.on("active-terminals", setupTerminalsFromWorker);
+
+  workerSocket.on("disconnect", () => {
+    log("Disconnected from worker socket server");
+  });
+
+  workerSocket.on("error", (error) => {
+    log("Worker socket error:", error);
+  });
+
+  // Handle reconnection without duplicating setup
+  workerSocket.on("reconnect", () => {
+    log("Reconnected to worker socket server");
+    // Don't request terminals again on reconnect
+  });
 }
 
 function startSocketServer() {
   try {
-    const port = 3004;
+    const port = 2378;
     httpServer = http.createServer();
     ioServer = new Server(httpServer, {
       cors: {
@@ -229,41 +256,31 @@ function startSocketServer() {
 
       // Execute command
       socket.on("vscode:execute-command", async (data, callback) => {
-        log("Execute command request:", data);
-
         try {
-          const { command, workingDirectory } = data;
+          const { command, args = [] } = data;
+          log(`Executing command: ${command}`, args);
+          const result = await vscode.commands.executeCommand(command, ...args);
+          callback({ success: true, result });
+        } catch (error: any) {
+          log(`Command execution failed:`, error);
+          callback({ success: false, error: error.message });
+        }
+      });
 
-          // Create terminal
-          const terminalId = `terminal-${Date.now()}`;
+      // Terminal operations
+      socket.on("vscode:create-terminal", (data, callback) => {
+        try {
+          const { name = "Terminal", command } = data;
           const terminal = vscode.window.createTerminal({
-            name: `Coderouter-${terminalId}`,
-            location: vscode.TerminalLocation.Editor,
-            cwd:
-              workingDirectory ||
-              vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ||
-              "/root/workspace",
+            name,
+            location: vscode.TerminalLocation.Panel,
           });
-
-          activeTerminals.set(terminalId, terminal);
           terminal.show();
-
-          // Send terminal created event
-          socket.emit("vscode:terminal-created", {
-            terminalId,
-            name: terminal.name,
-            cwd: workingDirectory || "/root/workspace",
-          });
-
-          // Send command
-          setTimeout(() => {
+          if (command) {
             terminal.sendText(command);
-            log("Command sent to terminal:", command);
-          }, 500);
-
+          }
           callback({ success: true });
         } catch (error: any) {
-          log("Error executing command:", error);
           callback({ success: false, error: error.message });
         }
       });
@@ -276,31 +293,21 @@ function startSocketServer() {
     httpServer.listen(port, () => {
       log(`Socket.IO server listening on port ${port}`);
     });
-
-    // Emit status update periodically
-    setInterval(() => {
-      if (ioServer) {
-        ioServer.emit("vscode:status", {
-          ready: true,
-          message: "VS Code extension is running",
-          workspaceFolders:
-            vscode.workspace.workspaceFolders?.map((f) => f.uri.fsPath) || [],
-        });
-      }
-    }, 5000);
   } catch (error) {
     log("Failed to start Socket.IO server:", error);
   }
 }
 
-export async function activate(context: vscode.ExtensionContext) {
+export function activate(context: vscode.ExtensionContext) {
+  // Log activation
+  console.log("[CodeRouter] activate() called");
   log("[CodeRouter] activate() called");
 
-  // Create command to show output channel
-  const showOutputCommand = vscode.commands.registerCommand(
+  // Register command to show output
+  let showOutputCommand = vscode.commands.registerCommand(
     "coderouter.showOutput",
     () => {
-      outputChannel.show(true);
+      outputChannel.show();
     }
   );
   context.subscriptions.push(showOutputCommand);
@@ -318,9 +325,8 @@ export async function activate(context: vscode.ExtensionContext) {
   // Start Socket.IO server
   startSocketServer();
 
-  // Connect to worker terminals on startup
-  log("Scheduling connection to worker terminals in 2 seconds...");
-  await connectToWorkerTerminals();
+  // Connect to worker immediately and set up handlers
+  connectToWorker();
 
   let disposable = vscode.commands.registerCommand(
     "coderouter.helloWorld",
@@ -331,7 +337,14 @@ export async function activate(context: vscode.ExtensionContext) {
   );
 
   let run = vscode.commands.registerCommand("coderouter.run", async () => {
-    await connectToWorkerTerminals();
+    // Force request terminals again
+    if (workerSocket && workerSocket.connected) {
+      log("Manually requesting terminals...");
+      isSetupComplete = false; // Allow setup to run again
+      workerSocket.emit("get-active-terminals");
+    } else {
+      connectToWorker();
+    }
   });
 
   context.subscriptions.push(disposable);
@@ -340,6 +353,14 @@ export async function activate(context: vscode.ExtensionContext) {
 
 export function deactivate() {
   log("CodeRouter extension is now deactivated!");
+  isSetupComplete = false;
+
+  // Clean up worker socket
+  if (workerSocket) {
+    workerSocket.removeAllListeners();
+    workerSocket.disconnect();
+    workerSocket = null;
+  }
 
   // Clean up Socket.IO server
   if (ioServer) {

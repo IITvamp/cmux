@@ -14,15 +14,15 @@ console.log(`Created instance: ${instance.id}`);
 
 const exposedServices = instance.networking.httpServices;
 const vscodeService = exposedServices.find((service) => service.port === 2376);
-const workerService = exposedServices.find((service) => service.port === 3002);
+const workerService = exposedServices.find((service) => service.port === 2377);
 if (!vscodeService || !workerService) {
   throw new Error("VSCode or worker service not found");
 }
 
 console.log(`VSCode: ${vscodeService.url}/?folder=/root/workspace`);
 
-// connect to the worker with socketio
-const clientSocket = io(workerService.url, {
+// connect to the worker management namespace with socketio
+const clientSocket = io(workerService.url + '/management', {
   timeout: 10000,
   reconnectionAttempts: 3,
 }) as Socket<WorkerToServerEvents, ServerToWorkerEvents>;

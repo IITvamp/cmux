@@ -28,16 +28,15 @@ async function runCommand(command: string) {
 
 await runCommand("docker --version");
 
-const [{ url: vscodeUrl }, { url: clientUrl }, { url: managementUrl }] =
+const [{ url: vscodeUrl }, { url: workerUrl }] =
   await Promise.all([
     sandbox.getPreviewLink(2376),
-    sandbox.getPreviewLink(3002),
-    sandbox.getPreviewLink(3003),
+    sandbox.getPreviewLink(2377),
   ]);
 
-console.log({ vscodeUrl, clientUrl, managementUrl });
+console.log({ vscodeUrl, workerUrl });
 
-const workerSocket = io(clientUrl) as Socket<
+const workerSocket = io(workerUrl + '/client') as Socket<
   ServerToClientEvents,
   ClientToServerEvents
 >;

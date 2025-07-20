@@ -15,8 +15,7 @@ instance = client.instances.start(snapshot_id=snapshot_id)
 print(f"Created instance: {instance.id}")
 
 instance.expose_http_service("openvscode", 2376)
-instance.expose_http_service("worker", 3002)
-instance.expose_http_service("management", 3003)
+instance.expose_http_service("worker", 2377)
 
 for service in instance.networking.http_services:
     if service.name == "openvscode":

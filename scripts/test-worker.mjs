@@ -162,9 +162,8 @@ async function setupDockerContainer() {
   startTiming("Container Start");
   logProgress(`Starting Docker container: ${CONTAINER_NAME}`);
   console.log("Container configuration:");
-  console.log("  - Port 3002: Worker client port");
-  console.log("  - Port 3003: Worker management port");
-  console.log("  - Port 3004: VS Code extension socket server");
+  console.log("  - Port 2377: Worker port (with /client and /management namespaces)");
+  console.log("  - Port 2378: VS Code extension socket server");
   console.log("  - Port 2376: code-server (VS Code in browser)");
   console.log("  - Privileged mode: Enabled (for Docker-in-Docker)");
 
@@ -173,7 +172,7 @@ async function setupDockerContainer() {
   }
 
   if (customPrompt) {
-    console.log(`  - CMUX_INITIAL_COMMAND: ${customPrompt}`);
+    console.log(`  - INITIAL_COMMAND: ${customPrompt}`);
   }
 
   // Build docker run arguments
@@ -184,24 +183,20 @@ async function setupDockerContainer() {
     CONTAINER_NAME,
     "--privileged",
     "-p",
-    "3002:3002",
+    "2377:2377",
     "-p",
-    "3003:3003",
-    "-p",
-    "3004:3004",
+    "2378:2378",
     "-p",
     "2376:2376",
     "-e",
     "NODE_ENV=production",
     "-e",
-    "WORKER_PORT=3002",
-    "-e",
-    "MANAGEMENT_PORT=3003",
+    "WORKER_PORT=2377",
   ];
 
-  // Add CMUX_INITIAL_COMMAND if custom prompt is provided
+  // Add INITIAL_COMMAND if custom prompt is provided
   if (customPrompt) {
-    dockerArgs.push("-e", `CMUX_INITIAL_COMMAND=${customPrompt}`);
+    dockerArgs.push("-e", `INITIAL_COMMAND=${customPrompt}`);
   }
 
   // Add volume mount if workspace path is provided
@@ -311,8 +306,8 @@ async function testWorker() {
 
   // Connect to worker management port
   startTiming("Socket Connection");
-  logProgress("Connecting to worker management port (3003)...");
-  const managementSocket = io("http://localhost:3003", {
+  logProgress("Connecting to worker management namespace...");
+  const managementSocket = io("http://localhost:2377/management", {
     timeout: 10000,
     reconnectionAttempts: 3,
   });
@@ -327,8 +322,8 @@ async function testWorker() {
   });
 
   // Also test client connection
-  logProgress("Connecting to worker client port (3002)...");
-  const clientSocket = io("http://localhost:3002", {
+  logProgress("Connecting to worker client namespace...");
+  const clientSocket = io("http://localhost:2377/client", {
     timeout: 10000,
     reconnectionAttempts: 3,
   });
@@ -469,9 +464,9 @@ async function testWorker() {
     // Connect to VS Code extension socket server (if terminal was created)
     if (customPrompt) {
       startTiming("VS Code Socket Connection");
-      logProgress("Connecting to VS Code extension socket server (3004)...");
+      logProgress("Connecting to VS Code extension socket server (2378)...");
 
-      const vscodeSocket = io("http://localhost:3004", {
+      const vscodeSocket = io("http://localhost:2378", {
         timeout: 10000,
         reconnectionAttempts: 3,
       });
@@ -577,7 +572,7 @@ async function testWorker() {
       console.log("Container is still running. You can:");
       console.log("  - Connect to OpenVSCode (http://localhost:2376)");
       console.log(
-        "  - Test worker on ports 3002 (client) and 3003 (management)"
+        "  - Test worker on port 2377 (with /client and /management namespaces)"
       );
       if (workspacePath) {
         console.log(

@@ -70,7 +70,6 @@ fi
 
 # Start the worker
 export NODE_ENV=production
-export WORKER_PORT=3002
-export MANAGEMENT_PORT=3003
+export WORKER_PORT=2377
 
 exec docker-init -- node /builtins/build/index.js 

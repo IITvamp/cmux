@@ -846,8 +846,7 @@ def main():
 
         # Expose HTTP services
         current_instance.expose_http_service("openvscode", 2376)
-        current_instance.expose_http_service("worker", 3002)
-        current_instance.expose_http_service("management", 3003)
+        current_instance.expose_http_service("worker", 2377)
 
         print("\n--- Starting services ---")
         # Run the startup script in the background

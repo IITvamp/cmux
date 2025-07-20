@@ -1,7 +1,7 @@
 import { io } from 'socket.io-client';
 
-// Connect to worker management port
-const managementSocket = io('http://localhost:3003');
+// Connect to worker management namespace
+const managementSocket = io('http://localhost:2377/management');
 
 managementSocket.on('connect', () => {
   console.log('Connected to worker management port');

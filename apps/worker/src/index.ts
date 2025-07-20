@@ -22,7 +22,7 @@ import xtermHeadless from "@xterm/headless";
 import { spawn, type IPty } from "node-pty";
 import { createServer } from "node:http";
 import { cpus, platform, totalmem } from "node:os";
-import { Server, type Socket } from "socket.io";
+import { Server, type Socket, type Namespace } from "socket.io";
 import { Agent, fetch } from "undici";
 
 const { Terminal } = xtermHeadless;
@@ -36,8 +36,7 @@ interface WorkerTerminal {
 
 // Configuration
 const WORKER_ID = process.env.WORKER_ID || `worker-${Date.now()}`;
-const WORKER_PORT = parseInt(process.env.WORKER_PORT || "3002", 10);
-const MANAGEMENT_PORT = parseInt(process.env.MANAGEMENT_PORT || "3003", 10);
+const WORKER_PORT = parseInt(process.env.WORKER_PORT || "2377", 10);
 const CONTAINER_IMAGE =
   process.env.CONTAINER_IMAGE || "coderouter/worker:latest";
 const CONTAINER_VERSION = process.env.CONTAINER_VERSION || "1.0.0";
@@ -81,33 +80,30 @@ async function checkDockerReadiness(): Promise<boolean> {
 // Terminal storage
 const terminals = new Map<string, WorkerTerminal>();
 
-// Create HTTP servers
-const clientHttpServer = createServer();
-const managementHttpServer = createServer();
+// Create HTTP server
+const httpServer = createServer();
 
-// Socket.IO server for client connections
-const clientIO = new Server<
-  ClientToServerEvents,
-  ServerToClientEvents,
-  InterServerEvents,
-  SocketData
->(clientHttpServer, {
+// Socket.IO server with namespaces
+const io = new Server(httpServer, {
   cors: {
     origin: "*", // In production, restrict this
     methods: ["GET", "POST"],
   },
 });
 
-// Socket.IO server for main server connection (worker acts as server)
-const managementIO = new Server<ServerToWorkerEvents, WorkerToServerEvents>(
-  managementHttpServer,
-  {
-    cors: {
-      origin: "*", // In production, restrict this to main server URL
-      methods: ["GET", "POST"],
-    },
-  }
-);
+// Client namespace
+const clientIO = io.of("/client") as Namespace<
+  ClientToServerEvents,
+  ServerToClientEvents,
+  InterServerEvents,
+  SocketData
+>;
+
+// Management namespace
+const managementIO = io.of("/management") as Namespace<
+  ServerToWorkerEvents,
+  WorkerToServerEvents
+>;
 
 // Track connected main server
 let mainServerSocket: Socket<
@@ -157,7 +153,7 @@ function registerWithMainServer(
 
 // Management socket server (main server connects to this)
 managementIO.on("connection", (socket) => {
-  console.log(`Main server connected to worker ${WORKER_ID}`);
+  console.log(`Main server connected to worker ${WORKER_ID} from`, socket.handshake.headers.referer || "unknown");
   mainServerSocket = socket;
 
   // Send registration immediately
@@ -165,6 +161,7 @@ managementIO.on("connection", (socket) => {
 
   // Handle terminal operations from main server
   socket.on("worker:create-terminal", (data) => {
+    console.log(`Management namespace: Received request to create terminal from main server`, data);
     try {
       const validated = WorkerCreateTerminalSchema.parse(data);
       const terminal = createTerminal(validated.terminalId, {
@@ -268,7 +265,7 @@ managementIO.on("connection", (socket) => {
 
 // Client socket server
 clientIO.on("connection", (socket) => {
-  console.log(`Client connected to worker ${WORKER_ID}:`, socket.id);
+  console.log(`Client connected to worker ${WORKER_ID}:`, socket.id, "from", socket.handshake.headers.referer || "unknown");
 
   // Send existing terminals to new connections
   terminals.forEach((terminal, terminalId) => {
@@ -282,6 +279,7 @@ clientIO.on("connection", (socket) => {
   });
 
   socket.on("create-terminal", (data) => {
+    console.log(`Client namespace: Received request to create terminal from client ${socket.id}`, data);
     try {
       const { cols, rows, id } = CreateTerminalSchema.parse(data);
 
@@ -449,6 +447,10 @@ function createTerminal(
       ...env,
       WORKER_ID,
       TERM: "xterm-256color",
+      PS1: "\\u@\\h:\\w\\$ ",  // Basic prompt
+      SHELL: "/bin/bash",
+      USER: process.env.USER || "root",
+      HOME: process.env.HOME || "/root",
     },
   });
 
@@ -523,18 +525,35 @@ setInterval(() => {
   }
 }, 30000);
 
-// Start servers
-clientHttpServer.listen(WORKER_PORT, () => {
+// Start server
+httpServer.listen(WORKER_PORT, async () => {
   console.log(
-    `Worker ${WORKER_ID} client server listening on port ${WORKER_PORT}`
+    `Worker ${WORKER_ID} listening on port ${WORKER_PORT}`
   );
-});
-
-managementHttpServer.listen(MANAGEMENT_PORT, () => {
-  console.log(
-    `Worker ${WORKER_ID} management server listening on port ${MANAGEMENT_PORT}`
-  );
-  console.log(`Waiting for main server to connect...`);
+  console.log(`  - Client namespace: /client`);
+  console.log(`  - Management namespace: /management`);
+  console.log(`Waiting for connections...`);
+  
+  // Create default terminal
+  const terminalId = "default";
+  
+  // Check if there's an initial command to run
+  const initialCommand = process.env.INITIAL_COMMAND || process.env.WORKER_INITIAL_COMMAND;
+  
+  console.log(`Creating default terminal${initialCommand ? ` with command: ${initialCommand}` : ""}`);
+  
+  const terminal = createTerminal(terminalId, {
+    cols: 80,
+    rows: 24,
+    command: initialCommand ? "/bin/bash" : undefined,
+    args: initialCommand ? ["-c", initialCommand] : undefined
+  });
+  
+  if (terminal) {
+    console.log(`Default terminal '${terminalId}' created successfully`);
+    // Notify all connected clients
+    clientIO.emit("terminal-created", { terminalId });
+  }
 });
 
 // Graceful shutdown
@@ -552,21 +571,13 @@ function gracefulShutdown() {
   });
   terminals.clear();
 
-  // Close servers
-  clientIO.close(() => {
-    console.log("Client Socket.IO server closed");
+  // Close server
+  io.close(() => {
+    console.log("Socket.IO server closed");
   });
 
-  managementIO.close(() => {
-    console.log("Management Socket.IO server closed");
-  });
-
-  clientHttpServer.close(() => {
-    console.log("Client HTTP server closed");
-  });
-
-  managementHttpServer.close(() => {
-    console.log("Management HTTP server closed");
+  httpServer.close(() => {
+    console.log("HTTP server closed");
     process.exit(0);
   });
 }
