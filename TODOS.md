@@ -4,3 +4,7 @@
 [ ] figure out intricacies of deploying the Dockerfile to daytona
 [x] create morph snapshot
 [ ] make it easy to provide context to claude code -- my fav is using cmd + p to open a ton of editors
+[ ] copy over the credentials properly
+[ ] make it easy to create a new task from scratch without any existing directory or git repo
+[ ] fallback if user doesn't use gh cli
+[ ] authentication
