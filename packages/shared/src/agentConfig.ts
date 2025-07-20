@@ -1,3 +1,9 @@
+export interface AuthFileConfig {
+  source: string; // Path on host, can include $HOME
+  destination: string; // Path in container/remote
+  platform?: "darwin" | "linux" | "win32"; // Optional platform-specific config
+}
+
 export interface AgentConfig {
   name: string;
   command: string;
@@ -8,6 +14,7 @@ export interface AgentConfig {
     displayName: string;
     description?: string;
   }[];
+  authFiles?: AuthFileConfig[]; // Files to copy for authentication
   waitForString?: string;
   enterKeySequence?: string; // Custom enter key sequence, defaults to "\r"
 }
@@ -23,6 +30,12 @@ export const AGENT_CONFIGS: AgentConfig[] = [
       "--dangerously-skip-permissions",
       "$PROMPT",
     ],
+    authFiles: [
+      {
+        source: "$HOME/.claude.json",
+        destination: "$HOME/.claude.json",
+      },
+    ],
   },
   {
     name: "claude-opus",
@@ -33,6 +46,12 @@ export const AGENT_CONFIGS: AgentConfig[] = [
       "claude-opus-4-20250514",
       "--dangerously-skip-permissions",
       "$PROMPT",
+    ],
+    authFiles: [
+      {
+        source: "$HOME/.claude.json",
+        destination: "$HOME/.claude.json",
+      },
     ],
   },
   {
@@ -49,16 +68,50 @@ export const AGENT_CONFIGS: AgentConfig[] = [
       "--skip-git-repo-check",
       "$PROMPT",
     ],
+    authFiles: [
+      {
+        source: "$HOME/.codex/auth.json",
+        destination: "$HOME/.codex/auth.json",
+      },
+      {
+        source: "$HOME/.codex/config.json",
+        destination: "$HOME/.codex/config.json",
+      },
+    ],
   },
   {
     name: "opencode-sonnet",
     command: "bunx",
     args: ["opencode-ai@latest", "--model", "sonnet", "--prompt", "$PROMPT"],
+    authFiles: [
+      {
+        source: "$HOME/.local/share/opencode/auth.json",
+        destination: "$HOME/.local/share/opencode/auth.json",
+        platform: "darwin",
+      },
+      {
+        source: "$HOME/.local/share/opencode/auth.json",
+        destination: "$HOME/.local/share/opencode/auth.json",
+        platform: "linux",
+      },
+    ],
   },
   {
     name: "opencode-kimi-k2",
     command: "bunx",
     args: ["opencode-ai@latest", "--model", "kimi-k2", "--prompt", "$PROMPT"],
+    authFiles: [
+      {
+        source: "$HOME/.local/share/opencode/auth.json",
+        destination: "$HOME/.local/share/opencode/auth.json",
+        platform: "darwin",
+      },
+      {
+        source: "$HOME/.local/share/opencode/auth.json",
+        destination: "$HOME/.local/share/opencode/auth.json",
+        platform: "linux",
+      },
+    ],
   },
   {
     name: "gemini-2.5-flash",

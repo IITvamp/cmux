@@ -9,11 +9,13 @@ import type {
 import {
   AGENT_CONFIGS,
   type AgentConfig,
+  type AuthFileConfig,
 } from "@coderouter/shared/agentConfig";
 import archiver from "archiver";
 import * as ignoreLib from "ignore";
 import { exec } from "node:child_process";
 import * as fs from "node:fs/promises";
+import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import type { Server } from "socket.io";
@@ -26,6 +28,59 @@ import { getWorktreePath, setupProjectWorkspace } from "./workspace.js";
 const ignore = ignoreLib.default || ignoreLib;
 
 const execAsync = promisify(exec);
+
+async function prepareAuthFiles(authFiles?: AuthFileConfig[]): Promise<
+  Array<{
+    sourcePath: string;
+    destinationPath: string;
+    content: string;
+    mode?: string;
+  }>
+> {
+  if (!authFiles) return [];
+
+  const preparedFiles: Array<{
+    sourcePath: string;
+    destinationPath: string;
+    content: string;
+    mode?: string;
+  }> = [];
+
+  const platform = os.platform();
+  const homeDir = os.homedir();
+
+  for (const authFile of authFiles) {
+    // Skip if platform doesn't match
+    if (authFile.platform && authFile.platform !== platform) {
+      continue;
+    }
+
+    // Resolve $HOME in paths
+    const sourcePath = authFile.source.replace("$HOME", homeDir);
+    const destinationPath = authFile.destination.replace("$HOME", "$HOME"); // Keep $HOME for container
+
+    try {
+      // Read the file
+      const content = await fs.readFile(sourcePath, "base64");
+
+      // Get file permissions
+      const stats = await fs.stat(sourcePath);
+      const mode = (stats.mode & parseInt("777", 8)).toString(8);
+
+      preparedFiles.push({
+        sourcePath,
+        destinationPath,
+        content,
+        mode,
+      });
+    } catch (error) {
+      console.warn(`Failed to read auth file ${sourcePath}:`, error);
+      // Continue with other files
+    }
+  }
+
+  return preparedFiles;
+}
 
 async function zipRepository(repoPath: string): Promise<Buffer> {
   // Read .gitignore if it exists
@@ -154,7 +209,7 @@ export async function spawnAgent(
 
     // Replace $PROMPT placeholders in args with the actual prompt
     const processedArgs = agent.args.map((arg) =>
-      arg === "$PROMPT" ? `"${escapedPrompt}"` : arg
+      arg === "$PROMPT" ? `\\"${escapedPrompt}\\"` : arg
     );
 
     const agentCommand = `${agent.command} ${processedArgs.join(" ")}`;
@@ -263,6 +318,29 @@ export async function spawnAgent(
     console.log(
       `VSCode instance spawned for agent ${agent.name}: ${vscodeUrl}`
     );
+
+    // Prepare and upload auth files
+    const authFiles = await prepareAuthFiles(agent.authFiles);
+    if (authFiles.length > 0) {
+      console.log(
+        `Uploading ${authFiles.length} auth files for agent ${agent.name}...`
+      );
+
+      // Send auth files to the worker
+      // TODO: We need to emit this to the worker handling this VSCode instance
+      // For now, let's just log what we would upload
+      for (const file of authFiles) {
+        console.log(
+          `Would upload: ${file.sourcePath} -> ${file.destinationPath}`
+        );
+      }
+
+      // In a real implementation, we would emit to the worker:
+      // io.to(workerId).emit('worker:upload-files', {
+      //   files: authFiles,
+      //   terminalId: taskRunId,
+      // });
+    }
 
     // Use taskRunId as terminal ID for compatibility
     const terminalId = taskRunId;

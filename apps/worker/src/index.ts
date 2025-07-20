@@ -20,6 +20,7 @@ import { SERVER_TERMINAL_CONFIG } from "@coderouter/shared/terminal-config";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import xtermHeadless from "@xterm/headless";
 import { spawn, type IPty } from "node-pty";
+import { promises as fs } from "node:fs";
 import { createServer } from "node:http";
 import { cpus, platform, totalmem } from "node:os";
 import { Server, type Namespace, type Socket } from "socket.io";
@@ -503,13 +504,18 @@ function createTerminal(
   });
 
   // Handle PTY exit
-  ptyProcess.onExit(({ exitCode, signal }) => {
+  ptyProcess.onExit(async ({ exitCode, signal }) => {
     console.log(
       `Terminal ${terminalId} exited with code ${exitCode} and signal ${signal}`
     );
     // log the full state
-    console.log("Full state:");
+    console.log(`Full state saved to /var/log/${terminalId}-state.log`);
     console.log(serializeAddon.serialize());
+
+    await fs.writeFile(
+      `/var/log/${terminalId}-state.log`,
+      serializeAddon.serialize()
+    );
 
     terminals.delete(terminalId);
     clientIO.emit("terminal-exit", { terminalId, exitCode, signal });
@@ -528,19 +534,22 @@ function createTerminal(
   return terminal;
 }
 
-// Heartbeat interval (send stats every 30 seconds)
-setInterval(() => {
-  const stats = getWorkerStats();
+const ENABLE_HEARTBEAT = false;
+if (ENABLE_HEARTBEAT) {
+  // Heartbeat interval (send stats every 30 seconds)
+  setInterval(() => {
+    const stats = getWorkerStats();
 
-  if (mainServerSocket) {
-    mainServerSocket.emit("worker:heartbeat", stats);
-  } else {
-    console.log(
-      `Worker ${WORKER_ID} heartbeat (main server not connected):`,
-      stats
-    );
-  }
-}, 30000);
+    if (mainServerSocket) {
+      mainServerSocket.emit("worker:heartbeat", stats);
+    } else {
+      console.log(
+        `Worker ${WORKER_ID} heartbeat (main server not connected):`,
+        stats
+      );
+    }
+  }, 30000);
+}
 
 // Start server
 httpServer.listen(WORKER_PORT, async () => {

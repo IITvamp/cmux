@@ -92,6 +92,17 @@ export const WorkerTerminalClosedSchema = z.object({
   terminalId: z.string(),
 });
 
+// File upload schema for authentication files
+export const WorkerUploadFilesSchema = z.object({
+  files: z.array(z.object({
+    sourcePath: z.string(), // Path on host
+    destinationPath: z.string(), // Path in container
+    content: z.string(), // Base64 encoded file content
+    mode: z.string().optional(), // File permissions (e.g., "644")
+  })),
+  terminalId: z.string().optional(), // Optional terminal context
+});
+
 // Server to Worker Events
 export const ServerToWorkerCommandSchema = z.object({
   command: z.enum(['create-terminal', 'destroy-terminal', 'execute-command']),
@@ -112,6 +123,7 @@ export type WorkerTerminalOutput = z.infer<typeof WorkerTerminalOutputSchema>;
 export type WorkerTerminalExit = z.infer<typeof WorkerTerminalExitSchema>;
 export type WorkerTerminalCreated = z.infer<typeof WorkerTerminalCreatedSchema>;
 export type WorkerTerminalClosed = z.infer<typeof WorkerTerminalClosedSchema>;
+export type WorkerUploadFiles = z.infer<typeof WorkerUploadFilesSchema>;
 
 // Socket.io event maps for Server <-> Worker communication
 // Docker readiness response type
@@ -126,6 +138,9 @@ export interface ServerToWorkerEvents {
   "worker:terminal-input": (data: WorkerTerminalInput) => void;
   "worker:resize-terminal": (data: WorkerResizeTerminal) => void;
   "worker:close-terminal": (data: WorkerCloseTerminal) => void;
+  
+  // File operations
+  "worker:upload-files": (data: WorkerUploadFiles) => void;
   
   // Management events
   "worker:terminal-assignment": (data: TerminalAssignment) => void;

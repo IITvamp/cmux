@@ -64,7 +64,11 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     console.log(`Running docker command: docker ${dockerArgs.join(" ")}`);
 
     this.dockerProcess = spawn("docker", dockerArgs, {
-      stdio: "pipe",
+      stdio: "ignore",
+    });
+
+    this.dockerProcess.on("message", (message) => {
+      console.log(`[${this.containerName}] message:`, message);
     });
 
     this.dockerProcess.on("error", (error) => {
