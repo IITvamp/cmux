@@ -2,4 +2,5 @@
 [ ] copy ~/.claude/CLAUDE.md to relevant places
 [ ] copy CLAUDE.md to AGENTS.md, GEMINI.md etc for openai, gemini, etc.
 [ ] figure out intricacies of deploying the Dockerfile to daytona
-[ ] create morph snapshot
+[x] create morph snapshot
+[ ] make it easy to provide context to claude code -- my fav is using cmd + p to open a ton of editors

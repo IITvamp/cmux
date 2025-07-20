@@ -1,9 +1,9 @@
 #!/usr/bin/env tsx
-import { MorphCloudClient, Instance, Snapshot } from "morphcloud";
-import { io, Socket } from "socket.io-client";
-import path from "path";
-import fs from "fs/promises";
 import dotenv from "dotenv";
+import fs from "fs/promises";
+import { Instance, MorphCloudClient } from "morphcloud";
+import path from "path";
+import { io } from "socket.io-client";
 import { fileURLToPath } from "url";
 
 // Load environment variables
@@ -16,8 +16,9 @@ async function runSSHCommand(
   sudo = false,
   printOutput = true
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const fullCommand = sudo && !command.startsWith("sudo ") ? `sudo ${command}` : command;
-  
+  const fullCommand =
+    sudo && !command.startsWith("sudo ") ? `sudo ${command}` : command;
+
   console.log(`Running: ${fullCommand}`);
   const result = await instance.exec(fullCommand);
 
@@ -45,7 +46,11 @@ async function setupDockerWithBuildKit(instance: Instance) {
   console.log("\n--- Setting up Docker with BuildKit ---");
 
   // First, let's check what OS we're running on
-  const osCheck = await runSSHCommand(instance, "cat /etc/os-release || echo 'Unknown OS'", true);
+  const osCheck = await runSSHCommand(
+    instance,
+    "cat /etc/os-release || echo 'Unknown OS'",
+    true
+  );
   console.log("OS Info:", osCheck.stdout);
 
   // Update package lists and install Docker
@@ -99,26 +104,29 @@ async function copyApplicationFiles(instance: Instance) {
 
   // Instead of syncing large directories, let's create a tarball and transfer it
   const projectRoot = path.join(__dirname, "..");
-  
+
   console.log("Creating tarball of project files...");
-  
+
   // Create tarball excluding node_modules and other unnecessary files
   const { execSync } = await import("child_process");
   const tarballPath = path.join(__dirname, "coderouter-files.tar.gz");
-  
+
   try {
     // Create tarball with specific files we need
     execSync(
       `cd "${projectRoot}" && tar -czf "${tarballPath}" ` +
-      `--exclude='node_modules' --exclude='.git' --exclude='dist' --exclude='build' ` +
-      `apps packages package.json package-lock.json tsconfig.json`,
-      { stdio: 'inherit' }
+        `--exclude='node_modules' --exclude='.git' --exclude='dist' --exclude='build' ` +
+        `apps packages package.json package-lock.json tsconfig.json`,
+      { stdio: "inherit" }
     );
-    
+
     console.log("Uploading tarball to instance...");
     // Upload the tarball
-    await instance.sync(tarballPath, `${instance.id}:/tmp/coderouter-files.tar.gz`);
-    
+    await instance.sync(
+      tarballPath,
+      `${instance.id}:/tmp/coderouter-files.tar.gz`
+    );
+
     // Extract on the instance
     console.log("Extracting files on instance...");
     await runSSHCommand(
@@ -126,15 +134,14 @@ async function copyApplicationFiles(instance: Instance) {
       "cd /coderouter && tar -xzf /tmp/coderouter-files.tar.gz && rm /tmp/coderouter-files.tar.gz",
       true
     );
-    
+
     // Clean up local tarball
     await fs.unlink(tarballPath);
-    
   } catch (error) {
     console.error("Error creating/transferring tarball:", error);
     // Fall back to copying essential files manually
     console.log("Falling back to manual file copy...");
-    
+
     const filesToCopy = ["package.json", "package-lock.json"];
     for (const file of filesToCopy) {
       const srcPath = path.join(projectRoot, file);
@@ -322,7 +329,11 @@ async function buildAndTestDocker(instance: Instance) {
   console.log("Container status:", psResult.stdout);
 
   // Stop and remove test container
-  await runSSHCommand(instance, "docker stop test-worker && docker rm test-worker", true);
+  await runSSHCommand(
+    instance,
+    "docker stop test-worker && docker rm test-worker",
+    true
+  );
 }
 
 async function startWorkerDirectly(instance: Instance) {
@@ -347,7 +358,7 @@ async function testWorkerConnection(instance: Instance) {
   // Get the instance networking info to find the exposed URLs
   const client = new MorphCloudClient();
   const freshInstance = await client.instances.get({ instanceId: instance.id });
-  
+
   let managementUrl: string | null = null;
   let workerUrl: string | null = null;
 
@@ -483,24 +494,26 @@ async function main() {
 
       console.log(`\n✅ Successfully created snapshot: ${finalSnapshot.id}`);
       console.log("\nTo use this snapshot:");
-      console.log(`  const instance = await client.instances.start({ snapshotId: "${finalSnapshot.id}" });`);
+      console.log(
+        `  const instance = await client.instances.start({ snapshotId: "${finalSnapshot.id}" });`
+      );
 
       // Display instance information
       console.log("\nInstance Details:");
       console.log(`  ID: ${instance.id}`);
       console.log(`  Snapshot ID: ${finalSnapshot.id}`);
       console.log("\nHTTP Services:");
-      const freshInstance = await client.instances.get({ instanceId: instance.id });
+      const freshInstance = await client.instances.get({
+        instanceId: instance.id,
+      });
       for (const service of freshInstance.networking.httpServices) {
         console.log(`  ${service.name}: ${service.url}`);
       }
-
     } finally {
       // Stop the instance
       console.log("\nStopping instance...");
       await instance.stop();
     }
-
   } catch (error) {
     console.error("Error:", error);
     process.exit(1);
