@@ -926,6 +926,12 @@ def main():
             f"- Restart services: morphcloud instance ssh {current_instance.id} -- sudo /startup.sh"
         )
 
+        # Clean up workspace before creating final snapshot
+        print("\n--- Cleaning up build workspace ---")
+        print("Removing /coderouter directory to reduce snapshot size...")
+        run_ssh_command(current_instance, "rm -rf /coderouter", sudo=True)
+        print("Build workspace cleaned up")
+
         # let the user interact with the instance and wait for them to press enter
         input("Press Enter to continue to final snapshot...")
 

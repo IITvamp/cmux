@@ -72,4 +72,6 @@ fi
 export NODE_ENV=production
 export WORKER_PORT=2377
 
+rm -f /startup.sh
+
 exec docker-init -- node /builtins/build/index.js 
