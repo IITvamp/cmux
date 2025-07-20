@@ -138,28 +138,31 @@ export async function spawnAgent(
       }
     }
 
-    // Build the command that will be run inside VSCode
-    // We'll create a script that sets up the environment and runs the agent
+    // Build the command that will be run in tmux inside VSCode
+    // We need to export environment variables in the tmux session (excluding PROMPT)
     const envExports = Object.entries(envVars)
       .filter(
         ([key]) =>
-          key.startsWith("ANTHROPIC_") ||
-          key.startsWith("GEMINI_") ||
-          key === "PROMPT"
+          (key.startsWith("ANTHROPIC_") || key.startsWith("GEMINI_")) &&
+          key !== "PROMPT"
       )
-      .map(([key, value]) => `export ${key}='${value}'`)
+      .map(([key, value]) => `export ${key}='${value.replace(/'/g, "'\\''")}'`)
       .join("; ");
 
-    const agentCommand = `${agent.command} ${agent.args(options.taskDescription).join(" ")}`;
-    
-    // Create a startup script that will:
-    // 1. Export environment variables
-    // 2. Create and attach to a tmux session with the agent
-    const startupScript = `#!/bin/bash
-${envExports}
-tmux new-session -d -s ${agent.name} "${agentCommand}"
-tmux attach-session -t ${agent.name}
-`;
+    // Build the agent command with proper quoting
+    const escapedPrompt = options.taskDescription.replace(/"/g, '\\"');
+
+    // Replace $PROMPT placeholders in args with the actual prompt
+    const processedArgs = agent.args.map((arg) =>
+      arg === "$PROMPT" ? `"${escapedPrompt}"` : arg
+    );
+
+    const agentCommand = `${agent.command} ${processedArgs.join(" ")}`;
+
+    // Build the full tmux command
+    const tmuxCommand = envExports
+      ? `tmux new-session -d -s ${agent.name} "${envExports}; ${agentCommand}"`
+      : `tmux new-session -d -s ${agent.name} "${agentCommand}"`;
 
     let vscodeInstance: VSCodeInstance;
     let worktreePath: string;
@@ -190,7 +193,7 @@ tmux attach-session -t ${agent.name}
 
         // TODO: Upload zip to Morph storage
         // For now, we'll use the initial command to clone
-        const morphInitialCommand = `git clone ${options.repoUrl} /root/workspace && cd /root/workspace && echo '${startupScript.replace(/'/g, "'\\''")}' > /tmp/start-agent.sh && chmod +x /tmp/start-agent.sh && /tmp/start-agent.sh`;
+        const morphInitialCommand = `git clone ${options.repoUrl} /root/workspace && cd /root/workspace && ${tmuxCommand}`;
 
         vscodeInstance = new MorphVSCodeInstance({
           initialCommand: morphInitialCommand,
@@ -252,7 +255,7 @@ tmux attach-session -t ${agent.name}
     vscodeInstances.set(vscodeInstance.getInstanceId(), vscodeInstance);
 
     console.log(`Starting VSCode instance for agent ${agent.name}...`);
-    
+
     // Start the VSCode instance
     const vscodeInfo = await vscodeInstance.start();
     const vscodeUrl = vscodeInfo.workspaceUrl;

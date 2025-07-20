@@ -22,7 +22,7 @@ import xtermHeadless from "@xterm/headless";
 import { spawn, type IPty } from "node-pty";
 import { createServer } from "node:http";
 import { cpus, platform, totalmem } from "node:os";
-import { Server, type Socket, type Namespace } from "socket.io";
+import { Server, type Namespace, type Socket } from "socket.io";
 import { Agent, fetch } from "undici";
 
 const { Terminal } = xtermHeadless;
@@ -153,7 +153,10 @@ function registerWithMainServer(
 
 // Management socket server (main server connects to this)
 managementIO.on("connection", (socket) => {
-  console.log(`Main server connected to worker ${WORKER_ID} from`, socket.handshake.headers.referer || "unknown");
+  console.log(
+    `Main server connected to worker ${WORKER_ID} from`,
+    socket.handshake.headers.referer || "unknown"
+  );
   mainServerSocket = socket;
 
   // Send registration immediately
@@ -161,7 +164,10 @@ managementIO.on("connection", (socket) => {
 
   // Handle terminal operations from main server
   socket.on("worker:create-terminal", (data) => {
-    console.log(`Management namespace: Received request to create terminal from main server`, data);
+    console.log(
+      `Management namespace: Received request to create terminal from main server`,
+      data
+    );
     try {
       const validated = WorkerCreateTerminalSchema.parse(data);
       const terminal = createTerminal(validated.terminalId, {
@@ -265,7 +271,12 @@ managementIO.on("connection", (socket) => {
 
 // Client socket server
 clientIO.on("connection", (socket) => {
-  console.log(`Client connected to worker ${WORKER_ID}:`, socket.id, "from", socket.handshake.headers.referer || "unknown");
+  console.log(
+    `Client connected to worker ${WORKER_ID}:`,
+    socket.id,
+    "from",
+    socket.handshake.headers.referer || "unknown"
+  );
 
   // Send existing terminals to new connections
   terminals.forEach((terminal, terminalId) => {
@@ -279,7 +290,10 @@ clientIO.on("connection", (socket) => {
   });
 
   socket.on("create-terminal", (data) => {
-    console.log(`Client namespace: Received request to create terminal from client ${socket.id}`, data);
+    console.log(
+      `Client namespace: Received request to create terminal from client ${socket.id}`,
+      data
+    );
     try {
       const { cols, rows, id } = CreateTerminalSchema.parse(data);
 
@@ -447,7 +461,7 @@ function createTerminal(
       ...env,
       WORKER_ID,
       TERM: "xterm-256color",
-      PS1: "\\u@\\h:\\w\\$ ",  // Basic prompt
+      PS1: "\\u@\\h:\\w\\$ ", // Basic prompt
       SHELL: "/bin/bash",
       USER: process.env.USER || "root",
       HOME: process.env.HOME || "/root",
@@ -493,6 +507,9 @@ function createTerminal(
     console.log(
       `Terminal ${terminalId} exited with code ${exitCode} and signal ${signal}`
     );
+    // log the full state
+    console.log("Full state:");
+    console.log(serializeAddon.serialize());
 
     terminals.delete(terminalId);
     clientIO.emit("terminal-exit", { terminalId, exitCode, signal });
@@ -527,28 +544,29 @@ setInterval(() => {
 
 // Start server
 httpServer.listen(WORKER_PORT, async () => {
-  console.log(
-    `Worker ${WORKER_ID} listening on port ${WORKER_PORT}`
-  );
+  console.log(`Worker ${WORKER_ID} listening on port ${WORKER_PORT}`);
   console.log(`  - Client namespace: /client`);
   console.log(`  - Management namespace: /management`);
   console.log(`Waiting for connections...`);
-  
+
   // Create default terminal
   const terminalId = "default";
-  
+
   // Check if there's an initial command to run
-  const initialCommand = process.env.INITIAL_COMMAND || process.env.WORKER_INITIAL_COMMAND;
-  
-  console.log(`Creating default terminal${initialCommand ? ` with command: ${initialCommand}` : ""}`);
-  
+  const initialCommand =
+    process.env.INITIAL_COMMAND || process.env.WORKER_INITIAL_COMMAND;
+
+  console.log(
+    `Creating default terminal${initialCommand ? ` with command: ${initialCommand}` : ""}`
+  );
+
   const terminal = createTerminal(terminalId, {
     cols: 80,
     rows: 24,
     command: initialCommand ? "/bin/bash" : undefined,
-    args: initialCommand ? ["-c", initialCommand] : undefined
+    args: initialCommand ? ["-c", initialCommand] : undefined,
   });
-  
+
   if (terminal) {
     console.log(`Default terminal '${terminalId}' created successfully`);
     // Notify all connected clients

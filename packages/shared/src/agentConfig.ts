@@ -1,7 +1,7 @@
 export interface AgentConfig {
   name: string;
   command: string;
-  args: (prompt: string) => string[];
+  args: string[];
   env?: Record<string, string>;
   requiredApiKeys?: {
     envVar: string;
@@ -16,29 +16,29 @@ export const AGENT_CONFIGS: AgentConfig[] = [
   {
     name: "claude-sonnet",
     command: "bunx",
-    args: (prompt: string) => [
+    args: [
       "@anthropic-ai/claude-code",
       "--model",
       "claude-sonnet-4-20250514",
       "--dangerously-skip-permissions",
-      prompt,
+      "$PROMPT",
     ],
   },
   {
     name: "claude-opus",
     command: "bunx",
-    args: (prompt: string) => [
+    args: [
       "@anthropic-ai/claude-code",
       "--model",
       "claude-opus-4-20250514",
       "--dangerously-skip-permissions",
-      prompt,
+      "$PROMPT",
     ],
   },
   {
     name: "codex-o3",
     command: "bunx",
-    args: (prompt: string) => [
+    args: [
       "@openai/codex",
       "--model",
       "o3",
@@ -47,41 +47,29 @@ export const AGENT_CONFIGS: AgentConfig[] = [
       "--ask-for-approval",
       "never",
       "--skip-git-repo-check",
-      prompt,
+      "$PROMPT",
     ],
   },
   {
     name: "opencode-sonnet",
     command: "bunx",
-    args: (prompt: string) => [
-      "opencode-ai@latest",
-      "--model",
-      "sonnet",
-      "--prompt",
-      prompt,
-    ],
+    args: ["opencode-ai@latest", "--model", "sonnet", "--prompt", "$PROMPT"],
   },
   {
     name: "opencode-kimi-k2",
     command: "bunx",
-    args: (prompt: string) => [
-      "opencode-ai@latest",
-      "--model",
-      "kimi-k2",
-      "--prompt",
-      prompt,
-    ],
+    args: ["opencode-ai@latest", "--model", "kimi-k2", "--prompt", "$PROMPT"],
   },
   {
     name: "gemini-2.5-flash",
     command: "bunx",
-    args: (prompt: string) => [
+    args: [
       "@google/gemini-cli",
       "--model",
       "gemini-2.5-flash",
       "--yolo",
       "--prompt",
-      prompt,
+      "$PROMPT",
     ],
     // waitForString: "Type your message",
     requiredApiKeys: [
@@ -95,13 +83,13 @@ export const AGENT_CONFIGS: AgentConfig[] = [
   {
     name: "gemini-2.5-pro",
     command: "bunx",
-    args: (prompt: string) => [
+    args: [
       "@google/gemini-cli",
       "--model",
       "gemini-2.5-pro",
       "--yolo",
       "--prompt",
-      prompt,
+      "$PROMPT",
     ],
     // waitForString: "Type your message",
     requiredApiKeys: [
