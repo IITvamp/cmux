@@ -1,13 +1,13 @@
 import AntdMultiSelect from "@/components/AntdMultiSelect";
 import LexicalEditor from "@/components/lexical/LexicalEditor";
 import { Button } from "@/components/ui/button";
+import { ModeToggleTooltip } from "@/components/ui/mode-toggle-tooltip";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ModeToggleTooltip } from "@/components/ui/mode-toggle-tooltip";
 import { useSocket } from "@/contexts/socket/use-socket";
 import { type Repo } from "@/types/task";
 import { api } from "@coderouter/convex/api";
@@ -26,6 +26,8 @@ export const Route = createFileRoute("/_layout/dashboard")({
 });
 
 function DashboardComponent() {
+  const { socket } = useSocket();
+
   const [selectedProject, setSelectedProject] = useState<string[]>(() => {
     const stored = localStorage.getItem("selectedProject");
     return stored ? JSON.parse(stored) : [];
@@ -83,8 +85,6 @@ function DashboardComponent() {
 
   // Fetch tasks for all projects
   const tasksQuery = useQuery(convexQuery(api.tasks.get, {}));
-
-  const { socket } = useSocket();
 
   // Actions to fetch data from GitHub
   const fetchRepos = useAction(api.githubActions.fetchAndStoreRepos);
@@ -166,6 +166,7 @@ function DashboardComponent() {
           taskId,
           selectedAgents:
             selectedAgents.length > 0 ? selectedAgents : undefined,
+          isCloudMode,
         },
         (response) => {
           // if (err) {
@@ -235,6 +236,23 @@ function DashboardComponent() {
   const navigate = useNavigate();
   const [hoveredTaskId, setHoveredTaskId] = useState<string | null>(null);
 
+  // Listen for VSCode spawned events
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleVSCodeSpawned = (data: { instanceId: string; url: string; workspaceUrl: string; provider: string }) => {
+      console.log("VSCode spawned:", data);
+      // Open in new tab
+      window.open(data.workspaceUrl, "_blank");
+    };
+
+    socket.on("vscode-spawned", handleVSCodeSpawned);
+
+    return () => {
+      socket.off("vscode-spawned", handleVSCodeSpawned);
+    };
+  }, [socket]);
+
   // Detect operating system for keyboard shortcut display
   const isMac = navigator.userAgent.toUpperCase().indexOf("MAC") >= 0;
   const shortcutKey = isMac ? "⌘" : "Ctrl";
@@ -261,7 +279,11 @@ function DashboardComponent() {
               onChange={handleTaskDescriptionChange}
               onSubmit={handleSubmit}
               value={taskDescription}
-              repoUrl={selectedProject[0] ? `https://github.com/${selectedProject[0]}.git` : undefined}
+              repoUrl={
+                selectedProject[0]
+                  ? `https://github.com/${selectedProject[0]}.git`
+                  : undefined
+              }
               branch={effectiveSelectedBranch[0]}
               padding={{
                 paddingLeft: "14px",
@@ -337,7 +359,10 @@ function DashboardComponent() {
                   onToggle={() => {
                     const newMode = !isCloudMode;
                     setIsCloudMode(newMode);
-                    localStorage.setItem("isCloudMode", JSON.stringify(newMode));
+                    localStorage.setItem(
+                      "isCloudMode",
+                      JSON.stringify(newMode)
+                    );
                   }}
                 />
 

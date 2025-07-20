@@ -29,6 +29,7 @@ export const StartTaskSchema = z.object({
   projectFullName: z.string(),
   taskId: z.string(),
   selectedAgents: z.array(z.string()).optional(),
+  isCloudMode: z.boolean().optional().default(false),
 });
 
 // Server to Client Events
@@ -152,6 +153,18 @@ export const ListFilesResponseSchema = z.object({
   error: z.string().optional(),
 });
 
+// VSCode instance events (used for notifications)
+export const VSCodeSpawnedSchema = z.object({
+  instanceId: z.string(),
+  url: z.string(),
+  workspaceUrl: z.string(),
+  provider: z.enum(["docker", "morph", "daytona"]),
+});
+
+export const VSCodeErrorSchema = z.object({
+  error: z.string(),
+});
+
 // Type exports
 export type CreateTerminal = z.infer<typeof CreateTerminalSchema>;
 export type TerminalInput = z.infer<typeof TerminalInputSchema>;
@@ -180,6 +193,8 @@ export type OpenInEditorError = z.infer<typeof OpenInEditorErrorSchema>;
 export type ListFilesRequest = z.infer<typeof ListFilesRequestSchema>;
 export type FileInfo = z.infer<typeof FileInfoSchema>;
 export type ListFilesResponse = z.infer<typeof ListFilesResponseSchema>;
+export type VSCodeSpawned = z.infer<typeof VSCodeSpawnedSchema>;
+export type VSCodeError = z.infer<typeof VSCodeErrorSchema>;
 
 // Socket.io event map types
 export interface ClientToServerEvents {
@@ -220,6 +235,8 @@ export interface ServerToClientEvents {
   "git-full-diff-response": (data: GitFullDiffResponse) => void;
   "open-in-editor-error": (data: OpenInEditorError) => void;
   "list-files-response": (data: ListFilesResponse) => void;
+  "vscode-spawned": (data: VSCodeSpawned) => void;
+  "vscode-error": (data: VSCodeError) => void;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type

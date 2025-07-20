@@ -13,8 +13,8 @@ import {
   type ServerToClientEvents,
   type SocketData,
 } from "@coderouter/shared";
-import { minimatch } from "minimatch";
 import fuzzysort from "fuzzysort";
+import { minimatch } from "minimatch";
 import { promises as fs } from "node:fs";
 import { createServer } from "node:http";
 import path from "node:path";
@@ -23,6 +23,7 @@ import { spawnAllAgents } from "./agentSpawner.js";
 import { GitDiffManager } from "./gitDiff.js";
 import { RepositoryManager } from "./repositoryManager.js";
 import { createTerminal, type GlobalTerminal } from "./terminal.js";
+import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWorktreePath } from "./workspace.js";
 
 const httpServer = createServer();
@@ -44,6 +45,9 @@ const globalTerminals = new Map<string, GlobalTerminal>();
 
 // Git diff manager instance
 const gitDiffManager = new GitDiffManager();
+
+// Global VSCode instances storage
+const vscodeInstances = new Map<string, VSCodeInstance>();
 
 io.on("connection", (socket) => {
   console.log("Client connected:", socket.id);
@@ -85,12 +89,19 @@ io.on("connection", (socket) => {
       const taskId = taskData.taskId;
 
       // Spawn all agents in parallel (each will create its own taskRun)
-      const agentResults = await spawnAllAgents(taskId, globalTerminals, io, {
-        repoUrl: taskData.repoUrl,
-        branch: taskData.branch,
-        taskDescription: taskData.taskDescription,
-        selectedAgents: taskData.selectedAgents,
-      });
+      const agentResults = await spawnAllAgents(
+        taskId,
+        globalTerminals,
+        vscodeInstances,
+        io,
+        {
+          repoUrl: taskData.repoUrl,
+          branch: taskData.branch,
+          taskDescription: taskData.taskDescription,
+          selectedAgents: taskData.selectedAgents,
+          isCloudMode: taskData.isCloudMode,
+        }
+      );
 
       // Check if at least one agent spawned successfully
       const successfulAgents = agentResults.filter((result) => result.success);
@@ -108,6 +119,11 @@ io.on("connection", (socket) => {
           console.log(
             `Successfully spawned ${result.agentName} with terminal ${result.terminalId}`
           );
+          if (result.vscodeUrl) {
+            console.log(
+              `VSCode URL for ${result.agentName}: ${result.vscodeUrl}`
+            );
+          }
         } else {
           console.error(`Failed to spawn ${result.agentName}: ${result.error}`);
         }
@@ -115,6 +131,16 @@ io.on("connection", (socket) => {
 
       // Return the first successful agent's info (you might want to modify this to return all)
       const primaryAgent = successfulAgents[0];
+
+      // Emit VSCode URL if available
+      if (primaryAgent.vscodeUrl) {
+        io.emit("vscode-spawned", {
+          instanceId: primaryAgent.terminalId,
+          url: primaryAgent.vscodeUrl.replace("/?folder=/root/workspace", ""),
+          workspaceUrl: primaryAgent.vscodeUrl,
+          provider: taskData.isCloudMode ? "morph" : "docker",
+        });
+      }
 
       // Set up file watching for git changes
       gitDiffManager.watchWorkspace(
@@ -385,20 +411,22 @@ io.on("connection", (socket) => {
       // Apply fuzzysort fuzzy matching if pattern is provided
       if (pattern) {
         // Prepare file paths for fuzzysort
-        const filePaths = fileList.map(f => f.relativePath);
-        
+        const filePaths = fileList.map((f) => f.relativePath);
+
         // Use fuzzysort to search and sort files
         const results = fuzzysort.go(pattern, filePaths, {
           threshold: -10000, // Show all results, even poor matches
           limit: 1000, // Limit results for performance
         });
-        
+
         // Create a map for quick lookup
-        const fileMap = new Map(fileList.map(f => [f.relativePath, f]));
-        
+        const fileMap = new Map(fileList.map((f) => [f.relativePath, f]));
+
         // Rebuild fileList based on fuzzysort results
-        fileList = results.map(result => fileMap.get(result.target)!).filter(Boolean);
-        
+        fileList = results
+          .map((result) => fileMap.get(result.target)!)
+          .filter(Boolean);
+
         // Add any files that didn't match at the end (if we want to show all files)
         // Uncomment if you want to show non-matching files at the bottom
         // const matchedPaths = new Set(results.map(r => r.target));
@@ -458,6 +486,17 @@ if (import.meta.hot) {
       }
     });
     globalTerminals.clear();
+
+    // Stop all VSCode instances
+    for (const [id, instance] of vscodeInstances) {
+      console.log(`Stopping VSCode instance ${id}`);
+      try {
+        await instance.stop();
+      } catch (error) {
+        console.error(`Error stopping VSCode instance ${id}:`, error);
+      }
+    }
+    vscodeInstances.clear();
 
     // Clean up git diff manager
     gitDiffManager.dispose();
