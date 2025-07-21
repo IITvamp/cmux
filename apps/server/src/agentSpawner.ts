@@ -11,13 +11,8 @@ import {
   type AgentConfig,
   type AuthFileConfig,
 } from "@coderouter/shared/agentConfig";
-import archiver from "archiver";
-import * as ignoreLib from "ignore";
-import { exec } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
-import * as path from "node:path";
-import { promisify } from "node:util";
 import type { Server } from "socket.io";
 import { type GlobalTerminal } from "./terminal.js";
 import { convex } from "./utils/convexClient.js";
@@ -25,9 +20,6 @@ import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { MorphVSCodeInstance } from "./vscode/MorphVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWorktreePath, setupProjectWorkspace } from "./workspace.js";
-const ignore = ignoreLib.default || ignoreLib;
-
-const execAsync = promisify(exec);
 
 async function prepareAuthFiles(authFiles?: AuthFileConfig[]): Promise<
   Array<{
@@ -82,62 +74,7 @@ async function prepareAuthFiles(authFiles?: AuthFileConfig[]): Promise<
   return preparedFiles;
 }
 
-async function zipRepository(repoPath: string): Promise<Buffer> {
-  // Read .gitignore if it exists
-  let gitignoreContent = "";
-  try {
-    gitignoreContent = await fs.readFile(
-      path.join(repoPath, ".gitignore"),
-      "utf-8"
-    );
-  } catch (_error) {
-    // .gitignore doesn't exist, that's fine
-  }
-
-  // Create ignore instance with default patterns
-  const ig = ignore();
-  ig.add(".git");
-  ig.add("node_modules");
-  ig.add("dist");
-  ig.add("build");
-
-  if (gitignoreContent) {
-    ig.add(gitignoreContent);
-  }
-
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    const archive = archiver("zip", { zlib: { level: 9 } });
-
-    archive.on("data", (chunk: Buffer) => chunks.push(chunk));
-    archive.on("end", () => resolve(Buffer.concat(chunks)));
-    archive.on("error", reject);
-
-    // Add files to archive, respecting gitignore
-    const addDirectory = async (dir: string, archivePath: string = "") => {
-      const entries = await fs.readdir(dir, { withFileTypes: true });
-
-      for (const entry of entries) {
-        const fullPath = path.join(dir, entry.name);
-        const relativePath = path.relative(repoPath, fullPath);
-
-        if (!ig.ignores(relativePath)) {
-          if (entry.isDirectory()) {
-            await addDirectory(fullPath, path.join(archivePath, entry.name));
-          } else {
-            archive.file(fullPath, {
-              name: path.join(archivePath, entry.name),
-            });
-          }
-        }
-      }
-    };
-
-    addDirectory(repoPath)
-      .then(() => archive.finalize())
-      .catch(reject);
-  });
-}
+// Removed zipRepository function - no longer needed since we clone via socket commands
 
 export interface AgentSpawnResult {
   agentName: string;
@@ -152,9 +89,9 @@ export interface AgentSpawnResult {
 export async function spawnAgent(
   agent: AgentConfig,
   taskId: string | Id<"tasks">,
-  globalTerminals: Map<string, GlobalTerminal>,
+  _globalTerminals: Map<string, GlobalTerminal>,
   vscodeInstances: Map<string, VSCodeInstance>,
-  io: Server<
+  _io: Server<
     ClientToServerEvents,
     ServerToClientEvents,
     InterServerEvents,
@@ -179,10 +116,9 @@ export async function spawnAgent(
 
     // Build environment variables including API keys
     const envVars: Record<string, string> = {
-      ...process.env,
       ...agent.env,
       PROMPT: options.taskDescription,
-    } as Record<string, string>;
+    };
 
     // Add required API keys from Convex
     if (agent.requiredApiKeys) {
@@ -193,16 +129,7 @@ export async function spawnAgent(
       }
     }
 
-    // Build the command that will be run in tmux inside VSCode
-    // We need to export environment variables in the tmux session (excluding PROMPT)
-    const envExports = Object.entries(envVars)
-      .filter(
-        ([key]) =>
-          (key.startsWith("ANTHROPIC_") || key.startsWith("GEMINI_")) &&
-          key !== "PROMPT"
-      )
-      .map(([key, value]) => `export ${key}='${value.replace(/'/g, "'\\''")}'`)
-      .join("; ");
+    // No longer need envExports since we're passing env as an object to the worker
 
     // Build the agent command with proper quoting
     const escapedPrompt = options.taskDescription.replace(/"/g, '\\"');
@@ -214,55 +141,26 @@ export async function spawnAgent(
 
     const agentCommand = `${agent.command} ${processedArgs.join(" ")}`;
 
-    // Build the full tmux command
-    const tmuxCommand = envExports
-      ? `tmux new-session -d -s ${agent.name} "${envExports}; ${agentCommand}"`
-      : `tmux new-session -d -s ${agent.name} "${agentCommand}"`;
+    // Build the tmux session command that will be sent via socket.io
+    const tmuxSessionName = `${agent.name}-${taskRunId.slice(-8)}`;
+    
+    console.log(`[AgentSpawner] Building command for agent ${agent.name}:`);
+    console.log(`  Raw command: ${agent.command}`);
+    console.log(`  Processed args: ${processedArgs.join(" ")}`);
+    console.log(`  Agent command: ${agentCommand}`);
+    console.log(`  Tmux session name: ${tmuxSessionName}`);
+    console.log(`  Environment vars to pass:`, Object.keys(envVars).filter(k => k.startsWith('ANTHROPIC_') || k.startsWith('GEMINI_')));
 
     let vscodeInstance: VSCodeInstance;
     let worktreePath: string;
 
     if (options.isCloudMode) {
-      // For Morph, we need to:
-      // 1. Clone the repo temporarily
-      // 2. Zip it up
-      // 3. Upload to Morph
-      // 4. Create VSCode instance with initial command
+      // For Morph, create the instance and we'll clone the repo via socket command
+      vscodeInstance = new MorphVSCodeInstance({
+        agentName: agent.name,
+      });
 
-      // Create a temporary directory for cloning
-      const tempDir = path.join(process.cwd(), "temp", `morph-${taskRunId}`);
-      await fs.mkdir(tempDir, { recursive: true });
-
-      try {
-        // Clone the repository
-        await execAsync(`git clone ${options.repoUrl} ${tempDir}/repo`);
-
-        if (options.branch && options.branch !== "main") {
-          await execAsync(
-            `cd ${tempDir}/repo && git checkout ${options.branch}`
-          );
-        }
-
-        // Zip the repository
-        const _zipBuffer = await zipRepository(path.join(tempDir, "repo"));
-
-        // TODO: Upload zip to Morph storage
-        // For now, we'll use the initial command to clone
-        const morphInitialCommand = `git clone ${options.repoUrl} /root/workspace && cd /root/workspace && ${tmuxCommand}`;
-
-        vscodeInstance = new MorphVSCodeInstance({
-          initialCommand: morphInitialCommand,
-        });
-
-        worktreePath = "/root/workspace";
-
-        // Clean up temp directory
-        await fs.rm(tempDir, { recursive: true, force: true });
-      } catch (error) {
-        // Clean up on error
-        await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
-        throw error;
-      }
+      worktreePath = "/root/workspace";
     } else {
       // For Docker, set up worktree as before
       const worktreeInfo = await getWorktreePath({
@@ -294,9 +192,10 @@ export async function spawnAgent(
 
       worktreePath = workspaceResult.worktreePath;
 
+      console.log(`[AgentSpawner] Creating DockerVSCodeInstance for ${agent.name}`);
       vscodeInstance = new DockerVSCodeInstance({
         workspacePath: worktreePath,
-        initialCommand: tmuxCommand,
+        agentName: agent.name,
       });
     }
 
@@ -319,31 +218,168 @@ export async function spawnAgent(
       `VSCode instance spawned for agent ${agent.name}: ${vscodeUrl}`
     );
 
-    // Prepare and upload auth files
+    // Use taskRunId as terminal ID for compatibility
+    const terminalId = taskRunId;
+
+    // Prepare auth files before sending terminal creation command
     const authFiles = await prepareAuthFiles(agent.authFiles);
     if (authFiles.length > 0) {
       console.log(
-        `Uploading ${authFiles.length} auth files for agent ${agent.name}...`
+        `[AgentSpawner] Prepared ${authFiles.length} auth files for agent ${agent.name}`
       );
-
-      // Send auth files to the worker
-      // TODO: We need to emit this to the worker handling this VSCode instance
-      // For now, let's just log what we would upload
-      for (const file of authFiles) {
-        console.log(
-          `Would upload: ${file.sourcePath} -> ${file.destinationPath}`
-        );
-      }
-
-      // In a real implementation, we would emit to the worker:
-      // io.to(workerId).emit('worker:upload-files', {
-      //   files: authFiles,
-      //   terminalId: taskRunId,
-      // });
     }
 
-    // Use taskRunId as terminal ID for compatibility
-    const terminalId = taskRunId;
+    // After VSCode instance is started, create the terminal with tmux session
+    console.log(`[AgentSpawner] Preparing to send terminal creation command for ${agent.name}`);
+    
+    // Wait for worker connection if not already connected
+    if (!vscodeInstance.isWorkerConnected()) {
+      console.log(`[AgentSpawner] Waiting for worker connection...`);
+      await new Promise<void>((resolve) => {
+        const timeout = setTimeout(() => {
+          console.error(`[AgentSpawner] Timeout waiting for worker connection`);
+          resolve();
+        }, 30000); // 30 second timeout
+        
+        vscodeInstance.once('worker-connected', () => {
+          clearTimeout(timeout);
+          resolve();
+        });
+      });
+    }
+    
+    // Get the worker socket
+    const workerSocket = vscodeInstance.getWorkerSocket();
+    if (!workerSocket) {
+      console.error(`[AgentSpawner] No worker socket available for ${agent.name}`);
+      return {
+        agentName: agent.name,
+        terminalId,
+        taskRunId,
+        worktreePath,
+        vscodeUrl,
+        success: false,
+        error: "No worker connection available",
+      };
+    }
+    
+    // Prepare the terminal creation command with auth files
+    const terminalCreationCommand = {
+      terminalId: tmuxSessionName,
+      command: 'tmux',
+      args: ['new-session', '-d', '-s', tmuxSessionName, 'bash', '-c', agentCommand],
+      cols: 80,
+      rows: 24,
+      env: envVars,
+      taskId: taskRunId,
+      authFiles: authFiles.map(f => ({
+        destinationPath: f.destinationPath,
+        content: f.content,
+        mode: f.mode,
+      })),
+    };
+    
+    console.log(`[AgentSpawner] Sending terminal creation command:`);
+    console.log(`  Terminal ID: ${tmuxSessionName}`);
+    console.log(`  Command: tmux new-session -d -s ${tmuxSessionName} bash -c "${agentCommand}"`);
+    console.log(`  Auth files: ${authFiles.length}`);
+    console.log(`  Environment vars:`, Object.keys(envVars));
+    
+    // For Morph instances, we need to clone the repository first
+    if (options.isCloudMode) {
+      console.log(`[AgentSpawner] Cloning repository for Morph instance...`);
+      
+      // Create a terminal to clone the repository
+      const cloneTerminalId = `clone-${taskRunId.slice(-8)}`;
+      const cloneCommand = {
+        terminalId: cloneTerminalId,
+        command: 'bash',
+        args: ['-c', `git clone ${options.repoUrl} /root/workspace && cd /root/workspace${options.branch && options.branch !== 'main' ? ` && git checkout ${options.branch}` : ''}`],
+        cols: 80,
+        rows: 24,
+        env: {},
+        taskId: taskRunId,
+      };
+      
+      workerSocket.emit('worker:create-terminal', cloneCommand);
+      
+      // Wait for clone to complete
+      const cloneCompleted = await new Promise<boolean>((resolve) => {
+        const timeout = setTimeout(() => {
+          console.error(`[AgentSpawner] Timeout waiting for repository clone`);
+          resolve(false);
+        }, 60000); // 60 second timeout for cloning
+        
+        const handleTerminalExit = (data: { terminalId: string; exitCode: number }) => {
+          if (data.terminalId === cloneTerminalId && data.exitCode === 0) {
+            clearTimeout(timeout);
+            console.log(`[AgentSpawner] Repository cloned successfully`);
+            resolve(true);
+          } else if (data.terminalId === cloneTerminalId) {
+            clearTimeout(timeout);
+            console.error(`[AgentSpawner] Repository clone failed with exit code ${data.exitCode}`);
+            resolve(false);
+          }
+        };
+        
+        workerSocket.once('worker:terminal-exit', handleTerminalExit);
+      });
+      
+      if (!cloneCompleted) {
+        return {
+          agentName: agent.name,
+          terminalId,
+          taskRunId,
+          worktreePath,
+          vscodeUrl,
+          success: false,
+          error: "Failed to clone repository",
+        };
+      }
+      
+      // Close the clone terminal
+      workerSocket.emit('worker:close-terminal', { terminalId: cloneTerminalId });
+    }
+    
+    // Send the terminal creation command
+    workerSocket.emit('worker:create-terminal', terminalCreationCommand);
+    
+    // Wait for terminal creation confirmation
+    const terminalCreated = await new Promise<boolean>((resolve) => {
+      const timeout = setTimeout(() => {
+        console.error(`[AgentSpawner] Timeout waiting for terminal creation confirmation`);
+        resolve(false);
+      }, 15000); // 15 second timeout
+      
+      const handleTerminalCreated = (data: { terminalId: string }) => {
+        if (data.terminalId === tmuxSessionName) {
+          clearTimeout(timeout);
+          console.log(`[AgentSpawner] Terminal created successfully for ${agent.name}`);
+          resolve(true);
+        }
+      };
+      
+      const handleError = (data: { error: string }) => {
+        clearTimeout(timeout);
+        console.error(`[AgentSpawner] Worker error:`, data);
+        resolve(false);
+      };
+      
+      workerSocket.once('worker:terminal-created', handleTerminalCreated);
+      workerSocket.once('worker:error', handleError);
+    });
+    
+    if (!terminalCreated) {
+      return {
+        agentName: agent.name,
+        terminalId,
+        taskRunId,
+        worktreePath,
+        vscodeUrl,
+        success: false,
+        error: "Failed to create terminal in worker",
+      };
+    }
 
     // Clean up instance on exit
     vscodeInstance.on("exit", () => {

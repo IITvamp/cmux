@@ -1,4 +1,4 @@
-import { execSync, spawn, type ChildProcess } from "node:child_process";
+import Docker from "dockerode";
 import {
   VSCodeInstance,
   type VSCodeInstanceConfig,
@@ -8,136 +8,129 @@ import {
 export class DockerVSCodeInstance extends VSCodeInstance {
   private containerName: string;
   private imageName: string;
-  private dockerProcess: ChildProcess | null = null;
+  private docker: Docker;
+  private container: Docker.Container | null = null;
 
   constructor(config: VSCodeInstanceConfig) {
     super(config);
     this.containerName = `coderouter-vscode-${this.instanceId}`;
     this.imageName = "coderouter-worker:0.0.1";
+    // Bun requires explicit socket path
+    const isBun = !!(globalThis as any).Bun;
+    this.docker = new Docker(
+      isBun ? { socketPath: '/var/run/docker.sock' } : {}
+    );
   }
 
   async start(): Promise<VSCodeInstanceInfo> {
     console.log(`Starting Docker VSCode instance: ${this.containerName}`);
     console.log(`  Image: ${this.imageName}`);
     console.log(`  Workspace: ${this.config.workspacePath}`);
-    console.log(`  Initial command: ${this.config.initialCommand}`);
+    console.log(`  Agent name: ${this.config.agentName}`);
 
     // Stop and remove any existing container with same name
     try {
-      execSync(`docker stop ${this.containerName} 2>/dev/null || true`);
-      execSync(`docker rm ${this.containerName} 2>/dev/null || true`);
+      const existingContainer = this.docker.getContainer(this.containerName);
+      const info = await existingContainer.inspect().catch(() => null);
+      if (info) {
+        console.log(`Removing existing container ${this.containerName}`);
+        await existingContainer.stop().catch(() => {});
+        await existingContainer.remove().catch(() => {});
+      }
     } catch (_error) {
-      // Ignore errors if container doesn't exist
+      // Container doesn't exist, which is fine
     }
 
-    // Build docker run arguments
-    const dockerArgs = [
-      "run",
-      "--rm",
-      "--name",
-      this.containerName,
-      "--privileged",
-      "-p",
-      "0:2376", // Let Docker assign a random port
-      "-p",
-      "0:2377", // Worker port
-      "-p",
-      "0:2378", // VS Code extension socket
-      "-e",
-      "NODE_ENV=production",
-      "-e",
-      "WORKER_PORT=2377",
-    ];
-
-    // Add INITIAL_COMMAND if provided
-    if (this.config.initialCommand) {
-      dockerArgs.push("-e", `INITIAL_COMMAND=${this.config.initialCommand}`);
-    }
+    // Create container configuration
+    const createOptions: Docker.ContainerCreateOptions = {
+      name: this.containerName,
+      Image: this.imageName,
+      Env: [
+        "NODE_ENV=production",
+        "WORKER_PORT=2377",
+      ],
+      HostConfig: {
+        AutoRemove: true,
+        Privileged: true,
+        PortBindings: {
+          "2376/tcp": [{ HostPort: "0" }], // VS Code port
+          "2377/tcp": [{ HostPort: "0" }], // Worker port
+          "2378/tcp": [{ HostPort: "0" }], // Extension socket port
+        },
+      },
+      ExposedPorts: {
+        "2376/tcp": {},
+        "2377/tcp": {},
+        "2378/tcp": {},
+      },
+    };
 
     // Add volume mount if workspace path is provided
     if (this.config.workspacePath) {
-      dockerArgs.push("-v", `${this.config.workspacePath}:/root/workspace`);
+      createOptions.HostConfig!.Binds = [
+        `${this.config.workspacePath}:/root/workspace`,
+      ];
     }
 
-    dockerArgs.push(this.imageName);
+    console.log(`Creating container with options:`, JSON.stringify(createOptions, null, 2));
 
-    console.log(`Running docker command: docker ${dockerArgs.join(" ")}`);
+    // Create and start the container
+    try {
+      this.container = await this.docker.createContainer(createOptions);
+      console.log(`Container created: ${this.container.id}`);
 
-    this.dockerProcess = spawn("docker", dockerArgs, {
-      stdio: "ignore",
-    });
-
-    this.dockerProcess.on("message", (message) => {
-      console.log(`[${this.containerName}] message:`, message);
-    });
-
-    this.dockerProcess.on("error", (error) => {
-      console.error(
-        `Failed to start Docker container ${this.containerName}:`,
-        error
-      );
-      this.emit("error", error);
-    });
-
-    this.dockerProcess.on("exit", (code) => {
-      console.log(
-        `Docker container ${this.containerName} exited with code ${code}`
-      );
-      this.emit("exit", code);
-    });
-
-    // Capture stdout/stderr for debugging
-    if (this.dockerProcess.stdout) {
-      this.dockerProcess.stdout.on("data", (data) => {
-        console.log(`[${this.containerName}] stdout:`, data.toString());
-      });
+      await this.container.start();
+      console.log(`Container started successfully`);
+    } catch (error) {
+      console.error(`Failed to create/start container:`, error);
+      throw error;
     }
 
-    if (this.dockerProcess.stderr) {
-      this.dockerProcess.stderr.on("data", (data) => {
-        console.error(`[${this.containerName}] stderr:`, data.toString());
-      });
-    }
-
+    // Wait for container to be ready
     console.log(`Waiting for container to be ready...`);
-    // Wait for container to be ready and get port mappings
     await new Promise((resolve) => setTimeout(resolve, 5000));
 
-    // Get the assigned ports
-    console.log(`Getting port mappings for container ${this.containerName}...`);
-    let portsOutput: string;
-    try {
-      portsOutput = execSync(
-        `docker inspect ${this.containerName} --format='{{range $p, $conf := .NetworkSettings.Ports}}{{if $conf}}{{$p}} -> {{(index $conf 0).HostPort}}{{println}}{{end}}{{end}}'`,
-        { encoding: "utf8" }
-      );
-      console.log(`Port mappings:`, portsOutput);
-    } catch (error) {
-      console.error(
-        `Failed to inspect container ${this.containerName}:`,
-        error
-      );
-      throw new Error(`Failed to inspect container: ${error}`);
+    // Get container info including port mappings
+    const containerInfo = await this.container.inspect();
+    const ports = containerInfo.NetworkSettings.Ports;
+
+    const vscodePort = ports["2376/tcp"]?.[0]?.HostPort;
+    const workerPort = ports["2377/tcp"]?.[0]?.HostPort;
+
+    if (!vscodePort) {
+      console.error(`Available ports:`, ports);
+      throw new Error("Failed to get VS Code port mapping for port 2376");
     }
 
-    const portMap = new Map<string, string>();
-    portsOutput.split("\n").forEach((line) => {
-      const match = line.match(/(\d+)\/tcp -> (\d+)/);
-      if (match) {
-        portMap.set(match[1], match[2]);
-      }
-    });
-
-    const vscodePort = portMap.get("2376");
-    if (!vscodePort) {
-      console.error(`Available ports:`, Array.from(portMap.entries()));
-      throw new Error("Failed to get VS Code port mapping for port 2376");
+    if (!workerPort) {
+      console.error(`Available ports:`, ports);
+      throw new Error("Failed to get worker port mapping for port 2377");
     }
 
     const baseUrl = `http://localhost:${vscodePort}`;
     const workspaceUrl = this.getWorkspaceUrl(baseUrl);
+    const workerUrl = `http://localhost:${workerPort}`;
 
-    console.log(`Docker VSCode instance started at: ${workspaceUrl}`);
+    console.log(`Docker VSCode instance started:`);
+    console.log(`  VS Code URL: ${workspaceUrl}`);
+    console.log(`  Worker URL: ${workerUrl}`);
+
+    // Monitor container events
+    this.setupContainerEventMonitoring();
+
+    // Connect to the worker
+    try {
+      await this.connectToWorker(workerUrl);
+      console.log(
+        `Successfully connected to worker for container ${this.containerName}`
+      );
+    } catch (error) {
+      console.error(
+        `Failed to connect to worker for container ${this.containerName}:`,
+        error
+      );
+      // Continue anyway - the instance is running even if we can't connect to the worker
+    }
 
     return {
       url: baseUrl,
@@ -147,41 +140,84 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     };
   }
 
+  private setupContainerEventMonitoring() {
+    if (!this.container) return;
+
+    // Attach to container streams for logs
+    this.container.attach(
+      { stream: true, stdout: true, stderr: true },
+      (err: Error | null, stream?: NodeJS.ReadWriteStream) => {
+        if (err) {
+          console.error(`Failed to attach to container streams:`, err);
+          return;
+        }
+
+        // Demultiplex the stream
+        this.container!.modem.demuxStream(
+          stream!,
+          process.stdout,
+          process.stderr
+        );
+
+        stream!.on("end", () => {
+          console.log(`Container ${this.containerName} stream ended`);
+        });
+      }
+    );
+
+    // Monitor container events
+    this.container.wait((err: Error | null, data: { StatusCode: number }) => {
+      if (err) {
+        console.error(`Container wait error:`, err);
+      } else {
+        console.log(`Container ${this.containerName} exited with status:`, data);
+        this.emit("exit", data.StatusCode);
+      }
+    });
+  }
+
   async stop(): Promise<void> {
     console.log(`Stopping Docker VSCode instance: ${this.containerName}`);
-    try {
-      execSync(`docker stop ${this.containerName}`);
-    } catch (error) {
-      console.error(`Error stopping container ${this.containerName}:`, error);
+
+    // Disconnect from worker first
+    await this.disconnectFromWorker();
+
+    if (this.container) {
+      try {
+        await this.container.stop();
+        console.log(`Container ${this.containerName} stopped`);
+      } catch (error) {
+        if ((error as { statusCode?: number }).statusCode !== 304) {
+          // 304 means container already stopped
+          console.error(`Error stopping container ${this.containerName}:`, error);
+        }
+      }
     }
   }
 
   async getStatus(): Promise<{ running: boolean; info?: VSCodeInstanceInfo }> {
     try {
-      const output = execSync(
-        `docker ps --filter name=${this.containerName} --format "{{.Names}}"`,
-        {
-          encoding: "utf8",
-        }
-      );
-      const running = output.trim() === this.containerName;
-
-      if (running) {
-        // Get port mappings for running container
-        const portsOutput = execSync(
-          `docker inspect ${this.containerName} --format='{{range $p, $conf := .NetworkSettings.Ports}}{{if $conf}}{{$p}} -> {{(index $conf 0).HostPort}}{{println}}{{end}}{{end}}'`,
-          { encoding: "utf8" }
-        );
-
-        const portMap = new Map<string, string>();
-        portsOutput.split("\n").forEach((line) => {
-          const match = line.match(/(\d+)\/tcp -> (\d+)/);
-          if (match) {
-            portMap.set(match[1], match[2]);
-          }
+      if (!this.container) {
+        // Try to find container by name
+        const containers = await this.docker.listContainers({
+          all: true,
+          filters: { name: [this.containerName] },
         });
 
-        const vscodePort = portMap.get("2376");
+        if (containers.length > 0) {
+          this.container = this.docker.getContainer(containers[0].Id);
+        } else {
+          return { running: false };
+        }
+      }
+
+      const containerInfo = await this.container.inspect();
+      const running = containerInfo.State.Running;
+
+      if (running) {
+        const ports = containerInfo.NetworkSettings.Ports;
+        const vscodePort = ports["2376/tcp"]?.[0]?.HostPort;
+
         if (vscodePort) {
           const baseUrl = `http://localhost:${vscodePort}`;
           return {
@@ -200,5 +236,22 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     } catch (_error) {
       return { running: false };
     }
+  }
+
+  async getLogs(tail = 100): Promise<string> {
+    if (!this.container) {
+      throw new Error("Container not initialized");
+    }
+
+    const stream = await this.container.logs({
+      stdout: true,
+      stderr: true,
+      tail,
+      timestamps: true,
+    });
+
+    // Convert the stream to string
+    const logs = stream.toString("utf8");
+    return logs;
   }
 }

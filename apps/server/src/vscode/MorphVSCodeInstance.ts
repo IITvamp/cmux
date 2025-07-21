@@ -1,12 +1,9 @@
 import { MorphCloudClient } from "morphcloud";
-import { io, type Socket } from "socket.io-client";
-import type { ServerToWorkerEvents, WorkerToServerEvents } from "@coderouter/shared";
 import { VSCodeInstance, type VSCodeInstanceConfig, type VSCodeInstanceInfo } from "./VSCodeInstance.js";
 
 export class MorphVSCodeInstance extends VSCodeInstance {
   private morphClient: MorphCloudClient;
   private instance: any; // Morph instance type
-  private workerSocket: Socket<WorkerToServerEvents, ServerToWorkerEvents> | null = null;
   private snapshotId = "snapshot_gn1wmycs"; // Default snapshot ID
 
   constructor(config: VSCodeInstanceConfig) {
@@ -34,11 +31,17 @@ export class MorphVSCodeInstance extends VSCodeInstance {
     }
 
     const workspaceUrl = this.getWorkspaceUrl(vscodeService.url);
-    console.log(`Morph VSCode instance started at: ${workspaceUrl}`);
-
-    // If initial command is provided, connect to worker and execute it
-    if (this.config.initialCommand) {
-      await this.executeInitialCommand(workerService.url);
+    console.log(`Morph VSCode instance started:`);
+    console.log(`  VS Code URL: ${workspaceUrl}`);
+    console.log(`  Worker URL: ${workerService.url}`);
+    
+    // Connect to the worker
+    try {
+      await this.connectToWorker(workerService.url);
+      console.log(`Successfully connected to worker for Morph instance ${this.instance.id}`);
+    } catch (error) {
+      console.error(`Failed to connect to worker for Morph instance ${this.instance.id}:`, error);
+      // Continue anyway - the instance is running even if we can't connect to the worker
     }
 
     return {
@@ -49,62 +52,12 @@ export class MorphVSCodeInstance extends VSCodeInstance {
     };
   }
 
-  private async executeInitialCommand(workerUrl: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-      console.log(`Connecting to worker at ${workerUrl}/management to execute initial command`);
-
-      this.workerSocket = io(`${workerUrl}/management`, {
-        timeout: 10000,
-        reconnectionAttempts: 3,
-      }) as Socket<WorkerToServerEvents, ServerToWorkerEvents>;
-
-      const timeout = setTimeout(() => {
-        reject(new Error("Timeout connecting to worker"));
-      }, 15000);
-
-      this.workerSocket.on("connect", () => {
-        console.log("Connected to Morph worker");
-        clearTimeout(timeout);
-
-        // Create a terminal with the initial command
-        const terminalId = crypto.randomUUID();
-        this.workerSocket!.emit("worker:create-terminal", {
-          terminalId,
-          cols: 80,
-          rows: 24,
-          cwd: this.config.workspacePath ? "/root/workspace" : undefined,
-          command: "/bin/bash",
-          args: ["-c", this.config.initialCommand!],
-        });
-
-        // Wait for terminal creation confirmation
-        this.workerSocket!.once("worker:terminal-created", (data) => {
-          if (data.terminalId === terminalId) {
-            console.log(`Terminal created with initial command: ${this.config.initialCommand}`);
-            resolve();
-          }
-        });
-
-        this.workerSocket!.once("worker:error", (data) => {
-          reject(new Error(`Failed to create terminal: ${data.error}`));
-        });
-      });
-
-      this.workerSocket.on("connect_error", (error) => {
-        clearTimeout(timeout);
-        reject(new Error(`Failed to connect to worker: ${error.message}`));
-      });
-    });
-  }
 
   async stop(): Promise<void> {
     console.log(`Stopping Morph VSCode instance: ${this.instanceId}`);
     
-    // Disconnect worker socket if connected
-    if (this.workerSocket) {
-      this.workerSocket.disconnect();
-      this.workerSocket = null;
-    }
+    // Disconnect from worker first
+    await this.disconnectFromWorker();
 
     // Stop the Morph instance
     if (this.instance) {

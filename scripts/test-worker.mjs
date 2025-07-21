@@ -162,7 +162,9 @@ async function setupDockerContainer() {
   startTiming("Container Start");
   logProgress(`Starting Docker container: ${CONTAINER_NAME}`);
   console.log("Container configuration:");
-  console.log("  - Port 2377: Worker port (with /client and /management namespaces)");
+  console.log(
+    "  - Port 2377: Worker port (with /client and /management namespaces)"
+  );
   console.log("  - Port 2378: VS Code extension socket server");
   console.log("  - Port 2376: code-server (VS Code in browser)");
   console.log("  - Privileged mode: Enabled (for Docker-in-Docker)");
@@ -172,7 +174,7 @@ async function setupDockerContainer() {
   }
 
   if (customPrompt) {
-    console.log(`  - INITIAL_COMMAND: ${customPrompt}`);
+    console.log(`  - prompt: ${customPrompt}`);
   }
 
   // Build docker run arguments
@@ -193,11 +195,6 @@ async function setupDockerContainer() {
     "-e",
     "WORKER_PORT=2377",
   ];
-
-  // Add INITIAL_COMMAND if custom prompt is provided
-  if (customPrompt) {
-    dockerArgs.push("-e", `INITIAL_COMMAND=${customPrompt}`);
-  }
 
   // Add volume mount if workspace path is provided
   if (workspacePath) {
@@ -223,35 +220,48 @@ async function setupDockerContainer() {
 
   // Give container time to start up before checking
   logProgress("Waiting for worker to start inside container...");
-  await delay(10000);
+  // await delay(10000);
 
-  // Check if container is running
-  try {
-    const containerCheck = execSync(`docker ps | grep ${CONTAINER_NAME}`, {
-      encoding: "utf8",
-    });
-    if (!containerCheck) {
-      console.error("\n✗ Container failed to start");
-      console.log("\nChecking container logs:");
-      try {
-        const logs = execSync(`docker logs ${CONTAINER_NAME} --tail 50`, {
-          encoding: "utf8",
-        });
-        console.log(logs);
-      } catch (e) {
-        console.error("Could not get container logs");
+  // Check if container is running with retry logic
+  let containerRunning = false;
+  let retries = 0;
+  const maxRetries = 30; // 30 retries = ~30 seconds
+
+  while (!containerRunning && retries < maxRetries) {
+    try {
+      const containerCheck = execSync(`docker ps | grep ${CONTAINER_NAME}`, {
+        encoding: "utf8",
+      });
+      if (containerCheck.trim()) {
+        containerRunning = true;
+        logProgress("Container is running and ready");
+      } else {
+        throw new Error("Container not found in docker ps output");
       }
-      endTiming("Container Readiness Check");
-      endTiming("Container Start");
-      endTiming("Docker Setup");
-      process.exit(1);
+    } catch (e) {
+      retries++;
+      if (retries >= maxRetries) {
+        console.error("\n✗ Container failed to start after maximum retries");
+        console.log("\nChecking container logs:");
+        try {
+          const logs = execSync(`docker logs ${CONTAINER_NAME} --tail 50`, {
+            encoding: "utf8",
+          });
+          console.log(logs);
+        } catch (logError) {
+          console.error("Could not get container logs");
+        }
+        endTiming("Container Readiness Check");
+        endTiming("Container Start");
+        endTiming("Docker Setup");
+        process.exit(1);
+      }
+
+      logProgress(
+        `Container not ready yet, retrying... (${retries}/${maxRetries})`
+      );
+      await delay(1000); // Wait 1 second between retries
     }
-  } catch (e) {
-    console.error("\n✗ Container not found");
-    endTiming("Container Readiness Check");
-    endTiming("Container Start");
-    endTiming("Docker Setup");
-    process.exit(1);
   }
 
   endTiming("Container Readiness Check");
@@ -313,7 +323,7 @@ async function testWorker() {
   });
 
   // Set up management socket event handlers before connecting
-  let registrationData = null;
+  let registrationData;
   const registrationPromise = new Promise((resolve) => {
     managementSocket.on("worker:register", (data) => {
       registrationData = data;
@@ -459,7 +469,7 @@ async function testWorker() {
 
     // Wait a bit for command output
     logProgress("Waiting for terminal output...");
-    await delay(3000);
+    // await delay(3000);
 
     // Connect to VS Code extension socket server (if terminal was created)
     if (customPrompt) {

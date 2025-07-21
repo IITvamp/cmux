@@ -23,8 +23,10 @@ import { spawn, type IPty } from "node-pty";
 import { promises as fs } from "node:fs";
 import { createServer } from "node:http";
 import { cpus, platform, totalmem } from "node:os";
+import * as path from "node:path";
 import { Server, type Namespace, type Socket } from "socket.io";
 import { Agent, fetch } from "undici";
+import { log } from "./logger.js";
 
 const { Terminal } = xtermHeadless;
 
@@ -149,14 +151,23 @@ function registerWithMainServer(
   };
 
   socket.emit("worker:register", registration);
-  console.log(`Worker ${WORKER_ID} sent registration to main server`);
+  log(
+    "INFO",
+    `Worker ${WORKER_ID} sent registration to main server`,
+    registration
+  );
 }
 
 // Management socket server (main server connects to this)
 managementIO.on("connection", (socket) => {
-  console.log(
-    `Main server connected to worker ${WORKER_ID} from`,
-    socket.handshake.headers.referer || "unknown"
+  log(
+    "INFO",
+    `Main server connected to worker ${WORKER_ID}`,
+    {
+      from: socket.handshake.headers.referer || "unknown",
+      socketId: socket.id,
+    },
+    WORKER_ID
   );
   mainServerSocket = socket;
 
@@ -164,14 +175,84 @@ managementIO.on("connection", (socket) => {
   registerWithMainServer(socket);
 
   // Handle terminal operations from main server
-  socket.on("worker:create-terminal", (data) => {
-    console.log(
-      `Management namespace: Received request to create terminal from main server`,
-      data
+  socket.on("worker:create-terminal", async (data) => {
+    log(
+      "INFO",
+      "Management namespace: Received request to create terminal from main server",
+      data,
+      WORKER_ID
     );
     try {
       const validated = WorkerCreateTerminalSchema.parse(data);
-      const terminal = createTerminal(validated.terminalId, {
+
+      // Handle auth files first if provided
+      if (validated.authFiles && validated.authFiles.length > 0) {
+        log(
+          "INFO",
+          `Writing ${validated.authFiles.length} auth files...`,
+          undefined,
+          WORKER_ID
+        );
+        for (const file of validated.authFiles) {
+          try {
+            // Expand $HOME in destination path
+            const destPath = file.destinationPath.replace(
+              "$HOME",
+              process.env.HOME || "/root"
+            );
+            log(
+              "INFO",
+              `Writing auth file to: ${destPath}`,
+              undefined,
+              WORKER_ID
+            );
+
+            // Ensure directory exists
+            const dir = path.dirname(destPath);
+            await fs.mkdir(dir, { recursive: true });
+
+            // Write the file
+            await fs.writeFile(destPath, Buffer.from(file.content, "base64"));
+
+            // Set permissions if specified
+            if (file.mode) {
+              await fs.chmod(destPath, parseInt(file.mode, 8));
+            }
+
+            log(
+              "INFO",
+              `Successfully wrote auth file: ${destPath}`,
+              undefined,
+              WORKER_ID
+            );
+          } catch (error) {
+            log(
+              "ERROR",
+              `Failed to write auth file ${file.destinationPath}:`,
+              error,
+              WORKER_ID
+            );
+          }
+        }
+      }
+
+      log(
+        "INFO",
+        "Creating terminal with options",
+        {
+          terminalId: validated.terminalId,
+          cols: validated.cols,
+          rows: validated.rows,
+          cwd: validated.cwd,
+          env: Object.keys(validated.env || {}),
+          command: validated.command,
+          args: validated.args,
+          taskId: validated.taskId,
+        },
+        WORKER_ID
+      );
+
+      const terminal = await createTerminal(validated.terminalId, {
         cols: validated.cols,
         rows: validated.rows,
         cwd: validated.cwd,
@@ -182,13 +263,36 @@ managementIO.on("connection", (socket) => {
       });
 
       if (terminal) {
+        log(
+          "INFO",
+          "Terminal created successfully, emitting confirmation",
+          {
+            workerId: WORKER_ID,
+            terminalId: validated.terminalId,
+          },
+          WORKER_ID
+        );
         socket.emit("worker:terminal-created", {
           workerId: WORKER_ID,
           terminalId: validated.terminalId,
         });
+      } else {
+        log(
+          "ERROR",
+          "Failed to create terminal",
+          {
+            terminalId: validated.terminalId,
+          },
+          WORKER_ID
+        );
       }
     } catch (error) {
-      console.error("Error creating terminal from main server:", error);
+      log(
+        "ERROR",
+        "Error creating terminal from main server",
+        error,
+        WORKER_ID
+      );
       socket.emit("worker:error", {
         workerId: WORKER_ID,
         error: error instanceof Error ? error.message : "Unknown error",
@@ -290,7 +394,7 @@ clientIO.on("connection", (socket) => {
     }
   });
 
-  socket.on("create-terminal", (data) => {
+  socket.on("create-terminal", async (data) => {
     console.log(
       `Client namespace: Received request to create terminal from client ${socket.id}`,
       data
@@ -304,7 +408,7 @@ clientIO.on("connection", (socket) => {
       }
 
       const terminalId = id || crypto.randomUUID();
-      const terminal = createTerminal(terminalId, { cols, rows });
+      const terminal = await createTerminal(terminalId, { cols, rows });
 
       if (terminal) {
         clientIO.emit("terminal-created", { terminalId });
@@ -400,7 +504,7 @@ clientIO.on("connection", (socket) => {
 });
 
 // Create terminal helper function
-function createTerminal(
+async function createTerminal(
   terminalId: string,
   options: {
     cols?: number;
@@ -411,9 +515,9 @@ function createTerminal(
     args?: string[];
     taskId?: string;
   } = {}
-): WorkerTerminal | null {
+): Promise<WorkerTerminal | null> {
   if (terminals.has(terminalId)) {
-    console.error(`Terminal ${terminalId} already exists`);
+    log("ERROR", `Terminal ${terminalId} already exists`);
     return null;
   }
 
@@ -421,7 +525,7 @@ function createTerminal(
     cols = SERVER_TERMINAL_CONFIG.cols,
     rows = SERVER_TERMINAL_CONFIG.rows,
     cwd = process.env.HOME || "/",
-    env = process.env as Record<string, string>,
+    env = {},
     command,
     args = [],
     taskId,
@@ -429,45 +533,84 @@ function createTerminal(
 
   const shell = command || (platform() === "win32" ? "powershell.exe" : "bash");
 
-  // Create tmux session directly - tmux will handle existing sessions
-  const tmuxArgs: string[] = [];
-
-  // Always use 'new-session' - tmux will attach if session exists
-  tmuxArgs.push("new-session", "-A", "-s", terminalId);
-  // Add the dimensions
-  tmuxArgs.push("-x", cols.toString(), "-y", rows.toString());
-
-  // If a command is provided, add it
-  if (command) {
-    tmuxArgs.push(command);
-    if (args.length > 0) {
-      tmuxArgs.push(...args);
-    }
-  } else {
-    // If no command, use shell
-    tmuxArgs.push(shell);
-  }
-
-  console.log(
-    `Creating/attaching tmux session ${terminalId} with args:`,
-    tmuxArgs
-  );
-
-  const ptyProcess = spawn("tmux", tmuxArgs, {
-    name: "xterm-256color",
+  log("INFO", `[createTerminal] Creating terminal ${terminalId}:`, {
     cols,
     rows,
     cwd,
-    env: {
-      ...env,
-      WORKER_ID,
-      TERM: "xterm-256color",
-      PS1: "\\u@\\h:\\w\\$ ", // Basic prompt
-      SHELL: "/bin/bash",
-      USER: process.env.USER || "root",
-      HOME: process.env.HOME || "/root",
-    },
+    command,
+    args,
+    envKeys: Object.keys(env),
+    shell,
   });
+
+  // Prepare the spawn command and args
+  let spawnCommand: string;
+  let spawnArgs: string[];
+
+  if (command === "tmux") {
+    // Direct tmux command from agent spawner
+    spawnCommand = command;
+    spawnArgs = args;
+    log("INFO", `[createTerminal] Using direct tmux command:`, {
+      spawnCommand,
+      spawnArgs,
+    });
+  } else {
+    // Create tmux session with command
+    spawnCommand = "tmux";
+    spawnArgs = ["new-session", "-A", "-s", terminalId];
+    spawnArgs.push("-x", cols.toString(), "-y", rows.toString());
+
+    if (command) {
+      spawnArgs.push(command);
+      if (args.length > 0) {
+        spawnArgs.push(...args);
+      }
+    } else {
+      spawnArgs.push(shell);
+    }
+    log("INFO", `[createTerminal] Creating tmux session:`, {
+      spawnCommand,
+      spawnArgs,
+    });
+  }
+
+  const ptyEnv = {
+    ...process.env,
+    ...env, // Override with provided env vars
+    WORKER_ID,
+    TERM: "xterm-256color",
+    PS1: "\\u@\\h:\\w\\$ ", // Basic prompt
+    SHELL: "/bin/bash",
+    USER: process.env.USER || "root",
+    HOME: process.env.HOME || "/root",
+  };
+
+  log("INFO", "Spawning PTY process", {
+    command: spawnCommand,
+    args: spawnArgs,
+    cwd,
+    envKeys: Object.keys(ptyEnv),
+  });
+
+  let ptyProcess: IPty;
+  try {
+    ptyProcess = spawn(spawnCommand, spawnArgs, {
+      name: "xterm-256color",
+      cols,
+      rows,
+      cwd,
+      env: ptyEnv,
+    });
+
+    log("INFO", "PTY process spawned successfully", {
+      pid: ptyProcess.pid,
+      terminalId,
+    });
+  } catch (error) {
+    log("ERROR", "Failed to spawn PTY process", error);
+    return null;
+  }
 
   const headlessTerminal = new Terminal({
     cols,
@@ -487,6 +630,10 @@ function createTerminal(
   };
 
   terminals.set(terminalId, terminal);
+  log("INFO", "Terminal added to registry", {
+    terminalId,
+    totalTerminals: terminals.size,
+  });
 
   // Handle PTY data
   ptyProcess.onData((data) => {
@@ -505,17 +652,18 @@ function createTerminal(
 
   // Handle PTY exit
   ptyProcess.onExit(async ({ exitCode, signal }) => {
-    console.log(
-      `Terminal ${terminalId} exited with code ${exitCode} and signal ${signal}`
-    );
-    // log the full state
-    console.log(`Full state saved to /var/log/${terminalId}-state.log`);
-    console.log(serializeAddon.serialize());
+    log("INFO", `Terminal ${terminalId} exited`, { exitCode, signal });
 
-    await fs.writeFile(
-      `/var/log/${terminalId}-state.log`,
-      serializeAddon.serialize()
-    );
+    // Save the full state
+    const serializedState = serializeAddon.serialize();
+    const stateFile = `/var/logs/cmux/${terminalId}-state.log`;
+
+    try {
+      await fs.writeFile(stateFile, serializedState);
+      log("INFO", `Full state saved to ${stateFile}`);
+    } catch (error) {
+      log("ERROR", `Failed to save terminal state`, error);
+    }
 
     terminals.delete(terminalId);
     clientIO.emit("terminal-exit", { terminalId, exitCode, signal });
@@ -531,6 +679,7 @@ function createTerminal(
     }
   });
 
+  log("INFO", "Terminal creation complete", { terminalId });
   return terminal;
 }
 
@@ -552,35 +701,28 @@ if (ENABLE_HEARTBEAT) {
 }
 
 // Start server
-httpServer.listen(WORKER_PORT, async () => {
-  console.log(`Worker ${WORKER_ID} listening on port ${WORKER_PORT}`);
-  console.log(`  - Client namespace: /client`);
-  console.log(`  - Management namespace: /management`);
-  console.log(`Waiting for connections...`);
-
-  // Create default terminal
-  const terminalId = "default";
-
-  // Check if there's an initial command to run
-  const initialCommand =
-    process.env.INITIAL_COMMAND || process.env.WORKER_INITIAL_COMMAND;
-
-  console.log(
-    `Creating default terminal${initialCommand ? ` with command: ${initialCommand}` : ""}`
+httpServer.listen(WORKER_PORT, () => {
+  log(
+    "INFO",
+    `Worker ${WORKER_ID} starting on port ${WORKER_PORT}`,
+    undefined,
+    WORKER_ID
   );
-
-  const terminal = createTerminal(terminalId, {
-    cols: 80,
-    rows: 24,
-    command: initialCommand ? "/bin/bash" : undefined,
-    args: initialCommand ? ["-c", initialCommand] : undefined,
-  });
-
-  if (terminal) {
-    console.log(`Default terminal '${terminalId}' created successfully`);
-    // Notify all connected clients
-    clientIO.emit("terminal-created", { terminalId });
-  }
+  log(
+    "INFO",
+    "Namespaces:",
+    {
+      client: "/client",
+      management: "/management",
+    },
+    WORKER_ID
+  );
+  log(
+    "INFO",
+    "Worker ready, waiting for terminal creation commands via socket.io",
+    undefined,
+    WORKER_ID
+  );
 });
 
 // Graceful shutdown

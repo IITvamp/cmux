@@ -877,7 +877,7 @@ def main():
             # Show logs
             run_ssh_command(
                 current_instance,
-                "cat /var/log/openvscode/server.log | tail -20",
+                "cat /var/log/cmux/server.log | tail -20",
                 sudo=True,
             )
 
@@ -894,7 +894,7 @@ def main():
             print("❌ Worker is not running")
             # Show startup logs
             run_ssh_command(
-                current_instance, "cat /var/log/startup.log | tail -20", sudo=True
+                current_instance, "cat /var/log/cmux/startup.log | tail -20", sudo=True
             )
 
         # Warm up VS Code
@@ -917,7 +917,7 @@ def main():
         print("\nUseful commands:")
         print(f"- SSH to instance: morphcloud instance ssh {current_instance.id}")
         print(
-            f"- View OpenVSCode logs: morphcloud instance ssh {current_instance.id} -- sudo cat /var/log/openvscode/server.log"
+            f"- View OpenVSCode logs: morphcloud instance ssh {current_instance.id} -- sudo cat /var/log/cmux/server.log"
         )
         print(
             f"- View startup logs: morphcloud instance ssh {current_instance.id} -- sudo cat /var/log/startup.log"

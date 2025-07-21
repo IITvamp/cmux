@@ -63,12 +63,14 @@ async function openMultiDiffEditor() {
   });
 }
 
-async function setupTerminalsFromWorker(terminals: Array<{ terminalId: string; taskId?: string }>) {
+async function setupTerminalsFromWorker(
+  terminals: Array<{ terminalId: string; taskId?: string }>
+) {
   log(`Received ${terminals.length} active terminals from worker`);
 
   // Filter to only use the default terminal
-  terminals = terminals.filter(t => t.terminalId === "default");
-  log(`Filtered to ${terminals.length} default terminal(s)`);
+  // terminals = terminals.filter((t) => t.terminalId === "default");
+  // log(`Filtered to ${terminals.length} default terminal(s)`);
 
   // Prevent duplicate setup
   if (isSetupComplete) {
@@ -82,9 +84,9 @@ async function setupTerminalsFromWorker(terminals: Array<{ terminalId: string; t
     workerSocket!.emit("create-terminal", {
       id: "default",
       cols: 80,
-      rows: 24
+      rows: 24,
     });
-    
+
     // Wait for terminal creation and request list again
     setTimeout(() => {
       workerSocket!.emit("get-active-terminals");
@@ -120,9 +122,7 @@ async function setupTerminalsFromWorker(terminals: Array<{ terminalId: string; t
 
     // Split editor for additional terminals
     if (i > 0) {
-      await vscode.commands.executeCommand(
-        "workbench.action.splitEditor"
-      );
+      await vscode.commands.executeCommand("workbench.action.splitEditor");
     }
 
     const terminal = vscode.window.createTerminal({
@@ -139,9 +139,7 @@ async function setupTerminalsFromWorker(terminals: Array<{ terminalId: string; t
 
     // Attach to tmux session with a small delay to ensure it's ready
     setTimeout(() => {
-      terminal.sendText(
-        `tmux attach-session -t ${terminalInfo.terminalId}`
-      );
+      terminal.sendText(`tmux attach-session -t ${terminalInfo.terminalId}`);
       log(`Attached to tmux session ${terminalInfo.terminalId}`);
     }, 500); // 500ms delay to ensure tmux session is ready
   }
@@ -165,9 +163,7 @@ async function setupTerminalsFromWorker(terminals: Array<{ terminalId: string; t
     );
 
     // Ensure terminal has focus
-    await vscode.commands.executeCommand(
-      "workbench.action.terminal.focus"
-    );
+    await vscode.commands.executeCommand("workbench.action.terminal.focus");
 
     log("Terminal setup complete");
   }, 100);
@@ -180,13 +176,13 @@ function connectToWorker() {
   }
 
   log("Creating worker socket connection...");
-  
+
   // Clean up existing socket if any
   if (workerSocket) {
     workerSocket.removeAllListeners();
     workerSocket.disconnect();
   }
-  
+
   workerSocket = io("http://localhost:2377/client", {
     reconnection: true,
     reconnectionAttempts: 5,

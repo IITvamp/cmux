@@ -22,17 +22,17 @@ fi
 /usr/bin/supervisord -n >> /dev/null 2>&1 &
 
 # Wait for Docker daemon
-wait-for-docker.sh
+# wait-for-docker.sh
 
 # Create log directory
-mkdir -p /var/log/openvscode
+mkdir -p /var/log/cmux
 
 # Log environment variables for debugging
-echo "[Startup] Environment variables:" > /var/log/openvscode/startup.log
-env >> /var/log/openvscode/startup.log
+echo "[Startup] Environment variables:" > /var/log/cmux/startup.log
+env >> /var/log/cmux/startup.log
 
 # Start OpenVSCode server on port 2376 without authentication
-echo "[Startup] Starting OpenVSCode server..." >> /var/log/openvscode/startup.log
+echo "[Startup] Starting OpenVSCode server..." >> /var/log/cmux/startup.log
 /app/openvscode-server/bin/openvscode-server \
   --host 0.0.0.0 \
   --port 2376 \
@@ -43,29 +43,29 @@ echo "[Startup] Starting OpenVSCode server..." >> /var/log/openvscode/startup.lo
   --profile default-profile \
   --verbose \
   /root/workspace \
-  > /var/log/openvscode/server.log 2>&1 &
+  > /var/log/cmux/server.log 2>&1 &
 
-echo "[Startup] OpenVSCode server started, logs available at /var/log/openvscode/server.log" >> /var/log/openvscode/startup.log
+echo "[Startup] OpenVSCode server started, logs available at /var/log/cmux/server.log" >> /var/log/cmux/startup.log
 
 # Wait for OpenVSCode server to be ready
-echo "[Startup] Waiting for OpenVSCode server to be ready..." >> /var/log/openvscode/startup.log
+echo "[Startup] Waiting for OpenVSCode server to be ready..." >> /var/log/cmux/startup.log
 MAX_RETRIES=30
 RETRY_DELAY=1
 retry_count=0
 
 while [ $retry_count -lt $MAX_RETRIES ]; do
     if curl -s -f "http://localhost:2376/?folder=/root/workspace" > /dev/null 2>&1; then
-        echo "[Startup] Successfully connected to OpenVSCode server" >> /var/log/openvscode/startup.log
+        echo "[Startup] Successfully connected to OpenVSCode server" >> /var/log/cmux/startup.log
         break
     fi
     
     retry_count=$((retry_count + 1))
-    echo "[Startup] Waiting for OpenVSCode server... (attempt $retry_count/$MAX_RETRIES)" >> /var/log/openvscode/startup.log
+    echo "[Startup] Waiting for OpenVSCode server... (attempt $retry_count/$MAX_RETRIES)" >> /var/log/cmux/startup.log
     sleep $RETRY_DELAY
 done
 
 if [ $retry_count -eq $MAX_RETRIES ]; then
-    echo "[Startup] Warning: Failed to connect to OpenVSCode server after $MAX_RETRIES attempts" >> /var/log/openvscode/startup.log
+    echo "[Startup] Warning: Failed to connect to OpenVSCode server after $MAX_RETRIES attempts" >> /var/log/cmux/startup.log
 fi
 
 # Start the worker
@@ -74,4 +74,4 @@ export WORKER_PORT=2377
 
 rm -f /startup.sh
 
-exec docker-init -- node /builtins/build/index.js 
+node /builtins/build/index.js

@@ -22,7 +22,7 @@ export interface AgentConfig {
 export const AGENT_CONFIGS: AgentConfig[] = [
   {
     name: "claude-sonnet",
-    command: "bunx",
+    command: "bun x",
     args: [
       "@anthropic-ai/claude-code",
       "--model",
@@ -39,7 +39,7 @@ export const AGENT_CONFIGS: AgentConfig[] = [
   },
   {
     name: "claude-opus",
-    command: "bunx",
+    command: "bun x",
     args: [
       "@anthropic-ai/claude-code",
       "--model",
@@ -56,7 +56,7 @@ export const AGENT_CONFIGS: AgentConfig[] = [
   },
   {
     name: "codex-o3",
-    command: "bunx",
+    command: "bun x",
     args: [
       "@openai/codex",
       "--model",
@@ -81,7 +81,7 @@ export const AGENT_CONFIGS: AgentConfig[] = [
   },
   {
     name: "opencode-sonnet",
-    command: "bunx",
+    command: "bun x",
     args: ["opencode-ai@latest", "--model", "sonnet", "--prompt", "$PROMPT"],
     authFiles: [
       {
@@ -98,7 +98,7 @@ export const AGENT_CONFIGS: AgentConfig[] = [
   },
   {
     name: "opencode-kimi-k2",
-    command: "bunx",
+    command: "bun x",
     args: ["opencode-ai@latest", "--model", "kimi-k2", "--prompt", "$PROMPT"],
     authFiles: [
       {
@@ -115,7 +115,7 @@ export const AGENT_CONFIGS: AgentConfig[] = [
   },
   {
     name: "gemini-2.5-flash",
-    command: "bunx",
+    command: "bun x",
     args: [
       "@google/gemini-cli",
       "--model",
@@ -135,7 +135,7 @@ export const AGENT_CONFIGS: AgentConfig[] = [
   },
   {
     name: "gemini-2.5-pro",
-    command: "bunx",
+    command: "bun x",
     args: [
       "@google/gemini-cli",
       "--model",
