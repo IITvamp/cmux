@@ -245,19 +245,19 @@ export async function spawnAgent(
       `[AgentSpawner] Sending terminal creation command at ${new Date().toISOString()}:`
     );
     console.log(`  Terminal ID: ${tmuxSessionName}`);
-    console.log(
-      `  Full terminal command object:`,
-      JSON.stringify(
-        terminalCreationCommand,
-        (_key, value) => {
-          if (typeof value === "string" && value.length > 1000) {
-            return value.slice(0, 1000) + "...";
-          }
-          return value;
-        },
-        2
-      )
-    );
+    // console.log(
+    //   `  Full terminal command object:`,
+    //   JSON.stringify(
+    //     terminalCreationCommand,
+    //     (_key, value) => {
+    //       if (typeof value === "string" && value.length > 1000) {
+    //         return value.slice(0, 1000) + "...";
+    //       }
+    //       return value;
+    //     },
+    //     2
+    //   )
+    // );
     console.log(`  isCloudMode:`, options.isCloudMode);
 
     // For Morph instances, we need to clone the repository first
