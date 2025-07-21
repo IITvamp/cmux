@@ -304,8 +304,8 @@ managementIO.on("connection", (socket) => {
           cols: validated.cols,
           rows: validated.rows,
           cwd: validated.cwd,
-          // env: Object.keys(validated.env || {}),
-          env: validated.env,
+          env: Object.keys(validated.env || {}),
+          // env: validated.env,
           command: validated.command,
           args: validated.args,
           taskId: validated.taskId,
@@ -313,7 +313,7 @@ managementIO.on("connection", (socket) => {
         WORKER_ID
       );
 
-      await createTerminal(validated.terminalId, {
+      const terminal = await createTerminal(validated.terminalId, {
         cols: validated.cols,
         rows: validated.rows,
         cwd: validated.cwd,
@@ -323,6 +323,12 @@ managementIO.on("connection", (socket) => {
         taskId: validated.taskId,
         startupCommands: validated.startupCommands,
       });
+
+      if (!terminal) {
+        throw new Error("Failed to create terminal");
+      }
+
+      terminals.set(validated.terminalId, terminal);
 
       callback({
         error: null,
