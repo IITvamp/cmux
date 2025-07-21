@@ -1,8 +1,8 @@
 import fs, { promises } from "node:fs";
 
-const LOG_FILE = "/var/logs/cmux/worker.log";
+const LOG_FILE = "/var/log/cmux/worker.log";
 
-fs.mkdirSync("/var/logs/cmux", { recursive: true });
+fs.mkdirSync("/var/log/cmux", { recursive: true });
 
 export function log(
   level: string,

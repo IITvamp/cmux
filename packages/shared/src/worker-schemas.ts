@@ -10,11 +10,13 @@ export const WorkerRegisterSchema = z.object({
     memoryMB: z.number().int().positive(),
     cpuCores: z.number().int().positive(),
   }),
-  containerInfo: z.object({
-    image: z.string(),
-    version: z.string(),
-    platform: z.string(),
-  }).optional(),
+  containerInfo: z
+    .object({
+      image: z.string(),
+      version: z.string(),
+      platform: z.string(),
+    })
+    .optional(),
 });
 
 export const WorkerHeartbeatSchema = z.object({
@@ -37,7 +39,7 @@ export const TerminalAssignmentSchema = z.object({
 // Worker Status
 export const WorkerStatusSchema = z.object({
   workerId: z.string(),
-  status: z.enum(['online', 'offline', 'busy', 'error']),
+  status: z.enum(["online", "offline", "busy", "error"]),
   lastSeen: z.number(),
 });
 
@@ -51,11 +53,15 @@ export const WorkerCreateTerminalSchema = z.object({
   command: z.string().optional(),
   args: z.array(z.string()).optional(),
   taskId: z.string().optional(),
-  authFiles: z.array(z.object({
-    destinationPath: z.string(),
-    content: z.string(), // base64 encoded
-    mode: z.string().optional(),
-  })).optional(),
+  authFiles: z
+    .array(
+      z.object({
+        destinationPath: z.string(),
+        content: z.string(), // base64 encoded
+        mode: z.string().optional(),
+      })
+    )
+    .optional(),
 });
 
 export const WorkerTerminalInputSchema = z.object({
@@ -99,18 +105,20 @@ export const WorkerTerminalClosedSchema = z.object({
 
 // File upload schema for authentication files
 export const WorkerUploadFilesSchema = z.object({
-  files: z.array(z.object({
-    sourcePath: z.string(), // Path on host
-    destinationPath: z.string(), // Path in container
-    content: z.string(), // Base64 encoded file content
-    mode: z.string().optional(), // File permissions (e.g., "644")
-  })),
+  files: z.array(
+    z.object({
+      sourcePath: z.string(), // Path on host
+      destinationPath: z.string(), // Path in container
+      content: z.string(), // Base64 encoded file content
+      mode: z.string().optional(), // File permissions (e.g., "644")
+    })
+  ),
   terminalId: z.string().optional(), // Optional terminal context
 });
 
 // Server to Worker Events
 export const ServerToWorkerCommandSchema = z.object({
-  command: z.enum(['create-terminal', 'destroy-terminal', 'execute-command']),
+  command: z.enum(["create-terminal", "destroy-terminal", "execute-command"]),
   payload: z.any(),
 });
 
@@ -132,6 +140,8 @@ export type WorkerUploadFiles = z.infer<typeof WorkerUploadFilesSchema>;
 
 // Socket.io event maps for Server <-> Worker communication
 // Docker readiness response type
+
+type ErrorOr<T> = { error: Error; data: null } | { error: null; data: T };
 export interface DockerReadinessResponse {
   ready: boolean;
   message?: string;
@@ -139,34 +149,39 @@ export interface DockerReadinessResponse {
 
 export interface ServerToWorkerEvents {
   // Terminal operations from server to worker
-  "worker:create-terminal": (data: WorkerCreateTerminal) => void;
+  "worker:create-terminal": (
+    data: WorkerCreateTerminal,
+    callback: (result: ErrorOr<WorkerTerminalCreated>) => void
+  ) => void;
   "worker:terminal-input": (data: WorkerTerminalInput) => void;
   "worker:resize-terminal": (data: WorkerResizeTerminal) => void;
   "worker:close-terminal": (data: WorkerCloseTerminal) => void;
-  
+
   // File operations
   "worker:upload-files": (data: WorkerUploadFiles) => void;
-  
+
   // Management events
   "worker:terminal-assignment": (data: TerminalAssignment) => void;
   "worker:command": (data: ServerToWorkerCommand) => void;
   "worker:shutdown": () => void;
-  
+
   // Health check events with acknowledgment
-  "worker:check-docker": (callback: (response: DockerReadinessResponse) => void) => void;
+  "worker:check-docker": (
+    callback: (response: DockerReadinessResponse) => void
+  ) => void;
 }
 
 export interface WorkerToServerEvents {
   // Registration and health
   "worker:register": (data: WorkerRegister) => void;
   "worker:heartbeat": (data: WorkerHeartbeat) => void;
-  
+
   // Terminal events from worker to server
   "worker:terminal-created": (data: WorkerTerminalCreated) => void;
   "worker:terminal-output": (data: WorkerTerminalOutput) => void;
   "worker:terminal-exit": (data: WorkerTerminalExit) => void;
   "worker:terminal-closed": (data: WorkerTerminalClosed) => void;
-  
+
   // Error reporting
   "worker:error": (data: { workerId: string; error: string }) => void;
 }

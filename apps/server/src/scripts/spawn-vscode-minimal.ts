@@ -1,7 +1,9 @@
-#!/usr/bin/env tsx
+import type {
+  ServerToWorkerEvents,
+  WorkerToServerEvents,
+} from "@coderouter/shared";
 import Docker from "dockerode";
 import { io, type Socket } from "socket.io-client";
-import type { WorkerToServerEvents, ServerToWorkerEvents } from "@coderouter/shared";
 
 interface ContainerInfo {
   containerId: string;
@@ -16,7 +18,7 @@ async function spawnVSCodeContainer(docker: Docker): Promise<ContainerInfo> {
   const imageName = "coderouter-worker:0.0.1";
 
   console.log(`Creating container ${containerName}...`);
-  
+
   // Test Docker connection first
   try {
     const info = await docker.info();
@@ -30,10 +32,7 @@ async function spawnVSCodeContainer(docker: Docker): Promise<ContainerInfo> {
   const container = await docker.createContainer({
     name: containerName,
     Image: imageName,
-    Env: [
-      "NODE_ENV=production",
-      "WORKER_PORT=2377",
-    ],
+    Env: ["NODE_ENV=production", "WORKER_PORT=2377"],
     HostConfig: {
       AutoRemove: true,
       Privileged: true,
@@ -54,13 +53,10 @@ async function spawnVSCodeContainer(docker: Docker): Promise<ContainerInfo> {
   await container.start();
   console.log(`Container started`);
 
-  // Wait for container to be ready
-  await new Promise(resolve => setTimeout(resolve, 3000));
-
   // Get port mappings
   const info = await container.inspect();
   const ports = info.NetworkSettings.Ports;
-  
+
   const vscodePort = ports["2376/tcp"]?.[0]?.HostPort;
   const workerPort = ports["2377/tcp"]?.[0]?.HostPort;
 
@@ -68,8 +64,33 @@ async function spawnVSCodeContainer(docker: Docker): Promise<ContainerInfo> {
     throw new Error("Failed to get port mappings");
   }
 
+  // Wait for worker to be ready by polling
+  console.log(`Waiting for worker to be ready on port ${workerPort}...`);
+  const maxAttempts = 30; // 15 seconds max
+  const delayMs = 500;
+
+  for (let i = 0; i < maxAttempts; i++) {
+    try {
+      const response = await fetch(
+        `http://localhost:${workerPort}/socket.io/?EIO=4&transport=polling`
+      );
+      if (response.ok) {
+        console.log(`Worker is ready!`);
+        break;
+      }
+    } catch {
+      // Connection refused, worker not ready yet
+    }
+
+    if (i < maxAttempts - 1) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    } else {
+      console.warn("Worker may not be fully ready, but continuing...");
+    }
+  }
+
   const vscodeUrl = `http://localhost:${vscodePort}/?folder=/root/workspace`;
-  
+
   return {
     containerId: container.id,
     containerName,
@@ -84,9 +105,9 @@ async function createTerminalWithPrompt(
   prompt: string
 ): Promise<void> {
   const workerUrl = `http://localhost:${workerPort}`;
-  
+
   console.log(`Connecting to worker at ${workerUrl}...`);
-  
+
   // Connect to worker
   const socket = io(`${workerUrl}/management`, {
     reconnection: false,
@@ -96,7 +117,7 @@ async function createTerminalWithPrompt(
   return new Promise((resolve, reject) => {
     socket.on("connect", () => {
       console.log("Connected to worker");
-      
+
       // Create terminal
       const terminalId = "claude-terminal";
       const command = "bun";
@@ -109,16 +130,29 @@ async function createTerminalWithPrompt(
         prompt,
       ];
 
-      console.log(`Creating terminal with command: ${command} ${args.join(" ")}`);
-      
-      socket.emit("worker:create-terminal", {
-        terminalId,
-        command,
-        args,
-        cols: 80,
-        rows: 24,
-        env: {},
-      });
+      console.log(
+        `Creating terminal with command: ${command} ${args.join(" ")}`
+      );
+
+      socket.emit(
+        "worker:create-terminal",
+        {
+          terminalId,
+          command,
+          args,
+          cols: 80,
+          rows: 24,
+          env: {},
+        },
+        (result) => {
+          if (result.error) {
+            reject(result.error);
+          } else {
+            console.log("Terminal created successfully", result);
+            resolve();
+          }
+        }
+      );
 
       // Wait for confirmation
       socket.on("worker:terminal-created", (data) => {
@@ -153,22 +187,24 @@ async function main() {
   console.log(`Spawning VSCode with prompt: ${prompt}`);
 
   // Docker connection setup - Bun requires explicit socket path
-  const docker = new Docker({ socketPath: '/var/run/docker.sock' });
+  const docker = new Docker({ socketPath: "/var/run/docker.sock" });
   let containerInfo: ContainerInfo | null = null;
 
   try {
     // Spawn container
     containerInfo = await spawnVSCodeContainer(docker);
-    
+
     console.log(`\nVSCode instance started:`);
     console.log(`  URL: ${containerInfo.vscodeUrl}`);
     console.log(`  Container: ${containerInfo.containerName}`);
-    
+
     // Create terminal with prompt
     await createTerminalWithPrompt(containerInfo.workerPort, prompt);
 
     console.log(`\n✅ VSCode is running at: ${containerInfo.vscodeUrl}`);
-    console.log("\nClaude Code is running in the terminal. Open the URL above to interact with it.");
+    console.log(
+      "\nClaude Code is running in the terminal. Open the URL above to interact with it."
+    );
     console.log("Press Ctrl+C to stop\n");
 
     // Keep the process running
@@ -180,10 +216,9 @@ async function main() {
       }
       process.exit(0);
     });
-    
+
     // Prevent the process from exiting
     await new Promise(() => {});
-
   } catch (error) {
     console.error("Error:", error);
     if (containerInfo) {

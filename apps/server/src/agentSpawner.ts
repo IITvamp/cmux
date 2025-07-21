@@ -89,14 +89,7 @@ export interface AgentSpawnResult {
 export async function spawnAgent(
   agent: AgentConfig,
   taskId: string | Id<"tasks">,
-  _globalTerminals: Map<string, GlobalTerminal>,
   vscodeInstances: Map<string, VSCodeInstance>,
-  _io: Server<
-    ClientToServerEvents,
-    ServerToClientEvents,
-    InterServerEvents,
-    SocketData
-  >,
   options: {
     repoUrl: string;
     branch?: string;
@@ -143,13 +136,18 @@ export async function spawnAgent(
 
     // Build the tmux session command that will be sent via socket.io
     const tmuxSessionName = `${agent.name}-${taskRunId.slice(-8)}`;
-    
+
     console.log(`[AgentSpawner] Building command for agent ${agent.name}:`);
     console.log(`  Raw command: ${agent.command}`);
     console.log(`  Processed args: ${processedArgs.join(" ")}`);
     console.log(`  Agent command: ${agentCommand}`);
     console.log(`  Tmux session name: ${tmuxSessionName}`);
-    console.log(`  Environment vars to pass:`, Object.keys(envVars).filter(k => k.startsWith('ANTHROPIC_') || k.startsWith('GEMINI_')));
+    console.log(
+      `  Environment vars to pass:`,
+      Object.keys(envVars).filter(
+        (k) => k.startsWith("ANTHROPIC_") || k.startsWith("GEMINI_")
+      )
+    );
 
     let vscodeInstance: VSCodeInstance;
     let worktreePath: string;
@@ -192,9 +190,11 @@ export async function spawnAgent(
 
       worktreePath = workspaceResult.worktreePath;
 
-      console.log(`[AgentSpawner] Creating DockerVSCodeInstance for ${agent.name}`);
+      console.log(
+        `[AgentSpawner] Creating DockerVSCodeInstance for ${agent.name}`
+      );
       vscodeInstance = new DockerVSCodeInstance({
-        workspacePath: worktreePath,
+        // workspacePath: worktreePath,
         agentName: agent.name,
       });
     }
@@ -230,28 +230,32 @@ export async function spawnAgent(
     }
 
     // After VSCode instance is started, create the terminal with tmux session
-    console.log(`[AgentSpawner] Preparing to send terminal creation command for ${agent.name}`);
-    
+    console.log(
+      `[AgentSpawner] Preparing to send terminal creation command for ${agent.name}`
+    );
+
     // Wait for worker connection if not already connected
-    if (!vscodeInstance.isWorkerConnected()) {
-      console.log(`[AgentSpawner] Waiting for worker connection...`);
-      await new Promise<void>((resolve) => {
-        const timeout = setTimeout(() => {
-          console.error(`[AgentSpawner] Timeout waiting for worker connection`);
-          resolve();
-        }, 30000); // 30 second timeout
-        
-        vscodeInstance.once('worker-connected', () => {
-          clearTimeout(timeout);
-          resolve();
-        });
-      });
-    }
-    
+    // if (!vscodeInstance.isWorkerConnected()) {
+    //   console.log(`[AgentSpawner] Waiting for worker connection...`);
+    //   await new Promise<void>((resolve) => {
+    //     const timeout = setTimeout(() => {
+    //       console.error(`[AgentSpawner] Timeout waiting for worker connection`);
+    //       resolve();
+    //     }, 30000); // 30 second timeout
+
+    //     vscodeInstance.once("worker-connected", () => {
+    //       clearTimeout(timeout);
+    //       resolve();
+    //     });
+    //   });
+    // }
+
     // Get the worker socket
     const workerSocket = vscodeInstance.getWorkerSocket();
     if (!workerSocket) {
-      console.error(`[AgentSpawner] No worker socket available for ${agent.name}`);
+      console.error(
+        `[AgentSpawner] No worker socket available for ${agent.name}`
+      );
       return {
         agentName: agent.name,
         terminalId,
@@ -262,69 +266,112 @@ export async function spawnAgent(
         error: "No worker connection available",
       };
     }
-    
+    if (!vscodeInstance.isWorkerConnected()) {
+      throw new Error("Worker socket not available");
+    }
+
     // Prepare the terminal creation command with auth files
     const terminalCreationCommand = {
       terminalId: tmuxSessionName,
-      command: 'tmux',
-      args: ['new-session', '-d', '-s', tmuxSessionName, 'bash', '-c', agentCommand],
+      command: "tmux",
+      args: [
+        "new-session",
+        "-d",
+        "-s",
+        tmuxSessionName,
+        "bash",
+        "-c",
+        agentCommand,
+      ],
       cols: 80,
       rows: 24,
       env: envVars,
       taskId: taskRunId,
-      authFiles: authFiles.map(f => ({
+      authFiles: authFiles.map((f) => ({
         destinationPath: f.destinationPath,
         content: f.content,
         mode: f.mode,
       })),
     };
-    
+
     console.log(`[AgentSpawner] Sending terminal creation command:`);
     console.log(`  Terminal ID: ${tmuxSessionName}`);
-    console.log(`  Command: tmux new-session -d -s ${tmuxSessionName} bash -c "${agentCommand}"`);
+    console.log(
+      `  Command: tmux new-session -d -s ${tmuxSessionName} bash -c "${agentCommand}"`
+    );
     console.log(`  Auth files: ${authFiles.length}`);
     console.log(`  Environment vars:`, Object.keys(envVars));
-    
+
     // For Morph instances, we need to clone the repository first
     if (options.isCloudMode) {
       console.log(`[AgentSpawner] Cloning repository for Morph instance...`);
-      
+
       // Create a terminal to clone the repository
       const cloneTerminalId = `clone-${taskRunId.slice(-8)}`;
       const cloneCommand = {
         terminalId: cloneTerminalId,
-        command: 'bash',
-        args: ['-c', `git clone ${options.repoUrl} /root/workspace && cd /root/workspace${options.branch && options.branch !== 'main' ? ` && git checkout ${options.branch}` : ''}`],
+        command: "bash",
+        args: [
+          "-c",
+          `git clone ${options.repoUrl} /root/workspace && cd /root/workspace${options.branch && options.branch !== "main" ? ` && git checkout ${options.branch}` : ""}`,
+        ],
         cols: 80,
         rows: 24,
         env: {},
         taskId: taskRunId,
       };
-      
-      workerSocket.emit('worker:create-terminal', cloneCommand);
-      
+
+      await new Promise((resolve, reject) => {
+        workerSocket
+          .timeout(15000)
+          .emit(
+            "worker:create-terminal",
+            cloneCommand,
+            (timeoutError, result) => {
+              if (timeoutError) {
+                console.error(
+                  "Timeout waiting for clone terminal creation",
+                  timeoutError
+                );
+                reject(timeoutError);
+              }
+              if (result.error) {
+                reject(result.error);
+              } else {
+                console.log("Clone terminal created successfully", result);
+                resolve(result.data);
+              }
+            }
+          );
+      });
+
       // Wait for clone to complete
       const cloneCompleted = await new Promise<boolean>((resolve) => {
         const timeout = setTimeout(() => {
           console.error(`[AgentSpawner] Timeout waiting for repository clone`);
           resolve(false);
         }, 60000); // 60 second timeout for cloning
-        
-        const handleTerminalExit = (data: { terminalId: string; exitCode: number }) => {
+
+        const handleTerminalExit = (data: {
+          terminalId: string;
+          exitCode: number;
+        }) => {
           if (data.terminalId === cloneTerminalId && data.exitCode === 0) {
             clearTimeout(timeout);
             console.log(`[AgentSpawner] Repository cloned successfully`);
             resolve(true);
           } else if (data.terminalId === cloneTerminalId) {
             clearTimeout(timeout);
-            console.error(`[AgentSpawner] Repository clone failed with exit code ${data.exitCode}`);
+            console.error(
+              `[AgentSpawner] Repository clone failed with exit code ${data.exitCode}`
+            );
             resolve(false);
           }
         };
-        
-        workerSocket.once('worker:terminal-exit', handleTerminalExit);
+
+        workerSocket.once("worker:terminal-exit", handleTerminalExit);
       });
-      
+
       if (!cloneCompleted) {
         return {
           agentName: agent.name,
@@ -336,50 +383,85 @@ export async function spawnAgent(
           error: "Failed to clone repository",
         };
       }
-      
+
       // Close the clone terminal
-      workerSocket.emit('worker:close-terminal', { terminalId: cloneTerminalId });
+      workerSocket.emit("worker:close-terminal", {
+        terminalId: cloneTerminalId,
+      });
     }
-    
-    // Send the terminal creation command
-    workerSocket.emit('worker:create-terminal', terminalCreationCommand);
-    
-    // Wait for terminal creation confirmation
-    const terminalCreated = await new Promise<boolean>((resolve) => {
-      const timeout = setTimeout(() => {
-        console.error(`[AgentSpawner] Timeout waiting for terminal creation confirmation`);
-        resolve(false);
-      }, 15000); // 15 second timeout
-      
-      const handleTerminalCreated = (data: { terminalId: string }) => {
-        if (data.terminalId === tmuxSessionName) {
-          clearTimeout(timeout);
-          console.log(`[AgentSpawner] Terminal created successfully for ${agent.name}`);
-          resolve(true);
-        }
-      };
-      
-      const handleError = (data: { error: string }) => {
-        clearTimeout(timeout);
-        console.error(`[AgentSpawner] Worker error:`, data);
-        resolve(false);
-      };
-      
-      workerSocket.once('worker:terminal-created', handleTerminalCreated);
-      workerSocket.once('worker:error', handleError);
+
+    // send just ping
+    workerSocket.emit("worker:check-docker", (result) => {
+      console.log("Docker ready", result);
     });
-    
-    if (!terminalCreated) {
-      return {
-        agentName: agent.name,
-        terminalId,
-        taskRunId,
-        worktreePath,
-        vscodeUrl,
-        success: false,
-        error: "Failed to create terminal in worker",
-      };
-    }
+
+    // Send the terminal creation command
+    await new Promise((resolve, reject) => {
+      workerSocket
+        .timeout(15000)
+        .emit(
+          "worker:create-terminal",
+          terminalCreationCommand,
+          (timeoutError, result) => {
+            if (timeoutError) {
+              console.error(
+                "Timeout waiting for terminal creation",
+                timeoutError
+              );
+              reject(timeoutError);
+              return;
+            }
+            if (result.error) {
+              reject(result.error);
+              return;
+            } else {
+              console.log("Terminal created successfully", result);
+              resolve(result.data);
+            }
+          }
+        );
+    });
+
+    // Wait for terminal creation confirmation
+    // const terminalCreated = await new Promise<boolean>((resolve) => {
+    //   const timeout = setTimeout(() => {
+    //     console.error(
+    //       `[AgentSpawner] Timeout waiting for terminal creation confirmation`
+    //     );
+    //     resolve(false);
+    //   }, 15000); // 15 second timeout
+
+    //   const handleTerminalCreated = (data: { terminalId: string }) => {
+    //     if (data.terminalId === tmuxSessionName) {
+    //       clearTimeout(timeout);
+    //       console.log(
+    //         `[AgentSpawner] Terminal created successfully for ${agent.name}`
+    //       );
+    //       resolve(true);
+    //     }
+    //   };
+
+    //   const handleError = (data: { error: string }) => {
+    //     clearTimeout(timeout);
+    //     console.error(`[AgentSpawner] Worker error:`, data);
+    //     resolve(false);
+    //   };
+
+    //   workerSocket.once("worker:terminal-created", handleTerminalCreated);
+    //   workerSocket.once("worker:error", handleError);
+    // });
+
+    // if (!terminalCreated) {
+    //   return {
+    //     agentName: agent.name,
+    //     terminalId,
+    //     taskRunId,
+    //     worktreePath,
+    //     vscodeUrl,
+    //     success: false,
+    //     error: "Failed to create terminal in worker",
+    //   };
+    // }
 
     // Clean up instance on exit
     vscodeInstance.on("exit", () => {
@@ -438,14 +520,7 @@ export async function spawnAllAgents(
     : AGENT_CONFIGS;
 
   for (const agent of agentsToSpawn) {
-    const result = await spawnAgent(
-      agent,
-      taskId,
-      globalTerminals,
-      vscodeInstances,
-      io,
-      options
-    );
+    const result = await spawnAgent(agent, taskId, vscodeInstances, options);
     results.push(result);
   }
 

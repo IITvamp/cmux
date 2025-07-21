@@ -40,9 +40,8 @@ interface WorkerTerminal {
 // Configuration
 const WORKER_ID = process.env.WORKER_ID || `worker-${Date.now()}`;
 const WORKER_PORT = parseInt(process.env.WORKER_PORT || "2377", 10);
-const CONTAINER_IMAGE =
-  process.env.CONTAINER_IMAGE || "coderouter/worker:latest";
-const CONTAINER_VERSION = process.env.CONTAINER_VERSION || "1.0.0";
+const CONTAINER_IMAGE = process.env.CONTAINER_IMAGE || "coderouter-worker";
+const CONTAINER_VERSION = process.env.CONTAINER_VERSION || "0.0.1";
 
 // Check Docker readiness using undici with retries
 async function checkDockerReadiness(): Promise<boolean> {
@@ -175,7 +174,7 @@ managementIO.on("connection", (socket) => {
   registerWithMainServer(socket);
 
   // Handle terminal operations from main server
-  socket.on("worker:create-terminal", async (data) => {
+  socket.on("worker:create-terminal", async (data, callback) => {
     log(
       "INFO",
       "Management namespace: Received request to create terminal from main server",
@@ -184,6 +183,7 @@ managementIO.on("connection", (socket) => {
     );
     try {
       const validated = WorkerCreateTerminalSchema.parse(data);
+      log("INFO", "worker:create-terminal validated", validated);
 
       // Handle auth files first if provided
       if (validated.authFiles && validated.authFiles.length > 0) {
@@ -252,7 +252,7 @@ managementIO.on("connection", (socket) => {
         WORKER_ID
       );
 
-      const terminal = await createTerminal(validated.terminalId, {
+      await createTerminal(validated.terminalId, {
         cols: validated.cols,
         rows: validated.rows,
         cwd: validated.cwd,
@@ -262,30 +262,46 @@ managementIO.on("connection", (socket) => {
         taskId: validated.taskId,
       });
 
-      if (terminal) {
-        log(
-          "INFO",
-          "Terminal created successfully, emitting confirmation",
-          {
-            workerId: WORKER_ID,
-            terminalId: validated.terminalId,
-          },
-          WORKER_ID
-        );
-        socket.emit("worker:terminal-created", {
+      callback({
+        error: null,
+        data: {
           workerId: WORKER_ID,
           terminalId: validated.terminalId,
-        });
-      } else {
-        log(
-          "ERROR",
-          "Failed to create terminal",
-          {
-            terminalId: validated.terminalId,
-          },
-          WORKER_ID
-        );
-      }
+        },
+      });
+      socket.emit("worker:terminal-created", {
+        workerId: WORKER_ID,
+        terminalId: validated.terminalId,
+      });
+
+      // if (terminal) {
+      //   log(
+      //     "INFO",
+      //     "Terminal created successfully, emitting confirmation",
+      //     {
+      //       workerId: WORKER_ID,
+      //       terminalId: validated.terminalId,
+      //     },
+      //     WORKER_ID
+      //   );
+      //   callback({
+      //     workerId: WORKER_ID,
+      //     terminalId: validated.terminalId,
+      //   });
+      //   socket.emit("worker:terminal-created", {
+      //     workerId: WORKER_ID,
+      //     terminalId: validated.terminalId,
+      //   });
+      // } else {
+      //   log(
+      //     "ERROR",
+      //     "Failed to create terminal",
+      //     {
+      //       terminalId: validated.terminalId,
+      //     },
+      //     WORKER_ID
+      //   );
+      // }
     } catch (error) {
       log(
         "ERROR",
@@ -293,6 +309,10 @@ managementIO.on("connection", (socket) => {
         error,
         WORKER_ID
       );
+      callback({
+        error: error instanceof Error ? error : new Error(error as string),
+        data: null,
+      });
       socket.emit("worker:error", {
         workerId: WORKER_ID,
         error: error instanceof Error ? error.message : "Unknown error",
@@ -656,7 +676,7 @@ async function createTerminal(
 
     // Save the full state
     const serializedState = serializeAddon.serialize();
-    const stateFile = `/var/logs/cmux/${terminalId}-state.log`;
+    const stateFile = `/var/log/cmux/terminal-state-${terminalId}.log`;
 
     try {
       await fs.writeFile(stateFile, serializedState);

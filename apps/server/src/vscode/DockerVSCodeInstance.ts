@@ -15,11 +15,8 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     super(config);
     this.containerName = `coderouter-vscode-${this.instanceId}`;
     this.imageName = "coderouter-worker:0.0.1";
-    // Bun requires explicit socket path
-    const isBun = !!(globalThis as any).Bun;
-    this.docker = new Docker(
-      isBun ? { socketPath: '/var/run/docker.sock' } : {}
-    );
+    // Always use explicit socket path for consistency
+    this.docker = new Docker({ socketPath: '/var/run/docker.sock' });
   }
 
   async start(): Promise<VSCodeInstanceInfo> {
@@ -72,23 +69,14 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       ];
     }
 
-    console.log(`Creating container with options:`, JSON.stringify(createOptions, null, 2));
+    console.log(`Creating container...`);
 
     // Create and start the container
-    try {
-      this.container = await this.docker.createContainer(createOptions);
-      console.log(`Container created: ${this.container.id}`);
+    this.container = await this.docker.createContainer(createOptions);
+    console.log(`Container created: ${this.container.id}`);
 
-      await this.container.start();
-      console.log(`Container started successfully`);
-    } catch (error) {
-      console.error(`Failed to create/start container:`, error);
-      throw error;
-    }
-
-    // Wait for container to be ready
-    console.log(`Waiting for container to be ready...`);
-    await new Promise((resolve) => setTimeout(resolve, 5000));
+    await this.container.start();
+    console.log(`Container started`);
 
     // Get container info including port mappings
     const containerInfo = await this.container.inspect();
@@ -105,6 +93,29 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     if (!workerPort) {
       console.error(`Available ports:`, ports);
       throw new Error("Failed to get worker port mapping for port 2377");
+    }
+
+    // Wait for worker to be ready by polling
+    console.log(`Waiting for worker to be ready on port ${workerPort}...`);
+    const maxAttempts = 30; // 15 seconds max
+    const delayMs = 500;
+    
+    for (let i = 0; i < maxAttempts; i++) {
+      try {
+        const response = await fetch(`http://localhost:${workerPort}/socket.io/?EIO=4&transport=polling`);
+        if (response.ok) {
+          console.log(`Worker is ready!`);
+          break;
+        }
+      } catch {
+        // Connection refused, worker not ready yet
+      }
+      
+      if (i < maxAttempts - 1) {
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+      } else {
+        console.warn("Worker may not be fully ready, but continuing...");
+      }
     }
 
     const baseUrl = `http://localhost:${vscodePort}`;
@@ -143,28 +154,6 @@ export class DockerVSCodeInstance extends VSCodeInstance {
   private setupContainerEventMonitoring() {
     if (!this.container) return;
 
-    // Attach to container streams for logs
-    this.container.attach(
-      { stream: true, stdout: true, stderr: true },
-      (err: Error | null, stream?: NodeJS.ReadWriteStream) => {
-        if (err) {
-          console.error(`Failed to attach to container streams:`, err);
-          return;
-        }
-
-        // Demultiplex the stream
-        this.container!.modem.demuxStream(
-          stream!,
-          process.stdout,
-          process.stderr
-        );
-
-        stream!.on("end", () => {
-          console.log(`Container ${this.containerName} stream ended`);
-        });
-      }
-    );
-
     // Monitor container events
     this.container.wait((err: Error | null, data: { StatusCode: number }) => {
       if (err) {
@@ -174,6 +163,26 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         this.emit("exit", data.StatusCode);
       }
     });
+
+    // Attach to container streams for logs (only if DEBUG is enabled)
+    if (process.env.DEBUG) {
+      this.container.attach(
+        { stream: true, stdout: true, stderr: true },
+        (err: Error | null, stream?: NodeJS.ReadWriteStream) => {
+          if (err) {
+            console.error(`Failed to attach to container streams:`, err);
+            return;
+          }
+
+          // Demultiplex the stream
+          this.container!.modem.demuxStream(
+            stream!,
+            process.stdout,
+            process.stderr
+          );
+        }
+      );
+    }
   }
 
   async stop(): Promise<void> {
