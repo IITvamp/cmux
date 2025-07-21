@@ -14,3 +14,5 @@
 [ ] make MorphVSCodeInstance actually work
 [ ] vercel previews
 [ ] vercel comments but it actually just pipes it to claude code and it auto makes a PR!
+[ ] auto set up devcontainers: `bun x @devcontainers/cli up --workspace-folder /root/workspace`
+[ ] rename branches after a task is created to something reasonable
