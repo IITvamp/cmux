@@ -61,6 +61,7 @@ export const WorkerCreateTerminalSchema = z.object({
   args: z.array(z.string()).optional(),
   taskId: z.string().optional(),
   authFiles: z.array(AuthFileSchema).optional(),
+  startupCommands: z.array(z.string()).optional(),
 });
 
 export const WorkerTerminalInputSchema = z.object({

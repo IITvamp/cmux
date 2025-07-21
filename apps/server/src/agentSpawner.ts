@@ -52,6 +52,7 @@ export async function spawnAgent(
     };
 
     let authFiles: EnvironmentResult["files"] = [];
+    let startupCommands: string[] = [];
 
     // Use environment property if available
     if (agent.environment) {
@@ -61,6 +62,7 @@ export async function spawnAgent(
         ...envResult.env,
       };
       authFiles = envResult.files;
+      startupCommands = envResult.startupCommands || [];
     }
 
     // Add required API keys from Convex
@@ -235,6 +237,7 @@ export async function spawnAgent(
       env: envVars,
       taskId: taskRunId,
       authFiles,
+      startupCommands,
       cwd: "/root/workspace",
     };
 

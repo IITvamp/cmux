@@ -240,6 +240,62 @@ managementIO.on("connection", (socket) => {
         }
       }
 
+      // Execute startup commands if provided
+      if (validated.startupCommands && validated.startupCommands.length > 0) {
+        log(
+          "INFO",
+          `Executing ${validated.startupCommands.length} startup commands...`,
+          undefined,
+          WORKER_ID
+        );
+        const { exec } = await import("node:child_process");
+        const { promisify } = await import("node:util");
+        const execAsync = promisify(exec);
+
+        for (const command of validated.startupCommands) {
+          try {
+            log(
+              "INFO",
+              `Executing startup command: ${command}`,
+              undefined,
+              WORKER_ID
+            );
+            const { stdout, stderr } = await execAsync(command, {
+              env: { ...process.env, ...validated.env },
+            });
+            if (stdout) {
+              log(
+                "INFO",
+                `Startup command stdout: ${stdout}`,
+                undefined,
+                WORKER_ID
+              );
+            }
+            if (stderr) {
+              log(
+                "INFO",
+                `Startup command stderr: ${stderr}`,
+                undefined,
+                WORKER_ID
+              );
+            }
+            log(
+              "INFO",
+              `Successfully executed startup command`,
+              undefined,
+              WORKER_ID
+            );
+          } catch (error) {
+            log(
+              "ERROR",
+              `Failed to execute startup command: ${command}`,
+              error,
+              WORKER_ID
+            );
+          }
+        }
+      }
+
       log(
         "INFO",
         "Creating terminal with options",
@@ -265,6 +321,7 @@ managementIO.on("connection", (socket) => {
         command: validated.command,
         args: validated.args,
         taskId: validated.taskId,
+        startupCommands: validated.startupCommands,
       });
 
       callback({
@@ -539,6 +596,7 @@ async function createTerminal(
     command?: string;
     args?: string[];
     taskId?: string;
+    startupCommands?: string[];
   } = {}
 ): Promise<WorkerTerminal | null> {
   if (terminals.has(terminalId)) {
