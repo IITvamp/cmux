@@ -12,3 +12,5 @@
 
 [ ] figure out how to get git working, rn worktrees are broken
 [ ] make MorphVSCodeInstance actually work
+[ ] vercel previews
+[ ] vercel comments but it actually just pipes it to claude code and it auto makes a PR!
