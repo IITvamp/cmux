@@ -609,6 +609,7 @@ async function createTerminal(
     SHELL: "/bin/bash",
     USER: process.env.USER || "root",
     HOME: process.env.HOME || "/root",
+    PATH: `/root/.bun/bin:${process.env.PATH || "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}`,
   };
 
   log("INFO", "Spawning PTY process", {
