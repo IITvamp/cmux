@@ -1,4 +1,4 @@
-#!/usr/bin/env tsx
+import fs from "node:fs";
 import { DockerVSCodeInstance } from "../vscode/DockerVSCodeInstance.js";
 
 async function main() {
@@ -33,9 +33,10 @@ async function main() {
     // Create terminal with Claude Code
     const terminalId = "claude-terminal";
     const command = "bash";
+    const escapedPrompt = prompt.replace(/'/g, "\\'");
     const args = [
       "-c",
-      'bunx @anthropic-ai/claude-code --model claude-sonnet-4-20250514 --dangerously-skip-permissions "what\'s the time?"',
+      `bunx @anthropic-ai/claude-code --model claude-sonnet-4-20250514 --dangerously-skip-permissions "${escapedPrompt}"`,
       // "@anthropic-ai/claude-code",
       // "--model",
       // "claude-sonnet-4-20250514",
@@ -45,6 +46,28 @@ async function main() {
 
     console.log(
       `\nCreating terminal with command: ${command} ${args.join(" ")}`
+    );
+
+    const claudeJsonRaw = fs.readFileSync(
+      process.env.HOME + "/.claude.json",
+      "utf-8"
+    );
+    const claudeJson = JSON.parse(claudeJsonRaw);
+    claudeJson["projects"] = {};
+    claudeJson["projects"]["/root/workspace"] = {
+      allowedTools: [],
+      history: [],
+      mcpContextUris: [],
+      mcpServers: {},
+      enabledMcpjsonServers: [],
+      disabledMcpjsonServers: [],
+      hasTrustDialogAccepted: true,
+      projectOnboardingSeenCount: 0,
+      hasClaudeMdExternalIncludesApproved: false,
+      hasClaudeMdExternalIncludesWarningShown: false,
+    };
+    const claudeJsonBase64 = Buffer.from(JSON.stringify(claudeJson)).toString(
+      "base64"
     );
 
     // Send terminal creation request
@@ -58,6 +81,12 @@ async function main() {
           cols: 80,
           rows: 24,
           env: {},
+          authFiles: [
+            {
+              contentBase64: claudeJsonBase64,
+              destinationPath: "/root/.claude.json",
+            },
+          ],
         },
         (result) => {
           if (result.error) {

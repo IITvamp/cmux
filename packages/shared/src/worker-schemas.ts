@@ -57,7 +57,7 @@ export const WorkerCreateTerminalSchema = z.object({
     .array(
       z.object({
         destinationPath: z.string(),
-        content: z.string(), // base64 encoded
+        contentBase64: z.string(), // base64 encoded
         mode: z.string().optional(),
       })
     )

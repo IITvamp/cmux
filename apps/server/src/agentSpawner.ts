@@ -19,7 +19,7 @@ async function prepareAuthFiles(authFiles?: AuthFileConfig[]): Promise<
   Array<{
     sourcePath: string;
     destinationPath: string;
-    content: string;
+    contentBase64: string;
     mode?: string;
   }>
 > {
@@ -28,7 +28,7 @@ async function prepareAuthFiles(authFiles?: AuthFileConfig[]): Promise<
   const preparedFiles: Array<{
     sourcePath: string;
     destinationPath: string;
-    content: string;
+    contentBase64: string;
     mode?: string;
   }> = [];
 
@@ -49,9 +49,9 @@ async function prepareAuthFiles(authFiles?: AuthFileConfig[]): Promise<
       // Read the file
       const rawContent = await fs.readFile(sourcePath, "utf-8");
       const transformedContent = authFile.transform
-        ? authFile.transform(rawContent)
+        ? await authFile.transform(rawContent)
         : rawContent;
-      const base64Content = Buffer.from(transformedContent).toString("base64");
+      const contentBase64 = Buffer.from(transformedContent).toString("base64");
 
       // Get file permissions
       const stats = await fs.stat(sourcePath);
@@ -60,7 +60,7 @@ async function prepareAuthFiles(authFiles?: AuthFileConfig[]): Promise<
       preparedFiles.push({
         sourcePath,
         destinationPath,
-        content: base64Content,
+        contentBase64,
         mode,
       });
     } catch (error) {
@@ -298,7 +298,7 @@ export async function spawnAgent(
       taskId: taskRunId,
       authFiles: authFiles.map((f) => ({
         destinationPath: f.destinationPath,
-        content: f.content,
+        contentBase64: f.contentBase64,
         mode: f.mode,
       })),
       cwd: "/root/workspace",

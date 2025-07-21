@@ -213,7 +213,10 @@ managementIO.on("connection", (socket) => {
             await fs.mkdir(dir, { recursive: true });
 
             // Write the file
-            await fs.writeFile(destPath, Buffer.from(file.content, "base64"));
+            await fs.writeFile(
+              destPath,
+              Buffer.from(file.contentBase64, "base64")
+            );
 
             // Set permissions if specified
             if (file.mode) {

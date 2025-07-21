@@ -26,7 +26,7 @@
     "ansi-escape-sequences": "^6.2.4",
     "archiver": "^7.0.1",
     "chokidar": "^4.0.3",
-    "convex": "1.26.0-alpha.4",
+    "convex": "1.26.0-alpha.8",
     "dotenv": "^16.6.1",
     "fuzzysort": "^3.1.0",
     "ignore": "^7.0.5",

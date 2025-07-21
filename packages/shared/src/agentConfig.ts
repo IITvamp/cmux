@@ -1,8 +1,13 @@
+import { exec } from "node:child_process";
+import { promisify } from "node:util";
+
+const execAsync = promisify(exec);
+
 export interface AuthFileConfig {
   source: string; // Path on host, can include $HOME
   destination: string; // Path in container/remote
   platform?: "darwin" | "linux" | "win32"; // Optional platform-specific config
-  transform?: (content: string) => string; // Optional transform function to apply to the content
+  transform?: (content: string) => Promise<string>; // Optional transform function to apply to the content
 }
 
 export interface AgentConfig {
@@ -35,7 +40,7 @@ export const AGENT_CONFIGS: AgentConfig[] = [
       {
         source: "$HOME/.claude.json",
         destination: "$HOME/.claude.json",
-        transform: (content) => {
+        transform: async (content) => {
           const parsed = JSON.parse(content) as {
             projects: Record<string, unknown>;
           };
@@ -56,7 +61,46 @@ export const AGENT_CONFIGS: AgentConfig[] = [
           return JSON.stringify(parsed, null, 2);
         },
       },
+      {
+        source: "/dev/null",
+        destination: "$HOME/.claude/.credentials.json",
+        transform: async () => {
+          try {
+            const execResult = await execAsync(
+              "security find-generic-password -a $USER -w -s 'Claude Code-credentials'"
+            );
+            const { stdout } = execResult;
+            const credentialsText = stdout.trim();
+
+            // Validate that it's valid JSON
+            let credentials;
+            try {
+              credentials = JSON.parse(credentialsText);
+            } catch (parseError) {
+              throw new Error(
+                `Invalid JSON in keychain credentials: ${parseError}`
+              );
+            }
+
+            // Check that it has claudeAiOauth field
+            if (!credentials.claudeAiOauth) {
+              throw new Error(
+                "Missing 'claudeAiOauth' field in keychain credentials"
+              );
+            }
+
+            return credentialsText;
+          } catch (error) {
+            throw new Error(
+              `Failed to retrieve credentials from keychain: ${error}`
+            );
+          }
+        },
+      },
     ],
+    env: {
+      IS_SANDBOX: "true",
+    },
   },
   {
     name: "claude-opus",
