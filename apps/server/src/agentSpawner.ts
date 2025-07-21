@@ -4,73 +4,14 @@ import type { Id } from "@coderouter/convex/dataModel";
 import {
   AGENT_CONFIGS,
   type AgentConfig,
-  type AuthFileConfig,
+  type EnvironmentResult,
 } from "@coderouter/shared/agentConfig";
 import type { WorkerCreateTerminal } from "@coderouter/shared/worker-schemas";
-import * as fs from "node:fs/promises";
-import * as os from "node:os";
 import { convex } from "./utils/convexClient.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { MorphVSCodeInstance } from "./vscode/MorphVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWorktreePath, setupProjectWorkspace } from "./workspace.js";
-
-async function prepareAuthFiles(authFiles?: AuthFileConfig[]): Promise<
-  Array<{
-    sourcePath: string;
-    destinationPath: string;
-    contentBase64: string;
-    mode?: string;
-  }>
-> {
-  if (!authFiles) return [];
-
-  const preparedFiles: Array<{
-    sourcePath: string;
-    destinationPath: string;
-    contentBase64: string;
-    mode?: string;
-  }> = [];
-
-  const platform = os.platform();
-  const homeDir = os.homedir();
-
-  for (const authFile of authFiles) {
-    // Skip if platform doesn't match
-    if (authFile.platform && authFile.platform !== platform) {
-      continue;
-    }
-
-    // Resolve $HOME in paths
-    const sourcePath = authFile.source.replace("$HOME", homeDir);
-    const destinationPath = authFile.destination.replace("$HOME", "$HOME"); // Keep $HOME for container
-
-    try {
-      // Read the file
-      const rawContent = await fs.readFile(sourcePath, "utf-8");
-      const transformedContent = authFile.transform
-        ? await authFile.transform(rawContent)
-        : rawContent;
-      const contentBase64 = Buffer.from(transformedContent).toString("base64");
-
-      // Get file permissions
-      const stats = await fs.stat(sourcePath);
-      const mode = (stats.mode & parseInt("777", 8)).toString(8);
-
-      preparedFiles.push({
-        sourcePath,
-        destinationPath,
-        contentBase64,
-        mode,
-      });
-    } catch (error) {
-      console.warn(`Failed to read auth file ${sourcePath}:`, error);
-      // Continue with other files
-    }
-  }
-
-  return preparedFiles;
-}
 
 // Removed zipRepository function - no longer needed since we clone via socket commands
 
@@ -105,11 +46,22 @@ export async function spawnAgent(
     // Fetch API keys from Convex first
     const apiKeys = await convex.query(api.apiKeys.getAllForAgents);
 
-    // Build environment variables including API keys
-    const envVars: Record<string, string> = {
-      ...agent.env,
+    // Build environment variables
+    let envVars: Record<string, string> = {
       PROMPT: options.taskDescription,
     };
+
+    let authFiles: EnvironmentResult["files"] = [];
+
+    // Use environment property if available
+    if (agent.environment) {
+      const envResult = await agent.environment();
+      envVars = {
+        ...envVars,
+        ...envResult.env,
+      };
+      authFiles = envResult.files;
+    }
 
     // Add required API keys from Convex
     if (agent.requiredApiKeys) {
@@ -119,8 +71,6 @@ export async function spawnAgent(
         }
       }
     }
-
-    // No longer need envExports since we're passing env as an object to the worker
 
     // Build the agent command with proper quoting
     const escapedPrompt = options.taskDescription.replace(/"/g, '\\"');
@@ -219,8 +169,7 @@ export async function spawnAgent(
     // Use taskRunId as terminal ID for compatibility
     const terminalId = taskRunId;
 
-    // Prepare auth files before sending terminal creation command
-    const authFiles = await prepareAuthFiles(agent.authFiles);
+    // Log auth files if any
     if (authFiles.length > 0) {
       console.log(
         `[AgentSpawner] Prepared ${authFiles.length} auth files for agent ${agent.name}`
@@ -272,16 +221,6 @@ export async function spawnAgent(
     // Prepare the terminal creation command with auth files
     const terminalCreationCommand: WorkerCreateTerminal = {
       terminalId: tmuxSessionName,
-      // command: "tmux",
-      // args: [
-      //   "new-session",
-      //   "-d",
-      //   "-s",
-      //   tmuxSessionName,
-      //   "bash",
-      //   "-c",
-      //   agentCommand,
-      // ],
       command: "tmux",
       args: [
         "new-session",

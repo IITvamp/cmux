@@ -1,21 +1,21 @@
-export interface AuthFileConfig {
-  source: string; // Path on host, can include $HOME
-  destination: string; // Path in container/remote
-  platform?: "darwin" | "linux" | "win32"; // Optional platform-specific config
-  transform?: (content: string) => Promise<string>; // Optional transform function to apply to the content
+import { getClaudeEnvironment } from "./helpers/claudeEnvironment.js";
+import type { AuthFile } from "./worker-schemas.js";
+
+export interface EnvironmentResult {
+  files: AuthFile[];
+  env: Record<string, string>;
 }
 
 export interface AgentConfig {
   name: string;
   command: string;
   args: string[];
-  env?: Record<string, string>;
   requiredApiKeys?: {
     envVar: string;
     displayName: string;
     description?: string;
   }[];
-  authFiles?: AuthFileConfig[]; // Files to copy for authentication
+  environment?: () => Promise<EnvironmentResult>;
   waitForString?: string;
   enterKeySequence?: string; // Custom enter key sequence, defaults to "\r"
 }
@@ -31,85 +31,7 @@ export const AGENT_CONFIGS: AgentConfig[] = [
       "--dangerously-skip-permissions",
       "$PROMPT",
     ],
-    authFiles: [
-      {
-        source: "$HOME/.claude.json",
-        destination: "$HOME/.claude.json",
-        transform: async (content) => {
-          const parsed = JSON.parse(content) as {
-            projects: Record<string, unknown>;
-          };
-          // parsed["projects"] = parsed["projects"] || {};
-          parsed["projects"] = {};
-          parsed["projects"]["/root/workspace"] = {
-            allowedTools: [],
-            history: [],
-            mcpContextUris: [],
-            mcpServers: {},
-            enabledMcpjsonServers: [],
-            disabledMcpjsonServers: [],
-            hasTrustDialogAccepted: true,
-            projectOnboardingSeenCount: 0,
-            hasClaudeMdExternalIncludesApproved: false,
-            hasClaudeMdExternalIncludesWarningShown: false,
-          };
-          return JSON.stringify(parsed, null, 2);
-        },
-      },
-      {
-        source: "/dev/null",
-        destination: "$HOME/.claude/.credentials.json",
-        transform: async () => {
-          const { exec } = await import("node:child_process");
-          const { promisify } = await import("node:util");
-          const execAsync = promisify(exec);
-          try {
-            const execResult = await execAsync(
-              "security find-generic-password -a $USER -w -s 'Claude Code-credentials'"
-            );
-            const { stdout } = execResult;
-            const credentialsText = stdout.trim();
-
-            // Validate that it's valid JSON
-            let credentials;
-            try {
-              credentials = JSON.parse(credentialsText);
-            } catch (parseError) {
-              throw new Error(
-                `Invalid JSON in keychain credentials: ${parseError}`
-              );
-            }
-
-            // Check that it has claudeAiOauth field
-            if (!credentials.claudeAiOauth) {
-              throw new Error(
-                "Missing 'claudeAiOauth' field in keychain credentials"
-              );
-            }
-
-            return credentialsText;
-          } catch (error) {
-            // fallback to "Claude Code", which is just a raw api key. So we need to wrap in { "claudeAiOauth": {"accessToken": "..."} }
-            const execResult = await execAsync(
-              "security find-generic-password -a $USER -w -s 'Claude Code'"
-            );
-            const { stdout } = execResult;
-            const credentialsText = stdout.trim();
-            // Check it's greater than 50 characters
-            if (credentialsText.length < 50) {
-              throw new Error(
-                `Failed to retrieve credentials from keychain: ${error}`
-              );
-            }
-            return JSON.stringify({
-              claudeAiOauth: {
-                accessToken: credentialsText,
-              },
-            });
-          }
-        },
-      },
-    ],
+    environment: getClaudeEnvironment,
   },
   {
     name: "claude-opus",
@@ -121,12 +43,7 @@ export const AGENT_CONFIGS: AgentConfig[] = [
       "--dangerously-skip-permissions",
       "$PROMPT",
     ],
-    authFiles: [
-      {
-        source: "$HOME/.claude.json",
-        destination: "$HOME/.claude.json",
-      },
-    ],
+    environment: getClaudeEnvironment,
   },
   {
     name: "codex-o3",
@@ -142,50 +59,93 @@ export const AGENT_CONFIGS: AgentConfig[] = [
       "--skip-git-repo-check",
       "$PROMPT",
     ],
-    authFiles: [
-      {
-        source: "$HOME/.codex/auth.json",
-        destination: "$HOME/.codex/auth.json",
-      },
-      {
-        source: "$HOME/.codex/config.json",
-        destination: "$HOME/.codex/config.json",
-      },
-    ],
+    environment: async () => {
+      const { readFile } = await import("node:fs/promises");
+      const { homedir } = await import("node:os");
+      const files: EnvironmentResult["files"] = [];
+
+      try {
+        const authContent = await readFile(
+          `${homedir()}/.codex/auth.json`,
+          "utf-8"
+        );
+        files.push({
+          destinationPath: "$HOME/.codex/auth.json",
+          contentBase64: Buffer.from(authContent).toString("base64"),
+          mode: "600",
+        });
+      } catch (error) {
+        console.warn("Failed to read .codex/auth.json:", error);
+      }
+
+      try {
+        const configContent = await readFile(
+          `${homedir()}/.codex/config.json`,
+          "utf-8"
+        );
+        files.push({
+          destinationPath: "$HOME/.codex/config.json",
+          contentBase64: Buffer.from(configContent).toString("base64"),
+          mode: "644",
+        });
+      } catch (error) {
+        console.warn("Failed to read .codex/config.json:", error);
+      }
+
+      return { files, env: {} };
+    },
   },
   {
     name: "opencode-sonnet",
     command: "bunx",
     args: ["opencode-ai@latest", "--model", "sonnet", "--prompt", "$PROMPT"],
-    authFiles: [
-      {
-        source: "$HOME/.local/share/opencode/auth.json",
-        destination: "$HOME/.local/share/opencode/auth.json",
-        platform: "darwin",
-      },
-      {
-        source: "$HOME/.local/share/opencode/auth.json",
-        destination: "$HOME/.local/share/opencode/auth.json",
-        platform: "linux",
-      },
-    ],
+    environment: async () => {
+      const { readFile } = await import("node:fs/promises");
+      const { homedir } = await import("node:os");
+      const files: EnvironmentResult["files"] = [];
+
+      try {
+        const authContent = await readFile(
+          `${homedir()}/.local/share/opencode/auth.json`,
+          "utf-8"
+        );
+        files.push({
+          destinationPath: "$HOME/.local/share/opencode/auth.json",
+          contentBase64: Buffer.from(authContent).toString("base64"),
+          mode: "600",
+        });
+      } catch (error) {
+        console.warn("Failed to read opencode auth.json:", error);
+      }
+
+      return { files, env: {} };
+    },
   },
   {
     name: "opencode-kimi-k2",
     command: "bunx",
     args: ["opencode-ai@latest", "--model", "kimi-k2", "--prompt", "$PROMPT"],
-    authFiles: [
-      {
-        source: "$HOME/.local/share/opencode/auth.json",
-        destination: "$HOME/.local/share/opencode/auth.json",
-        platform: "darwin",
-      },
-      {
-        source: "$HOME/.local/share/opencode/auth.json",
-        destination: "$HOME/.local/share/opencode/auth.json",
-        platform: "linux",
-      },
-    ],
+    environment: async () => {
+      const { readFile } = await import("node:fs/promises");
+      const { homedir } = await import("node:os");
+      const files: EnvironmentResult["files"] = [];
+
+      try {
+        const authContent = await readFile(
+          `${homedir()}/.local/share/opencode/auth.json`,
+          "utf-8"
+        );
+        files.push({
+          destinationPath: "$HOME/.local/share/opencode/auth.json",
+          contentBase64: Buffer.from(authContent).toString("base64"),
+          mode: "600",
+        });
+      } catch (error) {
+        console.warn("Failed to read opencode auth.json:", error);
+      }
+
+      return { files, env: {} };
+    },
   },
   {
     name: "gemini-2.5-flash",
@@ -198,7 +158,13 @@ export const AGENT_CONFIGS: AgentConfig[] = [
       "--prompt",
       "$PROMPT",
     ],
-    // waitForString: "Type your message",
+    environment: async () => {
+      // For Gemini, we only need environment variables, no files
+      return {
+        files: [],
+        env: {}, // Will be populated from Convex API keys in agentSpawner.ts
+      };
+    },
     requiredApiKeys: [
       {
         envVar: "GEMINI_API_KEY",
@@ -218,7 +184,13 @@ export const AGENT_CONFIGS: AgentConfig[] = [
       "--prompt",
       "$PROMPT",
     ],
-    // waitForString: "Type your message",
+    environment: async () => {
+      // For Gemini, we only need environment variables, no files
+      return {
+        files: [],
+        env: {}, // Will be populated from Convex API keys in agentSpawner.ts
+      };
+    },
     requiredApiKeys: [
       {
         envVar: "GEMINI_API_KEY",

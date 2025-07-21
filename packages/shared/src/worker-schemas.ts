@@ -1,5 +1,12 @@
 import { z } from "zod";
 
+// Auth file schema for file uploads and environment setup
+export const AuthFileSchema = z.object({
+  destinationPath: z.string(),
+  contentBase64: z.string(), // base64 encoded
+  mode: z.string().optional(),
+});
+
 // Worker Registration
 export const WorkerRegisterSchema = z.object({
   workerId: z.string(),
@@ -53,15 +60,7 @@ export const WorkerCreateTerminalSchema = z.object({
   command: z.string().optional(),
   args: z.array(z.string()).optional(),
   taskId: z.string().optional(),
-  authFiles: z
-    .array(
-      z.object({
-        destinationPath: z.string(),
-        contentBase64: z.string(), // base64 encoded
-        mode: z.string().optional(),
-      })
-    )
-    .optional(),
+  authFiles: z.array(AuthFileSchema).optional(),
 });
 
 export const WorkerTerminalInputSchema = z.object({
@@ -123,6 +122,7 @@ export const ServerToWorkerCommandSchema = z.object({
 });
 
 // Type exports
+export type AuthFile = z.infer<typeof AuthFileSchema>;
 export type WorkerRegister = z.infer<typeof WorkerRegisterSchema>;
 export type WorkerHeartbeat = z.infer<typeof WorkerHeartbeatSchema>;
 export type TerminalAssignment = z.infer<typeof TerminalAssignmentSchema>;
