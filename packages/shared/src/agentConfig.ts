@@ -1,8 +1,3 @@
-import { exec } from "node:child_process";
-import { promisify } from "node:util";
-
-const execAsync = promisify(exec);
-
 export interface AuthFileConfig {
   source: string; // Path on host, can include $HOME
   destination: string; // Path in container/remote
@@ -65,6 +60,9 @@ export const AGENT_CONFIGS: AgentConfig[] = [
         source: "/dev/null",
         destination: "$HOME/.claude/.credentials.json",
         transform: async () => {
+          const { exec } = await import("node:child_process");
+          const { promisify } = await import("node:util");
+          const execAsync = promisify(exec);
           try {
             const execResult = await execAsync(
               "security find-generic-password -a $USER -w -s 'Claude Code-credentials'"
@@ -91,16 +89,27 @@ export const AGENT_CONFIGS: AgentConfig[] = [
 
             return credentialsText;
           } catch (error) {
-            throw new Error(
-              `Failed to retrieve credentials from keychain: ${error}`
+            // fallback to "Claude Code", which is just a raw api key. So we need to wrap in { "claudeAiOauth": {"accessToken": "..."} }
+            const execResult = await execAsync(
+              "security find-generic-password -a $USER -w -s 'Claude Code'"
             );
+            const { stdout } = execResult;
+            const credentialsText = stdout.trim();
+            // Check it's greater than 50 characters
+            if (credentialsText.length < 50) {
+              throw new Error(
+                `Failed to retrieve credentials from keychain: ${error}`
+              );
+            }
+            return JSON.stringify({
+              claudeAiOauth: {
+                accessToken: credentialsText,
+              },
+            });
           }
         },
       },
     ],
-    env: {
-      IS_SANDBOX: "true",
-    },
   },
   {
     name: "claude-opus",

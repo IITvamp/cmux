@@ -404,8 +404,8 @@ export async function spawnAgent(
     }
 
     // Add a small delay to ensure socket is fully established
-    console.log(`[AgentSpawner] Waiting 1 second for socket to stabilize...`);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    // console.log(`[AgentSpawner] Waiting 1 second for socket to stabilize...`);
+    // await new Promise((resolve) => setTimeout(resolve, 1000));
 
     // Send the terminal creation command
     console.log(

@@ -188,11 +188,12 @@ function DashboardComponent() {
   }, [
     selectedProject,
     taskDescription,
+    socket,
     selectedBranch,
-    selectedAgents,
     createTask,
     handleTaskDescriptionChange,
-    socket,
+    selectedAgents,
+    isCloudMode,
   ]);
 
   // Fetch repos on mount if none exist
@@ -234,13 +235,17 @@ function DashboardComponent() {
   const agentOptions = AGENT_CONFIGS.map((agent) => agent.name);
 
   const navigate = useNavigate();
-  const [hoveredTaskId, setHoveredTaskId] = useState<string | null>(null);
 
   // Listen for VSCode spawned events
   useEffect(() => {
     if (!socket) return;
 
-    const handleVSCodeSpawned = (data: { instanceId: string; url: string; workspaceUrl: string; provider: string }) => {
+    const handleVSCodeSpawned = (data: {
+      instanceId: string;
+      url: string;
+      workspaceUrl: string;
+      provider: string;
+    }) => {
       console.log("VSCode spawned:", data);
       // Open in new tab
       window.open(data.workspaceUrl, "_blank");
@@ -425,8 +430,6 @@ function DashboardComponent() {
                         ? "bg-white/50 dark:bg-neutral-700/30 border-neutral-200 dark:border-neutral-500/15 animate-pulse"
                         : "bg-white dark:bg-neutral-700/50 border-neutral-200 dark:border-neutral-500/15 hover:border-neutral-300 dark:hover:border-neutral-500/30"
                     )}
-                    onMouseEnter={() => setHoveredTaskId(task._id)}
-                    onMouseLeave={() => setHoveredTaskId(null)}
                     onClick={() =>
                       navigate({
                         to: "/task/$taskId",
@@ -479,24 +482,24 @@ function DashboardComponent() {
                         })}
                       </span>
                     )}
-                    {hoveredTaskId === task._id && !task._id.includes("-") && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          archiveTask({ id: task._id });
-                        }}
-                        className={clsx(
-                          "absolute right-2 p-1 rounded",
-                          "bg-neutral-100 dark:bg-neutral-700",
-                          "text-neutral-600 dark:text-neutral-400",
-                          "hover:bg-neutral-200 dark:hover:bg-neutral-600",
-                          "transition-colors opacity-0 group-hover:opacity-100"
-                        )}
-                        title="Archive task"
-                      >
-                        <Archive className="w-3.5 h-3.5" />
-                      </button>
-                    )}
+                    {/* {hoveredTaskId === task._id && !task._id.includes("-") && (
+                    )} */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        archiveTask({ id: task._id });
+                      }}
+                      className={clsx(
+                        "absolute right-2 p-1 rounded",
+                        "bg-neutral-100 dark:bg-neutral-700",
+                        "text-neutral-600 dark:text-neutral-400",
+                        "hover:bg-neutral-200 dark:hover:bg-neutral-600",
+                        "transition opacity-0 group-hover:opacity-100"
+                      )}
+                      title="Archive task"
+                    >
+                      <Archive className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 ))}
               </div>
