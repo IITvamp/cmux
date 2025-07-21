@@ -61,9 +61,29 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
     // Add volume mount if workspace path is provided
     if (this.config.workspacePath) {
-      createOptions.HostConfig!.Binds = [
-        `${this.config.workspacePath}:/root/workspace`,
-      ];
+      // Extract the origin path from the workspace path
+      // Workspace path is like: ~/cmux/<repoName>/worktrees/<branchName>
+      // Origin path is: ~/cmux/<repoName>/origin
+      const pathParts = this.config.workspacePath.split('/');
+      const worktreesIndex = pathParts.lastIndexOf('worktrees');
+      
+      if (worktreesIndex > 0) {
+        // Build the origin path
+        const originPath = [...pathParts.slice(0, worktreesIndex), 'origin'].join('/');
+        
+        createOptions.HostConfig!.Binds = [
+          `${this.config.workspacePath}:/root/workspace`,
+          // Mount the origin directory at the same absolute path to preserve git references
+          `${originPath}:${originPath}:ro`, // Read-only mount for safety
+        ];
+        
+        console.log(`  Origin mount: ${originPath} -> ${originPath} (read-only)`);
+      } else {
+        // Fallback to just mounting the workspace
+        createOptions.HostConfig!.Binds = [
+          `${this.config.workspacePath}:/root/workspace`,
+        ];
+      }
     }
 
     console.log(`Creating container...`);
