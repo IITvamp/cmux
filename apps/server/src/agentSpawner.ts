@@ -144,7 +144,7 @@ export async function spawnAgent(
         `[AgentSpawner] Creating DockerVSCodeInstance for ${agent.name}`
       );
       vscodeInstance = new DockerVSCodeInstance({
-        // workspacePath: worktreePath,
+        workspacePath: worktreePath,
         agentName: agent.name,
       });
     }
