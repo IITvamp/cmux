@@ -38,7 +38,6 @@ function DashboardComponent() {
     return stored ? JSON.parse(stored) : ["claude-sonnet"];
   });
   const [taskDescription, setTaskDescription] = useState<string>("");
-  const [isStartingTask, setIsStartingTask] = useState(false);
   const [isCloudMode, setIsCloudMode] = useState<boolean>(() => {
     const stored = localStorage.getItem("isCloudMode");
     return stored ? JSON.parse(stored) : true;
@@ -139,7 +138,6 @@ function DashboardComponent() {
       return;
     }
 
-    setIsStartingTask(true);
     try {
       // Create task in Convex - this will also start the task via socket.io
       const taskId = await createTask({
@@ -147,8 +145,6 @@ function DashboardComponent() {
         projectFullName,
         branch,
       });
-
-      // setIsStartingTask(false);
 
       // Clear input after successful task creation
       setTaskDescription("");
@@ -169,9 +165,6 @@ function DashboardComponent() {
           isCloudMode,
         },
         (response) => {
-          // if (err) {
-          //   console.error("Task start error:", err);
-          // }
           console.log("response", response);
           if ("error" in response) {
             console.error("Task start error:", response.error);
@@ -183,7 +176,6 @@ function DashboardComponent() {
       console.log("Task created:", taskId);
     } catch (error) {
       console.error("Error starting task:", error);
-      setIsStartingTask(false);
     }
   }, [
     selectedProject,
@@ -264,10 +256,10 @@ function DashboardComponent() {
 
   // Handle Command+Enter keyboard shortcut
   const handleSubmit = useCallback(() => {
-    if (selectedProject[0] && taskDescription.trim() && !isStartingTask) {
+    if (selectedProject[0] && taskDescription.trim()) {
       handleStartTask();
     }
-  }, [selectedProject, taskDescription, isStartingTask, handleStartTask]);
+  }, [selectedProject, taskDescription, handleStartTask]);
 
   return (
     <div className="flex flex-col min-h-full bg-neutral-50 dark:bg-neutral-900/60">
