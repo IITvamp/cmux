@@ -179,7 +179,17 @@ managementIO.on("connection", (socket) => {
     log(
       "INFO",
       "Management namespace: Received request to create terminal from main server",
-      data,
+      // data,
+      JSON.stringify(
+        data,
+        (_key, value) => {
+          if (typeof value === "string" && value.length > 1000) {
+            return value.slice(0, 1000) + "...";
+          }
+          return value;
+        },
+        2
+      ),
       WORKER_ID
     );
     try {
@@ -341,35 +351,6 @@ managementIO.on("connection", (socket) => {
         workerId: WORKER_ID,
         terminalId: validated.terminalId,
       });
-
-      // if (terminal) {
-      //   log(
-      //     "INFO",
-      //     "Terminal created successfully, emitting confirmation",
-      //     {
-      //       workerId: WORKER_ID,
-      //       terminalId: validated.terminalId,
-      //     },
-      //     WORKER_ID
-      //   );
-      //   callback({
-      //     workerId: WORKER_ID,
-      //     terminalId: validated.terminalId,
-      //   });
-      //   socket.emit("worker:terminal-created", {
-      //     workerId: WORKER_ID,
-      //     terminalId: validated.terminalId,
-      //   });
-      // } else {
-      //   log(
-      //     "ERROR",
-      //     "Failed to create terminal",
-      //     {
-      //       terminalId: validated.terminalId,
-      //     },
-      //     WORKER_ID
-      //   );
-      // }
     } catch (error) {
       log(
         "ERROR",

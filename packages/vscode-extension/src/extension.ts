@@ -68,14 +68,8 @@ async function openMultiDiffEditor() {
   });
 }
 
-async function setupTerminalsFromWorker(
-  terminals: Array<{ terminalId: string; taskId?: string }>
-) {
-  log(`Received ${terminals.length} active terminals from worker`);
-
-  // Filter to only use the default terminal
-  // terminals = terminals.filter((t) => t.terminalId === "default");
-  // log(`Filtered to ${terminals.length} default terminal(s)`);
+async function setupDefaultTerminal() {
+  log("Setting up default terminal");
 
   // Prevent duplicate setup
   if (isSetupComplete) {
@@ -102,48 +96,33 @@ async function setupTerminalsFromWorker(
   log("Opening git changes view...");
   await openMultiDiffEditor();
 
-  // Create terminals for each tmux session
-  for (let i = 0; i < terminals.length; i++) {
-    const terminalInfo = terminals[i];
-    log(
-      `Creating terminal ${i + 1}/${terminals.length} for tmux session ${terminalInfo.terminalId}`
-    );
+  // Create terminal for default tmux session
+  log("Creating terminal for default tmux session");
 
-    // Split editor for additional terminals
-    if (i > 0) {
-      await vscode.commands.executeCommand("workbench.action.splitEditor");
-    }
+  const terminal = vscode.window.createTerminal({
+    name: `Default Session`,
+    location: vscode.TerminalLocation.Editor,
+    cwd: "/root/workspace",
+    env: process.env,
+  });
 
-    const terminal = vscode.window.createTerminal({
-      name: `Session: ${terminalInfo.terminalId}`,
-      location: vscode.TerminalLocation.Editor,
-      cwd: "/root/workspace",
-      env: process.env,
-    });
+  terminal.show();
 
-    terminal.show();
+  // Store terminal reference
+  activeTerminals.set("default", terminal);
 
-    // Store terminal reference
-    activeTerminals.set(terminalInfo.terminalId, terminal);
+  // Attach to default tmux session with a small delay to ensure it's ready
+  setTimeout(() => {
+    terminal.sendText(`tmux attach`);
+    log("Attached to default tmux session");
+  }, 500); // 500ms delay to ensure tmux session is ready
 
-    // Attach to tmux session with a small delay to ensure it's ready
-    setTimeout(() => {
-      terminal.sendText(`tmux attach-session -t ${terminalInfo.terminalId}`);
-      log(`Attached to tmux session ${terminalInfo.terminalId}`);
-    }, 500); // 500ms delay to ensure tmux session is ready
-  }
+  log("Created terminal successfully");
 
-  log(`Created ${terminals.length} terminal(s) successfully`);
-
-  // After all terminals are created, ensure the terminal is active and move to right group
+  // After terminal is created, ensure the terminal is active and move to right group
   setTimeout(async () => {
     // Focus on the terminal tab
-    if (activeTerminals.size > 0) {
-      const firstTerminal = activeTerminals.values().next().value;
-      if (firstTerminal) {
-        firstTerminal.show();
-      }
-    }
+    terminal.show();
 
     // Move the active editor (terminal) to the right group
     log("Moving terminal editor to right group");
@@ -152,7 +131,7 @@ async function setupTerminalsFromWorker(
     );
 
     // Ensure terminal has focus
-    await vscode.commands.executeCommand("workbench.action.terminal.focus");
+    // await vscode.commands.executeCommand("workbench.action.terminal.focus");
 
     log("Terminal setup complete");
   }, 100);
@@ -181,14 +160,12 @@ function connectToWorker() {
   // Set up event handlers only once
   workerSocket.once("connect", () => {
     log("Connected to worker socket server");
-    // Request terminals only on first connection
+    // Setup default terminal on first connection
     if (!isSetupComplete) {
-      log("Requesting active terminals...");
-      workerSocket!.emit("get-active-terminals");
+      log("Setting up default terminal...");
+      setupDefaultTerminal();
     }
   });
-
-  workerSocket.on("active-terminals", setupTerminalsFromWorker);
 
   workerSocket.on("disconnect", () => {
     log("Disconnected from worker socket server");
@@ -321,11 +298,11 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   let run = vscode.commands.registerCommand("coderouter.run", async () => {
-    // Force request terminals again
+    // Force setup default terminal
     if (workerSocket && workerSocket.connected) {
-      log("Manually requesting terminals...");
+      log("Manually setting up default terminal...");
       isSetupComplete = false; // Allow setup to run again
-      workerSocket.emit("get-active-terminals");
+      setupDefaultTerminal();
     } else {
       connectToWorker();
     }

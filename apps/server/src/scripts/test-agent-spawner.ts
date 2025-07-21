@@ -90,10 +90,10 @@ async function main() {
         // Wait forever
         await new Promise(() => {});
       } else {
-        console.log("\nWaiting 30 seconds to observe terminal behavior...");
+        console.log("\nWaiting 60 seconds to observe terminal behavior...");
 
-        // Wait for 30 seconds
-        await new Promise((resolve) => setTimeout(resolve, 30000));
+        // Wait for 60 seconds
+        await new Promise((resolve) => setTimeout(resolve, 60000));
 
         console.log("\n\nChecking if terminal is still running...");
 

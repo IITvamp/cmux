@@ -4,8 +4,11 @@
 [ ] figure out intricacies of deploying the Dockerfile to daytona
 [x] create morph snapshot
 [ ] make it easy to provide context to claude code -- my fav is using cmd + p to open a ton of editors
-[ ] copy over the credentials properly
+[x] copy over the credentials properly
 [ ] make it easy to create a new task from scratch without any existing directory or git repo
 [ ] fallback if user doesn't use gh cli
 [ ] authentication
 [ ] whenever i start typing in /dashboard, even if i'm not focused on the textinput, it should automatically start typing in the textinput (including the keys i just pressed but weren't focused on the textinput)
+
+[ ] figure out how to get git working, rn worktrees are broken
+[ ] make MorphVSCodeInstance actually work

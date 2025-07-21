@@ -1,9 +1,13 @@
-import { MorphCloudClient } from "morphcloud";
-import { VSCodeInstance, type VSCodeInstanceConfig, type VSCodeInstanceInfo } from "./VSCodeInstance.js";
+import { type Instance, MorphCloudClient } from "morphcloud";
+import {
+  VSCodeInstance,
+  type VSCodeInstanceConfig,
+  type VSCodeInstanceInfo,
+} from "./VSCodeInstance.js";
 
 export class MorphVSCodeInstance extends VSCodeInstance {
   private morphClient: MorphCloudClient;
-  private instance: any; // Morph instance type
+  private instance: Instance | null = null; // Morph instance type
   private snapshotId = "snapshot_gn1wmycs"; // Default snapshot ID
 
   constructor(config: VSCodeInstanceConfig) {
@@ -23,8 +27,12 @@ export class MorphVSCodeInstance extends VSCodeInstance {
 
     // Get exposed services
     const exposedServices = this.instance.networking.httpServices;
-    const vscodeService = exposedServices.find((service: any) => service.port === 2376);
-    const workerService = exposedServices.find((service: any) => service.port === 2377);
+    const vscodeService = exposedServices.find(
+      (service) => service.port === 2376
+    );
+    const workerService = exposedServices.find(
+      (service) => service.port === 2377
+    );
 
     if (!vscodeService || !workerService) {
       throw new Error("VSCode or worker service not found in Morph instance");
@@ -34,13 +42,18 @@ export class MorphVSCodeInstance extends VSCodeInstance {
     console.log(`Morph VSCode instance started:`);
     console.log(`  VS Code URL: ${workspaceUrl}`);
     console.log(`  Worker URL: ${workerService.url}`);
-    
+
     // Connect to the worker
     try {
       await this.connectToWorker(workerService.url);
-      console.log(`Successfully connected to worker for Morph instance ${this.instance.id}`);
+      console.log(
+        `Successfully connected to worker for Morph instance ${this.instance.id}`
+      );
     } catch (error) {
-      console.error(`Failed to connect to worker for Morph instance ${this.instance.id}:`, error);
+      console.error(
+        `Failed to connect to worker for Morph instance ${this.instance.id}:`,
+        error
+      );
       // Continue anyway - the instance is running even if we can't connect to the worker
     }
 
@@ -52,10 +65,9 @@ export class MorphVSCodeInstance extends VSCodeInstance {
     };
   }
 
-
   async stop(): Promise<void> {
     console.log(`Stopping Morph VSCode instance: ${this.instanceId}`);
-    
+
     // Disconnect from worker first
     await this.disconnectFromWorker();
 
@@ -75,7 +87,9 @@ export class MorphVSCodeInstance extends VSCodeInstance {
       // Check if instance is still running
       // Note: You might need to adjust this based on Morph's API
       const exposedServices = this.instance.networking.httpServices;
-      const vscodeService = exposedServices.find((service: any) => service.port === 2376);
+      const vscodeService = exposedServices.find(
+        (service) => service.port === 2376
+      );
 
       if (vscodeService) {
         return {
@@ -90,7 +104,7 @@ export class MorphVSCodeInstance extends VSCodeInstance {
       }
 
       return { running: false };
-    } catch (error) {
+    } catch (_error) {
       return { running: false };
     }
   }
