@@ -8,6 +8,14 @@ import { VSCodeInstance } from "../vscode/VSCodeInstance.js";
 async function main() {
   console.log("=== Testing Agent Spawner ===\n");
 
+  // Parse command line arguments for interactive mode
+  const args = process.argv.slice(2);
+  const isInteractive = args.includes("--interactive") || args.includes("-i");
+
+  if (isInteractive) {
+    console.log("Running in interactive mode. Press Ctrl+C to exit.\n");
+  }
+
   // Create a map to store VSCode instances
   const vscodeInstances = new Map<string, VSCodeInstance>();
 
@@ -63,55 +71,75 @@ async function main() {
       console.log(`Terminal ID: ${result.terminalId}`);
 
       // Keep process alive to observe
-      console.log("\nWaiting 10 seconds to observe terminal behavior...");
+      if (isInteractive) {
+        console.log("\nRunning in interactive mode. Press Ctrl+C to exit...");
 
-      // Wait for 10 seconds
-      await new Promise((resolve) => setTimeout(resolve, 10000));
+        // Set up cleanup on Ctrl+C
+        process.on("SIGINT", async () => {
+          console.log("\n\nReceived interrupt signal. Shutting down...");
 
-      console.log("\n\nChecking if terminal is still running...");
-
-      // Check container and tmux status
-      const containerId = result.vscodeUrl?.match(/localhost:(\d+)/)?.[1];
-      if (containerId) {
-        try {
-          const { execSync } = await import("child_process");
-          // Find container by partial name match
-          const findCmd = `docker ps -a --format "{{.ID}} {{.Names}}" | grep coderouter-vscode | head -1 | awk '{print $1}'`;
-          const dockerId = execSync(findCmd).toString().trim();
-
-          if (dockerId) {
-            console.log(`\nContainer ID: ${dockerId}`);
-
-            // Check tmux sessions
-            const tmuxList = execSync(
-              `docker exec ${dockerId} tmux ls 2>&1 || echo "No sessions"`
-            ).toString();
-            console.log(`Tmux sessions: ${tmuxList.trim()}`);
-
-            // Check if specific session exists
-            const sessionExists = tmuxList.includes(
-              result.terminalId.slice(-8)
-            );
-            console.log(`Terminal session exists: ${sessionExists}`);
+          // Stop all VSCode instances
+          for (const [id, instance] of vscodeInstances) {
+            console.log(`Stopping VSCode instance ${id}...`);
+            await instance.stop();
           }
-        } catch (e) {
-          if (e instanceof Error) {
-            console.log("Could not check container status:", e.message);
-          } else {
-            console.log("Could not check container status:", e);
+
+          process.exit(0);
+        });
+
+        // Wait forever
+        await new Promise(() => {});
+      } else {
+        console.log("\nWaiting 30 seconds to observe terminal behavior...");
+
+        // Wait for 30 seconds
+        await new Promise((resolve) => setTimeout(resolve, 30000));
+
+        console.log("\n\nChecking if terminal is still running...");
+
+        // Check container and tmux status
+        const containerId = result.vscodeUrl?.match(/localhost:(\d+)/)?.[1];
+        if (containerId) {
+          try {
+            const { execSync } = await import("child_process");
+            // Find container by partial name match
+            const findCmd = `docker ps -a --format "{{.ID}} {{.Names}}" | grep coderouter-vscode | head -1 | awk '{print $1}'`;
+            const dockerId = execSync(findCmd).toString().trim();
+
+            if (dockerId) {
+              console.log(`\nContainer ID: ${dockerId}`);
+
+              // Check tmux sessions
+              const tmuxList = execSync(
+                `docker exec ${dockerId} tmux ls 2>&1 || echo "No sessions"`
+              ).toString();
+              console.log(`Tmux sessions: ${tmuxList.trim()}`);
+
+              // Check if specific session exists
+              const sessionExists = tmuxList.includes(
+                result.terminalId.slice(-8)
+              );
+              console.log(`Terminal session exists: ${sessionExists}`);
+            }
+          } catch (e) {
+            if (e instanceof Error) {
+              console.log("Could not check container status:", e.message);
+            } else {
+              console.log("Could not check container status:", e);
+            }
           }
         }
+
+        console.log("\nShutting down...");
+
+        // Stop all VSCode instances
+        for (const [id, instance] of vscodeInstances) {
+          console.log(`Stopping VSCode instance ${id}...`);
+          await instance.stop();
+        }
+
+        process.exit(0);
       }
-
-      console.log("\nShutting down...");
-
-      // Stop all VSCode instances
-      for (const [id, instance] of vscodeInstances) {
-        console.log(`Stopping VSCode instance ${id}...`);
-        await instance.stop();
-      }
-
-      process.exit(0);
     } else {
       console.error("\n❌ Agent spawn failed!");
       console.error(`Error: ${result.error}`);

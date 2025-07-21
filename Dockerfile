@@ -31,9 +31,6 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
 RUN curl -fsSL https://bun.sh/install | bash
 ENV PATH="/root/.bun/bin:$PATH"
 
-# Install global packages
-RUN bun add -g @openai/codex @anthropic-ai/claude-code @google/gemini-cli opencode-ai codebuff @devcontainers/cli @sourcegraph/amp
-
 # Install openvscode-server
 RUN if [ -z ${CODE_RELEASE+x} ]; then \
     CODE_RELEASE=$(curl -sX GET "https://api.github.com/repos/gitpod-io/openvscode-server/releases/latest" \
@@ -135,6 +132,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pigz \
     xz-utils \
     tmux \
+    ripgrep \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js 22.x (runtime)
@@ -186,6 +184,18 @@ COPY --from=builder /usr/local/bin/wait-for-docker.sh /usr/local/bin/wait-for-do
 
 # Copy complete Bun installation
 COPY --from=builder /root/.bun /root/.bun
+
+# Install global packages
+RUN bun add -g @openai/codex @anthropic-ai/claude-code @google/gemini-cli opencode-ai codebuff @devcontainers/cli @sourcegraph/amp
+
+# Find and install claude-code.vsix from Bun cache using ripgrep
+RUN claude_vsix=$(rg --files /root/.bun/install/cache/@anthropic-ai 2>/dev/null | rg "claude-code\.vsix$" | head -1) && \
+    if [ -n "$claude_vsix" ]; then \
+        echo "Found claude-code.vsix at: $claude_vsix" && \
+        /app/openvscode-server/bin/openvscode-server --install-extension "$claude_vsix"; \
+    else \
+        echo "Warning: claude-code.vsix not found in Bun cache"; \
+    fi
 
 # Create modprobe script (required for DinD)
 RUN <<-'EOF'
