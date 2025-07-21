@@ -1,9 +1,9 @@
+import { api } from "@coderouter/convex/api";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { RepositoryManager } from "./repositoryManager.js";
 import { convex } from "./utils/convexClient.js";
-import { api } from "@coderouter/convex/api";
 
 interface WorkspaceResult {
   success: boolean;
@@ -45,23 +45,22 @@ function extractRepoName(repoUrl: string): string {
   return parts[parts.length - 1] || "unknown-repo";
 }
 
-
 export async function getWorktreePath(args: {
   repoUrl: string;
   branch?: string;
 }): Promise<WorktreeInfo> {
   // Check for custom worktree path setting
   const settings = await convex.query(api.workspaceSettings.get);
-  
+
   let projectsPath: string;
-  
+
   if (settings?.worktreePath) {
     // Use custom path, expand ~ to home directory
     const expandedPath = settings.worktreePath.replace(/^~/, os.homedir());
     projectsPath = expandedPath;
   } else {
-    // Use default path: ~/cmux-worktrees
-    projectsPath = path.join(os.homedir(), "cmux-worktrees");
+    // Use default path: ~/cmux
+    projectsPath = path.join(os.homedir(), "cmux");
   }
 
   const repoName = extractRepoName(args.repoUrl);
@@ -109,14 +108,20 @@ export async function setupProjectWorkspace(args: {
           const entryStats = await fs.stat(entryPath);
           if (entryStats.isDirectory()) {
             // Check if it's a git repository structure we expect
-            const hasOrigin = await fs.access(path.join(entryPath, "origin")).then(() => true).catch(() => false);
-            const hasWorktrees = await fs.access(path.join(entryPath, "worktrees")).then(() => true).catch(() => false);
-            
+            const hasOrigin = await fs
+              .access(path.join(entryPath, "origin"))
+              .then(() => true)
+              .catch(() => false);
+            const hasWorktrees = await fs
+              .access(path.join(entryPath, "worktrees"))
+              .then(() => true)
+              .catch(() => false);
+
             if (!hasOrigin && !hasWorktrees) {
               // This directory has unexpected content
               return {
                 success: false,
-                error: `The directory ${worktreeInfo.projectsPath} contains existing files that are not git worktrees. Please choose a different location in settings or move the existing files.`
+                error: `The directory ${worktreeInfo.projectsPath} contains existing files that are not git worktrees. Please choose a different location in settings or move the existing files.`,
               };
             }
           }

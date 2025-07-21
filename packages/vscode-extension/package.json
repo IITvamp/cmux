@@ -3,6 +3,7 @@
   "displayName": "Coderouter Extension",
   "description": "Coderouter VS Code Extension",
   "version": "0.0.1",
+  "type": "module",
   "publisher": "coderouter",
   "repository": {
     "type": "git",
@@ -17,7 +18,7 @@
   "activationEvents": [
     "onStartupFinished"
   ],
-  "main": "./out/extension.js",
+  "main": "./out/extension.cjs",
   "contributes": {
     "commands": [
       {
@@ -32,7 +33,7 @@
   },
   "scripts": {
     "vscode:prepublish": "bun run compile-bun",
-    "compile-bun": "bun build src/extension.ts --target node --outdir ./out --external vscode --minify --format cjs",
+    "compile-bun": "bun build src/extension.ts --target node --outfile ./out/extension.cjs --external vscode --minify --format cjs",
     "compile-tsc": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
@@ -41,6 +42,7 @@
     "package": "vsce package --allow-missing-repository --no-dependencies --allow-star-activation"
   },
   "devDependencies": {
+    "@coderouter/shared": "file:../../packages/shared",
     "@types/mocha": "^10.0.6",
     "@types/node": "^20.11.5",
     "@types/vscode": "^1.73.0",

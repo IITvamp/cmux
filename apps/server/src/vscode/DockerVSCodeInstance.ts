@@ -16,7 +16,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     this.containerName = `coderouter-vscode-${this.instanceId}`;
     this.imageName = "coderouter-worker:0.0.1";
     // Always use explicit socket path for consistency
-    this.docker = new Docker({ socketPath: '/var/run/docker.sock' });
+    this.docker = new Docker({ socketPath: "/var/run/docker.sock" });
   }
 
   async start(): Promise<VSCodeInstanceInfo> {
@@ -42,10 +42,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     const createOptions: Docker.ContainerCreateOptions = {
       name: this.containerName,
       Image: this.imageName,
-      Env: [
-        "NODE_ENV=production",
-        "WORKER_PORT=2377",
-      ],
+      Env: ["NODE_ENV=production", "WORKER_PORT=2377"],
       HostConfig: {
         AutoRemove: true,
         Privileged: true,
@@ -99,10 +96,12 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     console.log(`Waiting for worker to be ready on port ${workerPort}...`);
     const maxAttempts = 30; // 15 seconds max
     const delayMs = 500;
-    
+
     for (let i = 0; i < maxAttempts; i++) {
       try {
-        const response = await fetch(`http://localhost:${workerPort}/socket.io/?EIO=4&transport=polling`);
+        const response = await fetch(
+          `http://localhost:${workerPort}/socket.io/?EIO=4&transport=polling`
+        );
         if (response.ok) {
           console.log(`Worker is ready!`);
           break;
@@ -110,9 +109,9 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       } catch {
         // Connection refused, worker not ready yet
       }
-      
+
       if (i < maxAttempts - 1) {
-        await new Promise(resolve => setTimeout(resolve, delayMs));
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
       } else {
         console.warn("Worker may not be fully ready, but continuing...");
       }
@@ -159,7 +158,10 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       if (err) {
         console.error(`Container wait error:`, err);
       } else {
-        console.log(`Container ${this.containerName} exited with status:`, data);
+        console.log(
+          `Container ${this.containerName} exited with status:`,
+          data
+        );
         this.emit("exit", data.StatusCode);
       }
     });
@@ -198,7 +200,10 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       } catch (error) {
         if ((error as { statusCode?: number }).statusCode !== 304) {
           // 304 means container already stopped
-          console.error(`Error stopping container ${this.containerName}:`, error);
+          console.error(
+            `Error stopping container ${this.containerName}:`,
+            error
+          );
         }
       }
     }

@@ -192,7 +192,7 @@ try {
   });
 
   // Also test client connection
-  const clientSocket = io("http://localhost:2377/client");
+  const clientSocket = io("http://localhost:2377/vscode");
 
   clientSocket.on("connect", () => {
     console.log("Connected to worker client port");

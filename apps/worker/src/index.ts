@@ -95,7 +95,7 @@ const io = new Server(httpServer, {
 });
 
 // Client namespace
-const clientIO = io.of("/client") as Namespace<
+const vscodeIO = io.of("/vscode") as Namespace<
   ClientToServerEvents,
   ServerToClientEvents,
   InterServerEvents,
@@ -420,7 +420,7 @@ managementIO.on("connection", (socket) => {
       if (terminal && terminal.pty) {
         terminal.pty.kill();
         terminals.delete(validated.terminalId);
-        clientIO.emit("terminal-closed", { terminalId: validated.terminalId });
+        vscodeIO.emit("terminal-closed", { terminalId: validated.terminalId });
 
         socket.emit("worker:terminal-closed", {
           workerId: WORKER_ID,
@@ -463,7 +463,7 @@ managementIO.on("connection", (socket) => {
 });
 
 // Client socket server
-clientIO.on("connection", (socket) => {
+vscodeIO.on("connection", (socket) => {
   console.log(
     `Client connected to worker ${WORKER_ID}:`,
     socket.id,
@@ -499,7 +499,7 @@ clientIO.on("connection", (socket) => {
       const terminal = await createTerminal(terminalId, { cols, rows });
 
       if (terminal) {
-        clientIO.emit("terminal-created", { terminalId });
+        vscodeIO.emit("terminal-created", { terminalId });
         console.log(`Terminal ${terminalId} created on worker ${WORKER_ID}`);
 
         // Notify main server if connected
@@ -560,7 +560,7 @@ clientIO.on("connection", (socket) => {
       if (terminal && terminal.pty) {
         terminal.pty.kill();
         terminals.delete(terminalId);
-        clientIO.emit("terminal-closed", { terminalId });
+        vscodeIO.emit("terminal-closed", { terminalId });
         console.log(`Terminal ${terminalId} closed on worker ${WORKER_ID}`);
 
         // Notify main server if connected
@@ -728,7 +728,7 @@ async function createTerminal(
   // Handle PTY data
   ptyProcess.onData((data) => {
     headlessTerminal.write(data);
-    clientIO.emit("terminal-output", { terminalId, data });
+    vscodeIO.emit("terminal-output", { terminalId, data });
 
     // Also send to main server if connected
     if (mainServerSocket) {
@@ -756,7 +756,7 @@ async function createTerminal(
     }
 
     terminals.delete(terminalId);
-    clientIO.emit("terminal-exit", { terminalId, exitCode, signal });
+    vscodeIO.emit("terminal-exit", { terminalId, exitCode, signal });
 
     // Notify main server if connected
     if (mainServerSocket) {
@@ -802,7 +802,7 @@ httpServer.listen(WORKER_PORT, () => {
     "INFO",
     "Namespaces:",
     {
-      client: "/client",
+      vscode: "/vscode",
       management: "/management",
     },
     WORKER_ID

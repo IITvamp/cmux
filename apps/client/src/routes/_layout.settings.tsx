@@ -255,7 +255,7 @@ function SettingsComponent() {
                     autoComplete="off"
                   />
                   <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-2">
-                    Default location: ~/cmux-worktrees
+                    Default location: ~/cmux
                   </p>
                 </div>
               </div>

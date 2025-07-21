@@ -1,6 +1,10 @@
+import type {
+  ClientToServerEvents,
+  ServerToClientEvents,
+} from "@coderouter/shared";
 import * as http from "http";
 import { Server } from "socket.io";
-import { io } from "socket.io-client";
+import { io, Socket } from "socket.io-client";
 import * as vscode from "vscode";
 
 // Create output channel for CodeRouter logs
@@ -12,7 +16,8 @@ console.log("[CodeRouter] Extension module loaded");
 // Socket.IO server instance
 let ioServer: Server | null = null;
 let httpServer: http.Server | null = null;
-let workerSocket: ReturnType<typeof io> | null = null;
+let workerSocket: Socket<ServerToClientEvents, ClientToServerEvents> | null =
+  null;
 
 // Track active terminals
 const activeTerminals = new Map<string, vscode.Terminal>();
@@ -167,11 +172,11 @@ function connectToWorker() {
     workerSocket.disconnect();
   }
 
-  workerSocket = io("http://localhost:2377/client", {
+  workerSocket = io("http://localhost:2377/vscode", {
     reconnection: true,
     reconnectionAttempts: 5,
     reconnectionDelay: 1000,
-  });
+  }) as Socket<ServerToClientEvents, ClientToServerEvents>;
 
   // Set up event handlers only once
   workerSocket.once("connect", () => {
@@ -189,14 +194,13 @@ function connectToWorker() {
     log("Disconnected from worker socket server");
   });
 
-  workerSocket.on("error", (error) => {
+  workerSocket.on("connect_error", (error) => {
     log("Worker socket error:", error);
   });
 
   // Handle reconnection without duplicating setup
-  workerSocket.on("reconnect", () => {
+  workerSocket.io.on("reconnect", () => {
     log("Reconnected to worker socket server");
-    // Don't request terminals again on reconnect
   });
 }
 

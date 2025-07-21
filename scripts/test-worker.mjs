@@ -333,7 +333,7 @@ async function testWorker() {
 
   // Also test client connection
   logProgress("Connecting to worker client namespace...");
-  const clientSocket = io("http://localhost:2377/client", {
+  const clientSocket = io("http://localhost:2377/vscode", {
     timeout: 10000,
     reconnectionAttempts: 3,
   });
