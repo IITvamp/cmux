@@ -8,3 +8,4 @@
 [ ] make it easy to create a new task from scratch without any existing directory or git repo
 [ ] fallback if user doesn't use gh cli
 [ ] authentication
+[ ] whenever i start typing in /dashboard, even if i'm not focused on the textinput, it should automatically start typing in the textinput (including the keys i just pressed but weren't focused on the textinput)

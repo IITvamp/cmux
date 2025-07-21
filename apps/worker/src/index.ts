@@ -91,6 +91,7 @@ const io = new Server(httpServer, {
     origin: "*", // In production, restrict this
     methods: ["GET", "POST"],
   },
+  maxHttpBufferSize: 10 * 1024 * 1024, // 10MB to handle large auth files
 });
 
 // Client namespace

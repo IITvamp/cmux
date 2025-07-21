@@ -36,9 +36,10 @@ export abstract class VSCodeInstance extends EventEmitter {
     
     return new Promise((resolve, reject) => {
       this.workerSocket = io(`${workerUrl}/management`, {
-        reconnection: true,
-        reconnectionDelay: 1000,
-        reconnectionAttempts: 5,
+        reconnection: false,
+        timeout: 10000,
+        transports: ['websocket'],
+        upgrade: false,
       });
       
       this.workerSocket.on('connect', () => {

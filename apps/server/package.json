@@ -6,7 +6,8 @@
   "type": "module",
   "scripts": {
     "start": "vite-node src/index.ts",
-    "dev": "VITE_CONVEX_URL=http://127.0.0.1:3210 DENO_COMPAT=1 deno run -A src/index.ts",
+    "dev": "bun run --hot src/index.ts",
+    "dev0": "VITE_CONVEX_URL=http://127.0.0.1:3210 DENO_COMPAT=1 deno run -A src/index.ts",
     "dev-vitenode": "VITE_CONVEX_URL=http://127.0.0.1:3210 vite-node --watch src/index.ts",
     "start-deno": "deno run -A src/index.ts",
     "dev-deno": "deno run -A --watch-hmr src/index.ts",

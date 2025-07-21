@@ -79,7 +79,6 @@ io.on("connection", (socket) => {
   });
 
   socket.on("start-task", async (data, callback) => {
-    console.log("skibidi start task");
     try {
       console.log("got data", data);
       const taskData = StartTaskSchema.parse(data);
@@ -89,19 +88,13 @@ io.on("connection", (socket) => {
       const taskId = taskData.taskId;
 
       // Spawn all agents in parallel (each will create its own taskRun)
-      const agentResults = await spawnAllAgents(
-        taskId,
-        globalTerminals,
-        vscodeInstances,
-        io,
-        {
-          repoUrl: taskData.repoUrl,
-          branch: taskData.branch,
-          taskDescription: taskData.taskDescription,
-          selectedAgents: taskData.selectedAgents,
-          isCloudMode: taskData.isCloudMode,
-        }
-      );
+      const agentResults = await spawnAllAgents(taskId, vscodeInstances, {
+        repoUrl: taskData.repoUrl,
+        branch: taskData.branch,
+        taskDescription: taskData.taskDescription,
+        selectedAgents: taskData.selectedAgents,
+        isCloudMode: taskData.isCloudMode,
+      });
 
       // Check if at least one agent spawned successfully
       const successfulAgents = agentResults.filter((result) => result.success);

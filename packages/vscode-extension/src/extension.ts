@@ -78,22 +78,6 @@ async function setupTerminalsFromWorker(
     return;
   }
 
-  // If no default terminal exists, create one
-  if (terminals.length === 0) {
-    log("No default terminal found, creating one...");
-    workerSocket!.emit("create-terminal", {
-      id: "default",
-      cols: 80,
-      rows: 24,
-    });
-
-    // Wait for terminal creation and request list again
-    setTimeout(() => {
-      workerSocket!.emit("get-active-terminals");
-    }, 1000);
-    return;
-  }
-
   // if an existing editor is called "bash", early return
   const activeEditors = vscode.window.visibleTextEditors;
   for (const editor of activeEditors) {

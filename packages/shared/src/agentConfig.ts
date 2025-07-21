@@ -2,6 +2,7 @@ export interface AuthFileConfig {
   source: string; // Path on host, can include $HOME
   destination: string; // Path in container/remote
   platform?: "darwin" | "linux" | "win32"; // Optional platform-specific config
+  transform?: (content: string) => string; // Optional transform function to apply to the content
 }
 
 export interface AgentConfig {
@@ -22,7 +23,7 @@ export interface AgentConfig {
 export const AGENT_CONFIGS: AgentConfig[] = [
   {
     name: "claude-sonnet",
-    command: "bun x",
+    command: "bunx",
     args: [
       "@anthropic-ai/claude-code",
       "--model",
@@ -34,12 +35,32 @@ export const AGENT_CONFIGS: AgentConfig[] = [
       {
         source: "$HOME/.claude.json",
         destination: "$HOME/.claude.json",
+        transform: (content) => {
+          const parsed = JSON.parse(content) as {
+            projects: Record<string, unknown>;
+          };
+          // parsed["projects"] = parsed["projects"] || {};
+          parsed["projects"] = {};
+          parsed["projects"]["/root/workspace"] = {
+            allowedTools: [],
+            history: [],
+            mcpContextUris: [],
+            mcpServers: {},
+            enabledMcpjsonServers: [],
+            disabledMcpjsonServers: [],
+            hasTrustDialogAccepted: true,
+            projectOnboardingSeenCount: 0,
+            hasClaudeMdExternalIncludesApproved: false,
+            hasClaudeMdExternalIncludesWarningShown: false,
+          };
+          return JSON.stringify(parsed, null, 2);
+        },
       },
     ],
   },
   {
     name: "claude-opus",
-    command: "bun x",
+    command: "bunx",
     args: [
       "@anthropic-ai/claude-code",
       "--model",
@@ -56,7 +77,7 @@ export const AGENT_CONFIGS: AgentConfig[] = [
   },
   {
     name: "codex-o3",
-    command: "bun x",
+    command: "bunx",
     args: [
       "@openai/codex",
       "--model",
@@ -81,7 +102,7 @@ export const AGENT_CONFIGS: AgentConfig[] = [
   },
   {
     name: "opencode-sonnet",
-    command: "bun x",
+    command: "bunx",
     args: ["opencode-ai@latest", "--model", "sonnet", "--prompt", "$PROMPT"],
     authFiles: [
       {
@@ -98,7 +119,7 @@ export const AGENT_CONFIGS: AgentConfig[] = [
   },
   {
     name: "opencode-kimi-k2",
-    command: "bun x",
+    command: "bunx",
     args: ["opencode-ai@latest", "--model", "kimi-k2", "--prompt", "$PROMPT"],
     authFiles: [
       {
@@ -115,7 +136,7 @@ export const AGENT_CONFIGS: AgentConfig[] = [
   },
   {
     name: "gemini-2.5-flash",
-    command: "bun x",
+    command: "bunx",
     args: [
       "@google/gemini-cli",
       "--model",
@@ -135,7 +156,7 @@ export const AGENT_CONFIGS: AgentConfig[] = [
   },
   {
     name: "gemini-2.5-pro",
-    command: "bun x",
+    command: "bunx",
     args: [
       "@google/gemini-cli",
       "--model",

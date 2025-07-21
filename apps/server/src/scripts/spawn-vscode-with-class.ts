@@ -32,14 +32,15 @@ async function main() {
 
     // Create terminal with Claude Code
     const terminalId = "claude-terminal";
-    const command = "bun";
+    const command = "bash";
     const args = [
-      "x",
-      "@anthropic-ai/claude-code",
-      "--model",
-      "claude-sonnet-4-20250514",
-      "--dangerously-skip-permissions",
-      prompt,
+      "-c",
+      'bunx @anthropic-ai/claude-code --model claude-sonnet-4-20250514 --dangerously-skip-permissions "what\'s the time?"',
+      // "@anthropic-ai/claude-code",
+      // "--model",
+      // "claude-sonnet-4-20250514",
+      // "--dangerously-skip-permissions",
+      // prompt,
     ];
 
     console.log(
