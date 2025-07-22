@@ -1,7 +1,7 @@
 {
   "name": "@coderouter/server",
   "version": "1.0.0",
-  "description": "Terminal server for xterm.js",
+  "description": "cmux server",
   "main": "src/index.ts",
   "type": "module",
   "scripts": {
@@ -39,5 +39,8 @@
     "tar": "^7.4.3",
     "vite-node": "^3.2.4",
     "zod": "^3.25.67"
+  },
+  "devDependencies": {
+    "vite": "^7.0.5"
   }
 }
