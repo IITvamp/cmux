@@ -22,13 +22,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gnupg \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Node.js 22.x
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+# Install Node.js 24.x
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
     apt-get install -y nodejs && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* && \
+    npm install -g node-gyp && \
+    corepack enable && \
+    corepack prepare pnpm@10.13.1 --activate
 
 # Install Bun
-RUN curl -fsSL https://bun.sh/install | bash &&
+RUN curl -fsSL https://bun.sh/install | bash && \
     mv /root/.bun/bin/bun /usr/local/bin/
 
 # Install openvscode-server
@@ -54,19 +57,17 @@ RUN if [ -z ${CODE_RELEASE+x} ]; then \
 
 # Copy package files for monorepo dependency installation
 WORKDIR /coderouter
-COPY package.json package-lock.json .npmrc ./
-COPY apps/worker/package.json ./apps/worker/
-COPY packages/shared/package.json ./packages/shared/
-COPY packages/vscode-extension/package.json ./packages/vscode-extension/
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY --parents apps/*/package.json packages/*/package.json scripts/package.json ./
 
-# Install dependencies with cache
-RUN --mount=type=cache,target=/root/.npm npm ci
+# Install dependencies with cache (non-interactive)
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store CI=1 pnpm install --frozen-lockfile
 
 # Pre-install node-pty in the target location
 RUN mkdir -p /builtins && \
-    cp /coderouter/apps/worker/package.json /builtins/package.json
+    echo '{"name":"builtins","version":"1.0.0"}' > /builtins/package.json
 WORKDIR /builtins
-RUN --mount=type=cache,target=/root/.npm npm install node-pty
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store CI=1 pnpm install node-pty
 
 # Copy source files needed for build
 WORKDIR /coderouter
@@ -143,10 +144,12 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | d
     && apt-get install -y gh \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Node.js 22.x (runtime)
-RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+# Install Node.js 24.x (runtime) and enable pnpm via corepack
+RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
     apt-get install -y nodejs && \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/* && \
+    corepack enable && \
+    corepack prepare pnpm@10.13.1 --activate
 
 # Set iptables-legacy (required for Docker in Docker)
 RUN update-alternatives --set iptables /usr/sbin/iptables-legacy && \
@@ -193,8 +196,11 @@ COPY --from=builder /usr/local/bin/wait-for-docker.sh /usr/local/bin/wait-for-do
 # Copy complete Bun installation
 COPY --from=builder /root/.bun /root/.bun
 
-# Install global packages
-RUN bun add -g @openai/codex @anthropic-ai/claude-code @google/gemini-cli opencode-ai codebuff @devcontainers/cli @sourcegraph/amp
+# Setup pnpm and install global packages
+RUN SHELL=/bin/bash pnpm setup && \
+    . /root/.bashrc && \
+    CI=1 pnpm add -g @openai/codex @anthropic-ai/claude-code @google/gemini-cli opencode-ai codebuff @devcontainers/cli @sourcegraph/amp || \
+    echo "Some packages may not exist, continuing..."
 
 # Find and install claude-code.vsix from Bun cache using ripgrep
 RUN claude_vsix=$(rg --files /root/.bun/install/cache/@anthropic-ai 2>/dev/null | rg "claude-code\.vsix$" | head -1) && \

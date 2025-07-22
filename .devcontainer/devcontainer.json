@@ -43,7 +43,7 @@
       "onAutoForward": "openBrowser"
     }
   },
-  "postCreateCommand": "bun install",
+  "postCreateCommand": "CI=1 pnpm install --frozen-lockfile",
   "postStartCommand": "bash ./scripts/dev.sh",
   "remoteUser": "node",
   "features": {

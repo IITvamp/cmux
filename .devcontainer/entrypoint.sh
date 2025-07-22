@@ -8,8 +8,11 @@ export NVM_DIR="$HOME/.nvm"
 # Add bun to PATH
 export PATH="/home/node/.bun/bin:/usr/local/bin:$PATH"
 
-# Default to Node 22
-nvm use 22
+# Activate corepack for pnpm
+corepack enable
+
+# Default to Node 24
+nvm use 24
 
 # Execute the command passed to the container
 exec "$@"

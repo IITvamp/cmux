@@ -28,7 +28,7 @@ trap cleanup EXIT INT TERM
 # Check if node_modules exist, if not install dependencies
 if [ ! -d "node_modules" ] || [ "$FORCE_INSTALL" = "true" ]; then
     echo -e "${BLUE}Installing dependencies...${NC}"
-    bun install
+    CI=1 pnpm install --frozen-lockfile
 fi
 
 # Start the backend server

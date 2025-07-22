@@ -1,0 +1,14 @@
+packages:
+  - apps/*
+  - packages/*
+  - scripts
+
+onlyBuiltDependencies:
+  - '@tailwindcss/oxide'
+  - '@vscode/vsce-sign'
+  - cpu-features
+  - esbuild
+  - keytar
+  - node-pty
+  - protobufjs
+  - ssh2

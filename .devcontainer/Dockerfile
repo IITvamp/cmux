@@ -1,4 +1,4 @@
-FROM node:22-bookworm
+FROM node:24-bookworm
 
 # Install additional dependencies for node-pty and terminal support
 RUN apt-get update && apt-get install -y \
@@ -21,7 +21,7 @@ ARG USER_GID=$USER_UID
 RUN echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME && \
     chmod 0440 /etc/sudoers.d/$USERNAME
 
-# Install bun for the node user
+# Install bun for runtime execution
 USER $USERNAME
 RUN curl -fsSL https://bun.sh/install | bash
 ENV PATH="/home/$USERNAME/.bun/bin:$PATH"
@@ -29,17 +29,20 @@ ENV PATH="/home/$USERNAME/.bun/bin:$PATH"
 # Switch back to root for remaining setup
 USER root
 
+# Enable corepack for pnpm
+RUN corepack enable && corepack prepare pnpm@10.13.1 --activate
+
 # Install nvm and Node versions
 ENV NVM_DIR=/home/$USERNAME/.nvm
 RUN mkdir -p $NVM_DIR && \
     chown -R $USER_UID:$USER_GID $NVM_DIR
 
-# Install nvm, Node 22 (default) and Node 18
+# Install nvm, Node 24 (default) and Node 18
 RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash && \
     . "$NVM_DIR/nvm.sh" && \
-    nvm install 22 && \
+    nvm install 24 && \
     nvm install 18 && \
-    nvm alias default 22 && \
+    nvm alias default 24 && \
     nvm use default
 
 # Add nvm to shell
@@ -55,8 +58,8 @@ RUN echo 'export PATH="/home/node/.bun/bin:$PATH"' >> /home/node/.zshrc && \
 # Set up the workspace
 WORKDIR /workspaces/coderouter
 
-# Install global npm packages using Node 22
-RUN . "$NVM_DIR/nvm.sh" && nvm use 22 && npm install -g npm@latest
+# Install global npm packages using Node 24
+RUN . "$NVM_DIR/nvm.sh" && nvm use 24 && npm install -g npm@latest
 
 # Set up shell
 ENV SHELL=/bin/zsh

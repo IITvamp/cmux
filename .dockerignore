@@ -5,6 +5,7 @@ yarn-error.log*
 .npm
 .yarn
 .pnp.*
+.pnpm-store
 
 # Build outputs
 dist
