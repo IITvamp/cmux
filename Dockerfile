@@ -28,8 +28,8 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     rm -rf /var/lib/apt/lists/*
 
 # Install Bun
-RUN curl -fsSL https://bun.sh/install | bash
-ENV PATH="/root/.bun/bin:$PATH"
+RUN curl -fsSL https://bun.sh/install | bash &&
+    mv /root/.bun/bin/bun /usr/local/bin/
 
 # Install openvscode-server
 RUN if [ -z ${CODE_RELEASE+x} ]; then \

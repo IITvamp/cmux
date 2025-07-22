@@ -43,7 +43,7 @@
       "onAutoForward": "openBrowser"
     }
   },
-  "postCreateCommand": "npm install",
+  "postCreateCommand": "bun install",
   "postStartCommand": "bash ./scripts/dev.sh",
   "remoteUser": "node",
   "features": {

@@ -19,3 +19,4 @@
 [ ] rename branches after a task is created to something reasonable
 [ ] plan mode for claude code
 [ ] update state for agent when they finish a task or fail a task
+[ ] run bunx `bunx @devcontainers/cli up --workspace-folder .` and iterate on the .devcontainer/dockerfile/startup script until it works
