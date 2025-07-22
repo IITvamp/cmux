@@ -3,11 +3,6 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "workspaces": [
-    "apps/*",
-    "packages/*",
-    "scripts"
-  ],
   "scripts": {
     "dev": "npm run dev --workspace=@coderouter/client",
     "build": "npm run build --workspace=@coderouter/client",
