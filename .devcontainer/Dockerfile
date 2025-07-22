@@ -12,11 +12,6 @@ RUN apt-get update && apt-get install -y \
     sudo \
     && rm -rf /var/lib/apt/lists/*
 
-# Install bun for Convex
-RUN curl -fsSL https://bun.sh/install | bash
-ENV PATH="/root/.bun/bin:$PATH"
-
-
 # Create non-root user
 ARG USERNAME=node
 ARG USER_UID=1000
@@ -26,13 +21,18 @@ ARG USER_GID=$USER_UID
 RUN echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME && \
     chmod 0440 /etc/sudoers.d/$USERNAME
 
+# Install bun for the node user
+USER $USERNAME
+RUN curl -fsSL https://bun.sh/install | bash
+ENV PATH="/home/$USERNAME/.bun/bin:$PATH"
+
+# Switch back to root for remaining setup
+USER root
+
 # Install nvm and Node versions
 ENV NVM_DIR=/home/$USERNAME/.nvm
 RUN mkdir -p $NVM_DIR && \
     chown -R $USER_UID:$USER_GID $NVM_DIR
-
-# Switch to non-root user for nvm installation
-USER $USERNAME
 
 # Install nvm, Node 22 (default) and Node 18
 RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | bash && \
@@ -46,6 +46,11 @@ RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh | b
 RUN echo 'export NVM_DIR="$HOME/.nvm"' >> ~/.zshrc && \
     echo '[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"' >> ~/.zshrc && \
     echo '[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"' >> ~/.zshrc
+
+# Add bun to shell for the node user
+RUN echo 'export PATH="/home/node/.bun/bin:$PATH"' >> /home/node/.zshrc && \
+    echo 'export PATH="/home/node/.bun/bin:$PATH"' >> /home/node/.bashrc && \
+    chown node:node /home/node/.zshrc /home/node/.bashrc
 
 # Set up the workspace
 WORKDIR /workspaces/coderouter

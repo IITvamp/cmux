@@ -6,7 +6,7 @@ export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
 
 # Add bun to PATH
-export PATH="/usr/local/bin:$PATH"
+export PATH="/home/node/.bun/bin:/usr/local/bin:$PATH"
 
 # Default to Node 22
 nvm use 22

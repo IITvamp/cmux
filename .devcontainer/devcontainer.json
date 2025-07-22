@@ -62,5 +62,5 @@
   "remoteEnv": {
     "CHOKIDAR_USEPOLLING": "true",
     "FORCE_INSTALL": "true"
-  }
+  },
 }
