@@ -208,12 +208,12 @@ COPY --from=builder /usr/local/bin/wait-for-docker.sh /usr/local/bin/wait-for-do
 
 # Verify bun works in runtime
 RUN bun --version && bunx --version
+RUN bun add -g @openai/codex @anthropic-ai/claude-code @google/gemini-cli opencode-ai codebuff @devcontainers/cli @sourcegraph/amp
 
 # Setup pnpm and install global packages
 RUN SHELL=/bin/bash pnpm setup && \
-    . /root/.bashrc && \
-    CI=1 pnpm add -g @openai/codex @anthropic-ai/claude-code @google/gemini-cli opencode-ai codebuff @devcontainers/cli @sourcegraph/amp || \
-    echo "Some packages may not exist, continuing..."
+    . /root/.bashrc
+
 
 # Find and install claude-code.vsix from Bun cache using ripgrep
 RUN claude_vsix=$(rg --files /root/.bun/install/cache/@anthropic-ai 2>/dev/null | rg "claude-code\.vsix$" | head -1) && \
@@ -221,7 +221,8 @@ RUN claude_vsix=$(rg --files /root/.bun/install/cache/@anthropic-ai 2>/dev/null 
         echo "Found claude-code.vsix at: $claude_vsix" && \
         /app/openvscode-server/bin/openvscode-server --install-extension "$claude_vsix"; \
     else \
-        echo "Warning: claude-code.vsix not found in Bun cache"; \
+        echo "Warning: claude-code.vsix not found in Bun cache" && \
+        exit 1; \
     fi
 
 # Create modprobe script (required for DinD)
