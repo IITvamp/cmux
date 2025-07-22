@@ -262,9 +262,9 @@ function DashboardComponent() {
   }, [selectedProject, taskDescription, handleStartTask]);
 
   return (
-    <div className="flex flex-col min-h-full bg-neutral-50 dark:bg-neutral-900/60">
+    <div className="flex flex-col h-full bg-neutral-50 dark:bg-neutral-900/60 overflow-y-auto">
       {/* Main content area */}
-      <div className="flex-1 flex justify-center px-4 pt-60">
+      <div className="flex-1 flex justify-center px-4 pt-60 pb-4">
         <div className="w-full max-w-4xl">
           <div
             className={clsx(
