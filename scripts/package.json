@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@coderouter/shared": "file:../../packages/shared",
+    "@coderouter/shared": "workspace:*",
     "@daytonaio/sdk": "^0.22.1",
     "morphcloud": "^0.0.14"
   }

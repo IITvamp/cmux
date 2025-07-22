@@ -33,12 +33,12 @@ fi
 
 # Start the backend server
 echo -e "${GREEN}Starting backend server on port 3001...${NC}"
-(cd apps/server && npm run dev) &
+(cd apps/server && bun run dev) &
 SERVER_PID=$!
 
 # Start the frontend
 echo -e "${GREEN}Starting frontend on port 5173...${NC}"
-npm run dev &
+(cd apps/client && bun run dev) &
 CLIENT_PID=$!
 
 # Create logs directory if it doesn't exist

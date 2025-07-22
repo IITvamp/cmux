@@ -42,7 +42,7 @@
     "package": "vsce package --allow-missing-repository --no-dependencies --allow-star-activation"
   },
   "devDependencies": {
-    "@coderouter/shared": "file:../../packages/shared",
+    "@coderouter/shared": "workspace:*",
     "@types/mocha": "^10.0.6",
     "@types/node": "^20.11.5",
     "@types/vscode": "^1.73.0",

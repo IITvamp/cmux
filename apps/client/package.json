@@ -12,8 +12,8 @@
     "generate-routes": "tsr generate"
   },
   "dependencies": {
-    "@coderouter/convex": "file:../../packages/convex",
-    "@coderouter/shared": "file:../../packages/shared",
+    "@coderouter/convex": "workspace:*",
+    "@coderouter/shared": "workspace:*",
     "@convex-dev/react-query": "^0.0.0-alpha.11",
     "@lexical/code": "^0.32.1",
     "@lexical/history": "^0.32.1",
@@ -38,7 +38,7 @@
     "antd": "^5.26.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
-    "convex": "1.26.0-alpha.8",
+    "convex": "1.26.0-alpha.6",
     "date-fns": "^4.1.0",
     "framer-motion": "^12.23.3",
     "fuzzysort": "^3.1.0",
