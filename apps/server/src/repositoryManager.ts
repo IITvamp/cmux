@@ -2,6 +2,7 @@ import { exec } from "child_process";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { promisify } from "util";
+import { generatePrePushHook, generatePreCommitHook, type GitHooksConfig } from "./gitHooks.js";
 
 const execAsync = promisify(exec);
 
@@ -163,6 +164,9 @@ export class RepositoryManager {
       
       // Configure git pull strategy for the newly cloned repo
       await this.configureGitPullStrategy(originPath);
+      
+      // Set up git hooks
+      await this.setupGitHooks(originPath);
     } catch (error) {
       console.error(`Failed to clone ${repoUrl}:`, error);
       throw error;
@@ -290,6 +294,20 @@ export class RepositoryManager {
         { cwd: originPath }
       );
       console.log(`Successfully created worktree at ${worktreePath}`);
+      
+      // Set up branch configuration to push to the same name on remote
+      await this.executeGitCommand(
+        `git config branch.${branchName}.remote origin`,
+        { cwd: worktreePath }
+      );
+      await this.executeGitCommand(
+        `git config branch.${branchName}.merge refs/heads/${branchName}`,
+        { cwd: worktreePath }
+      );
+      console.log(`Configured branch ${branchName} to track origin/${branchName} when pushed`);
+      
+      // Set up git hooks in the worktree
+      await this.setupGitHooks(worktreePath);
     } catch (error) {
       if (error instanceof Error && error.message.includes("already exists")) {
         throw new Error(`Worktree already exists at ${worktreePath}`);
@@ -304,5 +322,65 @@ export class RepositoryManager {
   // Method to update configuration at runtime
   updateConfig(config: Partial<GitConfig>): void {
     this.config = { ...this.config, ...config };
+  }
+
+  private async setupGitHooks(repoPath: string): Promise<void> {
+    try {
+      // Determine if this is a worktree or main repository
+      const gitDir = path.join(repoPath, '.git');
+      const gitDirStat = await fs.stat(gitDir);
+      
+      let hooksDir: string;
+      if (gitDirStat.isDirectory()) {
+        // Regular repository
+        hooksDir = path.join(gitDir, 'hooks');
+      } else {
+        // Worktree - read the .git file to find the actual git directory
+        const gitFileContent = await fs.readFile(gitDir, 'utf8');
+        const match = gitFileContent.match(/gitdir: (.+)/);
+        if (!match) {
+          console.warn(`Could not parse .git file in ${repoPath}`);
+          return;
+        }
+        const actualGitDir = match[1].trim();
+        // For worktrees, hooks are in the common git directory
+        const commonDir = path.join(path.dirname(actualGitDir), 'commondir');
+        try {
+          const commonDirContent = await fs.readFile(commonDir, 'utf8');
+          const commonPath = commonDirContent.trim();
+          // If commondir is relative, resolve it from the worktree git directory
+          const resolvedCommonPath = path.isAbsolute(commonPath) 
+            ? commonPath 
+            : path.resolve(path.dirname(actualGitDir), commonPath);
+          hooksDir = path.join(resolvedCommonPath, 'hooks');
+        } catch {
+          // Fallback to the hooks in the worktree's git directory
+          hooksDir = path.join(actualGitDir, 'hooks');
+        }
+      }
+
+      // Create hooks directory if it doesn't exist
+      await fs.mkdir(hooksDir, { recursive: true });
+
+      // Configure hooks
+      const hooksConfig: GitHooksConfig = {
+        protectedBranches: ['main', 'master', 'develop', 'production', 'staging'],
+        allowForcePush: false,
+        allowBranchDeletion: false
+      };
+
+      // Write pre-push hook
+      const prePushPath = path.join(hooksDir, 'pre-push');
+      await fs.writeFile(prePushPath, generatePrePushHook(hooksConfig), { mode: 0o755 });
+      console.log(`Created pre-push hook at ${prePushPath}`);
+
+      // Write pre-commit hook
+      const preCommitPath = path.join(hooksDir, 'pre-commit');
+      await fs.writeFile(preCommitPath, generatePreCommitHook(hooksConfig), { mode: 0o755 });
+      console.log(`Created pre-commit hook at ${preCommitPath}`);
+    } catch (error) {
+      console.warn(`Failed to set up git hooks in ${repoPath}:`, error);
+      // Don't throw - hooks are nice to have but not critical
+    }
   }
 }

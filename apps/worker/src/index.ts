@@ -7,6 +7,7 @@ import {
   WorkerCreateTerminalSchema,
   WorkerResizeTerminalSchema,
   WorkerTerminalInputSchema,
+  WorkerConfigureGitSchema,
   type ClientToServerEvents,
   type InterServerEvents,
   type ServerToClientEvents,
@@ -15,20 +16,21 @@ import {
   type WorkerHeartbeat,
   type WorkerRegister,
   type WorkerToServerEvents,
+  SERVER_TERMINAL_CONFIG,
 } from "@coderouter/shared";
-import { SERVER_TERMINAL_CONFIG } from "@coderouter/shared/terminal-config";
 import { SerializeAddon } from "@xterm/addon-serialize";
-import xtermHeadless from "@xterm/headless";
+import * as xtermHeadless from "@xterm/headless";
 import { spawn, type IPty } from "node-pty";
-import { promises as fs } from "node:fs";
+import { promises as fs, writeFileSync, mkdirSync, chmodSync } from "node:fs";
 import { createServer } from "node:http";
 import { cpus, platform, totalmem } from "node:os";
 import * as path from "node:path";
+import { execSync } from "node:child_process";
 import { Server, type Namespace, type Socket } from "socket.io";
 import { Agent, fetch } from "undici";
 import { log } from "./logger.js";
 
-const { Terminal } = xtermHeadless;
+const Terminal = xtermHeadless.Terminal;
 
 interface WorkerTerminal {
   pty: IPty;
@@ -432,6 +434,193 @@ managementIO.on("connection", (socket) => {
     }
   });
 
+  socket.on("worker:configure-git", (data) => {
+    try {
+      const validated = WorkerConfigureGitSchema.parse(data);
+      console.log(`Worker ${WORKER_ID} configuring git...`);
+
+      // Create a custom git config file that includes the mounted one
+      const customGitConfigPath = '/root/.gitconfig.custom';
+      
+      // Parse existing config into sections
+      const configSections: Map<string, Map<string, string>> = new Map();
+      
+      // Start by parsing the mounted config if it exists
+      try {
+        const mountedConfig = execSync('cat /root/.gitconfig 2>/dev/null || true').toString();
+        if (mountedConfig) {
+          let currentSection = 'global';
+          const lines = mountedConfig.split('\n');
+          
+          for (const line of lines) {
+            const trimmedLine = line.trim();
+            if (!trimmedLine || trimmedLine.startsWith('#')) continue;
+            
+            // Check for section header
+            const sectionMatch = trimmedLine.match(/^\[(.+)\]$/);
+            if (sectionMatch) {
+              currentSection = sectionMatch[1] || 'global';
+              if (!configSections.has(currentSection)) {
+                configSections.set(currentSection, new Map());
+              }
+              continue;
+            }
+            
+            // Parse key-value pairs
+            const keyValueMatch = line.match(/^\s*(\w+)\s*=\s*(.+)$/);
+            if (keyValueMatch) {
+              const [, key, value] = keyValueMatch;
+              if (key && value) {
+                if (!configSections.has(currentSection)) {
+                  configSections.set(currentSection, new Map());
+                }
+                configSections.get(currentSection)!.set(key, value);
+              }
+            }
+          }
+        }
+      } catch {
+        // No mounted config
+      }
+
+      // Add the store credential helper
+      if (!configSections.has('credential')) {
+        configSections.set('credential', new Map());
+      }
+      configSections.get('credential')!.set('helper', 'store');
+      
+      // Create .git-credentials file if GitHub token is provided
+      if (validated.githubToken) {
+        const credentialsPath = '/root/.git-credentials';
+        const credentialsContent = `https://oauth:${validated.githubToken}@github.com\n`;
+        writeFileSync(credentialsPath, credentialsContent);
+        chmodSync(credentialsPath, 0o600);
+        console.log("GitHub credentials stored in .git-credentials");
+      }
+
+      // Add additional git settings if provided
+      if (validated.gitConfig) {
+        for (const [key, value] of Object.entries(validated.gitConfig)) {
+          const [section, ...keyParts] = key.split('.');
+          const configKey = keyParts.join('.');
+          
+          if (section && configKey) {
+            if (!configSections.has(section)) {
+              configSections.set(section, new Map());
+            }
+            configSections.get(section)!.set(configKey, value);
+          }
+        }
+      }
+
+      // Build the final config content
+      let gitConfigContent = '';
+      for (const [section, settings] of configSections) {
+        if (section !== 'global') {
+          gitConfigContent += `[${section}]\n`;
+          for (const [key, value] of settings) {
+            gitConfigContent += `\t${key} = ${value}\n`;
+          }
+          gitConfigContent += '\n';
+        }
+      }
+
+      // Write the custom config
+      writeFileSync(customGitConfigPath, gitConfigContent);
+      
+      // Set GIT_CONFIG environment variable to use our custom config
+      process.env.GIT_CONFIG_GLOBAL = customGitConfigPath;
+      
+      // Also set it for all terminals
+      execSync(`echo 'export GIT_CONFIG_GLOBAL=${customGitConfigPath}' >> /etc/profile`);
+      execSync(`echo 'export GIT_CONFIG_GLOBAL=${customGitConfigPath}' >> /root/.bashrc`);
+
+      // Set up SSH keys if provided
+      if (validated.sshKeys) {
+        // Check if .ssh is mounted (read-only)
+        const sshDir = '/root/.ssh';
+        let sshDirWritable = true;
+        
+        try {
+          // Try to create a test file
+          writeFileSync(path.join(sshDir, '.test'), 'test');
+          // If successful, remove it
+          execSync(`rm -f ${path.join(sshDir, '.test')}`);
+        } catch {
+          // SSH dir is read-only, use alternative location
+          sshDirWritable = false;
+          console.log('.ssh directory is mounted read-only, using alternative SSH config');
+        }
+
+        if (!sshDirWritable) {
+          // Use alternative SSH directory
+          const altSshDir = '/root/.ssh-custom';
+          mkdirSync(altSshDir, { recursive: true });
+
+          if (validated.sshKeys.privateKey) {
+            const privateKeyPath = path.join(altSshDir, 'id_rsa');
+            writeFileSync(privateKeyPath, Buffer.from(validated.sshKeys.privateKey, 'base64'));
+            chmodSync(privateKeyPath, 0o600);
+          }
+
+          if (validated.sshKeys.publicKey) {
+            const publicKeyPath = path.join(altSshDir, 'id_rsa.pub');
+            writeFileSync(publicKeyPath, Buffer.from(validated.sshKeys.publicKey, 'base64'));
+            chmodSync(publicKeyPath, 0o644);
+          }
+
+          if (validated.sshKeys.knownHosts) {
+            const knownHostsPath = path.join(altSshDir, 'known_hosts');
+            writeFileSync(knownHostsPath, Buffer.from(validated.sshKeys.knownHosts, 'base64'));
+            chmodSync(knownHostsPath, 0o644);
+          }
+
+          // Create SSH config to use our custom directory
+          const sshConfigContent = `Host *
+  IdentityFile ${altSshDir}/id_rsa
+  UserKnownHostsFile ${altSshDir}/known_hosts
+  StrictHostKeyChecking accept-new
+`;
+          writeFileSync('/root/.ssh-config', sshConfigContent);
+          
+          // Set GIT_SSH_COMMAND to use our custom config
+          process.env.GIT_SSH_COMMAND = 'ssh -F /root/.ssh-config';
+          
+          // Also export it for all terminals
+          execSync(`echo 'export GIT_SSH_COMMAND="ssh -F /root/.ssh-config"' >> /etc/profile`);
+          execSync(`echo 'export GIT_SSH_COMMAND="ssh -F /root/.ssh-config"' >> /root/.bashrc`);
+        } else {
+          // SSH dir is writable, use it normally
+          if (validated.sshKeys.privateKey) {
+            const privateKeyPath = path.join(sshDir, 'id_rsa');
+            writeFileSync(privateKeyPath, Buffer.from(validated.sshKeys.privateKey, 'base64'));
+            chmodSync(privateKeyPath, 0o600);
+          }
+
+          if (validated.sshKeys.publicKey) {
+            const publicKeyPath = path.join(sshDir, 'id_rsa.pub');
+            writeFileSync(publicKeyPath, Buffer.from(validated.sshKeys.publicKey, 'base64'));
+            chmodSync(publicKeyPath, 0o644);
+          }
+
+          if (validated.sshKeys.knownHosts) {
+            const knownHostsPath = path.join(sshDir, 'known_hosts');
+            writeFileSync(knownHostsPath, Buffer.from(validated.sshKeys.knownHosts, 'base64'));
+            chmodSync(knownHostsPath, 0o644);
+          }
+        }
+      }
+
+      console.log(`Worker ${WORKER_ID} git configuration complete`);
+    } catch (error) {
+      console.error("Error configuring git:", error);
+      socket.emit("worker:error", {
+        workerId: WORKER_ID,
+        error: error instanceof Error ? error.message : "Failed to configure git",
+      });
+    }
+  });
+
   socket.on("worker:shutdown", () => {
     console.log(`Worker ${WORKER_ID} received shutdown command`);
     gracefulShutdown();
@@ -655,6 +844,9 @@ async function createTerminal(
     USER: process.env.USER || "root",
     HOME: process.env.HOME || "/root",
     PATH: `/root/.bun/bin:${process.env.PATH || "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}`,
+    // Pass through git config if set
+    ...(process.env.GIT_CONFIG_GLOBAL ? { GIT_CONFIG_GLOBAL: process.env.GIT_CONFIG_GLOBAL } : {}),
+    ...(process.env.GIT_SSH_COMMAND ? { GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND } : {}),
   };
 
   log("INFO", "Spawning PTY process", {

@@ -116,6 +116,17 @@ export const WorkerUploadFilesSchema = z.object({
   terminalId: z.string().optional(), // Optional terminal context
 });
 
+// Git configuration schema
+export const WorkerConfigureGitSchema = z.object({
+  githubToken: z.string().optional(),
+  gitConfig: z.record(z.string()).optional(), // Key-value pairs for git config
+  sshKeys: z.object({
+    privateKey: z.string().optional(), // Base64 encoded
+    publicKey: z.string().optional(), // Base64 encoded
+    knownHosts: z.string().optional(), // Base64 encoded
+  }).optional(),
+});
+
 // Server to Worker Events
 export const ServerToWorkerCommandSchema = z.object({
   command: z.enum(["create-terminal", "destroy-terminal", "execute-command"]),
@@ -138,6 +149,7 @@ export type WorkerTerminalExit = z.infer<typeof WorkerTerminalExitSchema>;
 export type WorkerTerminalCreated = z.infer<typeof WorkerTerminalCreatedSchema>;
 export type WorkerTerminalClosed = z.infer<typeof WorkerTerminalClosedSchema>;
 export type WorkerUploadFiles = z.infer<typeof WorkerUploadFilesSchema>;
+export type WorkerConfigureGit = z.infer<typeof WorkerConfigureGitSchema>;
 
 // Socket.io event maps for Server <-> Worker communication
 // Docker readiness response type
@@ -160,6 +172,9 @@ export interface ServerToWorkerEvents {
 
   // File operations
   "worker:upload-files": (data: WorkerUploadFiles) => void;
+
+  // Git configuration
+  "worker:configure-git": (data: WorkerConfigureGit) => void;
 
   // Management events
   "worker:terminal-assignment": (data: TerminalAssignment) => void;

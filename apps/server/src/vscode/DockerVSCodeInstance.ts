@@ -1,4 +1,8 @@
 import Docker from "dockerode";
+import os from "os";
+import path from "path";
+import { cleanupGitCredentials } from "../utils/dockerGitSetup.js";
+import { getGitHubTokenFromKeychain } from "../utils/getGitHubToken.js";
 import {
   VSCodeInstance,
   type VSCodeInstanceConfig,
@@ -38,11 +42,13 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       // Container doesn't exist, which is fine
     }
 
+    const envVars = ["NODE_ENV=production", "WORKER_PORT=2377"];
+
     // Create container configuration
     const createOptions: Docker.ContainerCreateOptions = {
       name: this.containerName,
       Image: this.imageName,
-      Env: ["NODE_ENV=production", "WORKER_PORT=2377"],
+      Env: envVars,
       HostConfig: {
         AutoRemove: true,
         Privileged: true,
@@ -64,25 +70,147 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       // Extract the origin path from the workspace path
       // Workspace path is like: ~/cmux/<repoName>/worktrees/<branchName>
       // Origin path is: ~/cmux/<repoName>/origin
-      const pathParts = this.config.workspacePath.split('/');
-      const worktreesIndex = pathParts.lastIndexOf('worktrees');
-      
+      const pathParts = this.config.workspacePath.split("/");
+      const worktreesIndex = pathParts.lastIndexOf("worktrees");
+
       if (worktreesIndex > 0) {
         // Build the origin path
-        const originPath = [...pathParts.slice(0, worktreesIndex), 'origin'].join('/');
-        
-        createOptions.HostConfig!.Binds = [
+        const originPath = [
+          ...pathParts.slice(0, worktreesIndex),
+          "origin",
+        ].join("/");
+
+        // Get the user's home directory for git config
+        const homeDir = os.homedir();
+        const gitConfigPath = path.join(homeDir, ".gitconfig");
+
+        const binds = [
           `${this.config.workspacePath}:/root/workspace`,
           // Mount the origin directory at the same absolute path to preserve git references
-          `${originPath}:${originPath}:ro`, // Read-only mount for safety
+          `${originPath}:${originPath}:rw`, // Read-write mount for git operations
         ];
-        
-        console.log(`  Origin mount: ${originPath} -> ${originPath} (read-only)`);
+
+        // Mount SSH directory for git authentication
+        const sshDir = path.join(homeDir, ".ssh");
+        try {
+          const fs = await import("fs");
+          await fs.promises.access(sshDir);
+          binds.push(`${sshDir}:/root/.ssh:ro`);
+          console.log(`  SSH mount: ${sshDir} -> /root/.ssh (read-only)`);
+        } catch {
+          console.log(`  No SSH directory found at ${sshDir}`);
+        }
+
+        // Mount GitHub CLI config for authentication
+        const ghConfigDir = path.join(homeDir, ".config", "gh");
+        try {
+          const fs = await import("fs");
+          await fs.promises.access(ghConfigDir);
+          binds.push(`${ghConfigDir}:/root/.config/gh:ro`);
+          console.log(
+            `  GitHub CLI config mount: ${ghConfigDir} -> /root/.config/gh (read-only)`
+          );
+        } catch {
+          console.log(`  No GitHub CLI config found at ${ghConfigDir}`);
+        }
+
+        // Mount git config if it exists
+        try {
+          const fs = await import("fs");
+          await fs.promises.access(gitConfigPath);
+
+          // Read and filter the git config to remove macOS-specific settings
+          const gitConfigContent = await fs.promises.readFile(
+            gitConfigPath,
+            "utf8"
+          );
+          const filteredConfig = this.filterGitConfig(gitConfigContent);
+
+          // Write filtered config to a temporary location
+          const tempDir = path.join(os.tmpdir(), "coderouter-git-configs");
+          await fs.promises.mkdir(tempDir, { recursive: true });
+          const tempGitConfigPath = path.join(
+            tempDir,
+            `gitconfig-${this.instanceId}`
+          );
+          await fs.promises.writeFile(tempGitConfigPath, filteredConfig);
+
+          binds.push(`${tempGitConfigPath}:/root/.gitconfig:ro`);
+          console.log(
+            `  Git config mount: ${tempGitConfigPath} -> /root/.gitconfig (filtered, read-only)`
+          );
+        } catch {
+          // Git config doesn't exist, which is fine
+          console.log(`  No git config found at ${gitConfigPath}`);
+        }
+
+        createOptions.HostConfig!.Binds = binds;
+
+        console.log(
+          `  Origin mount: ${originPath} -> ${originPath} (read-write)`
+        );
       } else {
         // Fallback to just mounting the workspace
-        createOptions.HostConfig!.Binds = [
-          `${this.config.workspacePath}:/root/workspace`,
-        ];
+        const homeDir = os.homedir();
+        const gitConfigPath = path.join(homeDir, ".gitconfig");
+
+        const binds = [`${this.config.workspacePath}:/root/workspace`];
+
+        // Mount SSH directory for git authentication
+        const sshDir = path.join(homeDir, ".ssh");
+        try {
+          const fs = await import("fs");
+          await fs.promises.access(sshDir);
+          binds.push(`${sshDir}:/root/.ssh:ro`);
+          console.log(`  SSH mount: ${sshDir} -> /root/.ssh (read-only)`);
+        } catch {
+          console.log(`  No SSH directory found at ${sshDir}`);
+        }
+
+        // Mount GitHub CLI config for authentication
+        const ghConfigDir = path.join(homeDir, ".config", "gh");
+        try {
+          const fs = await import("fs");
+          await fs.promises.access(ghConfigDir);
+          binds.push(`${ghConfigDir}:/root/.config/gh:ro`);
+          console.log(
+            `  GitHub CLI config mount: ${ghConfigDir} -> /root/.config/gh (read-only)`
+          );
+        } catch {
+          console.log(`  No GitHub CLI config found at ${ghConfigDir}`);
+        }
+
+        // Mount git config if it exists
+        try {
+          const fs = await import("fs");
+          await fs.promises.access(gitConfigPath);
+
+          // Read and filter the git config to remove macOS-specific settings
+          const gitConfigContent = await fs.promises.readFile(
+            gitConfigPath,
+            "utf8"
+          );
+          const filteredConfig = this.filterGitConfig(gitConfigContent);
+
+          // Write filtered config to a temporary location
+          const tempDir = path.join(os.tmpdir(), "coderouter-git-configs");
+          await fs.promises.mkdir(tempDir, { recursive: true });
+          const tempGitConfigPath = path.join(
+            tempDir,
+            `gitconfig-${this.instanceId}`
+          );
+          await fs.promises.writeFile(tempGitConfigPath, filteredConfig);
+
+          binds.push(`${tempGitConfigPath}:/root/.gitconfig:ro`);
+          console.log(
+            `  Git config mount: ${tempGitConfigPath} -> /root/.gitconfig (filtered, read-only)`
+          );
+        } catch {
+          // Git config doesn't exist, which is fine
+          console.log(`  No git config found at ${gitConfigPath}`);
+        }
+
+        createOptions.HostConfig!.Binds = binds;
       }
     }
 
@@ -154,6 +282,9 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       console.log(
         `Successfully connected to worker for container ${this.containerName}`
       );
+
+      // Configure git in the worker
+      await this.configureGitInWorker();
     } catch (error) {
       console.error(
         `Failed to connect to worker for container ${this.containerName}:`,
@@ -227,6 +358,23 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         }
       }
     }
+
+    // Clean up temporary git config file
+    try {
+      const fs = await import("fs");
+      const tempGitConfigPath = path.join(
+        os.tmpdir(),
+        "coderouter-git-configs",
+        `gitconfig-${this.instanceId}`
+      );
+      await fs.promises.unlink(tempGitConfigPath);
+      console.log(`Cleaned up temporary git config file`);
+    } catch {
+      // File might not exist, which is fine
+    }
+
+    // Clean up git credentials file if we created one
+    await cleanupGitCredentials(this.instanceId);
   }
 
   async getStatus(): Promise<{ running: boolean; info?: VSCodeInstanceInfo }> {
@@ -287,5 +435,155 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     // Convert the stream to string
     const logs = stream.toString("utf8");
     return logs;
+  }
+
+  private filterGitConfig(gitConfigContent: string): string {
+    // Filter out macOS-specific credential helpers and other incompatible settings
+    const lines = gitConfigContent.split("\n");
+    const filteredLines: string[] = [];
+    let inCredentialSection = false;
+    let skipNextLine = false;
+
+    for (const line of lines) {
+      // Skip continuation of previous line
+      if (skipNextLine && line.match(/^\s+/)) {
+        continue;
+      }
+      skipNextLine = false;
+
+      // Check if we're entering a credential section
+      if (line.trim().match(/^\[credential/)) {
+        inCredentialSection = true;
+        // Keep the section header but we'll filter its contents
+        filteredLines.push(line);
+        continue;
+      }
+
+      // Check if we're entering a new section
+      if (line.trim().match(/^\[/) && inCredentialSection) {
+        inCredentialSection = false;
+      }
+
+      // In credential section, only skip macOS/Windows specific helpers
+      if (inCredentialSection) {
+        if (
+          line.trim().includes("helper = osxkeychain") ||
+          line.trim().includes("helper = manager-core") ||
+          line.trim().includes("helper = manager") ||
+          line.trim().includes("helper = wincred")
+        ) {
+          skipNextLine = true; // Skip any continuation lines
+          continue;
+        }
+      }
+
+      // Skip specific problematic settings outside credential sections
+      if (
+        !inCredentialSection &&
+        (line.trim().includes("credential.helper = osxkeychain") ||
+          line.trim().includes("credential.helper = manager"))
+      ) {
+        continue;
+      }
+
+      filteredLines.push(line);
+    }
+
+    // Add store credential helper config if no credential section exists
+    const hasCredentialSection = filteredLines.some((line) =>
+      line.trim().match(/^\[credential/)
+    );
+    if (!hasCredentialSection) {
+      filteredLines.push("");
+      filteredLines.push("[credential]");
+      filteredLines.push("\thelper = store");
+    }
+
+    return filteredLines.join("\n");
+  }
+
+  private async configureGitInWorker(): Promise<void> {
+    const workerSocket = this.getWorkerSocket();
+    if (!workerSocket) {
+      console.warn("No worker socket available for git configuration");
+      return;
+    }
+
+    try {
+      // Get GitHub token from host
+      const githubToken = await getGitHubTokenFromKeychain();
+
+      // Read SSH keys if available
+      const homeDir = os.homedir();
+      const sshDir = path.join(homeDir, ".ssh");
+      let sshKeys:
+        | { privateKey?: string; publicKey?: string; knownHosts?: string }
+        | undefined = undefined;
+
+      try {
+        const fs = await import("fs");
+        const privateKeyPath = path.join(sshDir, "id_rsa");
+        const publicKeyPath = path.join(sshDir, "id_rsa.pub");
+        const knownHostsPath = path.join(sshDir, "known_hosts");
+
+        sshKeys = {};
+
+        try {
+          const privateKey = await fs.promises.readFile(privateKeyPath);
+          sshKeys.privateKey = privateKey.toString("base64");
+        } catch {
+          // Private key not found
+        }
+
+        try {
+          const publicKey = await fs.promises.readFile(publicKeyPath);
+          sshKeys.publicKey = publicKey.toString("base64");
+        } catch {
+          // Public key not found
+        }
+
+        try {
+          const knownHosts = await fs.promises.readFile(knownHostsPath);
+          sshKeys.knownHosts = knownHosts.toString("base64");
+        } catch {
+          // Known hosts not found
+        }
+
+        // Only include sshKeys if at least one key was found
+        if (!sshKeys.privateKey && !sshKeys.publicKey && !sshKeys.knownHosts) {
+          sshKeys = undefined;
+        }
+      } catch {
+        // SSH directory not accessible
+      }
+
+      // Send git configuration to worker
+      const gitConfig: Record<string, string> = {};
+      const userName = await this.getGitConfigValue("user.name");
+      const userEmail = await this.getGitConfigValue("user.email");
+      
+      if (userName) gitConfig["user.name"] = userName;
+      if (userEmail) gitConfig["user.email"] = userEmail;
+      
+      workerSocket.emit("worker:configure-git", {
+        githubToken: githubToken || undefined,
+        gitConfig: Object.keys(gitConfig).length > 0 ? gitConfig : undefined,
+        sshKeys,
+      });
+
+      console.log("Git configuration sent to worker");
+    } catch (error) {
+      console.error("Failed to configure git in worker:", error);
+    }
+  }
+
+  private async getGitConfigValue(key: string): Promise<string | undefined> {
+    try {
+      const { execSync } = await import("child_process");
+      const value = execSync(`git config --global ${key}`).toString().trim();
+      return value || undefined;
+    } catch {
+      return undefined;
+    }
   }
 }

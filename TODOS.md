@@ -15,4 +15,6 @@
 [ ] vercel previews
 [ ] vercel comments but it actually just pipes it to claude code and it auto makes a PR!
 [ ] auto set up devcontainers: `bun x @devcontainers/cli up --workspace-folder /root/workspace`
+[ ] make persistent [worktree/branchname]-vscode.cmux.local domains for each vscode container instance. the cmux.local domains also need to support mapping to the ports in each of the DockerVSCodeInstances. like [worktree/branchname]-[portnumber].cmux.local should map to the port number of the vscode instance.
 [ ] rename branches after a task is created to something reasonable
+[ ] plan mode for claude code
