@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+# Ensure bun and bunx are in PATH
+export PATH="/usr/local/bin:$PATH"
+
 # DinD setup (based on official docker:dind)
 # Mount necessary filesystems
 if [ -d /sys/kernel/security ] && ! mountpoint -q /sys/kernel/security; then
@@ -76,4 +79,4 @@ export IS_SANDBOX=true
 
 rm -f /startup.sh
 
-node /builtins/build/index.js
+node /builtins/build/index.js > /var/log/cmux/worker-proc.log 2>&1

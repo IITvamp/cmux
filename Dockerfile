@@ -32,7 +32,10 @@ RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
 
 # Install Bun
 RUN curl -fsSL https://bun.sh/install | bash && \
-    mv /root/.bun/bin/bun /usr/local/bin/
+    mv /root/.bun/bin/bun /usr/local/bin/ && \
+    ln -s /usr/local/bin/bun /usr/local/bin/bunx && \
+    bun --version && \
+    bunx --version
 
 # Install openvscode-server
 RUN if [ -z ${CODE_RELEASE+x} ]; then \
@@ -65,9 +68,12 @@ RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store CI=1 pnpm in
 
 # Pre-install node-pty in the target location
 RUN mkdir -p /builtins && \
-    echo '{"name":"builtins","version":"1.0.0"}' > /builtins/package.json
+    echo '{"name":"builtins","type":"module","version":"1.0.0"}' > /builtins/package.json
 WORKDIR /builtins
-RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store CI=1 pnpm install node-pty
+# Install node-pty and manually build it
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store CI=1 pnpm install node-pty && \
+    cd /builtins/node_modules/.pnpm/node-pty@*/node_modules/node-pty && \
+    npm run rebuild || node-gyp rebuild || true
 
 # Copy source files needed for build
 WORKDIR /coderouter
@@ -93,6 +99,9 @@ RUN bun build /coderouter/apps/worker/src/index.ts \
     cp -r /coderouter/apps/worker/build /builtins/build && \
     cp /coderouter/apps/worker/wait-for-docker.sh /usr/local/bin/ && \
     chmod +x /usr/local/bin/wait-for-docker.sh
+
+# Verify bun is still working in builder
+RUN bun --version && bunx --version
 
 # Build vscode extension
 WORKDIR /coderouter/packages/vscode-extension
@@ -151,6 +160,10 @@ RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
     corepack enable && \
     corepack prepare pnpm@10.13.1 --activate
 
+# Copy Bun from builder
+COPY --from=builder /usr/local/bin/bun /usr/local/bin/bun
+COPY --from=builder /usr/local/bin/bunx /usr/local/bin/bunx
+
 # Set iptables-legacy (required for Docker in Docker)
 RUN update-alternatives --set iptables /usr/sbin/iptables-legacy && \
     update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
@@ -185,7 +198,7 @@ RUN <<-'EOF'
 EOF
 
 # Set Bun path
-ENV PATH="/root/.bun/bin:$PATH"
+ENV PATH="/usr/local/bin:$PATH"
 
 # Copy only the built artifacts and runtime dependencies from builder
 COPY --from=builder /app/openvscode-server /app/openvscode-server
@@ -193,8 +206,8 @@ COPY --from=builder /root/.openvscode-server /root/.openvscode-server
 COPY --from=builder /builtins /builtins
 COPY --from=builder /usr/local/bin/wait-for-docker.sh /usr/local/bin/wait-for-docker.sh
 
-# Copy complete Bun installation
-COPY --from=builder /root/.bun /root/.bun
+# Verify bun works in runtime
+RUN bun --version && bunx --version
 
 # Setup pnpm and install global packages
 RUN SHELL=/bin/bash pnpm setup && \
@@ -224,7 +237,8 @@ for module; do
     fi
 done
 # remove /usr/local/... from PATH so we can exec the real modprobe as a last resort
-export PATH='/usr/sbin:/usr/bin:/sbin:/bin'
+# but preserve bun and bunx
+export PATH='/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 exec modprobe "$@"
 SCRIPT
 chmod +x /usr/local/bin/modprobe
