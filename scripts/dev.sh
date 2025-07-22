@@ -26,7 +26,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 # Check if node_modules exist, if not install dependencies
-if [ ! -d "node_modules" ]; then
+if [ ! -d "node_modules" ] || [ "$FORCE_INSTALL" = "true" ]; then
     echo -e "${BLUE}Installing dependencies...${NC}"
     npm install
 fi
@@ -43,13 +43,6 @@ CLIENT_PID=$!
 
 # Create logs directory if it doesn't exist
 mkdir -p "$APP_DIR/logs"
-
-# Check if Convex backend state exists, if not run setup
-# In devcontainer, we need to check the actual backend state directory
-if [ ! -d "$HOME/.convex/anonymous-convex-backend-state/anonymous-coderouter" ]; then
-    echo -e "${BLUE}Convex backend state not found. Running setup...${NC}"
-    bash "$SCRIPT_DIR/setup-convex.sh"
-fi
 
 # Start convex dev and log to both stdout and file
 echo -e "${GREEN}Starting convex dev...${NC}"

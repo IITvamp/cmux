@@ -28,7 +28,7 @@
       }
     }
   },
-  "forwardPorts": [3001, 3210, 5173],
+  "forwardPorts": [5173, 2375, 2376, 2377, 2378],
   "portsAttributes": {
     "3001": {
       "label": "Backend Server",
@@ -43,8 +43,8 @@
       "onAutoForward": "openBrowser"
     }
   },
-  "postCreateCommand": "sudo chown -R node:node /workspaces/coderouter/node_modules /workspaces/coderouter/packages/convex/node_modules && npm install",
-  "postStartCommand": "bash scripts/dev.sh",
+  "postCreateCommand": "npm install",
+  "postStartCommand": "bash ./scripts/dev.sh",
   "remoteUser": "node",
   "features": {
     "ghcr.io/devcontainers/features/git:1": {},
@@ -58,11 +58,9 @@
       "userGid": "1000"
     }
   },
-  "mounts": [
-    "source=${localWorkspaceFolderBasename}-node_modules,target=${containerWorkspaceFolder}/node_modules,type=volume",
-    "source=${localWorkspaceFolderBasename}-convex-node_modules,target=${containerWorkspaceFolder}/packages/convex/node_modules,type=volume"
-  ],
+  "mounts": [],
   "remoteEnv": {
-    "CHOKIDAR_USEPOLLING": "true"
+    "CHOKIDAR_USEPOLLING": "true",
+    "FORCE_INSTALL": "true"
   }
 }
