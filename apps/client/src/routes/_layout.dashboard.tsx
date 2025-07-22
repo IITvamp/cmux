@@ -240,7 +240,7 @@ function DashboardComponent() {
     }) => {
       console.log("VSCode spawned:", data);
       // Open in new tab
-      window.open(data.workspaceUrl, "_blank");
+      // window.open(data.workspaceUrl, "_blank");
     };
 
     socket.on("vscode-spawned", handleVSCodeSpawned);
