@@ -25,3 +25,4 @@
 [ ] package vite app and expose on the express app
 [ ] add qwen code https://x.com/oran_ge/status/1947822347517628625
 [ ] add grok code
+[ ] add atlassian rovo
