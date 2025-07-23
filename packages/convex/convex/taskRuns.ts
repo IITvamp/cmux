@@ -259,14 +259,25 @@ export const updateVSCodeInstance = mutation({
   args: {
     id: v.id("taskRuns"),
     vscode: v.object({
-      provider: v.union(v.literal("docker"), v.literal("morph"), v.literal("daytona"), v.literal("other")),
+      provider: v.union(
+        v.literal("docker"),
+        v.literal("morph"),
+        v.literal("daytona"),
+        v.literal("other")
+      ),
       containerName: v.optional(v.string()),
-      status: v.union(v.literal("starting"), v.literal("running"), v.literal("stopped")),
-      ports: v.optional(v.object({
-        vscode: v.string(),
-        worker: v.string(),
-        extension: v.optional(v.string()),
-      })),
+      status: v.union(
+        v.literal("starting"),
+        v.literal("running"),
+        v.literal("stopped")
+      ),
+      ports: v.optional(
+        v.object({
+          vscode: v.string(),
+          worker: v.string(),
+          extension: v.optional(v.string()),
+        })
+      ),
       url: v.optional(v.string()),
       workspaceUrl: v.optional(v.string()),
       startedAt: v.optional(v.number()),
@@ -285,7 +296,11 @@ export const updateVSCodeInstance = mutation({
 export const updateVSCodeStatus = mutation({
   args: {
     id: v.id("taskRuns"),
-    status: v.union(v.literal("starting"), v.literal("running"), v.literal("stopped")),
+    status: v.union(
+      v.literal("starting"),
+      v.literal("running"),
+      v.literal("stopped")
+    ),
     stoppedAt: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
@@ -346,17 +361,21 @@ export const getByContainerName = query({
   args: { containerName: v.string() },
   handler: async (ctx, args) => {
     const runs = await ctx.db.query("taskRuns").collect();
-    return runs.find(run => run.vscode?.containerName === args.containerName);
+    return runs.find((run) => run.vscode?.containerName === args.containerName);
   },
 });
 
 // Get all active VSCode instances
 export const getActiveVSCodeInstances = query({
   handler: async (ctx) => {
-    const runs = await ctx.db.query("taskRuns").collect();
-    return runs.filter(run => 
-      run.vscode && 
-      (run.vscode.status === "starting" || run.vscode.status === "running")
+    const runs = await ctx.db
+      .query("taskRuns")
+      .withIndex("by_vscode_status", (q) => q.eq("vscode.status", "running"))
+      .collect();
+    return runs.filter(
+      (run) =>
+        run.vscode &&
+        (run.vscode.status === "starting" || run.vscode.status === "running")
     );
   },
 });

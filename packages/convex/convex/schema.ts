@@ -18,7 +18,12 @@ export default defineSchema({
     parentRunId: v.optional(v.id("taskRuns")), // For tree structure
     prompt: v.string(), // The prompt that will be passed to claude
     summary: v.optional(v.string()), // Markdown summary of the run
-    status: v.union(v.literal("pending"), v.literal("running"), v.literal("completed"), v.literal("failed")),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("running"),
+      v.literal("completed"),
+      v.literal("failed")
+    ),
     log: v.string(), // CLI output log, will be appended to in real-time
     worktreePath: v.optional(v.string()), // Path to the git worktree for this run
     createdAt: v.number(),
@@ -26,34 +31,50 @@ export default defineSchema({
     completedAt: v.optional(v.number()),
     exitCode: v.optional(v.number()),
     // VSCode instance information
-    vscode: v.optional(v.object({
-      provider: v.union(v.literal("docker"), v.literal("morph"), v.literal("daytona"), v.literal("other")), // Extensible for future providers
-      containerName: v.optional(v.string()), // For Docker provider
-      status: v.union(v.literal("starting"), v.literal("running"), v.literal("stopped")),
-      ports: v.optional(v.object({
-        vscode: v.string(),
-        worker: v.string(),
-        extension: v.optional(v.string()),
-      })),
-      url: v.optional(v.string()), // The VSCode URL
-      workspaceUrl: v.optional(v.string()), // The workspace URL
-      startedAt: v.optional(v.number()),
-      stoppedAt: v.optional(v.number()),
-    })),
+    vscode: v.optional(
+      v.object({
+        provider: v.union(
+          v.literal("docker"),
+          v.literal("morph"),
+          v.literal("daytona"),
+          v.literal("other")
+        ), // Extensible for future providers
+        containerName: v.optional(v.string()), // For Docker provider
+        status: v.union(
+          v.literal("starting"),
+          v.literal("running"),
+          v.literal("stopped")
+        ),
+        ports: v.optional(
+          v.object({
+            vscode: v.string(),
+            worker: v.string(),
+            extension: v.optional(v.string()),
+          })
+        ),
+        url: v.optional(v.string()), // The VSCode URL
+        workspaceUrl: v.optional(v.string()), // The workspace URL
+        startedAt: v.optional(v.number()),
+        stoppedAt: v.optional(v.number()),
+      })
+    ),
   })
     .index("by_task", ["taskId", "createdAt"])
     .index("by_parent", ["parentRunId"])
-    .index("by_status", ["status"]),
+    .index("by_status", ["status"])
+    .index("by_vscode_status", ["vscode.status"]),
   taskVersions: defineTable({
     taskId: v.id("tasks"),
     version: v.number(),
     diff: v.string(),
     summary: v.string(),
     createdAt: v.number(),
-    files: v.array(v.object({
-      path: v.string(),
-      changes: v.string(),
-    })),
+    files: v.array(
+      v.object({
+        path: v.string(),
+        changes: v.string(),
+      })
+    ),
   }).index("by_task", ["taskId", "version"]),
   repos: defineTable({
     fullName: v.string(),
@@ -67,8 +88,7 @@ export default defineSchema({
   taskRunLogChunks: defineTable({
     taskRunId: v.id("taskRuns"),
     content: v.string(), // Log content chunk
-  })
-    .index("by_taskRun", ["taskRunId"]),
+  }).index("by_taskRun", ["taskRunId"]),
   apiKeys: defineTable({
     envVar: v.string(), // e.g. "GEMINI_API_KEY"
     value: v.string(), // The actual API key value (encrypted in a real app)
