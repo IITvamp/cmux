@@ -30,8 +30,8 @@ await runCommand("docker --version");
 
 const [{ url: vscodeUrl }, { url: workerUrl }] =
   await Promise.all([
-    sandbox.getPreviewLink(2376),
-    sandbox.getPreviewLink(2377),
+    sandbox.getPreviewLink(39378),
+    sandbox.getPreviewLink(39377),
   ]);
 
 console.log({ vscodeUrl, workerUrl });

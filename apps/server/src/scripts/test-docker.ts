@@ -8,7 +8,7 @@ async function testDocker() {
     { name: "Default", options: {} },
     { name: "Unix socket", options: { socketPath: '/var/run/docker.sock' } },
     { name: "OrbStack socket", options: { socketPath: `${process.env.HOME}/.orbstack/run/docker.sock` } },
-    { name: "Host", options: { host: 'localhost', port: 2375 } }
+    { name: "Host", options: { host: 'localhost', port: 39375 } }
   ];
 
   for (const config of configs) {

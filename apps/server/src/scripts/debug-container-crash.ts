@@ -10,18 +10,18 @@ async function main() {
   const container = await docker.createContainer({
     name: containerName,
     Image: "coderouter-worker:0.0.1",
-    Env: ["NODE_ENV=production", "WORKER_PORT=2377"],
+    Env: ["NODE_ENV=production", "WORKER_PORT=39377"],
     HostConfig: {
       AutoRemove: false, // Don't auto-remove so we can inspect logs
       Privileged: true,
       PortBindings: {
-        "2376/tcp": [{ HostPort: "0" }],
-        "2377/tcp": [{ HostPort: "0" }],
+        "39378/tcp": [{ HostPort: "0" }],
+        "39377/tcp": [{ HostPort: "0" }],
       },
     },
     ExposedPorts: {
-      "2376/tcp": {},
-      "2377/tcp": {},
+      "39378/tcp": {},
+      "39377/tcp": {},
     },
   });
   

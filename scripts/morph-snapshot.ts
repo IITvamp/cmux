@@ -208,7 +208,7 @@ async function createStartupScript(instance: Instance) {
 dockerd-entrypoint.sh &
 wait-for-docker.sh
 cd /builtins
-NODE_ENV=production WORKER_PORT=2377 node /builtins/build/index.js
+NODE_ENV=production WORKER_PORT=39377 node /builtins/build/index.js
 `;
 
   await runSSHCommand(
@@ -262,10 +262,10 @@ WORKDIR /builtins
 
 # Environment
 ENV NODE_ENV=production
-ENV WORKER_PORT=2377
+ENV WORKER_PORT=39377
 
 # Ports
-EXPOSE 2375 2377
+EXPOSE 39375 39377
 
 # Startup script
 RUN cat > /startup.sh << 'EOF'
@@ -308,7 +308,7 @@ async function buildAndTestDocker(instance: Instance) {
   // Run a test container
   const runResult = await runSSHCommand(
     instance,
-    "docker run -d --privileged -p 2377:2377 --name test-worker coderouter-worker:latest",
+    "docker run -d --privileged -p 39377:39377 --name test-worker coderouter-worker:latest",
     true
   );
 
@@ -342,12 +342,12 @@ async function startWorkerDirectly(instance: Instance) {
   // Start the worker process in the background
   await runSSHCommand(
     instance,
-    "cd /builtins && NODE_ENV=production WORKER_PORT=2377 nohup node /builtins/build/index.js > /tmp/worker.log 2>&1 &",
+    "cd /builtins && NODE_ENV=production WORKER_PORT=39377 nohup node /builtins/build/index.js > /tmp/worker.log 2>&1 &",
     true
   );
 
   // Expose HTTP services
-  await instance.exposeHttpService("worker", 2377);
+  await instance.exposeHttpService("worker", 39377);
 
   console.log("Worker started, services exposed");
 }

@@ -151,7 +151,7 @@ function connectToWorker() {
     workerSocket.disconnect();
   }
 
-  workerSocket = io("http://localhost:2377/vscode", {
+  workerSocket = io("http://localhost:39377/vscode", {
     reconnection: true,
     reconnectionAttempts: 5,
     reconnectionDelay: 1000,
@@ -183,7 +183,7 @@ function connectToWorker() {
 
 function startSocketServer() {
   try {
-    const port = 2378;
+    const port = 39376;
     httpServer = http.createServer();
     ioServer = new Server(httpServer, {
       cors: {

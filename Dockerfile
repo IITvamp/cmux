@@ -255,10 +255,12 @@ EOF
 COPY startup.sh /startup.sh
 RUN chmod +x /startup.sh
 
-# Ports (Docker uses default ports internally)
+# Ports
+# 39375: Docker daemon (unencrypted) - if needed
+# 39376: VS Code Extension Socket Server
 # 39377: Worker service
 # 39378: OpenVSCode server
-EXPOSE 39377 39378
+EXPOSE 39375 39376 39377 39378
 
 WORKDIR /
 

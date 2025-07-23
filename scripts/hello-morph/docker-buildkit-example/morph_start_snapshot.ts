@@ -13,8 +13,8 @@ const instance = await client.instances.start({
 console.log(`Created instance: ${instance.id}`);
 
 const exposedServices = instance.networking.httpServices;
-const vscodeService = exposedServices.find((service) => service.port === 2376);
-const workerService = exposedServices.find((service) => service.port === 2377);
+const vscodeService = exposedServices.find((service) => service.port === 39378);
+const workerService = exposedServices.find((service) => service.port === 39377);
 if (!vscodeService || !workerService) {
   throw new Error("VSCode or worker service not found");
 }

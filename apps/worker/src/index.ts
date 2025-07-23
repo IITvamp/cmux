@@ -41,7 +41,7 @@ interface WorkerTerminal {
 
 // Configuration
 const WORKER_ID = process.env.WORKER_ID || `worker-${Date.now()}`;
-const WORKER_PORT = parseInt(process.env.WORKER_PORT || "2377", 10);
+const WORKER_PORT = parseInt(process.env.WORKER_PORT || "39377", 10);
 const CONTAINER_IMAGE = process.env.CONTAINER_IMAGE || "coderouter-worker";
 const CONTAINER_VERSION = process.env.CONTAINER_VERSION || "0.0.1";
 

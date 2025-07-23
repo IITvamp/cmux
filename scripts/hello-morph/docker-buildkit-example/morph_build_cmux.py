@@ -699,7 +699,7 @@ def warmup_vscode(instance):
     # Fixed version: combine all commands into a single line
     warmup_command = (
         "chromium --headless --disable-gpu --no-sandbox --disable-dev-shm-usage --disable-setuid-sandbox "
-        "http://localhost:2376/?folder=/root/workspace & "
+        "http://localhost:39378/?folder=/root/workspace & "
         "CHROME_PID=$! && "
         'echo "Chrome started with PID $CHROME_PID, waiting 10 seconds for VS Code to warm up..." && '
         "sleep 10 && "
@@ -845,8 +845,8 @@ def main():
         run_ssh_command(current_instance, "mkdir -p /root/workspace", sudo=True)
 
         # Expose HTTP services
-        current_instance.expose_http_service("openvscode", 2376)
-        current_instance.expose_http_service("worker", 2377)
+        current_instance.expose_http_service("openvscode", 39378)
+        current_instance.expose_http_service("worker", 39377)
 
         print("\n--- Starting services ---")
         # Run the startup script in the background

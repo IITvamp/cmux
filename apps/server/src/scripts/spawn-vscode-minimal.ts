@@ -32,20 +32,20 @@ async function spawnVSCodeContainer(docker: Docker): Promise<ContainerInfo> {
   const container = await docker.createContainer({
     name: containerName,
     Image: imageName,
-    Env: ["NODE_ENV=production", "WORKER_PORT=2377"],
+    Env: ["NODE_ENV=production", "WORKER_PORT=39377"],
     HostConfig: {
       AutoRemove: true,
       Privileged: true,
       PortBindings: {
-        "2376/tcp": [{ HostPort: "0" }],
-        "2377/tcp": [{ HostPort: "0" }],
-        "2378/tcp": [{ HostPort: "0" }],
+        "39378/tcp": [{ HostPort: "0" }],
+        "39377/tcp": [{ HostPort: "0" }],
+        "39376/tcp": [{ HostPort: "0" }],
       },
     },
     ExposedPorts: {
-      "2376/tcp": {},
-      "2377/tcp": {},
-      "2378/tcp": {},
+      "39378/tcp": {},
+      "39377/tcp": {},
+      "39376/tcp": {},
     },
   });
 
@@ -57,8 +57,8 @@ async function spawnVSCodeContainer(docker: Docker): Promise<ContainerInfo> {
   const info = await container.inspect();
   const ports = info.NetworkSettings.Ports;
 
-  const vscodePort = ports["2376/tcp"]?.[0]?.HostPort;
-  const workerPort = ports["2377/tcp"]?.[0]?.HostPort;
+  const vscodePort = ports["39378/tcp"]?.[0]?.HostPort;
+  const workerPort = ports["39377/tcp"]?.[0]?.HostPort;
 
   if (!vscodePort || !workerPort) {
     throw new Error("Failed to get port mappings");

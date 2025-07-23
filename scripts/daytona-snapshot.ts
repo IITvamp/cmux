@@ -94,7 +94,7 @@ try {
   //   .runCommands("mkdir -p /workspace")
   //   .env({
   //     NODE_ENV: "production",
-  //     WORKER_PORT: "2377",
+  //     WORKER_PORT: "39377",
   //   })
   //   .entrypoint(["/startup.sh"]);
 
@@ -139,7 +139,7 @@ try {
   // Verify devcontainer CLI is installed
   await runCommand("devcontainer --version");
 
-  const { url } = await sandbox.getPreviewLink(2377);
+  const { url } = await sandbox.getPreviewLink(39377);
 
   const managementSocket = io(url);
 
@@ -192,7 +192,7 @@ try {
   });
 
   // Also test client connection
-  const clientSocket = io("http://localhost:2377/vscode");
+  const clientSocket = io("http://localhost:39377/vscode");
 
   clientSocket.on("connect", () => {
     console.log("Connected to worker client port");

@@ -28,10 +28,10 @@ export class MorphVSCodeInstance extends VSCodeInstance {
     // Get exposed services
     const exposedServices = this.instance.networking.httpServices;
     const vscodeService = exposedServices.find(
-      (service) => service.port === 2376
+      (service) => service.port === 39378
     );
     const workerService = exposedServices.find(
-      (service) => service.port === 2377
+      (service) => service.port === 39377
     );
 
     if (!vscodeService || !workerService) {
@@ -88,7 +88,7 @@ export class MorphVSCodeInstance extends VSCodeInstance {
       // Note: You might need to adjust this based on Morph's API
       const exposedServices = this.instance.networking.httpServices;
       const vscodeService = exposedServices.find(
-        (service) => service.port === 2376
+        (service) => service.port === 39378
       );
 
       if (vscodeService) {

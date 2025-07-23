@@ -42,7 +42,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       // Container doesn't exist, which is fine
     }
 
-    const envVars = ["NODE_ENV=production", "WORKER_PORT=2377"];
+    const envVars = ["NODE_ENV=production", "WORKER_PORT=39377"];
 
     // Create container configuration
     const createOptions: Docker.ContainerCreateOptions = {
@@ -53,15 +53,15 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         AutoRemove: true,
         Privileged: true,
         PortBindings: {
-          "2376/tcp": [{ HostPort: "0" }], // VS Code port
-          "2377/tcp": [{ HostPort: "0" }], // Worker port
-          "2378/tcp": [{ HostPort: "0" }], // Extension socket port
+          "39378/tcp": [{ HostPort: "0" }], // VS Code port
+          "39377/tcp": [{ HostPort: "0" }], // Worker port
+          "39376/tcp": [{ HostPort: "0" }], // Extension socket port
         },
       },
       ExposedPorts: {
-        "2376/tcp": {},
-        "2377/tcp": {},
-        "2378/tcp": {},
+        "39378/tcp": {},
+        "39377/tcp": {},
+        "39376/tcp": {},
       },
     };
 
@@ -227,17 +227,17 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     const containerInfo = await this.container.inspect();
     const ports = containerInfo.NetworkSettings.Ports;
 
-    const vscodePort = ports["2376/tcp"]?.[0]?.HostPort;
-    const workerPort = ports["2377/tcp"]?.[0]?.HostPort;
+    const vscodePort = ports["39378/tcp"]?.[0]?.HostPort;
+    const workerPort = ports["39377/tcp"]?.[0]?.HostPort;
 
     if (!vscodePort) {
       console.error(`Available ports:`, ports);
-      throw new Error("Failed to get VS Code port mapping for port 2376");
+      throw new Error("Failed to get VS Code port mapping for port 39378");
     }
 
     if (!workerPort) {
       console.error(`Available ports:`, ports);
-      throw new Error("Failed to get worker port mapping for port 2377");
+      throw new Error("Failed to get worker port mapping for port 39377");
     }
 
     // Wait for worker to be ready by polling
@@ -398,7 +398,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
       if (running) {
         const ports = containerInfo.NetworkSettings.Ports;
-        const vscodePort = ports["2376/tcp"]?.[0]?.HostPort;
+        const vscodePort = ports["39378/tcp"]?.[0]?.HostPort;
 
         if (vscodePort) {
           const baseUrl = `http://localhost:${vscodePort}`;

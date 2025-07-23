@@ -163,10 +163,10 @@ async function setupDockerContainer() {
   logProgress(`Starting Docker container: ${CONTAINER_NAME}`);
   console.log("Container configuration:");
   console.log(
-    "  - Port 2377: Worker port (with /client and /management namespaces)"
+    "  - Port 39377: Worker port (with /client and /management namespaces)"
   );
-  console.log("  - Port 2378: VS Code extension socket server");
-  console.log("  - Port 2376: code-server (VS Code in browser)");
+  console.log("  - Port 39376: VS Code extension socket server");
+  console.log("  - Port 39378: code-server (VS Code in browser)");
   console.log("  - Privileged mode: Enabled (for Docker-in-Docker)");
 
   if (workspacePath) {
@@ -185,15 +185,15 @@ async function setupDockerContainer() {
     CONTAINER_NAME,
     "--privileged",
     "-p",
-    "2377:2377",
+    "39377:39377",
     "-p",
-    "2378:2378",
+    "39376:39376",
     "-p",
-    "2376:2376",
+    "39378:39378",
     "-e",
     "NODE_ENV=production",
     "-e",
-    "WORKER_PORT=2377",
+    "WORKER_PORT=39377",
   ];
 
   // Add volume mount if workspace path is provided
@@ -317,7 +317,7 @@ async function testWorker() {
   // Connect to worker management port
   startTiming("Socket Connection");
   logProgress("Connecting to worker management namespace...");
-  const managementSocket = io("http://localhost:2377/management", {
+  const managementSocket = io("http://localhost:39377/management", {
     timeout: 10000,
     reconnectionAttempts: 3,
   });
@@ -333,7 +333,7 @@ async function testWorker() {
 
   // Also test client connection
   logProgress("Connecting to worker client namespace...");
-  const clientSocket = io("http://localhost:2377/vscode", {
+  const clientSocket = io("http://localhost:39377/vscode", {
     timeout: 10000,
     reconnectionAttempts: 3,
   });
@@ -474,9 +474,9 @@ async function testWorker() {
     // Connect to VS Code extension socket server (if terminal was created)
     if (customPrompt) {
       startTiming("VS Code Socket Connection");
-      logProgress("Connecting to VS Code extension socket server (2378)...");
+      logProgress("Connecting to VS Code extension socket server (39376)...");
 
-      const vscodeSocket = io("http://localhost:2378", {
+      const vscodeSocket = io("http://localhost:39376", {
         timeout: 10000,
         reconnectionAttempts: 3,
       });
@@ -580,9 +580,9 @@ async function testWorker() {
       console.log("\n🔧 KEEP-ALIVE MODE");
       console.log("================");
       console.log("Container is still running. You can:");
-      console.log("  - Connect to OpenVSCode (http://localhost:2376)");
+      console.log("  - Connect to OpenVSCode (http://localhost:39378)");
       console.log(
-        "  - Test worker on port 2377 (with /client and /management namespaces)"
+        "  - Test worker on port 39377 (with /client and /management namespaces)"
       );
       if (workspacePath) {
         console.log(
