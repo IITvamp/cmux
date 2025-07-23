@@ -29,3 +29,4 @@
 [ ] make cli good
 [ ] cmux cli npm publish and uvx publish
 [ ] deno compile
+[ ] ensure all the different CLIs work, not just claude
