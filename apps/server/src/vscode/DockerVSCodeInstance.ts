@@ -1,6 +1,9 @@
+import { api } from "@coderouter/convex/api";
+import type { Id } from "@coderouter/convex/dataModel";
 import Docker from "dockerode";
-import os from "os";
-import path from "path";
+import * as os from "os";
+import * as path from "path";
+import { convex } from "../utils/convexClient.js";
 import { cleanupGitCredentials } from "../utils/dockerGitSetup.js";
 import { getGitHubTokenFromKeychain } from "../utils/getGitHubToken.js";
 import {
@@ -8,6 +11,21 @@ import {
   type VSCodeInstanceConfig,
   type VSCodeInstanceInfo,
 } from "./VSCodeInstance.js";
+
+// Global port mapping storage
+export interface ContainerMapping {
+  containerName: string;
+  instanceId: string;
+  ports: {
+    vscode: string;
+    worker: string;
+    extension?: string;
+  };
+  status: "starting" | "running" | "stopped";
+  workspacePath?: string;
+}
+
+export const containerMappings = new Map<string, ContainerMapping>();
 
 export class DockerVSCodeInstance extends VSCodeInstance {
   private containerName: string;
@@ -17,7 +35,11 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
   constructor(config: VSCodeInstanceConfig) {
     super(config);
-    this.containerName = `coderouter-vscode-${this.instanceId}`;
+    // Use a simplified container name based on taskRunId
+    // Since taskRunId is a Convex ID like "jb74m5s2g9d6c5w6qkbmxsm7sh744d"
+    // We'll take the first 12 chars for a shorter container name
+    const shortId = this.taskRunId.substring(0, 12);
+    this.containerName = `coderouter-${shortId}`;
     this.imageName = "coderouter-worker:0.0.1";
     // Always use explicit socket path for consistency
     this.docker = new Docker({ socketPath: "/var/run/docker.sock" });
@@ -28,6 +50,15 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     console.log(`  Image: ${this.imageName}`);
     console.log(`  Workspace: ${this.config.workspacePath}`);
     console.log(`  Agent name: ${this.config.agentName}`);
+
+    // Set initial mapping status
+    containerMappings.set(this.containerName, {
+      containerName: this.containerName,
+      instanceId: this.instanceId,
+      ports: { vscode: "", worker: "" },
+      status: "starting",
+      workspacePath: this.config.workspacePath,
+    });
 
     // Stop and remove any existing container with same name
     try {
@@ -229,6 +260,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
     const vscodePort = ports["39378/tcp"]?.[0]?.HostPort;
     const workerPort = ports["39377/tcp"]?.[0]?.HostPort;
+    const extensionPort = ports["39376/tcp"]?.[0]?.HostPort;
 
     if (!vscodePort) {
       console.error(`Available ports:`, ports);
@@ -238,6 +270,31 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     if (!workerPort) {
       console.error(`Available ports:`, ports);
       throw new Error("Failed to get worker port mapping for port 39377");
+    }
+
+    // Update the container mapping with actual ports
+    const mapping = containerMappings.get(this.containerName);
+    if (mapping) {
+      mapping.ports = {
+        vscode: vscodePort,
+        worker: workerPort,
+        extension: extensionPort,
+      };
+      mapping.status = "running";
+    }
+
+    // Update VSCode ports in Convex
+    try {
+      await convex.mutation(api.taskRuns.updateVSCodePorts, {
+        id: this.taskRunId as Id<"taskRuns">,
+        ports: {
+          vscode: vscodePort,
+          worker: workerPort,
+          extension: extensionPort,
+        },
+      });
+    } catch (error) {
+      console.error("Failed to update VSCode ports in Convex:", error);
     }
 
     // Wait for worker to be ready by polling
@@ -297,6 +354,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       url: baseUrl,
       workspaceUrl,
       instanceId: this.instanceId,
+      taskRunId: this.taskRunId,
       provider: "docker",
     };
   }
@@ -305,17 +363,36 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     if (!this.container) return;
 
     // Monitor container events
-    this.container.wait((err: Error | null, data: { StatusCode: number }) => {
-      if (err) {
-        console.error(`Container wait error:`, err);
-      } else {
-        console.log(
-          `Container ${this.containerName} exited with status:`,
-          data
-        );
-        this.emit("exit", data.StatusCode);
+    this.container.wait(
+      async (err: Error | null, data: { StatusCode: number }) => {
+        if (err) {
+          console.error(`Container wait error:`, err);
+        } else {
+          console.log(
+            `Container ${this.containerName} exited with status:`,
+            data
+          );
+          // Update mapping status to stopped
+          const mapping = containerMappings.get(this.containerName);
+          if (mapping) {
+            mapping.status = "stopped";
+          }
+
+          // Update VSCode status in Convex
+          try {
+            await convex.mutation(api.taskRuns.updateVSCodeStatus, {
+              id: this.taskRunId as Id<"taskRuns">,
+              status: "stopped",
+              stoppedAt: Date.now(),
+            });
+          } catch (error) {
+            console.error("Failed to update VSCode status in Convex:", error);
+          }
+
+          this.emit("exit", data.StatusCode);
+        }
       }
-    });
+    );
 
     // Attach to container streams for logs (only if DEBUG is enabled)
     if (process.env.DEBUG) {
@@ -340,6 +417,23 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
   async stop(): Promise<void> {
     console.log(`Stopping Docker VSCode instance: ${this.containerName}`);
+
+    // Update mapping status
+    const mapping = containerMappings.get(this.containerName);
+    if (mapping) {
+      mapping.status = "stopped";
+    }
+
+    // Update VSCode status in Convex
+    try {
+      await convex.mutation(api.taskRuns.updateVSCodeStatus, {
+        id: this.taskRunId as Id<"taskRuns">,
+        status: "stopped",
+        stoppedAt: Date.now(),
+      });
+    } catch (error) {
+      console.error("Failed to update VSCode status in Convex:", error);
+    }
 
     // Disconnect from worker first
     await this.disconnectFromWorker();
@@ -408,6 +502,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
               url: baseUrl,
               workspaceUrl: this.getWorkspaceUrl(baseUrl),
               instanceId: this.instanceId,
+              taskRunId: this.taskRunId,
               provider: "docker",
             },
           };
@@ -435,6 +530,15 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     // Convert the stream to string
     const logs = stream.toString("utf8");
     return logs;
+  }
+
+  getContainerName(): string {
+    return this.containerName;
+  }
+
+  getPorts(): { vscode?: string; worker?: string; extension?: string } | null {
+    const mapping = containerMappings.get(this.containerName);
+    return mapping?.ports || null;
   }
 
   private filterGitConfig(gitConfigContent: string): string {
@@ -561,10 +665,10 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       const gitConfig: Record<string, string> = {};
       const userName = await this.getGitConfigValue("user.name");
       const userEmail = await this.getGitConfigValue("user.email");
-      
+
       if (userName) gitConfig["user.name"] = userName;
       if (userEmail) gitConfig["user.email"] = userEmail;
-      
+
       workerSocket.emit("worker:configure-git", {
         githubToken: githubToken || undefined,
         gitConfig: Object.keys(gitConfig).length > 0 ? gitConfig : undefined,

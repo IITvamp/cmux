@@ -78,14 +78,14 @@ function TaskDetailPage() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Check for Ctrl+1-9 on macOS, Alt+1-9 on Windows/Linux
-      const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+      const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
       const modifierPressed = isMac ? e.ctrlKey : e.altKey;
-      
-      if (modifierPressed && e.key >= '1' && e.key <= '9') {
+
+      if (modifierPressed && e.key >= "1" && e.key <= "9") {
         e.preventDefault();
         const keyNum = parseInt(e.key);
         let runIndex: number;
-        
+
         if (keyNum === 9) {
           // 9 navigates to the last run
           runIndex = flatRuns.length - 1;
@@ -93,7 +93,7 @@ function TaskDetailPage() {
           // 1-8 navigate to corresponding run (0-based index)
           runIndex = keyNum - 1;
         }
-        
+
         if (flatRuns[runIndex]) {
           navigate({
             to: "/task/$taskId/run/$runId",
@@ -103,8 +103,8 @@ function TaskDetailPage() {
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [flatRuns, taskId, navigate]);
 
   if (!task || !taskRuns) {

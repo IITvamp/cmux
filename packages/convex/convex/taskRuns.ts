@@ -253,3 +253,110 @@ export const appendLogPublic = mutation({
     });
   },
 });
+
+// Update VSCode instance information
+export const updateVSCodeInstance = mutation({
+  args: {
+    id: v.id("taskRuns"),
+    vscode: v.object({
+      provider: v.union(v.literal("docker"), v.literal("morph"), v.literal("daytona"), v.literal("other")),
+      containerName: v.optional(v.string()),
+      status: v.union(v.literal("starting"), v.literal("running"), v.literal("stopped")),
+      ports: v.optional(v.object({
+        vscode: v.string(),
+        worker: v.string(),
+        extension: v.optional(v.string()),
+      })),
+      url: v.optional(v.string()),
+      workspaceUrl: v.optional(v.string()),
+      startedAt: v.optional(v.number()),
+      stoppedAt: v.optional(v.number()),
+    }),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.id, {
+      vscode: args.vscode,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+// Update VSCode instance status
+export const updateVSCodeStatus = mutation({
+  args: {
+    id: v.id("taskRuns"),
+    status: v.union(v.literal("starting"), v.literal("running"), v.literal("stopped")),
+    stoppedAt: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.id);
+    if (!run) {
+      throw new Error("Task run not found");
+    }
+
+    const vscode = run.vscode || {
+      provider: "docker" as const,
+      status: "starting" as const,
+    };
+
+    await ctx.db.patch(args.id, {
+      vscode: {
+        ...vscode,
+        status: args.status,
+        ...(args.stoppedAt ? { stoppedAt: args.stoppedAt } : {}),
+      },
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+// Update VSCode instance ports
+export const updateVSCodePorts = mutation({
+  args: {
+    id: v.id("taskRuns"),
+    ports: v.object({
+      vscode: v.string(),
+      worker: v.string(),
+      extension: v.optional(v.string()),
+    }),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.id);
+    if (!run) {
+      throw new Error("Task run not found");
+    }
+
+    const vscode = run.vscode || {
+      provider: "docker" as const,
+      status: "starting" as const,
+    };
+
+    await ctx.db.patch(args.id, {
+      vscode: {
+        ...vscode,
+        ports: args.ports,
+      },
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+// Get task run by VSCode container name
+export const getByContainerName = query({
+  args: { containerName: v.string() },
+  handler: async (ctx, args) => {
+    const runs = await ctx.db.query("taskRuns").collect();
+    return runs.find(run => run.vscode?.containerName === args.containerName);
+  },
+});
+
+// Get all active VSCode instances
+export const getActiveVSCodeInstances = query({
+  handler: async (ctx) => {
+    const runs = await ctx.db.query("taskRuns").collect();
+    return runs.filter(run => 
+      run.vscode && 
+      (run.vscode.status === "starting" || run.vscode.status === "running")
+    );
+  },
+});

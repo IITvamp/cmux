@@ -20,7 +20,7 @@ async function main() {
     
     // Try check-docker
     console.log("\nEmitting worker:check-docker...");
-    socket.emit("worker:check-docker", (result) => {
+    socket.emit("worker:check-docker", (result: any) => {
       console.log("Got response:", result);
       
       // Now disconnect

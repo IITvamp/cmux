@@ -3,9 +3,10 @@
   "compilerOptions": {
     "composite": true,
     "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
     "verbatimModuleSyntax": false,
+    "downlevelIteration": true,
     "lib": ["ES2022"],
     "outDir": "./dist",
     "rootDir": ".",
