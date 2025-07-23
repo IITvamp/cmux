@@ -21,7 +21,7 @@
 [ ] update state for agent when they finish a task or fail a task
 [ ] run bunx `bunx @devcontainers/cli up --workspace-folder .` and iterate on the .devcontainer/dockerfile/startup script until it works
 [x] in @apps/server/src/index.ts, we need to make a new file that contains an express app, and then put it into the createServer call. (make sure to pnpm install express in the right places) the express app's job is to be a proxy to every single DockerVSCodeInstance that ever gets spun up. The goal is if the user goes to [containerName].[port].localhost:3001/ (3001 is the server's port), it should proxy to the port number of the vscode instance. the vscode instance can run other things besides vscode on different ports, but we just colloquially call it "vscode" for now. to do this, we need to modify @apps/server/src/vscode/DockerVSCodeInstance.ts that stores the port mappings of every single vscode instance that ever gets spun up, so that it also stores the container name of the vscode instance. then, in @apps/server/src/index.ts, we can use the express app to proxy to the vscode instance. if a vscode instance is not running, we will need to start it up on the fly. while it's being spun up, we need to show the user a loading screen. once it's ready, we need to redirect the user to the vscode instance. make sure to handle when docker containers get killed and when that happens, we need to update the port mappings. port mappings should be stored in a map in @apps/server/src/vscode/DockerVSCodeInstance.ts.
-[ ] figure out how to use convex binary
+[x] figure out how to use convex binary
 [ ] package vite app and expose on the express app
 [ ] add qwen code https://x.com/oran_ge/status/1947822347517628625
 [ ] add grok code
