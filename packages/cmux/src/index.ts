@@ -1,9 +1,10 @@
-import express from 'express';
-import { createServer } from 'http';
-import { Server } from 'socket.io';
-import cors from 'cors';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import cors from "cors";
+import type { Express } from "express";
+import express from "express";
+import type { Server as HttpServer } from "http";
+import { createServer } from "http";
+import path from "path";
+import { Server } from "socket.io";
 
 export interface CmuxOptions {
   port?: number;
@@ -11,11 +12,19 @@ export interface CmuxOptions {
   corsOrigin?: string | string[] | boolean;
 }
 
-export function createCmuxServer(options: CmuxOptions = {}) {
+export interface CmuxServer {
+  app: Express;
+  io: Server;
+  httpServer: HttpServer;
+  start: () => Promise<void>;
+  stop: () => Promise<void>;
+}
+
+export function createCmuxServer(options: CmuxOptions = {}): CmuxServer {
   const {
     port = 2689,
-    staticDir = path.join(process.cwd(), 'public'),
-    corsOrigin = true
+    staticDir = path.join(process.cwd(), "public"),
+    corsOrigin = true,
   } = options;
 
   const app = express();
@@ -23,30 +32,32 @@ export function createCmuxServer(options: CmuxOptions = {}) {
   const io = new Server(httpServer, {
     cors: {
       origin: corsOrigin,
-      methods: ['GET', 'POST']
-    }
+      methods: ["GET", "POST"],
+    },
   });
 
-  app.use(cors({
-    origin: corsOrigin
-  }));
+  app.use(
+    cors({
+      origin: corsOrigin,
+    })
+  );
 
   app.use(express.static(staticDir));
 
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(staticDir, 'index.html'));
+  app.get("*", (req, res) => {
+    res.sendFile(path.join(staticDir, "index.html"));
   });
 
-  io.on('connection', (socket) => {
-    console.log('Client connected:', socket.id);
+  io.on("connection", (socket) => {
+    console.log("Client connected:", socket.id);
 
-    socket.on('disconnect', () => {
-      console.log('Client disconnected:', socket.id);
+    socket.on("disconnect", () => {
+      console.log("Client disconnected:", socket.id);
     });
 
-    socket.on('message', (data) => {
-      console.log('Message received:', data);
-      socket.emit('message', { echo: data });
+    socket.on("message", (data) => {
+      console.log("Message received:", data);
+      socket.emit("message", { echo: data });
     });
   });
 
@@ -63,7 +74,7 @@ export function createCmuxServer(options: CmuxOptions = {}) {
   const stop = () => {
     return new Promise<void>((resolve) => {
       httpServer.close(() => {
-        console.log('Cmux server stopped');
+        console.log("Cmux server stopped");
         resolve();
       });
     });
@@ -74,11 +85,11 @@ export function createCmuxServer(options: CmuxOptions = {}) {
     io,
     httpServer,
     start,
-    stop
+    stop,
   };
 }
 
-export function startServer(options?: CmuxOptions) {
+export function startServer(options?: CmuxOptions): CmuxServer {
   const server = createCmuxServer(options);
   server.start();
   return server;
