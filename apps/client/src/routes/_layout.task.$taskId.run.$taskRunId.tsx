@@ -9,7 +9,7 @@ export const Route = createFileRoute("/_layout/task/$taskId/run/$taskRunId")({
 function TaskRunComponent() {
   const { taskRunId } = Route.useParams();
   const shortId = getShortId(taskRunId);
-  const iframeUrl = `http://${shortId}.39378.localhost:3001`;
+  const iframeUrl = `http://${shortId}.39378.localhost:3001/?folder=/root/workspace`;
 
   return (
     <div className="flex flex-row grow min-h-0">
