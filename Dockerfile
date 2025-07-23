@@ -120,7 +120,7 @@ RUN mkdir -p /root/.openvscode-server/data/User && \
     echo '{"workbench.startupEditor": "none"}' > /root/.openvscode-server/data/Machine/settings.json
 
 # Stage 2: Runtime stage
-FROM ubuntu:22.04 AS runtime
+FROM ubuntu:24.04 AS runtime
 
 ARG DOCKER_VERSION=28.3.2
 ARG DOCKER_CHANNEL=stable
@@ -164,17 +164,16 @@ RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
 COPY --from=builder /usr/local/bin/bun /usr/local/bin/bun
 COPY --from=builder /usr/local/bin/bunx /usr/local/bin/bunx
 
-# Set iptables-legacy (required for Docker in Docker)
-RUN update-alternatives --set iptables /usr/sbin/iptables-legacy && \
-    update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
+# Set iptables-legacy (required for Docker in Docker on Ubuntu 22.04+)
+RUN update-alternatives --set iptables /usr/sbin/iptables-legacy
 
 # Install Docker
 RUN <<-'EOF'
     set -eux; \
-    arch="$(dpkg --print-architecture)"; \
+    arch="$(uname -m)"; \
     case "$arch" in \
-        amd64) dockerArch='x86_64' ;; \
-        arm64) dockerArch='aarch64' ;; \
+        x86_64) dockerArch='x86_64' ;; \
+        aarch64) dockerArch='aarch64' ;; \
         *) echo >&2 "error: unsupported architecture ($arch)"; exit 1 ;; \
     esac; \
     wget -O docker.tgz "https://download.docker.com/linux/static/${DOCKER_CHANNEL}/${dockerArch}/docker-${DOCKER_VERSION}.tgz"; \
@@ -184,18 +183,7 @@ RUN <<-'EOF'
     docker --version
 EOF
 
-# Install docker-init (tini)
-RUN <<-'EOF'
-    set -eux; \
-    arch="$(dpkg --print-architecture)"; \
-    case "$arch" in \
-        amd64) tiniArch='amd64' ;; \
-        arm64) tiniArch='arm64' ;; \
-        *) echo >&2 "error: unsupported architecture ($arch)"; exit 1 ;; \
-    esac; \
-    wget -O /usr/local/bin/docker-init "https://github.com/krallin/tini/releases/download/v0.19.0/tini-${tiniArch}"; \
-    chmod +x /usr/local/bin/docker-init
-EOF
+# Skip docker-init installation - ubuntu-dind doesn't have it
 
 # Set Bun path
 ENV PATH="/usr/local/bin:$PATH"
@@ -238,8 +226,7 @@ for module; do
     fi
 done
 # remove /usr/local/... from PATH so we can exec the real modprobe as a last resort
-# but preserve bun and bunx
-export PATH='/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+export PATH='/usr/sbin:/usr/bin:/sbin:/bin'
 exec modprobe "$@"
 SCRIPT
 chmod +x /usr/local/bin/modprobe
@@ -248,11 +235,10 @@ EOF
 # Create workspace directory
 RUN mkdir -p /workspace /root/workspace
 
-# Docker-in-Docker environment
-ENV container=docker
-ENV DOCKER_TLS_CERTDIR=""
+VOLUME /var/lib/docker
 
 # Create supervisor config for dockerd
+# Based on https://github.com/cruizba/ubuntu-dind
 RUN <<-'EOF'
 mkdir -p /etc/supervisor/conf.d
 cat > /etc/supervisor/conf.d/dockerd.conf << 'CONFIG'
@@ -269,8 +255,10 @@ EOF
 COPY startup.sh /startup.sh
 RUN chmod +x /startup.sh
 
-# Ports
-EXPOSE 2375 2376 2377 2378
+# Ports (Docker uses default ports internally)
+# 39377: Worker service
+# 39378: OpenVSCode server
+EXPOSE 39377 39378
 
 WORKDIR /
 
