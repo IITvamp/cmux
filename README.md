@@ -1,5 +1,5 @@
 <h1 align="center">cmux</h1>
-<p align="center">open source Claude Code manager that also supports Codex/Gemini/OpenCode/Amp CLI</p>
+<p align="center">open source Claude Code manager. supports Codex/Gemini/OpenCode/Amp CLI</p>
 
 <p align="center"><code>bunx cmux</code> or <code>npx cmux</code></p>
 
