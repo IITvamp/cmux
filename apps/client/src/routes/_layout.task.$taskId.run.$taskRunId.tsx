@@ -1,3 +1,4 @@
+import { preloadTaskRunIframes } from "@/lib/preloadTaskRunIframes";
 import { getShortId } from "@coderouter/shared";
 import { createFileRoute } from "@tanstack/react-router";
 import "@xterm/xterm/css/xterm.css";
@@ -5,6 +6,9 @@ import { usePersistentIframe } from "../hooks/usePersistentIframe";
 
 export const Route = createFileRoute("/_layout/task/$taskId/run/$taskRunId")({
   component: TaskRunComponent,
+  loader: async (opts) => {
+    void preloadTaskRunIframes([opts.params.taskRunId]);
+  },
 });
 
 function TaskRunComponent() {

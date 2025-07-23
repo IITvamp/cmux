@@ -29,6 +29,8 @@ class PersistentIframeManager {
   private maxIframes = 10;
   private container: HTMLDivElement | null = null;
   private resizeObserver: ResizeObserver;
+  private activeIframeKey: string | null = null;
+  private debugMode = true; // Set to true to enable logging
 
   constructor() {
     // Create resize observer for syncing positions
@@ -36,6 +38,8 @@ class PersistentIframeManager {
       for (const entry of entries) {
         const key = entry.target.getAttribute("data-iframe-target");
         if (key) {
+          if (this.debugMode)
+            console.log(`[ResizeObserver] Syncing position for ${key}`);
           this.syncIframePosition(key);
         }
       }
@@ -132,9 +136,23 @@ class PersistentIframeManager {
     targetElement: HTMLElement,
     options?: MountOptions
   ): () => void {
+    if (this.debugMode) console.log(`[Mount] Starting mount for ${key}`);
+
     const entry = this.iframes.get(key);
     if (!entry) {
       throw new Error(`Iframe with key "${key}" not found`);
+    }
+
+    // Fix #1: Hide currently active iframe before showing new one
+    if (this.activeIframeKey && this.activeIframeKey !== key) {
+      const activeEntry = this.iframes.get(this.activeIframeKey);
+      if (activeEntry && activeEntry.isVisible) {
+        if (this.debugMode)
+          console.log(`[Mount] Hiding active iframe ${this.activeIframeKey}`);
+        activeEntry.wrapper.style.visibility = "hidden";
+        activeEntry.wrapper.style.pointerEvents = "none";
+        activeEntry.isVisible = false;
+      }
     }
 
     // Mark target element
@@ -145,49 +163,58 @@ class PersistentIframeManager {
       entry.wrapper.className = options.className;
     }
 
-    if (options?.style) {
-      // Convert React.CSSProperties to CSS string, preserving existing fixed positioning
-      const styleEntries = Object.entries(options.style);
-      const additionalStyles = styleEntries
-        .map(([key, value]) => {
-          // Convert camelCase to kebab-case
-          const cssKey = key.replace(
-            /[A-Z]/g,
-            (match) => `-${match.toLowerCase()}`
-          );
-          return `${cssKey}: ${value}`;
-        })
-        .join("; ");
-
-      // Preserve core positioning while adding custom styles
-      entry.wrapper.style.cssText = `
-        position: fixed;
-        visibility: visible;
-        pointer-events: auto;
-        overflow: hidden;
-        ${additionalStyles}
-      `;
-    } else {
-      // Default styles
-      entry.wrapper.style.cssText = `
-        position: fixed;
-        visibility: visible;
-        pointer-events: auto;
-        overflow: hidden;
-      `;
-    }
-
-    entry.isVisible = true;
-    entry.lastUsed = Date.now();
-
-    // Sync position immediately
+    // First sync position while hidden
     this.syncIframePosition(key);
+
+    // Then make visible after a microtask to ensure position is set
+    Promise.resolve().then(() => {
+      if (options?.style) {
+        // Convert React.CSSProperties to CSS string, preserving existing fixed positioning
+        const styleEntries = Object.entries(options.style);
+        const additionalStyles = styleEntries
+          .map(([key, value]) => {
+            // Convert camelCase to kebab-case
+            const cssKey = key.replace(
+              /[A-Z]/g,
+              (match) => `-${match.toLowerCase()}`
+            );
+            return `${cssKey}: ${value}`;
+          })
+          .join("; ");
+
+        // Preserve core positioning while adding custom styles
+        entry.wrapper.style.cssText = `
+          position: fixed;
+          visibility: visible;
+          pointer-events: auto;
+          overflow: hidden;
+          ${additionalStyles}
+        `;
+      } else {
+        // Default styles
+        entry.wrapper.style.cssText = `
+          position: fixed;
+          visibility: visible;
+          pointer-events: auto;
+          overflow: hidden;
+        `;
+      }
+
+      entry.isVisible = true;
+      this.activeIframeKey = key;
+      if (this.debugMode) console.log(`[Mount] Iframe ${key} is now visible`);
+    });
+
+    entry.lastUsed = Date.now();
 
     // Start observing the target element
     this.resizeObserver.observe(targetElement);
 
     // Listen for scroll events
-    const scrollHandler = () => this.syncIframePosition(key);
+    const scrollHandler = () => {
+      if (this.debugMode) console.log(`[Scroll] Syncing position for ${key}`);
+      this.syncIframePosition(key);
+    };
     const scrollableParents = this.getScrollableParents(targetElement);
     scrollableParents.forEach((parent) => {
       parent.addEventListener("scroll", scrollHandler, { passive: true });
@@ -198,10 +225,16 @@ class PersistentIframeManager {
 
     // Return cleanup function
     return () => {
+      if (this.debugMode) console.log(`[Unmount] Starting unmount for ${key}`);
+
       targetElement.removeAttribute("data-iframe-target");
       entry.wrapper.style.visibility = "hidden";
       entry.wrapper.style.pointerEvents = "none";
       entry.isVisible = false;
+
+      if (this.activeIframeKey === key) {
+        this.activeIframeKey = null;
+      }
 
       this.resizeObserver.unobserve(targetElement);
       scrollableParents.forEach((parent) => {
@@ -216,7 +249,7 @@ class PersistentIframeManager {
    */
   private syncIframePosition(key: string) {
     const entry = this.iframes.get(key);
-    if (!entry || !entry.isVisible) return;
+    if (!entry) return;
 
     const targetElement = document.querySelector(
       `[data-iframe-target="${key}"]`
@@ -270,6 +303,10 @@ class PersistentIframeManager {
     entry.wrapper.style.visibility = "hidden";
     entry.wrapper.style.pointerEvents = "none";
     entry.isVisible = false;
+
+    if (this.activeIframeKey === key) {
+      this.activeIframeKey = null;
+    }
   }
 
   /**
@@ -360,6 +397,13 @@ class PersistentIframeManager {
     for (const key of this.iframes.keys()) {
       this.removeIframe(key);
     }
+  }
+
+  /**
+   * Enable or disable debug mode
+   */
+  setDebugMode(enabled: boolean): void {
+    this.debugMode = enabled;
   }
 }
 

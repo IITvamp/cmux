@@ -1,10 +1,11 @@
 #!/bin/bash
 
-docker build -t coderouter-worker:0.0.1 .
+# docker build -t coderouter-worker:0.0.1 .
 
 # Get the directory where this script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 APP_DIR="$(dirname "$SCRIPT_DIR")"
+export VITE_CONVEX_URL=http://localhost:$VITE_CONVEX_PORT
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -48,13 +49,14 @@ mkdir -p "$APP_DIR/logs"
 
 # Start convex dev and log to both stdout and file
 echo -e "${GREEN}Starting convex dev...${NC}"
-(cd packages/convex && source ~/.nvm/nvm.sh && nvm use 18 && CONVEX_AGENT_MODE=anonymous bun x convex dev 2>&1 | tee ../../logs/convex.log) &
+# (cd packages/convex && source ~/.nvm/nvm.sh && nvm use 18 && CONVEX_AGENT_MODE=anonymous bun x convex dev 2>&1 | tee ../../logs/convex.log) &
+(cd packages/convex && source ~/.nvm/nvm.sh && nvm use 18 && ./convex-local-backend --port $VITE_CONVEX_PORT --site-proxy-port $VITE_CONVEX_SITE_PROXY_PORT --disable-beacon 2>&1 | tee ../../logs/convex.log) &
 CONVEX_PID=$!
 
 echo -e "${GREEN}Terminal app is running!${NC}"
 echo -e "${BLUE}Frontend: http://localhost:5173${NC}"
 echo -e "${BLUE}Backend: http://localhost:3001${NC}"
-echo -e "${BLUE}Convex: http://localhost:3210${NC}"
+echo -e "${BLUE}Convex: http://localhost:$VITE_CONVEX_PORT${NC}"
 echo -e "\nPress Ctrl+C to stop all services"
 
 # Wait for both processes

@@ -4,7 +4,7 @@ import { api } from "@coderouter/convex/api";
 import { type Doc } from "@coderouter/convex/dataModel";
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
 import { useQueries, useQuery } from "convex/react";
-import { useMemo } from "react";
+import { Suspense, useMemo } from "react";
 
 export const Route = createFileRoute("/_layout")({
   component: LayoutComponent,
@@ -223,7 +223,9 @@ function LayoutComponent() {
         <div className="flex flex-col p-1.5 grow min-w-0">
           <div className="flex flex-col grow overflow-hidden bg-white dark:bg-neutral-800 rounded-md border border-neutral-200 dark:border-neutral-800/80 h-full">
             {/* <TitleBar /> */}
-            <Outlet />
+            <Suspense fallback={<div>Loading...</div>}>
+              <Outlet />
+            </Suspense>
           </div>
         </div>
       </div>

@@ -2,6 +2,7 @@ import {
   CloseTerminalSchema,
   CreateTerminalSchema,
   GitFullDiffRequestSchema,
+  GitHubFetchBranchesSchema,
   ListFilesRequestSchema,
   OpenInEditorSchema,
   ResizeSchema,
@@ -27,6 +28,66 @@ import { createTerminal, type GlobalTerminal } from "./terminal.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWorktreePath } from "./workspace.js";
+
+// Add GitHub-related imports
+import { exec } from "child_process";
+import { promisify } from "util";
+
+const execAsync = promisify(exec);
+
+// Helper to execute commands with inherited environment
+const execWithEnv = (command: string) => {
+  // Use zsh to ensure we get the user's shell environment and gh auth
+  return execAsync(`/bin/zsh -c '${command}'`, {
+    env: {
+      ...process.env,
+    },
+  });
+};
+
+// Helper functions for common GitHub API operations
+const ghApi = {
+  // Execute gh api command and return parsed output
+  async exec(command: string): Promise<string> {
+    const { stdout } = await execWithEnv(command);
+    return stdout.trim();
+  },
+
+  // Get current user
+  async getUser(): Promise<string> {
+    return this.exec('gh api user --jq ".login"');
+  },
+
+  // Get user repos
+  async getUserRepos(): Promise<string[]> {
+    const output = await this.exec(
+      'gh api user/repos --paginate --jq ".[].full_name"'
+    );
+    return output.split("\n").filter(Boolean);
+  },
+
+  // Get user organizations
+  async getUserOrgs(): Promise<string[]> {
+    const output = await this.exec('gh api user/orgs --jq ".[].login"');
+    return output.split("\n").filter(Boolean);
+  },
+
+  // Get organization repos
+  async getOrgRepos(org: string): Promise<string[]> {
+    const output = await this.exec(
+      `gh api orgs/${org}/repos --paginate --jq ".[].full_name"`
+    );
+    return output.split("\n").filter(Boolean);
+  },
+
+  // Get repo branches
+  async getRepoBranches(repo: string): Promise<string[]> {
+    const output = await this.exec(
+      `gh api repos/${repo}/branches --paginate --jq ".[].name"`
+    );
+    return output.split("\n").filter(Boolean);
+  },
+};
 
 // Global terminal storage - shared across all connections
 const globalTerminals = new Map<string, GlobalTerminal>();
@@ -446,6 +507,115 @@ io.on("connection", (socket) => {
       socket.emit("list-files-response", {
         files: [],
         error: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  });
+
+  socket.on("github-test-auth", async (callback) => {
+    try {
+      // Run all commands in parallel
+      const [authStatus, whoami, home, ghConfig] = await Promise.all([
+        execWithEnv("gh auth status")
+          .then((r) => r.stdout)
+          .catch((e) => e.message),
+        execWithEnv("whoami").then((r) => r.stdout),
+        execWithEnv("echo $HOME").then((r) => r.stdout),
+        execWithEnv('ls -la ~/.config/gh/ || echo "No gh config"').then(
+          (r) => r.stdout
+        ),
+      ]);
+
+      callback({
+        authStatus,
+        whoami,
+        home,
+        ghConfig,
+        processEnv: {
+          HOME: process.env.HOME,
+          USER: process.env.USER,
+          GH_TOKEN: process.env.GH_TOKEN ? "Set" : "Not set",
+          GITHUB_TOKEN: process.env.GITHUB_TOKEN ? "Set" : "Not set",
+        },
+      });
+    } catch (error) {
+      callback({
+        error: error instanceof Error ? error.message : String(error),
+        processEnv: {
+          HOME: process.env.HOME,
+          USER: process.env.USER,
+          GH_TOKEN: process.env.GH_TOKEN ? "Set" : "Not set",
+          GITHUB_TOKEN: process.env.GITHUB_TOKEN ? "Set" : "Not set",
+        },
+      });
+    }
+  });
+
+  socket.on("github-fetch-repos", async (callback) => {
+    try {
+      // Fetch user info, repos, and orgs in parallel
+      const [username, userRepos, orgs] = await Promise.all([
+        ghApi.getUser(),
+        ghApi.getUserRepos(),
+        ghApi.getUserOrgs(),
+      ]);
+
+      // Fetch repos for all orgs in parallel
+      const orgReposPromises = orgs.map(async (org) => ({
+        org,
+        repos: await ghApi.getOrgRepos(org),
+      }));
+
+      const orgReposResults = await Promise.all(orgReposPromises);
+
+      // Combine all repos
+      const allRepos: { org: string; repos: string[] }[] = [
+        {
+          org: username,
+          repos: userRepos.filter((repo) => repo.startsWith(`${username}/`)),
+        },
+        ...orgReposResults,
+      ];
+
+      // Format repos by organization
+      const reposByOrg: Record<
+        string,
+        Array<{ fullName: string; name: string }>
+      > = {};
+
+      allRepos.forEach((orgData) => {
+        reposByOrg[orgData.org] = orgData.repos.map((repo) => ({
+          fullName: repo,
+          name: repo.split("/")[1],
+        }));
+      });
+
+      callback({ success: true, repos: reposByOrg });
+    } catch (error) {
+      console.error("Error fetching repos:", error);
+      callback({
+        success: false,
+        error: `Failed to fetch GitHub repos: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      });
+    }
+  });
+
+  socket.on("github-fetch-branches", async (data, callback) => {
+    try {
+      const { repo } = GitHubFetchBranchesSchema.parse(data);
+
+      // Fetch branches from GitHub
+      const branches = await ghApi.getRepoBranches(repo);
+
+      callback({ success: true, branches });
+    } catch (error) {
+      console.error("Error fetching branches:", error);
+      callback({
+        success: false,
+        error: `Failed to fetch branches: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
       });
     }
   });

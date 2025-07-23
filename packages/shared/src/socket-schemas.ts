@@ -165,6 +165,49 @@ export const VSCodeErrorSchema = z.object({
   error: z.string(),
 });
 
+// GitHub events
+export const GitHubFetchBranchesSchema = z.object({
+  repo: z.string(),
+});
+
+export const GitHubBranchesResponseSchema = z.object({
+  success: z.boolean(),
+  branches: z.array(z.string()).optional(),
+  error: z.string().optional(),
+});
+
+export const GitHubReposResponseSchema = z.object({
+  success: z.boolean(),
+  repos: z
+    .record(
+      z.string(),
+      z.array(
+        z.object({
+          fullName: z.string(),
+          name: z.string(),
+        })
+      )
+    )
+    .optional(),
+  error: z.string().optional(),
+});
+
+export const GitHubAuthResponseSchema = z.object({
+  authStatus: z.string().optional(),
+  whoami: z.string().optional(),
+  home: z.string().optional(),
+  ghConfig: z.string().optional(),
+  processEnv: z
+    .object({
+      HOME: z.string().optional(),
+      USER: z.string().optional(),
+      GH_TOKEN: z.string(),
+      GITHUB_TOKEN: z.string(),
+    })
+    .optional(),
+  error: z.string().optional(),
+});
+
 // Type exports
 export type CreateTerminal = z.infer<typeof CreateTerminalSchema>;
 export type TerminalInput = z.infer<typeof TerminalInputSchema>;
@@ -195,6 +238,12 @@ export type FileInfo = z.infer<typeof FileInfoSchema>;
 export type ListFilesResponse = z.infer<typeof ListFilesResponseSchema>;
 export type VSCodeSpawned = z.infer<typeof VSCodeSpawnedSchema>;
 export type VSCodeError = z.infer<typeof VSCodeErrorSchema>;
+export type GitHubFetchBranches = z.infer<typeof GitHubFetchBranchesSchema>;
+export type GitHubBranchesResponse = z.infer<
+  typeof GitHubBranchesResponseSchema
+>;
+export type GitHubReposResponse = z.infer<typeof GitHubReposResponseSchema>;
+export type GitHubAuthResponse = z.infer<typeof GitHubAuthResponseSchema>;
 
 // Socket.io event map types
 export interface ClientToServerEvents {
@@ -215,6 +264,17 @@ export interface ClientToServerEvents {
   "git-full-diff": (data: GitFullDiffRequest) => void;
   "open-in-editor": (data: OpenInEditor) => void;
   "list-files": (data: ListFilesRequest) => void;
+  // GitHub operations
+  "github-test-auth": (
+    callback: (response: GitHubAuthResponse) => void
+  ) => void;
+  "github-fetch-repos": (
+    callback: (response: GitHubReposResponse) => void
+  ) => void;
+  "github-fetch-branches": (
+    data: GitHubFetchBranches,
+    callback: (response: GitHubBranchesResponse) => void
+  ) => void;
 }
 
 export interface ServerToClientEvents {

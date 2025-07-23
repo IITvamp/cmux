@@ -10,7 +10,6 @@ import {
 } from "@/components/ui/tooltip";
 import { useSocket } from "@/contexts/socket/use-socket";
 import { createFakeConvexId } from "@/lib/fakeConvexId";
-import { type Repo } from "@/types/task";
 import { api } from "@coderouter/convex/api";
 import type { Doc } from "@coderouter/convex/dataModel";
 import { AGENT_CONFIGS } from "@coderouter/shared/agentConfig";
@@ -18,11 +17,7 @@ import { convexQuery } from "@convex-dev/react-query";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
-import {
-  useAction,
-  useQuery as useConvexQuery,
-  useMutation,
-} from "convex/react";
+import { useQuery as useConvexQuery, useMutation } from "convex/react";
 import { Archive, Code2, Command, Mic } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
@@ -47,6 +42,14 @@ function DashboardComponent() {
     const stored = localStorage.getItem("isCloudMode");
     return stored ? JSON.parse(stored) : true;
   });
+
+  // State for repos and branches from Socket.IO
+  const [reposByOrg, setReposByOrg] = useState<
+    Record<string, Array<{ fullName: string; name: string }>>
+  >({});
+  const [branches, setBranches] = useState<string[]>([]);
+  const [isLoadingRepos, setIsLoadingRepos] = useState(false);
+  const [isLoadingBranches, setIsLoadingBranches] = useState(false);
 
   // Callback for task description changes
   const handleTaskDescriptionChange = useCallback((value: string) => {
@@ -76,23 +79,40 @@ function DashboardComponent() {
     localStorage.setItem("selectedAgents", JSON.stringify(newAgents));
   }, []);
 
-  // Fetch repos grouped by org
-  const reposQuery = useQuery(convexQuery(api.github.getReposByOrg, {}));
-
-  // Fetch branches for selected repo
-  const branchesQuery = useQuery({
-    ...convexQuery(api.github.getBranches, {
-      repo: selectedProject[0] || "",
-    }),
-    enabled: !!selectedProject[0],
-  });
-
   // Fetch tasks for all projects
   const tasksQuery = useQuery(convexQuery(api.tasks.get, {}));
 
-  // Actions to fetch data from GitHub
-  const fetchRepos = useAction(api.githubActions.fetchAndStoreRepos);
-  const fetchBranches = useAction(api.githubActions.fetchBranches);
+  // Socket-based functions to fetch data from GitHub
+  const fetchRepos = useCallback(() => {
+    if (!socket) return;
+
+    setIsLoadingRepos(true);
+    socket.emit("github-fetch-repos", (response) => {
+      setIsLoadingRepos(false);
+      if (response.success && response.repos) {
+        setReposByOrg(response.repos);
+      } else if (response.error) {
+        console.error("Error fetching repos:", response.error);
+      }
+    });
+  }, [socket]);
+
+  const fetchBranches = useCallback(
+    (repo: string) => {
+      if (!socket) return;
+
+      setIsLoadingBranches(true);
+      socket.emit("github-fetch-branches", { repo }, (response) => {
+        setIsLoadingBranches(false);
+        if (response.success && response.branches) {
+          setBranches(response.branches);
+        } else if (response.error) {
+          console.error("Error fetching branches:", response.error);
+        }
+      });
+    },
+    [socket]
+  );
 
   // Mutation to create tasks with optimistic update
   const createTask = useMutation(api.tasks.create).withOptimisticUpdate(
@@ -195,37 +215,37 @@ function DashboardComponent() {
 
   // Fetch repos on mount if none exist
   useEffect(() => {
-    if (reposQuery.data && Object.keys(reposQuery.data).length === 0) {
+    if (Object.keys(reposByOrg).length === 0) {
       fetchRepos();
     }
-  }, [reposQuery.data, fetchRepos]);
+  }, [reposByOrg, fetchRepos]);
 
   // Fetch branches when repo changes
   const selectedRepo = selectedProject[0];
   useEffect(() => {
-    if (selectedRepo && branchesQuery.data?.length === 0) {
-      fetchBranches({ repo: selectedRepo });
+    if (selectedRepo && branches.length === 0) {
+      fetchBranches(selectedRepo);
     }
-  }, [selectedRepo, branchesQuery.data, fetchBranches]);
+  }, [selectedRepo, branches, fetchBranches]);
 
   // Format repos for multiselect
-  const projectOptions = Object.entries(reposQuery.data || {}).flatMap(
-    ([, repos]: [string, Repo[]]) => repos.map((repo: Repo) => repo.fullName)
+  const projectOptions = Object.entries(reposByOrg || {}).flatMap(([, repos]) =>
+    repos.map((repo) => repo.fullName)
   );
 
-  const branchOptions = branchesQuery.data || [];
+  const branchOptions = branches || [];
 
   // Derive effective selected branch - if nothing selected, auto-select a sensible default
   const effectiveSelectedBranch =
     selectedBranch.length > 0
       ? selectedBranch
-      : branchesQuery.data && branchesQuery.data.length > 0
+      : branches && branches.length > 0
       ? [
-          branchesQuery.data.includes("main")
+          branches.includes("main")
             ? "main"
-            : branchesQuery.data.includes("master")
+            : branches.includes("master")
             ? "master"
-            : branchesQuery.data[0],
+            : branches[0],
         ]
       : [];
 
@@ -307,7 +327,7 @@ function DashboardComponent() {
                   onChange={handleProjectChange}
                   placeholder="Select project..."
                   className="!min-w-[300px] !max-w-[500px] !rounded-2xl"
-                  loading={reposQuery.isLoading}
+                  loading={isLoadingRepos}
                   maxTagCount={1}
                   // singleSelect={true}
                   // className={clsx(
@@ -326,7 +346,7 @@ function DashboardComponent() {
                   placeholder="Select branch..."
                   singleSelect={true}
                   className="!min-w-[120px] !rounded-2xl"
-                  loading={branchesQuery.isLoading}
+                  loading={isLoadingBranches}
                   // className={clsx(
                   //   "!border !border-neutral-200 dark:!border-0",
                   //   "bg-neutral-100 dark:bg-neutral-700 dark:hover:bg-neutral-600/90 aria-expanded:bg-neutral-600/90 transition",
