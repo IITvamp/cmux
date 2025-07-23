@@ -61,6 +61,7 @@ export class MorphVSCodeInstance extends VSCodeInstance {
       url: vscodeService.url,
       workspaceUrl,
       instanceId: this.instanceId,
+      taskRunId: this.taskRunId,
       provider: "morph",
     };
   }
@@ -98,6 +99,7 @@ export class MorphVSCodeInstance extends VSCodeInstance {
             url: vscodeService.url,
             workspaceUrl: this.getWorkspaceUrl(vscodeService.url),
             instanceId: this.instanceId,
+            taskRunId: this.taskRunId,
             provider: "morph",
           },
         };

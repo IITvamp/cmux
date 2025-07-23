@@ -106,6 +106,7 @@ export async function spawnAgent(
       // For Morph, create the instance and we'll clone the repo via socket command
       vscodeInstance = new MorphVSCodeInstance({
         agentName: agent.name,
+        taskRunId: taskRunId as string,
       });
 
       worktreePath = "/root/workspace";
@@ -146,6 +147,7 @@ export async function spawnAgent(
       vscodeInstance = new DockerVSCodeInstance({
         workspacePath: worktreePath,
         agentName: agent.name,
+        taskRunId: taskRunId as string,
       });
     }
 
@@ -167,6 +169,40 @@ export async function spawnAgent(
     console.log(
       `VSCode instance spawned for agent ${agent.name}: ${vscodeUrl}`
     );
+
+    // Get ports if it's a Docker instance
+    let ports:
+      | { vscode: string; worker: string; extension?: string }
+      | undefined;
+    if (vscodeInstance instanceof DockerVSCodeInstance) {
+      const dockerPorts = (vscodeInstance as DockerVSCodeInstance).getPorts();
+      if (dockerPorts && dockerPorts.vscode && dockerPorts.worker) {
+        ports = {
+          vscode: dockerPorts.vscode,
+          worker: dockerPorts.worker,
+          ...(dockerPorts.extension
+            ? { extension: dockerPorts.extension }
+            : {}),
+        };
+      }
+    }
+
+    // Update VSCode instance information in Convex
+    await convex.mutation(api.taskRuns.updateVSCodeInstance, {
+      id: taskRunId,
+      vscode: {
+        provider: vscodeInfo.provider,
+        containerName:
+          vscodeInstance instanceof DockerVSCodeInstance
+            ? (vscodeInstance as DockerVSCodeInstance).getContainerName()
+            : undefined,
+        status: "running",
+        url: vscodeInfo.url,
+        workspaceUrl: vscodeInfo.workspaceUrl,
+        startedAt: Date.now(),
+        ...(ports ? { ports } : {}),
+      },
+    });
 
     // Use taskRunId as terminal ID for compatibility
     const terminalId = taskRunId;
@@ -271,7 +307,11 @@ export async function spawnAgent(
         command: "bash",
         args: [
           "-c",
-          `git clone ${options.repoUrl} /root/workspace && cd /root/workspace${options.branch && options.branch !== "main" ? ` && git checkout ${options.branch}` : ""}`,
+          `git clone ${options.repoUrl} /root/workspace && cd /root/workspace${
+            options.branch && options.branch !== "main"
+              ? ` && git checkout ${options.branch}`
+              : ""
+          }`,
         ],
         cols: 80,
         rows: 24,
@@ -390,7 +430,9 @@ export async function spawnAgent(
     vscodeInstance.on("exit", () => {
       vscodeInstances.delete(vscodeInstance.getInstanceId());
       console.log(
-        `VSCode instance ${vscodeInstance.getInstanceId()} for agent ${agent.name} exited`
+        `VSCode instance ${vscodeInstance.getInstanceId()} for agent ${
+          agent.name
+        } exited`
       );
     });
 

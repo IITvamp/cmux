@@ -7,6 +7,7 @@ async function main() {
   // Create VSCode instance
   const vscodeInstance = new DockerVSCodeInstance({
     agentName: "test-socket",
+    taskRunId: "test-task-run-id", // Add required taskRunId for testing
   });
 
   try {

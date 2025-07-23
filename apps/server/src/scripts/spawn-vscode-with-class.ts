@@ -13,6 +13,7 @@ async function main() {
   // Create VSCode instance using the abstraction
   const vscodeInstance = new DockerVSCodeInstance({
     agentName: "claude-demo",
+    taskRunId: "test-task-run-id", // Add required taskRunId for testing
   });
 
   try {

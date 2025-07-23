@@ -25,6 +25,21 @@ export default defineSchema({
     updatedAt: v.number(),
     completedAt: v.optional(v.number()),
     exitCode: v.optional(v.number()),
+    // VSCode instance information
+    vscode: v.optional(v.object({
+      provider: v.union(v.literal("docker"), v.literal("morph"), v.literal("daytona"), v.literal("other")), // Extensible for future providers
+      containerName: v.optional(v.string()), // For Docker provider
+      status: v.union(v.literal("starting"), v.literal("running"), v.literal("stopped")),
+      ports: v.optional(v.object({
+        vscode: v.string(),
+        worker: v.string(),
+        extension: v.optional(v.string()),
+      })),
+      url: v.optional(v.string()), // The VSCode URL
+      workspaceUrl: v.optional(v.string()), // The workspace URL
+      startedAt: v.optional(v.number()),
+      stoppedAt: v.optional(v.number()),
+    })),
   })
     .index("by_task", ["taskId", "createdAt"])
     .index("by_parent", ["parentRunId"])

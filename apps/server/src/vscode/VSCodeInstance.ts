@@ -6,25 +6,30 @@ export interface VSCodeInstanceConfig {
   workspacePath?: string;
   initialCommand?: string;
   agentName?: string;
+  taskRunId: string; // Required: Convex taskRun ID
 }
 
 export interface VSCodeInstanceInfo {
   url: string;
   workspaceUrl: string;
   instanceId: string;
+  taskRunId: string;
   provider: "docker" | "morph" | "daytona";
 }
 
 export abstract class VSCodeInstance extends EventEmitter {
   protected config: VSCodeInstanceConfig;
   protected instanceId: string;
+  protected taskRunId: string;
   protected workerSocket: Socket<WorkerToServerEvents, ServerToWorkerEvents> | null = null;
   protected workerConnected: boolean = false;
 
   constructor(config: VSCodeInstanceConfig) {
     super();
     this.config = config;
-    this.instanceId = crypto.randomUUID();
+    this.taskRunId = config.taskRunId;
+    // Use taskRunId as instanceId for backward compatibility
+    this.instanceId = config.taskRunId;
   }
 
   abstract start(): Promise<VSCodeInstanceInfo>;
@@ -92,6 +97,10 @@ export abstract class VSCodeInstance extends EventEmitter {
 
   getInstanceId(): string {
     return this.instanceId;
+  }
+
+  getTaskRunId(): string {
+    return this.taskRunId;
   }
 
   protected getWorkspaceUrl(baseUrl: string): string {

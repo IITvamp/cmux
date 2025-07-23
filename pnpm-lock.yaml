@@ -216,6 +216,9 @@ importers:
       '@types/express':
         specifier: ^4.17.23
         version: 4.17.23
+      '@types/http-proxy':
+        specifier: ^1.17.16
+        version: 1.17.16
       '@xterm/addon-serialize':
         specifier: ^0.13.0
         version: 0.13.0(@xterm/xterm@5.5.0)
@@ -246,9 +249,15 @@ importers:
       fuzzysort:
         specifier: ^3.1.0
         version: 3.1.0
+      http-proxy:
+        specifier: ^1.18.1
+        version: 1.18.1(debug@4.4.1)
       http-proxy-middleware:
         specifier: ^3.0.5
         version: 3.0.5
+      httpxy:
+        specifier: ^0.1.7
+        version: 0.1.7
       ignore:
         specifier: ^7.0.5
         version: 7.0.5
@@ -3962,6 +3971,9 @@ packages:
   https-proxy-agent@7.0.6:
     resolution: {integrity: sha512-vK9P5/iUfdl95AI+JVyUuIcVtd4ofvtrOr3HNtM2yxC9bnMbEdp3x01OhQNnjb8IJYi38VlTE3mBXwcfvywuSw==}
     engines: {node: '>= 14'}
+
+  httpxy@0.1.7:
+    resolution: {integrity: sha512-pXNx8gnANKAndgga5ahefxc++tJvNL87CXoRwxn1cJE2ZkWEojF3tNfQIEhZX/vfpt+wzeAzpUI4qkediX1MLQ==}
 
   iconv-lite@0.4.24:
     resolution: {integrity: sha512-v3MXnZAcvnywkTUEZomIActle7RXXeedOR31wwl7VlyoXO4Qi9arvSenNQWne1TcRwhCL1HwLI21bEqdpj8/rA==}
@@ -10469,6 +10481,8 @@ snapshots:
       debug: 4.4.1(supports-color@8.1.1)
     transitivePeerDependencies:
       - supports-color
+
+  httpxy@0.1.7: {}
 
   iconv-lite@0.4.24:
     dependencies:

@@ -21,11 +21,11 @@ import * as path from "node:path";
 import { Server } from "socket.io";
 import { spawnAllAgents } from "./agentSpawner.js";
 import { GitDiffManager } from "./gitDiff.js";
+import { createProxyApp, setupWebSocketProxy } from "./proxyApp.js";
 import { RepositoryManager } from "./repositoryManager.js";
 import { createTerminal, type GlobalTerminal } from "./terminal.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWorktreePath } from "./workspace.js";
-import { createProxyApp } from "./proxyApp.js";
 
 // Global terminal storage - shared across all connections
 const globalTerminals = new Map<string, GlobalTerminal>();
@@ -454,6 +454,9 @@ io.on("connection", (socket) => {
     // No need to kill terminals on disconnect since they're global
   });
 });
+
+// Setup WebSocket proxy handling
+setupWebSocketProxy(httpServer);
 
 const PORT = process.env.PORT || 3001;
 const server = httpServer.listen(PORT, () => {

@@ -17,8 +17,12 @@ import { convexQuery } from "@convex-dev/react-query";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
-import { useAction, useMutation } from "convex/react";
-import { Archive, Command, Mic } from "lucide-react";
+import {
+  useAction,
+  useQuery as useConvexQuery,
+  useMutation,
+} from "convex/react";
+import { Archive, Code2, Command, Mic } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 export const Route = createFileRoute("/_layout/dashboard")({
@@ -215,14 +219,14 @@ function DashboardComponent() {
     selectedBranch.length > 0
       ? selectedBranch
       : branchesQuery.data && branchesQuery.data.length > 0
-        ? [
-            branchesQuery.data.includes("main")
-              ? "main"
-              : branchesQuery.data.includes("master")
-                ? "master"
-                : branchesQuery.data[0],
-          ]
-        : [];
+      ? [
+          branchesQuery.data.includes("main")
+            ? "main"
+            : branchesQuery.data.includes("master")
+            ? "master"
+            : branchesQuery.data[0],
+        ]
+      : [];
 
   const agentOptions = AGENT_CONFIGS.map((agent) => agent.name);
 
@@ -413,92 +417,181 @@ function DashboardComponent() {
               </h2>
               <div className="space-y-1">
                 {tasksQuery.data.map((task: Doc<"tasks">) => (
-                  <div
+                  <TaskItem
                     key={task._id}
-                    className={clsx(
-                      "relative group flex items-center gap-2.5 px-3 py-2 border rounded-lg transition-all cursor-pointer select-none",
-                      // Check if this is an optimistic update (temporary ID)
-                      task._id.includes("-") && task._id.length === 36
-                        ? "bg-white/50 dark:bg-neutral-700/30 border-neutral-200 dark:border-neutral-500/15 animate-pulse"
-                        : "bg-white dark:bg-neutral-700/50 border-neutral-200 dark:border-neutral-500/15 hover:border-neutral-300 dark:hover:border-neutral-500/30"
-                    )}
-                    onClick={() =>
-                      navigate({
-                        to: "/task/$taskId",
-                        params: { taskId: task._id },
-                      })
-                    }
-                  >
-                    <div
-                      className={clsx(
-                        "w-1.5 h-1.5 rounded-full flex-shrink-0",
-                        task.isCompleted
-                          ? "bg-green-500"
-                          : task._id.includes("-") && task._id.length === 36
-                            ? "bg-yellow-500"
-                            : "bg-blue-500 animate-pulse"
-                      )}
-                    />
-                    <div className="flex-1 min-w-0 flex items-center gap-2">
-                      <span
-                        className={clsx(
-                          "text-[14px] truncate",
-                          task.isCompleted
-                            ? "text-neutral-500 dark:text-neutral-400 line-through"
-                            : "text-neutral-900 dark:text-neutral-100"
-                        )}
-                      >
-                        {task.text}
-                      </span>
-                      {(task.projectFullName ||
-                        (task.branch && task.branch !== "main")) && (
-                        <span className="text-[11px] text-neutral-400 dark:text-neutral-500 flex-shrink-0 ml-auto mr-0">
-                          {task.projectFullName && (
-                            <span>{task.projectFullName.split("/")[1]}</span>
-                          )}
-                          {task.projectFullName &&
-                            task.branch &&
-                            task.branch !== "main" &&
-                            "/"}
-                          {task.branch && task.branch !== "main" && (
-                            <span>{task.branch}</span>
-                          )}
-                        </span>
-                      )}
-                    </div>
-                    {task.updatedAt && (
-                      <span className="text-[11px] text-neutral-400 dark:text-neutral-500 flex-shrink-0 ml-auto mr-0">
-                        {new Date(task.updatedAt).toLocaleTimeString([], {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </span>
-                    )}
-                    {/* {hoveredTaskId === task._id && !task._id.includes("-") && (
-                    )} */}
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        archiveTask({ id: task._id });
-                      }}
-                      className={clsx(
-                        "absolute right-2 p-1 rounded",
-                        "bg-neutral-100 dark:bg-neutral-700",
-                        "text-neutral-600 dark:text-neutral-400",
-                        "hover:bg-neutral-200 dark:hover:bg-neutral-600",
-                        "transition opacity-0 group-hover:opacity-100"
-                      )}
-                      title="Archive task"
-                    >
-                      <Archive className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                    task={task}
+                    navigate={navigate}
+                    archiveTask={archiveTask}
+                  />
                 ))}
               </div>
             </div>
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+interface TaskItemProps {
+  task: Doc<"tasks">;
+  navigate: any;
+  archiveTask: any;
+}
+
+function TaskItem({ task, navigate, archiveTask }: TaskItemProps) {
+  // Query for task runs to find VSCode instances
+  const taskRunsQuery = useConvexQuery(api.taskRuns.getByTask, {
+    taskId: task._id,
+  });
+  console.log("taskRunsQuery", taskRunsQuery);
+
+  // Find the latest task run with a VSCode instance
+  const getLatestVSCodeInstance = () => {
+    if (!taskRunsQuery || taskRunsQuery.length === 0) return null;
+
+    // Flatten all task runs (including children)
+    const allRuns: any[] = [];
+    const flattenRuns = (runs: any[]) => {
+      runs.forEach((run) => {
+        allRuns.push(run);
+        if (run.children) {
+          flattenRuns(run.children);
+        }
+      });
+    };
+    flattenRuns(taskRunsQuery);
+
+    // Find the most recent run with VSCode instance that's running or starting
+    const runWithVSCode = allRuns
+      .filter(
+        (run) =>
+          run.vscode &&
+          (run.vscode.status === "running" || run.vscode.status === "starting")
+      )
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0))[0];
+
+    return runWithVSCode;
+  };
+
+  const runWithVSCode = getLatestVSCodeInstance();
+  const hasActiveVSCode = runWithVSCode?.vscode?.status === "running";
+
+  // Generate the VSCode URL if available
+  const vscodeUrl =
+    hasActiveVSCode &&
+    runWithVSCode?.vscode?.containerName &&
+    runWithVSCode?.vscode?.ports?.vscode
+      ? `http://${runWithVSCode._id.substring(0, 12)}.${
+          runWithVSCode.vscode.ports.vscode
+        }.localhost:3001/`
+      : null;
+
+  return (
+    <div
+      className={clsx(
+        "relative group flex items-center gap-2.5 px-3 py-2 border rounded-lg transition-all cursor-pointer select-none",
+        // Check if this is an optimistic update (temporary ID)
+        task._id.includes("-") && task._id.length === 36
+          ? "bg-white/50 dark:bg-neutral-700/30 border-neutral-200 dark:border-neutral-500/15 animate-pulse"
+          : "bg-white dark:bg-neutral-700/50 border-neutral-200 dark:border-neutral-500/15 hover:border-neutral-300 dark:hover:border-neutral-500/30"
+      )}
+      onClick={() =>
+        navigate({
+          to: "/task/$taskId",
+          params: { taskId: task._id },
+        })
+      }
+    >
+      <div
+        className={clsx(
+          "w-1.5 h-1.5 rounded-full flex-shrink-0",
+          task.isCompleted
+            ? "bg-green-500"
+            : task._id.includes("-") && task._id.length === 36
+            ? "bg-yellow-500"
+            : "bg-blue-500 animate-pulse"
+        )}
+      />
+      <div className="flex-1 min-w-0 flex items-center gap-2">
+        <span
+          className={clsx(
+            "text-[14px] truncate",
+            task.isCompleted
+              ? "text-neutral-500 dark:text-neutral-400 line-through"
+              : "text-neutral-900 dark:text-neutral-100"
+          )}
+        >
+          {task.text}
+        </span>
+        {(task.projectFullName || (task.branch && task.branch !== "main")) && (
+          <span className="text-[11px] text-neutral-400 dark:text-neutral-500 flex-shrink-0 ml-auto mr-0">
+            {task.projectFullName && (
+              <span>{task.projectFullName.split("/")[1]}</span>
+            )}
+            {task.projectFullName &&
+              task.branch &&
+              task.branch !== "main" &&
+              "/"}
+            {task.branch && task.branch !== "main" && (
+              <span>{task.branch}</span>
+            )}
+          </span>
+        )}
+      </div>
+      {task.updatedAt && (
+        <span className="text-[11px] text-neutral-400 dark:text-neutral-500 flex-shrink-0 ml-auto mr-0">
+          {new Date(task.updatedAt).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
+        </span>
+      )}
+
+      {/* VSCode button - appears on hover */}
+      {vscodeUrl && (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <a
+                href={vscodeUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className={clsx(
+                  "absolute right-10 p-1 rounded",
+                  "bg-neutral-100 dark:bg-neutral-700",
+                  "text-neutral-600 dark:text-neutral-400",
+                  "hover:bg-neutral-200 dark:hover:bg-neutral-600",
+                  "transition opacity-0 group-hover:opacity-100",
+                  "block" // Ensure anchor displays as block for proper styling
+                )}
+              >
+                <Code2 className="w-3.5 h-3.5" />
+              </a>
+            </TooltipTrigger>
+            <TooltipContent side="top">Open in VSCode</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      )}
+
+      {/* Archive button */}
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          archiveTask({ id: task._id });
+        }}
+        className={clsx(
+          "absolute right-2 p-1 rounded",
+          "bg-neutral-100 dark:bg-neutral-700",
+          "text-neutral-600 dark:text-neutral-400",
+          "hover:bg-neutral-200 dark:hover:bg-neutral-600",
+          "transition opacity-0 group-hover:opacity-100"
+        )}
+        title="Archive task"
+      >
+        <Archive className="w-3.5 h-3.5" />
+      </button>
     </div>
   );
 }
