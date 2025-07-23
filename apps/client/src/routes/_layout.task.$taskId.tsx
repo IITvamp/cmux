@@ -1,6 +1,8 @@
 import { api } from "@coderouter/convex/api";
 import { type Id } from "@coderouter/convex/dataModel";
+import { convexQuery } from "@convex-dev/react-query";
 import { useClipboard } from "@mantine/hooks";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import {
   createFileRoute,
   Link,
@@ -9,11 +11,24 @@ import {
   useNavigate,
 } from "@tanstack/react-router";
 import clsx from "clsx";
-import { useQuery } from "convex/react";
 import { useEffect } from "react";
 
 export const Route = createFileRoute("/_layout/task/$taskId")({
   component: TaskDetailPage,
+  loader: async (opts) => {
+    await Promise.all([
+      opts.context.queryClient.ensureQueryData(
+        convexQuery(api.taskRuns.getByTask, {
+          taskId: opts.params.taskId as Id<"tasks">,
+        })
+      ),
+      opts.context.queryClient.ensureQueryData(
+        convexQuery(api.tasks.getById, {
+          id: opts.params.taskId as Id<"tasks">,
+        })
+      ),
+    ]);
+  },
 });
 
 const WITH_HEADER = false;
@@ -24,10 +39,16 @@ type GetByTaskResultItem = (typeof api.taskRuns.getByTask._returnType)[number];
 
 function TaskDetailPage() {
   const { taskId } = Route.useParams();
-  const task = useQuery(api.tasks.getById, { id: taskId as Id<"tasks"> });
-  const taskRuns = useQuery(api.taskRuns.getByTask, {
-    taskId: taskId as Id<"tasks">,
-  });
+  const { data: task } = useSuspenseQuery(
+    convexQuery(api.tasks.getById, {
+      id: taskId as Id<"tasks">,
+    })
+  );
+  const { data: taskRuns } = useSuspenseQuery(
+    convexQuery(api.taskRuns.getByTask, {
+      taskId: taskId as Id<"tasks">,
+    })
+  );
   const clipboard = useClipboard({ timeout: 2000 });
 
   // Get the deepest matched child to extract runId if present

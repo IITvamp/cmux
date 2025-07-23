@@ -165,8 +165,8 @@ function TaskRunTree({ run, level, taskId }: TaskRunTreeProps) {
   return (
     <div>
       <Link
-        to="/task/$taskId/run/$runId"
-        params={{ taskId, runId: run._id }}
+        to="/task/$taskId/run/$taskRunId"
+        params={{ taskId, taskRunId: run._id }}
         className={clsx(
           "flex items-center px-2 py-1 text-xs rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-default",
           "[&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800"
