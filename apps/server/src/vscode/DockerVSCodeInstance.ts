@@ -1,6 +1,6 @@
-import Docker from "dockerode";
-import os from "os";
-import path from "path";
+import * as Docker from "dockerode";
+import * as os from "os";
+import * as path from "path";
 import { cleanupGitCredentials } from "../utils/dockerGitSetup.js";
 import { getGitHubTokenFromKeychain } from "../utils/getGitHubToken.js";
 import {
@@ -8,6 +8,21 @@ import {
   type VSCodeInstanceConfig,
   type VSCodeInstanceInfo,
 } from "./VSCodeInstance.js";
+
+// Global port mapping storage
+export interface ContainerMapping {
+  containerName: string;
+  instanceId: string;
+  ports: {
+    vscode: string;
+    worker: string;
+    extension?: string;
+  };
+  status: 'starting' | 'running' | 'stopped';
+  workspacePath?: string;
+}
+
+export const containerMappings = new Map<string, ContainerMapping>();
 
 export class DockerVSCodeInstance extends VSCodeInstance {
   private containerName: string;
@@ -20,7 +35,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     this.containerName = `coderouter-vscode-${this.instanceId}`;
     this.imageName = "coderouter-worker:0.0.1";
     // Always use explicit socket path for consistency
-    this.docker = new Docker({ socketPath: "/var/run/docker.sock" });
+    this.docker = new (Docker as any)({ socketPath: "/var/run/docker.sock" });
   }
 
   async start(): Promise<VSCodeInstanceInfo> {
@@ -28,6 +43,15 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     console.log(`  Image: ${this.imageName}`);
     console.log(`  Workspace: ${this.config.workspacePath}`);
     console.log(`  Agent name: ${this.config.agentName}`);
+
+    // Set initial mapping status
+    containerMappings.set(this.containerName, {
+      containerName: this.containerName,
+      instanceId: this.instanceId,
+      ports: { vscode: '', worker: '' },
+      status: 'starting',
+      workspacePath: this.config.workspacePath,
+    });
 
     // Stop and remove any existing container with same name
     try {
@@ -229,15 +253,29 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
     const vscodePort = ports["2376/tcp"]?.[0]?.HostPort;
     const workerPort = ports["2377/tcp"]?.[0]?.HostPort;
+    const extensionPort = ports["2378/tcp"]?.[0]?.HostPort;
 
     if (!vscodePort) {
       console.error(`Available ports:`, ports);
+      containerMappings.delete(this.containerName);
       throw new Error("Failed to get VS Code port mapping for port 2376");
     }
 
     if (!workerPort) {
       console.error(`Available ports:`, ports);
+      containerMappings.delete(this.containerName);
       throw new Error("Failed to get worker port mapping for port 2377");
+    }
+
+    // Update the container mapping with actual ports
+    const mapping = containerMappings.get(this.containerName);
+    if (mapping) {
+      mapping.ports = {
+        vscode: vscodePort,
+        worker: workerPort,
+        extension: extensionPort,
+      };
+      mapping.status = 'running';
     }
 
     // Wait for worker to be ready by polling
@@ -313,6 +351,11 @@ export class DockerVSCodeInstance extends VSCodeInstance {
           `Container ${this.containerName} exited with status:`,
           data
         );
+        // Update mapping status to stopped
+        const mapping = containerMappings.get(this.containerName);
+        if (mapping) {
+          mapping.status = 'stopped';
+        }
         this.emit("exit", data.StatusCode);
       }
     });
@@ -340,6 +383,12 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
   async stop(): Promise<void> {
     console.log(`Stopping Docker VSCode instance: ${this.containerName}`);
+
+    // Update mapping status
+    const mapping = containerMappings.get(this.containerName);
+    if (mapping) {
+      mapping.status = 'stopped';
+    }
 
     // Disconnect from worker first
     await this.disconnectFromWorker();

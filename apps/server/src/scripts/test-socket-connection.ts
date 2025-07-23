@@ -31,7 +31,7 @@ async function main() {
 
     // Try a simple ping first
     console.log(`\nTesting simple emit without callback...`);
-    workerSocket.emit("worker:check-docker");
+    workerSocket.emit("worker:check-docker", () => {});
     console.log(`Emitted worker:check-docker`);
 
     // Wait a bit

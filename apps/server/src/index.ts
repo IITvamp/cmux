@@ -13,11 +13,11 @@ import {
   type ServerToClientEvents,
   type SocketData,
 } from "@coderouter/shared";
-import fuzzysort from "fuzzysort";
+import * as fuzzysort from "fuzzysort";
 import { minimatch } from "minimatch";
 import { promises as fs } from "node:fs";
 import { createServer } from "node:http";
-import path from "node:path";
+import * as path from "node:path";
 import { Server } from "socket.io";
 import { spawnAllAgents } from "./agentSpawner.js";
 import { GitDiffManager } from "./gitDiff.js";
@@ -25,8 +25,22 @@ import { RepositoryManager } from "./repositoryManager.js";
 import { createTerminal, type GlobalTerminal } from "./terminal.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWorktreePath } from "./workspace.js";
+import { createProxyApp } from "./proxyApp.js";
 
-const httpServer = createServer();
+// Global terminal storage - shared across all connections
+const globalTerminals = new Map<string, GlobalTerminal>();
+
+// Git diff manager instance
+const gitDiffManager = new GitDiffManager();
+
+// Global VSCode instances storage
+const vscodeInstances = new Map<string, VSCodeInstance>();
+
+// Create Express proxy app
+const proxyApp = createProxyApp(vscodeInstances);
+
+// Create HTTP server with Express app
+const httpServer = createServer(proxyApp);
 
 const io = new Server<
   ClientToServerEvents,
@@ -39,15 +53,6 @@ const io = new Server<
     methods: ["GET", "POST"],
   },
 });
-
-// Global terminal storage - shared across all connections
-const globalTerminals = new Map<string, GlobalTerminal>();
-
-// Git diff manager instance
-const gitDiffManager = new GitDiffManager();
-
-// Global VSCode instances storage
-const vscodeInstances = new Map<string, VSCodeInstance>();
 
 io.on("connection", (socket) => {
   console.log("Client connected:", socket.id);
@@ -481,7 +486,7 @@ if (import.meta.hot) {
     globalTerminals.clear();
 
     // Stop all VSCode instances
-    for (const [id, instance] of vscodeInstances) {
+    for (const [id, instance] of Array.from(vscodeInstances.entries())) {
       console.log(`Stopping VSCode instance ${id}`);
       try {
         await instance.stop();
