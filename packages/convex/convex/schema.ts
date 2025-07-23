@@ -62,7 +62,8 @@ export default defineSchema({
     .index("by_task", ["taskId", "createdAt"])
     .index("by_parent", ["parentRunId"])
     .index("by_status", ["status"])
-    .index("by_vscode_status", ["vscode.status"]),
+    .index("by_vscode_status", ["vscode.status"])
+    .index("by_vscode_container_name", ["vscode.containerName"]),
   taskVersions: defineTable({
     taskId: v.id("tasks"),
     version: v.number(),

@@ -6,6 +6,14 @@ import { convex } from "./utils/convexClient.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 
+// Port cache to avoid hammering Docker
+interface PortCacheEntry {
+  ports: { [key: string]: string };
+  timestamp: number;
+}
+const portCache = new Map<string, PortCacheEntry>();
+const PORT_CACHE_DURATION = 2000; // 2 seconds
+
 // Helper function to parse host header
 function parseHostHeader(
   host: string
@@ -80,9 +88,91 @@ const loadingScreen = `
   </html>
 `;
 
-export function createProxyApp(
-  vscodeInstances: Map<string, VSCodeInstance>
-): express.Application {
+// Map known port names to container ports
+const KNOWN_PORT_MAPPINGS: { [key: string]: string } = {
+  vscode: "39378",
+  worker: "39377",
+  extension: "39376",
+};
+
+// Check if container exists in Docker
+async function checkContainerExists(containerName: string): Promise<boolean> {
+  const docker = DockerVSCodeInstance.getDocker();
+
+  try {
+    const containers = await docker.listContainers({
+      all: true,
+      filters: { name: [containerName] },
+    });
+
+    return containers.length > 0;
+  } catch (error) {
+    console.error(`Failed to check container existence:`, error);
+    return false;
+  }
+}
+
+// Get actual host port for a container port from Docker
+async function getActualPortFromDocker(
+  containerName: string,
+  containerPort: string
+): Promise<string | null> {
+  // Check cache first
+  const cached = portCache.get(containerName);
+  if (cached && Date.now() - cached.timestamp < PORT_CACHE_DURATION) {
+    return cached.ports[containerPort] || null;
+  }
+
+  const docker = DockerVSCodeInstance.getDocker();
+
+  try {
+    const containers = await docker.listContainers({
+      all: true,
+      filters: { name: [containerName] },
+    });
+
+    if (containers.length === 0) {
+      return null;
+    }
+
+    const container = docker.getContainer(containers[0].Id);
+    const containerInfo = await container.inspect();
+
+    if (!containerInfo.State.Running) {
+      // Clear cache for stopped containers
+      portCache.delete(containerName);
+      return null;
+    }
+
+    const ports = containerInfo.NetworkSettings.Ports;
+    const portMapping: { [key: string]: string } = {};
+
+    // Extract all port mappings
+    for (const [containerPortKey, hostPorts] of Object.entries(ports)) {
+      if (hostPorts && hostPorts[0]?.HostPort) {
+        // Extract just the port number (remove /tcp suffix)
+        const portNum = containerPortKey.split("/")[0];
+        portMapping[portNum] = hostPorts[0].HostPort;
+      }
+    }
+
+    // Update cache
+    portCache.set(containerName, {
+      ports: portMapping,
+      timestamp: Date.now(),
+    });
+
+    return portMapping[containerPort] || null;
+  } catch (error) {
+    console.error(
+      `Failed to get port mapping for container ${containerName}:`,
+      error
+    );
+    return null;
+  }
+}
+
+export function createProxyApp(): express.Application {
   const app = express();
 
   // Main request handler
@@ -108,84 +198,83 @@ export function createProxyApp(
     }
 
     const { containerName, targetPort } = parsed;
+    const fullContainerName = containerName.startsWith("coderouter-")
+      ? containerName
+      : `coderouter-${containerName}`;
 
-    // Look up container information from Convex
-    const taskRun = await convex.query(api.taskRuns.getByContainerName, {
-      containerName: containerName.startsWith("coderouter-")
-        ? containerName
-        : `coderouter-${containerName}`,
-    });
+    // Determine which container port we need based on the target port
+    let containerPort: string;
 
-    if (!taskRun) {
-      return res.status(404).send("Task run not found");
-    }
-
-    const vscodeInfo = taskRun.vscode;
-
-    if (!vscodeInfo) {
-      return res.status(404).send("VSCode instance not found");
-    }
-
-    if (vscodeInfo.status === "starting") {
-      return res.send(
-        loadingScreen.replace("{{containerName}}", containerName)
-      );
-    }
-
-    if (vscodeInfo.status === "stopped") {
-      const vscodeInstance = vscodeInstances.get(taskRun._id);
-      if (vscodeInstance && vscodeInstance instanceof DockerVSCodeInstance) {
-        vscodeInstance.start().catch((err) => {
-          console.error(`Failed to restart container ${containerName}:`, err);
-        });
-        return res.send(
-          loadingScreen.replace("{{containerName}}", containerName)
-        );
-      }
-      return res
-        .status(503)
-        .send(`Container ${containerName} is stopped and cannot be restarted`);
-    }
-
-    // Container is running, determine target port
-    if (!vscodeInfo.ports) {
-      return res
-        .status(503)
-        .send(`Port information not available for container ${containerName}`);
-    }
-
-    let actualPort: string | undefined;
-    if (targetPort === vscodeInfo.ports.vscode) {
-      actualPort = vscodeInfo.ports.vscode;
-    } else if (targetPort === vscodeInfo.ports.worker) {
-      actualPort = vscodeInfo.ports.worker;
-    } else if (targetPort === vscodeInfo.ports.extension) {
-      actualPort = vscodeInfo.ports.extension;
+    // Check if targetPort is a known port name (vscode, worker, extension)
+    if (KNOWN_PORT_MAPPINGS[targetPort]) {
+      containerPort = KNOWN_PORT_MAPPINGS[targetPort];
     } else {
-      actualPort = targetPort;
+      // Otherwise, treat it as a direct container port number
+      containerPort = targetPort;
     }
 
-    if (!actualPort) {
-      return res
-        .status(400)
-        .send(`Port ${targetPort} not found for container ${containerName}`);
+    // First, try to get the port directly from Docker
+    const actualPort = await getActualPortFromDocker(
+      fullContainerName,
+      containerPort
+    );
+
+    if (actualPort) {
+      // Container is running, proxy the request
+      const proxy = httpProxy.createProxyServer({
+        target: `http://localhost:${actualPort}`,
+        changeOrigin: true,
+      });
+
+      // Handle proxy errors
+      proxy.on("error", (err: Error) => {
+        if (!res.headersSent) {
+          res.status(502).send(`Proxy error: ${err.message}`);
+        }
+      });
+
+      // Proxy the request
+      proxy.web(req, res);
+      return;
     }
 
-    // Create http-proxy and proxy the request
-    const proxy = httpProxy.createProxyServer({
-      target: `http://localhost:${actualPort}`,
-      changeOrigin: true,
+    // Container not running or doesn't exist in Docker
+    // Check if it should exist by querying Convex
+    const taskRun = await convex.query(api.taskRuns.getByContainerName, {
+      containerName: fullContainerName,
     });
 
-    // Handle proxy errors
-    proxy.on("error", (err: Error) => {
-      if (!res.headersSent) {
-        res.status(502).send(`Proxy error: ${err.message}`);
+    if (!taskRun || !taskRun.vscode) {
+      return res.status(404).send("Container not found");
+    }
+
+    // Container should exist but isn't running
+    if (taskRun.vscode.status === "stopped") {
+      // Try to restart it
+      const instance = VSCodeInstance.getInstance(taskRun._id);
+      if (!instance) {
+        // Need to create a new instance
+        const newInstance = new DockerVSCodeInstance({
+          taskRunId: taskRun._id,
+          workspacePath: taskRun.worktreePath,
+        });
+
+        // Start the container
+        newInstance.start().catch((err) => {
+          console.error(`Failed to start container ${fullContainerName}:`, err);
+        });
+      } else if (instance instanceof DockerVSCodeInstance) {
+        instance.start().catch((err) => {
+          console.error(
+            `Failed to restart container ${fullContainerName}:`,
+            err
+          );
+        });
       }
-    });
+    }
 
-    // Proxy the request
-    proxy.web(req, res);
+    // Show loading screen while container is starting
+    return res.send(loadingScreen.replace("{{containerName}}", containerName));
   });
 
   return app;
@@ -226,44 +315,30 @@ export function setupWebSocketProxy(server: Server) {
       }
 
       const { containerName, targetPort } = parsed;
+      const fullContainerName = containerName.startsWith("coderouter-")
+        ? containerName
+        : `coderouter-${containerName}`;
 
-      // Look up container information from Convex
-      const taskRun = await convex.query(api.taskRuns.getByContainerName, {
-        containerName: containerName.startsWith("coderouter-")
-          ? containerName
-          : `coderouter-${containerName}`,
-      });
+      // Determine container port
+      let containerPort: string;
 
-      if (
-        !taskRun ||
-        !taskRun.vscode ||
-        taskRun.vscode.status !== "running" ||
-        !taskRun.vscode.ports
-      ) {
-        console.error(
-          `WebSocket upgrade failed: Container not found or not running for ${containerName}`
-        );
-        socket.end("HTTP/1.1 404 Not Found\r\n\r\n");
-        return;
-      }
-
-      // Determine actual port
-      let actualPort: string | undefined;
-      const ports = taskRun.vscode.ports;
-
-      if (targetPort === ports.vscode) {
-        actualPort = ports.vscode;
-      } else if (targetPort === ports.worker) {
-        actualPort = ports.worker;
-      } else if (targetPort === ports.extension) {
-        actualPort = ports.extension;
+      // Check if targetPort is a known port name (vscode, worker, extension)
+      if (KNOWN_PORT_MAPPINGS[targetPort]) {
+        containerPort = KNOWN_PORT_MAPPINGS[targetPort];
       } else {
-        actualPort = targetPort;
+        // Otherwise, treat it as a direct container port number
+        containerPort = targetPort;
       }
+
+      // Get the actual host port from Docker
+      const actualPort = await getActualPortFromDocker(
+        fullContainerName,
+        containerPort
+      );
 
       if (!actualPort) {
         console.error(
-          `WebSocket upgrade failed: Port ${targetPort} not found for container ${containerName}`
+          `WebSocket upgrade failed: Port ${targetPort} (container port ${containerPort}) not mapped for container ${containerName}`
         );
         socket.end("HTTP/1.1 404 Not Found\r\n\r\n");
         return;

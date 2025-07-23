@@ -28,7 +28,6 @@ export interface AgentSpawnResult {
 export async function spawnAgent(
   agent: AgentConfig,
   taskId: string | Id<"tasks">,
-  vscodeInstances: Map<string, VSCodeInstance>,
   options: {
     repoUrl: string;
     branch?: string;
@@ -158,7 +157,7 @@ export async function spawnAgent(
     });
 
     // Store the VSCode instance
-    vscodeInstances.set(vscodeInstance.getInstanceId(), vscodeInstance);
+    // VSCodeInstance.getInstances().set(vscodeInstance.getInstanceId(), vscodeInstance);
 
     console.log(`Starting VSCode instance for agent ${agent.name}...`);
 
@@ -175,7 +174,7 @@ export async function spawnAgent(
       | { vscode: string; worker: string; extension?: string }
       | undefined;
     if (vscodeInstance instanceof DockerVSCodeInstance) {
-      const dockerPorts = (vscodeInstance as DockerVSCodeInstance).getPorts();
+      const dockerPorts = vscodeInstance.getPorts();
       if (dockerPorts && dockerPorts.vscode && dockerPorts.worker) {
         ports = {
           vscode: dockerPorts.vscode,
@@ -426,16 +425,6 @@ export async function spawnAgent(
       );
     });
 
-    // Clean up instance on exit
-    vscodeInstance.on("exit", () => {
-      vscodeInstances.delete(vscodeInstance.getInstanceId());
-      console.log(
-        `VSCode instance ${vscodeInstance.getInstanceId()} for agent ${
-          agent.name
-        } exited`
-      );
-    });
-
     return {
       agentName: agent.name,
       terminalId,
@@ -458,7 +447,6 @@ export async function spawnAgent(
 
 export async function spawnAllAgents(
   taskId: string | Id<"tasks">,
-  vscodeInstances: Map<string, VSCodeInstance>,
   options: {
     repoUrl: string;
     branch?: string;
@@ -478,7 +466,7 @@ export async function spawnAllAgents(
     : AGENT_CONFIGS;
 
   for (const agent of agentsToSpawn) {
-    const result = await spawnAgent(agent, taskId, vscodeInstances, options);
+    const result = await spawnAgent(agent, taskId, options);
     results.push(result);
   }
 

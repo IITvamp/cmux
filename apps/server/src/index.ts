@@ -24,6 +24,7 @@ import { GitDiffManager } from "./gitDiff.js";
 import { createProxyApp, setupWebSocketProxy } from "./proxyApp.js";
 import { RepositoryManager } from "./repositoryManager.js";
 import { createTerminal, type GlobalTerminal } from "./terminal.js";
+import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWorktreePath } from "./workspace.js";
 
@@ -33,11 +34,8 @@ const globalTerminals = new Map<string, GlobalTerminal>();
 // Git diff manager instance
 const gitDiffManager = new GitDiffManager();
 
-// Global VSCode instances storage
-const vscodeInstances = new Map<string, VSCodeInstance>();
-
 // Create Express proxy app
-const proxyApp = createProxyApp(vscodeInstances);
+const proxyApp = createProxyApp();
 
 // Create HTTP server with Express app
 const httpServer = createServer(proxyApp);
@@ -96,7 +94,7 @@ io.on("connection", (socket) => {
       const taskId = taskData.taskId;
 
       // Spawn all agents in parallel (each will create its own taskRun)
-      const agentResults = await spawnAllAgents(taskId, vscodeInstances, {
+      const agentResults = await spawnAllAgents(taskId, {
         repoUrl: taskData.repoUrl,
         branch: taskData.branch,
         taskDescription: taskData.taskDescription,
@@ -461,6 +459,9 @@ io.on("connection", (socket) => {
 const PORT = process.env.PORT || 3001;
 const server = httpServer.listen(PORT, () => {
   console.log(`Terminal server listening on port ${PORT}`);
+
+  // Start the Docker container state sync
+  DockerVSCodeInstance.startContainerStateSync();
 });
 
 let isCleaningUp = false;
@@ -477,6 +478,9 @@ if (import.meta.hot) {
     isCleaningUp = true;
     console.log("Cleaning up terminals and server...");
 
+    // Stop Docker container state sync
+    DockerVSCodeInstance.stopContainerStateSync();
+
     // Kill all running terminals
     globalTerminals.forEach((terminal, id) => {
       console.log(`Killing terminal ${id}`);
@@ -489,7 +493,9 @@ if (import.meta.hot) {
     globalTerminals.clear();
 
     // Stop all VSCode instances
-    for (const [id, instance] of Array.from(vscodeInstances.entries())) {
+    for (const [id, instance] of Array.from(
+      VSCodeInstance.getInstances().entries()
+    )) {
       console.log(`Stopping VSCode instance ${id}`);
       try {
         await instance.stop();
@@ -497,7 +503,7 @@ if (import.meta.hot) {
         console.error(`Error stopping VSCode instance ${id}:`, error);
       }
     }
-    vscodeInstances.clear();
+    VSCodeInstance.clearInstances();
 
     // Clean up git diff manager
     gitDiffManager.dispose();

@@ -31,9 +31,9 @@ function TaskDetailPage() {
   const childMatches = useChildMatches();
   const deepestMatch = childMatches[childMatches.length - 1];
   const deepestMatchParams = deepestMatch?.params as
-    | { runId: string }
+    | { taskRunId: string }
     | undefined;
-  const activeRunId = deepestMatchParams?.runId as string | undefined;
+  const activeRunId = deepestMatchParams?.taskRunId as string | undefined;
 
   const navigate = useNavigate();
 
@@ -61,8 +61,8 @@ function TaskDetailPage() {
   useEffect(() => {
     if (flatRuns.length > 0 && !activeRunId) {
       navigate({
-        to: "/task/$taskId/run/$runId",
-        params: { taskId, runId: flatRuns[0]._id },
+        to: "/task/$taskId/run/$taskRunId",
+        params: { taskId, taskRunId: flatRuns[0]._id },
         replace: true,
       });
     }
@@ -96,8 +96,8 @@ function TaskDetailPage() {
 
         if (flatRuns[runIndex]) {
           navigate({
-            to: "/task/$taskId/run/$runId",
-            params: { taskId, runId: flatRuns[runIndex]._id },
+            to: "/task/$taskId/run/$taskRunId",
+            params: { taskId, taskRunId: flatRuns[runIndex]._id },
           });
         }
       }
@@ -161,8 +161,8 @@ function TaskDetailPage() {
             {flatRuns.map((run, index) => (
               <Link
                 key={run._id}
-                to="/task/$taskId/run/$runId"
-                params={{ taskId, runId: run._id }}
+                to="/task/$taskId/run/$taskRunId"
+                params={{ taskId, taskRunId: run._id }}
                 className={clsx(
                   "px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors select-none",
                   activeRunId === run._id

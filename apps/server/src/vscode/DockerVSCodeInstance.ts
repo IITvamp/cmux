@@ -1,5 +1,6 @@
 import { api } from "@coderouter/convex/api";
 import type { Id } from "@coderouter/convex/dataModel";
+import { getShortId } from "@coderouter/shared";
 import Docker from "dockerode";
 import * as os from "os";
 import * as path from "path";
@@ -30,23 +31,111 @@ export const containerMappings = new Map<string, ContainerMapping>();
 export class DockerVSCodeInstance extends VSCodeInstance {
   private containerName: string;
   private imageName: string;
-  private docker: Docker;
   private container: Docker.Container | null = null;
-  private syncInterval: NodeJS.Timeout | null = null;
+  private portCache: {
+    ports: { [key: string]: string } | null;
+    timestamp: number;
+  } | null = null;
+  private static readonly PORT_CACHE_DURATION = 2000; // 2 seconds
+  private static syncInterval: NodeJS.Timeout | null = null;
+  private static dockerInstance: Docker | null = null;
+
+  // Get or create the Docker singleton
+  static getDocker(): Docker {
+    if (!DockerVSCodeInstance.dockerInstance) {
+      DockerVSCodeInstance.dockerInstance = new Docker({
+        socketPath: "/var/run/docker.sock",
+      });
+    }
+    return DockerVSCodeInstance.dockerInstance;
+  }
 
   constructor(config: VSCodeInstanceConfig) {
     super(config);
     // Use a simplified container name based on taskRunId
     // Since taskRunId is a Convex ID like "jb74m5s2g9d6c5w6qkbmxsm7sh744d"
     // We'll take the first 12 chars for a shorter container name
-    const shortId = this.taskRunId.substring(0, 12);
+    const shortId = getShortId(this.taskRunId);
     this.containerName = `coderouter-${shortId}`;
     this.imageName = "coderouter-worker:0.0.1";
-    // Always use explicit socket path for consistency
-    this.docker = new Docker({ socketPath: "/var/run/docker.sock" });
-    
-    // Start syncing container states every minute
-    this.startContainerStateSync();
+    // Register this instance
+    VSCodeInstance.getInstances().set(this.instanceId, this);
+  }
+
+  /**
+   * Get the actual host port for a given container port
+   * @param containerPort The port inside the container (e.g., "39378", "39377", "39376")
+   * @returns The actual host port or null if not found
+   */
+  async getActualPort(containerPort: string): Promise<string | null> {
+    // Check cache first
+    if (
+      this.portCache &&
+      Date.now() - this.portCache.timestamp <
+        DockerVSCodeInstance.PORT_CACHE_DURATION
+    ) {
+      return this.portCache.ports?.[containerPort] || null;
+    }
+
+    const docker = DockerVSCodeInstance.getDocker();
+
+    try {
+      // Get container if we don't have it
+      if (!this.container) {
+        const containers = await docker.listContainers({
+          all: true,
+          filters: { name: [this.containerName] },
+        });
+
+        if (containers.length === 0) {
+          return null;
+        }
+
+        this.container = docker.getContainer(containers[0].Id);
+      }
+
+      // Get container info with port mappings
+      const containerInfo = await this.container.inspect();
+
+      if (!containerInfo.State.Running) {
+        // Clear cache for stopped containers
+        this.portCache = null;
+        return null;
+      }
+
+      const ports = containerInfo.NetworkSettings.Ports;
+      const portMapping: { [key: string]: string } = {};
+
+      // Map container ports to host ports
+      if (ports[`${containerPort}/tcp`]?.[0]?.HostPort) {
+        portMapping[containerPort] = ports[`${containerPort}/tcp`][0].HostPort;
+      }
+
+      // Also cache other known ports while we're at it
+      if (ports["39378/tcp"]?.[0]?.HostPort) {
+        portMapping["39378"] = ports["39378/tcp"][0].HostPort;
+      }
+      if (ports["39377/tcp"]?.[0]?.HostPort) {
+        portMapping["39377"] = ports["39377/tcp"][0].HostPort;
+      }
+      if (ports["39376/tcp"]?.[0]?.HostPort) {
+        portMapping["39376"] = ports["39376/tcp"][0].HostPort;
+      }
+
+      // Update cache
+      this.portCache = {
+        ports: portMapping,
+        timestamp: Date.now(),
+      };
+
+      return portMapping[containerPort] || null;
+    } catch (error) {
+      console.error(
+        `Failed to get port mapping for container ${this.containerName}:`,
+        error
+      );
+      return null;
+    }
   }
 
   async start(): Promise<VSCodeInstanceInfo> {
@@ -54,6 +143,8 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     console.log(`  Image: ${this.imageName}`);
     console.log(`  Workspace: ${this.config.workspacePath}`);
     console.log(`  Agent name: ${this.config.agentName}`);
+
+    const docker = DockerVSCodeInstance.getDocker();
 
     // Set initial mapping status
     containerMappings.set(this.containerName, {
@@ -66,7 +157,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
     // Stop and remove any existing container with same name
     try {
-      const existingContainer = this.docker.getContainer(this.containerName);
+      const existingContainer = docker.getContainer(this.containerName);
       const info = await existingContainer.inspect().catch(() => null);
       if (info) {
         console.log(`Removing existing container ${this.containerName}`);
@@ -252,7 +343,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     console.log(`Creating container...`);
 
     // Create and start the container
-    this.container = await this.docker.createContainer(createOptions);
+    this.container = await docker.createContainer(createOptions);
     console.log(`Container created: ${this.container.id}`);
 
     await this.container.start();
@@ -422,11 +513,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
   async stop(): Promise<void> {
     console.log(`Stopping Docker VSCode instance: ${this.containerName}`);
 
-    // Stop the sync interval
-    if (this.syncInterval) {
-      clearInterval(this.syncInterval);
-      this.syncInterval = null;
-    }
+    const docker = DockerVSCodeInstance.getDocker();
 
     // Update mapping status
     const mapping = containerMappings.get(this.containerName);
@@ -444,9 +531,6 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     } catch (error) {
       console.error("Failed to update VSCode status in Convex:", error);
     }
-
-    // Disconnect from worker first
-    await this.disconnectFromWorker();
 
     if (this.container) {
       try {
@@ -479,19 +563,23 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
     // Clean up git credentials file if we created one
     await cleanupGitCredentials(this.instanceId);
+
+    // Call base stop to disconnect from worker and remove from registry
+    await this.baseStop();
   }
 
   async getStatus(): Promise<{ running: boolean; info?: VSCodeInstanceInfo }> {
     try {
+      const docker = DockerVSCodeInstance.getDocker();
       if (!this.container) {
         // Try to find container by name
-        const containers = await this.docker.listContainers({
+        const containers = await docker.listContainers({
           all: true,
           filters: { name: [this.containerName] },
         });
 
         if (containers.length > 0) {
-          this.container = this.docker.getContainer(containers[0].Id);
+          this.container = docker.getContainer(containers[0].Id);
         } else {
           return { running: false };
         }
@@ -530,6 +618,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       throw new Error("Container not initialized");
     }
 
+    const docker = DockerVSCodeInstance.getDocker();
     const stream = await this.container.logs({
       stdout: true,
       stderr: true,
@@ -701,26 +790,42 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     }
   }
 
-  private startContainerStateSync(): void {
-    // Run sync immediately on start
-    this.syncDockerContainerStates().catch((error) => {
+  // Static method to start the container state sync
+  static startContainerStateSync(): void {
+    // Stop any existing sync
+    if (DockerVSCodeInstance.syncInterval) {
+      clearInterval(DockerVSCodeInstance.syncInterval);
+    }
+
+    // Run sync immediately
+    DockerVSCodeInstance.syncDockerContainerStates().catch((error) => {
       console.error("Failed to sync container states:", error);
     });
 
     // Then run every minute
-    this.syncInterval = setInterval(() => {
-      this.syncDockerContainerStates().catch((error) => {
+    DockerVSCodeInstance.syncInterval = setInterval(() => {
+      DockerVSCodeInstance.syncDockerContainerStates().catch((error) => {
         console.error("Failed to sync container states:", error);
       });
     }, 60000); // 60 seconds
   }
 
-  private async syncDockerContainerStates(): Promise<void> {
+  // Static method to stop the container state sync
+  static stopContainerStateSync(): void {
+    if (DockerVSCodeInstance.syncInterval) {
+      clearInterval(DockerVSCodeInstance.syncInterval);
+      DockerVSCodeInstance.syncInterval = null;
+    }
+  }
+
+  private static async syncDockerContainerStates(): Promise<void> {
+    const docker = DockerVSCodeInstance.getDocker();
+
     try {
       console.log("Syncing Docker container states with Convex...");
 
       // Get all running coderouter containers
-      const containers = await this.docker.listContainers({
+      const containers = await docker.listContainers({
         all: true,
         filters: {
           name: ["coderouter-"],
@@ -728,11 +833,13 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       });
 
       // Get all active VSCode instances from Convex
-      const activeVSCodeInstances = await convex.query(api.taskRuns.getActiveVSCodeInstances);
-      
+      const activeVSCodeInstances = await convex.query(
+        api.taskRuns.getActiveVSCodeInstances
+      );
+
       // Create a set of existing container names for quick lookup
       const existingContainerNames = new Set(
-        containers.map(c => c.Names[0]?.replace(/^\//, "")).filter(Boolean)
+        containers.map((c) => c.Names[0]?.replace(/^\//, "")).filter(Boolean)
       );
 
       // Update container mappings and Convex state
@@ -745,24 +852,32 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         const match = containerName.match(/^coderouter-(.{12})/);
         if (!match) continue;
 
-        // Find the full task run ID from container mappings
+        // Find the full taskRunId from container mappings
         const mapping = containerMappings.get(containerName);
         if (!mapping) {
-          console.log(`No mapping found for container ${containerName}, skipping`);
+          console.log(
+            `No mapping found for container ${containerName}, skipping`
+          );
           continue;
         }
-        
+
         // Get the taskRunId from the mapping
         // The instanceId is the same as taskRunId
         const taskRunId = mapping.instanceId;
 
         const isRunning = containerInfo.State === "running";
         const ports = containerInfo.Ports || [];
-        
+
         // Extract port mappings
-        const vscodePort = ports.find(p => p.PrivatePort === 39378)?.PublicPort?.toString();
-        const workerPort = ports.find(p => p.PrivatePort === 39377)?.PublicPort?.toString();
-        const extensionPort = ports.find(p => p.PrivatePort === 39376)?.PublicPort?.toString();
+        const vscodePort = ports
+          .find((p) => p.PrivatePort === 39378)
+          ?.PublicPort?.toString();
+        const workerPort = ports
+          .find((p) => p.PrivatePort === 39377)
+          ?.PublicPort?.toString();
+        const extensionPort = ports
+          .find((p) => p.PrivatePort === 39376)
+          ?.PublicPort?.toString();
 
         // Update local mapping
         mapping.status = isRunning ? "running" : "stopped";
@@ -801,17 +916,22 @@ export class DockerVSCodeInstance extends VSCodeInstance {
             });
           }
         } catch (error) {
-          console.error(`Failed to update Convex state for container ${containerName}:`, error);
+          console.error(
+            `Failed to update Convex state for container ${containerName}:`,
+            error
+          );
         }
       }
 
       // Check for containers in our mappings that are no longer in Docker
       for (const [containerName, mapping] of containerMappings.entries()) {
-        const exists = containers.some(c => c.Names[0]?.replace(/^\//, "") === containerName);
+        const exists = containers.some(
+          (c) => c.Names[0]?.replace(/^\//, "") === containerName
+        );
         if (!exists && mapping.status !== "stopped") {
           // Container no longer exists, mark as stopped
           mapping.status = "stopped";
-          
+
           try {
             const taskRunId = mapping.instanceId; // instanceId is the taskRunId
             await convex.mutation(api.taskRuns.updateVSCodeStatus, {
@@ -820,7 +940,10 @@ export class DockerVSCodeInstance extends VSCodeInstance {
               stoppedAt: Date.now(),
             });
           } catch (error) {
-            console.error(`Failed to update stopped status for ${containerName}:`, error);
+            console.error(
+              `Failed to update stopped status for ${containerName}:`,
+              error
+            );
           }
         }
       }
@@ -832,13 +955,15 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         }
 
         // Derive the container name from the task run ID
-        const shortId = taskRun._id.substring(0, 12);
+        const shortId = getShortId(taskRun._id);
         const expectedContainerName = `coderouter-${shortId}`;
 
         // Check if this container exists in Docker
         if (!existingContainerNames.has(expectedContainerName)) {
-          console.log(`Found orphaned VSCode instance in Convex: ${taskRun._id} (container: ${expectedContainerName})`);
-          
+          console.log(
+            `Found orphaned VSCode instance in Convex: ${taskRun._id} (container: ${expectedContainerName})`
+          );
+
           // Mark it as stopped in Convex
           try {
             await convex.mutation(api.taskRuns.updateVSCodeStatus, {
@@ -846,9 +971,14 @@ export class DockerVSCodeInstance extends VSCodeInstance {
               status: "stopped",
               stoppedAt: Date.now(),
             });
-            console.log(`Marked orphaned VSCode instance ${taskRun._id} as stopped`);
+            console.log(
+              `Marked orphaned VSCode instance ${taskRun._id} as stopped`
+            );
           } catch (error) {
-            console.error(`Failed to update orphaned VSCode instance ${taskRun._id}:`, error);
+            console.error(
+              `Failed to update orphaned VSCode instance ${taskRun._id}:`,
+              error
+            );
           }
         }
       }

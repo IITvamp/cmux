@@ -16,9 +16,6 @@ async function main() {
     console.log("Running in interactive mode. Press Ctrl+C to exit.\n");
   }
 
-  // Create a map to store VSCode instances
-  const vscodeInstances = new Map<string, VSCodeInstance>();
-
   // Find claude-sonnet agent config
   const agentConfig = AGENT_CONFIGS.find(
     (agent) => agent.name === "claude-sonnet"
@@ -55,12 +52,7 @@ async function main() {
   console.log("\n--- Starting agent spawn ---\n");
 
   try {
-    const result = await spawnAgent(
-      agentConfig,
-      taskId,
-      vscodeInstances,
-      testOptions
-    );
+    const result = await spawnAgent(agentConfig, taskId, testOptions);
 
     console.log("\n--- Agent spawn result ---");
     console.log(JSON.stringify(result, null, 2));
@@ -79,7 +71,7 @@ async function main() {
           console.log("\n\nReceived interrupt signal. Shutting down...");
 
           // Stop all VSCode instances
-          for (const [id, instance] of vscodeInstances) {
+          for (const [id, instance] of VSCodeInstance.getInstances()) {
             console.log(`Stopping VSCode instance ${id}...`);
             await instance.stop();
           }
@@ -133,7 +125,7 @@ async function main() {
         console.log("\nShutting down...");
 
         // Stop all VSCode instances
-        for (const [id, instance] of vscodeInstances) {
+        for (const [id, instance] of VSCodeInstance.getInstances()) {
           console.log(`Stopping VSCode instance ${id}...`);
           await instance.stop();
         }

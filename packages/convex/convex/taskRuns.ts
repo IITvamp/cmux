@@ -360,7 +360,12 @@ export const updateVSCodePorts = mutation({
 export const getByContainerName = query({
   args: { containerName: v.string() },
   handler: async (ctx, args) => {
-    const runs = await ctx.db.query("taskRuns").collect();
+    const runs = await ctx.db
+      .query("taskRuns")
+      .withIndex("by_vscode_container_name", (q) =>
+        q.eq("vscode.containerName", args.containerName)
+      )
+      .collect();
     return runs.find((run) => run.vscode?.containerName === args.containerName);
   },
 });

@@ -16,7 +16,7 @@ import { Route as LayoutSettingsRouteImport } from './routes/_layout.settings'
 import { Route as LayoutProfileRouteImport } from './routes/_layout.profile'
 import { Route as LayoutDashboardRouteImport } from './routes/_layout.dashboard'
 import { Route as LayoutTaskTaskIdRouteImport } from './routes/_layout.task.$taskId'
-import { Route as LayoutTaskTaskIdRunRunIdRouteImport } from './routes/_layout.task.$taskId.run.$runId'
+import { Route as LayoutTaskTaskIdRunTaskRunIdRouteImport } from './routes/_layout.task.$taskId.run.$taskRunId'
 
 const TerminalsRoute = TerminalsRouteImport.update({
   id: '/terminals',
@@ -52,10 +52,10 @@ const LayoutTaskTaskIdRoute = LayoutTaskTaskIdRouteImport.update({
   path: '/task/$taskId',
   getParentRoute: () => LayoutRoute,
 } as any)
-const LayoutTaskTaskIdRunRunIdRoute =
-  LayoutTaskTaskIdRunRunIdRouteImport.update({
-    id: '/run/$runId',
-    path: '/run/$runId',
+const LayoutTaskTaskIdRunTaskRunIdRoute =
+  LayoutTaskTaskIdRunTaskRunIdRouteImport.update({
+    id: '/run/$taskRunId',
+    path: '/run/$taskRunId',
     getParentRoute: () => LayoutTaskTaskIdRoute,
   } as any)
 
@@ -66,7 +66,7 @@ export interface FileRoutesByFullPath {
   '/profile': typeof LayoutProfileRoute
   '/settings': typeof LayoutSettingsRoute
   '/task/$taskId': typeof LayoutTaskTaskIdRouteWithChildren
-  '/task/$taskId/run/$runId': typeof LayoutTaskTaskIdRunRunIdRoute
+  '/task/$taskId/run/$taskRunId': typeof LayoutTaskTaskIdRunTaskRunIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -75,7 +75,7 @@ export interface FileRoutesByTo {
   '/profile': typeof LayoutProfileRoute
   '/settings': typeof LayoutSettingsRoute
   '/task/$taskId': typeof LayoutTaskTaskIdRouteWithChildren
-  '/task/$taskId/run/$runId': typeof LayoutTaskTaskIdRunRunIdRoute
+  '/task/$taskId/run/$taskRunId': typeof LayoutTaskTaskIdRunTaskRunIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -86,7 +86,7 @@ export interface FileRoutesById {
   '/_layout/profile': typeof LayoutProfileRoute
   '/_layout/settings': typeof LayoutSettingsRoute
   '/_layout/task/$taskId': typeof LayoutTaskTaskIdRouteWithChildren
-  '/_layout/task/$taskId/run/$runId': typeof LayoutTaskTaskIdRunRunIdRoute
+  '/_layout/task/$taskId/run/$taskRunId': typeof LayoutTaskTaskIdRunTaskRunIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -97,7 +97,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/settings'
     | '/task/$taskId'
-    | '/task/$taskId/run/$runId'
+    | '/task/$taskId/run/$taskRunId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -106,7 +106,7 @@ export interface FileRouteTypes {
     | '/profile'
     | '/settings'
     | '/task/$taskId'
-    | '/task/$taskId/run/$runId'
+    | '/task/$taskId/run/$taskRunId'
   id:
     | '__root__'
     | '/'
@@ -116,7 +116,7 @@ export interface FileRouteTypes {
     | '/_layout/profile'
     | '/_layout/settings'
     | '/_layout/task/$taskId'
-    | '/_layout/task/$taskId/run/$runId'
+    | '/_layout/task/$taskId/run/$taskRunId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -176,22 +176,22 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutTaskTaskIdRouteImport
       parentRoute: typeof LayoutRoute
     }
-    '/_layout/task/$taskId/run/$runId': {
-      id: '/_layout/task/$taskId/run/$runId'
-      path: '/run/$runId'
-      fullPath: '/task/$taskId/run/$runId'
-      preLoaderRoute: typeof LayoutTaskTaskIdRunRunIdRouteImport
+    '/_layout/task/$taskId/run/$taskRunId': {
+      id: '/_layout/task/$taskId/run/$taskRunId'
+      path: '/run/$taskRunId'
+      fullPath: '/task/$taskId/run/$taskRunId'
+      preLoaderRoute: typeof LayoutTaskTaskIdRunTaskRunIdRouteImport
       parentRoute: typeof LayoutTaskTaskIdRoute
     }
   }
 }
 
 interface LayoutTaskTaskIdRouteChildren {
-  LayoutTaskTaskIdRunRunIdRoute: typeof LayoutTaskTaskIdRunRunIdRoute
+  LayoutTaskTaskIdRunTaskRunIdRoute: typeof LayoutTaskTaskIdRunTaskRunIdRoute
 }
 
 const LayoutTaskTaskIdRouteChildren: LayoutTaskTaskIdRouteChildren = {
-  LayoutTaskTaskIdRunRunIdRoute: LayoutTaskTaskIdRunRunIdRoute,
+  LayoutTaskTaskIdRunTaskRunIdRoute: LayoutTaskTaskIdRunTaskRunIdRoute,
 }
 
 const LayoutTaskTaskIdRouteWithChildren =
