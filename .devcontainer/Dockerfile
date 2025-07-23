@@ -1,6 +1,5 @@
 FROM node:24-bookworm
 
-# Install additional dependencies for node-pty and terminal support
 RUN apt-get update && apt-get install -y \
     python3 \
     make \

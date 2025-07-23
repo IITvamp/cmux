@@ -66,14 +66,9 @@ COPY --parents apps/*/package.json packages/*/package.json scripts/package.json 
 # Install dependencies with cache (non-interactive)
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store CI=1 pnpm install --frozen-lockfile
 
-# Pre-install node-pty in the target location
 RUN mkdir -p /builtins && \
     echo '{"name":"builtins","type":"module","version":"1.0.0"}' > /builtins/package.json
 WORKDIR /builtins
-# Install node-pty and manually build it
-RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store CI=1 pnpm install node-pty && \
-    cd /builtins/node_modules/.pnpm/node-pty@*/node_modules/node-pty && \
-    npm run rebuild || node-gyp rebuild || true
 
 # Copy source files needed for build
 WORKDIR /coderouter
@@ -94,7 +89,6 @@ COPY packages/vscode-extension/.vscodeignore ./packages/vscode-extension/
 RUN bun build /coderouter/apps/worker/src/index.ts \
     --target node \
     --outdir /coderouter/apps/worker/build \
-    --external node-pty && \
     echo "Built worker" && \
     cp -r /coderouter/apps/worker/build /builtins/build && \
     cp /coderouter/apps/worker/wait-for-docker.sh /usr/local/bin/ && \

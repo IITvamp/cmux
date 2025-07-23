@@ -595,7 +595,6 @@ def setup_workspace(instance, workspace_path, debug=False):
     print("\n--- Installing npm dependencies ---")
     run_ssh_command(instance, f"sh -c 'cd {workspace_path} && npm install'", sudo=True)
 
-    # Pre-install node-pty in /builtins location (matching Dockerfile)
     print("\n--- Setting up /builtins ---")
     run_ssh_command(
         instance,
@@ -604,16 +603,13 @@ def setup_workspace(instance, workspace_path, debug=False):
         sudo=True,
     )
 
-    # Install node-pty in /builtins
-    run_ssh_command(instance, "sh -c 'cd /builtins && npm install node-pty'", sudo=True)
-
     # Build the worker
     print("\n--- Building worker application ---")
     run_ssh_command(
         instance,
         f"sh -c 'cd {workspace_path} && "
         f"/root/.bun/bin/bun build {workspace_path}/apps/worker/src/index.ts "
-        f"--target node --outdir {workspace_path}/apps/worker/build --external node-pty'",
+        f"--target node --outdir {workspace_path}/apps/worker/build",
         sudo=True,
     )
 
