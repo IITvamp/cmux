@@ -502,9 +502,7 @@ function TaskItem({ task, navigate, archiveTask }: TaskItemProps) {
     hasActiveVSCode &&
     runWithVSCode?.vscode?.containerName &&
     runWithVSCode?.vscode?.ports?.vscode
-      ? `http://${runWithVSCode._id.substring(0, 12)}.${
-          runWithVSCode.vscode.ports.vscode
-        }.localhost:3001/`
+      ? `http://${runWithVSCode._id.substring(0, 12)}.39378.localhost:3001/`
       : null;
 
   return (
@@ -568,50 +566,49 @@ function TaskItem({ task, navigate, archiveTask }: TaskItemProps) {
         </span>
       )}
 
-      {/* VSCode button - appears on hover */}
-      {vscodeUrl && (
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <a
-                href={vscodeUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className={clsx(
-                  "absolute right-10 p-1 rounded",
-                  "bg-neutral-100 dark:bg-neutral-700",
-                  "text-neutral-600 dark:text-neutral-400",
-                  "hover:bg-neutral-200 dark:hover:bg-neutral-600",
-                  "transition opacity-0 group-hover:opacity-100",
-                  "block" // Ensure anchor displays as block for proper styling
-                )}
-              >
-                <Code2 className="w-3.5 h-3.5" />
-              </a>
-            </TooltipTrigger>
-            <TooltipContent side="top">Open in VSCode</TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
-      )}
-
-      {/* Archive button */}
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          archiveTask({ id: task._id });
-        }}
-        className={clsx(
-          "absolute right-2 p-1 rounded",
-          "bg-neutral-100 dark:bg-neutral-700",
-          "text-neutral-600 dark:text-neutral-400",
-          "hover:bg-neutral-200 dark:hover:bg-neutral-600",
-          "transition opacity-0 group-hover:opacity-100"
+      <div className="right-2 absolute flex gap-1 group-hover:opacity-100 opacity-0">
+        {/* VSCode button - appears on hover */}
+        {vscodeUrl && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <a
+                  href={vscodeUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className={clsx(
+                    "p-1 rounded",
+                    "bg-neutral-100 dark:bg-neutral-700",
+                    "text-neutral-600 dark:text-neutral-400",
+                    "hover:bg-neutral-200 dark:hover:bg-neutral-600"
+                  )}
+                >
+                  <Code2 className="w-3.5 h-3.5" />
+                </a>
+              </TooltipTrigger>
+              <TooltipContent side="top">Open in VSCode</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         )}
-        title="Archive task"
-      >
-        <Archive className="w-3.5 h-3.5" />
-      </button>
+
+        {/* Archive button */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            archiveTask({ id: task._id });
+          }}
+          className={clsx(
+            "p-1 rounded",
+            "bg-neutral-100 dark:bg-neutral-700",
+            "text-neutral-600 dark:text-neutral-400",
+            "hover:bg-neutral-200 dark:hover:bg-neutral-600"
+          )}
+          title="Archive task"
+        >
+          <Archive className="w-3.5 h-3.5" />
+        </button>
+      </div>
     </div>
   );
 }

@@ -5,7 +5,6 @@
 # Get the directory where this script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 APP_DIR="$(dirname "$SCRIPT_DIR")"
-export VITE_CONVEX_URL=http://localhost:$VITE_CONVEX_PORT
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -21,7 +20,7 @@ cd "$APP_DIR"
 # Function to cleanup on exit
 cleanup() {
     echo -e "\n${BLUE}Shutting down...${NC}"
-    kill $SERVER_PID $CLIENT_PID $CONVEX_PID 2>/dev/null
+    kill $SERVER_PID $CLIENT_PID $CONVEX_BACKEND_PID $CONVEX_DEV_PID 2>/dev/null
     exit
 }
 
@@ -50,7 +49,23 @@ mkdir -p "$APP_DIR/logs"
 # Start convex dev and log to both stdout and file
 echo -e "${GREEN}Starting convex dev...${NC}"
 # (cd packages/convex && source ~/.nvm/nvm.sh && nvm use 18 && CONVEX_AGENT_MODE=anonymous bun x convex dev 2>&1 | tee ../../logs/convex.log) &
-(cd packages/convex && source ~/.nvm/nvm.sh && nvm use 18 && ./convex-local-backend --port $VITE_CONVEX_PORT --site-proxy-port $VITE_CONVEX_SITE_PROXY_PORT --disable-beacon 2>&1 | tee ../../logs/convex.log) &
+(cd packages/convex && source ~/.nvm/nvm.sh && \
+  nvm use 18 && \
+  source .env.local && \
+  ./convex-local-backend \
+    --port "$VITE_CONVEX_PORT" \
+    --site-proxy-port "$VITE_CONVEX_SITE_PROXY_PORT" \
+    --instance-name "$CONVEX_INSTANCE_NAME" \
+    --instance-secret "$CONVEX_INSTANCE_SECRET" \
+    --disable-beacon \
+    2>&1 | tee ../../logs/convex.log) &
+CONVEX_BACKEND_PID=$!
+
+(cd packages/convex && source ~/.nvm/nvm.sh && \
+  nvm use 18 && \
+  bunx convex dev \
+    2>&1 | tee ../../logs/convex-dev.log) &
+CONVEX_DEV_PID=$!
 CONVEX_PID=$!
 
 echo -e "${GREEN}Terminal app is running!${NC}"
