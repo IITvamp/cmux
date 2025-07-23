@@ -6,7 +6,9 @@
   "type": "module",
   "scripts": {
     "start": "vite-node src/index.ts",
-    "dev": "bun run --hot src/index.ts",
+    "dev": "DENO_COMPAT=1 deno run -A --watch-hmr src/index.ts",
+    "dev2": "vite-node src/index.ts",
+    "dev1": "bun run --hot src/index.ts",
     "dev0": "VITE_CONVEX_URL=http://127.0.0.1:3210 DENO_COMPAT=1 deno run -A src/index.ts",
     "dev-vitenode": "VITE_CONVEX_URL=http://127.0.0.1:3210 vite-node --watch src/index.ts",
     "start-deno": "deno run -A src/index.ts",
@@ -19,10 +21,6 @@
     "@coderouter/convex": "workspace:*",
     "@coderouter/shared": "workspace:*",
     "@daytonaio/sdk": "^0.22.1",
-    "@types/archiver": "^6.0.3",
-    "@types/dockerode": "^3.3.31",
-    "@types/express": "^4.17.23",
-    "@types/http-proxy": "^1.17.16",
     "@xterm/addon-serialize": "^0.13.0",
     "@xterm/headless": "^5.5.0",
     "ansi-escape-sequences": "^6.2.4",
@@ -44,9 +42,15 @@
     "socket.io-client": "^4.8.1",
     "tar": "^7.4.3",
     "vite-node": "^3.2.4",
+    "ws": "^8.18.3",
     "zod": "^3.25.67"
   },
   "devDependencies": {
+    "@types/archiver": "^6.0.3",
+    "@types/dockerode": "^3.3.31",
+    "@types/express": "^4.17.23",
+    "@types/http-proxy": "^1.17.16",
+    "@types/ws": "^8.18.1",
     "typescript": "^5.8.3",
     "vite": "^7.0.5"
   }

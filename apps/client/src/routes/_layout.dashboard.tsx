@@ -9,6 +9,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useSocket } from "@/contexts/socket/use-socket";
+import { createFakeConvexId } from "@/lib/fakeConvexId";
 import { type Repo } from "@/types/task";
 import { api } from "@coderouter/convex/api";
 import type { Doc } from "@coderouter/convex/dataModel";
@@ -101,7 +102,7 @@ function DashboardComponent() {
       if (currentTasks !== undefined) {
         const now = Date.now();
         const optimisticTask = {
-          _id: crypto.randomUUID() as Doc<"tasks">["_id"],
+          _id: createFakeConvexId() as Doc<"tasks">["_id"],
           _creationTime: now,
           text: args.text,
           description: args.description,
@@ -444,7 +445,6 @@ function TaskItem({ task, navigate, archiveTask }: TaskItemProps) {
   const taskRunsQuery = useConvexQuery(api.taskRuns.getByTask, {
     taskId: task._id,
   });
-  console.log("taskRunsQuery", taskRunsQuery);
 
   // Find the latest task run with a VSCode instance
   const getLatestVSCodeInstance = () => {

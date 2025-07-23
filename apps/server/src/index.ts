@@ -54,6 +54,9 @@ const io = new Server<
   },
 });
 
+// Setup WebSocket proxy handling after Socket.IO initialization
+setupWebSocketProxy(httpServer);
+
 io.on("connection", (socket) => {
   console.log("Client connected:", socket.id);
 
@@ -454,9 +457,6 @@ io.on("connection", (socket) => {
     // No need to kill terminals on disconnect since they're global
   });
 });
-
-// Setup WebSocket proxy handling
-setupWebSocketProxy(httpServer);
 
 const PORT = process.env.PORT || 3001;
 const server = httpServer.listen(PORT, () => {

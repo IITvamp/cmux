@@ -1,7 +1,7 @@
 import { api } from "@coderouter/convex/api";
 import express from "express";
 import type { IncomingMessage, Server } from "http";
-import { createProxyServer } from "httpxy";
+import httpProxy from "http-proxy";
 import { convex } from "./utils/convexClient.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
@@ -92,6 +92,11 @@ export function createProxyApp(
       return res.status(400).send("Host header is required");
     }
 
+    // if no subdomain, return "cmux hello world"
+    if (!host.includes(".")) {
+      return res.status(200).send("cmux 📟");
+    }
+
     // Parse format: containerName.port.localhost:3001
     const parsed = parseHostHeader(host);
     if (!parsed) {
@@ -103,7 +108,6 @@ export function createProxyApp(
     }
 
     const { containerName, targetPort } = parsed;
-    console.log(`Proxy request: ${containerName}.${targetPort} -> ${req.url}`);
 
     // Look up container information from Convex
     const taskRun = await convex.query(api.taskRuns.getByContainerName, {
@@ -112,49 +116,15 @@ export function createProxyApp(
         : `coderouter-${containerName}`,
     });
 
-    if (!taskRun || !taskRun.vscode) {
-      // Try to find a VSCode instance that might match this container name
-      let matchedInstance: VSCodeInstance | undefined;
-
-      for (const [instanceId, instance] of Array.from(
-        vscodeInstances.entries()
-      )) {
-        if (instance instanceof DockerVSCodeInstance) {
-          const instanceContainerName = instance.getContainerName();
-          if (
-            instanceContainerName === containerName ||
-            instanceContainerName === `coderouter-${containerName}` ||
-            instanceContainerName.includes(containerName) ||
-            containerName.includes(instanceId.substring(0, 12))
-          ) {
-            matchedInstance = instance;
-            break;
-          }
-        }
-      }
-
-      if (!matchedInstance) {
-        return res
-          .status(404)
-          .send(`No VSCode instance found for container: ${containerName}`);
-      }
-
-      // Try to start the matched instance
-      if (matchedInstance instanceof DockerVSCodeInstance) {
-        matchedInstance.start().catch((err) => {
-          console.error(`Failed to start container for ${containerName}:`, err);
-        });
-        return res.send(
-          loadingScreen.replace("{{containerName}}", containerName)
-        );
-      }
-
-      return res
-        .status(400)
-        .send("Only Docker VSCode instances are supported for proxy");
+    if (!taskRun) {
+      return res.status(404).send("Task run not found");
     }
 
     const vscodeInfo = taskRun.vscode;
+
+    if (!vscodeInfo) {
+      return res.status(404).send("VSCode instance not found");
+    }
 
     if (vscodeInfo.status === "starting") {
       return res.send(
@@ -201,19 +171,21 @@ export function createProxyApp(
         .send(`Port ${targetPort} not found for container ${containerName}`);
     }
 
-    // Create httpxy proxy and proxy the request
-    const proxy = createProxyServer({});
+    // Create http-proxy and proxy the request
+    const proxy = httpProxy.createProxyServer({
+      target: `http://localhost:${actualPort}`,
+      changeOrigin: true,
+    });
 
-    try {
-      await proxy.web(req, res, {
-        target: `http://localhost:${actualPort}`,
-      });
-    } catch (error) {
-      console.error(`Proxy error for ${containerName}:${actualPort}:`, error);
+    // Handle proxy errors
+    proxy.on("error", (err: Error) => {
       if (!res.headersSent) {
-        res.status(502).send(`Proxy error: ${error}`);
+        res.status(502).send(`Proxy error: ${err.message}`);
       }
-    }
+    });
+
+    // Proxy the request
+    proxy.web(req, res);
   });
 
   return app;
@@ -224,11 +196,25 @@ export function setupWebSocketProxy(server: Server) {
   server.on(
     "upgrade",
     async (request: IncomingMessage, socket: any, head: Buffer) => {
+      // Check if this is a Socket.IO request - let Socket.IO handle it
+      const url = request.url || "";
+      if (url.startsWith("/socket.io/")) {
+        // This is a Socket.IO connection, don't handle it here
+        return;
+      }
+
       const host = request.headers.host;
-      console.log(`WebSocket upgrade request for host: ${host}`);
 
       if (!host) {
         socket.end("HTTP/1.1 400 Bad Request\r\n\r\n");
+        return;
+      }
+
+      // Also check if the host matches the proxy pattern
+      // Socket.IO requests typically go to localhost:3001 directly
+      // Proxy requests go to containerName.port.localhost:3001
+      if (!host.includes(".localhost:") && !host.match(/\.[0-9]+\./)) {
+        // This is likely a direct Socket.IO connection, not a proxy request
         return;
       }
 
@@ -283,49 +269,22 @@ export function setupWebSocketProxy(server: Server) {
         return;
       }
 
-      // Create httpxy proxy for WebSocket
-      const proxy = createProxyServer({
+      // Create http-proxy for WebSocket
+      const proxy = httpProxy.createProxyServer({
+        target: `ws://localhost:${actualPort}`,
         ws: true,
         changeOrigin: true,
       });
 
-      try {
-        console.log(
-          `Proxying WebSocket connection for ${containerName}:${actualPort}`
-        );
-        console.log("request.url", request.url);
-        console.log("request.origin", request.headers.origin);
-        console.log("request.host", request.headers.host);
-        console.log("");
-
-        // Setup error handling before proxying
-        proxy.on("error", (err, req, res) => {
-          console.error(`WebSocket proxy error:`, err);
-        });
-
-        proxy.on("proxyReqWs", (proxyReq, req, socket, options, head) => {
-          console.log(
-            `WebSocket proxy request initiated to ws://localhost:${actualPort}`
-          );
-        });
-
-        await proxy.ws(
-          request,
-          socket,
-          {
-            target: `ws://localhost:${actualPort}`,
-            ws: true,
-            changeOrigin: true,
-          },
-          head
-        );
-      } catch (error) {
+      // Handle proxy errors
+      proxy.on("error", (err: Error) => {
         console.error(
           `WebSocket proxy error for ${containerName}:${actualPort}:`,
-          error
+          err.message
         );
         socket.end("HTTP/1.1 502 Bad Gateway\r\n\r\n");
-      }
+      });
+      proxy.ws(request, socket, head);
     }
   );
 }
