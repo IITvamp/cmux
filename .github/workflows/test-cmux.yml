@@ -41,5 +41,5 @@ jobs:
         run: bun run typecheck
 
       - name: Run env leak test
-        run: npm test
+        run: bun run test
         working-directory: packages/cmux
