@@ -157,7 +157,7 @@ importers:
         specifier: ^1.124.0
         version: 1.129.5(@tanstack/react-router@1.129.5(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(vite@7.0.5(@types/node@24.1.0)(jiti@2.4.2)(lightningcss@1.30.1)(tsx@4.20.3))
       '@types/node':
-        specifier: ^24.0.7
+        specifier: ^24.1.0
         version: 24.1.0
       '@types/react':
         specifier: ^19.1.8
@@ -258,9 +258,6 @@ importers:
       morphcloud:
         specifier: ^0.0.14
         version: 0.0.14
-      node-pty:
-        specifier: ^1.1.0-beta34
-        version: 1.1.0-beta9
       socket.io:
         specifier: ^4.7.5
         version: 4.8.1
@@ -313,9 +310,6 @@ importers:
       '@xterm/headless':
         specifier: ^5.5.0
         version: 5.5.0
-      node-pty:
-        specifier: ^1.0.0
-        version: 1.0.0
       socket.io:
         specifier: ^4.8.0
         version: 4.8.1
@@ -327,8 +321,8 @@ importers:
         version: 6.21.3
     devDependencies:
       '@types/node':
-        specifier: ^20.0.0
-        version: 20.19.9
+        specifier: ^24.1.0
+        version: 24.1.0
       socket.io-client:
         specifier: ^4.8.0
         version: 4.8.1
@@ -358,8 +352,8 @@ importers:
         specifier: ^4.17.21
         version: 4.17.23
       '@types/node':
-        specifier: ^20.10.0
-        version: 20.19.9
+        specifier: ^24.1.0
+        version: 24.1.0
       tsx:
         specifier: ^4.6.0
         version: 4.20.3
@@ -382,6 +376,9 @@ importers:
         specifier: ^3.25.67
         version: 3.25.76
     devDependencies:
+      '@types/node':
+        specifier: ^24.1.0
+        version: 24.1.0
       '@xterm/xterm':
         specifier: ^5.5.0
         version: 5.5.0
@@ -402,8 +399,8 @@ importers:
         specifier: ^10.0.6
         version: 10.0.10
       '@types/node':
-        specifier: ^20.11.5
-        version: 20.19.9
+        specifier: ^24.1.0
+        version: 24.1.0
       '@types/vscode':
         specifier: ^1.73.0
         version: 1.102.0
@@ -2560,9 +2557,6 @@ packages:
   '@types/node@18.19.120':
     resolution: {integrity: sha512-WtCGHFXnVI8WHLxDAt5TbnCM4eSE+nI0QN2NJtwzcgMhht2eNz6V9evJrk+lwC8bCY8OWV5Ym8Jz7ZEyGnKnMA==}
 
-  '@types/node@20.19.9':
-    resolution: {integrity: sha512-cuVNgarYWZqxRJDQHEB58GEONhOK79QVR/qYx4S7kcUObQvUwvFnYxJuuHUKm2aieN9X3yZB4LZsuYNU1Qphsw==}
-
   '@types/node@24.1.0':
     resolution: {integrity: sha512-ut5FthK5moxFKH2T1CUOC6ctR67rQRvvHdFLCD2Ql6KXmMuCrjsSsRI9UsLCm9M18BMwClv4pn327UvB7eeO1w==}
 
@@ -4656,15 +4650,6 @@ packages:
   node-addon-api@4.3.0:
     resolution: {integrity: sha512-73sE9+3UaLYYFmDsFZnqCInzPyh3MqIwZO9cw58yIqAZhONrrabrYyYe3TuIqtIiOuTXVhsGau8hcrhhwSsDIQ==}
 
-  node-addon-api@7.1.1:
-    resolution: {integrity: sha512-5m3bsyrjFWE1xf7nz7YXdN4udnVtXK6/Yfgn5qnahL6bCkf2yKt4k3nuTKAtT4r3IG8JNR2ncsIMdZuAzJjHQQ==}
-
-  node-pty@1.0.0:
-    resolution: {integrity: sha512-wtBMWWS7dFZm/VgqElrTvtfMq4GzJ6+edFI0Y0zyzygUSZMgZdraDUMUhCIvkjhJjme15qWmbyJbtAx4ot4uZA==}
-
-  node-pty@1.1.0-beta9:
-    resolution: {integrity: sha512-/Ue38pvXJdgRZ3+me1FgfglLd301GhJN0NStiotdt61tm43N5htUyR/IXOUzOKuNaFmCwIhy6nwb77Ky41LMbw==}
-
   node-releases@2.0.19:
     resolution: {integrity: sha512-xxOWJsBKtzAq7DY0J+DTzuz58K8e7sJbdgwkbMWQe8UYB6ekmsQ45q0M/tJDsGaZmbC+l7n57UV8Hl5tHxO9uw==}
 
@@ -5826,9 +5811,6 @@ packages:
 
   undici-types@5.26.5:
     resolution: {integrity: sha512-JlCMO+ehdEIKqlFxk6IfVoAUVmgz7cU7zD/h9XZ0qzeosSHmUJVOzSQvvYSYWXkFXC+IfLKSIffhv0sVZup6pA==}
-
-  undici-types@6.21.0:
-    resolution: {integrity: sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==}
 
   undici-types@7.8.0:
     resolution: {integrity: sha512-9UJ2xGDvQ43tYyVMpuHlsgApydB8ZKfVYTsLDhXkFL/6gfkp+U8xTGdh8pMJv1SpZna0zxG1DwsKZsreLbXBxw==}
@@ -8657,32 +8639,32 @@ snapshots:
   '@types/body-parser@1.19.6':
     dependencies:
       '@types/connect': 3.4.38
-      '@types/node': 20.19.9
+      '@types/node': 24.1.0
 
   '@types/connect@3.4.38':
     dependencies:
-      '@types/node': 20.19.9
+      '@types/node': 24.1.0
 
   '@types/cors@2.8.19':
     dependencies:
-      '@types/node': 20.19.9
+      '@types/node': 24.1.0
 
   '@types/docker-modem@3.0.6':
     dependencies:
-      '@types/node': 20.19.9
+      '@types/node': 24.1.0
       '@types/ssh2': 1.15.5
 
   '@types/dockerode@3.3.42':
     dependencies:
       '@types/docker-modem': 3.0.6
-      '@types/node': 20.19.9
+      '@types/node': 24.1.0
       '@types/ssh2': 1.15.5
 
   '@types/estree@1.0.8': {}
 
   '@types/express-serve-static-core@4.19.6':
     dependencies:
-      '@types/node': 20.19.9
+      '@types/node': 24.1.0
       '@types/qs': 6.14.0
       '@types/range-parser': 1.2.7
       '@types/send': 0.17.5
@@ -8698,7 +8680,7 @@ snapshots:
 
   '@types/http-proxy@1.17.16':
     dependencies:
-      '@types/node': 20.19.9
+      '@types/node': 24.1.0
 
   '@types/jasmine@3.10.18': {}
 
@@ -8711,10 +8693,6 @@ snapshots:
   '@types/node@18.19.120':
     dependencies:
       undici-types: 5.26.5
-
-  '@types/node@20.19.9':
-    dependencies:
-      undici-types: 6.21.0
 
   '@types/node@24.1.0':
     dependencies:
@@ -8736,7 +8714,7 @@ snapshots:
 
   '@types/readdir-glob@1.1.5':
     dependencies:
-      '@types/node': 20.19.9
+      '@types/node': 24.1.0
 
   '@types/sarif@2.1.7': {}
 
@@ -8745,12 +8723,12 @@ snapshots:
   '@types/send@0.17.5':
     dependencies:
       '@types/mime': 1.3.5
-      '@types/node': 20.19.9
+      '@types/node': 24.1.0
 
   '@types/serve-static@1.15.8':
     dependencies:
       '@types/http-errors': 2.0.5
-      '@types/node': 20.19.9
+      '@types/node': 24.1.0
       '@types/send': 0.17.5
 
   '@types/ssh2@1.15.5':
@@ -8763,7 +8741,7 @@ snapshots:
 
   '@types/ws@8.18.1':
     dependencies:
-      '@types/node': 20.19.9
+      '@types/node': 24.1.0
 
   '@typescript-eslint/eslint-plugin@6.21.0(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.8.3))(eslint@8.57.1)(typescript@5.8.3)':
     dependencies:
@@ -9811,7 +9789,7 @@ snapshots:
   engine.io@6.6.4:
     dependencies:
       '@types/cors': 2.8.19
-      '@types/node': 20.19.9
+      '@types/node': 24.1.0
       accepts: 1.3.8
       base64id: 2.0.0
       cookie: 0.7.2
@@ -11110,7 +11088,8 @@ snapshots:
 
   mute-stream@0.0.8: {}
 
-  nan@2.23.0: {}
+  nan@2.23.0:
+    optional: true
 
   nanoid@3.3.11: {}
 
@@ -11130,16 +11109,6 @@ snapshots:
 
   node-addon-api@4.3.0:
     optional: true
-
-  node-addon-api@7.1.1: {}
-
-  node-pty@1.0.0:
-    dependencies:
-      nan: 2.23.0
-
-  node-pty@1.1.0-beta9:
-    dependencies:
-      node-addon-api: 7.1.1
 
   node-releases@2.0.19: {}
 
@@ -11410,7 +11379,7 @@ snapshots:
       '@protobufjs/path': 1.1.2
       '@protobufjs/pool': 1.1.0
       '@protobufjs/utf8': 1.1.0
-      '@types/node': 20.19.9
+      '@types/node': 24.1.0
       long: 5.3.2
 
   proxy-addr@2.0.7:
@@ -12545,8 +12514,6 @@ snapshots:
   underscore@1.13.7: {}
 
   undici-types@5.26.5: {}
-
-  undici-types@6.21.0: {}
 
   undici-types@7.8.0: {}
 

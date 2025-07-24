@@ -7,7 +7,7 @@
     /* These settings are not required by Convex and can be modified. */
     "allowJs": true,
     "strict": true,
-    "moduleResolution": "Bundler",
+    "moduleResolution": "node",
     "jsx": "react-jsx",
     "skipLibCheck": true,
     "allowSyntheticDefaultImports": true,
@@ -18,9 +18,8 @@
     "forceConsistentCasingInFileNames": true,
     "module": "ESNext",
     "isolatedModules": true,
-    "noEmit": true,
-    "allowImportingTsExtensions": true
+    "noEmit": true
   },
-  "include": ["./**/*"],
-  "exclude": ["./_generated"]
+  "include": ["./convex/**/*"],
+  "exclude": ["./convex/_generated"]
 }

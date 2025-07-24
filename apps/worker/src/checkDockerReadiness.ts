@@ -1,0 +1,37 @@
+import { fetch } from "undici";
+import Agent from "undici/types/agent";
+
+export async function checkDockerReadiness(): Promise<boolean> {
+  const agent = new Agent({
+    connect: {
+      socketPath: "/var/run/docker.sock",
+    },
+  });
+
+  const maxRetries = 100; // 10 seconds / 0.1 seconds
+  const retryDelay = 100; // 100ms
+
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const response = await fetch("http://localhost/_ping", {
+        dispatcher: agent,
+        signal: AbortSignal.timeout(1000), // 1 second timeout per attempt
+      });
+
+      if (response.ok) {
+        agent.close();
+        return true;
+      }
+    } catch (_error) {
+      // Ignore errors and retry
+    }
+
+    // Wait before retrying (except on last attempt)
+    if (i < maxRetries - 1) {
+      await new Promise((resolve) => setTimeout(resolve, retryDelay));
+    }
+  }
+
+  agent.close();
+  return false;
+}

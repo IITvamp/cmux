@@ -1,13 +1,8 @@
 import {
-  CloseTerminalSchema,
-  CreateTerminalSchema,
-  ResizeSchema,
-  TerminalInputSchema,
-  WorkerCloseTerminalSchema,
-  WorkerCreateTerminalSchema,
-  WorkerResizeTerminalSchema,
-  WorkerTerminalInputSchema,
+  SERVER_TERMINAL_CONFIG,
   WorkerConfigureGitSchema,
+  WorkerCreateTerminalSchema,
+  WorkerExecSchema,
   type ClientToServerEvents,
   type InterServerEvents,
   type ServerToClientEvents,
@@ -16,73 +11,32 @@ import {
   type WorkerHeartbeat,
   type WorkerRegister,
   type WorkerToServerEvents,
-  SERVER_TERMINAL_CONFIG,
 } from "@coderouter/shared";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import * as xtermHeadless from "@xterm/headless";
-import { spawn, type IPty } from "node-pty";
-import { promises as fs, writeFileSync, mkdirSync, chmodSync } from "node:fs";
+import {
+  exec,
+  spawn,
+  type ChildProcessWithoutNullStreams,
+} from "node:child_process";
+import { promises as fs } from "node:fs";
 import { createServer } from "node:http";
 import { cpus, platform, totalmem } from "node:os";
 import * as path from "node:path";
-import { execSync } from "node:child_process";
+import { promisify } from "node:util";
 import { Server, type Namespace, type Socket } from "socket.io";
-import { Agent, fetch } from "undici";
+import { checkDockerReadiness } from "./checkDockerReadiness.js";
 import { log } from "./logger.js";
 
-const Terminal = xtermHeadless.Terminal;
+const execAsync = promisify(exec);
 
-interface WorkerTerminal {
-  pty: IPty;
-  headlessTerminal: xtermHeadless.Terminal;
-  serializeAddon: SerializeAddon;
-  taskId?: string;
-}
+const Terminal = xtermHeadless.Terminal;
 
 // Configuration
 const WORKER_ID = process.env.WORKER_ID || `worker-${Date.now()}`;
 const WORKER_PORT = parseInt(process.env.WORKER_PORT || "39377", 10);
 const CONTAINER_IMAGE = process.env.CONTAINER_IMAGE || "coderouter-worker";
 const CONTAINER_VERSION = process.env.CONTAINER_VERSION || "0.0.1";
-
-// Check Docker readiness using undici with retries
-async function checkDockerReadiness(): Promise<boolean> {
-  const agent = new Agent({
-    connect: {
-      socketPath: "/var/run/docker.sock",
-    },
-  });
-
-  const maxRetries = 100; // 10 seconds / 0.1 seconds
-  const retryDelay = 100; // 100ms
-
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      const response = await fetch("http://localhost/_ping", {
-        dispatcher: agent,
-        signal: AbortSignal.timeout(1000), // 1 second timeout per attempt
-      });
-
-      if (response.ok) {
-        agent.close();
-        return true;
-      }
-    } catch (_error) {
-      // Ignore errors and retry
-    }
-
-    // Wait before retrying (except on last attempt)
-    if (i < maxRetries - 1) {
-      await new Promise((resolve) => setTimeout(resolve, retryDelay));
-    }
-  }
-
-  agent.close();
-  return false;
-}
-
-// Terminal storage
-const terminals = new Map<string, WorkerTerminal>();
 
 // Create HTTP server
 const httpServer = createServer();
@@ -125,7 +79,6 @@ function getWorkerStats(): WorkerHeartbeat {
     workerId: WORKER_ID,
     timestamp: Date.now(),
     stats: {
-      activeTerminals: terminals.size,
       cpuUsage: 0, // TODO: Implement actual CPU usage tracking
       memoryUsage: (usedMem / totalMem) * 100,
     },
@@ -181,7 +134,6 @@ managementIO.on("connection", (socket) => {
     log(
       "INFO",
       "Management namespace: Received request to create terminal from main server",
-      // data,
       JSON.stringify(
         data,
         (_key, value) => {
@@ -325,7 +277,7 @@ managementIO.on("connection", (socket) => {
         WORKER_ID
       );
 
-      const terminal = await createTerminal(validated.terminalId, {
+      await createTerminal(validated.terminalId, {
         cols: validated.cols,
         rows: validated.rows,
         cwd: validated.cwd,
@@ -335,12 +287,6 @@ managementIO.on("connection", (socket) => {
         taskId: validated.taskId,
         startupCommands: validated.startupCommands,
       });
-
-      if (!terminal) {
-        throw new Error("Failed to create terminal");
-      }
-
-      terminals.set(validated.terminalId, terminal);
 
       callback({
         error: null,
@@ -371,50 +317,6 @@ managementIO.on("connection", (socket) => {
     }
   });
 
-  socket.on("worker:terminal-input", (data) => {
-    try {
-      const validated = WorkerTerminalInputSchema.parse(data);
-      const terminal = terminals.get(validated.terminalId);
-      if (terminal && terminal.pty) {
-        terminal.pty.write(validated.data);
-      }
-    } catch (error) {
-      console.error("Error handling terminal input from main server:", error);
-    }
-  });
-
-  socket.on("worker:resize-terminal", (data) => {
-    try {
-      const validated = WorkerResizeTerminalSchema.parse(data);
-      const terminal = terminals.get(validated.terminalId);
-      if (terminal && terminal.pty) {
-        terminal.pty.resize(validated.cols, validated.rows);
-        terminal.headlessTerminal.resize(validated.cols, validated.rows);
-      }
-    } catch (error) {
-      console.error("Error resizing terminal from main server:", error);
-    }
-  });
-
-  socket.on("worker:close-terminal", (data) => {
-    try {
-      const validated = WorkerCloseTerminalSchema.parse(data);
-      const terminal = terminals.get(validated.terminalId);
-      if (terminal && terminal.pty) {
-        terminal.pty.kill();
-        terminals.delete(validated.terminalId);
-        vscodeIO.emit("terminal-closed", { terminalId: validated.terminalId });
-
-        socket.emit("worker:terminal-closed", {
-          workerId: WORKER_ID,
-          terminalId: validated.terminalId,
-        });
-      }
-    } catch (error) {
-      console.error("Error closing terminal from main server:", error);
-    }
-  });
-
   socket.on("worker:check-docker", async (callback) => {
     console.log(`Worker ${WORKER_ID} checking Docker readiness`);
 
@@ -429,43 +331,47 @@ managementIO.on("connection", (socket) => {
     } catch (error) {
       callback({
         ready: false,
-        message: `Error checking Docker: ${error instanceof Error ? error.message : "Unknown error"}`,
+        message: `Error checking Docker: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`,
       });
     }
   });
 
-  socket.on("worker:configure-git", (data) => {
+  socket.on("worker:configure-git", async (data) => {
     try {
       const validated = WorkerConfigureGitSchema.parse(data);
       console.log(`Worker ${WORKER_ID} configuring git...`);
 
       // Create a custom git config file that includes the mounted one
-      const customGitConfigPath = '/root/.gitconfig.custom';
-      
+      const customGitConfigPath = "/root/.gitconfig.custom";
+
       // Parse existing config into sections
       const configSections: Map<string, Map<string, string>> = new Map();
-      
+
       // Start by parsing the mounted config if it exists
       try {
-        const mountedConfig = execSync('cat /root/.gitconfig 2>/dev/null || true').toString();
+        const { stdout: mountedConfig } = await execAsync(
+          "cat /root/.gitconfig 2>/dev/null || true"
+        );
         if (mountedConfig) {
-          let currentSection = 'global';
-          const lines = mountedConfig.split('\n');
-          
+          let currentSection = "global";
+          const lines = mountedConfig.split("\n");
+
           for (const line of lines) {
             const trimmedLine = line.trim();
-            if (!trimmedLine || trimmedLine.startsWith('#')) continue;
-            
+            if (!trimmedLine || trimmedLine.startsWith("#")) continue;
+
             // Check for section header
             const sectionMatch = trimmedLine.match(/^\[(.+)\]$/);
             if (sectionMatch) {
-              currentSection = sectionMatch[1] || 'global';
+              currentSection = sectionMatch[1] || "global";
               if (!configSections.has(currentSection)) {
                 configSections.set(currentSection, new Map());
               }
               continue;
             }
-            
+
             // Parse key-value pairs
             const keyValueMatch = line.match(/^\s*(\w+)\s*=\s*(.+)$/);
             if (keyValueMatch) {
@@ -484,26 +390,26 @@ managementIO.on("connection", (socket) => {
       }
 
       // Add the store credential helper
-      if (!configSections.has('credential')) {
-        configSections.set('credential', new Map());
+      if (!configSections.has("credential")) {
+        configSections.set("credential", new Map());
       }
-      configSections.get('credential')!.set('helper', 'store');
-      
+      configSections.get("credential")!.set("helper", "store");
+
       // Create .git-credentials file if GitHub token is provided
       if (validated.githubToken) {
-        const credentialsPath = '/root/.git-credentials';
+        const credentialsPath = "/root/.git-credentials";
         const credentialsContent = `https://oauth:${validated.githubToken}@github.com\n`;
-        writeFileSync(credentialsPath, credentialsContent);
-        chmodSync(credentialsPath, 0o600);
+        await fs.writeFile(credentialsPath, credentialsContent);
+        await fs.chmod(credentialsPath, 0o600);
         console.log("GitHub credentials stored in .git-credentials");
       }
 
       // Add additional git settings if provided
       if (validated.gitConfig) {
         for (const [key, value] of Object.entries(validated.gitConfig)) {
-          const [section, ...keyParts] = key.split('.');
-          const configKey = keyParts.join('.');
-          
+          const [section, ...keyParts] = key.split(".");
+          const configKey = keyParts.join(".");
+
           if (section && configKey) {
             if (!configSections.has(section)) {
               configSections.set(section, new Map());
@@ -514,65 +420,80 @@ managementIO.on("connection", (socket) => {
       }
 
       // Build the final config content
-      let gitConfigContent = '';
+      let gitConfigContent = "";
       for (const [section, settings] of configSections) {
-        if (section !== 'global') {
+        if (section !== "global") {
           gitConfigContent += `[${section}]\n`;
           for (const [key, value] of settings) {
             gitConfigContent += `\t${key} = ${value}\n`;
           }
-          gitConfigContent += '\n';
+          gitConfigContent += "\n";
         }
       }
 
       // Write the custom config
-      writeFileSync(customGitConfigPath, gitConfigContent);
-      
+      await fs.writeFile(customGitConfigPath, gitConfigContent);
+
       // Set GIT_CONFIG environment variable to use our custom config
       process.env.GIT_CONFIG_GLOBAL = customGitConfigPath;
-      
+
       // Also set it for all terminals
-      execSync(`echo 'export GIT_CONFIG_GLOBAL=${customGitConfigPath}' >> /etc/profile`);
-      execSync(`echo 'export GIT_CONFIG_GLOBAL=${customGitConfigPath}' >> /root/.bashrc`);
+      await execAsync(
+        `echo 'export GIT_CONFIG_GLOBAL=${customGitConfigPath}' >> /etc/profile`
+      );
+      await execAsync(
+        `echo 'export GIT_CONFIG_GLOBAL=${customGitConfigPath}' >> /root/.bashrc`
+      );
 
       // Set up SSH keys if provided
       if (validated.sshKeys) {
         // Check if .ssh is mounted (read-only)
-        const sshDir = '/root/.ssh';
+        const sshDir = "/root/.ssh";
         let sshDirWritable = true;
-        
+
         try {
           // Try to create a test file
-          writeFileSync(path.join(sshDir, '.test'), 'test');
+          await fs.writeFile(path.join(sshDir, ".test"), "test");
           // If successful, remove it
-          execSync(`rm -f ${path.join(sshDir, '.test')}`);
+          await execAsync(`rm -f ${path.join(sshDir, ".test")}`);
         } catch {
           // SSH dir is read-only, use alternative location
           sshDirWritable = false;
-          console.log('.ssh directory is mounted read-only, using alternative SSH config');
+          console.log(
+            ".ssh directory is mounted read-only, using alternative SSH config"
+          );
         }
 
         if (!sshDirWritable) {
           // Use alternative SSH directory
-          const altSshDir = '/root/.ssh-custom';
-          mkdirSync(altSshDir, { recursive: true });
+          const altSshDir = "/root/.ssh-custom";
+          await fs.mkdir(altSshDir, { recursive: true });
 
           if (validated.sshKeys.privateKey) {
-            const privateKeyPath = path.join(altSshDir, 'id_rsa');
-            writeFileSync(privateKeyPath, Buffer.from(validated.sshKeys.privateKey, 'base64'));
-            chmodSync(privateKeyPath, 0o600);
+            const privateKeyPath = path.join(altSshDir, "id_rsa");
+            await fs.writeFile(
+              privateKeyPath,
+              Buffer.from(validated.sshKeys.privateKey, "base64")
+            );
+            await fs.chmod(privateKeyPath, 0o600);
           }
 
           if (validated.sshKeys.publicKey) {
-            const publicKeyPath = path.join(altSshDir, 'id_rsa.pub');
-            writeFileSync(publicKeyPath, Buffer.from(validated.sshKeys.publicKey, 'base64'));
-            chmodSync(publicKeyPath, 0o644);
+            const publicKeyPath = path.join(altSshDir, "id_rsa.pub");
+            await fs.writeFile(
+              publicKeyPath,
+              Buffer.from(validated.sshKeys.publicKey, "base64")
+            );
+            await fs.chmod(publicKeyPath, 0o644);
           }
 
           if (validated.sshKeys.knownHosts) {
-            const knownHostsPath = path.join(altSshDir, 'known_hosts');
-            writeFileSync(knownHostsPath, Buffer.from(validated.sshKeys.knownHosts, 'base64'));
-            chmodSync(knownHostsPath, 0o644);
+            const knownHostsPath = path.join(altSshDir, "known_hosts");
+            await fs.writeFile(
+              knownHostsPath,
+              Buffer.from(validated.sshKeys.knownHosts, "base64")
+            );
+            await fs.chmod(knownHostsPath, 0o644);
           }
 
           // Create SSH config to use our custom directory
@@ -581,32 +502,45 @@ managementIO.on("connection", (socket) => {
   UserKnownHostsFile ${altSshDir}/known_hosts
   StrictHostKeyChecking accept-new
 `;
-          writeFileSync('/root/.ssh-config', sshConfigContent);
-          
+          await fs.writeFile("/root/.ssh-config", sshConfigContent);
+
           // Set GIT_SSH_COMMAND to use our custom config
-          process.env.GIT_SSH_COMMAND = 'ssh -F /root/.ssh-config';
-          
+          process.env.GIT_SSH_COMMAND = "ssh -F /root/.ssh-config";
+
           // Also export it for all terminals
-          execSync(`echo 'export GIT_SSH_COMMAND="ssh -F /root/.ssh-config"' >> /etc/profile`);
-          execSync(`echo 'export GIT_SSH_COMMAND="ssh -F /root/.ssh-config"' >> /root/.bashrc`);
+          await execAsync(
+            `echo 'export GIT_SSH_COMMAND="ssh -F /root/.ssh-config"' >> /etc/profile`
+          );
+          await execAsync(
+            `echo 'export GIT_SSH_COMMAND="ssh -F /root/.ssh-config"' >> /root/.bashrc`
+          );
         } else {
           // SSH dir is writable, use it normally
           if (validated.sshKeys.privateKey) {
-            const privateKeyPath = path.join(sshDir, 'id_rsa');
-            writeFileSync(privateKeyPath, Buffer.from(validated.sshKeys.privateKey, 'base64'));
-            chmodSync(privateKeyPath, 0o600);
+            const privateKeyPath = path.join(sshDir, "id_rsa");
+            await fs.writeFile(
+              privateKeyPath,
+              Buffer.from(validated.sshKeys.privateKey, "base64")
+            );
+            await fs.chmod(privateKeyPath, 0o600);
           }
 
           if (validated.sshKeys.publicKey) {
-            const publicKeyPath = path.join(sshDir, 'id_rsa.pub');
-            writeFileSync(publicKeyPath, Buffer.from(validated.sshKeys.publicKey, 'base64'));
-            chmodSync(publicKeyPath, 0o644);
+            const publicKeyPath = path.join(sshDir, "id_rsa.pub");
+            await fs.writeFile(
+              publicKeyPath,
+              Buffer.from(validated.sshKeys.publicKey, "base64")
+            );
+            await fs.chmod(publicKeyPath, 0o644);
           }
 
           if (validated.sshKeys.knownHosts) {
-            const knownHostsPath = path.join(sshDir, 'known_hosts');
-            writeFileSync(knownHostsPath, Buffer.from(validated.sshKeys.knownHosts, 'base64'));
-            chmodSync(knownHostsPath, 0o644);
+            const knownHostsPath = path.join(sshDir, "known_hosts");
+            await fs.writeFile(
+              knownHostsPath,
+              Buffer.from(validated.sshKeys.knownHosts, "base64")
+            );
+            await fs.chmod(knownHostsPath, 0o644);
           }
         }
       }
@@ -616,7 +550,62 @@ managementIO.on("connection", (socket) => {
       console.error("Error configuring git:", error);
       socket.emit("worker:error", {
         workerId: WORKER_ID,
-        error: error instanceof Error ? error.message : "Failed to configure git",
+        error:
+          error instanceof Error ? error.message : "Failed to configure git",
+      });
+    }
+  });
+
+  socket.on("worker:exec", async (data, callback) => {
+    try {
+      const validated = WorkerExecSchema.parse(data);
+      log("INFO", `Worker ${WORKER_ID} executing command:`, {
+        command: validated.command,
+        args: validated.args,
+        cwd: validated.cwd,
+      });
+
+      const commandWithArgs = validated.args
+        ? `${validated.command} ${validated.args.join(" ")}`
+        : validated.command;
+
+      const execOptions = {
+        cwd: validated.cwd || process.env.HOME || "/",
+        env: { ...process.env, ...validated.env },
+        timeout: validated.timeout,
+      };
+
+      try {
+        const { stdout, stderr } = await execAsync(
+          commandWithArgs,
+          execOptions
+        );
+
+        callback({
+          error: null,
+          data: {
+            stdout: stdout || "",
+            stderr: stderr || "",
+            exitCode: 0,
+          },
+        });
+      } catch (execError: any) {
+        // exec throws when exit code is non-zero
+        callback({
+          error: null,
+          data: {
+            stdout: execError.stdout || "",
+            stderr: execError.stderr || "",
+            exitCode: execError.code || 1,
+            signal: execError.signal,
+          },
+        });
+      }
+    } catch (error) {
+      log("ERROR", "Error executing command", error, WORKER_ID);
+      callback({
+        error: error instanceof Error ? error : new Error(String(error)),
+        data: null,
       });
     }
   });
@@ -635,126 +624,11 @@ managementIO.on("connection", (socket) => {
 // Client socket server
 vscodeIO.on("connection", (socket) => {
   console.log(
-    `Client connected to worker ${WORKER_ID}:`,
+    `VSCode connected to worker ${WORKER_ID}:`,
     socket.id,
     "from",
     socket.handshake.headers.referer || "unknown"
   );
-
-  // Send existing terminals to new connections
-  terminals.forEach((terminal, terminalId) => {
-    socket.emit("terminal-created", { terminalId });
-
-    // Send terminal state
-    const terminalState = terminal.serializeAddon.serialize();
-    if (terminalState) {
-      socket.emit("terminal-restore", { terminalId, data: terminalState });
-    }
-  });
-
-  socket.on("create-terminal", async (data) => {
-    console.log(
-      `Client namespace: Received request to create terminal from client ${socket.id}`,
-      data
-    );
-    try {
-      const { cols, rows, id } = CreateTerminalSchema.parse(data);
-
-      if (id && terminals.has(id)) {
-        console.error(`Terminal ${id} already exists`);
-        return;
-      }
-
-      const terminalId = id || crypto.randomUUID();
-      const terminal = await createTerminal(terminalId, { cols, rows });
-
-      if (terminal) {
-        vscodeIO.emit("terminal-created", { terminalId });
-        console.log(`Terminal ${terminalId} created on worker ${WORKER_ID}`);
-
-        // Notify main server if connected
-        if (mainServerSocket) {
-          mainServerSocket.emit("worker:terminal-created", {
-            workerId: WORKER_ID,
-            terminalId,
-          });
-        }
-      }
-    } catch (error) {
-      console.error("Invalid create-terminal data:", error);
-    }
-  });
-
-  socket.on("terminal-input", (inputData) => {
-    try {
-      const { terminalId, data } = TerminalInputSchema.parse(inputData);
-      const terminal = terminals.get(terminalId);
-
-      if (terminal && terminal.pty) {
-        terminal.pty.write(data);
-      }
-    } catch (error) {
-      console.error("Invalid terminal-input data:", error);
-    }
-  });
-
-  socket.on("resize", (resizeData) => {
-    try {
-      const { terminalId, cols, rows } = ResizeSchema.parse(resizeData);
-      const terminal = terminals.get(terminalId);
-
-      if (terminal && terminal.pty) {
-        if (!terminal.pty.pid) {
-          console.warn(
-            `Terminal ${terminalId} has no PID, likely already exited`
-          );
-          terminals.delete(terminalId);
-        } else {
-          // Resize hack similar to main server
-          terminal.pty.resize(cols - 1, rows - 1);
-          terminal.headlessTerminal.resize(cols - 1, rows - 1);
-          terminal.pty.resize(cols, rows);
-          terminal.headlessTerminal.resize(cols, rows);
-        }
-      }
-    } catch (error) {
-      console.error("Invalid resize data:", error);
-    }
-  });
-
-  socket.on("close-terminal", (closeData) => {
-    try {
-      const { terminalId } = CloseTerminalSchema.parse(closeData);
-      const terminal = terminals.get(terminalId);
-
-      if (terminal && terminal.pty) {
-        terminal.pty.kill();
-        terminals.delete(terminalId);
-        vscodeIO.emit("terminal-closed", { terminalId });
-        console.log(`Terminal ${terminalId} closed on worker ${WORKER_ID}`);
-
-        // Notify main server if connected
-        if (mainServerSocket) {
-          mainServerSocket.emit("worker:terminal-closed", {
-            workerId: WORKER_ID,
-            terminalId,
-          });
-        }
-      }
-    } catch (error) {
-      console.error("Invalid close-terminal data:", error);
-    }
-  });
-
-  socket.on("get-active-terminals", () => {
-    const activeTerminals = Array.from(terminals.entries()).map(
-      ([id, terminal]) => ({
-        terminalId: id,
-        taskId: terminal.taskId,
-      })
-    );
-    socket.emit("active-terminals", activeTerminals);
-  });
 
   socket.on("disconnect", () => {
     console.log(`Client disconnected from worker ${WORKER_ID}:`, socket.id);
@@ -774,12 +648,7 @@ async function createTerminal(
     taskId?: string;
     startupCommands?: string[];
   } = {}
-): Promise<WorkerTerminal | null> {
-  if (terminals.has(terminalId)) {
-    log("ERROR", `Terminal ${terminalId} already exists`);
-    return null;
-  }
-
+): Promise<void> {
   const {
     cols = SERVER_TERMINAL_CONFIG.cols,
     rows = SERVER_TERMINAL_CONFIG.rows,
@@ -843,36 +712,49 @@ async function createTerminal(
     SHELL: "/bin/bash",
     USER: process.env.USER || "root",
     HOME: process.env.HOME || "/root",
-    PATH: `/root/.bun/bin:${process.env.PATH || "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"}`,
+    PATH: `/root/.bun/bin:${
+      process.env.PATH ||
+      "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    }`,
     // Pass through git config if set
-    ...(process.env.GIT_CONFIG_GLOBAL ? { GIT_CONFIG_GLOBAL: process.env.GIT_CONFIG_GLOBAL } : {}),
-    ...(process.env.GIT_SSH_COMMAND ? { GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND } : {}),
+    ...(process.env.GIT_CONFIG_GLOBAL
+      ? { GIT_CONFIG_GLOBAL: process.env.GIT_CONFIG_GLOBAL }
+      : {}),
+    ...(process.env.GIT_SSH_COMMAND
+      ? { GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND }
+      : {}),
   };
 
-  log("INFO", "Spawning PTY process", {
+  log("INFO", "Spawning process", {
     command: spawnCommand,
     args: spawnArgs,
     cwd,
     envKeys: Object.keys(ptyEnv),
   });
 
-  let ptyProcess: IPty;
+  let childProcess: ChildProcessWithoutNullStreams;
   try {
-    ptyProcess = spawn(spawnCommand, spawnArgs, {
-      name: "xterm-256color",
-      cols,
-      rows,
+    // Add LINES and COLUMNS to environment for terminal size
+    const processEnv = {
+      ...ptyEnv,
+      LINES: rows.toString(),
+      COLUMNS: cols.toString(),
+    };
+
+    childProcess = spawn(spawnCommand, spawnArgs, {
       cwd,
-      env: ptyEnv,
+      env: processEnv,
+      stdio: ["pipe", "pipe", "pipe"],
+      shell: false,
     });
 
-    log("INFO", "PTY process spawned successfully", {
-      pid: ptyProcess.pid,
+    log("INFO", "Process spawned successfully", {
+      pid: childProcess.pid,
       terminalId,
     });
   } catch (error) {
-    log("ERROR", "Failed to spawn PTY process", error);
-    return null;
+    log("ERROR", "Failed to spawn process", error);
+    return;
   }
 
   const headlessTerminal = new Terminal({
@@ -885,65 +767,53 @@ async function createTerminal(
   const serializeAddon = new SerializeAddon();
   headlessTerminal.loadAddon(serializeAddon);
 
-  const terminal: WorkerTerminal = {
-    pty: ptyProcess,
-    headlessTerminal,
-    serializeAddon,
-    taskId,
-  };
-
-  terminals.set(terminalId, terminal);
-  log("INFO", "Terminal added to registry", {
+  // Increment active terminal count
+  log("INFO", "Terminal created", {
     terminalId,
-    totalTerminals: terminals.size,
   });
 
-  // Handle PTY data
-  ptyProcess.onData((data) => {
-    headlessTerminal.write(data);
-    vscodeIO.emit("terminal-output", { terminalId, data });
+  // Pipe data from child process to headless terminal
+  childProcess.stdout.on("data", (data: Buffer) => {
+    headlessTerminal.write(data.toString());
+  });
 
-    // Also send to main server if connected
-    if (mainServerSocket) {
-      mainServerSocket.emit("worker:terminal-output", {
-        workerId: WORKER_ID,
-        terminalId,
-        data,
-      });
+  childProcess.stderr.on("data", (data: Buffer) => {
+    headlessTerminal.write(data.toString());
+  });
+
+  // Handle data from terminal (user input) to child process
+  headlessTerminal.onData((data: string) => {
+    if (childProcess.stdin.writable) {
+      childProcess.stdin.write(data);
     }
   });
 
-  // Handle PTY exit
-  ptyProcess.onExit(async ({ exitCode, signal }) => {
-    log("INFO", `Terminal ${terminalId} exited`, { exitCode, signal });
+  // Handle process exit
+  childProcess.on("exit", (code, signal) => {
+    log("INFO", `Process exited for terminal ${terminalId}`, { code, signal });
 
-    // Save the full state
-    const serializedState = serializeAddon.serialize();
-    const stateFile = `/var/log/cmux/terminal-state-${terminalId}.log`;
-
-    try {
-      await fs.writeFile(stateFile, serializedState);
-      log("INFO", `Full state saved to ${stateFile}`);
-    } catch (error) {
-      log("ERROR", `Failed to save terminal state`, error);
-    }
-
-    terminals.delete(terminalId);
-    vscodeIO.emit("terminal-exit", { terminalId, exitCode, signal });
-
-    // Notify main server if connected
+    // Notify via management socket if connected
     if (mainServerSocket) {
       mainServerSocket.emit("worker:terminal-exit", {
         workerId: WORKER_ID,
         terminalId,
-        exitCode,
-        signal,
+        exitCode: code ?? 0,
+      });
+    }
+  });
+
+  childProcess.on("error", (error) => {
+    log("ERROR", `Process error for terminal ${terminalId}`, error);
+
+    if (mainServerSocket) {
+      mainServerSocket.emit("worker:error", {
+        workerId: WORKER_ID,
+        error: `Terminal ${terminalId} process error: ${error.message}`,
       });
     }
   });
 
   log("INFO", "Terminal creation complete", { terminalId });
-  return terminal;
 }
 
 const ENABLE_HEARTBEAT = false;
@@ -991,17 +861,6 @@ httpServer.listen(WORKER_PORT, () => {
 // Graceful shutdown
 function gracefulShutdown() {
   console.log(`Worker ${WORKER_ID} shutting down...`);
-
-  // Kill all terminals
-  terminals.forEach((terminal, id) => {
-    console.log(`Killing terminal ${id}`);
-    try {
-      terminal.pty.kill();
-    } catch (error) {
-      console.error(`Error killing terminal ${id}:`, error);
-    }
-  });
-  terminals.clear();
 
   // Close server
   io.close(() => {

@@ -248,13 +248,6 @@ export type GitHubAuthResponse = z.infer<typeof GitHubAuthResponseSchema>;
 // Socket.io event map types
 export interface ClientToServerEvents {
   // Terminal operations
-  "create-terminal": (data: z.infer<typeof CreateTerminalSchema>) => void;
-  "terminal-input": (data: z.infer<typeof TerminalInputSchema>) => void;
-  resize: (data: z.infer<typeof ResizeSchema>) => void;
-  "close-terminal": (data: z.infer<typeof CloseTerminalSchema>) => void;
-  "clear-terminal": (data: { terminalId: string }) => void;
-  "get-terminal-state": (data: { terminalId: string }) => void;
-  "get-active-terminals": () => void;
   "start-task": (
     data: StartTask,
     callback: (response: TaskStarted | TaskError) => void
@@ -278,15 +271,6 @@ export interface ClientToServerEvents {
 }
 
 export interface ServerToClientEvents {
-  "terminal-created": (data: TerminalCreated) => void;
-  "terminal-output": (data: TerminalOutput) => void;
-  "terminal-exit": (data: TerminalExit) => void;
-  "terminal-closed": (data: TerminalClosed) => void;
-  "terminal-clear": (data: TerminalClear) => void;
-  "terminal-restore": (data: TerminalRestore) => void;
-  "active-terminals": (
-    data: Array<{ terminalId: string; taskId?: string }>
-  ) => void;
   "task-started": (data: TaskStarted) => void;
   "task-error": (data: TaskError) => void;
   "git-status-response": (data: GitStatusResponse) => void;

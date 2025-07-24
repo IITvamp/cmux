@@ -299,77 +299,64 @@ export async function spawnAgent(
     if (options.isCloudMode) {
       console.log(`[AgentSpawner] Cloning repository for Morph instance...`);
 
-      // Create a terminal to clone the repository
-      const cloneTerminalId = `clone-${taskRunId.slice(-8)}`;
-      const cloneCommand = {
-        terminalId: cloneTerminalId,
-        command: "bash",
-        args: [
-          "-c",
-          `git clone ${options.repoUrl} /root/workspace && cd /root/workspace${
-            options.branch && options.branch !== "main"
-              ? ` && git checkout ${options.branch}`
-              : ""
-          }`,
-        ],
-        cols: 80,
-        rows: 24,
-        env: {},
-        taskId: taskRunId,
-      };
+      // Use worker:exec to clone the repository
+      const cloneCommand = `git clone ${options.repoUrl} /root/workspace${
+        options.branch && options.branch !== "main"
+          ? ` && cd /root/workspace && git checkout ${options.branch}`
+          : ""
+      }`;
 
-      await new Promise((resolve, reject) => {
+      const cloneResult = await new Promise<{
+        success: boolean;
+        error?: string;
+      }>((resolve) => {
         workerSocket
-          .timeout(15000)
+          .timeout(60000) // 60 second timeout for cloning
           .emit(
-            "worker:create-terminal",
-            cloneCommand,
+            "worker:exec",
+            {
+              command: "bash",
+              args: ["-c", cloneCommand],
+              cwd: "/root",
+              env: {},
+            },
             (timeoutError, result) => {
               if (timeoutError) {
-                console.error(
-                  "Timeout waiting for clone terminal creation",
-                  timeoutError
-                );
-                reject(timeoutError);
+                console.error("Timeout waiting for git clone", timeoutError);
+                resolve({
+                  success: false,
+                  error: "Timeout waiting for git clone",
+                });
+                return;
               }
               if (result.error) {
-                reject(result.error);
+                resolve({ success: false, error: result.error.message });
+                return;
+              }
+
+              const { stdout, stderr, exitCode } = result.data!;
+              console.log(`[AgentSpawner] Git clone stdout:`, stdout);
+              if (stderr) {
+                console.log(`[AgentSpawner] Git clone stderr:`, stderr);
+              }
+
+              if (exitCode === 0) {
+                console.log(`[AgentSpawner] Repository cloned successfully`);
+                resolve({ success: true });
               } else {
-                console.log("Clone terminal created successfully", result);
-                resolve(result.data);
+                console.error(
+                  `[AgentSpawner] Git clone failed with exit code ${exitCode}`
+                );
+                resolve({
+                  success: false,
+                  error: `Git clone failed with exit code ${exitCode}`,
+                });
               }
             }
           );
       });
 
-      // Wait for clone to complete
-      const cloneCompleted = await new Promise<boolean>((resolve) => {
-        const timeout = setTimeout(() => {
-          console.error(`[AgentSpawner] Timeout waiting for repository clone`);
-          resolve(false);
-        }, 60000); // 60 second timeout for cloning
-
-        const handleTerminalExit = (data: {
-          terminalId: string;
-          exitCode: number;
-        }) => {
-          if (data.terminalId === cloneTerminalId && data.exitCode === 0) {
-            clearTimeout(timeout);
-            console.log(`[AgentSpawner] Repository cloned successfully`);
-            resolve(true);
-          } else if (data.terminalId === cloneTerminalId) {
-            clearTimeout(timeout);
-            console.error(
-              `[AgentSpawner] Repository clone failed with exit code ${data.exitCode}`
-            );
-            resolve(false);
-          }
-        };
-
-        workerSocket.once("worker:terminal-exit", handleTerminalExit);
-      });
-
-      if (!cloneCompleted) {
+      if (!cloneResult.success) {
         return {
           agentName: agent.name,
           terminalId,
@@ -377,14 +364,9 @@ export async function spawnAgent(
           worktreePath,
           vscodeUrl,
           success: false,
-          error: "Failed to clone repository",
+          error: cloneResult.error || "Failed to clone repository",
         };
       }
-
-      // Close the clone terminal
-      workerSocket.emit("worker:close-terminal", {
-        terminalId: cloneTerminalId,
-      });
     }
 
     // Send the terminal creation command

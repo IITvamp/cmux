@@ -30,7 +30,6 @@ export const WorkerHeartbeatSchema = z.object({
   workerId: z.string(),
   timestamp: z.number(),
   stats: z.object({
-    activeTerminals: z.number().int(),
     cpuUsage: z.number().min(0).max(100),
     memoryUsage: z.number().min(0).max(100),
   }),
@@ -120,11 +119,30 @@ export const WorkerUploadFilesSchema = z.object({
 export const WorkerConfigureGitSchema = z.object({
   githubToken: z.string().optional(),
   gitConfig: z.record(z.string()).optional(), // Key-value pairs for git config
-  sshKeys: z.object({
-    privateKey: z.string().optional(), // Base64 encoded
-    publicKey: z.string().optional(), // Base64 encoded
-    knownHosts: z.string().optional(), // Base64 encoded
-  }).optional(),
+  sshKeys: z
+    .object({
+      privateKey: z.string().optional(), // Base64 encoded
+      publicKey: z.string().optional(), // Base64 encoded
+      knownHosts: z.string().optional(), // Base64 encoded
+    })
+    .optional(),
+});
+
+// Execute command schema for one-off commands
+export const WorkerExecSchema = z.object({
+  command: z.string(),
+  args: z.array(z.string()).optional(),
+  cwd: z.string().optional(),
+  env: z.record(z.string()).optional(),
+  timeout: z.number().optional(), // Timeout in milliseconds
+});
+
+// Execute command result schema
+export const WorkerExecResultSchema = z.object({
+  stdout: z.string(),
+  stderr: z.string(),
+  exitCode: z.number(),
+  signal: z.string().optional(),
 });
 
 // Server to Worker Events
@@ -150,6 +168,8 @@ export type WorkerTerminalCreated = z.infer<typeof WorkerTerminalCreatedSchema>;
 export type WorkerTerminalClosed = z.infer<typeof WorkerTerminalClosedSchema>;
 export type WorkerUploadFiles = z.infer<typeof WorkerUploadFilesSchema>;
 export type WorkerConfigureGit = z.infer<typeof WorkerConfigureGitSchema>;
+export type WorkerExec = z.infer<typeof WorkerExecSchema>;
+export type WorkerExecResult = z.infer<typeof WorkerExecResultSchema>;
 
 // Socket.io event maps for Server <-> Worker communication
 // Docker readiness response type
@@ -166,15 +186,18 @@ export interface ServerToWorkerEvents {
     data: WorkerCreateTerminal,
     callback: (result: ErrorOr<WorkerTerminalCreated>) => void
   ) => void;
-  "worker:terminal-input": (data: WorkerTerminalInput) => void;
-  "worker:resize-terminal": (data: WorkerResizeTerminal) => void;
-  "worker:close-terminal": (data: WorkerCloseTerminal) => void;
 
   // File operations
   "worker:upload-files": (data: WorkerUploadFiles) => void;
 
   // Git configuration
   "worker:configure-git": (data: WorkerConfigureGit) => void;
+
+  // Execute one-off commands
+  "worker:exec": (
+    data: WorkerExec,
+    callback: (result: ErrorOr<WorkerExecResult>) => void
+  ) => void;
 
   // Management events
   "worker:terminal-assignment": (data: TerminalAssignment) => void;

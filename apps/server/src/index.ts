@@ -1,13 +1,9 @@
 import {
-  CloseTerminalSchema,
-  CreateTerminalSchema,
   GitFullDiffRequestSchema,
   GitHubFetchBranchesSchema,
   ListFilesRequestSchema,
   OpenInEditorSchema,
-  ResizeSchema,
   StartTaskSchema,
-  TerminalInputSchema,
   type ClientToServerEvents,
   type FileInfo,
   type InterServerEvents,
@@ -24,7 +20,6 @@ import { spawnAllAgents } from "./agentSpawner.js";
 import { GitDiffManager } from "./gitDiff.js";
 import { createProxyApp, setupWebSocketProxy } from "./proxyApp.js";
 import { RepositoryManager } from "./repositoryManager.js";
-import { createTerminal, type GlobalTerminal } from "./terminal.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWorktreePath } from "./workspace.js";
@@ -89,9 +84,6 @@ const ghApi = {
   },
 };
 
-// Global terminal storage - shared across all connections
-const globalTerminals = new Map<string, GlobalTerminal>();
-
 // Git diff manager instance
 const gitDiffManager = new GitDiffManager();
 
@@ -118,32 +110,6 @@ setupWebSocketProxy(httpServer);
 
 io.on("connection", (socket) => {
   console.log("Client connected:", socket.id);
-
-  globalTerminals.forEach((terminal, terminalId) => {
-    socket.emit("terminal-created", { terminalId });
-
-    // Send properly rendered terminal state
-    const terminalState = terminal.serializeAddon.serialize();
-    if (terminalState) {
-      // Send terminal restore event with serialized state
-      socket.emit("terminal-restore", { terminalId, data: terminalState });
-    }
-  });
-
-  socket.on("create-terminal", (data) => {
-    try {
-      const { cols, rows, id } = CreateTerminalSchema.parse(data);
-      if (id && globalTerminals.has(id)) {
-        console.error(`Terminal ${id} already exists`);
-        return;
-      }
-      const terminalId = id || crypto.randomUUID();
-
-      createTerminal(terminalId, globalTerminals, io, { cols, rows });
-    } catch (error) {
-      console.error("Invalid create-terminal data:", error);
-    }
-  });
 
   socket.on("start-task", async (data, callback) => {
     try {
@@ -224,69 +190,6 @@ io.on("connection", (socket) => {
         taskId: "error",
         error: error instanceof Error ? error.message : "Unknown error",
       });
-    }
-  });
-
-  socket.on("terminal-input", (inputData) => {
-    try {
-      const { terminalId, data } = TerminalInputSchema.parse(inputData);
-      const terminal = globalTerminals.get(terminalId);
-
-      if (terminal && terminal.pty) {
-        terminal.pty.write(data);
-      }
-    } catch (error) {
-      console.error("Invalid terminal-input data:", error);
-    }
-  });
-
-  socket.on("resize", (resizeData) => {
-    try {
-      const { terminalId, cols, rows } = ResizeSchema.parse(resizeData);
-      const terminal = globalTerminals.get(terminalId);
-
-      if (terminal && terminal.pty && !terminal.pty.pid) {
-        console.warn(
-          `Terminal ${terminalId} has no PID, likely already exited`
-        );
-        globalTerminals.delete(terminalId);
-      } else if (terminal && terminal.pty) {
-        // if its the same, dont resize
-        // const isSame =
-        //   terminal.headlessTerminal.cols === cols &&
-        //   terminal.headlessTerminal.rows === rows;
-        // if (isSame) {
-        //   return;
-        // }
-
-        // TODO: this is a hack to get the terminal to resize. If it's the same size, the frontend gets messed up. The code above doesn't work either.
-        terminal.pty.resize(cols - 1, rows - 1);
-        terminal.headlessTerminal.resize(cols - 1, rows - 1);
-
-        terminal.pty.resize(cols, rows);
-        terminal.headlessTerminal.resize(cols, rows);
-      }
-    } catch (error) {
-      console.error("Invalid resize data:", error);
-      console.error("here's the invalid resizeData", resizeData);
-    }
-  });
-
-  socket.on("close-terminal", (closeData) => {
-    try {
-      const { terminalId } = CloseTerminalSchema.parse(closeData);
-      const terminal = globalTerminals.get(terminalId);
-
-      if (terminal && terminal.pty) {
-        terminal.pty.kill();
-        globalTerminals.delete(terminalId);
-
-        // Broadcast terminal closure to all clients
-        io.emit("terminal-closed", { terminalId });
-        console.log(`Global terminal ${terminalId} closed`);
-      }
-    } catch (error) {
-      console.error("Invalid close-terminal data:", error);
     }
   });
 
@@ -650,17 +553,6 @@ if (import.meta.hot) {
 
     // Stop Docker container state sync
     DockerVSCodeInstance.stopContainerStateSync();
-
-    // Kill all running terminals
-    globalTerminals.forEach((terminal, id) => {
-      console.log(`Killing terminal ${id}`);
-      try {
-        terminal.pty.kill();
-      } catch (error) {
-        console.error(`Error killing terminal ${id}:`, error);
-      }
-    });
-    globalTerminals.clear();
 
     // Stop all VSCode instances
     for (const [id, instance] of Array.from(

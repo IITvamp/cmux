@@ -2,7 +2,6 @@ import { ThemeProvider } from "@/components/theme/theme-provider";
 import { SocketProvider } from "@/contexts/socket/socket-provider";
 import { ConfigProvider, theme, type ThemeConfig } from "antd";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { TerminalContextProvider } from "./contexts/TerminalContextProvider";
 
 interface ProvidersProps {
   children: ReactNode;
@@ -63,13 +62,7 @@ export function Providers({ children }: ProvidersProps) {
   return (
     <ThemeProvider>
       <ConfigProvider theme={antdTheme}>
-        {/* <ConvexProvider client={convex}>
-          <QueryClientProvider client={queryClient}> */}
-        <SocketProvider>
-          <TerminalContextProvider>{children}</TerminalContextProvider>
-        </SocketProvider>
-        {/* </QueryClientProvider>
-        </ConvexProvider> */}
+        <SocketProvider>{children}</SocketProvider>
       </ConfigProvider>
     </ThemeProvider>
   );
