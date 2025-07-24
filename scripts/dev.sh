@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 docker build -t coderouter-worker:0.0.1 .
 
 # Get the directory where this script is located
