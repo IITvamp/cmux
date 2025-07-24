@@ -33,3 +33,4 @@
 [ ] ensure all the different CLIs work, not just claude
 [ ] onboarding CLI flow to copy vscode themes -- this needs its own convex tables, and we need to make sure to send the right files to the right places when spawning vscode instances.
 [ ] make indicators on /dashboard that show which providers have been properly set up
+[ ] drafts for tasks

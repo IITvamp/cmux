@@ -14,11 +14,12 @@ import { api } from "@coderouter/convex/api";
 import type { Doc } from "@coderouter/convex/dataModel";
 import { AGENT_CONFIGS } from "@coderouter/shared/agentConfig";
 import { convexQuery } from "@convex-dev/react-query";
+import { useClipboard } from "@mantine/hooks";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useQuery as useConvexQuery, useMutation } from "convex/react";
-import { Archive, Code2, Command, Mic } from "lucide-react";
+import { Archive, Check, Code2, Command, Copy, Mic } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 export const Route = createFileRoute("/_layout/dashboard")({
@@ -505,6 +506,8 @@ function TaskItem({ task, navigate, archiveTask }: TaskItemProps) {
       ? `http://${runWithVSCode._id.substring(0, 12)}.39378.localhost:3001/`
       : null;
 
+  const clipboard = useClipboard({ timeout: 2000 });
+
   return (
     <div
       className={clsx(
@@ -567,6 +570,36 @@ function TaskItem({ task, navigate, archiveTask }: TaskItemProps) {
       )}
 
       <div className="right-2 absolute flex gap-1 group-hover:opacity-100 opacity-0">
+        {/* Copy button */}
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  clipboard.copy(task.text);
+                }}
+                className={clsx(
+                  "p-1 rounded",
+                  "bg-neutral-100 dark:bg-neutral-700",
+                  "text-neutral-600 dark:text-neutral-400",
+                  "hover:bg-neutral-200 dark:hover:bg-neutral-600"
+                )}
+                title="Copy task description"
+              >
+                {clipboard.copied ? (
+                  <Check className="w-3.5 h-3.5" />
+                ) : (
+                  <Copy className="w-3.5 h-3.5" />
+                )}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              {clipboard.copied ? "Copied!" : "Copy description"}
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+
         {/* VSCode button - appears on hover */}
         {vscodeUrl && (
           <TooltipProvider>

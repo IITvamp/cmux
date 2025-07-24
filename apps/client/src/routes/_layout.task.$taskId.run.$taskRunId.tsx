@@ -20,7 +20,10 @@ function TaskRunComponent() {
     key: `task-run-${taskRunId}`,
     url: iframeUrl,
     className: "rounded-md",
-    allow: "clipboard-read; clipboard-write",
+    allow:
+      "clipboard-read; clipboard-write; usb; serial; hid; cross-origin-isolated; autoplay; camera; microphone; geolocation; payment; fullscreen",
+    sandbox:
+      "allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-top-navigation",
     onLoad: () => {
       console.log(`Iframe loaded for task run ${taskRunId}`);
     },

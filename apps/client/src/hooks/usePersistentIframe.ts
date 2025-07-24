@@ -41,6 +41,11 @@ interface UsePersistentIframeOptions {
    * Permissions for the iframe (e.g., "clipboard-read", "clipboard-write")
    */
   allow?: string;
+
+  /**
+   * Sandbox attribute for the iframe
+   */
+  sandbox?: string;
 }
 
 export function usePersistentIframe({
@@ -52,6 +57,7 @@ export function usePersistentIframe({
   className,
   style,
   allow,
+  sandbox,
 }: UsePersistentIframeOptions) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
@@ -60,11 +66,11 @@ export function usePersistentIframe({
   useEffect(() => {
     if (preload) {
       persistentIframeManager
-        .preloadIframe(key, url, { allow })
+        .preloadIframe(key, url, { allow, sandbox })
         .then(() => onLoad?.())
         .catch((error) => onError?.(error));
     }
-  }, [key, url, preload, allow]); // Remove callbacks from deps
+  }, [key, url, preload, allow, sandbox]); // Remove callbacks from deps
 
   // Mount/unmount effect
   useEffect(() => {
@@ -72,7 +78,7 @@ export function usePersistentIframe({
 
     try {
       // Get or create the iframe
-      const iframe = persistentIframeManager.getOrCreateIframe(key, url, { allow });
+      const iframe = persistentIframeManager.getOrCreateIframe(key, url, { allow, sandbox });
 
       // Set up load handlers if not already loaded
       if (!iframe.contentWindow || iframe.src !== url) {
@@ -103,6 +109,7 @@ export function usePersistentIframe({
           className,
           style,
           allow,
+          sandbox,
         }
       );
     } catch (error) {
@@ -117,11 +124,11 @@ export function usePersistentIframe({
         cleanupRef.current = null;
       }
     };
-  }, [key, url, className, style, allow]); // Add className, style and allow to deps
+  }, [key, url, className, style, allow, sandbox]); // Add className, style, allow and sandbox to deps
 
   const handlePreload = useCallback(() => {
-    return persistentIframeManager.preloadIframe(key, url, { allow });
-  }, [key, url, allow]);
+    return persistentIframeManager.preloadIframe(key, url, { allow, sandbox });
+  }, [key, url, allow, sandbox]);
 
   const handleRemove = useCallback(() => {
     persistentIframeManager.removeIframe(key);
@@ -129,12 +136,12 @@ export function usePersistentIframe({
 
   const handleIsLoaded = useCallback(() => {
     try {
-      const iframe = persistentIframeManager.getOrCreateIframe(key, url, { allow });
+      const iframe = persistentIframeManager.getOrCreateIframe(key, url, { allow, sandbox });
       return iframe.contentWindow !== null && iframe.src === url;
     } catch {
       return false;
     }
-  }, [key, url, allow]);
+  }, [key, url, allow, sandbox]);
 
   return {
     containerRef,
