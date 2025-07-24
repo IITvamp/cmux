@@ -25,7 +25,7 @@
     // paths
     "baseUrl": "."
   },
-  "include": ["**/*.ts"],
+  "include": ["**/*.ts", "vite-env.d.ts"],
   "exclude": ["node_modules", "dist"],
   "references": []
 }

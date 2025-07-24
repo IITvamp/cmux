@@ -1,6 +1,9 @@
+import { startServer } from "@coderouter/server";
 import { Command } from "commander";
+import { fileURLToPath } from "node:url";
 import path from "path";
-import { startServer } from "./index.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const program = new Command();
 
@@ -8,23 +11,17 @@ program
   .name("cmux")
   .description("Socket.IO and static file server")
   .version("0.1.1")
-  .option("-p, --port <port>", "port to listen on", "8888")
-  .option("-d, --dir <directory>", "static files directory", "./public")
+  .option("-p, --port <port>", "port to listen on", "3001")
   .option("-c, --cors <origin>", "CORS origin configuration", "true")
   .action((options) => {
     const port = parseInt(options.port);
-    const staticDir = path.resolve(options.dir);
-    const corsOrigin =
-      options.cors === "true"
-        ? true
-        : options.cors === "false"
-        ? false
-        : options.cors;
+    const staticDir = path.resolve(__dirname, "..", "public/dist");
+
+    // first, we start convex
 
     startServer({
       port,
-      staticDir,
-      corsOrigin,
+      publicPath: staticDir,
     });
 
     process.on("SIGINT", () => {

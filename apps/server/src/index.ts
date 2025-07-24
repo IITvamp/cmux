@@ -1,10 +1,4 @@
-import * as path from "node:path";
-import { fileURLToPath } from "node:url";
-import { startServer } from "./server";
+// Main entry point for the @coderouter/server package
+// This exports the library functions for use by other packages
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-await startServer({
-  port: parseInt(process.env.PORT || "3001"),
-  publicPath: path.join(__dirname, "../../client/dist"),
-});
+export { startServer } from "./server.js";

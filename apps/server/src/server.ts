@@ -530,6 +530,7 @@ export async function startServer({
 
   const server = httpServer.listen(port, async () => {
     console.log(`Terminal server listening on port ${port}`);
+    console.log(`Visit http://localhost:${port} to see the app`);
 
     // Start the Docker container state sync
     await waitForConvex();
