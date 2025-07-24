@@ -180,7 +180,7 @@ export function createProxyApp({
   const app = express();
 
   // app.use(express.static(publicPath));
-  const staticHandler = express.static(publicPath);
+  const staticHandler = express.static(publicPath, {});
 
   // Main request handler
   app.use(
@@ -196,17 +196,20 @@ export function createProxyApp({
 
       // if no subdomain, return "cmux hello world"
       if (!host.includes(".")) {
+        console.log(
+          `handling static! req.url=${req.url} publicPath=${publicPath}`
+        );
         return staticHandler(req, res, next);
         // return res.status(200).send("cmux 📟");
       }
 
-      // Parse format: containerName.port.localhost:3001
+      // Parse format: containerName.port.localhost:9776
       const parsed = parseHostHeader(host);
       if (!parsed) {
         return res
           .status(400)
           .send(
-            "Invalid subdomain format. Expected: containerName.port.localhost:3001"
+            "Invalid subdomain format. Expected: containerName.port.localhost:9776"
           );
       }
 
@@ -319,8 +322,8 @@ export function setupWebSocketProxy(server: Server) {
       }
 
       // Also check if the host matches the proxy pattern
-      // Socket.IO requests typically go to localhost:3001 directly
-      // Proxy requests go to containerName.port.localhost:3001
+      // Socket.IO requests typically go to localhost:9776 directly
+      // Proxy requests go to containerName.port.localhost:9776
       if (!host.includes(".localhost:") && !host.match(/\.[0-9]+\./)) {
         // This is likely a direct Socket.IO connection, not a proxy request
         return;

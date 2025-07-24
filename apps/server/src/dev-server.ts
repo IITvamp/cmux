@@ -5,6 +5,6 @@ import { startServer } from "./server";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 await startServer({
-  port: parseInt(process.env.PORT || "3001"),
+  port: parseInt(process.env.PORT || "9776"),
   publicPath: path.join(__dirname, "../../client/dist"),
 });

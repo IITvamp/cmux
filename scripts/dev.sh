@@ -76,7 +76,7 @@ CONVEX_PID=$!
 
 
 # Start the backend server
-echo -e "${GREEN}Starting backend server on port 3001...${NC}"
+echo -e "${GREEN}Starting backend server on port 9776...${NC}"
 (cd apps/server && bun run dev 2>&1 | prefix_output "SERVER" "$YELLOW") &
 SERVER_PID=$!
 
@@ -87,7 +87,7 @@ CLIENT_PID=$!
 
 echo -e "${GREEN}Terminal app is running!${NC}"
 echo -e "${BLUE}Frontend: http://localhost:5173${NC}"
-echo -e "${BLUE}Backend: http://localhost:3001${NC}"
+echo -e "${BLUE}Backend: http://localhost:9776${NC}"
 echo -e "${BLUE}Convex: http://localhost:$CONVEX_PORT${NC}"
 echo -e "\nPress Ctrl+C to stop all services"
 

@@ -18,7 +18,7 @@ interface SocketProviderProps {
 
 export const SocketProvider: React.FC<SocketProviderProps> = ({
   children,
-  url = "http://localhost:3001",
+  url = "http://localhost:9776",
 }) => {
   const [socket, setSocket] = React.useState<
     SocketContextType["socket"] | null

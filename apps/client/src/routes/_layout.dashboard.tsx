@@ -78,11 +78,11 @@ function DashboardComponent() {
 
   // Fetch tasks for all projects
   const tasksQuery = useQuery(convexQuery(api.tasks.get, {}));
-  
+
   // Fetch repos from Convex
   const reposByOrgQuery = useQuery(convexQuery(api.github.getReposByOrg, {}));
   const reposByOrg = reposByOrgQuery.data || {};
-  
+
   // Fetch branches for selected repo from Convex
   const branchesQuery = useQuery({
     ...convexQuery(api.github.getBranches, { repo: selectedProject[0] || "" }),
@@ -512,7 +512,7 @@ function TaskItem({ task, navigate, archiveTask }: TaskItemProps) {
     hasActiveVSCode &&
     runWithVSCode?.vscode?.containerName &&
     runWithVSCode?.vscode?.ports?.vscode
-      ? `http://${runWithVSCode._id.substring(0, 12)}.39378.localhost:3001/`
+      ? `http://${runWithVSCode._id.substring(0, 12)}.39378.localhost:9776/`
       : null;
 
   const clipboard = useClipboard({ timeout: 2000 });

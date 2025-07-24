@@ -30,7 +30,7 @@
   },
   "forwardPorts": [5173, 39375, 39376, 39377, 39378],
   "portsAttributes": {
-    "3001": {
+    "9776": {
       "label": "Backend Server",
       "onAutoForward": "notify"
     },

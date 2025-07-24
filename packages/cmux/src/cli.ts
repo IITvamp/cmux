@@ -1,31 +1,19 @@
 import { startServer } from "@coderouter/server";
-import { spawn } from "child_process";
 import { Command } from "commander";
-import { existsSync } from "fs";
+import { ChildProcess, spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
-import path from "path";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const program = new Command();
+interface ConvexProcesses {
+  backend: ChildProcess;
+  dev: ChildProcess;
+}
 
-program
-  .name("cmux")
-  .description("Socket.IO and static file server")
-  .version("0.1.1")
-  .option("-p, --port <port>", "port to listen on", "9776")
-  .option("-c, --cors <origin>", "CORS origin configuration", "true")
-  .action(async (options) => {
-    const port = parseInt(options.port);
-    const staticDir = path.resolve(__dirname, "..", "public/dist");
-    const convexDir = path.resolve(__dirname, "../../convex");
-
-    // Check if convex directory exists
-    if (!existsSync(convexDir)) {
-      console.error("Convex directory not found at:", convexDir);
-      process.exit(1);
-    }
-
+async function startConvex(convexDir: string): Promise<ConvexProcesses> {
+  return new Promise((resolve, reject) => {
     // Start convex backend
     console.log("Starting Convex backend...");
     const convexBackend = spawn(
@@ -57,41 +45,52 @@ program
       process.stderr.write(`[CONVEX-BACKEND] ${data}`);
     });
 
-    // Start convex dev
-    console.log("Starting Convex dev...");
-    const convexDev = spawn(
-      "bunx",
-      ["convex", "dev", "--env-file", ".env.local"],
-      {
-        cwd: convexDir,
-        stdio: ["ignore", "pipe", "pipe"],
-        env: { ...process.env },
-      }
-    );
-
-    convexDev.stdout.on("data", (data) => {
-      process.stdout.write(`[CONVEX-DEV] ${data}`);
+    convexBackend.on("error", (err) => {
+      reject(new Error(`Failed to start Convex backend: ${err.message}`));
     });
+  });
+}
 
-    convexDev.stderr.on("data", (data) => {
-      process.stderr.write(`[CONVEX-DEV] ${data}`);
-    });
+const program = new Command();
 
-    // Wait a bit for convex to start
-    await new Promise((resolve) => setTimeout(resolve, 3000));
+program
+  .name("cmux")
+  .description("Socket.IO and static file server")
+  .version("0.1.1")
+  .option("-p, --port <port>", "port to listen on", "9776")
+  .option("-c, --cors <origin>", "CORS origin configuration", "true")
+  .action(async (options) => {
+    const port = parseInt(options.port);
+    const staticDir = path.resolve(__dirname, "..", "public/dist");
+    const convexDir = path.resolve(__dirname, "../../convex");
+
+    // Check if convex directory exists
+    if (!existsSync(convexDir)) {
+      console.error("Convex directory not found at:", convexDir);
+      process.exit(1);
+    }
 
     // Start the main server
     console.log(`Starting server on port ${port}...`);
-    startServer({
+    void startServer({
       port,
       publicPath: staticDir,
     });
 
+    let convexProcesses: ConvexProcesses;
+    try {
+      // Start Convex and wait for it to be ready
+      convexProcesses = await startConvex(convexDir);
+      console.log("Convex is ready!");
+    } catch (error) {
+      console.error("Failed to start Convex:", error);
+      process.exit(1);
+    }
+
     // Cleanup processes on exit
     const cleanup = () => {
       console.log("\nShutting down server...");
-      convexBackend.kill();
-      convexDev.kill();
+      convexProcesses.backend.kill();
       process.exit(0);
     };
 

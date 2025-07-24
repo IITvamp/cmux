@@ -14,7 +14,7 @@ export const Route = createFileRoute("/_layout/task/$taskId/run/$taskRunId")({
 function TaskRunComponent() {
   const { taskRunId } = Route.useParams();
   const shortId = getShortId(taskRunId);
-  const iframeUrl = `http://${shortId}.39378.localhost:3001/?folder=/root/workspace`;
+  const iframeUrl = `http://${shortId}.39378.localhost:9776/?folder=/root/workspace`;
 
   const { containerRef } = usePersistentIframe({
     key: `task-run-${taskRunId}`,

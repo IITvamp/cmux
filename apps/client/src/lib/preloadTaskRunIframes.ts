@@ -11,13 +11,14 @@ export async function preloadTaskRunIframes(
 ): Promise<void> {
   const entries = taskRunIds.map((taskRunId) => {
     const shortId = getShortId(taskRunId);
-    const url = `http://${shortId}.39378.localhost:3001/?folder=/root/workspace`;
+    const url = `http://${shortId}.39378.localhost:9776/?folder=/root/workspace`;
 
     return {
       key: `task-run-${taskRunId}`,
       url,
       allow: "clipboard-read; clipboard-write",
-      sandbox: "allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-top-navigation",
+      sandbox:
+        "allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-top-navigation",
     };
   });
 
@@ -31,11 +32,12 @@ export async function preloadTaskRunIframes(
  */
 export async function preloadTaskRunIframe(taskRunId: string): Promise<void> {
   const shortId = getShortId(taskRunId);
-  const url = `http://${shortId}.39378.localhost:3001/?folder=/root/workspace`;
+  const url = `http://${shortId}.39378.localhost:9776/?folder=/root/workspace`;
 
   await persistentIframeManager.preloadIframe(`task-run-${taskRunId}`, url, {
     allow: "clipboard-read; clipboard-write",
-    sandbox: "allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-top-navigation",
+    sandbox:
+      "allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-top-navigation",
   });
 }
 
