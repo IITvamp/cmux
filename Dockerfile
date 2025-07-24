@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7-labs
 
 # Stage 1: Build stage
-FROM ubuntu:22.04 AS builder
+FROM ubuntu:24.04 AS builder
 
 ARG VERSION
 ARG CODE_RELEASE
@@ -88,7 +88,7 @@ COPY packages/vscode-extension/.vscodeignore ./packages/vscode-extension/
 # Build worker without bundling native modules
 RUN bun build /coderouter/apps/worker/src/index.ts \
     --target node \
-    --outdir /coderouter/apps/worker/build \
+    --outdir /coderouter/apps/worker/build && \
     echo "Built worker" && \
     cp -r /coderouter/apps/worker/build /builtins/build && \
     cp /coderouter/apps/worker/wait-for-docker.sh /usr/local/bin/ && \

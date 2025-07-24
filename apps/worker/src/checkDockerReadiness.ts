@@ -1,5 +1,4 @@
-import { fetch } from "undici";
-import Agent from "undici/types/agent";
+import { Agent, fetch } from "undici";
 
 export async function checkDockerReadiness(): Promise<boolean> {
   const agent = new Agent({
