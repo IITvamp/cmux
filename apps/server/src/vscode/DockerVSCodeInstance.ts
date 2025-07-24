@@ -856,7 +856,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         const mapping = containerMappings.get(containerName);
         if (!mapping) {
           console.log(
-            `No mapping found for container ${containerName}, skipping`
+            `[syncDockerContainerStates] No mapping found for container ${containerName}, skipping`
           );
           continue;
         }
@@ -917,7 +917,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
           }
         } catch (error) {
           console.error(
-            `Failed to update Convex state for container ${containerName}:`,
+            `[syncDockerContainerStates] Failed to update Convex state for container ${containerName}:`,
             error
           );
         }
@@ -941,7 +941,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
             });
           } catch (error) {
             console.error(
-              `Failed to update stopped status for ${containerName}:`,
+              `[syncDockerContainerStates] Failed to update stopped status for ${containerName}:`,
               error
             );
           }
@@ -961,7 +961,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         // Check if this container exists in Docker
         if (!existingContainerNames.has(expectedContainerName)) {
           console.log(
-            `Found orphaned VSCode instance in Convex: ${taskRun._id} (container: ${expectedContainerName})`
+            `[syncDockerContainerStates] Found orphaned VSCode instance in Convex: ${taskRun._id} (container: ${expectedContainerName})`
           );
 
           // Mark it as stopped in Convex
@@ -972,11 +972,11 @@ export class DockerVSCodeInstance extends VSCodeInstance {
               stoppedAt: Date.now(),
             });
             console.log(
-              `Marked orphaned VSCode instance ${taskRun._id} as stopped`
+              `[syncDockerContainerStates] Marked orphaned VSCode instance ${taskRun._id} as stopped`
             );
           } catch (error) {
             console.error(
-              `Failed to update orphaned VSCode instance ${taskRun._id}:`,
+              `[syncDockerContainerStates] Failed to update orphaned VSCode instance ${taskRun._id}:`,
               error
             );
           }
@@ -985,7 +985,10 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
       console.log("Container state sync completed");
     } catch (error) {
-      console.error("Error syncing container states:", error);
+      console.error(
+        "[syncDockerContainerStates] Error syncing container states:",
+        error
+      );
     }
   }
 }
