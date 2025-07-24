@@ -2,6 +2,8 @@
 
 set -e
 
+source .env.local
+
 docker build -t coderouter-worker:0.0.1 .
 
 # Get the directory where this script is located
@@ -57,8 +59,8 @@ echo -e "${GREEN}Starting convex dev...${NC}"
   nvm use 18 && \
   source .env.local && \
   ./convex-local-backend \
-    --port "$VITE_CONVEX_PORT" \
-    --site-proxy-port "$VITE_CONVEX_SITE_PROXY_PORT" \
+    --port "$CONVEX_PORT" \
+    --site-proxy-port "$CONVEX_SITE_PROXY_PORT" \
     --instance-name "$CONVEX_INSTANCE_NAME" \
     --instance-secret "$CONVEX_INSTANCE_SECRET" \
     --disable-beacon \
@@ -80,13 +82,13 @@ SERVER_PID=$!
 
 # Start the frontend
 echo -e "${GREEN}Starting frontend on port 5173...${NC}"
-(cd apps/client && bun run dev 2>&1 | prefix_output "CLIENT" "$CYAN") &
+(cd apps/client && VITE_CONVEX_URL=http://localhost:$CONVEX_PORT bun run dev 2>&1 | prefix_output "CLIENT" "$CYAN") &
 CLIENT_PID=$!
 
 echo -e "${GREEN}Terminal app is running!${NC}"
 echo -e "${BLUE}Frontend: http://localhost:5173${NC}"
 echo -e "${BLUE}Backend: http://localhost:3001${NC}"
-echo -e "${BLUE}Convex: http://localhost:$VITE_CONVEX_PORT${NC}"
+echo -e "${BLUE}Convex: http://localhost:$CONVEX_PORT${NC}"
 echo -e "\nPress Ctrl+C to stop all services"
 
 # Wait for both processes
