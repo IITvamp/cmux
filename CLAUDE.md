@@ -10,3 +10,7 @@ After finishing a task, run `bun run typecheck` in root to typecheck everything.
 
 This project uses Convex.
 Schemas are defined in packages/convex/convex/schema.ts.
+
+# Misc
+
+Always use node: prefixes for node imports.
