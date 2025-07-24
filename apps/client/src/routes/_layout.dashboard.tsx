@@ -44,11 +44,7 @@ function DashboardComponent() {
     return stored ? JSON.parse(stored) : true;
   });
 
-  // State for repos and branches from Socket.IO
-  const [reposByOrg, setReposByOrg] = useState<
-    Record<string, Array<{ fullName: string; name: string }>>
-  >({});
-  const [branches, setBranches] = useState<string[]>([]);
+  // State for loading states
   const [isLoadingRepos, setIsLoadingRepos] = useState(false);
   const [isLoadingBranches, setIsLoadingBranches] = useState(false);
 
@@ -82,6 +78,17 @@ function DashboardComponent() {
 
   // Fetch tasks for all projects
   const tasksQuery = useQuery(convexQuery(api.tasks.get, {}));
+  
+  // Fetch repos from Convex
+  const reposByOrgQuery = useQuery(convexQuery(api.github.getReposByOrg, {}));
+  const reposByOrg = reposByOrgQuery.data || {};
+  
+  // Fetch branches for selected repo from Convex
+  const branchesQuery = useQuery({
+    ...convexQuery(api.github.getBranches, { repo: selectedProject[0] || "" }),
+    enabled: !!selectedProject[0],
+  });
+  const branches = branchesQuery.data || [];
 
   // Socket-based functions to fetch data from GitHub
   const fetchRepos = useCallback(() => {
@@ -90,13 +97,14 @@ function DashboardComponent() {
     setIsLoadingRepos(true);
     socket.emit("github-fetch-repos", (response) => {
       setIsLoadingRepos(false);
-      if (response.success && response.repos) {
-        setReposByOrg(response.repos);
+      if (response.success) {
+        // Refetch from Convex to get updated data
+        reposByOrgQuery.refetch();
       } else if (response.error) {
         console.error("Error fetching repos:", response.error);
       }
     });
-  }, [socket]);
+  }, [socket, reposByOrgQuery]);
 
   const fetchBranches = useCallback(
     (repo: string) => {
@@ -105,14 +113,15 @@ function DashboardComponent() {
       setIsLoadingBranches(true);
       socket.emit("github-fetch-branches", { repo }, (response) => {
         setIsLoadingBranches(false);
-        if (response.success && response.branches) {
-          setBranches(response.branches);
+        if (response.success) {
+          // Refetch from Convex to get updated data
+          branchesQuery.refetch();
         } else if (response.error) {
           console.error("Error fetching branches:", response.error);
         }
       });
     },
-    [socket]
+    [socket, branchesQuery]
   );
 
   // Mutation to create tasks with optimistic update
@@ -328,7 +337,7 @@ function DashboardComponent() {
                   onChange={handleProjectChange}
                   placeholder="Select project..."
                   className="!min-w-[300px] !max-w-[500px] !rounded-2xl"
-                  loading={isLoadingRepos}
+                  loading={isLoadingRepos || reposByOrgQuery.isLoading}
                   maxTagCount={1}
                   // singleSelect={true}
                   // className={clsx(
@@ -347,7 +356,7 @@ function DashboardComponent() {
                   placeholder="Select branch..."
                   singleSelect={true}
                   className="!min-w-[120px] !rounded-2xl"
-                  loading={isLoadingBranches}
+                  loading={isLoadingBranches || branchesQuery.isLoading}
                   // className={clsx(
                   //   "!border !border-neutral-200 dark:!border-0",
                   //   "bg-neutral-100 dark:bg-neutral-700 dark:hover:bg-neutral-600/90 aria-expanded:bg-neutral-600/90 transition",

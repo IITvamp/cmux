@@ -1,6 +1,4 @@
-#!/usr/bin/env bun
-
-import { exec as execCallback } from "node:child_process";
+import { exec as execCallback, spawn } from "node:child_process";
 import { promisify } from "node:util";
 
 const exec = promisify(execCallback);

@@ -26,6 +26,8 @@ import { waitForConvex } from "./utils/waitForConvex.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWorktreePath } from "./workspace.js";
+import { convex } from "./utils/convexClient.js";
+import { api } from "@coderouter/convex/api";
 
 await waitForConvex();
 
@@ -456,7 +458,17 @@ io.on("connection", (socket) => {
 
   socket.on("github-fetch-repos", async (callback) => {
     try {
-      // Fetch user info, repos, and orgs in parallel
+      // Check if we already have repos in Convex
+      const existingRepos = await convex.query(api.github.getAllRepos, {});
+      
+      if (existingRepos.length > 0) {
+        // Return existing repos from Convex
+        const reposByOrg = await convex.query(api.github.getReposByOrg, {});
+        callback({ success: true, repos: reposByOrg });
+        return;
+      }
+      
+      // If no repos exist, fetch from GitHub
       const [username, userRepos, orgs] = await Promise.all([
         ghApi.getUser(),
         ghApi.getUserRepos(),
@@ -479,8 +491,24 @@ io.on("connection", (socket) => {
         },
         ...orgReposResults,
       ];
+      
+      // Prepare repos for bulk insert
+      const reposToInsert = allRepos.flatMap((orgData) =>
+        orgData.repos.map((repo) => ({
+          fullName: repo,
+          org: orgData.org,
+          name: repo.split("/")[1],
+          gitRemote: `https://github.com/${repo}.git`,
+          provider: "github" as const,
+        }))
+      );
+      
+      // Bulk insert repos into Convex
+      await convex.mutation(api.github.bulkInsertRepos, {
+        repos: reposToInsert,
+      });
 
-      // Format repos by organization
+      // Format repos by organization for response
       const reposByOrg: Record<
         string,
         Array<{ fullName: string; name: string }>
@@ -509,8 +537,25 @@ io.on("connection", (socket) => {
     try {
       const { repo } = GitHubFetchBranchesSchema.parse(data);
 
-      // Fetch branches from GitHub
+      // Check if we already have branches for this repo in Convex
+      const existingBranches = await convex.query(api.github.getBranches, {
+        repo,
+      });
+      
+      if (existingBranches.length > 0) {
+        // Return existing branches from Convex
+        callback({ success: true, branches: existingBranches });
+        return;
+      }
+
+      // If no branches exist, fetch from GitHub
       const branches = await ghApi.getRepoBranches(repo);
+      
+      // Bulk insert branches into Convex
+      await convex.mutation(api.github.bulkInsertBranches, {
+        repo,
+        branches,
+      });
 
       callback({ success: true, branches });
     } catch (error) {

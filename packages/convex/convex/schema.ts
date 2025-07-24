@@ -81,6 +81,8 @@ export default defineSchema({
     fullName: v.string(),
     org: v.string(),
     name: v.string(),
+    gitRemote: v.string(),
+    provider: v.optional(v.string()), // e.g. "github", "gitlab", etc.
   }).index("by_org", ["org"]),
   branches: defineTable({
     repo: v.string(),

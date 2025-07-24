@@ -61,12 +61,12 @@ async function waitForTmuxSession(
 export async function detectTerminalIdle(
   options: IdleDetectionOptions
 ): Promise<{ elapsedMs: number }> {
-  const { sessionName, idleTimeoutMs = 3000, onIdle } = options;
+  const { sessionName, idleTimeoutMs = 5000, onIdle } = options;
 
   const startTime = Date.now();
   let lastActivityTime = Date.now();
   let idleDetected = false;
-  let idleTimer: NodeJS.Timeout | null = null;
+  let idleTimer: ReturnType<typeof setTimeout> | null = null;
   let child: ChildProcessWithoutNullStreams;
 
   return new Promise(async (resolve, reject) => {
