@@ -172,110 +172,129 @@ async function getActualPortFromDocker(
   }
 }
 
-export function createProxyApp(): express.Application {
+export function createProxyApp({
+  publicPath,
+}: {
+  publicPath: string;
+}): express.Application {
   const app = express();
 
+  // app.use(express.static(publicPath));
+  const staticHandler = express.static(publicPath);
+
   // Main request handler
-  app.use(async (req: express.Request, res: express.Response) => {
-    const host = req.get("host");
-    if (!host) {
-      return res.status(400).send("Host header is required");
-    }
-
-    // if no subdomain, return "cmux hello world"
-    if (!host.includes(".")) {
-      return res.status(200).send("cmux 📟");
-    }
-
-    // Parse format: containerName.port.localhost:3001
-    const parsed = parseHostHeader(host);
-    if (!parsed) {
-      return res
-        .status(400)
-        .send(
-          "Invalid subdomain format. Expected: containerName.port.localhost:3001"
-        );
-    }
-
-    const { containerName, targetPort } = parsed;
-    const fullContainerName = containerName.startsWith("coderouter-")
-      ? containerName
-      : `coderouter-${containerName}`;
-
-    // Determine which container port we need based on the target port
-    let containerPort: string;
-
-    // Check if targetPort is a known port name (vscode, worker, extension)
-    if (KNOWN_PORT_MAPPINGS[targetPort]) {
-      containerPort = KNOWN_PORT_MAPPINGS[targetPort];
-    } else {
-      // Otherwise, treat it as a direct container port number
-      containerPort = targetPort;
-    }
-
-    // First, try to get the port directly from Docker
-    const actualPort = await getActualPortFromDocker(
-      fullContainerName,
-      containerPort
-    );
-
-    if (actualPort) {
-      // Container is running, proxy the request
-      const proxy = httpProxy.createProxyServer({
-        target: `http://localhost:${actualPort}`,
-        changeOrigin: true,
-      });
-
-      // Handle proxy errors
-      proxy.on("error", (err: Error) => {
-        if (!res.headersSent) {
-          res.status(502).send(`Proxy error: ${err.message}`);
-        }
-      });
-
-      // Proxy the request
-      proxy.web(req, res);
-      return;
-    }
-
-    // Container not running or doesn't exist in Docker
-    // Check if it should exist by querying Convex
-    const taskRun = await convex.query(api.taskRuns.getByContainerName, {
-      containerName: fullContainerName,
-    });
-
-    if (!taskRun || !taskRun.vscode) {
-      return res.status(404).send("Container not found");
-    }
-
-    // Container should exist but isn't running
-    if (taskRun.vscode.status === "stopped") {
-      // Try to restart it
-      const instance = VSCodeInstance.getInstance(taskRun._id);
-      if (!instance) {
-        // Need to create a new instance
-        const newInstance = new DockerVSCodeInstance({
-          taskRunId: taskRun._id,
-          workspacePath: taskRun.worktreePath,
-        });
-
-        // Start the container
-        newInstance.start().catch((err) => {
-          console.error(`Failed to start container ${fullContainerName}:`, err);
-        });
-      } else if (instance instanceof DockerVSCodeInstance) {
-        instance.start().catch((err) => {
-          console.error(
-            `Failed to restart container ${fullContainerName}:`,
-            err
-          );
-        });
+  app.use(
+    async (
+      req: express.Request,
+      res: express.Response,
+      next: express.NextFunction
+    ) => {
+      const host = req.get("host");
+      if (!host) {
+        return res.status(400).send("Host header is required");
       }
-    }
 
-    // Show loading screen while container is starting
-    return res.send(loadingScreen.replace("{{containerName}}", containerName));
-  });
+      // if no subdomain, return "cmux hello world"
+      if (!host.includes(".")) {
+        return staticHandler(req, res, next);
+        // return res.status(200).send("cmux 📟");
+      }
+
+      // Parse format: containerName.port.localhost:3001
+      const parsed = parseHostHeader(host);
+      if (!parsed) {
+        return res
+          .status(400)
+          .send(
+            "Invalid subdomain format. Expected: containerName.port.localhost:3001"
+          );
+      }
+
+      const { containerName, targetPort } = parsed;
+      const fullContainerName = containerName.startsWith("coderouter-")
+        ? containerName
+        : `coderouter-${containerName}`;
+
+      // Determine which container port we need based on the target port
+      let containerPort: string;
+
+      // Check if targetPort is a known port name (vscode, worker, extension)
+      if (KNOWN_PORT_MAPPINGS[targetPort]) {
+        containerPort = KNOWN_PORT_MAPPINGS[targetPort];
+      } else {
+        // Otherwise, treat it as a direct container port number
+        containerPort = targetPort;
+      }
+
+      // First, try to get the port directly from Docker
+      const actualPort = await getActualPortFromDocker(
+        fullContainerName,
+        containerPort
+      );
+
+      if (actualPort) {
+        // Container is running, proxy the request
+        const proxy = httpProxy.createProxyServer({
+          target: `http://localhost:${actualPort}`,
+          changeOrigin: true,
+        });
+
+        // Handle proxy errors
+        proxy.on("error", (err: Error) => {
+          if (!res.headersSent) {
+            res.status(502).send(`Proxy error: ${err.message}`);
+          }
+        });
+
+        // Proxy the request
+        proxy.web(req, res);
+        return;
+      }
+
+      // Container not running or doesn't exist in Docker
+      // Check if it should exist by querying Convex
+      const taskRun = await convex.query(api.taskRuns.getByContainerName, {
+        containerName: fullContainerName,
+      });
+
+      if (!taskRun || !taskRun.vscode) {
+        return res.status(404).send("Container not found");
+      }
+
+      // Container should exist but isn't running
+      if (taskRun.vscode.status === "stopped") {
+        // Try to restart it
+        const instance = VSCodeInstance.getInstance(taskRun._id);
+        if (!instance) {
+          // Need to create a new instance
+          const newInstance = new DockerVSCodeInstance({
+            taskRunId: taskRun._id,
+            workspacePath: taskRun.worktreePath,
+          });
+
+          // Start the container
+          newInstance.start().catch((err) => {
+            console.error(
+              `Failed to start container ${fullContainerName}:`,
+              err
+            );
+          });
+        } else if (instance instanceof DockerVSCodeInstance) {
+          instance.start().catch((err) => {
+            console.error(
+              `Failed to restart container ${fullContainerName}:`,
+              err
+            );
+          });
+        }
+      }
+
+      // Show loading screen while container is starting
+      return res.send(
+        loadingScreen.replace("{{containerName}}", containerName)
+      );
+    }
+  );
 
   return app;
 }

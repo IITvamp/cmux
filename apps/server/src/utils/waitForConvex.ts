@@ -13,7 +13,11 @@ export async function waitForConvex(): Promise<void> {
         signal: AbortSignal.timeout(1000),
       });
       if (response.ok) {
-        console.log(`Convex is ready after ${attempt} attempts`);
+        console.log(
+          `Convex is ready after ${attempt} ${
+            attempt === 1 ? "attempt" : "attempts"
+          }`
+        );
         return;
       }
     } catch (error) {

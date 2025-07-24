@@ -4,11 +4,6 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "npm run dev --workspace=@coderouter/client",
-    "build": "npm run build --workspace=@coderouter/client",
-    "lint": "npm run lint --workspace=@coderouter/client",
-    "preview": "npm run preview --workspace=@coderouter/client",
-    "server": "npm run dev --workspace=@coderouter/server",
     "typecheck": "run-p typecheck:*",
     "typecheck:client": "cd apps/client && bun run typecheck",
     "typecheck:server": "cd apps/server && bun run typecheck",
@@ -17,7 +12,7 @@
     "typecheck:vscode-extension": "cd packages/vscode-extension && bun run typecheck",
     "typecheck:convex": "cd packages/convex && bun run typecheck",
     "typecheck:cmux": "cd packages/cmux && bun run typecheck",
-    "generate-routes": "npm run generate-routes --workspace=@coderouter/client"
+    "generate-routes": "cd packages/client && bun run generate-routes"
   },
   "devDependencies": {
     "npm-run-all": "^4.1.5"
