@@ -36,6 +36,11 @@ interface UsePersistentIframeOptions {
    * Inline styles to apply to the iframe
    */
   style?: React.CSSProperties;
+
+  /**
+   * Permissions for the iframe (e.g., "clipboard-read", "clipboard-write")
+   */
+  allow?: string;
 }
 
 export function usePersistentIframe({
@@ -46,6 +51,7 @@ export function usePersistentIframe({
   onError,
   className,
   style,
+  allow,
 }: UsePersistentIframeOptions) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
@@ -54,11 +60,11 @@ export function usePersistentIframe({
   useEffect(() => {
     if (preload) {
       persistentIframeManager
-        .preloadIframe(key, url)
+        .preloadIframe(key, url, { allow })
         .then(() => onLoad?.())
         .catch((error) => onError?.(error));
     }
-  }, [key, url, preload]); // Remove callbacks from deps
+  }, [key, url, preload, allow]); // Remove callbacks from deps
 
   // Mount/unmount effect
   useEffect(() => {
@@ -66,7 +72,7 @@ export function usePersistentIframe({
 
     try {
       // Get or create the iframe
-      const iframe = persistentIframeManager.getOrCreateIframe(key, url);
+      const iframe = persistentIframeManager.getOrCreateIframe(key, url, { allow });
 
       // Set up load handlers if not already loaded
       if (!iframe.contentWindow || iframe.src !== url) {
@@ -96,6 +102,7 @@ export function usePersistentIframe({
         {
           className,
           style,
+          allow,
         }
       );
     } catch (error) {
@@ -110,11 +117,11 @@ export function usePersistentIframe({
         cleanupRef.current = null;
       }
     };
-  }, [key, url, className, style]); // Add className and style to deps
+  }, [key, url, className, style, allow]); // Add className, style and allow to deps
 
   const handlePreload = useCallback(() => {
-    return persistentIframeManager.preloadIframe(key, url);
-  }, [key, url]);
+    return persistentIframeManager.preloadIframe(key, url, { allow });
+  }, [key, url, allow]);
 
   const handleRemove = useCallback(() => {
     persistentIframeManager.removeIframe(key);
@@ -122,12 +129,12 @@ export function usePersistentIframe({
 
   const handleIsLoaded = useCallback(() => {
     try {
-      const iframe = persistentIframeManager.getOrCreateIframe(key, url);
+      const iframe = persistentIframeManager.getOrCreateIframe(key, url, { allow });
       return iframe.contentWindow !== null && iframe.src === url;
     } catch {
       return false;
     }
-  }, [key, url]);
+  }, [key, url, allow]);
 
   return {
     containerRef,

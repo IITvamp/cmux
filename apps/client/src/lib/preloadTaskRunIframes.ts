@@ -16,6 +16,7 @@ export async function preloadTaskRunIframes(
     return {
       key: `task-run-${taskRunId}`,
       url,
+      allow: "clipboard-read; clipboard-write",
     };
   });
 
@@ -31,7 +32,9 @@ export async function preloadTaskRunIframe(taskRunId: string): Promise<void> {
   const shortId = getShortId(taskRunId);
   const url = `http://${shortId}.39378.localhost:3001/?folder=/root/workspace`;
 
-  await persistentIframeManager.preloadIframe(`task-run-${taskRunId}`, url);
+  await persistentIframeManager.preloadIframe(`task-run-${taskRunId}`, url, {
+    allow: "clipboard-read; clipboard-write",
+  });
 }
 
 /**

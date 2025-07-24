@@ -20,6 +20,7 @@ function TaskRunComponent() {
     key: `task-run-${taskRunId}`,
     url: iframeUrl,
     className: "rounded-md",
+    allow: "clipboard-read; clipboard-write",
     onLoad: () => {
       console.log(`Iframe loaded for task run ${taskRunId}`);
     },

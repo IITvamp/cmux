@@ -16,6 +16,7 @@ type IframeEntry = {
 interface MountOptions {
   className?: string;
   style?: React.CSSProperties;
+  allow?: string;
 }
 
 /**
@@ -76,7 +77,7 @@ class PersistentIframeManager {
   /**
    * Get or create an iframe
    */
-  getOrCreateIframe(key: string, url: string): HTMLIFrameElement {
+  getOrCreateIframe(key: string, url: string, options?: { allow?: string }): HTMLIFrameElement {
     const existing = this.iframes.get(key);
 
     if (existing) {
@@ -106,6 +107,11 @@ class PersistentIframeManager {
       height: 100%;
       border: 0;
     `;
+    
+    // Apply permissions if provided
+    if (options?.allow) {
+      iframe.allow = options.allow;
+    }
 
     wrapper.appendChild(iframe);
 
@@ -312,9 +318,9 @@ class PersistentIframeManager {
   /**
    * Preload an iframe
    */
-  preloadIframe(key: string, url: string): Promise<void> {
+  preloadIframe(key: string, url: string, options?: { allow?: string }): Promise<void> {
     return new Promise((resolve, reject) => {
-      const iframe = this.getOrCreateIframe(key, url);
+      const iframe = this.getOrCreateIframe(key, url, options);
 
       const handleLoad = () => {
         iframe.removeEventListener("load", handleLoad);
@@ -376,10 +382,10 @@ class PersistentIframeManager {
    * Preload multiple iframes
    */
   async preloadMultiple(
-    entries: Array<{ key: string; url: string }>
+    entries: Array<{ key: string; url: string; allow?: string }>
   ): Promise<void> {
     await Promise.all(
-      entries.map(({ key, url }) => this.preloadIframe(key, url))
+      entries.map(({ key, url, allow }) => this.preloadIframe(key, url, { allow }))
     );
   }
 
