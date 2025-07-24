@@ -198,10 +198,6 @@ export function createProxyApp({
 
       // if no subdomain, return "cmux hello world"
       if (!host.includes(".")) {
-        console.log(
-          `handling static! req.url=${req.url} publicPath=${publicPath}`
-        );
-
         // Check if this is a static asset request
         const hasExtension = path.extname(req.url) !== "";
         const isAssets = req.url.startsWith("/assets");

@@ -7,21 +7,25 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const convexBinaryPath = path.resolve(
+  __dirname,
+  "../../convex/convex-local-backend"
+);
 
 interface ConvexProcesses {
   backend: ChildProcess;
-  dev: ChildProcess;
 }
 
 async function startConvex(convexDir: string): Promise<ConvexProcesses> {
-  return new Promise((resolve, reject) => {
+  return new Promise(async (resolve, reject) => {
     // Start convex backend
     console.log("Starting Convex backend...");
+    const convexPort = process.env.CONVEX_PORT || "9777";
     const convexBackend = spawn(
-      "./convex-local-backend",
+      convexBinaryPath,
       [
         "--port",
-        process.env.CONVEX_PORT || "9777",
+        convexPort,
         "--site-proxy-port",
         process.env.CONVEX_SITE_PROXY_PORT || "9778",
         "--instance-name",
@@ -49,6 +53,32 @@ async function startConvex(convexDir: string): Promise<ConvexProcesses> {
     convexBackend.on("error", (err) => {
       reject(new Error(`Failed to start Convex backend: ${err.message}`));
     });
+
+    // wait until we can fetch the instance
+    let instance: Response | undefined;
+    let retries = 0;
+    const maxRetries = 30;
+
+    while ((!instance || !instance.ok) && retries < maxRetries) {
+      try {
+        instance = await fetch(`http://localhost:${convexPort}/api/instance`);
+      } catch (error) {
+        // Ignore fetch errors and continue retrying
+      }
+
+      if (!instance || !instance.ok) {
+        retries++;
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+    }
+
+    if (!instance || !instance.ok) {
+      throw new Error(
+        `Failed to connect to Convex instance after ${maxRetries} retries`
+      );
+    }
+
+    resolve({ backend: convexBackend });
   });
 }
 
