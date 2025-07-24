@@ -61,7 +61,7 @@ async function waitForTmuxSession(
 export async function detectTerminalIdle(
   options: IdleDetectionOptions
 ): Promise<{ elapsedMs: number }> {
-  const { sessionName, idleTimeoutMs = 5000, onIdle } = options;
+  const { sessionName, idleTimeoutMs = 3000, onIdle } = options;
 
   const startTime = Date.now();
   let lastActivityTime = Date.now();
@@ -82,7 +82,7 @@ export async function detectTerminalIdle(
     try {
       child = spawn(
         "script",
-        ["-q", "/dev/null", "tmux", "attach-session", "-t", sessionName],
+        ["-q", "-c", `tmux attach-session -t ${sessionName}`, "/dev/null"],
         {
           stdio: ["pipe", "pipe", "pipe"],
           env: { ...process.env, TERM: "xterm-256color" },
