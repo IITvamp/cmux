@@ -12,6 +12,9 @@ APP_DIR="$(dirname "$SCRIPT_DIR")"
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 RED='\033[0;31m'
+YELLOW='\033[0;33m'
+MAGENTA='\033[0;35m'
+CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 echo -e "${BLUE}Starting Terminal App Development Environment...${NC}"
@@ -35,14 +38,23 @@ if [ ! -d "node_modules" ] || [ "$FORCE_INSTALL" = "true" ]; then
     CI=1 pnpm install --frozen-lockfile
 fi
 
+# Function to prefix output with colored labels
+prefix_output() {
+    local label="$1"
+    local color="$2"
+    while IFS= read -r line; do
+        echo -e "${color}[${label}]${NC} $line"
+    done
+}
+
 # Start the backend server
 echo -e "${GREEN}Starting backend server on port 3001...${NC}"
-(cd apps/server && bun run dev) &
+(cd apps/server && bun run dev 2>&1 | prefix_output "SERVER" "$YELLOW") &
 SERVER_PID=$!
 
 # Start the frontend
 echo -e "${GREEN}Starting frontend on port 5173...${NC}"
-(cd apps/client && bun run dev) &
+(cd apps/client && bun run dev 2>&1 | prefix_output "CLIENT" "$CYAN") &
 CLIENT_PID=$!
 
 # Create logs directory if it doesn't exist
@@ -60,13 +72,13 @@ echo -e "${GREEN}Starting convex dev...${NC}"
     --instance-name "$CONVEX_INSTANCE_NAME" \
     --instance-secret "$CONVEX_INSTANCE_SECRET" \
     --disable-beacon \
-    2>&1 | tee ../../logs/convex.log) &
+    2>&1 | tee ../../logs/convex.log | prefix_output "CONVEX-BACKEND" "$MAGENTA") &
 CONVEX_BACKEND_PID=$!
 
 (cd packages/convex && source ~/.nvm/nvm.sh && \
   nvm use 18 && \
   bunx convex dev \
-    2>&1 | tee ../../logs/convex-dev.log) &
+    2>&1 | tee ../../logs/convex-dev.log | prefix_output "CONVEX-DEV" "$GREEN") &
 CONVEX_DEV_PID=$!
 CONVEX_PID=$!
 
