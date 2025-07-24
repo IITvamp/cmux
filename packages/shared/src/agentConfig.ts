@@ -68,6 +68,7 @@ export const AGENT_CONFIGS: AgentConfig[] = [
     environment: async () => {
       const { readFile } = await import("node:fs/promises");
       const { homedir } = await import("node:os");
+      const { Buffer } = await import("node:buffer");
       const files: EnvironmentResult["files"] = [];
 
       try {
@@ -94,6 +95,7 @@ export const AGENT_CONFIGS: AgentConfig[] = [
     environment: async () => {
       const { readFile } = await import("node:fs/promises");
       const { homedir } = await import("node:os");
+      const { Buffer } = await import("node:buffer");
       const files: EnvironmentResult["files"] = [];
 
       try {

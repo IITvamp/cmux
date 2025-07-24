@@ -23,7 +23,7 @@ interface GitConfig {
 
 interface GitCommandOptions {
   cwd: string;
-  encoding?: BufferEncoding;
+  encoding?: "utf8" | "ascii" | "base64" | "hex" | "binary" | "latin1";
 }
 
 export class RepositoryManager {

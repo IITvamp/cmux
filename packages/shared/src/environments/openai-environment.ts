@@ -4,6 +4,7 @@ export async function getOpenAIEnvironment(): Promise<EnvironmentResult> {
   // These must be lazy since configs are imported into the browser
   const { readFile } = await import("node:fs/promises");
   const { homedir } = await import("node:os");
+  const { Buffer } = await import("node:buffer");
 
   const files: EnvironmentResult["files"] = [];
   const env: Record<string, string> = {};

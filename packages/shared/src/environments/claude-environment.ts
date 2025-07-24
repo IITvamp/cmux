@@ -6,6 +6,7 @@ export async function getClaudeEnvironment(): Promise<EnvironmentResult> {
   const { promisify } = await import("node:util");
   const { readFile } = await import("node:fs/promises");
   const { homedir } = await import("node:os");
+  const { Buffer } = await import("node:buffer");
   const execAsync = promisify(exec);
 
   const files: EnvironmentResult["files"] = [];

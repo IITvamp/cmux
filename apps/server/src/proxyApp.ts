@@ -2,10 +2,11 @@ import { api } from "@coderouter/convex/api";
 import express from "express";
 import type { IncomingMessage, Server } from "http";
 import httpProxy from "http-proxy";
+import { Buffer } from "node:buffer";
+import path from "node:path";
 import { convex } from "./utils/convexClient.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
-import path from "node:path";
 
 // Port cache to avoid hammering Docker
 interface PortCacheEntry {
@@ -200,11 +201,11 @@ export function createProxyApp({
         console.log(
           `handling static! req.url=${req.url} publicPath=${publicPath}`
         );
-        
+
         // Check if this is a static asset request
         const hasExtension = path.extname(req.url) !== "";
         const isAssets = req.url.startsWith("/assets");
-        
+
         if (hasExtension || isAssets) {
           // Serve static files for assets or files with extensions
           return staticHandler(req, res, next);

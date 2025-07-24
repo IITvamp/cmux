@@ -17,6 +17,7 @@ import { promises as fs } from "node:fs";
 import { createServer } from "node:http";
 import * as path from "node:path";
 import { Server } from "socket.io";
+import type { ViteHotContext } from "vite/types/hot.js";
 import { spawnAllAgents } from "./agentSpawner.js";
 import { execWithEnv } from "./execWithEnv.js";
 import { ghApi } from "./ghApi.js";
@@ -603,5 +604,11 @@ export async function startServer({
     import.meta.hot.accept(() => {
       console.log("Hot reload triggered");
     });
+  }
+}
+
+declare global {
+  interface ImportMeta {
+    readonly hot?: ViteHotContext;
   }
 }
