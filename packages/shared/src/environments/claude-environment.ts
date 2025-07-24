@@ -1,4 +1,4 @@
-import type { EnvironmentResult } from "./index.js";
+import type { EnvironmentResult } from "./environment-result.js";
 
 export async function getClaudeEnvironment(): Promise<EnvironmentResult> {
   // These must be lazy since configs are imported into the browser

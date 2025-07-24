@@ -1,5 +1,6 @@
-import { getClaudeEnvironment } from "./environments/claudeEnvironment.js";
-import type { EnvironmentResult } from "./environments/index.js";
+import { getClaudeEnvironment } from "./environments/claude-environment.js";
+import type { EnvironmentResult } from "./environments/environment-result.js";
+import { getOpenAIEnvironment } from "./environments/openai-environment.js";
 
 export { type EnvironmentResult };
 
@@ -58,41 +59,7 @@ export const AGENT_CONFIGS: AgentConfig[] = [
       "--skip-git-repo-check",
       "$PROMPT",
     ],
-    environment: async () => {
-      const { readFile } = await import("node:fs/promises");
-      const { homedir } = await import("node:os");
-      const files: EnvironmentResult["files"] = [];
-
-      try {
-        const authContent = await readFile(
-          `${homedir()}/.codex/auth.json`,
-          "utf-8"
-        );
-        files.push({
-          destinationPath: "$HOME/.codex/auth.json",
-          contentBase64: Buffer.from(authContent).toString("base64"),
-          mode: "600",
-        });
-      } catch (error) {
-        console.warn("Failed to read .codex/auth.json:", error);
-      }
-
-      try {
-        const configContent = await readFile(
-          `${homedir()}/.codex/config.json`,
-          "utf-8"
-        );
-        files.push({
-          destinationPath: "$HOME/.codex/config.json",
-          contentBase64: Buffer.from(configContent).toString("base64"),
-          mode: "644",
-        });
-      } catch (error) {
-        console.warn("Failed to read .codex/config.json:", error);
-      }
-
-      return { files, env: {} };
-    },
+    environment: getOpenAIEnvironment,
   },
   {
     name: "opencode-sonnet",
