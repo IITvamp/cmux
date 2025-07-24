@@ -305,7 +305,7 @@
 }
 
 .editor-text-underlineStrikethrough {
-  @apply underline line-through;
+  @apply line-through;
 }
 
 .editor-text-code {
