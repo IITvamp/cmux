@@ -59,7 +59,7 @@ function LayoutComponent() {
     <>
       <div className="flex flex-row grow bg-neutral-50 dark:bg-neutral-900 h-full">
         {/* Left Sidebar */}
-        <div className="w-[240px] bg-neutral-50 dark:bg-neutral-900 flex flex-col">
+        <div className="w-[220px] bg-neutral-50 dark:bg-neutral-900 flex flex-col">
           {/* Logo/Brand */}
           {/* <div className="h-14 flex items-center px-4 border-b border-neutral-200 dark:border-neutral-800">
           <div className="flex items-center space-x-2">
