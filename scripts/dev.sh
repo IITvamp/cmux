@@ -77,7 +77,7 @@ CONVEX_BACKEND_PID=$!
 
 (cd packages/convex && source ~/.nvm/nvm.sh && \
   nvm use 18 && \
-  bunx convex dev \
+  bunx convex dev --env-file .env.local \
     2>&1 | tee ../../logs/convex-dev.log | prefix_output "CONVEX-DEV" "$GREEN") &
 CONVEX_DEV_PID=$!
 CONVEX_PID=$!
