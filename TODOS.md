@@ -1,5 +1,5 @@
 [x] instead of using node-pty, install openvscode directly and make an extension that lets us interact with vscode's terminal and everything via socketio. like the extension needs to expose a socketio server that we can connect to and then we can send commands to the terminal and get the output back.
-[ ] get rid of node-pty entirely -- do a grep/rg of it in entire codebase, then remove it from everywhere. for most places like where we resize the node-pty thing, we can just get rid of it. get rid of the stuff in frontend like $taskId.run.$runId page as well like get rid of TerminalView.tsx and TerminalContextProvider.tsx entirely; when creating a new task inside the worker (like the tmux task specifically), we can just use childproc/exec instead of node-pty.
+[x] get rid of node-pty entirely -- do a grep/rg of it in entire codebase, then remove it from everywhere. for most places like where we resize the node-pty thing, we can just get rid of it. get rid of the stuff in frontend like $taskId.run.$runId page as well like get rid of TerminalView.tsx and TerminalContextProvider.tsx entirely; when creating a new task inside the worker (like the tmux task specifically), we can just use childproc/exec instead of node-pty.
 [ ] copy ~/.claude/CLAUDE.md to relevant places
 [ ] copy CLAUDE.md to AGENTS.md, GEMINI.md etc for openai, gemini, etc.
 [ ] figure out intricacies of deploying the Dockerfile to daytona
@@ -10,9 +10,9 @@
 [ ] fallback if user doesn't use gh cli
 [ ] authentication with stack auth when user tries to enable cloud mode
 [ ] whenever i start typing in /dashboard, even if i'm not focused on the textinput, it should automatically start typing in the textinput (including the keys i just pressed but weren't focused on the textinput)
-[ ] figure out how to get git working, rn worktrees are broken
+[ ] figure out how to get git working, rn worktrees are intermittently broken
 [ ] make MorphVSCodeInstance actually work
-[ ] vercel previews
+[ ] vercel previews but devcontainer and docker and docker compose
 [ ] vercel comments but it actually just pipes it to claude code and it auto makes a PR!
 [ ] auto set up devcontainers: `bun x @devcontainers/cli up --workspace-folder /root/workspace`
 [ ] make persistent [worktree/branchname]-vscode.cmux.local domains for each vscode container instance. the cmux.local domains also need to support mapping to the ports in each of the DockerVSCodeInstances. like [worktree/branchname]-[portnumber].cmux.local should map to the port number of the vscode instance.
