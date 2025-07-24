@@ -212,9 +212,6 @@ managementIO.on("connection", (socket) => {
           undefined,
           WORKER_ID
         );
-        const { exec } = await import("node:child_process");
-        const { promisify } = await import("node:util");
-        const execAsync = promisify(exec);
 
         for (const command of validated.startupCommands) {
           try {
