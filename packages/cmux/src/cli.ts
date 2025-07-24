@@ -11,6 +11,8 @@ const convexBinaryPath = path.resolve(
   __dirname,
   "../../convex/convex-local-backend"
 );
+const staticDir = path.resolve(__dirname, "..", "public/dist");
+const convexDir = path.resolve(homedir(), ".cmux", "data");
 
 interface ConvexProcesses {
   backend: ChildProcess;
@@ -92,8 +94,6 @@ program
   .option("-c, --cors <origin>", "CORS origin configuration", "true")
   .action(async (options) => {
     const port = parseInt(options.port);
-    const staticDir = path.resolve(__dirname, "..", "public/dist");
-    const convexDir = path.resolve(homedir(), ".cmux", "data");
 
     // ensure convexDir exists
     mkdirSync(convexDir, { recursive: true });
