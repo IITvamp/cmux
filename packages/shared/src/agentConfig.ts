@@ -1,11 +1,7 @@
-import { getClaudeEnvironment } from "./helpers/claudeEnvironment.js";
-import type { AuthFile } from "./worker-schemas.js";
+import { getClaudeEnvironment } from "./environments/claudeEnvironment.js";
+import type { EnvironmentResult } from "./environments/index.js";
 
-export interface EnvironmentResult {
-  files: AuthFile[];
-  env: Record<string, string>;
-  startupCommands?: string[];
-}
+export { type EnvironmentResult };
 
 export interface AgentConfig {
   name: string;

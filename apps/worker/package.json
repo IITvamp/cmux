@@ -23,6 +23,6 @@
     "tsx": "^4.7.1"
   },
   "peerDependencies": {
-    "typescript": "^5"
+    "typescript": "^5.8.3"
   }
 }

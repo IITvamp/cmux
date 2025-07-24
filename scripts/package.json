@@ -9,5 +9,8 @@
     "dotenv": "^16.6.1",
     "morphcloud": "^0.0.14",
     "socket.io-client": "^4.8.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
   }
 }

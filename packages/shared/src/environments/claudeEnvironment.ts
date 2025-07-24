@@ -1,6 +1,7 @@
-import type { EnvironmentResult } from "../agentConfig.js";
+import type { EnvironmentResult } from "./index.js";
 
 export async function getClaudeEnvironment(): Promise<EnvironmentResult> {
+  // These must be lazy since configs are imported into the browser
   const { exec } = await import("node:child_process");
   const { promisify } = await import("node:util");
   const { readFile } = await import("node:fs/promises");
