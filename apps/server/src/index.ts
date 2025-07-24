@@ -12,21 +12,22 @@ import {
 } from "@coderouter/shared";
 import * as fuzzysort from "fuzzysort";
 import { minimatch } from "minimatch";
+import { exec } from "node:child_process";
 import { promises as fs } from "node:fs";
 import { createServer } from "node:http";
 import * as path from "node:path";
+import { promisify } from "node:util";
 import { Server } from "socket.io";
 import { spawnAllAgents } from "./agentSpawner.js";
 import { GitDiffManager } from "./gitDiff.js";
 import { createProxyApp, setupWebSocketProxy } from "./proxyApp.js";
 import { RepositoryManager } from "./repositoryManager.js";
+import { waitForConvex } from "./utils/waitForConvex.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWorktreePath } from "./workspace.js";
 
-// Add GitHub-related imports
-import { exec } from "child_process";
-import { promisify } from "util";
+await waitForConvex();
 
 const execAsync = promisify(exec);
 

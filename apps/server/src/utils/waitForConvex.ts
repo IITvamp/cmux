@@ -1,0 +1,31 @@
+import { CONVEX_URL } from "./convexClient";
+
+export async function waitForConvex(): Promise<void> {
+  console.log("Waiting for convex to be ready...");
+
+  const maxRetries = 20;
+  const retryDelay = 100;
+  let attempt = 1;
+
+  for (; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await fetch(CONVEX_URL, {
+        signal: AbortSignal.timeout(1000),
+      });
+      if (response.ok) {
+        console.log(`Convex is ready after ${attempt} attempts`);
+        return;
+      }
+    } catch (error) {
+      if (attempt > 5) {
+        console.error(`Convex connection attempt ${attempt} failed:`, error);
+      }
+
+      if (attempt < maxRetries) {
+        await new Promise((resolve) => setTimeout(resolve, retryDelay));
+      }
+    }
+  }
+
+  throw new Error(`Convex not ready after ${maxRetries} attempts`);
+}

@@ -47,16 +47,6 @@ prefix_output() {
     done
 }
 
-# Start the backend server
-echo -e "${GREEN}Starting backend server on port 3001...${NC}"
-(cd apps/server && bun run dev 2>&1 | prefix_output "SERVER" "$YELLOW") &
-SERVER_PID=$!
-
-# Start the frontend
-echo -e "${GREEN}Starting frontend on port 5173...${NC}"
-(cd apps/client && bun run dev 2>&1 | prefix_output "CLIENT" "$CYAN") &
-CLIENT_PID=$!
-
 # Create logs directory if it doesn't exist
 mkdir -p "$APP_DIR/logs"
 
@@ -81,6 +71,17 @@ CONVEX_BACKEND_PID=$!
     2>&1 | tee ../../logs/convex-dev.log | prefix_output "CONVEX-DEV" "$GREEN") &
 CONVEX_DEV_PID=$!
 CONVEX_PID=$!
+
+
+# Start the backend server
+echo -e "${GREEN}Starting backend server on port 3001...${NC}"
+(cd apps/server && bun run dev 2>&1 | prefix_output "SERVER" "$YELLOW") &
+SERVER_PID=$!
+
+# Start the frontend
+echo -e "${GREEN}Starting frontend on port 5173...${NC}"
+(cd apps/client && bun run dev 2>&1 | prefix_output "CLIENT" "$CYAN") &
+CLIENT_PID=$!
 
 echo -e "${GREEN}Terminal app is running!${NC}"
 echo -e "${BLUE}Frontend: http://localhost:5173${NC}"
