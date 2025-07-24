@@ -6,7 +6,8 @@ export const get = query({
     projectFullName: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    let query = ctx.db.query("tasks")
+    let query = ctx.db
+      .query("tasks")
       .filter((q) => q.neq(q.field("isArchived"), true));
 
     if (args.projectFullName) {
@@ -59,6 +60,23 @@ export const toggle = mutation({
       throw new Error("Task not found");
     }
     await ctx.db.patch(args.id, { isCompleted: !task.isCompleted });
+  },
+});
+
+export const setCompleted = mutation({
+  args: {
+    id: v.id("tasks"),
+    isCompleted: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const task = await ctx.db.get(args.id);
+    if (task === null) {
+      throw new Error("Task not found");
+    }
+    await ctx.db.patch(args.id, {
+      isCompleted: args.isCompleted,
+      updatedAt: Date.now(),
+    });
   },
 });
 

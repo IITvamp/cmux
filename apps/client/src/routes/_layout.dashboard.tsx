@@ -611,7 +611,7 @@ function TaskItem({ task, navigate, archiveTask }: TaskItemProps) {
                   rel="noopener noreferrer"
                   onClick={(e) => e.stopPropagation()}
                   className={clsx(
-                    "p-1 rounded",
+                    "p-1 rounded cursor-default",
                     "bg-neutral-100 dark:bg-neutral-700",
                     "text-neutral-600 dark:text-neutral-400",
                     "hover:bg-neutral-200 dark:hover:bg-neutral-600"

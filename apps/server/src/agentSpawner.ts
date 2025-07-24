@@ -169,6 +169,54 @@ export async function spawnAgent(
       `VSCode instance spawned for agent ${agent.name}: ${vscodeUrl}`
     );
 
+    // Set up terminal-idle event handler
+    vscodeInstance.on("terminal-idle", async (data) => {
+      console.log(
+        `[AgentSpawner] Terminal idle detected for ${agent.name}:`,
+        data
+      );
+
+      // Update the task run as completed
+      if (data.taskId === taskRunId) {
+        try {
+          await convex.mutation(api.taskRuns.complete, {
+            id: taskRunId as Id<"taskRuns">,
+            exitCode: 0,
+          });
+
+          console.log(
+            `[AgentSpawner] Updated taskRun ${taskRunId} as completed after ${data.elapsedMs}ms`
+          );
+
+          // Check if all task runs for this task are completed
+          const taskRuns = await convex.query(api.taskRuns.getByTask, {
+            taskId: taskId as Id<"tasks">,
+          });
+
+          const allCompleted = taskRuns.every(
+            (run) => run.status === "completed" || run.status === "failed"
+          );
+
+          if (allCompleted) {
+            // Update the main task as completed
+            await convex.mutation(api.tasks.setCompleted, {
+              id: taskId as Id<"tasks">,
+              isCompleted: true,
+            });
+
+            console.log(
+              `[AgentSpawner] All task runs completed, updated task ${taskId} as completed`
+            );
+          }
+        } catch (error) {
+          console.error(
+            `[AgentSpawner] Error updating task run after idle:`,
+            error
+          );
+        }
+      }
+    });
+
     // Get ports if it's a Docker instance
     let ports:
       | { vscode: string; worker: string; extension?: string }

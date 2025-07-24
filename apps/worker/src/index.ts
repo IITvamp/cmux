@@ -26,6 +26,7 @@ import * as path from "node:path";
 import { promisify } from "node:util";
 import { Server, type Namespace, type Socket } from "socket.io";
 import { checkDockerReadiness } from "./checkDockerReadiness.js";
+import { detectTerminalIdle } from "./detectTerminalIdle.js";
 import { log } from "./logger.js";
 
 const execAsync = promisify(exec);
@@ -653,7 +654,6 @@ async function createTerminal(
     env = {},
     command,
     args = [],
-    taskId,
   } = options;
 
   const shell = command || (platform() === "win32" ? "powershell.exe" : "bash");
@@ -730,6 +730,8 @@ async function createTerminal(
   });
 
   let childProcess: ChildProcessWithoutNullStreams;
+  const processStartTime = Date.now();
+
   try {
     // Add LINES and COLUMNS to environment for terminal size
     const processEnv = {
@@ -809,6 +811,45 @@ async function createTerminal(
       });
     }
   });
+
+  // detect idle
+  if (command === "tmux" && args.length > 0) {
+    // Extract session name from tmux args
+    const sessionIndex = args.indexOf("-s");
+    const sessionName =
+      sessionIndex !== -1 && args[sessionIndex + 1]
+        ? args[sessionIndex + 1]
+        : terminalId;
+
+    detectTerminalIdle({
+      sessionName: sessionName || terminalId,
+      idleTimeoutMs: 5000, // 5 seconds for production
+      onIdle: () => {
+        const elapsedMs = Date.now() - processStartTime;
+        // Emit idle event via management socket
+        if (mainServerSocket && options.taskId) {
+          mainServerSocket.emit("worker:terminal-idle", {
+            workerId: WORKER_ID,
+            terminalId,
+            taskId: options.taskId,
+            elapsedMs,
+          });
+        }
+      },
+    })
+      .then(async ({ elapsedMs, cleanup }) => {
+        log("INFO", `Terminal ${terminalId} idle after ${elapsedMs}ms`, {
+          terminalId,
+          taskId: options.taskId,
+        });
+
+        // Clean up temp file
+        await cleanup();
+      })
+      .catch((error) => {
+        log("ERROR", `Failed to detect idle for terminal ${terminalId}`, error);
+      });
+  }
 
   log("INFO", "Terminal creation complete", { terminalId });
 }

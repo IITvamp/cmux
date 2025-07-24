@@ -370,6 +370,23 @@ export const getByContainerName = query({
   },
 });
 
+// Complete a task run
+export const complete = mutation({
+  args: {
+    id: v.id("taskRuns"),
+    exitCode: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    await ctx.db.patch(args.id, {
+      status: "completed",
+      exitCode: args.exitCode ?? 0,
+      completedAt: now,
+      updatedAt: now,
+    });
+  },
+});
+
 // Get all active VSCode instances
 export const getActiveVSCodeInstances = query({
   handler: async (ctx) => {

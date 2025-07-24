@@ -121,6 +121,14 @@ export abstract class VSCodeInstance extends EventEmitter {
         this.emit("terminal-exit", data);
       });
 
+      this.workerSocket.on("worker:terminal-idle", (data) => {
+        console.log(
+          `[VSCodeInstance ${this.instanceId}] Terminal idle detected:`,
+          data
+        );
+        this.emit("terminal-idle", data);
+      });
+
       this.workerSocket.on("worker:error", (data) => {
         console.error(
           `[VSCodeInstance ${this.instanceId}] Worker error:`,
