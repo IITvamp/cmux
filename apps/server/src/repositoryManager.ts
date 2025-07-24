@@ -2,7 +2,11 @@ import { exec } from "child_process";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { promisify } from "util";
-import { generatePrePushHook, generatePreCommitHook, type GitHooksConfig } from "./gitHooks.js";
+import {
+  generatePreCommitHook,
+  generatePrePushHook,
+  type GitHooksConfig,
+} from "./gitHooks.js";
 
 const execAsync = promisify(exec);
 
@@ -12,7 +16,7 @@ interface RepositoryOperation {
 }
 
 interface GitConfig {
-  pullStrategy: 'merge' | 'rebase' | 'ff-only';
+  pullStrategy: "merge" | "rebase" | "ff-only";
   fetchDepth: number;
   operationCacheTime: number;
 }
@@ -26,11 +30,11 @@ export class RepositoryManager {
   private static instance: RepositoryManager;
   private operations = new Map<string, RepositoryOperation>();
   private worktreeLocks = new Map<string, Promise<void>>();
-  
+
   private config: GitConfig = {
-    pullStrategy: 'rebase',
+    pullStrategy: "rebase",
     fetchDepth: 1,
-    operationCacheTime: 5000 // 5 seconds
+    operationCacheTime: 5000, // 5 seconds
   };
 
   private constructor(config?: Partial<GitConfig>) {
@@ -60,19 +64,22 @@ export class RepositoryManager {
     }
   }
 
-  private async executeGitCommand(command: string, options?: GitCommandOptions): Promise<{ stdout: string; stderr: string }> {
+  private async executeGitCommand(
+    command: string,
+    options?: GitCommandOptions
+  ): Promise<{ stdout: string; stderr: string }> {
     try {
       const result = await execAsync(command, options);
       return {
         stdout: result.stdout.toString(),
-        stderr: result.stderr.toString()
+        stderr: result.stderr.toString(),
       };
     } catch (error) {
       // Log the command that failed for debugging
       console.error(`Git command failed: ${command}`);
       if (error instanceof Error) {
         console.error(`Error: ${error.message}`);
-        if ('stderr' in error && error.stderr) {
+        if ("stderr" in error && error.stderr) {
           console.error(`Stderr: ${error.stderr}`);
         }
       }
@@ -82,9 +89,16 @@ export class RepositoryManager {
 
   private async configureGitPullStrategy(repoPath: string): Promise<void> {
     try {
-      const strategy = this.config.pullStrategy === 'ff-only' ? 'only' : this.config.pullStrategy;
+      const strategy =
+        this.config.pullStrategy === "ff-only"
+          ? "only"
+          : this.config.pullStrategy;
       await this.executeGitCommand(
-        `git config pull.${this.config.pullStrategy === 'ff-only' ? 'ff' : this.config.pullStrategy} ${strategy === 'only' ? 'only' : 'true'}`,
+        `git config pull.${
+          this.config.pullStrategy === "ff-only"
+            ? "ff"
+            : this.config.pullStrategy
+        } ${strategy === "only" ? "only" : "true"}`,
         { cwd: repoPath }
       );
     } catch (error) {
@@ -92,7 +106,11 @@ export class RepositoryManager {
     }
   }
 
-  async ensureRepository(repoUrl: string, originPath: string, branch: string = "main"): Promise<void> {
+  async ensureRepository(
+    repoUrl: string,
+    originPath: string,
+    branch: string = "main"
+  ): Promise<void> {
     this.cleanupStaleOperations();
 
     // Check if repo exists
@@ -104,16 +122,22 @@ export class RepositoryManager {
       // Configure git pull strategy for existing repos
       await this.configureGitPullStrategy(originPath);
     }
-    
+
     // Always fetch and checkout the requested branch
     await this.handleFetchOperation(repoUrl, originPath, branch);
   }
 
-  private async handleCloneOperation(repoUrl: string, originPath: string): Promise<void> {
+  private async handleCloneOperation(
+    repoUrl: string,
+    originPath: string
+  ): Promise<void> {
     const cloneKey = this.getCacheKey(repoUrl, "clone");
     const existingClone = this.operations.get(cloneKey);
-    
-    if (existingClone && Date.now() - existingClone.timestamp < this.config.operationCacheTime) {
+
+    if (
+      existingClone &&
+      Date.now() - existingClone.timestamp < this.config.operationCacheTime
+    ) {
       console.log(`Reusing existing clone operation for ${repoUrl}`);
       await existingClone.promise;
     } else {
@@ -127,12 +151,21 @@ export class RepositoryManager {
     }
   }
 
-  private async handleFetchOperation(repoUrl: string, originPath: string, branch: string): Promise<void> {
+  private async handleFetchOperation(
+    repoUrl: string,
+    originPath: string,
+    branch: string
+  ): Promise<void> {
     const fetchKey = this.getCacheKey(repoUrl, `fetch:${branch}`);
     const existingFetch = this.operations.get(fetchKey);
-    
-    if (existingFetch && Date.now() - existingFetch.timestamp < this.config.operationCacheTime) {
-      console.log(`Reusing existing fetch operation for ${repoUrl} branch ${branch}`);
+
+    if (
+      existingFetch &&
+      Date.now() - existingFetch.timestamp < this.config.operationCacheTime
+    ) {
+      console.log(
+        `Reusing existing fetch operation for ${repoUrl} branch ${branch}`
+      );
       await existingFetch.promise;
     } else {
       const fetchPromise = this.fetchAndCheckoutBranch(originPath, branch);
@@ -154,17 +187,22 @@ export class RepositoryManager {
     }
   }
 
-  private async cloneRepository(repoUrl: string, originPath: string): Promise<void> {
-    console.log(`Cloning repository ${repoUrl} with depth ${this.config.fetchDepth}...`);
+  private async cloneRepository(
+    repoUrl: string,
+    originPath: string
+  ): Promise<void> {
+    console.log(
+      `Cloning repository ${repoUrl} with depth ${this.config.fetchDepth}...`
+    );
     try {
       await this.executeGitCommand(
         `git clone --depth ${this.config.fetchDepth} "${repoUrl}" "${originPath}"`
       );
       console.log(`Successfully cloned ${repoUrl}`);
-      
+
       // Configure git pull strategy for the newly cloned repo
       await this.configureGitPullStrategy(originPath);
-      
+
       // Set up git hooks
       await this.setupGitHooks(originPath);
     } catch (error) {
@@ -176,15 +214,22 @@ export class RepositoryManager {
   private async getCurrentBranch(repoPath: string): Promise<string> {
     const { stdout } = await this.executeGitCommand(
       `git rev-parse --abbrev-ref HEAD`,
-      { cwd: repoPath, encoding: 'utf8' }
+      { cwd: repoPath, encoding: "utf8" }
     );
     return stdout.trim();
   }
 
-  private async pullLatestChanges(repoPath: string, branch: string): Promise<void> {
-    const pullFlags = this.config.pullStrategy === 'rebase' ? '--rebase' : 
-                     this.config.pullStrategy === 'ff-only' ? '--ff-only' : '';
-    
+  private async pullLatestChanges(
+    repoPath: string,
+    branch: string
+  ): Promise<void> {
+    const pullFlags =
+      this.config.pullStrategy === "rebase"
+        ? "--rebase"
+        : this.config.pullStrategy === "ff-only"
+        ? "--ff-only"
+        : "";
+
     try {
       await this.executeGitCommand(
         `git pull ${pullFlags} --depth ${this.config.fetchDepth} origin ${branch}`,
@@ -193,8 +238,14 @@ export class RepositoryManager {
       console.log(`Successfully pulled latest changes for ${branch}`);
     } catch (error) {
       // If pull fails due to conflicts or divergent branches, try to recover
-      if (error instanceof Error && (error.message.includes('divergent branches') || error.message.includes('conflict'))) {
-        console.warn(`Pull failed due to conflicts, attempting to reset to origin/${branch}`);
+      if (
+        error instanceof Error &&
+        (error.message.includes("divergent branches") ||
+          error.message.includes("conflict"))
+      ) {
+        console.warn(
+          `Pull failed due to conflicts, attempting to reset to origin/${branch}`
+        );
         try {
           // Fetch the latest state
           await this.executeGitCommand(
@@ -202,10 +253,9 @@ export class RepositoryManager {
             { cwd: repoPath }
           );
           // Reset to the remote branch
-          await this.executeGitCommand(
-            `git reset --hard origin/${branch}`,
-            { cwd: repoPath }
-          );
+          await this.executeGitCommand(`git reset --hard origin/${branch}`, {
+            cwd: repoPath,
+          });
           console.log(`Successfully reset to origin/${branch}`);
         } catch (resetError) {
           console.error(`Failed to reset to origin/${branch}:`, resetError);
@@ -217,11 +267,14 @@ export class RepositoryManager {
     }
   }
 
-  private async fetchAndCheckoutBranch(originPath: string, branch: string): Promise<void> {
+  private async fetchAndCheckoutBranch(
+    originPath: string,
+    branch: string
+  ): Promise<void> {
     console.log(`Fetching and checking out branch ${branch}...`);
     try {
       const currentBranch = await this.getCurrentBranch(originPath);
-      
+
       if (currentBranch === branch) {
         // Already on the requested branch, just pull latest
         console.log(`Already on branch ${branch}, pulling latest changes...`);
@@ -230,22 +283,28 @@ export class RepositoryManager {
         // Fetch and checkout different branch
         await this.switchToBranch(originPath, branch);
       }
-      
+
       console.log(`Successfully on branch ${branch}`);
     } catch (error) {
-      console.warn(`Failed to fetch/checkout branch ${branch}, falling back to current branch:`, error);
+      console.warn(
+        `Failed to fetch/checkout branch ${branch}, falling back to current branch:`,
+        error
+      );
       // Don't throw - we'll use whatever branch is currently checked out
     }
   }
 
-  private async switchToBranch(repoPath: string, branch: string): Promise<void> {
+  private async switchToBranch(
+    repoPath: string,
+    branch: string
+  ): Promise<void> {
     try {
       // Try to fetch the branch without specifying local name
       await this.executeGitCommand(
         `git fetch --depth ${this.config.fetchDepth} origin ${branch}`,
         { cwd: repoPath }
       );
-      
+
       // Checkout the branch
       await this.executeGitCommand(
         `git checkout -B ${branch} origin/${branch}`,
@@ -253,11 +312,10 @@ export class RepositoryManager {
       );
     } catch (error) {
       // If branch doesn't exist remotely, try just checking out locally
-      if (error instanceof Error && error.message.includes('not found')) {
-        await this.executeGitCommand(
-          `git checkout ${branch}`,
-          { cwd: repoPath }
-        );
+      if (error instanceof Error && error.message.includes("not found")) {
+        await this.executeGitCommand(`git checkout ${branch}`, {
+          cwd: repoPath,
+        });
       } else {
         throw error;
       }
@@ -273,7 +331,9 @@ export class RepositoryManager {
     // Wait for any existing worktree operation on this repo to complete
     const existingLock = this.worktreeLocks.get(originPath);
     if (existingLock) {
-      console.log(`Waiting for existing worktree operation on ${originPath}...`);
+      console.log(
+        `Waiting for existing worktree operation on ${originPath}...`
+      );
       await existingLock;
     }
 
@@ -294,7 +354,7 @@ export class RepositoryManager {
         { cwd: originPath }
       );
       console.log(`Successfully created worktree at ${worktreePath}`);
-      
+
       // Set up branch configuration to push to the same name on remote
       await this.executeGitCommand(
         `git config branch.${branchName}.remote origin`,
@@ -304,8 +364,10 @@ export class RepositoryManager {
         `git config branch.${branchName}.merge refs/heads/${branchName}`,
         { cwd: worktreePath }
       );
-      console.log(`Configured branch ${branchName} to track origin/${branchName} when pushed`);
-      
+      console.log(
+        `Configured branch ${branchName} to track origin/${branchName} when pushed`
+      );
+
       // Set up git hooks in the worktree
       await this.setupGitHooks(worktreePath);
     } catch (error) {
@@ -327,16 +389,16 @@ export class RepositoryManager {
   private async setupGitHooks(repoPath: string): Promise<void> {
     try {
       // Determine if this is a worktree or main repository
-      const gitDir = path.join(repoPath, '.git');
+      const gitDir = path.join(repoPath, ".git");
       const gitDirStat = await fs.stat(gitDir);
-      
+
       let hooksDir: string;
       if (gitDirStat.isDirectory()) {
         // Regular repository
-        hooksDir = path.join(gitDir, 'hooks');
+        hooksDir = path.join(gitDir, "hooks");
       } else {
         // Worktree - read the .git file to find the actual git directory
-        const gitFileContent = await fs.readFile(gitDir, 'utf8');
+        const gitFileContent = await fs.readFile(gitDir, "utf8");
         const match = gitFileContent.match(/gitdir: (.+)/);
         if (!match) {
           console.warn(`Could not parse .git file in ${repoPath}`);
@@ -344,18 +406,18 @@ export class RepositoryManager {
         }
         const actualGitDir = match[1].trim();
         // For worktrees, hooks are in the common git directory
-        const commonDir = path.join(path.dirname(actualGitDir), 'commondir');
+        const commonDir = path.join(path.dirname(actualGitDir), "commondir");
         try {
-          const commonDirContent = await fs.readFile(commonDir, 'utf8');
+          const commonDirContent = await fs.readFile(commonDir, "utf8");
           const commonPath = commonDirContent.trim();
           // If commondir is relative, resolve it from the worktree git directory
-          const resolvedCommonPath = path.isAbsolute(commonPath) 
-            ? commonPath 
+          const resolvedCommonPath = path.isAbsolute(commonPath)
+            ? commonPath
             : path.resolve(path.dirname(actualGitDir), commonPath);
-          hooksDir = path.join(resolvedCommonPath, 'hooks');
+          hooksDir = path.join(resolvedCommonPath, "hooks");
         } catch {
           // Fallback to the hooks in the worktree's git directory
-          hooksDir = path.join(actualGitDir, 'hooks');
+          hooksDir = path.join(actualGitDir, "hooks");
         }
       }
 
@@ -364,19 +426,29 @@ export class RepositoryManager {
 
       // Configure hooks
       const hooksConfig: GitHooksConfig = {
-        protectedBranches: ['main', 'master', 'develop', 'production', 'staging'],
+        protectedBranches: [
+          "main",
+          "master",
+          "develop",
+          "production",
+          "staging",
+        ],
         allowForcePush: false,
-        allowBranchDeletion: false
+        allowBranchDeletion: false,
       };
 
       // Write pre-push hook
-      const prePushPath = path.join(hooksDir, 'pre-push');
-      await fs.writeFile(prePushPath, generatePrePushHook(hooksConfig), { mode: 0o755 });
+      const prePushPath = path.join(hooksDir, "pre-push");
+      await fs.writeFile(prePushPath, generatePrePushHook(hooksConfig), {
+        mode: 0o755,
+      });
       console.log(`Created pre-push hook at ${prePushPath}`);
 
       // Write pre-commit hook
-      const preCommitPath = path.join(hooksDir, 'pre-commit');
-      await fs.writeFile(preCommitPath, generatePreCommitHook(hooksConfig), { mode: 0o755 });
+      const preCommitPath = path.join(hooksDir, "pre-commit");
+      await fs.writeFile(preCommitPath, generatePreCommitHook(hooksConfig), {
+        mode: 0o755,
+      });
       console.log(`Created pre-commit hook at ${preCommitPath}`);
     } catch (error) {
       console.warn(`Failed to set up git hooks in ${repoPath}:`, error);

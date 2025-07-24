@@ -37,7 +37,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     timestamp: number;
   } | null = null;
   private static readonly PORT_CACHE_DURATION = 2000; // 2 seconds
-  private static syncInterval: NodeJS.Timeout | null = null;
+  private static syncInterval: ReturnType<typeof setTimeout> | null = null;
   private static dockerInstance: Docker | null = null;
 
   // Get or create the Docker singleton

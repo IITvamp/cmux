@@ -5,6 +5,7 @@ import httpProxy from "http-proxy";
 import { convex } from "./utils/convexClient.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
+import path from "node:path";
 
 // Port cache to avoid hammering Docker
 interface PortCacheEntry {
@@ -199,8 +200,18 @@ export function createProxyApp({
         console.log(
           `handling static! req.url=${req.url} publicPath=${publicPath}`
         );
-        return staticHandler(req, res, next);
-        // return res.status(200).send("cmux 📟");
+        
+        // Check if this is a static asset request
+        const hasExtension = path.extname(req.url) !== "";
+        const isAssets = req.url.startsWith("/assets");
+        
+        if (hasExtension || isAssets) {
+          // Serve static files for assets or files with extensions
+          return staticHandler(req, res, next);
+        } else {
+          // For all other routes (no extension), serve index.html for SPA routing
+          return res.sendFile(path.join(publicPath, "index.html"));
+        }
       }
 
       // Parse format: containerName.port.localhost:9776
