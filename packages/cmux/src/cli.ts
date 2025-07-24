@@ -1,7 +1,8 @@
 import { startServer } from "@coderouter/server";
 import { Command } from "commander";
 import { ChildProcess, spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
+import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -62,7 +63,10 @@ program
   .action(async (options) => {
     const port = parseInt(options.port);
     const staticDir = path.resolve(__dirname, "..", "public/dist");
-    const convexDir = path.resolve(__dirname, "../../convex");
+    const convexDir = path.resolve(homedir(), ".cmux", "data");
+
+    // ensure convexDir exists
+    mkdirSync(convexDir, { recursive: true });
 
     // Check if convex directory exists
     if (!existsSync(convexDir)) {
