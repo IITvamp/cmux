@@ -537,10 +537,10 @@ function TaskItem({ task, navigate, archiveTask }: TaskItemProps) {
       <div className="flex-1 min-w-0 flex items-center gap-2">
         <span
           className={clsx(
-            "text-[14px] truncate",
-            task.isCompleted
-              ? "text-neutral-500 dark:text-neutral-400 line-through"
-              : "text-neutral-900 dark:text-neutral-100"
+            "text-[14px] truncate"
+            // task.isCompleted
+            //   ? "text-neutral-500 dark:text-neutral-400 line-through"
+            //   : "text-neutral-900 dark:text-neutral-100"
           )}
         >
           {task.text}

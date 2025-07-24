@@ -812,6 +812,9 @@ async function createTerminal(
     }
   });
 
+  log("INFO", "command=", command);
+  log("INFO", "args=", args);
+
   // detect idle
   if (command === "tmux" && args.length > 0) {
     // Extract session name from tmux args
@@ -821,10 +824,20 @@ async function createTerminal(
         ? args[sessionIndex + 1]
         : terminalId;
 
+    log("INFO", "Setting up idle detection for terminal", {
+      terminalId,
+      sessionName,
+    });
+
     detectTerminalIdle({
       sessionName: sessionName || terminalId,
       idleTimeoutMs: 5000, // 5 seconds for production
       onIdle: () => {
+        log("INFO", "Terminal idle detected", {
+          terminalId,
+          taskId: options.taskId,
+        });
+
         const elapsedMs = Date.now() - processStartTime;
         // Emit idle event via management socket
         if (mainServerSocket && options.taskId) {
@@ -837,14 +850,11 @@ async function createTerminal(
         }
       },
     })
-      .then(async ({ elapsedMs, cleanup }) => {
+      .then(async ({ elapsedMs }) => {
         log("INFO", `Terminal ${terminalId} idle after ${elapsedMs}ms`, {
           terminalId,
           taskId: options.taskId,
         });
-
-        // Clean up temp file
-        await cleanup();
       })
       .catch((error) => {
         log("ERROR", `Failed to detect idle for terminal ${terminalId}`, error);

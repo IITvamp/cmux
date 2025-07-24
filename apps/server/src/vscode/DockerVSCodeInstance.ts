@@ -26,7 +26,7 @@ export interface ContainerMapping {
   workspacePath?: string;
 }
 
-export const containerMappings = new Map<string, ContainerMapping>();
+const containerMappings = new Map<string, ContainerMapping>();
 
 export class DockerVSCodeInstance extends VSCodeInstance {
   private containerName: string;
