@@ -24,10 +24,12 @@ if (isBundled) {
 
 const program = new Command();
 
+declare const VERSION: string;
+
 program
   .name("cmux")
   .description("Socket.IO and static file server")
-  .version("0.2.8")
+  .version(VERSION)
   .option("-p, --port <port>", "port to listen on", "9776")
   .option("-c, --cors <origin>", "CORS origin configuration", "true")
   .action(async (options) => {

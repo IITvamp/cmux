@@ -2,6 +2,9 @@
 
 import { $ } from "bun";
 import { spawn } from "node:child_process";
+import cmuxPackageJson from "../packages/cmux/package.json";
+
+console.log("cmuxPackageJson", cmuxPackageJson);
 
 // Build the client with the correct VITE_CONVEX_URL
 console.log("Building client app...");
@@ -81,8 +84,10 @@ await $`mv /tmp/cmux-bundle.zip ./packages/cmux/src/convex/`;
 // Clean up temp directory
 await $`rm -rf /tmp/cmux-bundle`;
 
+const VERSION = cmuxPackageJson.version;
+
 // bun build the cli
-await $`bun build ./packages/cmux/src/cli.ts --compile --outfile cmux-cli`;
+await $`bun build ./packages/cmux/src/cli.ts --compile --define VERSION=${VERSION} --outfile cmux-cli`;
 
 // exit with 0
 process.exit(0);

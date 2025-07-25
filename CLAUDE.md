@@ -18,18 +18,21 @@ Always use node: prefixes for node imports.
 # Publishing cmux CLI to npm
 
 cmux is published as a single-file executable binary to npm. The binary includes:
+
 - Convex backend (binary + SQLite database)
 - Web UI static files (public/dist)
 - All dependencies bundled
 
 ## Build and publish process:
 
-1. **Update version** in packages/cmux/package.json and packages/cmux/src/cli.ts
+1. **Update version** in packages/cmux/package.json
 
 2. **Build the cmux-cli bundle**:
+
    ```bash
    ./scripts/build-cli.ts
    ```
+
    This script:
    - Builds the client with VITE_CONVEX_URL=http://localhost:9777
    - Copies client dist to packages/cmux/public
@@ -50,6 +53,7 @@ cmux is published as a single-file executable binary to npm. The binary includes
    - Publishes to npm registry
 
 The published package allows users to:
+
 ```bash
 npm install -g cmux
 cmux  # Runs on port 9776, extracts bundle to ~/.cmux on first run
@@ -58,10 +62,11 @@ cmux  # Runs on port 9776, extracts bundle to ~/.cmux on first run
 ## Important Build Notes:
 
 ### Version Checking
+
 **Critical**: Always increment the version number BEFORE running the build script. The build process embeds the package.json into the bundle, which is used for version checking during upgrades. The correct workflow is:
 
 1. Update version in both files
-2. Run build script 
+2. Run build script
 3. Publish to npm
 
 This ensures the bundle contains the correct version for upgrade detection.
