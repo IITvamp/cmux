@@ -1,7 +1,4 @@
-import type {
-  ServerToWorkerEvents,
-  WorkerToServerEvents,
-} from "@coderouter/shared";
+import type { ServerToWorkerEvents, WorkerToServerEvents } from "@cmux/shared";
 import { MorphCloudClient } from "morphcloud";
 import { io, Socket } from "socket.io-client";
 

@@ -1,4 +1,4 @@
-import { api } from "@coderouter/convex/api";
+import { api } from "@cmux/convex/api";
 import express from "express";
 import type { IncomingMessage, Server } from "http";
 import httpProxy from "http-proxy";
@@ -222,9 +222,9 @@ export function createProxyApp({
       }
 
       const { containerName, targetPort } = parsed;
-      const fullContainerName = containerName.startsWith("coderouter-")
+      const fullContainerName = containerName.startsWith("cmux-")
         ? containerName
-        : `coderouter-${containerName}`;
+        : `cmux-${containerName}`;
 
       // Determine which container port we need based on the target port
       let containerPort: string;
@@ -345,9 +345,9 @@ export function setupWebSocketProxy(server: Server) {
       }
 
       const { containerName, targetPort } = parsed;
-      const fullContainerName = containerName.startsWith("coderouter-")
+      const fullContainerName = containerName.startsWith("cmux-")
         ? containerName
-        : `coderouter-${containerName}`;
+        : `cmux-${containerName}`;
 
       // Determine container port
       let containerPort: string;

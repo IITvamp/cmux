@@ -1,4 +1,4 @@
-import { getShortId } from "@coderouter/shared";
+import { getShortId } from "@cmux/shared";
 import { persistentIframeManager } from "./persistentIframeManager";
 
 /**

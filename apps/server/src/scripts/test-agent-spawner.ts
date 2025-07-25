@@ -1,6 +1,6 @@
 #!/usr/bin/env tsx
-import { api } from "@coderouter/convex/api";
-import { AGENT_CONFIGS } from "@coderouter/shared/agentConfig";
+import { api } from "@cmux/convex/api";
+import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
 import { spawnAgent } from "../agentSpawner.js";
 import { convex } from "../utils/convexClient.js";
 import { VSCodeInstance } from "../vscode/VSCodeInstance.js";
@@ -33,7 +33,7 @@ async function main() {
 
   // Test parameters
   const testOptions = {
-    repoUrl: "https://github.com/lawrencecchen/coderouter.git",
+    repoUrl: "https://github.com/lawrencecchen/cmux.git",
     branch: "main",
     taskDescription: "what's the time",
     isCloudMode: false,
@@ -44,7 +44,7 @@ async function main() {
   // Create a task in Convex first
   console.log("\nCreating task in Convex...");
   const taskId = await convex.mutation(api.tasks.create, {
-    projectFullName: "lawrencecchen/coderouter",
+    projectFullName: "lawrencecchen/cmux",
     text: testOptions.taskDescription,
   });
   console.log(`Created task: ${taskId}`);
@@ -95,7 +95,7 @@ async function main() {
           try {
             const { execSync } = await import("child_process");
             // Find container by partial name match
-            const findCmd = `docker ps -a --format "{{.ID}} {{.Names}}" | grep coderouter-vscode | head -1 | awk '{print $1}'`;
+            const findCmd = `docker ps -a --format "{{.ID}} {{.Names}}" | grep cmux-vscode | head -1 | awk '{print $1}'`;
             const dockerId = execSync(findCmd).toString().trim();
 
             if (dockerId) {

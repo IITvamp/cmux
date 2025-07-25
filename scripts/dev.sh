@@ -4,7 +4,7 @@ set -e
 
 source .env.local
 
-docker build -t coderouter-worker:0.0.1 .
+docker build -t cmux-worker:0.0.1 .
 
 # Get the directory where this script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"

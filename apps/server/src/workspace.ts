@@ -1,4 +1,4 @@
-import { api } from "@coderouter/convex/api";
+import { api } from "@cmux/convex/api";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
@@ -69,7 +69,7 @@ export async function getWorktreePath(args: {
   const worktreesPath = path.join(projectPath, "worktrees");
 
   const timestamp = Date.now();
-  const branchName = `coderouter-${timestamp}`;
+  const branchName = `cmux-${timestamp}`;
   const worktreePath = path.join(worktreesPath, branchName);
 
   // For consistency, still return appDataPath even if not used for custom paths

@@ -1,7 +1,7 @@
 import { preloadTaskRunIframes } from "@/lib/preloadTaskRunIframes";
-import { api } from "@coderouter/convex/api";
-import { type Id } from "@coderouter/convex/dataModel";
-import { getShortId } from "@coderouter/shared";
+import { api } from "@cmux/convex/api";
+import { type Id } from "@cmux/convex/dataModel";
+import { getShortId } from "@cmux/shared";
 import { createFileRoute } from "@tanstack/react-router";
 import "@xterm/xterm/css/xterm.css";
 import { useQuery } from "convex/react";
@@ -25,9 +25,9 @@ function TaskRunComponent() {
   console.log("taskRun", taskRun);
 
   const shortId = getShortId(taskRunId);
-  
+
   let iframeUrl: string;
-  
+
   if (USE_PROXY_URL) {
     // Use the proxy URL pattern
     iframeUrl = `http://${shortId}.39378.localhost:9776/?folder=/root/workspace`;

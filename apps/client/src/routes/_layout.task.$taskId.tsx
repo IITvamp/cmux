@@ -1,5 +1,5 @@
-import { api } from "@coderouter/convex/api";
-import { type Id } from "@coderouter/convex/dataModel";
+import { api } from "@cmux/convex/api";
+import { type Id } from "@cmux/convex/dataModel";
 import { convexQuery } from "@convex-dev/react-query";
 import { useClipboard } from "@mantine/hooks";
 import { useSuspenseQuery } from "@tanstack/react-query";

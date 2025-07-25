@@ -1,12 +1,12 @@
-import { api } from "@coderouter/convex/api";
+import { api } from "@cmux/convex/api";
 
-import type { Id } from "@coderouter/convex/dataModel";
+import type { Id } from "@cmux/convex/dataModel";
 import {
   AGENT_CONFIGS,
   type AgentConfig,
   type EnvironmentResult,
-} from "@coderouter/shared/agentConfig";
-import type { WorkerCreateTerminal } from "@coderouter/shared/worker-schemas";
+} from "@cmux/shared/agentConfig";
+import type { WorkerCreateTerminal } from "@cmux/shared/worker-schemas";
 import { convex } from "./utils/convexClient.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { MorphVSCodeInstance } from "./vscode/MorphVSCodeInstance.js";

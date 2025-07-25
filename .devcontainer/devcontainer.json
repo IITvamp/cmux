@@ -1,5 +1,5 @@
 {
-  "name": "CodeRouter Development Container",
+  "name": "cmux Development Container",
   "build": {
     "dockerfile": "Dockerfile"
   },

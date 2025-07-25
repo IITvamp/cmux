@@ -1,6 +1,6 @@
-import { api } from "@coderouter/convex/api";
-import { type Id } from "@coderouter/convex/dataModel";
-import { createTerminalOptions } from "@coderouter/shared/terminal-config";
+import { api } from "@cmux/convex/api";
+import { type Id } from "@cmux/convex/dataModel";
+import { createTerminalOptions } from "@cmux/shared/terminal-config";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal as XTerm } from "@xterm/xterm";
@@ -26,10 +26,12 @@ export function RestoredTerminalView({ runId }: RestoredTerminalViewProps) {
     if (!terminalRef.current) return;
 
     // Create xterm instance with same theme as TerminalView
-    const xterm = new XTerm(createTerminalOptions({
-      scrollback: 100000,
-      convertEol: true,
-    }));
+    const xterm = new XTerm(
+      createTerminalOptions({
+        scrollback: 100000,
+        convertEol: true,
+      })
+    );
 
     const fitAddon = new FitAddon();
     const webLinksAddon = new WebLinksAddon();

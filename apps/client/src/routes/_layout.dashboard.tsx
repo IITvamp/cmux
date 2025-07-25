@@ -10,9 +10,9 @@ import {
 } from "@/components/ui/tooltip";
 import { useSocket } from "@/contexts/socket/use-socket";
 import { createFakeConvexId } from "@/lib/fakeConvexId";
-import { api } from "@coderouter/convex/api";
-import type { Doc } from "@coderouter/convex/dataModel";
-import { AGENT_CONFIGS } from "@coderouter/shared/agentConfig";
+import { api } from "@cmux/convex/api";
+import type { Doc } from "@cmux/convex/dataModel";
+import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
 import { convexQuery } from "@convex-dev/react-query";
 import { useClipboard } from "@mantine/hooks";
 import { useQuery } from "@tanstack/react-query";

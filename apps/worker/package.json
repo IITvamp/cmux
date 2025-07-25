@@ -1,5 +1,5 @@
 {
-  "name": "@coderouter/worker",
+  "name": "@cmux/worker",
   "module": "src/index.ts",
   "type": "module",
   "private": true,
@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@coderouter/shared": "workspace:*",
+    "@cmux/shared": "workspace:*",
     "@xterm/addon-serialize": "^0.13.0",
     "@xterm/headless": "^5.5.0",
     "socket.io": "^4.8.0",

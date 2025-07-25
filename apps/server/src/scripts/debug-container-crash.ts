@@ -3,13 +3,13 @@ import Docker from "dockerode";
 
 async function main() {
   const docker = new Docker({ socketPath: "/var/run/docker.sock" });
-  const containerName = `coderouter-vscode-debug-${Date.now()}`;
-  
+  const containerName = `cmux-vscode-debug-${Date.now()}`;
+
   console.log(`Creating container ${containerName}...`);
-  
+
   const container = await docker.createContainer({
     name: containerName,
-    Image: "coderouter-worker:0.0.1",
+    Image: "cmux-worker:0.0.1",
     Env: ["NODE_ENV=production", "WORKER_PORT=39377"],
     HostConfig: {
       AutoRemove: false, // Don't auto-remove so we can inspect logs
@@ -24,13 +24,13 @@ async function main() {
       "39377/tcp": {},
     },
   });
-  
+
   console.log(`Starting container...`);
   await container.start();
-  
+
   console.log(`Container started. Waiting 10 seconds...`);
-  await new Promise(resolve => setTimeout(resolve, 10000));
-  
+  await new Promise((resolve) => setTimeout(resolve, 10000));
+
   console.log(`Getting container logs...`);
   const logs = await container.logs({
     stdout: true,
@@ -38,21 +38,21 @@ async function main() {
     timestamps: true,
     tail: 100,
   });
-  
+
   console.log(`\n=== Container logs ===`);
   console.log(logs.toString());
-  
+
   console.log(`\nChecking container status...`);
   const info = await container.inspect();
   console.log(`Running: ${info.State.Running}`);
   console.log(`Status: ${info.State.Status}`);
   console.log(`Exit code: ${info.State.ExitCode}`);
-  
+
   if (!info.State.Running) {
     console.log(`\nContainer exited. Full state:`);
     console.log(JSON.stringify(info.State, null, 2));
   }
-  
+
   console.log(`\nStopping and removing container...`);
   try {
     await container.stop();

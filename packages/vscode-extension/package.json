@@ -1,13 +1,13 @@
 {
-  "name": "coderouter-extension",
-  "displayName": "Coderouter Extension",
-  "description": "Coderouter VS Code Extension",
+  "name": "cmux-extension",
+  "displayName": "cmux Extension",
+  "description": "cmux VS Code Extension",
   "version": "0.0.1",
   "type": "module",
-  "publisher": "coderouter",
+  "publisher": "cmux",
   "repository": {
     "type": "git",
-    "url": "https://github.com/lawrencecchen/coderouter"
+    "url": "https://github.com/lawrencecchen/cmux"
   },
   "engines": {
     "vscode": "^1.101.2"
@@ -22,12 +22,12 @@
   "contributes": {
     "commands": [
       {
-        "command": "coderouter.helloWorld",
-        "title": "Coderouter: Hello World"
+        "command": "cmux.helloWorld",
+        "title": "cmux: Hello World"
       },
       {
-        "command": "coderouter.run",
-        "title": "Coderouter: Run"
+        "command": "cmux.run",
+        "title": "cmux: Run"
       }
     ]
   },
@@ -43,7 +43,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {
-    "@coderouter/shared": "workspace:*",
+    "@cmux/shared": "workspace:*",
     "@types/mocha": "^10.0.6",
     "@types/node": "^24.1.0",
     "@types/vscode": "^1.73.0",

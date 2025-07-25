@@ -99,8 +99,8 @@ async function setupDockerWithBuildKit(instance: Instance) {
 async function copyApplicationFiles(instance: Instance) {
   console.log("\n--- Copying application files ---");
 
-  // Create the coderouter directory structure
-  await runSSHCommand(instance, "mkdir -p /coderouter", true);
+  // Create the cmux directory structure
+  await runSSHCommand(instance, "mkdir -p /cmux", true);
 
   // Instead of syncing large directories, let's create a tarball and transfer it
   const projectRoot = path.join(__dirname, "..");
@@ -109,7 +109,7 @@ async function copyApplicationFiles(instance: Instance) {
 
   // Create tarball excluding node_modules and other unnecessary files
   const { execSync } = await import("child_process");
-  const tarballPath = path.join(__dirname, "coderouter-files.tar.gz");
+  const tarballPath = path.join(__dirname, "cmux-files.tar.gz");
 
   try {
     // Create tarball with specific files we need
@@ -122,16 +122,13 @@ async function copyApplicationFiles(instance: Instance) {
 
     console.log("Uploading tarball to instance...");
     // Upload the tarball
-    await instance.sync(
-      tarballPath,
-      `${instance.id}:/tmp/coderouter-files.tar.gz`
-    );
+    await instance.sync(tarballPath, `${instance.id}:/tmp/cmux-files.tar.gz`);
 
     // Extract on the instance
     console.log("Extracting files on instance...");
     await runSSHCommand(
       instance,
-      "cd /coderouter && tar -xzf /tmp/coderouter-files.tar.gz && rm /tmp/coderouter-files.tar.gz",
+      "cd /cmux && tar -xzf /tmp/cmux-files.tar.gz && rm /tmp/cmux-files.tar.gz",
       true
     );
 
@@ -145,7 +142,7 @@ async function copyApplicationFiles(instance: Instance) {
     const filesToCopy = ["package.json", "package-lock.json"];
     for (const file of filesToCopy) {
       const srcPath = path.join(projectRoot, file);
-      const destPath = `/coderouter/${file}`;
+      const destPath = `/cmux/${file}`;
       console.log(`Copying ${file}...`);
       try {
         const content = await fs.readFile(srcPath, "utf-8");
@@ -169,7 +166,7 @@ async function buildWorkerWithBuildKit(instance: Instance) {
   // Set up PATH for bun
   await runSSHCommand(
     instance,
-    "export PATH=/root/.bun/bin:$PATH && cd /coderouter && npm install",
+    "export PATH=/root/.bun/bin:$PATH && cd /cmux && npm install",
     true
   );
 
@@ -179,21 +176,21 @@ async function buildWorkerWithBuildKit(instance: Instance) {
   // Build the worker
   await runSSHCommand(
     instance,
-    "export PATH=/root/.bun/bin:$PATH && bun build /coderouter/apps/worker/src/index.ts --target node --outdir /builtins/build",
+    "export PATH=/root/.bun/bin:$PATH && bun build /cmux/apps/worker/src/index.ts --target node --outdir /builtins/build",
     true
   );
 
   // Copy necessary files to builtins
   await runSSHCommand(
     instance,
-    "cp /coderouter/apps/worker/package.json /builtins/package.json",
+    "cp /cmux/apps/worker/package.json /builtins/package.json",
     true
   );
 
   // Copy wait-for-docker.sh
   await runSSHCommand(
     instance,
-    "cp /coderouter/apps/worker/wait-for-docker.sh /usr/local/bin/ && chmod +x /usr/local/bin/wait-for-docker.sh",
+    "cp /cmux/apps/worker/wait-for-docker.sh /usr/local/bin/ && chmod +x /usr/local/bin/wait-for-docker.sh",
     true
   );
 
@@ -238,16 +235,16 @@ RUN curl -fsSL https://bun.sh/install | bash
 ENV PATH="/root/.bun/bin:$PATH"
 
 # Application source
-COPY . /coderouter
-WORKDIR /coderouter
+COPY . /cmux
+WORKDIR /cmux
 
 # Install Node deps and build the worker
 RUN npm install
 
-RUN ls /coderouter
-RUN ls /coderouter/apps/worker
+RUN ls /cmux
+RUN ls /cmux/apps/worker
 
-RUN bun build /coderouter/apps/worker/src/index.ts --target node --outdir /coderouter/apps/worker/build
+RUN bun build /cmux/apps/worker/src/index.ts --target node --outdir /cmux/apps/worker/build
 
 # Move artefacts to runtime location
 RUN mkdir -p /builtins && \\
@@ -282,7 +279,7 @@ CMD []
 
   await runSSHCommand(
     instance,
-    `cat > /coderouter/Dockerfile << 'EOF'
+    `cat > /cmux/Dockerfile << 'EOF'
 ${dockerfile}
 EOF`,
     true
@@ -295,7 +292,7 @@ async function buildAndTestDocker(instance: Instance) {
   // Build the Docker image
   const buildResult = await runSSHCommand(
     instance,
-    "cd /coderouter && DOCKER_BUILDKIT=1 docker build --progress=plain -t coderouter-worker:latest .",
+    "cd /cmux && DOCKER_BUILDKIT=1 docker build --progress=plain -t cmux-worker:latest .",
     true
   );
 
@@ -308,7 +305,7 @@ async function buildAndTestDocker(instance: Instance) {
   // Run a test container
   const runResult = await runSSHCommand(
     instance,
-    "docker run -d --privileged -p 39377:39377 --name test-worker coderouter-worker:latest",
+    "docker run -d --privileged -p 39377:39377 --name test-worker cmux-worker:latest",
     true
   );
 
@@ -487,8 +484,8 @@ async function main() {
       console.log("\n--- Creating final snapshot ---");
       const finalSnapshot = await instance.snapshot({
         metadata: {
-          name: `coderouter-worker-${Date.now()}`,
-          description: "CodeRouter worker with Docker BuildKit support",
+          name: `cmux-worker-${Date.now()}`,
+          description: "cmux worker with Docker BuildKit support",
         },
       });
 

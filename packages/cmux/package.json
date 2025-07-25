@@ -32,7 +32,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@coderouter/server": "workspace:*",
+    "@cmux/server": "workspace:*",
     "commander": "^11.1.0",
     "convex": "1.26.0-alpha.6",
     "cors": "^2.8.5",

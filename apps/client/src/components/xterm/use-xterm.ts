@@ -1,4 +1,4 @@
-import { createTerminalOptions } from "@coderouter/shared/terminal-config";
+import { createTerminalOptions } from "@cmux/shared/terminal-config";
 import {
   Terminal,
   type ITerminalAddon,
@@ -39,11 +39,13 @@ export function useXTerm({ options, addons, listeners }: UseXTermProps = {}) {
   }, [listeners]);
 
   useEffect(() => {
-    const instance = new Terminal(createTerminalOptions({
-      cursorBlink: true,
-      scrollback: 1000000,
-      ...options,
-    }));
+    const instance = new Terminal(
+      createTerminalOptions({
+        cursorBlink: true,
+        scrollback: 1000000,
+        ...options,
+      })
+    );
 
     // Load optional addons
     addons?.forEach((addon) => instance.loadAddon(addon));

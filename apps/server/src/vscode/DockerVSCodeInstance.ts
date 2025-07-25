@@ -1,6 +1,6 @@
-import { api } from "@coderouter/convex/api";
-import type { Id } from "@coderouter/convex/dataModel";
-import { getShortId } from "@coderouter/shared";
+import { api } from "@cmux/convex/api";
+import type { Id } from "@cmux/convex/dataModel";
+import { getShortId } from "@cmux/shared";
 import Docker from "dockerode";
 import * as os from "os";
 import * as path from "path";
@@ -56,8 +56,8 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     // Since taskRunId is a Convex ID like "jb74m5s2g9d6c5w6qkbmxsm7sh744d"
     // We'll take the first 12 chars for a shorter container name
     const shortId = getShortId(this.taskRunId);
-    this.containerName = `coderouter-${shortId}`;
-    this.imageName = "coderouter-worker:0.0.1";
+    this.containerName = `cmux-${shortId}`;
+    this.imageName = "cmux-worker:0.0.1";
     // Register this instance
     VSCodeInstance.getInstances().set(this.instanceId, this);
   }
@@ -253,7 +253,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
           const filteredConfig = this.filterGitConfig(gitConfigContent);
 
           // Write filtered config to a temporary location
-          const tempDir = path.join(os.tmpdir(), "coderouter-git-configs");
+          const tempDir = path.join(os.tmpdir(), "cmux-git-configs");
           await fs.promises.mkdir(tempDir, { recursive: true });
           const tempGitConfigPath = path.join(
             tempDir,
@@ -319,7 +319,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
           const filteredConfig = this.filterGitConfig(gitConfigContent);
 
           // Write filtered config to a temporary location
-          const tempDir = path.join(os.tmpdir(), "coderouter-git-configs");
+          const tempDir = path.join(os.tmpdir(), "cmux-git-configs");
           await fs.promises.mkdir(tempDir, { recursive: true });
           const tempGitConfigPath = path.join(
             tempDir,
@@ -420,7 +420,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     const baseUrl = `http://localhost:${vscodePort}`;
     const workspaceUrl = this.getWorkspaceUrl(baseUrl);
     const workerUrl = `http://localhost:${workerPort}`;
-    
+
     // Generate the proxy URL that clients will use
     const shortId = getShortId(this.taskRunId);
     const proxyBaseUrl = `http://${shortId}.39378.localhost:9776`;
@@ -452,8 +452,8 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     }
 
     return {
-      url: baseUrl,  // Store the actual localhost URL
-      workspaceUrl: workspaceUrl,  // Store the actual localhost workspace URL
+      url: baseUrl, // Store the actual localhost URL
+      workspaceUrl: workspaceUrl, // Store the actual localhost workspace URL
       instanceId: this.instanceId,
       taskRunId: this.taskRunId,
       provider: "docker",
@@ -556,7 +556,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       const fs = await import("fs");
       const tempGitConfigPath = path.join(
         os.tmpdir(),
-        "coderouter-git-configs",
+        "cmux-git-configs",
         `gitconfig-${this.instanceId}`
       );
       await fs.promises.unlink(tempGitConfigPath);
@@ -599,7 +599,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         if (vscodePort) {
           const baseUrl = `http://localhost:${vscodePort}`;
           const workspaceUrl = this.getWorkspaceUrl(baseUrl);
-          
+
           return {
             running: true,
             info: {
@@ -829,11 +829,11 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     try {
       console.log("Syncing Docker container states with Convex...");
 
-      // Get all running coderouter containers
+      // Get all running cmux containers
       const containers = await docker.listContainers({
         all: true,
         filters: {
-          name: ["coderouter-"],
+          name: ["cmux-"],
         },
       });
 
@@ -853,8 +853,8 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         if (!containerName) continue;
 
         // Extract task run ID from container name
-        // Container name format: coderouter-<shortId>
-        const match = containerName.match(/^coderouter-(.{12})/);
+        // Container name format: cmux-<shortId>
+        const match = containerName.match(/^cmux-(.{12})/);
         if (!match) continue;
 
         // Find the full taskRunId from container mappings
@@ -961,7 +961,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
         // Derive the container name from the task run ID
         const shortId = getShortId(taskRun._id);
-        const expectedContainerName = `coderouter-${shortId}`;
+        const expectedContainerName = `cmux-${shortId}`;
 
         // Check if this container exists in Docker
         if (!existingContainerNames.has(expectedContainerName)) {

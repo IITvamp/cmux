@@ -59,7 +59,7 @@ RUN if [ -z ${CODE_RELEASE+x} ]; then \
   rm -rf /tmp/openvscode-server.tar.gz
 
 # Copy package files for monorepo dependency installation
-WORKDIR /coderouter
+WORKDIR /cmux
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY --parents apps/*/package.json packages/*/package.json scripts/package.json ./
 
@@ -71,7 +71,7 @@ RUN mkdir -p /builtins && \
 WORKDIR /builtins
 
 # Copy source files needed for build
-WORKDIR /coderouter
+WORKDIR /cmux
 # Copy shared package source
 COPY packages/shared/src ./packages/shared/src
 
@@ -86,24 +86,24 @@ COPY packages/vscode-extension/tsconfig.json ./packages/vscode-extension/
 COPY packages/vscode-extension/.vscodeignore ./packages/vscode-extension/
 
 # Build worker without bundling native modules
-RUN bun build /coderouter/apps/worker/src/index.ts \
+RUN bun build /cmux/apps/worker/src/index.ts \
     --target node \
-    --outdir /coderouter/apps/worker/build && \
+    --outdir /cmux/apps/worker/build && \
     echo "Built worker" && \
-    cp -r /coderouter/apps/worker/build /builtins/build && \
-    cp /coderouter/apps/worker/wait-for-docker.sh /usr/local/bin/ && \
+    cp -r /cmux/apps/worker/build /builtins/build && \
+    cp /cmux/apps/worker/wait-for-docker.sh /usr/local/bin/ && \
     chmod +x /usr/local/bin/wait-for-docker.sh
 
 # Verify bun is still working in builder
 RUN bun --version && bunx --version
 
 # Build vscode extension
-WORKDIR /coderouter/packages/vscode-extension
-RUN bun run package && cp coderouter-extension-0.0.1.vsix /tmp/coderouter-extension-0.0.1.vsix
+WORKDIR /cmux/packages/vscode-extension
+RUN bun run package && cp cmux-extension-0.0.1.vsix /tmp/cmux-extension-0.0.1.vsix
 
 # Install VS Code extensions
-RUN /app/openvscode-server/bin/openvscode-server --install-extension /tmp/coderouter-extension-0.0.1.vsix && \
-    rm /tmp/coderouter-extension-0.0.1.vsix
+RUN /app/openvscode-server/bin/openvscode-server --install-extension /tmp/cmux-extension-0.0.1.vsix && \
+    rm /tmp/cmux-extension-0.0.1.vsix
 
 # Create VS Code user settings
 RUN mkdir -p /root/.openvscode-server/data/User && \

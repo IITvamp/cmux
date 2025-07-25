@@ -11,7 +11,7 @@ import {
   type WorkerHeartbeat,
   type WorkerRegister,
   type WorkerToServerEvents,
-} from "@coderouter/shared";
+} from "@cmux/shared";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import * as xtermHeadless from "@xterm/headless";
 import {
@@ -36,7 +36,7 @@ const Terminal = xtermHeadless.Terminal;
 // Configuration
 const WORKER_ID = process.env.WORKER_ID || `worker-${Date.now()}`;
 const WORKER_PORT = parseInt(process.env.WORKER_PORT || "39377", 10);
-const CONTAINER_IMAGE = process.env.CONTAINER_IMAGE || "coderouter-worker";
+const CONTAINER_IMAGE = process.env.CONTAINER_IMAGE || "cmux-worker";
 const CONTAINER_VERSION = process.env.CONTAINER_VERSION || "0.0.1";
 
 // Create HTTP server

@@ -1,7 +1,4 @@
-import type {
-  ClientToServerEvents,
-  ServerToClientEvents,
-} from "@coderouter/shared";
+import type { ClientToServerEvents, ServerToClientEvents } from "@cmux/shared";
 import React, { useEffect } from "react";
 import { io, Socket } from "socket.io-client";
 import { SocketContext } from "./socket-context";

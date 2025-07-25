@@ -1,17 +1,14 @@
-import type {
-  ClientToServerEvents,
-  ServerToClientEvents,
-} from "@coderouter/shared";
+import type { ClientToServerEvents, ServerToClientEvents } from "@cmux/shared";
 import * as http from "http";
 import { Server } from "socket.io";
 import { io, Socket } from "socket.io-client";
 import * as vscode from "vscode";
 
-// Create output channel for CodeRouter logs
-const outputChannel = vscode.window.createOutputChannel("CodeRouter");
+// Create output channel for cmux logs
+const outputChannel = vscode.window.createOutputChannel("cmux");
 
 // Log immediately when module loads
-console.log("[CodeRouter] Extension module loaded");
+console.log("[cmux] Extension module loaded");
 
 // Socket.IO server instance
 let ioServer: Server | null = null;
@@ -261,12 +258,12 @@ function startSocketServer() {
 
 export function activate(context: vscode.ExtensionContext) {
   // Log activation
-  console.log("[CodeRouter] activate() called");
-  log("[CodeRouter] activate() called");
+  console.log("[cmux] activate() called");
+  log("[cmux] activate() called");
 
   // Register command to show output
   let showOutputCommand = vscode.commands.registerCommand(
-    "coderouter.showOutput",
+    "cmux.showOutput",
     () => {
       outputChannel.show();
     }
@@ -274,14 +271,14 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(showOutputCommand);
 
   // Log activation without showing output channel
-  outputChannel.appendLine("=== CodeRouter Extension Activating ===");
+  outputChannel.appendLine("=== cmux Extension Activating ===");
 
-  log("[CodeRouter] Extension activated, output channel ready");
+  log("[cmux] Extension activated, output channel ready");
 
   // Ensure output panel is hidden on activation
   vscode.commands.executeCommand("workbench.action.closePanel");
 
-  log("Coderouter is being activated");
+  log("cmux is being activated");
 
   // Start Socket.IO server
   startSocketServer();
@@ -290,14 +287,14 @@ export function activate(context: vscode.ExtensionContext) {
   connectToWorker();
 
   let disposable = vscode.commands.registerCommand(
-    "coderouter.helloWorld",
+    "cmux.helloWorld",
     async () => {
-      log("Hello World from CodeRouter!");
-      vscode.window.showInformationMessage("Hello World from CodeRouter!");
+      log("Hello World from cmux!");
+      vscode.window.showInformationMessage("Hello World from cmux!");
     }
   );
 
-  let run = vscode.commands.registerCommand("coderouter.run", async () => {
+  let run = vscode.commands.registerCommand("cmux.run", async () => {
     // Force setup default terminal
     if (workerSocket && workerSocket.connected) {
       log("Manually setting up default terminal...");
@@ -313,7 +310,7 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() {
-  log("CodeRouter extension is now deactivated!");
+  log("cmux extension is now deactivated!");
   isSetupComplete = false;
 
   // Clean up worker socket

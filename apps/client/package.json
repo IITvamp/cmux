@@ -1,5 +1,5 @@
 {
-  "name": "@coderouter/client",
+  "name": "@cmux/client",
   "version": "1.0.0",
   "type": "module",
   "private": true,
@@ -12,8 +12,8 @@
     "generate-routes": "tsr generate"
   },
   "dependencies": {
-    "@coderouter/convex": "workspace:*",
-    "@coderouter/shared": "workspace:*",
+    "@cmux/convex": "workspace:*",
+    "@cmux/shared": "workspace:*",
     "@convex-dev/react-query": "^0.0.0-alpha.11",
     "@lexical/code": "^0.32.1",
     "@lexical/history": "^0.32.1",

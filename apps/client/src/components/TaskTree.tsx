@@ -1,4 +1,4 @@
-import { type Doc } from "@coderouter/convex/dataModel";
+import { type Doc } from "@cmux/convex/dataModel";
 import { Link, useLocation } from "@tanstack/react-router";
 import clsx from "clsx";
 import { formatDistanceToNow } from "date-fns";

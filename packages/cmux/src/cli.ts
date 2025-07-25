@@ -1,4 +1,4 @@
-import { startServer } from "@coderouter/server";
+import { startServer } from "@cmux/server";
 import { Command } from "commander";
 import { existsSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
@@ -62,7 +62,7 @@ program
         console.error("Try deleting ~/.cmux and running the CLI again.");
         process.exit(1);
       }
-      
+
       console.log(`Starting server on port ${port}...`);
       console.log(`Serving static files from: ${staticDir}`);
       void startServer({

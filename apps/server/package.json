@@ -1,5 +1,5 @@
 {
-  "name": "@coderouter/server",
+  "name": "@cmux/server",
   "version": "1.0.0",
   "description": "cmux server",
   "main": "src/index.ts",
@@ -22,8 +22,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@coderouter/convex": "workspace:*",
-    "@coderouter/shared": "workspace:*",
+    "@cmux/convex": "workspace:*",
+    "@cmux/shared": "workspace:*",
     "@daytonaio/sdk": "^0.22.1",
     "@xterm/addon-serialize": "^0.13.0",
     "@xterm/headless": "^5.5.0",

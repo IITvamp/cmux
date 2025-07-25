@@ -55,7 +55,7 @@ RUN echo 'export PATH="/home/node/.bun/bin:$PATH"' >> /home/node/.zshrc && \
     chown node:node /home/node/.zshrc /home/node/.bashrc
 
 # Set up the workspace
-WORKDIR /workspaces/coderouter
+WORKDIR /workspaces/cmux
 
 # Install global npm packages using Node 24
 RUN . "$NVM_DIR/nvm.sh" && nvm use 24 && npm install -g npm@latest
@@ -64,8 +64,8 @@ RUN . "$NVM_DIR/nvm.sh" && nvm use 24 && npm install -g npm@latest
 ENV SHELL=/bin/zsh
 
 # Create node_modules directories with correct permissions
-RUN mkdir -p /workspaces/coderouter/node_modules /workspaces/coderouter/packages/convex/node_modules && \
-    chown -R node:node /workspaces/coderouter
+RUN mkdir -p /workspaces/cmux/node_modules /workspaces/cmux/packages/convex/node_modules && \
+    chown -R node:node /workspaces/cmux
 
 # Copy and set entrypoint
 COPY --chown=node:node entrypoint.sh /usr/local/bin/entrypoint.sh

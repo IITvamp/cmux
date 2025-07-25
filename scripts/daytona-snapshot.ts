@@ -12,7 +12,7 @@ try {
   // process.chdir(path.join(import.meta.dirname, ".."));
 
   // make a copy of the entire dir in a /tmp dir, using git ls-files to respect gitignore
-  const tmpDir = path.join(os.tmpdir(), "coderouter");
+  const tmpDir = path.join(os.tmpdir(), "cmux");
 
   // Remove existing tmp dir if it exists
   if (fs.existsSync(tmpDir)) {
@@ -73,19 +73,19 @@ try {
   //   .runCommands("which npm && npm --version")
   //   .runCommands("curl -fsSL https://bun.sh/install | bash")
   //   .runCommands("which bun && bun --version")
-  //   .addLocalDir("apps", "/coderouter/apps")
-  //   .addLocalDir("packages", "/coderouter/packages")
-  //   .addLocalFile("package.json", "/coderouter/package.json")
-  //   .addLocalFile("package-lock.json", "/coderouter/package-lock.json")
+  //   .addLocalDir("apps", "/cmux/apps")
+  //   .addLocalDir("packages", "/cmux/packages")
+  //   .addLocalFile("package.json", "/cmux/package.json")
+  //   .addLocalFile("package-lock.json", "/cmux/package-lock.json")
   //   .runCommands("npm install")
   //   .env({
   //     PATH: "/root/.bun/bin:$PATH",
   //   })
   //   .runCommands("mkdir -p /builtins")
   //   .runCommands(
-  //     "bun build /coderouter/apps/worker/src/index.ts --target node --outdir /builtins/build"
+  //     "bun build /cmux/apps/worker/src/index.ts --target node --outdir /builtins/build"
   //   )
-  //   .runCommands("cp -r /coderouter/apps/worker/build /builtins/build")
+  //   .runCommands("cp -r /cmux/apps/worker/build /builtins/build")
   //   .addLocalFile(
   //     "apps/worker/wait-for-docker.sh",
   //     "/usr/local/bin/wait-for-docker.sh"
@@ -101,7 +101,7 @@ try {
   // console.log("skibidi");
   // const fk = await daytona.snapshot.create(
   //   {
-  //     name: `coderouter-worker-${Date.now()}`,
+  //     name: `cmux-worker-${Date.now()}`,
   //     image,
   //   },
   //   { onLogs: console.log, timeout: 10000 }

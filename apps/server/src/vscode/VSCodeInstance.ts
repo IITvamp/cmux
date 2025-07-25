@@ -1,7 +1,4 @@
-import type {
-  ServerToWorkerEvents,
-  WorkerToServerEvents,
-} from "@coderouter/shared";
+import type { ServerToWorkerEvents, WorkerToServerEvents } from "@cmux/shared";
 import { EventEmitter } from "node:events";
 import { io, type Socket } from "socket.io-client";
 

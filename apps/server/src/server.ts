@@ -1,4 +1,4 @@
-import { api } from "@coderouter/convex/api";
+import { api } from "@cmux/convex/api";
 import {
   GitFullDiffRequestSchema,
   GitHubFetchBranchesSchema,
@@ -10,7 +10,7 @@ import {
   type InterServerEvents,
   type ServerToClientEvents,
   type SocketData,
-} from "@coderouter/shared";
+} from "@cmux/shared";
 import * as fuzzysort from "fuzzysort";
 import { minimatch } from "minimatch";
 import { promises as fs } from "node:fs";

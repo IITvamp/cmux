@@ -2,7 +2,7 @@
 
 set -e  # Exit on error
 
-BASE_NAME="coderouter-worker"
+BASE_NAME="cmux-worker"
 
 echo "Finding latest version from Docker images..."
 

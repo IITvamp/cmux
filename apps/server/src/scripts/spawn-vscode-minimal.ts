@@ -1,7 +1,4 @@
-import type {
-  ServerToWorkerEvents,
-  WorkerToServerEvents,
-} from "@coderouter/shared";
+import type { ServerToWorkerEvents, WorkerToServerEvents } from "@cmux/shared";
 import Docker from "dockerode";
 import { io, type Socket } from "socket.io-client";
 
@@ -14,8 +11,8 @@ interface ContainerInfo {
 }
 
 async function spawnVSCodeContainer(docker: Docker): Promise<ContainerInfo> {
-  const containerName = `coderouter-vscode-minimal-${Date.now()}`;
-  const imageName = "coderouter-worker:0.0.1";
+  const containerName = `cmux-vscode-minimal-${Date.now()}`;
+  const imageName = "cmux-worker:0.0.1";
 
   console.log(`Creating container ${containerName}...`);
 

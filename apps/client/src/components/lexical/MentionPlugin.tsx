@@ -1,6 +1,7 @@
-import type { FileInfo } from "@coderouter/shared";
+import type { FileInfo } from "@cmux/shared";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import clsx from "clsx";
+import fuzzysort from "fuzzysort";
 import {
   $getSelection,
   $isRangeSelection,
@@ -16,7 +17,6 @@ import {
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { getIconForFile } from "vscode-icons-js";
-import fuzzysort from "fuzzysort";
 import { useSocket } from "../../contexts/socket/use-socket";
 
 const MENTION_TRIGGER = "@";
@@ -106,7 +106,7 @@ function MentionMenu({
             type="button"
           >
             <img
-              src={`https://cdn.jsdelivr.net/gh/vscode-icons/vscode-icons/icons/${file.name === 'Dockerfile' ? 'file_type_docker.svg' : getIconForFile(file.name)}`}
+              src={`https://cdn.jsdelivr.net/gh/vscode-icons/vscode-icons/icons/${file.name === "Dockerfile" ? "file_type_docker.svg" : getIconForFile(file.name)}`}
               alt=""
               className="w-3 h-3 flex-shrink-0"
             />
@@ -143,9 +143,9 @@ export function MentionPlugin({ repoUrl, branch }: MentionPluginProps) {
   useEffect(() => {
     if (repoUrl && socket) {
       setIsLoading(true);
-      socket.emit("list-files", { 
-        repoUrl, 
-        branch: branch || "main"
+      socket.emit("list-files", {
+        repoUrl,
+        branch: branch || "main",
         // Don't send pattern - we want all files
       });
 
@@ -180,12 +180,12 @@ export function MentionPlugin({ repoUrl, branch }: MentionPluginProps) {
     if (searchText) {
       // Use fuzzysort for fuzzy matching
       const results = fuzzysort.go(searchText, files, {
-        key: 'relativePath',
+        key: "relativePath",
         threshold: -10000, // Show all results
-        limit: 50 // Limit for performance
+        limit: 50, // Limit for performance
       });
-      
-      setFilteredFiles(results.map(result => result.obj));
+
+      setFilteredFiles(results.map((result) => result.obj));
       setSelectedIndex(0);
     } else {
       setFilteredFiles(files);

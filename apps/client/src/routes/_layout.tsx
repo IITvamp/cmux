@@ -1,7 +1,7 @@
 import { TaskTree } from "@/components/TaskTree";
 import { type TaskWithRuns } from "@/types/task";
-import { api } from "@coderouter/convex/api";
-import { type Doc } from "@coderouter/convex/dataModel";
+import { api } from "@cmux/convex/api";
+import { type Doc } from "@cmux/convex/dataModel";
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
 import { useQueries, useQuery } from "convex/react";
 import { Suspense, useMemo } from "react";

@@ -1,11 +1,8 @@
 import { useTheme } from "@/components/theme/use-theme";
 import { TitleBar } from "@/components/TitleBar";
-import { api } from "@coderouter/convex/api";
-import type { Doc } from "@coderouter/convex/dataModel";
-import {
-  AGENT_CONFIGS,
-  type AgentConfig,
-} from "@coderouter/shared/agentConfig";
+import { api } from "@cmux/convex/api";
+import type { Doc } from "@cmux/convex/dataModel";
+import { AGENT_CONFIGS, type AgentConfig } from "@cmux/shared/agentConfig";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useConvex } from "convex/react";

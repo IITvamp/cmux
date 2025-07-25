@@ -9,7 +9,7 @@
 
 #!/usr/bin/env python3
 """
-Port of coderouter Dockerfile to Morph Cloud VM.
+Port of cmux Dockerfile to Morph Cloud VM.
 Sets up Node.js, Bun, OpenVSCode server, and global packages.
 """
 
@@ -643,8 +643,8 @@ def build_vscode_extension(instance, workspace_path):
     # Copy to temp location
     run_ssh_command(
         instance,
-        f"cp {workspace_path}/packages/vscode-extension/coderouter-extension-0.0.1.vsix "
-        f"/tmp/coderouter-extension-0.0.1.vsix",
+        f"cp {workspace_path}/packages/vscode-extension/cmux-extension-0.0.1.vsix "
+        f"/tmp/cmux-extension-0.0.1.vsix",
         sudo=True,
     )
 
@@ -653,8 +653,8 @@ def install_vscode_extensions(instance):
     """Install VS Code extensions"""
     print("\n--- Installing VS Code extensions ---")
 
-    # extensions = ["/tmp/coderouter-extension-0.0.1.vsix", "vscode.git", "vscode.github"]
-    extensions = ["/tmp/coderouter-extension-0.0.1.vsix"]
+    # extensions = ["/tmp/cmux-extension-0.0.1.vsix", "vscode.git", "vscode.github"]
+    extensions = ["/tmp/cmux-extension-0.0.1.vsix"]
 
     for ext in extensions:
         run_ssh_command(
@@ -664,7 +664,7 @@ def install_vscode_extensions(instance):
         )
 
     # Clean up
-    run_ssh_command(instance, "rm -f /tmp/coderouter-extension-0.0.1.vsix", sudo=True)
+    run_ssh_command(instance, "rm -f /tmp/cmux-extension-0.0.1.vsix", sudo=True)
 
 
 def setup_vscode_settings(instance):
@@ -713,7 +713,7 @@ def create_startup_script(instance):
     # The startup.sh file is already uploaded as part of the workspace
     run_ssh_command(
         instance,
-        "cp /coderouter/startup.sh /startup.sh && chmod +x /startup.sh",
+        "cp /cmux/startup.sh /startup.sh && chmod +x /startup.sh",
         sudo=True,
     )
 
@@ -769,7 +769,7 @@ def main():
     global current_instance
 
     # Parse command line arguments
-    parser = argparse.ArgumentParser(description="Build coderouter on Morph Cloud")
+    parser = argparse.ArgumentParser(description="Build cmux on Morph Cloud")
     parser.add_argument(
         "--debug", action="store_true", help="Enable debug output during upload"
     )
@@ -822,7 +822,7 @@ def main():
         setup_openvscode_server(current_instance)
 
         # Setup workspace (pass debug flag)
-        workspace_path = "/coderouter"
+        workspace_path = "/cmux"
         setup_workspace(current_instance, workspace_path, debug=args.debug)
 
         # Build VS Code extension
@@ -924,8 +924,8 @@ def main():
 
         # Clean up workspace before creating final snapshot
         print("\n--- Cleaning up build workspace ---")
-        print("Removing /coderouter directory to reduce snapshot size...")
-        run_ssh_command(current_instance, "rm -rf /coderouter", sudo=True)
+        print("Removing /cmux directory to reduce snapshot size...")
+        run_ssh_command(current_instance, "rm -rf /cmux", sudo=True)
         print("Build workspace cleaned up")
 
         # let the user interact with the instance and wait for them to press enter

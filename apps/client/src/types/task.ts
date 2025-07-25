@@ -1,4 +1,4 @@
-import { type Doc } from "@coderouter/convex/dataModel";
+import { type Doc } from "@cmux/convex/dataModel";
 
 export interface TaskRunWithChildren extends Doc<"taskRuns"> {
   children: TaskRunWithChildren[];

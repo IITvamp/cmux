@@ -250,7 +250,7 @@ wheels = [
 ]
 
 [[package]]
-name = "coderouter"
+name = "cmux"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

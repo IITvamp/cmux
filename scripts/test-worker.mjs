@@ -3,8 +3,8 @@ import fs from "fs";
 import { io } from "socket.io-client";
 import { setTimeout as delay } from "timers/promises";
 
-const CONTAINER_NAME = "coderouter-worker-test-2";
-const IMAGE_NAME = "coderouter-worker:0.0.1";
+const CONTAINER_NAME = "cmux-worker-test-2";
+const IMAGE_NAME = "cmux-worker:0.0.1";
 
 // Parse command line arguments
 const args = process.argv.slice(2);
@@ -654,7 +654,7 @@ process.on("SIGTERM", cleanup);
 
 // Main execution
 (async () => {
-  console.log("\n🚀 CODEROUTER WORKER TEST");
+  console.log("\n🚀 CMUX WORKER TEST");
   console.log("========================\n");
 
   if (keepAlive) {
