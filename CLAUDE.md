@@ -40,6 +40,7 @@ cmux is published as a single-file executable binary to npm. The binary includes
    - Starts local convex backend
    - Deploys convex functions
    - Creates cmux-bundle.zip with everything (convex + public files)
+   - **IMPORTANT**: Copies the correct cmux package.json to the bundle (not the convex package.json)
    - Compiles cmux-cli binary using Bun
 
 3. **Update version** in packages/cmux/package.json and packages/cmux/src/cli.ts
@@ -58,3 +59,16 @@ The published package allows users to:
 npm install -g cmux
 cmux  # Runs on port 9776, extracts bundle to ~/.cmux on first run
 ```
+
+## Important Build Notes:
+
+### Version Checking
+The cmux CLI includes version checking to determine if the bundle needs to be extracted or upgraded. This relies on the package.json inside the bundle having the correct version number.
+
+**Critical**: The build script must copy the cmux package.json (not the convex package.json) to the bundle. This is done with:
+```bash
+# Copy the correct package.json from cmux package (overwrite the convex one)
+await $`cp ./packages/cmux/package.json /tmp/cmux-bundle/`;
+```
+
+Without this step, the bundle will contain the convex package.json (version 1.0.0) instead of the cmux package.json, causing version checking to fail and potentially leading to data loss during upgrades.
