@@ -3,7 +3,7 @@ import { promisify } from "node:util";
 
 const exec = promisify(execCallback);
 const SESSION_NAME = "claude-code-session";
-const IDLE_TIMEOUT_MS = 3000; // 3 seconds of no output = idle
+const IDLE_TIMEOUT_MS = 8000; // 8 seconds of no output = idle
 
 async function main() {
   const startTime = Date.now();

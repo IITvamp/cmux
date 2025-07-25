@@ -102,7 +102,7 @@ await $`rm -rf /tmp/cmux-bundle`;
 const VERSION = cmuxPackageJson.version;
 
 // bun build the cli
-await $`bun build ./packages/cmux/src/cli.ts --compile --define VERSION=${VERSION} --outfile cmux-cli`;
+await $`bun build ./packages/cmux/src/cli.ts --compile --define VERSION=${VERSION} --define WORKER_IMAGE_NAME=lawrencecchen/cmux@latest --outfile cmux-cli`;
 console.log("Built cmux-cli");
 
 // exit with 0
