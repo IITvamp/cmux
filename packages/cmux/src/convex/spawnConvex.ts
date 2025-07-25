@@ -1,4 +1,4 @@
-import { $, file } from "bun";
+import { $ } from "bun";
 import * as convex from "convex";
 import { ChildProcess, spawn } from "node:child_process";
 import fs from "node:fs/promises";
@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 
 // @ts-expect-error this is a real file!
-import convex_local_backend from "./convex-local-backend.zip" with { type: "file" };
+import cmux_bundle_zip from "./cmux-bundle.zip" with { type: "file" };
 
 // console.log(embeddedFiles);
 console.log("convex", convex);
@@ -19,12 +19,11 @@ export async function spawnConvex(
   convexDir?: string
 ): Promise<ConvexProcesses> {
   if (!convexDir) {
-    convexDir = path.resolve(os.homedir(), ".cmux", "data");
+    convexDir = path.resolve(os.homedir(), ".cmux");
   }
   const convexPort = process.env.CONVEX_PORT || "9777";
 
   console.log("Starting Convex CLI...");
-  console.log(convex_local_backend);
   console.log(`Creating directory: ${convexDir}`);
   const dirStartTime = performance.now();
   await fs.mkdir(convexDir, { recursive: true });
@@ -33,39 +32,45 @@ export async function spawnConvex(
     `Directory creation took ${(dirEndTime - dirStartTime).toFixed(2)}ms`
   );
 
-  console.log("Reading convex binary file...");
-  const fileReadStartTime = performance.now();
-  const convexBinaryBlob = file(convex_local_backend);
-  const fileReadEndTime = performance.now();
-  console.log(
-    `File read took ${(fileReadEndTime - fileReadStartTime).toFixed(2)}ms`
-  );
-
-  // next, we unzip it into ~/.cmux/data/convex-local-backend
-
-  const unzipStartTime = performance.now();
-  await $`unzip -d ${path.resolve(convexDir, "convex-local-backend")} ${convex_local_backend}`;
-  const unzipEndTime = performance.now();
-  console.log(`Unzip took ${(unzipEndTime - unzipStartTime).toFixed(2)}ms`);
-
+  console.log("Extracting cmux bundle...");
+  
+  // Check if bundle already exists by checking for a key file
   const convexBinaryPath = path.resolve(convexDir, "convex-local-backend");
+  const bundleExists = await fs.access(convexBinaryPath).then(() => true).catch(() => false);
+  
+  if (bundleExists) {
+    console.log("Cmux bundle already exists, skipping extraction");
+  } else {
+    // Write the zip file to a temporary location and extract it
+    const tempZipPath = path.join(os.tmpdir(), `cmux-bundle-${Date.now()}.zip`);
+    
+    // Read the embedded zip file and write it to disk
+    const zipData = await fs.readFile(cmux_bundle_zip);
+    await fs.writeFile(tempZipPath, zipData);
+    
+    const unzipStartTime = performance.now();
+    // Extract to temp directory first
+    const tempExtractDir = path.join(os.tmpdir(), `cmux-extract-${Date.now()}`);
+    await $`unzip -o ${tempZipPath} -d ${tempExtractDir}`;
+    
+    // Clear the convexDir and move the contents of cmux-bundle
+    await fs.rm(convexDir, { recursive: true, force: true });
+    await fs.mkdir(convexDir, { recursive: true });
+    await $`mv ${tempExtractDir}/cmux-bundle/* ${convexDir}/`;
+    
+    // Cleanup
+    await $`rm -rf ${tempExtractDir}`;
+    await fs.unlink(tempZipPath);
+    
+    const unzipEndTime = performance.now();
+    console.log(`Unzip took ${(unzipEndTime - unzipStartTime).toFixed(2)}ms`);
+  }
 
+  // Make sure the binary is executable
   try {
-    await fs.access(convexBinaryPath);
-    console.log(
-      `Binary already exists at: ${convexBinaryPath}, skipping write`
-    );
-  } catch {
-    console.log(`Writing binary to: ${convexBinaryPath}`);
-    const writeStartTime = performance.now();
-    const arrayBuffer = await convexBinaryBlob.arrayBuffer();
-    await fs.writeFile(convexBinaryPath, Buffer.from(arrayBuffer), {
-      mode: 0o755,
-    });
-    const writeEndTime = performance.now();
-    console.log(
-      `Binary write took ${(writeEndTime - writeStartTime).toFixed(2)}ms`
-    );
+    await fs.chmod(convexBinaryPath, 0o755);
+  } catch (error) {
+    console.error(`Failed to make binary executable: ${error}`);
   }
 
   console.log("Starting convex process...");

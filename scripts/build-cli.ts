@@ -57,9 +57,25 @@ await $`cd ./packages/cmux/src/convex/convex-bundle && bunx convex deploy`;
 
 convexBackendProcess.kill();
 
-// Finally, zip the convex-bundle directory
+// Create a temp directory for the cmux bundle
+await $`mkdir -p /tmp/cmux-bundle`;
 
-await $`zip -r ./packages/cmux/src/convex/convex-bundle.zip ./packages/cmux/src/convex/convex-bundle`;
+// Copy convex-bundle contents
+await $`cp -r ./packages/cmux/src/convex/convex-bundle/* /tmp/cmux-bundle/`;
+
+// Copy public files
+await $`mkdir -p /tmp/cmux-bundle/public`;
+await $`cp -r ./packages/cmux/public/dist /tmp/cmux-bundle/public/`;
+
+// Create the cmux-bundle.zip
+await $`cd /tmp && zip -r cmux-bundle.zip cmux-bundle`;
+await $`mv /tmp/cmux-bundle.zip ./packages/cmux/src/convex/`;
+
+// Clean up temp directory
+await $`rm -rf /tmp/cmux-bundle`;
+
+// bun build the cli
+await $`bun build ./packages/cmux/src/cli.ts --compile --outfile cmux-cli`;
 
 // exit with 0
 process.exit(0);
