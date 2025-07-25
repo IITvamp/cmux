@@ -88,6 +88,8 @@ export async function spawnConvex(
     }
     
     if (hasStorage) {
+      // Remove the extracted empty storage directory first
+      await $`rm -rf ${convexDir}/convex_local_storage`;
       await $`mv ${tempBackupDir}/convex_local_storage ${convexDir}/`;
       console.log("Restored convex_local_storage");
     }
