@@ -24,28 +24,23 @@ cmux is published as a single-file executable binary to npm. The binary includes
 
 ## Build and publish process:
 
-1. **Build the client app** (automatically done by build-cli.ts):
-   The build script will automatically build the client with:
-   ```bash
-   cd apps/client && VITE_CONVEX_URL=http://localhost:9777 pnpm build
-   ```
+1. **Update version** in packages/cmux/package.json and packages/cmux/src/cli.ts
 
 2. **Build the cmux-cli bundle**:
    ```bash
    ./scripts/build-cli.ts
    ```
    This script:
+   - Builds the client with VITE_CONVEX_URL=http://localhost:9777
    - Copies client dist to packages/cmux/public
    - Builds convex CLI bundle
    - Starts local convex backend
    - Deploys convex functions
    - Creates cmux-bundle.zip with everything (convex + public files)
-   - **IMPORTANT**: Copies the correct cmux package.json to the bundle (not the convex package.json)
+   - Copies the cmux package.json to the bundle (for version checking)
    - Compiles cmux-cli binary using Bun
 
-3. **Update version** in packages/cmux/package.json and packages/cmux/src/cli.ts
-
-4. **Publish to npm**:
+3. **Publish to npm**:
    ```bash
    cd packages/cmux && npm run publish-cli
    ```
@@ -63,12 +58,10 @@ cmux  # Runs on port 9776, extracts bundle to ~/.cmux on first run
 ## Important Build Notes:
 
 ### Version Checking
-The cmux CLI includes version checking to determine if the bundle needs to be extracted or upgraded. This relies on the package.json inside the bundle having the correct version number.
+**Critical**: Always increment the version number BEFORE running the build script. The build process embeds the package.json into the bundle, which is used for version checking during upgrades. The correct workflow is:
 
-**Critical**: The build script must copy the cmux package.json (not the convex package.json) to the bundle. This is done with:
-```bash
-# Copy the correct package.json from cmux package (overwrite the convex one)
-await $`cp ./packages/cmux/package.json /tmp/cmux-bundle/`;
-```
+1. Update version in both files
+2. Run build script 
+3. Publish to npm
 
-Without this step, the bundle will contain the convex package.json (version 1.0.0) instead of the cmux package.json, causing version checking to fail and potentially leading to data loss during upgrades.
+This ensures the bundle contains the correct version for upgrade detection.
