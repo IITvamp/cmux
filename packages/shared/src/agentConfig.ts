@@ -1,5 +1,6 @@
 import { getClaudeEnvironment } from "./environments/claude-environment.js";
 import type { EnvironmentResult } from "./environments/environment-result.js";
+import { getGeminiEnvironment } from "./environments/gemini-environment.js";
 import { getOpenAIEnvironment } from "./environments/openai-environment.js";
 
 export { type EnvironmentResult };
@@ -123,16 +124,10 @@ export const AGENT_CONFIGS: AgentConfig[] = [
       "--model",
       "gemini-2.5-flash",
       "--yolo",
-      "--prompt",
+      "--prompt-interactive",
       "$PROMPT",
     ],
-    environment: async () => {
-      // For Gemini, we only need environment variables, no files
-      return {
-        files: [],
-        env: {}, // Will be populated from Convex API keys in agentSpawner.ts
-      };
-    },
+    environment: getGeminiEnvironment,
     requiredApiKeys: [
       {
         envVar: "GEMINI_API_KEY",
@@ -149,16 +144,10 @@ export const AGENT_CONFIGS: AgentConfig[] = [
       "--model",
       "gemini-2.5-pro",
       "--yolo",
-      "--prompt",
+      "--prompt-interactive",
       "$PROMPT",
     ],
-    environment: async () => {
-      // For Gemini, we only need environment variables, no files
-      return {
-        files: [],
-        env: {}, // Will be populated from Convex API keys in agentSpawner.ts
-      };
-    },
+    environment: getGeminiEnvironment,
     requiredApiKeys: [
       {
         envVar: "GEMINI_API_KEY",
