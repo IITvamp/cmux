@@ -26,10 +26,21 @@ interface GitCommandOptions {
   encoding?: "utf8" | "ascii" | "base64" | "hex" | "binary" | "latin1";
 }
 
+interface QueuedOperation {
+  execute: () => Promise<any>;
+  resolve: (value: any) => void;
+  reject: (error: any) => void;
+}
+
 export class RepositoryManager {
   private static instance: RepositoryManager;
   private operations = new Map<string, RepositoryOperation>();
   private worktreeLocks = new Map<string, Promise<void>>();
+  private configLocks = new Map<string, Promise<void>>();
+  
+  // Global operation queue to prevent any git command conflicts
+  private operationQueue: QueuedOperation[] = [];
+  private isProcessingQueue = false;
 
   private config: GitConfig = {
     pullStrategy: "rebase",
@@ -64,10 +75,70 @@ export class RepositoryManager {
     }
   }
 
+  private async queueOperation<T>(operation: () => Promise<T>): Promise<T> {
+    return new Promise((resolve, reject) => {
+      this.operationQueue.push({
+        execute: operation,
+        resolve,
+        reject,
+      });
+      this.processQueue();
+    });
+  }
+
+  private async processQueue(): Promise<void> {
+    if (this.isProcessingQueue || this.operationQueue.length === 0) {
+      return;
+    }
+
+    this.isProcessingQueue = true;
+
+    while (this.operationQueue.length > 0) {
+      const operation = this.operationQueue.shift()!;
+      try {
+        const result = await operation.execute();
+        operation.resolve(result);
+      } catch (error) {
+        operation.reject(error);
+      }
+    }
+
+    this.isProcessingQueue = false;
+  }
+
   private async executeGitCommand(
     command: string,
     options?: GitCommandOptions
   ): Promise<{ stdout: string; stderr: string }> {
+    // Commands that modify git config or create worktrees need to be queued
+    const needsQueue = 
+      command.includes('git config') ||
+      command.includes('git worktree add') ||
+      command.includes('git clone');
+
+    if (needsQueue) {
+      return this.queueOperation(async () => {
+        try {
+          const result = await execAsync(command, options);
+          return {
+            stdout: result.stdout.toString(),
+            stderr: result.stderr.toString(),
+          };
+        } catch (error) {
+          // Log the command that failed for debugging
+          console.error(`Git command failed: ${command}`);
+          if (error instanceof Error) {
+            console.error(`Error: ${error.message}`);
+            if ("stderr" in error && error.stderr) {
+              console.error(`Stderr: ${error.stderr}`);
+            }
+          }
+          throw error;
+        }
+      });
+    }
+
+    // Non-conflicting commands can run immediately
     try {
       const result = await execAsync(command, options);
       return {
@@ -88,6 +159,18 @@ export class RepositoryManager {
   }
 
   private async configureGitPullStrategy(repoPath: string): Promise<void> {
+    // Serialize config operations per repository to avoid lock conflicts
+    const configLock = this.configLocks.get(repoPath);
+    if (configLock) {
+      await configLock;
+    }
+
+    let resolveConfigLock: () => void;
+    const newConfigLock = new Promise<void>((resolve) => {
+      resolveConfigLock = resolve;
+    });
+    this.configLocks.set(repoPath, newConfigLock);
+
     try {
       const strategy =
         this.config.pullStrategy === "ff-only"
@@ -103,6 +186,9 @@ export class RepositoryManager {
       );
     } catch (error) {
       console.warn("Failed to configure git pull strategy:", error);
+    } finally {
+      this.configLocks.delete(repoPath);
+      resolveConfigLock!();
     }
   }
 
@@ -227,8 +313,8 @@ export class RepositoryManager {
       this.config.pullStrategy === "rebase"
         ? "--rebase"
         : this.config.pullStrategy === "ff-only"
-        ? "--ff-only"
-        : "";
+          ? "--ff-only"
+          : "";
 
     try {
       await this.executeGitCommand(
@@ -356,17 +442,8 @@ export class RepositoryManager {
       console.log(`Successfully created worktree at ${worktreePath}`);
 
       // Set up branch configuration to push to the same name on remote
-      await this.executeGitCommand(
-        `git config branch.${branchName}.remote origin`,
-        { cwd: worktreePath }
-      );
-      await this.executeGitCommand(
-        `git config branch.${branchName}.merge refs/heads/${branchName}`,
-        { cwd: worktreePath }
-      );
-      console.log(
-        `Configured branch ${branchName} to track origin/${branchName} when pushed`
-      );
+      // Use a serial approach for config commands to avoid lock conflicts
+      await this.configureWorktreeBranch(worktreePath, branchName);
 
       // Set up git hooks in the worktree
       await this.setupGitHooks(worktreePath);
@@ -378,6 +455,42 @@ export class RepositoryManager {
     } finally {
       // Always release the lock
       releaseLock!();
+    }
+  }
+
+  private async configureWorktreeBranch(
+    worktreePath: string,
+    branchName: string
+  ): Promise<void> {
+    // Serialize config operations to avoid lock conflicts
+    const configLock = this.configLocks.get(worktreePath);
+    if (configLock) {
+      await configLock;
+    }
+
+    let resolveConfigLock: () => void;
+    const newConfigLock = new Promise<void>((resolve) => {
+      resolveConfigLock = resolve;
+    });
+    this.configLocks.set(worktreePath, newConfigLock);
+
+    try {
+      await this.executeGitCommand(
+        `git config branch.${branchName}.remote origin`,
+        { cwd: worktreePath }
+      );
+      await this.executeGitCommand(
+        `git config branch.${branchName}.merge refs/heads/${branchName}`,
+        { cwd: worktreePath }
+      );
+      console.log(
+        `Configured branch ${branchName} to track origin/${branchName} when pushed`
+      );
+    } catch (error) {
+      console.warn(`Failed to configure branch tracking for ${branchName}:`, error);
+    } finally {
+      this.configLocks.delete(worktreePath);
+      resolveConfigLock!();
     }
   }
 
