@@ -1,7 +1,6 @@
 # syntax=docker/dockerfile:1.7-labs
 
 # Stage 1: Build stage
-# Testing Docker workflow
 FROM ubuntu:24.04 AS builder
 
 ARG VERSION
@@ -44,6 +43,7 @@ RUN if [ -z ${CODE_RELEASE+x} ]; then \
       | awk '/tag_name/{print $4;exit}' FS='[""]' \
       | sed 's|^openvscode-server-v||'); \
   fi && \
+  echo "CODE_RELEASE=${CODE_RELEASE}" && \
   arch="$(dpkg --print-architecture)" && \
   if [ "$arch" = "amd64" ]; then \
     ARCH="x64"; \
@@ -51,8 +51,8 @@ RUN if [ -z ${CODE_RELEASE+x} ]; then \
     ARCH="arm64"; \
   fi && \
   mkdir -p /app/openvscode-server && \
-  curl -o \
-    /tmp/openvscode-server.tar.gz -L \
+  curl -fsSL -o \
+    /tmp/openvscode-server.tar.gz \
     "https://github.com/gitpod-io/openvscode-server/releases/download/openvscode-server-v${CODE_RELEASE}/openvscode-server-v${CODE_RELEASE}-linux-${ARCH}.tar.gz" && \
   tar xf \
     /tmp/openvscode-server.tar.gz -C \

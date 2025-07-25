@@ -35,4 +35,4 @@ jobs:
           cache-to: type=gha,mode=max
           build-args: |
             VERSION=test
-            CODE_RELEASE=1.94.0
+            CODE_RELEASE=1.102.2
