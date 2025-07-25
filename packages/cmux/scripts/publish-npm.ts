@@ -3,7 +3,9 @@
 import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
 const rootDir = path.resolve(projectRoot, '../..');
 const npmPublishDir = path.join(projectRoot, 'npm-publish');
