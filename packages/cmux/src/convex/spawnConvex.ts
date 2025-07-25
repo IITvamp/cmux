@@ -70,7 +70,8 @@ export async function spawnConvex(
     // Backup convex_local_storage if it exists
     const hasStorage = await fs.access(convexStoragePath).then(() => true).catch(() => false);
     if (hasStorage) {
-      await $`cp -r ${convexStoragePath} ${tempBackupDir}/`;
+      // Use rsync to ensure all files are copied, including hidden files
+      await $`rsync -av ${convexStoragePath}/ ${tempBackupDir}/convex_local_storage/`;
       console.log("Backed up convex_local_storage");
     }
     
@@ -90,8 +91,14 @@ export async function spawnConvex(
     if (hasStorage) {
       // Remove the extracted empty storage directory first
       await $`rm -rf ${convexDir}/convex_local_storage`;
-      await $`mv ${tempBackupDir}/convex_local_storage ${convexDir}/`;
+      // Use rsync to restore, preserving all file attributes
+      await $`rsync -av ${tempBackupDir}/convex_local_storage/ ${convexDir}/convex_local_storage/`;
       console.log("Restored convex_local_storage");
+      
+      // Verify the restoration
+      const restoredFiles = await $`find ${convexDir}/convex_local_storage -type f | wc -l`.text();
+      const backupFiles = await $`find ${tempBackupDir}/convex_local_storage -type f | wc -l`.text();
+      console.log(`Restored ${restoredFiles.trim()} files (backup had ${backupFiles.trim()} files)`);
     }
     
     // Cleanup backup dir
