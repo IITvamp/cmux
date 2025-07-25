@@ -30,13 +30,6 @@ program
       process.exit(1);
     }
 
-    // Start the main server
-    console.log(`Starting server on port ${port}...`);
-    void startServer({
-      port,
-      publicPath: staticDir,
-    });
-
     let convexProcesses: ConvexProcesses;
     try {
       // Start Convex and wait for it to be ready
@@ -45,6 +38,16 @@ program
     } catch (error) {
       console.error("Failed to start Convex:", error);
       process.exit(1);
+    }
+
+    // Start the main server
+    const START_SERVER = false;
+    if (START_SERVER) {
+      console.log(`Starting server on port ${port}...`);
+      void startServer({
+        port,
+        publicPath: staticDir,
+      });
     }
 
     // Cleanup processes on exit

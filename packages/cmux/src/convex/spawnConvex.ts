@@ -1,12 +1,15 @@
 import { file } from "bun";
+import * as convex from "convex";
 import { ChildProcess, spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+
 // @ts-expect-error this is a real file!
 import convex_local_backend from "./convex-local-backend" with { type: "file" };
 
 // console.log(embeddedFiles);
+console.log("convex", convex);
 
 export interface ConvexProcesses {
   backend: ChildProcess;

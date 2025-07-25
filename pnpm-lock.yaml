@@ -344,6 +344,9 @@ importers:
       commander:
         specifier: ^11.1.0
         version: 11.1.0
+      convex:
+        specifier: 1.26.0-alpha.6
+        version: 1.26.0-alpha.6(react@19.1.0)
       cors:
         specifier: ^2.8.5
         version: 2.8.5
