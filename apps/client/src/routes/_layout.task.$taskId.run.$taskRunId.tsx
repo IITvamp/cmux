@@ -1,8 +1,14 @@
 import { preloadTaskRunIframes } from "@/lib/preloadTaskRunIframes";
+import { api } from "@coderouter/convex/api";
+import { type Id } from "@coderouter/convex/dataModel";
 import { getShortId } from "@coderouter/shared";
 import { createFileRoute } from "@tanstack/react-router";
 import "@xterm/xterm/css/xterm.css";
+import { useQuery } from "convex/react";
 import { usePersistentIframe } from "../hooks/usePersistentIframe";
+
+// Configuration: Set to true to use the proxy URL, false to use direct localhost URL
+const USE_PROXY_URL = false;
 
 export const Route = createFileRoute("/_layout/task/$taskId/run/$taskRunId")({
   component: TaskRunComponent,
@@ -13,8 +19,29 @@ export const Route = createFileRoute("/_layout/task/$taskId/run/$taskRunId")({
 
 function TaskRunComponent() {
   const { taskRunId } = Route.useParams();
+  const taskRun = useQuery(api.taskRuns.get, {
+    id: taskRunId as Id<"taskRuns">,
+  });
+  console.log("taskRun", taskRun);
+
   const shortId = getShortId(taskRunId);
-  const iframeUrl = `http://${shortId}.39378.localhost:9776/?folder=/root/workspace`;
+  
+  let iframeUrl: string;
+  
+  if (USE_PROXY_URL) {
+    // Use the proxy URL pattern
+    iframeUrl = `http://${shortId}.39378.localhost:9776/?folder=/root/workspace`;
+  } else {
+    // Use the actual Docker URL from the database if available
+    if (taskRun?.vscode?.workspaceUrl) {
+      iframeUrl = taskRun.vscode.workspaceUrl;
+    } else if (taskRun?.vscode?.url) {
+      iframeUrl = `${taskRun.vscode.url}/?folder=/root/workspace`;
+    } else {
+      // Fallback to proxy URL if no database URL is available
+      iframeUrl = `http://${shortId}.39378.localhost:9776/?folder=/root/workspace`;
+    }
+  }
 
   const { containerRef } = usePersistentIframe({
     key: `task-run-${taskRunId}`,
