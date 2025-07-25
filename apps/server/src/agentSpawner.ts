@@ -13,8 +13,6 @@ import { MorphVSCodeInstance } from "./vscode/MorphVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWorktreePath, setupProjectWorkspace } from "./workspace.js";
 
-// Removed zipRepository function - no longer needed since we clone via socket commands
-
 export interface AgentSpawnResult {
   agentName: string;
   terminalId: string;
@@ -486,7 +484,6 @@ export async function spawnAllAgents(
   }
 ): Promise<AgentSpawnResult[]> {
   // Spawn agents sequentially to avoid git lock conflicts
-  const results: AgentSpawnResult[] = [];
 
   // If selectedAgents is provided, filter AGENT_CONFIGS to only include selected agents
   const agentsToSpawn = options.selectedAgents
@@ -495,10 +492,14 @@ export async function spawnAllAgents(
       )
     : AGENT_CONFIGS;
 
-  for (const agent of agentsToSpawn) {
-    const result = await spawnAgent(agent, taskId, options);
-    results.push(result);
-  }
+  // const results: AgentSpawnResult[] = [];
+  // for (const agent of agentsToSpawn) {
+  //   const result = await spawnAgent(agent, taskId, options);
+  //   results.push(result);
+  // }
+  const results = await Promise.all(
+    agentsToSpawn.map((agent) => spawnAgent(agent, taskId, options))
+  );
 
   return results;
 }
