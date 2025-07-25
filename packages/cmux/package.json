@@ -1,6 +1,6 @@
 {
   "name": "cmux",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Socket.IO and static file server",
   "type": "module",
   "main": "dist/index.js",

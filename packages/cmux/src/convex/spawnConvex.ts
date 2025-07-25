@@ -32,26 +32,51 @@ export async function spawnConvex(
     `Directory creation took ${(dirEndTime - dirStartTime).toFixed(2)}ms`
   );
 
-  console.log("Extracting cmux bundle...");
-  
-  // Always extract to handle upgrades, but preserve user data
   const convexBinaryPath = path.resolve(convexDir, "convex-local-backend");
-  const isUpgrade = await fs.access(convexBinaryPath).then(() => true).catch(() => false);
+  const versionFilePath = path.resolve(convexDir, ".cmux-version");
   
-  // Write the zip file to a temporary location and extract it
+  // Get the current version from package.json in the bundle
   const tempZipPath = path.join(os.tmpdir(), `cmux-bundle-${Date.now()}.zip`);
-  
-  // Read the embedded zip file and write it to disk
   const zipData = await fs.readFile(cmux_bundle_zip);
   await fs.writeFile(tempZipPath, zipData);
   
-  const unzipStartTime = performance.now();
-  // Extract to temp directory first
-  const tempExtractDir = path.join(os.tmpdir(), `cmux-extract-${Date.now()}`);
-  await $`unzip -o ${tempZipPath} -d ${tempExtractDir}`;
+  // Extract just the package.json to check version
+  const tempVersionCheckDir = path.join(os.tmpdir(), `cmux-version-check-${Date.now()}`);
+  await $`unzip -jo ${tempZipPath} "cmux-bundle/package.json" -d ${tempVersionCheckDir}`;
+  const bundlePackageJson = JSON.parse(await fs.readFile(path.join(tempVersionCheckDir, "package.json"), "utf8"));
+  const bundleVersion = bundlePackageJson.version;
+  await fs.rm(tempVersionCheckDir, { recursive: true, force: true });
   
-  if (isUpgrade) {
-    console.log("Upgrading cmux, preserving user data...");
+  // Check if we need to extract
+  let shouldExtract = false;
+  let isUpgrade = false;
+  
+  try {
+    const currentVersion = await fs.readFile(versionFilePath, "utf8");
+    if (currentVersion.trim() !== bundleVersion) {
+      console.log(`Version changed from ${currentVersion.trim()} to ${bundleVersion}, upgrading...`);
+      shouldExtract = true;
+      isUpgrade = true;
+    } else {
+      console.log(`Already running version ${bundleVersion}, skipping extraction`);
+    }
+  } catch {
+    // Version file doesn't exist, this is a fresh install
+    console.log(`Fresh installation of version ${bundleVersion}`);
+    shouldExtract = true;
+    isUpgrade = false;
+  }
+  
+  if (shouldExtract) {
+    console.log("Extracting cmux bundle...");
+    
+    const unzipStartTime = performance.now();
+    // Extract to temp directory first
+    const tempExtractDir = path.join(os.tmpdir(), `cmux-extract-${Date.now()}`);
+    await $`unzip -o ${tempZipPath} -d ${tempExtractDir}`;
+    
+    if (isUpgrade) {
+      console.log("Upgrading cmux, preserving user data...");
     
     // Backup user data files
     const sqliteDbPath = path.join(convexDir, "convex_local_backend.sqlite3");
@@ -114,10 +139,17 @@ export async function spawnConvex(
   
   // Cleanup
   await $`rm -rf ${tempExtractDir}`;
-  await fs.unlink(tempZipPath);
   
   const unzipEndTime = performance.now();
   console.log(`Extraction took ${(unzipEndTime - unzipStartTime).toFixed(2)}ms`);
+  
+  // Write the version file
+  await fs.writeFile(versionFilePath, bundleVersion);
+  console.log(`Saved version ${bundleVersion}`);
+  }
+  
+  // Cleanup temp zip file
+  await fs.unlink(tempZipPath);
 
   // Make sure the binary is executable
   try {
