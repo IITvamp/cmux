@@ -15,7 +15,8 @@
     "generate-routes": "cd packages/client && bun run generate-routes"
   },
   "devDependencies": {
-    "npm-run-all": "^4.1.5"
+    "npm-run-all": "^4.1.5",
+    "prettier": "^3.6.2"
   },
   "postinstall": "patch-package",
   "packageManager": "pnpm@10.13.1"

@@ -35,3 +35,5 @@
 [ ] make indicators on /dashboard that show which providers have been properly set up
 [ ] drafts for tasks
 [ ] remove containerMappings from @apps/server/src/vscode/DockerVSCodeInstance.ts and just use convex and/or docker daemon as source of truth.
+[ ] spawn agents in parallel faster
+[ ] bundle convex in executable somehow
