@@ -34,37 +34,81 @@ export async function spawnConvex(
 
   console.log("Extracting cmux bundle...");
   
-  // Check if bundle already exists by checking for a key file
+  // Always extract to handle upgrades, but preserve user data
   const convexBinaryPath = path.resolve(convexDir, "convex-local-backend");
-  const bundleExists = await fs.access(convexBinaryPath).then(() => true).catch(() => false);
+  const isUpgrade = await fs.access(convexBinaryPath).then(() => true).catch(() => false);
   
-  if (bundleExists) {
-    console.log("Cmux bundle already exists, skipping extraction");
+  // Write the zip file to a temporary location and extract it
+  const tempZipPath = path.join(os.tmpdir(), `cmux-bundle-${Date.now()}.zip`);
+  
+  // Read the embedded zip file and write it to disk
+  const zipData = await fs.readFile(cmux_bundle_zip);
+  await fs.writeFile(tempZipPath, zipData);
+  
+  const unzipStartTime = performance.now();
+  // Extract to temp directory first
+  const tempExtractDir = path.join(os.tmpdir(), `cmux-extract-${Date.now()}`);
+  await $`unzip -o ${tempZipPath} -d ${tempExtractDir}`;
+  
+  if (isUpgrade) {
+    console.log("Upgrading cmux, preserving user data...");
+    
+    // Backup user data files
+    const sqliteDbPath = path.join(convexDir, "convex_local_backend.sqlite3");
+    const convexStoragePath = path.join(convexDir, "convex_local_storage");
+    const tempBackupDir = path.join(os.tmpdir(), `cmux-backup-${Date.now()}`);
+    
+    await fs.mkdir(tempBackupDir, { recursive: true });
+    
+    // Backup SQLite database if it exists
+    const hasDb = await fs.access(sqliteDbPath).then(() => true).catch(() => false);
+    if (hasDb) {
+      await $`cp ${sqliteDbPath} ${tempBackupDir}/`;
+      console.log("Backed up SQLite database");
+    }
+    
+    // Backup convex_local_storage if it exists
+    const hasStorage = await fs.access(convexStoragePath).then(() => true).catch(() => false);
+    if (hasStorage) {
+      await $`cp -r ${convexStoragePath} ${tempBackupDir}/`;
+      console.log("Backed up convex_local_storage");
+    }
+    
+    // Clear the convexDir
+    await fs.rm(convexDir, { recursive: true, force: true });
+    await fs.mkdir(convexDir, { recursive: true });
+    
+    // Move new files
+    await $`mv ${tempExtractDir}/cmux-bundle/* ${convexDir}/`;
+    
+    // Restore user data
+    if (hasDb) {
+      await $`mv ${tempBackupDir}/convex_local_backend.sqlite3 ${convexDir}/`;
+      console.log("Restored SQLite database");
+    }
+    
+    if (hasStorage) {
+      await $`mv ${tempBackupDir}/convex_local_storage ${convexDir}/`;
+      console.log("Restored convex_local_storage");
+    }
+    
+    // Cleanup backup dir
+    await $`rm -rf ${tempBackupDir}`;
+    console.log("Upgrade complete!");
   } else {
-    // Write the zip file to a temporary location and extract it
-    const tempZipPath = path.join(os.tmpdir(), `cmux-bundle-${Date.now()}.zip`);
-    
-    // Read the embedded zip file and write it to disk
-    const zipData = await fs.readFile(cmux_bundle_zip);
-    await fs.writeFile(tempZipPath, zipData);
-    
-    const unzipStartTime = performance.now();
-    // Extract to temp directory first
-    const tempExtractDir = path.join(os.tmpdir(), `cmux-extract-${Date.now()}`);
-    await $`unzip -o ${tempZipPath} -d ${tempExtractDir}`;
-    
+    console.log("Fresh installation...");
     // Clear the convexDir and move the contents of cmux-bundle
     await fs.rm(convexDir, { recursive: true, force: true });
     await fs.mkdir(convexDir, { recursive: true });
     await $`mv ${tempExtractDir}/cmux-bundle/* ${convexDir}/`;
-    
-    // Cleanup
-    await $`rm -rf ${tempExtractDir}`;
-    await fs.unlink(tempZipPath);
-    
-    const unzipEndTime = performance.now();
-    console.log(`Unzip took ${(unzipEndTime - unzipStartTime).toFixed(2)}ms`);
   }
+  
+  // Cleanup
+  await $`rm -rf ${tempExtractDir}`;
+  await fs.unlink(tempZipPath);
+  
+  const unzipEndTime = performance.now();
+  console.log(`Extraction took ${(unzipEndTime - unzipStartTime).toFixed(2)}ms`);
 
   // Make sure the binary is executable
   try {
