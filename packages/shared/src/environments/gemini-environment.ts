@@ -27,8 +27,11 @@ export async function getGeminiEnvironment(): Promise<EnvironmentResult> {
         mode,
       });
       return true;
-    } catch (error) {
-      console.warn(`Failed to read ${filename}:`, error);
+    } catch (error: any) {
+      // Only log if it's not a "file not found" error
+      if (error.code !== "ENOENT") {
+        console.warn(`Failed to read ${filename}:`, error);
+      }
       return false;
     }
   }
