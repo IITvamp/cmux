@@ -420,10 +420,16 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     const baseUrl = `http://localhost:${vscodePort}`;
     const workspaceUrl = this.getWorkspaceUrl(baseUrl);
     const workerUrl = `http://localhost:${workerPort}`;
+    
+    // Generate the proxy URL that clients will use
+    const shortId = getShortId(this.taskRunId);
+    const proxyBaseUrl = `http://${shortId}.39378.localhost:9776`;
+    const proxyWorkspaceUrl = `${proxyBaseUrl}/?folder=/root/workspace`;
 
     console.log(`Docker VSCode instance started:`);
     console.log(`  VS Code URL: ${workspaceUrl}`);
     console.log(`  Worker URL: ${workerUrl}`);
+    console.log(`  Proxy URL: ${proxyWorkspaceUrl}`);
 
     // Monitor container events
     this.setupContainerEventMonitoring();
@@ -446,8 +452,8 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     }
 
     return {
-      url: baseUrl,
-      workspaceUrl,
+      url: baseUrl,  // Store the actual localhost URL
+      workspaceUrl: workspaceUrl,  // Store the actual localhost workspace URL
       instanceId: this.instanceId,
       taskRunId: this.taskRunId,
       provider: "docker",
@@ -512,8 +518,6 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
   async stop(): Promise<void> {
     console.log(`Stopping Docker VSCode instance: ${this.containerName}`);
-
-    const docker = DockerVSCodeInstance.getDocker();
 
     // Update mapping status
     const mapping = containerMappings.get(this.containerName);
@@ -594,11 +598,13 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
         if (vscodePort) {
           const baseUrl = `http://localhost:${vscodePort}`;
+          const workspaceUrl = this.getWorkspaceUrl(baseUrl);
+          
           return {
             running: true,
             info: {
               url: baseUrl,
-              workspaceUrl: this.getWorkspaceUrl(baseUrl),
+              workspaceUrl: workspaceUrl,
               instanceId: this.instanceId,
               taskRunId: this.taskRunId,
               provider: "docker",
@@ -618,7 +624,6 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       throw new Error("Container not initialized");
     }
 
-    const docker = DockerVSCodeInstance.getDocker();
     const stream = await this.container.logs({
       stdout: true,
       stderr: true,
