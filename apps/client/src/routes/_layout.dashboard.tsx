@@ -339,6 +339,7 @@ function DashboardComponent() {
                   className="!min-w-[300px] !max-w-[500px] !rounded-2xl"
                   loading={isLoadingRepos || reposByOrgQuery.isLoading}
                   maxTagCount={1}
+                  showSearch
                   // singleSelect={true}
                   // className={clsx(
                   //   "!border !border-neutral-200 dark:!border-0",
@@ -357,6 +358,7 @@ function DashboardComponent() {
                   singleSelect={true}
                   className="!min-w-[120px] !rounded-2xl"
                   loading={isLoadingBranches || branchesQuery.isLoading}
+                  showSearch
                   // className={clsx(
                   //   "!border !border-neutral-200 dark:!border-0",
                   //   "bg-neutral-100 dark:bg-neutral-700 dark:hover:bg-neutral-600/90 aria-expanded:bg-neutral-600/90 transition",
@@ -374,6 +376,7 @@ function DashboardComponent() {
                   singleSelect={false}
                   maxTagCount={1}
                   className="!min-w-[200px] !rounded-2xl"
+                  showSearch
                   // className={clsx(
                   //   "!border !border-neutral-200 dark:!border-0",
                   //   "bg-neutral-100 dark:bg-neutral-700 dark:hover:bg-neutral-600/90 aria-expanded:bg-neutral-600/90 transition",

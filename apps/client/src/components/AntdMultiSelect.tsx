@@ -10,6 +10,7 @@ interface AntdMultiSelectProps {
   className?: string;
   loading?: boolean;
   maxTagCount?: number;
+  showSearch?: boolean;
 }
 
 export default function AntdMultiSelect({
@@ -21,6 +22,7 @@ export default function AntdMultiSelect({
   className,
   loading,
   maxTagCount,
+  showSearch,
 }: AntdMultiSelectProps) {
   const selectProps: SelectProps = {
     mode: singleSelect ? undefined : "multiple",
@@ -34,6 +36,7 @@ export default function AntdMultiSelect({
       }
     },
     placeholder,
+    showSearch,
     className: `antd-select-custom ${className || ""}`,
     classNames: {
       // option: "antd-select-option",
