@@ -36,7 +36,6 @@ export class RepositoryManager {
   private static instance: RepositoryManager;
   private operations = new Map<string, RepositoryOperation>();
   private worktreeLocks = new Map<string, Promise<void>>();
-  private configLocks = new Map<string, Promise<void>>();
   
   // Global operation queue to prevent any git command conflicts
   private operationQueue: QueuedOperation[] = [];
@@ -159,18 +158,6 @@ export class RepositoryManager {
   }
 
   private async configureGitPullStrategy(repoPath: string): Promise<void> {
-    // Serialize config operations per repository to avoid lock conflicts
-    const configLock = this.configLocks.get(repoPath);
-    if (configLock) {
-      await configLock;
-    }
-
-    let resolveConfigLock: () => void;
-    const newConfigLock = new Promise<void>((resolve) => {
-      resolveConfigLock = resolve;
-    });
-    this.configLocks.set(repoPath, newConfigLock);
-
     try {
       const strategy =
         this.config.pullStrategy === "ff-only"
@@ -186,9 +173,6 @@ export class RepositoryManager {
       );
     } catch (error) {
       console.warn("Failed to configure git pull strategy:", error);
-    } finally {
-      this.configLocks.delete(repoPath);
-      resolveConfigLock!();
     }
   }
 
@@ -462,18 +446,6 @@ export class RepositoryManager {
     worktreePath: string,
     branchName: string
   ): Promise<void> {
-    // Serialize config operations to avoid lock conflicts
-    const configLock = this.configLocks.get(worktreePath);
-    if (configLock) {
-      await configLock;
-    }
-
-    let resolveConfigLock: () => void;
-    const newConfigLock = new Promise<void>((resolve) => {
-      resolveConfigLock = resolve;
-    });
-    this.configLocks.set(worktreePath, newConfigLock);
-
     try {
       await this.executeGitCommand(
         `git config branch.${branchName}.remote origin`,
@@ -488,9 +460,6 @@ export class RepositoryManager {
       );
     } catch (error) {
       console.warn(`Failed to configure branch tracking for ${branchName}:`, error);
-    } finally {
-      this.configLocks.delete(worktreePath);
-      resolveConfigLock!();
     }
   }
 

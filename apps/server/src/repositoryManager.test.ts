@@ -441,6 +441,47 @@ describe("RepositoryManager", () => {
   });
 
   describe("Stress Tests", () => {
+    test("should handle 10 concurrent worktree creations", async () => {
+      const manager = getRepositoryManager();
+
+      // First ensure origin exists
+      await manager.ensureRepository(TEST_REPO_URL, TEST_ORIGIN_PATH, "main");
+
+      // Create 10 worktrees all at once
+      const worktreePromises = Array(10)
+        .fill(null)
+        .map((_, i) => {
+          const worktreePath = path.join(TEST_BASE_DIR, `stress-worktree-${i}`);
+          const branchName = `stress-branch-${i}`;
+          return manager.createWorktree(
+            TEST_ORIGIN_PATH,
+            worktreePath,
+            branchName,
+            "main"
+          );
+        });
+
+      // All should complete successfully without any lock errors
+      await expect(Promise.all(worktreePromises)).resolves.toBeArrayOfSize(10);
+
+      // Verify all worktrees exist and are properly configured
+      for (let i = 0; i < 10; i++) {
+        const worktreePath = path.join(TEST_BASE_DIR, `stress-worktree-${i}`);
+        const exists = await fs
+          .access(worktreePath)
+          .then(() => true)
+          .catch(() => false);
+        expect(exists).toBe(true);
+        
+        // Verify branch config was set correctly
+        const { stdout } = await execAsync(
+          `git config branch.stress-branch-${i}.remote`,
+          { cwd: worktreePath }
+        );
+        expect(stdout.trim()).toBe("origin");
+      }
+    }, 60000); // Longer timeout for this stress test
+
     test("should handle rapid sequential operations", async () => {
       const manager = getRepositoryManager();
 
