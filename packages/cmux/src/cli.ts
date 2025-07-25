@@ -27,7 +27,7 @@ const program = new Command();
 program
   .name("cmux")
   .description("Socket.IO and static file server")
-  .version("0.2.7")
+  .version("0.2.8")
   .option("-p, --port <port>", "port to listen on", "9776")
   .option("-c, --cors <origin>", "CORS origin configuration", "true")
   .action(async (options) => {
