@@ -41,7 +41,7 @@ function DashboardComponent() {
   const [taskDescription, setTaskDescription] = useState<string>("");
   const [isCloudMode, setIsCloudMode] = useState<boolean>(() => {
     const stored = localStorage.getItem("isCloudMode");
-    return stored ? JSON.parse(stored) : true;
+    return stored ? JSON.parse(stored) : false;
   });
 
   // State for loading states
@@ -250,14 +250,14 @@ function DashboardComponent() {
     selectedBranch.length > 0
       ? selectedBranch
       : branches && branches.length > 0
-      ? [
-          branches.includes("main")
-            ? "main"
-            : branches.includes("master")
-            ? "master"
-            : branches[0],
-        ]
-      : [];
+        ? [
+            branches.includes("main")
+              ? "main"
+              : branches.includes("master")
+                ? "master"
+                : branches[0],
+          ]
+        : [];
 
   const agentOptions = AGENT_CONFIGS.map((agent) => agent.name);
 
@@ -539,8 +539,8 @@ function TaskItem({ task, navigate, archiveTask }: TaskItemProps) {
           task.isCompleted
             ? "bg-green-500"
             : task._id.includes("-") && task._id.length === 36
-            ? "bg-yellow-500"
-            : "bg-blue-500 animate-pulse"
+              ? "bg-yellow-500"
+              : "bg-blue-500 animate-pulse"
         )}
       />
       <div className="flex-1 min-w-0 flex items-center gap-2">
