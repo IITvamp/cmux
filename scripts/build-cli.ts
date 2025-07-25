@@ -4,8 +4,6 @@ import { $ } from "bun";
 import { spawn } from "node:child_process";
 import cmuxPackageJson from "../packages/cmux/package.json";
 
-console.log("cmuxPackageJson", cmuxPackageJson);
-
 // Build the client with the correct VITE_CONVEX_URL
 console.log("Building client app...");
 await $`cd ./apps/client && VITE_CONVEX_URL=http://localhost:9777 pnpm build`;
