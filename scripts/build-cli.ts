@@ -3,6 +3,10 @@
 import { $ } from "bun";
 import { spawn } from "node:child_process";
 
+// Build the client with the correct VITE_CONVEX_URL
+console.log("Building client app...");
+await $`cd ./apps/client && VITE_CONVEX_URL=http://localhost:9777 pnpm build`;
+
 await $`cp -r ./apps/client/dist ./packages/cmux/public`;
 await $`bun build ./packages/cmux/node_modules/convex/dist/cli.bundle.cjs --outdir ./packages/cmux/src/convex/convex-bundle/convex-cli-dist --outfile convex-cli.cjs --target bun --minify`;
 

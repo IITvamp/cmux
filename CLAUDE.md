@@ -24,9 +24,10 @@ cmux is published as a single-file executable binary to npm. The binary includes
 
 ## Build and publish process:
 
-1. **Build the client app** (if UI changed):
+1. **Build the client app** (automatically done by build-cli.ts):
+   The build script will automatically build the client with:
    ```bash
-   cd apps/client && pnpm build
+   cd apps/client && VITE_CONVEX_URL=http://localhost:9777 pnpm build
    ```
 
 2. **Build the cmux-cli bundle**:
