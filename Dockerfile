@@ -38,7 +38,7 @@ RUN curl -fsSL https://bun.sh/install | bash && \
     bunx --version
 
 # Install openvscode-server
-RUN if [ -z ${CODE_RELEASE+x} ]; then \
+RUN if [ -z "${CODE_RELEASE}" ]; then \
     CODE_RELEASE=$(curl -sX GET "https://api.github.com/repos/gitpod-io/openvscode-server/releases/latest" \
       | awk '/tag_name/{print $4;exit}' FS='[""]' \
       | sed 's|^openvscode-server-v||'); \
