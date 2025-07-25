@@ -19,5 +19,5 @@
     "allowSyntheticDefaultImports": true
   },
   "include": ["src/**/*", "vite-env.d.ts"],
-  "exclude": ["node_modules", "dist", "scripts", "upload-artifact"]
+  "exclude": ["node_modules", "dist", "scripts", "upload-artifact", "src/convex/convex-bundle"]
 }

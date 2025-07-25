@@ -1,6 +1,6 @@
 {
   "name": "cmux",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Socket.IO and static file server",
   "type": "module",
   "main": "dist/index.js",
@@ -21,7 +21,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "prepare-publish": "npm run build && tsx scripts/prepare-publish.ts",
     "check-publish": "tsx scripts/check-upload-artifact.ts",
-    "secure-publish": "npm run prepare-publish && npm run check-publish && echo 'Ready to publish! Run: cd upload-artifact && npm publish'"
+    "secure-publish": "npm run prepare-publish && npm run check-publish && echo 'Ready to publish! Run: cd upload-artifact && npm publish'",
+    "publish-cli": "tsx scripts/publish-npm.ts"
   },
   "keywords": [
     "socket.io",
