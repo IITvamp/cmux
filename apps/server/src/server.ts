@@ -17,7 +17,6 @@ import { promises as fs } from "node:fs";
 import { createServer } from "node:http";
 import * as path from "node:path";
 import { Server } from "socket.io";
-import type { ViteHotContext } from "vite/types/hot.js";
 import { spawnAllAgents } from "./agentSpawner.js";
 import { execWithEnv } from "./execWithEnv.js";
 import { ghApi } from "./ghApi.js";
@@ -423,11 +422,26 @@ export async function startServer({
         }
 
         // If no repos exist, fetch from GitHub
-        const [username, userRepos, orgs] = await Promise.all([
-          ghApi.getUser(),
-          ghApi.getUserRepos(),
-          ghApi.getUserOrgs(),
-        ]);
+        let username: string;
+        let userRepos: string[];
+        let orgs: string[];
+        
+        try {
+          [username, userRepos, orgs] = await Promise.all([
+            ghApi.getUser(),
+            ghApi.getUserRepos(),
+            ghApi.getUserOrgs(),
+          ]);
+        } catch (error) {
+          // Check if this is an authentication error
+          if (error instanceof Error && 'status' in error && error.status === 401) {
+            console.log("No GitHub authentication found, skipping repository fetch");
+            // Return empty repos but don't update Convex
+            callback({ success: true, repos: {} });
+            return;
+          }
+          throw error;
+        }
 
         // Fetch repos for all orgs in parallel
         const orgReposPromises = orgs.map(async (org) => ({
@@ -457,10 +471,12 @@ export async function startServer({
           }))
         );
 
-        // Bulk insert repos into Convex
-        await convex.mutation(api.github.bulkInsertRepos, {
-          repos: reposToInsert,
-        });
+        // Only update Convex if we have repos to insert
+        if (reposToInsert.length > 0) {
+          await convex.mutation(api.github.bulkInsertRepos, {
+            repos: reposToInsert,
+          });
+        }
 
         // Format repos by organization for response
         const reposByOrg: Record<
@@ -503,13 +519,28 @@ export async function startServer({
         }
 
         // If no branches exist, fetch from GitHub
-        const branches = await ghApi.getRepoBranches(repo);
+        let branches: string[];
+        
+        try {
+          branches = await ghApi.getRepoBranches(repo);
+        } catch (error) {
+          // Check if this is an authentication error
+          if (error instanceof Error && 'status' in error && error.status === 401) {
+            console.log("No GitHub authentication found, skipping branch fetch");
+            // Return empty branches but don't update Convex
+            callback({ success: true, branches: [] });
+            return;
+          }
+          throw error;
+        }
 
-        // Bulk insert branches into Convex
-        await convex.mutation(api.github.bulkInsertBranches, {
-          repo,
-          branches,
-        });
+        // Only update Convex if we have branches to insert
+        if (branches.length > 0) {
+          await convex.mutation(api.github.bulkInsertBranches, {
+            repo,
+            branches,
+          });
+        }
 
         callback({ success: true, branches });
       } catch (error) {
@@ -607,8 +638,3 @@ export async function startServer({
   }
 }
 
-declare global {
-  interface ImportMeta {
-    readonly hot?: ViteHotContext;
-  }
-}
