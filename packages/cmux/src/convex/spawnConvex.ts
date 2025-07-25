@@ -1,4 +1,4 @@
-import { file } from "bun";
+import { $, file } from "bun";
 import * as convex from "convex";
 import { ChildProcess, spawn } from "node:child_process";
 import fs from "node:fs/promises";
@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 
 // @ts-expect-error this is a real file!
-import convex_local_backend from "./convex-local-backend" with { type: "file" };
+import convex_local_backend from "./convex-local-backend.zip" with { type: "file" };
 
 // console.log(embeddedFiles);
 console.log("convex", convex);
@@ -40,6 +40,13 @@ export async function spawnConvex(
   console.log(
     `File read took ${(fileReadEndTime - fileReadStartTime).toFixed(2)}ms`
   );
+
+  // next, we unzip it into ~/.cmux/data/convex-local-backend
+
+  const unzipStartTime = performance.now();
+  await $`unzip -d ${path.resolve(convexDir, "convex-local-backend")} ${convex_local_backend}`;
+  const unzipEndTime = performance.now();
+  console.log(`Unzip took ${(unzipEndTime - unzipStartTime).toFixed(2)}ms`);
 
   const convexBinaryPath = path.resolve(convexDir, "convex-local-backend");
 
@@ -98,7 +105,7 @@ export async function spawnConvex(
 
   while ((!instance || !instance.ok) && retries < maxRetries) {
     try {
-      instance = await fetch(`http://localhost:${convexPort}/api/instance`);
+      instance = await fetch(`http://localhost:${convexPort}/`);
     } catch (error) {
       // Ignore fetch errors and continue retrying
     }
