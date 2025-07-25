@@ -1,10 +1,10 @@
-import { preloadTaskRunIframes } from "@/lib/preloadTaskRunIframes";
 import { api } from "@cmux/convex/api";
 import { type Id } from "@cmux/convex/dataModel";
 import { getShortId } from "@cmux/shared";
+import { convexQuery } from "@convex-dev/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import "@xterm/xterm/css/xterm.css";
-import { useQuery } from "convex/react";
 import { usePersistentIframe } from "../hooks/usePersistentIframe";
 
 // Configuration: Set to true to use the proxy URL, false to use direct localhost URL
@@ -13,35 +13,32 @@ const USE_PROXY_URL = false;
 export const Route = createFileRoute("/_layout/task/$taskId/run/$taskRunId")({
   component: TaskRunComponent,
   loader: async (opts) => {
-    void preloadTaskRunIframes([opts.params.taskRunId]);
+    opts.context.queryClient.ensureQueryData(
+      convexQuery(api.taskRuns.get, {
+        id: opts.params.taskRunId as Id<"taskRuns">,
+      })
+    );
+    // void preloadTaskRunIframes([opts.params.taskRunId]);
   },
 });
 
 function TaskRunComponent() {
   const { taskRunId } = Route.useParams();
-  const taskRun = useQuery(api.taskRuns.get, {
-    id: taskRunId as Id<"taskRuns">,
-  });
-  console.log("taskRun", taskRun);
+  const taskRun = useSuspenseQuery(
+    convexQuery(api.taskRuns.get, {
+      id: taskRunId as Id<"taskRuns">,
+    })
+  );
 
   const shortId = getShortId(taskRunId);
 
-  let iframeUrl: string;
-
-  if (USE_PROXY_URL) {
-    // Use the proxy URL pattern
-    iframeUrl = `http://${shortId}.39378.localhost:9776/?folder=/root/workspace`;
-  } else {
-    // Use the actual Docker URL from the database if available
-    if (taskRun?.vscode?.workspaceUrl) {
-      iframeUrl = taskRun.vscode.workspaceUrl;
-    } else if (taskRun?.vscode?.url) {
-      iframeUrl = `${taskRun.vscode.url}/?folder=/root/workspace`;
-    } else {
-      // Fallback to proxy URL if no database URL is available
-      iframeUrl = `http://${shortId}.39378.localhost:9776/?folder=/root/workspace`;
-    }
-  }
+  let iframeUrl = USE_PROXY_URL
+    ? `http://${shortId}.39378.localhost:9776/?folder=/root/workspace`
+    : taskRun?.data?.vscode?.workspaceUrl || "about:blank";
+  console.log(
+    "taskRun?.data?.vscode?.workspaceUrl",
+    taskRun?.data?.vscode?.workspaceUrl
+  );
 
   const { containerRef } = usePersistentIframe({
     key: `task-run-${taskRunId}`,
