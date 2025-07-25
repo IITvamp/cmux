@@ -14,3 +14,46 @@ Schemas are defined in packages/convex/convex/schema.ts.
 # Misc
 
 Always use node: prefixes for node imports.
+
+# Publishing cmux CLI to npm
+
+cmux is published as a single-file executable binary to npm. The binary includes:
+- Convex backend (binary + SQLite database)
+- Web UI static files (public/dist)
+- All dependencies bundled
+
+## Build and publish process:
+
+1. **Build the client app** (if UI changed):
+   ```bash
+   cd apps/client && pnpm build
+   ```
+
+2. **Build the cmux-cli bundle**:
+   ```bash
+   ./scripts/build-cli.ts
+   ```
+   This script:
+   - Copies client dist to packages/cmux/public
+   - Builds convex CLI bundle
+   - Starts local convex backend
+   - Deploys convex functions
+   - Creates cmux-bundle.zip with everything (convex + public files)
+   - Compiles cmux-cli binary using Bun
+
+3. **Update version** in packages/cmux/package.json and packages/cmux/src/cli.ts
+
+4. **Publish to npm**:
+   ```bash
+   cd packages/cmux && npm run publish-cli
+   ```
+   This runs scripts/publish-npm.ts which:
+   - Creates clean npm package with just binary + README
+   - Runs npm pkg fix
+   - Publishes to npm registry
+
+The published package allows users to:
+```bash
+npm install -g cmux
+cmux  # Runs on port 9776, extracts bundle to ~/.cmux on first run
+```
