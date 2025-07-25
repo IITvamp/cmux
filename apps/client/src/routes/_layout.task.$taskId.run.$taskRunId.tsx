@@ -6,6 +6,7 @@ import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import "@xterm/xterm/css/xterm.css";
 import { usePersistentIframe } from "../hooks/usePersistentIframe";
+import { preloadTaskRunIframes } from "../lib/preloadTaskRunIframes";
 
 // Configuration: Set to true to use the proxy URL, false to use direct localhost URL
 const USE_PROXY_URL = false;
@@ -13,12 +14,19 @@ const USE_PROXY_URL = false;
 export const Route = createFileRoute("/_layout/task/$taskId/run/$taskRunId")({
   component: TaskRunComponent,
   loader: async (opts) => {
-    opts.context.queryClient.ensureQueryData(
+    const result = await opts.context.queryClient.ensureQueryData(
       convexQuery(api.taskRuns.get, {
         id: opts.params.taskRunId as Id<"taskRuns">,
       })
     );
-    // void preloadTaskRunIframes([opts.params.taskRunId]);
+    if (result) {
+      void preloadTaskRunIframes([
+        {
+          url: result.vscode?.workspaceUrl || "",
+          key: `task-run-${opts.params.taskRunId}`,
+        },
+      ]);
+    }
   },
 });
 
@@ -35,10 +43,6 @@ function TaskRunComponent() {
   let iframeUrl = USE_PROXY_URL
     ? `http://${shortId}.39378.localhost:9776/?folder=/root/workspace`
     : taskRun?.data?.vscode?.workspaceUrl || "about:blank";
-  console.log(
-    "taskRun?.data?.vscode?.workspaceUrl",
-    taskRun?.data?.vscode?.workspaceUrl
-  );
 
   const { containerRef } = usePersistentIframe({
     key: `task-run-${taskRunId}`,

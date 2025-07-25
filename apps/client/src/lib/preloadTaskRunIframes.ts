@@ -7,14 +7,11 @@ import { persistentIframeManager } from "./persistentIframeManager";
  * @returns Promise that resolves when all iframes are loaded
  */
 export async function preloadTaskRunIframes(
-  taskRunIds: string[]
+  data: { url: string; key: string }[]
 ): Promise<void> {
-  const entries = taskRunIds.map((taskRunId) => {
-    const shortId = getShortId(taskRunId);
-    const url = `http://${shortId}.39378.localhost:9776/?folder=/root/workspace`;
-
+  const entries = data.map(({ url, key }) => {
     return {
-      key: `task-run-${taskRunId}`,
+      key,
       url,
       allow: "clipboard-read; clipboard-write",
       sandbox:
