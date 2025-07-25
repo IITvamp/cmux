@@ -4,6 +4,22 @@ import { $ } from "bun";
 import { spawn } from "node:child_process";
 import cmuxPackageJson from "../packages/cmux/package.json";
 
+// Check if port 9777 is already in use
+console.log("Checking if port 9777 is available...");
+try {
+  const lsofResult = await $`lsof -i :9777`.text();
+  const output = lsofResult.trim();
+  if (output) {
+    console.log("Port 9777 is already in use. Processes using this port:");
+    console.log(output);
+    console.log("Please stop these processes before running this script.");
+    process.exit(1);
+  }
+} catch (error) {
+  // lsof returns exit code 1 when no processes are found, which is what we want
+  console.log("Port 9777 is available.");
+}
+
 // Build the client with the correct VITE_CONVEX_URL
 console.log("Building client app...");
 await $`cd ./apps/client && VITE_CONVEX_URL=http://localhost:9777 pnpm build`;
@@ -60,6 +76,7 @@ console.log("Deploying convex");
 
 await $`cd ./packages/cmux/src/convex/convex-bundle && bunx convex deploy`;
 
+console.log("Killing convex backend");
 convexBackendProcess.kill();
 
 // Create a temp directory for the cmux bundle
@@ -86,6 +103,7 @@ const VERSION = cmuxPackageJson.version;
 
 // bun build the cli
 await $`bun build ./packages/cmux/src/cli.ts --compile --define VERSION=${VERSION} --outfile cmux-cli`;
+console.log("Built cmux-cli");
 
 // exit with 0
 process.exit(0);
