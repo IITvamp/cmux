@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1.7-labs
 
 # Stage 1: Build stage
+# Testing Docker workflow
 FROM ubuntu:24.04 AS builder
 
 ARG VERSION
