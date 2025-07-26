@@ -19,7 +19,6 @@ import * as path from "node:path";
 import { Server } from "socket.io";
 import { spawnAllAgents } from "./agentSpawner.js";
 import { execWithEnv } from "./execWithEnv.js";
-import { ghApi } from "./ghApi.js";
 import { GitDiffManager } from "./gitDiff.js";
 import { createProxyApp, setupWebSocketProxy } from "./proxyApp.js";
 import { RepositoryManager } from "./repositoryManager.js";
@@ -28,6 +27,7 @@ import { waitForConvex } from "./utils/waitForConvex.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWorktreePath } from "./workspace.js";
+import { refreshGitHubData, refreshBranchesForRepo } from "./utils/refreshGitHubData.js";
 
 export async function startServer({
   port,
@@ -415,86 +415,24 @@ export async function startServer({
 
     socket.on("github-fetch-repos", async (callback) => {
       try {
-        // Check if we already have repos in Convex
+        // First, try to get existing repos from Convex
         const existingRepos = await convex.query(api.github.getAllRepos, {});
-
+        
         if (existingRepos.length > 0) {
-          // Return existing repos from Convex
+          // If we have repos, return them and refresh in the background
           const reposByOrg = await convex.query(api.github.getReposByOrg, {});
           callback({ success: true, repos: reposByOrg });
+          
+          // Refresh in the background to add any new repos
+          refreshGitHubData().catch((error) => {
+            console.error("Background refresh failed:", error);
+          });
           return;
         }
 
-        // If no repos exist, fetch from GitHub
-        let username: string;
-        let userRepos: string[];
-        let orgs: string[];
-        
-        try {
-          [username, userRepos, orgs] = await Promise.all([
-            ghApi.getUser(),
-            ghApi.getUserRepos(),
-            ghApi.getUserOrgs(),
-          ]);
-        } catch (error) {
-          // Check if this is an authentication error
-          if (error instanceof Error && 'status' in error && error.status === 401) {
-            console.log("No GitHub authentication found, skipping repository fetch");
-            // Return empty repos but don't update Convex
-            callback({ success: true, repos: {} });
-            return;
-          }
-          throw error;
-        }
-
-        // Fetch repos for all orgs in parallel
-        const orgReposPromises = orgs.map(async (org) => ({
-          org,
-          repos: await ghApi.getOrgRepos(org),
-        }));
-
-        const orgReposResults = await Promise.all(orgReposPromises);
-
-        // Combine all repos
-        const allRepos: { org: string; repos: string[] }[] = [
-          {
-            org: username,
-            repos: userRepos.filter((repo) => repo.startsWith(`${username}/`)),
-          },
-          ...orgReposResults,
-        ];
-
-        // Prepare repos for bulk insert
-        const reposToInsert = allRepos.flatMap((orgData) =>
-          orgData.repos.map((repo) => ({
-            fullName: repo,
-            org: orgData.org,
-            name: repo.split("/")[1],
-            gitRemote: `https://github.com/${repo}.git`,
-            provider: "github" as const,
-          }))
-        );
-
-        // Only update Convex if we have repos to insert
-        if (reposToInsert.length > 0) {
-          await convex.mutation(api.github.bulkInsertRepos, {
-            repos: reposToInsert,
-          });
-        }
-
-        // Format repos by organization for response
-        const reposByOrg: Record<
-          string,
-          Array<{ fullName: string; name: string }>
-        > = {};
-
-        allRepos.forEach((orgData) => {
-          reposByOrg[orgData.org] = orgData.repos.map((repo) => ({
-            fullName: repo,
-            name: repo.split("/")[1],
-          }));
-        });
-
+        // If no repos exist, do a full fetch
+        await refreshGitHubData();
+        const reposByOrg = await convex.query(api.github.getReposByOrg, {});
         callback({ success: true, repos: reposByOrg });
       } catch (error) {
         console.error("Error fetching repos:", error);
@@ -511,41 +449,24 @@ export async function startServer({
       try {
         const { repo } = GitHubFetchBranchesSchema.parse(data);
 
-        // Check if we already have branches for this repo in Convex
+        // Check if we already have branches for this repo
         const existingBranches = await convex.query(api.github.getBranches, {
           repo,
         });
 
         if (existingBranches.length > 0) {
-          // Return existing branches from Convex
+          // Return existing branches and refresh in background
           callback({ success: true, branches: existingBranches });
+          
+          // Refresh in the background
+          refreshBranchesForRepo(repo).catch((error) => {
+            console.error("Background branch refresh failed:", error);
+          });
           return;
         }
 
-        // If no branches exist, fetch from GitHub
-        let branches: string[];
-        
-        try {
-          branches = await ghApi.getRepoBranches(repo);
-        } catch (error) {
-          // Check if this is an authentication error
-          if (error instanceof Error && 'status' in error && error.status === 401) {
-            console.log("No GitHub authentication found, skipping branch fetch");
-            // Return empty branches but don't update Convex
-            callback({ success: true, branches: [] });
-            return;
-          }
-          throw error;
-        }
-
-        // Only update Convex if we have branches to insert
-        if (branches.length > 0) {
-          await convex.mutation(api.github.bulkInsertBranches, {
-            repo,
-            branches,
-          });
-        }
-
+        // If no branches exist, fetch them
+        const branches = await refreshBranchesForRepo(repo);
         callback({ success: true, branches });
       } catch (error) {
         console.error("Error fetching branches:", error);
@@ -571,6 +492,11 @@ export async function startServer({
     // Start the Docker container state sync
     await waitForConvex();
     DockerVSCodeInstance.startContainerStateSync();
+
+    // Refresh GitHub data on server start
+    refreshGitHubData().catch((error) => {
+      console.error("Error refreshing GitHub data on startup:", error);
+    });
   });
   let isCleaningUp = false;
   let isCleanedUp = false;

@@ -103,13 +103,15 @@ export const bulkInsertRepos = mutation({
     ),
   },
   handler: async (ctx, { repos }) => {
-    // Delete existing repos to avoid duplicates
+    // Get existing repos to check for duplicates
     const existingRepos = await ctx.db.query("repos").collect();
-    await Promise.all(existingRepos.map((repo) => ctx.db.delete(repo._id)));
+    const existingRepoNames = new Set(existingRepos.map(r => r.fullName));
     
-    // Insert new repos
+    // Only insert repos that don't already exist
+    const newRepos = repos.filter(repo => !existingRepoNames.has(repo.fullName));
+    
     const insertedIds = await Promise.all(
-      repos.map((repo) => ctx.db.insert("repos", repo))
+      newRepos.map((repo) => ctx.db.insert("repos", repo))
     );
     return insertedIds;
   },
@@ -121,16 +123,44 @@ export const bulkInsertBranches = mutation({
     branches: v.array(v.string()),
   },
   handler: async (ctx, { repo, branches }) => {
-    // Delete existing branches for this repo
+    // Get existing branches for this repo
     const existingBranches = await ctx.db
       .query("branches")
       .filter((q) => q.eq(q.field("repo"), repo))
       .collect();
-    await Promise.all(existingBranches.map((branch) => ctx.db.delete(branch._id)));
+    const existingBranchNames = new Set(existingBranches.map(b => b.name));
     
-    // Insert new branches
+    // Only insert branches that don't already exist
+    const newBranches = branches.filter(name => !existingBranchNames.has(name));
+    
     const insertedIds = await Promise.all(
-      branches.map((name) => ctx.db.insert("branches", { repo, name }))
+      newBranches.map((name) => ctx.db.insert("branches", { repo, name }))
+    );
+    return insertedIds;
+  },
+});
+
+// Full replacement mutations (use with caution)
+export const replaceAllRepos = mutation({
+  args: {
+    repos: v.array(
+      v.object({
+        fullName: v.string(),
+        org: v.string(),
+        name: v.string(),
+        gitRemote: v.string(),
+        provider: v.optional(v.string()),
+      })
+    ),
+  },
+  handler: async (ctx, { repos }) => {
+    // Delete all existing repos
+    const existingRepos = await ctx.db.query("repos").collect();
+    await Promise.all(existingRepos.map((repo) => ctx.db.delete(repo._id)));
+    
+    // Insert all new repos
+    const insertedIds = await Promise.all(
+      repos.map((repo) => ctx.db.insert("repos", repo))
     );
     return insertedIds;
   },

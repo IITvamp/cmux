@@ -20,7 +20,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useQuery as useConvexQuery, useMutation } from "convex/react";
 import { Archive, Check, Code2, Command, Copy, Image, Mic } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export const Route = createFileRoute("/_layout/dashboard")({
   component: DashboardComponent,
@@ -53,7 +53,6 @@ function DashboardComponent() {
 
   // Callback for task description changes
   const handleTaskDescriptionChange = useCallback((value: string) => {
-    console.log("handleTaskDescriptionChange", value);
     setTaskDescription(value);
   }, []);
 
@@ -356,6 +355,47 @@ function DashboardComponent() {
     }
   }, [selectedProject, taskDescription, handleStartTask]);
 
+  // Memoize individual LexicalEditor props to prevent unnecessary re-renders
+  const lexicalPlaceholder = useMemo(() => "Describe a task", []);
+
+  const lexicalRepoUrl = useMemo(
+    () =>
+      selectedProject[0]
+        ? `https://github.com/${selectedProject[0]}.git`
+        : undefined,
+    [selectedProject]
+  );
+
+  const lexicalBranch = useMemo(
+    () => effectiveSelectedBranch[0],
+    [effectiveSelectedBranch]
+  );
+
+  const lexicalPadding = useMemo(
+    () => ({
+      paddingLeft: "14px",
+      paddingRight: "16px",
+      paddingTop: "14px",
+    }),
+    []
+  );
+
+  const lexicalClassName = useMemo(
+    () =>
+      clsx(
+        "text-[15px] text-neutral-900 dark:text-neutral-100 min-h-[60px]! max-h-[600px]",
+        "focus:outline-none"
+      ),
+    []
+  );
+
+  const lexicalOnEditorReady = useMemo(
+    () => (api: any) => {
+      editorApiRef.current = api;
+    },
+    []
+  );
+
   return (
     <div className="flex flex-col h-full bg-neutral-50 dark:bg-neutral-900/60 overflow-y-auto">
       {/* Main content area */}
@@ -367,28 +407,14 @@ function DashboardComponent() {
             )}
           >
             <LexicalEditor
-              placeholder="Describe a task"
+              placeholder={lexicalPlaceholder}
               onChange={handleTaskDescriptionChange}
               onSubmit={handleSubmit}
-              value={taskDescription}
-              repoUrl={
-                selectedProject[0]
-                  ? `https://github.com/${selectedProject[0]}.git`
-                  : undefined
-              }
-              branch={effectiveSelectedBranch[0]}
-              padding={{
-                paddingLeft: "14px",
-                paddingRight: "16px",
-                paddingTop: "14px",
-              }}
-              contentEditableClassName={clsx(
-                "text-[15px] text-neutral-900 dark:text-neutral-100 min-h-[60px]! max-h-[600px]",
-                "focus:outline-none"
-              )}
-              onEditorReady={(api) => {
-                editorApiRef.current = api;
-              }}
+              repoUrl={lexicalRepoUrl}
+              branch={lexicalBranch}
+              padding={lexicalPadding}
+              contentEditableClassName={lexicalClassName}
+              onEditorReady={lexicalOnEditorReady}
             />
 
             {/* Integrated controls */}
