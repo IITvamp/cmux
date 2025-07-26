@@ -224,9 +224,11 @@ function DashboardComponent() {
         )
       );
 
+      console.log("content?.text", content?.text);
+
       // Create task in Convex with storage IDs
       const taskId = await createTask({
-        text: taskDescription,
+        text: content?.text || taskDescription, // Use content.text which includes image references
         projectFullName,
         branch,
         images: uploadedImages.length > 0 ? uploadedImages : undefined,
@@ -242,13 +244,13 @@ function DashboardComponent() {
 
       const repoUrl = `https://github.com/${projectFullName}.git`;
 
-      // For socket.io, we still need to send the base64 images
+      // For socket.io, we need to send the content text (which includes image references) and the images
       socket.emit(
         "start-task",
         {
           repoUrl,
           branch,
-          taskDescription,
+          taskDescription: content?.text || taskDescription, // Use content.text which includes image references
           projectFullName,
           taskId,
           selectedAgents:
