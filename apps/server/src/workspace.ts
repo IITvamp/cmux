@@ -94,7 +94,6 @@ export async function setupProjectWorkspace(args: {
 }): Promise<WorkspaceResult> {
   try {
     const { worktreeInfo } = args;
-    const baseBranch = args.branch || "main";
     const repoManager = RepositoryManager.getInstance();
 
     // Check if the projects path exists and has non-git content
@@ -138,8 +137,11 @@ export async function setupProjectWorkspace(args: {
     await repoManager.ensureRepository(
       args.repoUrl,
       worktreeInfo.originPath,
-      baseBranch
+      args.branch
     );
+
+    // Get the default branch if not specified
+    const baseBranch = args.branch || await repoManager.getDefaultBranch(worktreeInfo.originPath);
 
     // Create the worktree
     await repoManager.createWorktree(

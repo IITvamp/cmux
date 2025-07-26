@@ -174,7 +174,7 @@ function DashboardComponent() {
       return;
     }
 
-    const branch = selectedBranch[0] || "main";
+    const branch = selectedBranch[0] || undefined;
     const projectFullName = selectedProject[0];
     if (!projectFullName) {
       console.error("Please select a project");

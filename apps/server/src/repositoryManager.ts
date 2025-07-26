@@ -179,7 +179,7 @@ export class RepositoryManager {
   async ensureRepository(
     repoUrl: string,
     originPath: string,
-    branch: string = "main"
+    branch?: string
   ): Promise<void> {
     this.cleanupStaleOperations();
 
@@ -188,13 +188,31 @@ export class RepositoryManager {
 
     if (!repoExists) {
       await this.handleCloneOperation(repoUrl, originPath);
+      // After cloning, set the remote HEAD reference
+      try {
+        await this.executeGitCommand(
+          `git remote set-head origin -a`,
+          { cwd: originPath }
+        );
+      } catch (error) {
+        console.warn("Failed to set remote HEAD after clone:", error);
+      }
     } else {
       // Configure git pull strategy for existing repos
       await this.configureGitPullStrategy(originPath);
     }
 
-    // Always fetch and checkout the requested branch
-    await this.handleFetchOperation(repoUrl, originPath, branch);
+    // If no branch specified, detect the default branch
+    let targetBranch = branch;
+    if (!targetBranch) {
+      targetBranch = await this.getDefaultBranch(originPath);
+      console.log(`Detected default branch: ${targetBranch}`);
+    }
+
+    // Only fetch if a specific branch was requested or if we detected a branch
+    if (targetBranch) {
+      await this.handleFetchOperation(repoUrl, originPath, targetBranch);
+    }
   }
 
   private async handleCloneOperation(
@@ -270,6 +288,16 @@ export class RepositoryManager {
       );
       console.log(`Successfully cloned ${repoUrl}`);
 
+      // Set the remote HEAD reference explicitly
+      try {
+        await this.executeGitCommand(
+          `git remote set-head origin -a`,
+          { cwd: originPath }
+        );
+      } catch (error) {
+        console.warn("Failed to set remote HEAD reference:", error);
+      }
+
       // Configure git pull strategy for the newly cloned repo
       await this.configureGitPullStrategy(originPath);
 
@@ -287,6 +315,52 @@ export class RepositoryManager {
       { cwd: repoPath, encoding: "utf8" }
     );
     return stdout.trim();
+  }
+
+  async getDefaultBranch(repoPath: string): Promise<string> {
+    try {
+      // Try to get the default branch from the remote
+      const { stdout } = await this.executeGitCommand(
+        `git symbolic-ref refs/remotes/origin/HEAD`,
+        { cwd: repoPath, encoding: "utf8" }
+      );
+      // Extract branch name from refs/remotes/origin/main format
+      const match = stdout.trim().match(/refs\/remotes\/origin\/(.+)$/);
+      return match ? match[1] : "main";
+    } catch (error) {
+      // If that fails, try to get it from the remote
+      try {
+        const { stdout } = await this.executeGitCommand(
+          `git ls-remote --symref origin HEAD`,
+          { cwd: repoPath, encoding: "utf8" }
+        );
+        // Extract branch name from ref: refs/heads/main format
+        const match = stdout.match(/ref: refs\/heads\/(\S+)\s+HEAD/);
+        if (match) {
+          return match[1];
+        }
+      } catch {
+        // Fallback to common defaults
+        console.warn("Could not determine default branch, trying common names");
+      }
+      
+      // Try common default branch names
+      const commonDefaults = ["main", "master", "dev", "develop"];
+      for (const branch of commonDefaults) {
+        try {
+          await this.executeGitCommand(
+            `git rev-parse --verify origin/${branch}`,
+            { cwd: repoPath, encoding: "utf8" }
+          );
+          return branch;
+        } catch {
+          // Continue to next branch
+        }
+      }
+      
+      // Final fallback
+      return "main";
+    }
   }
 
   private async pullLatestChanges(
