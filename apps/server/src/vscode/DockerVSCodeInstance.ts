@@ -28,8 +28,6 @@ export interface ContainerMapping {
 
 const containerMappings = new Map<string, ContainerMapping>();
 
-declare const WORKER_IMAGE_NAME: string;
-
 export class DockerVSCodeInstance extends VSCodeInstance {
   private containerName: string;
   private imageName: string;
@@ -59,7 +57,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     // We'll take the first 12 chars for a shorter container name
     const shortId = getShortId(this.taskRunId);
     this.containerName = `cmux-${shortId}`;
-    this.imageName = WORKER_IMAGE_NAME || "cmux-worker:0.0.1";
+    this.imageName = process.env.WORKER_IMAGE_NAME || "cmux-worker:0.0.1";
     // Register this instance
     VSCodeInstance.getInstances().set(this.instanceId, this);
   }

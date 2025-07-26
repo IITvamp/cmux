@@ -12,6 +12,11 @@ export default defineSchema({
     worktreePath: v.optional(v.string()),
     createdAt: v.optional(v.number()),
     updatedAt: v.optional(v.number()),
+    images: v.optional(v.array(v.object({
+      storageId: v.id("_storage"), // Convex storage ID
+      fileName: v.optional(v.string()),
+      altText: v.string(),
+    }))),
   }).index("by_created", ["createdAt"]),
   taskRuns: defineTable({
     taskId: v.id("tasks"),

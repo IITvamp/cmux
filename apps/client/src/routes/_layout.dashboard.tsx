@@ -19,8 +19,8 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useQuery as useConvexQuery, useMutation } from "convex/react";
-import { Archive, Check, Code2, Command, Copy, Mic } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { Archive, Check, Code2, Command, Copy, Image, Mic } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export const Route = createFileRoute("/_layout/dashboard")({
   component: DashboardComponent,
@@ -48,8 +48,12 @@ function DashboardComponent() {
   const [isLoadingRepos, setIsLoadingRepos] = useState(false);
   const [isLoadingBranches, setIsLoadingBranches] = useState(false);
 
+  // Ref to access editor API
+  const editorApiRef = useRef<any>(null);
+
   // Callback for task description changes
   const handleTaskDescriptionChange = useCallback((value: string) => {
+    console.log("handleTaskDescriptionChange", value);
     setTaskDescription(value);
   }, []);
 
@@ -143,6 +147,7 @@ function DashboardComponent() {
           isArchived: false,
           createdAt: now,
           updatedAt: now,
+          images: args.images,
         };
 
         // Add the new task at the beginning (since we order by desc)
@@ -155,6 +160,9 @@ function DashboardComponent() {
   );
 
   const archiveTask = useMutation(api.tasks.archive);
+
+  // Add mutation for generating upload URL
+  const generateUploadUrl = useMutation(api.storage.generateUploadUrl);
 
   const handleStartTask = useCallback(async () => {
     if (!selectedProject[0] || !taskDescription.trim()) {
@@ -174,19 +182,67 @@ function DashboardComponent() {
     }
 
     try {
-      // Create task in Convex - this will also start the task via socket.io
+      // Extract content including images from the editor
+      const content = editorApiRef.current?.getContent();
+      const images = content?.images || [];
+
+      // Upload images to Convex storage first
+      const uploadedImages = await Promise.all(
+        images.map(
+          async (image: {
+            src: string;
+            fileName?: string;
+            altText: string;
+          }) => {
+            // Convert base64 to blob
+            const base64Data = image.src.split(",")[1] || image.src;
+            const byteCharacters = atob(base64Data);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+              byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const blob = new Blob([byteArray], { type: "image/png" });
+
+            // Get upload URL
+            const uploadUrl = await generateUploadUrl();
+
+            // Upload the file
+            const result = await fetch(uploadUrl, {
+              method: "POST",
+              headers: { "Content-Type": blob.type },
+              body: blob,
+            });
+            const { storageId } = await result.json();
+
+            return {
+              storageId,
+              fileName: image.fileName,
+              altText: image.altText,
+            };
+          }
+        )
+      );
+
+      // Create task in Convex with storage IDs
       const taskId = await createTask({
         text: taskDescription,
         projectFullName,
         branch,
+        images: uploadedImages.length > 0 ? uploadedImages : undefined,
       });
 
       // Clear input after successful task creation
       setTaskDescription("");
       // Force editor to clear
       handleTaskDescriptionChange("");
+      if (editorApiRef.current?.clear) {
+        editorApiRef.current.clear();
+      }
+
       const repoUrl = `https://github.com/${projectFullName}.git`;
 
+      // For socket.io, we still need to send the base64 images
       socket.emit(
         "start-task",
         {
@@ -198,6 +254,7 @@ function DashboardComponent() {
           selectedAgents:
             selectedAgents.length > 0 ? selectedAgents : undefined,
           isCloudMode,
+          images: images.length > 0 ? images : undefined,
         },
         (response) => {
           console.log("response", response);
@@ -221,6 +278,7 @@ function DashboardComponent() {
     handleTaskDescriptionChange,
     selectedAgents,
     isCloudMode,
+    generateUploadUrl,
   ]);
 
   // Fetch repos on mount if none exist
@@ -326,6 +384,9 @@ function DashboardComponent() {
                 "text-[15px] text-neutral-900 dark:text-neutral-100 min-h-[60px]! max-h-[600px]",
                 "focus:outline-none"
               )}
+              onEditorReady={(api) => {
+                editorApiRef.current = api;
+              }}
             />
 
             {/* Integrated controls */}
@@ -400,6 +461,26 @@ function DashboardComponent() {
                     );
                   }}
                 />
+
+                <button
+                  className={clsx(
+                    "p-1.5 rounded-full",
+                    "bg-neutral-100 dark:bg-neutral-700",
+                    "border border-neutral-200 dark:border-0",
+                    "text-neutral-600 dark:text-neutral-400",
+                    "hover:bg-neutral-200 dark:hover:bg-neutral-600",
+                    "transition-colors"
+                  )}
+                  onClick={() => {
+                    // Trigger the file select from ImagePlugin
+                    if ((window as any).__lexicalImageFileSelect) {
+                      (window as any).__lexicalImageFileSelect();
+                    }
+                  }}
+                  title="Upload image"
+                >
+                  <Image className="w-4 h-4" />
+                </button>
 
                 <button
                   className={clsx(

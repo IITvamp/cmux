@@ -30,6 +30,11 @@ export const StartTaskSchema = z.object({
   taskId: z.string(),
   selectedAgents: z.array(z.string()).optional(),
   isCloudMode: z.boolean().optional().default(false),
+  images: z.array(z.object({
+    src: z.string(),
+    fileName: z.string().optional(),
+    altText: z.string(),
+  })).optional(),
 });
 
 // Server to Client Events

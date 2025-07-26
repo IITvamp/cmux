@@ -55,6 +55,9 @@ export async function startServer({
       origin: "http://localhost:5173",
       methods: ["GET", "POST"],
     },
+    maxHttpBufferSize: 50 * 1024 * 1024, // 50MB to handle multiple images
+    pingTimeout: 60000, // 60 seconds
+    pingInterval: 25000, // 25 seconds
   });
 
   setupWebSocketProxy(httpServer);
@@ -78,6 +81,7 @@ export async function startServer({
           taskDescription: taskData.taskDescription,
           selectedAgents: taskData.selectedAgents,
           isCloudMode: taskData.isCloudMode,
+          images: taskData.images,
         });
 
         // Check if at least one agent spawned successfully

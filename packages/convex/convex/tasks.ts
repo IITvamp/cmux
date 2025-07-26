@@ -27,6 +27,11 @@ export const create = mutation({
     projectFullName: v.optional(v.string()),
     branch: v.optional(v.string()),
     worktreePath: v.optional(v.string()),
+    images: v.optional(v.array(v.object({
+      storageId: v.id("_storage"),
+      fileName: v.optional(v.string()),
+      altText: v.string(),
+    }))),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
@@ -39,6 +44,7 @@ export const create = mutation({
       isCompleted: false,
       createdAt: now,
       updatedAt: now,
+      images: args.images,
     });
 
     return taskId;
@@ -94,7 +100,27 @@ export const update = mutation({
 export const getById = query({
   args: { id: v.id("tasks") },
   handler: async (ctx, args) => {
-    return await ctx.db.get(args.id);
+    const task = await ctx.db.get(args.id);
+    if (!task) return null;
+    
+    // If task has images, get their URLs
+    if (task.images && task.images.length > 0) {
+      const imagesWithUrls = await Promise.all(
+        task.images.map(async (image) => {
+          const url = await ctx.storage.getUrl(image.storageId);
+          return {
+            ...image,
+            url,
+          };
+        })
+      );
+      return {
+        ...task,
+        images: imagesWithUrls,
+      };
+    }
+    
+    return task;
   },
 });
 

@@ -25,6 +25,8 @@ import { cpus, platform, totalmem } from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { Server, type Namespace, type Socket } from "socket.io";
+import express from "express";
+import multer from "multer";
 import { checkDockerReadiness } from "./checkDockerReadiness.js";
 import { detectTerminalIdle } from "./detectTerminalIdle.js";
 import { log } from "./logger.js";
@@ -39,8 +41,60 @@ const WORKER_PORT = parseInt(process.env.WORKER_PORT || "39377", 10);
 const CONTAINER_IMAGE = process.env.CONTAINER_IMAGE || "cmux-worker";
 const CONTAINER_VERSION = process.env.CONTAINER_VERSION || "0.0.1";
 
-// Create HTTP server
-const httpServer = createServer();
+// Create Express app
+const app = express();
+
+// Configure multer for file uploads
+const upload = multer({
+  limits: { fileSize: 100 * 1024 * 1024 }, // 100MB limit
+  storage: multer.memoryStorage()
+});
+
+// File upload endpoint
+app.post("/upload-image", upload.single("image"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    const { path: imagePath } = req.body;
+    if (!imagePath) {
+      return res.status(400).json({ error: "No path specified" });
+    }
+
+    log("INFO", `Received image upload request for path: ${imagePath}`, {
+      size: req.file.size,
+      mimetype: req.file.mimetype,
+      originalname: req.file.originalname
+    });
+
+    // Ensure directory exists
+    const dir = path.dirname(imagePath);
+    await fs.mkdir(dir, { recursive: true });
+
+    // Write the file
+    await fs.writeFile(imagePath, req.file.buffer);
+
+    log("INFO", `Successfully wrote image file: ${imagePath}`);
+
+    // Verify file was created
+    const stats = await fs.stat(imagePath);
+    
+    res.json({ 
+      success: true, 
+      path: imagePath,
+      size: stats.size
+    });
+  } catch (error) {
+    log("ERROR", "Failed to upload image", error);
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : "Upload failed" 
+    });
+  }
+});
+
+// Create HTTP server with Express app
+const httpServer = createServer(app);
 
 // Socket.IO server with namespaces
 const io = new Server(httpServer, {
@@ -48,7 +102,9 @@ const io = new Server(httpServer, {
     origin: "*", // In production, restrict this
     methods: ["GET", "POST"],
   },
-  maxHttpBufferSize: 10 * 1024 * 1024, // 10MB to handle large auth files
+  maxHttpBufferSize: 50 * 1024 * 1024, // 50MB to handle large images
+  pingTimeout: 60000, // 60 seconds
+  pingInterval: 25000, // 25 seconds
 });
 
 // Client namespace
@@ -579,6 +635,11 @@ managementIO.on("connection", (socket) => {
           execOptions
         );
 
+        log("INFO", `Command executed successfully: ${validated.command}`, {
+          stdout: stdout?.slice(0, 200),
+          stderr: stderr?.slice(0, 200)
+        });
+
         callback({
           error: null,
           data: {
@@ -589,6 +650,12 @@ managementIO.on("connection", (socket) => {
         });
       } catch (execError: any) {
         // exec throws when exit code is non-zero
+        log("WARN", `Command failed with non-zero exit: ${validated.command}`, {
+          exitCode: execError.code,
+          stdout: execError.stdout?.slice(0, 200),
+          stderr: execError.stderr?.slice(0, 200)
+        });
+
         callback({
           error: null,
           data: {

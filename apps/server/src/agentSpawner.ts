@@ -31,6 +31,11 @@ export async function spawnAgent(
     branch?: string;
     taskDescription: string;
     isCloudMode?: boolean;
+    images?: Array<{
+      src: string;
+      fileName?: string;
+      altText: string;
+    }>;
   }
 ): Promise<AgentSpawnResult> {
   try {
@@ -43,9 +48,97 @@ export async function spawnAgent(
     // Fetch API keys from Convex first
     const apiKeys = await convex.query(api.apiKeys.getAllForAgents);
 
+    // Fetch the task to get image storage IDs
+    const task = await convex.query(api.tasks.getById, {
+      id: taskId as Id<"tasks">,
+    });
+
+    // Process prompt to handle images
+    let processedTaskDescription = options.taskDescription;
+    const imageFiles: Array<{ path: string; base64: string }> = [];
+
+    // Handle images from either the options (for backward compatibility) or from the task
+    let imagesToProcess = options.images || [];
+
+    // If task has images with storage IDs, download them
+    if (task && task.images && task.images.length > 0) {
+      const downloadedImages = await Promise.all(
+        task.images.map(async (image: any) => {
+          if (image.url) {
+            // Download image from Convex storage
+            const response = await fetch(image.url);
+            const buffer = await response.arrayBuffer();
+            const base64 = Buffer.from(buffer).toString("base64");
+            return {
+              src: `data:image/png;base64,${base64}`,
+              fileName: image.fileName,
+              altText: image.altText,
+            };
+          }
+          return null;
+        })
+      );
+      const filteredImages = downloadedImages.filter((img) => img !== null);
+      imagesToProcess = filteredImages as Array<{
+        src: string;
+        fileName?: string;
+        altText: string;
+      }>;
+    }
+
+    if (imagesToProcess.length > 0) {
+      console.log(`[AgentSpawner] Processing ${imagesToProcess.length} images`);
+      console.log(`[AgentSpawner] Original task description: ${options.taskDescription}`);
+      
+      // Create image files and update prompt
+      imagesToProcess.forEach((image, index) => {
+        // Sanitize filename to remove special characters
+        let fileName = image.fileName || `image_${index + 1}.png`;
+        console.log(`[AgentSpawner] Original filename: ${fileName}`);
+        
+        // Replace non-ASCII characters and spaces with underscores
+        fileName = fileName.replace(/[^\x00-\x7F]/g, '_').replace(/\s+/g, '_');
+        console.log(`[AgentSpawner] Sanitized filename: ${fileName}`);
+        
+        const imagePath = `/root/prompt/${fileName}`;
+        imageFiles.push({
+          path: imagePath,
+          base64: image.src.split(",")[1] || image.src, // Remove data URL prefix if present
+        });
+
+        // Replace image reference in prompt with file path
+        // First try to replace the original filename
+        if (image.fileName) {
+          const beforeReplace = processedTaskDescription;
+          processedTaskDescription = processedTaskDescription.replace(
+            new RegExp(`\\b${image.fileName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, "g"),
+            imagePath
+          );
+          if (beforeReplace !== processedTaskDescription) {
+            console.log(`[AgentSpawner] Replaced "${image.fileName}" with "${imagePath}"`);
+          }
+        }
+        
+        // Also replace just the filename without extension in case it appears that way
+        const nameWithoutExt = image.fileName?.replace(/\.[^/.]+$/, "");
+        if (nameWithoutExt) {
+          const beforeReplace = processedTaskDescription;
+          processedTaskDescription = processedTaskDescription.replace(
+            new RegExp(`\\b${nameWithoutExt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, "g"),
+            imagePath
+          );
+          if (beforeReplace !== processedTaskDescription) {
+            console.log(`[AgentSpawner] Replaced "${nameWithoutExt}" with "${imagePath}"`);
+          }
+        }
+      });
+      
+      console.log(`[AgentSpawner] Processed task description: ${processedTaskDescription}`);
+    }
+
     // Build environment variables
     let envVars: Record<string, string> = {
-      PROMPT: options.taskDescription,
+      PROMPT: processedTaskDescription,
     };
 
     let authFiles: EnvironmentResult["files"] = [];
@@ -72,7 +165,7 @@ export async function spawnAgent(
     }
 
     // Build the agent command with proper quoting
-    const escapedPrompt = options.taskDescription.replace(/"/g, '\\"');
+    const escapedPrompt = processedTaskDescription.replace(/"/g, '\\"');
 
     // Replace $PROMPT placeholders in args with the actual prompt
     const processedArgs = agent.args.map((arg) =>
@@ -415,6 +508,76 @@ export async function spawnAgent(
       }
     }
 
+    // Create image files if any
+    if (imageFiles.length > 0) {
+      console.log(
+        `[AgentSpawner] Creating ${imageFiles.length} image files...`
+      );
+
+      // First create the prompt directory
+      await new Promise<void>((resolve) => {
+        workerSocket.timeout(10000).emit(
+          "worker:exec",
+          {
+            command: "mkdir",
+            args: ["-p", "/root/prompt"],
+            cwd: "/root",
+            env: {},
+          },
+          (timeoutError, result) => {
+            if (timeoutError || result.error) {
+              console.error(
+                "Failed to create prompt directory",
+                timeoutError || result.error
+              );
+            }
+            resolve();
+          }
+        );
+      });
+
+      // Upload each image file using HTTP endpoint
+      for (const imageFile of imageFiles) {
+        try {
+          // Convert base64 to buffer
+          const base64Data = imageFile.base64.includes(',') 
+            ? imageFile.base64.split(',')[1] 
+            : imageFile.base64;
+          const buffer = Buffer.from(base64Data, 'base64');
+
+          // Create form data
+          const formData = new FormData();
+          const blob = new Blob([buffer], { type: 'image/png' });
+          formData.append('image', blob, 'image.png');
+          formData.append('path', imageFile.path);
+
+          // Get worker port from VSCode instance
+          const workerPort = vscodeInstance instanceof DockerVSCodeInstance 
+            ? (vscodeInstance as DockerVSCodeInstance).getPorts()?.worker
+            : "39377";
+
+          const uploadUrl = `http://localhost:${workerPort}/upload-image`;
+          
+          console.log(`[AgentSpawner] Uploading image to ${uploadUrl}`);
+
+          const response = await fetch(uploadUrl, {
+            method: 'POST',
+            body: formData
+          });
+
+          if (!response.ok) {
+            const error = await response.text();
+            throw new Error(`Upload failed: ${error}`);
+          }
+
+          const result = await response.json();
+          console.log(`[AgentSpawner] Successfully uploaded image: ${result.path} (${result.size} bytes)`);
+        } catch (error) {
+          console.error(`[AgentSpawner] Failed to upload image ${imageFile.path}:`, error);
+        }
+      }
+    }
+
     // Send the terminal creation command
     console.log(
       `[AgentSpawner] About to emit worker:create-terminal at ${new Date().toISOString()}`
@@ -462,6 +625,7 @@ export async function spawnAgent(
       success: true,
     };
   } catch (error) {
+    console.error("Error spawning agent", error);
     return {
       agentName: agent.name,
       terminalId: "",
@@ -481,6 +645,11 @@ export async function spawnAllAgents(
     taskDescription: string;
     selectedAgents?: string[];
     isCloudMode?: boolean;
+    images?: Array<{
+      src: string;
+      fileName?: string;
+      altText: string;
+    }>;
   }
 ): Promise<AgentSpawnResult[]> {
   // Spawn agents sequentially to avoid git lock conflicts

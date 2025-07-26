@@ -20,6 +20,9 @@ import clsx from "clsx";
 import { COMMAND_PRIORITY_HIGH, KEY_ENTER_COMMAND } from "lexical";
 import { useEffect, useRef } from "react";
 import { MentionPlugin } from "./MentionPlugin";
+import { ImagePlugin } from "./ImagePlugin";
+import { ImageNode } from "./ImageNode";
+import { EditorStatePlugin } from "./EditorStatePlugin";
 
 const theme = {
   ltr: "ltr",
@@ -145,6 +148,7 @@ interface LexicalEditorProps {
   value?: string;
   repoUrl?: string;
   branch?: string;
+  onEditorReady?: (editor: any) => void;
 }
 
 export default function LexicalEditor({
@@ -157,6 +161,7 @@ export default function LexicalEditor({
   value,
   repoUrl,
   branch,
+  onEditorReady,
 }: LexicalEditorProps) {
   const initialConfig = {
     namespace: "TaskEditor",
@@ -170,6 +175,7 @@ export default function LexicalEditor({
       CodeNode,
       LinkNode,
       AutoLinkNode,
+      ImageNode,
     ],
   };
 
@@ -215,6 +221,8 @@ export default function LexicalEditor({
         <KeyboardCommandPlugin onSubmit={onSubmit} />
         <ClearEditorPlugin value={value} />
         <MentionPlugin repoUrl={repoUrl} branch={branch} />
+        <ImagePlugin />
+        <EditorStatePlugin onEditorReady={onEditorReady} />
       </div>
     </LexicalComposer>
   );
