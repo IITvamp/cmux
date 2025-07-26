@@ -45,7 +45,7 @@ cmux is published as a single-file executable binary to npm. The binary includes
 
 3. **Publish to npm**:
    ```bash
-   cd packages/cmux && npm run publish-cli
+   (cd packages/cmux && npm run publish-cli)
    ```
    This runs scripts/publish-npm.ts which:
    - Creates clean npm package with just binary + README
