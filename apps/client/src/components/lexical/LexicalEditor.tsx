@@ -148,7 +148,17 @@ interface LexicalEditorProps {
   value?: string;
   repoUrl?: string;
   branch?: string;
-  onEditorReady?: (editor: any) => void;
+  onEditorReady?: (editor: {
+    getContent: () => {
+      text: string;
+      images: Array<{
+        src: string;
+        fileName?: string;
+        altText: string;
+      }>;
+    };
+    clear: () => void;
+  }) => void;
 }
 
 export default function LexicalEditor({

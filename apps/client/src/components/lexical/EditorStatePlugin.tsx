@@ -12,7 +12,19 @@ interface ExtractedContent {
   }>;
 }
 
-export function EditorStatePlugin({ onEditorReady }: { onEditorReady?: (api: any) => void }) {
+interface EditorApi {
+  getContent: () => {
+    text: string;
+    images: Array<{
+      src: string;
+      fileName?: string;
+      altText: string;
+    }>;
+  };
+  clear: () => void;
+}
+
+export function EditorStatePlugin({ onEditorReady }: { onEditorReady?: (api: EditorApi) => void }) {
   const [editor] = useLexicalComposerContext();
 
   useEffect(() => {

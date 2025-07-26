@@ -48,8 +48,21 @@ function DashboardComponent() {
   const [isLoadingRepos, setIsLoadingRepos] = useState(false);
   const [isLoadingBranches, setIsLoadingBranches] = useState(false);
 
+  // Define editor API interface
+  interface EditorApi {
+    getContent: () => {
+      text: string;
+      images: Array<{
+        src: string;
+        fileName?: string;
+        altText: string;
+      }>;
+    };
+    clear: () => void;
+  }
+
   // Ref to access editor API
-  const editorApiRef = useRef<any>(null);
+  const editorApiRef = useRef<EditorApi | null>(null);
 
   // Callback for task description changes
   const handleTaskDescriptionChange = useCallback((value: string) => {
@@ -390,7 +403,7 @@ function DashboardComponent() {
   );
 
   const lexicalOnEditorReady = useMemo(
-    () => (api: any) => {
+    () => (api: EditorApi) => {
       editorApiRef.current = api;
     },
     []
@@ -501,8 +514,11 @@ function DashboardComponent() {
                   )}
                   onClick={() => {
                     // Trigger the file select from ImagePlugin
-                    if ((window as any).__lexicalImageFileSelect) {
-                      (window as any).__lexicalImageFileSelect();
+                    const lexicalWindow = window as Window & {
+                      __lexicalImageFileSelect?: () => void;
+                    };
+                    if (lexicalWindow.__lexicalImageFileSelect) {
+                      lexicalWindow.__lexicalImageFileSelect();
                     }
                   }}
                   title="Upload image"
@@ -578,8 +594,8 @@ function DashboardComponent() {
 
 interface TaskItemProps {
   task: Doc<"tasks">;
-  navigate: any;
-  archiveTask: any;
+  navigate: ReturnType<typeof useNavigate>;
+  archiveTask: ReturnType<typeof useMutation<typeof api.tasks.archive>>;
 }
 
 function TaskItem({ task, navigate, archiveTask }: TaskItemProps) {
@@ -592,9 +608,14 @@ function TaskItem({ task, navigate, archiveTask }: TaskItemProps) {
   const getLatestVSCodeInstance = () => {
     if (!taskRunsQuery || taskRunsQuery.length === 0) return null;
 
+    // Define task run type with nested structure
+    interface TaskRunWithChildren extends Doc<"taskRuns"> {
+      children?: TaskRunWithChildren[];
+    }
+
     // Flatten all task runs (including children)
-    const allRuns: any[] = [];
-    const flattenRuns = (runs: any[]) => {
+    const allRuns: TaskRunWithChildren[] = [];
+    const flattenRuns = (runs: TaskRunWithChildren[]) => {
       runs.forEach((run) => {
         allRuns.push(run);
         if (run.children) {
