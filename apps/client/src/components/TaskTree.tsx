@@ -65,7 +65,7 @@ export function TaskTree({ task, level = 0 }: TaskTreeProps) {
         to="/task/$taskId"
         params={{ taskId: task._id }}
         className={clsx(
-          "flex items-center px-2 py-1.5 text-sm rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-default",
+          "flex items-center px-2 py-1 text-sm rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-default",
           "[&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800"
         )}
         style={{ paddingLeft: `${8 + level * 16}px` }}
