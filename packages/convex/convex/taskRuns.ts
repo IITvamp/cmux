@@ -582,3 +582,34 @@ export const getRunningContainersByCleanupPriority = query({
     };
   },
 });
+
+export const markAsSelectedSolution = mutation({
+  args: {
+    id: v.id("taskRuns"),
+  },
+  handler: async (ctx, args) => {
+    // First, unmark any other solutions for the same task
+    const taskRun = await ctx.db.get(args.id);
+    if (!taskRun) {
+      throw new Error("Task run not found");
+    }
+
+    // Get all task runs for the same task
+    const allTaskRuns = await ctx.db
+      .query("taskRuns")
+      .withIndex("by_task", (q) => q.eq("taskId", taskRun.taskId))
+      .collect();
+
+    // Unmark all other solutions
+    for (const run of allTaskRuns) {
+      if (run._id !== args.id && run.isSelectedSolution) {
+        await ctx.db.patch(run._id, { isSelectedSolution: false });
+      }
+    }
+
+    // Mark this solution as selected
+    await ctx.db.patch(args.id, { isSelectedSolution: true });
+
+    return { success: true };
+  },
+});

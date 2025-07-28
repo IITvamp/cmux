@@ -679,6 +679,16 @@ Evaluation reasoning: ${evaluation.reasoning}
     }
 
     console.log(`[CodeEvaluator] Auto-commit and push completed for best solution on branch ${branchName}`);
+    
+    // Mark this solution as the selected one in the database
+    try {
+      await convex.mutation(api.taskRuns.markAsSelectedSolution, {
+        id: taskRunId as Id<"taskRuns">
+      });
+      console.log(`[CodeEvaluator] Marked task run ${taskRunId} as selected solution`);
+    } catch (error) {
+      console.error(`[CodeEvaluator] Error marking selected solution:`, error);
+    }
   } catch (error) {
     console.error(`[CodeEvaluator] Error in auto-commit and push:`, error);
   }

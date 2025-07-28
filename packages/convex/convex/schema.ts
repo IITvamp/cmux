@@ -35,6 +35,8 @@ export default defineSchema({
     updatedAt: v.number(),
     completedAt: v.optional(v.number()),
     exitCode: v.optional(v.number()),
+    // Indicates if this solution was selected as the best
+    isSelectedSolution: v.optional(v.boolean()),
     // VSCode instance information
     vscode: v.optional(
       v.object({
