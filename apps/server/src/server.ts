@@ -28,6 +28,7 @@ import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWorktreePath } from "./workspace.js";
 import { refreshGitHubData, refreshBranchesForRepo } from "./utils/refreshGitHubData.js";
+import { checkAllProvidersStatus } from "./utils/providerStatus.js";
 
 export async function startServer({
   port,
@@ -475,6 +476,19 @@ export async function startServer({
           error: `Failed to fetch branches: ${
             error instanceof Error ? error.message : String(error)
           }`,
+        });
+      }
+    });
+
+    socket.on("check-provider-status", async (callback) => {
+      try {
+        const status = await checkAllProvidersStatus();
+        callback({ success: true, ...status });
+      } catch (error) {
+        console.error("Error checking provider status:", error);
+        callback({
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error",
         });
       }
     });

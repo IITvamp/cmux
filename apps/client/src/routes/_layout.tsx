@@ -58,7 +58,7 @@ function LayoutComponent() {
       <div className="flex flex-row grow bg-white dark:bg-black">
         <div className="w-64 bg-neutral-50 dark:bg-black flex flex-col">
           <div
-            className="h-[38px] flex items-center pl-3 pr-3"
+            className="h-[38px] flex items-center pl-3 pr-1.5"
             style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
           >
             {isElectron && <div className="w-[68px]"></div>}

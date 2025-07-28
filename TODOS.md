@@ -32,7 +32,7 @@
 [ ] ensure all the different CLIs work, not just claude
 [ ] onboarding CLI flow to copy vscode themes -- this needs its own convex tables, and we need to make sure to send the right files to the right places when spawning vscode instances.
 [ ] onboarding: fix cli output on first run to be pretty and not spam logs
-[ ] make indicators on /dashboard that show which providers have been properly set up. like somehow check if the right files are in the right places based on the stuff in agentConfig.ts. we also need to make a check for docker status. make a socketio endpoint that exposes this information.
+[x] make indicators on /dashboard that show which providers have been properly set up. like somehow check if the right files are in the right places based on the stuff in agentConfig.ts. we also need to make a check for docker status as well as git status to see if we can reach git or not. make a socketio endpoint that exposes this information.
 [ ] drafts for tasks
 [ ] remove containerMappings from @apps/server/src/vscode/DockerVSCodeInstance.ts and just use convex and/or docker daemon as source of truth.
 [x] spawn agents in parallel faster
