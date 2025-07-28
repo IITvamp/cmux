@@ -98,9 +98,12 @@ class PersistentIframeManager {
     const wrapper = document.createElement("div");
     wrapper.style.cssText = `
       position: fixed;
+      top: 0;
+      left: 0;
       visibility: hidden;
       pointer-events: none;
       overflow: hidden;
+      transform: translate(0px, 0px);
     `;
     wrapper.setAttribute("data-iframe-key", key);
 
@@ -183,7 +186,7 @@ class PersistentIframeManager {
     this.syncIframePosition(key);
 
     // Then make visible after a microtask to ensure position is set
-    Promise.resolve().then(() => {
+    requestAnimationFrame(() => {
       if (options?.style) {
         // Convert React.CSSProperties to CSS string, preserving existing fixed positioning
         const styleEntries = Object.entries(options.style);
@@ -201,6 +204,8 @@ class PersistentIframeManager {
         // Preserve core positioning while adding custom styles
         entry.wrapper.style.cssText = `
           position: fixed;
+          top: 0;
+          left: 0;
           visibility: visible;
           pointer-events: auto;
           overflow: hidden;
@@ -210,6 +215,8 @@ class PersistentIframeManager {
         // Default styles
         entry.wrapper.style.cssText = `
           position: fixed;
+          top: 0;
+          left: 0;
           visibility: visible;
           pointer-events: auto;
           overflow: hidden;
@@ -269,14 +276,13 @@ class PersistentIframeManager {
 
     const targetElement = document.querySelector(
       `[data-iframe-target="${key}"]`
-    ) as HTMLElement;
-    if (!targetElement) return;
+    );
+    if (!targetElement || !(targetElement instanceof HTMLElement)) return;
 
     const rect = targetElement.getBoundingClientRect();
 
-    // Update wrapper position
-    entry.wrapper.style.top = `${rect.top}px`;
-    entry.wrapper.style.left = `${rect.left}px`;
+    // Update wrapper position using transform
+    entry.wrapper.style.transform = `translate(${rect.left}px, ${rect.top}px)`;
     entry.wrapper.style.width = `${rect.width}px`;
     entry.wrapper.style.height = `${rect.height}px`;
   }
@@ -396,7 +402,12 @@ class PersistentIframeManager {
    * Preload multiple iframes
    */
   async preloadMultiple(
-    entries: Array<{ key: string; url: string; allow?: string; sandbox?: string }>
+    entries: Array<{
+      key: string;
+      url: string;
+      allow?: string;
+      sandbox?: string;
+    }>
   ): Promise<void> {
     await Promise.all(
       entries.map(({ key, url, allow, sandbox }) =>
