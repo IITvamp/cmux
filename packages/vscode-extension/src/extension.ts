@@ -225,6 +225,54 @@ function startSocketServer() {
         }
       });
 
+      // Auto-commit and push functionality
+      socket.on("vscode:auto-commit-push", async (data, callback) => {
+        try {
+          const { branchName, commitMessage, agentName } = data;
+          log(`Starting auto-commit and push for agent: ${agentName}`);
+
+          // Get the Git extension
+          const gitExtension = vscode.extensions.getExtension("vscode.git");
+          if (!gitExtension) {
+            callback({ success: false, error: "Git extension not found" });
+            return;
+          }
+
+          const git = gitExtension.exports;
+          const api = git.getAPI(1);
+          const repository = api.repositories[0];
+          
+          if (!repository) {
+            callback({ success: false, error: "No Git repository found" });
+            return;
+          }
+
+          // Stage all changes
+          await repository.add([]);
+          log(`Staged all changes`);
+
+          // Create and switch to new branch
+          await repository.createBranch(branchName, true);
+          log(`Created and switched to branch: ${branchName}`);
+
+          // Commit changes
+          await repository.commit(commitMessage);
+          log(`Committed changes with message: ${commitMessage}`);
+
+          // Push branch to origin
+          await repository.push(repository.state.HEAD?.name, branchName, true);
+          log(`Pushed branch ${branchName} to origin`);
+
+          callback({ 
+            success: true, 
+            message: `Successfully committed and pushed to branch ${branchName}` 
+          });
+        } catch (error: any) {
+          log(`Auto-commit and push failed:`, error);
+          callback({ success: false, error: error.message });
+        }
+      });
+
       // Terminal operations
       socket.on("vscode:create-terminal", (data, callback) => {
         try {

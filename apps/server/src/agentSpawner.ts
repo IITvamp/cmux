@@ -24,6 +24,187 @@ function sanitizeTmuxSessionName(name: string): string {
   return name.replace(/[^a-zA-Z0-9_-]/g, "_");
 }
 
+/**
+ * Automatically commit and push changes when a task completes
+ */
+async function performAutoCommitAndPush(
+  vscodeInstance: VSCodeInstance,
+  agent: AgentConfig,
+  taskRunId: string | Id<"taskRuns">
+): Promise<void> {
+  try {
+    console.log(`[AgentSpawner] Starting auto-commit and push for ${agent.name}`);
+    
+    // Create a unique branch name for this task run
+    const branchName = `cmux-${taskRunId}-${agent.name}`.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+    
+    const commitMessage = `Auto-commit from ${agent.name} - Task completed
+
+🤖 Generated with cmux
+Agent: ${agent.name}
+Task Run ID: ${taskRunId}
+Completed: ${new Date().toISOString()}`;
+
+    // Try to use VSCode extension API first (more reliable)
+    const extensionResult = await tryVSCodeExtensionCommit(vscodeInstance, branchName, commitMessage, agent.name);
+    
+    if (extensionResult.success) {
+      console.log(`[AgentSpawner] Successfully committed via VSCode extension`);
+      return;
+    }
+
+    console.log(`[AgentSpawner] VSCode extension method failed, falling back to git commands:`, extensionResult.error);
+    
+    // Fallback to direct git commands
+    const workerSocket = vscodeInstance.getWorkerSocket();
+    if (!workerSocket || !vscodeInstance.isWorkerConnected()) {
+      console.log(`[AgentSpawner] No worker connection for auto-commit fallback`);
+      return;
+    }
+        
+    // Execute git commands in sequence
+    const gitCommands = [
+      // Add all changes
+      `git add .`,
+      // Create and switch to new branch
+      `git checkout -b ${branchName}`,
+      // Commit with a descriptive message (escape quotes properly)
+      `git commit -m "${commitMessage.replace(/"/g, '\\"')}"`,
+      // Push branch to origin
+      `git push -u origin ${branchName}`
+    ];
+
+    for (const command of gitCommands) {
+      console.log(`[AgentSpawner] Executing: ${command}`);
+      
+      const result = await new Promise<{
+        success: boolean;
+        stdout?: string;
+        stderr?: string;
+        exitCode?: number;
+        error?: string;
+      }>((resolve) => {
+        workerSocket
+          .timeout(30000) // 30 second timeout
+          .emit(
+            "worker:exec",
+            {
+              command: "bash",
+              args: ["-c", command],
+              cwd: "/root/workspace",
+              env: {},
+            },
+            (timeoutError, result) => {
+              if (timeoutError) {
+                console.error(`[AgentSpawner] Timeout executing: ${command}`, timeoutError);
+                resolve({
+                  success: false,
+                  error: "Timeout waiting for git command",
+                });
+                return;
+              }
+              if (result.error) {
+                resolve({ success: false, error: result.error.message });
+                return;
+              }
+
+              const { stdout, stderr, exitCode } = result.data!;
+              console.log(`[AgentSpawner] Command output:`, { stdout, stderr, exitCode });
+
+              if (exitCode === 0) {
+                resolve({ success: true, stdout, stderr, exitCode });
+              } else {
+                resolve({
+                  success: false,
+                  stdout,
+                  stderr,
+                  exitCode,
+                  error: `Command failed with exit code ${exitCode}`,
+                });
+              }
+            }
+          );
+      });
+
+      if (!result.success) {
+        console.error(`[AgentSpawner] Git command failed: ${command}`, result.error);
+        // Don't stop on individual command failures - some might be expected (e.g., no changes to commit)
+        continue;
+      }
+    }
+
+    console.log(`[AgentSpawner] Auto-commit and push completed for ${agent.name} on branch ${branchName}`);
+  } catch (error) {
+    console.error(`[AgentSpawner] Error in auto-commit and push:`, error);
+  }
+}
+
+/**
+ * Try to use VSCode extension API for git operations
+ */
+async function tryVSCodeExtensionCommit(
+  vscodeInstance: VSCodeInstance,
+  branchName: string,
+  commitMessage: string,
+  agentName: string
+): Promise<{ success: boolean; error?: string; message?: string }> {
+  try {
+    // For Docker instances, get the extension port
+    let extensionPort: string | undefined;
+    if (vscodeInstance instanceof DockerVSCodeInstance) {
+      const ports = (vscodeInstance as DockerVSCodeInstance).getPorts();
+      extensionPort = ports?.extension;
+    }
+
+    if (!extensionPort) {
+      return { success: false, error: "Extension port not available" };
+    }
+
+    // Connect to VSCode extension socket
+    const { io } = await import("socket.io-client");
+    const extensionSocket = io(`http://localhost:${extensionPort}`, {
+      timeout: 10000,
+    });
+
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        extensionSocket.disconnect();
+        resolve({ success: false, error: "Timeout connecting to VSCode extension" });
+      }, 15000);
+
+      extensionSocket.on("connect", () => {
+        console.log(`[AgentSpawner] Connected to VSCode extension on port ${extensionPort}`);
+        
+        extensionSocket.emit("vscode:auto-commit-push", {
+          branchName,
+          commitMessage,
+          agentName
+        }, (response: any) => {
+          clearTimeout(timeout);
+          extensionSocket.disconnect();
+          
+          if (response.success) {
+            resolve({ success: true, message: response.message });
+          } else {
+            resolve({ success: false, error: response.error });
+          }
+        });
+      });
+
+      extensionSocket.on("connect_error", (error) => {
+        clearTimeout(timeout);
+        extensionSocket.disconnect();
+        resolve({ success: false, error: `Connection error: ${error.message}` });
+      });
+    });
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : "Unknown error" 
+    };
+  }
+}
+
 export interface AgentSpawnResult {
   agentName: string;
   terminalId: string;
@@ -289,6 +470,9 @@ export async function spawnAgent(
           console.log(
             `[AgentSpawner] Updated taskRun ${taskRunId} as completed after ${data.elapsedMs}ms`
           );
+
+          // Auto-commit and push changes in VSCode editor
+          await performAutoCommitAndPush(vscodeInstance, agent, taskRunId);
 
           // Schedule container stop based on settings
           const containerSettings = await convex.query(
