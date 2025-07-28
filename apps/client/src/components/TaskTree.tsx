@@ -1,7 +1,6 @@
 import { type Doc } from "@cmux/convex/dataModel";
 import { Link, useLocation } from "@tanstack/react-router";
 import clsx from "clsx";
-import { formatDistanceToNow } from "date-fns";
 import {
   CheckCircle,
   ChevronRight,
@@ -60,20 +59,20 @@ export function TaskTree({ task, level = 0 }: TaskTreeProps) {
   }, []);
 
   return (
-    <div className="select-none flex flex-col gap-1">
+    <div className="select-none flex flex-col">
       <Link
         to="/task/$taskId"
         params={{ taskId: task._id }}
         className={clsx(
-          "flex items-center px-3 py-2 text-sm rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-default",
+          "flex items-center px-2 py-1.5 text-sm rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-default",
           "[&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800"
         )}
-        style={{ paddingLeft: `${12 + level * 20}px` }}
+        style={{ paddingLeft: `${8 + level * 16}px` }}
       >
         <button
           onClick={handleToggle}
           className={clsx(
-            "w-4 h-4 mr-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded transition-colors grid place-content-center cursor-default",
+            "w-4 h-4 mr-1.5 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded transition-colors grid place-content-center cursor-default",
             !hasRuns && "invisible"
           )}
           style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
@@ -88,7 +87,7 @@ export function TaskTree({ task, level = 0 }: TaskTreeProps) {
 
         <div
           className={clsx(
-            "w-5 h-5 mr-3 rounded-full flex items-center justify-center flex-shrink-0",
+            "w-4 h-4 mr-2 rounded-full flex items-center justify-center flex-shrink-0",
             task.isCompleted
               ? "bg-green-100 dark:bg-green-900/30"
               : "bg-blue-100 dark:bg-blue-900/30"
@@ -96,7 +95,7 @@ export function TaskTree({ task, level = 0 }: TaskTreeProps) {
         >
           <span
             className={clsx(
-              "text-[11px] font-medium",
+              "text-[10px] font-medium",
               task.isCompleted
                 ? "text-green-600 dark:text-green-400"
                 : "text-blue-600 dark:text-blue-400"
@@ -110,18 +109,11 @@ export function TaskTree({ task, level = 0 }: TaskTreeProps) {
           <p className="truncate text-neutral-900 dark:text-neutral-100 font-medium">
             {task.text}
           </p>
-          <p className="text-xs text-neutral-500 dark:text-neutral-500 mt-0.5">
-            {task.createdAt
-              ? formatDistanceToNow(new Date(task.createdAt), {
-                  addSuffix: true,
-                })
-              : "Recently"}
-          </p>
         </div>
       </Link>
 
       {isExpanded && hasRuns && (
-        <div className="flex flex-col gap-1 ml-2">
+        <div className="flex flex-col">
           {task.runs.map((run) => (
             <TaskRunTree
               key={run._id}
@@ -168,15 +160,15 @@ function TaskRunTree({ run, level, taskId }: TaskRunTreeProps) {
         to="/task/$taskId/run/$taskRunId"
         params={{ taskId, taskRunId: run._id }}
         className={clsx(
-          "flex items-center px-3 py-1.5 text-xs rounded-lg hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-default",
+          "flex items-center px-2 py-1 text-xs rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-default",
           "[&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800"
         )}
-        style={{ paddingLeft: `${12 + level * 20}px` }}
+        style={{ paddingLeft: `${8 + level * 16}px` }}
       >
         <button
           onClick={handleToggle}
           className={clsx(
-            "w-4 h-4 mr-2 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded transition-colors cursor-default",
+            "w-4 h-4 mr-1.5 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded transition-colors cursor-default",
             !hasChildren && "invisible"
           )}
           style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
@@ -189,20 +181,17 @@ function TaskRunTree({ run, level, taskId }: TaskRunTreeProps) {
           />
         </button>
 
-        <div className="mr-3 flex-shrink-0">{statusIcon}</div>
+        <div className="mr-2 flex-shrink-0">{statusIcon}</div>
 
         <div className="flex-1 min-w-0">
           <p className="truncate text-neutral-700 dark:text-neutral-300">
             {displayText}
           </p>
-          <p className="text-[10px] text-neutral-500 dark:text-neutral-500 mt-0.5">
-            {formatDistanceToNow(new Date(run.createdAt), { addSuffix: true })}
-          </p>
         </div>
       </Link>
 
       {isExpanded && hasChildren && (
-        <div className="flex flex-col gap-1 ml-2">
+        <div className="flex flex-col">
           {run.children.map((childRun) => (
             <TaskRunTree
               key={childRun._id}
