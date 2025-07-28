@@ -1,5 +1,5 @@
-import { app, BrowserWindow, shell } from "electron";
 import { is } from "@electron-toolkit/utils";
+import { app, BrowserWindow, shell } from "electron";
 import { join } from "node:path";
 
 function createWindow(): void {
@@ -8,6 +8,8 @@ function createWindow(): void {
     height: 800,
     show: false,
     autoHideMenuBar: true,
+    titleBarStyle: "hiddenInset",
+    trafficLightPosition: { x: 12, y: 10 },
     webPreferences: {
       preload: join(__dirname, "../preload/index.js"),
       sandbox: false,

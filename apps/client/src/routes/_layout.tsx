@@ -10,6 +10,9 @@ export const Route = createFileRoute("/_layout")({
   component: LayoutComponent,
 });
 
+const isElectron = (window.process as any)?.type === "renderer";
+console.log(window.process);
+
 function LayoutComponent() {
   const tasks = useQuery(api.tasks.get, {});
 
@@ -59,17 +62,24 @@ function LayoutComponent() {
     <>
       <div className="flex flex-row h-full bg-white dark:bg-neutral-950">
         <div className="w-64 bg-neutral-50 dark:bg-neutral-900 border-r border-neutral-200 dark:border-neutral-800 flex flex-col">
-          <div className="py-3 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between px-5">
+          <div
+            className="h-[38px] flex items-center px-4"
+            style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+          >
+            {isElectron && <div className="w-[64px]"></div>}
             <Link
               to="/dashboard"
-              className="text-lg font-semibold text-neutral-900 dark:text-white hover:text-neutral-700 dark:hover:text-neutral-300 transition-colors cursor-default"
+              className="w-[50px] h-[25px] bg-[#7d2fc7] hover:bg-[#7d2fc7]/80 transition text-white flex items-center justify-center font-medium rounded-lg text-xs select-none cursor-default"
+              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
             >
               cmux
             </Link>
+            <div className="grow"></div>
             <Link
               to="/dashboard"
               className="w-7 h-7 bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 rounded-md flex items-center justify-center transition-colors cursor-default"
               title="New task"
+              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
             >
               <svg
                 className="w-4 h-4 text-neutral-600 dark:text-neutral-300"

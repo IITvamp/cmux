@@ -4,9 +4,10 @@ packages:
   - scripts
 
 onlyBuiltDependencies:
-  - "@tailwindcss/oxide"
-  - "@vscode/vsce-sign"
+  - '@tailwindcss/oxide'
+  - '@vscode/vsce-sign'
   - cpu-features
+  - electron
   - esbuild
   - keytar
   - protobufjs
