@@ -85,24 +85,12 @@ export function TaskTree({ task, level = 0 }: TaskTreeProps) {
           />
         </button>
 
-        <div
-          className={clsx(
-            "w-4 h-4 mr-2 rounded-full flex items-center justify-center flex-shrink-0",
-            task.isCompleted
-              ? "bg-green-100 dark:bg-green-900/30"
-              : "bg-blue-100 dark:bg-blue-900/30"
+        <div className="mr-2 flex-shrink-0">
+          {task.isCompleted ? (
+            <CheckCircle className="w-3 h-3 text-green-500" />
+          ) : (
+            <Circle className="w-3 h-3 text-neutral-400 animate-pulse" />
           )}
-        >
-          <span
-            className={clsx(
-              "text-[10px]",
-              task.isCompleted
-                ? "text-green-600 dark:text-green-400"
-                : "text-blue-600 dark:text-blue-400"
-            )}
-          >
-            {task.text.substring(0, 1).toUpperCase()}
-          </span>
         </div>
 
         <div className="flex-1 min-w-0">

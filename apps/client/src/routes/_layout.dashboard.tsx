@@ -486,7 +486,7 @@ function DashboardComponent() {
                   placeholder="Select agents..."
                   singleSelect={false}
                   maxTagCount={1}
-                  className="!min-w-[200px] !rounded-2xl"
+                  className="!min-w-[220px] !rounded-2xl"
                   showSearch
                   // className={clsx(
                   //   "!border !border-neutral-200 dark:!border-0",
