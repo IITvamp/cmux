@@ -41,7 +41,27 @@ export interface VSCodeClientToServerEvents {
   "vscode:execute-command": (
     data: {
       command: string;
+      args?: any[];
       workingDirectory?: string;
+    },
+    callback: (response: { success: boolean; result?: any; error?: string }) => void
+  ) => void;
+
+  // Auto-commit and push
+  "vscode:auto-commit-push": (
+    data: {
+      branchName: string;
+      commitMessage: string;
+      agentName: string;
+    },
+    callback: (response: { success: boolean; message?: string; error?: string }) => void
+  ) => void;
+
+  // Create terminal
+  "vscode:create-terminal": (
+    data: {
+      name?: string;
+      command?: string;
     },
     callback: (response: { success: boolean; error?: string }) => void
   ) => void;

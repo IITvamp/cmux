@@ -55,7 +55,6 @@ function DashboardComponent() {
   });
 
   // State for loading states
-  const [isLoadingRepos, setIsLoadingRepos] = useState(false);
   const [isLoadingBranches, setIsLoadingBranches] = useState(false);
 
   // Define editor API interface
@@ -119,20 +118,7 @@ function DashboardComponent() {
   const branches = branchesQuery.data || [];
 
   // Socket-based functions to fetch data from GitHub
-  const fetchRepos = useCallback(() => {
-    if (!socket) return;
-
-    setIsLoadingRepos(true);
-    socket.emit("github-fetch-repos", (response) => {
-      setIsLoadingRepos(false);
-      if (response.success) {
-        // Refetch from Convex to get updated data
-        reposByOrgQuery.refetch();
-      } else if (response.error) {
-        console.error("Error fetching repos:", response.error);
-      }
-    });
-  }, [socket, reposByOrgQuery]);
+  // Removed unused fetchRepos function - functionality is handled by Convex queries
 
   const fetchBranches = useCallback(
     (repo: string) => {
@@ -308,11 +294,11 @@ function DashboardComponent() {
   ]);
 
   // Fetch repos on mount if none exist
-  useEffect(() => {
-    if (Object.keys(reposByOrg).length === 0) {
-      fetchRepos();
-    }
-  }, [reposByOrg, fetchRepos]);
+  // useEffect(() => {
+  //   if (Object.keys(reposByOrg).length === 0) {
+  //     fetchRepos();
+  //   }
+  // }, [reposByOrg, fetchRepos]);
 
   // Fetch branches when repo changes
   const selectedRepo = selectedProject[0];
@@ -516,7 +502,7 @@ function DashboardComponent() {
                     onChange={handleProjectChange}
                     placeholder="Select project..."
                     className="!min-w-[300px] !max-w-[500px] !rounded-2xl"
-                    loading={isLoadingRepos || reposByOrgQuery.isLoading}
+                    loading={reposByOrgQuery.isLoading}
                     maxTagCount={1}
                     showSearch
                     // singleSelect={true}
