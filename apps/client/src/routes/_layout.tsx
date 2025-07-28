@@ -1,14 +1,19 @@
 import { TaskTree } from "@/components/TaskTree";
+import { TaskTreeSkeleton } from "@/components/TaskTreeSkeleton";
 import { isElectron } from "@/lib/electron";
 import { type TaskWithRuns } from "@/types/task";
 import { api } from "@cmux/convex/api";
 import { type Doc } from "@cmux/convex/dataModel";
+import { convexQuery } from "@convex-dev/react-query";
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
 import { useQueries, useQuery } from "convex/react";
 import { Suspense, useMemo } from "react";
 
 export const Route = createFileRoute("/_layout")({
   component: LayoutComponent,
+  loader: async ({ context }) => {
+    void context.queryClient.ensureQueryData(convexQuery(api.tasks.get, {}));
+  },
 });
 
 function LayoutComponent() {
@@ -103,7 +108,9 @@ function LayoutComponent() {
                 </span>
               </div>
               <div className="space-y-0.5">
-                {tasksWithRuns.length > 0 ? (
+                {tasks === undefined ? (
+                  <TaskTreeSkeleton count={5} />
+                ) : tasksWithRuns.length > 0 ? (
                   tasksWithRuns
                     .slice(0, 10)
                     .map((task) => <TaskTree key={task._id} task={task} />)
