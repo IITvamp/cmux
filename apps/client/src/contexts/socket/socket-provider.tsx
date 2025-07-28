@@ -1,5 +1,5 @@
 import type { ClientToServerEvents, ServerToClientEvents } from "@cmux/shared";
-import React, { useEffect } from "react";
+import React, { useEffect, useMemo } from "react";
 import { io, Socket } from "socket.io-client";
 import { SocketContext } from "./socket-context";
 
@@ -23,7 +23,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
   const [isConnected, setIsConnected] = React.useState(false);
 
   useEffect(() => {
-    const newSocket = io(url, { 
+    const newSocket = io(url, {
       transports: ["websocket"],
     });
     setSocket(newSocket);
@@ -43,10 +43,13 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
     };
   }, [url]);
 
-  const contextValue: SocketContextType = {
-    socket,
-    isConnected,
-  };
+  const contextValue: SocketContextType = useMemo(
+    () => ({
+      socket,
+      isConnected,
+    }),
+    [socket, isConnected]
+  );
 
   return (
     <SocketContext.Provider value={contextValue}>
