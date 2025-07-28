@@ -159,8 +159,8 @@ export const AGENT_CONFIGS: AgentConfig[] = [
   },
   {
     name: "amp",
-    command: "sh",
-    args: ["-c", "echo '$PROMPT' | bunx @sourcegraph/amp@latest"],
+    command: "prompt-wrapper",
+    args: ["--prompt", "$PROMPT", "--", "bunx", "@sourcegraph/amp@latest"],
     environment: getAmpEnvironment,
   },
 ];
