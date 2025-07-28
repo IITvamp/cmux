@@ -4,7 +4,6 @@ import { getShortId } from "@cmux/shared";
 import { convexQuery } from "@convex-dev/react-query";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import "@xterm/xterm/css/xterm.css";
 import { usePersistentIframe } from "../hooks/usePersistentIframe";
 import { preloadTaskRunIframes } from "../lib/preloadTaskRunIframes";
 
@@ -47,7 +46,7 @@ function TaskRunComponent() {
   const { containerRef } = usePersistentIframe({
     key: `task-run-${taskRunId}`,
     url: iframeUrl,
-    className: "rounded-md",
+    className: "",
     allow:
       "clipboard-read; clipboard-write; usb; serial; hid; cross-origin-isolated; autoplay; camera; microphone; geolocation; payment; fullscreen",
     sandbox:
