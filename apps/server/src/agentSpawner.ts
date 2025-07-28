@@ -179,9 +179,15 @@ export async function spawnAgent(
     const escapedPrompt = processedTaskDescription.replace(/"/g, '\\"');
 
     // Replace $PROMPT placeholders in args with the actual prompt
-    const processedArgs = agent.args.map((arg) =>
-      arg === "$PROMPT" ? `"${escapedPrompt}"` : arg
-    );
+    const processedArgs = agent.args.map((arg) => {
+      if (arg === "$PROMPT") {
+        return `"${escapedPrompt}"`;
+      } else if (arg.includes("$PROMPT")) {
+        // Replace $PROMPT within the argument string
+        return arg.replace(/\$PROMPT/g, escapedPrompt);
+      }
+      return arg;
+    });
 
     const agentCommand = `${agent.command} ${processedArgs.join(" ")}`;
 
