@@ -1,6 +1,7 @@
+import { ContainerSettings } from "@/components/ContainerSettings";
+import { FloatingPane } from "@/components/floating-pane";
 import { useTheme } from "@/components/theme/use-theme";
 import { TitleBar } from "@/components/TitleBar";
-import { ContainerSettings } from "@/components/ContainerSettings";
 import { api } from "@cmux/convex/api";
 import type { Doc } from "@cmux/convex/dataModel";
 import { AGENT_CONFIGS, type AgentConfig } from "@cmux/shared/agentConfig";
@@ -27,11 +28,11 @@ function SettingsComponent() {
   const [originalWorktreePath, setOriginalWorktreePath] = useState<string>("");
 
   // Get all required API keys from agent configs
-  const requiredApiKeys = Array.from(
+  const apiKeys = Array.from(
     new Map(
-      AGENT_CONFIGS.flatMap(
-        (config: AgentConfig) => config.requiredApiKeys || []
-      ).map((key) => [key.envVar, key])
+      AGENT_CONFIGS.flatMap((config: AgentConfig) => config.apiKeys || []).map(
+        (key) => [key.envVar, key]
+      )
     ).values()
   );
 
@@ -97,7 +98,7 @@ function SettingsComponent() {
     const worktreePathChanged = worktreePath !== originalWorktreePath;
 
     // Check all required API keys for changes
-    const apiKeysChanged = requiredApiKeys.some((keyConfig) => {
+    const apiKeysChanged = apiKeys.some((keyConfig) => {
       const currentValue = apiKeyValues[keyConfig.envVar] || "";
       const originalValue = originalApiKeyValues[keyConfig.envVar] || "";
       return currentValue !== originalValue;
@@ -121,7 +122,7 @@ function SettingsComponent() {
         setOriginalWorktreePath(worktreePath);
       }
 
-      for (const key of requiredApiKeys) {
+      for (const key of apiKeys) {
         const value = apiKeyValues[key.envVar] || "";
         const originalValue = originalApiKeyValues[key.envVar] || "";
 
@@ -172,8 +173,7 @@ function SettingsComponent() {
   };
 
   return (
-    <>
-      <TitleBar title="Settings" />
+    <FloatingPane header={<TitleBar title="Settings" />}>
       <div className="flex flex-col grow overflow-auto select-none">
         <div className="p-6 max-w-3xl">
           {/* Header */}
@@ -267,12 +267,12 @@ function SettingsComponent() {
                 </h2>
               </div>
               <div className="p-4 space-y-3">
-                {requiredApiKeys.length === 0 ? (
+                {apiKeys.length === 0 ? (
                   <p className="text-sm text-neutral-500 dark:text-neutral-400">
                     No API keys required for the configured agents.
                   </p>
                 ) : (
-                  requiredApiKeys.map((key) => (
+                  apiKeys.map((key) => (
                     <div key={key.envVar} className="space-y-1">
                       <label
                         htmlFor={key.envVar}
@@ -425,6 +425,6 @@ function SettingsComponent() {
           </div>
         </div>
       </div>
-    </>
+    </FloatingPane>
   );
 }

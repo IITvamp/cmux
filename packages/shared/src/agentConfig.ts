@@ -1,3 +1,4 @@
+import { getAmpEnvironment } from "./environments/amp-environment.js";
 import { getClaudeEnvironment } from "./environments/claude-environment.js";
 import type { EnvironmentResult } from "./environments/environment-result.js";
 import { getGeminiEnvironment } from "./environments/gemini-environment.js";
@@ -9,7 +10,7 @@ export interface AgentConfig {
   name: string;
   command: string;
   args: string[];
-  requiredApiKeys?: {
+  apiKeys?: {
     envVar: string;
     displayName: string;
     description?: string;
@@ -128,7 +129,7 @@ export const AGENT_CONFIGS: AgentConfig[] = [
       "$PROMPT",
     ],
     environment: getGeminiEnvironment,
-    requiredApiKeys: [
+    apiKeys: [
       {
         envVar: "GEMINI_API_KEY",
         displayName: "Gemini API Key",
@@ -148,11 +149,24 @@ export const AGENT_CONFIGS: AgentConfig[] = [
       "$PROMPT",
     ],
     environment: getGeminiEnvironment,
-    requiredApiKeys: [
+    apiKeys: [
       {
         envVar: "GEMINI_API_KEY",
         displayName: "Gemini API Key",
         description: "API key for Google Gemini AI models",
+      },
+    ],
+  },
+  {
+    name: "amp",
+    command: "prompt-wrapper",
+    args: ["--prompt", "$PROMPT", "--", "bunx", "@sourcegraph/amp@latest"],
+    environment: getAmpEnvironment,
+    apiKeys: [
+      {
+        envVar: "AMP_API_KEY",
+        displayName: "AMP API Key",
+        description: "API key for Sourcegraph AMP",
       },
     ],
   },

@@ -302,18 +302,20 @@ export async function spawnAgent(
 
     if (imagesToProcess.length > 0) {
       console.log(`[AgentSpawner] Processing ${imagesToProcess.length} images`);
-      console.log(`[AgentSpawner] Original task description: ${options.taskDescription}`);
-      
+      console.log(
+        `[AgentSpawner] Original task description: ${options.taskDescription}`
+      );
+
       // Create image files and update prompt
       imagesToProcess.forEach((image, index) => {
         // Sanitize filename to remove special characters
         let fileName = image.fileName || `image_${index + 1}.png`;
         console.log(`[AgentSpawner] Original filename: ${fileName}`);
-        
+
         // Replace non-ASCII characters and spaces with underscores
-        fileName = fileName.replace(/[^\x00-\x7F]/g, '_').replace(/\s+/g, '_');
+        fileName = fileName.replace(/[^\x00-\x7F]/g, "_").replace(/\s+/g, "_");
         console.log(`[AgentSpawner] Sanitized filename: ${fileName}`);
-        
+
         const imagePath = `/root/prompt/${fileName}`;
         imageFiles.push({
           path: imagePath,
@@ -325,29 +327,41 @@ export async function spawnAgent(
         if (image.fileName) {
           const beforeReplace = processedTaskDescription;
           processedTaskDescription = processedTaskDescription.replace(
-            new RegExp(`\\b${image.fileName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, "g"),
+            new RegExp(
+              `\\b${image.fileName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+              "g"
+            ),
             imagePath
           );
           if (beforeReplace !== processedTaskDescription) {
-            console.log(`[AgentSpawner] Replaced "${image.fileName}" with "${imagePath}"`);
+            console.log(
+              `[AgentSpawner] Replaced "${image.fileName}" with "${imagePath}"`
+            );
           }
         }
-        
+
         // Also replace just the filename without extension in case it appears that way
         const nameWithoutExt = image.fileName?.replace(/\.[^/.]+$/, "");
         if (nameWithoutExt) {
           const beforeReplace = processedTaskDescription;
           processedTaskDescription = processedTaskDescription.replace(
-            new RegExp(`\\b${nameWithoutExt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, "g"),
+            new RegExp(
+              `\\b${nameWithoutExt.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
+              "g"
+            ),
             imagePath
           );
           if (beforeReplace !== processedTaskDescription) {
-            console.log(`[AgentSpawner] Replaced "${nameWithoutExt}" with "${imagePath}"`);
+            console.log(
+              `[AgentSpawner] Replaced "${nameWithoutExt}" with "${imagePath}"`
+            );
           }
         }
       });
-      
-      console.log(`[AgentSpawner] Processed task description: ${processedTaskDescription}`);
+
+      console.log(
+        `[AgentSpawner] Processed task description: ${processedTaskDescription}`
+      );
     }
 
     // Build environment variables
@@ -370,8 +384,8 @@ export async function spawnAgent(
     }
 
     // Add required API keys from Convex
-    if (agent.requiredApiKeys) {
-      for (const keyConfig of agent.requiredApiKeys) {
+    if (agent.apiKeys) {
+      for (const keyConfig of agent.apiKeys) {
         if (apiKeys[keyConfig.envVar]) {
           envVars[keyConfig.envVar] = apiKeys[keyConfig.envVar];
         }
@@ -382,14 +396,22 @@ export async function spawnAgent(
     const escapedPrompt = processedTaskDescription.replace(/"/g, '\\"');
 
     // Replace $PROMPT placeholders in args with the actual prompt
-    const processedArgs = agent.args.map((arg) =>
-      arg === "$PROMPT" ? `"${escapedPrompt}"` : arg
-    );
+    const processedArgs = agent.args.map((arg) => {
+      if (arg === "$PROMPT") {
+        return `"${escapedPrompt}"`;
+      } else if (arg.includes("$PROMPT")) {
+        // Replace $PROMPT within the argument string
+        return arg.replace(/\$PROMPT/g, escapedPrompt);
+      }
+      return arg;
+    });
 
     const agentCommand = `${agent.command} ${processedArgs.join(" ")}`;
 
     // Build the tmux session command that will be sent via socket.io
-    const tmuxSessionName = sanitizeTmuxSessionName(`${agent.name}-${taskRunId.slice(-8)}`);
+    const tmuxSessionName = sanitizeTmuxSessionName(
+      `${agent.name}-${taskRunId.slice(-8)}`
+    );
 
     console.log(`[AgentSpawner] Building command for agent ${agent.name}:`);
     console.log(`  Raw command: ${agent.command}`);
@@ -504,26 +526,27 @@ export async function spawnAgent(
           const containerSettings = await convex.query(
             api.containerSettings.getEffective
           );
-          
+
           if (containerSettings.autoCleanupEnabled) {
             if (containerSettings.stopImmediatelyOnCompletion) {
               // Stop container immediately
               console.log(
                 `[AgentSpawner] Stopping container immediately as per settings`
               );
-              
+
               // Stop the VSCode instance
               await vscodeInstance.stop();
             } else {
               // Schedule stop after review period
-              const reviewPeriodMs = containerSettings.reviewPeriodMinutes * 60 * 1000;
+              const reviewPeriodMs =
+                containerSettings.reviewPeriodMinutes * 60 * 1000;
               const scheduledStopAt = Date.now() + reviewPeriodMs;
-              
+
               await convex.mutation(api.taskRuns.updateScheduledStop, {
                 id: taskRunId as Id<"taskRuns">,
                 scheduledStopAt,
               });
-              
+
               console.log(
                 `[AgentSpawner] Scheduled container stop for ${new Date(scheduledStopAt).toISOString()}`
               );
@@ -791,29 +814,30 @@ export async function spawnAgent(
       for (const imageFile of imageFiles) {
         try {
           // Convert base64 to buffer
-          const base64Data = imageFile.base64.includes(',') 
-            ? imageFile.base64.split(',')[1] 
+          const base64Data = imageFile.base64.includes(",")
+            ? imageFile.base64.split(",")[1]
             : imageFile.base64;
-          const buffer = Buffer.from(base64Data, 'base64');
+          const buffer = Buffer.from(base64Data, "base64");
 
           // Create form data
           const formData = new FormData();
-          const blob = new Blob([buffer], { type: 'image/png' });
-          formData.append('image', blob, 'image.png');
-          formData.append('path', imageFile.path);
+          const blob = new Blob([buffer], { type: "image/png" });
+          formData.append("image", blob, "image.png");
+          formData.append("path", imageFile.path);
 
           // Get worker port from VSCode instance
-          const workerPort = vscodeInstance instanceof DockerVSCodeInstance 
-            ? (vscodeInstance as DockerVSCodeInstance).getPorts()?.worker
-            : "39377";
+          const workerPort =
+            vscodeInstance instanceof DockerVSCodeInstance
+              ? (vscodeInstance as DockerVSCodeInstance).getPorts()?.worker
+              : "39377";
 
           const uploadUrl = `http://localhost:${workerPort}/upload-image`;
-          
+
           console.log(`[AgentSpawner] Uploading image to ${uploadUrl}`);
 
           const response = await fetch(uploadUrl, {
-            method: 'POST',
-            body: formData
+            method: "POST",
+            body: formData,
           });
 
           if (!response.ok) {
@@ -822,9 +846,14 @@ export async function spawnAgent(
           }
 
           const result = await response.json();
-          console.log(`[AgentSpawner] Successfully uploaded image: ${result.path} (${result.size} bytes)`);
+          console.log(
+            `[AgentSpawner] Successfully uploaded image: ${result.path} (${result.size} bytes)`
+          );
         } catch (error) {
-          console.error(`[AgentSpawner] Failed to upload image ${imageFile.path}:`, error);
+          console.error(
+            `[AgentSpawner] Failed to upload image ${imageFile.path}:`,
+            error
+          );
         }
       }
     }

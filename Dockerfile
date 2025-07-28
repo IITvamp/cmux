@@ -246,9 +246,10 @@ stdout_logfile=/var/log/dockerd.out.log
 CONFIG
 EOF
 
-# Copy startup script
+# Copy startup script and prompt wrapper
 COPY startup.sh /startup.sh
-RUN chmod +x /startup.sh
+COPY prompt-wrapper.sh /usr/local/bin/prompt-wrapper
+RUN chmod +x /startup.sh /usr/local/bin/prompt-wrapper
 
 # Ports
 # 39375: Docker daemon (unencrypted) - if needed

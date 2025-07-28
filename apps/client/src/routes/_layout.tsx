@@ -58,8 +58,8 @@ function LayoutComponent() {
 
   return (
     <>
-      <div className="flex flex-row h-full bg-white dark:bg-neutral-950">
-        <div className="w-64 bg-neutral-50 dark:bg-neutral-900 border-r border-neutral-200 dark:border-neutral-800 flex flex-col">
+      <div className="flex flex-row grow bg-white dark:bg-black">
+        <div className="w-64 bg-neutral-50 dark:bg-black flex flex-col">
           <div
             className="h-[38px] flex items-center pl-3 pr-3"
             style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
@@ -94,7 +94,6 @@ function LayoutComponent() {
               </svg>
             </Link>
           </div>
-          {/* Navigation */}
           <nav className="flex-1 flex flex-col overflow-hidden">
             {/* Recent Tasks Section */}
             <div className="flex-1 overflow-y-auto px-3 py-1">
@@ -140,11 +139,11 @@ function LayoutComponent() {
           </div>
         </div>
 
-        <div className="flex flex-col grow overflow-hidden bg-white dark:bg-neutral-950">
-          <Suspense fallback={<div>Loading...</div>}>
-            <Outlet />
-          </Suspense>
-        </div>
+        {/* <div className="flex flex-col grow overflow-hidden bg-white dark:bg-neutral-950"> */}
+        <Suspense fallback={<div>Loading...</div>}>
+          <Outlet />
+        </Suspense>
+        {/* </div> */}
       </div>
 
       <button

@@ -1,4 +1,5 @@
 import AntdMultiSelect from "@/components/AntdMultiSelect";
+import { FloatingPane } from "@/components/floating-pane";
 import LexicalEditor from "@/components/lexical/LexicalEditor";
 import { Button } from "@/components/ui/button";
 import { ModeToggleTooltip } from "@/components/ui/mode-toggle-tooltip";
@@ -67,6 +68,8 @@ function DashboardComponent() {
       }>;
     };
     clear: () => void;
+    focus?: () => void;
+    insertText?: (text: string) => void;
   }
 
   // Ref to access editor API
@@ -291,11 +294,11 @@ function DashboardComponent() {
   ]);
 
   // Fetch repos on mount if none exist
-  // useEffect(() => {
-  //   if (Object.keys(reposByOrg).length === 0) {
-  //     fetchRepos();
-  //   }
-  // }, [reposByOrg, fetchRepos]);
+  useEffect(() => {
+    if (Object.keys(reposByOrg).length === 0) {
+      fetchRepos();
+    }
+  }, [reposByOrg, fetchRepos]);
 
   // Fetch branches when repo changes
   const selectedRepo = selectedProject[0];
@@ -356,6 +359,70 @@ function DashboardComponent() {
   const isMac = navigator.userAgent.toUpperCase().indexOf("MAC") >= 0;
   const shortcutKey = isMac ? "⌘" : "Ctrl";
 
+  // Global keydown handler for autofocus
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Skip if already focused on an input, textarea, or contenteditable
+      const activeElement = document.activeElement;
+      if (
+        activeElement?.tagName === "INPUT" ||
+        activeElement?.tagName === "TEXTAREA" ||
+        activeElement?.getAttribute("contenteditable") === "true" ||
+        activeElement?.closest('[contenteditable="true"]')
+      ) {
+        return;
+      }
+
+      // Skip for modifier keys and special keys
+      if (
+        e.ctrlKey ||
+        e.metaKey ||
+        e.altKey ||
+        e.key === "Tab" ||
+        e.key === "Escape" ||
+        e.key === "Enter" ||
+        e.key.startsWith("F") || // Function keys
+        e.key.startsWith("Arrow") ||
+        e.key === "Home" ||
+        e.key === "End" ||
+        e.key === "PageUp" ||
+        e.key === "PageDown" ||
+        e.key === "Delete" ||
+        e.key === "Backspace" ||
+        e.key === "CapsLock" ||
+        e.key === "Control" ||
+        e.key === "Shift" ||
+        e.key === "Alt" ||
+        e.key === "Meta" ||
+        e.key === "ContextMenu"
+      ) {
+        return;
+      }
+
+      // Check if it's a printable character (including shift for uppercase)
+      if (e.key.length === 1) {
+        // Prevent default to avoid duplicate input
+        e.preventDefault();
+
+        // Focus the editor and insert the character
+        if (editorApiRef.current?.focus) {
+          editorApiRef.current.focus();
+          
+          // Insert the typed character
+          if (editorApiRef.current.insertText) {
+            editorApiRef.current.insertText(e.key);
+          }
+        }
+      }
+    };
+
+    document.addEventListener("keydown", handleGlobalKeyDown);
+
+    return () => {
+      document.removeEventListener("keydown", handleGlobalKeyDown);
+    };
+  }, []);
+
   // Handle Command+Enter keyboard shortcut
   const handleSubmit = useCallback(() => {
     if (selectedProject[0] && taskDescription.trim()) {
@@ -405,184 +472,186 @@ function DashboardComponent() {
   );
 
   return (
-    <div className="flex flex-col h-full bg-neutral-50 dark:bg-neutral-900/60 overflow-y-auto">
-      {/* Main content area */}
-      <div className="flex-1 flex justify-center px-4 pt-60 pb-4">
-        <div className="w-full max-w-4xl">
-          <div
-            className={clsx(
-              "relative bg-white dark:bg-neutral-700/50 border border-neutral-200 dark:border-neutral-500/15 rounded-2xl transition-all"
-            )}
-          >
-            <LexicalEditor
-              placeholder={lexicalPlaceholder}
-              onChange={handleTaskDescriptionChange}
-              onSubmit={handleSubmit}
-              repoUrl={lexicalRepoUrl}
-              branch={lexicalBranch}
-              padding={lexicalPadding}
-              contentEditableClassName={lexicalClassName}
-              onEditorReady={lexicalOnEditorReady}
-            />
+    <FloatingPane>
+      <div className="flex flex-col grow overflow-y-auto">
+        {/* Main content area */}
+        <div className="flex-1 flex justify-center px-4 pt-60 pb-4">
+          <div className="w-full max-w-4xl">
+            <div
+              className={clsx(
+                "relative bg-white dark:bg-neutral-700/50 border border-neutral-200 dark:border-neutral-500/15 rounded-2xl transition-all"
+              )}
+            >
+              <LexicalEditor
+                placeholder={lexicalPlaceholder}
+                onChange={handleTaskDescriptionChange}
+                onSubmit={handleSubmit}
+                repoUrl={lexicalRepoUrl}
+                branch={lexicalBranch}
+                padding={lexicalPadding}
+                contentEditableClassName={lexicalClassName}
+                onEditorReady={lexicalOnEditorReady}
+              />
 
-            {/* Integrated controls */}
-            <div className="flex items-end justify-between p-2 gap-1">
-              <div className="flex items-end gap-1">
-                <AntdMultiSelect
-                  options={projectOptions}
-                  value={selectedProject}
-                  onChange={handleProjectChange}
-                  placeholder="Select project..."
-                  className="!min-w-[300px] !max-w-[500px] !rounded-2xl"
-                  loading={reposByOrgQuery.isLoading}
-                  maxTagCount={1}
-                  showSearch
-                  // singleSelect={true}
-                  // className={clsx(
-                  //   "!border !border-neutral-200 dark:!border-0",
-                  //   "bg-neutral-100 dark:bg-neutral-700 dark:hover:bg-neutral-600/90 aria-expanded:bg-neutral-600/90 transition",
-                  //   "!h-7 text-[13px] font-medium",
-                  //   "!text-neutral-700 dark:!text-neutral-300",
-                  //   "!min-w-[200px]"
-                  // )}
-                />
-
-                <AntdMultiSelect
-                  options={branchOptions}
-                  value={effectiveSelectedBranch}
-                  onChange={handleBranchChange}
-                  placeholder="Select branch..."
-                  singleSelect={true}
-                  className="!min-w-[120px] !rounded-2xl"
-                  loading={isLoadingBranches || branchesQuery.isLoading}
-                  showSearch
-                  // className={clsx(
-                  //   "!border !border-neutral-200 dark:!border-0",
-                  //   "bg-neutral-100 dark:bg-neutral-700 dark:hover:bg-neutral-600/90 aria-expanded:bg-neutral-600/90 transition",
-                  //   "!h-7 text-[13px] font-medium",
-                  //   "!text-neutral-700 dark:!text-neutral-300"
-                  //   // "!min-w-[120px]"
-                  // )}
-                />
-
-                <AntdMultiSelect
-                  options={agentOptions}
-                  value={selectedAgents}
-                  onChange={handleAgentChange}
-                  placeholder="Select agents..."
-                  singleSelect={false}
-                  maxTagCount={1}
-                  className="!min-w-[200px] !rounded-2xl"
-                  showSearch
-                  // className={clsx(
-                  //   "!border !border-neutral-200 dark:!border-0",
-                  //   "bg-neutral-100 dark:bg-neutral-700 dark:hover:bg-neutral-600/90 aria-expanded:bg-neutral-600/90 transition",
-                  //   "!h-7 text-[13px] font-medium",
-                  //   "!text-neutral-700 dark:!text-neutral-300"
-                  //   // "!min-w-[60px]"
-                  // )}
-                />
-              </div>
-
-              <div className="flex items-center gap-2.5">
-                {/* Cloud/Local Mode Toggle */}
-                <ModeToggleTooltip
-                  isCloudMode={isCloudMode}
-                  onToggle={() => {
-                    const newMode = !isCloudMode;
-                    setIsCloudMode(newMode);
-                    localStorage.setItem(
-                      "isCloudMode",
-                      JSON.stringify(newMode)
-                    );
-                  }}
-                />
-
-                <button
-                  className={clsx(
-                    "p-1.5 rounded-full",
-                    "bg-neutral-100 dark:bg-neutral-700",
-                    "border border-neutral-200 dark:border-0",
-                    "text-neutral-600 dark:text-neutral-400",
-                    "hover:bg-neutral-200 dark:hover:bg-neutral-600",
-                    "transition-colors"
-                  )}
-                  onClick={() => {
-                    // Trigger the file select from ImagePlugin
-                    const lexicalWindow = window as Window & {
-                      __lexicalImageFileSelect?: () => void;
-                    };
-                    if (lexicalWindow.__lexicalImageFileSelect) {
-                      lexicalWindow.__lexicalImageFileSelect();
-                    }
-                  }}
-                  title="Upload image"
-                >
-                  <Image className="w-4 h-4" />
-                </button>
-
-                <button
-                  className={clsx(
-                    "p-1.5 rounded-full",
-                    "bg-neutral-100 dark:bg-neutral-700",
-                    "border border-neutral-200 dark:border-0",
-                    "text-neutral-600 dark:text-neutral-400",
-                    "hover:bg-neutral-200 dark:hover:bg-neutral-600",
-                    "transition-colors"
-                  )}
-                >
-                  <Mic className="w-4 h-4" />
-                </button>
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        size="sm"
-                        variant="default"
-                        className="!h-7"
-                        onClick={handleStartTask}
-                      >
-                        Start task
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent
-                      side="bottom"
-                      className="flex items-center gap-1 bg-black text-white border-black [&>*:last-child]:bg-black [&>*:last-child]:fill-black"
-                    >
-                      {isMac ? (
-                        <Command className="w-3 h-3" />
-                      ) : (
-                        <span className="text-xs">{shortcutKey}</span>
-                      )}
-                      <span>+ Enter</span>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </div>
-            </div>
-          </div>
-
-          {/* Task List */}
-          {tasksQuery.data && tasksQuery.data.length > 0 && (
-            <div className="mt-6">
-              <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-2 select-none">
-                All Tasks
-              </h2>
-              <div className="space-y-1">
-                {tasksQuery.data.map((task: Doc<"tasks">) => (
-                  <TaskItem
-                    key={task._id}
-                    task={task}
-                    navigate={navigate}
-                    archiveTask={archiveTask}
+              {/* Integrated controls */}
+              <div className="flex items-end justify-between p-2 gap-1">
+                <div className="flex items-end gap-1">
+                  <AntdMultiSelect
+                    options={projectOptions}
+                    value={selectedProject}
+                    onChange={handleProjectChange}
+                    placeholder="Select project..."
+                    className="!min-w-[300px] !max-w-[500px] !rounded-2xl"
+                    loading={reposByOrgQuery.isLoading}
+                    maxTagCount={1}
+                    showSearch
+                    // singleSelect={true}
+                    // className={clsx(
+                    //   "!border !border-neutral-200 dark:!border-0",
+                    //   "bg-neutral-100 dark:bg-neutral-700 dark:hover:bg-neutral-600/90 aria-expanded:bg-neutral-600/90 transition",
+                    //   "!h-7 text-[13px] font-medium",
+                    //   "!text-neutral-700 dark:!text-neutral-300",
+                    //   "!min-w-[200px]"
+                    // )}
                   />
-                ))}
+
+                  <AntdMultiSelect
+                    options={branchOptions}
+                    value={effectiveSelectedBranch}
+                    onChange={handleBranchChange}
+                    placeholder="Select branch..."
+                    singleSelect={true}
+                    className="!min-w-[120px] !rounded-2xl"
+                    loading={isLoadingBranches || branchesQuery.isLoading}
+                    showSearch
+                    // className={clsx(
+                    //   "!border !border-neutral-200 dark:!border-0",
+                    //   "bg-neutral-100 dark:bg-neutral-700 dark:hover:bg-neutral-600/90 aria-expanded:bg-neutral-600/90 transition",
+                    //   "!h-7 text-[13px] font-medium",
+                    //   "!text-neutral-700 dark:!text-neutral-300"
+                    //   // "!min-w-[120px]"
+                    // )}
+                  />
+
+                  <AntdMultiSelect
+                    options={agentOptions}
+                    value={selectedAgents}
+                    onChange={handleAgentChange}
+                    placeholder="Select agents..."
+                    singleSelect={false}
+                    maxTagCount={1}
+                    className="!min-w-[200px] !rounded-2xl"
+                    showSearch
+                    // className={clsx(
+                    //   "!border !border-neutral-200 dark:!border-0",
+                    //   "bg-neutral-100 dark:bg-neutral-700 dark:hover:bg-neutral-600/90 aria-expanded:bg-neutral-600/90 transition",
+                    //   "!h-7 text-[13px] font-medium",
+                    //   "!text-neutral-700 dark:!text-neutral-300"
+                    //   // "!min-w-[60px]"
+                    // )}
+                  />
+                </div>
+
+                <div className="flex items-center gap-2.5">
+                  {/* Cloud/Local Mode Toggle */}
+                  <ModeToggleTooltip
+                    isCloudMode={isCloudMode}
+                    onToggle={() => {
+                      const newMode = !isCloudMode;
+                      setIsCloudMode(newMode);
+                      localStorage.setItem(
+                        "isCloudMode",
+                        JSON.stringify(newMode)
+                      );
+                    }}
+                  />
+
+                  <button
+                    className={clsx(
+                      "p-1.5 rounded-full",
+                      "bg-neutral-100 dark:bg-neutral-700",
+                      "border border-neutral-200 dark:border-0",
+                      "text-neutral-600 dark:text-neutral-400",
+                      "hover:bg-neutral-200 dark:hover:bg-neutral-600",
+                      "transition-colors"
+                    )}
+                    onClick={() => {
+                      // Trigger the file select from ImagePlugin
+                      const lexicalWindow = window as Window & {
+                        __lexicalImageFileSelect?: () => void;
+                      };
+                      if (lexicalWindow.__lexicalImageFileSelect) {
+                        lexicalWindow.__lexicalImageFileSelect();
+                      }
+                    }}
+                    title="Upload image"
+                  >
+                    <Image className="w-4 h-4" />
+                  </button>
+
+                  <button
+                    className={clsx(
+                      "p-1.5 rounded-full",
+                      "bg-neutral-100 dark:bg-neutral-700",
+                      "border border-neutral-200 dark:border-0",
+                      "text-neutral-600 dark:text-neutral-400",
+                      "hover:bg-neutral-200 dark:hover:bg-neutral-600",
+                      "transition-colors"
+                    )}
+                  >
+                    <Mic className="w-4 h-4" />
+                  </button>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          size="sm"
+                          variant="default"
+                          className="!h-7"
+                          onClick={handleStartTask}
+                        >
+                          Start task
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent
+                        side="bottom"
+                        className="flex items-center gap-1 bg-black text-white border-black [&>*:last-child]:bg-black [&>*:last-child]:fill-black"
+                      >
+                        {isMac ? (
+                          <Command className="w-3 h-3" />
+                        ) : (
+                          <span className="text-xs">{shortcutKey}</span>
+                        )}
+                        <span>+ Enter</span>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
               </div>
             </div>
-          )}
+
+            {/* Task List */}
+            {tasksQuery.data && tasksQuery.data.length > 0 && (
+              <div className="mt-6">
+                <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 mb-2 select-none">
+                  All Tasks
+                </h2>
+                <div className="space-y-1">
+                  {tasksQuery.data.map((task: Doc<"tasks">) => (
+                    <TaskItem
+                      key={task._id}
+                      task={task}
+                      navigate={navigate}
+                      archiveTask={archiveTask}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </FloatingPane>
   );
 }
 

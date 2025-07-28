@@ -18,7 +18,11 @@ export async function getGeminiEnvironment(): Promise<EnvironmentResult> {
   const geminiDir = join(homedir(), ".gemini");
 
   // Helper function to safely copy file
-  async function copyFile(filename: string, destinationPath: string, mode: string = "644") {
+  async function copyFile(
+    filename: string,
+    destinationPath: string,
+    mode: string = "644"
+  ) {
     try {
       const content = await readFile(join(geminiDir, filename), "utf-8");
       files.push({
@@ -41,10 +45,18 @@ export async function getGeminiEnvironment(): Promise<EnvironmentResult> {
 
   // 2. OAuth tokens (if exists)
   await copyFile("oauth_creds.json", "$HOME/.gemini/oauth_creds.json", "600");
-  await copyFile("mcp-oauth-tokens.json", "$HOME/.gemini/mcp-oauth-tokens.json", "600");
+  await copyFile(
+    "mcp-oauth-tokens.json",
+    "$HOME/.gemini/mcp-oauth-tokens.json",
+    "600"
+  );
 
   // 3. Google account authentication
-  await copyFile("google_accounts.json", "$HOME/.gemini/google_accounts.json", "600");
+  await copyFile(
+    "google_accounts.json",
+    "$HOME/.gemini/google_accounts.json",
+    "600"
+  );
   await copyFile("google_account_id", "$HOME/.gemini/google_account_id");
 
   // 4. Installation and user IDs
@@ -52,15 +64,13 @@ export async function getGeminiEnvironment(): Promise<EnvironmentResult> {
   await copyFile("user_id", "$HOME/.gemini/user_id");
 
   // 5. Check for .env files
-  const envPaths = [
-    join(geminiDir, ".env"),
-    join(homedir(), ".env"),
-  ];
+  const envPaths = [join(geminiDir, ".env"), join(homedir(), ".env")];
 
   for (const envPath of envPaths) {
     try {
       const content = await readFile(envPath, "utf-8");
-      const filename = envPath === join(geminiDir, ".env") ? ".gemini/.env" : ".env";
+      const filename =
+        envPath === join(geminiDir, ".env") ? ".gemini/.env" : ".env";
       files.push({
         destinationPath: `$HOME/${filename}`,
         contentBase64: Buffer.from(content).toString("base64"),
@@ -85,9 +95,6 @@ export async function getGeminiEnvironment(): Promise<EnvironmentResult> {
   } catch {
     // Commands directory doesn't exist
   }
-
-  // Note: GEMINI_API_KEY is already handled via requiredApiKeys in agentConfig
-  // It will be automatically added to the environment by the spawner
 
   return { files, env, startupCommands };
 }

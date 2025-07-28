@@ -8,8 +8,7 @@
 [x] copy over the credentials properly
 [ ] make it easy to create a new task from scratch without any existing directory or git repo
 [ ] fallback if user doesn't use gh cli
-[ ] authentication with stack auth when user tries to enable cloud mode
-[ ] whenever i start typing in /dashboard, even if i'm not focused on the textinput, it should automatically start typing in the textinput (including the keys i just pressed but weren't focused on the textinput)
+[x] whenever i start typing in /dashboard, even if i'm not focused on the textinput, it should automatically start typing in the textinput (including the keys i just pressed but weren't focused on the textinput)
 [ ] figure out how to get git working, rn worktrees are intermittently broken
 [ ] make MorphVSCodeInstance actually work
 [ ] vercel previews but devcontainer and docker and docker compose
@@ -26,17 +25,19 @@
 [ ] package vite app and expose via the cmux cli.
 [ ] add qwen code https://x.com/oran_ge/status/1947822347517628625
 [ ] add grok code
-[ ] add amp
+[x] add amp
 [ ] add atlassian rovo
 [ ] make cli good
 [ ] cmux cli npm publish and uvx publish
-[ ] deno compile
 [ ] ensure all the different CLIs work, not just claude
 [ ] onboarding CLI flow to copy vscode themes -- this needs its own convex tables, and we need to make sure to send the right files to the right places when spawning vscode instances.
-[ ] make indicators on /dashboard that show which providers have been properly set up
+[ ] onboarding: fix cli output on first run to be pretty and not spam logs
+[ ] make indicators on /dashboard that show which providers have been properly set up. like somehow check if the right files are in the right places based on the stuff in agentConfig.ts. we also need to make a check for docker status. make a socketio endpoint that exposes this information.
 [ ] drafts for tasks
 [ ] remove containerMappings from @apps/server/src/vscode/DockerVSCodeInstance.ts and just use convex and/or docker daemon as source of truth.
-[ ] spawn agents in parallel faster
-[ ] bundle convex in executable somehow
-[ ] default claude code bypass permissions mode
-[ ] git fatal unsupported ssl backend
+[x] spawn agents in parallel faster
+[x] bundle convex in executable somehow
+[x] default claude code bypass permissions mode
+[?] git fatal unsupported ssl backend
+
+[ ] authentication with stack auth (or somehow collect user emails) when user tries to enable cloud mode
