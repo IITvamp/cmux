@@ -4,18 +4,15 @@ import { isElectron } from "@/lib/electron";
 import { type TaskWithRuns } from "@/types/task";
 import { api } from "@cmux/convex/api";
 import { type Doc } from "@cmux/convex/dataModel";
+import { convexQuery } from "@convex-dev/react-query";
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
 import { useQueries, useQuery } from "convex/react";
-import { convexQuery } from "@convex-dev/react-query";
 import { Suspense, useMemo } from "react";
 
 export const Route = createFileRoute("/_layout")({
   component: LayoutComponent,
   loader: async ({ context }) => {
-    // Prefetch tasks data
-    await context.queryClient.ensureQueryData(
-      convexQuery(api.tasks.get, {})
-    );
+    void context.queryClient.ensureQueryData(convexQuery(api.tasks.get, {}));
   },
 });
 
