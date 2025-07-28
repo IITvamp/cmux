@@ -30,19 +30,39 @@ function sanitizeTmuxSessionName(name: string): string {
 async function performAutoCommitAndPush(
   vscodeInstance: VSCodeInstance,
   agent: AgentConfig,
-  taskRunId: string | Id<"taskRuns">
+  taskRunId: string | Id<"taskRuns">,
+  taskDescription: string
 ): Promise<void> {
   try {
     console.log(`[AgentSpawner] Starting auto-commit and push for ${agent.name}`);
     
     // Create a unique branch name for this task run
-    const branchName = `cmux-${taskRunId}-${agent.name}`.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+    // Include a sanitized version of the task description for better clarity
+    const sanitizedTaskDesc = taskDescription
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '') // Remove special chars except spaces and hyphens
+      .trim()
+      .split(/\s+/) // Split by whitespace
+      .slice(0, 5) // Take first 5 words max
+      .join('-')
+      .substring(0, 30); // Limit length
     
-    const commitMessage = `Auto-commit from ${agent.name} - Task completed
+    const branchName = `cmux-${agent.name}-${sanitizedTaskDesc}-${taskRunId}`.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/--+/g, '-');
+    
+    // Use task description as the main commit message
+    // Truncate if too long (git has limits on commit message length)
+    const truncatedDescription = taskDescription.length > 72 
+      ? taskDescription.substring(0, 69) + "..." 
+      : taskDescription;
+    
+    const commitMessage = `${truncatedDescription}
+
+Task completed by ${agent.name} agent
 
 🤖 Generated with cmux
 Agent: ${agent.name}
 Task Run ID: ${taskRunId}
+Branch: ${branchName}
 Completed: ${new Date().toISOString()}`;
 
     // Try to use VSCode extension API first (more reliable)
@@ -478,7 +498,7 @@ export async function spawnAgent(
           await new Promise(resolve => setTimeout(resolve, 2000));
 
           // Auto-commit and push changes in VSCode editor
-          await performAutoCommitAndPush(vscodeInstance, agent, taskRunId);
+          await performAutoCommitAndPush(vscodeInstance, agent, taskRunId, options.taskDescription);
 
           // Schedule container stop based on settings
           const containerSettings = await convex.query(
