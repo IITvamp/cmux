@@ -12,6 +12,7 @@ import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { MorphVSCodeInstance } from "./vscode/MorphVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWorktreePath, setupProjectWorkspace } from "./workspace.js";
+import { vscodeInstanceManager } from "./vscodeInstanceManager.js";
 
 /**
  * Sanitize a string to be used as a tmux session name.
@@ -434,6 +435,9 @@ export async function spawnAgent(
         agentName: agent.name,
         taskRunId: taskRunId as string,
       });
+      
+      // Register the instance
+      vscodeInstanceManager.register(taskRunId, vscodeInstance);
 
       worktreePath = "/root/workspace";
     } else {
@@ -475,6 +479,9 @@ export async function spawnAgent(
         agentName: agent.name,
         taskRunId: taskRunId as string,
       });
+      
+      // Register the instance
+      vscodeInstanceManager.register(taskRunId, vscodeInstance);
     }
 
     // Update the task run with the worktree path
@@ -515,12 +522,8 @@ export async function spawnAgent(
             `[AgentSpawner] Updated taskRun ${taskRunId} as completed after ${data.elapsedMs}ms`
           );
 
-          // Wait a bit to ensure all file changes are saved
-          console.log(`[AgentSpawner] Waiting 2 seconds before auto-commit to ensure all changes are saved...`);
-          await new Promise(resolve => setTimeout(resolve, 2000));
-
-          // Auto-commit and push changes in VSCode editor
-          await performAutoCommitAndPush(vscodeInstance, agent, taskRunId, options.taskDescription);
+          // No longer auto-committing individual agent changes
+          // Will evaluate all agent solutions together after all complete
 
           // Schedule container stop based on settings
           const containerSettings = await convex.query(
@@ -563,15 +566,56 @@ export async function spawnAgent(
           );
 
           if (allCompleted) {
+            console.log(
+              `[AgentSpawner] All task runs completed for task ${taskId}`
+            );
+
+            // Evaluate all solutions and select the best one
+            try {
+              const { evaluateAndSelectBestSolution, createPullRequestForBestSolution } = await import("./codeEvaluator");
+              
+              // Get all VSCode instances for the task runs from the instance manager
+              const vscodeInstancesMap = vscodeInstanceManager.getMultiple(
+                taskRuns.map(run => run._id)
+              );
+              
+              const { bestSolution, evaluations } = await evaluateAndSelectBestSolution(
+                taskId as Id<"tasks">,
+                options.taskDescription,
+                taskRuns,
+                vscodeInstancesMap,
+                convex
+              );
+              
+              // Create PR with the best solution
+              const bestEvaluation = evaluations.get(bestSolution.taskRunId);
+              if (bestEvaluation) {
+                const bestVscodeInstance = vscodeInstancesMap.get(bestSolution.taskRunId);
+                if (bestVscodeInstance) {
+                  await createPullRequestForBestSolution(
+                    bestSolution,
+                    options.taskDescription,
+                    bestEvaluation,
+                    bestVscodeInstance
+                  );
+                }
+              }
+              
+              console.log(
+                `[AgentSpawner] Created PR with best solution from ${bestSolution.agentName}`
+              );
+            } catch (error) {
+              console.error(
+                `[AgentSpawner] Error evaluating solutions:`,
+                error
+              );
+            }
+
             // Update the main task as completed
             await convex.mutation(api.tasks.setCompleted, {
               id: taskId as Id<"tasks">,
               isCompleted: true,
             });
-
-            console.log(
-              `[AgentSpawner] All task runs completed, updated task ${taskId} as completed`
-            );
           }
         } catch (error) {
           console.error(
