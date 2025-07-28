@@ -40,6 +40,10 @@ export async function getClaudeEnvironment(): Promise<EnvironmentResult> {
           hasClaudeMdExternalIncludesWarningShown: false,
         },
       },
+      isQualifiedForDataSharing: false,
+      hasCompletedOnboarding: true,
+      bypassPermissionsModeAccepted: true,
+      hasAcknowledgedCostThreshold: true,
     };
 
     files.push({
