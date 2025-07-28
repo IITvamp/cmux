@@ -1,4 +1,5 @@
 import AntdMultiSelect from "@/components/AntdMultiSelect";
+import { AutoCommitPRButton } from "@/components/AutoCommitPRButton";
 import LexicalEditor from "@/components/lexical/LexicalEditor";
 import { Button } from "@/components/ui/button";
 import { ModeToggleTooltip } from "@/components/ui/mode-toggle-tooltip";
@@ -777,6 +778,16 @@ function TaskItem({ task, navigate, archiveTask }: TaskItemProps) {
               <TooltipContent side="top">Open in VSCode</TooltipContent>
             </Tooltip>
           </TooltipProvider>
+        )}
+
+        {/* Auto-commit and PR button */}
+        {vscodeUrl && task.worktreePath && (
+          <AutoCommitPRButton
+            workspacePath={task.worktreePath}
+            projectFullName={task.projectFullName}
+            branch={task.branch}
+            taskDescription={task.text}
+          />
         )}
 
         {/* Keep-alive button */}

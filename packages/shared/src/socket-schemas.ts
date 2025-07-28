@@ -139,6 +139,22 @@ export const OpenInEditorErrorSchema = z.object({
   error: z.string(),
 });
 
+// Auto-commit and PR events
+export const AutoCommitPRSchema = z.object({
+  workspacePath: z.string(),
+  projectFullName: z.string().optional(),
+  branch: z.string().optional(),
+  taskDescription: z.string(),
+});
+
+export const AutoCommitPRResponseSchema = z.object({
+  success: z.boolean(),
+  commitHash: z.string().optional(),
+  prUrl: z.string().optional(),
+  prNumber: z.number().optional(),
+  error: z.string().optional(),
+});
+
 // File listing events
 export const ListFilesRequestSchema = z.object({
   repoUrl: z.string(),
@@ -238,6 +254,8 @@ export type GitFullDiffRequest = z.infer<typeof GitFullDiffRequestSchema>;
 export type GitFullDiffResponse = z.infer<typeof GitFullDiffResponseSchema>;
 export type OpenInEditor = z.infer<typeof OpenInEditorSchema>;
 export type OpenInEditorError = z.infer<typeof OpenInEditorErrorSchema>;
+export type AutoCommitPR = z.infer<typeof AutoCommitPRSchema>;
+export type AutoCommitPRResponse = z.infer<typeof AutoCommitPRResponseSchema>;
 export type ListFilesRequest = z.infer<typeof ListFilesRequestSchema>;
 export type FileInfo = z.infer<typeof FileInfoSchema>;
 export type ListFilesResponse = z.infer<typeof ListFilesResponseSchema>;
@@ -272,6 +290,10 @@ export interface ClientToServerEvents {
   "github-fetch-branches": (
     data: GitHubFetchBranches,
     callback: (response: GitHubBranchesResponse) => void
+  ) => void;
+  "auto-commit-pr": (
+    data: AutoCommitPR,
+    callback: (response: AutoCommitPRResponse) => void
   ) => void;
 }
 

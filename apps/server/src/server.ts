@@ -1,5 +1,6 @@
 import { api } from "@cmux/convex/api";
 import {
+  AutoCommitPRSchema,
   GitFullDiffRequestSchema,
   GitHubFetchBranchesSchema,
   ListFilesRequestSchema,
@@ -215,6 +216,132 @@ export async function startServer({
       } catch (error) {
         console.error("Error opening editor:", error);
         socket.emit("open-in-editor-error", {
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    });
+
+    socket.on("auto-commit-pr", async (data, callback) => {
+      try {
+        const { workspacePath, projectFullName, branch, taskDescription } = 
+          AutoCommitPRSchema.parse(data);
+        
+        const { exec } = await import("child_process");
+        const { promisify } = await import("util");
+        const execAsync = promisify(exec);
+
+        console.log(`Starting auto-commit and PR for workspace: ${workspacePath}`);
+
+        // Check if there are any changes to commit
+        const { stdout: statusOutput } = await execAsync("git status --porcelain", {
+          cwd: workspacePath,
+        });
+
+        if (!statusOutput.trim()) {
+          callback({
+            success: false,
+            error: "No changes to commit",
+          });
+          return;
+        }
+
+        // Add all changes
+        await execAsync("git add .", {
+          cwd: workspacePath,
+        });
+
+        // Generate commit message based on task description
+        const commitMessage = `${taskDescription}
+
+🤖 Generated with [Claude Code](https://claude.ai/code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>`;
+
+        // Commit changes
+        const { stdout: commitOutput } = await execAsync(
+          `git commit -m "${commitMessage.replace(/"/g, '\\"')}"`,
+          {
+            cwd: workspacePath,
+          }
+        );
+
+        console.log("Commit output:", commitOutput);
+
+        // Extract commit hash
+        const commitHashMatch = commitOutput.match(/\[.+\s([a-f0-9]{7,})\]/);
+        const commitHash = commitHashMatch?.[1];
+
+        // Push changes to remote
+        const currentBranch = branch || "main";
+        await execAsync(`git push origin ${currentBranch}`, {
+          cwd: workspacePath,
+        });
+
+        // Create pull request using GitHub CLI
+        let prUrl = "";
+        let prNumber = 0;
+
+        if (projectFullName) {
+          try {
+            // Generate PR title and body
+            const prTitle = taskDescription.length > 50 
+              ? taskDescription.substring(0, 47) + "..." 
+              : taskDescription;
+            
+            const prBody = `## Summary
+${taskDescription}
+
+## Changes
+This PR was automatically generated and contains the changes made during task execution.
+
+🤖 Generated with [Claude Code](https://claude.ai/code)`;
+
+            const { stdout: prOutput } = await execAsync(
+              `gh pr create --title "${prTitle.replace(/"/g, '\\"')}" --body "${prBody.replace(/"/g, '\\"')}" --base main --head ${currentBranch}`,
+              {
+                cwd: workspacePath,
+                env: {
+                  ...process.env,
+                  GH_REPO: projectFullName,
+                },
+              }
+            );
+
+            // Extract PR URL from output
+            const prUrlMatch = prOutput.match(/https:\/\/github\.com\/[^\s]+/);
+            if (prUrlMatch) {
+              prUrl = prUrlMatch[0];
+              // Extract PR number from URL
+              const prNumberMatch = prUrl.match(/\/pull\/(\d+)/);
+              if (prNumberMatch) {
+                prNumber = parseInt(prNumberMatch[1]);
+              }
+            }
+
+            console.log("PR created:", prUrl);
+          } catch (prError) {
+            console.error("Failed to create PR:", prError);
+            // Still return success since commit worked
+            callback({
+              success: true,
+              commitHash,
+              error: `Commit successful but PR creation failed: ${prError instanceof Error ? prError.message : "Unknown error"}`,
+            });
+            return;
+          }
+        }
+
+        callback({
+          success: true,
+          commitHash,
+          prUrl: prUrl || undefined,
+          prNumber: prNumber || undefined,
+        });
+
+      } catch (error) {
+        console.error("Error in auto-commit-pr:", error);
+        callback({
+          success: false,
           error: error instanceof Error ? error.message : "Unknown error",
         });
       }
