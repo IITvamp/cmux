@@ -68,26 +68,38 @@ function LayoutComponent() {
             </Link>
             <Link
               to="/dashboard"
-              className="w-6 h-6 bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 rounded-md flex items-center justify-center transition-colors"
+              className="w-6 h-6 bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 rounded-md flex items-center justify-center transition-colors cursor-default"
               title="New task"
             >
-              <svg className="w-4 h-4 text-neutral-600 dark:text-neutral-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              <svg
+                className="w-4 h-4 text-neutral-600 dark:text-neutral-300"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M12 4v16m8-8H4"
+                />
               </svg>
             </Link>
           </div>
           {/* Navigation */}
-          <nav className="flex-1 flex flex-col overflow-hidden">              
+          <nav className="flex-1 flex flex-col overflow-hidden">
             {/* Recent Tasks Section */}
             <div className="flex-1 overflow-y-auto px-3 py-3 border-t border-neutral-200 dark:border-neutral-800">
               <div className="flex items-center px-2 py-1.5 text-sm text-neutral-600 dark:text-neutral-400">
-                <span className="text-xs font-medium uppercase tracking-wide">Recent Tasks</span>
+                <span className="text-xs font-medium uppercase tracking-wide">
+                  Recent Tasks
+                </span>
               </div>
               <div className="mt-1 space-y-0.5">
                 {tasksWithRuns.length > 0 ? (
-                  tasksWithRuns.slice(0, 10).map((task) => (
-                    <TaskTree key={task._id} task={task} />
-                  ))
+                  tasksWithRuns
+                    .slice(0, 10)
+                    .map((task) => <TaskTree key={task._id} task={task} />)
                 ) : (
                   <p className="px-2 py-1.5 text-sm text-neutral-500 dark:text-neutral-400 select-none">
                     No recent tasks
@@ -102,8 +114,18 @@ function LayoutComponent() {
               to="/settings"
               className="flex items-center px-2 py-1.5 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-md transition-colors select-none"
             >
-              <svg className="w-4 h-4 mr-2 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <svg
+                className="w-4 h-4 mr-2 text-neutral-500"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                />
               </svg>
               Settings
             </Link>
