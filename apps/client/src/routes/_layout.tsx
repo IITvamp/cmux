@@ -58,17 +58,17 @@ function LayoutComponent() {
   return (
     <>
       <div className="flex flex-row h-full bg-white dark:bg-neutral-950">
-        <div className="w-60 bg-neutral-50 dark:bg-neutral-900 border-r border-neutral-200 dark:border-neutral-800 flex flex-col">
-          <div className="h-14 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between px-4">
+        <div className="w-64 bg-neutral-50 dark:bg-neutral-900 border-r border-neutral-200 dark:border-neutral-800 flex flex-col">
+          <div className="h-16 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between px-5">
             <Link
               to="/dashboard"
-              className="text-lg font-semibold text-neutral-900 dark:text-white hover:text-neutral-700 dark:hover:text-neutral-300 transition-colors cursor-pointer"
+              className="text-lg font-semibold text-neutral-900 dark:text-white hover:text-neutral-700 dark:hover:text-neutral-300 transition-colors cursor-default"
             >
               cmux
             </Link>
             <Link
               to="/dashboard"
-              className="w-6 h-6 bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 rounded-md flex items-center justify-center transition-colors cursor-default"
+              className="w-7 h-7 bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 rounded-md flex items-center justify-center transition-colors cursor-default"
               title="New task"
             >
               <svg
@@ -89,19 +89,19 @@ function LayoutComponent() {
           {/* Navigation */}
           <nav className="flex-1 flex flex-col overflow-hidden">
             {/* Recent Tasks Section */}
-            <div className="flex-1 overflow-y-auto px-3 py-3 border-t border-neutral-200 dark:border-neutral-800">
-              <div className="flex items-center px-2 py-1.5 text-sm text-neutral-600 dark:text-neutral-400">
-                <span className="text-xs font-medium uppercase tracking-wide">
+            <div className="flex-1 overflow-y-auto px-4 py-4">
+              <div className="flex items-center px-2 py-2 mb-2">
+                <span className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wider">
                   Recent Tasks
                 </span>
               </div>
-              <div className="mt-1 space-y-0.5">
+              <div className="space-y-1">
                 {tasksWithRuns.length > 0 ? (
                   tasksWithRuns
                     .slice(0, 10)
                     .map((task) => <TaskTree key={task._id} task={task} />)
                 ) : (
-                  <p className="px-2 py-1.5 text-sm text-neutral-500 dark:text-neutral-400 select-none">
+                  <p className="px-3 py-2 text-sm text-neutral-500 dark:text-neutral-400 select-none">
                     No recent tasks
                   </p>
                 )}
@@ -109,13 +109,13 @@ function LayoutComponent() {
             </div>
           </nav>
 
-          <div className="p-3 border-t border-neutral-200 dark:border-neutral-800">
+          <div className="p-4 border-t border-neutral-200 dark:border-neutral-800">
             <Link
               to="/settings"
-              className="flex items-center px-2 py-1.5 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-md transition-colors select-none"
+              className="flex items-center px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors select-none cursor-default"
             >
               <svg
-                className="w-4 h-4 mr-2 text-neutral-500"
+                className="w-4 h-4 mr-3 text-neutral-500"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -159,7 +159,7 @@ function LayoutComponent() {
           border: "none",
           borderRadius: "4px",
           padding: "8px 12px",
-          cursor: "pointer",
+          cursor: "default",
           fontSize: "12px",
           fontWeight: 600,
           boxShadow: "0 2px 4px rgba(0,0,0,0.15)",

@@ -373,7 +373,7 @@ function SettingsComponent() {
                       Receive updates about your workspace via email
                     </p>
                   </div>
-                  <button className="relative inline-flex h-6 w-11 items-center rounded-full bg-blue-600 dark:bg-blue-500">
+                  <button className="relative inline-flex h-6 w-11 items-center rounded-full bg-blue-600 dark:bg-blue-500 cursor-default">
                     <span className="translate-x-6 inline-block h-4 w-4 transform rounded-full bg-white transition"></span>
                   </button>
                 </div>
@@ -387,7 +387,7 @@ function SettingsComponent() {
                       Get notified about important updates on desktop
                     </p>
                   </div>
-                  <button className="relative inline-flex h-6 w-11 items-center rounded-full bg-neutral-200 dark:bg-neutral-700">
+                  <button className="relative inline-flex h-6 w-11 items-center rounded-full bg-neutral-200 dark:bg-neutral-700 cursor-default">
                     <span className="translate-x-1 inline-block h-4 w-4 transform rounded-full bg-white dark:bg-neutral-200 transition"></span>
                   </button>
                 </div>
@@ -401,7 +401,7 @@ function SettingsComponent() {
                       Summary of your workspace activity
                     </p>
                   </div>
-                  <button className="relative inline-flex h-6 w-11 items-center rounded-full bg-blue-600 dark:bg-blue-500">
+                  <button className="relative inline-flex h-6 w-11 items-center rounded-full bg-blue-600 dark:bg-blue-500 cursor-default">
                     <span className="translate-x-6 inline-block h-4 w-4 transform rounded-full bg-white transition"></span>
                   </button>
                 </div>
