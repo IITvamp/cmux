@@ -10,7 +10,6 @@ export function createRouter() {
   if (!CONVEX_URL.trim()) {
     console.error("missing envar VITE_CONVEX_URL");
   }
-  console.log("CONVEX_URL", CONVEX_URL);
   const convexQueryClient = new ConvexQueryClient(CONVEX_URL);
 
   const queryClient: QueryClient = new QueryClient({

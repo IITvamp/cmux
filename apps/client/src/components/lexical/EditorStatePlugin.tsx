@@ -1,5 +1,5 @@
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
-import { $getRoot, $createParagraphNode } from "lexical";
+import { $getRoot, $createParagraphNode, $getSelection, $createTextNode, ParagraphNode } from "lexical";
 import { useEffect } from "react";
 import { $isImageNode } from "./ImageNode";
 
@@ -22,6 +22,8 @@ interface EditorApi {
     }>;
   };
   clear: () => void;
+  focus: () => void;
+  insertText: (text: string) => void;
 }
 
 export function EditorStatePlugin({ onEditorReady }: { onEditorReady?: (api: EditorApi) => void }) {
@@ -87,6 +89,41 @@ export function EditorStatePlugin({ onEditorReady }: { onEditorReady?: (api: Edi
             const paragraph = $createParagraphNode();
             root.append(paragraph);
             paragraph.select();
+          });
+        },
+        focus: () => {
+          editor.focus();
+        },
+        insertText: (text: string) => {
+          editor.update(() => {
+            const selection = $getSelection();
+            if (selection) {
+              selection.insertText(text);
+            } else {
+              // If no selection, append to the last paragraph
+              const root = $getRoot();
+              const children = root.getChildren();
+              let lastParagraph: ParagraphNode | null = null;
+              
+              // Find the last paragraph node
+              for (let i = children.length - 1; i >= 0; i--) {
+                if (children[i].getType() === 'paragraph') {
+                  lastParagraph = children[i] as ParagraphNode;
+                  break;
+                }
+              }
+              
+              // If no paragraph exists, create one
+              if (!lastParagraph) {
+                lastParagraph = $createParagraphNode();
+                root.append(lastParagraph);
+              }
+              
+              // Append the text node to the paragraph
+              const textNode = $createTextNode(text);
+              lastParagraph.append(textNode);
+              textNode.select();
+            }
           });
         }
       };

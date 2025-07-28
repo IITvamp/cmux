@@ -69,6 +69,8 @@ function DashboardComponent() {
       }>;
     };
     clear: () => void;
+    focus?: () => void;
+    insertText?: (text: string) => void;
   }
 
   // Ref to access editor API
@@ -117,7 +119,7 @@ function DashboardComponent() {
   const branches = branchesQuery.data || [];
 
   // Socket-based functions to fetch data from GitHub
-  const _fetchRepos = useCallback(() => {
+  const fetchRepos = useCallback(() => {
     if (!socket) return;
 
     setIsLoadingRepos(true);
@@ -306,11 +308,11 @@ function DashboardComponent() {
   ]);
 
   // Fetch repos on mount if none exist
-  // useEffect(() => {
-  //   if (Object.keys(reposByOrg).length === 0) {
-  //     fetchRepos();
-  //   }
-  // }, [reposByOrg, fetchRepos]);
+  useEffect(() => {
+    if (Object.keys(reposByOrg).length === 0) {
+      fetchRepos();
+    }
+  }, [reposByOrg, fetchRepos]);
 
   // Fetch branches when repo changes
   const selectedRepo = selectedProject[0];
@@ -370,6 +372,70 @@ function DashboardComponent() {
   // Detect operating system for keyboard shortcut display
   const isMac = navigator.userAgent.toUpperCase().indexOf("MAC") >= 0;
   const shortcutKey = isMac ? "⌘" : "Ctrl";
+
+  // Global keydown handler for autofocus
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Skip if already focused on an input, textarea, or contenteditable
+      const activeElement = document.activeElement;
+      if (
+        activeElement?.tagName === "INPUT" ||
+        activeElement?.tagName === "TEXTAREA" ||
+        activeElement?.getAttribute("contenteditable") === "true" ||
+        activeElement?.closest('[contenteditable="true"]')
+      ) {
+        return;
+      }
+
+      // Skip for modifier keys and special keys
+      if (
+        e.ctrlKey ||
+        e.metaKey ||
+        e.altKey ||
+        e.key === "Tab" ||
+        e.key === "Escape" ||
+        e.key === "Enter" ||
+        e.key.startsWith("F") || // Function keys
+        e.key.startsWith("Arrow") ||
+        e.key === "Home" ||
+        e.key === "End" ||
+        e.key === "PageUp" ||
+        e.key === "PageDown" ||
+        e.key === "Delete" ||
+        e.key === "Backspace" ||
+        e.key === "CapsLock" ||
+        e.key === "Control" ||
+        e.key === "Shift" ||
+        e.key === "Alt" ||
+        e.key === "Meta" ||
+        e.key === "ContextMenu"
+      ) {
+        return;
+      }
+
+      // Check if it's a printable character (including shift for uppercase)
+      if (e.key.length === 1) {
+        // Prevent default to avoid duplicate input
+        e.preventDefault();
+
+        // Focus the editor and insert the character
+        if (editorApiRef.current?.focus) {
+          editorApiRef.current.focus();
+          
+          // Insert the typed character
+          if (editorApiRef.current.insertText) {
+            editorApiRef.current.insertText(e.key);
+          }
+        }
+      }
+    };
+
+    document.addEventListener("keydown", handleGlobalKeyDown);
+
+    return () => {
+      document.removeEventListener("keydown", handleGlobalKeyDown);
+    };
+  }, []);
 
   // Handle Command+Enter keyboard shortcut
   const handleSubmit = useCallback(() => {
