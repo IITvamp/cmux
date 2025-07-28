@@ -95,7 +95,7 @@ export function TaskTree({ task, level = 0 }: TaskTreeProps) {
         >
           <span
             className={clsx(
-              "text-[10px] font-medium",
+              "text-[10px]",
               task.isCompleted
                 ? "text-green-600 dark:text-green-400"
                 : "text-blue-600 dark:text-blue-400"
@@ -106,7 +106,7 @@ export function TaskTree({ task, level = 0 }: TaskTreeProps) {
         </div>
 
         <div className="flex-1 min-w-0">
-          <p className="truncate text-neutral-900 dark:text-neutral-100 font-medium">
+          <p className="truncate text-neutral-900 dark:text-neutral-100">
             {task.text}
           </p>
         </div>

@@ -90,8 +90,8 @@ function LayoutComponent() {
           <nav className="flex-1 flex flex-col overflow-hidden">
             {/* Recent Tasks Section */}
             <div className="flex-1 overflow-y-auto px-3 py-3">
-              <div className="flex items-center px-1 py-1 mb-1">
-                <span className="text-xs font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wider select-none">
+              <div className="flex items-center px-1 py-1">
+                <span className="text-[10px] font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-wider select-none">
                   Recent Tasks
                 </span>
               </div>
