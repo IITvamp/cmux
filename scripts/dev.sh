@@ -2,7 +2,7 @@
 
 set -e
 
-source .env.local
+CONVEX_PORT=9777
 
 # Build Docker image by default unless explicitly skipped
 if [ "$SKIP_DOCKER_BUILD" != "true" ]; then
