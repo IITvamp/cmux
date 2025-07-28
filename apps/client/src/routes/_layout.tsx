@@ -57,176 +57,70 @@ function LayoutComponent() {
 
   return (
     <>
-      <div className="flex flex-row grow bg-neutral-50 dark:bg-neutral-900 h-full">
+      <div className="flex flex-row h-full bg-white dark:bg-neutral-950">
         {/* Left Sidebar */}
-        <div className="w-[220px] bg-neutral-50 dark:bg-neutral-900 flex flex-col">
-          {/* Logo/Brand */}
-          {/* <div className="h-14 flex items-center px-4 border-b border-neutral-200 dark:border-neutral-800">
-          <div className="flex items-center space-x-2">
-            <div className="w-7 h-7 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg"></div>
-            <span className="font-semibold text-neutral-900 dark:text-neutral-100">
-              Workspace
-            </span>
-          </div>
-        </div> */}
-          <div
-            className="h-[38px] flex items-center"
-            style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
-          >
-            <div className="w-[80px]"></div>
-            <button
-              className="w-[100px] h-[25px] bg-primary/80 hover:bg-primary transition text-white flex items-center justify-center font-medium rounded-lg text-xs select-none invisible"
-              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+        <div className="w-60 bg-neutral-50 dark:bg-neutral-900 border-r border-neutral-200 dark:border-neutral-800 flex flex-col">
+          {/* Sidebar Header */}
+          <div className="h-14 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between px-4">
+            <h1 className="text-lg font-semibold text-neutral-900 dark:text-white">
+              cmux
+            </h1>
+            <button 
+              onClick={() => {
+                // Focus on the task creation area in dashboard
+                const textarea = document.querySelector('[contenteditable="true"]') as HTMLElement;
+                if (textarea) {
+                  textarea.focus();
+                }
+              }}
+              className="w-6 h-6 bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 rounded-md flex items-center justify-center transition-colors"
+              title="New task"
             >
-              Workspace 1
+              <svg className="w-4 h-4 text-neutral-600 dark:text-neutral-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
             </button>
           </div>
-
           {/* Navigation */}
-          <nav className="flex-1 flex flex-col overflow-hidden">
-            <div className="px-3 py-4 space-y-1 flex-shrink-0">
-              <Link
-                to="/dashboard"
-                className="flex items-center px-3 py-2 text-sm font-medium rounded-lg text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors [&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800 [&.active]:text-neutral-900 dark:[&.active]:text-neutral-100 select-none cursor-default"
-              >
-                <svg
-                  className="w-5 h-5 mr-3 text-neutral-400 dark:text-neutral-500"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 4v16m8-8H4"
-                  />
-                </svg>
-                New task
-              </Link>
-
-              {/* Temporarily comment out routes that don't exist yet
-            <Link
-              to="/inbox"
-              className="flex items-center px-3 py-2 text-sm font-medium rounded-lg text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors [&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800 [&.active]:text-neutral-900 dark:[&.active]:text-neutral-100"
-            >
-              <svg
-                className="w-5 h-5 mr-3 text-neutral-400 dark:text-neutral-500"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0h-2.586a1 1 0 00-.707.293l-2.414 2.414a1 1 0 01-.707.293h-3.172a1 1 0 01-.707-.293l-2.414-2.414A1 1 0 006.586 13H4"
-                />
-              </svg>
-              Inbox
-            </Link>
-
-            <Link
-              to="/issues"
-              className="flex items-center px-3 py-2 text-sm font-medium rounded-lg text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors [&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800 [&.active]:text-neutral-900 dark:[&.active]:text-neutral-100"
-            >
-              <svg
-                className="w-5 h-5 mr-3 text-neutral-400 dark:text-neutral-500"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                />
-              </svg>
-              Issues
-            </Link>
-
-            <Link
-              to="/projects"
-              className="flex items-center px-3 py-2 text-sm font-medium rounded-lg text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors [&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800 [&.active]:text-neutral-900 dark:[&.active]:text-neutral-100"
-            >
-              <svg
-                className="w-5 h-5 mr-3 text-neutral-400 dark:text-neutral-500"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
-              />
-            </svg>
-            Projects
-          </Link>
-          */}
-            </div>
-
-            {/* Scrollable Recent Tasks Section */}
-            <div className="flex-1 overflow-y-auto px-3 pb-4">
-              <div className="pt-6">
-                <p className="px-3 text-xs font-medium text-neutral-400 dark:text-neutral-500 uppercase tracking-wide select-none">
-                  Recent Tasks
-                </p>
-                <div className="mt-1 space-y-0.5">
-                  {tasksWithRuns.length > 0 ? (
-                    tasksWithRuns.map((task) => (
-                      <TaskTree key={task._id} task={task} />
-                    ))
-                  ) : (
-                    <p className="px-3 py-2 text-sm text-neutral-500 dark:text-neutral-400 select-none">
-                      No recent tasks
-                    </p>
-                  )}
-                </div>
+          <nav className="flex-1 flex flex-col overflow-hidden">              
+            {/* Recent Tasks Section */}
+            <div className="flex-1 overflow-y-auto px-3 py-3 border-t border-neutral-200 dark:border-neutral-800">
+              <div className="flex items-center px-2 py-1.5 text-sm text-neutral-600 dark:text-neutral-400">
+                <span className="text-xs font-medium uppercase tracking-wide">Recent Tasks</span>
+              </div>
+              <div className="mt-1 space-y-0.5">
+                {tasksWithRuns.length > 0 ? (
+                  tasksWithRuns.slice(0, 10).map((task) => (
+                    <TaskTree key={task._id} task={task} />
+                  ))
+                ) : (
+                  <p className="px-2 py-1.5 text-sm text-neutral-500 dark:text-neutral-400 select-none">
+                    No recent tasks
+                  </p>
+                )}
               </div>
             </div>
           </nav>
 
           {/* Bottom section */}
-          <div className="p-3 border-t border-neutral-200 dark:border-neutral-900">
+          <div className="p-3 border-t border-neutral-200 dark:border-neutral-800">
             <Link
               to="/settings"
-              className="flex items-center px-3 py-2 text-sm font-medium rounded-lg text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors [&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800 [&.active]:text-neutral-900 dark:[&.active]:text-neutral-100 select-none"
+              className="flex items-center px-2 py-1.5 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-md transition-colors select-none"
             >
-              <svg
-                className="w-5 h-5 mr-3 text-neutral-400 dark:text-neutral-500"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                />
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                />
+              <svg className="w-4 h-4 mr-2 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
               </svg>
               Settings
             </Link>
           </div>
         </div>
 
-        {/* Main Content Area - Floating Panel Effect */}
-        <div className="flex flex-col p-1.5 grow min-w-0">
-          <div className="flex flex-col grow overflow-hidden bg-white dark:bg-neutral-800 rounded-md border border-neutral-200 dark:border-neutral-800/80 h-full">
-            {/* <TitleBar /> */}
-            <Suspense fallback={<div>Loading...</div>}>
-              <Outlet />
-            </Suspense>
-          </div>
+        {/* Main Content Area */}
+        <div className="flex flex-col grow overflow-hidden bg-white dark:bg-neutral-950">
+          <Suspense fallback={<div>Loading...</div>}>
+            <Outlet />
+          </Suspense>
         </div>
       </div>
 
