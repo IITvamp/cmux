@@ -58,9 +58,7 @@ function LayoutComponent() {
   return (
     <>
       <div className="flex flex-row h-full bg-white dark:bg-neutral-950">
-        {/* Left Sidebar */}
         <div className="w-60 bg-neutral-50 dark:bg-neutral-900 border-r border-neutral-200 dark:border-neutral-800 flex flex-col">
-          {/* Sidebar Header */}
           <div className="h-14 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between px-4">
             <Link
               to="/dashboard"
@@ -99,7 +97,6 @@ function LayoutComponent() {
             </div>
           </nav>
 
-          {/* Bottom section */}
           <div className="p-3 border-t border-neutral-200 dark:border-neutral-800">
             <Link
               to="/settings"
@@ -113,7 +110,6 @@ function LayoutComponent() {
           </div>
         </div>
 
-        {/* Main Content Area */}
         <div className="flex flex-col grow overflow-hidden bg-white dark:bg-neutral-950">
           <Suspense fallback={<div>Loading...</div>}>
             <Outlet />
@@ -121,7 +117,6 @@ function LayoutComponent() {
         </div>
       </div>
 
-      {/* Debug helper – fixed position note button */}
       <button
         onClick={() => {
           const msg = window.prompt("Enter debug note");
