@@ -1,3 +1,5 @@
+import { ChevronRight } from "lucide-react";
+
 interface TaskTreeSkeletonProps {
   count?: number;
 }
@@ -14,8 +16,11 @@ export function TaskTreeSkeleton({ count = 5 }: TaskTreeSkeletonProps) {
 
 function TaskItemSkeleton() {
   return (
-    <div className="flex items-center px-0.5 py-1 text-sm rounded-md">
-      <div className="w-4 h-4 mr-1.5 rounded animate-pulse bg-neutral-200 dark:bg-neutral-700 invisible" />
+    <div className="flex items-center px-0.5 py-1 text-sm rounded-md pl-1">
+      {/* <div className="w-4 h-4 mr-1.5 rounded animate-pulse bg-neutral-200 dark:bg-neutral-700 invisible" /> */}
+      <div className="size-4 shrink-0 mr-1.5 grid place-content-center">
+        <ChevronRight className="w-3 h-3" />
+      </div>
       <div className="w-3 h-3 mr-2 rounded-full animate-pulse bg-neutral-200 dark:bg-neutral-700" />
       <div className="flex-1">
         <div
