@@ -61,10 +61,10 @@ function LayoutComponent() {
       <div className="flex flex-row h-full bg-white dark:bg-neutral-950">
         <div className="w-64 bg-neutral-50 dark:bg-neutral-900 border-r border-neutral-200 dark:border-neutral-800 flex flex-col">
           <div
-            className="h-[38px] flex items-center pl-4 pr-2"
+            className="h-[38px] flex items-center pl-3 pr-3"
             style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
           >
-            {isElectron && <div className="w-[64px]"></div>}
+            {isElectron && <div className="w-[68px]"></div>}
             <Link
               to="/dashboard"
               className="w-[50px] h-[25px] bg-[#7d2fc7] hover:bg-[#7d2fc7]/80 transition text-white flex items-center justify-center font-medium rounded-lg text-xs select-none cursor-default"
