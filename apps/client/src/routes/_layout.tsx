@@ -59,7 +59,7 @@ function LayoutComponent() {
     <>
       <div className="flex flex-row h-full bg-white dark:bg-neutral-950">
         <div className="w-64 bg-neutral-50 dark:bg-neutral-900 border-r border-neutral-200 dark:border-neutral-800 flex flex-col">
-          <div className="h-16 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between px-5">
+          <div className="py-3 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between px-5">
             <Link
               to="/dashboard"
               className="text-lg font-semibold text-neutral-900 dark:text-white hover:text-neutral-700 dark:hover:text-neutral-300 transition-colors cursor-default"
