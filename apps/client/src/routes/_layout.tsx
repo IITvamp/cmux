@@ -1,5 +1,5 @@
 import { TaskTree } from "@/components/TaskTree";
-import { getIsElectron } from "@/lib/electron";
+import { isElectron } from "@/lib/electron";
 import { type TaskWithRuns } from "@/types/task";
 import { api } from "@cmux/convex/api";
 import { type Doc } from "@cmux/convex/dataModel";
@@ -10,8 +10,6 @@ import { Suspense, useMemo } from "react";
 export const Route = createFileRoute("/_layout")({
   component: LayoutComponent,
 });
-
-const isElectron = getIsElectron();
 
 function LayoutComponent() {
   const tasks = useQuery(api.tasks.get, {});
@@ -63,7 +61,7 @@ function LayoutComponent() {
       <div className="flex flex-row h-full bg-white dark:bg-neutral-950">
         <div className="w-64 bg-neutral-50 dark:bg-neutral-900 border-r border-neutral-200 dark:border-neutral-800 flex flex-col">
           <div
-            className="h-[38px] flex items-center px-4"
+            className="h-[38px] flex items-center pl-4 pr-2"
             style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
           >
             {isElectron && <div className="w-[64px]"></div>}
@@ -77,7 +75,7 @@ function LayoutComponent() {
             <div className="grow"></div>
             <Link
               to="/dashboard"
-              className="w-7 h-7 bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 rounded-md flex items-center justify-center transition-colors cursor-default"
+              className="w-[25px] h-[25px] bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 rounded-lg flex items-center justify-center transition-colors cursor-default"
               title="New task"
               style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
             >
@@ -99,7 +97,7 @@ function LayoutComponent() {
           {/* Navigation */}
           <nav className="flex-1 flex flex-col overflow-hidden">
             {/* Recent Tasks Section */}
-            <div className="flex-1 overflow-y-auto px-3 py-3">
+            <div className="flex-1 overflow-y-auto px-3 py-1">
               <div className="flex items-center px-1 py-1">
                 <span className="text-[10px] font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-[-0.005em] select-none">
                   Recent Tasks
