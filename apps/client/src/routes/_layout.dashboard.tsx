@@ -562,7 +562,6 @@ function DashboardComponent() {
                     <TooltipContent
                       side="bottom"
                       className="flex items-center gap-1 bg-black text-white border-black [&>*:last-child]:bg-black [&>*:last-child]:fill-black"
-                      style={{ "--primary": "black" } as React.CSSProperties}
                     >
                       {isMac ? (
                         <Command className="w-3 h-3" />
