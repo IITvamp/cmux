@@ -9,9 +9,9 @@
   "type": "module",
   "scripts": {
     "start": "vite-node src/dev-server.ts",
-    "dev": "DENO_COMPAT=1 deno run -A --watch-hmr src/dev-server.ts",
+    "dev3": "DENO_COMPAT=1 deno run -A --watch-hmr src/dev-server.ts",
     "dev2": "vite-node src/dev-server.ts",
-    "dev1": "bun run --hot src/dev-server.ts",
+    "dev": "bun run --hot src/dev-server.ts",
     "dev0": "DENO_COMPAT=1 deno run -A src/dev-server.ts",
     "dev-vitenode": "vite-node --watch src/dev-server.ts",
     "start-deno": "deno run -A src/dev-server.ts",
