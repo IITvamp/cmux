@@ -560,7 +560,7 @@ function DashboardComponent() {
                       ) : (
                         <span className="text-xs">{shortcutKey}</span>
                       )}
-                      <span>Enter</span>
+                      <span>+ Enter</span>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>

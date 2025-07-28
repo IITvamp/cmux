@@ -62,24 +62,21 @@ function LayoutComponent() {
         <div className="w-60 bg-neutral-50 dark:bg-neutral-900 border-r border-neutral-200 dark:border-neutral-800 flex flex-col">
           {/* Sidebar Header */}
           <div className="h-14 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between px-4">
-            <h1 className="text-lg font-semibold text-neutral-900 dark:text-white">
+            <Link
+              to="/dashboard"
+              className="text-lg font-semibold text-neutral-900 dark:text-white hover:text-neutral-700 dark:hover:text-neutral-300 transition-colors cursor-pointer"
+            >
               cmux
-            </h1>
-            <button 
-              onClick={() => {
-                // Focus on the task creation area in dashboard
-                const textarea = document.querySelector('[contenteditable="true"]') as HTMLElement;
-                if (textarea) {
-                  textarea.focus();
-                }
-              }}
+            </Link>
+            <Link
+              to="/dashboard"
               className="w-6 h-6 bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 rounded-md flex items-center justify-center transition-colors"
               title="New task"
             >
               <svg className="w-4 h-4 text-neutral-600 dark:text-neutral-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
               </svg>
-            </button>
+            </Link>
           </div>
           {/* Navigation */}
           <nav className="flex-1 flex flex-col overflow-hidden">              
