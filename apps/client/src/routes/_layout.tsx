@@ -1,10 +1,12 @@
 import { TaskTree } from "@/components/TaskTree";
+import { TaskTreeSkeleton } from "@/components/TaskTreeSkeleton";
 import { isElectron } from "@/lib/electron";
 import { type TaskWithRuns } from "@/types/task";
 import { api } from "@cmux/convex/api";
 import { type Doc } from "@cmux/convex/dataModel";
 import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
-import { useQueries, useQuery } from "convex/react";
+import { useQuery } from "@tanstack/react-query";
+import { convexQuery } from "@convex-dev/react-query";
 import { Suspense, useMemo } from "react";
 
 export const Route = createFileRoute("/_layout")({
@@ -12,7 +14,9 @@ export const Route = createFileRoute("/_layout")({
 });
 
 function LayoutComponent() {
-  const tasks = useQuery(api.tasks.get, {});
+  const { data: tasks, isLoading: tasksLoading } = useQuery(
+    convexQuery(api.tasks.get, {})
+  );
 
   // Sort tasks by creation date (newest first) and take the latest 5
   const recentTasks = useMemo(() => {
@@ -26,35 +30,28 @@ function LayoutComponent() {
     );
   }, [tasks]);
 
-  // Create queries object for all recent tasks with memoization
-  const taskRunQueries = useMemo(() => {
-    return recentTasks.reduce(
-      (acc, task) => ({
-        ...acc,
-        [task._id]: {
-          query: api.taskRuns.getByTask,
-          args: { taskId: task._id },
-        },
-      }),
-      {} as Record<
-        string,
-        { query: typeof api.taskRuns.getByTask; args: { taskId: string } }
-      >
-    );
-  }, [recentTasks]);
+  // Fetch task runs for recent tasks
+  const taskRunQueries = recentTasks.map((task) =>
+    useQuery({
+      ...convexQuery(api.taskRuns.getByTask, { taskId: task._id }),
+      enabled: !!task._id,
+    })
+  );
 
-  // Fetch task runs for all recent tasks using useQueries
-  const taskRunResults = useQueries(taskRunQueries);
+  // Check if any task run queries are loading
+  const taskRunsLoading = taskRunQueries.some((query) => query.isLoading);
 
   // Map tasks with their respective runs
   const tasksWithRuns: TaskWithRuns[] = useMemo(
     () =>
-      recentTasks.map((task: Doc<"tasks">) => ({
+      recentTasks.map((task: Doc<"tasks">, index) => ({
         ...task,
-        runs: taskRunResults[task._id] || [],
+        runs: taskRunQueries[index]?.data || [],
       })),
-    [recentTasks, taskRunResults]
+    [recentTasks, taskRunQueries]
   );
+
+  const isLoading = tasksLoading || taskRunsLoading;
 
   return (
     <>
@@ -102,18 +99,19 @@ function LayoutComponent() {
                   Recent Tasks
                 </span>
               </div>
-              <div className="space-y-0.5">
-                {tasksWithRuns.length > 0 ? (
-                  tasksWithRuns
-                    .slice(0, 10)
-                    .map((task) => <TaskTree key={task._id} task={task} />)
-                ) : (
-                  <p className="px-2 py-1.5 text-xs text-center text-neutral-500 dark:text-neutral-400 select-none">
-                    No recent tasks
-                  </p>
-                )}
-              </div>
-            </div>
+               <div className="space-y-0.5">
+                 {isLoading ? (
+                   <TaskTreeSkeleton count={5} />
+                 ) : tasksWithRuns.length > 0 ? (
+                   tasksWithRuns
+                     .slice(0, 10)
+                     .map((task) => <TaskTree key={task._id} task={task} />)
+                 ) : (
+                   <p className="px-2 py-1.5 text-xs text-center text-neutral-500 dark:text-neutral-400 select-none">
+                     No recent tasks
+                   </p>
+                 )}
+               </div>            </div>
           </nav>
 
           <div className="p-4 border-t border-neutral-200 dark:border-neutral-800">
