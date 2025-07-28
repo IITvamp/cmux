@@ -46,7 +46,7 @@ function TaskRunComponent() {
   const { containerRef } = usePersistentIframe({
     key: `task-run-${taskRunId}`,
     url: iframeUrl,
-    className: "",
+    className: "select-none",
     allow:
       "clipboard-read; clipboard-write; usb; serial; hid; cross-origin-isolated; autoplay; camera; microphone; geolocation; payment; fullscreen",
     sandbox:

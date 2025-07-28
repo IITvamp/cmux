@@ -1,4 +1,5 @@
 import { TaskTree } from "@/components/TaskTree";
+import { isElectron } from "@/lib/electron";
 import { type TaskWithRuns } from "@/types/task";
 import { api } from "@cmux/convex/api";
 import { type Doc } from "@cmux/convex/dataModel";
@@ -59,17 +60,24 @@ function LayoutComponent() {
     <>
       <div className="flex flex-row h-full bg-white dark:bg-neutral-950">
         <div className="w-64 bg-neutral-50 dark:bg-neutral-900 border-r border-neutral-200 dark:border-neutral-800 flex flex-col">
-          <div className="py-3 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between px-5">
+          <div
+            className="h-[38px] flex items-center pl-4 pr-2"
+            style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+          >
+            {isElectron && <div className="w-[64px]"></div>}
             <Link
               to="/dashboard"
-              className="text-lg font-semibold text-neutral-900 dark:text-white hover:text-neutral-700 dark:hover:text-neutral-300 transition-colors cursor-default"
+              className="w-[50px] h-[25px] bg-[#7d2fc7] hover:bg-[#7d2fc7]/80 transition text-white flex items-center justify-center font-medium rounded-lg text-xs select-none cursor-default"
+              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
             >
               cmux
             </Link>
+            <div className="grow"></div>
             <Link
               to="/dashboard"
-              className="w-7 h-7 bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 rounded-md flex items-center justify-center transition-colors cursor-default"
+              className="w-[25px] h-[25px] bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 rounded-lg flex items-center justify-center transition-colors cursor-default"
               title="New task"
+              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
             >
               <svg
                 className="w-4 h-4 text-neutral-600 dark:text-neutral-300"
@@ -89,7 +97,7 @@ function LayoutComponent() {
           {/* Navigation */}
           <nav className="flex-1 flex flex-col overflow-hidden">
             {/* Recent Tasks Section */}
-            <div className="flex-1 overflow-y-auto px-3 py-3">
+            <div className="flex-1 overflow-y-auto px-3 py-1">
               <div className="flex items-center px-1 py-1">
                 <span className="text-[10px] font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-[-0.005em] select-none">
                   Recent Tasks
