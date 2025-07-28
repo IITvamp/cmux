@@ -62,7 +62,7 @@ echo -e "${GREEN}Starting convex dev...${NC}"
   if [ -f "$HOME/.nvm/nvm.sh" ]; then \
     source $HOME/.nvm/nvm.sh && nvm use 18; \
   fi && \
-  bunx convex dev --url http://localhost:3210 --admin-key "$CONVEX_SELF_HOSTED_ADMIN_KEY" \
+  bunx convex dev --url http://backend:3210 --admin-key "$CONVEX_SELF_HOSTED_ADMIN_KEY" \
     2>&1 | tee ../../logs/convex-dev.log | prefix_output "CONVEX-DEV" "$GREEN") &
 CONVEX_DEV_PID=$!
 
@@ -71,12 +71,12 @@ sleep 5
 
 # Start the backend server
 echo -e "${GREEN}Starting backend server on port 9776...${NC}"
-(cd apps/server && VITE_CONVEX_URL=http://localhost:3210 bun run dev 2>&1 | prefix_output "SERVER" "$YELLOW") &
+(cd apps/server && VITE_CONVEX_URL=http://backend:3210 bun run dev 2>&1 | prefix_output "SERVER" "$YELLOW") &
 SERVER_PID=$!
 
 # Start the frontend
 echo -e "${GREEN}Starting frontend on port 5173...${NC}"
-(cd apps/client && VITE_CONVEX_URL=http://localhost:3210 bun run dev 2>&1 | prefix_output "CLIENT" "$CYAN") &
+(cd apps/client && VITE_CONVEX_URL=http://localhost:9777 bun run dev 2>&1 | prefix_output "CLIENT" "$CYAN") &
 CLIENT_PID=$!
 
 echo -e "${GREEN}Terminal app is running!${NC}"

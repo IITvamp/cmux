@@ -4,7 +4,13 @@ set -e
 
 source .env.local
 
-docker build -t cmux-worker:0.0.1 .
+# Build Docker image if we're in CI or explicitly requested
+if [ "$CI" = "true" ] || [ "$BUILD_DOCKER" = "true" ]; then
+    echo "Building Docker image..."
+    docker build -t cmux-worker:0.0.1 .
+else
+    echo "Skipping Docker build (set BUILD_DOCKER=true to build)"
+fi
 
 # Get the directory where this script is located
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -27,7 +33,7 @@ cd "$APP_DIR"
 # Function to cleanup on exit
 cleanup() {
     echo -e "\n${BLUE}Shutting down...${NC}"
-    kill $SERVER_PID $CLIENT_PID $CONVEX_BACKEND_PID $CONVEX_DEV_PID 2>/dev/null
+    kill $SERVER_PID $CLIENT_PID $CONVEX_DEV_PID $DOCKER_COMPOSE_PID 2>/dev/null
     exit
 }
 
@@ -55,17 +61,20 @@ mkdir -p "$APP_DIR/logs"
 # Start convex dev and log to both stdout and file
 echo -e "${GREEN}Starting convex dev...${NC}"
 # (cd packages/convex && source ~/.nvm/nvm.sh && nvm use 18 && CONVEX_AGENT_MODE=anonymous bun x convex dev 2>&1 | tee ../../logs/convex.log) &
-(cd packages/convex && source ~/.nvm/nvm.sh && \
-  nvm use 18 && \
-  source .env.local && \
-  ./convex-local-backend \
-    --port "$CONVEX_PORT" \
-    --site-proxy-port "$CONVEX_SITE_PROXY_PORT" \
-    --instance-name "$CONVEX_INSTANCE_NAME" \
-    --instance-secret "$CONVEX_INSTANCE_SECRET" \
-    --disable-beacon \
-    2>&1 | tee ../../logs/convex.log | prefix_output "CONVEX-BACKEND" "$MAGENTA") &
-CONVEX_BACKEND_PID=$!
+# (cd packages/convex && source ~/.nvm/nvm.sh && \
+#   nvm use 18 && \
+#   source .env.local && \
+#   ./convex-local-backend \
+#     --port "$CONVEX_PORT" \
+#     --site-proxy-port "$CONVEX_SITE_PROXY_PORT" \
+#     --instance-name "$CONVEX_INSTANCE_NAME" \
+#     --instance-secret "$CONVEX_INSTANCE_SECRET" \
+#     --disable-beacon \
+#     2>&1 | tee ../../logs/convex.log | prefix_output "CONVEX-BACKEND" "$MAGENTA") &
+# CONVEX_BACKEND_PID=$!
+
+(cd .devcontainer && docker compose up 2>&1 | prefix_output "DOCKER-COMPOSE" "$MAGENTA") &
+DOCKER_COMPOSE_PID=$!
 
 (cd packages/convex && source ~/.nvm/nvm.sh && \
   nvm use 18 && \

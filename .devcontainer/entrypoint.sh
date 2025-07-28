@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# Fix Docker socket permissions if it exists
+if [ -S /var/run/docker.sock ]; then
+    chmod 666 /var/run/docker.sock
+fi
+
 # Source nvm for the session
 export NVM_DIR="$HOME/.nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"

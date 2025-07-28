@@ -109,7 +109,7 @@ function LayoutComponent() {
                     .slice(0, 10)
                     .map((task) => <TaskTree key={task._id} task={task} />)
                 ) : (
-                  <p className="px-2 py-1.5 text-sm text-neutral-500 dark:text-neutral-400 select-none">
+                  <p className="px-2 py-1.5 text-xs text-center text-neutral-500 dark:text-neutral-400 select-none">
                     No recent tasks
                   </p>
                 )}

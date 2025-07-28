@@ -305,11 +305,11 @@ function DashboardComponent() {
   ]);
 
   // Fetch repos on mount if none exist
-  useEffect(() => {
-    if (Object.keys(reposByOrg).length === 0) {
-      fetchRepos();
-    }
-  }, [reposByOrg, fetchRepos]);
+  // useEffect(() => {
+  //   if (Object.keys(reposByOrg).length === 0) {
+  //     fetchRepos();
+  //   }
+  // }, [reposByOrg, fetchRepos]);
 
   // Fetch branches when repo changes
   const selectedRepo = selectedProject[0];
