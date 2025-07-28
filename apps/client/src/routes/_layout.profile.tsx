@@ -35,7 +35,7 @@ function ProfileComponent() {
                       JD
                     </span>
                   </div>
-                  <button className="absolute bottom-0 right-0 bg-white dark:bg-neutral-900 rounded-full p-1.5 shadow-md border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800">
+                  <button className="absolute bottom-0 right-0 bg-white dark:bg-neutral-900 rounded-full p-1.5 shadow-md border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800 cursor-default">
                     <svg
                       className="w-4 h-4 text-neutral-600 dark:text-neutral-400"
                       fill="none"
@@ -61,7 +61,7 @@ function ProfileComponent() {
                   <p className="text-sm text-neutral-500 dark:text-neutral-400 mb-1">
                     Your photo will be displayed across the workspace
                   </p>
-                  <button className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300">
+                  <button className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 cursor-default">
                     Upload new photo
                   </button>
                 </div>
@@ -179,7 +179,7 @@ function ProfileComponent() {
                     Last changed 3 months ago
                   </p>
                 </div>
-                <button className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300">
+                <button className="text-sm text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 cursor-default">
                   Change password
                 </button>
               </div>
@@ -193,7 +193,7 @@ function ProfileComponent() {
                     Add an extra layer of security to your account
                   </p>
                 </div>
-                <button className="px-3 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-800 rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-700">
+                <button className="px-3 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-300 bg-neutral-100 dark:bg-neutral-800 rounded-lg hover:bg-neutral-200 dark:hover:bg-neutral-700 cursor-default">
                   Enable
                 </button>
               </div>
@@ -202,7 +202,7 @@ function ProfileComponent() {
 
           {/* Save Button */}
           <div className="flex justify-end pt-4">
-            <button className="px-4 py-2 bg-blue-600 dark:bg-blue-500 text-white text-sm font-medium rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-900">
+            <button className="px-4 py-2 bg-blue-600 dark:bg-blue-500 text-white text-sm font-medium rounded-lg hover:bg-blue-700 dark:hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-900 cursor-default">
               Save Changes
             </button>
           </div>
