@@ -213,6 +213,34 @@ export const GitHubAuthResponseSchema = z.object({
   error: z.string().optional(),
 });
 
+// Provider status schemas
+export const ProviderStatusSchema = z.object({
+  name: z.string(),
+  isAvailable: z.boolean(),
+  missingRequirements: z.array(z.string()).optional(),
+});
+
+export const DockerStatusSchema = z.object({
+  isRunning: z.boolean(),
+  version: z.string().optional(),
+  error: z.string().optional(),
+});
+
+export const GitStatusSchema = z.object({
+  isAvailable: z.boolean(),
+  version: z.string().optional(),
+  remoteAccess: z.boolean().optional(),
+  error: z.string().optional(),
+});
+
+export const ProviderStatusResponseSchema = z.object({
+  success: z.boolean(),
+  providers: z.array(ProviderStatusSchema).optional(),
+  dockerStatus: DockerStatusSchema.optional(),
+  gitStatus: GitStatusSchema.optional(),
+  error: z.string().optional(),
+});
+
 // Type exports
 export type CreateTerminal = z.infer<typeof CreateTerminalSchema>;
 export type TerminalInput = z.infer<typeof TerminalInputSchema>;
@@ -249,6 +277,10 @@ export type GitHubBranchesResponse = z.infer<
 >;
 export type GitHubReposResponse = z.infer<typeof GitHubReposResponseSchema>;
 export type GitHubAuthResponse = z.infer<typeof GitHubAuthResponseSchema>;
+export type ProviderStatus = z.infer<typeof ProviderStatusSchema>;
+export type DockerStatus = z.infer<typeof DockerStatusSchema>;
+export type GitStatus = z.infer<typeof GitStatusSchema>;
+export type ProviderStatusResponse = z.infer<typeof ProviderStatusResponseSchema>;
 
 // Socket.io event map types
 export interface ClientToServerEvents {
@@ -272,6 +304,9 @@ export interface ClientToServerEvents {
   "github-fetch-branches": (
     data: GitHubFetchBranches,
     callback: (response: GitHubBranchesResponse) => void
+  ) => void;
+  "check-provider-status": (
+    callback: (response: ProviderStatusResponse) => void
   ) => void;
 }
 

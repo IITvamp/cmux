@@ -1,4 +1,4 @@
-import type { EnvironmentResult } from "./environment-result.js";
+import type { EnvironmentResult } from "../common/environment-result.js";
 
 export async function getGeminiEnvironment(): Promise<EnvironmentResult> {
   // These must be lazy since configs are imported into the browser
