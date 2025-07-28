@@ -50,6 +50,8 @@ Completed: ${new Date().toISOString()}`;
     
     if (extensionResult.success) {
       console.log(`[AgentSpawner] Successfully committed via VSCode extension`);
+      console.log(`[AgentSpawner] Branch: ${branchName}`);
+      console.log(`[AgentSpawner] Commit message: ${commitMessage.split('\n')[0]}`);
       return;
     }
 
@@ -470,6 +472,10 @@ export async function spawnAgent(
           console.log(
             `[AgentSpawner] Updated taskRun ${taskRunId} as completed after ${data.elapsedMs}ms`
           );
+
+          // Wait a bit to ensure all file changes are saved
+          console.log(`[AgentSpawner] Waiting 2 seconds before auto-commit to ensure all changes are saved...`);
+          await new Promise(resolve => setTimeout(resolve, 2000));
 
           // Auto-commit and push changes in VSCode editor
           await performAutoCommitAndPush(vscodeInstance, agent, taskRunId);

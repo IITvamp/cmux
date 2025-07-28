@@ -263,6 +263,11 @@ function startSocketServer() {
           await repository.push(repository.state.HEAD?.name, branchName, true);
           log(`Pushed branch ${branchName} to origin`);
 
+          // Refresh the git diff view to show the new branch
+          await vscode.commands.executeCommand("workbench.view.scm");
+          await openMultiDiffEditor();
+          log(`Refreshed git diff view for branch ${branchName}`);
+
           callback({ 
             success: true, 
             message: `Successfully committed and pushed to branch ${branchName}` 
