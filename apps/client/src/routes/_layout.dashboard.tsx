@@ -19,7 +19,16 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useQuery as useConvexQuery, useMutation } from "convex/react";
-import { Archive, Check, Code2, Command, Copy, Image, Mic, Pin } from "lucide-react";
+import {
+  Archive,
+  Check,
+  Code2,
+  Command,
+  Copy,
+  Image,
+  Mic,
+  Pin,
+} from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export const Route = createFileRoute("/_layout/dashboard")({
@@ -656,7 +665,7 @@ function TaskItem({ task, navigate, archiveTask }: TaskItemProps) {
   return (
     <div
       className={clsx(
-        "relative group flex items-center gap-2.5 px-3 py-2 border rounded-lg transition-all cursor-pointer select-none",
+        "relative group flex items-center gap-2.5 px-3 py-2 border rounded-lg transition-all cursor-default select-none",
         // Check if this is an optimistic update (temporary ID)
         task._id.includes("-") && task._id.length === 36
           ? "bg-white/50 dark:bg-neutral-700/30 border-neutral-200 dark:border-neutral-500/15 animate-pulse"
