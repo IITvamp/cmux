@@ -1,4 +1,5 @@
 import { TaskTree } from "@/components/TaskTree";
+import { getIsElectron } from "@/lib/electron";
 import { type TaskWithRuns } from "@/types/task";
 import { api } from "@cmux/convex/api";
 import { type Doc } from "@cmux/convex/dataModel";
@@ -10,8 +11,7 @@ export const Route = createFileRoute("/_layout")({
   component: LayoutComponent,
 });
 
-const isElectron = (window.process as any)?.type === "renderer";
-console.log(window.process);
+const isElectron = getIsElectron();
 
 function LayoutComponent() {
   const tasks = useQuery(api.tasks.get, {});

@@ -440,7 +440,7 @@ function DashboardComponent() {
             />
 
             {/* Integrated controls */}
-            <div className="flex items-end justify-between p-2">
+            <div className="flex items-end justify-between p-2 gap-1">
               <div className="flex items-end gap-1">
                 <AntdMultiSelect
                   options={projectOptions}
@@ -486,7 +486,7 @@ function DashboardComponent() {
                   placeholder="Select agents..."
                   singleSelect={false}
                   maxTagCount={1}
-                  className="!min-w-[220px] !rounded-2xl"
+                  className="!min-w-[200px] !rounded-2xl"
                   showSearch
                   // className={clsx(
                   //   "!border !border-neutral-200 dark:!border-0",
