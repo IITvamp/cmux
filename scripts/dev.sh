@@ -4,12 +4,12 @@ set -e
 
 source .env.local
 
-# Build Docker image if we're in CI or explicitly requested
-if [ "$CI" = "true" ] || [ "$BUILD_DOCKER" = "true" ]; then
+# Build Docker image by default unless explicitly skipped
+if [ "$SKIP_DOCKER_BUILD" != "true" ]; then
     echo "Building Docker image..."
     docker build -t cmux-worker:0.0.1 .
 else
-    echo "Skipping Docker build (set BUILD_DOCKER=true to build)"
+    echo "Skipping Docker build (SKIP_DOCKER_BUILD=true)"
 fi
 
 # Get the directory where this script is located
@@ -77,8 +77,7 @@ echo -e "${GREEN}Starting convex dev...${NC}"
 DOCKER_COMPOSE_PID=$!
 
 (cd packages/convex && source ~/.nvm/nvm.sh && \
-  nvm use 18 && \
-  bunx convex dev --env-file .env.local \
+  bunx convex dev --env-file .env.convex \
     2>&1 | tee ../../logs/convex-dev.log | prefix_output "CONVEX-DEV" "$GREEN") &
 CONVEX_DEV_PID=$!
 CONVEX_PID=$!
