@@ -14,6 +14,7 @@ Schemas are defined in packages/convex/convex/schema.ts.
 # Misc
 
 Always use node: prefixes for node imports.
+Do not use the any type.
 
 # Publishing cmux CLI to npm
 
