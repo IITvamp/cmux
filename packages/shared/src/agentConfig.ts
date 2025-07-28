@@ -1,3 +1,4 @@
+import { getAmpEnvironment } from "./environments/amp-environment.js";
 import { getClaudeEnvironment } from "./environments/claude-environment.js";
 import type { EnvironmentResult } from "./environments/environment-result.js";
 import { getGeminiEnvironment } from "./environments/gemini-environment.js";
@@ -155,5 +156,11 @@ export const AGENT_CONFIGS: AgentConfig[] = [
         description: "API key for Google Gemini AI models",
       },
     ],
+  },
+  {
+    name: "amp",
+    command: "sh",
+    args: ["-c", "echo '$PROMPT' | bunx @sourcegraph/amp@latest"],
+    environment: getAmpEnvironment,
   },
 ];
