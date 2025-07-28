@@ -61,6 +61,9 @@ export default defineSchema({
         workspaceUrl: v.optional(v.string()), // The workspace URL
         startedAt: v.optional(v.number()),
         stoppedAt: v.optional(v.number()),
+        lastAccessedAt: v.optional(v.number()), // Track when user last accessed the container
+        keepAlive: v.optional(v.boolean()), // User requested to keep container running
+        scheduledStopAt: v.optional(v.number()), // When container is scheduled to stop
       })
     ),
   })
@@ -107,6 +110,15 @@ export default defineSchema({
   }).index("by_envVar", ["envVar"]),
   workspaceSettings: defineTable({
     worktreePath: v.optional(v.string()), // Custom path for git worktrees
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }),
+  containerSettings: defineTable({
+    maxRunningContainers: v.optional(v.number()), // Max containers to keep running (default: 5)
+    reviewPeriodMinutes: v.optional(v.number()), // Minutes to keep container after task completion (default: 60)
+    autoCleanupEnabled: v.optional(v.boolean()), // Enable automatic cleanup (default: true)
+    stopImmediatelyOnCompletion: v.optional(v.boolean()), // Stop containers immediately when tasks complete (default: false)
+    minContainersToKeep: v.optional(v.number()), // Minimum containers to always keep alive (default: 0)
     createdAt: v.number(),
     updatedAt: v.number(),
   }),

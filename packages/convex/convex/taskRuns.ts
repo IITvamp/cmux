@@ -401,3 +401,184 @@ export const getActiveVSCodeInstances = query({
     );
   },
 });
+
+// Update last accessed time for a container
+export const updateLastAccessed = mutation({
+  args: {
+    id: v.id("taskRuns"),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.id);
+    if (!run || !run.vscode) {
+      throw new Error("Task run or VSCode instance not found");
+    }
+
+    await ctx.db.patch(args.id, {
+      vscode: {
+        ...run.vscode,
+        lastAccessedAt: Date.now(),
+      },
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+// Toggle keep alive status for a container
+export const toggleKeepAlive = mutation({
+  args: {
+    id: v.id("taskRuns"),
+    keepAlive: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.id);
+    if (!run || !run.vscode) {
+      throw new Error("Task run or VSCode instance not found");
+    }
+
+    await ctx.db.patch(args.id, {
+      vscode: {
+        ...run.vscode,
+        keepAlive: args.keepAlive,
+        scheduledStopAt: args.keepAlive
+          ? undefined
+          : run.vscode.scheduledStopAt,
+      },
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+// Update scheduled stop time for a container
+export const updateScheduledStop = mutation({
+  args: {
+    id: v.id("taskRuns"),
+    scheduledStopAt: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.id);
+    if (!run || !run.vscode) {
+      throw new Error("Task run or VSCode instance not found");
+    }
+
+    await ctx.db.patch(args.id, {
+      vscode: {
+        ...run.vscode,
+        scheduledStopAt: args.scheduledStopAt,
+      },
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+// Get containers that should be stopped based on TTL and settings
+export const getContainersToStop = query({
+  handler: async (ctx) => {
+    const settings = await ctx.db.query("containerSettings").first();
+    const autoCleanupEnabled = settings?.autoCleanupEnabled ?? true;
+    const minContainersToKeep = settings?.minContainersToKeep ?? 0;
+
+    if (!autoCleanupEnabled) {
+      return [];
+    }
+
+    const now = Date.now();
+    const activeRuns = await ctx.db
+      .query("taskRuns")
+      .withIndex("by_vscode_status", (q) => q.eq("vscode.status", "running"))
+      .collect();
+
+    const runningContainers = activeRuns.filter(
+      (run) =>
+        run.vscode && run.vscode.status === "running" && !run.vscode.keepAlive // Don't stop containers marked as keep alive
+    );
+
+    // Sort containers by creation time (newest first) to identify which to keep
+    const sortedContainers = [...runningContainers].sort((a, b) => 
+      (b.createdAt || 0) - (a.createdAt || 0)
+    );
+    
+    // Get IDs of the most recent N containers to keep
+    const containersToKeepIds = new Set(
+      sortedContainers.slice(0, minContainersToKeep).map(c => c._id)
+    );
+
+    // Filter containers that have exceeded their scheduled stop time AND are not in the keep set
+    const containersToStop = runningContainers.filter(
+      (run) => 
+        run.vscode!.scheduledStopAt && 
+        run.vscode!.scheduledStopAt <= now &&
+        !containersToKeepIds.has(run._id)
+    );
+
+    return containersToStop;
+  },
+});
+
+// Get running containers sorted by priority for cleanup
+export const getRunningContainersByCleanupPriority = query({
+  handler: async (ctx) => {
+    const settings = await ctx.db.query("containerSettings").first();
+    const minContainersToKeep = settings?.minContainersToKeep ?? 0;
+    
+    const activeRuns = await ctx.db
+      .query("taskRuns")
+      .withIndex("by_vscode_status", (q) => q.eq("vscode.status", "running"))
+      .collect();
+
+    const runningContainers = activeRuns.filter(
+      (run) =>
+        run.vscode && run.vscode.status === "running" && !run.vscode.keepAlive // Don't include keep-alive containers in cleanup consideration
+    );
+
+    // Sort all containers by creation time to identify which to keep
+    const sortedByCreation = [...runningContainers].sort((a, b) => 
+      (b.createdAt || 0) - (a.createdAt || 0)
+    );
+    
+    // Get IDs of the most recent N containers to keep
+    const containersToKeepIds = new Set(
+      sortedByCreation.slice(0, minContainersToKeep).map(c => c._id)
+    );
+
+    // Filter out containers that should be kept
+    const eligibleForCleanup = runningContainers.filter(
+      c => !containersToKeepIds.has(c._id)
+    );
+
+    // Categorize eligible containers
+    const now = Date.now();
+    const activeContainers: typeof eligibleForCleanup = [];
+    const reviewContainers: typeof eligibleForCleanup = [];
+
+    for (const container of eligibleForCleanup) {
+      // If task is still running or was recently completed (within 5 minutes)
+      if (
+        container.status === "running" ||
+        container.status === "pending" ||
+        (container.completedAt && now - container.completedAt < 5 * 60 * 1000)
+      ) {
+        activeContainers.push(container);
+      } else {
+        reviewContainers.push(container);
+      }
+    }
+
+    // Sort review containers by scheduled stop time (earliest first)
+    reviewContainers.sort((a, b) => {
+      const aTime = a.vscode!.scheduledStopAt || Infinity;
+      const bTime = b.vscode!.scheduledStopAt || Infinity;
+      return aTime - bTime;
+    });
+
+    // Return containers in cleanup priority order:
+    // 1. Review period containers (oldest scheduled first)
+    // 2. Active containers (only if absolutely necessary)
+    return {
+      total: runningContainers.length,
+      reviewContainers,
+      activeContainers,
+      prioritizedForCleanup: [...reviewContainers, ...activeContainers],
+      protectedCount: containersToKeepIds.size,
+    };
+  },
+});

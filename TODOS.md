@@ -37,3 +37,5 @@
 [ ] remove containerMappings from @apps/server/src/vscode/DockerVSCodeInstance.ts and just use convex and/or docker daemon as source of truth.
 [ ] spawn agents in parallel faster
 [ ] bundle convex in executable somehow
+[ ] default claude code bypass permissions mode
+[ ] git fatal unsupported ssl backend
