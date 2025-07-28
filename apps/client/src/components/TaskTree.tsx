@@ -64,7 +64,7 @@ export function TaskTree({ task, level = 0 }: TaskTreeProps) {
         to="/task/$taskId"
         params={{ taskId: task._id }}
         className={clsx(
-          "flex items-center px-0.5 py-1 text-sm rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-default",
+          "flex items-center px-0.5 py-1 text-sm rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default",
           "[&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800"
         )}
         style={{ paddingLeft: `${4 + level * 16}px` }}
@@ -72,7 +72,7 @@ export function TaskTree({ task, level = 0 }: TaskTreeProps) {
         <button
           onClick={handleToggle}
           className={clsx(
-            "w-4 h-4 mr-1.5 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded transition-colors grid place-content-center cursor-default",
+            "w-4 h-4 mr-1.5 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded grid place-content-center cursor-default",
             !hasRuns && "invisible"
           )}
           style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
@@ -148,7 +148,7 @@ function TaskRunTree({ run, level, taskId }: TaskRunTreeProps) {
         to="/task/$taskId/run/$taskRunId"
         params={{ taskId, taskRunId: run._id }}
         className={clsx(
-          "flex items-center px-2 py-1 text-xs rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-default",
+          "flex items-center px-2 py-1 text-xs rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default",
           "[&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800"
         )}
         style={{ paddingLeft: `${8 + level * 16}px` }}
@@ -156,7 +156,7 @@ function TaskRunTree({ run, level, taskId }: TaskRunTreeProps) {
         <button
           onClick={handleToggle}
           className={clsx(
-            "w-4 h-4 mr-1.5 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded transition-colors cursor-default",
+            "w-4 h-4 mr-1.5 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded cursor-default",
             !hasChildren && "invisible"
           )}
           style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
