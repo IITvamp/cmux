@@ -10,7 +10,7 @@ export interface AgentConfig {
   name: string;
   command: string;
   args: string[];
-  requiredApiKeys?: {
+  apiKeys?: {
     envVar: string;
     displayName: string;
     description?: string;
@@ -129,7 +129,7 @@ export const AGENT_CONFIGS: AgentConfig[] = [
       "$PROMPT",
     ],
     environment: getGeminiEnvironment,
-    requiredApiKeys: [
+    apiKeys: [
       {
         envVar: "GEMINI_API_KEY",
         displayName: "Gemini API Key",
@@ -149,7 +149,7 @@ export const AGENT_CONFIGS: AgentConfig[] = [
       "$PROMPT",
     ],
     environment: getGeminiEnvironment,
-    requiredApiKeys: [
+    apiKeys: [
       {
         envVar: "GEMINI_API_KEY",
         displayName: "Gemini API Key",
@@ -162,5 +162,12 @@ export const AGENT_CONFIGS: AgentConfig[] = [
     command: "prompt-wrapper",
     args: ["--prompt", "$PROMPT", "--", "bunx", "@sourcegraph/amp@latest"],
     environment: getAmpEnvironment,
+    apiKeys: [
+      {
+        envVar: "AMP_API_KEY",
+        displayName: "AMP API Key",
+        description: "API key for Sourcegraph AMP",
+      },
+    ],
   },
 ];
