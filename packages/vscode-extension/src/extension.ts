@@ -258,10 +258,48 @@ function startSocketServer() {
           // Commit changes
           await repository.commit(commitMessage);
           log(`Committed changes with message: ${commitMessage}`);
+          
+          // Check current branch and remotes
+          const currentBranch = repository.state.HEAD?.name;
+          const remotes = repository.state.remotes;
+          log(`Current branch: ${currentBranch}, Remotes: ${JSON.stringify(remotes?.map((r: any) => r.name))}`);
+          
+          // Set upstream branch configuration if possible
+          try {
+            const branch = repository.state.refs.find((ref: any) => ref.name === `refs/heads/${branchName}`);
+            if (branch && repository.setBranchUpstream) {
+              await repository.setBranchUpstream(branchName, `refs/remotes/origin/${branchName}`);
+              log(`Set upstream for branch ${branchName}`);
+            }
+          } catch (error: any) {
+            log(`Could not set upstream: ${error.message}`);
+          }
 
           // Push branch to origin
-          await repository.push(repository.state.HEAD?.name, branchName, true);
-          log(`Pushed branch ${branchName} to origin`);
+          try {
+            // First try: Push with no arguments (uses current branch)
+            await repository.push();
+            log(`Pushed branch ${branchName} to origin using default push`);
+          } catch (error1: any) {
+            log(`Default push failed: ${error1.message}, trying with refspec`);
+            
+            try {
+              // Second try: Push with full refspec
+              await repository.push("origin", `refs/heads/${branchName}:refs/heads/${branchName}`, true);
+              log(`Pushed branch ${branchName} to origin using full refspec`);
+            } catch (error2: any) {
+              log(`Full refspec push failed: ${error2.message}, trying simple refspec`);
+              
+              try {
+                // Third try: Push with simple refspec
+                await repository.push("origin", `${branchName}:${branchName}`, true);
+                log(`Pushed branch ${branchName} to origin using simple refspec`);
+              } catch (error3: any) {
+                log(`Simple refspec push failed: ${error3.message}`);
+                throw new Error(`All push attempts failed. Last error: ${error3.message}`);
+              }
+            }
+          }
 
           // Refresh the git diff view to show the new branch
           await vscode.commands.executeCommand("workbench.view.scm");
