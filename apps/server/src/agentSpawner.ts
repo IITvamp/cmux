@@ -596,7 +596,9 @@ export async function spawnAgent(
                     bestSolution,
                     options.taskDescription,
                     bestEvaluation,
-                    bestVscodeInstance
+                    bestVscodeInstance,
+                    vscodeInstancesMap,
+                    convex
                   );
                 }
               }

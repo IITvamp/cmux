@@ -3,6 +3,9 @@ import { api } from "@cmux/convex/api";
 import { ConvexHttpClient } from "convex/browser";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
+import { generateObject } from "ai";
+import { anthropic } from "@ai-sdk/anthropic";
+import { z } from "zod";
 
 interface CodeSolution {
   taskRunId: Id<"taskRuns">;
@@ -91,20 +94,37 @@ export async function evaluateAndSelectBestSolution(
   // Select the best solution based on scores
   let bestSolution: CodeSolution | null = null;
   let bestScore = -1;
+  let bestEvaluation: EvaluationCriteria | null = null;
+  
+  // Also track second best for comparison
+  let secondBestScore = -1;
+  let secondBestAgent = "";
   
   for (const solution of solutions) {
     const evaluation = evaluations.get(solution.taskRunId);
     if (evaluation && evaluation.totalScore > bestScore) {
+      // Move current best to second best
+      secondBestScore = bestScore;
+      if (bestSolution) secondBestAgent = bestSolution.agentName;
+      
       bestScore = evaluation.totalScore;
       bestSolution = solution;
+      bestEvaluation = evaluation;
+    } else if (evaluation && evaluation.totalScore > secondBestScore) {
+      secondBestScore = evaluation.totalScore;
+      secondBestAgent = solution.agentName;
     }
   }
   
-  if (!bestSolution) {
+  if (!bestSolution || !bestEvaluation) {
     throw new Error("Could not determine best solution");
   }
   
-  console.log(`[CodeEvaluator] Selected ${bestSolution.agentName} as best solution with score ${bestScore}`);
+  console.log(`[CodeEvaluator] Selected ${bestSolution.agentName} as best solution with score ${bestScore}/50`);
+  if (secondBestAgent) {
+    console.log(`[CodeEvaluator] Runner-up: ${secondBestAgent} with score ${secondBestScore}/50 (difference: ${bestScore - secondBestScore})`);
+  }
+  console.log(`[CodeEvaluator] Reasoning: ${bestEvaluation.reasoning}`);
   
   return { bestSolution, evaluations };
 }
@@ -292,8 +312,7 @@ async function runLinter(vscodeInstance: VSCodeInstance): Promise<CodeSolution["
 }
 
 /**
- * Use heuristics to evaluate solutions
- * TODO: When AI SDK is available, enhance with LLM-based evaluation
+ * Use Claude Sonnet to evaluate and compare code solutions
  */
 async function evaluateSolutions(
   solutions: CodeSolution[],
@@ -301,14 +320,101 @@ async function evaluateSolutions(
 ): Promise<Map<string, EvaluationCriteria>> {
   const evaluations = new Map<string, EvaluationCriteria>();
   
-  // Evaluate each solution using heuristics
+  // First, use heuristics as a fallback
   for (const solution of solutions) {
-    const evaluation = evaluateSolutionHeuristics(solution);
-    evaluations.set(solution.taskRunId, evaluation);
+    const heuristicEval = evaluateSolutionHeuristics(solution);
+    evaluations.set(solution.taskRunId, heuristicEval);
   }
   
-  // If AI evaluation is available in the future, it can be added here
-  // to enhance or override the heuristic scores
+  // Try to use Claude Sonnet for more intelligent evaluation
+  const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
+  if (!anthropicApiKey) {
+    console.log("[CodeEvaluator] No Anthropic API key found, using heuristic evaluation only");
+    return evaluations;
+  }
+  
+  try {
+    // Prepare the code solutions for comparison
+    const solutionSummaries = solutions.map((sol, idx) => {
+      const testInfo = sol.testResults 
+        ? `Tests: ${sol.testResults.passed} passed, ${sol.testResults.failed} failed`
+        : "No tests run";
+      const lintInfo = sol.lintResults
+        ? `Lint: ${sol.lintResults.errors} errors, ${sol.lintResults.warnings} warnings`
+        : "No linting performed";
+      
+      return `
+Solution ${idx + 1} (${sol.agentName}):
+${testInfo}
+${lintInfo}
+
+Code changes:
+\`\`\`diff
+${sol.diff.substring(0, 1500)}${sol.diff.length > 1500 ? '\n... (truncated)' : ''}
+\`\`\`
+`;
+    }).join('\n---\n');
+    
+    // Use Claude to evaluate all solutions
+    const result = await generateObject({
+      model: anthropic('claude-3-5-sonnet-20241022'),
+      schema: z.object({
+        evaluations: z.array(z.object({
+          solutionIndex: z.number().describe("0-based index of the solution"),
+          agentName: z.string(),
+          codeQuality: z.number().min(0).max(10).describe("Code quality, readability, and maintainability score"),
+          testCoverage: z.number().min(0).max(10).describe("Test coverage and test quality score"),
+          effectiveness: z.number().min(0).max(10).describe("How well the solution solves the stated task"),
+          bestPractices: z.number().min(0).max(10).describe("Adherence to language/framework best practices"),
+          performance: z.number().min(0).max(10).describe("Code efficiency and performance considerations"),
+          reasoning: z.string().describe("Brief explanation of the scores and why this solution was ranked as it was")
+        })),
+        bestSolutionIndex: z.number().describe("Index of the best solution (0-based)"),
+        overallAnalysis: z.string().describe("Overall comparison and why the best solution was chosen")
+      }),
+      prompt: `You are a code quality expert. Evaluate the following code solutions for this task:
+
+Task: ${taskDescription}
+
+${solutionSummaries}
+
+Evaluate each solution on:
+1. Code Quality (0-10): Clean, readable, maintainable code
+2. Test Coverage (0-10): Well-tested solution with good test quality
+3. Effectiveness (0-10): How well it solves the stated task
+4. Best Practices (0-10): Follows language/framework conventions
+5. Performance (0-10): Efficient implementation
+
+Consider test results and linting errors heavily in your evaluation. Solutions with failing tests should score lower on effectiveness.
+
+Provide detailed evaluation for each solution and identify which one is the best overall.`
+    });
+    
+    // Update evaluations with Claude's scores
+    result.object.evaluations.forEach((evalResult: any, idx: number) => {
+      if (idx < solutions.length) {
+        const solution = solutions[idx];
+        const totalScore = evalResult.codeQuality + evalResult.testCoverage + evalResult.effectiveness + evalResult.bestPractices + evalResult.performance;
+        
+        evaluations.set(solution.taskRunId, {
+          codeQuality: evalResult.codeQuality,
+          testCoverage: evalResult.testCoverage,
+          effectiveness: evalResult.effectiveness,
+          bestPractices: evalResult.bestPractices,
+          performance: evalResult.performance,
+          reasoning: evalResult.reasoning,
+          totalScore
+        });
+      }
+    });
+    
+    console.log(`[CodeEvaluator] Claude evaluation complete. Best solution: ${solutions[result.object.bestSolutionIndex]?.agentName}`);
+    console.log(`[CodeEvaluator] Analysis: ${result.object.overallAnalysis}`);
+    
+  } catch (error) {
+    console.error("[CodeEvaluator] Error using Claude for evaluation:", error);
+    console.log("[CodeEvaluator] Falling back to heuristic evaluation");
+  }
   
   return evaluations;
 }
@@ -411,7 +517,9 @@ export async function createPullRequestForBestSolution(
   bestSolution: CodeSolution,
   taskDescription: string,
   evaluation: EvaluationCriteria,
-  vscodeInstance: VSCodeInstance
+  vscodeInstance: VSCodeInstance,
+  vscodeInstances: Map<string, VSCodeInstance>,
+  convex: ConvexHttpClient
 ): Promise<void> {
   try {
     console.log(`[CodeEvaluator] Creating PR for best solution from ${bestSolution.agentName}`);
@@ -450,7 +558,9 @@ ${evaluation.reasoning}
       { name: bestSolution.agentName }, 
       bestSolution.taskRunId, 
       taskDescription,
-      evaluation
+      evaluation,
+      vscodeInstances,
+      convex
     );
     
   } catch (error) {
@@ -467,7 +577,9 @@ async function performAutoCommitAndPush(
   agent: { name: string },
   taskRunId: string | Id<"taskRuns">,
   taskDescription: string,
-  evaluation: EvaluationCriteria
+  evaluation: EvaluationCriteria,
+  vscodeInstances: Map<string, VSCodeInstance>,
+  convex: ConvexHttpClient
 ): Promise<void> {
   try {
     console.log(`[CodeEvaluator] Starting auto-commit and push for best solution from ${agent.name}`);
@@ -484,21 +596,34 @@ async function performAutoCommitAndPush(
     
     const branchName = `cmux-best-${sanitizedTaskDesc}-${Date.now()}`;
     
+    // Get all agent names that participated
+    const allAgents = Array.from(new Set(
+      await Promise.all(
+        Array.from(vscodeInstances.keys()).map(async (taskRunId) => {
+          const taskRun = await convex.query(api.taskRuns.get, { id: taskRunId as Id<"taskRuns"> });
+          const agentMatch = taskRun?.prompt.match(/\(([^)]+)\)$/);
+          return agentMatch ? agentMatch[1] : "Unknown";
+        })
+      )
+    ));
+    
     const commitMessage = `${taskDescription}
 
-Selected best solution from ${agent.name}
+Selected best solution from ${agent.name} out of ${allAgents.length} agents
 
-Evaluation scores:
+Participating agents: ${allAgents.join(", ")}
+
+Evaluation scores for ${agent.name}:
 - Code Quality: ${evaluation.codeQuality}/10
-- Test Coverage: ${evaluation.testCoverage}/10
+- Test Coverage: ${evaluation.testCoverage}/10  
 - Effectiveness: ${evaluation.effectiveness}/10
 - Best Practices: ${evaluation.bestPractices}/10
 - Performance: ${evaluation.performance}/10
 - Total Score: ${evaluation.totalScore}/50
 
-${evaluation.reasoning}
+Evaluation reasoning: ${evaluation.reasoning}
 
-🤖 Generated with cmux - Best of multiple agent solutions`;
+🤖 Generated with cmux - AI-evaluated best solution using Claude Sonnet`;
 
     // Try to use VSCode extension API first
     const extensionResult = await tryVSCodeExtensionCommit(vscodeInstance, branchName, commitMessage, agent.name);
