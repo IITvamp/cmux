@@ -1,8 +1,8 @@
 {
   "name": "cmux Development Container",
-  "build": {
-    "dockerfile": "Dockerfile"
-  },
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspace",
   "customizations": {
     "vscode": {
       "extensions": [
@@ -28,7 +28,7 @@
       }
     }
   },
-  "forwardPorts": [5173, 39375, 39376, 39377, 39378],
+  "forwardPorts": [5173, 9777, 9778, 6791, 39375, 39376, 39377, 39378],
   "portsAttributes": {
     "9776": {
       "label": "Backend Server",
@@ -37,6 +37,14 @@
     "9777": {
       "label": "Convex Dev Server",
       "onAutoForward": "notify"
+    },
+    "9778": {
+      "label": "Convex Site Origin",
+      "onAutoForward": "notify"
+    },
+    "6791": {
+      "label": "Convex Dashboard",
+      "onAutoForward": "openBrowser"
     },
     "5173": {
       "label": "Frontend (Vite)",
@@ -60,7 +68,7 @@
     }
   },
   "postCreateCommand": "CI=1 pnpm install --frozen-lockfile",
-  "postStartCommand": "bash ./scripts/dev.sh",
+  "postStartCommand": "bash /workspace/.devcontainer/dev.sh",
   "remoteUser": "node",
   "features": {
     "ghcr.io/devcontainers/features/git:1": {},
@@ -78,5 +86,5 @@
   "remoteEnv": {
     "CHOKIDAR_USEPOLLING": "true",
     "FORCE_INSTALL": "true"
-  },
+  }
 }

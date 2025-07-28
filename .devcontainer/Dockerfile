@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     wget \
     sudo \
+    docker.io \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
@@ -16,9 +17,11 @@ ARG USERNAME=node
 ARG USER_UID=1000
 ARG USER_GID=$USER_UID
 
-# Add sudo support for the non-root user
+# Add sudo support for the non-root user and add to docker group
 RUN echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME && \
-    chmod 0440 /etc/sudoers.d/$USERNAME
+    chmod 0440 /etc/sudoers.d/$USERNAME && \
+    groupadd -f docker && \
+    usermod -aG docker $USERNAME
 
 # Install bun for runtime execution
 USER $USERNAME
@@ -68,7 +71,7 @@ RUN mkdir -p /workspaces/cmux/node_modules /workspaces/cmux/packages/convex/node
     chown -R node:node /workspaces/cmux
 
 # Copy and set entrypoint
-COPY --chown=node:node entrypoint.sh /usr/local/bin/entrypoint.sh
+COPY --chown=node:node .devcontainer/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # Set entrypoint
