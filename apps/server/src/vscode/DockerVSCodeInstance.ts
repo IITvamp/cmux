@@ -853,6 +853,11 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         api.taskRuns.getActiveVSCodeInstances
       );
 
+      // Get container settings
+      const containerSettings = await convex.query(
+        api.containerSettings.getEffective
+      );
+
       // Create a set of existing container names for quick lookup
       const existingContainerNames = new Set(
         containers.map((c) => c.Names[0]?.replace(/^\//, "")).filter(Boolean)
@@ -1000,11 +1005,72 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       }
 
       console.log("Container state sync completed");
+
+      // Now handle container cleanup based on settings
+      if (containerSettings.autoCleanupEnabled) {
+        await DockerVSCodeInstance.performContainerCleanup(containerSettings);
+      }
     } catch (error) {
       console.error(
         "[syncDockerContainerStates] Error syncing container states:",
         error
       );
+    }
+  }
+
+  private static async performContainerCleanup(
+    settings: {
+      maxRunningContainers: number;
+      reviewPeriodMinutes: number;
+      autoCleanupEnabled: boolean;
+    }
+  ): Promise<void> {
+    try {
+      console.log("[performContainerCleanup] Starting container cleanup...");
+
+      // 1. Check for containers that have exceeded their TTL
+      const containersToStop = await convex.query(
+        api.taskRuns.getContainersToStop
+      );
+
+      for (const taskRun of containersToStop) {
+        if (taskRun.vscode?.containerName) {
+          const instance = VSCodeInstance.getInstance(taskRun._id);
+          if (instance) {
+            console.log(
+              `[performContainerCleanup] Stopping container ${taskRun.vscode.containerName} due to TTL expiry`
+            );
+            await instance.stop();
+          }
+        }
+      }
+
+      // 2. Enforce max running containers limit with smart prioritization
+      const containerPriority = await convex.query(
+        api.taskRuns.getRunningContainersByCleanupPriority
+      );
+
+      if (containerPriority.total > settings.maxRunningContainers) {
+        const containersToStop = containerPriority.total - settings.maxRunningContainers;
+        const toRemove = containerPriority.prioritizedForCleanup.slice(0, containersToStop);
+
+        for (const taskRun of toRemove) {
+          if (taskRun.vscode?.containerName) {
+            const instance = VSCodeInstance.getInstance(taskRun._id);
+            if (instance) {
+              const isReview = containerPriority.reviewContainers.some(r => r._id === taskRun._id);
+              console.log(
+                `[performContainerCleanup] Stopping ${isReview ? 'review-period' : 'active'} container ${taskRun.vscode.containerName} to maintain max containers limit`
+              );
+              await instance.stop();
+            }
+          }
+        }
+      }
+
+      console.log("[performContainerCleanup] Container cleanup completed");
+    } catch (error) {
+      console.error("[performContainerCleanup] Error during cleanup:", error);
     }
   }
 }

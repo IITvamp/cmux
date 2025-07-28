@@ -1,5 +1,6 @@
 import { useTheme } from "@/components/theme/use-theme";
 import { TitleBar } from "@/components/TitleBar";
+import { ContainerSettings } from "@/components/ContainerSettings";
 import { api } from "@cmux/convex/api";
 import type { Doc } from "@cmux/convex/dataModel";
 import { AGENT_CONFIGS, type AgentConfig } from "@cmux/shared/agentConfig";
@@ -340,6 +341,18 @@ function SettingsComponent() {
                     </div>
                   ))
                 )}
+              </div>
+            </div>
+
+            {/* Container Settings */}
+            <div className="bg-white dark:bg-neutral-950 rounded-lg border border-neutral-200 dark:border-neutral-800">
+              <div className="px-4 py-3 border-b border-neutral-200 dark:border-neutral-800">
+                <h2 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                  Container Management
+                </h2>
+              </div>
+              <div className="p-4">
+                <ContainerSettings />
               </div>
             </div>
 

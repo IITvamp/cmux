@@ -9,6 +9,7 @@
  */
 
 import type * as apiKeys from "../apiKeys.js";
+import type * as containerSettings from "../containerSettings.js";
 import type * as github from "../github.js";
 import type * as storage from "../storage.js";
 import type * as taskRunLogChunks from "../taskRunLogChunks.js";
@@ -32,6 +33,7 @@ import type {
  */
 declare const fullApi: ApiFromModules<{
   apiKeys: typeof apiKeys;
+  containerSettings: typeof containerSettings;
   github: typeof github;
   storage: typeof storage;
   taskRunLogChunks: typeof taskRunLogChunks;

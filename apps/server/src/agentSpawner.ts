@@ -279,6 +279,36 @@ export async function spawnAgent(
             `[AgentSpawner] Updated taskRun ${taskRunId} as completed after ${data.elapsedMs}ms`
           );
 
+          // Schedule container stop based on settings
+          const containerSettings = await convex.query(
+            api.containerSettings.getEffective
+          );
+          
+          if (containerSettings.autoCleanupEnabled) {
+            if (containerSettings.stopImmediatelyOnCompletion) {
+              // Stop container immediately
+              console.log(
+                `[AgentSpawner] Stopping container immediately as per settings`
+              );
+              
+              // Stop the VSCode instance
+              await vscodeInstance.stop();
+            } else {
+              // Schedule stop after review period
+              const reviewPeriodMs = containerSettings.reviewPeriodMinutes * 60 * 1000;
+              const scheduledStopAt = Date.now() + reviewPeriodMs;
+              
+              await convex.mutation(api.taskRuns.updateScheduledStop, {
+                id: taskRunId as Id<"taskRuns">,
+                scheduledStopAt,
+              });
+              
+              console.log(
+                `[AgentSpawner] Scheduled container stop for ${new Date(scheduledStopAt).toISOString()}`
+              );
+            }
+          }
+
           // Check if all task runs for this task are completed
           const taskRuns = await convex.query(api.taskRuns.getByTask, {
             taskId: taskId as Id<"tasks">,

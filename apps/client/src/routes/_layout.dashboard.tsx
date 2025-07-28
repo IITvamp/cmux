@@ -19,7 +19,7 @@ import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useQuery as useConvexQuery, useMutation } from "convex/react";
-import { Archive, Check, Code2, Command, Copy, Image, Mic } from "lucide-react";
+import { Archive, Check, Code2, Command, Copy, Image, Mic, Pin } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export const Route = createFileRoute("/_layout/dashboard")({
@@ -604,6 +604,9 @@ function TaskItem({ task, navigate, archiveTask }: TaskItemProps) {
     taskId: task._id,
   });
 
+  // Mutation for toggling keep-alive status
+  const toggleKeepAlive = useMutation(api.taskRuns.toggleKeepAlive);
+
   // Find the latest task run with a VSCode instance
   const getLatestVSCodeInstance = () => {
     if (!taskRunsQuery || taskRunsQuery.length === 0) return null;
@@ -763,6 +766,40 @@ function TaskItem({ task, navigate, archiveTask }: TaskItemProps) {
                 </a>
               </TooltipTrigger>
               <TooltipContent side="top">Open in VSCode</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
+
+        {/* Keep-alive button */}
+        {runWithVSCode && hasActiveVSCode && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    await toggleKeepAlive({
+                      id: runWithVSCode._id,
+                      keepAlive: !runWithVSCode.vscode?.keepAlive,
+                    });
+                  }}
+                  className={clsx(
+                    "p-1 rounded",
+                    "bg-neutral-100 dark:bg-neutral-700",
+                    runWithVSCode.vscode?.keepAlive
+                      ? "text-blue-600 dark:text-blue-400"
+                      : "text-neutral-600 dark:text-neutral-400",
+                    "hover:bg-neutral-200 dark:hover:bg-neutral-600"
+                  )}
+                >
+                  <Pin className="w-3.5 h-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                {runWithVSCode.vscode?.keepAlive
+                  ? "Container will stay running"
+                  : "Keep container running"}
+              </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         )}

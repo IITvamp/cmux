@@ -14,6 +14,8 @@ import {
 } from "@cmux/shared";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import * as xtermHeadless from "@xterm/headless";
+import express from "express";
+import multer from "multer";
 import {
   exec,
   spawn,
@@ -25,8 +27,6 @@ import { cpus, platform, totalmem } from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { Server, type Namespace, type Socket } from "socket.io";
-import express from "express";
-import multer from "multer";
 import { checkDockerReadiness } from "./checkDockerReadiness.js";
 import { detectTerminalIdle } from "./detectTerminalIdle.js";
 import { log } from "./logger.js";
@@ -47,7 +47,7 @@ const app = express();
 // Configure multer for file uploads
 const upload = multer({
   limits: { fileSize: 100 * 1024 * 1024 }, // 100MB limit
-  storage: multer.memoryStorage()
+  storage: multer.memoryStorage(),
 });
 
 // File upload endpoint
@@ -65,7 +65,7 @@ app.post("/upload-image", upload.single("image"), async (req, res) => {
     log("INFO", `Received image upload request for path: ${imagePath}`, {
       size: req.file.size,
       mimetype: req.file.mimetype,
-      originalname: req.file.originalname
+      originalname: req.file.originalname,
     });
 
     // Ensure directory exists
@@ -79,16 +79,16 @@ app.post("/upload-image", upload.single("image"), async (req, res) => {
 
     // Verify file was created
     const stats = await fs.stat(imagePath);
-    
-    res.json({ 
-      success: true, 
+
+    res.json({
+      success: true,
       path: imagePath,
-      size: stats.size
+      size: stats.size,
     });
   } catch (error) {
     log("ERROR", "Failed to upload image", error);
-    res.status(500).json({ 
-      error: error instanceof Error ? error.message : "Upload failed" 
+    res.status(500).json({
+      error: error instanceof Error ? error.message : "Upload failed",
     });
   }
 });
@@ -637,7 +637,7 @@ managementIO.on("connection", (socket) => {
 
         log("INFO", `Command executed successfully: ${validated.command}`, {
           stdout: stdout?.slice(0, 200),
-          stderr: stderr?.slice(0, 200)
+          stderr: stderr?.slice(0, 200),
         });
 
         callback({
@@ -653,7 +653,7 @@ managementIO.on("connection", (socket) => {
         log("WARN", `Command failed with non-zero exit: ${validated.command}`, {
           exitCode: execError.code,
           stdout: execError.stdout?.slice(0, 200),
-          stderr: execError.stderr?.slice(0, 200)
+          stderr: execError.stderr?.slice(0, 200),
         });
 
         callback({
@@ -924,7 +924,9 @@ async function createTerminal(
         });
       })
       .catch((error) => {
-        log("ERROR", `Failed to detect idle for terminal ${terminalId}`, error);
+        log("ERROR", `Failed to detect idle for terminal ${terminalId}`, {
+          error: error instanceof Error ? error.message : String(error),
+        });
       });
   }
 
