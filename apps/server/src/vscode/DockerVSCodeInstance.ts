@@ -694,6 +694,17 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         continue;
       }
 
+      // Skip SSL backend settings that may not be compatible with container
+      if (
+        line.trim().includes("http.sslbackend") ||
+        line.trim().includes("http.sslcert") ||
+        line.trim().includes("http.sslkey") ||
+        line.trim().includes("http.sslcainfo") ||
+        line.trim().includes("http.sslverify")
+      ) {
+        continue;
+      }
+
       filteredLines.push(line);
     }
 
