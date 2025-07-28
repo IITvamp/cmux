@@ -40,4 +40,4 @@
 [x] default claude code bypass permissions mode
 [?] git fatal unsupported ssl backend
 
-[ ] authentication with stack auth when user tries to enable cloud mode
+[ ] authentication with stack auth (or somehow collect user emails) when user tries to enable cloud mode
