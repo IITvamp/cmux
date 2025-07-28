@@ -13,6 +13,17 @@ import { MorphVSCodeInstance } from "./vscode/MorphVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWorktreePath, setupProjectWorkspace } from "./workspace.js";
 
+/**
+ * Sanitize a string to be used as a tmux session name.
+ * Tmux session names cannot contain: periods (.), colons (:), spaces, or other special characters.
+ * We'll replace them with underscores to ensure compatibility.
+ */
+function sanitizeTmuxSessionName(name: string): string {
+  // Replace all invalid characters with underscores
+  // Allow only alphanumeric characters, hyphens, and underscores
+  return name.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
 export interface AgentSpawnResult {
   agentName: string;
   terminalId: string;
@@ -175,7 +186,7 @@ export async function spawnAgent(
     const agentCommand = `${agent.command} ${processedArgs.join(" ")}`;
 
     // Build the tmux session command that will be sent via socket.io
-    const tmuxSessionName = `${agent.name}-${taskRunId.slice(-8)}`;
+    const tmuxSessionName = sanitizeTmuxSessionName(`${agent.name}-${taskRunId.slice(-8)}`);
 
     console.log(`[AgentSpawner] Building command for agent ${agent.name}:`);
     console.log(`  Raw command: ${agent.command}`);

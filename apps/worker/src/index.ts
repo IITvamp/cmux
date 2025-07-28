@@ -127,6 +127,17 @@ let mainServerSocket: Socket<
   WorkerToServerEvents
 > | null = null;
 
+/**
+ * Sanitize a string to be used as a tmux session name.
+ * Tmux session names cannot contain: periods (.), colons (:), spaces, or other special characters.
+ * We'll replace them with underscores to ensure compatibility.
+ */
+function sanitizeTmuxSessionName(name: string): string {
+  // Replace all invalid characters with underscores
+  // Allow only alphanumeric characters, hyphens, and underscores
+  return name.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
 // Worker statistics
 function getWorkerStats(): WorkerHeartbeat {
   const totalMem = totalmem();
@@ -750,7 +761,7 @@ async function createTerminal(
   } else {
     // Create tmux session with command
     spawnCommand = "tmux";
-    spawnArgs = ["new-session", "-A", "-s", terminalId];
+    spawnArgs = ["new-session", "-A", "-s", sanitizeTmuxSessionName(terminalId)];
     spawnArgs.push("-x", cols.toString(), "-y", rows.toString());
 
     if (command) {
