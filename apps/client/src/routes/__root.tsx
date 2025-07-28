@@ -40,13 +40,10 @@ function DevTools() {
 
 function RootComponent() {
   return (
-    <div className="flex flex-col">
-      {/* <TitleBar /> */}
-      <div className="flex flex-col grow overflow-hidden h-screen">
-        <Outlet />
-      </div>
+    <>
+      <Outlet />
       <DevTools />
       <Toaster richColors theme="system" />
-    </div>
+    </>
   );
 }
