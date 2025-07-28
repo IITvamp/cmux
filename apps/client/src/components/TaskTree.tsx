@@ -64,10 +64,10 @@ export function TaskTree({ task, level = 0 }: TaskTreeProps) {
         to="/task/$taskId"
         params={{ taskId: task._id }}
         className={clsx(
-          "flex items-center px-2 py-1.5 text-sm rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-default",
+          "flex items-center px-0.5 py-1 text-sm rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-default",
           "[&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800"
         )}
-        style={{ paddingLeft: `${8 + level * 16}px` }}
+        style={{ paddingLeft: `${4 + level * 16}px` }}
       >
         <button
           onClick={handleToggle}
@@ -143,7 +143,7 @@ function TaskRunTree({ run, level, taskId }: TaskRunTreeProps) {
   }[run.status];
 
   return (
-    <div>
+    <div className="mt-px">
       <Link
         to="/task/$taskId/run/$taskRunId"
         params={{ taskId, taskRunId: run._id }}
@@ -172,9 +172,9 @@ function TaskRunTree({ run, level, taskId }: TaskRunTreeProps) {
         <div className="mr-2 flex-shrink-0">{statusIcon}</div>
 
         <div className="flex-1 min-w-0">
-          <p className="truncate text-neutral-700 dark:text-neutral-300">
+          <span className="truncate text-neutral-700 dark:text-neutral-300">
             {displayText}
-          </p>
+          </span>
         </div>
       </Link>
 
