@@ -7,7 +7,7 @@ cmux is a web app that spawns Claude Code, Codex CLI, Gemini CLI, Amp, Opencode,
 
 ## Install
 
-cmux supports macOS (x64 & Apple Silicon). Linux and Windows support is coming soon.
+cmux supports macOS (Apple Silicon, x64 coming soon). Linux and Windows support is also coming soon.
 
 ```bash
 # with bun

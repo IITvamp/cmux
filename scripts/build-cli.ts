@@ -24,8 +24,10 @@ try {
 console.log("Checking if convex-local-backend is available...");
 // If missing packages/convex/convex-local-backend, download it from github
 // https://github.com/get-convex/convex-backend/releases/download/precompiled-2025-07-28-76e3da1/convex-local-backend-aarch64-apple-darwin.zip
+// const convexZipUrl =
+//   "https://github.com/get-convex/convex-backend/releases/download/precompiled-2025-07-14-19aed7a/convex-local-backend-aarch64-apple-darwin.zip";
 const convexZipUrl =
-  "https://github.com/get-convex/convex-backend/releases/download/precompiled-2025-07-28-76e3da1/convex-local-backend-aarch64-apple-darwin.zip";
+  "https://github.com/get-convex/convex-backend/releases/download/precompiled-2025-07-11-74f2e87/convex-local-backend-aarch64-apple-darwin.zip";
 if (
   !existsSync("./packages/cmux/src/convex/convex-bundle/convex-local-backend")
 ) {
