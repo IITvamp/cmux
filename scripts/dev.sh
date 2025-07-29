@@ -5,8 +5,20 @@ set -e
 CONVEX_PORT=9777
 
 # Check if anything is running on ports 5173, $CONVEX_PORT, 9777, 9778
-if lsof -i :5173,$CONVEX_PORT,9777,9778 >/dev/null 2>&1; then
-    echo "Error: Ports 5173, $CONVEX_PORT, 9777, 9778 are already in use"
+PORTS_TO_CHECK="5173 $CONVEX_PORT 9777 9778"
+PORTS_IN_USE=""
+
+for port in $PORTS_TO_CHECK; do
+    if lsof -i :$port >/dev/null 2>&1; then
+        PORTS_IN_USE="$PORTS_IN_USE $port"
+    fi
+done
+
+if [ -n "$PORTS_IN_USE" ]; then
+    echo "Error: The following ports are already in use:$PORTS_IN_USE"
+    echo ""
+    echo "You can use the following command to kill the processes:"
+    echo "for p in$PORTS_IN_USE; do lsof -ti :\$p | xargs -r kill -9; done"
     exit 1
 fi
 
