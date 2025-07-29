@@ -39,13 +39,27 @@ function publish() {
       fs.readFileSync(path.join(projectRoot, "package.json"), "utf-8")
     ).version,
     description:
-      "Single-executable web app multiplexer with built-in Convex backend",
+      "Open source Claude Code manager that supports Codex/Gemini/OpenCode/Amp CLI",
     bin: {
       cmux: "./cmux-cli",
     },
     files: ["cmux-cli", "README.md"],
-    keywords: ["cli", "web", "server", "convex", "multiplexer"],
-    author: "Lawrence Chen",
+    keywords: [
+      "Claude Code",
+      "Codex",
+      "Gemini",
+      "OpenCode",
+      "Claude Opus",
+      "Claude Sonnet",
+      "Coding CLI",
+      "multiplexer",
+      "Grok",
+      "Amp",
+      "Qwen",
+      "Rovo",
+      "tmux",
+    ],
+    author: "Manaflow",
     license: "MIT",
     engines: {
       node: ">=16.0.0",
@@ -55,7 +69,7 @@ function publish() {
     },
     repository: {
       type: "git",
-      url: "git+https://github.com/lawrencechen/cmux.git",
+      url: "git+https://github.com/manaflow-ai/cmux.git",
     },
   };
 
