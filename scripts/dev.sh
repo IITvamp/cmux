@@ -102,7 +102,7 @@ check_process() {
     fi
 }
 
-(cd .devcontainer && docker compose up 2>&1 | prefix_output "DOCKER-COMPOSE" "$MAGENTA") &
+(cd .devcontainer && COMPOSE_PROJECT_NAME=cmux-convex docker compose up 2>&1 | prefix_output "DOCKER-COMPOSE" "$MAGENTA") &
 DOCKER_COMPOSE_PID=$!
 check_process $DOCKER_COMPOSE_PID "Docker Compose"
 
