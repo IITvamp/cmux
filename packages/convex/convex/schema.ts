@@ -122,4 +122,20 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   }),
+  vsCodeThemes: defineTable({
+    name: v.string(), // Theme display name
+    themePath: v.string(), // Path to the theme file on user's system
+    themeData: v.string(), // JSON content of the theme file
+    type: v.union(v.literal("color"), v.literal("icon")), // Color theme or icon theme
+    isDefault: v.optional(v.boolean()), // Whether this is the user's default theme
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_type", ["type"]).index("by_default", ["isDefault"]),
+  vsCodeSettings: defineTable({
+    settingsData: v.string(), // JSON content of settings.json
+    keybindingsData: v.optional(v.string()), // JSON content of keybindings.json
+    extensionsData: v.optional(v.string()), // JSON content of extensions.json
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }),
 });

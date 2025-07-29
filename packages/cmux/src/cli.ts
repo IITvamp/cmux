@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import { type ConvexProcesses, spawnConvex } from "./convex/spawnConvex";
 import { logger } from "./logger";
 import { checkPorts } from "./utils/checkPorts";
+import { onboardVSCodeThemes } from "./onboarding/vsCodeThemes";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const convexDir = path.resolve(homedir(), ".cmux");
@@ -112,6 +113,21 @@ program
 
     process.on("SIGINT", cleanup);
     process.on("SIGTERM", cleanup);
+  });
+
+program
+  .command("onboard")
+  .description("Import VSCode themes and settings from your local installation")
+  .action(async () => {
+    console.log("\n\x1b[36m🎨 VSCode Theme Onboarding\x1b[0m\n");
+    
+    try {
+      await onboardVSCodeThemes();
+      console.log("\n\x1b[32m✓\x1b[0m VSCode themes and settings imported successfully!");
+    } catch (error) {
+      console.error("\n\x1b[31m✗\x1b[0m Failed to import VSCode themes:", error);
+      process.exit(1);
+    }
   });
 
 program
