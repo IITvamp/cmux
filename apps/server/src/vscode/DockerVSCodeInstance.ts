@@ -174,6 +174,11 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     }
 
     const envVars = ["NODE_ENV=production", "WORKER_PORT=39377"];
+    
+    // Add theme environment variable if provided
+    if (this.config.theme) {
+      envVars.push(`VSCODE_THEME=${this.config.theme}`);
+    }
 
     // Create container configuration
     const createOptions: Docker.ContainerCreateOptions = {

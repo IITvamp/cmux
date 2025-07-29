@@ -295,6 +295,7 @@ export async function spawnAgent(
       fileName?: string;
       altText: string;
     }>;
+    theme?: "dark" | "light" | "system";
   }
 ): Promise<AgentSpawnResult> {
   try {
@@ -482,6 +483,7 @@ export async function spawnAgent(
       vscodeInstance = new MorphVSCodeInstance({
         agentName: agent.name,
         taskRunId: taskRunId as string,
+        theme: options.theme,
       });
 
       worktreePath = "/root/workspace";
@@ -523,6 +525,7 @@ export async function spawnAgent(
         workspacePath: worktreePath,
         agentName: agent.name,
         taskRunId: taskRunId as string,
+        theme: options.theme,
       });
     }
 
@@ -998,6 +1001,7 @@ export async function spawnAllAgents(
       fileName?: string;
       altText: string;
     }>;
+    theme?: "dark" | "light" | "system";
   }
 ): Promise<AgentSpawnResult[]> {
   // Spawn agents sequentially to avoid git lock conflicts

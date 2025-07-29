@@ -91,6 +91,7 @@ export async function startServer({
           selectedAgents: taskData.selectedAgents,
           isCloudMode: taskData.isCloudMode,
           images: taskData.images,
+          theme: taskData.theme,
         });
 
         // Check if at least one agent spawned successfully

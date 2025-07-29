@@ -35,7 +35,9 @@
 [ ] add grok code
 [ ] add atlassian rovo
 [ ] cmux cli npm publish and uvx publish
-[ ] onboarding CLI flow to copy vscode themes -- this needs its own convex tables, and we need to make sure to send the right files to the right places when spawning vscode instances.
+[x] onboarding CLI flow to copy vscode themes -- this needs its own convex tables, and we need to make sure to send the right files to the right places when spawning vscode instances.
+    - Basic theme sync implemented: VS Code now respects the app's dark/light mode setting for Docker instances
+    - Limitation: Morph instances use pre-built snapshots and don't support dynamic theme configuration yet
 [ ] drafts for tasks
 [ ] remove containerMappings from @apps/server/src/vscode/DockerVSCodeInstance.ts and just use convex and/or docker daemon as source of truth.
 [ ] authentication with stack auth (or somehow collect user emails) when user tries to enable cloud mode
