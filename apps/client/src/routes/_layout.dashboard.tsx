@@ -235,8 +235,6 @@ function DashboardComponent() {
         )
       );
 
-      console.log("content?.text", content?.text);
-
       // Create task in Convex with storage IDs
       const taskId = await createTask({
         text: content?.text || taskDescription, // Use content.text which includes image references
@@ -270,7 +268,6 @@ function DashboardComponent() {
           images: images.length > 0 ? images : undefined,
         },
         (response) => {
-          console.log("response", response);
           if ("error" in response) {
             console.error("Task start error:", response.error);
           } else {

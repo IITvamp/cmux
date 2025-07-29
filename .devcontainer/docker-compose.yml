@@ -1,5 +1,5 @@
 services:
-  backend:
+  convex_backend:
     image: ghcr.io/get-convex/convex-backend:6efab6f2b6c182b90255774d747328cfc7b80dd9
     stop_grace_period: 10s
     stop_signal: SIGINT
@@ -39,7 +39,7 @@ services:
       interval: 5s
       start_period: 10s
 
-  dashboard:
+  convex_dashboard:
     image: ghcr.io/get-convex/convex-dashboard:6efab6f2b6c182b90255774d747328cfc7b80dd9
     stop_grace_period: 10s
     stop_signal: SIGINT
@@ -48,7 +48,7 @@ services:
     environment:
       - NEXT_PUBLIC_DEPLOYMENT_URL=http://127.0.0.1:3210
     depends_on:
-      backend:
+      convex_backend:
         condition: service_healthy
 
 volumes:
