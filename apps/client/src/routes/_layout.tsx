@@ -2,9 +2,8 @@ import { Sidebar } from "@/components/Sidebar";
 import { api } from "@cmux/convex/api";
 import { type Doc } from "@cmux/convex/dataModel";
 import { convexQuery } from "@convex-dev/react-query";
-import { UserButton } from "@stackframe/stack";
 import { useStackAuth } from "@/hooks/useStackAuth";
-import { createFileRoute, Link, Outlet, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
 import { useQueries, useQuery } from "convex/react";
 import { Suspense, useEffect, useMemo } from "react";
 
