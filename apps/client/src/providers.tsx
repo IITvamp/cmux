@@ -1,11 +1,28 @@
 import { ThemeProvider } from "@/components/theme/theme-provider";
 import { SocketProvider } from "@/contexts/socket/socket-provider";
+import { StackClientApp, StackProvider } from "@stackframe/stack";
 import { ConfigProvider, theme, type ThemeConfig } from "antd";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 
 interface ProvidersProps {
   children: ReactNode;
 }
+
+// Create Stack app instance with default configuration
+const stackApp = new StackClientApp({
+  // projectId: import.meta.env.VITE_STACK_PROJECT_ID,
+  // publishableClientKey: import.meta.env.VITE_STACK_PUBLISHABLE_CLIENT_KEY,
+  projectId: "8a877114-b905-47c5-8b64-3a2d90679577",
+  publishableClientKey: "pck_wbtp7yqb1h1xnyvgsjk53w1j8rcf72c6qt3cpdd3wmrhg",
+  tokenStore: "cookie",
+  urls: {
+    home: "/",
+    signIn: "/auth/login",
+    afterSignIn: "/dashboard",
+    afterSignUp: "/dashboard",
+    afterSignOut: "/auth/login",
+  },
+});
 
 export function Providers({ children }: ProvidersProps) {
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -60,10 +77,12 @@ export function Providers({ children }: ProvidersProps) {
   }, [isDarkMode]);
 
   return (
-    <ThemeProvider>
-      <ConfigProvider theme={antdTheme}>
-        <SocketProvider>{children}</SocketProvider>
-      </ConfigProvider>
-    </ThemeProvider>
+    <StackProvider app={stackApp}>
+      <ThemeProvider>
+        <ConfigProvider theme={antdTheme}>
+          <SocketProvider>{children}</SocketProvider>
+        </ConfigProvider>
+      </ThemeProvider>
+    </StackProvider>
   );
 }

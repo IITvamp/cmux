@@ -1,12 +1,13 @@
 import { startServer } from "@cmux/server";
 import { Command } from "commander";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { type ConvexProcesses, spawnConvex } from "./convex/spawnConvex";
 import { logger } from "./logger";
 import { checkPorts } from "./utils/checkPorts";
+import { killPortsIfNeeded } from "./utils/killPortsIfNeeded";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const convexDir = path.resolve(homedir(), ".cmux");
@@ -34,6 +35,10 @@ program
   .version(VERSION)
   .option("-p, --port <port>", "port to listen on", "9776")
   .option("-c, --cors <origin>", "CORS origin configuration", "true")
+  .option(
+    "--no-autokill-ports",
+    "disable automatic killing of processes on required ports"
+  )
   .action(async (options) => {
     // Pleasant startup message
     const versionPadding = " ".repeat(
@@ -49,25 +54,47 @@ program
     const port = parseInt(options.port);
 
     const portsToCheck = [port, 9777, 9778];
-    const portsInUse = await checkPorts(portsToCheck);
-    if (portsInUse.length > 0) {
-      console.error("Please kill the processes running on the ports:");
-      console.error(portsInUse.map((p) => `- ${p}`).join("\n"));
-      console.log(
-        "You can use the following command to kill the processes:\n" +
-          `for p in ${portsInUse.join(" ")}; do lsof -ti :$p | xargs -r kill -9; done`
-      );
-      process.exit(1);
+    if (options.autokillPorts) {
+      await killPortsIfNeeded(portsToCheck);
+    } else {
+      // Manual check without killing
+      const portsInUse = await checkPorts(portsToCheck);
+      if (portsInUse.length > 0) {
+        console.error("\x1b[31m✗\x1b[0m Ports already in use:");
+        console.error(portsInUse.map((p) => `  - ${p}`).join("\n"));
+        console.log(
+          "\nYou can either:\n" +
+            "  1. Run with default behavior to auto-kill: \x1b[36mcmux\x1b[0m\n" +
+            "  2. Manually kill the processes: \x1b[90m" +
+            `for p in ${portsInUse.join(" ")}; do lsof -ti :$p | xargs -r kill -9; done\x1b[0m`
+        );
+        process.exit(1);
+      }
     }
 
     // ensure convexDir exists
     mkdirSync(convexDir, { recursive: true });
+
+    // ensure logs directory exists
+    const logsDir = path.join(convexDir, "logs");
+    mkdirSync(logsDir, { recursive: true });
+
+    const logFileNames = ["cmux-cli.log", "docker-vscode.log", "server.log"];
+    // ensure all log files exist
+    for (const logFileName of logFileNames) {
+      const logFilePath = path.join(convexDir, "logs", logFileName);
+      if (!existsSync(logFilePath)) {
+        writeFileSync(logFilePath, "");
+      }
+    }
 
     // Check if convex directory exists
     if (!existsSync(convexDir)) {
       console.error("Convex directory not found at:", convexDir);
       process.exit(1);
     }
+
+    logger.ensureLogDirectory();
 
     let convexProcesses: ConvexProcesses;
     try {
@@ -112,6 +139,47 @@ program
 
     process.on("SIGINT", cleanup);
     process.on("SIGTERM", cleanup);
+  });
+
+program
+  .command("uninstall")
+  .description("Remove cmux data and show uninstall instructions")
+  .action(async () => {
+    console.log("\n\x1b[33m🗑️  Uninstalling cmux...\x1b[0m\n");
+
+    // Remove ~/.cmux directory
+    if (existsSync(convexDir)) {
+      try {
+        console.log(`Removing data directory: ${convexDir}`);
+        rmSync(convexDir, { recursive: true, force: true });
+        console.log("\x1b[32m✓\x1b[0m Data directory removed successfully");
+      } catch (error) {
+        console.error(
+          "\x1b[31m✗\x1b[0m Failed to remove data directory:",
+          error
+        );
+      }
+    } else {
+      console.log("\x1b[33m!\x1b[0m Data directory not found, skipping...");
+    }
+
+    // Show uninstall instructions based on how it might have been installed
+    console.log("\n\x1b[36mTo complete the uninstallation:\x1b[0m\n");
+
+    console.log("If installed globally with npm:");
+    console.log("  \x1b[90mnpm uninstall -g cmux\x1b[0m\n");
+
+    console.log("If installed globally with yarn:");
+    console.log("  \x1b[90myarn global remove cmux\x1b[0m\n");
+
+    console.log("If installed globally with pnpm:");
+    console.log("  \x1b[90mpnpm uninstall -g cmux\x1b[0m\n");
+
+    console.log("If installed globally with bun:");
+    console.log("  \x1b[90mbun uninstall -g cmux\x1b[0m\n");
+
+    console.log("\x1b[32m✓\x1b[0m cmux data has been removed!");
+    process.exit(0);
   });
 
 program.parse();

@@ -35,6 +35,7 @@ export const StartTaskSchema = z.object({
     fileName: z.string().optional(),
     altText: z.string(),
   })).optional(),
+  theme: z.enum(["dark", "light", "system"]).optional(),
 });
 
 // Server to Client Events

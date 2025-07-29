@@ -2,6 +2,17 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
+  users: defineTable({
+    stackUserId: v.string(), // Stack Auth user ID
+    email: v.string(),
+    displayName: v.optional(v.string()),
+    avatarUrl: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_stackUserId", ["stackUserId"])
+    .index("by_email", ["email"]),
+
   tasks: defineTable({
     text: v.string(),
     isCompleted: v.boolean(),
@@ -12,12 +23,19 @@ export default defineSchema({
     worktreePath: v.optional(v.string()),
     createdAt: v.optional(v.number()),
     updatedAt: v.optional(v.number()),
-    images: v.optional(v.array(v.object({
-      storageId: v.id("_storage"), // Convex storage ID
-      fileName: v.optional(v.string()),
-      altText: v.string(),
-    }))),
-  }).index("by_created", ["createdAt"]),
+    userId: v.optional(v.id("users")), // Link to user who created the task
+    images: v.optional(
+      v.array(
+        v.object({
+          storageId: v.id("_storage"), // Convex storage ID
+          fileName: v.optional(v.string()),
+          altText: v.string(),
+        })
+      )
+    ),
+  })
+    .index("by_created", ["createdAt"])
+    .index("by_user", ["userId", "createdAt"]),
   taskRuns: defineTable({
     taskId: v.id("tasks"),
     parentRunId: v.optional(v.id("taskRuns")), // For tree structure
@@ -35,6 +53,7 @@ export default defineSchema({
     updatedAt: v.number(),
     completedAt: v.optional(v.number()),
     exitCode: v.optional(v.number()),
+    userId: v.optional(v.id("users")), // Link to user who created the run
     // Indicates if this solution was selected as the best
     isSelectedSolution: v.optional(v.boolean()),
     // VSCode instance information
@@ -73,7 +92,8 @@ export default defineSchema({
     .index("by_parent", ["parentRunId"])
     .index("by_status", ["status"])
     .index("by_vscode_status", ["vscode.status"])
-    .index("by_vscode_container_name", ["vscode.containerName"]),
+    .index("by_vscode_container_name", ["vscode.containerName"])
+    .index("by_user", ["userId", "createdAt"]),
   taskVersions: defineTable({
     taskId: v.id("tasks"),
     version: v.number(),

@@ -100,10 +100,9 @@ export async function spawnConvex(
   if (shouldExtract) {
     await logger.info("Extracting cmux bundle...");
 
-    const unzipStartTime = performance.now();
     // Extract to temp directory first
     const tempExtractDir = path.join(os.tmpdir(), `cmux-extract-${Date.now()}`);
-    await $`unzip -o ${tempZipPath} -d ${tempExtractDir}`;
+    await $`unzip -q -o ${tempZipPath} -d ${tempExtractDir}`.quiet();
 
     if (isUpgrade) {
       await logger.info("Upgrading cmux, preserving user data...");
@@ -111,6 +110,7 @@ export async function spawnConvex(
       // Backup user data files
       const sqliteDbPath = path.join(convexDir, "convex_local_backend.sqlite3");
       const convexStoragePath = path.join(convexDir, "convex_local_storage");
+      const logsPath = path.join(convexDir, "logs");
       const tempBackupDir = path.join(os.tmpdir(), `cmux-backup-${Date.now()}`);
 
       await fs.mkdir(tempBackupDir, { recursive: true });
@@ -132,8 +132,18 @@ export async function spawnConvex(
         .catch(() => false);
       if (hasStorage) {
         // Use rsync to ensure all files are copied, including hidden files
-        await $`rsync -av ${convexStoragePath}/ ${tempBackupDir}/convex_local_storage/`;
+        await $`rsync -aq ${convexStoragePath}/ ${tempBackupDir}/convex_local_storage/`;
         await logger.info("Backed up convex_local_storage");
+      }
+
+      // Backup logs directory if it exists
+      const hasLogs = await fs
+        .access(logsPath)
+        .then(() => true)
+        .catch(() => false);
+      if (hasLogs) {
+        await $`rsync -aq ${logsPath}/ ${tempBackupDir}/logs/`;
+        await logger.info("Backed up logs directory");
       }
 
       // Clear the convexDir
@@ -153,7 +163,7 @@ export async function spawnConvex(
         // Remove the extracted empty storage directory first
         await $`rm -rf ${convexDir}/convex_local_storage`;
         // Use rsync to restore, preserving all file attributes
-        await $`rsync -av ${tempBackupDir}/convex_local_storage/ ${convexDir}/convex_local_storage/`;
+        await $`rsync -aq ${tempBackupDir}/convex_local_storage/ ${convexDir}/convex_local_storage/`;
         await logger.info("Restored convex_local_storage");
 
         // Verify the restoration
@@ -166,24 +176,48 @@ export async function spawnConvex(
         );
       }
 
+      // Restore logs directory if it was backed up
+      if (hasLogs) {
+        await $`rsync -aq ${tempBackupDir}/logs/ ${convexDir}/logs/`;
+        await logger.info("Restored logs directory");
+      }
+
       // Cleanup backup dir
       await $`rm -rf ${tempBackupDir}`;
       await logger.info("Upgrade complete!");
     } else {
       await logger.info("Fresh installation...");
+      
+      // Backup logs directory if it exists (for fresh install that might have existing logs)
+      const logsPath = path.join(convexDir, "logs");
+      const hasLogs = await fs
+        .access(logsPath)
+        .then(() => true)
+        .catch(() => false);
+      
+      let tempLogsBackup: string | null = null;
+      if (hasLogs) {
+        tempLogsBackup = path.join(os.tmpdir(), `cmux-logs-backup-${Date.now()}`);
+        await $`rsync -aq ${logsPath}/ ${tempLogsBackup}/`;
+        await logger.info("Temporarily backed up existing logs");
+      }
+      
       // Clear the convexDir and move the contents of cmux-bundle
       await fs.rm(convexDir, { recursive: true, force: true });
       await fs.mkdir(convexDir, { recursive: true });
       await $`mv ${tempExtractDir}/cmux-bundle/* ${convexDir}/`;
+      
+      // Restore logs if they existed
+      if (tempLogsBackup) {
+        await fs.mkdir(logsPath, { recursive: true });
+        await $`rsync -aq ${tempLogsBackup}/ ${logsPath}/`;
+        await $`rm -rf ${tempLogsBackup}`;
+        await logger.info("Restored existing logs");
+      }
     }
 
     // Cleanup
     await $`rm -rf ${tempExtractDir}`;
-
-    const unzipEndTime = performance.now();
-    await logger.info(
-      `Extraction took ${(unzipEndTime - unzipStartTime).toFixed(2)}ms`
-    );
 
     // Write the version file
     await fs.writeFile(versionFilePath, bundleVersion);
@@ -255,40 +289,43 @@ export async function spawnConvex(
   }
 
   // Deploy convex functions if this was a fresh install or upgrade
-  if (shouldExtract) {
-    await logger.info("Deploying Convex functions...");
+  // if (shouldExtract) {
+  //   await logger.info("Deploying Convex functions...");
 
-    const convexAdminKey =
-      "cmux-dev|017aebe6643f7feb3fe831fbb93a348653c63e5711d2427d1a34b670e3151b0165d86a5ff9";
-    const convexCliPath = path.join(
-      convexDir,
-      "convex-cli-dist",
-      "cli.bundle.js"
-    );
+  //   const convexAdminKey =
+  //     "cmux-dev|017aebe6643f7feb3fe831fbb93a348653c63e5711d2427d1a34b670e3151b0165d86a5ff9";
+  //   const convexCliPath = path.join(
+  //     convexDir,
+  //     "convex-cli-dist",
+  //     "cli.bundle.js"
+  //   );
 
-    try {
-      // Create .env.local if it doesn't exist
-      const envLocalPath = path.join(convexDir, ".env.local");
-      if (!existsSync(envLocalPath)) {
-        await $`echo "CONVEX_URL=http://localhost:${convexPort}" > ${envLocalPath}`;
-      }
+  //   try {
+  //     // Create .env.local if it doesn't exist
+  //     const envLocalPath = path.join(convexDir, ".env.local");
+  //     if (!existsSync(envLocalPath)) {
+  //       await $`echo "CONVEX_URL=http://localhost:${convexPort}" > ${envLocalPath}`;
+  //     }
 
-      // Run convex deploy using the bundled CLI
-      const deployResult =
-        await $`cd ${convexDir} && bun ${convexCliPath} deploy --url http://localhost:${convexPort} --admin-key ${convexAdminKey}`;
+  //     // Run convex deploy using the bundled CLI
+  //     const deployResult =
+  //       await $`cd ${convexDir} && bun ${convexCliPath} deploy --url http://localhost:${convexPort} --admin-key ${convexAdminKey}`;
 
-      if (deployResult.exitCode === 0) {
-        await logger.info("Convex functions deployed successfully!");
-      } else {
-        await logger.error(
-          `Convex deployment failed with exit code ${deployResult.exitCode}`
-        );
-      }
-    } catch (error) {
-      await logger.error(`Failed to deploy Convex functions: ${error}`);
-      // Don't throw here - the server can still run, just without the functions
-    }
-  }
+  //     if (deployResult.exitCode === 0) {
+  //       await logger.info("Convex functions deployed successfully!");
+  //     } else {
+  //       await logger.error(
+  //         `Convex deployment failed with exit code ${deployResult.exitCode}`
+  //       );
+  //       throw new Error(
+  //         `Convex deployment failed with exit code ${deployResult.exitCode}`
+  //       );
+  //     }
+  //   } catch (error) {
+  //     await logger.error(`Failed to deploy Convex functions: ${error}`);
+  //     throw error; // Re-throw to make deployment failures fatal
+  //   }
+  // }
 
   return {
     backend: convexBackend,

@@ -9,6 +9,7 @@
  */
 
 import type * as apiKeys from "../apiKeys.js";
+import type * as auth from "../auth.js";
 import type * as containerSettings from "../containerSettings.js";
 import type * as github from "../github.js";
 import type * as storage from "../storage.js";
@@ -33,6 +34,7 @@ import type {
  */
 declare const fullApi: ApiFromModules<{
   apiKeys: typeof apiKeys;
+  auth: typeof auth;
   containerSettings: typeof containerSettings;
   github: typeof github;
   storage: typeof storage;

@@ -1,4 +1,5 @@
 import type { AgentConfig } from "../../agentConfig.js";
+import { GEMINI_API_KEY } from "../../apiKeys.js";
 import { checkGeminiRequirements } from "./check-requirements.js";
 import { getGeminiEnvironment } from "./environment.js";
 
@@ -14,13 +15,7 @@ export const GEMINI_FLASH_CONFIG: AgentConfig = {
     "$PROMPT",
   ],
   environment: getGeminiEnvironment,
-  apiKeys: [
-    {
-      envVar: "GEMINI_API_KEY",
-      displayName: "Gemini API Key",
-      description: "API key for Google Gemini AI models",
-    },
-  ],
+  apiKeys: [GEMINI_API_KEY],
   checkRequirements: checkGeminiRequirements,
 };
 
@@ -36,12 +31,6 @@ export const GEMINI_PRO_CONFIG: AgentConfig = {
     "$PROMPT",
   ],
   environment: getGeminiEnvironment,
-  apiKeys: [
-    {
-      envVar: "GEMINI_API_KEY",
-      displayName: "Gemini API Key",
-      description: "API key for Google Gemini AI models",
-    },
-  ],
+  apiKeys: [GEMINI_API_KEY],
   checkRequirements: checkGeminiRequirements,
 };

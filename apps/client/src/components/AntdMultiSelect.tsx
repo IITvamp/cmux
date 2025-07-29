@@ -1,8 +1,15 @@
 import type { SelectProps } from "antd";
 import { Select } from "antd";
+import { AlertTriangle } from "lucide-react";
+
+interface AgentOption {
+  label: string;
+  value: string;
+  isUnavailable?: boolean;
+}
 
 interface AntdMultiSelectProps {
-  options: string[];
+  options: string[] | AgentOption[];
   value: string[];
   onChange: (value: string[]) => void;
   placeholder?: string;
@@ -24,9 +31,28 @@ export default function AntdMultiSelect({
   maxTagCount,
   showSearch,
 }: AntdMultiSelectProps) {
+  
+  const selectOptions = options.map((option) => {
+    if (typeof option === 'string') {
+      return { label: option, value: option };
+    } else {
+      return {
+        label: (
+          <div className="flex items-center gap-2">
+            <span>{option.label}</span>
+            {option.isUnavailable && (
+              <AlertTriangle className="w-3 h-3 text-amber-500" />
+            )}
+          </div>
+        ),
+        value: option.value
+      };
+    }
+  });
+
   const selectProps: SelectProps = {
     mode: singleSelect ? undefined : "multiple",
-    options: options.map((o) => ({ label: o, value: o })),
+    options: selectOptions,
     value,
     onChange: (val) => {
       if (Array.isArray(val)) {

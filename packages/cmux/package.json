@@ -1,7 +1,7 @@
 {
   "name": "cmux",
-  "version": "0.2.11",
-  "description": "Socket.IO and static file server",
+  "version": "0.2.18",
+  "description": "Open source Claude Code manager that supports Codex/Gemini/OpenCode/Amp CLI",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -29,11 +29,21 @@
     "publish-cli": "tsx scripts/publish-npm.ts"
   },
   "keywords": [
-    "socket.io",
-    "server",
-    "static"
+    "Claude Code",
+    "Codex",
+    "Gemini",
+    "OpenCode",
+    "Claude Opus",
+    "Claude Sonnet",
+    "Coding CLI",
+    "multiplexer",
+    "Grok",
+    "Amp",
+    "Qwen",
+    "Rovo",
+    "tmux"
   ],
-  "author": "",
+  "author": "Manaflow",
   "license": "MIT",
   "dependencies": {
     "@cmux/server": "workspace:*",

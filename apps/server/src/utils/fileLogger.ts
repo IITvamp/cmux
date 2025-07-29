@@ -36,6 +36,7 @@ export class FileLogger {
     this.writeStream = fs.createWriteStream(this.logFile, {
       flags: "a", // append mode
       encoding: "utf8",
+      highWaterMark: 0, // Disable buffering for immediate writes
     });
   }
 
@@ -69,9 +70,14 @@ export class FileLogger {
     const formattedMessage = this.formatMessage(level, message, ...args);
     
     if (process.env.NODE_ENV === "production") {
-      // In production, only log to file
-      if (this.writeStream && !this.writeStream.destroyed) {
-        this.writeStream.write(formattedMessage);
+      // In production, use synchronous write to ensure data is written immediately
+      try {
+        fs.appendFileSync(this.logFile, formattedMessage);
+      } catch (error) {
+        // Fallback to stream if sync write fails
+        if (this.writeStream && !this.writeStream.destroyed) {
+          this.writeStream.write(formattedMessage);
+        }
       }
     } else {
       // In development, log to both file and console
@@ -86,6 +92,7 @@ export class FileLogger {
     }
   }
 
+
   close(): void {
     if (this.writeStream && !this.writeStream.destroyed) {
       this.writeStream.end();
@@ -97,3 +104,23 @@ export class FileLogger {
 export const dockerLogger = new FileLogger("docker-vscode.log");
 export const serverLogger = new FileLogger("server.log");
 export const createLogger = (logFileName: string) => new FileLogger(logFileName);
+
+// Register exit handlers to ensure logs are flushed
+const closeAllLoggers = () => {
+  dockerLogger.close();
+  serverLogger.close();
+};
+
+process.on("exit", closeAllLoggers);
+process.on("SIGINT", closeAllLoggers);
+process.on("SIGTERM", closeAllLoggers);
+process.on("uncaughtException", (error) => {
+  serverLogger.error("Uncaught exception:", error);
+  closeAllLoggers();
+  process.exit(1);
+});
+process.on("unhandledRejection", (reason, promise) => {
+  serverLogger.error("Unhandled rejection at:", promise, "reason:", reason);
+  closeAllLoggers();
+  process.exit(1);
+});

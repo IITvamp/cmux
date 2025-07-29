@@ -9,7 +9,7 @@ import { AGENT_CONFIGS, type AgentConfig } from "@cmux/shared/agentConfig";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useConvex } from "convex/react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_layout/settings")({
@@ -27,6 +27,18 @@ function SettingsComponent() {
   const [isSaving, setIsSaving] = useState(false);
   const [worktreePath, setWorktreePath] = useState<string>("");
   const [originalWorktreePath, setOriginalWorktreePath] = useState<string>("");
+  const [isSaveButtonVisible, setIsSaveButtonVisible] = useState(true);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const saveButtonRef = useRef<HTMLDivElement>(null);
+  const [containerSettingsData, setContainerSettingsData] = useState<{
+    maxRunningContainers: number;
+    reviewPeriodMinutes: number;
+    autoCleanupEnabled: boolean;
+    stopImmediatelyOnCompletion: boolean;
+    minContainersToKeep: number;
+  } | null>(null);
+  const [originalContainerSettingsData, setOriginalContainerSettingsData] =
+    useState<typeof containerSettingsData>(null);
 
   // Get all required API keys from agent configs
   const apiKeys = Array.from(
@@ -73,6 +85,40 @@ function SettingsComponent() {
     }
   }, [workspaceSettings]);
 
+  // Track save button visibility
+  useEffect(() => {
+    const scrollContainer = scrollContainerRef.current;
+    const saveButton = saveButtonRef.current;
+
+    if (!scrollContainer || !saveButton) return;
+
+    const checkSaveButtonVisibility = () => {
+      const containerRect = scrollContainer.getBoundingClientRect();
+      const buttonRect = saveButton.getBoundingClientRect();
+
+      // Check if button is visible within the container
+      const isVisible =
+        buttonRect.top < containerRect.bottom &&
+        buttonRect.bottom > containerRect.top;
+
+      setIsSaveButtonVisible(isVisible);
+    };
+
+    // Check initial visibility
+    checkSaveButtonVisibility();
+
+    // Add scroll listener
+    scrollContainer.addEventListener("scroll", checkSaveButtonVisibility);
+
+    // Also check on resize
+    window.addEventListener("resize", checkSaveButtonVisibility);
+
+    return () => {
+      scrollContainer.removeEventListener("scroll", checkSaveButtonVisibility);
+      window.removeEventListener("resize", checkSaveButtonVisibility);
+    };
+  }, []);
+
   // Mutation to save API keys
   const saveApiKeyMutation = useMutation({
     mutationFn: async (data: {
@@ -93,6 +139,22 @@ function SettingsComponent() {
     setShowKeys((prev) => ({ ...prev, [envVar]: !prev[envVar] }));
   };
 
+  const handleContainerSettingsChange = useCallback(
+    (data: {
+      maxRunningContainers: number;
+      reviewPeriodMinutes: number;
+      autoCleanupEnabled: boolean;
+      stopImmediatelyOnCompletion: boolean;
+      minContainersToKeep: number;
+    }) => {
+      setContainerSettingsData(data);
+      if (!originalContainerSettingsData) {
+        setOriginalContainerSettingsData(data);
+      }
+    },
+    [originalContainerSettingsData]
+  );
+
   // Check if there are any changes
   const hasChanges = () => {
     // Check worktree path changes
@@ -105,7 +167,14 @@ function SettingsComponent() {
       return currentValue !== originalValue;
     });
 
-    return worktreePathChanged || apiKeysChanged;
+    // Check container settings changes
+    const containerSettingsChanged =
+      containerSettingsData &&
+      originalContainerSettingsData &&
+      JSON.stringify(containerSettingsData) !==
+        JSON.stringify(originalContainerSettingsData);
+
+    return worktreePathChanged || apiKeysChanged || containerSettingsChanged;
   };
 
   const saveApiKeys = async () => {
@@ -121,6 +190,20 @@ function SettingsComponent() {
           worktreePath: worktreePath || undefined,
         });
         setOriginalWorktreePath(worktreePath);
+      }
+
+      // Save container settings if changed
+      if (
+        containerSettingsData &&
+        originalContainerSettingsData &&
+        JSON.stringify(containerSettingsData) !==
+          JSON.stringify(originalContainerSettingsData)
+      ) {
+        await convex.mutation(
+          api.containerSettings.update,
+          containerSettingsData
+        );
+        setOriginalContainerSettingsData(containerSettingsData);
       }
 
       for (const key of apiKeys) {
@@ -175,7 +258,10 @@ function SettingsComponent() {
 
   return (
     <FloatingPane header={<TitleBar title="Settings" />}>
-      <div className="flex flex-col grow overflow-auto select-none">
+      <div
+        ref={scrollContainerRef}
+        className="flex flex-col grow overflow-auto select-none relative"
+      >
         <div className="p-6 max-w-3xl">
           {/* Header */}
           <div className="mb-6">
@@ -204,19 +290,19 @@ function SettingsComponent() {
                   <div className="grid grid-cols-3 gap-2">
                     <button
                       onClick={() => setTheme("light")}
-                      className={`p-2 border-2 ${theme === "light" ? "border-blue-500 bg-neutral-50 dark:bg-neutral-800" : "border-neutral-200 dark:border-neutral-700"} rounded-lg text-sm font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors`}
+                      className={`p-2 border-2 ${theme === "light" ? "border-blue-500 bg-neutral-50 dark:bg-neutral-800" : "border-neutral-200 dark:border-neutral-700"} rounded-lg text-sm font-medium text-neutral-700 dark:text-neutral-300 transition-colors`}
                     >
                       Light
                     </button>
                     <button
                       onClick={() => setTheme("dark")}
-                      className={`p-2 border-2 ${theme === "dark" ? "border-blue-500 bg-neutral-50 dark:bg-neutral-800" : "border-neutral-200 dark:border-neutral-700"} rounded-lg text-sm font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors`}
+                      className={`p-2 border-2 ${theme === "dark" ? "border-blue-500 bg-neutral-50 dark:bg-neutral-800" : "border-neutral-200 dark:border-neutral-700"} rounded-lg text-sm font-medium text-neutral-700 dark:text-neutral-300 transition-colors`}
                     >
                       Dark
                     </button>
                     <button
                       onClick={() => setTheme("system")}
-                      className={`p-2 border-2 ${theme === "system" ? "border-blue-500 bg-neutral-50 dark:bg-neutral-800" : "border-neutral-200 dark:border-neutral-700"} rounded-lg text-sm font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors`}
+                      className={`p-2 border-2 ${theme === "system" ? "border-blue-500 bg-neutral-50 dark:bg-neutral-800" : "border-neutral-200 dark:border-neutral-700"} rounded-lg text-sm font-medium text-neutral-700 dark:text-neutral-300 transition-colors`}
                     >
                       System
                     </button>
@@ -300,7 +386,7 @@ function SettingsComponent() {
                         <button
                           type="button"
                           onClick={() => toggleShowKey(key.envVar)}
-                          className="absolute inset-y-0 right-0 pr-3 flex items-center text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300"
+                          className="absolute inset-y-0 right-0 pr-3 flex items-center text-neutral-500"
                         >
                           {showKeys[key.envVar] ? (
                             <svg
@@ -365,12 +451,14 @@ function SettingsComponent() {
                 </h2>
               </div>
               <div className="p-4">
-                <ContainerSettings />
+                <ContainerSettings
+                  onDataChange={handleContainerSettingsChange}
+                />
               </div>
             </div>
 
             {/* Notifications */}
-            <div className="bg-white dark:bg-neutral-950 rounded-lg border border-neutral-200 dark:border-neutral-800">
+            <div className="bg-white dark:bg-neutral-950 rounded-lg border border-neutral-200 dark:border-neutral-800 hidden">
               <div className="px-4 py-3 border-b border-neutral-200 dark:border-neutral-800">
                 <h2 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
                   Notifications
@@ -422,19 +510,45 @@ function SettingsComponent() {
             </div>
 
             {/* Save Button */}
-            <div className="flex justify-end pt-2">
+            <div ref={saveButtonRef} className="flex justify-end pt-2">
               <button
                 onClick={saveApiKeys}
                 disabled={!hasChanges() || isSaving}
                 className={`px-4 py-2 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-900 transition-all ${
                   !hasChanges() || isSaving
                     ? "bg-neutral-200 dark:bg-neutral-800 text-neutral-400 dark:text-neutral-500 cursor-not-allowed opacity-50"
-                    : "bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-600"
+                    : "bg-blue-600 dark:bg-blue-500 text-white"
                 }`}
               >
                 {isSaving ? "Saving..." : "Save Changes"}
               </button>
             </div>
+          </div>
+        </div>
+
+        {/* Floating unsaved changes notification */}
+        <div
+          className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 ease-in-out ${
+            hasChanges() && !isSaveButtonVisible
+              ? "opacity-100 translate-y-0 pointer-events-auto"
+              : "opacity-0 translate-y-4 pointer-events-none"
+          }`}
+        >
+          <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg px-4 py-3 flex items-center gap-3">
+            <span className="text-sm text-neutral-700 dark:text-neutral-300">
+              You have unsaved changes
+            </span>
+            <button
+              onClick={saveApiKeys}
+              disabled={isSaving}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-900 transition-all ${
+                isSaving
+                  ? "bg-neutral-200 dark:bg-neutral-800 text-neutral-400 dark:text-neutral-500 cursor-not-allowed opacity-50"
+                  : "bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-600"
+              }`}
+            >
+              {isSaving ? "Saving..." : "Save Changes"}
+            </button>
           </div>
         </div>
       </div>

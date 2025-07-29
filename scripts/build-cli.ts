@@ -24,8 +24,10 @@ try {
 console.log("Checking if convex-local-backend is available...");
 // If missing packages/convex/convex-local-backend, download it from github
 // https://github.com/get-convex/convex-backend/releases/download/precompiled-2025-07-28-76e3da1/convex-local-backend-aarch64-apple-darwin.zip
+// const convexZipUrl =
+//   "https://github.com/get-convex/convex-backend/releases/download/precompiled-2025-07-14-19aed7a/convex-local-backend-aarch64-apple-darwin.zip";
 const convexZipUrl =
-  "https://github.com/get-convex/convex-backend/releases/download/precompiled-2025-07-28-76e3da1/convex-local-backend-aarch64-apple-darwin.zip";
+  "https://github.com/get-convex/convex-backend/releases/download/precompiled-2025-07-11-74f2e87/convex-local-backend-aarch64-apple-darwin.zip";
 if (
   !existsSync("./packages/cmux/src/convex/convex-bundle/convex-local-backend")
 ) {
@@ -181,7 +183,7 @@ await $`rm -rf /tmp/cmux-bundle`;
 const VERSION = cmuxPackageJson.version;
 
 // bun build the cli
-await $`bun build ./packages/cmux/src/cli.ts --compile --define VERSION="\"${VERSION}\"" --define process.env.WORKER_IMAGE_NAME=lawrencecchen/cmux@latest --define process.env.NODE_ENV="\"production\"" --outfile cmux-cli`;
+await $`bun build ./packages/cmux/src/cli.ts --compile --define VERSION="\"${VERSION}\"" --define process.env.WORKER_IMAGE_NAME="\"docker.io/lawrencecchen/cmux:${VERSION}\"" --define process.env.NODE_ENV="\"production\"" --outfile cmux-cli`;
 console.log("Built cmux-cli");
 
 // exit with 0
