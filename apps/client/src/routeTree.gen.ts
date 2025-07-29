@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as LayoutRouteImport } from './routes/_layout'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as HandlerOauthCallbackRouteImport } from './routes/handler.oauth-callback'
+import { Route as HandlerSplatRouteImport } from './routes/handler.$'
 import { Route as AuthSignupRouteImport } from './routes/auth.signup'
 import { Route as AuthLoginRouteImport } from './routes/auth.login'
 import { Route as LayoutSettingsRouteImport } from './routes/_layout.settings'
@@ -32,6 +33,11 @@ const IndexRoute = IndexRouteImport.update({
 const HandlerOauthCallbackRoute = HandlerOauthCallbackRouteImport.update({
   id: '/handler/oauth-callback',
   path: '/handler/oauth-callback',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HandlerSplatRoute = HandlerSplatRouteImport.update({
+  id: '/handler/$',
+  path: '/handler/$',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthSignupRoute = AuthSignupRouteImport.update({
@@ -78,6 +84,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof LayoutSettingsRoute
   '/auth/login': typeof AuthLoginRoute
   '/auth/signup': typeof AuthSignupRoute
+  '/handler/$': typeof HandlerSplatRoute
   '/handler/oauth-callback': typeof HandlerOauthCallbackRoute
   '/task/$taskId': typeof LayoutTaskTaskIdRouteWithChildren
   '/task/$taskId/run/$taskRunId': typeof LayoutTaskTaskIdRunTaskRunIdRoute
@@ -89,6 +96,7 @@ export interface FileRoutesByTo {
   '/settings': typeof LayoutSettingsRoute
   '/auth/login': typeof AuthLoginRoute
   '/auth/signup': typeof AuthSignupRoute
+  '/handler/$': typeof HandlerSplatRoute
   '/handler/oauth-callback': typeof HandlerOauthCallbackRoute
   '/task/$taskId': typeof LayoutTaskTaskIdRouteWithChildren
   '/task/$taskId/run/$taskRunId': typeof LayoutTaskTaskIdRunTaskRunIdRoute
@@ -102,6 +110,7 @@ export interface FileRoutesById {
   '/_layout/settings': typeof LayoutSettingsRoute
   '/auth/login': typeof AuthLoginRoute
   '/auth/signup': typeof AuthSignupRoute
+  '/handler/$': typeof HandlerSplatRoute
   '/handler/oauth-callback': typeof HandlerOauthCallbackRoute
   '/_layout/task/$taskId': typeof LayoutTaskTaskIdRouteWithChildren
   '/_layout/task/$taskId/run/$taskRunId': typeof LayoutTaskTaskIdRunTaskRunIdRoute
@@ -115,6 +124,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/auth/login'
     | '/auth/signup'
+    | '/handler/$'
     | '/handler/oauth-callback'
     | '/task/$taskId'
     | '/task/$taskId/run/$taskRunId'
@@ -126,6 +136,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/auth/login'
     | '/auth/signup'
+    | '/handler/$'
     | '/handler/oauth-callback'
     | '/task/$taskId'
     | '/task/$taskId/run/$taskRunId'
@@ -138,6 +149,7 @@ export interface FileRouteTypes {
     | '/_layout/settings'
     | '/auth/login'
     | '/auth/signup'
+    | '/handler/$'
     | '/handler/oauth-callback'
     | '/_layout/task/$taskId'
     | '/_layout/task/$taskId/run/$taskRunId'
@@ -148,6 +160,7 @@ export interface RootRouteChildren {
   LayoutRoute: typeof LayoutRouteWithChildren
   AuthLoginRoute: typeof AuthLoginRoute
   AuthSignupRoute: typeof AuthSignupRoute
+  HandlerSplatRoute: typeof HandlerSplatRoute
   HandlerOauthCallbackRoute: typeof HandlerOauthCallbackRoute
 }
 
@@ -172,6 +185,13 @@ declare module '@tanstack/react-router' {
       path: '/handler/oauth-callback'
       fullPath: '/handler/oauth-callback'
       preLoaderRoute: typeof HandlerOauthCallbackRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/handler/$': {
+      id: '/handler/$'
+      path: '/handler/$'
+      fullPath: '/handler/$'
+      preLoaderRoute: typeof HandlerSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth/signup': {
@@ -259,6 +279,7 @@ const rootRouteChildren: RootRouteChildren = {
   LayoutRoute: LayoutRouteWithChildren,
   AuthLoginRoute: AuthLoginRoute,
   AuthSignupRoute: AuthSignupRoute,
+  HandlerSplatRoute: HandlerSplatRoute,
   HandlerOauthCallbackRoute: HandlerOauthCallbackRoute,
 }
 export const routeTree = rootRouteImport

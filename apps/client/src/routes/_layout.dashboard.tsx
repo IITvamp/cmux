@@ -5,12 +5,11 @@ import { FloatingPane } from "@/components/floating-pane";
 import { ProviderStatusPills } from "@/components/provider-status-pills";
 import { useSocket } from "@/contexts/socket/use-socket";
 import { createFakeConvexId } from "@/lib/fakeConvexId";
-import { useStackAuth } from "@/hooks/useStackAuth";
 import { api } from "@cmux/convex/api";
 import type { Doc } from "@cmux/convex/dataModel";
 import { convexQuery } from "@convex-dev/react-query";
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useMutation } from "convex/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -20,19 +19,8 @@ export const Route = createFileRoute("/_layout/dashboard")({
 });
 
 function DashboardComponent() {
-  const user = useStackAuth();
-  const navigate = useNavigate();
+  // Authentication is handled by the parent layout
   const { socket } = useSocket();
-
-  // Redirect if not authenticated
-  useEffect(() => {
-    // Skip redirect during initial loading
-    if (user === undefined) return;
-    
-    if (!user) {
-      navigate({ to: "/auth/login" });
-    }
-  }, [user, navigate]);
 
   const [selectedProject, setSelectedProject] = useState<string[]>(() => {
     const stored = localStorage.getItem("selectedProject");

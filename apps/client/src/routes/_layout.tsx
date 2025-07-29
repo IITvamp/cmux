@@ -3,9 +3,9 @@ import { api } from "@cmux/convex/api";
 import { type Doc } from "@cmux/convex/dataModel";
 import { convexQuery } from "@convex-dev/react-query";
 import { useStackAuth } from "@/hooks/useStackAuth";
-import { createFileRoute, Outlet, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Outlet, Navigate } from "@tanstack/react-router";
 import { useQueries, useQuery } from "convex/react";
-import { Suspense, useEffect, useMemo } from "react";
+import { Suspense, useMemo } from "react";
 
 export const Route = createFileRoute("/_layout")({
   component: LayoutComponent,
@@ -15,20 +15,28 @@ export const Route = createFileRoute("/_layout")({
 });
 
 function LayoutComponent() {
+  // Use Stack Auth's built-in protection
   const user = useStackAuth();
-  const navigate = useNavigate();
   const tasks = useQuery(api.tasks.get, {});
-
+  
   // Redirect to login if not authenticated
-  useEffect(() => {
-    // Skip redirect during initial loading
-    if (user === undefined) return;
-    
-    if (!user) {
-      // User is not logged in
-      navigate({ to: "/auth/login" });
-    }
-  }, [user, navigate]);
+  if (user === null) {
+    return <Navigate to="/auth/login" />;
+  }
+  
+  // Show loading while checking auth
+  if (user === undefined) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+        <div className="text-center">
+          <div className="mb-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 dark:border-white mx-auto"></div>
+          </div>
+          <p className="text-gray-600 dark:text-gray-400">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   // Sort tasks by creation date (newest first) and take the latest 5
   const recentTasks = useMemo(() => {
@@ -69,24 +77,6 @@ function LayoutComponent() {
     [recentTasks, taskRunResults]
   );
 
-  // Show loading state while checking auth
-  if (user === undefined) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-        <div className="text-center">
-          <div className="mb-4">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 dark:border-white mx-auto"></div>
-          </div>
-          <p className="text-gray-600 dark:text-gray-400">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Don't render content if not authenticated
-  if (!user) {
-    return null;
-  }
 
   return (
     <>

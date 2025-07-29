@@ -3,8 +3,8 @@ import { useMutation } from "convex/react";
 import { api } from "@cmux/convex/api";
 import { useEffect } from "react";
 
-export function useStackAuth() {
-  const user = useUser();
+export function useStackAuth(options?: { or?: 'redirect' }) {
+  const user = useUser(options);
   const getOrCreateUser = useMutation(api.auth.getOrCreateUser);
 
   useEffect(() => {
