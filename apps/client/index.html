@@ -8,6 +8,12 @@
   </head>
   <body class="antialiased">
     <div id="root" class="h-screen flex flex-col"></div>
+    <script>
+      // Polyfill for Stack Auth in browser environment
+      if (typeof global === 'undefined') {
+        window.global = window;
+      }
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

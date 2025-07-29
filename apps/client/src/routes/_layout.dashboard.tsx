@@ -19,6 +19,7 @@ export const Route = createFileRoute("/_layout/dashboard")({
 });
 
 function DashboardComponent() {
+  // Authentication is handled by the parent layout
   const { socket } = useSocket();
 
   const [selectedProject, setSelectedProject] = useState<string[]>(() => {
