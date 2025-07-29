@@ -15,6 +15,7 @@ import { createFakeConvexId } from "@/lib/fakeConvexId";
 import { api } from "@cmux/convex/api";
 import type { Doc } from "@cmux/convex/dataModel";
 import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
+import type { ProviderStatus, ProviderStatusResponse } from "@cmux/shared";
 import { convexQuery } from "@convex-dev/react-query";
 import { useClipboard } from "@mantine/hooks";
 import { useQuery } from "@tanstack/react-query";
@@ -57,6 +58,9 @@ function DashboardComponent() {
 
   // State for loading states
   const [isLoadingBranches, setIsLoadingBranches] = useState(false);
+
+  // State for provider status
+  const [providerStatus, setProviderStatus] = useState<ProviderStatusResponse | null>(null);
 
   // Define editor API interface
   interface EditorApi {
@@ -120,6 +124,16 @@ function DashboardComponent() {
 
   // Socket-based functions to fetch data from GitHub
   // Removed unused fetchRepos function - functionality is handled by Convex queries
+
+  const checkProviderStatus = useCallback(() => {
+    if (!socket) return;
+
+    socket.emit("check-provider-status", (response) => {
+      if (response.success) {
+        setProviderStatus(response);
+      }
+    });
+  }, [socket]);
 
   const fetchBranches = useCallback(
     (repo: string) => {
@@ -301,6 +315,11 @@ function DashboardComponent() {
   //   }
   // }, [reposByOrg, fetchRepos]);
 
+  // Check provider status on mount
+  useEffect(() => {
+    checkProviderStatus();
+  }, [checkProviderStatus]);
+
   // Fetch branches when repo changes
   const selectedRepo = selectedProject[0];
   useEffect(() => {
@@ -330,7 +349,17 @@ function DashboardComponent() {
           ]
         : [];
 
-  const agentOptions = AGENT_CONFIGS.map((agent) => agent.name);
+  // Create agent options with warning indicators for unavailable providers
+  const agentOptions = useMemo(() => {
+    const unavailableProviders = providerStatus?.providers?.filter((p: ProviderStatus) => !p.isAvailable) ?? [];
+    const unavailableProviderNames = new Set(unavailableProviders.map(p => p.name));
+
+    return AGENT_CONFIGS.map((agent) => ({
+      label: agent.name,
+      value: agent.name,
+      isUnavailable: unavailableProviderNames.has(agent.name)
+    }));
+  }, [providerStatus]);
 
   const navigate = useNavigate();
 
