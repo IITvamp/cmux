@@ -4,15 +4,15 @@ import { AMP_CONFIG } from "./providers/amp/configs.js";
 import {
   CLAUDE_OPUS_CONFIG,
   CLAUDE_SONNET_CONFIG,
-} from "./providers/claude/configs.js";
+} from "./providers/anthropic/configs.js";
 import {
   GEMINI_FLASH_CONFIG,
   GEMINI_PRO_CONFIG,
 } from "./providers/gemini/configs.js";
 import {
+  CODEX_GPT_4_1_CONFIG,
   CODEX_O3_CONFIG,
   CODEX_O4_MINI_CONFIG,
-  CODEX_GPT_4_1_CONFIG,
 } from "./providers/openai/configs.js";
 import {
   OPENCODE_GLM_Z1_32B_FREE_CONFIG,
