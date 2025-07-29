@@ -1,23 +1,18 @@
-import fs from 'fs';
-import path from 'path';
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 
-const projectRoot = path.resolve(__dirname, '..');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+const projectRoot = path.resolve(__dirname, "..");
 
 function checkForEnvLeaks(): void {
-  console.log('Checking for .env file leaks in the package...\n');
-  
-  const filesToCheck = [
-    'dist',
-    'src',
-    'public'
-  ];
-  
-  const envPatterns = [
-    /\.env$/,
-    /\.env\./,
-    /^env$/
-  ];
-  
+  console.log("Checking for .env file leaks in the package...\n");
+
+  const filesToCheck = ["dist", "src", "public"];
+
+  const envPatterns = [/\.env$/, /\.env\./, /^env$/];
+
   const sensitivePatterns = [
     /API_KEY/i,
     /SECRET/i,
@@ -25,48 +20,70 @@ function checkForEnvLeaks(): void {
     /TOKEN/i,
     /PRIVATE_KEY/i,
     /DATABASE_URL/i,
-    /CONNECTION_STRING/i
+    /CONNECTION_STRING/i,
+    /DAYTONA_API_KEY/i,
+    /MORPH_API_KEY/i,
+    /STACK_SERVER_KEY/i,
   ];
-  
+
   let hasLeaks = false;
   const foundIssues: string[] = [];
-  
+
   function scanDirectory(dir: string): void {
     if (!fs.existsSync(dir)) {
       return;
     }
-    
+
     const items = fs.readdirSync(dir, { withFileTypes: true });
-    
+
     for (const item of items) {
       const fullPath = path.join(dir, item.name);
       const relativePath = path.relative(projectRoot, fullPath);
-      
-      if (item.isDirectory() && item.name !== 'node_modules') {
+
+      if (item.isDirectory() && item.name !== "node_modules") {
         scanDirectory(fullPath);
       } else if (item.isFile()) {
         // Check if filename matches env patterns
-        const isEnvFile = envPatterns.some(pattern => pattern.test(item.name));
+        const isEnvFile = envPatterns.some((pattern) =>
+          pattern.test(item.name)
+        );
         if (isEnvFile) {
           hasLeaks = true;
           foundIssues.push(`Found .env file: ${relativePath}`);
         }
-        
+
         // Check file contents for sensitive patterns
-        if ((item.name.endsWith('.js') || item.name.endsWith('.ts') || item.name.endsWith('.json')) && 
-            !item.name.includes('test-env-leak') && !item.name.includes('check-publish-security')) {
+        if (
+          (item.name.endsWith(".js") ||
+            item.name.endsWith(".ts") ||
+            item.name.endsWith(".json")) &&
+          !item.name.includes("test-env-leak") &&
+          !item.name.includes("check-publish-security")
+        ) {
           try {
-            const content = fs.readFileSync(fullPath, 'utf-8');
+            const content = fs.readFileSync(fullPath, "utf-8");
             for (const pattern of sensitivePatterns) {
               if (pattern.test(content)) {
                 // Check if it's an actual value assignment (not just a variable name)
-                const lines = content.split('\n');
+                const lines = content.split("\n");
                 lines.forEach((line, index) => {
-                  if (pattern.test(line) && line.includes('=') && !line.includes('process.env')) {
+                  if (
+                    pattern.test(line) &&
+                    line.includes("=") &&
+                    !line.includes("process.env")
+                  ) {
                     const match = line.match(pattern);
-                    if (match && !line.includes('undefined') && !line.includes('null') && !line.includes('""') && !line.includes("''")) {
+                    if (
+                      match &&
+                      !line.includes("undefined") &&
+                      !line.includes("null") &&
+                      !line.includes('""') &&
+                      !line.includes("''")
+                    ) {
                       hasLeaks = true;
-                      foundIssues.push(`Potential leak in ${relativePath}:${index + 1} - Found hardcoded sensitive value matching: ${match[0]}`);
+                      foundIssues.push(
+                        `Potential leak in ${relativePath}:${index + 1} - Found hardcoded sensitive value matching: ${match[0]}`
+                      );
                     }
                   }
                 });
@@ -79,33 +96,34 @@ function checkForEnvLeaks(): void {
       }
     }
   }
-  
+
   // Scan each directory
-  filesToCheck.forEach(dir => {
+  filesToCheck.forEach((dir) => {
     const fullPath = path.join(projectRoot, dir);
     scanDirectory(fullPath);
   });
-  
+
   // Check if .gitignore properly excludes .env files
-  const gitignorePath = path.join(projectRoot, '.gitignore');
+  const gitignorePath = path.join(projectRoot, ".gitignore");
   if (fs.existsSync(gitignorePath)) {
-    const gitignoreContent = fs.readFileSync(gitignorePath, 'utf-8');
-    const hasEnvIgnore = gitignoreContent.includes('.env') || gitignoreContent.includes('*.env');
+    const gitignoreContent = fs.readFileSync(gitignorePath, "utf-8");
+    const hasEnvIgnore =
+      gitignoreContent.includes(".env") || gitignoreContent.includes("*.env");
     if (!hasEnvIgnore) {
-      foundIssues.push('WARNING: .gitignore does not exclude .env files');
+      foundIssues.push("WARNING: .gitignore does not exclude .env files");
     } else {
-      console.log('✓ .gitignore properly excludes .env files\n');
+      console.log("✓ .gitignore properly excludes .env files\n");
     }
   }
-  
+
   // Report results
   if (hasLeaks) {
-    console.error('❌ FAILED: Found potential security leaks:\n');
-    foundIssues.forEach(issue => console.error(`  - ${issue}`));
+    console.error("❌ FAILED: Found potential security leaks:\n");
+    foundIssues.forEach((issue) => console.error(`  - ${issue}`));
     process.exit(1);
   } else {
-    console.log('✅ PASSED: No .env file leaks detected');
-    console.log('✅ No hardcoded sensitive values found');
+    console.log("✅ PASSED: No .env file leaks detected");
+    console.log("✅ No hardcoded sensitive values found");
     process.exit(0);
   }
 }
