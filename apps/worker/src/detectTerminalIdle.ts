@@ -5,6 +5,38 @@ interface IdleDetectionOptions {
   sessionName: string;
   idleTimeoutMs?: number;
   onIdle?: () => void;
+  ignorePatterns?: RegExp[];
+}
+
+// Default patterns for common background noise
+const DEFAULT_IGNORE_PATTERNS = [
+  // Tmux status line updates (time, date, etc)
+  /^\x1b\[\d+;\d+H/, // Cursor positioning sequences
+  /^\x1b\]0;/, // Terminal title updates
+  /^\x1b\[K/, // Clear to end of line
+  /^\x07/, // Bell character
+  // Empty or whitespace-only output
+  /^\s*$/,
+];
+
+// Helper function to check if output should be ignored
+function shouldIgnoreOutput(data: Buffer, ignorePatterns: RegExp[]): boolean {
+  const str = data.toString();
+
+  // Check each line of output
+  const lines = str.split("\n");
+  for (const line of lines) {
+    // If any line doesn't match ignore patterns, it's real activity
+    const shouldIgnoreLine = ignorePatterns.some((pattern) =>
+      pattern.test(line)
+    );
+    if (line.length > 0 && !shouldIgnoreLine) {
+      return false;
+    }
+  }
+
+  // All lines matched ignore patterns
+  return true;
 }
 
 // Helper function to check if tmux session exists
@@ -83,12 +115,18 @@ async function waitForTmuxSession(
 export async function detectTerminalIdle(
   options: IdleDetectionOptions
 ): Promise<{ elapsedMs: number }> {
-  const { sessionName, idleTimeoutMs = 3000, onIdle } = options;
+  const {
+    sessionName,
+    idleTimeoutMs = 3000,
+    onIdle,
+    ignorePatterns = DEFAULT_IGNORE_PATTERNS,
+  } = options;
 
   log("INFO", "[detectTerminalIdle] Starting terminal idle detection", {
     sessionName,
     idleTimeoutMs,
     hasOnIdleCallback: !!onIdle,
+    ignorePatternsCount: ignorePatterns.length,
   });
 
   const startTime = Date.now();
@@ -96,6 +134,9 @@ export async function detectTerminalIdle(
   let idleDetected = false;
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
   let child: ChildProcessWithoutNullStreams;
+  let stdoutBuffer = "";
+  let stderrBuffer = "";
+  let detachCommandSentTime: number | null = null;
 
   return new Promise(async (resolve, reject) => {
     // Poll tmux session to see if it's ready, retry up to 10 times with 100ms delay
@@ -204,6 +245,7 @@ export async function detectTerminalIdle(
             sessionName,
           }
         );
+        detachCommandSentTime = Date.now();
         child.stdin.write("\x02"); // Ctrl+B
         child.stdin.write("d"); // d for detach
 
@@ -266,11 +308,47 @@ export async function detectTerminalIdle(
     child.stdout.on("data", (data) => {
       const currentTime = Date.now();
       const timeSinceStart = currentTime - startTime;
+
+      // Check if we're in the grace period after sending detach command
+      const DETACH_GRACE_PERIOD_MS = 500; // 500ms grace period
+      if (detachCommandSentTime && currentTime - detachCommandSentTime < DETACH_GRACE_PERIOD_MS) {
+        log(
+          "DEBUG",
+          `[detectTerminalIdle] Ignoring stdout output during detach grace period`,
+          {
+            sessionName,
+            bytes: data.length,
+            timeSinceStart,
+            timeSinceDetach: currentTime - detachCommandSentTime,
+            dataPreview: data.toString().slice(0, 100).replace(/\n/g, "\\n"),
+          }
+        );
+        return; // Don't reset idle timer during grace period
+      }
+
+      // Check if this output should be ignored
+      const shouldIgnore = shouldIgnoreOutput(data, ignorePatterns);
+
+      if (shouldIgnore) {
+        log(
+          "DEBUG",
+          `[detectTerminalIdle] Ignoring stdout output (matches ignore patterns)`,
+          {
+            sessionName,
+            bytes: data.length,
+            timeSinceStart,
+            dataPreview: data.toString().slice(0, 100).replace(/\n/g, "\\n"),
+          }
+        );
+        return; // Don't reset idle timer for ignored output
+      }
+
+      // This is real user activity
       lastActivityTime = currentTime;
 
       log(
         "DEBUG",
-        `[detectTerminalIdle] Activity detected on stdout - resetting idle timer`,
+        `[detectTerminalIdle] Real activity detected on stdout - resetting idle timer`,
         {
           sessionName,
           bytes: data.length,
@@ -306,11 +384,47 @@ export async function detectTerminalIdle(
     child.stderr.on("data", (data) => {
       const currentTime = Date.now();
       const timeSinceStart = currentTime - startTime;
+
+      // Check if we're in the grace period after sending detach command
+      const DETACH_GRACE_PERIOD_MS = 500; // 500ms grace period
+      if (detachCommandSentTime && currentTime - detachCommandSentTime < DETACH_GRACE_PERIOD_MS) {
+        log(
+          "DEBUG",
+          `[detectTerminalIdle] Ignoring stderr output during detach grace period`,
+          {
+            sessionName,
+            bytes: data.length,
+            timeSinceStart,
+            timeSinceDetach: currentTime - detachCommandSentTime,
+            dataPreview: data.toString().slice(0, 100).replace(/\n/g, "\\n"),
+          }
+        );
+        return; // Don't reset idle timer during grace period
+      }
+
+      // Check if this output should be ignored
+      const shouldIgnore = shouldIgnoreOutput(data, ignorePatterns);
+
+      if (shouldIgnore) {
+        log(
+          "DEBUG",
+          `[detectTerminalIdle] Ignoring stderr output (matches ignore patterns)`,
+          {
+            sessionName,
+            bytes: data.length,
+            timeSinceStart,
+            dataPreview: data.toString().slice(0, 100).replace(/\n/g, "\\n"),
+          }
+        );
+        return; // Don't reset idle timer for ignored output
+      }
+
+      // This is real user activity
       lastActivityTime = currentTime;
 
       log(
         "DEBUG",
-        `[detectTerminalIdle] Activity detected on stderr - resetting idle timer`,
+        `[detectTerminalIdle] Real activity detected on stderr - resetting idle timer`,
         {
           sessionName,
           bytes: data.length,

@@ -44,6 +44,22 @@ const CONTAINER_VERSION = process.env.CONTAINER_VERSION || "0.0.1";
 // Create Express app
 const app = express();
 
+// Health check endpoint
+app.get("/health", (_req, res) => {
+  res.json({
+    status: "healthy",
+    workerId: WORKER_ID,
+    uptime: process.uptime(),
+    mainServerConnected: !!mainServerSocket && mainServerSocket.connected,
+    pendingEventsCount: pendingEvents.length,
+    pendingEvents: pendingEvents.map(e => ({
+      event: e.event,
+      age: Date.now() - e.timestamp,
+      taskId: e.data.taskId
+    }))
+  });
+});
+
 // Configure multer for file uploads
 const upload = multer({
   limits: { fileSize: 100 * 1024 * 1024 }, // 100MB limit
@@ -127,6 +143,68 @@ let mainServerSocket: Socket<
   WorkerToServerEvents
 > | null = null;
 
+// Queue for pending events when mainServerSocket is not connected
+interface PendingEvent {
+  event: string;
+  data: any;
+  timestamp: number;
+}
+const pendingEvents: PendingEvent[] = [];
+
+/**
+ * Emit an event to the main server, queuing it if not connected
+ */
+function emitToMainServer(event: string, data: any) {
+  if (mainServerSocket && mainServerSocket.connected) {
+    log("DEBUG", `Emitting ${event} to main server`, { event, data });
+    mainServerSocket.emit(event as any, data);
+  } else {
+    log("WARNING", `Main server not connected, queuing ${event} event`, {
+      event,
+      data,
+      pendingEventsCount: pendingEvents.length + 1,
+    });
+    pendingEvents.push({
+      event,
+      data,
+      timestamp: Date.now(),
+    });
+  }
+}
+
+/**
+ * Send all pending events to the main server
+ */
+function sendPendingEvents() {
+  if (!mainServerSocket || !mainServerSocket.connected) {
+    log("WARNING", "Cannot send pending events - main server not connected");
+    return;
+  }
+
+  if (pendingEvents.length === 0) {
+    return;
+  }
+
+  log("INFO", `Sending ${pendingEvents.length} pending events to main server`);
+
+  const eventsToSend = [...pendingEvents];
+  pendingEvents.length = 0; // Clear the queue
+
+  for (const pendingEvent of eventsToSend) {
+    const age = Date.now() - pendingEvent.timestamp;
+    log(
+      "DEBUG",
+      `Sending pending ${pendingEvent.event} event (age: ${age}ms)`,
+      {
+        event: pendingEvent.event,
+        data: pendingEvent.data,
+        age,
+      }
+    );
+    mainServerSocket.emit(pendingEvent.event as any, pendingEvent.data);
+  }
+}
+
 /**
  * Sanitize a string to be used as a tmux session name.
  * Tmux session names cannot contain: periods (.), colons (:), spaces, or other special characters.
@@ -196,6 +274,9 @@ managementIO.on("connection", (socket) => {
 
   // Send registration immediately
   registerWithMainServer(socket);
+
+  // Send any pending events
+  sendPendingEvents();
 
   // Handle terminal operations from main server
   socket.on("worker:create-terminal", async (data, callback) => {
@@ -694,6 +775,13 @@ managementIO.on("connection", (socket) => {
   socket.on("disconnect", () => {
     console.log(`Main server disconnected from worker ${WORKER_ID}`);
     mainServerSocket = null;
+    
+    // Log if we have pending events that need to be sent
+    if (pendingEvents.length > 0) {
+      log("WARNING", `Main server disconnected with ${pendingEvents.length} pending events`, {
+        pendingEvents: pendingEvents.map(e => ({ event: e.event, age: Date.now() - e.timestamp }))
+      });
+    }
   });
 });
 
@@ -761,7 +849,12 @@ async function createTerminal(
   } else {
     // Create tmux session with command
     spawnCommand = "tmux";
-    spawnArgs = ["new-session", "-A", "-s", sanitizeTmuxSessionName(terminalId)];
+    spawnArgs = [
+      "new-session",
+      "-A",
+      "-s",
+      sanitizeTmuxSessionName(terminalId),
+    ];
     spawnArgs.push("-x", cols.toString(), "-y", rows.toString());
 
     if (command) {
@@ -869,14 +962,12 @@ async function createTerminal(
   childProcess.on("exit", (code, signal) => {
     log("INFO", `Process exited for terminal ${terminalId}`, { code, signal });
 
-    // Notify via management socket if connected
-    if (mainServerSocket) {
-      mainServerSocket.emit("worker:terminal-exit", {
-        workerId: WORKER_ID,
-        terminalId,
-        exitCode: code ?? 0,
-      });
-    }
+    // Notify via management socket
+    emitToMainServer("worker:terminal-exit", {
+      workerId: WORKER_ID,
+      terminalId,
+      exitCode: code ?? 0,
+    });
   });
 
   childProcess.on("error", (error) => {
@@ -918,12 +1009,31 @@ async function createTerminal(
 
         const elapsedMs = Date.now() - processStartTime;
         // Emit idle event via management socket
-        if (mainServerSocket && options.taskId) {
-          mainServerSocket.emit("worker:terminal-idle", {
+        log("DEBUG", "Attempting to emit worker:terminal-idle", {
+          terminalId,
+          taskId: options.taskId,
+          hasMainServerSocket: !!mainServerSocket,
+          mainServerSocketConnected: mainServerSocket?.connected,
+          elapsedMs,
+        });
+
+        if (options.taskId) {
+          log("INFO", "Sending worker:terminal-idle event", {
             workerId: WORKER_ID,
             terminalId,
             taskId: options.taskId,
             elapsedMs,
+          });
+          emitToMainServer("worker:terminal-idle", {
+            workerId: WORKER_ID,
+            terminalId,
+            taskId: options.taskId,
+            elapsedMs,
+          });
+        } else {
+          log("WARNING", "Cannot emit worker:terminal-idle - missing taskId", {
+            terminalId,
+            taskId: options.taskId,
           });
         }
       },
@@ -985,6 +1095,50 @@ httpServer.listen(WORKER_PORT, () => {
     WORKER_ID
   );
 });
+
+// Periodic maintenance for pending events
+setInterval(() => {
+  const MAX_EVENT_AGE = 5 * 60 * 1000; // 5 minutes
+  const now = Date.now();
+  const originalCount = pendingEvents.length;
+  
+  // First, try to send any pending events if we're connected
+  if (pendingEvents.length > 0 && mainServerSocket && mainServerSocket.connected) {
+    log("INFO", "Retrying to send pending events (periodic check)");
+    sendPendingEvents();
+  }
+  
+  // Then clean up very old events
+  const validEvents = pendingEvents.filter(event => {
+    const age = now - event.timestamp;
+    if (age > MAX_EVENT_AGE) {
+      log("WARNING", `Dropping old pending ${event.event} event (age: ${age}ms)`, {
+        event: event.event,
+        age,
+        taskId: event.data.taskId
+      });
+      return false;
+    }
+    return true;
+  });
+  
+  if (validEvents.length < originalCount) {
+    pendingEvents.length = 0;
+    pendingEvents.push(...validEvents);
+    log("INFO", `Cleaned up ${originalCount - validEvents.length} old pending events`);
+  }
+  
+  // Log warning if we still have pending events
+  if (pendingEvents.length > 0) {
+    log("WARNING", `Still have ${pendingEvents.length} pending events waiting to be sent`, {
+      events: pendingEvents.map(e => ({
+        event: e.event,
+        age: now - e.timestamp,
+        taskId: e.data.taskId
+      }))
+    });
+  }
+}, 30000); // Run every 30 seconds
 
 // Graceful shutdown
 function gracefulShutdown() {

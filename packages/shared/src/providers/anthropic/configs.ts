@@ -1,4 +1,5 @@
 import type { AgentConfig } from "../../agentConfig.js";
+import { ANTHROPIC_API_KEY } from "../../apiKeys.js";
 import { checkClaudeRequirements } from "./check-requirements.js";
 import { getClaudeEnvironment } from "./environment.js";
 
@@ -15,6 +16,7 @@ export const CLAUDE_SONNET_CONFIG: AgentConfig = {
   ],
   environment: getClaudeEnvironment,
   checkRequirements: checkClaudeRequirements,
+  apiKeys: [ANTHROPIC_API_KEY],
 };
 
 export const CLAUDE_OPUS_CONFIG: AgentConfig = {
@@ -30,4 +32,5 @@ export const CLAUDE_OPUS_CONFIG: AgentConfig = {
   ],
   environment: getClaudeEnvironment,
   checkRequirements: checkClaudeRequirements,
+  apiKeys: [ANTHROPIC_API_KEY],
 };

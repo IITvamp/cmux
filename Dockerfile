@@ -161,7 +161,7 @@ COPY --from=builder /usr/local/bin/bunx /usr/local/bin/bunx
 
 # Verify bun works in runtime
 RUN bun --version && bunx --version
-RUN bun add -g @openai/codex @anthropic-ai/claude-code @google/gemini-cli opencode-ai codebuff @devcontainers/cli @sourcegraph/amp
+RUN bun add -g @openai/codex @anthropic-ai/claude-code @google/gemini-cli opencode-ai@latest codebuff @devcontainers/cli @sourcegraph/amp
 
 # Set iptables-legacy (required for Docker in Docker on Ubuntu 22.04+)
 RUN update-alternatives --set iptables /usr/sbin/iptables-legacy

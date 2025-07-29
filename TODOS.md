@@ -14,8 +14,10 @@
 [x] bundle convex in executable somehow
 [x] default claude code bypass permissions mode
 [?] git fatal unsupported ssl backend
-[ ] copy ~/.claude/CLAUDE.md to relevant places
-[ ] copy CLAUDE.md to AGENTS.md, GEMINI.md etc for openai, gemini, etc.
+[x] onboarding: fix cli output on first run to be pretty and not spam logs
+[x] ensure all the different CLIs work, not just claude
+[ ] copy ~/.claude/CLAUDE.md (and other config files) from host to worker.
+[ ] copy CLAUDE.md to AGENTS.md, GEMINI.md etc for openai, gemini, etc. if CLAUDE.md is not present, we need to figure out generalizable logic for all of this. like if any one of AGENTS.md or GEMINI.md or CLAUDE.md is present, we should copy it to the right places.
 [ ] figure out intricacies of deploying the Dockerfile to daytona
 [ ] make it easy to provide context to claude code by using cmd + p to open a ton of editors
 [ ] make it easy to create a new task from scratch without any existing directory or git repo
@@ -32,14 +34,10 @@
 [ ] add qwen code https://x.com/oran_ge/status/1947822347517628625
 [ ] add grok code
 [ ] add atlassian rovo
-[ ] make cli good
 [ ] cmux cli npm publish and uvx publish
-[ ] ensure all the different CLIs work, not just claude
 [ ] onboarding CLI flow to copy vscode themes -- this needs its own convex tables, and we need to make sure to send the right files to the right places when spawning vscode instances.
-[ ] onboarding: fix cli output on first run to be pretty and not spam logs
 [ ] drafts for tasks
 [ ] remove containerMappings from @apps/server/src/vscode/DockerVSCodeInstance.ts and just use convex and/or docker daemon as source of truth.
-
 [ ] authentication with stack auth (or somehow collect user emails) when user tries to enable cloud mode
 [ ] clear local storage if we change name of models in model selector multiselect
 [ ] renamed branch name (eg. cmux-claude-opus-4-extract-sidebar-into-its-own-jn73r96s46gfyx860q7qaj9a1n7mnefz) is too long

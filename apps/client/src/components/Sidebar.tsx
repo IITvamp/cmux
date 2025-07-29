@@ -11,7 +11,14 @@ interface SidebarProps {
 
 export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
   return (
-    <div className="w-64 bg-neutral-50 dark:bg-black flex flex-col shrink-0">
+    <div
+      className="bg-neutral-50 dark:bg-black flex flex-col shrink-0 h-screen grow"
+      style={{
+        width: "256px",
+        minWidth: "256px",
+        maxWidth: "256px",
+      }}
+    >
       <div
         className="h-[38px] flex items-center pl-3 pr-1.5"
         style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
@@ -46,7 +53,7 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
           </svg>
         </Link>
       </div>
-      <nav className="flex-1 flex flex-col overflow-hidden">
+      <nav className="grow flex flex-col overflow-hidden">
         <div className="flex-1 overflow-y-auto px-3 py-1">
           <div className="flex items-center px-1 py-1">
             <span className="text-[10px] font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-[-0.005em] select-none">
@@ -69,7 +76,7 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
         </div>
       </nav>
 
-      <div className="pb-2">
+      <div className="pb-2 shrink-0 flex flex-col">
         <a
           href="https://github.com/manaflow-ai/cmux/issues"
           target="_blank"

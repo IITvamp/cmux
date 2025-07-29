@@ -7,14 +7,28 @@ const MAX_LOG_SIZE = 10 * 1024 * 1024; // 10MB
 const LOG_DIR = path.join(homedir(), ".cmux", "logs");
 const LOG_FILE = path.join(LOG_DIR, "cmux.log");
 
-// Ensure log directory exists
-if (!existsSync(LOG_DIR)) {
-  mkdirSync(LOG_DIR, { recursive: true });
-}
+let isInitialized = false;
 
-// Make sure the log file exists
-if (!existsSync(LOG_FILE)) {
-  writeFileSync(LOG_FILE, "");
+// Initialize logging directory and file
+function ensureLoggerInitialized(): void {
+  if (isInitialized) return;
+  
+  try {
+    // Ensure log directory exists
+    if (!existsSync(LOG_DIR)) {
+      mkdirSync(LOG_DIR, { recursive: true });
+    }
+
+    // Make sure the log file exists
+    if (!existsSync(LOG_FILE)) {
+      writeFileSync(LOG_FILE, "");
+    }
+    
+    isInitialized = true;
+  } catch (error) {
+    // If we can't create the log directory, just log to console
+    console.error("Failed to initialize logger:", error);
+  }
 }
 
 async function rotateLogIfNeeded(): Promise<void> {
@@ -37,6 +51,8 @@ export async function log(
   message: string,
   level: "info" | "error" | "warn" = "info"
 ): Promise<void> {
+  ensureLoggerInitialized();
+  
   await rotateLogIfNeeded();
 
   const timestamp = new Date().toISOString();

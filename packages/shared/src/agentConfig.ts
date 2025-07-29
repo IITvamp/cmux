@@ -27,15 +27,18 @@ export { checkGitStatus } from "./providers/common/check-git.js";
 
 export { type EnvironmentResult };
 
+export type AgentConfigApiKey = {
+  envVar: string;
+  displayName: string;
+  description?: string;
+};
+export type AgentConfigApiKeys = Array<AgentConfigApiKey>;
+
 export interface AgentConfig {
   name: string;
   command: string;
   args: string[];
-  apiKeys?: {
-    envVar: string;
-    displayName: string;
-    description?: string;
-  }[];
+  apiKeys?: AgentConfigApiKeys;
   environment?: () => Promise<EnvironmentResult>;
   waitForString?: string;
   enterKeySequence?: string; // Custom enter key sequence, defaults to "\r"
