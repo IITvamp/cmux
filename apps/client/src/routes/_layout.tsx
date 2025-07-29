@@ -4,9 +4,11 @@ import { isElectron } from "@/lib/electron";
 import { api } from "@cmux/convex/api";
 import { type Doc } from "@cmux/convex/dataModel";
 import { convexQuery } from "@convex-dev/react-query";
-import { createFileRoute, Link, Outlet } from "@tanstack/react-router";
+import { UserButton } from "@stackframe/stack";
+import { useStackAuth } from "@/hooks/useStackAuth";
+import { createFileRoute, Link, Outlet, useNavigate } from "@tanstack/react-router";
 import { useQueries, useQuery } from "convex/react";
-import { Suspense, useMemo } from "react";
+import { Suspense, useEffect, useMemo } from "react";
 
 export const Route = createFileRoute("/_layout")({
   component: LayoutComponent,
@@ -16,7 +18,16 @@ export const Route = createFileRoute("/_layout")({
 });
 
 function LayoutComponent() {
+  const user = useStackAuth();
+  const navigate = useNavigate();
   const tasks = useQuery(api.tasks.get, {});
+
+  // Redirect to login if not authenticated
+  useEffect(() => {
+    if (!user) {
+      navigate({ to: "/auth/login" });
+    }
+  }, [user, navigate]);
 
   // Sort tasks by creation date (newest first) and take the latest 5
   const recentTasks = useMemo(() => {
@@ -120,6 +131,21 @@ function LayoutComponent() {
           </nav>
 
           <div className="p-4 border-t border-neutral-200 dark:border-neutral-800">
+            {/* User Profile Section */}
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <UserButton />
+                <div className="text-sm">
+                  <div className="font-medium text-neutral-900 dark:text-neutral-100">
+                    {user?.displayName || user?.primaryEmail}
+                  </div>
+                  <div className="text-xs text-neutral-500 dark:text-neutral-400">
+                    {user?.primaryEmail}
+                  </div>
+                </div>
+              </div>
+            </div>
+            
             <Link
               to="/settings"
               className="flex items-center px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 rounded-lg select-none cursor-default"
