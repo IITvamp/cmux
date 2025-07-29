@@ -9,7 +9,7 @@ import { AGENT_CONFIGS, type AgentConfig } from "@cmux/shared/agentConfig";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useConvex } from "convex/react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_layout/settings")({
@@ -30,6 +30,15 @@ function SettingsComponent() {
   const [isSaveButtonVisible, setIsSaveButtonVisible] = useState(true);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const saveButtonRef = useRef<HTMLDivElement>(null);
+  const [containerSettingsData, setContainerSettingsData] = useState<{
+    maxRunningContainers: number;
+    reviewPeriodMinutes: number;
+    autoCleanupEnabled: boolean;
+    stopImmediatelyOnCompletion: boolean;
+    minContainersToKeep: number;
+  } | null>(null);
+  const [originalContainerSettingsData, setOriginalContainerSettingsData] =
+    useState<typeof containerSettingsData>(null);
 
   // Get all required API keys from agent configs
   const apiKeys = Array.from(
@@ -80,17 +89,18 @@ function SettingsComponent() {
   useEffect(() => {
     const scrollContainer = scrollContainerRef.current;
     const saveButton = saveButtonRef.current;
-    
+
     if (!scrollContainer || !saveButton) return;
 
     const checkSaveButtonVisibility = () => {
       const containerRect = scrollContainer.getBoundingClientRect();
       const buttonRect = saveButton.getBoundingClientRect();
-      
+
       // Check if button is visible within the container
-      const isVisible = buttonRect.top < containerRect.bottom && 
-                       buttonRect.bottom > containerRect.top;
-      
+      const isVisible =
+        buttonRect.top < containerRect.bottom &&
+        buttonRect.bottom > containerRect.top;
+
       setIsSaveButtonVisible(isVisible);
     };
 
@@ -98,14 +108,14 @@ function SettingsComponent() {
     checkSaveButtonVisibility();
 
     // Add scroll listener
-    scrollContainer.addEventListener('scroll', checkSaveButtonVisibility);
-    
+    scrollContainer.addEventListener("scroll", checkSaveButtonVisibility);
+
     // Also check on resize
-    window.addEventListener('resize', checkSaveButtonVisibility);
+    window.addEventListener("resize", checkSaveButtonVisibility);
 
     return () => {
-      scrollContainer.removeEventListener('scroll', checkSaveButtonVisibility);
-      window.removeEventListener('resize', checkSaveButtonVisibility);
+      scrollContainer.removeEventListener("scroll", checkSaveButtonVisibility);
+      window.removeEventListener("resize", checkSaveButtonVisibility);
     };
   }, []);
 
@@ -129,6 +139,22 @@ function SettingsComponent() {
     setShowKeys((prev) => ({ ...prev, [envVar]: !prev[envVar] }));
   };
 
+  const handleContainerSettingsChange = useCallback(
+    (data: {
+      maxRunningContainers: number;
+      reviewPeriodMinutes: number;
+      autoCleanupEnabled: boolean;
+      stopImmediatelyOnCompletion: boolean;
+      minContainersToKeep: number;
+    }) => {
+      setContainerSettingsData(data);
+      if (!originalContainerSettingsData) {
+        setOriginalContainerSettingsData(data);
+      }
+    },
+    [originalContainerSettingsData]
+  );
+
   // Check if there are any changes
   const hasChanges = () => {
     // Check worktree path changes
@@ -141,7 +167,14 @@ function SettingsComponent() {
       return currentValue !== originalValue;
     });
 
-    return worktreePathChanged || apiKeysChanged;
+    // Check container settings changes
+    const containerSettingsChanged =
+      containerSettingsData &&
+      originalContainerSettingsData &&
+      JSON.stringify(containerSettingsData) !==
+        JSON.stringify(originalContainerSettingsData);
+
+    return worktreePathChanged || apiKeysChanged || containerSettingsChanged;
   };
 
   const saveApiKeys = async () => {
@@ -157,6 +190,20 @@ function SettingsComponent() {
           worktreePath: worktreePath || undefined,
         });
         setOriginalWorktreePath(worktreePath);
+      }
+
+      // Save container settings if changed
+      if (
+        containerSettingsData &&
+        originalContainerSettingsData &&
+        JSON.stringify(containerSettingsData) !==
+          JSON.stringify(originalContainerSettingsData)
+      ) {
+        await convex.mutation(
+          api.containerSettings.update,
+          containerSettingsData
+        );
+        setOriginalContainerSettingsData(containerSettingsData);
       }
 
       for (const key of apiKeys) {
@@ -211,7 +258,10 @@ function SettingsComponent() {
 
   return (
     <FloatingPane header={<TitleBar title="Settings" />}>
-      <div ref={scrollContainerRef} className="flex flex-col grow overflow-auto select-none relative">
+      <div
+        ref={scrollContainerRef}
+        className="flex flex-col grow overflow-auto select-none relative"
+      >
         <div className="p-6 max-w-3xl">
           {/* Header */}
           <div className="mb-6">
@@ -331,7 +381,7 @@ function SettingsComponent() {
                             handleApiKeyChange(key.envVar, e.target.value)
                           }
                           className="w-full px-3 py-2 pr-10 border border-neutral-300 dark:border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100"
-                        placeholder={`Enter your ${key.displayName}`}
+                          placeholder={`Enter your ${key.displayName}`}
                         />
                         <button
                           type="button"
@@ -401,12 +451,14 @@ function SettingsComponent() {
                 </h2>
               </div>
               <div className="p-4">
-                <ContainerSettings />
+                <ContainerSettings
+                  onDataChange={handleContainerSettingsChange}
+                />
               </div>
             </div>
 
             {/* Notifications */}
-            <div className="bg-white dark:bg-neutral-950 rounded-lg border border-neutral-200 dark:border-neutral-800">
+            <div className="bg-white dark:bg-neutral-950 rounded-lg border border-neutral-200 dark:border-neutral-800 hidden">
               <div className="px-4 py-3 border-b border-neutral-200 dark:border-neutral-800">
                 <h2 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
                   Notifications
@@ -473,28 +525,32 @@ function SettingsComponent() {
             </div>
           </div>
         </div>
-        
+
         {/* Floating unsaved changes notification */}
-        {hasChanges() && !isSaveButtonVisible && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
-            <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg px-4 py-3 flex items-center gap-3">
-              <span className="text-sm text-neutral-700 dark:text-neutral-300">
-                You have unsaved changes
-              </span>
-              <button
-                onClick={saveApiKeys}
-                disabled={isSaving}
-                className={`px-3 py-1.5 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-900 transition-all ${
-                  isSaving
-                    ? "bg-neutral-200 dark:bg-neutral-800 text-neutral-400 dark:text-neutral-500 cursor-not-allowed opacity-50"
-                    : "bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-600"
-                }`}
-              >
-                {isSaving ? "Saving..." : "Save Changes"}
-              </button>
-            </div>
+        <div
+          className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 ease-in-out ${
+            hasChanges() && !isSaveButtonVisible
+              ? "opacity-100 translate-y-0 pointer-events-auto"
+              : "opacity-0 translate-y-4 pointer-events-none"
+          }`}
+        >
+          <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg px-4 py-3 flex items-center gap-3">
+            <span className="text-sm text-neutral-700 dark:text-neutral-300">
+              You have unsaved changes
+            </span>
+            <button
+              onClick={saveApiKeys}
+              disabled={isSaving}
+              className={`px-3 py-1.5 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-900 transition-all ${
+                isSaving
+                  ? "bg-neutral-200 dark:bg-neutral-800 text-neutral-400 dark:text-neutral-500 cursor-not-allowed opacity-50"
+                  : "bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-600"
+              }`}
+            >
+              {isSaving ? "Saving..." : "Save Changes"}
+            </button>
           </div>
-        )}
+        </div>
       </div>
     </FloatingPane>
   );

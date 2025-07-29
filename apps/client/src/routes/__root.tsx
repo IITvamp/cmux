@@ -1,3 +1,4 @@
+import { useTheme } from "@/components/theme/use-theme";
 import type { QueryClient } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { createRootRouteWithContext, Outlet } from "@tanstack/react-router";
@@ -10,6 +11,11 @@ export const Route = createRootRouteWithContext<{
 }>()({
   component: RootComponent,
 });
+
+function ToasterWithTheme() {
+  const { theme } = useTheme();
+  return <Toaster richColors theme={theme} />;
+}
 
 function DevTools() {
   const [devToolsOpen, setDevToolsOpen] = useState(false);
@@ -43,7 +49,7 @@ function RootComponent() {
     <>
       <Outlet />
       <DevTools />
-      <Toaster richColors theme="system" />
+      <ToasterWithTheme />
     </>
   );
 }

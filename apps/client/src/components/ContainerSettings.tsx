@@ -1,6 +1,6 @@
 import { api } from "@cmux/convex/api";
 import { useQuery } from "convex/react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Loader2 } from "lucide-react";
 
 interface ContainerSettingsProps {
@@ -15,6 +15,7 @@ interface ContainerSettingsProps {
 
 export function ContainerSettings({ onDataChange }: ContainerSettingsProps) {
   const settings = useQuery(api.containerSettings.get);
+  const isInitialized = useRef(false);
 
   const [formData, setFormData] = useState({
     maxRunningContainers: 5,
@@ -25,7 +26,7 @@ export function ContainerSettings({ onDataChange }: ContainerSettingsProps) {
   });
 
   useEffect(() => {
-    if (settings) {
+    if (settings && !isInitialized.current) {
       const newData = {
         maxRunningContainers: settings.maxRunningContainers ?? 5,
         reviewPeriodMinutes: settings.reviewPeriodMinutes ?? 60,
@@ -35,6 +36,7 @@ export function ContainerSettings({ onDataChange }: ContainerSettingsProps) {
       };
       setFormData(newData);
       onDataChange?.(newData);
+      isInitialized.current = true;
     }
   }, [settings, onDataChange]);
 
@@ -74,7 +76,7 @@ export function ContainerSettings({ onDataChange }: ContainerSettingsProps) {
             role="switch"
             aria-checked={formData.autoCleanupEnabled}
             onClick={() =>
-              setFormData({ ...formData, autoCleanupEnabled: !formData.autoCleanupEnabled })
+              updateFormData({ ...formData, autoCleanupEnabled: !formData.autoCleanupEnabled })
             }
             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
               formData.autoCleanupEnabled ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'
@@ -97,7 +99,7 @@ export function ContainerSettings({ onDataChange }: ContainerSettingsProps) {
             max="20"
             value={formData.maxRunningContainers}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-              setFormData({
+              updateFormData({
                 ...formData,
                 maxRunningContainers: parseInt(e.target.value, 10),
               })
@@ -123,7 +125,7 @@ export function ContainerSettings({ onDataChange }: ContainerSettingsProps) {
             role="switch"
             aria-checked={formData.stopImmediatelyOnCompletion}
             onClick={() =>
-              setFormData({ ...formData, stopImmediatelyOnCompletion: !formData.stopImmediatelyOnCompletion })
+              updateFormData({ ...formData, stopImmediatelyOnCompletion: !formData.stopImmediatelyOnCompletion })
             }
             disabled={!formData.autoCleanupEnabled}
             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
@@ -147,7 +149,7 @@ export function ContainerSettings({ onDataChange }: ContainerSettingsProps) {
             max="20"
             value={formData.minContainersToKeep}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-              setFormData({
+              updateFormData({
                 ...formData,
                 minContainersToKeep: parseInt(e.target.value, 10),
               })
@@ -169,7 +171,7 @@ export function ContainerSettings({ onDataChange }: ContainerSettingsProps) {
             max="2880"
             value={formData.reviewPeriodMinutes}
             onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-              setFormData({
+              updateFormData({
                 ...formData,
                 reviewPeriodMinutes: parseInt(e.target.value, 10),
               })
@@ -184,11 +186,6 @@ export function ContainerSettings({ onDataChange }: ContainerSettingsProps) {
           </p>
         </div>
       </div>
-
-      <Button onClick={handleSave} disabled={isSaving}>
-        {isSaving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-        Save Settings
-      </Button>
     </div>
   );
 }
