@@ -46,7 +46,7 @@ services:
     ports:
       - "6791:6791"
     environment:
-      - NEXT_PUBLIC_DEPLOYMENT_URL=http://127.0.0.1:3210
+      - NEXT_PUBLIC_DEPLOYMENT_URL=http://127.0.0.1:9777
     depends_on:
       convex_backend:
         condition: service_healthy
