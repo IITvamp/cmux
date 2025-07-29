@@ -40,17 +40,21 @@ async function performAutoCommitAndPush(
     );
 
     // Create a unique branch name for this task run
-    // Include a sanitized version of the task description for better clarity
-    const sanitizedTaskDesc = taskDescription
+    // Use a shorter, more concise naming scheme
+    const shortAgentName = agent.name.replace(/[^a-z0-9]/g, "").substring(0, 8); // Remove special chars, limit to 8 chars
+    const shortTaskDesc = taskDescription
       .toLowerCase()
       .replace(/[^a-z0-9\s-]/g, "") // Remove special chars except spaces and hyphens
       .trim()
       .split(/\s+/) // Split by whitespace
-      .slice(0, 5) // Take first 5 words max
+      .slice(0, 3) // Take first 3 words max
       .join("-")
-      .substring(0, 30); // Limit length
+      .substring(0, 15); // Limit to 15 chars
+    
+    // Use shorter taskRunId (first 8 characters instead of full length)
+    const shortTaskId = taskRunId.substring(0, 8);
 
-    const branchName = `cmux-${agent.name}-${sanitizedTaskDesc}-${taskRunId}`
+    const branchName = `cmx-${shortAgentName}-${shortTaskDesc}-${shortTaskId}`
       .toLowerCase()
       .replace(/[^a-z0-9-]/g, "-")
       .replace(/--+/g, "-");
