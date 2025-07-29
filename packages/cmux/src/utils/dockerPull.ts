@@ -1,14 +1,29 @@
-import { spawn } from "node:child_process";
-import { createWriteStream } from "node:fs";
+import { spawn, execSync } from "node:child_process";
+import { createWriteStream, appendFileSync } from "node:fs";
 import path from "node:path";
+
+function checkImageExists(imageName: string): boolean {
+  try {
+    execSync(`docker image inspect ${imageName}`, { stdio: 'ignore' });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export async function pullDockerImage(
   imageName: string,
   logsDir: string
 ): Promise<void> {
-  console.log(`\x1b[32m✓\x1b[0m Docker image pull initiated: ${imageName}`);
-
   const dockerPullLogPath = path.join(logsDir, "docker-pull.log");
+  
+  // Check if image already exists
+  if (checkImageExists(imageName)) {
+    const timestamp = new Date().toISOString();
+    appendFileSync(dockerPullLogPath, `\n[${timestamp}] Docker image ${imageName} already exists locally\n`);
+    return;
+  }
+
   const dockerPullLogStream = createWriteStream(dockerPullLogPath, {
     flags: "a",
   });
@@ -34,15 +49,9 @@ export async function pullDockerImage(
     if (code === 0) {
       const successMsg = `[${endTimestamp}] Docker image ${imageName} pulled successfully\n`;
       dockerPullLogStream.write(successMsg);
-      console.log(
-        `\x1b[32m✓\x1b[0m Docker image pull completed successfully (see logs at ${dockerPullLogPath})`
-      );
     } else {
       const failMsg = `[${endTimestamp}] Docker image pull failed with code ${code} - image might be available locally\n`;
       dockerPullLogStream.write(failMsg);
-      console.log(
-        `\x1b[33m!\x1b[0m Docker image pull failed with code ${code} (see logs at ${dockerPullLogPath})`
-      );
     }
     dockerPullLogStream.end();
   });
@@ -53,8 +62,5 @@ export async function pullDockerImage(
       `[${errorTimestamp}] Failed to start Docker pull: ${error.message}\n`
     );
     dockerPullLogStream.end();
-    console.error(
-      `\x1b[31m✗\x1b[0m Failed to start Docker pull (see logs at ${dockerPullLogPath})`
-    );
   });
 }
