@@ -42,3 +42,4 @@
 
 [ ] authentication with stack auth (or somehow collect user emails) when user tries to enable cloud mode
 [ ] clear local storage if we change name of models in model selector multiselect
+[ ] renamed branch name (eg. cmux-claude-opus-4-extract-sidebar-into-its-own-jn73r96s46gfyx860q7qaj9a1n7mnefz) is too long
