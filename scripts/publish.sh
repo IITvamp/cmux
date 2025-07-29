@@ -164,12 +164,19 @@ echo "Publishing to npm..."
 (cd packages/cmux && npm run publish-cli)
 success "Published to npm"
 
+# Step 10: Publish to PyPI
+echo "Publishing to PyPI..."
+./scripts/publish-python.ts
+success "Published to PyPI"
+
 # Clear trap since we succeeded
 trap - ERR INT
 
 echo ""
-success "🎉 Successfully published cmux v$NEW_VERSION to npm!"
+success "🎉 Successfully published cmux v$NEW_VERSION to npm and PyPI!"
 echo ""
 echo "Next steps:"
 echo "  - Verify the package on npm: https://www.npmjs.com/package/cmux"
+echo "  - Verify the package on PyPI: https://pypi.org/project/cmux/"
 echo "  - Test installation: npm install -g cmux@$NEW_VERSION"
+echo "  - Test installation: uvx cmux@$NEW_VERSION"
