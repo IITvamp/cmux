@@ -127,6 +127,64 @@ let mainServerSocket: Socket<
   WorkerToServerEvents
 > | null = null;
 
+// Queue for pending events when mainServerSocket is not connected
+interface PendingEvent {
+  event: string;
+  data: any;
+  timestamp: number;
+}
+const pendingEvents: PendingEvent[] = [];
+
+/**
+ * Emit an event to the main server, queuing it if not connected
+ */
+function emitToMainServer(event: string, data: any) {
+  if (mainServerSocket && mainServerSocket.connected) {
+    log("DEBUG", `Emitting ${event} to main server`, { event, data });
+    mainServerSocket.emit(event as any, data);
+  } else {
+    log("WARNING", `Main server not connected, queuing ${event} event`, { 
+      event, 
+      data,
+      pendingEventsCount: pendingEvents.length + 1
+    });
+    pendingEvents.push({
+      event,
+      data,
+      timestamp: Date.now()
+    });
+  }
+}
+
+/**
+ * Send all pending events to the main server
+ */
+function sendPendingEvents() {
+  if (!mainServerSocket || !mainServerSocket.connected) {
+    log("WARNING", "Cannot send pending events - main server not connected");
+    return;
+  }
+
+  if (pendingEvents.length === 0) {
+    return;
+  }
+
+  log("INFO", `Sending ${pendingEvents.length} pending events to main server`);
+  
+  const eventsToSend = [...pendingEvents];
+  pendingEvents.length = 0; // Clear the queue
+  
+  for (const pendingEvent of eventsToSend) {
+    const age = Date.now() - pendingEvent.timestamp;
+    log("DEBUG", `Sending pending ${pendingEvent.event} event (age: ${age}ms)`, {
+      event: pendingEvent.event,
+      data: pendingEvent.data,
+      age
+    });
+    mainServerSocket.emit(pendingEvent.event as any, pendingEvent.data);
+  }
+}
+
 /**
  * Sanitize a string to be used as a tmux session name.
  * Tmux session names cannot contain: periods (.), colons (:), spaces, or other special characters.
@@ -196,6 +254,9 @@ managementIO.on("connection", (socket) => {
 
   // Send registration immediately
   registerWithMainServer(socket);
+  
+  // Send any pending events
+  sendPendingEvents();
 
   // Handle terminal operations from main server
   socket.on("worker:create-terminal", async (data, callback) => {
@@ -762,7 +823,7 @@ async function createTerminal(
     // Create tmux session with command
     spawnCommand = "tmux";
     spawnArgs = ["new-session", "-A", "-s", sanitizeTmuxSessionName(terminalId)];
-    spawnArgs.push("-x", cols.toString(), "-y", rows.toString());
+    // spawnArgs.push("-x", cols.toString(), "-y", rows.toString());
 
     if (command) {
       spawnArgs.push(command);
@@ -869,25 +930,21 @@ async function createTerminal(
   childProcess.on("exit", (code, signal) => {
     log("INFO", `Process exited for terminal ${terminalId}`, { code, signal });
 
-    // Notify via management socket if connected
-    if (mainServerSocket) {
-      mainServerSocket.emit("worker:terminal-exit", {
-        workerId: WORKER_ID,
-        terminalId,
-        exitCode: code ?? 0,
-      });
-    }
+    // Notify via management socket
+    emitToMainServer("worker:terminal-exit", {
+      workerId: WORKER_ID,
+      terminalId,
+      exitCode: code ?? 0,
+    });
   });
 
   childProcess.on("error", (error) => {
     log("ERROR", `Process error for terminal ${terminalId}`, error);
 
-    if (mainServerSocket) {
-      mainServerSocket.emit("worker:error", {
-        workerId: WORKER_ID,
-        error: `Terminal ${terminalId} process error: ${error.message}`,
-      });
-    }
+    emitToMainServer("worker:error", {
+      workerId: WORKER_ID,
+      error: `Terminal ${terminalId} process error: ${error.message}`,
+    });
   });
 
   log("INFO", "command=", command);
@@ -918,12 +975,31 @@ async function createTerminal(
 
         const elapsedMs = Date.now() - processStartTime;
         // Emit idle event via management socket
-        if (mainServerSocket && options.taskId) {
-          mainServerSocket.emit("worker:terminal-idle", {
+        log("DEBUG", "Attempting to emit worker:terminal-idle", {
+          terminalId,
+          taskId: options.taskId,
+          hasMainServerSocket: !!mainServerSocket,
+          mainServerSocketConnected: mainServerSocket?.connected,
+          elapsedMs,
+        });
+        
+        if (options.taskId) {
+          log("INFO", "Sending worker:terminal-idle event", {
             workerId: WORKER_ID,
             terminalId,
             taskId: options.taskId,
             elapsedMs,
+          });
+          emitToMainServer("worker:terminal-idle", {
+            workerId: WORKER_ID,
+            terminalId,
+            taskId: options.taskId,
+            elapsedMs,
+          });
+        } else {
+          log("WARNING", "Cannot emit worker:terminal-idle - missing taskId", {
+            terminalId,
+            taskId: options.taskId,
           });
         }
       },
@@ -950,16 +1026,35 @@ if (ENABLE_HEARTBEAT) {
   setInterval(() => {
     const stats = getWorkerStats();
 
-    if (mainServerSocket) {
-      mainServerSocket.emit("worker:heartbeat", stats);
-    } else {
-      console.log(
-        `Worker ${WORKER_ID} heartbeat (main server not connected):`,
-        stats
-      );
-    }
+    emitToMainServer("worker:heartbeat", stats);
   }, 30000);
 }
+
+// Clean up very old pending events (older than 5 minutes)
+setInterval(() => {
+  const MAX_EVENT_AGE = 5 * 60 * 1000; // 5 minutes
+  const now = Date.now();
+  const originalCount = pendingEvents.length;
+  
+  // Remove events older than MAX_EVENT_AGE
+  const validEvents = pendingEvents.filter(event => {
+    const age = now - event.timestamp;
+    if (age > MAX_EVENT_AGE) {
+      log("WARNING", `Dropping old pending ${event.event} event (age: ${age}ms)`, {
+        event: event.event,
+        age
+      });
+      return false;
+    }
+    return true;
+  });
+  
+  if (validEvents.length < originalCount) {
+    pendingEvents.length = 0;
+    pendingEvents.push(...validEvents);
+    log("INFO", `Cleaned up ${originalCount - validEvents.length} old pending events`);
+  }
+}, 60000); // Run every minute
 
 // Start server
 httpServer.listen(WORKER_PORT, () => {
