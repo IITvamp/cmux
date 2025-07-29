@@ -8,6 +8,7 @@ export interface VSCodeInstanceConfig {
   initialCommand?: string;
   agentName?: string;
   taskRunId: string; // Required: Convex taskRun ID
+  theme?: "dark" | "light" | "system";
 }
 
 export interface VSCodeInstanceInfo {

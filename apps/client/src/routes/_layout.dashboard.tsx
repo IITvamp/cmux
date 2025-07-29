@@ -13,6 +13,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useMutation } from "convex/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useTheme } from "@/components/theme/use-theme";
 
 export const Route = createFileRoute("/_layout/dashboard")({
   component: DashboardComponent,
@@ -21,6 +22,7 @@ export const Route = createFileRoute("/_layout/dashboard")({
 function DashboardComponent() {
   // Authentication is handled by the parent layout
   const { socket } = useSocket();
+  const { theme } = useTheme();
 
   const [selectedProject, setSelectedProject] = useState<string[]>(() => {
     const stored = localStorage.getItem("selectedProject");
@@ -241,6 +243,7 @@ function DashboardComponent() {
             selectedAgents.length > 0 ? selectedAgents : undefined,
           isCloudMode,
           images: images.length > 0 ? images : undefined,
+          theme,
         },
         (response) => {
           if ("error" in response) {
@@ -264,6 +267,7 @@ function DashboardComponent() {
     selectedAgents,
     isCloudMode,
     generateUploadUrl,
+    theme,
   ]);
 
   // Fetch repos on mount if none exist

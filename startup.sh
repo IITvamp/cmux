@@ -53,6 +53,30 @@ mkdir -p /var/log/cmux
 echo "[Startup] Environment variables:" > /var/log/cmux/startup.log
 env >> /var/log/cmux/startup.log
 
+# Configure VS Code theme based on environment variable
+if [ -n "$VSCODE_THEME" ]; then
+    echo "[Startup] Configuring VS Code theme: $VSCODE_THEME" >> /var/log/cmux/startup.log
+    
+    # Determine the color theme based on the setting
+    COLOR_THEME="Default Light Modern"
+    if [ "$VSCODE_THEME" = "dark" ]; then
+        COLOR_THEME="Default Dark Modern"
+    elif [ "$VSCODE_THEME" = "system" ]; then
+        # Default to dark for system (could be enhanced to detect system preference)
+        COLOR_THEME="Default Dark Modern"
+    fi
+    
+    # Update VS Code settings files with theme
+    SETTINGS_JSON='{"workbench.startupEditor": "none", "workbench.colorTheme": "'$COLOR_THEME'"}'
+    
+    # Update all VS Code settings locations
+    echo "$SETTINGS_JSON" > /root/.openvscode-server/data/User/settings.json
+    echo "$SETTINGS_JSON" > /root/.openvscode-server/data/User/profiles/default-profile/settings.json
+    echo "$SETTINGS_JSON" > /root/.openvscode-server/data/Machine/settings.json
+    
+    echo "[Startup] VS Code theme configured to: $COLOR_THEME" >> /var/log/cmux/startup.log
+fi
+
 # Start OpenVSCode server on port 39378 without authentication
 echo "[Startup] Starting OpenVSCode server..." >> /var/log/cmux/startup.log
 /app/openvscode-server/bin/openvscode-server \
