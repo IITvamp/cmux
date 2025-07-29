@@ -3,7 +3,7 @@ import { checkClaudeRequirements } from "./check-requirements.js";
 import { getClaudeEnvironment } from "./environment.js";
 
 export const CLAUDE_SONNET_CONFIG: AgentConfig = {
-  name: "claude-sonnet",
+  name: "claude/sonnet-4",
   command: "bunx",
   args: [
     "@anthropic-ai/claude-code",
@@ -18,7 +18,7 @@ export const CLAUDE_SONNET_CONFIG: AgentConfig = {
 };
 
 export const CLAUDE_OPUS_CONFIG: AgentConfig = {
-  name: "claude-opus",
+  name: "claude/opus-4",
   command: "bunx",
   args: [
     "@anthropic-ai/claude-code",

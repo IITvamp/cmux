@@ -3,7 +3,7 @@ import { checkOpenAIRequirements } from "./check-requirements.js";
 import { getOpenAIEnvironment } from "./environment.js";
 
 export const CODEX_O3_CONFIG: AgentConfig = {
-  name: "codex-o3",
+  name: "codex/o3",
   command: "bunx",
   args: [
     "@openai/codex",
@@ -21,7 +21,7 @@ export const CODEX_O3_CONFIG: AgentConfig = {
 };
 
 export const CODEX_O4_MINI_CONFIG: AgentConfig = {
-  name: "codex-o4-mini",
+  name: "codex/o4-mini",
   command: "bunx",
   args: [
     "@openai/codex",
@@ -39,7 +39,7 @@ export const CODEX_O4_MINI_CONFIG: AgentConfig = {
 };
 
 export const CODEX_GPT_4_1_CONFIG: AgentConfig = {
-  name: "codex-gpt-4.1",
+  name: "codex/gpt-4.1",
   command: "bunx",
   args: [
     "@openai/codex",

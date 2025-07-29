@@ -3,7 +3,7 @@ import { checkGeminiRequirements } from "./check-requirements.js";
 import { getGeminiEnvironment } from "./environment.js";
 
 export const GEMINI_FLASH_CONFIG: AgentConfig = {
-  name: "gemini-2.5-flash",
+  name: "gemini/2.5-flash",
   command: "bunx",
   args: [
     "@google/gemini-cli",
@@ -25,7 +25,7 @@ export const GEMINI_FLASH_CONFIG: AgentConfig = {
 };
 
 export const GEMINI_PRO_CONFIG: AgentConfig = {
-  name: "gemini-2.5-pro",
+  name: "gemini/2.5-pro",
   command: "bunx",
   args: [
     "@google/gemini-cli",
