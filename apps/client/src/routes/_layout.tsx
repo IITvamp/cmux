@@ -1,7 +1,6 @@
 import { TaskTree } from "@/components/TaskTree";
 import { TaskTreeSkeleton } from "@/components/TaskTreeSkeleton";
 import { isElectron } from "@/lib/electron";
-import { type TaskWithRuns } from "@/types/task";
 import { api } from "@cmux/convex/api";
 import { type Doc } from "@cmux/convex/dataModel";
 import { convexQuery } from "@convex-dev/react-query";
@@ -23,11 +22,8 @@ function LayoutComponent() {
   const recentTasks = useMemo(() => {
     return (
       tasks
-        ?.filter((task: Doc<"tasks">) => task.createdAt)
-        ?.sort(
-          (a: Doc<"tasks">, b: Doc<"tasks">) =>
-            (b.createdAt || 0) - (a.createdAt || 0)
-        ) || []
+        ?.filter((task) => task.createdAt)
+        ?.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)) || []
     );
   }, [tasks]);
 
@@ -52,7 +48,7 @@ function LayoutComponent() {
   const taskRunResults = useQueries(taskRunQueries);
 
   // Map tasks with their respective runs
-  const tasksWithRuns: TaskWithRuns[] = useMemo(
+  const tasksWithRuns = useMemo(
     () =>
       recentTasks.map((task: Doc<"tasks">) => ({
         ...task,
