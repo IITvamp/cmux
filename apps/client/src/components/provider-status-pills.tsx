@@ -8,7 +8,6 @@ import { useSocket } from "@/contexts/socket/use-socket";
 import type { ProviderStatus, ProviderStatusResponse } from "@cmux/shared";
 import { useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
-import { AlertCircle, CheckCircle2, Settings, Wrench } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 export function ProviderStatusPills() {
@@ -64,14 +63,14 @@ export function ProviderStatusPills() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <div className={clsx(
-                  "flex items-center gap-2 px-3 py-1.5 rounded-full",
-                  "bg-neutral-100 dark:bg-neutral-700 border border-neutral-200 dark:border-neutral-600",
-                  "text-neutral-700 dark:text-neutral-300",
+                  "flex items-center gap-2 px-3 py-1.5 rounded-lg",
+                  "bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-600",
+                  "text-neutral-800 dark:text-neutral-200",
                   "text-xs font-medium"
                 )}>
-                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
                   <span>All systems ready</span>
-                  <span className="text-neutral-500 dark:text-neutral-400 text-[10px] font-normal">
+                  <span className="text-emerald-600 dark:text-emerald-400 text-[10px] font-normal">
                     {totalProviders} providers
                   </span>
                 </div>
@@ -103,26 +102,26 @@ export function ProviderStatusPills() {
                               <button
                   onClick={() => navigate({ to: "/settings" })}
                   className={clsx(
-                    "flex items-center gap-2 px-3 py-1.5 rounded-full",
-                    "bg-neutral-100 dark:bg-neutral-700 border border-neutral-200 dark:border-neutral-600",
-                    "text-neutral-700 dark:text-neutral-300",
+                    "flex items-center gap-2 px-3 py-1.5 rounded-lg",
+                    "bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-600",
+                    "text-neutral-800 dark:text-neutral-200",
                     "text-xs font-medium"
                   )}
                 >
-                <Settings className="w-3.5 h-3.5" />
+                                <div className="w-2 h-2 rounded-full bg-amber-500"></div>
                 <span>Setup required</span>
-                                  <div className="flex items-center gap-1">
-                    {availableProviders > 0 && (
-                      <span className="text-neutral-500 dark:text-neutral-400 text-[10px] font-normal">
-                        {availableProviders} ready
-                      </span>
-                    )}
-                    {unavailableProviders.length > 0 && (
-                      <span className="text-neutral-500 dark:text-neutral-400 text-[10px] font-normal">
-                        {unavailableProviders.length} pending
-                      </span>
-                    )}
-                  </div>
+                <div className="flex items-center gap-1">
+                  {availableProviders > 0 && (
+                    <span className="text-emerald-600 dark:text-emerald-400 text-[10px] font-normal">
+                      {availableProviders} ready
+                    </span>
+                  )}
+                  {unavailableProviders.length > 0 && (
+                    <span className="text-amber-600 dark:text-amber-400 text-[10px] font-normal">
+                      {unavailableProviders.length} pending
+                    </span>
+                  )}
+                </div>
               </button>
             </TooltipTrigger>
             <TooltipContent className="max-w-xs">
@@ -147,13 +146,13 @@ export function ProviderStatusPills() {
                 <button
                   onClick={() => navigate({ to: "/settings" })}
                   className={clsx(
-                    "flex items-center gap-1.5 px-2.5 py-1 rounded-full",
-                    "bg-neutral-100 dark:bg-neutral-700 border border-neutral-200 dark:border-neutral-600",
-                    "text-neutral-700 dark:text-neutral-300",
+                    "flex items-center gap-1.5 px-2.5 py-1 rounded-lg",
+                    "bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-600",
+                    "text-neutral-800 dark:text-neutral-200",
                     "text-xs font-medium"
                   )}
                 >
-                  <Wrench className="w-3 h-3" />
+                  <div className="w-1.5 h-1.5 rounded-full bg-orange-500"></div>
                   Docker
                 </button>
               </TooltipTrigger>
@@ -170,13 +169,13 @@ export function ProviderStatusPills() {
                 <button
                   onClick={() => navigate({ to: "/settings" })}
                   className={clsx(
-                    "flex items-center gap-1.5 px-2.5 py-1 rounded-full",
-                    "bg-neutral-100 dark:bg-neutral-700 border border-neutral-200 dark:border-neutral-600",
-                    "text-neutral-700 dark:text-neutral-300",
+                    "flex items-center gap-1.5 px-2.5 py-1 rounded-lg",
+                    "bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-600",
+                    "text-neutral-800 dark:text-neutral-200",
                     "text-xs font-medium"
                   )}
                 >
-                  <AlertCircle className="w-3 h-3" />
+                  <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div>
                   Git
                 </button>
               </TooltipTrigger>

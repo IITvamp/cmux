@@ -66,13 +66,13 @@ function LayoutComponent() {
       <div className="flex flex-row grow bg-white dark:bg-black">
         <div className="w-64 bg-neutral-50 dark:bg-black flex flex-col shrink-0">
           <div
-            className="h-[38px] flex items-center pl-3 pr-1.5"
+            className="h-[50px] flex items-center pl-3 pr-1.5 pt-3"
             style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
           >
             {isElectron && <div className="w-[68px]"></div>}
             <Link
               to="/dashboard"
-              className="w-[50px] h-[25px] bg-blue-600 text-white flex items-center justify-center font-medium rounded-lg text-xs select-none cursor-default"
+              className="w-[50px] h-[25px] bg-white dark:bg-blue-800 text-neutral-800 dark:text-white border border-neutral-200 dark:border-0 flex items-center justify-center font-medium rounded-lg text-xs select-none cursor-default"
               style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
             >
               cmux
