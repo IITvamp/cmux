@@ -72,7 +72,7 @@ function LayoutComponent() {
             {isElectron && <div className="w-[68px]"></div>}
             <Link
               to="/dashboard"
-              className="w-[50px] h-[25px] bg-white dark:bg-blue-800 text-neutral-800 dark:text-white border border-neutral-200 dark:border-0 flex items-center justify-center font-medium rounded-lg text-xs select-none cursor-default"
+              className="w-[50px] h-[25px] bg-black dark:bg-blue-800 text-white flex items-center justify-center font-medium rounded-lg text-xs select-none cursor-default"
               style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
             >
               cmux
