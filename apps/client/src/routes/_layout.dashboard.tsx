@@ -26,6 +26,9 @@ function DashboardComponent() {
 
   // Redirect if not authenticated
   useEffect(() => {
+    // Skip redirect during initial loading
+    if (user === undefined) return;
+    
     if (!user) {
       navigate({ to: "/auth/login" });
     }

@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as LayoutRouteImport } from './routes/_layout'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as HandlerOauthCallbackRouteImport } from './routes/handler.oauth-callback'
 import { Route as AuthSignupRouteImport } from './routes/auth.signup'
 import { Route as AuthLoginRouteImport } from './routes/auth.login'
 import { Route as LayoutSettingsRouteImport } from './routes/_layout.settings'
@@ -26,6 +27,11 @@ const LayoutRoute = LayoutRouteImport.update({
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HandlerOauthCallbackRoute = HandlerOauthCallbackRouteImport.update({
+  id: '/handler/oauth-callback',
+  path: '/handler/oauth-callback',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthSignupRoute = AuthSignupRouteImport.update({
@@ -72,6 +78,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof LayoutSettingsRoute
   '/auth/login': typeof AuthLoginRoute
   '/auth/signup': typeof AuthSignupRoute
+  '/handler/oauth-callback': typeof HandlerOauthCallbackRoute
   '/task/$taskId': typeof LayoutTaskTaskIdRouteWithChildren
   '/task/$taskId/run/$taskRunId': typeof LayoutTaskTaskIdRunTaskRunIdRoute
 }
@@ -82,6 +89,7 @@ export interface FileRoutesByTo {
   '/settings': typeof LayoutSettingsRoute
   '/auth/login': typeof AuthLoginRoute
   '/auth/signup': typeof AuthSignupRoute
+  '/handler/oauth-callback': typeof HandlerOauthCallbackRoute
   '/task/$taskId': typeof LayoutTaskTaskIdRouteWithChildren
   '/task/$taskId/run/$taskRunId': typeof LayoutTaskTaskIdRunTaskRunIdRoute
 }
@@ -94,6 +102,7 @@ export interface FileRoutesById {
   '/_layout/settings': typeof LayoutSettingsRoute
   '/auth/login': typeof AuthLoginRoute
   '/auth/signup': typeof AuthSignupRoute
+  '/handler/oauth-callback': typeof HandlerOauthCallbackRoute
   '/_layout/task/$taskId': typeof LayoutTaskTaskIdRouteWithChildren
   '/_layout/task/$taskId/run/$taskRunId': typeof LayoutTaskTaskIdRunTaskRunIdRoute
 }
@@ -106,6 +115,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/auth/login'
     | '/auth/signup'
+    | '/handler/oauth-callback'
     | '/task/$taskId'
     | '/task/$taskId/run/$taskRunId'
   fileRoutesByTo: FileRoutesByTo
@@ -116,6 +126,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/auth/login'
     | '/auth/signup'
+    | '/handler/oauth-callback'
     | '/task/$taskId'
     | '/task/$taskId/run/$taskRunId'
   id:
@@ -127,6 +138,7 @@ export interface FileRouteTypes {
     | '/_layout/settings'
     | '/auth/login'
     | '/auth/signup'
+    | '/handler/oauth-callback'
     | '/_layout/task/$taskId'
     | '/_layout/task/$taskId/run/$taskRunId'
   fileRoutesById: FileRoutesById
@@ -136,6 +148,7 @@ export interface RootRouteChildren {
   LayoutRoute: typeof LayoutRouteWithChildren
   AuthLoginRoute: typeof AuthLoginRoute
   AuthSignupRoute: typeof AuthSignupRoute
+  HandlerOauthCallbackRoute: typeof HandlerOauthCallbackRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -152,6 +165,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/handler/oauth-callback': {
+      id: '/handler/oauth-callback'
+      path: '/handler/oauth-callback'
+      fullPath: '/handler/oauth-callback'
+      preLoaderRoute: typeof HandlerOauthCallbackRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth/signup': {
@@ -239,6 +259,7 @@ const rootRouteChildren: RootRouteChildren = {
   LayoutRoute: LayoutRouteWithChildren,
   AuthLoginRoute: AuthLoginRoute,
   AuthSignupRoute: AuthSignupRoute,
+  HandlerOauthCallbackRoute: HandlerOauthCallbackRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

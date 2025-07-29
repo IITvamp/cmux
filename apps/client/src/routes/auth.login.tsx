@@ -31,9 +31,11 @@ function LoginComponent() {
           </h2>
         </div>
         
-        <SignIn 
-          fullPage={false}
-        />
+        <div className="bg-white dark:bg-gray-800 p-8 rounded-lg shadow-lg">
+          <SignIn 
+            fullPage={false}
+          />
+        </div>
       </div>
     </div>
   );
