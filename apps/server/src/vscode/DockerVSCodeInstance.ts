@@ -6,8 +6,8 @@ import * as os from "os";
 import * as path from "path";
 import { convex } from "../utils/convexClient.js";
 import { cleanupGitCredentials } from "../utils/dockerGitSetup.js";
-import { getGitHubTokenFromKeychain } from "../utils/getGitHubToken.js";
 import { dockerLogger } from "../utils/fileLogger.js";
+import { getGitHubTokenFromKeychain } from "../utils/getGitHubToken.js";
 import {
   VSCodeInstance,
   type VSCodeInstanceConfig,
@@ -59,6 +59,10 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     const shortId = getShortId(this.taskRunId);
     this.containerName = `cmux-${shortId}`;
     this.imageName = process.env.WORKER_IMAGE_NAME || "cmux-worker:0.0.1";
+    // this.imageName =
+    //   process.env.WORKER_IMAGE_NAME || "lawrencecchen/cmux:0.2.16";
+    dockerLogger.info(`WORKER_IMAGE_NAME: ${process.env.WORKER_IMAGE_NAME}`);
+    dockerLogger.info(`this.imageName: ${this.imageName}`);
     // Register this instance
     VSCodeInstance.getInstances().set(this.instanceId, this);
   }
@@ -191,6 +195,9 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         "39376/tcp": {},
       },
     };
+    dockerLogger.info(
+      `Container create options: ${JSON.stringify(createOptions)}`
+    );
 
     // Add volume mount if workspace path is provided
     if (this.config.workspacePath) {
@@ -394,7 +401,9 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     }
 
     // Wait for worker to be ready by polling
-    dockerLogger.info(`Waiting for worker to be ready on port ${workerPort}...`);
+    dockerLogger.info(
+      `Waiting for worker to be ready on port ${workerPort}...`
+    );
     const maxAttempts = 30; // 15 seconds max
     const delayMs = 500;
 
@@ -488,7 +497,10 @@ export class DockerVSCodeInstance extends VSCodeInstance {
               stoppedAt: Date.now(),
             });
           } catch (error) {
-            dockerLogger.error("Failed to update VSCode status in Convex:", error);
+            dockerLogger.error(
+              "Failed to update VSCode status in Convex:",
+              error
+            );
           }
 
           this.emit("exit", data.StatusCode);
@@ -1019,15 +1031,15 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     }
   }
 
-  private static async performContainerCleanup(
-    settings: {
-      maxRunningContainers: number;
-      reviewPeriodMinutes: number;
-      autoCleanupEnabled: boolean;
-    }
-  ): Promise<void> {
+  private static async performContainerCleanup(settings: {
+    maxRunningContainers: number;
+    reviewPeriodMinutes: number;
+    autoCleanupEnabled: boolean;
+  }): Promise<void> {
     try {
-      dockerLogger.info("[performContainerCleanup] Starting container cleanup...");
+      dockerLogger.info(
+        "[performContainerCleanup] Starting container cleanup..."
+      );
 
       // 1. Check for containers that have exceeded their TTL
       const containersToStop = await convex.query(
@@ -1052,16 +1064,22 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       );
 
       if (containerPriority.total > settings.maxRunningContainers) {
-        const containersToStop = containerPriority.total - settings.maxRunningContainers;
-        const toRemove = containerPriority.prioritizedForCleanup.slice(0, containersToStop);
+        const containersToStop =
+          containerPriority.total - settings.maxRunningContainers;
+        const toRemove = containerPriority.prioritizedForCleanup.slice(
+          0,
+          containersToStop
+        );
 
         for (const taskRun of toRemove) {
           if (taskRun.vscode?.containerName) {
             const instance = VSCodeInstance.getInstance(taskRun._id);
             if (instance) {
-              const isReview = containerPriority.reviewContainers.some(r => r._id === taskRun._id);
+              const isReview = containerPriority.reviewContainers.some(
+                (r) => r._id === taskRun._id
+              );
               dockerLogger.info(
-                `[performContainerCleanup] Stopping ${isReview ? 'review-period' : 'active'} container ${taskRun.vscode.containerName} to maintain max containers limit`
+                `[performContainerCleanup] Stopping ${isReview ? "review-period" : "active"} container ${taskRun.vscode.containerName} to maintain max containers limit`
               );
               await instance.stop();
             }
@@ -1069,9 +1087,14 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         }
       }
 
-      dockerLogger.info("[performContainerCleanup] Container cleanup completed");
+      dockerLogger.info(
+        "[performContainerCleanup] Container cleanup completed"
+      );
     } catch (error) {
-      dockerLogger.error("[performContainerCleanup] Error during cleanup:", error);
+      dockerLogger.error(
+        "[performContainerCleanup] Error during cleanup:",
+        error
+      );
     }
   }
 }

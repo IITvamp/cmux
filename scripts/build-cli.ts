@@ -183,7 +183,7 @@ await $`rm -rf /tmp/cmux-bundle`;
 const VERSION = cmuxPackageJson.version;
 
 // bun build the cli
-await $`bun build ./packages/cmux/src/cli.ts --compile --define VERSION="\"${VERSION}\"" --define process.env.WORKER_IMAGE_NAME="\"lawrencecchen/cmux@${VERSION}\"" --define process.env.NODE_ENV="\"production\"" --outfile cmux-cli`;
+await $`bun build ./packages/cmux/src/cli.ts --compile --define VERSION="\"${VERSION}\"" --define process.env.WORKER_IMAGE_NAME="\"docker.io/lawrencecchen/cmux@${VERSION}\"" --define process.env.NODE_ENV="\"production\"" --outfile cmux-cli`;
 console.log("Built cmux-cli");
 
 // exit with 0

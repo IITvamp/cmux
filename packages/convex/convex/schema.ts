@@ -12,7 +12,7 @@ export default defineSchema({
   })
     .index("by_stackUserId", ["stackUserId"])
     .index("by_email", ["email"]),
-  
+
   tasks: defineTable({
     text: v.string(),
     isCompleted: v.boolean(),
@@ -24,11 +24,15 @@ export default defineSchema({
     createdAt: v.optional(v.number()),
     updatedAt: v.optional(v.number()),
     userId: v.optional(v.id("users")), // Link to user who created the task
-    images: v.optional(v.array(v.object({
-      storageId: v.id("_storage"), // Convex storage ID
-      fileName: v.optional(v.string()),
-      altText: v.string(),
-    }))),
+    images: v.optional(
+      v.array(
+        v.object({
+          storageId: v.id("_storage"), // Convex storage ID
+          fileName: v.optional(v.string()),
+          altText: v.string(),
+        })
+      )
+    ),
   })
     .index("by_created", ["createdAt"])
     .index("by_user", ["userId", "createdAt"]),
