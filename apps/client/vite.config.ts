@@ -15,9 +15,4 @@ export default defineConfig({
     react(),
     tailwindcss(),
   ],
-  build: {
-    rollupOptions: {
-      external: ['convex/server']
-    }
-  }
 });
