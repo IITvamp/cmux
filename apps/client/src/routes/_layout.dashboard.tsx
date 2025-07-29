@@ -87,6 +87,16 @@ function DashboardComponent() {
   // Socket-based functions to fetch data from GitHub
   // Removed unused fetchRepos function - functionality is handled by Convex queries
 
+  const checkProviderStatus = useCallback(() => {
+    if (!socket) return;
+
+    socket.emit("check-provider-status", (response) => {
+      if (response.success) {
+        checkProviderStatus();
+      }
+    });
+  }, [socket]);
+
   const fetchBranches = useCallback(
     (repo: string) => {
       if (!socket) return;
@@ -262,6 +272,11 @@ function DashboardComponent() {
   //   }
   // }, [reposByOrg, fetchRepos]);
 
+  // Check provider status on mount
+  useEffect(() => {
+    checkProviderStatus();
+  }, [checkProviderStatus]);
+
   // Fetch branches when repo changes
   const selectedRepo = selectedProject[0];
   useEffect(() => {
@@ -416,11 +431,11 @@ function DashboardComponent() {
         {/* Main content area */}
         <div className="flex-1 flex justify-center px-4 pt-60 pb-4">
           <div className="w-full max-w-4xl">
-            <div
-              className={clsx(
-                "relative bg-white dark:bg-neutral-700/50 border border-neutral-200 dark:border-neutral-500/15 rounded-2xl transition-all"
-              )}
-            >
+                      <div
+            className={clsx(
+              "relative bg-white dark:bg-neutral-700/50 border border-neutral-200 dark:border-neutral-500/15 rounded-2xl transition-all"
+            )}
+          >
               {/* Provider Status Pills */}
               <ProviderStatusPills />
               

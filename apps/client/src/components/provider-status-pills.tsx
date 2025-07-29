@@ -8,7 +8,6 @@ import { useSocket } from "@/contexts/socket/use-socket";
 import type { ProviderStatus, ProviderStatusResponse } from "@cmux/shared";
 import { useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
-import { AlertCircle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 export function ProviderStatusPills() {
@@ -45,9 +44,46 @@ export function ProviderStatusPills() {
   const dockerNotReady = !status.dockerStatus?.isRunning;
   const gitNotReady = !status.gitStatus?.isAvailable;
 
-  // If everything is ready, don't show anything
+  // Count total available and unavailable providers
+  const totalProviders = status.providers?.length ?? 0;
+  const availableProviders = totalProviders - unavailableProviders.length;
+
+  // If everything is ready, show a subtle success indicator
   if (unavailableProviders.length === 0 && !dockerNotReady && !gitNotReady) {
-    return null;
+    return (
+      <div
+        className={clsx(
+          "absolute left-0 right-0 -top-9 flex justify-center pointer-events-none z-10",
+          "transition-all duration-500 ease-out",
+          isVisible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2"
+        )}
+      >
+        <TooltipProvider>
+          <div className="flex items-center gap-2 pointer-events-auto">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className={clsx(
+                  "flex items-center gap-2 px-3 py-1.5 rounded-lg",
+                  "bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-600",
+                  "text-neutral-800 dark:text-neutral-200",
+                  "text-xs font-medium"
+                )}>
+                  <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
+                  <span>All systems ready</span>
+                  <span className="text-emerald-600 dark:text-emerald-400 text-[10px] font-normal">
+                    {totalProviders} providers
+                  </span>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                <p className="font-medium mb-1">Environment Status</p>
+                <p className="text-xs opacity-90">All AI providers and development tools are properly configured and ready to use.</p>
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        </TooltipProvider>
+      </div>
+    );
   }
 
   return (
@@ -60,25 +96,69 @@ export function ProviderStatusPills() {
     >
       <TooltipProvider>
         <div className="flex items-center gap-2 pointer-events-auto">
+          {/* Summary pill when there are issues */}
+          <Tooltip>
+            <TooltipTrigger asChild>
+                              <button
+                  onClick={() => navigate({ to: "/settings" })}
+                  className={clsx(
+                    "flex items-center gap-2 px-3 py-1.5 rounded-lg",
+                    "bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-600",
+                    "text-neutral-800 dark:text-neutral-200",
+                    "text-xs font-medium"
+                  )}
+                >
+                                <div className="w-2 h-2 rounded-full bg-amber-500"></div>
+                <span>Setup required</span>
+                <div className="flex items-center gap-1">
+                  {availableProviders > 0 && (
+                    <span className="text-emerald-600 dark:text-emerald-400 text-[10px] font-normal">
+                      {availableProviders} ready
+                    </span>
+                  )}
+                  {unavailableProviders.length > 0 && (
+                    <span className="text-amber-600 dark:text-amber-400 text-[10px] font-normal">
+                      {unavailableProviders.length} pending
+                    </span>
+                  )}
+                </div>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-xs">
+              <p className="font-medium mb-1">Configuration Needed</p>
+              <div className="text-xs space-y-1">
+                {dockerNotReady && <p>• Docker needs to be running</p>}
+                {gitNotReady && <p>• Git installation required</p>}
+                {unavailableProviders.length > 0 && (
+                  <p>• {unavailableProviders.length} AI provider{unavailableProviders.length > 1 ? 's' : ''} need setup</p>
+                )}
+                <p className="text-slate-500 dark:text-slate-400 mt-2 pt-1 border-t border-slate-200 dark:border-slate-700">
+                  Click to open settings
+                </p>
+              </div>
+            </TooltipContent>
+          </Tooltip>
+
+          {/* Individual issue pills - only show critical ones */}
           {dockerNotReady && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
                   onClick={() => navigate({ to: "/settings" })}
                   className={clsx(
-                    "flex items-center gap-1.5 px-2.5 py-1 rounded-full",
-                    "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400",
-                    "text-xs font-medium",
-                    "hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors",
-                    "animate-pulse-subtle"
+                    "flex items-center gap-1.5 px-2.5 py-1 rounded-lg",
+                    "bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-600",
+                    "text-neutral-800 dark:text-neutral-200",
+                    "text-xs font-medium"
                   )}
                 >
-                  <AlertCircle className="w-3 h-3" />
+                  <div className="w-1.5 h-1.5 rounded-full bg-orange-500"></div>
                   Docker
                 </button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Docker is not running</p>
+                <p className="font-medium">Docker Required</p>
+                <p className="text-xs opacity-90">Start Docker to enable containerized development environments</p>
               </TooltipContent>
             </Tooltip>
           )}
@@ -89,51 +169,22 @@ export function ProviderStatusPills() {
                 <button
                   onClick={() => navigate({ to: "/settings" })}
                   className={clsx(
-                    "flex items-center gap-1.5 px-2.5 py-1 rounded-full",
-                    "bg-yellow-100 dark:bg-yellow-900/30 text-yellow-700 dark:text-yellow-400",
-                    "text-xs font-medium",
-                    "hover:bg-yellow-200 dark:hover:bg-yellow-900/50 transition-colors",
-                    "animate-pulse-subtle"
+                    "flex items-center gap-1.5 px-2.5 py-1 rounded-lg",
+                    "bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-600",
+                    "text-neutral-800 dark:text-neutral-200",
+                    "text-xs font-medium"
                   )}
                 >
-                  <AlertCircle className="w-3 h-3" />
+                  <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div>
                   Git
                 </button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Git is not installed</p>
+                <p className="font-medium">Git Installation</p>
+                <p className="text-xs opacity-90">Git is required for repository management and version control</p>
               </TooltipContent>
             </Tooltip>
           )}
-
-          {unavailableProviders.map((provider: ProviderStatus) => (
-            <Tooltip key={provider.name}>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() => navigate({ to: "/settings" })}
-                  className={clsx(
-                    "flex items-center gap-1.5 px-2.5 py-1 rounded-full",
-                    "bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400",
-                    "text-xs font-medium",
-                    "hover:bg-amber-200 dark:hover:bg-amber-900/50 transition-colors",
-                    "animate-pulse-subtle"
-                  )}
-                >
-                  <AlertCircle className="w-3 h-3" />
-                  {provider.name}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>{provider.name} is not set up properly</p>
-                {provider.missingRequirements &&
-                  provider.missingRequirements.length === 1 && (
-                    <p className="text-xs opacity-80">
-                      Missing: {provider.missingRequirements[0]}
-                    </p>
-                  )}
-              </TooltipContent>
-            </Tooltip>
-          ))}
         </div>
       </TooltipProvider>
     </div>
