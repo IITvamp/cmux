@@ -19,5 +19,11 @@ corepack enable
 # Default to Node 24
 nvm use 24
 
+# Set up devcontainer
+if [ -f "/workspace/.devcontainer/devcontainer.json" ]; then
+    echo "Setting up devcontainer..."
+    cd /workspace && bunx @devcontainers/cli up --workspace-folder . --remove-existing-container || echo "Devcontainer setup completed or already configured"
+fi
+
 # Execute the command passed to the container
 exec "$@"
