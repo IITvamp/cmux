@@ -14,6 +14,13 @@ export const OPENCODE_SONNET_CONFIG: AgentConfig = {
   ],
   environment: getOpencodeEnvironment,
   checkRequirements: checkOpencodeRequirements,
+  apiKeys: [
+    {
+      envVar: "ANTHROPIC_API_KEY",
+      displayName: "Anthropic API Key",
+      description: "Anthropic API Key",
+    },
+  ],
 };
 
 export const OPENCODE_OPUS_CONFIG: AgentConfig = {
@@ -28,6 +35,13 @@ export const OPENCODE_OPUS_CONFIG: AgentConfig = {
   ],
   environment: getOpencodeEnvironment,
   checkRequirements: checkOpencodeRequirements,
+  apiKeys: [
+    {
+      envVar: "ANTHROPIC_API_KEY",
+      displayName: "Anthropic API Key",
+      description: "Anthropic API Key",
+    },
+  ],
 };
 
 export const OPENCODE_KIMI_K2_CONFIG: AgentConfig = {
@@ -42,6 +56,13 @@ export const OPENCODE_KIMI_K2_CONFIG: AgentConfig = {
   ],
   environment: getOpencodeEnvironment,
   checkRequirements: checkOpencodeRequirements,
+  apiKeys: [
+    {
+      envVar: "OPENROUTER_API_KEY",
+      displayName: "OpenRouter API Key",
+      description: "OpenRouter API Key",
+    },
+  ],
 };
 
 export const OPENCODE_QWEN3_CODER_CONFIG: AgentConfig = {
@@ -56,6 +77,13 @@ export const OPENCODE_QWEN3_CODER_CONFIG: AgentConfig = {
   ],
   environment: getOpencodeEnvironment,
   checkRequirements: checkOpencodeRequirements,
+  apiKeys: [
+    {
+      envVar: "ANTHROPIC_API_KEY",
+      displayName: "Anthropic API Key",
+      description: "Anthropic API Key",
+    },
+  ],
 };
 
 export const OPENCODE_GLM_Z1_32B_FREE_CONFIG: AgentConfig = {
@@ -70,4 +98,11 @@ export const OPENCODE_GLM_Z1_32B_FREE_CONFIG: AgentConfig = {
   ],
   environment: getOpencodeEnvironment,
   checkRequirements: checkOpencodeRequirements,
+  apiKeys: [
+    {
+      envVar: "OPENROUTER_API_KEY",
+      displayName: "OpenRouter API Key",
+      description: "OpenRouter API Key",
+    },
+  ],
 };

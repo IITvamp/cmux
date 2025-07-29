@@ -9,7 +9,7 @@ import { AGENT_CONFIGS, type AgentConfig } from "@cmux/shared/agentConfig";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useConvex } from "convex/react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute("/_layout/settings")({
@@ -27,6 +27,9 @@ function SettingsComponent() {
   const [isSaving, setIsSaving] = useState(false);
   const [worktreePath, setWorktreePath] = useState<string>("");
   const [originalWorktreePath, setOriginalWorktreePath] = useState<string>("");
+  const [isSaveButtonVisible, setIsSaveButtonVisible] = useState(true);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const saveButtonRef = useRef<HTMLDivElement>(null);
 
   // Get all required API keys from agent configs
   const apiKeys = Array.from(
@@ -72,6 +75,39 @@ function SettingsComponent() {
       setOriginalWorktreePath(workspaceSettings?.worktreePath || "");
     }
   }, [workspaceSettings]);
+
+  // Track save button visibility
+  useEffect(() => {
+    const scrollContainer = scrollContainerRef.current;
+    const saveButton = saveButtonRef.current;
+    
+    if (!scrollContainer || !saveButton) return;
+
+    const checkSaveButtonVisibility = () => {
+      const containerRect = scrollContainer.getBoundingClientRect();
+      const buttonRect = saveButton.getBoundingClientRect();
+      
+      // Check if button is visible within the container
+      const isVisible = buttonRect.top < containerRect.bottom && 
+                       buttonRect.bottom > containerRect.top;
+      
+      setIsSaveButtonVisible(isVisible);
+    };
+
+    // Check initial visibility
+    checkSaveButtonVisibility();
+
+    // Add scroll listener
+    scrollContainer.addEventListener('scroll', checkSaveButtonVisibility);
+    
+    // Also check on resize
+    window.addEventListener('resize', checkSaveButtonVisibility);
+
+    return () => {
+      scrollContainer.removeEventListener('scroll', checkSaveButtonVisibility);
+      window.removeEventListener('resize', checkSaveButtonVisibility);
+    };
+  }, []);
 
   // Mutation to save API keys
   const saveApiKeyMutation = useMutation({
@@ -175,7 +211,7 @@ function SettingsComponent() {
 
   return (
     <FloatingPane header={<TitleBar title="Settings" />}>
-      <div className="flex flex-col grow overflow-auto select-none">
+      <div ref={scrollContainerRef} className="flex flex-col grow overflow-auto select-none relative">
         <div className="p-6 max-w-3xl">
           {/* Header */}
           <div className="mb-6">
@@ -422,7 +458,7 @@ function SettingsComponent() {
             </div>
 
             {/* Save Button */}
-            <div className="flex justify-end pt-2">
+            <div ref={saveButtonRef} className="flex justify-end pt-2">
               <button
                 onClick={saveApiKeys}
                 disabled={!hasChanges() || isSaving}
@@ -437,6 +473,28 @@ function SettingsComponent() {
             </div>
           </div>
         </div>
+        
+        {/* Floating unsaved changes notification */}
+        {hasChanges() && !isSaveButtonVisible && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
+            <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg px-4 py-3 flex items-center gap-3">
+              <span className="text-sm text-neutral-700 dark:text-neutral-300">
+                You have unsaved changes
+              </span>
+              <button
+                onClick={saveApiKeys}
+                disabled={isSaving}
+                className={`px-3 py-1.5 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-900 transition-all ${
+                  isSaving
+                    ? "bg-neutral-200 dark:bg-neutral-800 text-neutral-400 dark:text-neutral-500 cursor-not-allowed opacity-50"
+                    : "bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-600"
+                }`}
+              >
+                {isSaving ? "Saving..." : "Save Changes"}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </FloatingPane>
   );

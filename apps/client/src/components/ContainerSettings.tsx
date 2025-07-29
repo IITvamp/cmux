@@ -1,12 +1,20 @@
-import { Button } from "@/components/ui/button";
 import { api } from "@cmux/convex/api";
-import { useQuery, useMutation } from "convex/react";
+import { useQuery } from "convex/react";
 import { useState, useEffect } from "react";
 import { Loader2 } from "lucide-react";
 
-export function ContainerSettings() {
+interface ContainerSettingsProps {
+  onDataChange?: (data: {
+    maxRunningContainers: number;
+    reviewPeriodMinutes: number;
+    autoCleanupEnabled: boolean;
+    stopImmediatelyOnCompletion: boolean;
+    minContainersToKeep: number;
+  }) => void;
+}
+
+export function ContainerSettings({ onDataChange }: ContainerSettingsProps) {
   const settings = useQuery(api.containerSettings.get);
-  const updateSettings = useMutation(api.containerSettings.update);
 
   const [formData, setFormData] = useState({
     maxRunningContainers: 5,
@@ -15,27 +23,24 @@ export function ContainerSettings() {
     stopImmediatelyOnCompletion: false,
     minContainersToKeep: 0,
   });
-  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (settings) {
-      setFormData({
+      const newData = {
         maxRunningContainers: settings.maxRunningContainers ?? 5,
         reviewPeriodMinutes: settings.reviewPeriodMinutes ?? 60,
         autoCleanupEnabled: settings.autoCleanupEnabled ?? true,
         stopImmediatelyOnCompletion: settings.stopImmediatelyOnCompletion ?? false,
         minContainersToKeep: settings.minContainersToKeep ?? 0,
-      });
+      };
+      setFormData(newData);
+      onDataChange?.(newData);
     }
-  }, [settings]);
+  }, [settings, onDataChange]);
 
-  const handleSave = async () => {
-    setIsSaving(true);
-    try {
-      await updateSettings(formData);
-    } finally {
-      setIsSaving(false);
-    }
+  const updateFormData = (newData: typeof formData) => {
+    setFormData(newData);
+    onDataChange?.(newData);
   };
 
   if (!settings) {
