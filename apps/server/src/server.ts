@@ -25,7 +25,7 @@ import { GitDiffManager } from "./gitDiff.js";
 import { createProxyApp, setupWebSocketProxy } from "./proxyApp.js";
 import { RepositoryManager } from "./repositoryManager.js";
 import { convex } from "./utils/convexClient.js";
-import { serverLogger } from "./utils/fileLogger.js";
+import { serverLogger, dockerLogger } from "./utils/fileLogger.js";
 import { checkAllProvidersStatus } from "./utils/providerStatus.js";
 import {
   refreshBranchesForRepo,
@@ -607,6 +607,10 @@ export async function startServer({
 
     isCleanedUp = true;
     serverLogger.info("Cleanup completed");
+    
+    // Close logger instances to ensure all data is flushed
+    serverLogger.close();
+    dockerLogger.close();
   }
 
   // Hot reload support

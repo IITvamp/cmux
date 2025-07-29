@@ -1,12 +1,13 @@
 import { startServer } from "@cmux/server";
 import { Command } from "commander";
-import { existsSync, mkdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { type ConvexProcesses, spawnConvex } from "./convex/spawnConvex";
 import { logger } from "./logger";
 import { checkPorts } from "./utils/checkPorts";
+import { killPortsIfNeeded } from "./utils/killPortsIfNeeded";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const convexDir = path.resolve(homedir(), ".cmux");
@@ -34,6 +35,10 @@ program
   .version(VERSION)
   .option("-p, --port <port>", "port to listen on", "9776")
   .option("-c, --cors <origin>", "CORS origin configuration", "true")
+  .option(
+    "--no-autokill-ports",
+    "disable automatic killing of processes on required ports"
+  )
   .action(async (options) => {
     // Pleasant startup message
     const versionPadding = " ".repeat(
@@ -49,15 +54,22 @@ program
     const port = parseInt(options.port);
 
     const portsToCheck = [port, 9777, 9778];
-    const portsInUse = await checkPorts(portsToCheck);
-    if (portsInUse.length > 0) {
-      console.error("Please kill the processes running on the ports:");
-      console.error(portsInUse.map((p) => `- ${p}`).join("\n"));
-      console.log(
-        "You can use the following command to kill the processes:\n" +
-          `for p in ${portsInUse.join(" ")}; do lsof -ti :$p | xargs -r kill -9; done`
-      );
-      process.exit(1);
+    if (options.autokillPorts) {
+      await killPortsIfNeeded(portsToCheck);
+    } else {
+      // Manual check without killing
+      const portsInUse = await checkPorts(portsToCheck);
+      if (portsInUse.length > 0) {
+        console.error("\x1b[31m✗\x1b[0m Ports already in use:");
+        console.error(portsInUse.map((p) => `  - ${p}`).join("\n"));
+        console.log(
+          "\nYou can either:\n" +
+            "  1. Run with default behavior to auto-kill: \x1b[36mcmux\x1b[0m\n" +
+            "  2. Manually kill the processes: \x1b[90m" +
+            `for p in ${portsInUse.join(" ")}; do lsof -ti :$p | xargs -r kill -9; done\x1b[0m`
+        );
+        process.exit(1);
+      }
     }
 
     // ensure convexDir exists
@@ -66,6 +78,15 @@ program
     // ensure logs directory exists
     const logsDir = path.join(convexDir, "logs");
     mkdirSync(logsDir, { recursive: true });
+
+    const logFileNames = ["cmux-cli.log", "docker-vscode.log", "server.log"];
+    // ensure all log files exist
+    for (const logFileName of logFileNames) {
+      const logFilePath = path.join(convexDir, "logs", logFileName);
+      if (!existsSync(logFilePath)) {
+        writeFileSync(logFilePath, "");
+      }
+    }
 
     // Check if convex directory exists
     if (!existsSync(convexDir)) {
