@@ -8,11 +8,11 @@ import {
 } from "@cmux/shared/agentConfig";
 import type { WorkerCreateTerminal } from "@cmux/shared/worker-schemas";
 import { convex } from "./utils/convexClient.js";
+import { serverLogger } from "./utils/fileLogger.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { MorphVSCodeInstance } from "./vscode/MorphVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWorktreePath, setupProjectWorkspace } from "./workspace.js";
-import { serverLogger } from "./utils/fileLogger.js";
 
 /**
  * Sanitize a string to be used as a tmux session name.
@@ -35,27 +35,33 @@ async function performAutoCommitAndPush(
   taskDescription: string
 ): Promise<void> {
   try {
-    serverLogger.info(`[AgentSpawner] Starting auto-commit and push for ${agent.name}`);
-    
+    serverLogger.info(
+      `[AgentSpawner] Starting auto-commit and push for ${agent.name}`
+    );
+
     // Create a unique branch name for this task run
     // Include a sanitized version of the task description for better clarity
     const sanitizedTaskDesc = taskDescription
       .toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, '') // Remove special chars except spaces and hyphens
+      .replace(/[^a-z0-9\s-]/g, "") // Remove special chars except spaces and hyphens
       .trim()
       .split(/\s+/) // Split by whitespace
       .slice(0, 5) // Take first 5 words max
-      .join('-')
+      .join("-")
       .substring(0, 30); // Limit length
-    
-    const branchName = `cmux-${agent.name}-${sanitizedTaskDesc}-${taskRunId}`.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/--+/g, '-');
-    
+
+    const branchName = `cmux-${agent.name}-${sanitizedTaskDesc}-${taskRunId}`
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, "-")
+      .replace(/--+/g, "-");
+
     // Use task description as the main commit message
     // Truncate if too long (git has limits on commit message length)
-    const truncatedDescription = taskDescription.length > 72 
-      ? taskDescription.substring(0, 69) + "..." 
-      : taskDescription;
-    
+    const truncatedDescription =
+      taskDescription.length > 72
+        ? taskDescription.substring(0, 69) + "..."
+        : taskDescription;
+
     const commitMessage = `${truncatedDescription}
 
 Task completed by ${agent.name} agent
@@ -67,24 +73,38 @@ Branch: ${branchName}
 Completed: ${new Date().toISOString()}`;
 
     // Try to use VSCode extension API first (more reliable)
-    const extensionResult = await tryVSCodeExtensionCommit(vscodeInstance, branchName, commitMessage, agent.name);
-    
+    const extensionResult = await tryVSCodeExtensionCommit(
+      vscodeInstance,
+      branchName,
+      commitMessage,
+      agent.name
+    );
+
     if (extensionResult.success) {
-      serverLogger.info(`[AgentSpawner] Successfully committed via VSCode extension`);
+      serverLogger.info(
+        `[AgentSpawner] Successfully committed via VSCode extension`
+      );
       serverLogger.info(`[AgentSpawner] Branch: ${branchName}`);
-      serverLogger.info(`[AgentSpawner] Commit message: ${commitMessage.split('\n')[0]}`);
+      serverLogger.info(
+        `[AgentSpawner] Commit message: ${commitMessage.split("\n")[0]}`
+      );
       return;
     }
 
-    serverLogger.info(`[AgentSpawner] VSCode extension method failed, falling back to git commands:`, extensionResult.error);
-    
+    serverLogger.info(
+      `[AgentSpawner] VSCode extension method failed, falling back to git commands:`,
+      extensionResult.error
+    );
+
     // Fallback to direct git commands
     const workerSocket = vscodeInstance.getWorkerSocket();
     if (!workerSocket || !vscodeInstance.isWorkerConnected()) {
-      serverLogger.info(`[AgentSpawner] No worker connection for auto-commit fallback`);
+      serverLogger.info(
+        `[AgentSpawner] No worker connection for auto-commit fallback`
+      );
       return;
     }
-        
+
     // Execute git commands in sequence
     const gitCommands = [
       // Add all changes
@@ -94,12 +114,12 @@ Completed: ${new Date().toISOString()}`;
       // Commit with a descriptive message (escape quotes properly)
       `git commit -m "${commitMessage.replace(/"/g, '\\"')}"`,
       // Push branch to origin
-      `git push -u origin ${branchName}`
+      `git push -u origin ${branchName}`,
     ];
 
     for (const command of gitCommands) {
       serverLogger.info(`[AgentSpawner] Executing: ${command}`);
-      
+
       const result = await new Promise<{
         success: boolean;
         stdout?: string;
@@ -119,7 +139,10 @@ Completed: ${new Date().toISOString()}`;
             },
             (timeoutError, result) => {
               if (timeoutError) {
-                serverLogger.error(`[AgentSpawner] Timeout executing: ${command}`, timeoutError);
+                serverLogger.error(
+                  `[AgentSpawner] Timeout executing: ${command}`,
+                  timeoutError
+                );
                 resolve({
                   success: false,
                   error: "Timeout waiting for git command",
@@ -132,7 +155,11 @@ Completed: ${new Date().toISOString()}`;
               }
 
               const { stdout, stderr, exitCode } = result.data!;
-              serverLogger.info(`[AgentSpawner] Command output:`, { stdout, stderr, exitCode });
+              serverLogger.info(`[AgentSpawner] Command output:`, {
+                stdout,
+                stderr,
+                exitCode,
+              });
 
               if (exitCode === 0) {
                 resolve({ success: true, stdout, stderr, exitCode });
@@ -150,13 +177,18 @@ Completed: ${new Date().toISOString()}`;
       });
 
       if (!result.success) {
-        serverLogger.error(`[AgentSpawner] Git command failed: ${command}`, result.error);
+        serverLogger.error(
+          `[AgentSpawner] Git command failed: ${command}`,
+          result.error
+        );
         // Don't stop on individual command failures - some might be expected (e.g., no changes to commit)
         continue;
       }
     }
 
-    serverLogger.info(`[AgentSpawner] Auto-commit and push completed for ${agent.name} on branch ${branchName}`);
+    serverLogger.info(
+      `[AgentSpawner] Auto-commit and push completed for ${agent.name} on branch ${branchName}`
+    );
   } catch (error) {
     serverLogger.error(`[AgentSpawner] Error in auto-commit and push:`, error);
   }
@@ -192,38 +224,50 @@ async function tryVSCodeExtensionCommit(
     return new Promise((resolve) => {
       const timeout = setTimeout(() => {
         extensionSocket.disconnect();
-        resolve({ success: false, error: "Timeout connecting to VSCode extension" });
+        resolve({
+          success: false,
+          error: "Timeout connecting to VSCode extension",
+        });
       }, 15000);
 
       extensionSocket.on("connect", () => {
-        serverLogger.info(`[AgentSpawner] Connected to VSCode extension on port ${extensionPort}`);
-        
-        extensionSocket.emit("vscode:auto-commit-push", {
-          branchName,
-          commitMessage,
-          agentName
-        }, (response: any) => {
-          clearTimeout(timeout);
-          extensionSocket.disconnect();
-          
-          if (response.success) {
-            resolve({ success: true, message: response.message });
-          } else {
-            resolve({ success: false, error: response.error });
+        serverLogger.info(
+          `[AgentSpawner] Connected to VSCode extension on port ${extensionPort}`
+        );
+
+        extensionSocket.emit(
+          "vscode:auto-commit-push",
+          {
+            branchName,
+            commitMessage,
+            agentName,
+          },
+          (response: any) => {
+            clearTimeout(timeout);
+            extensionSocket.disconnect();
+
+            if (response.success) {
+              resolve({ success: true, message: response.message });
+            } else {
+              resolve({ success: false, error: response.error });
+            }
           }
-        });
+        );
       });
 
       extensionSocket.on("connect_error", (error) => {
         clearTimeout(timeout);
         extensionSocket.disconnect();
-        resolve({ success: false, error: `Connection error: ${error.message}` });
+        resolve({
+          success: false,
+          error: `Connection error: ${error.message}`,
+        });
       });
     });
   } catch (error) {
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : "Unknown error" 
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
     };
   }
 }
@@ -302,7 +346,9 @@ export async function spawnAgent(
     }
 
     if (imagesToProcess.length > 0) {
-      serverLogger.info(`[AgentSpawner] Processing ${imagesToProcess.length} images`);
+      serverLogger.info(
+        `[AgentSpawner] Processing ${imagesToProcess.length} images`
+      );
       serverLogger.info(
         `[AgentSpawner] Original task description: ${options.taskDescription}`
       );
@@ -414,7 +460,9 @@ export async function spawnAgent(
       `${agent.name}-${taskRunId.slice(-8)}`
     );
 
-    serverLogger.info(`[AgentSpawner] Building command for agent ${agent.name}:`);
+    serverLogger.info(
+      `[AgentSpawner] Building command for agent ${agent.name}:`
+    );
     serverLogger.info(`  Raw command: ${agent.command}`);
     serverLogger.info(`  Processed args: ${processedArgs.join(" ")}`);
     serverLogger.info(`  Agent command: ${agentCommand}`);
@@ -517,11 +565,18 @@ export async function spawnAgent(
           );
 
           // Wait a bit to ensure all file changes are saved
-          serverLogger.info(`[AgentSpawner] Waiting 2 seconds before auto-commit to ensure all changes are saved...`);
-          await new Promise(resolve => setTimeout(resolve, 2000));
+          serverLogger.info(
+            `[AgentSpawner] Waiting 2 seconds before auto-commit to ensure all changes are saved...`
+          );
+          await new Promise((resolve) => setTimeout(resolve, 2000));
 
           // Auto-commit and push changes in VSCode editor
-          await performAutoCommitAndPush(vscodeInstance, agent, taskRunId, options.taskDescription);
+          await performAutoCommitAndPush(
+            vscodeInstance,
+            agent,
+            taskRunId,
+            options.taskDescription
+          );
 
           // Schedule container stop based on settings
           const containerSettings = await convex.query(
@@ -637,7 +692,9 @@ export async function spawnAgent(
       serverLogger.info(`[AgentSpawner] Waiting for worker connection...`);
       await new Promise<void>((resolve) => {
         const timeout = setTimeout(() => {
-          serverLogger.error(`[AgentSpawner] Timeout waiting for worker connection`);
+          serverLogger.error(
+            `[AgentSpawner] Timeout waiting for worker connection`
+          );
           resolve();
         }, 30000); // 30 second timeout
 
@@ -682,7 +739,7 @@ export async function spawnAgent(
         agentCommand,
       ],
       cols: 80,
-      rows: 24,
+      rows: 74,
       env: envVars,
       taskId: taskRunId,
       authFiles,
@@ -711,7 +768,9 @@ export async function spawnAgent(
 
     // For Morph instances, we need to clone the repository first
     if (options.isCloudMode) {
-      serverLogger.info(`[AgentSpawner] Cloning repository for Morph instance...`);
+      serverLogger.info(
+        `[AgentSpawner] Cloning repository for Morph instance...`
+      );
 
       // Use worker:exec to clone the repository
       const cloneCommand = `git clone ${options.repoUrl} /root/workspace${
@@ -736,7 +795,10 @@ export async function spawnAgent(
             },
             (timeoutError, result) => {
               if (timeoutError) {
-                serverLogger.error("Timeout waiting for git clone", timeoutError);
+                serverLogger.error(
+                  "Timeout waiting for git clone",
+                  timeoutError
+                );
                 resolve({
                   success: false,
                   error: "Timeout waiting for git clone",
@@ -755,7 +817,9 @@ export async function spawnAgent(
               }
 
               if (exitCode === 0) {
-                serverLogger.info(`[AgentSpawner] Repository cloned successfully`);
+                serverLogger.info(
+                  `[AgentSpawner] Repository cloned successfully`
+                );
                 resolve({ success: true });
               } else {
                 serverLogger.error(
@@ -863,7 +927,10 @@ export async function spawnAgent(
     serverLogger.info(
       `[AgentSpawner] About to emit worker:create-terminal at ${new Date().toISOString()}`
     );
-    serverLogger.info(`[AgentSpawner] Socket connected:`, workerSocket.connected);
+    serverLogger.info(
+      `[AgentSpawner] Socket connected:`,
+      workerSocket.connected
+    );
     serverLogger.info(`[AgentSpawner] Socket id:`, workerSocket.id);
 
     await new Promise((resolve, reject) => {

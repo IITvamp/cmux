@@ -4,6 +4,17 @@ set -e
 
 CONVEX_PORT=9777
 
+# Parse command line arguments
+FORCE_DOCKER_BUILD=false
+for arg in "$@"; do
+    case $arg in
+        --force-docker-build)
+            FORCE_DOCKER_BUILD=true
+            shift
+            ;;
+    esac
+done
+
 # Check if anything is running on ports 5173, $CONVEX_PORT, 9777, 9778
 PORTS_TO_CHECK="5173 $CONVEX_PORT 9777 9778"
 PORTS_IN_USE=""
@@ -23,7 +34,7 @@ if [ -n "$PORTS_IN_USE" ]; then
 fi
 
 # Build Docker image by default unless explicitly skipped
-if [ "$SKIP_DOCKER_BUILD" != "true" ]; then
+if [ "$SKIP_DOCKER_BUILD" != "true" ] || [ "$FORCE_DOCKER_BUILD" = "true" ]; then
     echo "Building Docker image..."
     docker build -t cmux-worker:0.0.1 . || exit 1
 else
