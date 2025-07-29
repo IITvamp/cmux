@@ -1,7 +1,9 @@
 import { cn } from "@/lib/utils";
+import { useUser } from "@stackframe/stack";
 import { AnimatePresence, motion } from "framer-motion";
 import { Cloud, HardDrive } from "lucide-react";
 import * as React from "react";
+import { CloudModeWaitlistModal } from "./cloud-mode-waitlist-modal";
 
 interface ModeToggleTooltipProps {
   isCloudMode: boolean;
@@ -15,7 +17,9 @@ export function ModeToggleTooltip({
   className,
 }: ModeToggleTooltipProps) {
   const [showTooltip, setShowTooltip] = React.useState(false);
+  const [showWaitlistModal, setShowWaitlistModal] = React.useState(false);
   const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const user = useUser();
 
   const handleClick = () => {
     // Clear any existing timeout
@@ -23,7 +27,19 @@ export function ModeToggleTooltip({
       clearTimeout(timeoutRef.current);
     }
 
-    onToggle();
+    if (!isCloudMode) {
+      // Check if user already joined waitlist
+      const alreadyJoined = user?.clientMetadata?.cloudModeWaitlist === true;
+
+      if (!alreadyJoined) {
+        // Show waitlist modal when trying to switch to cloud mode
+        setShowWaitlistModal(true);
+      }
+    } else {
+      // Allow switching back to local mode
+      onToggle();
+    }
+
     setShowTooltip(true);
 
     // Hide tooltip after 2 seconds
@@ -96,7 +112,7 @@ export function ModeToggleTooltip({
             <div
               className={cn(
                 "relative px-3 py-1.5",
-                "bg-black text-white text-xs rounded-md overflow-hidden w-20 whitespace-nowrap"
+                "bg-black text-white text-xs rounded-md overflow-hidden w-24 whitespace-nowrap"
               )}
             >
               <div className="relative h-4 flex items-center w-full">
@@ -117,7 +133,11 @@ export function ModeToggleTooltip({
                     animate={{ x: isCloudMode ? "-150%" : "0%" }}
                     transition={{ duration: 0.2, ease: "easeInOut" }}
                   >
-                    <span className="text-center">Local Mode</span>
+                    <span className="text-center">
+                      {user?.clientMetadata?.cloudModeWaitlist
+                        ? "On waitlist!"
+                        : "Local Mode"}
+                    </span>
                   </motion.div>
                 </div>
               </div>
@@ -125,6 +145,12 @@ export function ModeToggleTooltip({
           </motion.div>
         )}
       </AnimatePresence>
+
+      <CloudModeWaitlistModal
+        visible={showWaitlistModal}
+        onClose={() => setShowWaitlistModal(false)}
+        defaultEmail={user?.primaryEmail || undefined}
+      />
     </div>
   );
 }
