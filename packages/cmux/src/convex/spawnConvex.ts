@@ -132,7 +132,7 @@ export async function spawnConvex(
         .catch(() => false);
       if (hasStorage) {
         // Use rsync to ensure all files are copied, including hidden files
-        await $`rsync -av ${convexStoragePath}/ ${tempBackupDir}/convex_local_storage/`;
+        await $`rsync -aq ${convexStoragePath}/ ${tempBackupDir}/convex_local_storage/`;
         await logger.info("Backed up convex_local_storage");
       }
 
@@ -142,7 +142,7 @@ export async function spawnConvex(
         .then(() => true)
         .catch(() => false);
       if (hasLogs) {
-        await $`rsync -av ${logsPath}/ ${tempBackupDir}/logs/`;
+        await $`rsync -aq ${logsPath}/ ${tempBackupDir}/logs/`;
         await logger.info("Backed up logs directory");
       }
 
@@ -163,7 +163,7 @@ export async function spawnConvex(
         // Remove the extracted empty storage directory first
         await $`rm -rf ${convexDir}/convex_local_storage`;
         // Use rsync to restore, preserving all file attributes
-        await $`rsync -av ${tempBackupDir}/convex_local_storage/ ${convexDir}/convex_local_storage/`;
+        await $`rsync -aq ${tempBackupDir}/convex_local_storage/ ${convexDir}/convex_local_storage/`;
         await logger.info("Restored convex_local_storage");
 
         // Verify the restoration
@@ -178,7 +178,7 @@ export async function spawnConvex(
 
       // Restore logs directory if it was backed up
       if (hasLogs) {
-        await $`rsync -av ${tempBackupDir}/logs/ ${convexDir}/logs/`;
+        await $`rsync -aq ${tempBackupDir}/logs/ ${convexDir}/logs/`;
         await logger.info("Restored logs directory");
       }
 
@@ -198,7 +198,7 @@ export async function spawnConvex(
       let tempLogsBackup: string | null = null;
       if (hasLogs) {
         tempLogsBackup = path.join(os.tmpdir(), `cmux-logs-backup-${Date.now()}`);
-        await $`rsync -av ${logsPath}/ ${tempLogsBackup}/`;
+        await $`rsync -aq ${logsPath}/ ${tempLogsBackup}/`;
         await logger.info("Temporarily backed up existing logs");
       }
       
@@ -210,7 +210,7 @@ export async function spawnConvex(
       // Restore logs if they existed
       if (tempLogsBackup) {
         await fs.mkdir(logsPath, { recursive: true });
-        await $`rsync -av ${tempLogsBackup}/ ${logsPath}/`;
+        await $`rsync -aq ${tempLogsBackup}/ ${logsPath}/`;
         await $`rm -rf ${tempLogsBackup}`;
         await logger.info("Restored existing logs");
       }
