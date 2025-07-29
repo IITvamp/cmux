@@ -15,7 +15,7 @@ const stackApp = new StackClientApp({
   publishableClientKey: import.meta.env.VITE_STACK_PUBLISHABLE_CLIENT_KEY,
   tokenStore: "cookie",
   urls: {
-    home: "http://localhost:5173",
+    home: "/",
     signIn: "/auth/login",
     afterSignIn: "/dashboard",
     afterSignUp: "/dashboard",
