@@ -48,47 +48,9 @@ export function ProviderStatusPills() {
   const totalProviders = status.providers?.length ?? 0;
   const availableProviders = totalProviders - unavailableProviders.length;
 
-  // If everything is ready, show a subtle success indicator
+  // If everything is ready, don't show anything
   if (unavailableProviders.length === 0 && !dockerNotReady && !gitNotReady) {
-    return (
-      <div
-        className={clsx(
-          "absolute left-0 right-0 -top-9 flex justify-center pointer-events-none z-10",
-          "transition-all duration-500 ease-out",
-          isVisible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2"
-        )}
-      >
-        <TooltipProvider>
-          <div className="flex items-center gap-2 pointer-events-auto">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div
-                  className={clsx(
-                    "flex items-center gap-2 px-3 py-1.5 rounded-lg",
-                    "bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-600",
-                    "text-neutral-800 dark:text-neutral-200",
-                    "text-xs font-medium cursor-default select-none"
-                  )}
-                >
-                  <div className="w-2 h-2 rounded-full bg-emerald-500"></div>
-                  <span>All systems ready</span>
-                  <span className="text-emerald-600 dark:text-emerald-400 text-[10px] font-normal transform translate-y-[0.2px]">
-                    {totalProviders} providers
-                  </span>
-                </div>
-              </TooltipTrigger>
-              <TooltipContent className="max-w-xs">
-                <p className="font-medium mb-1">Environment Status</p>
-                <p className="text-xs opacity-90">
-                  All AI providers and development tools are properly configured
-                  and ready to use.
-                </p>
-              </TooltipContent>
-            </Tooltip>
-          </div>
-        </TooltipProvider>
-      </div>
-    );
+    return null;
   }
 
   return (
@@ -106,12 +68,12 @@ export function ProviderStatusPills() {
             <TooltipTrigger asChild>
               <button
                 onClick={() => navigate({ to: "/settings" })}
-                className={clsx(
-                  "flex items-center gap-2 px-3 py-1.5 rounded-lg",
-                  "bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-600",
-                  "text-neutral-800 dark:text-neutral-200",
-                  "text-xs font-medium"
-                )}
+                                  className={clsx(
+                    "flex items-center gap-2 px-3 py-1.5 rounded-lg",
+                    "bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-600",
+                    "text-neutral-800 dark:text-neutral-200",
+                    "text-xs font-medium cursor-default select-none"
+                  )}
               >
                 <div className="w-2 h-2 rounded-full bg-amber-500"></div>
                 <span>Setup required</span>
@@ -157,7 +119,7 @@ export function ProviderStatusPills() {
                     "flex items-center gap-1.5 px-2.5 py-1 rounded-lg",
                     "bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-600",
                     "text-neutral-800 dark:text-neutral-200",
-                    "text-xs font-medium"
+                    "text-xs font-medium cursor-default select-none"
                   )}
                 >
                   <div className="w-1.5 h-1.5 rounded-full bg-orange-500"></div>
@@ -182,7 +144,7 @@ export function ProviderStatusPills() {
                     "flex items-center gap-1.5 px-2.5 py-1 rounded-lg",
                     "bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-600",
                     "text-neutral-800 dark:text-neutral-200",
-                    "text-xs font-medium"
+                    "text-xs font-medium cursor-default select-none"
                   )}
                 >
                   <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div>
