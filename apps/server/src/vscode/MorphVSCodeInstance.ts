@@ -4,6 +4,7 @@ import {
   type VSCodeInstanceConfig,
   type VSCodeInstanceInfo,
 } from "./VSCodeInstance.js";
+import { dockerLogger } from "../utils/fileLogger.js";
 
 export class MorphVSCodeInstance extends VSCodeInstance {
   private morphClient: MorphCloudClient;
@@ -16,14 +17,14 @@ export class MorphVSCodeInstance extends VSCodeInstance {
   }
 
   async start(): Promise<VSCodeInstanceInfo> {
-    console.log(`Starting Morph VSCode instance with ID: ${this.instanceId}`);
+    dockerLogger.info(`Starting Morph VSCode instance with ID: ${this.instanceId}`);
 
     // Start the Morph instance
     this.instance = await this.morphClient.instances.start({
       snapshotId: this.snapshotId,
     });
 
-    console.log(`Morph instance created: ${this.instance.id}`);
+    dockerLogger.info(`Morph instance created: ${this.instance.id}`);
 
     // Get exposed services
     const exposedServices = this.instance.networking.httpServices;
@@ -39,18 +40,18 @@ export class MorphVSCodeInstance extends VSCodeInstance {
     }
 
     const workspaceUrl = this.getWorkspaceUrl(vscodeService.url);
-    console.log(`Morph VSCode instance started:`);
-    console.log(`  VS Code URL: ${workspaceUrl}`);
-    console.log(`  Worker URL: ${workerService.url}`);
+    dockerLogger.info(`Morph VSCode instance started:`);
+    dockerLogger.info(`  VS Code URL: ${workspaceUrl}`);
+    dockerLogger.info(`  Worker URL: ${workerService.url}`);
 
     // Connect to the worker
     try {
       await this.connectToWorker(workerService.url);
-      console.log(
+      dockerLogger.info(
         `Successfully connected to worker for Morph instance ${this.instance.id}`
       );
     } catch (error) {
-      console.error(
+      dockerLogger.error(
         `Failed to connect to worker for Morph instance ${this.instance.id}:`,
         error
       );
@@ -67,7 +68,7 @@ export class MorphVSCodeInstance extends VSCodeInstance {
   }
 
   async stop(): Promise<void> {
-    console.log(`Stopping Morph VSCode instance: ${this.instanceId}`);
+    dockerLogger.info(`Stopping Morph VSCode instance: ${this.instanceId}`);
 
     // Disconnect from worker first
     await this.disconnectFromWorker();
@@ -75,7 +76,7 @@ export class MorphVSCodeInstance extends VSCodeInstance {
     // Stop the Morph instance
     if (this.instance) {
       await this.instance.stop();
-      console.log(`Morph instance ${this.instance.id} stopped`);
+      dockerLogger.info(`Morph instance ${this.instance.id} stopped`);
     }
   }
 

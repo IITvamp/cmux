@@ -13,9 +13,11 @@ import {
 } from "@cmux/shared";
 import * as fuzzysort from "fuzzysort";
 import { minimatch } from "minimatch";
+import { exec } from "node:child_process";
 import { promises as fs } from "node:fs";
 import { createServer } from "node:http";
 import * as path from "node:path";
+import { promisify } from "node:util";
 import { Server } from "socket.io";
 import { spawnAllAgents } from "./agentSpawner.js";
 import { execWithEnv } from "./execWithEnv.js";
@@ -23,11 +25,18 @@ import { GitDiffManager } from "./gitDiff.js";
 import { createProxyApp, setupWebSocketProxy } from "./proxyApp.js";
 import { RepositoryManager } from "./repositoryManager.js";
 import { convex } from "./utils/convexClient.js";
+import { serverLogger } from "./utils/fileLogger.js";
+import { checkAllProvidersStatus } from "./utils/providerStatus.js";
+import {
+  refreshBranchesForRepo,
+  refreshGitHubData,
+} from "./utils/refreshGitHubData.js";
 import { waitForConvex } from "./utils/waitForConvex.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWorktreePath } from "./workspace.js";
-import { refreshGitHubData, refreshBranchesForRepo } from "./utils/refreshGitHubData.js";
+
+const execAsync = promisify(exec);
 
 export async function startServer({
   port,
@@ -63,13 +72,13 @@ export async function startServer({
   setupWebSocketProxy(httpServer);
 
   io.on("connection", (socket) => {
-    console.log("Client connected:", socket.id);
+    serverLogger.info("Client connected:", socket.id);
 
     socket.on("start-task", async (data, callback) => {
       try {
-        console.log("got data", data);
+        serverLogger.info("got data", data);
         const taskData = StartTaskSchema.parse(data);
-        console.log("starting task!", taskData);
+        serverLogger.info("starting task!", taskData);
 
         // Use the taskId provided by the client
         const taskId = taskData.taskId;
@@ -99,16 +108,16 @@ export async function startServer({
         // Log results for debugging
         agentResults.forEach((result) => {
           if (result.success) {
-            console.log(
+            serverLogger.info(
               `Successfully spawned ${result.agentName} with terminal ${result.terminalId}`
             );
             if (result.vscodeUrl) {
-              console.log(
+              serverLogger.info(
                 `VSCode URL for ${result.agentName}: ${result.vscodeUrl}`
               );
             }
           } else {
-            console.error(
+            serverLogger.error(
               `Failed to spawn ${result.agentName}: ${result.error}`
             );
           }
@@ -144,7 +153,7 @@ export async function startServer({
           terminalId: primaryAgent.terminalId,
         });
       } catch (error) {
-        console.error("Error in start-task:", error);
+        serverLogger.error("Error in start-task:", error);
         callback({
           taskId: "error",
           error: error instanceof Error ? error.message : "Unknown error",
@@ -174,7 +183,7 @@ export async function startServer({
         const diff = await gitDiffManager.getFullDiff(workspacePath);
         socket.emit("git-full-diff-response", { diff });
       } catch (error) {
-        console.error("Error getting full git diff:", error);
+        serverLogger.error("Error getting full git diff:", error);
         socket.emit("git-full-diff-response", {
           diff: "",
           error: error instanceof Error ? error.message : "Unknown error",
@@ -204,16 +213,16 @@ export async function startServer({
 
         exec(command, (error) => {
           if (error) {
-            console.error(`Error opening ${editor}:`, error);
+            serverLogger.error(`Error opening ${editor}:`, error);
             socket.emit("open-in-editor-error", {
               error: `Failed to open ${editor}: ${error.message}`,
             });
           } else {
-            console.log(`Successfully opened ${path} in ${editor}`);
+            serverLogger.info(`Successfully opened ${path} in ${editor}`);
           }
         });
       } catch (error) {
-        console.error("Error opening editor:", error);
+        serverLogger.error("Error opening editor:", error);
         socket.emit("open-in-editor-error", {
           error: error instanceof Error ? error.message : "Unknown error",
         });
@@ -243,7 +252,7 @@ export async function startServer({
         try {
           await fs.access(worktreeInfo.originPath);
         } catch {
-          console.error(
+          serverLogger.error(
             "Origin directory does not exist:",
             worktreeInfo.originPath
           );
@@ -319,7 +328,7 @@ export async function startServer({
               }
             }
           } catch (error) {
-            console.error(`Error reading directory ${dir}:`, error);
+            serverLogger.error(`Error reading directory ${dir}:`, error);
           }
 
           return files;
@@ -366,7 +375,7 @@ export async function startServer({
 
         socket.emit("list-files-response", { files: fileList });
       } catch (error) {
-        console.error("Error listing files:", error);
+        serverLogger.error("Error listing files:", error);
         socket.emit("list-files-response", {
           files: [],
           error: error instanceof Error ? error.message : "Unknown error",
@@ -417,15 +426,15 @@ export async function startServer({
       try {
         // First, try to get existing repos from Convex
         const existingRepos = await convex.query(api.github.getAllRepos, {});
-        
+
         if (existingRepos.length > 0) {
           // If we have repos, return them and refresh in the background
           const reposByOrg = await convex.query(api.github.getReposByOrg, {});
           callback({ success: true, repos: reposByOrg });
-          
+
           // Refresh in the background to add any new repos
           refreshGitHubData().catch((error) => {
-            console.error("Background refresh failed:", error);
+            serverLogger.error("Background refresh failed:", error);
           });
           return;
         }
@@ -435,7 +444,7 @@ export async function startServer({
         const reposByOrg = await convex.query(api.github.getReposByOrg, {});
         callback({ success: true, repos: reposByOrg });
       } catch (error) {
-        console.error("Error fetching repos:", error);
+        serverLogger.error("Error fetching repos:", error);
         callback({
           success: false,
           error: `Failed to fetch GitHub repos: ${
@@ -457,10 +466,10 @@ export async function startServer({
         if (existingBranches.length > 0) {
           // Return existing branches and refresh in background
           callback({ success: true, branches: existingBranches });
-          
+
           // Refresh in the background
           refreshBranchesForRepo(repo).catch((error) => {
-            console.error("Background branch refresh failed:", error);
+            serverLogger.error("Background branch refresh failed:", error);
           });
           return;
         }
@@ -469,7 +478,7 @@ export async function startServer({
         const branches = await refreshBranchesForRepo(repo);
         callback({ success: true, branches });
       } catch (error) {
-        console.error("Error fetching branches:", error);
+        serverLogger.error("Error fetching branches:", error);
         callback({
           success: false,
           error: `Failed to fetch branches: ${
@@ -479,15 +488,28 @@ export async function startServer({
       }
     });
 
+    socket.on("check-provider-status", async (callback) => {
+      try {
+        const status = await checkAllProvidersStatus();
+        callback({ success: true, ...status });
+      } catch (error) {
+        serverLogger.error("Error checking provider status:", error);
+        callback({
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    });
+
     socket.on("disconnect", () => {
-      console.log("Client disconnected:", socket.id);
+      serverLogger.info("Client disconnected:", socket.id);
       // No need to kill terminals on disconnect since they're global
     });
   });
 
   const server = httpServer.listen(port, async () => {
-    console.log(`Terminal server listening on port ${port}`);
-    console.log(`Visit http://localhost:${port} to see the app`);
+    serverLogger.info(`Terminal server listening on port ${port}`);
+    serverLogger.info(`Visit http://localhost:${port} to see the app`);
 
     // Start the Docker container state sync
     await waitForConvex();
@@ -495,76 +517,106 @@ export async function startServer({
 
     // Refresh GitHub data on server start
     refreshGitHubData().catch((error) => {
-      console.error("Error refreshing GitHub data on startup:", error);
+      serverLogger.error("Error refreshing GitHub data on startup:", error);
     });
   });
   let isCleaningUp = false;
   let isCleanedUp = false;
 
-  // Hot reload support
-  if (import.meta.hot) {
-    import.meta.hot.dispose(async () => {
-      if (isCleaningUp || isCleanedUp) {
-        console.log("Cleanup already in progress or completed, skipping...");
-        return;
+  async function cleanup() {
+    if (isCleaningUp || isCleanedUp) {
+      serverLogger.info(
+        "Cleanup already in progress or completed, skipping..."
+      );
+      return;
+    }
+
+    isCleaningUp = true;
+    serverLogger.info("Cleaning up terminals and server...");
+
+    // Stop Docker container state sync
+    DockerVSCodeInstance.stopContainerStateSync();
+
+    // Stop all VSCode instances using docker commands
+    try {
+      // Get all cmux containers
+      const { stdout } = await execAsync(
+        'docker ps -a --filter "name=cmux-" --format "{{.Names}}"'
+      );
+      const containerNames = stdout
+        .trim()
+        .split("\n")
+        .filter((name) => name);
+
+      if (containerNames.length > 0) {
+        serverLogger.info(
+          `Stopping ${containerNames.length} VSCode containers: ${containerNames.join(", ")}`
+        );
+
+        // Stop all containers in parallel with a single docker command
+        exec(`docker stop ${containerNames.join(" ")}`, (error) => {
+          if (error) {
+            serverLogger.error("Error stopping containers:", error);
+          } else {
+            serverLogger.info("All containers stopped");
+          }
+        });
+
+        // Don't wait for the command to finish
+      } else {
+        serverLogger.info("No VSCode containers found to stop");
       }
+    } catch (error) {
+      serverLogger.error(
+        "Error stopping containers via docker command:",
+        error
+      );
+    }
 
-      isCleaningUp = true;
-      console.log("Cleaning up terminals and server...");
+    VSCodeInstance.clearInstances();
 
-      // Stop Docker container state sync
-      DockerVSCodeInstance.stopContainerStateSync();
+    // Clean up git diff manager
+    gitDiffManager.dispose();
 
-      // Stop all VSCode instances
-      for (const [id, instance] of Array.from(
-        VSCodeInstance.getInstances().entries()
-      )) {
-        console.log(`Stopping VSCode instance ${id}`);
-        try {
-          await instance.stop();
-        } catch (error) {
-          console.error(`Error stopping VSCode instance ${id}:`, error);
-        }
-      }
-      VSCodeInstance.clearInstances();
+    // Close socket.io
+    serverLogger.info("Closing socket.io server...");
+    await new Promise<void>((resolve) => {
+      io.close(() => {
+        serverLogger.info("Socket.io server closed");
+        resolve();
+      });
+    });
 
-      // Clean up git diff manager
-      gitDiffManager.dispose();
-
-      // Close socket.io
-      console.log("Closing socket.io server...");
-      await new Promise<void>((resolve) => {
-        io.close(() => {
-          console.log("Socket.io server closed");
+    // Close HTTP server only if it's still listening
+    serverLogger.info("Closing HTTP server...");
+    await new Promise<void>((resolve) => {
+      if (server.listening) {
+        server.close((error) => {
+          if (error) {
+            serverLogger.error("Error closing HTTP server:", error);
+          } else {
+            serverLogger.info("HTTP server closed");
+          }
           resolve();
         });
-      });
-
-      // Close HTTP server only if it's still listening
-      console.log("Closing HTTP server...");
-      await new Promise<void>((resolve) => {
-        if (server.listening) {
-          server.close((error) => {
-            if (error) {
-              console.error("Error closing HTTP server:", error);
-            } else {
-              console.log("HTTP server closed");
-            }
-            resolve();
-          });
-        } else {
-          console.log("HTTP server already closed");
-          resolve();
-        }
-      });
-
-      isCleanedUp = true;
-      console.log("Cleanup completed");
+      } else {
+        serverLogger.info("HTTP server already closed");
+        resolve();
+      }
     });
+
+    isCleanedUp = true;
+    serverLogger.info("Cleanup completed");
+  }
+
+  // Hot reload support
+  if (import.meta.hot) {
+    import.meta.hot.dispose(cleanup);
 
     import.meta.hot.accept(() => {
-      console.log("Hot reload triggered");
+      serverLogger.info("Hot reload triggered");
     });
   }
-}
 
+  return { cleanup };
+}

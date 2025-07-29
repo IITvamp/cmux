@@ -1,7 +1,8 @@
 import { CONVEX_URL } from "./convexClient";
+import { serverLogger } from "./fileLogger.js";
 
 export async function waitForConvex(): Promise<void> {
-  console.log("Waiting for convex to be ready...");
+  serverLogger.info("Waiting for convex to be ready...");
 
   const maxRetries = 20;
   const retryDelay = 100;
@@ -13,7 +14,7 @@ export async function waitForConvex(): Promise<void> {
         signal: AbortSignal.timeout(1000),
       });
       if (response.ok) {
-        console.log(
+        serverLogger.info(
           `Convex is ready after ${attempt} ${
             attempt === 1 ? "attempt" : "attempts"
           }`
@@ -22,7 +23,7 @@ export async function waitForConvex(): Promise<void> {
       }
     } catch (error) {
       if (attempt > 5) {
-        console.error(`Convex connection attempt ${attempt} failed:`, error);
+        serverLogger.error(`Convex connection attempt ${attempt} failed:`, error);
       }
 
       if (attempt < maxRetries) {

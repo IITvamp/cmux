@@ -7,6 +7,7 @@ import * as path from "path";
 import { convex } from "../utils/convexClient.js";
 import { cleanupGitCredentials } from "../utils/dockerGitSetup.js";
 import { getGitHubTokenFromKeychain } from "../utils/getGitHubToken.js";
+import { dockerLogger } from "../utils/fileLogger.js";
 import {
   VSCodeInstance,
   type VSCodeInstanceConfig,
@@ -130,7 +131,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
       return portMapping[containerPort] || null;
     } catch (error) {
-      console.error(
+      dockerLogger.error(
         `Failed to get port mapping for container ${this.containerName}:`,
         error
       );
@@ -139,10 +140,10 @@ export class DockerVSCodeInstance extends VSCodeInstance {
   }
 
   async start(): Promise<VSCodeInstanceInfo> {
-    console.log(`Starting Docker VSCode instance: ${this.containerName}`);
-    console.log(`  Image: ${this.imageName}`);
-    console.log(`  Workspace: ${this.config.workspacePath}`);
-    console.log(`  Agent name: ${this.config.agentName}`);
+    dockerLogger.info(`Starting Docker VSCode instance: ${this.containerName}`);
+    dockerLogger.info(`  Image: ${this.imageName}`);
+    dockerLogger.info(`  Workspace: ${this.config.workspacePath}`);
+    dockerLogger.info(`  Agent name: ${this.config.agentName}`);
 
     const docker = DockerVSCodeInstance.getDocker();
 
@@ -160,7 +161,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       const existingContainer = docker.getContainer(this.containerName);
       const info = await existingContainer.inspect().catch(() => null);
       if (info) {
-        console.log(`Removing existing container ${this.containerName}`);
+        dockerLogger.info(`Removing existing container ${this.containerName}`);
         await existingContainer.stop().catch(() => {});
         await existingContainer.remove().catch(() => {});
       }
@@ -222,9 +223,9 @@ export class DockerVSCodeInstance extends VSCodeInstance {
           const fs = await import("fs");
           await fs.promises.access(sshDir);
           binds.push(`${sshDir}:/root/.ssh:ro`);
-          console.log(`  SSH mount: ${sshDir} -> /root/.ssh (read-only)`);
+          dockerLogger.info(`  SSH mount: ${sshDir} -> /root/.ssh (read-only)`);
         } catch {
-          console.log(`  No SSH directory found at ${sshDir}`);
+          dockerLogger.info(`  No SSH directory found at ${sshDir}`);
         }
 
         // Mount GitHub CLI config for authentication
@@ -233,11 +234,11 @@ export class DockerVSCodeInstance extends VSCodeInstance {
           const fs = await import("fs");
           await fs.promises.access(ghConfigDir);
           binds.push(`${ghConfigDir}:/root/.config/gh:ro`);
-          console.log(
+          dockerLogger.info(
             `  GitHub CLI config mount: ${ghConfigDir} -> /root/.config/gh (read-only)`
           );
         } catch {
-          console.log(`  No GitHub CLI config found at ${ghConfigDir}`);
+          dockerLogger.info(`  No GitHub CLI config found at ${ghConfigDir}`);
         }
 
         // Mount git config if it exists
@@ -262,17 +263,17 @@ export class DockerVSCodeInstance extends VSCodeInstance {
           await fs.promises.writeFile(tempGitConfigPath, filteredConfig);
 
           binds.push(`${tempGitConfigPath}:/root/.gitconfig:ro`);
-          console.log(
+          dockerLogger.info(
             `  Git config mount: ${tempGitConfigPath} -> /root/.gitconfig (filtered, read-only)`
           );
         } catch {
           // Git config doesn't exist, which is fine
-          console.log(`  No git config found at ${gitConfigPath}`);
+          dockerLogger.info(`  No git config found at ${gitConfigPath}`);
         }
 
         createOptions.HostConfig!.Binds = binds;
 
-        console.log(
+        dockerLogger.info(
           `  Origin mount: ${originPath} -> ${originPath} (read-write)`
         );
       } else {
@@ -288,9 +289,9 @@ export class DockerVSCodeInstance extends VSCodeInstance {
           const fs = await import("fs");
           await fs.promises.access(sshDir);
           binds.push(`${sshDir}:/root/.ssh:ro`);
-          console.log(`  SSH mount: ${sshDir} -> /root/.ssh (read-only)`);
+          dockerLogger.info(`  SSH mount: ${sshDir} -> /root/.ssh (read-only)`);
         } catch {
-          console.log(`  No SSH directory found at ${sshDir}`);
+          dockerLogger.info(`  No SSH directory found at ${sshDir}`);
         }
 
         // Mount GitHub CLI config for authentication
@@ -299,11 +300,11 @@ export class DockerVSCodeInstance extends VSCodeInstance {
           const fs = await import("fs");
           await fs.promises.access(ghConfigDir);
           binds.push(`${ghConfigDir}:/root/.config/gh:ro`);
-          console.log(
+          dockerLogger.info(
             `  GitHub CLI config mount: ${ghConfigDir} -> /root/.config/gh (read-only)`
           );
         } catch {
-          console.log(`  No GitHub CLI config found at ${ghConfigDir}`);
+          dockerLogger.info(`  No GitHub CLI config found at ${ghConfigDir}`);
         }
 
         // Mount git config if it exists
@@ -328,26 +329,26 @@ export class DockerVSCodeInstance extends VSCodeInstance {
           await fs.promises.writeFile(tempGitConfigPath, filteredConfig);
 
           binds.push(`${tempGitConfigPath}:/root/.gitconfig:ro`);
-          console.log(
+          dockerLogger.info(
             `  Git config mount: ${tempGitConfigPath} -> /root/.gitconfig (filtered, read-only)`
           );
         } catch {
           // Git config doesn't exist, which is fine
-          console.log(`  No git config found at ${gitConfigPath}`);
+          dockerLogger.info(`  No git config found at ${gitConfigPath}`);
         }
 
         createOptions.HostConfig!.Binds = binds;
       }
     }
 
-    console.log(`Creating container...`);
+    dockerLogger.info(`Creating container...`);
 
     // Create and start the container
     this.container = await docker.createContainer(createOptions);
-    console.log(`Container created: ${this.container.id}`);
+    dockerLogger.info(`Container created: ${this.container.id}`);
 
     await this.container.start();
-    console.log(`Container started`);
+    dockerLogger.info(`Container started`);
 
     // Get container info including port mappings
     const containerInfo = await this.container.inspect();
@@ -358,12 +359,12 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     const extensionPort = ports["39376/tcp"]?.[0]?.HostPort;
 
     if (!vscodePort) {
-      console.error(`Available ports:`, ports);
+      dockerLogger.error(`Available ports:`, ports);
       throw new Error("Failed to get VS Code port mapping for port 39378");
     }
 
     if (!workerPort) {
-      console.error(`Available ports:`, ports);
+      dockerLogger.error(`Available ports:`, ports);
       throw new Error("Failed to get worker port mapping for port 39377");
     }
 
@@ -389,11 +390,11 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         },
       });
     } catch (error) {
-      console.error("Failed to update VSCode ports in Convex:", error);
+      dockerLogger.error("Failed to update VSCode ports in Convex:", error);
     }
 
     // Wait for worker to be ready by polling
-    console.log(`Waiting for worker to be ready on port ${workerPort}...`);
+    dockerLogger.info(`Waiting for worker to be ready on port ${workerPort}...`);
     const maxAttempts = 30; // 15 seconds max
     const delayMs = 500;
 
@@ -403,7 +404,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
           `http://localhost:${workerPort}/socket.io/?EIO=4&transport=polling`
         );
         if (response.ok) {
-          console.log(`Worker is ready!`);
+          dockerLogger.info(`Worker is ready!`);
           break;
         }
       } catch {
@@ -413,7 +414,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       if (i < maxAttempts - 1) {
         await new Promise((resolve) => setTimeout(resolve, delayMs));
       } else {
-        console.warn("Worker may not be fully ready, but continuing...");
+        dockerLogger.warn("Worker may not be fully ready, but continuing...");
       }
     }
 
@@ -426,10 +427,10 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     const proxyBaseUrl = `http://${shortId}.39378.localhost:9776`;
     const proxyWorkspaceUrl = `${proxyBaseUrl}/?folder=/root/workspace`;
 
-    console.log(`Docker VSCode instance started:`);
-    console.log(`  VS Code URL: ${workspaceUrl}`);
-    console.log(`  Worker URL: ${workerUrl}`);
-    console.log(`  Proxy URL: ${proxyWorkspaceUrl}`);
+    dockerLogger.info(`Docker VSCode instance started:`);
+    dockerLogger.info(`  VS Code URL: ${workspaceUrl}`);
+    dockerLogger.info(`  Worker URL: ${workerUrl}`);
+    dockerLogger.info(`  Proxy URL: ${proxyWorkspaceUrl}`);
 
     // Monitor container events
     this.setupContainerEventMonitoring();
@@ -437,14 +438,14 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     // Connect to the worker
     try {
       await this.connectToWorker(workerUrl);
-      console.log(
+      dockerLogger.info(
         `Successfully connected to worker for container ${this.containerName}`
       );
 
       // Configure git in the worker
       await this.configureGitInWorker();
     } catch (error) {
-      console.error(
+      dockerLogger.error(
         `Failed to connect to worker for container ${this.containerName}:`,
         error
       );
@@ -467,9 +468,9 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     this.container.wait(
       async (err: Error | null, data: { StatusCode: number }) => {
         if (err) {
-          console.error(`Container wait error:`, err);
+          dockerLogger.error(`Container wait error:`, err);
         } else {
-          console.log(
+          dockerLogger.info(
             `Container ${this.containerName} exited with status:`,
             data
           );
@@ -487,7 +488,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
               stoppedAt: Date.now(),
             });
           } catch (error) {
-            console.error("Failed to update VSCode status in Convex:", error);
+            dockerLogger.error("Failed to update VSCode status in Convex:", error);
           }
 
           this.emit("exit", data.StatusCode);
@@ -501,7 +502,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         { stream: true, stdout: true, stderr: true },
         (err: Error | null, stream?: NodeJS.ReadWriteStream) => {
           if (err) {
-            console.error(`Failed to attach to container streams:`, err);
+            dockerLogger.error(`Failed to attach to container streams:`, err);
             return;
           }
 
@@ -517,7 +518,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
   }
 
   async stop(): Promise<void> {
-    console.log(`Stopping Docker VSCode instance: ${this.containerName}`);
+    dockerLogger.info(`Stopping Docker VSCode instance: ${this.containerName}`);
 
     // Update mapping status
     const mapping = containerMappings.get(this.containerName);
@@ -539,11 +540,11 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     if (this.container) {
       try {
         await this.container.stop();
-        console.log(`Container ${this.containerName} stopped`);
+        dockerLogger.info(`Container ${this.containerName} stopped`);
       } catch (error) {
         if ((error as { statusCode?: number }).statusCode !== 304) {
           // 304 means container already stopped
-          console.error(
+          dockerLogger.error(
             `Error stopping container ${this.containerName}:`,
             error
           );
@@ -560,7 +561,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         `gitconfig-${this.instanceId}`
       );
       await fs.promises.unlink(tempGitConfigPath);
-      console.log(`Cleaned up temporary git config file`);
+      dockerLogger.info(`Cleaned up temporary git config file`);
     } catch {
       // File might not exist, which is fine
     }
@@ -724,7 +725,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
   private async configureGitInWorker(): Promise<void> {
     const workerSocket = this.getWorkerSocket();
     if (!workerSocket) {
-      console.warn("No worker socket available for git configuration");
+      dockerLogger.warn("No worker socket available for git configuration");
       return;
     }
 
@@ -790,9 +791,9 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         sshKeys,
       });
 
-      console.log("Git configuration sent to worker");
+      dockerLogger.info("Git configuration sent to worker");
     } catch (error) {
-      console.error("Failed to configure git in worker:", error);
+      dockerLogger.error("Failed to configure git in worker:", error);
     }
   }
 
@@ -815,13 +816,13 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
     // Run sync immediately
     DockerVSCodeInstance.syncDockerContainerStates().catch((error) => {
-      console.error("Failed to sync container states:", error);
+      dockerLogger.error("Failed to sync container states:", error);
     });
 
     // Then run every minute
     DockerVSCodeInstance.syncInterval = setInterval(() => {
       DockerVSCodeInstance.syncDockerContainerStates().catch((error) => {
-        console.error("Failed to sync container states:", error);
+        dockerLogger.error("Failed to sync container states:", error);
       });
     }, 60000); // 60 seconds
   }
@@ -838,7 +839,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     const docker = DockerVSCodeInstance.getDocker();
 
     try {
-      console.log("Syncing Docker container states with Convex...");
+      dockerLogger.info("Syncing Docker container states with Convex...");
 
       // Get all running cmux containers
       const containers = await docker.listContainers({
@@ -876,7 +877,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         // Find the full taskRunId from container mappings
         const mapping = containerMappings.get(containerName);
         if (!mapping) {
-          console.log(
+          dockerLogger.info(
             `[syncDockerContainerStates] No mapping found for container ${containerName}, skipping`
           );
           continue;
@@ -937,7 +938,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
             });
           }
         } catch (error) {
-          console.error(
+          dockerLogger.error(
             `[syncDockerContainerStates] Failed to update Convex state for container ${containerName}:`,
             error
           );
@@ -961,7 +962,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
               stoppedAt: Date.now(),
             });
           } catch (error) {
-            console.error(
+            dockerLogger.error(
               `[syncDockerContainerStates] Failed to update stopped status for ${containerName}:`,
               error
             );
@@ -981,7 +982,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
         // Check if this container exists in Docker
         if (!existingContainerNames.has(expectedContainerName)) {
-          console.log(
+          dockerLogger.info(
             `[syncDockerContainerStates] Found orphaned VSCode instance in Convex: ${taskRun._id} (container: ${expectedContainerName})`
           );
 
@@ -992,11 +993,11 @@ export class DockerVSCodeInstance extends VSCodeInstance {
               status: "stopped",
               stoppedAt: Date.now(),
             });
-            console.log(
+            dockerLogger.info(
               `[syncDockerContainerStates] Marked orphaned VSCode instance ${taskRun._id} as stopped`
             );
           } catch (error) {
-            console.error(
+            dockerLogger.error(
               `[syncDockerContainerStates] Failed to update orphaned VSCode instance ${taskRun._id}:`,
               error
             );
@@ -1004,14 +1005,14 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         }
       }
 
-      console.log("Container state sync completed");
+      dockerLogger.info("Container state sync completed");
 
       // Now handle container cleanup based on settings
       if (containerSettings.autoCleanupEnabled) {
         await DockerVSCodeInstance.performContainerCleanup(containerSettings);
       }
     } catch (error) {
-      console.error(
+      dockerLogger.error(
         "[syncDockerContainerStates] Error syncing container states:",
         error
       );
@@ -1026,7 +1027,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     }
   ): Promise<void> {
     try {
-      console.log("[performContainerCleanup] Starting container cleanup...");
+      dockerLogger.info("[performContainerCleanup] Starting container cleanup...");
 
       // 1. Check for containers that have exceeded their TTL
       const containersToStop = await convex.query(
@@ -1037,7 +1038,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         if (taskRun.vscode?.containerName) {
           const instance = VSCodeInstance.getInstance(taskRun._id);
           if (instance) {
-            console.log(
+            dockerLogger.info(
               `[performContainerCleanup] Stopping container ${taskRun.vscode.containerName} due to TTL expiry`
             );
             await instance.stop();
@@ -1059,7 +1060,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
             const instance = VSCodeInstance.getInstance(taskRun._id);
             if (instance) {
               const isReview = containerPriority.reviewContainers.some(r => r._id === taskRun._id);
-              console.log(
+              dockerLogger.info(
                 `[performContainerCleanup] Stopping ${isReview ? 'review-period' : 'active'} container ${taskRun.vscode.containerName} to maintain max containers limit`
               );
               await instance.stop();
@@ -1068,9 +1069,9 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         }
       }
 
-      console.log("[performContainerCleanup] Container cleanup completed");
+      dockerLogger.info("[performContainerCleanup] Container cleanup completed");
     } catch (error) {
-      console.error("[performContainerCleanup] Error during cleanup:", error);
+      dockerLogger.error("[performContainerCleanup] Error during cleanup:", error);
     }
   }
 }

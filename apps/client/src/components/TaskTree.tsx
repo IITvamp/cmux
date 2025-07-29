@@ -73,7 +73,7 @@ export function TaskTree({ task, level = 0 }: TaskTreeProps) {
         <button
           onClick={handleToggle}
           className={clsx(
-            "w-4 h-4 mr-1.5 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded grid place-content-center cursor-default",
+            "size-4 mr-1.5 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded grid place-content-center cursor-default",
             !hasRuns && "invisible"
           )}
           style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}

@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "vite",
     "dev:electron": "VITE_CONVEX_URL=http://localhost:9777 electron-vite dev -c electron.vite.config.js",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && vite build -c vite.config.ts",
     "build:electron": "electron-vite build -c electron.vite.config.js",
     "lint": "eslint .",
     "preview": "vite preview",

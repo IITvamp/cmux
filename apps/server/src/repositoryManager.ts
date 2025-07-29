@@ -7,6 +7,7 @@ import {
   generatePrePushHook,
   type GitHooksConfig,
 } from "./gitHooks.js";
+import { serverLogger } from "./utils/fileLogger.js";
 
 const execAsync = promisify(exec);
 
@@ -125,11 +126,11 @@ export class RepositoryManager {
           };
         } catch (error) {
           // Log the command that failed for debugging
-          console.error(`Git command failed: ${command}`);
+          serverLogger.error(`Git command failed: ${command}`);
           if (error instanceof Error) {
-            console.error(`Error: ${error.message}`);
+            serverLogger.error(`Error: ${error.message}`);
             if ("stderr" in error && error.stderr) {
-              console.error(`Stderr: ${error.stderr}`);
+              serverLogger.error(`Stderr: ${error.stderr}`);
             }
           }
           throw error;
@@ -146,11 +147,11 @@ export class RepositoryManager {
       };
     } catch (error) {
       // Log the command that failed for debugging
-      console.error(`Git command failed: ${command}`);
+      serverLogger.error(`Git command failed: ${command}`);
       if (error instanceof Error) {
-        console.error(`Error: ${error.message}`);
+        serverLogger.error(`Error: ${error.message}`);
         if ("stderr" in error && error.stderr) {
-          console.error(`Stderr: ${error.stderr}`);
+          serverLogger.error(`Stderr: ${error.stderr}`);
         }
       }
       throw error;
@@ -172,7 +173,7 @@ export class RepositoryManager {
         { cwd: repoPath }
       );
     } catch (error) {
-      console.warn("Failed to configure git pull strategy:", error);
+      serverLogger.warn("Failed to configure git pull strategy:", error);
     }
   }
 
@@ -195,7 +196,7 @@ export class RepositoryManager {
           { cwd: originPath }
         );
       } catch (error) {
-        console.warn("Failed to set remote HEAD after clone:", error);
+        serverLogger.warn("Failed to set remote HEAD after clone:", error);
       }
     } else {
       // Configure git pull strategy for existing repos
@@ -206,7 +207,7 @@ export class RepositoryManager {
     let targetBranch = branch;
     if (!targetBranch) {
       targetBranch = await this.getDefaultBranch(originPath);
-      console.log(`Detected default branch: ${targetBranch}`);
+      serverLogger.info(`Detected default branch: ${targetBranch}`);
     }
 
     // Only fetch if a specific branch was requested or if we detected a branch
@@ -226,7 +227,7 @@ export class RepositoryManager {
       existingClone &&
       Date.now() - existingClone.timestamp < this.config.operationCacheTime
     ) {
-      console.log(`Reusing existing clone operation for ${repoUrl}`);
+      serverLogger.info(`Reusing existing clone operation for ${repoUrl}`);
       await existingClone.promise;
     } else {
       const clonePromise = this.cloneRepository(repoUrl, originPath);
@@ -251,7 +252,7 @@ export class RepositoryManager {
       existingFetch &&
       Date.now() - existingFetch.timestamp < this.config.operationCacheTime
     ) {
-      console.log(
+      serverLogger.info(
         `Reusing existing fetch operation for ${repoUrl} branch ${branch}`
       );
       await existingFetch.promise;
@@ -279,14 +280,14 @@ export class RepositoryManager {
     repoUrl: string,
     originPath: string
   ): Promise<void> {
-    console.log(
+    serverLogger.info(
       `Cloning repository ${repoUrl} with depth ${this.config.fetchDepth}...`
     );
     try {
       await this.executeGitCommand(
         `git clone --depth ${this.config.fetchDepth} "${repoUrl}" "${originPath}"`
       );
-      console.log(`Successfully cloned ${repoUrl}`);
+      serverLogger.info(`Successfully cloned ${repoUrl}`);
 
       // Set the remote HEAD reference explicitly
       try {
@@ -295,7 +296,7 @@ export class RepositoryManager {
           { cwd: originPath }
         );
       } catch (error) {
-        console.warn("Failed to set remote HEAD reference:", error);
+        serverLogger.warn("Failed to set remote HEAD reference:", error);
       }
 
       // Configure git pull strategy for the newly cloned repo
@@ -304,7 +305,7 @@ export class RepositoryManager {
       // Set up git hooks
       await this.setupGitHooks(originPath);
     } catch (error) {
-      console.error(`Failed to clone ${repoUrl}:`, error);
+      serverLogger.error(`Failed to clone ${repoUrl}:`, error);
       throw error;
     }
   }
@@ -341,7 +342,7 @@ export class RepositoryManager {
         }
       } catch {
         // Fallback to common defaults
-        console.warn("Could not determine default branch, trying common names");
+        serverLogger.warn("Could not determine default branch, trying common names");
       }
       
       // Try common default branch names
@@ -379,7 +380,7 @@ export class RepositoryManager {
         `git pull ${pullFlags} --depth ${this.config.fetchDepth} origin ${branch}`,
         { cwd: repoPath }
       );
-      console.log(`Successfully pulled latest changes for ${branch}`);
+      serverLogger.info(`Successfully pulled latest changes for ${branch}`);
     } catch (error) {
       // If pull fails due to conflicts or divergent branches, try to recover
       if (
@@ -387,7 +388,7 @@ export class RepositoryManager {
         (error.message.includes("divergent branches") ||
           error.message.includes("conflict"))
       ) {
-        console.warn(
+        serverLogger.warn(
           `Pull failed due to conflicts, attempting to reset to origin/${branch}`
         );
         try {
@@ -400,9 +401,9 @@ export class RepositoryManager {
           await this.executeGitCommand(`git reset --hard origin/${branch}`, {
             cwd: repoPath,
           });
-          console.log(`Successfully reset to origin/${branch}`);
+          serverLogger.info(`Successfully reset to origin/${branch}`);
         } catch (resetError) {
-          console.error(`Failed to reset to origin/${branch}:`, resetError);
+          serverLogger.error(`Failed to reset to origin/${branch}:`, resetError);
           throw resetError;
         }
       } else {
@@ -415,22 +416,22 @@ export class RepositoryManager {
     originPath: string,
     branch: string
   ): Promise<void> {
-    console.log(`Fetching and checking out branch ${branch}...`);
+    serverLogger.info(`Fetching and checking out branch ${branch}...`);
     try {
       const currentBranch = await this.getCurrentBranch(originPath);
 
       if (currentBranch === branch) {
         // Already on the requested branch, just pull latest
-        console.log(`Already on branch ${branch}, pulling latest changes...`);
+        serverLogger.info(`Already on branch ${branch}, pulling latest changes...`);
         await this.pullLatestChanges(originPath, branch);
       } else {
         // Fetch and checkout different branch
         await this.switchToBranch(originPath, branch);
       }
 
-      console.log(`Successfully on branch ${branch}`);
+      serverLogger.info(`Successfully on branch ${branch}`);
     } catch (error) {
-      console.warn(
+      serverLogger.warn(
         `Failed to fetch/checkout branch ${branch}, falling back to current branch:`,
         error
       );
@@ -475,7 +476,7 @@ export class RepositoryManager {
     // Wait for any existing worktree operation on this repo to complete
     const existingLock = this.worktreeLocks.get(originPath);
     if (existingLock) {
-      console.log(
+      serverLogger.info(
         `Waiting for existing worktree operation on ${originPath}...`
       );
       await existingLock;
@@ -491,13 +492,13 @@ export class RepositoryManager {
     });
     this.worktreeLocks.set(originPath, lockPromise);
 
-    console.log(`Creating worktree with new branch ${branchName}...`);
+    serverLogger.info(`Creating worktree with new branch ${branchName}...`);
     try {
       await this.executeGitCommand(
         `git worktree add -b "${branchName}" "${worktreePath}" origin/${baseBranch}`,
         { cwd: originPath }
       );
-      console.log(`Successfully created worktree at ${worktreePath}`);
+      serverLogger.info(`Successfully created worktree at ${worktreePath}`);
 
       // Set up branch configuration to push to the same name on remote
       // Use a serial approach for config commands to avoid lock conflicts
@@ -529,11 +530,11 @@ export class RepositoryManager {
         `git config branch.${branchName}.merge refs/heads/${branchName}`,
         { cwd: worktreePath }
       );
-      console.log(
+      serverLogger.info(
         `Configured branch ${branchName} to track origin/${branchName} when pushed`
       );
     } catch (error) {
-      console.warn(`Failed to configure branch tracking for ${branchName}:`, error);
+      serverLogger.warn(`Failed to configure branch tracking for ${branchName}:`, error);
     }
   }
 
@@ -557,7 +558,7 @@ export class RepositoryManager {
         const gitFileContent = await fs.readFile(gitDir, "utf8");
         const match = gitFileContent.match(/gitdir: (.+)/);
         if (!match) {
-          console.warn(`Could not parse .git file in ${repoPath}`);
+          serverLogger.warn(`Could not parse .git file in ${repoPath}`);
           return;
         }
         const actualGitDir = match[1].trim();
@@ -598,16 +599,16 @@ export class RepositoryManager {
       await fs.writeFile(prePushPath, generatePrePushHook(hooksConfig), {
         mode: 0o755,
       });
-      console.log(`Created pre-push hook at ${prePushPath}`);
+      serverLogger.info(`Created pre-push hook at ${prePushPath}`);
 
       // Write pre-commit hook
       const preCommitPath = path.join(hooksDir, "pre-commit");
       await fs.writeFile(preCommitPath, generatePreCommitHook(hooksConfig), {
         mode: 0o755,
       });
-      console.log(`Created pre-commit hook at ${preCommitPath}`);
+      serverLogger.info(`Created pre-commit hook at ${preCommitPath}`);
     } catch (error) {
-      console.warn(`Failed to set up git hooks in ${repoPath}:`, error);
+      serverLogger.warn(`Failed to set up git hooks in ${repoPath}:`, error);
       // Don't throw - hooks are nice to have but not critical
     }
   }

@@ -1,6 +1,7 @@
 import AntdMultiSelect from "@/components/AntdMultiSelect";
 import { FloatingPane } from "@/components/floating-pane";
 import LexicalEditor from "@/components/lexical/LexicalEditor";
+import { ProviderStatusPills } from "@/components/provider-status-pills";
 import { Button } from "@/components/ui/button";
 import { ModeToggleTooltip } from "@/components/ui/mode-toggle-tooltip";
 import {
@@ -407,7 +408,7 @@ function DashboardComponent() {
         // Focus the editor and insert the character
         if (editorApiRef.current?.focus) {
           editorApiRef.current.focus();
-          
+
           // Insert the typed character
           if (editorApiRef.current.insertText) {
             editorApiRef.current.insertText(e.key);
@@ -482,6 +483,8 @@ function DashboardComponent() {
                 "relative bg-white dark:bg-neutral-700/50 border border-neutral-200 dark:border-neutral-500/15 rounded-2xl transition-all"
               )}
             >
+              {/* Provider Status Pills */}
+              <ProviderStatusPills />
               <LexicalEditor
                 placeholder={lexicalPlaceholder}
                 onChange={handleTaskDescriptionChange}
@@ -501,6 +504,7 @@ function DashboardComponent() {
                     value={selectedProject}
                     onChange={handleProjectChange}
                     placeholder="Select project..."
+                    singleSelect={true}
                     className="!min-w-[300px] !max-w-[500px] !rounded-2xl"
                     loading={reposByOrgQuery.isLoading}
                     maxTagCount={1}

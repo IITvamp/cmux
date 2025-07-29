@@ -4,6 +4,7 @@ import os from "os";
 import path from "path";
 import { RepositoryManager } from "./repositoryManager.js";
 import { convex } from "./utils/convexClient.js";
+import { serverLogger } from "./utils/fileLogger.js";
 
 interface WorkspaceResult {
   success: boolean;
@@ -153,7 +154,7 @@ export async function setupProjectWorkspace(args: {
 
     return { success: true, worktreePath: worktreeInfo.worktreePath };
   } catch (error) {
-    console.error("Failed to setup workspace:", error);
+    serverLogger.error("Failed to setup workspace:", error);
     return {
       success: false,
       error: error instanceof Error ? error.message : "Unknown error",

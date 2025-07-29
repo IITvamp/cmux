@@ -2,6 +2,7 @@ import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
 import { getGitHubTokenFromKeychain } from "./getGitHubToken.js";
+import { serverLogger } from "./fileLogger.js";
 
 export async function setupGitCredentialsForDocker(
   instanceId: string
@@ -29,7 +30,7 @@ export async function setupGitCredentialsForDocker(
 
     return gitCredentialsPath;
   } catch (error) {
-    console.error("Failed to setup git credentials:", error);
+    serverLogger.error("Failed to setup git credentials:", error);
     return null;
   }
 }
