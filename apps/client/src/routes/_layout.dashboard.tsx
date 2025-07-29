@@ -432,6 +432,7 @@ function DashboardComponent() {
                 repoUrl={lexicalRepoUrl}
                 branch={lexicalBranch}
                 persistenceKey="dashboard-task-description"
+                maxHeight="300px"
               />
 
               {/* Integrated controls */}

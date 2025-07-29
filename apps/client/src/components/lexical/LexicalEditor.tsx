@@ -257,6 +257,7 @@ interface LexicalEditorProps {
   repoUrl?: string;
   branch?: string;
   persistenceKey?: string; // Key for localStorage persistence
+  maxHeight?: string;
   onEditorReady?: (editor: {
     getContent: () => {
       text: string;
@@ -281,6 +282,7 @@ export default function LexicalEditor({
   repoUrl,
   branch,
   persistenceKey,
+  maxHeight,
   onEditorReady,
 }: LexicalEditorProps) {
   const initialConfig = {
@@ -310,7 +312,11 @@ export default function LexicalEditor({
                 "outline-none",
                 contentEditableClassName
               )}
-              style={padding}
+              style={{
+                ...padding,
+                maxHeight: maxHeight,
+                overflowY: maxHeight ? "auto" : undefined,
+              }}
               aria-placeholder={placeholder}
               placeholder={
                 <div
