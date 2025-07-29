@@ -167,9 +167,9 @@ await $`cp -r ./packages/cmux/src/convex/convex-bundle/convex_local_storage /tmp
 // Copy the correct package.json from cmux package (overwrite the convex one)
 await $`cp ./packages/cmux/package.json /tmp/cmux-bundle/`;
 
-// Copy public files
+// Copy public files (client dist)
 await $`mkdir -p /tmp/cmux-bundle/public`;
-await $`cp -r ./packages/cmux/public/dist /tmp/cmux-bundle/public/`;
+await $`cp -r ./apps/client/dist /tmp/cmux-bundle/public/`;
 
 // Create the cmux-bundle.zip
 await $`cd /tmp && zip -r cmux-bundle.zip cmux-bundle`;

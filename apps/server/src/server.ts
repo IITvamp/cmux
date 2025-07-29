@@ -13,9 +13,11 @@ import {
 } from "@cmux/shared";
 import * as fuzzysort from "fuzzysort";
 import { minimatch } from "minimatch";
+import { exec } from "node:child_process";
 import { promises as fs } from "node:fs";
 import { createServer } from "node:http";
 import * as path from "node:path";
+import { promisify } from "node:util";
 import { Server } from "socket.io";
 import { spawnAllAgents } from "./agentSpawner.js";
 import { execWithEnv } from "./execWithEnv.js";
@@ -23,13 +25,18 @@ import { GitDiffManager } from "./gitDiff.js";
 import { createProxyApp, setupWebSocketProxy } from "./proxyApp.js";
 import { RepositoryManager } from "./repositoryManager.js";
 import { convex } from "./utils/convexClient.js";
+import { serverLogger } from "./utils/fileLogger.js";
+import { checkAllProvidersStatus } from "./utils/providerStatus.js";
+import {
+  refreshBranchesForRepo,
+  refreshGitHubData,
+} from "./utils/refreshGitHubData.js";
 import { waitForConvex } from "./utils/waitForConvex.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWorktreePath } from "./workspace.js";
-import { refreshGitHubData, refreshBranchesForRepo } from "./utils/refreshGitHubData.js";
-import { checkAllProvidersStatus } from "./utils/providerStatus.js";
-import { serverLogger } from "./utils/fileLogger.js";
+
+const execAsync = promisify(exec);
 
 export async function startServer({
   port,
@@ -419,12 +426,12 @@ export async function startServer({
       try {
         // First, try to get existing repos from Convex
         const existingRepos = await convex.query(api.github.getAllRepos, {});
-        
+
         if (existingRepos.length > 0) {
           // If we have repos, return them and refresh in the background
           const reposByOrg = await convex.query(api.github.getReposByOrg, {});
           callback({ success: true, repos: reposByOrg });
-          
+
           // Refresh in the background to add any new repos
           refreshGitHubData().catch((error) => {
             serverLogger.error("Background refresh failed:", error);
@@ -459,7 +466,7 @@ export async function startServer({
         if (existingBranches.length > 0) {
           // Return existing branches and refresh in background
           callback({ success: true, branches: existingBranches });
-          
+
           // Refresh in the background
           refreshBranchesForRepo(repo).catch((error) => {
             serverLogger.error("Background branch refresh failed:", error);
@@ -516,70 +523,100 @@ export async function startServer({
   let isCleaningUp = false;
   let isCleanedUp = false;
 
-  // Hot reload support
-  if (import.meta.hot) {
-    import.meta.hot.dispose(async () => {
-      if (isCleaningUp || isCleanedUp) {
-        serverLogger.info("Cleanup already in progress or completed, skipping...");
-        return;
+  async function cleanup() {
+    if (isCleaningUp || isCleanedUp) {
+      serverLogger.info(
+        "Cleanup already in progress or completed, skipping..."
+      );
+      return;
+    }
+
+    isCleaningUp = true;
+    serverLogger.info("Cleaning up terminals and server...");
+
+    // Stop Docker container state sync
+    DockerVSCodeInstance.stopContainerStateSync();
+
+    // Stop all VSCode instances using docker commands
+    try {
+      // Get all cmux containers
+      const { stdout } = await execAsync(
+        'docker ps -a --filter "name=cmux-" --format "{{.Names}}"'
+      );
+      const containerNames = stdout
+        .trim()
+        .split("\n")
+        .filter((name) => name);
+
+      if (containerNames.length > 0) {
+        serverLogger.info(
+          `Stopping ${containerNames.length} VSCode containers: ${containerNames.join(", ")}`
+        );
+
+        // Stop all containers in parallel with a single docker command
+        exec(`docker stop ${containerNames.join(" ")}`, (error) => {
+          if (error) {
+            serverLogger.error("Error stopping containers:", error);
+          } else {
+            serverLogger.info("All containers stopped");
+          }
+        });
+
+        // Don't wait for the command to finish
+      } else {
+        serverLogger.info("No VSCode containers found to stop");
       }
+    } catch (error) {
+      serverLogger.error(
+        "Error stopping containers via docker command:",
+        error
+      );
+    }
 
-      isCleaningUp = true;
-      serverLogger.info("Cleaning up terminals and server...");
+    VSCodeInstance.clearInstances();
 
-      // Stop Docker container state sync
-      DockerVSCodeInstance.stopContainerStateSync();
+    // Clean up git diff manager
+    gitDiffManager.dispose();
 
-      // Stop all VSCode instances
-      for (const [id, instance] of Array.from(
-        VSCodeInstance.getInstances().entries()
-      )) {
-        serverLogger.info(`Stopping VSCode instance ${id}`);
-        try {
-          await instance.stop();
-        } catch (error) {
-          serverLogger.error(`Error stopping VSCode instance ${id}:`, error);
-        }
-      }
-      VSCodeInstance.clearInstances();
+    // Close socket.io
+    serverLogger.info("Closing socket.io server...");
+    await new Promise<void>((resolve) => {
+      io.close(() => {
+        serverLogger.info("Socket.io server closed");
+        resolve();
+      });
+    });
 
-      // Clean up git diff manager
-      gitDiffManager.dispose();
-
-      // Close socket.io
-      serverLogger.info("Closing socket.io server...");
-      await new Promise<void>((resolve) => {
-        io.close(() => {
-          serverLogger.info("Socket.io server closed");
+    // Close HTTP server only if it's still listening
+    serverLogger.info("Closing HTTP server...");
+    await new Promise<void>((resolve) => {
+      if (server.listening) {
+        server.close((error) => {
+          if (error) {
+            serverLogger.error("Error closing HTTP server:", error);
+          } else {
+            serverLogger.info("HTTP server closed");
+          }
           resolve();
         });
-      });
-
-      // Close HTTP server only if it's still listening
-      serverLogger.info("Closing HTTP server...");
-      await new Promise<void>((resolve) => {
-        if (server.listening) {
-          server.close((error) => {
-            if (error) {
-              serverLogger.error("Error closing HTTP server:", error);
-            } else {
-              serverLogger.info("HTTP server closed");
-            }
-            resolve();
-          });
-        } else {
-          serverLogger.info("HTTP server already closed");
-          resolve();
-        }
-      });
-
-      isCleanedUp = true;
-      serverLogger.info("Cleanup completed");
+      } else {
+        serverLogger.info("HTTP server already closed");
+        resolve();
+      }
     });
+
+    isCleanedUp = true;
+    serverLogger.info("Cleanup completed");
+  }
+
+  // Hot reload support
+  if (import.meta.hot) {
+    import.meta.hot.dispose(cleanup);
 
     import.meta.hot.accept(() => {
       serverLogger.info("Hot reload triggered");
     });
   }
-}
 
+  return { cleanup };
+}

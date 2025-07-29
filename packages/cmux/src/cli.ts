@@ -35,14 +35,6 @@ program
   .option("-p, --port <port>", "port to listen on", "9776")
   .option("-c, --cors <origin>", "CORS origin configuration", "true")
   .action(async (options) => {
-    // Check if static directory exists
-    if (!existsSync(staticDir)) {
-      console.error(`Static directory not found at: ${staticDir}`);
-      console.error("This should have been extracted automatically.");
-      console.error("Try deleting ~/.cmux and running the CLI again.");
-      process.exit(1);
-    }
-
     // Pleasant startup message
     const versionPadding = " ".repeat(
       Math.max(0, 14 - VERSION.toString().length)
@@ -88,22 +80,33 @@ program
       process.exit(1);
     }
 
+    // Check if static directory exists
+    if (!existsSync(staticDir)) {
+      console.error(`Static directory not found at: ${staticDir}`);
+      console.error("This should have been extracted automatically.");
+      console.error("Try deleting ~/.cmux and running the CLI again.");
+      process.exit(1);
+    }
+
     console.log(
       "\x1b[32m✓\x1b[0m Link: \x1b[36mhttp://localhost:" + port + "\x1b[0m\n"
     );
 
     await logger.info(`Starting server on port ${port}...`);
     await logger.info(`Serving static files from: ${staticDir}`);
-    void startServer({
+    const startServerProcessPromise = startServer({
       port,
       publicPath: staticDir,
     });
 
     // Cleanup processes on exit
-    const cleanup = () => {
+    const cleanup = async () => {
+      const startServerProcess = await startServerProcessPromise;
       console.log("\n\x1b[33mShutting down server...\x1b[0m");
-      logger.info("Shutting down server...").catch(() => {});
+      logger.info("Shutting down server...");
+      const cleanupPromise = startServerProcess.cleanup();
       convexProcesses.backend.kill();
+      await cleanupPromise;
       process.exit(0);
     };
 

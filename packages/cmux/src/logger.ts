@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { appendFile, readFile, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -14,7 +14,7 @@ if (!existsSync(LOG_DIR)) {
 
 // Make sure the log file exists
 if (!existsSync(LOG_FILE)) {
-  writeFile(LOG_FILE, "");
+  writeFileSync(LOG_FILE, "");
 }
 
 async function rotateLogIfNeeded(): Promise<void> {
