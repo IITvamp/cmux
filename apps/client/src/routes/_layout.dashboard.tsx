@@ -408,7 +408,7 @@ function DashboardComponent() {
         // Focus the editor and insert the character
         if (editorApiRef.current?.focus) {
           editorApiRef.current.focus();
-          
+
           // Insert the typed character
           if (editorApiRef.current.insertText) {
             editorApiRef.current.insertText(e.key);
@@ -504,6 +504,7 @@ function DashboardComponent() {
                     value={selectedProject}
                     onChange={handleProjectChange}
                     placeholder="Select project..."
+                    singleSelect={true}
                     className="!min-w-[300px] !max-w-[500px] !rounded-2xl"
                     loading={reposByOrgQuery.isLoading}
                     maxTagCount={1}

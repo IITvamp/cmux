@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { type ConvexProcesses, spawnConvex } from "./convex/spawnConvex";
+import { logger } from "./logger";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const convexDir = path.resolve(homedir(), ".cmux");
@@ -48,8 +49,9 @@ program
     try {
       // Start Convex and wait for it to be ready
       convexProcesses = await spawnConvex(convexDir);
-      console.log("Convex is ready!");
+      await logger.info("Convex is ready!");
     } catch (error) {
+      await logger.error(`Failed to start Convex: ${error}`);
       console.error("Failed to start Convex:", error);
       process.exit(1);
     }
@@ -65,8 +67,19 @@ program
         process.exit(1);
       }
 
-      console.log(`Starting server on port ${port}...`);
-      console.log(`Serving static files from: ${staticDir}`);
+      // Pleasant startup message
+      console.log("\n\x1b[36m╔══════════════════════════════════════╗\x1b[0m");
+      console.log(
+        "\x1b[36m║      Welcome to \x1b[1m\x1b[37mcmux\x1b[0m\x1b[36m!                ║\x1b[0m"
+      );
+      console.log("\x1b[36m╚══════════════════════════════════════╝\x1b[0m\n");
+      console.log("\x1b[32m✓\x1b[0m Server starting...");
+      console.log(
+        "\x1b[32m✓\x1b[0m Link: \x1b[36mhttp://localhost:" + port + "\x1b[0m\n"
+      );
+
+      await logger.info(`Starting server on port ${port}...`);
+      await logger.info(`Serving static files from: ${staticDir}`);
       void startServer({
         port,
         publicPath: staticDir,
@@ -75,7 +88,8 @@ program
 
     // Cleanup processes on exit
     const cleanup = () => {
-      console.log("\nShutting down server...");
+      console.log("\n\x1b[33mShutting down server...\x1b[0m");
+      logger.info("Shutting down server...").catch(() => {});
       convexProcesses.backend.kill();
       process.exit(0);
     };

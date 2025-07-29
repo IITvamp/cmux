@@ -2,6 +2,7 @@
 .env.local
 
 convex-local-backend
+convex-local-backend.zip
 convex_local_backend.sqlite3
 convex_local_storage
 keybroker
