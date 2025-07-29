@@ -480,7 +480,7 @@ function DashboardComponent() {
           <div className="w-full max-w-4xl">
                       <div
             className={clsx(
-              "relative bg-white/90 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/40 rounded-2xl transition-all backdrop-blur-sm shadow-lg shadow-slate-900/5 dark:shadow-black/20"
+              "relative bg-white dark:bg-neutral-700/50 border border-neutral-200 dark:border-neutral-500/15 rounded-2xl transition-all"
             )}
           >
               {/* Provider Status Pills */}
@@ -573,11 +573,10 @@ function DashboardComponent() {
                   <button
                     className={clsx(
                       "p-1.5 rounded-full",
-                      "bg-slate-100/80 dark:bg-slate-700/50",
-                      "border border-slate-200/60 dark:border-slate-600/30",
-                      "text-slate-600 dark:text-slate-400",
-                      "hover:bg-slate-200/80 dark:hover:bg-slate-600/50",
-                      "transition-colors shadow-sm"
+                      "bg-neutral-100 dark:bg-neutral-700",
+                      "border border-neutral-200 dark:border-0",
+                      "text-neutral-600 dark:text-neutral-400",
+                      "transition-colors"
                     )}
                     onClick={() => {
                       // Trigger the file select from ImagePlugin
@@ -596,11 +595,10 @@ function DashboardComponent() {
                   <button
                     className={clsx(
                       "p-1.5 rounded-full",
-                      "bg-slate-100/80 dark:bg-slate-700/50",
-                      "border border-slate-200/60 dark:border-slate-600/30",
-                      "text-slate-600 dark:text-slate-400",
-                      "hover:bg-slate-200/80 dark:hover:bg-slate-600/50",
-                      "transition-colors shadow-sm"
+                      "bg-neutral-100 dark:bg-neutral-700",
+                      "border border-neutral-200 dark:border-0",
+                      "text-neutral-600 dark:text-neutral-400",
+                      "transition-colors"
                     )}
                   >
                     <Mic className="w-4 h-4" />
@@ -723,11 +721,11 @@ function TaskItem({ task, navigate, archiveTask }: TaskItemProps) {
   return (
     <div
               className={clsx(
-          "relative group flex items-center gap-2.5 px-3 py-2 border rounded-xl transition-all cursor-default select-none",
+          "relative group flex items-center gap-2.5 px-3 py-2 border rounded-lg transition-all cursor-default select-none",
           // Check if this is an optimistic update (temporary ID)
           task._id.includes("-") && task._id.length === 36
-            ? "bg-white/50 dark:bg-slate-800/30 border-slate-200/50 dark:border-slate-700/30 animate-pulse shadow-sm"
-            : "bg-white/80 dark:bg-slate-800/50 border-slate-200/60 dark:border-slate-700/40 hover:border-slate-300/70 dark:hover:border-slate-600/50 shadow-sm shadow-slate-900/5 dark:shadow-black/10 hover:shadow-md hover:shadow-slate-900/10 dark:hover:shadow-black/20 backdrop-blur-sm"
+            ? "bg-white/50 dark:bg-neutral-700/30 border-neutral-200 dark:border-neutral-500/15 animate-pulse"
+            : "bg-white dark:bg-neutral-700/50 border-neutral-200 dark:border-neutral-500/15"
         )}
       onClick={() =>
         navigate({
@@ -792,10 +790,9 @@ function TaskItem({ task, navigate, archiveTask }: TaskItemProps) {
                   clipboard.copy(task.text);
                 }}
                 className={clsx(
-                  "p-1 rounded-lg",
-                  "bg-slate-100/80 dark:bg-slate-700/50",
-                  "text-slate-600 dark:text-slate-400",
-                  "hover:bg-slate-200/80 dark:hover:bg-slate-600/50 transition-colors"
+                  "p-1 rounded",
+                  "bg-neutral-100 dark:bg-neutral-700",
+                  "text-neutral-600 dark:text-neutral-400"
                 )}
                 title="Copy task description"
               >
@@ -823,10 +820,9 @@ function TaskItem({ task, navigate, archiveTask }: TaskItemProps) {
                   rel="noopener noreferrer"
                   onClick={(e) => e.stopPropagation()}
                   className={clsx(
-                    "p-1 rounded-lg cursor-default",
-                    "bg-slate-100/80 dark:bg-slate-700/50",
-                    "text-slate-600 dark:text-slate-400",
-                    "hover:bg-slate-200/80 dark:hover:bg-slate-600/50 transition-colors"
+                    "p-1 rounded cursor-default",
+                    "bg-neutral-100 dark:bg-neutral-700",
+                    "text-neutral-600 dark:text-neutral-400"
                   )}
                 >
                   <Code2 className="w-3.5 h-3.5" />
@@ -851,12 +847,11 @@ function TaskItem({ task, navigate, archiveTask }: TaskItemProps) {
                     });
                   }}
                   className={clsx(
-                    "p-1 rounded-lg",
-                    "bg-slate-100/80 dark:bg-slate-700/50",
+                    "p-1 rounded",
+                    "bg-neutral-100 dark:bg-neutral-700",
                     runWithVSCode.vscode?.keepAlive
                       ? "text-blue-600 dark:text-blue-400"
-                      : "text-slate-600 dark:text-slate-400",
-                    "hover:bg-slate-200/80 dark:hover:bg-slate-600/50 transition-colors"
+                      : "text-neutral-600 dark:text-neutral-400"
                   )}
                 >
                   <Pin className="w-3.5 h-3.5" />
@@ -878,10 +873,9 @@ function TaskItem({ task, navigate, archiveTask }: TaskItemProps) {
             archiveTask({ id: task._id });
           }}
           className={clsx(
-            "p-1 rounded-lg",
-            "bg-slate-100/80 dark:bg-slate-700/50",
-            "text-slate-600 dark:text-slate-400",
-            "hover:bg-slate-200/80 dark:hover:bg-slate-600/50 transition-colors"
+            "p-1 rounded",
+            "bg-neutral-100 dark:bg-neutral-700",
+            "text-neutral-600 dark:text-neutral-400"
           )}
           title="Archive task"
         >

@@ -72,7 +72,7 @@ function LayoutComponent() {
             {isElectron && <div className="w-[68px]"></div>}
             <Link
               to="/dashboard"
-              className="w-[50px] h-[25px] bg-[#7d2fc7] hover:bg-[#7d2fc7]/80 transition text-white flex items-center justify-center font-medium rounded-lg text-xs select-none cursor-default"
+              className="w-[50px] h-[25px] bg-blue-600 text-white flex items-center justify-center font-medium rounded-lg text-xs select-none cursor-default"
               style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
             >
               cmux
@@ -80,7 +80,7 @@ function LayoutComponent() {
             <div className="grow"></div>
             <Link
               to="/dashboard"
-              className="w-[25px] h-[25px] bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 rounded-lg flex items-center justify-center transition-colors cursor-default"
+              className="w-[25px] h-[25px] bg-neutral-200 dark:bg-neutral-700 rounded-lg flex items-center justify-center cursor-default"
               title="New task"
               style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
             >
@@ -126,7 +126,7 @@ function LayoutComponent() {
           <div className="p-4 border-t border-neutral-200 dark:border-neutral-800">
             <Link
               to="/settings"
-              className="flex items-center px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition-colors select-none cursor-default"
+              className="flex items-center px-3 py-2 text-sm text-neutral-700 dark:text-neutral-300 rounded-lg select-none cursor-default"
             >
               <svg
                 className="w-4 h-4 mr-3 text-neutral-500"

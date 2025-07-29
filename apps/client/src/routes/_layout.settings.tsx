@@ -204,19 +204,19 @@ function SettingsComponent() {
                   <div className="grid grid-cols-3 gap-2">
                     <button
                       onClick={() => setTheme("light")}
-                      className={`p-2 border-2 ${theme === "light" ? "border-blue-500 bg-neutral-50 dark:bg-neutral-800" : "border-neutral-200 dark:border-neutral-700"} rounded-lg text-sm font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors`}
+                      className={`p-2 border-2 ${theme === "light" ? "border-blue-500 bg-neutral-50 dark:bg-neutral-800" : "border-neutral-200 dark:border-neutral-700"} rounded-lg text-sm font-medium text-neutral-700 dark:text-neutral-300 transition-colors`}
                     >
                       Light
                     </button>
                     <button
                       onClick={() => setTheme("dark")}
-                      className={`p-2 border-2 ${theme === "dark" ? "border-blue-500 bg-neutral-50 dark:bg-neutral-800" : "border-neutral-200 dark:border-neutral-700"} rounded-lg text-sm font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors`}
+                      className={`p-2 border-2 ${theme === "dark" ? "border-blue-500 bg-neutral-50 dark:bg-neutral-800" : "border-neutral-200 dark:border-neutral-700"} rounded-lg text-sm font-medium text-neutral-700 dark:text-neutral-300 transition-colors`}
                     >
                       Dark
                     </button>
                     <button
                       onClick={() => setTheme("system")}
-                      className={`p-2 border-2 ${theme === "system" ? "border-blue-500 bg-neutral-50 dark:bg-neutral-800" : "border-neutral-200 dark:border-neutral-700"} rounded-lg text-sm font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors`}
+                      className={`p-2 border-2 ${theme === "system" ? "border-blue-500 bg-neutral-50 dark:bg-neutral-800" : "border-neutral-200 dark:border-neutral-700"} rounded-lg text-sm font-medium text-neutral-700 dark:text-neutral-300 transition-colors`}
                     >
                       System
                     </button>
@@ -295,12 +295,12 @@ function SettingsComponent() {
                             handleApiKeyChange(key.envVar, e.target.value)
                           }
                           className="w-full px-3 py-2 pr-10 border border-neutral-300 dark:border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100"
-                          placeholder={`Enter your ${key.displayName}`}
+                        placeholder={`Enter your ${key.displayName}`}
                         />
                         <button
                           type="button"
                           onClick={() => toggleShowKey(key.envVar)}
-                          className="absolute inset-y-0 right-0 pr-3 flex items-center text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300"
+                          className="absolute inset-y-0 right-0 pr-3 flex items-center text-neutral-500"
                         >
                           {showKeys[key.envVar] ? (
                             <svg
@@ -429,7 +429,7 @@ function SettingsComponent() {
                 className={`px-4 py-2 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-900 transition-all ${
                   !hasChanges() || isSaving
                     ? "bg-neutral-200 dark:bg-neutral-800 text-neutral-400 dark:text-neutral-500 cursor-not-allowed opacity-50"
-                    : "bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-600"
+                    : "bg-blue-600 dark:bg-blue-500 text-white"
                 }`}
               >
                 {isSaving ? "Saving..." : "Save Changes"}
