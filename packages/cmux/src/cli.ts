@@ -1,6 +1,6 @@
 import { startServer } from "@cmux/server";
 import { Command } from "commander";
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync, createWriteStream } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -52,33 +52,6 @@ program
     console.log("\x1b[36m╚══════════════════════════════════════╝\x1b[0m\n");
     console.log("\x1b[32m✓\x1b[0m Server starting...");
 
-    // Pull Docker image asynchronously if WORKER_IMAGE_NAME is set
-    if (process.env.WORKER_IMAGE_NAME) {
-      console.log(`\x1b[32m✓\x1b[0m Docker image pull initiated: ${process.env.WORKER_IMAGE_NAME}`);
-      
-      const pullProcess = spawn("docker", ["pull", process.env.WORKER_IMAGE_NAME]);
-      
-      pullProcess.stdout.on("data", (data) => {
-        process.stdout.write(`\x1b[90m[Docker] ${data}\x1b[0m`);
-      });
-      
-      pullProcess.stderr.on("data", (data) => {
-        process.stderr.write(`\x1b[33m[Docker] ${data}\x1b[0m`);
-      });
-      
-      pullProcess.on("close", (code) => {
-        if (code === 0) {
-          console.log(`\x1b[32m✓\x1b[0m Docker image ${process.env.WORKER_IMAGE_NAME} pulled successfully`);
-        } else {
-          console.log(`\x1b[33m!\x1b[0m Docker image pull failed with code ${code} - image might be available locally`);
-        }
-      });
-      
-      pullProcess.on("error", (error) => {
-        console.error(`\x1b[31m✗\x1b[0m Failed to start Docker pull:`, error.message);
-      });
-    }
-
     const port = parseInt(options.port);
 
     const portsToCheck = [port, 9777, 9778];
@@ -107,13 +80,56 @@ program
     const logsDir = path.join(convexDir, "logs");
     mkdirSync(logsDir, { recursive: true });
 
-    const logFileNames = ["cmux-cli.log", "docker-vscode.log", "server.log"];
+    const logFileNames = ["cmux-cli.log", "docker-vscode.log", "server.log", "docker-pull.log"];
     // ensure all log files exist
     for (const logFileName of logFileNames) {
       const logFilePath = path.join(convexDir, "logs", logFileName);
       if (!existsSync(logFilePath)) {
         writeFileSync(logFilePath, "");
       }
+    }
+
+    // Pull Docker image asynchronously if WORKER_IMAGE_NAME is set
+    if (process.env.WORKER_IMAGE_NAME) {
+      console.log(`\x1b[32m✓\x1b[0m Docker image pull initiated: ${process.env.WORKER_IMAGE_NAME}`);
+      
+      const dockerPullLogPath = path.join(convexDir, "logs", "docker-pull.log");
+      const dockerPullLogStream = createWriteStream(dockerPullLogPath, { flags: 'a' });
+      
+      // Write timestamp and start message
+      const timestamp = new Date().toISOString();
+      dockerPullLogStream.write(`\n[${timestamp}] Starting Docker pull for ${process.env.WORKER_IMAGE_NAME}\n`);
+      
+      const pullProcess = spawn("docker", ["pull", process.env.WORKER_IMAGE_NAME]);
+      
+      pullProcess.stdout.on("data", (data) => {
+        dockerPullLogStream.write(`[STDOUT] ${data}`);
+      });
+      
+      pullProcess.stderr.on("data", (data) => {
+        dockerPullLogStream.write(`[STDERR] ${data}`);
+      });
+      
+      pullProcess.on("close", (code) => {
+        const endTimestamp = new Date().toISOString();
+        if (code === 0) {
+          const successMsg = `[${endTimestamp}] Docker image ${process.env.WORKER_IMAGE_NAME} pulled successfully\n`;
+          dockerPullLogStream.write(successMsg);
+          console.log(`\x1b[32m✓\x1b[0m Docker image pull completed successfully (see logs at ${dockerPullLogPath})`);
+        } else {
+          const failMsg = `[${endTimestamp}] Docker image pull failed with code ${code} - image might be available locally\n`;
+          dockerPullLogStream.write(failMsg);
+          console.log(`\x1b[33m!\x1b[0m Docker image pull failed with code ${code} (see logs at ${dockerPullLogPath})`);
+        }
+        dockerPullLogStream.end();
+      });
+      
+      pullProcess.on("error", (error) => {
+        const errorTimestamp = new Date().toISOString();
+        dockerPullLogStream.write(`[${errorTimestamp}] Failed to start Docker pull: ${error.message}\n`);
+        dockerPullLogStream.end();
+        console.error(`\x1b[31m✗\x1b[0m Failed to start Docker pull (see logs at ${dockerPullLogPath})`);
+      });
     }
 
     // Check if convex directory exists
