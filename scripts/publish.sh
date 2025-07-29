@@ -112,10 +112,35 @@ VERSION_BUMPED=true
 NEW_VERSION=$(node -p "require('./packages/cmux/package.json').version")
 success "Version bumped to v$NEW_VERSION"
 
-# Step 6: Build CLI
-echo "Building CLI..."
-./scripts/build-cli.ts
-success "CLI build complete"
+# Step 6: Build CLI and Docker image in parallel
+echo "Building CLI and Docker image in parallel..."
+
+# Run both builds in background
+./scripts/build-cli.ts &
+CLI_PID=$!
+
+./scripts/docker-push.sh "$NEW_VERSION" &
+DOCKER_PID=$!
+
+# Wait for both to complete
+wait $CLI_PID
+CLI_EXIT=$?
+
+wait $DOCKER_PID
+DOCKER_EXIT=$?
+
+# Check if both succeeded
+if [ $CLI_EXIT -ne 0 ]; then
+  error "CLI build failed"
+  exit 1
+fi
+
+if [ $DOCKER_EXIT -ne 0 ]; then
+  error "Docker build failed"
+  exit 1
+fi
+
+success "CLI build and Docker image push complete"
 
 # Step 7: Commit changes
 echo "Committing changes..."
