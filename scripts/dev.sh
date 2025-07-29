@@ -4,6 +4,12 @@ set -e
 
 CONVEX_PORT=9777
 
+# Check if anything is running on ports 5173, $CONVEX_PORT, 9777, 9778
+if lsof -i :5173,$CONVEX_PORT,9777,9778 >/dev/null 2>&1; then
+    echo "Error: Ports 5173, $CONVEX_PORT, 9777, 9778 are already in use"
+    exit 1
+fi
+
 # Build Docker image by default unless explicitly skipped
 if [ "$SKIP_DOCKER_BUILD" != "true" ]; then
     echo "Building Docker image..."
