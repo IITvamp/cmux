@@ -431,6 +431,7 @@ function DashboardComponent() {
                 onSubmit={handleSubmit}
                 repoUrl={lexicalRepoUrl}
                 branch={lexicalBranch}
+                persistenceKey="dashboard-task-description"
               />
 
               {/* Integrated controls */}

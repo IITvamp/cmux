@@ -1,4 +1,8 @@
-import { $createParagraphNode, $getRoot } from "lexical";
+import {
+  $createParagraphNode,
+  $getRoot,
+  type SerializedEditorState,
+} from "lexical";
 
 import { CodeNode } from "@lexical/code";
 import { AutoLinkNode, LinkNode } from "@lexical/link";
@@ -19,10 +23,10 @@ import { HeadingNode, QuoteNode } from "@lexical/rich-text";
 import clsx from "clsx";
 import { COMMAND_PRIORITY_HIGH, KEY_ENTER_COMMAND } from "lexical";
 import { useEffect, useRef } from "react";
-import { MentionPlugin } from "./MentionPlugin";
-import { ImagePlugin } from "./ImagePlugin";
-import { ImageNode } from "./ImageNode";
 import { EditorStatePlugin } from "./EditorStatePlugin";
+import { ImageNode } from "./ImageNode";
+import { ImagePlugin } from "./ImagePlugin";
+import { MentionPlugin } from "./MentionPlugin";
 
 const theme = {
   ltr: "ltr",
@@ -138,6 +142,110 @@ function ClearEditorPlugin({ value }: { value?: string }) {
   return null;
 }
 
+// Plugin to persist editor state to localStorage
+function LocalStoragePersistencePlugin({
+  persistenceKey,
+  clearOnSubmit,
+}: {
+  persistenceKey?: string;
+  clearOnSubmit?: boolean;
+}) {
+  const [editor] = useLexicalComposerContext();
+  const isFirstRender = useRef(true);
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
+    undefined
+  );
+
+  // Load initial state from localStorage
+  useEffect(() => {
+    if (!persistenceKey || !isFirstRender.current) return;
+
+    isFirstRender.current = false;
+    const savedState = localStorage.getItem(persistenceKey);
+
+    if (savedState) {
+      try {
+        const parsedState = JSON.parse(savedState) as SerializedEditorState;
+        const editorState = editor.parseEditorState(parsedState);
+        editor.setEditorState(editorState);
+      } catch (error) {
+        console.error("Failed to restore editor state:", error);
+      }
+    }
+  }, [editor, persistenceKey]);
+
+  // Save state to localStorage on changes
+  useEffect(() => {
+    if (!persistenceKey) return;
+
+    // Store the latest editor state in a ref for immediate access
+    const latestStateRef = { current: null as SerializedEditorState | null };
+
+    const unregister = editor.registerUpdateListener(({ editorState }) => {
+      // Update the latest state ref immediately
+      latestStateRef.current = editorState.toJSON();
+
+      // Clear existing timer
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current);
+      }
+
+      // Set new timer for debounced save
+      debounceTimer.current = setTimeout(() => {
+        if (latestStateRef.current) {
+          localStorage.setItem(persistenceKey, JSON.stringify(latestStateRef.current));
+        }
+      }, 500); // 500ms debounce
+    });
+
+    // Save immediately before page unload
+    const handleBeforeUnload = () => {
+      // Cancel any pending debounced save
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current);
+      }
+      
+      // Save the latest state immediately
+      if (latestStateRef.current) {
+        localStorage.setItem(persistenceKey, JSON.stringify(latestStateRef.current));
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
+    return () => {
+      unregister();
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current);
+      }
+    };
+  }, [editor, persistenceKey]);
+
+  // Clear localStorage when content is cleared (e.g., after submit)
+  useEffect(() => {
+    if (!persistenceKey || !clearOnSubmit) return;
+
+    const unregister = editor.registerUpdateListener(({ editorState }) => {
+      editorState.read(() => {
+        const root = $getRoot();
+        const children = root.getChildren();
+        const isEmpty =
+          children.length === 0 ||
+          (children.length === 1 && children[0].getTextContent().trim() === "");
+
+        if (isEmpty) {
+          localStorage.removeItem(persistenceKey);
+        }
+      });
+    });
+
+    return unregister;
+  }, [editor, persistenceKey, clearOnSubmit]);
+
+  return null;
+}
+
 interface LexicalEditorProps {
   placeholder?: string;
   onChange?: (text: string) => void;
@@ -148,6 +256,7 @@ interface LexicalEditorProps {
   value?: string;
   repoUrl?: string;
   branch?: string;
+  persistenceKey?: string; // Key for localStorage persistence
   onEditorReady?: (editor: {
     getContent: () => {
       text: string;
@@ -171,6 +280,7 @@ export default function LexicalEditor({
   value,
   repoUrl,
   branch,
+  persistenceKey,
   onEditorReady,
 }: LexicalEditorProps) {
   const initialConfig = {
@@ -230,6 +340,10 @@ export default function LexicalEditor({
         <MarkdownShortcutPlugin transformers={TRANSFORMERS} />
         <KeyboardCommandPlugin onSubmit={onSubmit} />
         <ClearEditorPlugin value={value} />
+        <LocalStoragePersistencePlugin
+          persistenceKey={persistenceKey}
+          clearOnSubmit={true}
+        />
         <MentionPlugin repoUrl={repoUrl} branch={branch} />
         <ImagePlugin />
         <EditorStatePlugin onEditorReady={onEditorReady} />

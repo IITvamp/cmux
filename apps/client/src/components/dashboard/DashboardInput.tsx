@@ -21,6 +21,7 @@ interface DashboardInputProps {
   onSubmit: () => void;
   repoUrl?: string;
   branch?: string;
+  persistenceKey?: string;
 }
 
 export const DashboardInput = memo(
@@ -30,6 +31,7 @@ export const DashboardInput = memo(
       onSubmit,
       repoUrl,
       branch,
+      persistenceKey,
     },
     ref
   ) {
@@ -73,6 +75,7 @@ export const DashboardInput = memo(
         onSubmit={onSubmit}
         repoUrl={repoUrl}
         branch={branch}
+        persistenceKey={persistenceKey}
         padding={lexicalPadding}
         contentEditableClassName={lexicalClassName}
         onEditorReady={handleEditorReady}

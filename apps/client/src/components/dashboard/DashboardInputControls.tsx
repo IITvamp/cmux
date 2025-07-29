@@ -8,9 +8,9 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
+import clsx from "clsx";
 import { Command, Image, Mic } from "lucide-react";
 import { memo, useCallback, useMemo } from "react";
-import clsx from "clsx";
 
 interface DashboardInputControlsProps {
   projectOptions: string[];
@@ -45,7 +45,10 @@ export const DashboardInputControls = memo(function DashboardInputControls({
   canSubmit,
   onStartTask,
 }: DashboardInputControlsProps) {
-  const agentOptions = useMemo(() => AGENT_CONFIGS.map((agent) => agent.name), []);
+  const agentOptions = useMemo(
+    () => AGENT_CONFIGS.map((agent) => agent.name),
+    []
+  );
   const isMac = navigator.userAgent.toUpperCase().indexOf("MAC") >= 0;
   const shortcutKey = isMac ? "⌘" : "Ctrl";
 
@@ -66,7 +69,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
           options={projectOptions}
           value={selectedProject}
           onChange={onProjectChange}
-          placeholder="Select project..."
+          placeholder="Select project"
           singleSelect={true}
           className="!min-w-[300px] !max-w-[500px] !rounded-2xl"
           loading={isLoadingProjects}
@@ -78,7 +81,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
           options={branchOptions}
           value={selectedBranch}
           onChange={onBranchChange}
-          placeholder="Select branch..."
+          placeholder="Branch"
           singleSelect={true}
           className="!min-w-[120px] !rounded-2xl"
           loading={isLoadingBranches}
@@ -89,7 +92,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
           options={agentOptions}
           value={selectedAgents}
           onChange={onAgentChange}
-          placeholder="Select agents..."
+          placeholder="Select agents"
           singleSelect={false}
           maxTagCount={1}
           className="!min-w-[200px] !rounded-2xl"
@@ -131,7 +134,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
         >
           <Mic className="w-4 h-4" />
         </button>
-        
+
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger asChild>
