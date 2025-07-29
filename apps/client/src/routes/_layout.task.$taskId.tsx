@@ -11,7 +11,7 @@ import {
   useNavigate,
 } from "@tanstack/react-router";
 import clsx from "clsx";
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 
 export const Route = createFileRoute("/_layout/task/$taskId")({
   component: TaskDetailPage,
@@ -210,7 +210,9 @@ function TaskDetailPage() {
       )}
 
       <div className="grow flex flex-col min-h-0">
-        <Outlet />
+        <Suspense fallback={<div>Loading...</div>}>
+          <Outlet />
+        </Suspense>
       </div>
     </div>
   );

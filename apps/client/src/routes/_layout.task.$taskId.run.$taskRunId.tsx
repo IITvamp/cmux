@@ -4,6 +4,7 @@ import { getShortId } from "@cmux/shared";
 import { convexQuery } from "@convex-dev/react-query";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
+import clsx from "clsx";
 import { usePersistentIframe } from "../hooks/usePersistentIframe";
 import { preloadTaskRunIframes } from "../lib/preloadTaskRunIframes";
 
@@ -60,8 +61,42 @@ function TaskRunComponent() {
   });
 
   return (
-    <div className="flex flex-row grow min-h-0">
-      <div ref={containerRef} className="grow flex relative" />
+    <div className="flex flex-row grow min-h-0 relative">
+      <div
+        ref={containerRef}
+        className={clsx("grow flex relative", {
+          invisible: !taskRun?.data?.vscode?.workspaceUrl,
+        })}
+      />
+      <div
+        className={clsx(
+          "absolute inset-0 flex items-center justify-center transition",
+          {
+            "opacity-100 pointer-events-none":
+              !taskRun?.data?.vscode?.workspaceUrl,
+            "opacity-0 pointer-events-auto":
+              taskRun?.data?.vscode?.workspaceUrl,
+          }
+        )}
+      >
+        <div className="flex flex-col items-center gap-3">
+          <div className="flex gap-1">
+            <div
+              className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
+              style={{ animationDelay: "0ms" }}
+            />
+            <div
+              className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
+              style={{ animationDelay: "150ms" }}
+            />
+            <div
+              className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
+              style={{ animationDelay: "300ms" }}
+            />
+          </div>
+          <span className="text-sm text-gray-500">Loading VS Code...</span>
+        </div>
+      </div>
     </div>
   );
 }
