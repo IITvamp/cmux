@@ -41,3 +41,4 @@
 [?] git fatal unsupported ssl backend
 
 [ ] authentication with stack auth (or somehow collect user emails) when user tries to enable cloud mode
+[ ] clear local storage if we change name of models in model selector multiselect
