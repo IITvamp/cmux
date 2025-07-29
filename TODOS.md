@@ -45,4 +45,5 @@
 [ ] copy VS Code extensions and copy
 [ ] copy vs code settings/theme
 [ ] make green checkbox timing more reliable
-[ ]
+[ ] archive tasks button in sidebar
+[ ] edit prompt after seeing what it did -- try multiple prompts at same time -- if click on main one, show page that has prompt, edit prompt, and recontinue execution. less tasks, but more so like linear. instead of task, convert it to a linear timeline flow thing.
