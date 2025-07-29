@@ -2,8 +2,9 @@ import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import * as React from "react";
 
 import { cn } from "@/lib/utils";
+import { memo } from "react";
 
-function TooltipProvider({
+const TooltipProvider = memo(function TooltipProvider({
   delayDuration = 0,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Provider>) {
@@ -14,7 +15,7 @@ function TooltipProvider({
       {...props}
     />
   );
-}
+});
 
 function Tooltip({
   ...props

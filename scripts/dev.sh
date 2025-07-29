@@ -4,10 +4,28 @@ set -e
 
 CONVEX_PORT=9777
 
+# Check if anything is running on ports 5173, $CONVEX_PORT, 9777, 9778
+PORTS_TO_CHECK="5173 $CONVEX_PORT 9777 9778"
+PORTS_IN_USE=""
+
+for port in $PORTS_TO_CHECK; do
+    if lsof -i :$port >/dev/null 2>&1; then
+        PORTS_IN_USE="$PORTS_IN_USE $port"
+    fi
+done
+
+if [ -n "$PORTS_IN_USE" ]; then
+    echo "Error: The following ports are already in use:$PORTS_IN_USE"
+    echo ""
+    echo "You can use the following command to kill the processes:"
+    echo "for p in$PORTS_IN_USE; do lsof -ti :\$p | xargs -r kill -9; done"
+    exit 1
+fi
+
 # Build Docker image by default unless explicitly skipped
 if [ "$SKIP_DOCKER_BUILD" != "true" ]; then
     echo "Building Docker image..."
-    docker build -t cmux-worker:0.0.1 .
+    docker build -t cmux-worker:0.0.1 . || exit 1
 else
     echo "Skipping Docker build (SKIP_DOCKER_BUILD=true)"
 fi
@@ -43,7 +61,7 @@ trap cleanup EXIT INT TERM
 # Check if node_modules exist, if not install dependencies
 if [ ! -d "node_modules" ] || [ "$FORCE_INSTALL" = "true" ]; then
     echo -e "${BLUE}Installing dependencies...${NC}"
-    CI=1 pnpm install --frozen-lockfile
+    CI=1 pnpm install --frozen-lockfile || exit 1
 fi
 
 # Function to prefix output with colored labels
@@ -73,25 +91,40 @@ echo -e "${GREEN}Starting convex dev...${NC}"
 #     2>&1 | tee ../../logs/convex.log | prefix_output "CONVEX-BACKEND" "$MAGENTA") &
 # CONVEX_BACKEND_PID=$!
 
-(cd .devcontainer && docker compose up 2>&1 | prefix_output "DOCKER-COMPOSE" "$MAGENTA") &
+# Function to check if a background process started successfully
+check_process() {
+    local pid=$1
+    local name=$2
+    sleep 0.5  # Give the process a moment to start
+    if ! kill -0 $pid 2>/dev/null; then
+        echo -e "${RED}Failed to start $name${NC}"
+        exit 1
+    fi
+}
+
+(cd .devcontainer && COMPOSE_PROJECT_NAME=cmux-convex docker compose up 2>&1 | prefix_output "DOCKER-COMPOSE" "$MAGENTA") &
 DOCKER_COMPOSE_PID=$!
+check_process $DOCKER_COMPOSE_PID "Docker Compose"
 
 (cd packages/convex && source ~/.nvm/nvm.sh && \
   bunx convex dev --env-file .env.convex \
     2>&1 | tee ../../logs/convex-dev.log | prefix_output "CONVEX-DEV" "$GREEN") &
 CONVEX_DEV_PID=$!
-CONVEX_PID=$!
+check_process $CONVEX_DEV_PID "Convex Dev"
+CONVEX_PID=$CONVEX_DEV_PID
 
 
 # Start the backend server
 echo -e "${GREEN}Starting backend server on port 9776...${NC}"
 (cd apps/server && bun run dev 2>&1 | prefix_output "SERVER" "$YELLOW") &
 SERVER_PID=$!
+check_process $SERVER_PID "Backend Server"
 
 # Start the frontend
 echo -e "${GREEN}Starting frontend on port 5173...${NC}"
 (cd apps/client && VITE_CONVEX_URL=http://localhost:$CONVEX_PORT bun run dev 2>&1 | prefix_output "CLIENT" "$CYAN") &
 CLIENT_PID=$!
+check_process $CLIENT_PID "Frontend Client"
 
 echo -e "${GREEN}Terminal app is running!${NC}"
 echo -e "${BLUE}Frontend: http://localhost:5173${NC}"
