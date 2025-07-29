@@ -3,24 +3,58 @@ import { promisify } from "node:util";
 
 const execAsync = promisify(exec);
 
+const PROTECTED_PROCESSES = [
+  'orbstack',
+  'com.orbstack',
+  'Docker',
+  'docker-desktop',
+  'systemd',
+  'launchd',
+  'kernel_task'
+];
+
 export async function killPortsIfNeeded(portsToCheck: number[]): Promise<string[]> {
   const portsInUse: string[] = [];
   
   for (const port of portsToCheck) {
     try {
-      // Check if port is in use
-      const { stdout } = await execAsync(`lsof -ti :${port}`);
-      const pids = stdout.trim().split('\n').filter(pid => pid);
+      // Get detailed info about processes using this port
+      const { stdout } = await execAsync(`lsof -n -i :${port} -P`);
+      const lines = stdout.trim().split('\n').slice(1); // Skip header
       
-      if (pids.length > 0) {
+      if (lines.length > 0 && lines[0]) {
         portsInUse.push(port.toString());
         
-        // Kill all processes using this port
-        for (const pid of pids) {
-          try {
-            await execAsync(`kill -9 ${pid}`);
-          } catch (error) {
-            // Process might have already exited
+        for (const line of lines) {
+          const parts = line.split(/\s+/);
+          const command = parts[0];
+          const pid = parts[1];
+          
+          // Check if this is a protected process
+          const isProtected = PROTECTED_PROCESSES.some(proc => 
+            command.toLowerCase().includes(proc.toLowerCase())
+          );
+          
+          if (isProtected) {
+            console.log(`\x1b[33m!\x1b[0m Skipping protected process: ${command} (PID: ${pid}) on port ${port}`);
+          } else {
+            try {
+              // Try graceful shutdown first
+              await execAsync(`kill -TERM ${pid}`);
+              // Give it a moment to shut down
+              await new Promise(resolve => setTimeout(resolve, 100));
+              
+              // Check if still running
+              try {
+                await execAsync(`kill -0 ${pid}`);
+                // If we get here, process is still running, force kill
+                await execAsync(`kill -9 ${pid}`);
+              } catch {
+                // Process already terminated
+              }
+            } catch (error) {
+              // Process might have already exited
+            }
           }
         }
       }
