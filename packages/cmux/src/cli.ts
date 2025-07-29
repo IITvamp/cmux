@@ -62,7 +62,7 @@ program
 
     // ensure convexDir exists
     mkdirSync(convexDir, { recursive: true });
-    
+
     // ensure logs directory exists
     const logsDir = path.join(convexDir, "logs");
     mkdirSync(logsDir, { recursive: true });
@@ -72,6 +72,8 @@ program
       console.error("Convex directory not found at:", convexDir);
       process.exit(1);
     }
+
+    logger.ensureLogDirectory();
 
     let convexProcesses: ConvexProcesses;
     try {
