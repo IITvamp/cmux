@@ -7,6 +7,7 @@ import path from "node:path";
 import { convex } from "./utils/convexClient.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
+import { serverLogger } from "./utils/fileLogger.js";
 
 // Port cache to avoid hammering Docker
 interface PortCacheEntry {
@@ -109,7 +110,7 @@ async function checkContainerExists(containerName: string): Promise<boolean> {
 
     return containers.length > 0;
   } catch (error) {
-    console.error(`Failed to check container existence:`, error);
+    serverLogger.error(`Failed to check container existence:`, error);
     return false;
   }
 }
@@ -166,7 +167,7 @@ async function getActualPortFromDocker(
 
     return portMapping[containerPort] || null;
   } catch (error) {
-    console.error(
+    serverLogger.error(
       `Failed to get port mapping for container ${containerName}:`,
       error
     );
@@ -285,14 +286,14 @@ export function createProxyApp({
 
           // Start the container
           newInstance.start().catch((err) => {
-            console.error(
+            serverLogger.error(
               `Failed to start container ${fullContainerName}:`,
               err
             );
           });
         } else if (instance instanceof DockerVSCodeInstance) {
           instance.start().catch((err) => {
-            console.error(
+            serverLogger.error(
               `Failed to restart container ${fullContainerName}:`,
               err
             );
@@ -367,7 +368,7 @@ export function setupWebSocketProxy(server: Server) {
       );
 
       if (!actualPort) {
-        console.error(
+        serverLogger.error(
           `WebSocket upgrade failed: Port ${targetPort} (container port ${containerPort}) not mapped for container ${containerName}`
         );
         socket.end("HTTP/1.1 404 Not Found\r\n\r\n");
@@ -383,7 +384,7 @@ export function setupWebSocketProxy(server: Server) {
 
       // Handle proxy errors
       proxy.on("error", (err: Error) => {
-        console.error(
+        serverLogger.error(
           `WebSocket proxy error for ${containerName}:${actualPort}:`,
           err.message
         );

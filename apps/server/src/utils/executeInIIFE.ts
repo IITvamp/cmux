@@ -1,3 +1,5 @@
+import { serverLogger } from "./fileLogger.js";
+
 export function executeInIIFE<T>(code: () => T | Promise<T>): void {
   try {
     // Execute the function in an IIFE
@@ -5,6 +7,6 @@ export function executeInIIFE<T>(code: () => T | Promise<T>): void {
       await code();
     })();
   } catch (error) {
-    console.error("Error executing code:", error);
+    serverLogger.error("Error executing code:", error);
   }
 }

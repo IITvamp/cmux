@@ -1,10 +1,11 @@
 import { api } from "@cmux/convex/api";
 import { ghApi } from "../ghApi.js";
 import { convex } from "./convexClient.js";
+import { serverLogger } from "./fileLogger.js";
 
 export async function refreshGitHubData() {
   try {
-    console.log("Starting GitHub data refresh...");
+    serverLogger.info("Starting GitHub data refresh...");
 
     // Try to get current user info
     let username: string;
@@ -20,7 +21,7 @@ export async function refreshGitHubData() {
     } catch (error) {
       // Check if this is an authentication error
       if (error instanceof Error && 'status' in error && error.status === 401) {
-        console.log("No GitHub authentication found, skipping repository refresh");
+        serverLogger.info("No GitHub authentication found, skipping repository refresh");
         return;
       }
       throw error;
@@ -55,22 +56,22 @@ export async function refreshGitHubData() {
     );
 
     if (reposToInsert.length > 0) {
-      console.log(`Refreshing repository data with ${reposToInsert.length} repos...`);
+      serverLogger.info(`Refreshing repository data with ${reposToInsert.length} repos...`);
       // The mutation now handles deduplication
       await convex.mutation(api.github.bulkInsertRepos, {
         repos: reposToInsert,
       });
-      console.log("Repository data refreshed successfully");
+      serverLogger.info("Repository data refreshed successfully");
     } else {
-      console.log("No repositories found");
+      serverLogger.info("No repositories found");
     }
 
     // Optionally refresh branches for existing repos
     // This could be done on-demand or periodically instead
-    console.log("GitHub data refresh completed");
+    serverLogger.info("GitHub data refresh completed");
 
   } catch (error) {
-    console.error("Error refreshing GitHub data:", error);
+    serverLogger.error("Error refreshing GitHub data:", error);
     throw error;
   }
 }
@@ -90,7 +91,7 @@ export async function refreshBranchesForRepo(repo: string) {
     return branches;
   } catch (error) {
     if (error instanceof Error && 'status' in error && error.status === 401) {
-      console.log("No GitHub authentication found, skipping branch refresh");
+      serverLogger.info("No GitHub authentication found, skipping branch refresh");
       return [];
     }
     throw error;

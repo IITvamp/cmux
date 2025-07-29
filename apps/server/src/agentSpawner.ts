@@ -12,6 +12,7 @@ import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { MorphVSCodeInstance } from "./vscode/MorphVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWorktreePath, setupProjectWorkspace } from "./workspace.js";
+import { serverLogger } from "./utils/fileLogger.js";
 
 /**
  * Sanitize a string to be used as a tmux session name.
@@ -34,7 +35,7 @@ async function performAutoCommitAndPush(
   taskDescription: string
 ): Promise<void> {
   try {
-    console.log(`[AgentSpawner] Starting auto-commit and push for ${agent.name}`);
+    serverLogger.info(`[AgentSpawner] Starting auto-commit and push for ${agent.name}`);
     
     // Create a unique branch name for this task run
     // Include a sanitized version of the task description for better clarity
@@ -69,18 +70,18 @@ Completed: ${new Date().toISOString()}`;
     const extensionResult = await tryVSCodeExtensionCommit(vscodeInstance, branchName, commitMessage, agent.name);
     
     if (extensionResult.success) {
-      console.log(`[AgentSpawner] Successfully committed via VSCode extension`);
-      console.log(`[AgentSpawner] Branch: ${branchName}`);
-      console.log(`[AgentSpawner] Commit message: ${commitMessage.split('\n')[0]}`);
+      serverLogger.info(`[AgentSpawner] Successfully committed via VSCode extension`);
+      serverLogger.info(`[AgentSpawner] Branch: ${branchName}`);
+      serverLogger.info(`[AgentSpawner] Commit message: ${commitMessage.split('\n')[0]}`);
       return;
     }
 
-    console.log(`[AgentSpawner] VSCode extension method failed, falling back to git commands:`, extensionResult.error);
+    serverLogger.info(`[AgentSpawner] VSCode extension method failed, falling back to git commands:`, extensionResult.error);
     
     // Fallback to direct git commands
     const workerSocket = vscodeInstance.getWorkerSocket();
     if (!workerSocket || !vscodeInstance.isWorkerConnected()) {
-      console.log(`[AgentSpawner] No worker connection for auto-commit fallback`);
+      serverLogger.info(`[AgentSpawner] No worker connection for auto-commit fallback`);
       return;
     }
         
@@ -97,7 +98,7 @@ Completed: ${new Date().toISOString()}`;
     ];
 
     for (const command of gitCommands) {
-      console.log(`[AgentSpawner] Executing: ${command}`);
+      serverLogger.info(`[AgentSpawner] Executing: ${command}`);
       
       const result = await new Promise<{
         success: boolean;
@@ -118,7 +119,7 @@ Completed: ${new Date().toISOString()}`;
             },
             (timeoutError, result) => {
               if (timeoutError) {
-                console.error(`[AgentSpawner] Timeout executing: ${command}`, timeoutError);
+                serverLogger.error(`[AgentSpawner] Timeout executing: ${command}`, timeoutError);
                 resolve({
                   success: false,
                   error: "Timeout waiting for git command",
@@ -131,7 +132,7 @@ Completed: ${new Date().toISOString()}`;
               }
 
               const { stdout, stderr, exitCode } = result.data!;
-              console.log(`[AgentSpawner] Command output:`, { stdout, stderr, exitCode });
+              serverLogger.info(`[AgentSpawner] Command output:`, { stdout, stderr, exitCode });
 
               if (exitCode === 0) {
                 resolve({ success: true, stdout, stderr, exitCode });
@@ -149,15 +150,15 @@ Completed: ${new Date().toISOString()}`;
       });
 
       if (!result.success) {
-        console.error(`[AgentSpawner] Git command failed: ${command}`, result.error);
+        serverLogger.error(`[AgentSpawner] Git command failed: ${command}`, result.error);
         // Don't stop on individual command failures - some might be expected (e.g., no changes to commit)
         continue;
       }
     }
 
-    console.log(`[AgentSpawner] Auto-commit and push completed for ${agent.name} on branch ${branchName}`);
+    serverLogger.info(`[AgentSpawner] Auto-commit and push completed for ${agent.name} on branch ${branchName}`);
   } catch (error) {
-    console.error(`[AgentSpawner] Error in auto-commit and push:`, error);
+    serverLogger.error(`[AgentSpawner] Error in auto-commit and push:`, error);
   }
 }
 
@@ -195,7 +196,7 @@ async function tryVSCodeExtensionCommit(
       }, 15000);
 
       extensionSocket.on("connect", () => {
-        console.log(`[AgentSpawner] Connected to VSCode extension on port ${extensionPort}`);
+        serverLogger.info(`[AgentSpawner] Connected to VSCode extension on port ${extensionPort}`);
         
         extensionSocket.emit("vscode:auto-commit-push", {
           branchName,
@@ -301,8 +302,8 @@ export async function spawnAgent(
     }
 
     if (imagesToProcess.length > 0) {
-      console.log(`[AgentSpawner] Processing ${imagesToProcess.length} images`);
-      console.log(
+      serverLogger.info(`[AgentSpawner] Processing ${imagesToProcess.length} images`);
+      serverLogger.info(
         `[AgentSpawner] Original task description: ${options.taskDescription}`
       );
 
@@ -310,11 +311,11 @@ export async function spawnAgent(
       imagesToProcess.forEach((image, index) => {
         // Sanitize filename to remove special characters
         let fileName = image.fileName || `image_${index + 1}.png`;
-        console.log(`[AgentSpawner] Original filename: ${fileName}`);
+        serverLogger.info(`[AgentSpawner] Original filename: ${fileName}`);
 
         // Replace non-ASCII characters and spaces with underscores
         fileName = fileName.replace(/[^\x00-\x7F]/g, "_").replace(/\s+/g, "_");
-        console.log(`[AgentSpawner] Sanitized filename: ${fileName}`);
+        serverLogger.info(`[AgentSpawner] Sanitized filename: ${fileName}`);
 
         const imagePath = `/root/prompt/${fileName}`;
         imageFiles.push({
@@ -334,7 +335,7 @@ export async function spawnAgent(
             imagePath
           );
           if (beforeReplace !== processedTaskDescription) {
-            console.log(
+            serverLogger.info(
               `[AgentSpawner] Replaced "${image.fileName}" with "${imagePath}"`
             );
           }
@@ -352,14 +353,14 @@ export async function spawnAgent(
             imagePath
           );
           if (beforeReplace !== processedTaskDescription) {
-            console.log(
+            serverLogger.info(
               `[AgentSpawner] Replaced "${nameWithoutExt}" with "${imagePath}"`
             );
           }
         }
       });
 
-      console.log(
+      serverLogger.info(
         `[AgentSpawner] Processed task description: ${processedTaskDescription}`
       );
     }
@@ -413,12 +414,12 @@ export async function spawnAgent(
       `${agent.name}-${taskRunId.slice(-8)}`
     );
 
-    console.log(`[AgentSpawner] Building command for agent ${agent.name}:`);
-    console.log(`  Raw command: ${agent.command}`);
-    console.log(`  Processed args: ${processedArgs.join(" ")}`);
-    console.log(`  Agent command: ${agentCommand}`);
-    console.log(`  Tmux session name: ${tmuxSessionName}`);
-    console.log(
+    serverLogger.info(`[AgentSpawner] Building command for agent ${agent.name}:`);
+    serverLogger.info(`  Raw command: ${agent.command}`);
+    serverLogger.info(`  Processed args: ${processedArgs.join(" ")}`);
+    serverLogger.info(`  Agent command: ${agentCommand}`);
+    serverLogger.info(`  Tmux session name: ${tmuxSessionName}`);
+    serverLogger.info(
       `  Environment vars to pass:`,
       Object.keys(envVars).filter(
         (k) => k.startsWith("ANTHROPIC_") || k.startsWith("GEMINI_")
@@ -467,7 +468,7 @@ export async function spawnAgent(
 
       worktreePath = workspaceResult.worktreePath;
 
-      console.log(
+      serverLogger.info(
         `[AgentSpawner] Creating DockerVSCodeInstance for ${agent.name}`
       );
       vscodeInstance = new DockerVSCodeInstance({
@@ -486,19 +487,19 @@ export async function spawnAgent(
     // Store the VSCode instance
     // VSCodeInstance.getInstances().set(vscodeInstance.getInstanceId(), vscodeInstance);
 
-    console.log(`Starting VSCode instance for agent ${agent.name}...`);
+    serverLogger.info(`Starting VSCode instance for agent ${agent.name}...`);
 
     // Start the VSCode instance
     const vscodeInfo = await vscodeInstance.start();
     const vscodeUrl = vscodeInfo.workspaceUrl;
 
-    console.log(
+    serverLogger.info(
       `VSCode instance spawned for agent ${agent.name}: ${vscodeUrl}`
     );
 
     // Set up terminal-idle event handler
     vscodeInstance.on("terminal-idle", async (data) => {
-      console.log(
+      serverLogger.info(
         `[AgentSpawner] Terminal idle detected for ${agent.name}:`,
         data
       );
@@ -511,12 +512,12 @@ export async function spawnAgent(
             exitCode: 0,
           });
 
-          console.log(
+          serverLogger.info(
             `[AgentSpawner] Updated taskRun ${taskRunId} as completed after ${data.elapsedMs}ms`
           );
 
           // Wait a bit to ensure all file changes are saved
-          console.log(`[AgentSpawner] Waiting 2 seconds before auto-commit to ensure all changes are saved...`);
+          serverLogger.info(`[AgentSpawner] Waiting 2 seconds before auto-commit to ensure all changes are saved...`);
           await new Promise(resolve => setTimeout(resolve, 2000));
 
           // Auto-commit and push changes in VSCode editor
@@ -530,7 +531,7 @@ export async function spawnAgent(
           if (containerSettings.autoCleanupEnabled) {
             if (containerSettings.stopImmediatelyOnCompletion) {
               // Stop container immediately
-              console.log(
+              serverLogger.info(
                 `[AgentSpawner] Stopping container immediately as per settings`
               );
 
@@ -547,7 +548,7 @@ export async function spawnAgent(
                 scheduledStopAt,
               });
 
-              console.log(
+              serverLogger.info(
                 `[AgentSpawner] Scheduled container stop for ${new Date(scheduledStopAt).toISOString()}`
               );
             }
@@ -569,12 +570,12 @@ export async function spawnAgent(
               isCompleted: true,
             });
 
-            console.log(
+            serverLogger.info(
               `[AgentSpawner] All task runs completed, updated task ${taskId} as completed`
             );
           }
         } catch (error) {
-          console.error(
+          serverLogger.error(
             `[AgentSpawner] Error updating task run after idle:`,
             error
           );
@@ -621,22 +622,22 @@ export async function spawnAgent(
 
     // Log auth files if any
     if (authFiles.length > 0) {
-      console.log(
+      serverLogger.info(
         `[AgentSpawner] Prepared ${authFiles.length} auth files for agent ${agent.name}`
       );
     }
 
     // After VSCode instance is started, create the terminal with tmux session
-    console.log(
+    serverLogger.info(
       `[AgentSpawner] Preparing to send terminal creation command for ${agent.name}`
     );
 
     // Wait for worker connection if not already connected
     if (!vscodeInstance.isWorkerConnected()) {
-      console.log(`[AgentSpawner] Waiting for worker connection...`);
+      serverLogger.info(`[AgentSpawner] Waiting for worker connection...`);
       await new Promise<void>((resolve) => {
         const timeout = setTimeout(() => {
-          console.error(`[AgentSpawner] Timeout waiting for worker connection`);
+          serverLogger.error(`[AgentSpawner] Timeout waiting for worker connection`);
           resolve();
         }, 30000); // 30 second timeout
 
@@ -650,7 +651,7 @@ export async function spawnAgent(
     // Get the worker socket
     const workerSocket = vscodeInstance.getWorkerSocket();
     if (!workerSocket) {
-      console.error(
+      serverLogger.error(
         `[AgentSpawner] No worker socket available for ${agent.name}`
       );
       return {
@@ -689,11 +690,11 @@ export async function spawnAgent(
       cwd: "/root/workspace",
     };
 
-    console.log(
+    serverLogger.info(
       `[AgentSpawner] Sending terminal creation command at ${new Date().toISOString()}:`
     );
-    console.log(`  Terminal ID: ${tmuxSessionName}`);
-    // console.log(
+    serverLogger.info(`  Terminal ID: ${tmuxSessionName}`);
+    // serverLogger.info(
     //   `  Full terminal command object:`,
     //   JSON.stringify(
     //     terminalCreationCommand,
@@ -706,11 +707,11 @@ export async function spawnAgent(
     //     2
     //   )
     // );
-    console.log(`  isCloudMode:`, options.isCloudMode);
+    serverLogger.info(`  isCloudMode:`, options.isCloudMode);
 
     // For Morph instances, we need to clone the repository first
     if (options.isCloudMode) {
-      console.log(`[AgentSpawner] Cloning repository for Morph instance...`);
+      serverLogger.info(`[AgentSpawner] Cloning repository for Morph instance...`);
 
       // Use worker:exec to clone the repository
       const cloneCommand = `git clone ${options.repoUrl} /root/workspace${
@@ -735,7 +736,7 @@ export async function spawnAgent(
             },
             (timeoutError, result) => {
               if (timeoutError) {
-                console.error("Timeout waiting for git clone", timeoutError);
+                serverLogger.error("Timeout waiting for git clone", timeoutError);
                 resolve({
                   success: false,
                   error: "Timeout waiting for git clone",
@@ -748,16 +749,16 @@ export async function spawnAgent(
               }
 
               const { stdout, stderr, exitCode } = result.data!;
-              console.log(`[AgentSpawner] Git clone stdout:`, stdout);
+              serverLogger.info(`[AgentSpawner] Git clone stdout:`, stdout);
               if (stderr) {
-                console.log(`[AgentSpawner] Git clone stderr:`, stderr);
+                serverLogger.info(`[AgentSpawner] Git clone stderr:`, stderr);
               }
 
               if (exitCode === 0) {
-                console.log(`[AgentSpawner] Repository cloned successfully`);
+                serverLogger.info(`[AgentSpawner] Repository cloned successfully`);
                 resolve({ success: true });
               } else {
-                console.error(
+                serverLogger.error(
                   `[AgentSpawner] Git clone failed with exit code ${exitCode}`
                 );
                 resolve({
@@ -784,7 +785,7 @@ export async function spawnAgent(
 
     // Create image files if any
     if (imageFiles.length > 0) {
-      console.log(
+      serverLogger.info(
         `[AgentSpawner] Creating ${imageFiles.length} image files...`
       );
 
@@ -800,7 +801,7 @@ export async function spawnAgent(
           },
           (timeoutError, result) => {
             if (timeoutError || result.error) {
-              console.error(
+              serverLogger.error(
                 "Failed to create prompt directory",
                 timeoutError || result.error
               );
@@ -833,7 +834,7 @@ export async function spawnAgent(
 
           const uploadUrl = `http://localhost:${workerPort}/upload-image`;
 
-          console.log(`[AgentSpawner] Uploading image to ${uploadUrl}`);
+          serverLogger.info(`[AgentSpawner] Uploading image to ${uploadUrl}`);
 
           const response = await fetch(uploadUrl, {
             method: "POST",
@@ -846,11 +847,11 @@ export async function spawnAgent(
           }
 
           const result = await response.json();
-          console.log(
+          serverLogger.info(
             `[AgentSpawner] Successfully uploaded image: ${result.path} (${result.size} bytes)`
           );
         } catch (error) {
-          console.error(
+          serverLogger.error(
             `[AgentSpawner] Failed to upload image ${imageFile.path}:`,
             error
           );
@@ -859,15 +860,15 @@ export async function spawnAgent(
     }
 
     // Send the terminal creation command
-    console.log(
+    serverLogger.info(
       `[AgentSpawner] About to emit worker:create-terminal at ${new Date().toISOString()}`
     );
-    console.log(`[AgentSpawner] Socket connected:`, workerSocket.connected);
-    console.log(`[AgentSpawner] Socket id:`, workerSocket.id);
+    serverLogger.info(`[AgentSpawner] Socket connected:`, workerSocket.connected);
+    serverLogger.info(`[AgentSpawner] Socket id:`, workerSocket.id);
 
     await new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
-        console.error(
+        serverLogger.error(
           `[AgentSpawner] Timeout waiting for terminal creation response after 30s`
         );
         reject(new Error("Timeout waiting for terminal creation"));
@@ -878,7 +879,7 @@ export async function spawnAgent(
         terminalCreationCommand,
         (result) => {
           clearTimeout(timeout);
-          console.log(
+          serverLogger.info(
             `[AgentSpawner] Got response from worker:create-terminal at ${new Date().toISOString()}:`,
             result
           );
@@ -886,12 +887,12 @@ export async function spawnAgent(
             reject(result.error);
             return;
           } else {
-            console.log("Terminal created successfully", result);
+            serverLogger.info("Terminal created successfully", result);
             resolve(result.data);
           }
         }
       );
-      console.log(
+      serverLogger.info(
         `[AgentSpawner] Emitted worker:create-terminal at ${new Date().toISOString()}`
       );
     });
@@ -905,7 +906,7 @@ export async function spawnAgent(
       success: true,
     };
   } catch (error) {
-    console.error("Error spawning agent", error);
+    serverLogger.error("Error spawning agent", error);
     return {
       agentName: agent.name,
       terminalId: "",

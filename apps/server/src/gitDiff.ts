@@ -1,6 +1,7 @@
 import { exec } from "child_process";
 import chokidar, { type FSWatcher } from "chokidar";
 import { promisify } from "util";
+import { serverLogger } from "./utils/fileLogger.js";
 
 const execAsync = promisify(exec);
 
@@ -24,12 +25,12 @@ export class GitDiffManager {
       );
 
       if (stderr) {
-        console.error("Git diff stderr:", stderr);
+        serverLogger.error("Git diff stderr:", stderr);
       }
 
       return stdout || "";
     } catch (error) {
-      console.error("Error getting git diff:", error);
+      serverLogger.error("Error getting git diff:", error);
       throw new Error("Failed to get git diff");
     }
   }

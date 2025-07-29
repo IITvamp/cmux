@@ -128,7 +128,15 @@ console.log("Preparing convex deployment");
 await $`cp -r ./packages/convex/convex ./packages/cmux/src/convex/convex-bundle/`;
 await $`cp ./packages/convex/package.json ./packages/cmux/src/convex/convex-bundle/`;
 await $`cp ./packages/convex/tsconfig.json ./packages/cmux/src/convex/convex-bundle/`;
-await $`cp ./packages/convex/.env.local ./packages/cmux/src/convex/convex-bundle/`;
+
+// Create .env.local if it doesn't exist or copy it
+const envLocalPath = "./packages/convex/.env.local";
+if (existsSync(envLocalPath)) {
+  await $`cp ${envLocalPath} ./packages/cmux/src/convex/convex-bundle/`;
+} else {
+  // Create a minimal .env.local for the deployment
+  await $`echo "CONVEX_URL=http://localhost:9777" > ./packages/cmux/src/convex/convex-bundle/.env.local`;
+}
 
 console.log("Deploying convex");
 
@@ -139,11 +147,20 @@ await $`cd ./packages/cmux/src/convex/convex-bundle && bunx convex@1.26.0-alpha.
 console.log("Killing convex backend");
 convexBackendProcess.kill();
 
+// Wait a moment for the database to be fully written
+await new Promise((resolve) => setTimeout(resolve, 1000));
+
 // Create a temp directory for the cmux bundle
 await $`mkdir -p /tmp/cmux-bundle`;
 
 // Copy convex-bundle contents
 await $`cp -r ./packages/cmux/src/convex/convex-bundle/* /tmp/cmux-bundle/`;
+
+// Copy the SQLite database from the convex-bundle directory (which now has the deployed functions)
+await $`cp ./packages/cmux/src/convex/convex-bundle/convex_local_backend.sqlite3 /tmp/cmux-bundle/`;
+
+// Copy the convex_local_storage directory
+await $`cp -r ./packages/cmux/src/convex/convex-bundle/convex_local_storage /tmp/cmux-bundle/`;
 
 // Copy the correct package.json from cmux package (overwrite the convex one)
 await $`cp ./packages/cmux/package.json /tmp/cmux-bundle/`;
@@ -162,7 +179,7 @@ await $`rm -rf /tmp/cmux-bundle`;
 const VERSION = cmuxPackageJson.version;
 
 // bun build the cli
-await $`bun build ./packages/cmux/src/cli.ts --compile --define VERSION=${VERSION} --define process.env.WORKER_IMAGE_NAME=lawrencecchen/cmux@latest --outfile cmux-cli`;
+await $`bun build ./packages/cmux/src/cli.ts --compile --define VERSION="\"${VERSION}\"" --define process.env.WORKER_IMAGE_NAME=lawrencecchen/cmux@latest --define process.env.NODE_ENV="\"production\"" --outfile cmux-cli`;
 console.log("Built cmux-cli");
 
 // exit with 0

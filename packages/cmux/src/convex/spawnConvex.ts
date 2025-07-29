@@ -1,5 +1,6 @@
 import { $ } from "bun";
 import { ChildProcess, spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -7,9 +8,6 @@ import { logger } from "../logger";
 
 // @ts-expect-error this is a real file!
 import cmux_bundle_zip from "./cmux-bundle.zip" with { type: "file" };
-
-// console.log(embeddedFiles);
-// logger.info(`convex: ${JSON.stringify(convex)}`).catch(() => {});
 
 export interface ConvexProcesses {
   backend: ChildProcess;
@@ -45,7 +43,30 @@ export async function spawnConvex(
     os.tmpdir(),
     `cmux-version-check-${Date.now()}`
   );
-  await $`unzip -jo ${tempZipPath} "cmux-bundle/package.json" -d ${tempVersionCheckDir}`;
+  const unzipProcess = spawn(
+    "unzip",
+    ["-jo", tempZipPath, "cmux-bundle/package.json", "-d", tempVersionCheckDir],
+    {
+      stdio: "pipe",
+    }
+  );
+
+  await new Promise<void>((resolve, reject) => {
+    unzipProcess.on("close", (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`unzip process exited with code ${code}`));
+      }
+    });
+
+    unzipProcess.on("error", (error) => {
+      reject(error);
+    });
+  }).catch(async (error) => {
+    await logger.error(`Failed to extract package.json: ${error}`);
+    process.exit(1);
+  });
   const bundlePackageJson = JSON.parse(
     await fs.readFile(path.join(tempVersionCheckDir, "package.json"), "utf8")
   );
@@ -231,6 +252,42 @@ export async function spawnConvex(
     throw new Error(
       `Failed to connect to Convex instance after ${maxRetries} retries`
     );
+  }
+
+  // Deploy convex functions if this was a fresh install or upgrade
+  if (shouldExtract) {
+    await logger.info("Deploying Convex functions...");
+
+    const convexAdminKey =
+      "cmux-dev|017aebe6643f7feb3fe831fbb93a348653c63e5711d2427d1a34b670e3151b0165d86a5ff9";
+    const convexCliPath = path.join(
+      convexDir,
+      "convex-cli-dist",
+      "cli.bundle.js"
+    );
+
+    try {
+      // Create .env.local if it doesn't exist
+      const envLocalPath = path.join(convexDir, ".env.local");
+      if (!existsSync(envLocalPath)) {
+        await $`echo "CONVEX_URL=http://localhost:${convexPort}" > ${envLocalPath}`;
+      }
+
+      // Run convex deploy using the bundled CLI
+      const deployResult =
+        await $`cd ${convexDir} && bun ${convexCliPath} deploy --url http://localhost:${convexPort} --admin-key ${convexAdminKey}`;
+
+      if (deployResult.exitCode === 0) {
+        await logger.info("Convex functions deployed successfully!");
+      } else {
+        await logger.error(
+          `Convex deployment failed with exit code ${deployResult.exitCode}`
+        );
+      }
+    } catch (error) {
+      await logger.error(`Failed to deploy Convex functions: ${error}`);
+      // Don't throw here - the server can still run, just without the functions
+    }
   }
 
   return {
