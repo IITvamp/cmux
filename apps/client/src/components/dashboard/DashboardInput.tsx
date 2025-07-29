@@ -22,6 +22,7 @@ interface DashboardInputProps {
   repoUrl?: string;
   branch?: string;
   persistenceKey?: string;
+  maxHeight?: string;
 }
 
 export const DashboardInput = memo(
@@ -32,6 +33,7 @@ export const DashboardInput = memo(
       repoUrl,
       branch,
       persistenceKey,
+      maxHeight = "600px",
     },
     ref
   ) {
@@ -58,7 +60,7 @@ export const DashboardInput = memo(
     const lexicalClassName = useMemo(
       () =>
         clsx(
-          "text-[15px] text-neutral-900 dark:text-neutral-100 min-h-[60px]! max-h-[600px]",
+          "text-[15px] text-neutral-900 dark:text-neutral-100 min-h-[60px]!",
           "focus:outline-none"
         ),
       []
@@ -78,6 +80,7 @@ export const DashboardInput = memo(
         persistenceKey={persistenceKey}
         padding={lexicalPadding}
         contentEditableClassName={lexicalClassName}
+        maxHeight={maxHeight}
         onEditorReady={handleEditorReady}
       />
     );
