@@ -1,4 +1,4 @@
-import type { EnvironmentResult } from "./environments/environment-result.js";
+import type { EnvironmentResult } from "./providers/common/environment-result.js";
 
 import { AMP_CONFIG } from "./providers/amp/configs.js";
 import {

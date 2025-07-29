@@ -1,9 +1,7 @@
+import type { AuthFile } from "../../worker-schemas.js";
+
 export interface EnvironmentResult {
-  files: Array<{
-    destinationPath: string;
-    contentBase64: string;
-    mode: string;
-  }>;
+  files: AuthFile[];
   env: Record<string, string>;
-  startupCommands: string[];
+  startupCommands?: string[];
 }
