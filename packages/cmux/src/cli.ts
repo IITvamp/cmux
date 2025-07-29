@@ -1,6 +1,6 @@
 import { startServer } from "@cmux/server";
 import { Command } from "commander";
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -112,6 +112,47 @@ program
 
     process.on("SIGINT", cleanup);
     process.on("SIGTERM", cleanup);
+  });
+
+program
+  .command("uninstall")
+  .description("Remove cmux data and show uninstall instructions")
+  .action(async () => {
+    console.log("\n\x1b[33m🗑️  Uninstalling cmux...\x1b[0m\n");
+
+    // Remove ~/.cmux directory
+    if (existsSync(convexDir)) {
+      try {
+        console.log(`Removing data directory: ${convexDir}`);
+        rmSync(convexDir, { recursive: true, force: true });
+        console.log("\x1b[32m✓\x1b[0m Data directory removed successfully");
+      } catch (error) {
+        console.error(
+          "\x1b[31m✗\x1b[0m Failed to remove data directory:",
+          error
+        );
+      }
+    } else {
+      console.log("\x1b[33m!\x1b[0m Data directory not found, skipping...");
+    }
+
+    // Show uninstall instructions based on how it might have been installed
+    console.log("\n\x1b[36mTo complete the uninstallation:\x1b[0m\n");
+
+    console.log("If installed globally with npm:");
+    console.log("  \x1b[90mnpm uninstall -g cmux\x1b[0m\n");
+
+    console.log("If installed globally with yarn:");
+    console.log("  \x1b[90myarn global remove cmux\x1b[0m\n");
+
+    console.log("If installed globally with pnpm:");
+    console.log("  \x1b[90mpnpm uninstall -g cmux\x1b[0m\n");
+
+    console.log("If installed globally with bun:");
+    console.log("  \x1b[90mbun uninstall -g cmux\x1b[0m\n");
+
+    console.log("\x1b[32m✓\x1b[0m cmux data has been removed!");
+    process.exit(0);
   });
 
 program.parse();
