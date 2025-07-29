@@ -5,7 +5,14 @@ import { getAmpEnvironment } from "./environment.js";
 export const AMP_CONFIG: AgentConfig = {
   name: "amp",
   command: "prompt-wrapper",
-  args: ["--prompt", "$PROMPT", "--", "bunx", "@sourcegraph/amp@latest"],
+  args: [
+    "--prompt",
+    "$PROMPT",
+    "--",
+    "bunx",
+    "@sourcegraph/amp@latest",
+    "--dangerously-allow-all",
+  ],
   environment: getAmpEnvironment,
   apiKeys: [
     {

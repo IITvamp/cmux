@@ -136,6 +136,7 @@ export async function detectTerminalIdle(
   let child: ChildProcessWithoutNullStreams;
   let stdoutBuffer = "";
   let stderrBuffer = "";
+  let detachCommandSentTime: number | null = null;
 
   return new Promise(async (resolve, reject) => {
     // Poll tmux session to see if it's ready, retry up to 10 times with 100ms delay
@@ -244,6 +245,7 @@ export async function detectTerminalIdle(
             sessionName,
           }
         );
+        detachCommandSentTime = Date.now();
         child.stdin.write("\x02"); // Ctrl+B
         child.stdin.write("d"); // d for detach
 
@@ -307,6 +309,23 @@ export async function detectTerminalIdle(
       const currentTime = Date.now();
       const timeSinceStart = currentTime - startTime;
 
+      // Check if we're in the grace period after sending detach command
+      const DETACH_GRACE_PERIOD_MS = 500; // 500ms grace period
+      if (detachCommandSentTime && currentTime - detachCommandSentTime < DETACH_GRACE_PERIOD_MS) {
+        log(
+          "DEBUG",
+          `[detectTerminalIdle] Ignoring stdout output during detach grace period`,
+          {
+            sessionName,
+            bytes: data.length,
+            timeSinceStart,
+            timeSinceDetach: currentTime - detachCommandSentTime,
+            dataPreview: data.toString().slice(0, 100).replace(/\n/g, "\\n"),
+          }
+        );
+        return; // Don't reset idle timer during grace period
+      }
+
       // Check if this output should be ignored
       const shouldIgnore = shouldIgnoreOutput(data, ignorePatterns);
 
@@ -365,6 +384,23 @@ export async function detectTerminalIdle(
     child.stderr.on("data", (data) => {
       const currentTime = Date.now();
       const timeSinceStart = currentTime - startTime;
+
+      // Check if we're in the grace period after sending detach command
+      const DETACH_GRACE_PERIOD_MS = 500; // 500ms grace period
+      if (detachCommandSentTime && currentTime - detachCommandSentTime < DETACH_GRACE_PERIOD_MS) {
+        log(
+          "DEBUG",
+          `[detectTerminalIdle] Ignoring stderr output during detach grace period`,
+          {
+            sessionName,
+            bytes: data.length,
+            timeSinceStart,
+            timeSinceDetach: currentTime - detachCommandSentTime,
+            dataPreview: data.toString().slice(0, 100).replace(/\n/g, "\\n"),
+          }
+        );
+        return; // Don't reset idle timer during grace period
+      }
 
       // Check if this output should be ignored
       const shouldIgnore = shouldIgnoreOutput(data, ignorePatterns);
