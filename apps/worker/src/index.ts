@@ -44,6 +44,22 @@ const CONTAINER_VERSION = process.env.CONTAINER_VERSION || "0.0.1";
 // Create Express app
 const app = express();
 
+// Health check endpoint
+app.get("/health", (_req, res) => {
+  res.json({
+    status: "healthy",
+    workerId: WORKER_ID,
+    uptime: process.uptime(),
+    mainServerConnected: !!mainServerSocket && mainServerSocket.connected,
+    pendingEventsCount: pendingEvents.length,
+    pendingEvents: pendingEvents.map(e => ({
+      event: e.event,
+      age: Date.now() - e.timestamp,
+      taskId: e.data.taskId
+    }))
+  });
+});
+
 // Configure multer for file uploads
 const upload = multer({
   limits: { fileSize: 100 * 1024 * 1024 }, // 100MB limit
@@ -759,6 +775,13 @@ managementIO.on("connection", (socket) => {
   socket.on("disconnect", () => {
     console.log(`Main server disconnected from worker ${WORKER_ID}`);
     mainServerSocket = null;
+    
+    // Log if we have pending events that need to be sent
+    if (pendingEvents.length > 0) {
+      log("WARNING", `Main server disconnected with ${pendingEvents.length} pending events`, {
+        pendingEvents: pendingEvents.map(e => ({ event: e.event, age: Date.now() - e.timestamp }))
+      });
+    }
   });
 });
 
@@ -1072,6 +1095,50 @@ httpServer.listen(WORKER_PORT, () => {
     WORKER_ID
   );
 });
+
+// Periodic maintenance for pending events
+setInterval(() => {
+  const MAX_EVENT_AGE = 5 * 60 * 1000; // 5 minutes
+  const now = Date.now();
+  const originalCount = pendingEvents.length;
+  
+  // First, try to send any pending events if we're connected
+  if (pendingEvents.length > 0 && mainServerSocket && mainServerSocket.connected) {
+    log("INFO", "Retrying to send pending events (periodic check)");
+    sendPendingEvents();
+  }
+  
+  // Then clean up very old events
+  const validEvents = pendingEvents.filter(event => {
+    const age = now - event.timestamp;
+    if (age > MAX_EVENT_AGE) {
+      log("WARNING", `Dropping old pending ${event.event} event (age: ${age}ms)`, {
+        event: event.event,
+        age,
+        taskId: event.data.taskId
+      });
+      return false;
+    }
+    return true;
+  });
+  
+  if (validEvents.length < originalCount) {
+    pendingEvents.length = 0;
+    pendingEvents.push(...validEvents);
+    log("INFO", `Cleaned up ${originalCount - validEvents.length} old pending events`);
+  }
+  
+  // Log warning if we still have pending events
+  if (pendingEvents.length > 0) {
+    log("WARNING", `Still have ${pendingEvents.length} pending events waiting to be sent`, {
+      events: pendingEvents.map(e => ({
+        event: e.event,
+        age: now - e.timestamp,
+        taskId: e.data.taskId
+      }))
+    });
+  }
+}, 30000); // Run every 30 seconds
 
 // Graceful shutdown
 function gracefulShutdown() {
