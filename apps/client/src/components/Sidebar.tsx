@@ -69,7 +69,7 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
         </div>
       </nav>
 
-      <div className="border-t border-neutral-200 dark:border-neutral-800">
+      <div className="pb-2">
         <a
           href="https://github.com/manaflow-ai/cmux/issues"
           target="_blank"
