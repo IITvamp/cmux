@@ -1,30 +1,16 @@
 import { 
   AGENT_CONFIGS, 
   checkDockerStatus, 
-  checkGitStatus 
+  checkGitStatus,
+  type DockerStatus,
+  type GitStatus,
+  type ProviderStatus as SharedProviderStatus
 } from "@cmux/shared";
 
-export interface ProviderStatus {
-  name: string;
-  isAvailable: boolean;
-  missingRequirements?: string[];
-  dockerStatus?: {
-    isRunning: boolean;
-    version?: string;
-    error?: string;
-  };
-  gitStatus?: {
-    isAvailable: boolean;
-    version?: string;
-    remoteAccess?: boolean;
-    error?: string;
-  };
-}
-
 export async function checkAllProvidersStatus(): Promise<{
-  providers: ProviderStatus[];
-  dockerStatus: ProviderStatus["dockerStatus"];
-  gitStatus: ProviderStatus["gitStatus"];
+  providers: SharedProviderStatus[];
+  dockerStatus: DockerStatus;
+  gitStatus: GitStatus;
 }> {
   // Check Docker and Git status once
   const [dockerStatus, gitStatus] = await Promise.all([

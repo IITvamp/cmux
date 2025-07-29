@@ -67,6 +67,42 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     VSCodeInstance.getInstances().set(this.instanceId, this);
   }
 
+  private async ensureImageExists(docker: Docker): Promise<void> {
+    try {
+      // Check if image exists locally
+      await docker.getImage(this.imageName).inspect();
+      dockerLogger.info(`Image ${this.imageName} found locally`);
+    } catch (error) {
+      // Image doesn't exist locally, try to pull it
+      dockerLogger.info(`Image ${this.imageName} not found locally, pulling...`);
+      
+      try {
+        const stream = await docker.pull(this.imageName);
+        
+        // Wait for pull to complete
+        await new Promise((resolve, reject) => {
+          docker.modem.followProgress(stream, (err: Error | null, res: any[]) => {
+            if (err) {
+              reject(err);
+            } else {
+              resolve(res);
+            }
+          }, (event: any) => {
+            // Log pull progress
+            if (event.status) {
+              dockerLogger.info(`Pull progress: ${event.status} ${event.progress || ''}`);
+            }
+          });
+        });
+        
+        dockerLogger.info(`Successfully pulled image ${this.imageName}`);
+      } catch (pullError) {
+        dockerLogger.error(`Failed to pull image ${this.imageName}:`, pullError);
+        throw new Error(`Failed to pull Docker image ${this.imageName}: ${pullError}`);
+      }
+    }
+  }
+
   /**
    * Get the actual host port for a given container port
    * @param containerPort The port inside the container (e.g., "39378", "39377", "39376")
@@ -150,6 +186,9 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     dockerLogger.info(`  Agent name: ${this.config.agentName}`);
 
     const docker = DockerVSCodeInstance.getDocker();
+
+    // Check if image exists and pull if missing
+    await this.ensureImageExists(docker);
 
     // Set initial mapping status
     containerMappings.set(this.containerName, {

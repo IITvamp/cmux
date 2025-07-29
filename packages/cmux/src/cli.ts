@@ -8,6 +8,7 @@ import { type ConvexProcesses, spawnConvex } from "./convex/spawnConvex";
 import { logger } from "./logger";
 import { checkPorts } from "./utils/checkPorts";
 import { killPortsIfNeeded } from "./utils/killPortsIfNeeded";
+import { spawn } from "node:child_process";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const convexDir = path.resolve(homedir(), ".cmux");
@@ -50,6 +51,33 @@ program
     );
     console.log("\x1b[36m╚══════════════════════════════════════╝\x1b[0m\n");
     console.log("\x1b[32m✓\x1b[0m Server starting...");
+
+    // Pull Docker image asynchronously if WORKER_IMAGE_NAME is set
+    if (process.env.WORKER_IMAGE_NAME) {
+      console.log(`\x1b[32m✓\x1b[0m Docker image pull initiated: ${process.env.WORKER_IMAGE_NAME}`);
+      
+      const pullProcess = spawn("docker", ["pull", process.env.WORKER_IMAGE_NAME]);
+      
+      pullProcess.stdout.on("data", (data) => {
+        process.stdout.write(`\x1b[90m[Docker] ${data}\x1b[0m`);
+      });
+      
+      pullProcess.stderr.on("data", (data) => {
+        process.stderr.write(`\x1b[33m[Docker] ${data}\x1b[0m`);
+      });
+      
+      pullProcess.on("close", (code) => {
+        if (code === 0) {
+          console.log(`\x1b[32m✓\x1b[0m Docker image ${process.env.WORKER_IMAGE_NAME} pulled successfully`);
+        } else {
+          console.log(`\x1b[33m!\x1b[0m Docker image pull failed with code ${code} - image might be available locally`);
+        }
+      });
+      
+      pullProcess.on("error", (error) => {
+        console.error(`\x1b[31m✗\x1b[0m Failed to start Docker pull:`, error.message);
+      });
+    }
 
     const port = parseInt(options.port);
 

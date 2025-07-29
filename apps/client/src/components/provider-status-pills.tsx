@@ -8,6 +8,7 @@ import { useSocket } from "@/contexts/socket/use-socket";
 import type { ProviderStatus, ProviderStatusResponse } from "@cmux/shared";
 import { useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
+import { RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 export function ProviderStatusPills() {
@@ -43,13 +44,15 @@ export function ProviderStatusPills() {
 
   const dockerNotReady = !status.dockerStatus?.isRunning;
   const gitNotReady = !status.gitStatus?.isAvailable;
+  const dockerImageNotReady = status.dockerStatus?.workerImage && !status.dockerStatus.workerImage.isAvailable;
+  const dockerImagePulling = status.dockerStatus?.workerImage?.isPulling;
 
   // Count total available and unavailable providers
   const totalProviders = status.providers?.length ?? 0;
   const availableProviders = totalProviders - unavailableProviders.length;
 
   // If everything is ready, don't show anything
-  if (unavailableProviders.length === 0 && !dockerNotReady && !gitNotReady) {
+  if (unavailableProviders.length === 0 && !dockerNotReady && !gitNotReady && !dockerImageNotReady) {
     return null;
   }
 
@@ -95,6 +98,12 @@ export function ProviderStatusPills() {
               <p className="font-medium mb-1">Configuration Needed</p>
               <div className="text-xs space-y-1">
                 {dockerNotReady && <p>• Docker needs to be running</p>}
+                {dockerImageNotReady && !dockerImagePulling && (
+                  <p>• Docker image {status.dockerStatus?.workerImage?.name} not available</p>
+                )}
+                {dockerImagePulling && (
+                  <p>• Docker image {status.dockerStatus?.workerImage?.name} is pulling...</p>
+                )}
                 {gitNotReady && <p>• Git installation required</p>}
                 {unavailableProviders.length > 0 && (
                   <p>
@@ -155,6 +164,37 @@ export function ProviderStatusPills() {
                 <p className="font-medium">Git Installation</p>
                 <p className="text-xs opacity-90">
                   Git is required for repository management and version control
+                </p>
+              </TooltipContent>
+            </Tooltip>
+          )}
+
+          {dockerImageNotReady && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={() => navigate({ to: "/settings" })}
+                  className={clsx(
+                    "flex items-center gap-1.5 px-2.5 py-1 rounded-lg",
+                    "bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-600",
+                    "text-neutral-800 dark:text-neutral-200",
+                    "text-xs font-medium cursor-default select-none"
+                  )}
+                >
+                  {dockerImagePulling ? (
+                    <RefreshCw className="w-3 h-3 text-blue-500 animate-spin" />
+                  ) : (
+                    <div className="w-1.5 h-1.5 rounded-full bg-yellow-500"></div>
+                  )}
+                  Image
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p className="font-medium">Docker Image</p>
+                <p className="text-xs opacity-90">
+                  {dockerImagePulling
+                    ? `Pulling ${status.dockerStatus?.workerImage?.name}...`
+                    : `${status.dockerStatus?.workerImage?.name} needs to be downloaded`}
                 </p>
               </TooltipContent>
             </Tooltip>

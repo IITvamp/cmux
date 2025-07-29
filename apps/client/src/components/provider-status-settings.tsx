@@ -74,6 +74,7 @@ export function ProviderStatusSettings() {
 
   const dockerOk = status.dockerStatus?.isRunning ?? false;
   const gitOk = status.gitStatus?.isAvailable ?? false;
+  const dockerImage = status.dockerStatus?.workerImage;
 
   return (
     <div className="space-y-3">
@@ -109,6 +110,24 @@ export function ProviderStatusSettings() {
               ` ${status.dockerStatus.version}`}
           </span>
         </div>
+
+        {/* Docker Image Status */}
+        {dockerImage && (
+          <div className="flex items-center gap-2">
+            {dockerImage.isAvailable ? (
+              <CheckCircle2 className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
+            ) : dockerImage.isPulling ? (
+              <RefreshCw className="w-3.5 h-3.5 text-blue-500 flex-shrink-0 animate-spin" />
+            ) : (
+              <AlertCircle className="w-3.5 h-3.5 text-yellow-500 flex-shrink-0" />
+            )}
+            <span className="text-xs text-neutral-700 dark:text-neutral-300">
+              {dockerImage.name}
+              {dockerImage.isPulling && " (pulling...)"}
+              {!dockerImage.isAvailable && !dockerImage.isPulling && " (not available)"}
+            </span>
+          </div>
+        )}
 
         {/* Git Status */}
         <div className="flex items-center gap-2">

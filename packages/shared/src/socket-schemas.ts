@@ -225,6 +225,11 @@ export const DockerStatusSchema = z.object({
   isRunning: z.boolean(),
   version: z.string().optional(),
   error: z.string().optional(),
+  workerImage: z.object({
+    name: z.string(),
+    isAvailable: z.boolean(),
+    isPulling: z.boolean().optional(),
+  }).optional(),
 });
 
 export const GitStatusSchema = z.object({
