@@ -25,6 +25,10 @@ NC='\033[0m' # No Color
 
 echo -e "${BLUE}Starting Terminal App Development Environment in Devcontainer...${NC}"
 
+# Auto-setup devcontainers
+echo -e "${BLUE}Setting up devcontainers...${NC}"
+bunx @devcontainers/cli up --workspace-folder . --remove-existing-container
+
 # Change to app directory
 cd "$APP_DIR"
 
