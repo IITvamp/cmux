@@ -10,7 +10,7 @@ class Logger {
   private readonly logDir: string;
   private readonly logFile: string;
 
-  constructor(logFileName: string = "cmux.log") {
+  constructor(logFileName: string = "cmux-cli.log") {
     this.logDir = path.join(homedir(), ".cmux", "logs");
     this.logFile = path.join(this.logDir, logFileName);
     this.ensureLogDirectory();
