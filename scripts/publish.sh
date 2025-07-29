@@ -112,6 +112,10 @@ VERSION_BUMPED=true
 NEW_VERSION=$(node -p "require('./packages/cmux/package.json').version")
 success "Version bumped to v$NEW_VERSION"
 
+# Run typecheck
+
+bun run typecheck
+
 # Step 6: Build CLI and Docker image in parallel
 echo "Building CLI and Docker image in parallel..."
 
