@@ -25,7 +25,7 @@
 [ ] make MorphVSCodeInstance actually work
 [ ] vercel previews but devcontainer and docker and docker compose
 [ ] vercel comments but it actually just pipes it to claude code and it auto makes a PR!
-[ ] auto set up devcontainers: `bun x @devcontainers/cli up --workspace-folder /root/workspace`
+[ ] auto set up devcontainers: `bun x @devcontainers/cli up --workspace-folder /root/workspace` or a custom starting script
 [ ] make persistent [worktree/branchname]-vscode.cmux.local domains for each vscode container instance. the cmux.local domains also need to support mapping to the ports in each of the DockerVSCodeInstances. like [worktree/branchname]-[portnumber].cmux.local should map to the port number of the vscode instance.
 [ ] rename branches after a task is created to something reasonable
 [ ] plan mode for claude code
@@ -46,4 +46,4 @@
 [ ] copy vs code settings/theme
 [ ] make green checkbox timing more reliable
 [ ] archive tasks button in sidebar
-[ ] edit prompt after seeing what it did -- try multiple prompts at same time -- if click on main one, show page that has prompt, edit prompt, and recontinue execution. less tasks, but more so like linear. instead of task, convert it to a linear timeline flow thing.
+[ ] edit prompt after seeing what it did -- try multiple prompts at same time -- if click on main one, show page that has prompt, edit prompt, and recontinue execution. less tasks, but more so like linear. instead of task, convert it to a linear timeline flow thing. just want to add tasks. dont have to switch apps -- put backlog and tasks in execution
