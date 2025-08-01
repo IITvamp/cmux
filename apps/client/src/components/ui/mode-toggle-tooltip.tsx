@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { useUser } from "@stackframe/stack";
+import { useUser } from "@stackframe/react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Cloud, HardDrive } from "lucide-react";
 import * as React from "react";

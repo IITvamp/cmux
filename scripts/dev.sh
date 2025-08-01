@@ -20,7 +20,8 @@ PORTS_TO_CHECK="5173 $CONVEX_PORT 9777 9778"
 PORTS_IN_USE=""
 
 for port in $PORTS_TO_CHECK; do
-    if lsof -i :$port >/dev/null 2>&1; then
+    # Check if port is in use, excluding Google Chrome connections
+    if lsof -i :$port 2>&1 | grep -v "Google" | grep -v "Chrome" | grep "LISTEN" > /dev/null 2>&1; then
         PORTS_IN_USE="$PORTS_IN_USE $port"
     fi
 done

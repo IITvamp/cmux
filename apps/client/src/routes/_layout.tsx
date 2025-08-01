@@ -2,8 +2,8 @@ import { Sidebar } from "@/components/Sidebar";
 import { api } from "@cmux/convex/api";
 import { type Doc } from "@cmux/convex/dataModel";
 import { convexQuery } from "@convex-dev/react-query";
-import { useStackAuth } from "@/hooks/useStackAuth";
-import { createFileRoute, Outlet, Navigate } from "@tanstack/react-router";
+import { useUser } from "@stackframe/react";
+import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { useQueries, useQuery } from "convex/react";
 import { Suspense, useMemo } from "react";
 
@@ -16,14 +16,14 @@ export const Route = createFileRoute("/_layout")({
 
 function LayoutComponent() {
   // Use Stack Auth's built-in protection
-  const user = useStackAuth();
+  const user = useUser({ or: "redirect" });
   const tasks = useQuery(api.tasks.get, {});
-  
+
   // Redirect to login if not authenticated
-  if (user === null) {
-    return <Navigate to="/auth/login" />;
-  }
-  
+  // if (user === null) {
+  //   return <Navigate to="/handler/auth/login" />;
+  // }
+
   // Show loading while checking auth
   if (user === undefined) {
     return (
@@ -76,7 +76,6 @@ function LayoutComponent() {
       })),
     [recentTasks, taskRunResults]
   );
-
 
   return (
     <>
