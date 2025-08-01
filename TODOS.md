@@ -16,6 +16,7 @@
 [?] git fatal unsupported ssl backend
 [x] onboarding: fix cli output on first run to be pretty and not spam logs
 [x] ensure all the different CLIs work, not just claude
+[x] make ctrl+c work to kill cli like immediately
 [ ] copy ~/.claude/CLAUDE.md (and other config files) from host to worker.
 [ ] copy CLAUDE.md to AGENTS.md, GEMINI.md etc for openai, gemini, etc. if CLAUDE.md is not present, we need to figure out generalizable logic for all of this. like if any one of AGENTS.md or GEMINI.md or CLAUDE.md is present, we should copy it to the right places.
 [ ] figure out intricacies of deploying the Dockerfile to daytona
@@ -47,4 +48,3 @@
 [ ] make green checkbox timing more reliable
 [ ] archive tasks button in sidebar
 [ ] edit prompt after seeing what it did -- try multiple prompts at same time -- if click on main one, show page that has prompt, edit prompt, and recontinue execution. less tasks, but more so like linear. instead of task, convert it to a linear timeline flow thing. just want to add tasks. dont have to switch apps -- put backlog and tasks in execution
-[ ] make ctrl+c work to kill cli like immediately
