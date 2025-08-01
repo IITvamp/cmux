@@ -10,6 +10,14 @@ import { checkPorts } from "./utils/checkPorts";
 import { pullDockerImage } from "./utils/dockerPull";
 import { killPortsIfNeeded } from "./utils/killPortsIfNeeded";
 
+const versionPadding = " ".repeat(Math.max(0, 14 - VERSION.toString().length));
+console.log("\n\x1b[36m╔══════════════════════════════════════╗\x1b[0m");
+console.log(
+  `\x1b[36m║      Welcome to \x1b[1m\x1b[37mcmux\x1b[0m\x1b[36m v${VERSION}!${versionPadding}║\x1b[0m`
+);
+console.log("\x1b[36m╚══════════════════════════════════════╝\x1b[0m\n");
+console.log("\x1b[32m✓\x1b[0m Server starting...");
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const convexDir = path.resolve(homedir(), ".cmux");
 
@@ -32,12 +40,35 @@ declare const VERSION: string;
 
 const cleanupFunctions: (() => Promise<void>)[] = [];
 
+const status = {
+  convexReady: false,
+  serverReady: false,
+};
+
+// wait 5 seconds, if not ready, log error to console
+setTimeout(async () => {
+  if (status.convexReady && status.serverReady) {
+    return;
+  }
+  console.log(
+    "\x1b[31m✗\x1b[0m Server failed to start after 7 seconds. Please email founders@manaflow.com with the contents of ~/.cmux/logs/*"
+  );
+  await logger.info(
+    `Server failed to start after 7 seconds. convexReady=${status.convexReady} serverReady=${status.serverReady}`
+  );
+  process.exit(1);
+}, 7_000);
+
 // Register exit handlers immediately
-process.on("SIGINT", () => {
+process.on("SIGINT", async () => {
+  void Promise.all(cleanupFunctions.map((fn) => fn()));
+  setImmediate(() => void {});
   process.exit(0);
 });
 
-process.on("SIGTERM", () => {
+process.on("SIGTERM", async () => {
+  void Promise.all(cleanupFunctions.map((fn) => fn()));
+  setImmediate(() => void {});
   process.exit(0);
 });
 
@@ -52,17 +83,6 @@ program
     "disable automatic killing of processes on required ports"
   )
   .action(async (options) => {
-    // Pleasant startup message
-    const versionPadding = " ".repeat(
-      Math.max(0, 14 - VERSION.toString().length)
-    );
-    console.log("\n\x1b[36m╔══════════════════════════════════════╗\x1b[0m");
-    console.log(
-      `\x1b[36m║      Welcome to \x1b[1m\x1b[37mcmux\x1b[0m\x1b[36m v${VERSION}!${versionPadding}║\x1b[0m`
-    );
-    console.log("\x1b[36m╚══════════════════════════════════════╝\x1b[0m\n");
-    console.log("\x1b[32m✓\x1b[0m Server starting...");
-
     const port = parseInt(options.port);
 
     const portsToCheck = [port, 9777, 9778];
@@ -102,6 +122,9 @@ program
       const logFilePath = path.join(convexDir, "logs", logFileName);
       if (!existsSync(logFilePath)) {
         writeFileSync(logFilePath, "");
+      } else {
+        // empty the file if it's not empty
+        writeFileSync(logFilePath, "");
       }
     }
 
@@ -125,6 +148,7 @@ program
       cleanupFunctions.push(async () => {
         convexProcesses.backend.kill();
       });
+      status.convexReady = true;
       await logger.info("Convex is ready!");
     } catch (error) {
       await logger.error(`Failed to start Convex: ${error}`);
@@ -149,6 +173,9 @@ program
     const serverPromise = startServer({
       port,
       publicPath: staticDir,
+    }).then((server) => {
+      status.serverReady = true;
+      return server;
     });
     cleanupFunctions.push(async () => {
       const server = await serverPromise;

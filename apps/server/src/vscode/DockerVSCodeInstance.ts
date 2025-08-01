@@ -74,31 +74,44 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       dockerLogger.info(`Image ${this.imageName} found locally`);
     } catch (error) {
       // Image doesn't exist locally, try to pull it
-      dockerLogger.info(`Image ${this.imageName} not found locally, pulling...`);
-      
+      dockerLogger.info(
+        `Image ${this.imageName} not found locally, pulling...`
+      );
+
       try {
         const stream = await docker.pull(this.imageName);
-        
+
         // Wait for pull to complete
         await new Promise((resolve, reject) => {
-          docker.modem.followProgress(stream, (err: Error | null, res: any[]) => {
-            if (err) {
-              reject(err);
-            } else {
-              resolve(res);
+          docker.modem.followProgress(
+            stream,
+            (err: Error | null, res: any[]) => {
+              if (err) {
+                reject(err);
+              } else {
+                resolve(res);
+              }
+            },
+            (event: any) => {
+              // Log pull progress
+              if (event.status) {
+                dockerLogger.info(
+                  `Pull progress: ${event.status} ${event.progress || ""}`
+                );
+              }
             }
-          }, (event: any) => {
-            // Log pull progress
-            if (event.status) {
-              dockerLogger.info(`Pull progress: ${event.status} ${event.progress || ''}`);
-            }
-          });
+          );
         });
-        
+
         dockerLogger.info(`Successfully pulled image ${this.imageName}`);
       } catch (pullError) {
-        dockerLogger.error(`Failed to pull image ${this.imageName}:`, pullError);
-        throw new Error(`Failed to pull Docker image ${this.imageName}: ${pullError}`);
+        dockerLogger.error(
+          `Failed to pull image ${this.imageName}:`,
+          pullError
+        );
+        throw new Error(
+          `Failed to pull Docker image ${this.imageName}: ${pullError}`
+        );
       }
     }
   }
@@ -213,7 +226,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     }
 
     const envVars = ["NODE_ENV=production", "WORKER_PORT=39377"];
-    
+
     // Add theme environment variable if provided
     if (this.config.theme) {
       envVars.push(`VSCODE_THEME=${this.config.theme}`);
@@ -933,9 +946,6 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         // Find the full taskRunId from container mappings
         const mapping = containerMappings.get(containerName);
         if (!mapping) {
-          dockerLogger.info(
-            `[syncDockerContainerStates] No mapping found for container ${containerName}, skipping`
-          );
           continue;
         }
 
@@ -1060,8 +1070,6 @@ export class DockerVSCodeInstance extends VSCodeInstance {
           }
         }
       }
-
-      dockerLogger.info("Container state sync completed");
 
       // Now handle container cleanup based on settings
       if (containerSettings.autoCleanupEnabled) {
