@@ -30,6 +30,17 @@ const program = new Command();
 
 declare const VERSION: string;
 
+const cleanupFunctions: (() => Promise<void>)[] = [];
+
+// Register exit handlers immediately
+process.on("SIGINT", () => {
+  process.exit(0);
+});
+
+process.on("SIGTERM", () => {
+  process.exit(0);
+});
+
 program
   .name("cmux")
   .description("Socket.IO and static file server")
@@ -111,6 +122,9 @@ program
     try {
       // Start Convex and wait for it to be ready
       convexProcesses = await spawnConvex(convexDir);
+      cleanupFunctions.push(async () => {
+        convexProcesses.backend.kill();
+      });
       await logger.info("Convex is ready!");
     } catch (error) {
       await logger.error(`Failed to start Convex: ${error}`);
@@ -132,24 +146,14 @@ program
 
     await logger.info(`Starting server on port ${port}...`);
     await logger.info(`Serving static files from: ${staticDir}`);
-    const startServerProcessPromise = startServer({
+    const serverPromise = startServer({
       port,
       publicPath: staticDir,
     });
-
-    // Cleanup processes on exit
-    const cleanup = async () => {
-      const startServerProcess = await startServerProcessPromise;
-      console.log("\n\x1b[33mShutting down server...\x1b[0m");
-      logger.info("Shutting down server...");
-      const cleanupPromise = startServerProcess.cleanup();
-      convexProcesses.backend.kill();
-      await cleanupPromise;
-      process.exit(0);
-    };
-
-    process.on("SIGINT", cleanup);
-    process.on("SIGTERM", cleanup);
+    cleanupFunctions.push(async () => {
+      const server = await serverPromise;
+      await server.cleanup();
+    });
   });
 
 program
