@@ -47,3 +47,4 @@
 [ ] make green checkbox timing more reliable
 [ ] archive tasks button in sidebar
 [ ] edit prompt after seeing what it did -- try multiple prompts at same time -- if click on main one, show page that has prompt, edit prompt, and recontinue execution. less tasks, but more so like linear. instead of task, convert it to a linear timeline flow thing. just want to add tasks. dont have to switch apps -- put backlog and tasks in execution
+[ ] make ctrl+c work to kill cli

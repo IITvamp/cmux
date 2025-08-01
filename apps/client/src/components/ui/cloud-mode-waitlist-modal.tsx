@@ -1,8 +1,8 @@
-import { Modal, Input, Form, Typography } from "antd";
-import { Button } from "./button";
-import { useState } from "react";
+import { useUser } from "@stackframe/react";
+import { Form, Input, Modal, Typography } from "antd";
 import { Cloud } from "lucide-react";
-import { useUser } from "@stackframe/stack";
+import { useState } from "react";
+import { Button } from "./button";
 
 const { Title, Paragraph } = Typography;
 
@@ -20,26 +20,24 @@ export function CloudModeWaitlistModal({
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
-  const user = useUser();
+  const user = useUser({ or: "redirect" });
 
   const handleSubmit = async (values: { email: string }) => {
     setLoading(true);
     try {
-      if (user) {
-        // Save to Stack Auth client metadata
-        await user.update({
-          clientMetadata: {
-            ...user.clientMetadata,
-            cloudModeWaitlist: true,
-            cloudModeWaitlistEmail: values.email,
-            cloudModeWaitlistDate: new Date().toISOString(),
-          },
-        });
-      }
-      
+      // Save to Stack Auth client metadata
+      await user.update({
+        clientMetadata: {
+          ...user.clientMetadata,
+          cloudModeWaitlist: true,
+          cloudModeWaitlistEmail: values.email,
+          cloudModeWaitlistDate: new Date().toISOString(),
+        },
+      });
+
       // Show success state
       setSuccess(true);
-      
+
       // Close after showing success message
       setTimeout(() => {
         onClose();
@@ -66,15 +64,25 @@ export function CloudModeWaitlistModal({
         {success ? (
           <>
             <div className="flex items-center justify-center w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/20 mb-4">
-              <svg className="w-8 h-8 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              <svg
+                className="w-8 h-8 text-green-500"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M5 13l4 4L19 7"
+                />
               </svg>
             </div>
-            
+
             <Title level={3} className="!mb-2">
               You're on the list!
             </Title>
-            
+
             <Paragraph className="text-neutral-500 dark:text-neutral-400">
               We'll email you when cloud mode is ready.
             </Paragraph>
@@ -84,14 +92,14 @@ export function CloudModeWaitlistModal({
             <div className="flex items-center justify-center w-16 h-16 rounded-full bg-blue-100 dark:bg-blue-900/20 mb-4">
               <Cloud className="w-8 h-8 text-blue-500" />
             </div>
-            
+
             <Title level={3} className="!mb-2">
               Cloud Mode Coming Soon
             </Title>
-            
+
             <Paragraph className="text-neutral-500 dark:text-neutral-400 mb-6">
-              Cloud mode allows you to run cmux without local Docker setup. 
-              Join the waitlist to be notified when it's ready!
+              Cloud mode allows you to run cmux without local Docker setup. Join
+              the waitlist to be notified when it's ready!
             </Paragraph>
 
             <Form
@@ -104,7 +112,7 @@ export function CloudModeWaitlistModal({
                 name="email"
                 rules={[
                   { required: true, message: "Please enter your email" },
-                  { type: "email", message: "Please enter a valid email" }
+                  { type: "email", message: "Please enter a valid email" },
                 ]}
               >
                 <Input

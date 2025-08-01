@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import { useUser } from "@stackframe/stack";
+import { useUser } from "@stackframe/react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Cloud, HardDrive } from "lucide-react";
 import * as React from "react";
@@ -19,7 +19,7 @@ export function ModeToggleTooltip({
   const [showTooltip, setShowTooltip] = React.useState(false);
   const [showWaitlistModal, setShowWaitlistModal] = React.useState(false);
   const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const user = useUser();
+  const user = useUser({ or: "redirect" });
 
   const handleClick = () => {
     // Clear any existing timeout
@@ -29,7 +29,7 @@ export function ModeToggleTooltip({
 
     if (!isCloudMode) {
       // Check if user already joined waitlist
-      const alreadyJoined = user?.clientMetadata?.cloudModeWaitlist === true;
+      const alreadyJoined = user.clientMetadata?.cloudModeWaitlist === true;
 
       if (!alreadyJoined) {
         // Show waitlist modal when trying to switch to cloud mode
@@ -134,7 +134,7 @@ export function ModeToggleTooltip({
                     transition={{ duration: 0.2, ease: "easeInOut" }}
                   >
                     <span className="text-center">
-                      {user?.clientMetadata?.cloudModeWaitlist
+                      {user.clientMetadata?.cloudModeWaitlist
                         ? "On waitlist!"
                         : "Local Mode"}
                     </span>
@@ -149,7 +149,7 @@ export function ModeToggleTooltip({
       <CloudModeWaitlistModal
         visible={showWaitlistModal}
         onClose={() => setShowWaitlistModal(false)}
-        defaultEmail={user?.primaryEmail || undefined}
+        defaultEmail={user.primaryEmail || undefined}
       />
     </div>
   );
