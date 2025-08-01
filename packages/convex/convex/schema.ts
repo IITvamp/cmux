@@ -23,7 +23,7 @@ export default defineSchema({
     worktreePath: v.optional(v.string()),
     createdAt: v.optional(v.number()),
     updatedAt: v.optional(v.number()),
-    userId: v.optional(v.id("users")), // Link to user who created the task
+    userId: v.optional(v.string()), // Link to user who created the task
     images: v.optional(
       v.array(
         v.object({
@@ -53,7 +53,7 @@ export default defineSchema({
     updatedAt: v.number(),
     completedAt: v.optional(v.number()),
     exitCode: v.optional(v.number()),
-    userId: v.optional(v.id("users")), // Link to user who created the run
+    userId: v.optional(v.string()), // Link to user who created the run
     // VSCode instance information
     vscode: v.optional(
       v.object({

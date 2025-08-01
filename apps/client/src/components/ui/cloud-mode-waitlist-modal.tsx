@@ -20,22 +20,20 @@ export function CloudModeWaitlistModal({
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
-  const user = useUser();
+  const user = useUser({ or: "redirect" });
 
   const handleSubmit = async (values: { email: string }) => {
     setLoading(true);
     try {
-      if (user) {
-        // Save to Stack Auth client metadata
-        await user.update({
-          clientMetadata: {
-            ...user.clientMetadata,
-            cloudModeWaitlist: true,
-            cloudModeWaitlistEmail: values.email,
-            cloudModeWaitlistDate: new Date().toISOString(),
-          },
-        });
-      }
+      // Save to Stack Auth client metadata
+      await user.update({
+        clientMetadata: {
+          ...user.clientMetadata,
+          cloudModeWaitlist: true,
+          cloudModeWaitlistEmail: values.email,
+          cloudModeWaitlistDate: new Date().toISOString(),
+        },
+      });
 
       // Show success state
       setSuccess(true);

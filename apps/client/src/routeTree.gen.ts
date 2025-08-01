@@ -12,8 +12,6 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as LayoutRouteImport } from './routes/_layout'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as HandlerSplatRouteImport } from './routes/handler.$'
-import { Route as AuthSignupRouteImport } from './routes/auth.signup'
-import { Route as AuthLoginRouteImport } from './routes/auth.login'
 import { Route as LayoutSettingsRouteImport } from './routes/_layout.settings'
 import { Route as LayoutProfileRouteImport } from './routes/_layout.profile'
 import { Route as LayoutDashboardRouteImport } from './routes/_layout.dashboard'
@@ -32,16 +30,6 @@ const IndexRoute = IndexRouteImport.update({
 const HandlerSplatRoute = HandlerSplatRouteImport.update({
   id: '/handler/$',
   path: '/handler/$',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AuthSignupRoute = AuthSignupRouteImport.update({
-  id: '/auth/signup',
-  path: '/auth/signup',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const AuthLoginRoute = AuthLoginRouteImport.update({
-  id: '/auth/login',
-  path: '/auth/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const LayoutSettingsRoute = LayoutSettingsRouteImport.update({
@@ -76,8 +64,6 @@ export interface FileRoutesByFullPath {
   '/dashboard': typeof LayoutDashboardRoute
   '/profile': typeof LayoutProfileRoute
   '/settings': typeof LayoutSettingsRoute
-  '/auth/login': typeof AuthLoginRoute
-  '/auth/signup': typeof AuthSignupRoute
   '/handler/$': typeof HandlerSplatRoute
   '/task/$taskId': typeof LayoutTaskTaskIdRouteWithChildren
   '/task/$taskId/run/$taskRunId': typeof LayoutTaskTaskIdRunTaskRunIdRoute
@@ -87,8 +73,6 @@ export interface FileRoutesByTo {
   '/dashboard': typeof LayoutDashboardRoute
   '/profile': typeof LayoutProfileRoute
   '/settings': typeof LayoutSettingsRoute
-  '/auth/login': typeof AuthLoginRoute
-  '/auth/signup': typeof AuthSignupRoute
   '/handler/$': typeof HandlerSplatRoute
   '/task/$taskId': typeof LayoutTaskTaskIdRouteWithChildren
   '/task/$taskId/run/$taskRunId': typeof LayoutTaskTaskIdRunTaskRunIdRoute
@@ -100,8 +84,6 @@ export interface FileRoutesById {
   '/_layout/dashboard': typeof LayoutDashboardRoute
   '/_layout/profile': typeof LayoutProfileRoute
   '/_layout/settings': typeof LayoutSettingsRoute
-  '/auth/login': typeof AuthLoginRoute
-  '/auth/signup': typeof AuthSignupRoute
   '/handler/$': typeof HandlerSplatRoute
   '/_layout/task/$taskId': typeof LayoutTaskTaskIdRouteWithChildren
   '/_layout/task/$taskId/run/$taskRunId': typeof LayoutTaskTaskIdRunTaskRunIdRoute
@@ -113,8 +95,6 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/profile'
     | '/settings'
-    | '/auth/login'
-    | '/auth/signup'
     | '/handler/$'
     | '/task/$taskId'
     | '/task/$taskId/run/$taskRunId'
@@ -124,8 +104,6 @@ export interface FileRouteTypes {
     | '/dashboard'
     | '/profile'
     | '/settings'
-    | '/auth/login'
-    | '/auth/signup'
     | '/handler/$'
     | '/task/$taskId'
     | '/task/$taskId/run/$taskRunId'
@@ -136,8 +114,6 @@ export interface FileRouteTypes {
     | '/_layout/dashboard'
     | '/_layout/profile'
     | '/_layout/settings'
-    | '/auth/login'
-    | '/auth/signup'
     | '/handler/$'
     | '/_layout/task/$taskId'
     | '/_layout/task/$taskId/run/$taskRunId'
@@ -146,8 +122,6 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LayoutRoute: typeof LayoutRouteWithChildren
-  AuthLoginRoute: typeof AuthLoginRoute
-  AuthSignupRoute: typeof AuthSignupRoute
   HandlerSplatRoute: typeof HandlerSplatRoute
 }
 
@@ -172,20 +146,6 @@ declare module '@tanstack/react-router' {
       path: '/handler/$'
       fullPath: '/handler/$'
       preLoaderRoute: typeof HandlerSplatRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/auth/signup': {
-      id: '/auth/signup'
-      path: '/auth/signup'
-      fullPath: '/auth/signup'
-      preLoaderRoute: typeof AuthSignupRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/auth/login': {
-      id: '/auth/login'
-      path: '/auth/login'
-      fullPath: '/auth/login'
-      preLoaderRoute: typeof AuthLoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/_layout/settings': {
@@ -257,8 +217,6 @@ const LayoutRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LayoutRoute: LayoutRouteWithChildren,
-  AuthLoginRoute: AuthLoginRoute,
-  AuthSignupRoute: AuthSignupRoute,
   HandlerSplatRoute: HandlerSplatRoute,
 }
 export const routeTree = rootRouteImport

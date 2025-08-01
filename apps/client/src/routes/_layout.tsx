@@ -15,28 +15,8 @@ export const Route = createFileRoute("/_layout")({
 });
 
 function LayoutComponent() {
-  // Use Stack Auth's built-in protection
-  const user = useUser({ or: "redirect" });
+  useUser({ or: "redirect" });
   const tasks = useQuery(api.tasks.get, {});
-
-  // Redirect to login if not authenticated
-  // if (user === null) {
-  //   return <Navigate to="/handler/auth/login" />;
-  // }
-
-  // Show loading while checking auth
-  if (user === undefined) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-        <div className="text-center">
-          <div className="mb-4">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900 dark:border-white mx-auto"></div>
-          </div>
-          <p className="text-gray-600 dark:text-gray-400">Loading...</p>
-        </div>
-      </div>
-    );
-  }
 
   // Sort tasks by creation date (newest first) and take the latest 5
   const recentTasks = useMemo(() => {
