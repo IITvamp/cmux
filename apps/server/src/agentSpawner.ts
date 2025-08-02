@@ -434,8 +434,9 @@ export async function spawnAgent(
     // Add required API keys from Convex
     if (agent.apiKeys) {
       for (const keyConfig of agent.apiKeys) {
-        if (apiKeys[keyConfig.envVar]) {
-          envVars[keyConfig.envVar] = apiKeys[keyConfig.envVar];
+        const key = apiKeys[keyConfig.envVar];
+        if (key && key.trim().length > 0) {
+          envVars[keyConfig.envVar] = key;
         }
       }
     }
