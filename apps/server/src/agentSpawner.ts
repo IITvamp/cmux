@@ -568,19 +568,17 @@ export async function spawnAgent(
             `[AgentSpawner] Updated taskRun ${taskRunId} as completed after ${data.elapsedMs}ms`
           );
 
-          // Wait a bit to ensure all file changes are saved
-          serverLogger.info(
-            `[AgentSpawner] Waiting 2 seconds before auto-commit to ensure all changes are saved...`
-          );
-          await new Promise((resolve) => setTimeout(resolve, 2000));
+          const ENABLE_AUTO_COMMIT = false;
 
-          // Auto-commit and push changes in VSCode editor
-          await performAutoCommitAndPush(
-            vscodeInstance,
-            agent,
-            taskRunId,
-            options.taskDescription
-          );
+          if (ENABLE_AUTO_COMMIT) {
+            // Auto-commit and push changes in VSCode editor
+            await performAutoCommitAndPush(
+              vscodeInstance,
+              agent,
+              taskRunId,
+              options.taskDescription
+            );
+          }
 
           // Schedule container stop based on settings
           const containerSettings = await convex.query(
