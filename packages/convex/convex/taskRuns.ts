@@ -470,6 +470,33 @@ export const updateScheduledStop = mutation({
   },
 });
 
+// Update crown status for a task run
+export const updateCrownStatus = mutation({
+  args: {
+    taskRunId: v.id("taskRuns"),
+    isCrowned: v.boolean(),
+    codeReviewId: v.id("codeReviews"),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.taskRunId, {
+      isCrowned: args.isCrowned,
+      codeReviewId: args.codeReviewId,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+// Get all task runs for a task
+export const listByTaskId = query({
+  args: { taskId: v.id("tasks") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("taskRuns")
+      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+      .collect();
+  },
+});
+
 // Get containers that should be stopped based on TTL and settings
 export const getContainersToStop = query({
   handler: async (ctx) => {

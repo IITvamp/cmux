@@ -54,6 +54,8 @@ export default defineSchema({
     completedAt: v.optional(v.number()),
     exitCode: v.optional(v.number()),
     userId: v.optional(v.string()), // Link to user who created the run
+    isCrowned: v.optional(v.boolean()), // Whether this run won the code review
+    codeReviewId: v.optional(v.id("codeReviews")), // Link to the code review
     // VSCode instance information
     vscode: v.optional(
       v.object({
@@ -142,4 +144,36 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   }),
+  codeReviews: defineTable({
+    taskId: v.id("tasks"),
+    taskRuns: v.array(
+      v.object({
+        taskRunId: v.id("taskRuns"),
+        agentName: v.string(),
+        diff: v.string(),
+        evaluation: v.object({
+          score: v.number(), // 0-100
+          codeQuality: v.number(), // 0-100
+          adherenceToRequirements: v.number(), // 0-100
+          testCoverage: v.number(), // 0-100
+          performance: v.number(), // 0-100
+          security: v.number(), // 0-100
+          reasoning: v.string(), // LLM's explanation
+        }),
+      })
+    ),
+    winnerId: v.optional(v.id("taskRuns")), // The crowned winner
+    reviewPrompt: v.string(), // The prompt used for review
+    reviewModel: v.string(), // e.g. "gpt-4-turbo"
+    createdAt: v.number(),
+    completedAt: v.optional(v.number()),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("reviewing"),
+      v.literal("completed"),
+      v.literal("failed")
+    ),
+  })
+    .index("by_task", ["taskId"])
+    .index("by_status", ["status"]),
 });

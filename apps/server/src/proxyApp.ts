@@ -8,6 +8,7 @@ import { convex } from "./utils/convexClient.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { serverLogger } from "./utils/fileLogger.js";
+import { CodeReviewService } from "./codeReviewService.js";
 
 // Port cache to avoid hammering Docker
 interface PortCacheEntry {
@@ -182,8 +183,61 @@ export function createProxyApp({
 }): express.Application {
   const app = express();
 
+  // Parse JSON bodies
+  app.use(express.json());
+
   // app.use(express.static(publicPath));
   const staticHandler = express.static(publicPath, {});
+
+  // Initialize code review service
+  const codeReviewService = new CodeReviewService();
+
+  // API endpoint for code review
+  app.post("/api/code-review", async (req, res) => {
+    try {
+      const { taskId } = req.body;
+      if (!taskId) {
+        return res.status(400).json({ error: "taskId is required" });
+      }
+
+      const result = await codeReviewService.evaluateTaskRuns(taskId);
+      res.json(result);
+    } catch (error) {
+      serverLogger.error("Code review error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Code review failed" 
+      });
+    }
+  });
+
+  // API endpoint for task run diffs
+  app.get("/api/taskRuns/:taskRunId/diff", async (req, res) => {
+    try {
+      const { taskRunId } = req.params;
+      const taskRun = await convex.query(api.taskRuns.get, { 
+        id: taskRunId as any 
+      });
+
+      if (!taskRun || !taskRun.worktreePath) {
+        return res.status(404).send("Task run or worktree not found");
+      }
+
+      // Get git diff for the worktree
+      const { exec } = await import("node:child_process");
+      const { promisify } = await import("node:util");
+      const execAsync = promisify(exec);
+
+      const { stdout } = await execAsync(
+        "git diff origin/main HEAD || true",
+        { cwd: taskRun.worktreePath }
+      );
+
+      res.type("text/plain").send(stdout);
+    } catch (error) {
+      serverLogger.error("Error getting diff:", error);
+      res.status(500).send("Failed to get diff");
+    }
+  });
 
   // Main request handler
   app.use(

@@ -22,11 +22,13 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^2.0.0",
     "@cmux/convex": "workspace:*",
     "@cmux/shared": "workspace:*",
     "@daytonaio/sdk": "^0.22.1",
     "@xterm/addon-serialize": "^0.13.0",
     "@xterm/headless": "^5.5.0",
+    "ai": "^5.0.0",
     "ansi-escape-sequences": "^6.2.4",
     "archiver": "^7.0.1",
     "chokidar": "^4.0.3",
@@ -41,6 +43,7 @@
     "ignore": "^7.0.5",
     "minimatch": "^10.0.3",
     "morphcloud": "^0.0.14",
+    "openai": "^5.11.0",
     "socket.io": "^4.7.5",
     "socket.io-client": "^4.8.1",
     "tar": "^7.4.3",

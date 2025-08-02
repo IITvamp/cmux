@@ -12,6 +12,8 @@ import {
 } from "@tanstack/react-router";
 import clsx from "clsx";
 import { Suspense, useEffect } from "react";
+import { Crown } from "@/components/ui/crown";
+import { TaskDetailSidebar } from "@/components/TaskDetailSidebar";
 
 export const Route = createFileRoute("/_layout/task/$taskId")({
   component: TaskDetailPage,
@@ -136,8 +138,9 @@ function TaskDetailPage() {
   }
 
   return (
-    <div className="flex flex-col grow min-h-0 border-l border-neutral-200 dark:border-neutral-800">
-      {WITH_HEADER && (
+    <div className="flex grow min-h-0">
+      <div className="flex flex-col grow min-h-0 border-l border-neutral-200 dark:border-neutral-800">
+        {WITH_HEADER && (
         <div className="border-b border-neutral-200 dark:border-neutral-700 px-3 py-2">
           <div className="relative group">
             <h1 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 truncate pr-8">
@@ -197,11 +200,12 @@ function TaskDetailPage() {
                 )}
                 // No onClick needed; active class controlled by URL
               >
-                <span style={{ paddingLeft: `${run.depth * 12}px` }}>
-                  Run {index + 1}
-                  {run.status === "running" && " 🟢"}
-                  {run.status === "completed" && " ✅"}
-                  {run.status === "failed" && " ❌"}
+                <span style={{ paddingLeft: `${run.depth * 12}px` }} className="flex items-center gap-1.5">
+                  <span>Run {index + 1}</span>
+                  {run.isCrowned && <Crown className="w-3.5 h-3.5" animate={false} />}
+                  {run.status === "running" && <span>🟢</span>}
+                  {run.status === "completed" && !run.isCrowned && <span>✅</span>}
+                  {run.status === "failed" && <span>❌</span>}
                 </span>
               </Link>
             ))}
@@ -209,11 +213,13 @@ function TaskDetailPage() {
         </div>
       )}
 
-      <div className="grow flex flex-col min-h-0">
-        <Suspense fallback={<div>Loading...</div>}>
-          <Outlet />
-        </Suspense>
+        <div className="grow flex flex-col min-h-0">
+          <Suspense fallback={<div>Loading...</div>}>
+            <Outlet />
+          </Suspense>
+        </div>
       </div>
+      <TaskDetailSidebar task={task} taskRuns={flatRuns} />
     </div>
   );
 }
