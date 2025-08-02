@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnConvex } from "./convex/spawnConvex";
 import { ensureLogFiles } from "./ensureLogFiles";
+import { handleFirstRun, isFirstRun } from "./firstRun";
 import { logger } from "./logger";
 import { checkPorts } from "./utils/checkPorts";
 import { getGitRepoInfo } from "./utils/gitUtils";
@@ -89,6 +90,12 @@ program
 
     if (repoPath) {
       console.log(`\x1b[36m→\x1b[0m Repository path provided: ${repoPath}`);
+    }
+
+    // Check if this is the first run
+    if (await isFirstRun(convexDir)) {
+      await handleFirstRun(convexDir);
+      console.log("\n\x1b[32m✓\x1b[0m Continuing with cmux startup...\n");
     }
 
     const portsToCheck = [port, 9777, 9778];
