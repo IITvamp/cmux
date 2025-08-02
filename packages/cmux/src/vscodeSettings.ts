@@ -1,6 +1,7 @@
 import { existsSync, promises as fs } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
+import { parse as parseJsonc } from "jsonc-parser";
 
 export type EditorType = "vscode" | "cursor" | "windsurf";
 
@@ -66,7 +67,7 @@ export async function readEditorSettings(editor: EditorConfig): Promise<VSCodeSe
     const settingsPath = path.join(editor.settingsPath, "settings.json");
     if (existsSync(settingsPath)) {
       const content = await fs.readFile(settingsPath, "utf-8");
-      result.settings = JSON.parse(content);
+      result.settings = parseJsonc(content);
     }
   } catch (error) {
     console.error(`Failed to read settings for ${editor.displayName}:`, error);
@@ -76,7 +77,7 @@ export async function readEditorSettings(editor: EditorConfig): Promise<VSCodeSe
     const keybindingsPath = path.join(editor.settingsPath, "keybindings.json");
     if (existsSync(keybindingsPath)) {
       const content = await fs.readFile(keybindingsPath, "utf-8");
-      result.keybindings = JSON.parse(content);
+      result.keybindings = parseJsonc(content);
     }
   } catch (error) {
     console.error(`Failed to read keybindings for ${editor.displayName}:`, error);
@@ -100,7 +101,7 @@ export async function readEditorSettings(editor: EditorConfig): Promise<VSCodeSe
       for (const file of snippetFiles) {
         if (file.endsWith(".json")) {
           const content = await fs.readFile(path.join(snippetsDir, file), "utf-8");
-          result.snippets[file] = JSON.parse(content);
+          result.snippets[file] = parseJsonc(content);
         }
       }
     }
