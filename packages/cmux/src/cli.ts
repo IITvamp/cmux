@@ -1,13 +1,14 @@
 import { startServer } from "@cmux/server";
 import { Command } from "commander";
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { type ConvexProcesses, spawnConvex } from "./convex/spawnConvex";
+import { spawnConvex } from "./convex/spawnConvex";
+import { ensureLogFiles } from "./ensureLogFiles";
 import { logger } from "./logger";
 import { checkPorts } from "./utils/checkPorts";
-import { pullDockerImage } from "./utils/dockerPull";
+import { getGitRepoInfo } from "./utils/gitUtils";
 import { killPortsIfNeeded } from "./utils/killPortsIfNeeded";
 
 const versionPadding = " ".repeat(Math.max(0, 14 - VERSION.toString().length));
@@ -19,7 +20,7 @@ console.log("\x1b[36m╚══════════════════�
 console.log("\x1b[32m✓\x1b[0m Server starting...");
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const convexDir = path.resolve(homedir(), ".cmux");
+export const convexDir = path.resolve(homedir(), ".cmux");
 
 // When running as a compiled binary, __dirname might be in a virtual filesystem
 // Check if we're in a bundled environment
@@ -51,13 +52,13 @@ setTimeout(async () => {
     return;
   }
   console.log(
-    "\x1b[31m✗\x1b[0m Server failed to start after 7 seconds. Please email founders@manaflow.com with the contents of ~/.cmux/logs/*"
+    "\x1b[31m✗\x1b[0m Server failed to start after 30 seconds. Please email founders@manaflow.com with the contents of ~/.cmux/logs/*"
   );
   await logger.info(
-    `Server failed to start after 7 seconds. convexReady=${status.convexReady} serverReady=${status.serverReady}`
+    `Server failed to start after 30 seconds. convexReady=${status.convexReady} serverReady=${status.serverReady}`
   );
   process.exit(1);
-}, 7_000);
+}, 30_000);
 
 // Register exit handlers immediately
 process.on("SIGINT", async () => {
@@ -76,21 +77,35 @@ program
   .name("cmux")
   .description("Socket.IO and static file server")
   .version(VERSION)
+  .argument("[path]", "path to git repository (defaults to current directory)")
   .option("-p, --port <port>", "port to listen on", "9776")
   .option("-c, --cors <origin>", "CORS origin configuration", "true")
   .option(
     "--no-autokill-ports",
     "disable automatic killing of processes on required ports"
   )
-  .action(async (options) => {
+  .action(async (repoPath, options) => {
     const port = parseInt(options.port);
+
+    if (repoPath) {
+      console.log(`\x1b[36m→\x1b[0m Repository path provided: ${repoPath}`);
+    }
 
     const portsToCheck = [port, 9777, 9778];
     if (options.autokillPorts) {
+      // log how long it takes to kill ports
+      const startTime = Date.now();
       await killPortsIfNeeded(portsToCheck);
+      const endTime = Date.now();
+      const duration = endTime - startTime;
+      await logger.info(`Ports killed in ${duration}ms`);
     } else {
       // Manual check without killing
+      const startTime = Date.now();
       const portsInUse = await checkPorts(portsToCheck);
+      const endTime = Date.now();
+      const duration = endTime - startTime;
+      await logger.info(`Ports checked in ${duration}ms`);
       if (portsInUse.length > 0) {
         console.error("\x1b[31m✗\x1b[0m Ports already in use:");
         console.error(portsInUse.map((p) => `  - ${p}`).join("\n"));
@@ -104,52 +119,20 @@ program
       }
     }
 
-    // ensure convexDir exists
-    mkdirSync(convexDir, { recursive: true });
+    ensureLogFiles();
 
-    // ensure logs directory exists
-    const logsDir = path.join(convexDir, "logs");
-    mkdirSync(logsDir, { recursive: true });
-
-    const logFileNames = [
-      "cmux-cli.log",
-      "docker-vscode.log",
-      "server.log",
-      "docker-pull.log",
-    ];
-    // ensure all log files exist
-    for (const logFileName of logFileNames) {
-      const logFilePath = path.join(convexDir, "logs", logFileName);
-      if (!existsSync(logFilePath)) {
-        writeFileSync(logFilePath, "");
-      } else {
-        // empty the file if it's not empty
-        writeFileSync(logFilePath, "");
-      }
-    }
-
-    // Pull Docker image asynchronously if WORKER_IMAGE_NAME is set
-    if (process.env.WORKER_IMAGE_NAME) {
-      pullDockerImage(process.env.WORKER_IMAGE_NAME, logsDir);
-    }
-
-    // Check if convex directory exists
-    if (!existsSync(convexDir)) {
-      console.error("Convex directory not found at:", convexDir);
-      process.exit(1);
-    }
-
-    logger.ensureLogDirectory();
-
-    let convexProcesses: ConvexProcesses;
     try {
-      // Start Convex and wait for it to be ready
-      convexProcesses = await spawnConvex(convexDir);
+      const convexProcessesPromise = spawnConvex(convexDir).then(
+        async (convexProcesses) => {
+          status.convexReady = true;
+          await logger.info("Convex is ready!");
+          return convexProcesses;
+        }
+      );
       cleanupFunctions.push(async () => {
+        const convexProcesses = await convexProcessesPromise;
         convexProcesses.backend.kill();
       });
-      status.convexReady = true;
-      await logger.info("Convex is ready!");
     } catch (error) {
       await logger.error(`Failed to start Convex: ${error}`);
       console.error("Failed to start Convex:", error);
@@ -168,11 +151,43 @@ program
       "\x1b[32m✓\x1b[0m Link: \x1b[36mhttp://localhost:" + port + "\x1b[0m\n"
     );
 
-    await logger.info(`Starting server on port ${port}...`);
-    await logger.info(`Serving static files from: ${staticDir}`);
+    let gitRepoInfo = null;
+    if (repoPath) {
+      const targetPath = repoPath === "." ? process.cwd() : repoPath;
+      try {
+        gitRepoInfo = getGitRepoInfo(targetPath);
+        if (!gitRepoInfo.isGitRepo) {
+          console.error(
+            `\x1b[31m✗\x1b[0m Error: ${targetPath} is not a git repository`
+          );
+          process.exit(1);
+        }
+        console.log(
+          `\x1b[32m✓\x1b[0m Git repository detected: ${gitRepoInfo.path}`
+        );
+        if (gitRepoInfo.remoteName) {
+          console.log(`  Remote: ${gitRepoInfo.remoteName}`);
+        } else if (gitRepoInfo.remoteUrl) {
+          console.log(`  Remote URL: ${gitRepoInfo.remoteUrl}`);
+          console.log(
+            `  \x1b[33m⚠\x1b[0m  Could not extract repository name from URL`
+          );
+        }
+        if (gitRepoInfo.currentBranch) {
+          console.log(`  Branch: ${gitRepoInfo.currentBranch}`);
+        }
+      } catch (error) {
+        console.error(
+          `\x1b[31m✗\x1b[0m Error: ${error instanceof Error ? error.message : String(error)}`
+        );
+        process.exit(1);
+      }
+    }
+
     const serverPromise = startServer({
       port,
       publicPath: staticDir,
+      defaultRepo: gitRepoInfo,
     }).then((server) => {
       status.serverReady = true;
       return server;

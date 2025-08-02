@@ -1,8 +1,12 @@
+import {
+  DashboardInput,
+  type EditorApi,
+} from "@/components/dashboard/DashboardInput";
 import { DashboardInputControls } from "@/components/dashboard/DashboardInputControls";
-import { DashboardInput, type EditorApi } from "@/components/dashboard/DashboardInput";
 import { TaskList } from "@/components/dashboard/TaskList";
 import { FloatingPane } from "@/components/floating-pane";
 import { ProviderStatusPills } from "@/components/provider-status-pills";
+import { useTheme } from "@/components/theme/use-theme";
 import { useSocket } from "@/contexts/socket/use-socket";
 import { createFakeConvexId } from "@/lib/fakeConvexId";
 import { api } from "@cmux/convex/api";
@@ -13,7 +17,6 @@ import { createFileRoute } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useMutation } from "convex/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useTheme } from "@/components/theme/use-theme";
 
 export const Route = createFileRoute("/_layout/dashboard")({
   component: DashboardComponent,
@@ -340,6 +343,36 @@ function DashboardComponent() {
     };
   }, [socket]);
 
+  // Listen for default repo from CLI
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleDefaultRepo = (data: {
+      repoFullName: string;
+      branch: string;
+      localPath: string;
+    }) => {
+      // Always set the selected project when a default repo is provided
+      // This ensures CLI-provided repos take precedence
+      setSelectedProject([data.repoFullName]);
+      localStorage.setItem(
+        "selectedProject",
+        JSON.stringify([data.repoFullName])
+      );
+
+      // Set the selected branch
+      if (data.branch) {
+        setSelectedBranch([data.branch]);
+      }
+    };
+
+    socket.on("default-repo", handleDefaultRepo);
+
+    return () => {
+      socket.off("default-repo", handleDefaultRepo);
+    };
+  }, [socket]);
+
   // Global keydown handler for autofocus
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
@@ -426,7 +459,11 @@ function DashboardComponent() {
   );
 
   const canSubmit = useMemo(
-    () => !!selectedProject[0] && !!taskDescription.trim() && !!effectiveSelectedBranch[0] && selectedAgents.length > 0,
+    () =>
+      !!selectedProject[0] &&
+      !!taskDescription.trim() &&
+      !!effectiveSelectedBranch[0] &&
+      selectedAgents.length > 0,
     [selectedProject, taskDescription, effectiveSelectedBranch, selectedAgents]
   );
 
@@ -436,14 +473,14 @@ function DashboardComponent() {
         {/* Main content area */}
         <div className="flex-1 flex justify-center px-4 pt-60 pb-4">
           <div className="w-full max-w-4xl">
-                      <div
-            className={clsx(
-              "relative bg-white dark:bg-neutral-700/50 border border-neutral-200 dark:border-neutral-500/15 rounded-2xl transition-all"
-            )}
-          >
+            <div
+              className={clsx(
+                "relative bg-white dark:bg-neutral-700/50 border border-neutral-200 dark:border-neutral-500/15 rounded-2xl transition-all"
+              )}
+            >
               {/* Provider Status Pills */}
               <ProviderStatusPills />
-              
+
               {/* Editor Input */}
               <DashboardInput
                 ref={editorApiRef}
@@ -482,4 +519,3 @@ function DashboardComponent() {
     </FloatingPane>
   );
 }
-

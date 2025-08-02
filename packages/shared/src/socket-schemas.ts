@@ -247,6 +247,13 @@ export const ProviderStatusResponseSchema = z.object({
   error: z.string().optional(),
 });
 
+// Default repo event
+export const DefaultRepoSchema = z.object({
+  repoFullName: z.string(),
+  branch: z.string(),
+  localPath: z.string(),
+});
+
 // Type exports
 export type CreateTerminal = z.infer<typeof CreateTerminalSchema>;
 export type TerminalInput = z.infer<typeof TerminalInputSchema>;
@@ -287,6 +294,7 @@ export type ProviderStatus = z.infer<typeof ProviderStatusSchema>;
 export type DockerStatus = z.infer<typeof DockerStatusSchema>;
 export type GitStatus = z.infer<typeof GitStatusSchema>;
 export type ProviderStatusResponse = z.infer<typeof ProviderStatusResponseSchema>;
+export type DefaultRepo = z.infer<typeof DefaultRepoSchema>;
 
 // Socket.io event map types
 export interface ClientToServerEvents {
@@ -327,6 +335,7 @@ export interface ServerToClientEvents {
   "list-files-response": (data: ListFilesResponse) => void;
   "vscode-spawned": (data: VSCodeSpawned) => void;
   "vscode-error": (data: VSCodeError) => void;
+  "default-repo": (data: DefaultRepo) => void;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type

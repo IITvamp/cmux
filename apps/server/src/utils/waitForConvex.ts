@@ -1,10 +1,14 @@
+import { onConvexReady } from "@cmux/shared/convex-ready";
 import { CONVEX_URL } from "./convexClient";
 import { serverLogger } from "./fileLogger.js";
 
 export async function waitForConvex(): Promise<void> {
   serverLogger.info("Waiting for convex to be ready...");
+  if (process.env.USE_CONVEX_READY === "true") {
+    await onConvexReady();
+  }
 
-  const maxRetries = 20;
+  const maxRetries = 100;
   const retryDelay = 100;
   let attempt = 1;
 
@@ -22,8 +26,11 @@ export async function waitForConvex(): Promise<void> {
         return;
       }
     } catch (error) {
-      if (attempt > 5) {
-        serverLogger.error(`Convex connection attempt ${attempt} failed:`, error);
+      if (attempt > 50) {
+        serverLogger.error(
+          `Convex connection attempt ${attempt} failed:`,
+          error
+        );
       }
 
       if (attempt < maxRetries) {

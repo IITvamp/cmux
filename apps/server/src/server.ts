@@ -38,12 +38,23 @@ import { getWorktreePath } from "./workspace.js";
 
 const execAsync = promisify(exec);
 
+export type GitRepoInfo = {
+  path: string;
+  isGitRepo: boolean;
+  remoteName?: string;
+  remoteUrl?: string;
+  currentBranch?: string;
+  defaultBranch?: string;
+};
+
 export async function startServer({
   port,
   publicPath,
+  defaultRepo,
 }: {
   port: number;
   publicPath: string;
+  defaultRepo?: GitRepoInfo | null;
 }) {
   // Git diff manager instance
   const gitDiffManager = new GitDiffManager();
@@ -73,6 +84,17 @@ export async function startServer({
 
   io.on("connection", (socket) => {
     serverLogger.info("Client connected:", socket.id);
+    
+    // Send default repo info to newly connected client if available
+    if (defaultRepo?.remoteName) {
+      const defaultRepoData = {
+        repoFullName: defaultRepo.remoteName,
+        branch: defaultRepo.currentBranch || defaultRepo.defaultBranch || "main",
+        localPath: defaultRepo.path,
+      };
+      serverLogger.info(`Sending default-repo to new client ${socket.id}:`, defaultRepoData);
+      socket.emit("default-repo", defaultRepoData);
+    }
 
     socket.on("start-task", async (data, callback) => {
       try {
@@ -515,6 +537,35 @@ export async function startServer({
     // Start the Docker container state sync
     await waitForConvex();
     DockerVSCodeInstance.startContainerStateSync();
+
+    // Store default repo info if provided
+    if (defaultRepo?.remoteName) {
+      try {
+        serverLogger.info(`Storing default repository: ${defaultRepo.remoteName}`);
+        await convex.mutation(api.github.upsertRepo, {
+          fullName: defaultRepo.remoteName,
+          org: defaultRepo.remoteName.split("/")[0] || "",
+          name: defaultRepo.remoteName.split("/")[1] || "",
+          gitRemote: defaultRepo.remoteUrl || "",
+          provider: "github", // Default to github, could be enhanced to detect provider
+        });
+        
+        // Also emit to all connected clients
+        const defaultRepoData = {
+          repoFullName: defaultRepo.remoteName,
+          branch: defaultRepo.currentBranch || defaultRepo.defaultBranch || "main",
+          localPath: defaultRepo.path,
+        };
+        serverLogger.info(`Emitting default-repo event:`, defaultRepoData);
+        io.emit("default-repo", defaultRepoData);
+        
+        serverLogger.info(`Successfully set default repository: ${defaultRepo.remoteName}`);
+      } catch (error) {
+        serverLogger.error("Error storing default repo:", error);
+      }
+    } else if (defaultRepo) {
+      serverLogger.warn(`Default repo provided but no remote name found:`, defaultRepo);
+    }
 
     // Refresh GitHub data on server start
     refreshGitHubData().catch((error) => {

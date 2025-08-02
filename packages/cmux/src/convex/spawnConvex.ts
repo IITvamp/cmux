@@ -1,3 +1,4 @@
+import { emitConvexReady } from "@cmux/shared/convex-ready";
 import { $ } from "bun";
 import { ChildProcess, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -79,7 +80,11 @@ export async function spawnConvex(
 
   try {
     const currentVersion = await fs.readFile(versionFilePath, "utf8");
-    if (currentVersion.trim() !== bundleVersion) {
+    const shouldUpgrade =
+      currentVersion.trim() !== bundleVersion ||
+      process.env.FORCE_UPGRADE === "true";
+    console.log("shouldUpgrade", shouldUpgrade);
+    if (shouldUpgrade) {
       await logger.info(
         `Version changed from ${currentVersion.trim()} to ${bundleVersion}, upgrading...`
       );
@@ -187,26 +192,29 @@ export async function spawnConvex(
       await logger.info("Upgrade complete!");
     } else {
       await logger.info("Fresh installation...");
-      
+
       // Backup logs directory if it exists (for fresh install that might have existing logs)
       const logsPath = path.join(convexDir, "logs");
       const hasLogs = await fs
         .access(logsPath)
         .then(() => true)
         .catch(() => false);
-      
+
       let tempLogsBackup: string | null = null;
       if (hasLogs) {
-        tempLogsBackup = path.join(os.tmpdir(), `cmux-logs-backup-${Date.now()}`);
+        tempLogsBackup = path.join(
+          os.tmpdir(),
+          `cmux-logs-backup-${Date.now()}`
+        );
         await $`rsync -aq ${logsPath}/ ${tempLogsBackup}/`;
         await logger.info("Temporarily backed up existing logs");
       }
-      
+
       // Clear the convexDir and move the contents of cmux-bundle
       await fs.rm(convexDir, { recursive: true, force: true });
       await fs.mkdir(convexDir, { recursive: true });
       await $`mv ${tempExtractDir}/cmux-bundle/* ${convexDir}/`;
-      
+
       // Restore logs if they existed
       if (tempLogsBackup) {
         await fs.mkdir(logsPath, { recursive: true });
@@ -289,43 +297,47 @@ export async function spawnConvex(
   }
 
   // Deploy convex functions if this was a fresh install or upgrade
-  // if (shouldExtract) {
-  //   await logger.info("Deploying Convex functions...");
+  if (shouldExtract) {
+    await logger.info("Deploying Convex functions...");
 
-  //   const convexAdminKey =
-  //     "cmux-dev|017aebe6643f7feb3fe831fbb93a348653c63e5711d2427d1a34b670e3151b0165d86a5ff9";
-  //   const convexCliPath = path.join(
-  //     convexDir,
-  //     "convex-cli-dist",
-  //     "cli.bundle.js"
-  //   );
+    const convexAdminKey =
+      "cmux-dev|017aebe6643f7feb3fe831fbb93a348653c63e5711d2427d1a34b670e3151b0165d86a5ff9";
+    const convexCliPath = path.join(
+      convexDir,
+      "convex-cli-dist",
+      "cli.bundle.js"
+    );
 
-  //   try {
-  //     // Create .env.local if it doesn't exist
-  //     const envLocalPath = path.join(convexDir, ".env.local");
-  //     if (!existsSync(envLocalPath)) {
-  //       await $`echo "CONVEX_URL=http://localhost:${convexPort}" > ${envLocalPath}`;
-  //     }
+    try {
+      // Create .env.local if it doesn't exist
+      const envLocalPath = path.join(convexDir, ".env.local");
+      if (!existsSync(envLocalPath)) {
+        await $`echo "CONVEX_URL=http://localhost:${convexPort}" > ${envLocalPath}`;
+      }
 
-  //     // Run convex deploy using the bundled CLI
-  //     const deployResult =
-  //       await $`cd ${convexDir} && bun ${convexCliPath} deploy --url http://localhost:${convexPort} --admin-key ${convexAdminKey}`;
+      console.log("process.execPath", process.execPath);
+      console.log("convexDir", convexDir);
+      // Run convex deploy using the bundled CLI
+      const deployResult =
+        await $`cd ${convexDir} && BUN_BE_BUN=1 ${process.execPath} install && BUN_BE_BUN=1 ${process.execPath} x convex deploy --url http://localhost:${convexPort} --admin-key ${convexAdminKey}`;
 
-  //     if (deployResult.exitCode === 0) {
-  //       await logger.info("Convex functions deployed successfully!");
-  //     } else {
-  //       await logger.error(
-  //         `Convex deployment failed with exit code ${deployResult.exitCode}`
-  //       );
-  //       throw new Error(
-  //         `Convex deployment failed with exit code ${deployResult.exitCode}`
-  //       );
-  //     }
-  //   } catch (error) {
-  //     await logger.error(`Failed to deploy Convex functions: ${error}`);
-  //     throw error; // Re-throw to make deployment failures fatal
-  //   }
-  // }
+      if (deployResult.exitCode === 0) {
+        await logger.info("Convex functions deployed successfully!");
+      } else {
+        await logger.error(
+          `Convex deployment failed with exit code ${deployResult.exitCode}`
+        );
+        throw new Error(
+          `Convex deployment failed with exit code ${deployResult.exitCode}`
+        );
+      }
+    } catch (error) {
+      await logger.error(`Failed to deploy Convex functions: ${error}`);
+      throw error; // Re-throw to make deployment failures fatal
+    }
+  }
+
+  emitConvexReady();
 
   return {
     backend: convexBackend,
