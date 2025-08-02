@@ -58,26 +58,18 @@ export async function handleFirstRun(cmuxDir: string): Promise<void> {
     console.log(`  - ${editor.displayName}`);
   });
 
-  const { shouldCopySettings } = await inquirer.prompt([
+  const choices = [
+    ...installedEditors.map(editor => ({
+      name: editor.displayName,
+      value: editor,
+    })),
     {
-      type: "confirm",
-      name: "shouldCopySettings",
-      message: "Would you like to copy settings and extensions from one of these editors?",
-      default: true,
+      name: "None - Skip settings import",
+      value: null,
     },
-  ]);
+  ];
 
-  if (!shouldCopySettings) {
-    await saveConfig(cmuxDir, { firstRunCompleted: true });
-    return;
-  }
-
-  const choices = installedEditors.map(editor => ({
-    name: editor.displayName,
-    value: editor,
-  }));
-
-  const { selectedEditor } = await inquirer.prompt<{ selectedEditor: EditorConfig }>([
+  const { selectedEditor } = await inquirer.prompt<{ selectedEditor: EditorConfig | null }>([
     {
       type: "list",
       name: "selectedEditor",
@@ -85,6 +77,12 @@ export async function handleFirstRun(cmuxDir: string): Promise<void> {
       choices,
     },
   ]);
+
+  if (!selectedEditor) {
+    console.log("\n⏭️  Skipping settings import.");
+    await saveConfig(cmuxDir, { firstRunCompleted: true });
+    return;
+  }
 
   console.log(`\n📋 Reading settings from ${selectedEditor.displayName}...`);
   
