@@ -54,6 +54,9 @@ export default defineSchema({
     completedAt: v.optional(v.number()),
     exitCode: v.optional(v.number()),
     userId: v.optional(v.string()), // Link to user who created the run
+    isCrowned: v.optional(v.boolean()), // Whether this run won the crown evaluation
+    crownReason: v.optional(v.string()), // LLM's reasoning for why this run was crowned
+    pullRequestUrl: v.optional(v.string()), // URL of the created PR (only for crowned runs)
     // VSCode instance information
     vscode: v.optional(
       v.object({
@@ -133,6 +136,17 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   }),
+  crownEvaluations: defineTable({
+    taskId: v.id("tasks"),
+    evaluatedAt: v.number(),
+    winnerRunId: v.id("taskRuns"),
+    candidateRunIds: v.array(v.id("taskRuns")),
+    evaluationPrompt: v.string(),
+    evaluationResponse: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_task", ["taskId"])
+    .index("by_winner", ["winnerRunId"]),
   containerSettings: defineTable({
     maxRunningContainers: v.optional(v.number()), // Max containers to keep running (default: 5)
     reviewPeriodMinutes: v.optional(v.number()), // Minutes to keep container after task completion (default: 60)

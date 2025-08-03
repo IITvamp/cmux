@@ -1,5 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { api } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 
 export const get = query({
   args: {
@@ -177,5 +179,50 @@ export const createVersion = mutation({
     await ctx.db.patch(args.taskId, { updatedAt: Date.now() });
 
     return versionId;
+  },
+});
+
+// Check if all runs for a task are completed and trigger crown evaluation
+export const checkAndEvaluateCrown = mutation({
+  args: {
+    taskId: v.id("tasks"),
+  },
+  handler: async (ctx, args): Promise<Id<"taskRuns"> | null> => {
+    // Get all runs for this task
+    const taskRuns = await ctx.db
+      .query("taskRuns")
+      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+      .collect();
+
+    // Check if we have multiple runs
+    if (taskRuns.length < 2) {
+      return null;
+    }
+
+    // Check if all runs are completed or failed
+    const allCompleted = taskRuns.every(
+      (run) => run.status === "completed" || run.status === "failed"
+    );
+
+    if (!allCompleted) {
+      return null;
+    }
+
+    // Check if we've already evaluated crown for this task
+    const existingEvaluation = await ctx.db
+      .query("crownEvaluations")
+      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+      .first();
+
+    if (existingEvaluation) {
+      return existingEvaluation.winnerRunId;
+    }
+
+    // Trigger crown evaluation
+    const winnerId = await ctx.runMutation(api.crown.evaluateAndCrownWinner, {
+      taskId: args.taskId,
+    });
+
+    return winnerId;
   },
 });

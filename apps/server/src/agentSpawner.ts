@@ -32,12 +32,19 @@ async function performAutoCommitAndPush(
   vscodeInstance: VSCodeInstance,
   agent: AgentConfig,
   taskRunId: string | Id<"taskRuns">,
-  taskDescription: string
+  taskDescription: string,
+  worktreePath: string
 ): Promise<void> {
   try {
     serverLogger.info(
-      `[AgentSpawner] Starting auto-commit and push for ${agent.name}`
+      `[AgentSpawner] Starting auto-commit for ${agent.name}`
     );
+
+    // Check if this run is crowned
+    const taskRun = await convex.query(api.taskRuns.get, {
+      id: taskRunId as Id<"taskRuns">,
+    });
+    const isCrowned = taskRun?.isCrowned || false;
 
     // Create a unique branch name for this task run
     // Include a sanitized version of the task description for better clarity
@@ -64,7 +71,7 @@ async function performAutoCommitAndPush(
 
     const commitMessage = `${truncatedDescription}
 
-Task completed by ${agent.name} agent
+Task completed by ${agent.name} agent${isCrowned ? " 🏆" : ""}
 
 🤖 Generated with cmux
 Agent: ${agent.name}
@@ -113,9 +120,12 @@ Completed: ${new Date().toISOString()}`;
       `git checkout -b ${branchName}`,
       // Commit with a descriptive message (escape quotes properly)
       `git commit -m "${commitMessage.replace(/"/g, '\\"')}"`,
-      // Push branch to origin
-      `git push -u origin ${branchName}`,
     ];
+
+    // Only push if this is a crowned run
+    if (isCrowned) {
+      gitCommands.push(`git push -u origin ${branchName}`);
+    }
 
     for (const command of gitCommands) {
       serverLogger.info(`[AgentSpawner] Executing: ${command}`);
@@ -186,9 +196,88 @@ Completed: ${new Date().toISOString()}`;
       }
     }
 
-    serverLogger.info(
-      `[AgentSpawner] Auto-commit and push completed for ${agent.name} on branch ${branchName}`
-    );
+    if (isCrowned) {
+      serverLogger.info(
+        `[AgentSpawner] 🏆 Crown winner! Auto-commit and push completed for ${agent.name} on branch ${branchName}`
+      );
+      
+      // Create PR for crowned run
+      try {
+        if (!taskRun) {
+          serverLogger.error(`[AgentSpawner] Task run not found for PR creation`);
+          return;
+        }
+        const task = await convex.query(api.tasks.getById, { id: taskRun.taskId });
+        if (task) {
+          const prTitle = `[Crown] ${task.text}`;
+          const prBody = `## 🏆 Crown Winner: ${agent.name}
+
+### Task Description
+${task.text}
+${task.description ? `\n${task.description}` : ""}
+
+### Crown Evaluation
+${taskRun.crownReason || "This implementation was selected as the best solution."}
+
+### Implementation Details
+- **Agent**: ${agent.name}
+- **Task ID**: ${task._id}
+- **Run ID**: ${taskRun._id}
+- **Branch**: ${branchName}
+- **Completed**: ${new Date(taskRun.completedAt || Date.now()).toISOString()}
+
+---
+*This PR was automatically created by cmux crown feature after evaluating implementations from multiple AI coding assistants.*`;
+
+          const prCommand = `gh pr create --title "${prTitle.replace(/"/g, '\\"')}" --body "${prBody.replace(/"/g, '\\"').replace(/\n/g, '\\n')}"`;
+          
+          const prResult = await new Promise<{
+            success: boolean;
+            output?: string;
+            error?: string;
+          }>((resolve) => {
+            workerSocket
+              .timeout(30000)
+              .emit(
+                "worker:exec",
+                {
+                  command: prCommand,
+                  cwd: worktreePath,
+                },
+                (response: any) => {
+                  if (response.error) {
+                    resolve({ success: false, error: response.error });
+                  } else {
+                    // Extract PR URL from output
+                    const output = response.stdout || "";
+                    const prUrlMatch = output.match(/https:\/\/github\.com\/[\w-]+\/[\w-]+\/pull\/\d+/);
+                    resolve({
+                      success: true,
+                      output: prUrlMatch ? prUrlMatch[0] : output,
+                    });
+                  }
+                }
+              );
+          });
+
+          if (prResult.success && prResult.output) {
+            serverLogger.info(`[AgentSpawner] Pull request created: ${prResult.output}`);
+            await convex.mutation(api.taskRuns.updatePullRequestUrl, {
+              id: taskRunId as Id<"taskRuns">,
+              pullRequestUrl: prResult.output,
+            });
+          } else {
+            serverLogger.error(`[AgentSpawner] Failed to create PR: ${prResult.error}`);
+          }
+        }
+      } catch (error) {
+        serverLogger.error(`[AgentSpawner] Error creating PR:`, error);
+      }
+    } else {
+      serverLogger.info(
+        `[AgentSpawner] Auto-commit completed for ${agent.name} on branch ${branchName} (not crowned - branch not pushed)`
+      );
+    }
   } catch (error) {
     serverLogger.error(`[AgentSpawner] Error in auto-commit and push:`, error);
   }
@@ -567,18 +656,29 @@ export async function spawnAgent(
             `[AgentSpawner] Updated taskRun ${taskRunId} as completed after ${data.elapsedMs}ms`
           );
 
+          // Check if all runs are complete and evaluate crown
+          const taskRunData = await convex.query(api.taskRuns.get, {
+            id: taskRunId as Id<"taskRuns">,
+          });
+          if (taskRunData) {
+            await convex.mutation(api.tasks.checkAndEvaluateCrown, {
+              taskId: taskRunData.taskId,
+            });
+          }
+
           // Wait a bit to ensure all file changes are saved
           serverLogger.info(
             `[AgentSpawner] Waiting 2 seconds before auto-commit to ensure all changes are saved...`
           );
           await new Promise((resolve) => setTimeout(resolve, 2000));
 
-          // Auto-commit and push changes in VSCode editor
+          // Auto-commit changes (only push if crowned)
           await performAutoCommitAndPush(
             vscodeInstance,
             agent,
             taskRunId,
-            options.taskDescription
+            options.taskDescription,
+            worktreePath
           );
 
           // Schedule container stop based on settings

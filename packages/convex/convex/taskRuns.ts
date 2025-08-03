@@ -470,6 +470,20 @@ export const updateScheduledStop = mutation({
   },
 });
 
+// Update pull request URL for a task run
+export const updatePullRequestUrl = mutation({
+  args: {
+    id: v.id("taskRuns"),
+    pullRequestUrl: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.id, {
+      pullRequestUrl: args.pullRequestUrl,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
 // Get containers that should be stopped based on TTL and settings
 export const getContainersToStop = query({
   handler: async (ctx) => {
