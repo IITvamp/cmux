@@ -1,4 +1,5 @@
 export * from "./agentConfig.js";
+export * from "./convex-ready.js";
 export * from "./getShortId.js";
 export * from "./socket-schemas.js";
 export * from "./terminal-config.js";

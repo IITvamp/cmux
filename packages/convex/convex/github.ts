@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { internalMutation, query, mutation } from "./_generated/server";
+import { internalMutation, mutation, query } from "./_generated/server";
 
 export const getReposByOrg = query({
   args: {},
@@ -65,6 +65,34 @@ export const insertRepo = internalMutation({
   },
 });
 
+export const upsertRepo = mutation({
+  args: {
+    fullName: v.string(),
+    org: v.string(),
+    name: v.string(),
+    gitRemote: v.string(),
+    provider: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    // Check if repo already exists
+    const existing = await ctx.db
+      .query("repos")
+      .filter((q) => q.eq(q.field("gitRemote"), args.gitRemote))
+      .first();
+
+    if (existing) {
+      // Update existing repo
+      return await ctx.db.patch(existing._id, args);
+    } else {
+      // Insert new repo
+      return await ctx.db.insert("repos", {
+        ...args,
+        provider: args.provider || "github",
+      });
+    }
+  },
+});
+
 export const deleteRepo = internalMutation({
   args: { id: v.id("repos") },
   handler: async (ctx, { id }) => {
@@ -105,11 +133,13 @@ export const bulkInsertRepos = mutation({
   handler: async (ctx, { repos }) => {
     // Get existing repos to check for duplicates
     const existingRepos = await ctx.db.query("repos").collect();
-    const existingRepoNames = new Set(existingRepos.map(r => r.fullName));
-    
+    const existingRepoNames = new Set(existingRepos.map((r) => r.fullName));
+
     // Only insert repos that don't already exist
-    const newRepos = repos.filter(repo => !existingRepoNames.has(repo.fullName));
-    
+    const newRepos = repos.filter(
+      (repo) => !existingRepoNames.has(repo.fullName)
+    );
+
     const insertedIds = await Promise.all(
       newRepos.map((repo) => ctx.db.insert("repos", repo))
     );
@@ -128,11 +158,13 @@ export const bulkInsertBranches = mutation({
       .query("branches")
       .filter((q) => q.eq(q.field("repo"), repo))
       .collect();
-    const existingBranchNames = new Set(existingBranches.map(b => b.name));
-    
+    const existingBranchNames = new Set(existingBranches.map((b) => b.name));
+
     // Only insert branches that don't already exist
-    const newBranches = branches.filter(name => !existingBranchNames.has(name));
-    
+    const newBranches = branches.filter(
+      (name) => !existingBranchNames.has(name)
+    );
+
     const insertedIds = await Promise.all(
       newBranches.map((name) => ctx.db.insert("branches", { repo, name }))
     );
@@ -157,7 +189,7 @@ export const replaceAllRepos = mutation({
     // Delete all existing repos
     const existingRepos = await ctx.db.query("repos").collect();
     await Promise.all(existingRepos.map((repo) => ctx.db.delete(repo._id)));
-    
+
     // Insert all new repos
     const insertedIds = await Promise.all(
       repos.map((repo) => ctx.db.insert("repos", repo))

@@ -523,8 +523,9 @@ export async function spawnAgent(
     // Add required API keys from Convex
     if (agent.apiKeys) {
       for (const keyConfig of agent.apiKeys) {
-        if (apiKeys[keyConfig.envVar]) {
-          envVars[keyConfig.envVar] = apiKeys[keyConfig.envVar];
+        const key = apiKeys[keyConfig.envVar];
+        if (key && key.trim().length > 0) {
+          envVars[keyConfig.envVar] = key;
         }
       }
     }
@@ -666,20 +667,18 @@ export async function spawnAgent(
             });
           }
 
-          // Wait a bit to ensure all file changes are saved
-          serverLogger.info(
-            `[AgentSpawner] Waiting 2 seconds before auto-commit to ensure all changes are saved...`
-          );
-          await new Promise((resolve) => setTimeout(resolve, 2000));
+          const ENABLE_AUTO_COMMIT = false;
 
-          // Auto-commit changes (only push if crowned)
-          await performAutoCommitAndPush(
-            vscodeInstance,
-            agent,
-            taskRunId,
-            options.taskDescription,
+          if (ENABLE_AUTO_COMMIT) {
+            // Auto-commit changes (only push if crowned)
+            await performAutoCommitAndPush(
+              vscodeInstance,
+              agent,
+              taskRunId,
+              options.taskDescription,
             worktreePath
-          );
+            );
+          }
 
           // Schedule container stop based on settings
           const containerSettings = await convex.query(

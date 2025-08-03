@@ -24,6 +24,10 @@
     "./worker-schemas": {
       "import": "./src/worker-schemas.ts",
       "types": "./src/worker-schemas.ts"
+    },
+    "./convex-ready": {
+      "import": "./src/convex-ready.ts",
+      "types": "./src/convex-ready.ts"
     }
   },
   "dependencies": {

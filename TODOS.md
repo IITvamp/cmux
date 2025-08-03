@@ -44,7 +44,7 @@
 [ ] renamed branch name (eg. cmux-claude-opus-4-extract-sidebar-into-its-own-jn73r96s46gfyx860q7qaj9a1n7mnefz) is too long
 [ ] fix the
 [ ] copy VS Code extensions and copy
-[ ] copy vs code settings/theme
+[ ] copy vs code settings/theme: make it so that when we launch the cli for the first time, it will prompt the user if they want to copy their themes and extensions from either vscode, windsurf, or cursor. the user will have to choose from the cli which one they want. then we must copy the themes/extensions to the right place in all the remote machines.
 [ ] make green checkbox timing more reliable
 [ ] archive tasks button in sidebar
 [ ] edit prompt after seeing what it did -- try multiple prompts at same time -- if click on main one, show page that has prompt, edit prompt, and recontinue execution. less tasks, but more so like linear. instead of task, convert it to a linear timeline flow thing. just want to add tasks. dont have to switch apps -- put backlog and tasks in execution

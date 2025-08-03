@@ -167,7 +167,7 @@ await $`cp ./packages/cmux/src/convex/convex-bundle/convex_local_backend.sqlite3
 await $`cp -r ./packages/cmux/src/convex/convex-bundle/convex_local_storage /tmp/cmux-bundle/`;
 
 // Copy the correct package.json from cmux package (overwrite the convex one)
-await $`cp ./packages/cmux/package.json /tmp/cmux-bundle/`;
+// await $`cp ./packages/cmux/package.json /tmp/cmux-bundle/`;
 
 // Copy public files (client dist)
 await $`mkdir -p /tmp/cmux-bundle/public`;
@@ -183,7 +183,7 @@ await $`rm -rf /tmp/cmux-bundle`;
 const VERSION = cmuxPackageJson.version;
 
 // bun build the cli
-await $`bun build ./packages/cmux/src/cli.ts --compile --define VERSION="\"${VERSION}\"" --define process.env.WORKER_IMAGE_NAME="\"docker.io/lawrencecchen/cmux:${VERSION}\"" --define process.env.NODE_ENV="\"production\"" --outfile cmux-cli`;
+await $`bun build ./packages/cmux/src/cli.ts --compile --define VERSION="\"${VERSION}\"" --define process.env.WORKER_IMAGE_NAME="\"docker.io/lawrencecchen/cmux:${VERSION}\"" --define process.env.NODE_ENV="\"production\"" --outfile cmux-cli --target bun`;
 console.log("Built cmux-cli");
 
 // exit with 0
