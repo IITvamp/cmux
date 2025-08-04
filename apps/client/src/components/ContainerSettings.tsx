@@ -1,7 +1,7 @@
 import { api } from "@cmux/convex/api";
 import { useQuery } from "convex/react";
-import { useState, useEffect, useRef } from "react";
 import { Loader2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 interface ContainerSettingsProps {
   onDataChange?: (data: {
@@ -31,7 +31,8 @@ export function ContainerSettings({ onDataChange }: ContainerSettingsProps) {
         maxRunningContainers: settings.maxRunningContainers ?? 5,
         reviewPeriodMinutes: settings.reviewPeriodMinutes ?? 60,
         autoCleanupEnabled: settings.autoCleanupEnabled ?? true,
-        stopImmediatelyOnCompletion: settings.stopImmediatelyOnCompletion ?? false,
+        stopImmediatelyOnCompletion:
+          settings.stopImmediatelyOnCompletion ?? false,
         minContainersToKeep: settings.minContainersToKeep ?? 0,
       };
       setFormData(newData);
@@ -65,7 +66,9 @@ export function ContainerSettings({ onDataChange }: ContainerSettingsProps) {
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div className="space-y-0.5">
-            <label htmlFor="auto-cleanup" className="text-sm font-medium">Automatic Cleanup</label>
+            <label htmlFor="auto-cleanup" className="text-sm font-medium">
+              Automatic Cleanup
+            </label>
             <p className="text-sm text-muted-foreground">
               Automatically stop containers based on the rules below
             </p>
@@ -76,22 +79,29 @@ export function ContainerSettings({ onDataChange }: ContainerSettingsProps) {
             role="switch"
             aria-checked={formData.autoCleanupEnabled}
             onClick={() =>
-              updateFormData({ ...formData, autoCleanupEnabled: !formData.autoCleanupEnabled })
+              updateFormData({
+                ...formData,
+                autoCleanupEnabled: !formData.autoCleanupEnabled,
+              })
             }
             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-              formData.autoCleanupEnabled ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'
+              formData.autoCleanupEnabled
+                ? "bg-blue-600"
+                : "bg-neutral-200 dark:bg-neutral-700"
             }`}
           >
             <span
               className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                formData.autoCleanupEnabled ? 'translate-x-6' : 'translate-x-1'
+                formData.autoCleanupEnabled ? "translate-x-6" : "translate-x-1"
               }`}
             />
           </button>
         </div>
 
         <div className="space-y-2">
-          <label htmlFor="max-containers" className="block text-sm font-medium">Maximum Running Containers</label>
+          <label htmlFor="max-containers" className="block text-sm font-medium">
+            Maximum Running Containers
+          </label>
           <input
             id="max-containers"
             type="number"
@@ -114,7 +124,9 @@ export function ContainerSettings({ onDataChange }: ContainerSettingsProps) {
 
         <div className="flex items-center justify-between">
           <div className="space-y-0.5">
-            <label htmlFor="stop-immediately" className="text-sm font-medium">Stop Immediately on Completion</label>
+            <label htmlFor="stop-immediately" className="text-sm font-medium">
+              Stop Immediately on Completion
+            </label>
             <p className="text-sm text-muted-foreground">
               Stop containers as soon as tasks complete (no review period)
             </p>
@@ -125,23 +137,33 @@ export function ContainerSettings({ onDataChange }: ContainerSettingsProps) {
             role="switch"
             aria-checked={formData.stopImmediatelyOnCompletion}
             onClick={() =>
-              updateFormData({ ...formData, stopImmediatelyOnCompletion: !formData.stopImmediatelyOnCompletion })
+              updateFormData({
+                ...formData,
+                stopImmediatelyOnCompletion:
+                  !formData.stopImmediatelyOnCompletion,
+              })
             }
             disabled={!formData.autoCleanupEnabled}
             className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-              formData.stopImmediatelyOnCompletion ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'
+              formData.stopImmediatelyOnCompletion
+                ? "bg-blue-600"
+                : "bg-neutral-200 dark:bg-neutral-700"
             } disabled:opacity-50`}
           >
             <span
               className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                formData.stopImmediatelyOnCompletion ? 'translate-x-6' : 'translate-x-1'
+                formData.stopImmediatelyOnCompletion
+                  ? "translate-x-6"
+                  : "translate-x-1"
               }`}
             />
           </button>
         </div>
 
         <div className="space-y-2">
-          <label htmlFor="min-containers" className="block text-sm font-medium">Always Keep Recent Containers</label>
+          <label htmlFor="min-containers" className="block text-sm font-medium">
+            Always Keep Recent Containers
+          </label>
           <input
             id="min-containers"
             type="number"
@@ -158,12 +180,15 @@ export function ContainerSettings({ onDataChange }: ContainerSettingsProps) {
             className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 disabled:opacity-50"
           />
           <p className="text-sm text-muted-foreground">
-            Always keep the N most recent containers alive, regardless of review period (0 = disabled)
+            Always keep the N most recent containers alive, regardless of review
+            period (0 = disabled)
           </p>
         </div>
 
         <div className="space-y-2">
-          <label htmlFor="review-period" className="block text-sm font-medium">Review Period (minutes)</label>
+          <label htmlFor="review-period" className="block text-sm font-medium">
+            Review Period (minutes)
+          </label>
           <input
             id="review-period"
             type="number"
@@ -176,11 +201,14 @@ export function ContainerSettings({ onDataChange }: ContainerSettingsProps) {
                 reviewPeriodMinutes: parseInt(e.target.value, 10),
               })
             }
-            disabled={!formData.autoCleanupEnabled || formData.stopImmediatelyOnCompletion}
+            disabled={
+              !formData.autoCleanupEnabled ||
+              formData.stopImmediatelyOnCompletion
+            }
             className="w-full px-3 py-2 border border-neutral-300 dark:border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 disabled:opacity-50"
           />
           <p className="text-sm text-muted-foreground">
-            {formData.stopImmediatelyOnCompletion 
+            {formData.stopImmediatelyOnCompletion
               ? "Review period is disabled when stopping immediately"
               : "Keep containers running for this many minutes after task completion to allow code review"}
           </p>

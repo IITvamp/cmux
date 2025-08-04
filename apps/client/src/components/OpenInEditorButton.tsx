@@ -53,10 +53,18 @@ export function OpenInEditorButton({ workspacePath }: OpenInEditorButtonProps) {
 
   const handleOpenInEditor = () => {
     if (workspacePath && socket) {
-      socket.emit("open-in-editor", {
-        editor: selectedEditor,
-        path: workspacePath,
-      });
+      socket.emit(
+        "open-in-editor",
+        {
+          editor: selectedEditor,
+          path: workspacePath,
+        },
+        (response) => {
+          if (!response.success) {
+            console.error("Failed to open editor:", response.error);
+          }
+        }
+      );
     }
   };
 
