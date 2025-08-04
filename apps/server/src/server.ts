@@ -218,9 +218,8 @@ export async function startServer({
       }
     });
 
-    socket.on("open-in-editor", async (data) => {
+    socket.on("open-in-editor", async (data, callback) => {
       try {
-        console.log("open in editor", data);
         const { editor, path } = OpenInEditorSchema.parse(data);
 
         let command: string[];
@@ -245,27 +244,41 @@ export async function startServer({
         childProcess.on("close", (code) => {
           if (code === 0) {
             serverLogger.info(`Successfully opened ${path} in ${editor}`);
+            // Send success callback
+            if (callback) {
+              callback({ success: true });
+            }
           } else {
             serverLogger.error(
               `Error opening ${editor}: process exited with code ${code}`
             );
-            socket.emit("open-in-editor-error", {
-              error: `Failed to open ${editor}: process exited with code ${code}`,
-            });
+            const error = `Failed to open ${editor}: process exited with code ${code}`;
+            socket.emit("open-in-editor-error", { error });
+            // Send error callback
+            if (callback) {
+              callback({ success: false, error });
+            }
           }
         });
 
         childProcess.on("error", (error) => {
           serverLogger.error(`Error opening ${editor}:`, error);
-          socket.emit("open-in-editor-error", {
-            error: `Failed to open ${editor}: ${error.message}`,
-          });
+          const errorMessage = `Failed to open ${editor}: ${error.message}`;
+          socket.emit("open-in-editor-error", { error: errorMessage });
+          // Send error callback
+          if (callback) {
+            callback({ success: false, error: errorMessage });
+          }
         });
       } catch (error) {
         serverLogger.error("Error opening editor:", error);
-        socket.emit("open-in-editor-error", {
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error";
+        socket.emit("open-in-editor-error", { error: errorMessage });
+        // Send error callback
+        if (callback) {
+          callback({ success: false, error: errorMessage });
+        }
       }
     });
 

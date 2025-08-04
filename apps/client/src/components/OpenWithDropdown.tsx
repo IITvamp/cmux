@@ -1,9 +1,9 @@
 import { useSocket } from "@/contexts/socket/use-socket";
 import { Menu } from "@base-ui-components/react/menu";
 import clsx from "clsx";
-import { ChevronDown, Code2 } from "lucide-react";
+import { ChevronDown, Code2, Loader2 } from "lucide-react";
 import * as React from "react";
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 type EditorType = "vscode-remote" | "cursor" | "vscode" | "windsurf";
 
@@ -21,6 +21,7 @@ export function OpenWithDropdown({
   iconClassName = "w-3.5 h-3.5",
 }: OpenWithDropdownProps) {
   const { socket } = useSocket();
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   useEffect(() => {
     if (!socket) return;
@@ -37,20 +38,34 @@ export function OpenWithDropdown({
   }, [socket]);
 
   const handleOpenInEditor = useCallback(
-    (editor: EditorType) => {
-      console.log("open in editor", editor, vscodeUrl, worktreePath);
-      if (editor === "vscode-remote" && vscodeUrl) {
-        window.open(vscodeUrl, "_blank", "noopener,noreferrer");
-      } else if (
-        socket &&
-        ["cursor", "vscode", "windsurf"].includes(editor) &&
-        worktreePath
-      ) {
-        socket.emit("open-in-editor", {
-          editor: editor as "cursor" | "vscode" | "windsurf",
-          path: worktreePath,
-        });
-      }
+    (editor: EditorType): Promise<void> => {
+      return new Promise((resolve, reject) => {
+        if (editor === "vscode-remote" && vscodeUrl) {
+          window.open(vscodeUrl, "_blank", "noopener,noreferrer");
+          resolve();
+        } else if (
+          socket &&
+          ["cursor", "vscode", "windsurf"].includes(editor) &&
+          worktreePath
+        ) {
+          socket.emit(
+            "open-in-editor",
+            {
+              editor: editor as "cursor" | "vscode" | "windsurf",
+              path: worktreePath,
+            },
+            (response) => {
+              if (response.success) {
+                resolve();
+              } else {
+                reject(new Error(response.error || "Failed to open editor"));
+              }
+            }
+          );
+        } else {
+          reject(new Error("Unable to open editor"));
+        }
+      });
     },
     [socket, worktreePath, vscodeUrl]
   );
@@ -71,7 +86,7 @@ export function OpenWithDropdown({
   ];
 
   return (
-    <Menu.Root>
+    <Menu.Root open={isMenuOpen} onOpenChange={setIsMenuOpen}>
       <Menu.Trigger
         onClick={(e) => e.stopPropagation()}
         className={clsx(
@@ -96,21 +111,62 @@ export function OpenWithDropdown({
               <ArrowSvg />
             </Menu.Arrow>
             {menuItems.map((item) => (
-              <Menu.Item
+              <EditorMenuItem
                 key={item.id}
-                disabled={!item.enabled}
-                onClick={() => {
-                  handleOpenInEditor(item.id);
-                }}
-                className="flex cursor-default py-2 pr-8 pl-4 text-sm leading-4 outline-none select-none data-[highlighted]:relative data-[highlighted]:z-0 data-[highlighted]:text-neutral-50 dark:data-[highlighted]:text-neutral-900 data-[highlighted]:before:absolute data-[highlighted]:before:inset-x-1 data-[highlighted]:before:inset-y-0 data-[highlighted]:before:z-[-1] data-[highlighted]:before:rounded-sm data-[highlighted]:before:bg-neutral-900 dark:data-[highlighted]:before:bg-neutral-100 data-[disabled]:text-neutral-400 dark:data-[disabled]:text-neutral-600 data-[disabled]:cursor-not-allowed"
-              >
-                {item.name}
-              </Menu.Item>
+                item={item}
+                handleOpenInEditor={handleOpenInEditor}
+                onSuccess={() => setIsMenuOpen(false)}
+              />
             ))}
           </Menu.Popup>
         </Menu.Positioner>
       </Menu.Portal>
     </Menu.Root>
+  );
+}
+
+interface EditorMenuItemProps {
+  item: {
+    id: EditorType;
+    name: string;
+    enabled: boolean;
+  };
+  handleOpenInEditor: (editor: EditorType) => Promise<void>;
+  onSuccess: () => void;
+}
+
+function EditorMenuItem({
+  item,
+  handleOpenInEditor,
+  onSuccess,
+}: EditorMenuItemProps) {
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleClick = async (e: React.MouseEvent<HTMLDivElement>) => {
+    e.stopPropagation();
+    if (!item.enabled || isLoading) return;
+
+    setIsLoading(true);
+    try {
+      await handleOpenInEditor(item.id);
+      // Close the menu after successful open
+      onSuccess();
+    } catch (error) {
+      console.error("Failed to open editor:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <Menu.Item
+      disabled={!item.enabled || isLoading}
+      onClick={handleClick}
+      className="flex items-center cursor-default py-2 pr-8 pl-4 text-sm leading-4 outline-none select-none data-[highlighted]:relative data-[highlighted]:z-0 data-[highlighted]:text-neutral-50 dark:data-[highlighted]:text-neutral-900 data-[highlighted]:before:absolute data-[highlighted]:before:inset-x-1 data-[highlighted]:before:inset-y-0 data-[highlighted]:before:z-[-1] data-[highlighted]:before:rounded-sm data-[highlighted]:before:bg-neutral-900 dark:data-[highlighted]:before:bg-neutral-100 data-[disabled]:text-neutral-400 dark:data-[disabled]:text-neutral-600 data-[disabled]:cursor-not-allowed"
+    >
+      {isLoading && <Loader2 className="w-3 h-3 mr-2 animate-spin" />}
+      {item.name}
+    </Menu.Item>
   );
 }
 
