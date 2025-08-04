@@ -94,7 +94,7 @@ function TaskRunComponent() {
               style={{ animationDelay: "300ms" }}
             />
           </div>
-          <span className="text-sm text-gray-500">Loading VS Code...</span>
+          <span className="text-sm text-gray-500">Starting VS Code...</span>
         </div>
       </div>
     </div>

@@ -12,6 +12,7 @@
     "typecheck:vscode-extension": "cd packages/vscode-extension && bun run typecheck",
     "typecheck:convex": "cd packages/convex && bun run typecheck",
     "typecheck:cmux": "cd packages/cmux && bun run typecheck",
+    "typecheck:preview-service": "cd apps/preview-service && bun run typecheck",
     "generate-routes": "cd packages/client && bun run generate-routes"
   },
   "devDependencies": {
