@@ -9,6 +9,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
+import { OpenWithDropdown } from "@/components/OpenWithDropdown";
 
 interface TaskRunWithChildren extends Doc<"taskRuns"> {
   children: TaskRunWithChildren[];
@@ -142,13 +143,22 @@ function TaskRunTree({ run, level, taskId }: TaskRunTreeProps) {
     failed: <XCircle className="w-3 h-3 text-red-500" />,
   }[run.status];
 
+  // Generate VSCode URL if available
+  const hasActiveVSCode = run.vscode?.status === "running";
+  const vscodeUrl = useMemo(() =>
+    hasActiveVSCode && run.vscode?.containerName && run.vscode?.ports?.vscode
+      ? `http://${run._id.substring(0, 12)}.39378.localhost:9776/`
+      : null,
+    [hasActiveVSCode, run]
+  );
+
   return (
     <div className="mt-px">
       <Link
         to="/task/$taskId/run/$taskRunId"
         params={{ taskId, taskRunId: run._id }}
         className={clsx(
-          "flex items-center px-2 py-1 text-xs rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default",
+          "group flex items-center px-2 py-1 text-xs rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default",
           "[&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800"
         )}
         style={{ paddingLeft: `${8 + level * 16}px` }}
@@ -175,6 +185,15 @@ function TaskRunTree({ run, level, taskId }: TaskRunTreeProps) {
           <span className="truncate text-neutral-700 dark:text-neutral-300">
             {displayText}
           </span>
+        </div>
+
+        <div className="mr-2 opacity-0 group-hover:opacity-100 transition-opacity">
+          <OpenWithDropdown 
+            vscodeUrl={vscodeUrl}
+            worktreePath={run.worktreePath}
+            className="bg-neutral-100/80 dark:bg-neutral-700/80 hover:bg-neutral-200/80 dark:hover:bg-neutral-600/80 text-neutral-600 dark:text-neutral-400"
+            iconClassName="w-3 h-3"
+          />
         </div>
       </Link>
 
