@@ -4,6 +4,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { OpenWithDropdown } from "@/components/OpenWithDropdown";
 import { api } from "@cmux/convex/api";
 import type { Doc } from "@cmux/convex/dataModel";
 import { useClipboard } from "@mantine/hooks";
@@ -13,7 +14,6 @@ import { useQuery as useConvexQuery, useMutation } from "convex/react";
 import {
   Archive,
   Check,
-  Code2,
   Copy,
   Crown,
   Pin,
@@ -194,30 +194,11 @@ export const TaskItem = memo(function TaskItem({ task }: TaskItemProps) {
           </Tooltip>
         </TooltipProvider>
 
-        {/* VSCode button - appears on hover */}
-        {vscodeUrl && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <a
-                  href={vscodeUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={(e) => e.stopPropagation()}
-                  className={clsx(
-                    "p-1 rounded cursor-default",
-                    "bg-neutral-100 dark:bg-neutral-700",
-                    "text-neutral-600 dark:text-neutral-400",
-                    "hover:bg-neutral-200 dark:hover:bg-neutral-600"
-                  )}
-                >
-                  <Code2 className="w-3.5 h-3.5" />
-                </a>
-              </TooltipTrigger>
-              <TooltipContent side="top">Open in VSCode</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
+        {/* Open with dropdown - always appears on hover */}
+        <OpenWithDropdown 
+          vscodeUrl={vscodeUrl}
+          worktreePath={runWithVSCode?.worktreePath || task.worktreePath}
+        />
 
         {/* Keep-alive button */}
         {runWithVSCode && hasActiveVSCode && (

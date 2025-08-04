@@ -16,6 +16,7 @@
     "generate-routes": "tsr generate"
   },
   "dependencies": {
+    "@base-ui-components/react": "1.0.0-beta.2",
     "@cmux/convex": "workspace:*",
     "@cmux/shared": "workspace:*",
     "@convex-dev/react-query": "^0.0.0-alpha.11",
