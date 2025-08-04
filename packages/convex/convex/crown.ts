@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { api } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 
 export const evaluateAndCrownWinner = mutation({
@@ -7,17 +8,23 @@ export const evaluateAndCrownWinner = mutation({
     taskId: v.id("tasks"),
   },
   handler: async (ctx, args) => {
-    const task = await ctx.db.get(args.taskId);
-    if (!task) throw new Error("Task not found");
+    try {
+      console.log(`[Crown] Starting evaluation for task ${args.taskId}`);
+      
+      const task = await ctx.db.get(args.taskId);
+      if (!task) {
+        console.error(`[Crown] Task ${args.taskId} not found`);
+        throw new Error("Task not found");
+      }
 
-    // Get all completed runs for this task
-    const taskRuns = await ctx.db
-      .query("taskRuns")
-      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
-      .filter((q) => q.eq(q.field("status"), "completed"))
-      .collect();
+      // Get all completed runs for this task
+      const taskRuns = await ctx.db
+        .query("taskRuns")
+        .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+        .filter((q) => q.eq(q.field("status"), "completed"))
+        .collect();
 
-    console.log(`[Crown] Found ${taskRuns.length} completed runs for task ${args.taskId}`);
+      console.log(`[Crown] Found ${taskRuns.length} completed runs for task ${args.taskId}`);
 
     // If only one model or less, crown it by default
     if (taskRuns.length <= 1) {
@@ -99,6 +106,7 @@ Respond with a JSON object in this format:
 }`;
 
     // Call LLM for evaluation (using Claude via the existing API key)
+    console.log("[Crown] Looking up ANTHROPIC_API_KEY");
     const apiKey = await ctx.db
       .query("apiKeys")
       .withIndex("by_envVar", (q) => q.eq("envVar", "ANTHROPIC_API_KEY"))
@@ -106,10 +114,17 @@ Respond with a JSON object in this format:
 
     if (!apiKey) {
       console.error("[Crown] ANTHROPIC_API_KEY not found in settings");
-      throw new Error("ANTHROPIC_API_KEY not found in settings");
+      console.error("[Crown] Available API keys:", await ctx.db.query("apiKeys").collect());
+      throw new Error("ANTHROPIC_API_KEY not found in settings - please configure your Anthropic API key in settings");
+    }
+
+    if (!apiKey.value || apiKey.value.trim().length === 0) {
+      console.error("[Crown] ANTHROPIC_API_KEY is empty");
+      throw new Error("ANTHROPIC_API_KEY is empty - please set a valid API key in settings");
     }
 
     console.log("[Crown] Using API key for evaluation");
+    console.log(`[Crown] Evaluation prompt length: ${evaluationPrompt.length} characters`);
 
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -130,8 +145,12 @@ Respond with a JSON object in this format:
       }),
     });
 
+    console.log(`[Crown] API response status: ${response.status}`);
+    
     if (!response.ok) {
-      throw new Error(`Claude API error: ${response.statusText}`);
+      const errorText = await response.text();
+      console.error(`[Crown] Claude API error: ${response.status} ${response.statusText}: ${errorText}`);
+      throw new Error(`Claude API error: ${response.status} ${response.statusText}: ${errorText}`);
     }
 
     const result = await response.json();
@@ -188,8 +207,14 @@ Respond with a JSON object in this format:
     // The server will handle actual PR creation since it requires git operations
 
     return winnerRunId;
+    } catch (error) {
+      console.error(`[Crown] Crown evaluation failed for task ${args.taskId}:`, error);
+      throw error;
+    }
   },
 });
+
+
 
 // Helper function to get git diff for a run
 async function getGitDiffForRun(run: Doc<"taskRuns">): Promise<string> {
