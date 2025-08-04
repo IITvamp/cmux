@@ -1,9 +1,10 @@
 import { useSocket } from "@/contexts/socket/use-socket";
 import { Menu } from "@base-ui-components/react/menu";
 import clsx from "clsx";
-import { ChevronDown, Code2, Loader2 } from "lucide-react";
+import { ChevronDown, Code2 } from "lucide-react";
 import * as React from "react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
+import { toast } from "sonner";
 
 type EditorType = "vscode-remote" | "cursor" | "vscode" | "windsurf";
 
@@ -21,7 +22,6 @@ export function OpenWithDropdown({
   iconClassName = "w-3.5 h-3.5",
 }: OpenWithDropdownProps) {
   const { socket } = useSocket();
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   useEffect(() => {
     if (!socket) return;
@@ -86,7 +86,9 @@ export function OpenWithDropdown({
   ];
 
   return (
-    <Menu.Root open={isMenuOpen} onOpenChange={setIsMenuOpen}>
+    // TODO: Fix BaseUI menu closing behavior in the future
+    // Currently using toast notifications for loading state instead
+    <Menu.Root>
       <Menu.Trigger
         onClick={(e) => e.stopPropagation()}
         className={clsx(
@@ -111,62 +113,46 @@ export function OpenWithDropdown({
               <ArrowSvg />
             </Menu.Arrow>
             {menuItems.map((item) => (
-              <EditorMenuItem
+              <Menu.Item
                 key={item.id}
-                item={item}
-                handleOpenInEditor={handleOpenInEditor}
-                onSuccess={() => setIsMenuOpen(false)}
-              />
+                disabled={!item.enabled}
+                onClick={() => {
+                  const loadingToast = toast.loading(
+                    `Opening ${item.name}...`
+                  );
+                  
+                  handleOpenInEditor(item.id)
+                    .then(() => {
+                      toast.success(`Opened ${item.name}`, {
+                        id: loadingToast,
+                      });
+                    })
+                    .catch((error) => {
+                      let errorMessage = "Failed to open editor";
+                      
+                      // Handle specific error cases
+                      if (error.message?.includes("ENOENT") || 
+                          error.message?.includes("not found") ||
+                          error.message?.includes("command not found")) {
+                        errorMessage = `${item.name} is not installed or not found in PATH`;
+                      } else if (error.message) {
+                        errorMessage = error.message;
+                      }
+                      
+                      toast.error(errorMessage, {
+                        id: loadingToast,
+                      });
+                    });
+                }}
+                className="flex cursor-default py-2 pr-8 pl-4 text-sm leading-4 outline-none select-none data-[highlighted]:relative data-[highlighted]:z-0 data-[highlighted]:text-neutral-50 dark:data-[highlighted]:text-neutral-900 data-[highlighted]:before:absolute data-[highlighted]:before:inset-x-1 data-[highlighted]:before:inset-y-0 data-[highlighted]:before:z-[-1] data-[highlighted]:before:rounded-sm data-[highlighted]:before:bg-neutral-900 dark:data-[highlighted]:before:bg-neutral-100 data-[disabled]:text-neutral-400 dark:data-[disabled]:text-neutral-600 data-[disabled]:cursor-not-allowed"
+              >
+                {item.name}
+              </Menu.Item>
             ))}
           </Menu.Popup>
         </Menu.Positioner>
       </Menu.Portal>
     </Menu.Root>
-  );
-}
-
-interface EditorMenuItemProps {
-  item: {
-    id: EditorType;
-    name: string;
-    enabled: boolean;
-  };
-  handleOpenInEditor: (editor: EditorType) => Promise<void>;
-  onSuccess: () => void;
-}
-
-function EditorMenuItem({
-  item,
-  handleOpenInEditor,
-  onSuccess,
-}: EditorMenuItemProps) {
-  const [isLoading, setIsLoading] = useState(false);
-
-  const handleClick = async (e: React.MouseEvent<HTMLDivElement>) => {
-    e.stopPropagation();
-    if (!item.enabled || isLoading) return;
-
-    setIsLoading(true);
-    try {
-      await handleOpenInEditor(item.id);
-      // Close the menu after successful open
-      onSuccess();
-    } catch (error) {
-      console.error("Failed to open editor:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  return (
-    <Menu.Item
-      disabled={!item.enabled || isLoading}
-      onClick={handleClick}
-      className="flex items-center cursor-default py-2 pr-8 pl-4 text-sm leading-4 outline-none select-none data-[highlighted]:relative data-[highlighted]:z-0 data-[highlighted]:text-neutral-50 dark:data-[highlighted]:text-neutral-900 data-[highlighted]:before:absolute data-[highlighted]:before:inset-x-1 data-[highlighted]:before:inset-y-0 data-[highlighted]:before:z-[-1] data-[highlighted]:before:rounded-sm data-[highlighted]:before:bg-neutral-900 dark:data-[highlighted]:before:bg-neutral-100 data-[disabled]:text-neutral-400 dark:data-[disabled]:text-neutral-600 data-[disabled]:cursor-not-allowed"
-    >
-      {isLoading && <Loader2 className="w-3 h-3 mr-2 animate-spin" />}
-      {item.name}
-    </Menu.Item>
   );
 }
 
