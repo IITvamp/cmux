@@ -8,3 +8,4 @@ working back from a demo:
 - code review
   - swipe left or swipe right (order of changes)..
   - merge queue...?
+- code review agent that spins up operator to click around and take screenshots and then posts it back to the PR we're reviewing
