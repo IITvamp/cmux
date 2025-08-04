@@ -140,6 +140,11 @@ export const OpenInEditorErrorSchema = z.object({
   error: z.string(),
 });
 
+export const OpenInEditorResponseSchema = z.object({
+  success: z.boolean(),
+  error: z.string().optional(),
+});
+
 // File listing events
 export const ListFilesRequestSchema = z.object({
   repoUrl: z.string(),
@@ -279,6 +284,7 @@ export type GitFullDiffRequest = z.infer<typeof GitFullDiffRequestSchema>;
 export type GitFullDiffResponse = z.infer<typeof GitFullDiffResponseSchema>;
 export type OpenInEditor = z.infer<typeof OpenInEditorSchema>;
 export type OpenInEditorError = z.infer<typeof OpenInEditorErrorSchema>;
+export type OpenInEditorResponse = z.infer<typeof OpenInEditorResponseSchema>;
 export type ListFilesRequest = z.infer<typeof ListFilesRequestSchema>;
 export type FileInfo = z.infer<typeof FileInfoSchema>;
 export type ListFilesResponse = z.infer<typeof ListFilesResponseSchema>;
@@ -306,7 +312,10 @@ export interface ClientToServerEvents {
   "git-status": (data: GitStatusRequest) => void;
   "git-diff": (data: GitDiffRequest) => void;
   "git-full-diff": (data: GitFullDiffRequest) => void;
-  "open-in-editor": (data: OpenInEditor) => void;
+  "open-in-editor": (
+    data: OpenInEditor,
+    callback: (response: OpenInEditorResponse) => void
+  ) => void;
   "list-files": (data: ListFilesRequest) => void;
   // GitHub operations
   "github-test-auth": (

@@ -13,7 +13,7 @@ import {
 } from "@cmux/shared";
 import * as fuzzysort from "fuzzysort";
 import { minimatch } from "minimatch";
-import { exec } from "node:child_process";
+import { exec, spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
 import { createServer } from "node:http";
 import * as path from "node:path";
@@ -25,7 +25,7 @@ import { GitDiffManager } from "./gitDiff.js";
 import { createProxyApp, setupWebSocketProxy } from "./proxyApp.js";
 import { RepositoryManager } from "./repositoryManager.js";
 import { convex } from "./utils/convexClient.js";
-import { serverLogger, dockerLogger } from "./utils/fileLogger.js";
+import { dockerLogger, serverLogger } from "./utils/fileLogger.js";
 import { checkAllProvidersStatus } from "./utils/providerStatus.js";
 import {
   refreshBranchesForRepo,
@@ -84,15 +84,19 @@ export async function startServer({
 
   io.on("connection", (socket) => {
     serverLogger.info("Client connected:", socket.id);
-    
+
     // Send default repo info to newly connected client if available
     if (defaultRepo?.remoteName) {
       const defaultRepoData = {
         repoFullName: defaultRepo.remoteName,
-        branch: defaultRepo.currentBranch || defaultRepo.defaultBranch || "main",
+        branch:
+          defaultRepo.currentBranch || defaultRepo.defaultBranch || "main",
         localPath: defaultRepo.path,
       };
-      serverLogger.info(`Sending default-repo to new client ${socket.id}:`, defaultRepoData);
+      serverLogger.info(
+        `Sending default-repo to new client ${socket.id}:`,
+        defaultRepoData
+      );
       socket.emit("default-repo", defaultRepoData);
     }
 
@@ -214,41 +218,67 @@ export async function startServer({
       }
     });
 
-    socket.on("open-in-editor", async (data) => {
+    socket.on("open-in-editor", async (data, callback) => {
       try {
         const { editor, path } = OpenInEditorSchema.parse(data);
-        const { exec } = await import("child_process");
 
-        let command: string;
+        let command: string[];
         switch (editor) {
           case "vscode":
-            command = `code "${path}"`;
+            command = ["code", path];
             break;
           case "cursor":
-            command = `cursor "${path}"`;
+            command = ["cursor", path];
             break;
           case "windsurf":
-            command = `windsurf "${path}"`;
+            command = ["windsurf", path];
             break;
           default:
             throw new Error(`Unknown editor: ${editor}`);
         }
 
-        exec(command, (error) => {
-          if (error) {
-            serverLogger.error(`Error opening ${editor}:`, error);
-            socket.emit("open-in-editor-error", {
-              error: `Failed to open ${editor}: ${error.message}`,
-            });
-          } else {
+        console.log("command", command);
+
+        const childProcess = spawn(command[0], command.slice(1));
+
+        childProcess.on("close", (code) => {
+          if (code === 0) {
             serverLogger.info(`Successfully opened ${path} in ${editor}`);
+            // Send success callback
+            if (callback) {
+              callback({ success: true });
+            }
+          } else {
+            serverLogger.error(
+              `Error opening ${editor}: process exited with code ${code}`
+            );
+            const error = `Failed to open ${editor}: process exited with code ${code}`;
+            socket.emit("open-in-editor-error", { error });
+            // Send error callback
+            if (callback) {
+              callback({ success: false, error });
+            }
+          }
+        });
+
+        childProcess.on("error", (error) => {
+          serverLogger.error(`Error opening ${editor}:`, error);
+          const errorMessage = `Failed to open ${editor}: ${error.message}`;
+          socket.emit("open-in-editor-error", { error: errorMessage });
+          // Send error callback
+          if (callback) {
+            callback({ success: false, error: errorMessage });
           }
         });
       } catch (error) {
         serverLogger.error("Error opening editor:", error);
-        socket.emit("open-in-editor-error", {
-          error: error instanceof Error ? error.message : "Unknown error",
-        });
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error";
+        socket.emit("open-in-editor-error", { error: errorMessage });
+        // Send error callback
+        if (callback) {
+          callback({ success: false, error: errorMessage });
+        }
       }
     });
 
@@ -541,7 +571,9 @@ export async function startServer({
     // Store default repo info if provided
     if (defaultRepo?.remoteName) {
       try {
-        serverLogger.info(`Storing default repository: ${defaultRepo.remoteName}`);
+        serverLogger.info(
+          `Storing default repository: ${defaultRepo.remoteName}`
+        );
         await convex.mutation(api.github.upsertRepo, {
           fullName: defaultRepo.remoteName,
           org: defaultRepo.remoteName.split("/")[0] || "",
@@ -549,22 +581,28 @@ export async function startServer({
           gitRemote: defaultRepo.remoteUrl || "",
           provider: "github", // Default to github, could be enhanced to detect provider
         });
-        
+
         // Also emit to all connected clients
         const defaultRepoData = {
           repoFullName: defaultRepo.remoteName,
-          branch: defaultRepo.currentBranch || defaultRepo.defaultBranch || "main",
+          branch:
+            defaultRepo.currentBranch || defaultRepo.defaultBranch || "main",
           localPath: defaultRepo.path,
         };
         serverLogger.info(`Emitting default-repo event:`, defaultRepoData);
         io.emit("default-repo", defaultRepoData);
-        
-        serverLogger.info(`Successfully set default repository: ${defaultRepo.remoteName}`);
+
+        serverLogger.info(
+          `Successfully set default repository: ${defaultRepo.remoteName}`
+        );
       } catch (error) {
         serverLogger.error("Error storing default repo:", error);
       }
     } else if (defaultRepo) {
-      serverLogger.warn(`Default repo provided but no remote name found:`, defaultRepo);
+      serverLogger.warn(
+        `Default repo provided but no remote name found:`,
+        defaultRepo
+      );
     }
 
     // Refresh GitHub data on server start
@@ -659,7 +697,7 @@ export async function startServer({
 
     isCleanedUp = true;
     serverLogger.info("Cleanup completed");
-    
+
     // Close logger instances to ensure all data is flushed
     serverLogger.close();
     dockerLogger.close();

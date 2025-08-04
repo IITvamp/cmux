@@ -69,7 +69,7 @@ export function RestoredTerminalView({ runId }: RestoredTerminalViewProps) {
     xtermRef.current.clear();
 
     // Concatenate all chunks to reconstruct the serialized data
-    const serializedData = logChunks.map((chunk) => chunk.content).join("");
+    const serializedData = logChunks.map((chunk: { content: string }) => chunk.content).join("");
 
     // Write the serialized data to restore the terminal state
     if (serializedData) {
