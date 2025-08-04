@@ -17,7 +17,7 @@ export function CrownEvaluation({ taskId }: CrownEvaluationProps) {
   }
 
   // Extract agent name from prompt
-  const agentMatch = crownedRun.prompt.match(/Using agent: ([\w\/\-\.]+)/);
+  const agentMatch = crownedRun.prompt.match(/\(([^)]+)\)$/);
   const agentName = agentMatch ? agentMatch[1] : "Unknown";
 
   return (

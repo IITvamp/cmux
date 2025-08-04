@@ -45,6 +45,10 @@ async function performAutoCommitAndPush(
       id: taskRunId as Id<"taskRuns">,
     });
     const isCrowned = taskRun?.isCrowned || false;
+    
+    serverLogger.info(
+      `[AgentSpawner] Task run ${taskRunId} crowned status: ${isCrowned}`
+    );
 
     // Create a unique branch name for this task run
     // Include a sanitized version of the task description for better clarity
@@ -638,6 +642,100 @@ export async function spawnAgent(
       `VSCode instance spawned for agent ${agent.name}: ${vscodeUrl}`
     );
 
+    // Handler for completing the task
+    const handleTaskCompletion = async (exitCode: number = 0) => {
+      try {
+        await convex.mutation(api.taskRuns.complete, {
+          id: taskRunId as Id<"taskRuns">,
+          exitCode,
+        });
+
+        serverLogger.info(
+          `[AgentSpawner] Updated taskRun ${taskRunId} as completed with exit code ${exitCode}`
+        );
+
+        // Check if all runs are complete and evaluate crown
+        const taskRunData = await convex.query(api.taskRuns.get, {
+          id: taskRunId as Id<"taskRuns">,
+        });
+        if (taskRunData) {
+          const winnerId = await convex.mutation(api.tasks.checkAndEvaluateCrown, {
+            taskId: taskRunData.taskId,
+          });
+          
+          // If a winner was selected, wait a bit for the crown data to be updated
+          if (winnerId) {
+            serverLogger.info(`[AgentSpawner] Crown winner selected: ${winnerId}`);
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+          }
+        }
+
+        const ENABLE_AUTO_COMMIT = true;
+
+        if (ENABLE_AUTO_COMMIT) {
+          // Wait a bit more to ensure crown data is fully updated
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          
+          // Auto-commit changes (only push if crowned)
+          await performAutoCommitAndPush(
+            vscodeInstance,
+            agent,
+            taskRunId,
+            options.taskDescription,
+            worktreePath
+          );
+        }
+
+        // Schedule container stop based on settings
+        const containerSettings = await convex.query(
+          api.containerSettings.getEffective
+        );
+
+        if (containerSettings.autoCleanupEnabled) {
+          if (containerSettings.stopImmediatelyOnCompletion) {
+            // Stop container immediately
+            serverLogger.info(
+              `[AgentSpawner] Stopping container immediately as per settings`
+            );
+
+            // Stop the VSCode instance
+            await vscodeInstance.stop();
+          } else {
+            // Schedule stop after review period
+            const reviewPeriodMs =
+              containerSettings.reviewPeriodMinutes * 60 * 1000;
+            const scheduledStopAt = Date.now() + reviewPeriodMs;
+
+            await convex.mutation(api.taskRuns.updateScheduledStop, {
+              id: taskRunId as Id<"taskRuns">,
+              scheduledStopAt,
+            });
+
+            serverLogger.info(
+              `[AgentSpawner] Scheduled container stop for ${new Date(scheduledStopAt).toISOString()}`
+            );
+          }
+        }
+      } catch (error) {
+        serverLogger.error(
+          `[AgentSpawner] Error handling task completion:`,
+          error
+        );
+      }
+    };
+
+    // Set up terminal-exit event handler
+    vscodeInstance.on("terminal-exit", async (data) => {
+      serverLogger.info(
+        `[AgentSpawner] Terminal exited for ${agent.name}:`,
+        data
+      );
+
+      if (data.terminalId === terminalId) {
+        await handleTaskCompletion(data.exitCode || 0);
+      }
+    });
+
     // Set up terminal-idle event handler
     vscodeInstance.on("terminal-idle", async (data) => {
       serverLogger.info(
@@ -647,96 +745,7 @@ export async function spawnAgent(
 
       // Update the task run as completed
       if (data.taskId === taskRunId) {
-        try {
-          await convex.mutation(api.taskRuns.complete, {
-            id: taskRunId as Id<"taskRuns">,
-            exitCode: 0,
-          });
-
-          serverLogger.info(
-            `[AgentSpawner] Updated taskRun ${taskRunId} as completed after ${data.elapsedMs}ms`
-          );
-
-          // Check if all runs are complete and evaluate crown
-          const taskRunData = await convex.query(api.taskRuns.get, {
-            id: taskRunId as Id<"taskRuns">,
-          });
-          if (taskRunData) {
-            await convex.mutation(api.tasks.checkAndEvaluateCrown, {
-              taskId: taskRunData.taskId,
-            });
-          }
-
-          const ENABLE_AUTO_COMMIT = false;
-
-          if (ENABLE_AUTO_COMMIT) {
-            // Auto-commit changes (only push if crowned)
-            await performAutoCommitAndPush(
-              vscodeInstance,
-              agent,
-              taskRunId,
-              options.taskDescription,
-            worktreePath
-            );
-          }
-
-          // Schedule container stop based on settings
-          const containerSettings = await convex.query(
-            api.containerSettings.getEffective
-          );
-
-          if (containerSettings.autoCleanupEnabled) {
-            if (containerSettings.stopImmediatelyOnCompletion) {
-              // Stop container immediately
-              serverLogger.info(
-                `[AgentSpawner] Stopping container immediately as per settings`
-              );
-
-              // Stop the VSCode instance
-              await vscodeInstance.stop();
-            } else {
-              // Schedule stop after review period
-              const reviewPeriodMs =
-                containerSettings.reviewPeriodMinutes * 60 * 1000;
-              const scheduledStopAt = Date.now() + reviewPeriodMs;
-
-              await convex.mutation(api.taskRuns.updateScheduledStop, {
-                id: taskRunId as Id<"taskRuns">,
-                scheduledStopAt,
-              });
-
-              serverLogger.info(
-                `[AgentSpawner] Scheduled container stop for ${new Date(scheduledStopAt).toISOString()}`
-              );
-            }
-          }
-
-          // Check if all task runs for this task are completed
-          const taskRuns = await convex.query(api.taskRuns.getByTask, {
-            taskId: taskId as Id<"tasks">,
-          });
-
-          const allCompleted = taskRuns.every(
-            (run) => run.status === "completed" || run.status === "failed"
-          );
-
-          if (allCompleted) {
-            // Update the main task as completed
-            await convex.mutation(api.tasks.setCompleted, {
-              id: taskId as Id<"tasks">,
-              isCompleted: true,
-            });
-
-            serverLogger.info(
-              `[AgentSpawner] All task runs completed, updated task ${taskId} as completed`
-            );
-          }
-        } catch (error) {
-          serverLogger.error(
-            `[AgentSpawner] Error updating task run after idle:`,
-            error
-          );
-        }
+        await handleTaskCompletion(0);
       }
     });
 

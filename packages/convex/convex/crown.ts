@@ -17,6 +17,8 @@ export const evaluateAndCrownWinner = mutation({
       .filter((q) => q.eq(q.field("status"), "completed"))
       .collect();
 
+    console.log(`[Crown] Found ${taskRuns.length} completed runs for task ${args.taskId}`);
+
     // If only one model or less, crown it by default
     if (taskRuns.length <= 1) {
       if (taskRuns.length === 1) {
@@ -37,7 +39,7 @@ export const evaluateAndCrownWinner = mutation({
     const candidateData = await Promise.all(
       taskRuns.map(async (run) => {
         // Extract agent name from prompt
-        const agentMatch = run.prompt.match(/Using agent: ([\w\/\-\.]+)/);
+        const agentMatch = run.prompt.match(/\(([^)]+)\)$/);
         const agentName = agentMatch ? agentMatch[1] : "Unknown";
 
         // Get git diff for this run
@@ -103,8 +105,11 @@ Respond with a JSON object in this format:
       .first();
 
     if (!apiKey) {
+      console.error("[Crown] ANTHROPIC_API_KEY not found in settings");
       throw new Error("ANTHROPIC_API_KEY not found in settings");
     }
+
+    console.log("[Crown] Using API key for evaluation");
 
     const response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -149,6 +154,8 @@ Respond with a JSON object in this format:
     const winnerIndex = evaluation.winnerIndex;
     const winnerRunId = candidateData[winnerIndex].runId;
 
+    console.log(`[Crown] Winner selected: ${candidateData[winnerIndex].agentName} (index ${winnerIndex}, runId ${winnerRunId})`);
+
     // Save evaluation record
     await ctx.db.insert("crownEvaluations", {
       taskId: args.taskId,
@@ -165,6 +172,8 @@ Respond with a JSON object in this format:
       isCrowned: true,
       crownReason: evaluation.reason,
     });
+
+    console.log(`[Crown] Updated run ${winnerRunId} with crown`);
 
     // Update other runs to ensure they're not crowned
     for (const candidate of candidateData) {

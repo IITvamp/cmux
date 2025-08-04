@@ -194,8 +194,12 @@ export const checkAndEvaluateCrown = mutation({
       .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
       .collect();
 
+    console.log(`[CheckCrown] Task ${args.taskId} has ${taskRuns.length} runs`);
+    console.log(`[CheckCrown] Run statuses:`, taskRuns.map(r => ({ id: r._id, status: r.status })));
+
     // Check if we have multiple runs
     if (taskRuns.length < 2) {
+      console.log(`[CheckCrown] Not enough runs (${taskRuns.length} < 2)`);
       return null;
     }
 
@@ -205,6 +209,7 @@ export const checkAndEvaluateCrown = mutation({
     );
 
     if (!allCompleted) {
+      console.log(`[CheckCrown] Not all runs completed`);
       return null;
     }
 
@@ -215,13 +220,30 @@ export const checkAndEvaluateCrown = mutation({
       .first();
 
     if (existingEvaluation) {
+      console.log(`[CheckCrown] Crown already evaluated for task ${args.taskId}, winner: ${existingEvaluation.winnerRunId}`);
       return existingEvaluation.winnerRunId;
+    }
+    
+    console.log(`[CheckCrown] No existing evaluation, proceeding with crown evaluation`);
+    
+    // Only evaluate if we have at least 2 completed runs
+    const completedRuns = taskRuns.filter(run => run.status === "completed");
+    if (completedRuns.length < 2) {
+      console.log(`[CheckCrown] Not enough completed runs (${completedRuns.length} < 2)`);
+      return null;
     }
 
     // Trigger crown evaluation
     const winnerId = await ctx.runMutation(api.crown.evaluateAndCrownWinner, {
       taskId: args.taskId,
     });
+
+    // Mark the task as completed since all runs are done
+    await ctx.db.patch(args.taskId, {
+      isCompleted: true,
+      updatedAt: Date.now(),
+    });
+    console.log(`[CheckCrown] Marked task ${args.taskId} as completed`);
 
     return winnerId;
   },
