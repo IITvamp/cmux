@@ -6,7 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnConvex } from "./convex/spawnConvex";
 import { ensureLogFiles } from "./ensureLogFiles";
-import { handleFirstRun, isFirstRun } from "./firstRun";
+import { handleFirstRun, isFirstRun, saveConfig } from "./firstRun";
 import { logger } from "./logger";
 import { checkPorts } from "./utils/checkPorts";
 import { getGitRepoInfo } from "./utils/gitUtils";
@@ -80,8 +80,17 @@ program
 
     // Check if this is the first run
     if (await isFirstRun(convexDir)) {
-      await handleFirstRun(convexDir);
-      console.log("\n\x1b[32m✓\x1b[0m Continuing with cmux startup...\n");
+      // Check if running in non-interactive mode (e.g., with bun --hot)
+      const isInteractive = process.stdin.isTTY && process.stdout.isTTY;
+      if (!isInteractive) {
+        console.log("\n📝 First run detected but running in non-interactive mode.");
+        console.log("   Run 'cmux' directly to import VS Code settings.");
+        console.log("   Creating default config...\n");
+        await saveConfig(convexDir, { firstRunCompleted: true });
+      } else {
+        await handleFirstRun(convexDir);
+        console.log("\n\x1b[32m✓\x1b[0m Continuing with cmux startup...\n");
+      }
     }
 
     // wait 5 seconds, if not ready, log error to console

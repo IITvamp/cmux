@@ -371,11 +371,25 @@ export class DockerVSCodeInstance extends VSCodeInstance {
             binds.push(`${scriptPath}:/root/install-extensions.sh:ro`);
             dockerLogger.info(`  Extension install script mount: ${scriptPath} -> /root/install-extensions.sh`);
             
-            // Add command to run the script after container starts
-            if (!createOptions.Cmd) {
-              createOptions.Cmd = [];
-            }
-            createOptions.Cmd.unshift("bash", "-c", "/root/install-extensions.sh && exec /usr/bin/supervisord");
+            // Create a post-startup script that will run the extension installer
+            const postStartupScript = `#!/bin/bash
+# Run extension installer in background after VS Code starts
+(
+  sleep 10
+  if [ -f /root/install-extensions.sh ]; then
+    echo "Installing VS Code extensions..." >> /var/log/cmux/extensions.log
+    bash /root/install-extensions.sh >> /var/log/cmux/extensions.log 2>&1
+    echo "Extension installation complete" >> /var/log/cmux/extensions.log
+  fi
+) &
+`;
+            const postStartupPath = path.join(tempDir, `post-startup-${this.instanceId}.sh`);
+            await fs.promises.writeFile(postStartupPath, postStartupScript, { mode: 0o755 });
+            binds.push(`${postStartupPath}:/root/post-startup.sh:ro`);
+            
+            // Set environment variable to trigger post-startup script
+            createOptions.Env = createOptions.Env || [];
+            createOptions.Env.push("RUN_POST_STARTUP=true");
           }
         } catch {
           dockerLogger.info("  No VS Code settings found to mount");
@@ -482,11 +496,25 @@ export class DockerVSCodeInstance extends VSCodeInstance {
             binds.push(`${scriptPath}:/root/install-extensions.sh:ro`);
             dockerLogger.info(`  Extension install script mount: ${scriptPath} -> /root/install-extensions.sh`);
             
-            // Add command to run the script after container starts
-            if (!createOptions.Cmd) {
-              createOptions.Cmd = [];
-            }
-            createOptions.Cmd.unshift("bash", "-c", "/root/install-extensions.sh && exec /usr/bin/supervisord");
+            // Create a post-startup script that will run the extension installer
+            const postStartupScript = `#!/bin/bash
+# Run extension installer in background after VS Code starts
+(
+  sleep 10
+  if [ -f /root/install-extensions.sh ]; then
+    echo "Installing VS Code extensions..." >> /var/log/cmux/extensions.log
+    bash /root/install-extensions.sh >> /var/log/cmux/extensions.log 2>&1
+    echo "Extension installation complete" >> /var/log/cmux/extensions.log
+  fi
+) &
+`;
+            const postStartupPath = path.join(tempDir, `post-startup-${this.instanceId}.sh`);
+            await fs.promises.writeFile(postStartupPath, postStartupScript, { mode: 0o755 });
+            binds.push(`${postStartupPath}:/root/post-startup.sh:ro`);
+            
+            // Set environment variable to trigger post-startup script
+            createOptions.Env = createOptions.Env || [];
+            createOptions.Env.push("RUN_POST_STARTUP=true");
           }
         } catch {
           dockerLogger.info("  No VS Code settings found to mount");

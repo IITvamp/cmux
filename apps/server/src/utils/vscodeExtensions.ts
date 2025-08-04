@@ -28,7 +28,7 @@ export async function generateExtensionInstallScript(
 echo "Installing VS Code extensions..."
 for ext in ${extensions.join(" ")}; do
   echo "Installing $ext..."
-  code-server --install-extension "$ext" --force 2>/dev/null || true
+  /app/openvscode-server/bin/openvscode-server --install-extension "$ext" --force 2>/dev/null || true
 done
 echo "Extensions installation complete."
 `;
