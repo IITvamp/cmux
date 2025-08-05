@@ -1198,27 +1198,36 @@ export async function spawnAgent(
             serverLogger.info(`[AgentSpawner] Task ID: ${taskRunData.taskId}`);
             serverLogger.info(`[AgentSpawner] ==========================================`);
             
-            // Run evaluation asynchronously and handle auto-commit after crown is decided
-            // Add a small delay to ensure log is persisted in Convex
-            setTimeout(() => {
-              evaluateCrownWithClaudeCode(convex, taskRunData.taskId)
-                .then(async () => {
+            // Trigger crown evaluation immediately for faster response
+            // The periodic checker will also handle retries if this fails
+            serverLogger.info(`[AgentSpawner] Triggering immediate crown evaluation`);
+            
+            // Small delay to ensure git diff is fully persisted in Convex
+            setTimeout(async () => {
+              try {
+                // Check if evaluation is already in progress
+                const task = await convex.query(api.tasks.getById, { id: taskRunData.taskId });
+                if (task?.crownEvaluationError === "in_progress") {
+                  serverLogger.info(`[AgentSpawner] Crown evaluation already in progress for task ${taskRunData.taskId}`);
+                  return;
+                }
+                
+                await evaluateCrownWithClaudeCode(convex, taskRunData.taskId);
                 serverLogger.info(`[AgentSpawner] Crown evaluation completed successfully`);
                 
-                // Now check if this task run won and needs to be pushed
+                // Check if this task run won
                 const updatedTaskRun = await convex.query(api.taskRuns.get, {
                   id: taskRunId as Id<"taskRuns">,
                 });
                 
                 if (updatedTaskRun?.isCrowned) {
                   serverLogger.info(`[AgentSpawner] 🏆 This task run won the crown! ${agent.name} is the winner!`);
-                  // No auto-commit - let the user review and commit manually
                 }
-                })
-                .catch(error => {
-                  serverLogger.error(`[AgentSpawner] CROWN EVALUATION FAILED:`, error);
-                });
-            }, 2000); // 2 second delay to ensure data persistence
+              } catch (error) {
+                serverLogger.error(`[AgentSpawner] Crown evaluation failed:`, error);
+                // The periodic checker will retry
+              }
+            }, 3000); // 3 second delay to ensure data persistence
           } else if (winnerId) {
             serverLogger.info(`[AgentSpawner] Crown winner already selected: ${winnerId}`);
           } else {

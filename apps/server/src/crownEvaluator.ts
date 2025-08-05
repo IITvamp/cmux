@@ -21,11 +21,12 @@ export async function evaluateCrownWithClaudeCode(
   serverLogger.info(`[CrownEvaluator] STARTING CROWN EVALUATION FOR TASK ${taskId}`);
   serverLogger.info(`[CrownEvaluator] =================================================`);
 
-  // Get task and runs
-  const task = await convex.query(api.tasks.getById, { id: taskId });
-  if (!task) {
-    throw new Error("Task not found");
-  }
+  try {
+    // Get task and runs
+    const task = await convex.query(api.tasks.getById, { id: taskId });
+    if (!task) {
+      throw new Error("Task not found");
+    }
 
   const taskRuns = await convex.query(api.taskRuns.getByTask, { taskId });
   const completedRuns = taskRuns.filter(run => run.status === "completed");
@@ -114,6 +115,15 @@ Pick the implementation with better code quality, more complete solution, or any
 If one has changes and the other doesn't, pick the one with changes.`;
 
   serverLogger.info(`[CrownEvaluator] Evaluation prompt length: ${evaluationPrompt.length} characters`);
+  
+  // Log prompt structure for debugging
+  const promptLines = evaluationPrompt.split('\n');
+  serverLogger.info(`[CrownEvaluator] Prompt has ${promptLines.length} lines`);
+  serverLogger.info(`[CrownEvaluator] First 5 lines of prompt:`);
+  promptLines.slice(0, 5).forEach((line, idx) => {
+    serverLogger.info(`[CrownEvaluator]   ${idx}: ${line.substring(0, 100)}${line.length > 100 ? '...' : ''}`);
+  });
+  
   serverLogger.info(`[CrownEvaluator] Starting Claude Code spawn...`);
   const startTime = Date.now();
 
@@ -122,120 +132,126 @@ If one has changes and the other doesn't, pick the one with changes.`;
   let stderr = "";
   let exitCode = -1;
 
-  // First try: npx
+  // Only use bunx since npx consistently times out
   try {
-    serverLogger.info(`[CrownEvaluator] Attempting to run with npx...`);
-    const npxProcess = spawn("npx", [
-      "-y",  // Automatically install if needed
+    serverLogger.info(`[CrownEvaluator] Attempting to run with bunx...`);
+    serverLogger.info(`[CrownEvaluator] Command: bunx @anthropic-ai/claude-code --model claude-sonnet-4-20250514 --dangerously-skip-permissions -p [prompt]`);
+    
+    // Log important environment variables
+    serverLogger.info(`[CrownEvaluator] Environment check:`);
+    serverLogger.info(`[CrownEvaluator] - ANTHROPIC_API_KEY: ${process.env.ANTHROPIC_API_KEY ? 'Set' : 'Not set'}`);
+    serverLogger.info(`[CrownEvaluator] - HOME: ${process.env.HOME}`);
+    serverLogger.info(`[CrownEvaluator] - PATH: ${process.env.PATH}`);
+    serverLogger.info(`[CrownEvaluator] - NODE_ENV: ${process.env.NODE_ENV}`);
+    
+    // Try with a simpler command first to see if it's the prompt causing issues
+    const args = [
       "@anthropic-ai/claude-code",
-      "--model", "claude-sonnet-4-20250514",
+      "--model", "claude-sonnet-4-20250514", 
       "--dangerously-skip-permissions",
       "-p",
       evaluationPrompt
-    ], {
-      env: { 
-        ...process.env,
-      },
+    ];
+    
+    // If API key is not set, add a warning
+    if (!process.env.ANTHROPIC_API_KEY) {
+      serverLogger.warn(`[CrownEvaluator] WARNING: ANTHROPIC_API_KEY environment variable is not set!`);
+      serverLogger.warn(`[CrownEvaluator] Claude Code will likely fail without an API key`);
+    }
+    
+    serverLogger.info(`[CrownEvaluator] Spawning with args: ${args.slice(0, 5).join(' ')} [prompt]`);
+    
+    const bunxProcess = spawn("bunx", args, {
+      env: { ...process.env },
       stdio: ['pipe', 'pipe', 'pipe'],
       shell: false
     });
 
+    serverLogger.info(`[CrownEvaluator] Process spawned with PID: ${bunxProcess.pid}`);
+
+    // Close stdin since we're passing prompt via -p flag
+    bunxProcess.stdin.end();
+    
     stdout = "";
     stderr = "";
+    
+    // Track if we've received any data
+    let receivedStdout = false;
+    let receivedStderr = false;
+    let lastStderr = "";
 
-    npxProcess.stdout.on("data", (data) => {
+    bunxProcess.stdout.on("data", (data) => {
       const chunk = data.toString();
       stdout += chunk;
-      serverLogger.info(`[CrownEvaluator] stdout: ${chunk.substring(0, 100)}...`);
+      receivedStdout = true;
+      serverLogger.info(`[CrownEvaluator] stdout (${chunk.length} chars): ${chunk.substring(0, 200)}`);
     });
 
-    npxProcess.stderr.on("data", (data) => {
+    bunxProcess.stderr.on("data", (data) => {
       const chunk = data.toString();
       stderr += chunk;
-      serverLogger.info(`[CrownEvaluator] stderr: ${chunk}`);
+      lastStderr = chunk;
+      receivedStderr = true;
+      
+      // Log all stderr to debug the issue
+      serverLogger.info(`[CrownEvaluator] stderr: ${chunk.trim()}`);
+    });
+    
+    // Add more detailed event handlers
+    bunxProcess.on("exit", (code, signal) => {
+      serverLogger.info(`[CrownEvaluator] Process exited with code ${code} and signal ${signal}`);
+      serverLogger.info(`[CrownEvaluator] Exit occurred after ${Date.now() - startTime}ms`);
+    });
+    
+    bunxProcess.on("error", (error) => {
+      serverLogger.error(`[CrownEvaluator] Process spawn error:`, error);
     });
 
     exitCode = await new Promise<number>((resolve, reject) => {
       let processExited = false;
       
-      npxProcess.on("close", (code) => {
+      bunxProcess.on("close", (code) => {
         processExited = true;
+        serverLogger.info(`[CrownEvaluator] Process closed with code: ${code}`);
+        serverLogger.info(`[CrownEvaluator] Received stdout: ${receivedStdout}, Received stderr: ${receivedStderr}`);
+        serverLogger.info(`[CrownEvaluator] Total stdout length: ${stdout.length}, stderr length: ${stderr.length}`);
+        
+        if (stderr.length > 0) {
+          serverLogger.info(`[CrownEvaluator] Full stderr output:`);
+          stderr.split('\n').forEach((line, idx) => {
+            if (line.trim()) {
+              serverLogger.info(`[CrownEvaluator]   stderr[${idx}]: ${line}`);
+            }
+          });
+        }
+        
+        if (lastStderr.includes("Saved lockfile") && stdout.length === 0) {
+          serverLogger.error(`[CrownEvaluator] Process failed after saving lockfile with no output`);
+          serverLogger.error(`[CrownEvaluator] This suggests Claude Code started but failed to execute`);
+        }
+        
         resolve(code || 0);
       });
 
-      npxProcess.on("error", (err) => {
+      bunxProcess.on("error", (err) => {
         processExited = true;
+        serverLogger.error(`[CrownEvaluator] Process error: ${err.message}`);
         reject(err);
       });
 
       setTimeout(() => {
         if (!processExited) {
-          npxProcess.kill('SIGKILL');
+          serverLogger.error(`[CrownEvaluator] Process timeout after 90 seconds, killing...`);
+          bunxProcess.kill('SIGKILL');
           reject(new Error("Timeout"));
         }
-      }, 90000); // 90 second timeout
+      }, 90000);
     });
 
-    serverLogger.info(`[CrownEvaluator] npx completed with exit code ${exitCode}`);
-  } catch (error) {
-    serverLogger.error(`[CrownEvaluator] npx approach failed:`, error);
-    
-    // Second try: bunx
-    try {
-      serverLogger.info(`[CrownEvaluator] Attempting to run with bunx...`);
-      const bunxProcess = spawn("bunx", [
-        "@anthropic-ai/claude-code",
-        "--model", "claude-sonnet-4-20250514", 
-        "--dangerously-skip-permissions",
-        "-p",
-        evaluationPrompt
-      ], {
-        env: { ...process.env },
-        stdio: ['pipe', 'pipe', 'pipe'],
-        shell: false
-      });
-
-      stdout = "";
-      stderr = "";
-
-      bunxProcess.stdout.on("data", (data) => {
-        const chunk = data.toString();
-        stdout += chunk;
-        serverLogger.info(`[CrownEvaluator] stdout: ${chunk.substring(0, 100)}...`);
-      });
-
-      bunxProcess.stderr.on("data", (data) => {
-        const chunk = data.toString();
-        stderr += chunk;
-        serverLogger.info(`[CrownEvaluator] stderr: ${chunk}`);
-      });
-
-      exitCode = await new Promise<number>((resolve, reject) => {
-        let processExited = false;
-        
-        bunxProcess.on("close", (code) => {
-          processExited = true;
-          resolve(code || 0);
-        });
-
-        bunxProcess.on("error", (err) => {
-          processExited = true;
-          reject(err);
-        });
-
-        setTimeout(() => {
-          if (!processExited) {
-            bunxProcess.kill('SIGKILL');
-            reject(new Error("Timeout"));
-          }
-        }, 90000);
-      });
-
-      serverLogger.info(`[CrownEvaluator] bunx completed with exit code ${exitCode}`);
-    } catch (bunxError) {
-      serverLogger.error(`[CrownEvaluator] bunx approach also failed:`, bunxError);
-      throw new Error("Could not run Claude Code via npx or bunx. Please ensure @anthropic-ai/claude-code is available.");
-    }
+    serverLogger.info(`[CrownEvaluator] bunx completed with exit code ${exitCode}`);
+  } catch (bunxError) {
+    serverLogger.error(`[CrownEvaluator] bunx failed:`, bunxError);
+    throw new Error("Could not run Claude Code via bunx. Please ensure @anthropic-ai/claude-code is available.");
   }
 
   serverLogger.info(`[CrownEvaluator] Process completed after ${Date.now() - startTime}ms`);
@@ -300,4 +316,15 @@ If one has changes and the other doesn't, pick the one with changes.`;
   });
 
   serverLogger.info(`[CrownEvaluator] Crown evaluation completed successfully for task ${taskId}`);
+  } catch (error) {
+    serverLogger.error(`[CrownEvaluator] Error during evaluation:`, error);
+    
+    // Update task with error status
+    await convex.mutation(api.tasks.updateCrownError, {
+      id: taskId,
+      crownEvaluationError: `Failed: ${error instanceof Error ? error.message : String(error)}`,
+    });
+    
+    throw error;
+  }
 }

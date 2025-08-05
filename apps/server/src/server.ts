@@ -35,6 +35,8 @@ import { waitForConvex } from "./utils/waitForConvex.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWorktreePath } from "./workspace.js";
+import { evaluateCrownWithClaudeCode } from "./crownEvaluator.js";
+import type { Id } from "@cmux/convex/dataModel";
 
 const execAsync = promisify(exec);
 
@@ -568,6 +570,94 @@ export async function startServer({
     await waitForConvex();
     DockerVSCodeInstance.startContainerStateSync();
 
+    // Track tasks currently being evaluated to prevent duplicates
+    const evaluatingTasks = new Set<string>();
+    
+    // Start periodic crown evaluation check
+    let lastCheckTime = 0;
+    crownEvaluationInterval = setInterval(async () => {
+      try {
+        // Query for tasks with pending_evaluation status
+        const tasksWithPendingEvaluation = await convex.query(api.tasks.getTasksWithPendingCrownEvaluation, {});
+        
+        if (tasksWithPendingEvaluation && tasksWithPendingEvaluation.length > 0) {
+          serverLogger.info(`[CrownChecker] Found ${tasksWithPendingEvaluation.length} tasks pending crown evaluation`);
+          
+          // Process each task
+          for (const task of tasksWithPendingEvaluation) {
+            // Skip if already being evaluated
+            if (evaluatingTasks.has(task._id)) {
+              serverLogger.info(`[CrownChecker] Task ${task._id} is already being evaluated, skipping`);
+              continue;
+            }
+            // Check if evaluation already exists (race condition check)
+            const existingEvaluation = await convex.query(api.crown.getCrownEvaluation, {
+              taskId: task._id,
+            });
+            
+            if (existingEvaluation) {
+              serverLogger.info(`[CrownChecker] Task ${task._id} already has crown evaluation, skipping`);
+              
+              // Clear the pending status
+              await convex.mutation(api.tasks.updateCrownError, {
+                id: task._id,
+                crownEvaluationError: undefined,
+              });
+              continue;
+            }
+            
+            serverLogger.info(`[CrownChecker] Processing crown evaluation for task ${task._id}`);
+            
+            // Add to evaluating set
+            evaluatingTasks.add(task._id);
+            
+            // Mark as in progress immediately to prevent race conditions
+            await convex.mutation(api.tasks.updateCrownError, {
+              id: task._id,
+              crownEvaluationError: "in_progress",
+            });
+            
+            try {
+              await evaluateCrownWithClaudeCode(convex, task._id);
+              serverLogger.info(`[CrownChecker] Crown evaluation completed for task ${task._id}`);
+            } catch (error) {
+              serverLogger.error(`[CrownChecker] Crown evaluation failed for task ${task._id}:`, error);
+              
+              const errorMessage = error instanceof Error ? error.message : String(error);
+              
+              // If it's a timeout, mark as pending_evaluation to retry later
+              if (errorMessage.includes("timed out")) {
+                serverLogger.info(`[CrownChecker] Will retry crown evaluation for task ${task._id} later`);
+                // Keep as pending_evaluation but don't retry immediately
+                await convex.mutation(api.tasks.updateCrownError, {
+                  id: task._id,
+                  crownEvaluationError: "pending_evaluation",
+                });
+              } else {
+                // For other errors, mark as failed
+                await convex.mutation(api.tasks.updateCrownError, {
+                  id: task._id,
+                  crownEvaluationError: `Failed: ${errorMessage}`,
+                });
+              }
+            } finally {
+              // Remove from evaluating set
+              evaluatingTasks.delete(task._id);
+            }
+          }
+        } else {
+          // Only log periodically to reduce noise
+          const now = Date.now();
+          if (now - lastCheckTime > 60000) { // Log every minute
+            serverLogger.info("[CrownChecker] No pending crown evaluations");
+            lastCheckTime = now;
+          }
+        }
+      } catch (error) {
+        serverLogger.error("[CrownChecker] Error in crown evaluation check:", error);
+      }
+    }, 10000); // Check every 10 seconds
+
     // Store default repo info if provided
     if (defaultRepo?.remoteName) {
       try {
@@ -612,6 +702,7 @@ export async function startServer({
   });
   let isCleaningUp = false;
   let isCleanedUp = false;
+  let crownEvaluationInterval: NodeJS.Timeout | undefined;
 
   async function cleanup() {
     if (isCleaningUp || isCleanedUp) {
@@ -664,6 +755,12 @@ export async function startServer({
     }
 
     VSCodeInstance.clearInstances();
+
+    // Clean up crown evaluation interval
+    if (crownEvaluationInterval) {
+      clearInterval(crownEvaluationInterval);
+      serverLogger.info("Crown evaluation interval cleared");
+    }
 
     // Clean up git diff manager
     gitDiffManager.dispose();
