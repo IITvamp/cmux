@@ -6,6 +6,7 @@ import { useUser } from "@stackframe/react";
 import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { useQueries, useQuery } from "convex/react";
 import { Suspense, useMemo } from "react";
+import { isFakeConvexId } from "@/lib/fakeConvexId";
 
 export const Route = createFileRoute("/_layout")({
   component: LayoutComponent,
@@ -27,21 +28,23 @@ function LayoutComponent() {
     );
   }, [tasks]);
 
-  // Create queries object for all recent tasks with memoization
+  // Create queries object for all recent tasks with memoization, filtering out fake IDs
   const taskRunQueries = useMemo(() => {
-    return recentTasks.reduce(
-      (acc, task) => ({
-        ...acc,
-        [task._id]: {
-          query: api.taskRuns.getByTask,
-          args: { taskId: task._id },
-        },
-      }),
-      {} as Record<
-        string,
-        { query: typeof api.taskRuns.getByTask; args: { taskId: string } }
-      >
-    );
+    return recentTasks
+      .filter(task => !isFakeConvexId(task._id))
+      .reduce(
+        (acc, task) => ({
+          ...acc,
+          [task._id]: {
+            query: api.taskRuns.getByTask,
+            args: { taskId: task._id },
+          },
+        }),
+        {} as Record<
+          string,
+          { query: typeof api.taskRuns.getByTask; args: { taskId: string } }
+        >
+      );
   }, [recentTasks]);
 
   // Fetch task runs for all recent tasks using useQueries

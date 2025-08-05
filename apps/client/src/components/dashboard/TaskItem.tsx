@@ -7,6 +7,7 @@ import {
 import { OpenWithDropdown } from "@/components/OpenWithDropdown";
 import { api } from "@cmux/convex/api";
 import type { Doc } from "@cmux/convex/dataModel";
+import { isFakeConvexId } from "@/lib/fakeConvexId";
 import { useClipboard } from "@mantine/hooks";
 import { useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
@@ -30,15 +31,19 @@ export const TaskItem = memo(function TaskItem({ task }: TaskItemProps) {
   const clipboard = useClipboard({ timeout: 2000 });
 
   // Query for task runs to find VSCode instances
-  const taskRunsQuery = useConvexQuery(api.taskRuns.getByTask, {
-    taskId: task._id,
-  });
+  const taskRunsQuery = useConvexQuery(
+    api.taskRuns.getByTask, 
+    isFakeConvexId(task._id) ? "skip" : { taskId: task._id }
+  );
 
   // Mutation for toggling keep-alive status
   const toggleKeepAlive = useMutation(api.taskRuns.toggleKeepAlive);
   
   // Query for crown evaluation
-  const crownedRun = useConvexQuery(api.crown.getCrownedRun, { taskId: task._id });
+  const crownedRun = useConvexQuery(
+    api.crown.getCrownedRun, 
+    isFakeConvexId(task._id) ? "skip" : { taskId: task._id }
+  );
 
   // Find the latest task run with a VSCode instance
   const getLatestVSCodeInstance = useCallback(() => {

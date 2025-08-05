@@ -1,5 +1,6 @@
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
+import { isFakeConvexId } from "@/lib/fakeConvexId";
 import { useQuery } from "convex/react";
 import { Trophy } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
@@ -9,8 +10,14 @@ interface CrownEvaluationProps {
 }
 
 export function CrownEvaluation({ taskId }: CrownEvaluationProps) {
-  const evaluation = useQuery(api.crown.getCrownEvaluation, { taskId });
-  const crownedRun = useQuery(api.crown.getCrownedRun, { taskId });
+  const evaluation = useQuery(
+    api.crown.getCrownEvaluation, 
+    isFakeConvexId(taskId) ? "skip" : { taskId }
+  );
+  const crownedRun = useQuery(
+    api.crown.getCrownedRun, 
+    isFakeConvexId(taskId) ? "skip" : { taskId }
+  );
 
   if (!evaluation || !crownedRun) {
     return null;

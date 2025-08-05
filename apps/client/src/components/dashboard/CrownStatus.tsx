@@ -1,5 +1,6 @@
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
+import { isFakeConvexId } from "@/lib/fakeConvexId";
 import { useQuery } from "convex/react";
 import { Crown, Loader2, AlertCircle } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -12,13 +13,22 @@ export function CrownStatus({ taskId }: CrownStatusProps) {
   const [showStatus, setShowStatus] = useState(false);
   
   // Get task runs
-  const taskRuns = useQuery(api.taskRuns.getByTask, { taskId });
+  const taskRuns = useQuery(
+    api.taskRuns.getByTask, 
+    isFakeConvexId(taskId) ? "skip" : { taskId }
+  );
   
   // Get task with error status
-  const task = useQuery(api.tasks.getById, { id: taskId });
+  const task = useQuery(
+    api.tasks.getById, 
+    isFakeConvexId(taskId) ? "skip" : { id: taskId }
+  );
   
   // Get crown evaluation
-  const crownedRun = useQuery(api.crown.getCrownedRun, { taskId });
+  const crownedRun = useQuery(
+    api.crown.getCrownedRun, 
+    isFakeConvexId(taskId) ? "skip" : { taskId }
+  );
 
   useEffect(() => {
     // Show status when we have multiple runs
