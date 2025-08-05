@@ -5,6 +5,7 @@ import { serverLogger } from "./utils/fileLogger.js";
 import type { ConvexHttpClient } from "convex/browser";
 import { z } from "zod";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
+import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { io, type Socket } from "socket.io-client";
 import type { WorkerToServerEvents, ServerToWorkerEvents } from "@cmux/shared";
 
@@ -50,20 +51,18 @@ async function createPullRequestForWinner(
     
     // Find the VSCode instance
     const instances = VSCodeInstance.getInstances();
-    let vscodeInstance = null;
-    let workerSocket = null;
+    let vscodeInstance: VSCodeInstance | null = null;
     
     // Look for the instance by taskRunId
     for (const [id, instance] of instances) {
       if (instance.getTaskRunId() === taskRunId) {
         vscodeInstance = instance;
-        workerSocket = instance.getWorkerSocket();
         break;
       }
     }
     
-    if (!vscodeInstance || !workerSocket || !vscodeInstance.isWorkerConnected()) {
-      serverLogger.error(`[CrownEvaluator] VSCode instance not found or not connected for task run ${taskRunId}`);
+    if (!vscodeInstance) {
+      serverLogger.error(`[CrownEvaluator] VSCode instance not found for task run ${taskRunId}`);
       return;
     }
     
@@ -71,8 +70,8 @@ async function createPullRequestForWinner(
     const agentMatch = taskRun.prompt.match(/\(([^)]+)\)$/);
     const agentName = agentMatch ? agentMatch[1] : "Unknown";
     
-    // Create PR title and body with proper escaping
-    const prTitle = (task.text || "Task completed by cmux").replace(/"/g, '\\"').replace(/\$/g, '\\$');
+    // Create PR title and body
+    const prTitle = task.text || "Task completed by cmux";
     const prBody = `## Summary
 - Task completed by ${agentName} agent 🏆
 - ${taskRun.crownReason || "Selected as the best implementation"}
@@ -85,56 +84,215 @@ async function createPullRequestForWinner(
 ---
 🤖 Generated with [cmux](https://github.com/lawrencecchen/cmux)`;
     
-    // Create branch name
-    const branchName = `cmux-${agentName.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${taskRunId.slice(-8)}`;
+    // Create sanitized branch name
+    const sanitizedTaskDesc = (task.text || "task")
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, "")
+      .trim()
+      .split(/\s+/)
+      .slice(0, 5)
+      .join("-")
+      .substring(0, 30);
     
-    // Escape the PR body for shell
-    const escapedPrBody = prBody.replace(/"/g, '\\"').replace(/\$/g, '\\$').replace(/\n/g, '\\n');
+    const branchName = `cmux-${agentName}-${sanitizedTaskDesc}-${taskRunId}`
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, "-")
+      .replace(/--+/g, "-");
     
-    // Commands to create PR
-    const commands = [
-      `cd /root/workspace`,
-      `git checkout -b ${branchName}`,
-      `git add -A`,
-      `git commit -m "${prTitle}
+    // Create commit message
+    const truncatedDescription = prTitle.length > 72
+      ? prTitle.substring(0, 69) + "..."
+      : prTitle;
+    
+    const commitMessage = `${truncatedDescription}
 
-Completed by ${agentName} agent
+Task completed by ${agentName} agent 🏆
+${taskRun.crownReason ? `\nReason: ${taskRun.crownReason}` : ''}
 
-🤖 Generated with cmux"`,
-      `git push -u origin ${branchName}`,
-      `gh pr create --title "${prTitle}" --body "${escapedPrBody}" --web`
-    ];
+🤖 Generated with cmux
+Agent: ${agentName}
+Task Run ID: ${taskRunId}
+Branch: ${branchName}
+Completed: ${new Date().toISOString()}`;
     
-    serverLogger.info(`[CrownEvaluator] Executing PR creation commands...`);
-    
-    // We need to get the terminal ID from the task run or create a new terminal
-    // For now, we'll send commands to the main terminal (terminal ID is usually the taskRunId)
-    const terminalId = taskRunId;
-    
-    // Execute commands sequentially
-    for (const command of commands) {
-      await new Promise<void>((resolve) => {
-        const terminalData = {
-          terminalId: terminalId,
-          data: command + '\n'
-        };
-        
-        // Use worker:terminal-input to send commands
-        workerSocket.emit('worker:terminal-input', terminalData);
-        serverLogger.info(`[CrownEvaluator] Sent command: ${command}`);
-        
-        // Give each command time to execute
-        setTimeout(resolve, 3000);
-      });
+    // Try to use VSCode extension API first (more reliable)
+    let extensionPort: string | undefined;
+    if (vscodeInstance instanceof DockerVSCodeInstance) {
+      const ports = (vscodeInstance as DockerVSCodeInstance).getPorts();
+      extensionPort = ports?.extension;
     }
     
-    serverLogger.info(`[CrownEvaluator] Pull request creation commands sent`);
+    if (extensionPort) {
+      // Try VSCode extension method first
+      const extensionResult = await tryVSCodeExtensionCommitAndPR(
+        extensionPort,
+        branchName,
+        commitMessage,
+        agentName,
+        prTitle,
+        prBody
+      );
+      
+      if (extensionResult.success) {
+        serverLogger.info(`[CrownEvaluator] Successfully created PR via VSCode extension`);
+        return;
+      }
+      
+      serverLogger.info(`[CrownEvaluator] VSCode extension method failed:`, extensionResult.error);
+    }
     
-    // Note: The actual PR URL will be captured from the terminal output
-    // and updated via a separate mechanism
+    // Fallback to terminal commands
+    serverLogger.info(`[CrownEvaluator] Falling back to terminal commands`);
+    
+    const workerSocket = vscodeInstance.getWorkerSocket();
+    if (!workerSocket || !vscodeInstance.isWorkerConnected()) {
+      serverLogger.error(`[CrownEvaluator] No worker connection available`);
+      return;
+    }
+    
+    // Execute git commands via worker:exec (more reliable than terminal-input)
+    const gitCommands = [
+      // Add all changes
+      { cmd: "git add .", desc: "Staging changes" },
+      // Create and switch to new branch
+      { cmd: `git checkout -b ${branchName}`, desc: "Creating branch" },
+      // Commit
+      { cmd: `git commit -m "${commitMessage.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\$/g, "\\$")}"`, desc: "Committing" },
+      // Push
+      { cmd: `git push -u origin ${branchName}`, desc: "Pushing branch" },
+      // Create PR
+      { cmd: `gh pr create --title "${prTitle.replace(/"/g, '\\"')}" --body "${prBody.replace(/"/g, '\\"').replace(/\n/g, '\\n')}" --web`, desc: "Creating PR" }
+    ];
+    
+    for (const { cmd, desc } of gitCommands) {
+      serverLogger.info(`[CrownEvaluator] ${desc}...`);
+      
+      const result = await new Promise<{ success: boolean; error?: string }>((resolve) => {
+        workerSocket
+          .timeout(30000)
+          .emit(
+            "worker:exec",
+            {
+              command: "bash",
+              args: ["-c", cmd],
+              cwd: "/root/workspace",
+              env: {},
+            },
+            (timeoutError: any, result: any) => {
+              if (timeoutError) {
+                resolve({ success: false, error: "Command timeout" });
+                return;
+              }
+              if (result.error) {
+                resolve({ success: false, error: result.error.message });
+                return;
+              }
+              
+              const { stdout, stderr, exitCode } = result.data;
+              serverLogger.info(`[CrownEvaluator] ${desc} - stdout:`, stdout);
+              if (stderr) {
+                serverLogger.info(`[CrownEvaluator] ${desc} - stderr:`, stderr);
+              }
+              
+              resolve({ success: exitCode === 0 });
+            }
+          );
+      });
+      
+      if (!result.success) {
+        serverLogger.error(`[CrownEvaluator] Failed at step: ${desc}`, result.error);
+        // Continue anyway for some commands
+        if (!cmd.includes("git checkout") && !cmd.includes("gh pr create")) {
+          return;
+        }
+      }
+    }
+    
+    serverLogger.info(`[CrownEvaluator] Pull request creation completed`);
     
   } catch (error) {
     serverLogger.error(`[CrownEvaluator] Error creating pull request:`, error);
+  }
+}
+
+async function tryVSCodeExtensionCommitAndPR(
+  extensionPort: string,
+  branchName: string,
+  commitMessage: string,
+  agentName: string,
+  prTitle: string,
+  prBody: string
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { io } = await import("socket.io-client");
+    const extensionSocket = io(`http://localhost:${extensionPort}`, {
+      timeout: 10000,
+    });
+    
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => {
+        extensionSocket.disconnect();
+        resolve({
+          success: false,
+          error: "Timeout connecting to VSCode extension",
+        });
+      }, 30000);
+      
+      extensionSocket.on("connect", () => {
+        serverLogger.info(`[CrownEvaluator] Connected to VSCode extension on port ${extensionPort}`);
+        
+        // First commit and push
+        extensionSocket.emit(
+          "vscode:auto-commit-push",
+          {
+            branchName,
+            commitMessage,
+            agentName,
+          },
+          (response: any) => {
+            if (!response.success) {
+              clearTimeout(timeout);
+              extensionSocket.disconnect();
+              resolve({ success: false, error: response.error });
+              return;
+            }
+            
+            // Then create PR
+            extensionSocket.emit(
+              "vscode:create-pr",
+              {
+                title: prTitle,
+                body: prBody,
+              },
+              (prResponse: any) => {
+                clearTimeout(timeout);
+                extensionSocket.disconnect();
+                
+                if (prResponse.success) {
+                  resolve({ success: true });
+                } else {
+                  resolve({ success: false, error: prResponse.error });
+                }
+              }
+            );
+          }
+        );
+      });
+      
+      extensionSocket.on("connect_error", (error) => {
+        clearTimeout(timeout);
+        extensionSocket.disconnect();
+        resolve({
+          success: false,
+          error: `Connection error: ${error.message}`,
+        });
+      });
+    });
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
   }
 }
 
