@@ -17,22 +17,25 @@ done
 
 # Check if anything is running on ports 5173, $CONVEX_PORT, 9777, 9778
 PORTS_TO_CHECK="5173 $CONVEX_PORT 9777 9778"
-PORTS_IN_USE=""
+
+echo -e "${BLUE}Checking ports and cleaning up processes...${NC}"
 
 for port in $PORTS_TO_CHECK; do
-    # Check if port is in use, excluding Google Chrome connections
-    if lsof -i :$port 2>&1 | grep -v "Google" | grep -v "Chrome" | grep "LISTEN" > /dev/null 2>&1; then
-        PORTS_IN_USE="$PORTS_IN_USE $port"
+    # Get PIDs of processes listening on the port, excluding Google Chrome and OrbStack
+    PIDS=$(lsof -ti :$port 2>/dev/null | while read pid; do
+        PROCESS_NAME=$(ps -p $pid -o comm= 2>/dev/null || echo "")
+        if [[ ! "$PROCESS_NAME" =~ (Google|Chrome|OrbStack) ]]; then
+            echo $pid
+        fi
+    done)
+    
+    if [ -n "$PIDS" ]; then
+        echo -e "${YELLOW}Killing processes on port $port (excluding Chrome/OrbStack)...${NC}"
+        for pid in $PIDS; do
+            kill -9 $pid 2>/dev/null && echo -e "${GREEN}Killed process $pid on port $port${NC}"
+        done
     fi
 done
-
-if [ -n "$PORTS_IN_USE" ]; then
-    echo "Error: The following ports are already in use:$PORTS_IN_USE"
-    echo ""
-    echo "You can use the following command to kill the processes:"
-    echo "for p in$PORTS_IN_USE; do lsof -ti :\$p | xargs -r kill -9; done"
-    exit 1
-fi
 
 # Build Docker image by default unless explicitly skipped
 if [ "$SKIP_DOCKER_BUILD" != "true" ] || [ "$FORCE_DOCKER_BUILD" = "true" ]; then
