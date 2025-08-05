@@ -24,6 +24,7 @@ export default defineSchema({
     createdAt: v.optional(v.number()),
     updatedAt: v.optional(v.number()),
     userId: v.optional(v.string()), // Link to user who created the task
+    crownEvaluationError: v.optional(v.string()), // Error message if crown evaluation failed
     images: v.optional(
       v.array(
         v.object({

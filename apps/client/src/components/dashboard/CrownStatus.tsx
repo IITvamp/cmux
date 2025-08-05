@@ -1,7 +1,7 @@
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
 import { useQuery } from "convex/react";
-import { Crown, Loader2 } from "lucide-react";
+import { Crown, Loader2, AlertCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 
 interface CrownStatusProps {
@@ -13,6 +13,9 @@ export function CrownStatus({ taskId }: CrownStatusProps) {
   
   // Get task runs
   const taskRuns = useQuery(api.taskRuns.getByTask, { taskId });
+  
+  // Get task with error status
+  const task = useQuery(api.tasks.getById, { id: taskId });
   
   // Get crown evaluation
   const crownedRun = useQuery(api.crown.getCrownedRun, { taskId });
@@ -73,6 +76,23 @@ export function CrownStatus({ taskId }: CrownStatusProps) {
                   View Pull Request →
                 </a>
               )}
+            </div>
+          ) : task?.crownEvaluationError === "pending_evaluation" ? (
+            <div className="flex items-center gap-2 text-sm text-yellow-700 dark:text-yellow-300">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Claude Code is evaluating implementations...</span>
+            </div>
+          ) : task?.crownEvaluationError ? (
+            <div className="flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <p className="text-sm text-red-700 dark:text-red-300">
+                  Crown evaluation failed
+                </p>
+                <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+                  {task.crownEvaluationError}
+                </p>
+              </div>
             </div>
           ) : (
             <div className="flex items-center gap-2 text-sm text-yellow-700 dark:text-yellow-300">

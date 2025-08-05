@@ -199,10 +199,15 @@ function TaskDetailPage() {
                 // No onClick needed; active class controlled by URL
               >
                 <span style={{ paddingLeft: `${run.depth * 12}px` }}>
-                  Run {index + 1}
+                  {(() => {
+                    const agentMatch = run.prompt.match(/\(([^)]+)\)$/);
+                    const agentName = agentMatch ? agentMatch[1] : `Run ${index + 1}`;
+                    return agentName;
+                  })()}
                   {run.status === "running" && " 🟢"}
                   {run.status === "completed" && " ✅"}
                   {run.status === "failed" && " ❌"}
+                  {run.isCrowned && " 🏆"}
                 </span>
               </Link>
             ))}

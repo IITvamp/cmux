@@ -147,6 +147,20 @@ export const archive = mutation({
   },
 });
 
+export const updateCrownError = mutation({
+  args: {
+    id: v.id("tasks"),
+    crownEvaluationError: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { id, ...updates } = args;
+    await ctx.db.patch(id, {
+      ...updates,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
 export const createVersion = mutation({
   args: {
     taskId: v.id("tasks"),
@@ -187,7 +201,7 @@ export const checkAndEvaluateCrown = mutation({
   args: {
     taskId: v.id("tasks"),
   },
-  handler: async (ctx, args): Promise<Id<"taskRuns"> | null> => {
+  handler: async (ctx, args): Promise<Id<"taskRuns"> | "pending" | null> => {
     // Get all runs for this task
     const taskRuns = await ctx.db
       .query("taskRuns")
@@ -243,6 +257,12 @@ export const checkAndEvaluateCrown = mutation({
       console.log(`[CheckCrown] Crown evaluation completed, winner: ${winnerId}`);
     } catch (error) {
       console.error(`[CheckCrown] Crown evaluation failed:`, error);
+      // Store the error message on the task
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      await ctx.db.patch(args.taskId, {
+        crownEvaluationError: errorMessage,
+        updatedAt: Date.now(),
+      });
       // Continue to mark task as completed even if crown evaluation fails
     }
 
