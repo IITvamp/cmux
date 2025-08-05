@@ -1,7 +1,18 @@
 {
   "name": "cmux Development Container",
-  "dockerComposeFile": "docker-compose.yml",
-  "service": "app",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": "."
+  },
+  "runArgs": [
+    "--network=host",
+    "-v", "${localWorkspaceFolder}:/workspace:cached",
+    "-v", "/var/run/docker.sock:/var/run/docker.sock"
+  ],
+  "containerEnv": {
+    "CONVEX_CLOUD_ORIGIN": "http://127.0.0.1:9777",
+    "CONVEX_SITE_ORIGIN": "http://127.0.0.1:9778"
+  },
   "workspaceFolder": "/workspace",
   "customizations": {
     "vscode": {
@@ -68,7 +79,7 @@
     }
   },
   "postCreateCommand": "CI=1 pnpm install --frozen-lockfile",
-  "postStartCommand": "bash /workspace/.devcontainer/dev.sh",
+  "postStartCommand": "echo 'Devcontainer is ready. Run ./scripts/dev.sh to start the development environment'",
   "remoteUser": "node",
   "features": {
     "ghcr.io/devcontainers/features/git:1": {},
