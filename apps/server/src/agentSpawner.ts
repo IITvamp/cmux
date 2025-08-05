@@ -504,8 +504,10 @@ export async function spawnAgent(
       });
 
       // Append agent name to branch name to make it unique
-      worktreeInfo.branchName = `${worktreeInfo.branchName}-${agent.name}`;
-      worktreeInfo.worktreePath = `${worktreeInfo.worktreePath}-${agent.name}`;
+      // Replace forward slashes in agent name with hyphens for filesystem compatibility
+      const sanitizedAgentName = agent.name.replace(/\//g, '-');
+      worktreeInfo.branchName = `${worktreeInfo.branchName}-${sanitizedAgentName}`;
+      worktreeInfo.worktreePath = `${worktreeInfo.worktreePath}-${sanitizedAgentName}`;
 
       // Setup workspace
       const workspaceResult = await setupProjectWorkspace({
