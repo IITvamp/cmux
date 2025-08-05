@@ -5,7 +5,17 @@ import { serverLogger } from "./utils/fileLogger.js";
 import type { ConvexHttpClient } from "convex/browser";
 import { z } from "zod";
 
-// Define the schema for the crown evaluation response
+// Define schemas for structured output
+const ImplementationSchema = z.object({
+  modelName: z.string(),
+  gitDiff: z.string(),
+  index: z.number(),
+});
+
+const CrownEvaluationRequestSchema = z.object({
+  implementations: z.array(ImplementationSchema),
+});
+
 const CrownEvaluationResponseSchema = z.object({
   winner: z.number().int().min(0),
   reason: z.string(),
@@ -110,24 +120,35 @@ export async function evaluateCrownWithClaudeCode(
     }
   }
 
-  // Create evaluation prompt
-  const evaluationPrompt = `Analyze these code implementations and select the best one.
+  // Create structured data for the evaluation
+  const evaluationData = {
+    implementations: candidateData.map((candidate, idx) => ({
+      modelName: candidate.agentName,
+      gitDiff: candidate.gitDiff,
+      index: idx,
+    })),
+  };
 
-${candidateData
-  .map(
-    (candidate) => `=== Implementation ${candidate.index} (${candidate.agentName}) ===
-${candidate.gitDiff}
-===END===
-`
-  )
-  .join("\n")}
+  // Create evaluation prompt with structured output request
+  const evaluationPrompt = `You are evaluating code implementations from different AI models.
 
-You MUST respond with ONLY this exact JSON format:
-{"winner": 0, "reason": "explanation here"}
+Here are the implementations to evaluate:
+${JSON.stringify(evaluationData, null, 2)}
 
-The winner field must be 0 or 1 (the index of the best implementation).
-Pick the implementation with better code quality, more complete solution, or any actual changes.
-If one has changes and the other doesn't, pick the one with changes.`;
+Analyze these implementations and select the best one based on:
+1. Code quality and correctness
+2. Completeness of the solution
+3. Following best practices
+4. Actually having changes (if one has no changes, prefer the one with changes)
+
+Respond with a JSON object containing:
+- "winner": the index (0-based) of the best implementation
+- "reason": a brief explanation of why this implementation was chosen
+
+Example response:
+{"winner": 0, "reason": "Model claude/sonnet-4 provided a more complete implementation with better error handling and cleaner code structure."}
+
+IMPORTANT: Respond ONLY with the JSON object, no other text.`;
 
   serverLogger.info(`[CrownEvaluator] Evaluation prompt length: ${evaluationPrompt.length} characters`);
   
@@ -267,22 +288,36 @@ If one has changes and the other doesn't, pick the one with changes.`;
   // Parse the response
   let jsonResponse: CrownEvaluationResponse;
   
-  // Try to extract JSON from stdout
-  const jsonMatch = stdout.match(/\{[^{}]*"winner"\s*:\s*\d+[^{}]*"reason"\s*:\s*"[^"]*"[^{}]*\}/);
+  // Try to extract JSON from stdout - look for any JSON object with winner and reason
+  const jsonMatch = stdout.match(/\{[^{}]*"winner"\s*:\s*\d+[^{}]*"reason"\s*:\s*"[^"]*"[^{}]*\}/) ||
+                    stdout.match(/\{[^{}]*"reason"\s*:\s*"[^"]*"[^{}]*"winner"\s*:\s*\d+[^{}]*\}/);
+  
   if (!jsonMatch) {
     serverLogger.error(`[CrownEvaluator] No JSON found in output. Full stdout:\n${stdout}`);
     
-    // Try to find just a number
-    const numberMatch = stdout.match(/\b([01])\b/);
-    if (numberMatch) {
-      const index = parseInt(numberMatch[1], 10);
-      jsonResponse = {
-        winner: index,
-        reason: "Selected based on implementation quality"
-      };
-      serverLogger.info(`[CrownEvaluator] Extracted winner index ${index} from output`);
-    } else {
-      throw new Error("Claude Code did not return a valid response");
+    // Try to find a complete JSON object anywhere in the output
+    try {
+      // Remove any non-JSON content before/after
+      const possibleJson = stdout.substring(
+        stdout.indexOf('{'), 
+        stdout.lastIndexOf('}') + 1
+      );
+      const parsed = JSON.parse(possibleJson);
+      jsonResponse = CrownEvaluationResponseSchema.parse(parsed);
+      serverLogger.info(`[CrownEvaluator] Extracted JSON from output: ${JSON.stringify(jsonResponse)}`);
+    } catch {
+      // Last resort - try to find just a number
+      const numberMatch = stdout.match(/\b([01])\b/);
+      if (numberMatch) {
+        const index = parseInt(numberMatch[1], 10);
+        jsonResponse = {
+          winner: index,
+          reason: `Selected ${candidateData[index].agentName} based on implementation quality`
+        };
+        serverLogger.info(`[CrownEvaluator] Extracted winner index ${index} from output`);
+      } else {
+        throw new Error("Claude Code did not return a valid response");
+      }
     }
   } else {
     try {
