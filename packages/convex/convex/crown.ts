@@ -43,6 +43,24 @@ export const evaluateAndCrownWinner = mutation({
         return null;
       }
 
+      // Check if evaluation already exists or is pending
+      const existingEvaluation = await ctx.db
+        .query("crownEvaluations")
+        .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+        .first();
+      
+      if (existingEvaluation) {
+        console.log(`[Crown] Evaluation already exists for task ${args.taskId}, returning winner`);
+        return existingEvaluation.winnerRunId;
+      }
+      
+      // Check if already marked for evaluation
+      if (task.crownEvaluationError === "pending_evaluation" || 
+          task.crownEvaluationError === "in_progress") {
+        console.log(`[Crown] Task ${args.taskId} already marked for evaluation (${task.crownEvaluationError})`);
+        return "pending";
+      }
+
       // Mark that crown evaluation is needed
       // The server will handle the actual evaluation using Claude Code
       await ctx.db.patch(args.taskId, {

@@ -7,7 +7,6 @@ import { createFileRoute } from "@tanstack/react-router";
 import clsx from "clsx";
 import { usePersistentIframe } from "../hooks/usePersistentIframe";
 import { preloadTaskRunIframes } from "../lib/preloadTaskRunIframes";
-import { CrownEvaluation } from "../components/CrownEvaluation";
 
 // Configuration: Set to true to use the proxy URL, false to use direct localhost URL
 const USE_PROXY_URL = false;
@@ -32,7 +31,7 @@ export const Route = createFileRoute("/_layout/task/$taskId/run/$taskRunId")({
 });
 
 function TaskRunComponent() {
-  const { taskId, taskRunId } = Route.useParams();
+  const { taskRunId } = Route.useParams();
   const taskRun = useSuspenseQuery(
     convexQuery(api.taskRuns.get, {
       id: taskRunId as Id<"taskRuns">,
@@ -63,13 +62,6 @@ function TaskRunComponent() {
 
   return (
     <div className="flex flex-col grow min-h-0">
-      {/* Show crown evaluation if this run is crowned */}
-      {taskRun?.data?.isCrowned && (
-        <div className="p-4 border-b border-neutral-200 dark:border-neutral-800">
-          <CrownEvaluation taskId={taskId as Id<"tasks">} />
-        </div>
-      )}
-      
       <div className="flex flex-row grow min-h-0 relative">
         <div
           ref={containerRef}

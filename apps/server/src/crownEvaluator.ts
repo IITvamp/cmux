@@ -35,6 +35,21 @@ export async function evaluateCrownWithClaudeCode(
     serverLogger.info(`[CrownEvaluator] Not enough completed runs (${completedRuns.length})`);
     return;
   }
+  
+  // Double-check if evaluation already exists
+  const existingEvaluation = await convex.query(api.crown.getCrownEvaluation, {
+    taskId: taskId,
+  });
+  
+  if (existingEvaluation) {
+    serverLogger.info(`[CrownEvaluator] Crown evaluation already exists for task ${taskId}, skipping`);
+    // Clear the pending status
+    await convex.mutation(api.tasks.updateCrownError, {
+      id: taskId,
+      crownEvaluationError: undefined,
+    });
+    return;
+  }
 
   // Prepare evaluation data
   const candidateData = completedRuns.map((run, idx) => {

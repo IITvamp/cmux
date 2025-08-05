@@ -4,6 +4,12 @@ import { isFakeConvexId } from "@/lib/fakeConvexId";
 import { useQuery } from "convex/react";
 import { Crown, Loader2, AlertCircle } from "lucide-react";
 import { useEffect, useState } from "react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface CrownStatusProps {
   taskId: Id<"tasks">;
@@ -50,73 +56,85 @@ export function CrownStatus({ taskId }: CrownStatusProps) {
     return match ? match[1] : "Unknown";
   };
 
-  return (
-    <div className="mt-3 p-3 bg-yellow-50 dark:bg-yellow-950/20 rounded-lg border border-yellow-200 dark:border-yellow-900">
-      <div className="flex items-start gap-3">
-        <Crown className="w-5 h-5 text-yellow-600 dark:text-yellow-500 flex-shrink-0 mt-0.5" />
-        <div className="flex-1 space-y-2">
-          <h3 className="font-medium text-sm text-yellow-900 dark:text-yellow-100">
-            Crown Evaluation
-          </h3>
-          
-          {!allCompleted ? (
-            <div className="flex items-center gap-2 text-sm text-yellow-700 dark:text-yellow-300">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span>
-                Waiting for all models to complete ({completedRuns.length}/{taskRuns.length} done)
-              </span>
-            </div>
-          ) : crownedRun ? (
-            <div className="space-y-2">
-              <p className="text-sm text-yellow-800 dark:text-yellow-200">
-                <span className="font-medium">Winner:</span> {getAgentName(crownedRun.prompt)}
-              </p>
-              {crownedRun.crownReason && (
-                <p className="text-xs text-yellow-700 dark:text-yellow-300 italic">
-                  "{crownedRun.crownReason}"
+  // Determine the status pill content
+  let pillContent;
+  let pillClassName = "inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium";
+  
+  if (!allCompleted) {
+    pillContent = (
+      <>
+        <Loader2 className="w-3 h-3 animate-spin" />
+        <span>Waiting for models ({completedRuns.length}/{taskRuns.length})</span>
+      </>
+    );
+    pillClassName += " bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300";
+  } else if (crownedRun) {
+    const winnerContent = (
+      <>
+        <Crown className="w-3 h-3" />
+        <span>Winner: {getAgentName(crownedRun.prompt)}</span>
+      </>
+    );
+    
+    // If we have a reason, wrap in tooltip
+    if (crownedRun.crownReason) {
+      pillContent = (
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex items-center gap-1.5 cursor-help">
+                {winnerContent}
+              </div>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-sm p-3 z-[9999]" side="bottom" sideOffset={5}>
+              <div className="space-y-2">
+                <p className="font-medium text-sm">Evaluation Reason</p>
+                <p className="text-xs text-muted-foreground">
+                  {crownedRun.crownReason}
                 </p>
-              )}
-              {crownedRun.pullRequestUrl && crownedRun.pullRequestUrl !== "pending" && (
-                <a
-                  href={crownedRun.pullRequestUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 hover:underline"
-                >
-                  View Pull Request →
-                </a>
-              )}
-            </div>
-          ) : task?.crownEvaluationError === "pending_evaluation" ? (
-            <div className="flex items-center gap-2 text-sm text-yellow-700 dark:text-yellow-300">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span>Claude Code is evaluating implementations...</span>
-            </div>
-          ) : task?.crownEvaluationError ? (
-            <div className="flex items-start gap-2">
-              <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <p className="text-sm text-red-700 dark:text-red-300">
-                  Crown evaluation failed
-                </p>
-                <p className="text-xs text-red-600 dark:text-red-400 mt-1">
-                  {task.crownEvaluationError}
+                <p className="text-xs text-muted-foreground border-t pt-2 mt-2">
+                  Evaluated against {taskRuns.length} implementations
                 </p>
               </div>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 text-sm text-yellow-700 dark:text-yellow-300">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span>Evaluating implementations...</span>
-            </div>
-          )}
-          
-          <div className="mt-2 pt-2 border-t border-yellow-200 dark:border-yellow-800">
-            <p className="text-xs text-yellow-600 dark:text-yellow-400">
-              Competing models: {taskRuns.map(run => getAgentName(run.prompt)).join(", ")}
-            </p>
-          </div>
-        </div>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      );
+    } else {
+      pillContent = winnerContent;
+    }
+    
+    pillClassName += " bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300";
+  } else if (task?.crownEvaluationError === "pending_evaluation" || task?.crownEvaluationError === "in_progress") {
+    pillContent = (
+      <>
+        <Loader2 className="w-3 h-3 animate-spin" />
+        <span>Evaluating...</span>
+      </>
+    );
+    pillClassName += " bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300";
+  } else if (task?.crownEvaluationError) {
+    pillContent = (
+      <>
+        <AlertCircle className="w-3 h-3" />
+        <span>Evaluation failed</span>
+      </>
+    );
+    pillClassName += " bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300";
+  } else {
+    pillContent = (
+      <>
+        <Loader2 className="w-3 h-3 animate-spin" />
+        <span>Pending evaluation</span>
+      </>
+    );
+    pillClassName += " bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300";
+  }
+
+  return (
+    <div className="mt-2 mb-4">
+      <div className={pillClassName}>
+        {pillContent}
       </div>
     </div>
   );
