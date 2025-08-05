@@ -28,8 +28,8 @@ export async function evaluateCrownWithClaudeCode(
       throw new Error("Task not found");
     }
 
-  const taskRuns = await convex.query(api.taskRuns.getByTask, { taskId });
-  const completedRuns = taskRuns.filter(run => run.status === "completed");
+    const taskRuns = await convex.query(api.taskRuns.getByTask, { taskId });
+    const completedRuns = taskRuns.filter((run: any) => run.status === "completed");
 
   if (completedRuns.length < 2) {
     serverLogger.info(`[CrownEvaluator] Not enough completed runs (${completedRuns.length})`);
@@ -135,31 +135,17 @@ If one has changes and the other doesn't, pick the one with changes.`;
   // Only use bunx since npx consistently times out
   try {
     serverLogger.info(`[CrownEvaluator] Attempting to run with bunx...`);
-    serverLogger.info(`[CrownEvaluator] Command: bunx @anthropic-ai/claude-code --model claude-sonnet-4-20250514 --dangerously-skip-permissions -p [prompt]`);
     
-    // Log important environment variables
-    serverLogger.info(`[CrownEvaluator] Environment check:`);
-    serverLogger.info(`[CrownEvaluator] - ANTHROPIC_API_KEY: ${process.env.ANTHROPIC_API_KEY ? 'Set' : 'Not set'}`);
-    serverLogger.info(`[CrownEvaluator] - HOME: ${process.env.HOME}`);
-    serverLogger.info(`[CrownEvaluator] - PATH: ${process.env.PATH}`);
-    serverLogger.info(`[CrownEvaluator] - NODE_ENV: ${process.env.NODE_ENV}`);
-    
-    // Try with a simpler command first to see if it's the prompt causing issues
+    // Use --print flag for non-interactive output, just like the agents but with --print
     const args = [
       "@anthropic-ai/claude-code",
       "--model", "claude-sonnet-4-20250514", 
       "--dangerously-skip-permissions",
-      "-p",
+      "--print",
       evaluationPrompt
     ];
     
-    // If API key is not set, add a warning
-    if (!process.env.ANTHROPIC_API_KEY) {
-      serverLogger.warn(`[CrownEvaluator] WARNING: ANTHROPIC_API_KEY environment variable is not set!`);
-      serverLogger.warn(`[CrownEvaluator] Claude Code will likely fail without an API key`);
-    }
-    
-    serverLogger.info(`[CrownEvaluator] Spawning with args: ${args.slice(0, 5).join(' ')} [prompt]`);
+    serverLogger.info(`[CrownEvaluator] Command: bunx ${args.slice(0, 4).join(' ')} [prompt]`);
     
     const bunxProcess = spawn("bunx", args, {
       env: { ...process.env },
@@ -169,7 +155,7 @@ If one has changes and the other doesn't, pick the one with changes.`;
 
     serverLogger.info(`[CrownEvaluator] Process spawned with PID: ${bunxProcess.pid}`);
 
-    // Close stdin since we're passing prompt via -p flag
+    // Close stdin since we're passing prompt as an argument
     bunxProcess.stdin.end();
     
     stdout = "";
