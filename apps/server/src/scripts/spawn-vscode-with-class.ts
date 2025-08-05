@@ -34,7 +34,11 @@ async function main() {
     // Create terminal with Claude Code
     const terminalId = "claude-terminal";
     const command = "bash";
-    const escapedPrompt = prompt.replace(/'/g, "\\'");
+    const escapedPrompt = prompt
+      .replace(/\\/g, "\\\\") 
+      .replace(/"/g, '\\"')    
+      .replace(/\$/g, "\\$")   
+      .replace(/`/g, "\\`");  
     const args = [
       "-c",
       `bunx @anthropic-ai/claude-code --model claude-sonnet-4-20250514 --dangerously-skip-permissions "${escapedPrompt}"`,
