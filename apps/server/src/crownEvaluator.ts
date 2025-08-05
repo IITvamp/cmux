@@ -4,6 +4,9 @@ import { spawn } from "node:child_process";
 import { serverLogger } from "./utils/fileLogger.js";
 import type { ConvexHttpClient } from "convex/browser";
 import { z } from "zod";
+import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
+import { io, type Socket } from "socket.io-client";
+import type { WorkerToServerEvents, ServerToWorkerEvents } from "@cmux/shared";
 
 // Define schemas for structured output
 const ImplementationSchema = z.object({
@@ -22,6 +25,118 @@ const CrownEvaluationResponseSchema = z.object({
 });
 
 type CrownEvaluationResponse = z.infer<typeof CrownEvaluationResponseSchema>;
+
+async function createPullRequestForWinner(
+  convex: ConvexHttpClient,
+  taskRunId: Id<"taskRuns">,
+  taskId: Id<"tasks">
+): Promise<void> {
+  try {
+    serverLogger.info(`[CrownEvaluator] Creating pull request for winner ${taskRunId}`);
+    
+    // Get the task run details
+    const taskRun = await convex.query(api.taskRuns.get, { id: taskRunId });
+    if (!taskRun || !taskRun.vscode?.containerName) {
+      serverLogger.error(`[CrownEvaluator] No VSCode instance found for task run ${taskRunId}`);
+      return;
+    }
+    
+    // Get the task details
+    const task = await convex.query(api.tasks.getById, { id: taskId });
+    if (!task) {
+      serverLogger.error(`[CrownEvaluator] Task ${taskId} not found`);
+      return;
+    }
+    
+    // Find the VSCode instance
+    const instances = VSCodeInstance.getInstances();
+    let vscodeInstance = null;
+    let workerSocket = null;
+    
+    // Look for the instance by taskRunId
+    for (const [id, instance] of instances) {
+      if (instance.getTaskRunId() === taskRunId) {
+        vscodeInstance = instance;
+        workerSocket = instance.getWorkerSocket();
+        break;
+      }
+    }
+    
+    if (!vscodeInstance || !workerSocket || !vscodeInstance.isWorkerConnected()) {
+      serverLogger.error(`[CrownEvaluator] VSCode instance not found or not connected for task run ${taskRunId}`);
+      return;
+    }
+    
+    // Extract agent name from prompt
+    const agentMatch = taskRun.prompt.match(/\(([^)]+)\)$/);
+    const agentName = agentMatch ? agentMatch[1] : "Unknown";
+    
+    // Create PR title and body with proper escaping
+    const prTitle = (task.text || "Task completed by cmux").replace(/"/g, '\\"').replace(/\$/g, '\\$');
+    const prBody = `## Summary
+- Task completed by ${agentName} agent 🏆
+- ${taskRun.crownReason || "Selected as the best implementation"}
+
+## Details
+- Task ID: ${taskId}
+- Agent: ${agentName}
+- Completed: ${new Date().toISOString()}
+
+---
+🤖 Generated with [cmux](https://github.com/lawrencecchen/cmux)`;
+    
+    // Create branch name
+    const branchName = `cmux-${agentName.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${taskRunId.slice(-8)}`;
+    
+    // Escape the PR body for shell
+    const escapedPrBody = prBody.replace(/"/g, '\\"').replace(/\$/g, '\\$').replace(/\n/g, '\\n');
+    
+    // Commands to create PR
+    const commands = [
+      `cd /root/workspace`,
+      `git checkout -b ${branchName}`,
+      `git add -A`,
+      `git commit -m "${prTitle}
+
+Completed by ${agentName} agent
+
+🤖 Generated with cmux"`,
+      `git push -u origin ${branchName}`,
+      `gh pr create --title "${prTitle}" --body "${escapedPrBody}" --web`
+    ];
+    
+    serverLogger.info(`[CrownEvaluator] Executing PR creation commands...`);
+    
+    // We need to get the terminal ID from the task run or create a new terminal
+    // For now, we'll send commands to the main terminal (terminal ID is usually the taskRunId)
+    const terminalId = taskRunId;
+    
+    // Execute commands sequentially
+    for (const command of commands) {
+      await new Promise<void>((resolve) => {
+        const terminalData = {
+          terminalId: terminalId,
+          data: command + '\n'
+        };
+        
+        // Use worker:terminal-input to send commands
+        workerSocket.emit('worker:terminal-input', terminalData);
+        serverLogger.info(`[CrownEvaluator] Sent command: ${command}`);
+        
+        // Give each command time to execute
+        setTimeout(resolve, 3000);
+      });
+    }
+    
+    serverLogger.info(`[CrownEvaluator] Pull request creation commands sent`);
+    
+    // Note: The actual PR URL will be captured from the terminal output
+    // and updated via a separate mechanism
+    
+  } catch (error) {
+    serverLogger.error(`[CrownEvaluator] Error creating pull request:`, error);
+  }
+}
 
 export async function evaluateCrownWithClaudeCode(
   convex: ConvexHttpClient,
@@ -352,6 +467,9 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
   });
 
   serverLogger.info(`[CrownEvaluator] Crown evaluation completed successfully for task ${taskId}`);
+  
+  // Create pull request for the winner
+  await createPullRequestForWinner(convex, winner.runId, taskId);
   } catch (error) {
     serverLogger.error(`[CrownEvaluator] Error during evaluation:`, error);
     

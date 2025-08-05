@@ -194,6 +194,9 @@ export interface ServerToWorkerEvents {
     data: WorkerCreateTerminal,
     callback: (result: ErrorOr<WorkerTerminalCreated>) => void
   ) => void;
+  
+  // Terminal input
+  "worker:terminal-input": (data: WorkerTerminalInput) => void;
 
   // File operations
   "worker:upload-files": (data: WorkerUploadFiles) => void;
