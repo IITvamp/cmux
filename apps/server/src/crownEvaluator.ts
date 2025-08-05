@@ -257,20 +257,31 @@ async function tryVSCodeExtensionCommitAndPR(
               return;
             }
             
-            // Then create PR
+            // Then create PR using GitHub CLI
             extensionSocket.emit(
-              "vscode:create-pr",
+              "vscode:exec-command",
               {
-                title: prTitle,
-                body: prBody,
+                command: "gh",
+                args: [
+                  "pr",
+                  "create",
+                  "--title",
+                  prTitle,
+                  "--body",
+                  prBody,
+                  "--web"
+                ],
+                cwd: "/root/workspace"
               },
               (prResponse: any) => {
                 clearTimeout(timeout);
                 extensionSocket.disconnect();
                 
                 if (prResponse.success) {
+                  serverLogger.info(`[CrownEvaluator] PR created successfully via VSCode extension`);
                   resolve({ success: true });
                 } else {
+                  serverLogger.error(`[CrownEvaluator] PR creation failed:`, prResponse.error);
                   resolve({ success: false, error: prResponse.error });
                 }
               }
