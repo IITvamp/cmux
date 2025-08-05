@@ -122,8 +122,14 @@ Completed: ${new Date().toISOString()}`;
       `git add .`,
       // Create and switch to new branch
       `git checkout -b ${branchName}`,
-      // Commit with a descriptive message (escape quotes properly)
-      `git commit -m "${commitMessage.replace(/"/g, '\\"')}"`,
+      // Commit with a descriptive message (escape properly for shell)
+      `git commit -m "${commitMessage
+        .replace(/\\/g, "\\\\")
+        .replace(/"/g, '\\"')
+        .replace(/\$/g, "\\$")
+        .replace(/`/g, "\\`")}"`,
+      // Push branch to origin
+      `git push -u origin ${branchName}`,
     ];
 
     // Only push if this is a crowned run
@@ -535,7 +541,11 @@ export async function spawnAgent(
     }
 
     // Build the agent command with proper quoting
-    const escapedPrompt = processedTaskDescription.replace(/"/g, '\\"');
+    const escapedPrompt = processedTaskDescription
+      .replace(/\\/g, "\\\\")  // Escape backslashes first
+      .replace(/"/g, '\\"')    // Then escape double quotes
+      .replace(/\$/g, "\\$")   // Escape dollar signs to prevent variable expansion
+      .replace(/`/g, "\\`");   // Escape backticks to prevent command substitution
 
     // Replace $PROMPT placeholders in args with the actual prompt
     const processedArgs = agent.args.map((arg) => {
