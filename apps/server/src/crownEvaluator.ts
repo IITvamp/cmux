@@ -30,7 +30,8 @@ type CrownEvaluationResponse = z.infer<typeof CrownEvaluationResponseSchema>;
 async function createPullRequestForWinner(
   convex: ConvexHttpClient,
   taskRunId: Id<"taskRuns">,
-  taskId: Id<"tasks">
+  taskId: Id<"tasks">,
+  githubToken?: string | null
 ): Promise<void> {
   try {
     serverLogger.info(`[CrownEvaluator] Creating pull request for winner ${taskRunId}`);
@@ -130,7 +131,8 @@ Completed: ${new Date().toISOString()}`;
         commitMessage,
         agentName,
         prTitle,
-        prBody
+        prBody,
+        githubToken || undefined
       );
       
       if (extensionResult.success) {
@@ -160,23 +162,28 @@ Completed: ${new Date().toISOString()}`;
       { cmd: `git commit -m "${commitMessage.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\$/g, "\\$")}"`, desc: "Committing" },
       // Push
       { cmd: `git push -u origin ${branchName}`, desc: "Pushing branch" },
-      // Create PR
-      { cmd: `gh pr create --title "${prTitle.replace(/"/g, '\\"')}" --body "${prBody.replace(/"/g, '\\"').replace(/\n/g, '\\n')}" --web`, desc: "Creating PR" }
+      // Create PR with GitHub token
+      { 
+        cmd: githubToken 
+          ? `GH_TOKEN="${githubToken}" gh pr create --title "${prTitle.replace(/"/g, '\\"')}" --body "${prBody.replace(/"/g, '\\"').replace(/\n/g, '\\n')}" --head "${branchName}"`
+          : `gh pr create --title "${prTitle.replace(/"/g, '\\"')}" --body "${prBody.replace(/"/g, '\\"').replace(/\n/g, '\\n')}" --head "${branchName}"`, 
+        desc: "Creating PR" 
+      }
     ];
     
     for (const { cmd, desc } of gitCommands) {
       serverLogger.info(`[CrownEvaluator] ${desc}...`);
       
-      const result = await new Promise<{ success: boolean; error?: string }>((resolve) => {
+      const result = await new Promise<{ success: boolean; error?: string; stdout?: string; stderr?: string }>((resolve) => {
         workerSocket
           .timeout(30000)
           .emit(
             "worker:exec",
             {
-              command: "bash",
+              command: "/bin/bash",
               args: ["-c", cmd],
               cwd: "/root/workspace",
-              env: {},
+              env: githubToken ? { GH_TOKEN: githubToken } : {},
             },
             (timeoutError: any, result: any) => {
               if (timeoutError) {
@@ -194,16 +201,53 @@ Completed: ${new Date().toISOString()}`;
                 serverLogger.info(`[CrownEvaluator] ${desc} - stderr:`, stderr);
               }
               
-              resolve({ success: exitCode === 0 });
+              resolve({ success: exitCode === 0, stdout, stderr });
             }
           );
       });
       
       if (!result.success) {
         serverLogger.error(`[CrownEvaluator] Failed at step: ${desc}`, result.error);
+        
+        // If gh pr create fails, log more details
+        if (cmd.includes("gh pr create")) {
+          serverLogger.error(`[CrownEvaluator] PR creation failed. stdout: ${result.stdout}, stderr: ${result.stderr}`);
+          
+          // Try to check gh auth status
+          const authCheckResult = await new Promise<{ success: boolean; stdout?: string; stderr?: string }>((resolve) => {
+            workerSocket
+              .timeout(10000)
+              .emit(
+                "worker:exec",
+                {
+                  command: "/bin/bash",
+                  args: ["-c", githubToken ? `GH_TOKEN="${githubToken}" gh auth status` : "gh auth status"],
+                  cwd: "/root/workspace",
+                  env: githubToken ? { GH_TOKEN: githubToken } : {},
+                },
+                (timeoutError: any, authResult: any) => {
+                  if (timeoutError || authResult.error) {
+                    resolve({ success: false, stdout: "", stderr: timeoutError ? "timeout" : authResult.error.message });
+                    return;
+                  }
+                  const { stdout, stderr, exitCode } = authResult.data;
+                  resolve({ success: exitCode === 0, stdout, stderr });
+                }
+              );
+          });
+          
+          serverLogger.error(`[CrownEvaluator] gh auth status - stdout: ${authCheckResult.stdout}, stderr: ${authCheckResult.stderr}`);
+        }
+        
         // Continue anyway for some commands
         if (!cmd.includes("git checkout") && !cmd.includes("gh pr create")) {
           return;
+        }
+      } else {
+        // If successful and it's the PR creation command, log the URL
+        if (cmd.includes("gh pr create") && result.stdout) {
+          serverLogger.info(`[CrownEvaluator] PR created successfully!`);
+          serverLogger.info(`[CrownEvaluator] PR URL: ${result.stdout.trim()}`);
         }
       }
     }
@@ -221,7 +265,8 @@ async function tryVSCodeExtensionCommitAndPR(
   commitMessage: string,
   agentName: string,
   prTitle: string,
-  prBody: string
+  prBody: string,
+  githubToken?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const { io } = await import("socket.io-client");
@@ -269,9 +314,11 @@ async function tryVSCodeExtensionCommitAndPR(
                   prTitle,
                   "--body",
                   prBody,
-                  "--web"
+                  "--head",
+                  branchName
                 ],
-                cwd: "/root/workspace"
+                cwd: "/root/workspace",
+                env: githubToken ? { GH_TOKEN: githubToken } : {}
               },
               (prResponse: any) => {
                 clearTimeout(timeout);
@@ -279,6 +326,9 @@ async function tryVSCodeExtensionCommitAndPR(
                 
                 if (prResponse.success) {
                   serverLogger.info(`[CrownEvaluator] PR created successfully via VSCode extension`);
+                  if (prResponse.result?.stdout) {
+                    serverLogger.info(`[CrownEvaluator] PR URL: ${prResponse.result.stdout.trim()}`);
+                  }
                   resolve({ success: true });
                 } else {
                   serverLogger.error(`[CrownEvaluator] PR creation failed:`, prResponse.error);
@@ -316,6 +366,10 @@ export async function evaluateCrownWithClaudeCode(
   serverLogger.info(`[CrownEvaluator] =================================================`);
 
   try {
+    // Get GitHub token
+    const { getGitHubTokenFromKeychain } = await import("./utils/getGitHubToken.js");
+    const githubToken = await getGitHubTokenFromKeychain(convex);
+    
     // Get task and runs
     const task = await convex.query(api.tasks.getById, { id: taskId });
     if (!task) {
@@ -638,7 +692,7 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
   serverLogger.info(`[CrownEvaluator] Crown evaluation completed successfully for task ${taskId}`);
   
   // Create pull request for the winner
-  await createPullRequestForWinner(convex, winner.runId, taskId);
+  await createPullRequestForWinner(convex, winner.runId, taskId, githubToken || undefined);
   } catch (error) {
     serverLogger.error(`[CrownEvaluator] Error during evaluation:`, error);
     

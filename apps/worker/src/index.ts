@@ -711,9 +711,21 @@ managementIO.on("connection", (socket) => {
         cwd: validated.cwd,
       });
 
-      const commandWithArgs = validated.args
-        ? `${validated.command} ${validated.args.join(" ")}`
-        : validated.command;
+      // Special handling for shell commands (bash/sh with -c flag)
+      let commandWithArgs: string;
+      if ((validated.command === '/bin/bash' || validated.command === 'bash' || 
+           validated.command === '/bin/sh' || validated.command === 'sh') && 
+          validated.args && validated.args[0] === '-c') {
+        // For shell commands with -c, the command to execute should be a single argument
+        // We need to properly quote it
+        const shellCommand = validated.args.slice(1).join(' ');
+        commandWithArgs = `${validated.command} -c "${shellCommand.replace(/"/g, '\\"')}"`;
+      } else if (validated.args) {
+        // For other commands, join normally
+        commandWithArgs = `${validated.command} ${validated.args.join(" ")}`;
+      } else {
+        commandWithArgs = validated.command;
+      }
 
       const execOptions = {
         cwd: validated.cwd || process.env.HOME || "/",

@@ -319,14 +319,17 @@ function startSocketServer() {
       // Execute shell command
       socket.on("vscode:exec-command", async (data, callback) => {
         try {
-          const { command, args = [], cwd = "/root/workspace" } = data;
+          const { command, args = [], cwd = "/root/workspace", env = {} } = data;
           log(`Executing shell command: ${command} ${args.join(' ')}`);
           
           // Use Node.js child_process to execute the command
           const { exec } = require('child_process');
           const fullCommand = `${command} ${args.map((arg: string) => `"${arg.replace(/"/g, '\\"')}"`).join(' ')}`;
           
-          exec(fullCommand, { cwd }, (error: any, stdout: string, stderr: string) => {
+          // Merge provided env with process env
+          const execEnv = { ...process.env, ...env };
+          
+          exec(fullCommand, { cwd, env: execEnv, shell: '/bin/bash' }, (error: any, stdout: string, stderr: string) => {
             if (error) {
               log(`Command execution failed: ${error.message}`);
               log(`stderr: ${stderr}`);

@@ -3,12 +3,14 @@ import * as os from "os";
 import * as path from "path";
 import { getGitHubTokenFromKeychain } from "./getGitHubToken.js";
 import { serverLogger } from "./fileLogger.js";
+import type { ConvexHttpClient } from "convex/browser";
 
 export async function setupGitCredentialsForDocker(
-  instanceId: string
+  instanceId: string,
+  convex?: ConvexHttpClient
 ): Promise<string | null> {
   try {
-    const githubToken = await getGitHubTokenFromKeychain();
+    const githubToken = await getGitHubTokenFromKeychain(convex);
     if (!githubToken) {
       return null;
     }
