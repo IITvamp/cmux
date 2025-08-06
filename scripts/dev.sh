@@ -2,7 +2,7 @@
 
 set -e
 
-CONVEX_PORT=9777
+export CONVEX_PORT=9777
 
 # Parse command line arguments
 FORCE_DOCKER_BUILD=false
@@ -49,14 +49,14 @@ fi
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 APP_DIR="$(dirname "$SCRIPT_DIR")"
 
-# Colors for output
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-RED='\033[0;31m'
-YELLOW='\033[0;33m'
-MAGENTA='\033[0;35m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Color
+# Colors for output - export them for subshells
+export GREEN='\033[0;32m'
+export BLUE='\033[0;34m'
+export RED='\033[0;31m'
+export YELLOW='\033[0;33m'
+export MAGENTA='\033[0;35m'
+export CYAN='\033[0;36m'
+export NC='\033[0m' # No Color
 
 echo -e "${BLUE}Starting Terminal App Development Environment...${NC}"
 
@@ -66,7 +66,18 @@ cd "$APP_DIR"
 # Function to cleanup on exit
 cleanup() {
     echo -e "\n${BLUE}Shutting down...${NC}"
-    kill $SERVER_PID $CLIENT_PID $CONVEX_DEV_PID $DOCKER_COMPOSE_PID 2>/dev/null
+    # Kill the bash processes which will trigger their EXIT traps to kill all children
+    [ -n "$SERVER_PID" ] && kill $SERVER_PID 2>/dev/null
+    [ -n "$CLIENT_PID" ] && kill $CLIENT_PID 2>/dev/null
+    [ -n "$CONVEX_DEV_PID" ] && kill $CONVEX_DEV_PID 2>/dev/null
+    [ -n "$DOCKER_COMPOSE_PID" ] && kill $DOCKER_COMPOSE_PID 2>/dev/null
+    # Give processes time to cleanup
+    sleep 1
+    # Force kill any remaining processes
+    [ -n "$SERVER_PID" ] && kill -9 $SERVER_PID 2>/dev/null
+    [ -n "$CLIENT_PID" ] && kill -9 $CLIENT_PID 2>/dev/null
+    [ -n "$CONVEX_DEV_PID" ] && kill -9 $CONVEX_DEV_PID 2>/dev/null
+    [ -n "$DOCKER_COMPOSE_PID" ] && kill -9 $DOCKER_COMPOSE_PID 2>/dev/null
     exit
 }
 
@@ -87,6 +98,8 @@ prefix_output() {
         echo -e "${color}[${label}]${NC} $line"
     done
 }
+# Export the function so it's available in subshells
+export -f prefix_output
 
 # Create logs directory if it doesn't exist
 mkdir -p "$APP_DIR/logs"
@@ -117,13 +130,11 @@ check_process() {
     fi
 }
 
-(cd .devcontainer && COMPOSE_PROJECT_NAME=cmux-convex docker compose up 2>&1 | prefix_output "DOCKER-COMPOSE" "$MAGENTA") &
+(cd .devcontainer && exec bash -c 'trap "kill -9 0" EXIT; COMPOSE_PROJECT_NAME=cmux-convex docker compose up 2>&1 | prefix_output "DOCKER-COMPOSE" "$MAGENTA"') &
 DOCKER_COMPOSE_PID=$!
 check_process $DOCKER_COMPOSE_PID "Docker Compose"
 
-(cd packages/convex && source ~/.nvm/nvm.sh && \
-  bunx convex dev --env-file .env.convex \
-    2>&1 | tee ../../logs/convex-dev.log | prefix_output "CONVEX-DEV" "$GREEN") &
+(cd packages/convex && exec bash -c 'trap "kill -9 0" EXIT; source ~/.nvm/nvm.sh && bunx convex dev --env-file .env.convex 2>&1 | tee ../../logs/convex-dev.log | prefix_output "CONVEX-DEV" "$GREEN"') &
 CONVEX_DEV_PID=$!
 check_process $CONVEX_DEV_PID "Convex Dev"
 CONVEX_PID=$CONVEX_DEV_PID
@@ -131,13 +142,13 @@ CONVEX_PID=$CONVEX_DEV_PID
 
 # Start the backend server
 echo -e "${GREEN}Starting backend server on port 9776...${NC}"
-(cd apps/server && bun run dev 2>&1 | prefix_output "SERVER" "$YELLOW") &
+(cd apps/server && exec bash -c 'trap "kill -9 0" EXIT; bun run dev 2>&1 | prefix_output "SERVER" "$YELLOW"') &
 SERVER_PID=$!
 check_process $SERVER_PID "Backend Server"
 
 # Start the frontend
 echo -e "${GREEN}Starting frontend on port 5173...${NC}"
-(cd apps/client && VITE_CONVEX_URL=http://localhost:$CONVEX_PORT bun run dev 2>&1 | prefix_output "CLIENT" "$CYAN") &
+(cd apps/client && exec bash -c 'trap "kill -9 0" EXIT; VITE_CONVEX_URL=http://localhost:$CONVEX_PORT bun run dev 2>&1 | prefix_output "CLIENT" "$CYAN"') &
 CLIENT_PID=$!
 check_process $CLIENT_PID "Frontend Client"
 
