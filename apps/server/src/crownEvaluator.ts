@@ -123,7 +123,7 @@ Completed: ${new Date().toISOString()}`;
     
     if (extensionPort) {
       // Try VSCode extension method first
-      const extensionResult = await tryVSCodeExtensionCommitAndPR(
+      const extensionResult = await tryVSCodeExtensionCommitAndPush(
         extensionPort,
         branchName,
         commitMessage,
@@ -134,7 +134,12 @@ Completed: ${new Date().toISOString()}`;
       );
       
       if (extensionResult.success) {
-        serverLogger.info(`[CrownEvaluator] Successfully created PR via VSCode extension`);
+        if (githubToken) {
+          serverLogger.info(`[CrownEvaluator] Successfully created PR via VSCode extension`);
+        } else {
+          serverLogger.info(`[CrownEvaluator] Successfully pushed branch via VSCode extension`);
+          serverLogger.info(`[CrownEvaluator] Branch '${branchName}' has been pushed. You can manually create a PR from GitHub.`);
+        }
         return;
       }
       
@@ -160,14 +165,18 @@ Completed: ${new Date().toISOString()}`;
       { cmd: `git commit -m "${commitMessage.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\$/g, "\\$")}"`, desc: "Committing" },
       // Push
       { cmd: `git push -u origin ${branchName}`, desc: "Pushing branch" },
-      // Create PR with GitHub token
-      { 
-        cmd: githubToken 
-          ? `GH_TOKEN="${githubToken}" gh pr create --title "${prTitle.replace(/"/g, '\\"')}" --body "${prBody.replace(/"/g, '\\"').replace(/\n/g, '\\n')}" --head "${branchName}"`
-          : `gh pr create --title "${prTitle.replace(/"/g, '\\"')}" --body "${prBody.replace(/"/g, '\\"').replace(/\n/g, '\\n')}" --head "${branchName}"`, 
-        desc: "Creating PR" 
-      }
     ];
+    
+    // Only add PR creation command if GitHub token is available
+    if (githubToken) {
+      gitCommands.push({
+        cmd: `GH_TOKEN="${githubToken}" gh pr create --title "${prTitle.replace(/"/g, '\\"')}" --body "${prBody.replace(/"/g, '\\"').replace(/\n/g, '\\n')}" --head "${branchName}"`,
+        desc: "Creating PR"
+      });
+    } else {
+      serverLogger.info(`[CrownEvaluator] Skipping PR creation - no GitHub token configured`);
+      serverLogger.info(`[CrownEvaluator] Branch '${branchName}' has been pushed. You can manually create a PR from GitHub.`);
+    }
     
     for (const { cmd, desc } of gitCommands) {
       serverLogger.info(`[CrownEvaluator] ${desc}...`);
@@ -257,7 +266,7 @@ Completed: ${new Date().toISOString()}`;
   }
 }
 
-async function tryVSCodeExtensionCommitAndPR(
+async function tryVSCodeExtensionCommitAndPush(
   extensionPort: string,
   branchName: string,
   commitMessage: string,
@@ -300,40 +309,48 @@ async function tryVSCodeExtensionCommitAndPR(
               return;
             }
             
-            // Then create PR using GitHub CLI
-            extensionSocket.emit(
-              "vscode:exec-command",
-              {
-                command: "gh",
-                args: [
-                  "pr",
-                  "create",
-                  "--title",
-                  prTitle,
-                  "--body",
-                  prBody,
-                  "--head",
-                  branchName
-                ],
-                cwd: "/root/workspace",
-                env: githubToken ? { GH_TOKEN: githubToken } : {}
-              },
-              (prResponse: any) => {
-                clearTimeout(timeout);
-                extensionSocket.disconnect();
-                
-                if (prResponse.success) {
-                  serverLogger.info(`[CrownEvaluator] PR created successfully via VSCode extension`);
-                  if (prResponse.result?.stdout) {
-                    serverLogger.info(`[CrownEvaluator] PR URL: ${prResponse.result.stdout.trim()}`);
+            // Only create PR if GitHub token is available
+            if (githubToken) {
+              extensionSocket.emit(
+                "vscode:exec-command",
+                {
+                  command: "gh",
+                  args: [
+                    "pr",
+                    "create",
+                    "--title",
+                    prTitle,
+                    "--body",
+                    prBody,
+                    "--head",
+                    branchName
+                  ],
+                  cwd: "/root/workspace",
+                  env: { GH_TOKEN: githubToken }
+                },
+                (prResponse: any) => {
+                  clearTimeout(timeout);
+                  extensionSocket.disconnect();
+                  
+                  if (prResponse.success) {
+                    serverLogger.info(`[CrownEvaluator] PR created successfully via VSCode extension`);
+                    if (prResponse.result?.stdout) {
+                      serverLogger.info(`[CrownEvaluator] PR URL: ${prResponse.result.stdout.trim()}`);
+                    }
+                    resolve({ success: true });
+                  } else {
+                    serverLogger.error(`[CrownEvaluator] PR creation failed:`, prResponse.error);
+                    resolve({ success: false, error: prResponse.error });
                   }
-                  resolve({ success: true });
-                } else {
-                  serverLogger.error(`[CrownEvaluator] PR creation failed:`, prResponse.error);
-                  resolve({ success: false, error: prResponse.error });
                 }
-              }
-            );
+              );
+            } else {
+              // No GitHub token, just push was successful
+              clearTimeout(timeout);
+              extensionSocket.disconnect();
+              serverLogger.info(`[CrownEvaluator] Branch pushed successfully via VSCode extension (PR creation skipped - no token)`);
+              resolve({ success: true });
+            }
           }
         );
       });
