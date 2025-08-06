@@ -513,6 +513,12 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
     serverLogger.info(`[CrownEvaluator]   ${idx}: ${line.substring(0, 100)}${line.length > 100 ? '...' : ''}`);
   });
   
+  // Update status to in_progress
+  await convex.mutation(api.tasks.updateCrownError, {
+    id: taskId,
+    crownEvaluationError: "in_progress",
+  });
+  
   serverLogger.info(`[CrownEvaluator] Starting Claude Code spawn...`);
   const startTime = Date.now();
 
@@ -616,17 +622,34 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
 
       setTimeout(() => {
         if (!processExited) {
-          serverLogger.error(`[CrownEvaluator] Process timeout after 90 seconds, killing...`);
+          serverLogger.error(`[CrownEvaluator] Process timeout after 60 seconds, killing...`);
           bunxProcess.kill('SIGKILL');
           reject(new Error("Timeout"));
         }
-      }, 90000);
+      }, 60000); // Reduce timeout to 60 seconds
     });
 
     serverLogger.info(`[CrownEvaluator] bunx completed with exit code ${exitCode}`);
   } catch (bunxError) {
     serverLogger.error(`[CrownEvaluator] bunx failed:`, bunxError);
-    throw new Error("Could not run Claude Code via bunx. Please ensure @anthropic-ai/claude-code is available.");
+    
+    // Fallback: Pick the first completed run as winner if Claude Code fails
+    serverLogger.warn(`[CrownEvaluator] Falling back to selecting first completed run as winner`);
+    
+    const fallbackWinner = candidateData[0];
+    await convex.mutation(api.crown.setCrownWinner, {
+      taskRunId: fallbackWinner.runId,
+      reason: "Selected as fallback winner (crown evaluation failed to run)",
+    });
+    
+    await convex.mutation(api.tasks.updateCrownError, {
+      id: taskId,
+      crownEvaluationError: undefined,
+    });
+    
+    serverLogger.info(`[CrownEvaluator] Fallback winner selected: ${fallbackWinner.agentName}`);
+    await createPullRequestForWinner(convex, fallbackWinner.runId, taskId, githubToken || undefined);
+    return;
   }
 
   serverLogger.info(`[CrownEvaluator] Process completed after ${Date.now() - startTime}ms`);
@@ -635,7 +658,25 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
   serverLogger.info(`[CrownEvaluator] Full stdout:\n${stdout}`);
 
   if (exitCode !== 0) {
-    throw new Error(`Claude Code exited with error code ${exitCode}. Stderr: ${stderr}`);
+    serverLogger.error(`[CrownEvaluator] Claude Code exited with error code ${exitCode}. Stderr: ${stderr}`);
+    
+    // Fallback: Pick the first completed run as winner if Claude Code fails
+    serverLogger.warn(`[CrownEvaluator] Falling back to selecting first completed run as winner due to non-zero exit code`);
+    
+    const fallbackWinner = candidateData[0];
+    await convex.mutation(api.crown.setCrownWinner, {
+      taskRunId: fallbackWinner.runId,
+      reason: "Selected as fallback winner (crown evaluation exited with error)",
+    });
+    
+    await convex.mutation(api.tasks.updateCrownError, {
+      id: taskId,
+      crownEvaluationError: undefined,
+    });
+    
+    serverLogger.info(`[CrownEvaluator] Fallback winner selected: ${fallbackWinner.agentName}`);
+    await createPullRequestForWinner(convex, fallbackWinner.runId, taskId, githubToken || undefined);
+    return;
   }
 
   // Parse the response
@@ -669,7 +710,23 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
         };
         serverLogger.info(`[CrownEvaluator] Extracted winner index ${index} from output`);
       } else {
-        throw new Error("Claude Code did not return a valid response");
+        serverLogger.error(`[CrownEvaluator] Could not extract valid response from output`);
+        
+        // Fallback: Pick the first completed run as winner
+        const fallbackWinner = candidateData[0];
+        await convex.mutation(api.crown.setCrownWinner, {
+          taskRunId: fallbackWinner.runId,
+          reason: "Selected as fallback winner (no valid response from evaluator)",
+        });
+        
+        await convex.mutation(api.tasks.updateCrownError, {
+          id: taskId,
+          crownEvaluationError: undefined,
+        });
+        
+        serverLogger.info(`[CrownEvaluator] Fallback winner selected: ${fallbackWinner.agentName}`);
+        await createPullRequestForWinner(convex, fallbackWinner.runId, taskId, githubToken || undefined);
+        return;
       }
     }
   } else {
@@ -679,13 +736,44 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
       serverLogger.info(`[CrownEvaluator] Successfully parsed JSON response: ${JSON.stringify(jsonResponse)}`);
     } catch (parseError) {
       serverLogger.error(`[CrownEvaluator] Failed to parse JSON:`, parseError);
-      throw new Error("Invalid JSON response from Claude Code");
+      
+      // Fallback: Pick the first completed run as winner
+      const fallbackWinner = candidateData[0];
+      await convex.mutation(api.crown.setCrownWinner, {
+        taskRunId: fallbackWinner.runId,
+        reason: "Selected as fallback winner (invalid JSON from evaluator)",
+      });
+      
+      await convex.mutation(api.tasks.updateCrownError, {
+        id: taskId,
+        crownEvaluationError: undefined,
+      });
+      
+      serverLogger.info(`[CrownEvaluator] Fallback winner selected: ${fallbackWinner.agentName}`);
+      await createPullRequestForWinner(convex, fallbackWinner.runId, taskId, githubToken || undefined);
+      return;
     }
   }
 
   // Validate winner index
   if (jsonResponse.winner >= candidateData.length) {
-    throw new Error(`Invalid winner index ${jsonResponse.winner}, must be less than ${candidateData.length}`);
+    serverLogger.error(`[CrownEvaluator] Invalid winner index ${jsonResponse.winner}, must be less than ${candidateData.length}`);
+    
+    // Fallback: Pick the first completed run as winner
+    const fallbackWinner = candidateData[0];
+    await convex.mutation(api.crown.setCrownWinner, {
+      taskRunId: fallbackWinner.runId,
+      reason: "Selected as fallback winner (invalid winner index from evaluator)",
+    });
+    
+    await convex.mutation(api.tasks.updateCrownError, {
+      id: taskId,
+      crownEvaluationError: undefined,
+    });
+    
+    serverLogger.info(`[CrownEvaluator] Fallback winner selected: ${fallbackWinner.agentName}`);
+    await createPullRequestForWinner(convex, fallbackWinner.runId, taskId, githubToken || undefined);
+    return;
   }
 
   const winner = candidateData[jsonResponse.winner];

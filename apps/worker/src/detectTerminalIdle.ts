@@ -133,12 +133,40 @@ export async function detectTerminalIdle(
   let lastActivityTime = Date.now();
   let idleDetected = false;
   let idleTimer: ReturnType<typeof setTimeout> | null = null;
+  let maxRuntimeTimer: ReturnType<typeof setTimeout> | null = null;
   let child: ChildProcessWithoutNullStreams;
   let stdoutBuffer = "";
   let stderrBuffer = "";
   let detachCommandSentTime: number | null = null;
 
   return new Promise(async (resolve, reject) => {
+    // Set a maximum timeout for the entire detection process
+    const MAX_RUNTIME_MS = 20 * 60 * 1000; // 20 minutes max for any agent
+    maxRuntimeTimer = setTimeout(() => {
+      log("WARNING", "[detectTerminalIdle] Maximum runtime reached, forcing completion", {
+        sessionName,
+        maxRuntimeMs: MAX_RUNTIME_MS,
+        elapsedMs: Date.now() - startTime,
+      });
+      
+      if (!idleDetected) {
+        idleDetected = true;
+        if (onIdle) {
+          try {
+            onIdle();
+          } catch (callbackError) {
+            log("ERROR", "[detectTerminalIdle] onIdle callback failed", {
+              sessionName,
+              error: callbackError,
+            });
+          }
+        }
+        resolve({
+          elapsedMs: Date.now() - startTime,
+        });
+      }
+    }, MAX_RUNTIME_MS);
+    
     // Poll tmux session to see if it's ready, retry up to 10 times with 100ms delay
     try {
       log(
@@ -254,6 +282,10 @@ export async function detectTerminalIdle(
             sessionName,
           });
           clearTimeout(idleTimer);
+        }
+        
+        if (maxRuntimeTimer) {
+          clearTimeout(maxRuntimeTimer);
         }
 
         // Callback if provided
@@ -478,18 +510,57 @@ export async function detectTerminalIdle(
         );
         clearTimeout(idleTimer);
       }
+      
+      if (maxRuntimeTimer) {
+        clearTimeout(maxRuntimeTimer);
+      }
 
       if (!idleDetected) {
         // Session ended before idle timeout
+        // Only treat as completion if it ran for a reasonable amount of time
+        const MIN_RUNTIME_MS = 30000; // Require at least 30 seconds of runtime
+        
+        if (elapsedTime < MIN_RUNTIME_MS) {
+          log(
+            "ERROR",
+            "[detectTerminalIdle] Session ended too quickly - NOT marking as complete",
+            {
+              sessionName,
+              elapsedTime,
+              elapsedSeconds: (elapsedTime / 1000).toFixed(2),
+              minRuntimeMs: MIN_RUNTIME_MS,
+              exitCode: code,
+            }
+          );
+          // Reject to indicate this was not a successful completion
+          reject(new Error(`Terminal exited too quickly after ${elapsedTime}ms (min: ${MIN_RUNTIME_MS}ms)`));
+          return;
+        }
+        
         log(
           "INFO",
-          "[detectTerminalIdle] Session ended before idle timeout was reached",
+          "[detectTerminalIdle] Session ended after reasonable runtime",
           {
             sessionName,
             elapsedTime,
             elapsedSeconds: (elapsedTime / 1000).toFixed(2),
           }
         );
+
+        // Call onIdle callback even for early exits if they ran long enough
+        if (onIdle) {
+          log("DEBUG", "[detectTerminalIdle] Calling onIdle callback for early exit", {
+            sessionName,
+          });
+          try {
+            onIdle();
+          } catch (callbackError) {
+            log("ERROR", "[detectTerminalIdle] onIdle callback failed", {
+              sessionName,
+              error: callbackError,
+            });
+          }
+        }
 
         resolve({
           elapsedMs: elapsedTime,

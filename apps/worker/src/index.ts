@@ -996,18 +996,20 @@ async function createTerminal(
   log("INFO", "command=", command);
   log("INFO", "args=", args);
 
-  // detect idle
-  if (command === "tmux" && args.length > 0) {
+  // detect idle - check if we're using tmux (either directly or as wrapper)
+  if (spawnCommand === "tmux" && spawnArgs.length > 0) {
     // Extract session name from tmux args
-    const sessionIndex = args.indexOf("-s");
+    const sessionIndex = spawnArgs.indexOf("-s");
     const sessionName =
-      sessionIndex !== -1 && args[sessionIndex + 1]
-        ? args[sessionIndex + 1]
+      sessionIndex !== -1 && spawnArgs[sessionIndex + 1]
+        ? spawnArgs[sessionIndex + 1]
         : terminalId;
 
     log("INFO", "Setting up idle detection for terminal", {
       terminalId,
       sessionName,
+      spawnCommand,
+      originalCommand: command,
     });
 
     detectTerminalIdle({
@@ -1051,15 +1053,18 @@ async function createTerminal(
       },
     })
       .then(async ({ elapsedMs }) => {
-        log("INFO", `Terminal ${terminalId} idle after ${elapsedMs}ms`, {
+        log("INFO", `Terminal ${terminalId} completed successfully after ${elapsedMs}ms`, {
           terminalId,
           taskId: options.taskId,
         });
       })
       .catch((error) => {
-        log("ERROR", `Failed to detect idle for terminal ${terminalId}`, {
+        log("WARNING", `Terminal ${terminalId} exited early or failed idle detection`, {
           error: error instanceof Error ? error.message : String(error),
+          terminalId,
+          taskId: options.taskId,
         });
+        // Don't emit idle event for early exits/failures
       });
   }
 
