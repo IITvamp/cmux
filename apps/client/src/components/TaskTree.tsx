@@ -170,7 +170,7 @@ export function TaskTree({ task, level = 0 }: TaskTreeProps) {
                   </TooltipTrigger>
                   <TooltipContent className="max-w-sm p-3 z-[9999]" side="right" sideOffset={5}>
                     <div className="space-y-2">
-                      <p className="font-medium text-sm">AI Judge in Progress</p>
+                      <p className="font-medium text-sm">Crown Evaluator in Progress</p>
                       <p className="text-xs text-muted-foreground">
                         The crown model is analyzing the code implementations from all models to determine which one 
                         best solves your task. The evaluation considers code quality, completeness, best 
