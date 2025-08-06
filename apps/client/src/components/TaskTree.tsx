@@ -6,6 +6,7 @@ import {
   CheckCircle,
   ChevronRight,
   Circle,
+  Crown,
   Loader2,
   XCircle,
 } from "lucide-react";
@@ -182,10 +183,13 @@ function TaskRunTree({ run, level, taskId }: TaskRunTreeProps) {
 
         <div className="mr-2 flex-shrink-0">{statusIcon}</div>
 
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 flex items-center gap-1">
           <span className="truncate text-neutral-700 dark:text-neutral-300">
             {displayText}
           </span>
+          {run.isCrowned && (
+            <Crown className="w-3 h-3 text-yellow-500 flex-shrink-0" />
+          )}
         </div>
       </Link>
 

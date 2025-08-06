@@ -12,6 +12,7 @@ import {
 } from "@tanstack/react-router";
 import clsx from "clsx";
 import { Suspense, useEffect } from "react";
+import { CrownStatus } from "../components/dashboard/CrownStatus";
 
 export const Route = createFileRoute("/_layout/task/$taskId")({
   component: TaskDetailPage,
@@ -198,10 +199,15 @@ function TaskDetailPage() {
                 // No onClick needed; active class controlled by URL
               >
                 <span style={{ paddingLeft: `${run.depth * 12}px` }}>
-                  Run {index + 1}
+                  {(() => {
+                    const agentMatch = run.prompt.match(/\(([^)]+)\)$/);
+                    const agentName = agentMatch ? agentMatch[1] : `Run ${index + 1}`;
+                    return agentName;
+                  })()}
                   {run.status === "running" && " 🟢"}
                   {run.status === "completed" && " ✅"}
                   {run.status === "failed" && " ❌"}
+                  {run.isCrowned && " 🏆"}
                 </span>
               </Link>
             ))}
@@ -210,6 +216,11 @@ function TaskDetailPage() {
       )}
 
       <div className="grow flex flex-col min-h-0">
+        {/* Crown Status */}
+        <div className="px-4 pt-2">
+          <CrownStatus taskId={taskId as Id<"tasks">} />
+        </div>
+        
         <Suspense fallback={<div>Loading...</div>}>
           <Outlet />
         </Suspense>

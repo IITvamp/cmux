@@ -316,6 +316,41 @@ function startSocketServer() {
         }
       });
 
+      // Execute shell command
+      socket.on("vscode:exec-command", async (data, callback) => {
+        try {
+          const { command, args = [], cwd = "/root/workspace" } = data;
+          log(`Executing shell command: ${command} ${args.join(' ')}`);
+          
+          // Use Node.js child_process to execute the command
+          const { exec } = require('child_process');
+          const fullCommand = `${command} ${args.map((arg: string) => `"${arg.replace(/"/g, '\\"')}"`).join(' ')}`;
+          
+          exec(fullCommand, { cwd }, (error: any, stdout: string, stderr: string) => {
+            if (error) {
+              log(`Command execution failed: ${error.message}`);
+              log(`stderr: ${stderr}`);
+              callback({ success: false, error: error.message });
+              return;
+            }
+            
+            log(`Command executed successfully`);
+            log(`stdout: ${stdout}`);
+            if (stderr) {
+              log(`stderr: ${stderr}`);
+            }
+            
+            callback({ 
+              success: true, 
+              result: { stdout, stderr }
+            });
+          });
+        } catch (error: any) {
+          log(`Command execution error:`, error);
+          callback({ success: false, error: error.message });
+        }
+      });
+
       // Terminal operations
       socket.on("vscode:create-terminal", (data, callback) => {
         try {
