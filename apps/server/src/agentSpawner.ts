@@ -1036,10 +1036,11 @@ export async function spawnAgent(
     // Replace $PROMPT placeholders in args with the actual prompt
     const processedArgs = agent.args.map((arg) => {
       if (arg === "$PROMPT") {
-        return `"${escapedPrompt}"`;
+        // Return the prompt without quotes since it's being passed as an array element
+        return processedTaskDescription;
       } else if (arg.includes("$PROMPT")) {
         // Replace $PROMPT within the argument string
-        return arg.replace(/\$PROMPT/g, escapedPrompt);
+        return arg.replace(/\$PROMPT/g, processedTaskDescription);
       }
       return arg;
     });
@@ -1304,14 +1305,23 @@ export async function spawnAgent(
         `[AgentSpawner] Terminal idle detected for ${agent.name}:`,
         data
       );
+      
+      // Debug logging to understand what's being compared
+      serverLogger.info(`[AgentSpawner] Terminal idle comparison:`);
+      serverLogger.info(`[AgentSpawner]   data.taskId: "${data.taskId}"`);
+      serverLogger.info(`[AgentSpawner]   taskRunId: "${taskRunId}"`);
+      serverLogger.info(`[AgentSpawner]   Match: ${data.taskId === taskRunId}`);
 
       // Update the task run as completed
       if (data.taskId === taskRunId) {
+        serverLogger.info(`[AgentSpawner] Task ID matched! Marking task as complete for ${agent.name}`);
         // CRITICAL: Add a delay to ensure changes are written to disk
         serverLogger.info(`[AgentSpawner] Waiting 3 seconds for file system to settle before capturing git diff...`);
         await new Promise(resolve => setTimeout(resolve, 3000));
         
         await handleTaskCompletion(0);
+      } else {
+        serverLogger.warn(`[AgentSpawner] Task ID did not match, ignoring idle event`);
       }
     });
 
@@ -1403,6 +1413,11 @@ export async function spawnAgent(
     }
 
     // Prepare the terminal creation command with auth files
+    // Use the original command and args directly instead of parsing agentCommand
+    // This avoids issues with quoted arguments being split incorrectly
+    const actualCommand = agent.command;
+    const actualArgs = processedArgs;
+    
     const terminalCreationCommand: WorkerCreateTerminal = {
       terminalId: tmuxSessionName,
       command: "tmux",
@@ -1411,9 +1426,8 @@ export async function spawnAgent(
         "-d",
         "-s",
         tmuxSessionName,
-        "bash",
-        "-c",
-        agentCommand,
+        actualCommand,
+        ...actualArgs,
       ],
       cols: 80,
       rows: 74,
