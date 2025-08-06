@@ -4,18 +4,43 @@ import {
   checkGitStatus,
   type DockerStatus,
   type GitStatus,
+  type GitHubStatus,
   type ProviderStatus as SharedProviderStatus
 } from "@cmux/shared";
+import { getGitHubTokenFromKeychain } from "./getGitHubToken.js";
+import { api } from "@cmux/convex/api";
+import { ConvexHttpClient } from "convex/browser";
+
+const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL || "";
+const convex = convexUrl ? new ConvexHttpClient(convexUrl) : null;
+
+async function checkGitHubStatus(): Promise<GitHubStatus> {
+  try {
+    const token = await getGitHubTokenFromKeychain(convex || undefined);
+    return {
+      isConfigured: !!token,
+      hasToken: !!token,
+    };
+  } catch (error) {
+    return {
+      isConfigured: false,
+      hasToken: false,
+      error: error instanceof Error ? error.message : "Unknown error",
+    };
+  }
+}
 
 export async function checkAllProvidersStatus(): Promise<{
   providers: SharedProviderStatus[];
   dockerStatus: DockerStatus;
   gitStatus: GitStatus;
+  githubStatus: GitHubStatus;
 }> {
-  // Check Docker and Git status once
-  const [dockerStatus, gitStatus] = await Promise.all([
+  // Check Docker, Git, and GitHub status once
+  const [dockerStatus, gitStatus, githubStatus] = await Promise.all([
     checkDockerStatus(),
     checkGitStatus(),
+    checkGitHubStatus(),
   ]);
 
   // Check each provider's specific requirements
@@ -39,5 +64,6 @@ export async function checkAllProvidersStatus(): Promise<{
     providers: providerChecks,
     dockerStatus,
     gitStatus,
+    githubStatus,
   };
 }

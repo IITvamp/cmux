@@ -244,11 +244,18 @@ export const GitStatusSchema = z.object({
   error: z.string().optional(),
 });
 
+export const GitHubStatusSchema = z.object({
+  isConfigured: z.boolean(),
+  hasToken: z.boolean(),
+  error: z.string().optional(),
+});
+
 export const ProviderStatusResponseSchema = z.object({
   success: z.boolean(),
   providers: z.array(ProviderStatusSchema).optional(),
   dockerStatus: DockerStatusSchema.optional(),
   gitStatus: GitStatusSchema.optional(),
+  githubStatus: GitHubStatusSchema.optional(),
   error: z.string().optional(),
 });
 
@@ -299,6 +306,7 @@ export type GitHubAuthResponse = z.infer<typeof GitHubAuthResponseSchema>;
 export type ProviderStatus = z.infer<typeof ProviderStatusSchema>;
 export type DockerStatus = z.infer<typeof DockerStatusSchema>;
 export type GitStatus = z.infer<typeof GitStatusSchema>;
+export type GitHubStatus = z.infer<typeof GitHubStatusSchema>;
 export type ProviderStatusResponse = z.infer<typeof ProviderStatusResponseSchema>;
 export type DefaultRepo = z.infer<typeof DefaultRepoSchema>;
 
