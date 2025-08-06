@@ -1,9 +1,9 @@
 import { api } from "@cmux/convex/api";
-import type { Id } from "@cmux/convex/dataModel";
+import type { Id, Doc } from "@cmux/convex/dataModel";
 import { isFakeConvexId } from "@/lib/fakeConvexId";
 import { useQuery } from "convex/react";
 import { Crown, Loader2, AlertCircle } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import {
   Tooltip,
   TooltipContent,
@@ -30,11 +30,30 @@ export function CrownStatus({ taskId }: CrownStatusProps) {
     isFakeConvexId(taskId) ? "skip" : { id: taskId }
   );
   
-  // Get crown evaluation
-  const crownedRun = useQuery(
-    api.crown.getCrownedRun, 
-    isFakeConvexId(taskId) ? "skip" : { taskId }
-  );
+  // Derive crowned run from taskRuns
+  const crownedRun = useMemo(() => {
+    if (!taskRuns) return null;
+    
+    // Define task run type with nested structure
+    interface TaskRunWithChildren extends Doc<"taskRuns"> {
+      children?: TaskRunWithChildren[];
+    }
+    
+    // Flatten all task runs (including children)
+    const allRuns: TaskRunWithChildren[] = [];
+    const flattenRuns = (runs: TaskRunWithChildren[]) => {
+      runs.forEach((run) => {
+        allRuns.push(run);
+        if (run.children) {
+          flattenRuns(run.children);
+        }
+      });
+    };
+    flattenRuns(taskRuns);
+    
+    // Find the crowned run
+    return allRuns.find(run => run.isCrowned === true) || null;
+  }, [taskRuns]);
 
   useEffect(() => {
     // Show status when we have multiple runs
