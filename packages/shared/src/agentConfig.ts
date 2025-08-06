@@ -2,7 +2,8 @@ import type { EnvironmentResult } from "./providers/common/environment-result.js
 
 import { AMP_CONFIG } from "./providers/amp/configs.js";
 import {
-  CLAUDE_OPUS_CONFIG,
+  CLAUDE_OPUS_4_1_CONFIG,
+  CLAUDE_OPUS_4_CONFIG,
   CLAUDE_SONNET_CONFIG,
 } from "./providers/anthropic/configs.js";
 import {
@@ -47,7 +48,8 @@ export interface AgentConfig {
 
 export const AGENT_CONFIGS: AgentConfig[] = [
   CLAUDE_SONNET_CONFIG,
-  CLAUDE_OPUS_CONFIG,
+  CLAUDE_OPUS_4_1_CONFIG,
+  CLAUDE_OPUS_4_CONFIG,
   CODEX_O3_CONFIG,
   CODEX_O4_MINI_CONFIG,
   CODEX_GPT_4_1_CONFIG,
