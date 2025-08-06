@@ -117,10 +117,8 @@ export function OpenWithDropdown({
                 key={item.id}
                 disabled={!item.enabled}
                 onClick={() => {
-                  const loadingToast = toast.loading(
-                    `Opening ${item.name}...`
-                  );
-                  
+                  const loadingToast = toast.loading(`Opening ${item.name}...`);
+
                   handleOpenInEditor(item.id)
                     .then(() => {
                       toast.success(`Opened ${item.name}`, {
@@ -129,16 +127,18 @@ export function OpenWithDropdown({
                     })
                     .catch((error) => {
                       let errorMessage = "Failed to open editor";
-                      
+
                       // Handle specific error cases
-                      if (error.message?.includes("ENOENT") || 
-                          error.message?.includes("not found") ||
-                          error.message?.includes("command not found")) {
+                      if (
+                        error.message?.includes("ENOENT") ||
+                        error.message?.includes("not found") ||
+                        error.message?.includes("command not found")
+                      ) {
                         errorMessage = `${item.name} is not installed or not found in PATH`;
                       } else if (error.message) {
                         errorMessage = error.message;
                       }
-                      
+
                       toast.error(errorMessage, {
                         id: loadingToast,
                       });
@@ -166,10 +166,6 @@ function ArrowSvg(props: React.ComponentProps<"svg">) {
       <path
         d="M8.99542 1.85876C9.75604 1.17425 10.9106 1.17422 11.6713 1.85878L16.5281 6.22989C17.0789 6.72568 17.7938 7.00001 18.5349 7.00001L15.89 7L11.0023 2.60207C10.622 2.2598 10.0447 2.2598 9.66436 2.60207L4.77734 7L2.13171 7.00001C2.87284 7.00001 3.58774 6.72568 4.13861 6.22989L8.99542 1.85876Z"
         className="fill-neutral-200 dark:fill-neutral-800"
-      />
-      <path
-        d="M10.3333 3.34539L5.47654 7.71648C4.55842 8.54279 3.36693 9 2.13172 9H0V8H2.13172C3.11989 8 4.07308 7.63423 4.80758 6.97318L9.66437 2.60207C10.0447 2.25979 10.622 2.2598 11.0023 2.60207L15.8591 6.97318C16.5936 7.63423 17.5468 8 18.5349 8H20V9H18.5349C17.2998 9 16.1083 8.54278 15.1901 7.71648L10.3333 3.34539Z"
-        className="stroke-neutral-200 dark:stroke-neutral-800 fill-none"
       />
     </svg>
   );
