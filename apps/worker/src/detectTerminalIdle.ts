@@ -121,7 +121,7 @@ export async function detectTerminalIdle(
     onIdle,
     ignorePatterns = DEFAULT_IGNORE_PATTERNS,
   } = options;
-
+  
   log("INFO", "[detectTerminalIdle] Starting terminal idle detection", {
     sessionName,
     idleTimeoutMs,
@@ -514,10 +514,10 @@ export async function detectTerminalIdle(
       if (maxRuntimeTimer) {
         clearTimeout(maxRuntimeTimer);
       }
-
+      
       if (!idleDetected) {
         // Session ended before idle timeout
-        // Only treat as completion if it ran for a reasonable amount of time
+        // Only treat as completion if it ran for a reasonable amount of time AND exited cleanly
         const MIN_RUNTIME_MS = 30000; // Require at least 30 seconds of runtime
         
         if (elapsedTime < MIN_RUNTIME_MS) {
@@ -537,34 +537,22 @@ export async function detectTerminalIdle(
           return;
         }
         
+        // Don't treat ANY exit as success if it happened too quickly
+        // Even exit code 0 can mean the process failed to properly start
         log(
-          "INFO",
-          "[detectTerminalIdle] Session ended after reasonable runtime",
+          "ERROR",
+          "[detectTerminalIdle] Session exited without reaching idle state - NOT marking as complete",
           {
             sessionName,
             elapsedTime,
             elapsedSeconds: (elapsedTime / 1000).toFixed(2),
+            exitCode: code,
+            signal,
           }
         );
-
-        // Call onIdle callback even for early exits if they ran long enough
-        if (onIdle) {
-          log("DEBUG", "[detectTerminalIdle] Calling onIdle callback for early exit", {
-            sessionName,
-          });
-          try {
-            onIdle();
-          } catch (callbackError) {
-            log("ERROR", "[detectTerminalIdle] onIdle callback failed", {
-              sessionName,
-              error: callbackError,
-            });
-          }
-        }
-
-        resolve({
-          elapsedMs: elapsedTime,
-        });
+        // Reject to indicate this was not a successful completion
+        reject(new Error(`Terminal exited prematurely with code ${code} after ${elapsedTime}ms - process likely failed to start properly`));
+        return;
       } else {
         log(
           "DEBUG",

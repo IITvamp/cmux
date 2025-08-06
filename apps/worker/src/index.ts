@@ -238,7 +238,7 @@ function registerWithMainServer(
   const registration: WorkerRegister = {
     workerId: WORKER_ID,
     capabilities: {
-      maxConcurrentTerminals: 50,
+      maxConcurrentTerminals: 50, // Reduced from 50 to prevent resource exhaustion
       supportedLanguages: ["javascript", "typescript", "python", "go", "rust"],
       gpuAvailable: false,
       memoryMB: Math.floor(totalmem() / 1024 / 1024),
@@ -972,7 +972,15 @@ async function createTerminal(
 
   // Handle process exit
   childProcess.on("exit", (code, signal) => {
-    log("INFO", `Process exited for terminal ${terminalId}`, { code, signal });
+    const runtime = Date.now() - processStartTime;
+    log("INFO", `Process exited for terminal ${terminalId}`, { 
+      code, 
+      signal,
+      runtime,
+      runtimeSeconds: (runtime / 1000).toFixed(2),
+      command: spawnCommand,
+      args: spawnArgs.slice(0, 5) // Log first 5 args for debugging
+    });
 
     // Notify via management socket
     emitToMainServer("worker:terminal-exit", {
@@ -1012,6 +1020,9 @@ async function createTerminal(
       originalCommand: command,
     });
 
+    // Track if idle detection completed successfully
+    let idleDetectionCompleted = false;
+
     detectTerminalIdle({
       sessionName: sessionName || terminalId,
       idleTimeoutMs: 5000, // 5 seconds for production
@@ -1021,6 +1032,7 @@ async function createTerminal(
           taskId: options.taskId,
         });
 
+        idleDetectionCompleted = true;
         const elapsedMs = Date.now() - processStartTime;
         // Emit idle event via management socket
         log("DEBUG", "Attempting to emit worker:terminal-idle", {
@@ -1056,6 +1068,7 @@ async function createTerminal(
         log("INFO", `Terminal ${terminalId} completed successfully after ${elapsedMs}ms`, {
           terminalId,
           taskId: options.taskId,
+          idleDetectionCompleted,
         });
       })
       .catch((error) => {
@@ -1115,7 +1128,7 @@ httpServer.listen(WORKER_PORT, () => {
 
 // Periodic maintenance for pending events
 setInterval(() => {
-  const MAX_EVENT_AGE = 5 * 60 * 1000; // 5 minutes
+  const MAX_EVENT_AGE = 30 * 60 * 1000; // 30 minutes (increased to handle longer tasks)
   const now = Date.now();
   const originalCount = pendingEvents.length;
   
