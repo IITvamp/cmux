@@ -71,12 +71,13 @@ export abstract class VSCodeInstance extends EventEmitter {
     return new Promise((resolve, reject) => {
       this.workerSocket = io(`${workerUrl}/management`, {
         reconnection: true,
-        reconnectionAttempts: 10,
-        reconnectionDelay: 1000,
-        reconnectionDelayMax: 5000,
-        timeout: 10000,
-        transports: ["websocket"],
+        reconnectionAttempts: 10, // Keep trying 10 times
+        reconnectionDelay: 2000,
+        reconnectionDelayMax: 10000,
+        timeout: 30000, // 30 seconds timeout
+        transports: ["websocket"], // Allow fallback to polling
         upgrade: false,
+        forceNew: true, // Force new connection
       });
 
       this.workerSocket.on("connect", () => {
@@ -86,9 +87,9 @@ export abstract class VSCodeInstance extends EventEmitter {
         resolve();
       });
 
-      this.workerSocket.on("disconnect", () => {
-        dockerLogger.info(
-          `[VSCodeInstance ${this.instanceId}] Disconnected from worker`
+      this.workerSocket.on("disconnect", (reason) => {
+        dockerLogger.warn(
+          `[VSCodeInstance ${this.instanceId}] Disconnected from worker: ${reason}`
         );
         this.workerConnected = false;
         this.emit("worker-disconnected");
@@ -99,7 +100,10 @@ export abstract class VSCodeInstance extends EventEmitter {
           `[VSCodeInstance ${this.instanceId}] Worker connection error:`,
           error.message
         );
-        reject(error);
+        // Don't reject on connection errors after initial connection
+        if (!this.workerConnected) {
+          reject(error);
+        }
       });
 
       // Set up worker event handlers

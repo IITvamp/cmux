@@ -78,8 +78,9 @@ export async function startServer({
       methods: ["GET", "POST"],
     },
     maxHttpBufferSize: 50 * 1024 * 1024, // 50MB to handle multiple images
-    pingTimeout: 60000, // 60 seconds
-    pingInterval: 25000, // 25 seconds
+    pingTimeout: 120000, // 120 seconds - match worker settings
+    pingInterval: 30000, // 30 seconds - match worker settings  
+    allowEIO3: true, // Allow different Socket.IO versions
   });
 
   setupWebSocketProxy(httpServer);

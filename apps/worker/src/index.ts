@@ -119,8 +119,9 @@ const io = new Server(httpServer, {
     methods: ["GET", "POST"],
   },
   maxHttpBufferSize: 50 * 1024 * 1024, // 50MB to handle large images
-  pingTimeout: 60000, // 60 seconds
-  pingInterval: 25000, // 25 seconds
+  pingTimeout: 240000, // 120 seconds - increased for long tasks
+  pingInterval: 30000, // 30 seconds
+  upgradeTimeout: 30000, // 30 seconds
 });
 
 // Client namespace
@@ -784,14 +785,15 @@ managementIO.on("connection", (socket) => {
     gracefulShutdown();
   });
 
-  socket.on("disconnect", () => {
-    console.log(`Main server disconnected from worker ${WORKER_ID}`);
+  socket.on("disconnect", (reason) => {
+    log("WARNING", `Main server disconnected from worker ${WORKER_ID}`, { reason });
     mainServerSocket = null;
     
     // Log if we have pending events that need to be sent
     if (pendingEvents.length > 0) {
       log("WARNING", `Main server disconnected with ${pendingEvents.length} pending events`, {
-        pendingEvents: pendingEvents.map(e => ({ event: e.event, age: Date.now() - e.timestamp }))
+        pendingEvents: pendingEvents.map(e => ({ event: e.event, age: Date.now() - e.timestamp })),
+        disconnectReason: reason
       });
     }
   });
@@ -1025,7 +1027,7 @@ async function createTerminal(
 
     detectTerminalIdle({
       sessionName: sessionName || terminalId,
-      idleTimeoutMs: 5000, // 60 seconds - for longer tasks that may pause
+      idleTimeoutMs: 15000, // 15 seconds - for longer tasks that may pause
       onIdle: () => {
         log("INFO", "Terminal idle detected", {
           terminalId,
