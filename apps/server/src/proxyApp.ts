@@ -249,10 +249,14 @@ export function createProxyApp({
         const proxy = httpProxy.createProxyServer({
           target: `http://localhost:${actualPort}`,
           changeOrigin: true,
+          // Increase timeout for long-running requests
+          proxyTimeout: 120000, // 120 seconds
+          timeout: 120000, // 120 seconds
         });
 
         // Handle proxy errors
         proxy.on("error", (err: Error) => {
+          serverLogger.error(`HTTP proxy error for ${fullContainerName}:${actualPort}:`, err.message);
           if (!res.headersSent) {
             res.status(502).send(`Proxy error: ${err.message}`);
           }
@@ -375,21 +379,36 @@ export function setupWebSocketProxy(server: Server) {
         return;
       }
 
-      // Create http-proxy for WebSocket
+      // Create http-proxy for WebSocket with better timeout settings
       const proxy = httpProxy.createProxyServer({
         target: `ws://localhost:${actualPort}`,
         ws: true,
         changeOrigin: true,
+        // Add timeout settings to prevent premature disconnections
+        proxyTimeout: 0, // Disable timeout for WebSocket connections
+        timeout: 0, // Disable timeout
       });
 
+      // Keep the socket alive
+      socket.setKeepAlive(true, 30000); // Send keepalive every 30 seconds
+      socket.setNoDelay(true); // Disable Nagle algorithm for lower latency
+      
       // Handle proxy errors
       proxy.on("error", (err: Error) => {
         serverLogger.error(
           `WebSocket proxy error for ${containerName}:${actualPort}:`,
           err.message
         );
-        socket.end("HTTP/1.1 502 Bad Gateway\r\n\r\n");
+        if (!socket.destroyed) {
+          socket.end("HTTP/1.1 502 Bad Gateway\r\n\r\n");
+        }
       });
+      
+      proxy.on("proxyReqWs", (proxyReq, req, socket) => {
+        // Log WebSocket upgrade for debugging
+        serverLogger.info(`WebSocket upgrade for ${containerName}:${actualPort} established`);
+      });
+      
       proxy.ws(request, socket, head);
     }
   );

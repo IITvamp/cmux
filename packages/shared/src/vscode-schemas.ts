@@ -53,6 +53,7 @@ export interface VSCodeClientToServerEvents {
       command: string;
       args?: string[];
       cwd?: string;
+      env?: Record<string, string>;
     },
     callback: (response: { success: boolean; result?: { stdout: string; stderr: string }; error?: string }) => void
   ) => void;

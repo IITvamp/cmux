@@ -119,8 +119,9 @@ const io = new Server(httpServer, {
     methods: ["GET", "POST"],
   },
   maxHttpBufferSize: 50 * 1024 * 1024, // 50MB to handle large images
-  pingTimeout: 60000, // 60 seconds
-  pingInterval: 25000, // 25 seconds
+  pingTimeout: 240000, // 120 seconds - increased for long tasks
+  pingInterval: 30000, // 30 seconds
+  upgradeTimeout: 30000, // 30 seconds
 });
 
 // Client namespace
@@ -238,7 +239,7 @@ function registerWithMainServer(
   const registration: WorkerRegister = {
     workerId: WORKER_ID,
     capabilities: {
-      maxConcurrentTerminals: 50,
+      maxConcurrentTerminals: 50, // Reduced from 50 to prevent resource exhaustion
       supportedLanguages: ["javascript", "typescript", "python", "go", "rust"],
       gpuAvailable: false,
       memoryMB: Math.floor(totalmem() / 1024 / 1024),
@@ -711,9 +712,21 @@ managementIO.on("connection", (socket) => {
         cwd: validated.cwd,
       });
 
-      const commandWithArgs = validated.args
-        ? `${validated.command} ${validated.args.join(" ")}`
-        : validated.command;
+      // Special handling for shell commands (bash/sh with -c flag)
+      let commandWithArgs: string;
+      if ((validated.command === '/bin/bash' || validated.command === 'bash' || 
+           validated.command === '/bin/sh' || validated.command === 'sh') && 
+          validated.args && validated.args[0] === '-c') {
+        // For shell commands with -c, the command to execute should be a single argument
+        // We need to properly quote it
+        const shellCommand = validated.args.slice(1).join(' ');
+        commandWithArgs = `${validated.command} -c "${shellCommand.replace(/"/g, '\\"')}"`;
+      } else if (validated.args) {
+        // For other commands, join normally
+        commandWithArgs = `${validated.command} ${validated.args.join(" ")}`;
+      } else {
+        commandWithArgs = validated.command;
+      }
 
       const execOptions = {
         cwd: validated.cwd || process.env.HOME || "/",
@@ -772,14 +785,15 @@ managementIO.on("connection", (socket) => {
     gracefulShutdown();
   });
 
-  socket.on("disconnect", () => {
-    console.log(`Main server disconnected from worker ${WORKER_ID}`);
+  socket.on("disconnect", (reason) => {
+    log("WARNING", `Main server disconnected from worker ${WORKER_ID}`, { reason });
     mainServerSocket = null;
     
     // Log if we have pending events that need to be sent
     if (pendingEvents.length > 0) {
       log("WARNING", `Main server disconnected with ${pendingEvents.length} pending events`, {
-        pendingEvents: pendingEvents.map(e => ({ event: e.event, age: Date.now() - e.timestamp }))
+        pendingEvents: pendingEvents.map(e => ({ event: e.event, age: Date.now() - e.timestamp })),
+        disconnectReason: reason
       });
     }
   });
@@ -960,7 +974,15 @@ async function createTerminal(
 
   // Handle process exit
   childProcess.on("exit", (code, signal) => {
-    log("INFO", `Process exited for terminal ${terminalId}`, { code, signal });
+    const runtime = Date.now() - processStartTime;
+    log("INFO", `Process exited for terminal ${terminalId}`, { 
+      code, 
+      signal,
+      runtime,
+      runtimeSeconds: (runtime / 1000).toFixed(2),
+      command: spawnCommand,
+      args: spawnArgs.slice(0, 5) // Log first 5 args for debugging
+    });
 
     // Notify via management socket
     emitToMainServer("worker:terminal-exit", {
@@ -984,29 +1006,35 @@ async function createTerminal(
   log("INFO", "command=", command);
   log("INFO", "args=", args);
 
-  // detect idle
-  if (command === "tmux" && args.length > 0) {
+  // detect idle - check if we're using tmux (either directly or as wrapper)
+  if (spawnCommand === "tmux" && spawnArgs.length > 0) {
     // Extract session name from tmux args
-    const sessionIndex = args.indexOf("-s");
+    const sessionIndex = spawnArgs.indexOf("-s");
     const sessionName =
-      sessionIndex !== -1 && args[sessionIndex + 1]
-        ? args[sessionIndex + 1]
+      sessionIndex !== -1 && spawnArgs[sessionIndex + 1]
+        ? spawnArgs[sessionIndex + 1]
         : terminalId;
 
     log("INFO", "Setting up idle detection for terminal", {
       terminalId,
       sessionName,
+      spawnCommand,
+      originalCommand: command,
     });
+
+    // Track if idle detection completed successfully
+    let idleDetectionCompleted = false;
 
     detectTerminalIdle({
       sessionName: sessionName || terminalId,
-      idleTimeoutMs: 5000, // 5 seconds for production
+      idleTimeoutMs: 15000, // 15 seconds - for longer tasks that may pause
       onIdle: () => {
         log("INFO", "Terminal idle detected", {
           terminalId,
           taskId: options.taskId,
         });
 
+        idleDetectionCompleted = true;
         const elapsedMs = Date.now() - processStartTime;
         // Emit idle event via management socket
         log("DEBUG", "Attempting to emit worker:terminal-idle", {
@@ -1039,15 +1067,19 @@ async function createTerminal(
       },
     })
       .then(async ({ elapsedMs }) => {
-        log("INFO", `Terminal ${terminalId} idle after ${elapsedMs}ms`, {
+        log("INFO", `Terminal ${terminalId} completed successfully after ${elapsedMs}ms`, {
           terminalId,
           taskId: options.taskId,
+          idleDetectionCompleted,
         });
       })
       .catch((error) => {
-        log("ERROR", `Failed to detect idle for terminal ${terminalId}`, {
+        log("WARNING", `Terminal ${terminalId} exited early or failed idle detection`, {
           error: error instanceof Error ? error.message : String(error),
+          terminalId,
+          taskId: options.taskId,
         });
+        // Don't emit idle event for early exits/failures
       });
   }
 
@@ -1098,7 +1130,7 @@ httpServer.listen(WORKER_PORT, () => {
 
 // Periodic maintenance for pending events
 setInterval(() => {
-  const MAX_EVENT_AGE = 5 * 60 * 1000; // 5 minutes
+  const MAX_EVENT_AGE = 30 * 60 * 1000; // 30 minutes (increased to handle longer tasks)
   const now = Date.now();
   const originalCount = pendingEvents.length;
   

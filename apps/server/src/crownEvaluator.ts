@@ -6,8 +6,6 @@ import type { ConvexHttpClient } from "convex/browser";
 import { z } from "zod";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
-import { io, type Socket } from "socket.io-client";
-import type { WorkerToServerEvents, ServerToWorkerEvents } from "@cmux/shared";
 
 // Define schemas for structured output
 const ImplementationSchema = z.object({
@@ -30,7 +28,8 @@ type CrownEvaluationResponse = z.infer<typeof CrownEvaluationResponseSchema>;
 async function createPullRequestForWinner(
   convex: ConvexHttpClient,
   taskRunId: Id<"taskRuns">,
-  taskId: Id<"tasks">
+  taskId: Id<"tasks">,
+  githubToken?: string | null
 ): Promise<void> {
   try {
     serverLogger.info(`[CrownEvaluator] Creating pull request for winner ${taskRunId}`);
@@ -124,17 +123,23 @@ Completed: ${new Date().toISOString()}`;
     
     if (extensionPort) {
       // Try VSCode extension method first
-      const extensionResult = await tryVSCodeExtensionCommitAndPR(
+      const extensionResult = await tryVSCodeExtensionCommitAndPush(
         extensionPort,
         branchName,
         commitMessage,
         agentName,
         prTitle,
-        prBody
+        prBody,
+        githubToken || undefined
       );
       
       if (extensionResult.success) {
-        serverLogger.info(`[CrownEvaluator] Successfully created PR via VSCode extension`);
+        if (githubToken) {
+          serverLogger.info(`[CrownEvaluator] Successfully created PR via VSCode extension`);
+        } else {
+          serverLogger.info(`[CrownEvaluator] Successfully pushed branch via VSCode extension`);
+          serverLogger.info(`[CrownEvaluator] Branch '${branchName}' has been pushed. You can manually create a PR from GitHub.`);
+        }
         return;
       }
       
@@ -160,23 +165,32 @@ Completed: ${new Date().toISOString()}`;
       { cmd: `git commit -m "${commitMessage.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\$/g, "\\$")}"`, desc: "Committing" },
       // Push
       { cmd: `git push -u origin ${branchName}`, desc: "Pushing branch" },
-      // Create PR
-      { cmd: `gh pr create --title "${prTitle.replace(/"/g, '\\"')}" --body "${prBody.replace(/"/g, '\\"').replace(/\n/g, '\\n')}" --web`, desc: "Creating PR" }
     ];
+    
+    // Only add PR creation command if GitHub token is available
+    if (githubToken) {
+      gitCommands.push({
+        cmd: `GH_TOKEN="${githubToken}" gh pr create --title "${prTitle.replace(/"/g, '\\"')}" --body "${prBody.replace(/"/g, '\\"').replace(/\n/g, '\\n')}" --head "${branchName}"`,
+        desc: "Creating PR"
+      });
+    } else {
+      serverLogger.info(`[CrownEvaluator] Skipping PR creation - no GitHub token configured`);
+      serverLogger.info(`[CrownEvaluator] Branch '${branchName}' has been pushed. You can manually create a PR from GitHub.`);
+    }
     
     for (const { cmd, desc } of gitCommands) {
       serverLogger.info(`[CrownEvaluator] ${desc}...`);
       
-      const result = await new Promise<{ success: boolean; error?: string }>((resolve) => {
+      const result = await new Promise<{ success: boolean; error?: string; stdout?: string; stderr?: string }>((resolve) => {
         workerSocket
           .timeout(30000)
           .emit(
             "worker:exec",
             {
-              command: "bash",
+              command: "/bin/bash",
               args: ["-c", cmd],
               cwd: "/root/workspace",
-              env: {},
+              env: githubToken ? { GH_TOKEN: githubToken } : {},
             },
             (timeoutError: any, result: any) => {
               if (timeoutError) {
@@ -194,16 +208,53 @@ Completed: ${new Date().toISOString()}`;
                 serverLogger.info(`[CrownEvaluator] ${desc} - stderr:`, stderr);
               }
               
-              resolve({ success: exitCode === 0 });
+              resolve({ success: exitCode === 0, stdout, stderr });
             }
           );
       });
       
       if (!result.success) {
         serverLogger.error(`[CrownEvaluator] Failed at step: ${desc}`, result.error);
+        
+        // If gh pr create fails, log more details
+        if (cmd.includes("gh pr create")) {
+          serverLogger.error(`[CrownEvaluator] PR creation failed. stdout: ${result.stdout}, stderr: ${result.stderr}`);
+          
+          // Try to check gh auth status
+          const authCheckResult = await new Promise<{ success: boolean; stdout?: string; stderr?: string }>((resolve) => {
+            workerSocket
+              .timeout(10000)
+              .emit(
+                "worker:exec",
+                {
+                  command: "/bin/bash",
+                  args: ["-c", githubToken ? `GH_TOKEN="${githubToken}" gh auth status` : "gh auth status"],
+                  cwd: "/root/workspace",
+                  env: githubToken ? { GH_TOKEN: githubToken } : {},
+                },
+                (timeoutError: any, authResult: any) => {
+                  if (timeoutError || authResult.error) {
+                    resolve({ success: false, stdout: "", stderr: timeoutError ? "timeout" : authResult.error.message });
+                    return;
+                  }
+                  const { stdout, stderr, exitCode } = authResult.data;
+                  resolve({ success: exitCode === 0, stdout, stderr });
+                }
+              );
+          });
+          
+          serverLogger.error(`[CrownEvaluator] gh auth status - stdout: ${authCheckResult.stdout}, stderr: ${authCheckResult.stderr}`);
+        }
+        
         // Continue anyway for some commands
         if (!cmd.includes("git checkout") && !cmd.includes("gh pr create")) {
           return;
+        }
+      } else {
+        // If successful and it's the PR creation command, log the URL
+        if (cmd.includes("gh pr create") && result.stdout) {
+          serverLogger.info(`[CrownEvaluator] PR created successfully!`);
+          serverLogger.info(`[CrownEvaluator] PR URL: ${result.stdout.trim()}`);
         }
       }
     }
@@ -215,13 +266,14 @@ Completed: ${new Date().toISOString()}`;
   }
 }
 
-async function tryVSCodeExtensionCommitAndPR(
+async function tryVSCodeExtensionCommitAndPush(
   extensionPort: string,
   branchName: string,
   commitMessage: string,
   agentName: string,
   prTitle: string,
-  prBody: string
+  prBody: string,
+  githubToken?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
     const { io } = await import("socket.io-client");
@@ -257,35 +309,48 @@ async function tryVSCodeExtensionCommitAndPR(
               return;
             }
             
-            // Then create PR using GitHub CLI
-            extensionSocket.emit(
-              "vscode:exec-command",
-              {
-                command: "gh",
-                args: [
-                  "pr",
-                  "create",
-                  "--title",
-                  prTitle,
-                  "--body",
-                  prBody,
-                  "--web"
-                ],
-                cwd: "/root/workspace"
-              },
-              (prResponse: any) => {
-                clearTimeout(timeout);
-                extensionSocket.disconnect();
-                
-                if (prResponse.success) {
-                  serverLogger.info(`[CrownEvaluator] PR created successfully via VSCode extension`);
-                  resolve({ success: true });
-                } else {
-                  serverLogger.error(`[CrownEvaluator] PR creation failed:`, prResponse.error);
-                  resolve({ success: false, error: prResponse.error });
+            // Only create PR if GitHub token is available
+            if (githubToken) {
+              extensionSocket.emit(
+                "vscode:exec-command",
+                {
+                  command: "gh",
+                  args: [
+                    "pr",
+                    "create",
+                    "--title",
+                    prTitle,
+                    "--body",
+                    prBody,
+                    "--head",
+                    branchName
+                  ],
+                  cwd: "/root/workspace",
+                  env: { GH_TOKEN: githubToken }
+                },
+                (prResponse: any) => {
+                  clearTimeout(timeout);
+                  extensionSocket.disconnect();
+                  
+                  if (prResponse.success) {
+                    serverLogger.info(`[CrownEvaluator] PR created successfully via VSCode extension`);
+                    if (prResponse.result?.stdout) {
+                      serverLogger.info(`[CrownEvaluator] PR URL: ${prResponse.result.stdout.trim()}`);
+                    }
+                    resolve({ success: true });
+                  } else {
+                    serverLogger.error(`[CrownEvaluator] PR creation failed:`, prResponse.error);
+                    resolve({ success: false, error: prResponse.error });
+                  }
                 }
-              }
-            );
+              );
+            } else {
+              // No GitHub token, just push was successful
+              clearTimeout(timeout);
+              extensionSocket.disconnect();
+              serverLogger.info(`[CrownEvaluator] Branch pushed successfully via VSCode extension (PR creation skipped - no token)`);
+              resolve({ success: true });
+            }
           }
         );
       });
@@ -316,6 +381,10 @@ export async function evaluateCrownWithClaudeCode(
   serverLogger.info(`[CrownEvaluator] =================================================`);
 
   try {
+    // Get GitHub token
+    const { getGitHubTokenFromKeychain } = await import("./utils/getGitHubToken.js");
+    const githubToken = await getGitHubTokenFromKeychain(convex);
+    
     // Get task and runs
     const task = await convex.query(api.tasks.getById, { id: taskId });
     if (!task) {
@@ -444,6 +513,12 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
     serverLogger.info(`[CrownEvaluator]   ${idx}: ${line.substring(0, 100)}${line.length > 100 ? '...' : ''}`);
   });
   
+  // Update status to in_progress
+  await convex.mutation(api.tasks.updateCrownError, {
+    id: taskId,
+    crownEvaluationError: "in_progress",
+  });
+  
   serverLogger.info(`[CrownEvaluator] Starting Claude Code spawn...`);
   const startTime = Date.now();
 
@@ -456,16 +531,14 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
   try {
     serverLogger.info(`[CrownEvaluator] Attempting to run with bunx...`);
     
-    // Use --print flag for non-interactive output, just like the agents but with --print
+    // Remove --print flag and use stdin instead for more reliable execution
     const args = [
       "@anthropic-ai/claude-code",
       "--model", "claude-sonnet-4-20250514", 
-      "--dangerously-skip-permissions",
-      "--print",
-      evaluationPrompt
+      "--dangerously-skip-permissions"
     ];
     
-    serverLogger.info(`[CrownEvaluator] Command: bunx ${args.slice(0, 4).join(' ')} [prompt]`);
+    serverLogger.info(`[CrownEvaluator] Command: bunx ${args.join(' ')}`);
     
     const bunxProcess = spawn("bunx", args, {
       env: { ...process.env },
@@ -475,7 +548,8 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
 
     serverLogger.info(`[CrownEvaluator] Process spawned with PID: ${bunxProcess.pid}`);
 
-    // Close stdin since we're passing prompt as an argument
+    // Write prompt to stdin and close
+    bunxProcess.stdin.write(evaluationPrompt);
     bunxProcess.stdin.end();
     
     stdout = "";
@@ -547,17 +621,34 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
 
       setTimeout(() => {
         if (!processExited) {
-          serverLogger.error(`[CrownEvaluator] Process timeout after 90 seconds, killing...`);
+          serverLogger.error(`[CrownEvaluator] Process timeout after 60 seconds, killing...`);
           bunxProcess.kill('SIGKILL');
           reject(new Error("Timeout"));
         }
-      }, 90000);
+      }, 60000); // Reduce timeout to 60 seconds
     });
 
     serverLogger.info(`[CrownEvaluator] bunx completed with exit code ${exitCode}`);
   } catch (bunxError) {
     serverLogger.error(`[CrownEvaluator] bunx failed:`, bunxError);
-    throw new Error("Could not run Claude Code via bunx. Please ensure @anthropic-ai/claude-code is available.");
+    
+    // Fallback: Pick the first completed run as winner if Claude Code fails
+    serverLogger.warn(`[CrownEvaluator] Falling back to selecting first completed run as winner`);
+    
+    const fallbackWinner = candidateData[0];
+    await convex.mutation(api.crown.setCrownWinner, {
+      taskRunId: fallbackWinner.runId,
+      reason: "Selected as fallback winner (crown evaluation failed to run)",
+    });
+    
+    await convex.mutation(api.tasks.updateCrownError, {
+      id: taskId,
+      crownEvaluationError: undefined,
+    });
+    
+    serverLogger.info(`[CrownEvaluator] Fallback winner selected: ${fallbackWinner.agentName}`);
+    await createPullRequestForWinner(convex, fallbackWinner.runId, taskId, githubToken || undefined);
+    return;
   }
 
   serverLogger.info(`[CrownEvaluator] Process completed after ${Date.now() - startTime}ms`);
@@ -566,7 +657,25 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
   serverLogger.info(`[CrownEvaluator] Full stdout:\n${stdout}`);
 
   if (exitCode !== 0) {
-    throw new Error(`Claude Code exited with error code ${exitCode}. Stderr: ${stderr}`);
+    serverLogger.error(`[CrownEvaluator] Claude Code exited with error code ${exitCode}. Stderr: ${stderr}`);
+    
+    // Fallback: Pick the first completed run as winner if Claude Code fails
+    serverLogger.warn(`[CrownEvaluator] Falling back to selecting first completed run as winner due to non-zero exit code`);
+    
+    const fallbackWinner = candidateData[0];
+    await convex.mutation(api.crown.setCrownWinner, {
+      taskRunId: fallbackWinner.runId,
+      reason: "Selected as fallback winner (crown evaluation exited with error)",
+    });
+    
+    await convex.mutation(api.tasks.updateCrownError, {
+      id: taskId,
+      crownEvaluationError: undefined,
+    });
+    
+    serverLogger.info(`[CrownEvaluator] Fallback winner selected: ${fallbackWinner.agentName}`);
+    await createPullRequestForWinner(convex, fallbackWinner.runId, taskId, githubToken || undefined);
+    return;
   }
 
   // Parse the response
@@ -600,7 +709,23 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
         };
         serverLogger.info(`[CrownEvaluator] Extracted winner index ${index} from output`);
       } else {
-        throw new Error("Claude Code did not return a valid response");
+        serverLogger.error(`[CrownEvaluator] Could not extract valid response from output`);
+        
+        // Fallback: Pick the first completed run as winner
+        const fallbackWinner = candidateData[0];
+        await convex.mutation(api.crown.setCrownWinner, {
+          taskRunId: fallbackWinner.runId,
+          reason: "Selected as fallback winner (no valid response from evaluator)",
+        });
+        
+        await convex.mutation(api.tasks.updateCrownError, {
+          id: taskId,
+          crownEvaluationError: undefined,
+        });
+        
+        serverLogger.info(`[CrownEvaluator] Fallback winner selected: ${fallbackWinner.agentName}`);
+        await createPullRequestForWinner(convex, fallbackWinner.runId, taskId, githubToken || undefined);
+        return;
       }
     }
   } else {
@@ -610,13 +735,44 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
       serverLogger.info(`[CrownEvaluator] Successfully parsed JSON response: ${JSON.stringify(jsonResponse)}`);
     } catch (parseError) {
       serverLogger.error(`[CrownEvaluator] Failed to parse JSON:`, parseError);
-      throw new Error("Invalid JSON response from Claude Code");
+      
+      // Fallback: Pick the first completed run as winner
+      const fallbackWinner = candidateData[0];
+      await convex.mutation(api.crown.setCrownWinner, {
+        taskRunId: fallbackWinner.runId,
+        reason: "Selected as fallback winner (invalid JSON from evaluator)",
+      });
+      
+      await convex.mutation(api.tasks.updateCrownError, {
+        id: taskId,
+        crownEvaluationError: undefined,
+      });
+      
+      serverLogger.info(`[CrownEvaluator] Fallback winner selected: ${fallbackWinner.agentName}`);
+      await createPullRequestForWinner(convex, fallbackWinner.runId, taskId, githubToken || undefined);
+      return;
     }
   }
 
   // Validate winner index
   if (jsonResponse.winner >= candidateData.length) {
-    throw new Error(`Invalid winner index ${jsonResponse.winner}, must be less than ${candidateData.length}`);
+    serverLogger.error(`[CrownEvaluator] Invalid winner index ${jsonResponse.winner}, must be less than ${candidateData.length}`);
+    
+    // Fallback: Pick the first completed run as winner
+    const fallbackWinner = candidateData[0];
+    await convex.mutation(api.crown.setCrownWinner, {
+      taskRunId: fallbackWinner.runId,
+      reason: "Selected as fallback winner (invalid winner index from evaluator)",
+    });
+    
+    await convex.mutation(api.tasks.updateCrownError, {
+      id: taskId,
+      crownEvaluationError: undefined,
+    });
+    
+    serverLogger.info(`[CrownEvaluator] Fallback winner selected: ${fallbackWinner.agentName}`);
+    await createPullRequestForWinner(convex, fallbackWinner.runId, taskId, githubToken || undefined);
+    return;
   }
 
   const winner = candidateData[jsonResponse.winner];
@@ -638,7 +794,7 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
   serverLogger.info(`[CrownEvaluator] Crown evaluation completed successfully for task ${taskId}`);
   
   // Create pull request for the winner
-  await createPullRequestForWinner(convex, winner.runId, taskId);
+  await createPullRequestForWinner(convex, winner.runId, taskId, githubToken || undefined);
   } catch (error) {
     serverLogger.error(`[CrownEvaluator] Error during evaluation:`, error);
     
