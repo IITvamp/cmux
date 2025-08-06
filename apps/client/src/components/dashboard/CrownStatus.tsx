@@ -100,7 +100,7 @@ export function CrownStatus({ taskId }: CrownStatusProps) {
               <p className="font-medium text-sm">Crown Evaluation System</p>
               <p className="text-xs text-muted-foreground">
                 Multiple AI models are working on your task in parallel. Once all models complete, 
-                Claude will evaluate and select the best implementation.
+                the crown model will evaluate and select the best implementation.
               </p>
               <div className="border-t pt-2 mt-2">
                 <p className="text-xs font-medium mb-1">Competing models:</p>
@@ -182,7 +182,7 @@ export function CrownStatus({ taskId }: CrownStatusProps) {
             <div className="space-y-2">
               <p className="font-medium text-sm">AI Judge in Progress</p>
               <p className="text-xs text-muted-foreground">
-                Claude is analyzing the code implementations from all models to determine which one 
+                The crown model is analyzing the code implementations from all models to determine which one 
                 best solves your task. The evaluation considers code quality, completeness, best 
                 practices, and correctness.
               </p>
