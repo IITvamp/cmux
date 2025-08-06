@@ -15,8 +15,8 @@ for arg in "$@"; do
     esac
 done
 
-# Check if anything is running on ports 5173, $CONVEX_PORT, 9777, 9778
-PORTS_TO_CHECK="5173 $CONVEX_PORT 9777 9778"
+# Check if anything is running on ports 5173, $CONVEX_PORT, 9777, 9778, 9779
+PORTS_TO_CHECK="5173 $CONVEX_PORT 9777 9778 9779"
 
 echo -e "${BLUE}Checking ports and cleaning up processes...${NC}"
 
@@ -71,6 +71,7 @@ cleanup() {
     [ -n "$CLIENT_PID" ] && kill $CLIENT_PID 2>/dev/null
     [ -n "$CONVEX_DEV_PID" ] && kill $CONVEX_DEV_PID 2>/dev/null
     [ -n "$DOCKER_COMPOSE_PID" ] && kill $DOCKER_COMPOSE_PID 2>/dev/null
+    [ -n "$PREVIEW_SERVICE_PID" ] && kill $PREVIEW_SERVICE_PID 2>/dev/null
     # Give processes time to cleanup
     sleep 1
     # Force kill any remaining processes
@@ -78,6 +79,7 @@ cleanup() {
     [ -n "$CLIENT_PID" ] && kill -9 $CLIENT_PID 2>/dev/null
     [ -n "$CONVEX_DEV_PID" ] && kill -9 $CONVEX_DEV_PID 2>/dev/null
     [ -n "$DOCKER_COMPOSE_PID" ] && kill -9 $DOCKER_COMPOSE_PID 2>/dev/null
+    [ -n "$PREVIEW_SERVICE_PID" ] && kill -9 $PREVIEW_SERVICE_PID 2>/dev/null
     exit
 }
 
@@ -152,9 +154,16 @@ echo -e "${GREEN}Starting frontend on port 5173...${NC}"
 CLIENT_PID=$!
 check_process $CLIENT_PID "Frontend Client"
 
+# Start the preview service
+echo -e "${GREEN}Starting preview service on port 9779...${NC}"
+(cd apps/preview-service && exec bash -c 'trap "kill -9 0" EXIT; PORT=9779 bun run dev 2>&1 | prefix_output "PREVIEW" "$MAGENTA"') &
+PREVIEW_SERVICE_PID=$!
+check_process $PREVIEW_SERVICE_PID "Preview Service"
+
 echo -e "${GREEN}Terminal app is running!${NC}"
 echo -e "${BLUE}Frontend: http://localhost:5173${NC}"
 echo -e "${BLUE}Backend: http://localhost:9776${NC}"
+echo -e "${BLUE}Preview Service: http://localhost:9779${NC}"
 echo -e "${BLUE}Convex: http://localhost:$CONVEX_PORT${NC}"
 echo -e "\nPress Ctrl+C to stop all services"
 
