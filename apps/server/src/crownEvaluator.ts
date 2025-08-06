@@ -531,16 +531,14 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
   try {
     serverLogger.info(`[CrownEvaluator] Attempting to run with bunx...`);
     
-    // Use --print flag for non-interactive output, just like the agents but with --print
+    // Remove --print flag and use stdin instead for more reliable execution
     const args = [
       "@anthropic-ai/claude-code",
       "--model", "claude-sonnet-4-20250514", 
-      "--dangerously-skip-permissions",
-      "--print",
-      evaluationPrompt
+      "--dangerously-skip-permissions"
     ];
     
-    serverLogger.info(`[CrownEvaluator] Command: bunx ${args.slice(0, 4).join(' ')} [prompt]`);
+    serverLogger.info(`[CrownEvaluator] Command: bunx ${args.join(' ')}`);
     
     const bunxProcess = spawn("bunx", args, {
       env: { ...process.env },
@@ -550,7 +548,8 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
 
     serverLogger.info(`[CrownEvaluator] Process spawned with PID: ${bunxProcess.pid}`);
 
-    // Close stdin since we're passing prompt as an argument
+    // Write prompt to stdin and close
+    bunxProcess.stdin.write(evaluationPrompt);
     bunxProcess.stdin.end();
     
     stdout = "";

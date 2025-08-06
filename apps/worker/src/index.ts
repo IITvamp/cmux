@@ -1025,7 +1025,7 @@ async function createTerminal(
 
     detectTerminalIdle({
       sessionName: sessionName || terminalId,
-      idleTimeoutMs: 10000, // 10 seconds - increased from 5 to prevent false positives
+      idleTimeoutMs: 5000, // 60 seconds - for longer tasks that may pause
       onIdle: () => {
         log("INFO", "Terminal idle detected", {
           terminalId,
