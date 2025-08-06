@@ -30,7 +30,7 @@ async function exec(provider: MorphProvider, instanceId: string, command: string
 }
 
 async function main() {
-  const provider = new MorphProvider();
+  const provider = await MorphProvider.create();
   let instanceId: string | null = null;
 
   try {
@@ -57,15 +57,15 @@ async function main() {
 
     // Restart the worker
     console.log('\n🔄 Restarting worker service...');
-    await exec(provider, instanceId, 'pkill -f "node /builtins/build/index.js" || true');
-    await exec(provider, instanceId, 'cd /builtins && nohup node /builtins/build/index.js > /var/log/cmux/worker.log 2>&1 &');
+    await exec(provider, instanceId!, 'pkill -f "node /builtins/build/index.js" || true');
+    await exec(provider, instanceId!, 'cd /builtins && nohup node /builtins/build/index.js > /var/log/cmux/worker.log 2>&1 &');
     
     // Wait for worker to start
     await new Promise(resolve => setTimeout(resolve, 5000));
 
     // Test the worker
     console.log('\n🧪 Testing worker...');
-    const psResult = await exec(provider, instanceId, 'ps aux | grep "node /builtins/build/index.js" | grep -v grep', false);
+    const psResult = await exec(provider, instanceId!, 'ps aux | grep "node /builtins/build/index.js" | grep -v grep', false);
     if (psResult.stdout) {
       console.log('✅ Worker is running with streaming support');
     } else {

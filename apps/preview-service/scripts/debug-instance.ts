@@ -29,7 +29,7 @@ const question = (prompt: string): Promise<string> => {
 async function main() {
   console.log('🔧 Debug Instance Utility\n');
 
-  const morphProvider = new MorphProvider();
+  const morphProvider = await MorphProvider.create();
   
   // Set base snapshot ID from environment or use the default full snapshot
   const baseSnapshotId = process.env.MORPH_BASE_SNAPSHOT_ID || 'snapshot_7o3z2iez';

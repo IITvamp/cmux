@@ -17,7 +17,7 @@ if (!process.env.MORPH_API_KEY) {
 }
 
 async function main() {
-  const provider = new MorphProvider();
+  const provider = await MorphProvider.create();
   let instanceId: string | null = null;
 
   try {

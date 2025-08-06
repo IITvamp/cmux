@@ -32,7 +32,7 @@ async function exec(provider: MorphProvider, instanceId: string, command: string
 }
 
 async function main() {
-  const provider = new MorphProvider();
+  const provider = await MorphProvider.create();
   let instanceId: string | null = null;
 
   try {
@@ -60,16 +60,16 @@ async function main() {
 
     // Check if file was written correctly
     console.log('\n🔍 Verifying worker file...');
-    const checkResult = await exec(provider, instanceId, 'ls -la /builtins/build/index.js');
+    const checkResult = await exec(provider, instanceId!, 'ls -la /builtins/build/index.js');
     
     // Kill existing worker
     console.log('\n🔄 Stopping existing worker...');
-    const killResult = await exec(provider, instanceId, 'pkill -f "node /builtins/build/index.js" || true');
+    const killResult = await exec(provider, instanceId!, 'pkill -f "node /builtins/build/index.js" || true');
     console.log('Exit code:', killResult.exitCode);
     
     // Start new worker
     console.log('\n🚀 Starting new worker...');
-    const startResult = await exec(provider, instanceId, 'cd /builtins && nohup node /builtins/build/index.js > /var/log/cmux/worker.log 2>&1 & echo "Started with PID $!"');
+    const startResult = await exec(provider, instanceId!, 'cd /builtins && nohup node /builtins/build/index.js > /var/log/cmux/worker.log 2>&1 & echo "Started with PID $!"');
     
     // Wait for worker to start
     console.log('\n⏳ Waiting for worker to start...');
@@ -77,14 +77,14 @@ async function main() {
 
     // Test the worker
     console.log('\n🧪 Testing worker...');
-    const psResult = await exec(provider, instanceId, 'ps aux | grep "node /builtins/build/index.js" | grep -v grep');
+    const psResult = await exec(provider, instanceId!, 'ps aux | grep "node /builtins/build/index.js" | grep -v grep');
     if (psResult.stdout) {
       console.log('✅ Worker is running with streaming support');
     } else {
       console.log('❌ Worker not found in process list');
       // Check logs
       console.log('\n📋 Worker logs:');
-      await exec(provider, instanceId, 'tail -n 20 /var/log/cmux/worker.log || echo "No logs found"');
+      await exec(provider, instanceId!, 'tail -n 20 /var/log/cmux/worker.log || echo "No logs found"');
     }
 
     // Create final snapshot

@@ -12,9 +12,18 @@ export class MorphProvider extends SandboxProvider {
   private client: MorphCloudClient;
   readonly providerName = 'Morph';
   
-  constructor() {
+  private constructor() {
     super();
     this.client = new MorphCloudClient();
+  }
+
+  /**
+   * Create a new MorphProvider instance
+   */
+  static async create(): Promise<MorphProvider> {
+    const provider = new MorphProvider();
+    // Could do async initialization here if needed
+    return provider;
   }
 
   async createInstance(config?: {
@@ -162,7 +171,7 @@ export class MorphProvider extends SandboxProvider {
   }
 
   /**
-   * Override setupDevcontainer to fix permission issues
+   * Override setupDevcontainer to fix permission issues specific to Morph
    */
   protected async setupDevcontainer(
     instanceId: string,
@@ -176,9 +185,10 @@ export class MorphProvider extends SandboxProvider {
     log('Setting up devcontainer');
     
     // Check if devcontainer.json exists
-    const checkResult = await this.exec(
+    const checkResult = await this.execCommand(
       instanceId,
-      'test -f /root/workspace/.devcontainer/devcontainer.json && echo "exists" || echo "not found"'
+      'test -f /root/workspace/.devcontainer/devcontainer.json && echo "exists" || echo "not found"',
+      { logHandler }
     );
 
     if (!checkResult.stdout.includes('exists')) {
@@ -187,13 +197,14 @@ export class MorphProvider extends SandboxProvider {
     }
 
     // Fix permissions before running devcontainer
-    await this.exec(instanceId, 'chown -R root:root /root/workspace');
-    await this.exec(instanceId, 'chmod -R 755 /root/workspace');
+    await this.execCommand(instanceId, 'chown -R root:root /root/workspace', { logHandler });
+    await this.execCommand(instanceId, 'chmod -R 755 /root/workspace', { logHandler });
 
     // Run devcontainer CLI with proper permissions
-    const setupResult = await this.exec(
+    const setupResult = await this.execCommand(
       instanceId,
-      'cd /root/workspace && bunx @devcontainers/cli up --workspace-folder . --skip-post-create'
+      'cd /root/workspace && bunx @devcontainers/cli up --workspace-folder . --skip-post-create',
+      { logHandler, cwd: '/root/workspace' }
     );
 
     if (setupResult.exitCode !== 0) {
@@ -201,10 +212,18 @@ export class MorphProvider extends SandboxProvider {
       log('Devcontainer setup failed, trying simple dependency install');
       
       // Check for package.json and install dependencies
-      const pkgCheck = await this.exec(instanceId, 'test -f /root/workspace/package.json && echo "exists" || echo "not found"');
+      const pkgCheck = await this.execCommand(
+        instanceId, 
+        'test -f /root/workspace/package.json && echo "exists" || echo "not found"',
+        { logHandler }
+      );
       
       if (pkgCheck.stdout.includes('exists')) {
-        await this.exec(instanceId, 'cd /root/workspace && npm install || yarn install || bun install');
+        await this.execCommand(
+          instanceId, 
+          'cd /root/workspace && npm install || yarn install || bun install',
+          { logHandler }
+        );
       }
     }
 

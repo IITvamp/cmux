@@ -14,7 +14,7 @@ import {
 // import { DaytonaClient } from '@daytona-io/sdk';
 
 export class DaytonaProvider extends SandboxProvider {
-  private client: any; // Would be DaytonaClient
+  private client: unknown; // Would be DaytonaClient
   readonly providerName = 'Daytona';
   
   constructor(apiKey?: string, apiUrl?: string) {

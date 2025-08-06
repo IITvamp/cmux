@@ -42,11 +42,11 @@ export const CreatePreviewRequestSchema = PreviewConfigSchema;
 
 export const PreviewResponseSchema = z.object({
   success: z.boolean(),
-  data: z.any().optional(),
+  data: z.unknown().optional(),
   error: z.string().optional(),
 });
 
-export type PreviewResponse<T = any> = {
+export type PreviewResponse<T = unknown> = {
   success: boolean;
   data?: T;
   error?: string;

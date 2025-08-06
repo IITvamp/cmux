@@ -1,15 +1,23 @@
 import { Hono } from 'hono';
 import type { SandboxProvider } from '../services/sandbox-provider.js';
 import { ProviderFactory } from '../services/provider-factory.js';
-import { CreatePreviewRequestSchema, type PreviewResponse } from '../types/index.js';
+import { CreatePreviewRequestSchema, type PreviewResponse, type PreviewEnvironment } from '../types/index.js';
 
 const preview = new Hono();
 
 // Get provider based on environment configuration
-const sandboxProvider: SandboxProvider = ProviderFactory.getProviderFromEnv();
+let sandboxProvider: SandboxProvider;
+
+// Initialize provider on first use
+const getProvider = async (): Promise<SandboxProvider> => {
+  if (!sandboxProvider) {
+    sandboxProvider = await ProviderFactory.getProviderFromEnv();
+  }
+  return sandboxProvider;
+};
 
 // In-memory storage for preview environments (replace with database in production)
-export const previewEnvironments = new Map<string, any>();
+export const previewEnvironments = new Map<string, PreviewEnvironment>();
 
 // Create preview environment
 preview.post('/create', async (c) => {
@@ -25,7 +33,8 @@ preview.post('/create', async (c) => {
   }
 
   try {
-    const preview = await sandboxProvider.createPreviewEnvironment(validation.data);
+    const provider = await getProvider();
+    const preview = await provider.createPreviewEnvironment(validation.data);
     
     // Store preview environment
     previewEnvironments.set(preview.id, preview);
@@ -56,7 +65,8 @@ preview.post('/pause/:id', async (c) => {
   }
 
   try {
-    const snapshotId = await sandboxProvider.pauseEnvironment(id);
+    const provider = await getProvider();
+    const snapshotId = await provider.pauseEnvironment(id);
     
     // Update preview state
     preview.status = 'paused';
@@ -89,7 +99,8 @@ preview.post('/resume/:id', async (c) => {
   }
 
   try {
-    const resumed = await sandboxProvider.resumeEnvironment(preview.snapshotId);
+    const provider = await getProvider();
+    const resumed = await provider.resumeEnvironment(preview.snapshotId);
     
     // Update preview state
     Object.assign(preview, resumed, {
@@ -126,7 +137,8 @@ preview.get('/status/:id', async (c) => {
   try {
     // Check actual instance status if running
     if (preview.status === 'running' && preview.morphInstanceId) {
-      const actualStatus = await sandboxProvider.getInstanceStatus(preview.morphInstanceId);
+      const provider = await getProvider();
+      const actualStatus = await provider.getInstanceStatus(preview.morphInstanceId);
       if (actualStatus !== 'running') {
         preview.status = actualStatus === 'stopped' ? 'paused' : 'error';
         preview.updatedAt = new Date();
@@ -159,7 +171,8 @@ preview.post('/stop/:id', async (c) => {
 
   try {
     if (preview.morphInstanceId) {
-      await sandboxProvider.stopInstance(preview.morphInstanceId);
+      const provider = await getProvider();
+      await provider.stopInstance(preview.morphInstanceId);
     }
     
     // Update preview state
@@ -203,7 +216,8 @@ preview.post('/exec', async (c) => {
   try {
     // Use the morphInstanceId from the preview environment
     const morphInstanceId = preview.morphInstanceId || instanceId;
-    const result = await sandboxProvider.exec(morphInstanceId, command);
+    const provider = await getProvider();
+    const result = await provider.exec(morphInstanceId, command);
     
     return c.json<PreviewResponse>({
       success: true,
@@ -228,7 +242,8 @@ preview.post('/set-base-snapshot', async (c) => {
     }, 400);
   }
   
-  sandboxProvider.setBaseSnapshotId(snapshotId);
+  const provider = await getProvider();
+  provider.setBaseSnapshotId(snapshotId);
   
   return c.json<PreviewResponse>({
     success: true,

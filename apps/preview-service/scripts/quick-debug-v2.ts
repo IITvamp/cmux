@@ -8,7 +8,7 @@
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
-import { MorphProviderV2 } from "../src/services/morph-v2.js";
+import { MorphProvider } from "../src/services/morph.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -39,9 +39,11 @@ async function main() {
   console.log(`${colors.blue}Repository:${colors.reset} ${gitUrl}`);
   console.log(`${colors.blue}Branch:${colors.reset} ${branch}\n`);
 
+  const morphProvider = await MorphProvider.create();
+
   // Set base snapshot ID
   const baseSnapshotId = process.env.MORPH_BASE_SNAPSHOT_ID || 'snapshot_7o3z2iez';
-  MorphProviderV2.setBaseSnapshotId(baseSnapshotId);
+  morphProvider.setBaseSnapshotId(baseSnapshotId);
   console.log(`${colors.dim}Using base snapshot: ${baseSnapshotId}${colors.reset}\n`);
 
   // Create log handler with pretty formatting
@@ -62,7 +64,7 @@ async function main() {
   try {
     console.log(`${colors.yellow}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${colors.reset}`);
     
-    const preview = await MorphProviderV2.createPreviewEnvironment(
+    const preview = await morphProvider.createPreviewEnvironmentWithLogs(
       {
         gitUrl,
         branch,

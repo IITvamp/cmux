@@ -22,7 +22,7 @@ export class ProviderFactory {
   /**
    * Create or get a sandbox provider instance
    */
-  static getProvider(config: ProviderConfig): SandboxProvider {
+  static async getProvider(config: ProviderConfig): Promise<SandboxProvider> {
     // Check if we already have an instance
     const existing = this.providers.get(config.type);
     if (existing) {
@@ -38,7 +38,7 @@ export class ProviderFactory {
     
     switch (config.type) {
       case 'morph':
-        provider = new MorphProvider();
+        provider = await MorphProvider.create();
         break;
         
       // case 'e2b':
@@ -67,7 +67,7 @@ export class ProviderFactory {
   /**
    * Get provider from environment variables
    */
-  static getProviderFromEnv(): SandboxProvider {
+  static async getProviderFromEnv(): Promise<SandboxProvider> {
     const providerType = (process.env.SANDBOX_PROVIDER || 'morph') as ProviderType;
     
     const config: ProviderConfig = {

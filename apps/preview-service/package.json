@@ -9,6 +9,8 @@
     "test:watch": "vitest watch",
     "test:snapshot": "tsx tests/create-base-snapshot.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "eslint 'src/**/*.ts' 'tests/**/*.ts' 'scripts/**/*.ts'",
+    "lint:fix": "eslint 'src/**/*.ts' 'tests/**/*.ts' 'scripts/**/*.ts' --fix",
     "debug:instance": "tsx scripts/debug-instance.ts"
   },
   "dependencies": {
@@ -21,6 +23,9 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.6",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "eslint": "^8.57.0",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3",
     "vitest": "^2.1.8"

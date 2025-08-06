@@ -38,7 +38,7 @@ async function main() {
   console.log(`Repository: ${gitUrl}`);
   console.log(`Branch: ${branch}\n`);
 
-  const morphProvider = new MorphProvider();
+  const morphProvider = await MorphProvider.create();
   
   // Set base snapshot ID: CLI arg > env var > default full snapshot
   const baseSnapshotId = customSnapshotId || process.env.MORPH_BASE_SNAPSHOT_ID || 'snapshot_7o3z2iez';

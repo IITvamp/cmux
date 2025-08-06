@@ -14,7 +14,7 @@ import {
 // import { E2BClient } from 'e2b';
 
 export class E2BProvider extends SandboxProvider {
-  private client: any; // Would be E2BClient
+  private client: unknown; // Would be E2BClient
   readonly providerName = 'E2B';
   
   constructor(apiKey?: string) {

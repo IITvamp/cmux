@@ -42,7 +42,7 @@ async function main() {
   console.log(`${colors.blue}Repository:${colors.reset} ${gitUrl}`);
   console.log(`${colors.blue}Branch:${colors.reset} ${branch}\n`);
 
-  const morphProvider = new MorphProvider();
+  const morphProvider = await MorphProvider.create();
   
   // Set base snapshot ID
   const baseSnapshotId = process.env.MORPH_BASE_SNAPSHOT_ID || 'snapshot_7o3z2iez';
