@@ -6,8 +6,6 @@ import type { ConvexHttpClient } from "convex/browser";
 import { z } from "zod";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
-import { io, type Socket } from "socket.io-client";
-import type { WorkerToServerEvents, ServerToWorkerEvents } from "@cmux/shared";
 
 // Define schemas for structured output
 const ImplementationSchema = z.object({
