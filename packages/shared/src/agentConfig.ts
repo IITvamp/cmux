@@ -11,6 +11,7 @@ import {
   GEMINI_PRO_CONFIG,
 } from "./providers/gemini/configs.js";
 import {
+  CODEX_GPT_5_CONFIG,
   CODEX_GPT_4_1_CONFIG,
   CODEX_O3_CONFIG,
   CODEX_O4_MINI_CONFIG,
@@ -47,6 +48,7 @@ export interface AgentConfig {
 }
 
 export const AGENT_CONFIGS: AgentConfig[] = [
+  CODEX_GPT_5_CONFIG,
   CLAUDE_SONNET_CONFIG,
   CLAUDE_OPUS_4_1_CONFIG,
   CLAUDE_OPUS_4_CONFIG,
