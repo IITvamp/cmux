@@ -161,7 +161,11 @@ COPY --from=builder /usr/local/bin/bunx /usr/local/bin/bunx
 
 # Verify bun works in runtime
 RUN bun --version && bunx --version
-RUN bun add -g @openai/codex @anthropic-ai/claude-code @google/gemini-cli opencode-ai@latest codebuff @devcontainers/cli @sourcegraph/amp
+RUN bun add -g @openai/codex@0.16.0 @anthropic-ai/claude-code @google/gemini-cli opencode-ai@latest codebuff @devcontainers/cli @sourcegraph/amp
+
+# Install cursor cli
+RUN curl https://cursor.com/install -fsS | bash
+RUN /root/.local/bin/cursor-agent --version
 
 # Set iptables-legacy (required for Docker in Docker on Ubuntu 22.04+)
 RUN update-alternatives --set iptables /usr/sbin/iptables-legacy
