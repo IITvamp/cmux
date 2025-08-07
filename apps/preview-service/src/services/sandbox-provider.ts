@@ -83,6 +83,60 @@ export abstract class SandboxProvider {
   }
 
   /**
+   * Check if socket is connected and available
+   */
+  protected isSocketConnected(): boolean {
+    return this.socket !== null && this.socket.connected;
+  }
+
+  /**
+   * Setup socket connection for streaming - worker must be running in the snapshot
+   */
+  protected async setupSocketConnection(
+    instanceId: string,
+    workerPort: number = 39377,
+    logHandler?: (message: string) => void
+  ): Promise<boolean> {
+    const log = (msg: string) => {
+      console.log(`[${this.providerName}] ${msg}`);
+      logHandler?.(`[${this.providerName}] ${msg}`);
+    };
+
+    try {
+      // Get instance to find worker service
+      const instance = await this.getInstance(instanceId);
+      if (!instance) {
+        log('Instance not found for socket setup');
+        return false;
+      }
+
+      const workerService = instance.services.find(s => s.port === workerPort);
+      if (!workerService?.url) {
+        log('Worker service not exposed - cannot use streaming');
+        return false;
+      }
+
+      // Check if worker process is actually running
+      const workerCheck = await this.exec(instanceId, `lsof -i :${workerPort} 2>/dev/null || netstat -tlnp 2>/dev/null | grep ${workerPort}`);
+      
+      if (!workerCheck.stdout) {
+        log('❌ Worker process not running on port 39377 - snapshot must be rebuilt with streaming worker');
+        return false;
+      }
+
+      log('Worker process is running');
+      log('Connecting to worker socket...');
+      await this.connectSocket(workerService.url);
+      log('✅ Worker socket connected - streaming enabled');
+      return true;
+    } catch (error) {
+      log(`Worker socket setup failed: ${error}`);
+      return false;
+    }
+  }
+
+
+  /**
    * Disconnect socket
    */
   protected disconnectSocket(): void {
@@ -94,15 +148,24 @@ export abstract class SandboxProvider {
   }
 
   /**
-   * Execute command via socket if available, otherwise use instance exec
+   * Execute command via socket - REQUIRES worker to be running
+   * This is the main exec method that should be used by all providers
    */
-  protected async execCommand(
+  async execCommand(
     instanceId: string,
     command: string,
     options?: ExecOptions
   ): Promise<ExecResult> {
-    // If we have a socket connection, use it for streaming
-    if (this.socket && this.socket.connected) {
+    // Ensure socket is connected, start worker if needed
+    if (!this.isSocketConnected()) {
+      const connected = await this.setupSocketConnection(instanceId, 39377, options?.logHandler);
+      if (!connected) {
+        throw new Error('Failed to connect to worker for command execution');
+      }
+    }
+    
+    // Execute via socket for streaming
+    if (this.isSocketConnected()) {
       return new Promise((resolve, reject) => {
         const requestId = Math.random().toString(36).substring(7);
         let stdout = '';
@@ -163,8 +226,8 @@ export abstract class SandboxProvider {
         });
       });
     } else {
-      // Fallback to direct exec
-      return this.exec(instanceId, command, options);
+      // This should not happen since we ensure connection above
+      throw new Error('Worker socket not available for command execution');
     }
   }
 
@@ -266,10 +329,10 @@ export abstract class SandboxProvider {
       await this.waitForInstance(instance.id);
       log(`Instance ${instance.id} is ready`);
 
-      // Connect to worker socket if available
-      const workerService = instance.services.find(s => s.port === 39377);
-      if (workerService?.url && logHandler) {
-        await this.connectSocket(workerService.url);
+      // Setup socket connection for streaming - REQUIRED for exec
+      const socketConnected = await this.setupSocketConnection(instance.id, 39377, logHandler);
+      if (!socketConnected) {
+        throw new Error('Failed to setup worker for command execution - preview environment cannot function without streaming worker');
       }
 
       // Clone the repository
@@ -284,6 +347,7 @@ export abstract class SandboxProvider {
 
       // Find required services
       const vscodeService = instance.services.find(s => s.port === 39378);
+      const workerService = instance.services.find(s => s.port === 39377);
 
       if (!vscodeService || !workerService) {
         throw new Error('Required services (VSCode/Worker) not found in sandbox instance');

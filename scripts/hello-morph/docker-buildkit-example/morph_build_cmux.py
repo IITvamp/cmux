@@ -594,6 +594,10 @@ def setup_workspace(instance, workspace_path, debug=False):
     # Install npm dependencies with cache mount
     print("\n--- Installing npm dependencies ---")
     run_ssh_command(instance, f"sh -c 'cd {workspace_path} && npm install'", sudo=True)
+    
+    # Install socket.io for the streaming worker
+    print("\n--- Installing socket.io for streaming worker ---")
+    run_ssh_command(instance, "npm install -g socket.io", sudo=True)
 
     print("\n--- Setting up /builtins ---")
     run_ssh_command(
@@ -616,6 +620,13 @@ def setup_workspace(instance, workspace_path, debug=False):
     # Copy build output to /builtins
     run_ssh_command(
         instance, f"cp -r {workspace_path}/apps/worker/build /builtins/build", sudo=True
+    )
+    
+    # Copy streaming worker to /builtins
+    run_ssh_command(
+        instance, 
+        f"cp {workspace_path}/apps/preview-service/src/worker/streaming-worker.cjs /builtins/streaming-worker.cjs",
+        sudo=True
     )
 
     # Copy wait-for-docker.sh to /usr/local/bin
@@ -877,7 +888,7 @@ def main():
                 sudo=True,
             )
 
-        # Check worker
+        # Check main worker
         result = run_ssh_command(
             current_instance,
             "ps aux | grep 'node /builtins/build/index.js' | grep -v grep",
@@ -885,13 +896,41 @@ def main():
             print_output=False,
         )
         if result.stdout:
-            print("✅ Worker is running")
+            print("✅ Main worker is running")
         else:
-            print("❌ Worker is not running")
+            print("❌ Main worker is not running")
             # Show startup logs
             run_ssh_command(
                 current_instance, "cat /var/log/cmux/startup.log | tail -20", sudo=True
             )
+        
+        # Check streaming worker
+        result = run_ssh_command(
+            current_instance,
+            "ps aux | grep 'node /builtins/streaming-worker.cjs' | grep -v grep",
+            sudo=True,
+            print_output=False,
+        )
+        if result.stdout:
+            print("✅ Streaming worker is running")
+        else:
+            print("❌ Streaming worker is not running")
+            # Show streaming worker logs
+            run_ssh_command(
+                current_instance, "cat /var/log/cmux/streaming-worker.log | tail -20", sudo=True
+            )
+        
+        # Check if streaming worker port is listening
+        result = run_ssh_command(
+            current_instance,
+            "lsof -i :39377 2>/dev/null | grep LISTEN",
+            sudo=True,
+            print_output=False,
+        )
+        if result.stdout:
+            print("✅ Port 39377 is listening (streaming worker ready)")
+        else:
+            print("❌ Port 39377 is not listening")
 
         # Warm up VS Code
         warmup_vscode(current_instance)

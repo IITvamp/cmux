@@ -4,7 +4,11 @@ const client = new MorphCloudClient();
 
 const instances = await client.instances.list();
 
-for (const instance of instances) {
-  console.log(`Deleting instance ${instance.id}`);
-  await instance.stop();
-}
+console.log(`Deleting ${instances.length} instances in parallel...`);
+
+await Promise.all(
+  instances.map(async (instance) => {
+    console.log(`Deleting instance ${instance.id}`);
+    await instance.stop();
+  })
+);

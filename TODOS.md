@@ -49,3 +49,8 @@
 [ ] archive tasks button in sidebar
 [ ] edit prompt after seeing what it did -- try multiple prompts at same time -- if click on main one, show page that has prompt, edit prompt, and recontinue execution. less tasks, but more so like linear. instead of task, convert it to a linear timeline flow thing. just want to add tasks. dont have to switch apps -- put backlog and tasks in execution
 [ ] notifications for when tasks are done
+[ ] support making new projects well
+[ ] handle new repos well
+[ ] support empty HEAD commit/missing branch
+[ ] make it clearer that starting task will create a new branch.
+[ ] flash of white theme when loading dark mode

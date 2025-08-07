@@ -1,4 +1,5 @@
-import { MorphCloudClient } from 'morphcloud';
+import { MorphCloudClient, type Instance } from 'morphcloud';
+import type { NodeSSH } from 'node-ssh';
 import { 
   SandboxProvider, 
   type SandboxInstance, 
@@ -6,7 +7,6 @@ import {
   type SnapshotMetadata,
   type SandboxService
 } from './sandbox-provider.js';
-import { uploadFileFromString } from '../utils/upload-file.js';
 
 export class MorphProvider extends SandboxProvider {
   private client: MorphCloudClient;
@@ -171,13 +171,47 @@ export class MorphProvider extends SandboxProvider {
     remotePath: string
   ): Promise<void> {
     const instance = await this.client.instances.get({ instanceId });
-    await uploadFileFromString(instance, content, remotePath);
+    await this.uploadFileViaSFTP(instance, content, remotePath);
+  }
+
+  /**
+   * Upload file content via SFTP using NodeSSH
+   */
+  private async uploadFileViaSFTP(
+    instance: Instance,
+    content: string,
+    remotePath: string
+  ): Promise<void> {
+    const ssh: NodeSSH = await instance.ssh();
+    
+    try {
+      // Ensure parent directory exists
+      const parentDir = remotePath.substring(0, remotePath.lastIndexOf('/'));
+      if (parentDir && parentDir !== '') {
+        // Create parent directory, ignore if it already exists
+        await ssh.execCommand(`mkdir -p "${parentDir}"`);
+      }
+      
+      // Create a temporary file path
+      const tempPath = `/tmp/upload_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+      
+      // Write content to a temporary file using echo and base64 to handle special characters
+      const encodedContent = Buffer.from(content).toString('base64');
+      await ssh.execCommand(`echo "${encodedContent}" | base64 -d > "${tempPath}"`);
+      
+      // Move the temp file to the final location
+      await ssh.execCommand(`mv "${tempPath}" "${remotePath}"`);
+      
+    } finally {
+      ssh.dispose();
+    }
   }
 
   /**
    * Override setupDevcontainer to fix permission issues specific to Morph
+   * @internal Exposed for testing
    */
-  protected async setupDevcontainer(
+  async setupDevcontainer(
     instanceId: string,
     logHandler?: (message: string) => void
   ): Promise<void> {

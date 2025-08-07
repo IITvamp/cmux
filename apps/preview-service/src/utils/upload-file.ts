@@ -1,8 +1,15 @@
+/**
+ * @deprecated This file is deprecated. File upload functionality is now implemented
+ * directly in the provider classes using SFTP for better performance and reliability.
+ * See MorphProvider.uploadFile() for the new implementation.
+ */
+
 import type { Instance } from 'morphcloud';
 import fs from 'fs/promises';
 import path from 'path';
 
 /**
+ * @deprecated Use provider-specific uploadFile method instead
  * Upload a file to a Morph instance via exec command with base64 encoding
  * This is a fallback method that avoids SFTP complications
  * @param instance - The Morph instance
@@ -28,6 +35,7 @@ export async function uploadFile(
 }
 
 /**
+ * @deprecated Use provider-specific uploadFile method instead
  * Upload a file from content string
  * @param instance - The Morph instance  
  * @param content - File content as string

@@ -114,12 +114,11 @@ if [ $retry_count -eq $MAX_RETRIES ]; then
     echo "[Startup] Warning: Failed to connect to OpenVSCode server after $MAX_RETRIES attempts" >> /var/log/cmux/startup.log
 fi
 
-# Start the worker
+# Start the main worker (background)
 export NODE_ENV=production
-export WORKER_PORT=39377
-# temporary hack to get around Claude's --dangerously-skip-permissions cannot be used with root/sudo privileges for security reasons
 export IS_SANDBOX=true
+node /builtins/build/index.js > /var/log/cmux/worker-proc.log 2>&1 &
 
-rm -f /startup.sh
-
-node /builtins/build/index.js > /var/log/cmux/worker-proc.log 2>&1
+# Start the streaming worker for socket.io connections
+export WORKER_PORT=39377
+node /builtins/streaming-worker.cjs > /var/log/cmux/streaming-worker.log 2>&1

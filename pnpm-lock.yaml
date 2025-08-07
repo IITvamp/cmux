@@ -225,6 +225,9 @@ importers:
       '@hono/node-server':
         specifier: ^1.13.7
         version: 1.18.1(hono@4.8.12)
+      '@types/node-ssh':
+        specifier: ^11.0.0
+        version: 11.0.0
       dotenv:
         specifier: ^16.4.7
         version: 16.6.1
@@ -234,9 +237,15 @@ importers:
       morphcloud:
         specifier: ^0.0.15
         version: 0.0.15
+      node-ssh:
+        specifier: ^13.2.1
+        version: 13.2.1
       socket.io-client:
         specifier: ^4.8.1
         version: 4.8.1
+      ssh2:
+        specifier: ^1.16.0
+        version: 1.16.0
       zod:
         specifier: ^3.24.1
         version: 3.25.76
@@ -244,6 +253,9 @@ importers:
       '@types/node':
         specifier: ^22.10.6
         version: 22.16.5
+      '@types/ssh2':
+        specifier: ^1.15.5
+        version: 1.15.5
       '@typescript-eslint/eslint-plugin':
         specifier: ^8.0.0
         version: 8.38.0(@typescript-eslint/parser@8.38.0(eslint@8.57.1)(typescript@5.8.3))(eslint@8.57.1)(typescript@5.8.3)
@@ -3381,6 +3393,10 @@ packages:
 
   '@types/multer@1.4.13':
     resolution: {integrity: sha512-bhhdtPw7JqCiEfC9Jimx5LqX9BDIPJEh2q/fQ4bqbBPtyEZYr3cvF22NwG0DmPZNYA0CAf2CnqDB4KIGGpJcaw==}
+
+  '@types/node-ssh@11.0.0':
+    resolution: {integrity: sha512-C22T6YMptCoOdUePVsLQp2JZqRjx6ckXaSNNp3Sf3O6OK2xfIj4qZ9q8bzu00y8mX0ay6Wk37TN4yFyZws50rg==}
+    deprecated: This is a stub types definition. node-ssh provides its own type definitions, so you do not need this installed.
 
   '@types/node@18.19.120':
     resolution: {integrity: sha512-WtCGHFXnVI8WHLxDAt5TbnCM4eSE+nI0QN2NJtwzcgMhht2eNz6V9evJrk+lwC8bCY8OWV5Ym8Jz7ZEyGnKnMA==}
@@ -10977,6 +10993,10 @@ snapshots:
   '@types/multer@1.4.13':
     dependencies:
       '@types/express': 4.17.23
+
+  '@types/node-ssh@11.0.0':
+    dependencies:
+      node-ssh: 13.2.1
 
   '@types/node@18.19.120':
     dependencies:
