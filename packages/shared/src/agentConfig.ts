@@ -12,6 +12,7 @@ import {
 } from "./providers/gemini/configs.js";
 import {
   CODEX_GPT_4_1_CONFIG,
+  CODEX_GPT_5_CONFIG,
   CODEX_O3_CONFIG,
   CODEX_O4_MINI_CONFIG,
 } from "./providers/openai/configs.js";
@@ -50,6 +51,7 @@ export const AGENT_CONFIGS: AgentConfig[] = [
   CLAUDE_SONNET_CONFIG,
   CLAUDE_OPUS_4_1_CONFIG,
   CLAUDE_OPUS_4_CONFIG,
+  CODEX_GPT_5_CONFIG,
   CODEX_O3_CONFIG,
   CODEX_O4_MINI_CONFIG,
   CODEX_GPT_4_1_CONFIG,
