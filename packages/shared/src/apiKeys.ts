@@ -29,3 +29,9 @@ export const AMP_API_KEY: AgentConfigApiKey = {
   displayName: "AMP API Key",
   description: "API key for Sourcegraph AMP",
 };
+
+export const CURSOR_API_KEY: AgentConfigApiKey = {
+  envVar: "CURSOR_API_KEY",
+  displayName: "Cursor API Key",
+  description: "API key for Cursor agent",
+};

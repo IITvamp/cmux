@@ -23,6 +23,12 @@ import {
   OPENCODE_QWEN3_CODER_CONFIG,
   OPENCODE_SONNET_CONFIG,
 } from "./providers/opencode/configs.js";
+import {
+  CURSOR_GPT_5_CONFIG,
+  CURSOR_OPUS_4_1_CONFIG,
+  CURSOR_SONNET_4_CONFIG,
+  CURSOR_SONNET_4_THINKING_CONFIG,
+} from "./providers/cursor/configs.js";
 
 export { checkDockerStatus } from "./providers/common/check-docker.js";
 export { checkGitStatus } from "./providers/common/check-git.js";
@@ -63,4 +69,8 @@ export const AGENT_CONFIGS: AgentConfig[] = [
   OPENCODE_KIMI_K2_CONFIG,
   OPENCODE_QWEN3_CODER_CONFIG,
   OPENCODE_GLM_Z1_32B_FREE_CONFIG,
+  CURSOR_OPUS_4_1_CONFIG,
+  CURSOR_GPT_5_CONFIG,
+  CURSOR_SONNET_4_CONFIG,
+  CURSOR_SONNET_4_THINKING_CONFIG,
 ];
