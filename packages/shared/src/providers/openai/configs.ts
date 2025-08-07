@@ -3,6 +3,25 @@ import { OPENAI_API_KEY } from "../../apiKeys.js";
 import { checkOpenAIRequirements } from "./check-requirements.js";
 import { getOpenAIEnvironment } from "./environment.js";
 
+export const CODEX_GPT_5_CONFIG: AgentConfig = {
+  name: "codex/gpt-5",
+  command: "bunx",
+  args: [
+    "@openai/codex",
+    "--model",
+    "gpt-5",
+    "--sandbox",
+    "danger-full-access",
+    "--ask-for-approval",
+    "never",
+    "--skip-git-repo-check",
+    "$PROMPT",
+  ],
+  environment: getOpenAIEnvironment,
+  checkRequirements: checkOpenAIRequirements,
+  apiKeys: [OPENAI_API_KEY],
+};
+
 export const CODEX_O3_CONFIG: AgentConfig = {
   name: "codex/o3",
   command: "bunx",
