@@ -50,17 +50,17 @@ previewStream.post("/create", async (c) => {
           });
       };
 
-      // Set base snapshot
+      // Get base snapshot
       const baseSnapshotId =
         process.env.MORPH_BASE_SNAPSHOT_ID || "snapshot_7o3z2iez";
       const provider = await getProvider();
-      provider.setBaseSnapshotId(baseSnapshotId);
 
       // Create preview with log streaming
-      const preview = await provider.createPreviewEnvironmentWithLogs(
-        validation.data,
+      const preview = await provider.createPreviewEnvironment({
+        baseSnapshotId,
+        config: validation.data,
         logHandler
-      );
+      });
 
       // Store in memory
       previewEnvironments.set(preview.id, preview);

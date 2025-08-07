@@ -10,7 +10,6 @@ export interface ProviderConfig {
   type: ProviderType;
   apiKey?: string;
   apiUrl?: string;
-  baseSnapshotId?: string;
 }
 
 /**
@@ -26,10 +25,6 @@ export class ProviderFactory {
     // Check if we already have an instance
     const existing = this.providers.get(config.type);
     if (existing) {
-      // Update base snapshot if provided
-      if (config.baseSnapshotId) {
-        existing.setBaseSnapshotId(config.baseSnapshotId);
-      }
       return existing;
     }
 
@@ -42,20 +37,15 @@ export class ProviderFactory {
         break;
         
       // case 'e2b':
-      //   provider = new E2BProvider(config.apiKey);
+      //   provider = await E2BProvider.create(config.apiKey);
       //   break;
         
       // case 'daytona':
-      //   provider = new DaytonaProvider(config.apiKey, config.apiUrl);
+      //   provider = await DaytonaProvider.create(config.apiKey, config.apiUrl);
       //   break;
         
       default:
         throw new Error(`Unknown provider type: ${config.type}`);
-    }
-
-    // Set base snapshot if provided
-    if (config.baseSnapshotId) {
-      provider.setBaseSnapshotId(config.baseSnapshotId);
     }
 
     // Cache the provider
@@ -73,7 +63,6 @@ export class ProviderFactory {
     const config: ProviderConfig = {
       type: providerType,
       apiKey: process.env[`${providerType.toUpperCase()}_API_KEY`],
-      baseSnapshotId: process.env.MORPH_BASE_SNAPSHOT_ID,
     };
 
     // Provider-specific config

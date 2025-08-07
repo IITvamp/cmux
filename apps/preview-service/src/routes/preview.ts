@@ -34,7 +34,11 @@ preview.post('/create', async (c) => {
 
   try {
     const provider = await getProvider();
-    const preview = await provider.createPreviewEnvironment(validation.data);
+    const baseSnapshotId = process.env.MORPH_BASE_SNAPSHOT_ID || 'snapshot_7o3z2iez';
+    const preview = await provider.createPreviewEnvironment({
+      baseSnapshotId,
+      config: validation.data
+    });
     
     // Store preview environment
     previewEnvironments.set(preview.id, preview);
@@ -231,24 +235,6 @@ preview.post('/exec', async (c) => {
   }
 });
 
-// Set base snapshot ID (for testing)
-preview.post('/set-base-snapshot', async (c) => {
-  const { snapshotId } = await c.req.json<{ snapshotId: string }>();
-  
-  if (!snapshotId) {
-    return c.json<PreviewResponse>({
-      success: false,
-      error: 'Snapshot ID is required',
-    }, 400);
-  }
-  
-  const provider = await getProvider();
-  provider.setBaseSnapshotId(snapshotId);
-  
-  return c.json<PreviewResponse>({
-    success: true,
-    data: { message: 'Base snapshot ID set successfully' },
-  });
-});
+// Note: Base snapshot ID is now passed as parameter to createPreviewEnvironment
 
 export default preview;

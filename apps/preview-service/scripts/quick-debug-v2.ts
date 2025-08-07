@@ -43,7 +43,6 @@ async function main() {
 
   // Set base snapshot ID
   const baseSnapshotId = process.env.MORPH_BASE_SNAPSHOT_ID || 'snapshot_7o3z2iez';
-  morphProvider.setBaseSnapshotId(baseSnapshotId);
   console.log(`${colors.dim}Using base snapshot: ${baseSnapshotId}${colors.reset}\n`);
 
   // Create log handler with pretty formatting
@@ -64,14 +63,15 @@ async function main() {
   try {
     console.log(`${colors.yellow}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${colors.reset}`);
     
-    const preview = await morphProvider.createPreviewEnvironmentWithLogs(
-      {
+    const preview = await morphProvider.createPreviewEnvironment({
+      baseSnapshotId,
+      config: {
         gitUrl,
         branch,
         hasDevcontainer: true,
       },
       logHandler
-    );
+    });
 
     console.log(`${colors.yellow}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${colors.reset}`);
     console.log(`\n${colors.green}${colors.bright}✅ Preview created successfully!${colors.reset}\n`);

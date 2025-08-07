@@ -34,8 +34,12 @@ export class MorphProvider extends SandboxProvider {
       diskSize?: number;
     };
   }): Promise<SandboxInstance> {
+    if (!config?.snapshotId) {
+      throw new Error('snapshotId is required to create an instance');
+    }
+
     const instance = await this.client.instances.start({
-      snapshotId: config?.snapshotId || this.baseSnapshotId!,
+      snapshotId: config.snapshotId,
     });
 
     // Get exposed services

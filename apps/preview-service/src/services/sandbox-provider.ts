@@ -31,22 +31,20 @@ export interface ExecOptions {
   logHandler?: (message: string) => void;
 }
 
+export interface PreviewOptions {
+  baseSnapshotId: string;
+  config: PreviewConfig;
+  logHandler?: (message: string) => void;
+}
+
 /**
  * Abstract base class for sandbox providers with socket.io integration
  */
 export abstract class SandboxProvider {
-  protected baseSnapshotId: string | null = null;
   protected socket: Socket | null = null;
   protected workerUrl: string | null = null;
   
   abstract readonly providerName: string;
-  
-  /**
-   * Set the base snapshot/image ID to use for new instances
-   */
-  setBaseSnapshotId(snapshotId: string): void {
-    this.baseSnapshotId = snapshotId;
-  }
 
   /**
    * Connect to worker socket
@@ -246,36 +244,21 @@ export abstract class SandboxProvider {
   ): Promise<void>;
 
   /**
-   * Create a preview environment with streaming logs (alias for consistency)
-   */
-  async createPreviewEnvironmentWithLogs(
-    config: PreviewConfig,
-    logHandler: (message: string) => void
-  ): Promise<PreviewEnvironment> {
-    return this.createPreviewEnvironment(config, logHandler);
-  }
-
-  /**
    * Create a preview environment with common setup steps
    */
-  async createPreviewEnvironment(
-    config: PreviewConfig,
-    logHandler?: (message: string) => void
-  ): Promise<PreviewEnvironment> {
-    if (!this.baseSnapshotId) {
-      throw new Error('Base snapshot ID not set. Please create a base snapshot first.');
-    }
+  async createPreviewEnvironment(options: PreviewOptions): Promise<PreviewEnvironment> {
+    const { baseSnapshotId, config, logHandler } = options;
 
     const log = (msg: string) => {
       console.log(`[${this.providerName}] ${msg}`);
       logHandler?.(`[${this.providerName}] ${msg}`);
     };
 
-    log(`Creating preview environment from snapshot ${this.baseSnapshotId}`);
+    log(`Creating preview environment from snapshot ${baseSnapshotId}`);
     
     // Create instance from base snapshot
     const instance = await this.createInstance({
-      snapshotId: this.baseSnapshotId,
+      snapshotId: baseSnapshotId,
     });
 
     try {

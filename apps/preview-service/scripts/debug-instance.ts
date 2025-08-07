@@ -33,7 +33,6 @@ async function main() {
   
   // Set base snapshot ID from environment or use the default full snapshot
   const baseSnapshotId = process.env.MORPH_BASE_SNAPSHOT_ID || 'snapshot_7o3z2iez';
-  morphProvider.setBaseSnapshotId(baseSnapshotId);
   console.log(`Using base snapshot: ${baseSnapshotId}\n`);
   
   try {
@@ -47,9 +46,12 @@ async function main() {
 
     // Create preview environment
     const preview = await morphProvider.createPreviewEnvironment({
-      gitUrl,
-      branch,
-      hasDevcontainer: true,
+      baseSnapshotId,
+      config: {
+        gitUrl,
+        branch,
+        hasDevcontainer: true,
+      }
     });
 
     console.log(`✅ Preview created: ${preview.id}`);
