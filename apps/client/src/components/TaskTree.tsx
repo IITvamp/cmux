@@ -1,4 +1,9 @@
 import { OpenWithDropdown } from "@/components/OpenWithDropdown";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { type Doc } from "@cmux/convex/dataModel";
 import { Link, useLocation } from "@tanstack/react-router";
 import clsx from "clsx";
@@ -181,7 +186,21 @@ function TaskRunTree({ run, level, taskId }: TaskRunTreeProps) {
           />
         </button>
 
-        <div className="mr-2 flex-shrink-0">{statusIcon}</div>
+        {run.status === "failed" && run.errorMessage ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="mr-2 flex-shrink-0">{statusIcon}</div>
+            </TooltipTrigger>
+            <TooltipContent
+              side="right"
+              className="max-w-xs whitespace-pre-wrap break-words"
+            >
+              {run.errorMessage}
+            </TooltipContent>
+          </Tooltip>
+        ) : (
+          <div className="mr-2 flex-shrink-0">{statusIcon}</div>
+        )}
 
         <div className="flex-1 min-w-0 flex items-center gap-1">
           <span className="truncate text-neutral-700 dark:text-neutral-300">
