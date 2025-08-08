@@ -41,7 +41,7 @@
 [ ] remove containerMappings from @apps/server/src/vscode/DockerVSCodeInstance.ts and just use convex and/or docker daemon as source of truth.
 [ ] authentication with stack auth (or somehow collect user emails) when user tries to enable cloud mode
 [ ] clear local storage if we change name of models in model selector multiselect
-[ ] renamed branch name (eg. cmux-claude-opus-4-extract-sidebar-into-its-own-jn73r96s46gfyx860q7qaj9a1n7mnefz) is too long
+[ ] renamed branch name (eg. cmux-claude-opus-4-extract-sidebar-into-its-own-jn73r96s46gfyx860q7qaj9a1n7mnefz) is too long. fix the code so branch names are always adskfjlaksdjf
 [ ] fix the
 [ ] copy VS Code extensions and copy
 [ ] copy vs code settings/theme: make it so that when we launch the cli for the first time, it will prompt the user if they want to copy their themes and extensions from either vscode, windsurf, or cursor. the user will have to choose from the cli which one they want. then we must copy the themes/extensions to the right place in all the remote machines.
