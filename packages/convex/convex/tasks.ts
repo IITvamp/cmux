@@ -6,11 +6,17 @@ import type { Id } from "./_generated/dataModel";
 export const get = query({
   args: {
     projectFullName: v.optional(v.string()),
+    archived: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    let query = ctx.db
-      .query("tasks")
-      .filter((q) => q.neq(q.field("isArchived"), true));
+    let query = ctx.db.query("tasks");
+
+    // Default to active (non-archived) when not specified
+    if (args.archived === true) {
+      query = query.filter((q) => q.eq(q.field("isArchived"), true));
+    } else {
+      query = query.filter((q) => q.neq(q.field("isArchived"), true));
+    }
 
     if (args.projectFullName) {
       query = query.filter((q) =>
@@ -144,6 +150,17 @@ export const archive = mutation({
       throw new Error("Task not found");
     }
     await ctx.db.patch(args.id, { isArchived: true, updatedAt: Date.now() });
+  },
+});
+
+export const unarchive = mutation({
+  args: { id: v.id("tasks") },
+  handler: async (ctx, args) => {
+    const task = await ctx.db.get(args.id);
+    if (task === null) {
+      throw new Error("Task not found");
+    }
+    await ctx.db.patch(args.id, { isArchived: false, updatedAt: Date.now() });
   },
 });
 

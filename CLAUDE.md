@@ -7,17 +7,24 @@ Use pnpm to install dependencies and run the project.
 
 - `--force-docker-build`: Rebuild worker image even if cached.
 - `--show-compose-logs`: Also stream Docker Compose logs to the console (they are always written to `logs/docker-compose.log`). Docker build logs are always shown.
-After finishing a task, run `bun run typecheck` in root to typecheck everything.
+  After finishing a task, run `bun run typecheck` in root to typecheck everything.
 
 # Backend
 
 This project uses Convex.
 Schemas are defined in packages/convex/convex/schema.ts.
 
+# Frontend
+
+This project uses React, TanStack Router, TanStack Query, Shadcn UI, and Tailwind CSS.
+Always use tailwind `neutral` instead of `gray` for gray colors.
+Always support dark mode.
+
 # Misc
 
 Always use node: prefixes for node imports.
 Do not use the any type.
+Don't modify README.md unless explicitly asked.
 
 ## Logs
 
