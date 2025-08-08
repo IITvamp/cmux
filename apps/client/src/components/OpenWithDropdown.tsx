@@ -6,7 +6,12 @@ import * as React from "react";
 import { useCallback, useEffect } from "react";
 import { toast } from "sonner";
 
-type EditorType = "vscode-remote" | "cursor" | "vscode" | "windsurf";
+type EditorType =
+  | "vscode-remote"
+  | "cursor"
+  | "vscode"
+  | "windsurf"
+  | "finder";
 
 interface OpenWithDropdownProps {
   vscodeUrl?: string | null;
@@ -45,13 +50,13 @@ export function OpenWithDropdown({
           resolve();
         } else if (
           socket &&
-          ["cursor", "vscode", "windsurf"].includes(editor) &&
+          ["cursor", "vscode", "windsurf", "finder"].includes(editor) &&
           worktreePath
         ) {
           socket.emit(
             "open-in-editor",
             {
-              editor: editor as "cursor" | "vscode" | "windsurf",
+              editor: editor as "cursor" | "vscode" | "windsurf" | "finder",
               path: worktreePath,
             },
             (response) => {
@@ -83,6 +88,7 @@ export function OpenWithDropdown({
       enabled: !!worktreePath,
     },
     { id: "windsurf" as EditorType, name: "Windsurf", enabled: !!worktreePath },
+    { id: "finder" as EditorType, name: "Finder", enabled: !!worktreePath },
   ];
 
   return (

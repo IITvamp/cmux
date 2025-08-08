@@ -132,7 +132,7 @@ export const GitFullDiffResponseSchema = z.object({
 });
 
 export const OpenInEditorSchema = z.object({
-  editor: z.enum(["vscode", "cursor", "windsurf"]),
+  editor: z.enum(["vscode", "cursor", "windsurf", "finder"]),
   path: z.string(),
 });
 
