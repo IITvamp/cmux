@@ -45,6 +45,25 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
     setIsResizing(false);
     document.body.style.cursor = "";
     document.body.classList.remove("select-none");
+    document.body.classList.remove("cmux-sidebar-resizing");
+    // Restore iframe pointer events
+    const iframes = Array.from(document.querySelectorAll("iframe"));
+    for (const el of iframes) {
+      if (el instanceof HTMLIFrameElement) {
+        const prev = el.dataset.prevPointerEvents;
+        if (prev !== undefined) {
+          if (prev === "__unset__") {
+            el.style.removeProperty("pointer-events");
+          } else {
+            el.style.pointerEvents = prev;
+          }
+          delete el.dataset.prevPointerEvents;
+        } else {
+          // Fallback to clearing
+          el.style.removeProperty("pointer-events");
+        }
+      }
+    }
     window.removeEventListener("mousemove", onMouseMove);
     window.removeEventListener("mouseup", stopResizing);
   }, [onMouseMove]);
@@ -55,6 +74,16 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
       setIsResizing(true);
       document.body.style.cursor = "col-resize";
       document.body.classList.add("select-none");
+      document.body.classList.add("cmux-sidebar-resizing");
+      // Disable pointer events on all iframes so dragging works over them
+      const iframes = Array.from(document.querySelectorAll("iframe"));
+      for (const el of iframes) {
+        if (el instanceof HTMLIFrameElement) {
+          const current = el.style.pointerEvents;
+          el.dataset.prevPointerEvents = current ? current : "__unset__";
+          el.style.pointerEvents = "none";
+        }
+      }
       window.addEventListener("mousemove", onMouseMove);
       window.addEventListener("mouseup", stopResizing);
     },
@@ -188,17 +217,14 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
         title="Drag to resize"
         onMouseDown={startResizing}
         onDoubleClick={resetWidth}
-        className="absolute top-0 right-0 h-full w-1 cursor-col-resize"
+        className="absolute top-0 right-0 h-full cursor-col-resize"
         style={{
-          // Wider hit area for easier dragging
-          width: "6px",
-          marginRight: "-3px",
-          // Visual indicator
-          background: isResizing ? "rgba(120,120,120,0.35)" : undefined,
+          // Invisible, but with a comfortable hit area
+          width: "8px",
+          marginRight: "-4px",
+          background: "transparent",
         } as CSSProperties}
-      >
-        <div className="pointer-events-none h-full w-[2px] mx-auto bg-neutral-200 dark:bg-neutral-800" />
-      </div>
+      />
     </div>
   );
 }
