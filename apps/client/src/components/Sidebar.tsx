@@ -174,7 +174,7 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
 
       <div className="pb-2 shrink-0 flex flex-col">
         <a
-          href="https://github.com/manaflow-ai/cmux/issues"
+          href="https://github.com/manaflow-ai/cmux/issues/new"
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center px-7 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors select-none cursor-default"
