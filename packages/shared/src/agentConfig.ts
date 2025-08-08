@@ -7,6 +7,12 @@ import {
   CLAUDE_SONNET_CONFIG,
 } from "./providers/anthropic/configs.js";
 import {
+  CURSOR_GPT_5_CONFIG,
+  CURSOR_OPUS_4_1_CONFIG,
+  CURSOR_SONNET_4_CONFIG,
+  CURSOR_SONNET_4_THINKING_CONFIG,
+} from "./providers/cursor/configs.js";
+import {
   GEMINI_FLASH_CONFIG,
   GEMINI_PRO_CONFIG,
 } from "./providers/gemini/configs.js";
@@ -18,17 +24,16 @@ import {
 } from "./providers/openai/configs.js";
 import {
   OPENCODE_GLM_Z1_32B_FREE_CONFIG,
+  OPENCODE_GPT_5_CONFIG,
+  OPENCODE_GPT_5_MINI_CONFIG,
+  OPENCODE_GPT_5_NANO_CONFIG,
   OPENCODE_KIMI_K2_CONFIG,
+  OPENCODE_O3_PRO_CONFIG,
+  OPENCODE_OPUS_4_1_20250805_CONFIG,
   OPENCODE_OPUS_CONFIG,
   OPENCODE_QWEN3_CODER_CONFIG,
   OPENCODE_SONNET_CONFIG,
 } from "./providers/opencode/configs.js";
-import {
-  CURSOR_GPT_5_CONFIG,
-  CURSOR_OPUS_4_1_CONFIG,
-  CURSOR_SONNET_4_CONFIG,
-  CURSOR_SONNET_4_THINKING_CONFIG,
-} from "./providers/cursor/configs.js";
 
 export { checkDockerStatus } from "./providers/common/check-docker.js";
 export { checkGitStatus } from "./providers/common/check-git.js";
@@ -66,9 +71,14 @@ export const AGENT_CONFIGS: AgentConfig[] = [
   AMP_CONFIG,
   OPENCODE_SONNET_CONFIG,
   OPENCODE_OPUS_CONFIG,
+  OPENCODE_OPUS_4_1_20250805_CONFIG,
   OPENCODE_KIMI_K2_CONFIG,
   OPENCODE_QWEN3_CODER_CONFIG,
   OPENCODE_GLM_Z1_32B_FREE_CONFIG,
+  OPENCODE_O3_PRO_CONFIG,
+  OPENCODE_GPT_5_CONFIG,
+  OPENCODE_GPT_5_MINI_CONFIG,
+  OPENCODE_GPT_5_NANO_CONFIG,
   CURSOR_OPUS_4_1_CONFIG,
   CURSOR_GPT_5_CONFIG,
   CURSOR_SONNET_4_CONFIG,
