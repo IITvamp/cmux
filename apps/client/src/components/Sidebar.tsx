@@ -20,7 +20,7 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
       }}
     >
       <div
-        className="h-[38px] flex items-center pl-3 pr-1.5"
+        className="h-[38px] flex items-center pl-3 pr-1.5 shrink-0"
         style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
       >
         {isElectron && <div className="w-[68px]"></div>}
