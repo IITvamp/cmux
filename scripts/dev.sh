@@ -6,10 +6,15 @@ export CONVEX_PORT=9777
 
 # Parse command line arguments
 FORCE_DOCKER_BUILD=false
+SHOW_COMPOSE_LOGS=false
 for arg in "$@"; do
     case $arg in
         --force-docker-build)
             FORCE_DOCKER_BUILD=true
+            shift
+            ;;
+        --show-compose-logs)
+            SHOW_COMPOSE_LOGS=true
             shift
             ;;
     esac
@@ -103,6 +108,9 @@ export -f prefix_output
 
 # Create logs directory if it doesn't exist
 mkdir -p "$APP_DIR/logs"
+# Export a shared log directory for subshells
+export LOG_DIR="$APP_DIR/logs"
+export SHOW_COMPOSE_LOGS
 
 # Start convex dev and log to both stdout and file
 echo -e "${GREEN}Starting convex dev...${NC}"
@@ -130,11 +138,18 @@ check_process() {
     fi
 }
 
-(cd .devcontainer && exec bash -c 'trap "kill -9 0" EXIT; COMPOSE_PROJECT_NAME=cmux-convex docker compose up 2>&1 | prefix_output "DOCKER-COMPOSE" "$MAGENTA"') &
+(cd .devcontainer && exec bash -c 'trap "kill -9 0" EXIT; \
+  COMPOSE_PROJECT_NAME=cmux-convex docker compose up 2>&1 | tee "$LOG_DIR/docker-compose.log" | { \
+    if [ "${SHOW_COMPOSE_LOGS}" = "true" ]; then \
+      prefix_output "DOCKER-COMPOSE" "$MAGENTA"; \
+    else \
+      cat >/dev/null; \
+    fi; \
+  }') &
 DOCKER_COMPOSE_PID=$!
 check_process $DOCKER_COMPOSE_PID "Docker Compose"
 
-(cd packages/convex && exec bash -c 'trap "kill -9 0" EXIT; source ~/.nvm/nvm.sh && bunx convex dev --env-file .env.convex 2>&1 | tee ../../logs/convex-dev.log | prefix_output "CONVEX-DEV" "$GREEN"') &
+(cd packages/convex && exec bash -c 'trap "kill -9 0" EXIT; source ~/.nvm/nvm.sh && bunx convex dev --env-file .env.convex 2>&1 | tee "$LOG_DIR/convex-dev.log" | prefix_output "CONVEX-DEV" "$BLUE"') &
 CONVEX_DEV_PID=$!
 check_process $CONVEX_DEV_PID "Convex Dev"
 CONVEX_PID=$CONVEX_DEV_PID
@@ -142,13 +157,13 @@ CONVEX_PID=$CONVEX_DEV_PID
 
 # Start the backend server
 echo -e "${GREEN}Starting backend server on port 9776...${NC}"
-(cd apps/server && exec bash -c 'trap "kill -9 0" EXIT; bun run dev 2>&1 | prefix_output "SERVER" "$YELLOW"') &
+(cd apps/server && exec bash -c 'trap "kill -9 0" EXIT; bun run dev 2>&1 | tee "$LOG_DIR/server.log" | prefix_output "SERVER" "$YELLOW"') &
 SERVER_PID=$!
 check_process $SERVER_PID "Backend Server"
 
 # Start the frontend
 echo -e "${GREEN}Starting frontend on port 5173...${NC}"
-(cd apps/client && exec bash -c 'trap "kill -9 0" EXIT; VITE_CONVEX_URL=http://localhost:$CONVEX_PORT bun run dev 2>&1 | prefix_output "CLIENT" "$CYAN"') &
+(cd apps/client && exec bash -c 'trap "kill -9 0" EXIT; VITE_CONVEX_URL=http://localhost:$CONVEX_PORT bun run dev 2>&1 | tee "$LOG_DIR/client.log" | prefix_output "CLIENT" "$CYAN"') &
 CLIENT_PID=$!
 check_process $CLIENT_PID "Frontend Client"
 

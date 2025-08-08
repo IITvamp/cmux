@@ -3,7 +3,10 @@ This project is called cmux. cmux is a web app that spawns Claude Code, Codex CL
 # Config
 
 Use pnpm to install dependencies and run the project.
-`./scripts/dev.sh` will start the project.
+`./scripts/dev.sh` will start the project. Optional flags:
+
+- `--force-docker-build`: Rebuild worker image even if cached.
+- `--show-compose-logs`: Also stream Docker Compose logs to the console (they are always written to `logs/docker-compose.log`). Docker build logs are always shown.
 After finishing a task, run `bun run typecheck` in root to typecheck everything.
 
 # Backend
@@ -15,3 +18,14 @@ Schemas are defined in packages/convex/convex/schema.ts.
 
 Always use node: prefixes for node imports.
 Do not use the any type.
+
+## Logs
+
+When running `./scripts/dev.sh`, service logs are written to `logs/{type}.log`:
+
+- docker-compose.log: Output from `.devcontainer` Docker Compose stack. Hidden from console by default; use `--show-compose-logs` to stream.
+- convex-dev.log: Convex development server (`bunx convex dev`).
+- server.log: Backend dev server in `apps/server`.
+- client.log: Frontend dev server in `apps/client` (Vite).
+
+Log files are overwritten on each run. Use `tail -f logs/<file>` to follow live output.
