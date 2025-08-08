@@ -21,6 +21,10 @@ bunx cmux@latest
 
 # with npm
 npx cmux@latest
+
+# or to install globally
+bun add -g cmux@latest
+npm install -g cmux@latest
 ```
 
 <!-- ```bash
