@@ -236,6 +236,14 @@ export async function startServer({
           case "windsurf":
             command = ["windsurf", path];
             break;
+          case "finder": {
+            if (process.platform !== "darwin") {
+              throw new Error("Finder is only supported on macOS");
+            }
+            // Use macOS 'open' to open the folder in Finder
+            command = ["open", path];
+            break;
+          }
           default:
             throw new Error(`Unknown editor: ${editor}`);
         }
