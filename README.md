@@ -7,7 +7,7 @@ cmux lets you spawn Claude Code, Codex CLI, Cursor CLI, Gemini CLI, Amp, Opencod
 
 Each agent gets an isolated Docker container.
 
-Each sandbox opens VS Code with a git diff UI and a terminal with the running CLI.
+Each sandbox opens VS Code with a git diff UI and a terminal with the corresponding CLI.
 
 ![cmux screenshot](./docs/assets/cmux-demo.png)
 
