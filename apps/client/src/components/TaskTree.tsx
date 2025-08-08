@@ -26,7 +26,7 @@ interface TaskRunWithChildren extends Doc<"taskRuns"> {
   children: TaskRunWithChildren[];
 }
 
-interface TaskWithRuns extends Doc<"tasks"> {
+export interface TaskWithRuns extends Doc<"tasks"> {
   runs: TaskRunWithChildren[];
 }
 
@@ -207,10 +207,7 @@ function TaskRunTree({ run, level, taskId }: TaskRunTreeProps) {
   // Generate VSCode URL if available
   const hasActiveVSCode = run.vscode?.status === "running";
   const vscodeUrl = useMemo(
-    () =>
-      hasActiveVSCode && run.vscode?.containerName && run.vscode?.ports?.vscode
-        ? `http://${run._id.substring(0, 12)}.39378.localhost:9776/`
-        : null,
+    () => (hasActiveVSCode && run.vscode?.url) || null,
     [hasActiveVSCode, run]
   );
 

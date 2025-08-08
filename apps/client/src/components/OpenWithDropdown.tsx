@@ -6,12 +6,7 @@ import * as React from "react";
 import { useCallback, useEffect } from "react";
 import { toast } from "sonner";
 
-type EditorType =
-  | "vscode-remote"
-  | "cursor"
-  | "vscode"
-  | "windsurf"
-  | "finder";
+type EditorType = "vscode-remote" | "cursor" | "vscode" | "windsurf" | "finder";
 
 interface OpenWithDropdownProps {
   vscodeUrl?: string | null;

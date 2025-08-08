@@ -35,6 +35,7 @@ export const TaskList = memo(function TaskList({
                 ? "text-neutral-900 dark:text-neutral-100"
                 : "text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200")
             }
+            onMouseDown={() => setTab("all")}
             onClick={() => setTab("all")}
           >
             Tasks
@@ -46,6 +47,7 @@ export const TaskList = memo(function TaskList({
                 ? "text-neutral-900 dark:text-neutral-100"
                 : "text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200")
             }
+            onMouseDown={() => setTab("archived")}
             onClick={() => setTab("archived")}
           >
             Archived
