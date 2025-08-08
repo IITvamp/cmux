@@ -77,8 +77,12 @@ function DashboardComponent() {
   }, []);
 
   // Fetch tasks
-  const activeTasksQuery = useQuery(convexQuery(api.tasks.get, { archived: false }));
-  const archivedTasksQuery = useQuery(convexQuery(api.tasks.get, { archived: true }));
+  const activeTasksQuery = useQuery(
+    convexQuery(api.tasks.get, { archived: false })
+  );
+  const archivedTasksQuery = useQuery(
+    convexQuery(api.tasks.get, { archived: true })
+  );
 
   // Fetch repos from Convex
   const reposByOrgQuery = useQuery(convexQuery(api.github.getReposByOrg, {}));
@@ -473,7 +477,7 @@ function DashboardComponent() {
       <div className="flex flex-col grow overflow-y-auto">
         {/* Main content area */}
         <div className="flex-1 flex justify-center px-4 pt-60 pb-4">
-          <div className="w-full max-w-4xl">
+          <div className="w-full max-w-4xl min-w-0">
             <div
               className={clsx(
                 "relative bg-white dark:bg-neutral-700/50 border border-neutral-200 dark:border-neutral-500/15 rounded-2xl transition-all"

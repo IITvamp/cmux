@@ -7,38 +7,44 @@ interface TaskListProps {
   archivedTasks: Doc<"tasks">[];
 }
 
-export const TaskList = memo(function TaskList({ activeTasks, archivedTasks }: TaskListProps) {
+export const TaskList = memo(function TaskList({
+  activeTasks,
+  archivedTasks,
+}: TaskListProps) {
   const [tab, setTab] = useState<"all" | "archived">("all");
-  const tasks = useMemo(() => (tab === "archived" ? archivedTasks : activeTasks), [tab, activeTasks, archivedTasks]);
+  const tasks = useMemo(
+    () => (tab === "archived" ? archivedTasks : activeTasks),
+    [tab, activeTasks, archivedTasks]
+  );
 
-  if ((tasks?.length || 0) === 0 && (tab === "all" ? activeTasks.length === 0 : archivedTasks.length === 0)) {
+  if (
+    (tasks?.length || 0) === 0 &&
+    (tab === "all" ? activeTasks.length === 0 : archivedTasks.length === 0)
+  ) {
     return null;
   }
 
   return (
     <div className="mt-6">
-      <div className="flex items-center justify-between mb-2">
-        <h2 className="text-sm font-medium text-neutral-500 dark:text-neutral-400 select-none">
-          {tab === "archived" ? "Archived Tasks" : "All Tasks"}
-        </h2>
-        <div className="inline-flex rounded-md overflow-hidden border border-neutral-200 dark:border-neutral-600">
+      <div className="mb-3">
+        <div className="flex items-end gap-2.5 select-none">
           <button
             className={
-              "px-2.5 py-1 text-xs select-none cursor-default transition " +
+              "text-sm font-medium transition-colors " +
               (tab === "all"
-                ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-black"
-                : "bg-white dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-600")
+                ? "text-neutral-900 dark:text-neutral-100"
+                : "text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200")
             }
             onClick={() => setTab("all")}
           >
-            All
+            Tasks
           </button>
           <button
             className={
-              "px-2.5 py-1 text-xs select-none cursor-default transition " +
+              "text-sm font-medium transition-colors " +
               (tab === "archived"
-                ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-black"
-                : "bg-white dark:bg-neutral-700 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-600")
+                ? "text-neutral-900 dark:text-neutral-100"
+                : "text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200")
             }
             onClick={() => setTab("archived")}
           >
@@ -46,7 +52,7 @@ export const TaskList = memo(function TaskList({ activeTasks, archivedTasks }: T
           </button>
         </div>
       </div>
-      <div className="space-y-1">
+      <div className="flex flex-col gap-1">
         {tasks.map((task) => (
           <TaskItem key={task._id} task={task} />
         ))}

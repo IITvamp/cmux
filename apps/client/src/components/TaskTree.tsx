@@ -4,15 +4,18 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useArchiveTask } from "@/hooks/useArchiveTask";
+import { ContextMenu } from "@base-ui-components/react/context-menu";
 import { type Doc } from "@cmux/convex/dataModel";
 import { Link, useLocation } from "@tanstack/react-router";
-import { ContextMenu } from "@base-ui-components/react/context-menu";
-import { useArchiveTask } from "@/hooks/useArchiveTask";
 import clsx from "clsx";
 import {
+  Archive as ArchiveIcon,
+  ArchiveRestore as ArchiveRestoreIcon,
   CheckCircle,
   ChevronRight,
   Circle,
+  Copy as CopyIcon,
   Crown,
   Loader2,
   XCircle,
@@ -67,7 +70,7 @@ export function TaskTree({ task, level = 0 }: TaskTreeProps) {
     setIsExpanded((prev) => !prev);
   }, []);
 
-  const { archiveWithUndo } = useArchiveTask();
+  const { archiveWithUndo, unarchive } = useArchiveTask();
 
   const handleCopyDescription = useCallback(() => {
     if (navigator?.clipboard?.writeText) {
@@ -79,65 +82,81 @@ export function TaskTree({ task, level = 0 }: TaskTreeProps) {
     archiveWithUndo(task);
   }, [archiveWithUndo, task]);
 
+  const handleUnarchive = useCallback(() => {
+    unarchive(task._id);
+  }, [unarchive, task._id]);
+
   return (
     <div className="select-none flex flex-col">
       <ContextMenu.Root>
-        <ContextMenu.Trigger className="contents">
+        <ContextMenu.Trigger>
           <Link
-        to="/task/$taskId"
-        params={{ taskId: task._id }}
-        className={clsx(
-          "flex items-center px-0.5 py-1 text-sm rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default",
-          "[&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800"
-        )}
-        style={{ paddingLeft: `${4 + level * 16}px` }}
-          >
-        <button
-          onClick={handleToggle}
-          className={clsx(
-            "size-4 mr-1.5 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded grid place-content-center cursor-default",
-            !hasRuns && "invisible"
-          )}
-          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-        >
-          <ChevronRight
+            to="/task/$taskId"
+            params={{ taskId: task._id }}
             className={clsx(
-              "w-3 h-3 transition-transform",
-              isExpanded && "rotate-90"
+              "flex items-center px-0.5 py-1 text-sm rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default",
+              "[&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800"
             )}
-          />
-        </button>
+            style={{ paddingLeft: `${4 + level * 16}px` }}
+          >
+            <button
+              onClick={handleToggle}
+              className={clsx(
+                "size-4 mr-1.5 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded grid place-content-center cursor-default",
+                !hasRuns && "invisible"
+              )}
+              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+            >
+              <ChevronRight
+                className={clsx(
+                  "w-3 h-3 transition-transform",
+                  isExpanded && "rotate-90"
+                )}
+              />
+            </button>
 
-        <div className="mr-2 flex-shrink-0">
-          {task.isCompleted ? (
-            <CheckCircle className="w-3 h-3 text-green-500" />
-          ) : (
-            <Circle className="w-3 h-3 text-neutral-400 animate-pulse" />
-          )}
-        </div>
+            <div className="mr-2 flex-shrink-0">
+              {task.isCompleted ? (
+                <CheckCircle className="w-3 h-3 text-green-500" />
+              ) : (
+                <Circle className="w-3 h-3 text-neutral-400 animate-pulse" />
+              )}
+            </div>
 
-        <div className="flex-1 min-w-0">
-          <p className="truncate text-neutral-900 dark:text-neutral-100 text-xs">
-            {task.text}
-          </p>
-        </div>
+            <div className="flex-1 min-w-0">
+              <p className="truncate text-neutral-900 dark:text-neutral-100 text-xs">
+                {task.text}
+              </p>
+            </div>
           </Link>
         </ContextMenu.Trigger>
         <ContextMenu.Portal>
-          <ContextMenu.Positioner className="outline-none">
-            <ContextMenu.Popup className="origin-[var(--transform-origin)] rounded-md bg-[canvas] py-1 text-gray-900 shadow-lg shadow-gray-200 outline outline-1 outline-gray-200 transition-[opacity] data-[ending-style]:opacity-0 dark:shadow-none dark:-outline-offset-1 dark:outline-gray-300">
+          <ContextMenu.Positioner className="outline-none z-[10000]">
+            <ContextMenu.Popup className="origin-[var(--transform-origin)] rounded-md bg-white dark:bg-neutral-800 py-1 text-neutral-900 dark:text-neutral-100 shadow-lg shadow-gray-200 outline-1 outline-neutral-200 transition-[opacity] data-[ending-style]:opacity-0 dark:shadow-none dark:-outline-offset-1 dark:outline-neutral-700">
               <ContextMenu.Item
-                className="flex cursor-default py-2 pr-8 pl-4 text-sm leading-4 outline-none select-none data-[highlighted]:relative data-[highlighted]:z-0 data-[highlighted]:text-gray-50 data-[highlighted]:before:absolute data-[highlighted]:before:inset-x-1 data-[highlighted]:before:inset-y-0 data-[highlighted]:before:z-[-1] data-[highlighted]:before:rounded-sm data-[highlighted]:before:bg-gray-900"
+                className="flex items-center gap-2 cursor-default py-1.5 pr-8 pl-3 text-[13px] leading-5 outline-none select-none data-[highlighted]:relative data-[highlighted]:z-0 data-[highlighted]:text-white data-[highlighted]:before:absolute data-[highlighted]:before:inset-x-1 data-[highlighted]:before:inset-y-0 data-[highlighted]:before:z-[-1] data-[highlighted]:before:rounded-sm data-[highlighted]:before:bg-neutral-900 dark:data-[highlighted]:before:bg-neutral-700"
                 onClick={handleCopyDescription}
               >
-                Copy Description
+                <CopyIcon className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-300" />
+                <span>Copy Description</span>
               </ContextMenu.Item>
-              <ContextMenu.Item
-                className="flex cursor-default py-2 pr-8 pl-4 text-sm leading-4 outline-none select-none data-[highlighted]:relative data-[highlighted]:z-0 data-[highlighted]:text-gray-50 data-[highlighted]:before:absolute data-[highlighted]:before:inset-x-1 data-[highlighted]:before:inset-y-0 data-[highlighted]:before:z-[-1] data-[highlighted]:before:rounded-sm data-[highlighted]:before:bg-gray-900"
-                onClick={handleArchive}
-              >
-                Archive Task
-              </ContextMenu.Item>
+              {task.isArchived ? (
+                <ContextMenu.Item
+                  className="flex items-center gap-2 cursor-default py-1.5 pr-8 pl-3 text-[13px] leading-5 outline-none select-none data-[highlighted]:relative data-[highlighted]:z-0 data-[highlighted]:text-white data-[highlighted]:before:absolute data-[highlighted]:before:inset-x-1 data-[highlighted]:before:inset-y-0 data-[highlighted]:before:z-[-1] data-[highlighted]:before:rounded-sm data-[highlighted]:before:bg-neutral-900 dark:data-[highlighted]:before:bg-neutral-700"
+                  onClick={handleUnarchive}
+                >
+                  <ArchiveRestoreIcon className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-300" />
+                  <span>Unarchive Task</span>
+                </ContextMenu.Item>
+              ) : (
+                <ContextMenu.Item
+                  className="flex items-center gap-2 cursor-default py-1.5 pr-8 pl-3 text-[13px] leading-5 outline-none select-none data-[highlighted]:relative data-[highlighted]:z-0 data-[highlighted]:text-white data-[highlighted]:before:absolute data-[highlighted]:before:inset-x-1 data-[highlighted]:before:inset-y-0 data-[highlighted]:before:z-[-1] data-[highlighted]:before:rounded-sm data-[highlighted]:before:bg-neutral-900 dark:data-[highlighted]:before:bg-neutral-700"
+                  onClick={handleArchive}
+                >
+                  <ArchiveIcon className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-300" />
+                  <span>Archive Task</span>
+                </ContextMenu.Item>
+              )}
             </ContextMenu.Popup>
           </ContextMenu.Positioner>
         </ContextMenu.Portal>
