@@ -161,6 +161,30 @@ function TaskRunTree({ run, level, taskId }: TaskRunTreeProps) {
 
   return (
     <div className="mt-px relative">
+      {/* Crown icon shown before status icon, with tooltip */}
+      {run.isCrowned && (
+        <div className="flex-shrink-0 absolute left-0 pt-[5.5px] pl-[26px]">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Crown className="w-3 h-3 text-yellow-500" />
+            </TooltipTrigger>
+            {run.crownReason && (
+              <TooltipContent
+                side="right"
+                sideOffset={6}
+                className="max-w-sm p-3 z-[9999]"
+              >
+                <div className="space-y-1.5">
+                  <p className="font-medium text-sm">Evaluation Reason</p>
+                  <p className="text-xs text-muted-foreground">
+                    {run.crownReason}
+                  </p>
+                </div>
+              </TooltipContent>
+            )}
+          </Tooltip>
+        </div>
+      )}
       <Link
         to="/task/$taskId/run/$taskRunId"
         params={{ taskId, taskRunId: run._id }}
@@ -206,9 +230,6 @@ function TaskRunTree({ run, level, taskId }: TaskRunTreeProps) {
           <span className="truncate text-neutral-700 dark:text-neutral-300">
             {displayText}
           </span>
-          {run.isCrowned && (
-            <Crown className="w-3 h-3 text-yellow-500 flex-shrink-0" />
-          )}
         </div>
       </Link>
 
