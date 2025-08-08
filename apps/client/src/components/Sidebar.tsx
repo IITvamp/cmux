@@ -227,7 +227,7 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
           {
             // Invisible, but with a comfortable hit area
             width: "8px",
-            marginRight: "-4px",
+            marginRight: "-9px",
             background: "transparent",
           } as CSSProperties
         }
