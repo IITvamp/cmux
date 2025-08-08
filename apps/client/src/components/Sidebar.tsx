@@ -1,4 +1,4 @@
-import { TaskTree } from "@/components/TaskTree";
+import { TaskTree, type TaskWithRuns } from "@/components/TaskTree";
 import { TaskTreeSkeleton } from "@/components/TaskTreeSkeleton";
 import { isElectron } from "@/lib/electron";
 import { type Doc } from "@cmux/convex/dataModel";
@@ -6,7 +6,7 @@ import { Link } from "@tanstack/react-router";
 
 interface SidebarProps {
   tasks: Doc<"tasks">[] | undefined;
-  tasksWithRuns: (Doc<"tasks"> & { runs: any[] })[];
+  tasksWithRuns: TaskWithRuns[];
 }
 
 export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {

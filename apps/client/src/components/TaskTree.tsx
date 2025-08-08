@@ -26,7 +26,7 @@ interface TaskRunWithChildren extends Doc<"taskRuns"> {
   children: TaskRunWithChildren[];
 }
 
-interface TaskWithRuns extends Doc<"tasks"> {
+export interface TaskWithRuns extends Doc<"tasks"> {
   runs: TaskRunWithChildren[];
 }
 
