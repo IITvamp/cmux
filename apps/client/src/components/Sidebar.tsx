@@ -54,24 +54,26 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
         </Link>
       </div>
       <nav className="grow flex flex-col overflow-hidden">
-        <div className="flex-1 overflow-y-auto px-3 py-1">
-          <div className="flex items-center px-1 py-1">
-            <span className="text-[10px] font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-[-0.005em] select-none">
-              Recent Tasks
-            </span>
-          </div>
-          <div className="space-y-0.5">
-            {tasks === undefined ? (
-              <TaskTreeSkeleton count={5} />
-            ) : tasksWithRuns.length > 0 ? (
-              tasksWithRuns
-                .slice(0, 10)
-                .map((task) => <TaskTree key={task._id} task={task} />)
-            ) : (
-              <p className="px-2 py-1.5 text-xs text-center text-neutral-500 dark:text-neutral-400 select-none">
-                No recent tasks
-              </p>
-            )}
+        <div className="flex-1 overflow-y-auto">
+          <div className="px-3 py-1">
+            <div className="flex items-center px-1 py-1">
+              <span className="text-[10px] font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-[-0.005em] select-none">
+                Recent Tasks
+              </span>
+            </div>
+            <div className="space-y-0.5">
+              {tasks === undefined ? (
+                <TaskTreeSkeleton count={5} />
+              ) : tasksWithRuns.length > 0 ? (
+                tasksWithRuns.map((task) => (
+                  <TaskTree key={task._id} task={task} />
+                ))
+              ) : (
+                <p className="px-2 py-1.5 text-xs text-center text-neutral-500 dark:text-neutral-400 select-none">
+                  No recent tasks
+                </p>
+              )}
+            </div>
           </div>
         </div>
       </nav>
