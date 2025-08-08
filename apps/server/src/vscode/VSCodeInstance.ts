@@ -135,6 +135,14 @@ export abstract class VSCodeInstance extends EventEmitter {
         this.emit("terminal-idle", data);
       });
 
+      this.workerSocket.on("worker:terminal-spawn-failed", (data) => {
+        dockerLogger.error(
+          `[VSCodeInstance ${this.instanceId}] Terminal spawn failed:`,
+          data
+        );
+        this.emit("terminal-spawn-failed", data);
+      });
+
       this.workerSocket.on("worker:error", (data) => {
         dockerLogger.error(
           `[VSCodeInstance ${this.instanceId}] Worker error:`,

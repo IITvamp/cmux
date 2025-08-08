@@ -109,6 +109,15 @@ export const WorkerTerminalIdleSchema = z.object({
   elapsedMs: z.number(),
 });
 
+export const WorkerTerminalSpawnFailedSchema = z.object({
+  workerId: z.string(),
+  terminalId: z.string(),
+  taskId: z.string(),
+  error: z.string(),
+  command: z.string(),
+  args: z.array(z.string()),
+});
+
 // File upload schema for authentication files
 export const WorkerUploadFilesSchema = z.object({
   files: z.array(
@@ -174,6 +183,7 @@ export type WorkerTerminalExit = z.infer<typeof WorkerTerminalExitSchema>;
 export type WorkerTerminalCreated = z.infer<typeof WorkerTerminalCreatedSchema>;
 export type WorkerTerminalClosed = z.infer<typeof WorkerTerminalClosedSchema>;
 export type WorkerTerminalIdle = z.infer<typeof WorkerTerminalIdleSchema>;
+export type WorkerTerminalSpawnFailed = z.infer<typeof WorkerTerminalSpawnFailedSchema>;
 export type WorkerUploadFiles = z.infer<typeof WorkerUploadFilesSchema>;
 export type WorkerConfigureGit = z.infer<typeof WorkerConfigureGitSchema>;
 export type WorkerExec = z.infer<typeof WorkerExecSchema>;
@@ -232,6 +242,7 @@ export interface WorkerToServerEvents {
   "worker:terminal-exit": (data: WorkerTerminalExit) => void;
   "worker:terminal-closed": (data: WorkerTerminalClosed) => void;
   "worker:terminal-idle": (data: WorkerTerminalIdle) => void;
+  "worker:terminal-spawn-failed": (data: WorkerTerminalSpawnFailed) => void;
 
   // Error reporting
   "worker:error": (data: { workerId: string; error: string }) => void;

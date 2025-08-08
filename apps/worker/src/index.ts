@@ -937,7 +937,27 @@ async function createTerminal(
       terminalId,
     });
   } catch (error) {
-    log("ERROR", "Failed to spawn process", error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    log("ERROR", "Failed to spawn process", {
+      error: errorMessage,
+      command: spawnCommand,
+      args: spawnArgs,
+      terminalId,
+      taskId: options.taskId,
+    });
+    
+    // Emit spawn failure event if taskId is provided
+    if (options.taskId) {
+      emitToMainServer("worker:terminal-spawn-failed", {
+        workerId: WORKER_ID,
+        terminalId,
+        taskId: options.taskId,
+        error: errorMessage,
+        command: spawnCommand,
+        args: spawnArgs,
+      });
+    }
+    
     return;
   }
 
@@ -1074,11 +1094,31 @@ async function createTerminal(
         });
       })
       .catch((error) => {
+        const errorMessage = error instanceof Error ? error.message : String(error);
         log("WARNING", `Terminal ${terminalId} exited early or failed idle detection`, {
-          error: error instanceof Error ? error.message : String(error),
+          error: errorMessage,
           terminalId,
           taskId: options.taskId,
         });
+        
+        // Emit spawn failure event if the error indicates the tmux session wasn't found
+        // This usually means the initial command failed
+        if (options.taskId && errorMessage.includes("not found after")) {
+          log("ERROR", `Terminal ${terminalId} tmux session never started - command likely failed`, {
+            terminalId,
+            taskId: options.taskId,
+            error: errorMessage,
+          });
+          
+          emitToMainServer("worker:terminal-spawn-failed", {
+            workerId: WORKER_ID,
+            terminalId,
+            taskId: options.taskId,
+            error: `Command failed to start: ${errorMessage}`,
+            command: command || "unknown",
+            args: args || [],
+          });
+        }
         // Don't emit idle event for early exits/failures
       });
   }

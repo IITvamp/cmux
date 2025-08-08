@@ -1325,6 +1325,35 @@ export async function spawnAgent(
       }
     });
 
+    // Set up terminal-spawn-failed event handler
+    vscodeInstance.on("terminal-spawn-failed", async (data) => {
+      serverLogger.error(
+        `[AgentSpawner] Terminal spawn failed for ${agent.name}:`,
+        data
+      );
+      
+      // Check if this failure is for our task
+      if (data.taskId === taskRunId) {
+        serverLogger.error(`[AgentSpawner] Marking task as failed for ${agent.name} due to spawn failure`);
+        
+        // Update the task run status to failed
+        await convex.mutation(api.taskRuns.updateStatusPublic, {
+          id: taskRunId as Id<"taskRuns">,
+          status: "failed",
+          exitCode: 1,
+        });
+        
+        // Append error message to the log
+        const errorMessage = `\n\n=== SPAWN ERROR ===\nFailed to start agent command: ${data.error}\nCommand: ${data.command}\nArgs: ${data.args.join(' ')}\n=== END ERROR ===\n`;
+        await convex.mutation(api.taskRuns.appendLogPublic, {
+          id: taskRunId as Id<"taskRuns">,
+          content: errorMessage,
+        });
+        
+        serverLogger.error(`[AgentSpawner] Task ${taskRunId} marked as failed due to spawn error`);
+      }
+    });
+
     // Get ports if it's a Docker instance
     let ports:
       | { vscode: string; worker: string; extension?: string }
