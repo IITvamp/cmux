@@ -201,6 +201,9 @@ COPY --from=builder /usr/local/bin/wait-for-docker.sh /usr/local/bin/wait-for-do
 RUN SHELL=/bin/bash pnpm setup && \
     . /root/.bashrc
 
+# Install tmux configuration for better mouse scrolling behavior
+COPY configs/tmux.conf /etc/tmux.conf
+
 
 # Find and install claude-code.vsix from Bun cache using ripgrep
 RUN claude_vsix=$(rg --files /root/.bun/install/cache/@anthropic-ai 2>/dev/null | rg "claude-code\.vsix$" | head -1) && \
