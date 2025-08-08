@@ -387,6 +387,25 @@ export const complete = mutation({
   },
 });
 
+// Mark a task run as failed with an error message
+export const fail = mutation({
+  args: {
+    id: v.id("taskRuns"),
+    errorMessage: v.string(),
+    exitCode: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    await ctx.db.patch(args.id, {
+      status: "failed",
+      errorMessage: args.errorMessage,
+      exitCode: args.exitCode ?? 1,
+      completedAt: now,
+      updatedAt: now,
+    });
+  },
+});
+
 // Get all active VSCode instances
 export const getActiveVSCodeInstances = query({
   handler: async (ctx) => {

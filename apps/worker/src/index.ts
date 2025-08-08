@@ -957,11 +957,21 @@ async function createTerminal(
   });
 
   // Pipe data from child process to headless terminal
+  // Capture initial stderr output for error reporting if startup fails
+  let initialStderrBuffer = "";
+  const INITIAL_ERROR_CAPTURE_WINDOW_MS = 30000; // capture up to first 30s
+  const stopErrorCaptureAt = Date.now() + INITIAL_ERROR_CAPTURE_WINDOW_MS;
   childProcess.stdout.on("data", (data: Buffer) => {
     headlessTerminal.write(data.toString());
   });
 
   childProcess.stderr.on("data", (data: Buffer) => {
+    // Accumulate stderr during startup window for diagnostic error reporting
+    if (Date.now() <= stopErrorCaptureAt && initialStderrBuffer.length < 8000) {
+      try {
+        initialStderrBuffer += data.toString();
+      } catch {}
+    }
     headlessTerminal.write(data.toString());
   });
 
@@ -1074,10 +1084,25 @@ async function createTerminal(
         });
       })
       .catch((error) => {
-        log("WARNING", `Terminal ${terminalId} exited early or failed idle detection`, {
-          error: error instanceof Error ? error.message : String(error),
+        const errMsg =
+          (initialStderrBuffer && initialStderrBuffer.trim()) ||
+          (error instanceof Error ? error.message : String(error));
+        log(
+          "WARNING",
+          `Terminal ${terminalId} exited early or failed idle detection`,
+          {
+            error: errMsg,
+            terminalId,
+            taskId: options.taskId,
+          }
+        );
+        // Inform main server so it can mark the task run as failed
+        emitToMainServer("worker:terminal-failed", {
+          workerId: WORKER_ID,
           terminalId,
           taskId: options.taskId,
+          errorMessage: errMsg,
+          elapsedMs: Date.now() - processStartTime,
         });
         // Don't emit idle event for early exits/failures
       });
