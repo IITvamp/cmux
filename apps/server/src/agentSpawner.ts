@@ -997,8 +997,10 @@ export async function spawnAgent(
       );
     }
 
-    // Build environment variables
+    // Build environment variables (use CMUX_PROMPT to avoid huge argv)
     let envVars: Record<string, string> = {
+      CMUX_PROMPT: processedTaskDescription,
+      // Keep PROMPT for backward compatibility if any consumer uses it
       PROMPT: processedTaskDescription,
     };
 
@@ -1026,21 +1028,10 @@ export async function spawnAgent(
       }
     }
 
-    // Build the agent command with proper quoting
-    const escapedPrompt = processedTaskDescription
-      .replace(/\\/g, "\\\\")  // Escape backslashes first
-      .replace(/"/g, '\\"')    // Then escape double quotes
-      .replace(/\$/g, "\\$")   // Escape dollar signs to prevent variable expansion
-      .replace(/`/g, "\\`");   // Escape backticks to prevent command substitution
-
-    // Replace $PROMPT placeholders in args with the actual prompt
+    // Replace $PROMPT placeholders in args with $CMUX_PROMPT token for shell-time expansion
     const processedArgs = agent.args.map((arg) => {
-      if (arg === "$PROMPT") {
-        // Return the prompt without quotes since it's being passed as an array element
-        return processedTaskDescription;
-      } else if (arg.includes("$PROMPT")) {
-        // Replace $PROMPT within the argument string
-        return arg.replace(/\$PROMPT/g, processedTaskDescription);
+      if (arg.includes("$PROMPT")) {
+        return arg.replace(/\$PROMPT/g, "$CMUX_PROMPT");
       }
       return arg;
     });
@@ -1471,6 +1462,17 @@ export async function spawnAgent(
     const actualCommand = agent.command;
     const actualArgs = processedArgs;
     
+    // Build a shell command string so $CMUX_PROMPT expands inside tmux session
+    const shellEscaped = (s: string) => {
+      // If this arg references $CMUX_PROMPT, wrap in double quotes to allow expansion
+      if (s.includes("$CMUX_PROMPT")) {
+        return `"${s.replace(/"/g, '\\"')}"`;
+      }
+      // Otherwise single-quote and escape any existing single quotes
+      return `'${s.replace(/'/g, "'\\''")}'`;
+    };
+    const commandString = [actualCommand, ...actualArgs].map(shellEscaped).join(" ");
+
     const terminalCreationCommand: WorkerCreateTerminal = {
       terminalId: tmuxSessionName,
       command: "tmux",
@@ -1479,8 +1481,9 @@ export async function spawnAgent(
         "-d",
         "-s",
         tmuxSessionName,
-        actualCommand,
-        ...actualArgs,
+        "bash",
+        "-lc",
+        `exec ${commandString}`,
       ],
       cols: 80,
       rows: 74,

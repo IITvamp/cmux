@@ -7,8 +7,8 @@ export const AMP_CONFIG: AgentConfig = {
   name: "amp",
   command: "prompt-wrapper",
   args: [
-    "--prompt",
-    "$PROMPT",
+    "--prompt-env",
+    "CMUX_PROMPT",
     "--",
     "bunx",
     "@sourcegraph/amp@latest",
