@@ -13,7 +13,7 @@ Each sandbox opens VS Code with a git diff UI and a terminal with the correspond
 
 ## Install
 
-cmux supports macOS (Apple Silicon, x64 coming soon). Linux and Windows support is also coming soon.
+cmux supports macOS Apple Silicon. macOS x64, Linux, and Windows support coming soon.
 
 ```bash
 # with bun
