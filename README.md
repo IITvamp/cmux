@@ -21,10 +21,12 @@ bunx cmux@latest
 
 # with npm
 npx cmux@latest
+```
 
+<!-- ```bash
 # with uv
 uvx cmux@latest
-```
+``` -->
 
 <!-- ## Upgrade
 
