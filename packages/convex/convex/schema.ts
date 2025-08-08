@@ -54,6 +54,7 @@ export default defineSchema({
     updatedAt: v.number(),
     completedAt: v.optional(v.number()),
     exitCode: v.optional(v.number()),
+    errorMessage: v.optional(v.string()), // Error message when run fails early
     userId: v.optional(v.string()), // Link to user who created the run
     isCrowned: v.optional(v.boolean()), // Whether this run won the crown evaluation
     crownReason: v.optional(v.string()), // LLM's reasoning for why this run was crowned

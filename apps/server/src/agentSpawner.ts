@@ -1283,6 +1283,9 @@ export async function spawnAgent(
       }
     };
 
+    // Track if this terminal already failed (to avoid completing later)
+    let hasFailed = false;
+
     // Set up terminal-exit event handler
     vscodeInstance.on("terminal-exit", async (data) => {
       serverLogger.info(
@@ -1291,6 +1294,12 @@ export async function spawnAgent(
       );
 
       if (data.terminalId === terminalId) {
+        if (hasFailed) {
+          serverLogger.warn(
+            `[AgentSpawner] Not completing ${agent.name} (already marked failed)`
+          );
+          return;
+        }
         // CRITICAL: Add a delay to ensure changes are written to disk
         serverLogger.info(`[AgentSpawner] Waiting 3 seconds for file system to settle before capturing git diff...`);
         await new Promise(resolve => setTimeout(resolve, 3000));
@@ -1305,6 +1314,12 @@ export async function spawnAgent(
         `[AgentSpawner] Terminal idle detected for ${agent.name}:`,
         data
       );
+      if (hasFailed) {
+        serverLogger.warn(
+          `[AgentSpawner] Ignoring idle for ${agent.name} (already marked failed)`
+        );
+        return;
+      }
       
       // Debug logging to understand what's being compared
       serverLogger.info(`[AgentSpawner] Terminal idle comparison:`);
@@ -1322,6 +1337,44 @@ export async function spawnAgent(
         await handleTaskCompletion(0);
       } else {
         serverLogger.warn(`[AgentSpawner] Task ID did not match, ignoring idle event`);
+      }
+    });
+
+    // Set up terminal-failed event handler
+    vscodeInstance.on("terminal-failed", async (data: any) => {
+      try {
+        serverLogger.error(
+          `[AgentSpawner] Terminal failed for ${agent.name}:`,
+          data
+        );
+        if (data.taskId !== taskRunId) {
+          serverLogger.warn(
+            `[AgentSpawner] Failure event taskId mismatch; ignoring`
+          );
+          return;
+        }
+        hasFailed = true;
+
+        // Append error to log for context
+        if (data.errorMessage) {
+          await convex.mutation(api.taskRuns.appendLogPublic, {
+            id: taskRunId as Id<"taskRuns">,
+            content: `\n\n=== ERROR ===\n${data.errorMessage}\n=== END ERROR ===\n`,
+          });
+        }
+
+        // Mark the run as failed with error message
+        await convex.mutation(api.taskRuns.fail as any, {
+          id: taskRunId as Id<"taskRuns">,
+          errorMessage: data.errorMessage || "Terminal failed",
+          exitCode: typeof data.exitCode === "number" ? data.exitCode : 1,
+        });
+
+        serverLogger.info(
+          `[AgentSpawner] Marked taskRun ${taskRunId} as failed`
+        );
+      } catch (error) {
+        serverLogger.error(`[AgentSpawner] Error handling terminal-failed:`, error);
       }
     });
 

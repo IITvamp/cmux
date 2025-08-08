@@ -109,6 +109,15 @@ export const WorkerTerminalIdleSchema = z.object({
   elapsedMs: z.number(),
 });
 
+// Terminal failure event (e.g., tmux spawn/agent command failed)
+export const WorkerTerminalFailedSchema = z.object({
+  workerId: z.string(),
+  terminalId: z.string(),
+  taskId: z.string().optional(),
+  errorMessage: z.string(),
+  elapsedMs: z.number().optional(),
+});
+
 // File upload schema for authentication files
 export const WorkerUploadFilesSchema = z.object({
   files: z.array(
@@ -174,6 +183,7 @@ export type WorkerTerminalExit = z.infer<typeof WorkerTerminalExitSchema>;
 export type WorkerTerminalCreated = z.infer<typeof WorkerTerminalCreatedSchema>;
 export type WorkerTerminalClosed = z.infer<typeof WorkerTerminalClosedSchema>;
 export type WorkerTerminalIdle = z.infer<typeof WorkerTerminalIdleSchema>;
+export type WorkerTerminalFailed = z.infer<typeof WorkerTerminalFailedSchema>;
 export type WorkerUploadFiles = z.infer<typeof WorkerUploadFilesSchema>;
 export type WorkerConfigureGit = z.infer<typeof WorkerConfigureGitSchema>;
 export type WorkerExec = z.infer<typeof WorkerExecSchema>;
@@ -232,6 +242,7 @@ export interface WorkerToServerEvents {
   "worker:terminal-exit": (data: WorkerTerminalExit) => void;
   "worker:terminal-closed": (data: WorkerTerminalClosed) => void;
   "worker:terminal-idle": (data: WorkerTerminalIdle) => void;
+  "worker:terminal-failed": (data: WorkerTerminalFailed) => void;
 
   // Error reporting
   "worker:error": (data: { workerId: string; error: string }) => void;
