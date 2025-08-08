@@ -3,6 +3,13 @@ import { TaskTreeSkeleton } from "@/components/TaskTreeSkeleton";
 import { isElectron } from "@/lib/electron";
 import { type Doc } from "@cmux/convex/dataModel";
 import { Link } from "@tanstack/react-router";
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 interface SidebarProps {
   tasks: Doc<"tasks">[] | undefined;
@@ -10,24 +17,111 @@ interface SidebarProps {
 }
 
 export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
+  const DEFAULT_WIDTH = 256;
+  const MIN_WIDTH = 200;
+  const MAX_WIDTH = 600;
+
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [width, setWidth] = useState<number>(() => {
+    const stored = localStorage.getItem("sidebarWidth");
+    const parsed = stored ? Number.parseInt(stored, 10) : DEFAULT_WIDTH;
+    if (Number.isNaN(parsed)) return DEFAULT_WIDTH;
+    return Math.min(Math.max(parsed, MIN_WIDTH), MAX_WIDTH);
+  });
+  const [isResizing, setIsResizing] = useState(false);
+
+  useEffect(() => {
+    localStorage.setItem("sidebarWidth", String(width));
+  }, [width]);
+
+  const onMouseMove = useCallback((e: MouseEvent) => {
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const newWidth = Math.min(
+      Math.max(e.clientX - rect.left, MIN_WIDTH),
+      MAX_WIDTH
+    );
+    setWidth(newWidth);
+  }, []);
+
+  const stopResizing = useCallback(() => {
+    setIsResizing(false);
+    document.body.style.cursor = "";
+    document.body.classList.remove("select-none");
+    document.body.classList.remove("cmux-sidebar-resizing");
+    // Restore iframe pointer events
+    const iframes = Array.from(document.querySelectorAll("iframe"));
+    for (const el of iframes) {
+      if (el instanceof HTMLIFrameElement) {
+        const prev = el.dataset.prevPointerEvents;
+        if (prev !== undefined) {
+          if (prev === "__unset__") {
+            el.style.removeProperty("pointer-events");
+          } else {
+            el.style.pointerEvents = prev;
+          }
+          delete el.dataset.prevPointerEvents;
+        } else {
+          // Fallback to clearing
+          el.style.removeProperty("pointer-events");
+        }
+      }
+    }
+    window.removeEventListener("mousemove", onMouseMove);
+    window.removeEventListener("mouseup", stopResizing);
+  }, [onMouseMove]);
+
+  const startResizing = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      setIsResizing(true);
+      document.body.style.cursor = "col-resize";
+      document.body.classList.add("select-none");
+      document.body.classList.add("cmux-sidebar-resizing");
+      // Disable pointer events on all iframes so dragging works over them
+      const iframes = Array.from(document.querySelectorAll("iframe"));
+      for (const el of iframes) {
+        if (el instanceof HTMLIFrameElement) {
+          const current = el.style.pointerEvents;
+          el.dataset.prevPointerEvents = current ? current : "__unset__";
+          el.style.pointerEvents = "none";
+        }
+      }
+      window.addEventListener("mousemove", onMouseMove);
+      window.addEventListener("mouseup", stopResizing);
+    },
+    [onMouseMove, stopResizing]
+  );
+
+  useEffect(() => {
+    return () => {
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", stopResizing);
+    };
+  }, [onMouseMove, stopResizing]);
+
+  const resetWidth = useCallback(() => setWidth(DEFAULT_WIDTH), []);
+
   return (
     <div
-      className="bg-neutral-50 dark:bg-black flex flex-col shrink-0 h-screen grow"
+      ref={containerRef}
+      className="relative bg-neutral-50 dark:bg-black flex flex-col shrink-0 h-screen grow"
       style={{
-        width: "256px",
-        minWidth: "256px",
-        maxWidth: "256px",
+        width: `${width}px`,
+        minWidth: `${width}px`,
+        maxWidth: `${width}px`,
+        userSelect: isResizing ? ("none" as const) : undefined,
       }}
     >
       <div
         className="h-[38px] flex items-center pl-3 pr-1.5 shrink-0"
-        style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+        style={{ WebkitAppRegion: "drag" } as CSSProperties}
       >
         {isElectron && <div className="w-[68px]"></div>}
         <Link
           to="/dashboard"
           className="w-[50px] h-[25px] bg-[#7d2fc7] hover:bg-[#7d2fc7]/80 transition text-white flex items-center justify-center font-medium rounded-lg text-xs select-none cursor-default"
-          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+          style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
         >
           cmux
         </Link>
@@ -36,7 +130,7 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
           to="/dashboard"
           className="w-[25px] h-[25px] bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 rounded-lg flex items-center justify-center transition-colors cursor-default"
           title="New task"
-          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+          style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
         >
           <svg
             className="w-4 h-4 text-neutral-600 dark:text-neutral-300"
@@ -120,6 +214,24 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
           Settings
         </Link>
       </div>
+
+      {/* Resize handle */}
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        title="Drag to resize"
+        onMouseDown={startResizing}
+        onDoubleClick={resetWidth}
+        className="absolute top-0 right-0 h-full cursor-col-resize"
+        style={
+          {
+            // Invisible, but with a comfortable hit area
+            width: "8px",
+            marginRight: "-4px",
+            background: "transparent",
+          } as CSSProperties
+        }
+      />
     </div>
   );
 }
