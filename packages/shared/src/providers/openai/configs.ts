@@ -14,7 +14,6 @@ export const CODEX_GPT_5_CONFIG: AgentConfig = {
     "danger-full-access",
     "--ask-for-approval",
     "never",
-    "--prompt",
     "$PROMPT",
   ],
   environment: getOpenAIEnvironment,
