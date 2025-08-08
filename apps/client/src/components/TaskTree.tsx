@@ -6,6 +6,8 @@ import {
 } from "@/components/ui/tooltip";
 import { type Doc } from "@cmux/convex/dataModel";
 import { Link, useLocation } from "@tanstack/react-router";
+import { ContextMenu } from "@base-ui-components/react/context-menu";
+import { useArchiveTask } from "@/hooks/useArchiveTask";
 import clsx from "clsx";
 import {
   CheckCircle,
@@ -65,9 +67,23 @@ export function TaskTree({ task, level = 0 }: TaskTreeProps) {
     setIsExpanded((prev) => !prev);
   }, []);
 
+  const { archiveWithUndo } = useArchiveTask();
+
+  const handleCopyDescription = useCallback(() => {
+    if (navigator?.clipboard?.writeText) {
+      navigator.clipboard.writeText(task.text).catch(() => {});
+    }
+  }, [task.text]);
+
+  const handleArchive = useCallback(() => {
+    archiveWithUndo(task);
+  }, [archiveWithUndo, task]);
+
   return (
     <div className="select-none flex flex-col">
-      <Link
+      <ContextMenu.Root>
+        <ContextMenu.Trigger className="contents">
+          <Link
         to="/task/$taskId"
         params={{ taskId: task._id }}
         className={clsx(
@@ -75,7 +91,7 @@ export function TaskTree({ task, level = 0 }: TaskTreeProps) {
           "[&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800"
         )}
         style={{ paddingLeft: `${4 + level * 16}px` }}
-      >
+          >
         <button
           onClick={handleToggle}
           className={clsx(
@@ -105,7 +121,27 @@ export function TaskTree({ task, level = 0 }: TaskTreeProps) {
             {task.text}
           </p>
         </div>
-      </Link>
+          </Link>
+        </ContextMenu.Trigger>
+        <ContextMenu.Portal>
+          <ContextMenu.Positioner className="outline-none">
+            <ContextMenu.Popup className="origin-[var(--transform-origin)] rounded-md bg-[canvas] py-1 text-gray-900 shadow-lg shadow-gray-200 outline outline-1 outline-gray-200 transition-[opacity] data-[ending-style]:opacity-0 dark:shadow-none dark:-outline-offset-1 dark:outline-gray-300">
+              <ContextMenu.Item
+                className="flex cursor-default py-2 pr-8 pl-4 text-sm leading-4 outline-none select-none data-[highlighted]:relative data-[highlighted]:z-0 data-[highlighted]:text-gray-50 data-[highlighted]:before:absolute data-[highlighted]:before:inset-x-1 data-[highlighted]:before:inset-y-0 data-[highlighted]:before:z-[-1] data-[highlighted]:before:rounded-sm data-[highlighted]:before:bg-gray-900"
+                onClick={handleCopyDescription}
+              >
+                Copy Description
+              </ContextMenu.Item>
+              <ContextMenu.Item
+                className="flex cursor-default py-2 pr-8 pl-4 text-sm leading-4 outline-none select-none data-[highlighted]:relative data-[highlighted]:z-0 data-[highlighted]:text-gray-50 data-[highlighted]:before:absolute data-[highlighted]:before:inset-x-1 data-[highlighted]:before:inset-y-0 data-[highlighted]:before:z-[-1] data-[highlighted]:before:rounded-sm data-[highlighted]:before:bg-gray-900"
+                onClick={handleArchive}
+              >
+                Archive Task
+              </ContextMenu.Item>
+            </ContextMenu.Popup>
+          </ContextMenu.Positioner>
+        </ContextMenu.Portal>
+      </ContextMenu.Root>
 
       {isExpanded && hasRuns && (
         <div className="flex flex-col">

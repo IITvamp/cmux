@@ -12,13 +12,9 @@ import { useClipboard } from "@mantine/hooks";
 import { useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useQuery as useConvexQuery, useMutation } from "convex/react";
-import {
-  Archive,
-  Check,
-  Copy,
-  Pin,
-} from "lucide-react";
+import { Archive, Check, Copy, Pin } from "lucide-react";
 import { memo, useCallback, useMemo } from "react";
+import { useArchiveTask } from "@/hooks/useArchiveTask";
 
 interface TaskItemProps {
   task: Doc<"tasks">;
@@ -28,6 +24,7 @@ export const TaskItem = memo(function TaskItem({ task }: TaskItemProps) {
   const navigate = useNavigate();
   const archiveTask = useMutation(api.tasks.archive);
   const clipboard = useClipboard({ timeout: 2000 });
+  const { archiveWithUndo } = useArchiveTask();
 
   // Query for task runs to find VSCode instances
   const taskRunsQuery = useConvexQuery(
@@ -106,10 +103,13 @@ export const TaskItem = memo(function TaskItem({ task }: TaskItemProps) {
     }
   }, [runWithVSCode, toggleKeepAlive]);
 
-  const handleArchive = useCallback((e: React.MouseEvent) => {
-    e.stopPropagation();
-    archiveTask({ id: task._id });
-  }, [archiveTask, task._id]);
+  const handleArchive = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      archiveWithUndo(task);
+    },
+    [archiveWithUndo, task]
+  );
 
   const isOptimisticUpdate = task._id.includes("-") && task._id.length === 36;
 
