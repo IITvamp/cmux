@@ -76,14 +76,6 @@ function DashboardComponent() {
     localStorage.setItem("selectedAgents", JSON.stringify(newAgents));
   }, []);
 
-  // Fetch tasks
-  const activeTasksQuery = useQuery(
-    convexQuery(api.tasks.get, { archived: false })
-  );
-  const archivedTasksQuery = useQuery(
-    convexQuery(api.tasks.get, { archived: true })
-  );
-
   // Fetch repos from Convex
   const reposByOrgQuery = useQuery(convexQuery(api.github.getReposByOrg, {}));
   const reposByOrg = reposByOrgQuery.data || {};
@@ -517,12 +509,7 @@ function DashboardComponent() {
             </div>
 
             {/* Task List */}
-            {(activeTasksQuery.data || archivedTasksQuery.data) && (
-              <TaskList
-                activeTasks={activeTasksQuery.data || []}
-                archivedTasks={archivedTasksQuery.data || []}
-              />
-            )}
+            <TaskList />
           </div>
         </div>
       </div>

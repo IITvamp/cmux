@@ -1,16 +1,21 @@
-import type { Doc } from "@cmux/convex/dataModel";
+import { api } from "@cmux/convex/api";
+import { convexQuery } from "@convex-dev/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { memo, useMemo, useState } from "react";
 import { TaskItem } from "./TaskItem";
 
-interface TaskListProps {
-  activeTasks: Doc<"tasks">[];
-  archivedTasks: Doc<"tasks">[];
-}
+export const TaskList = memo(function TaskList() {
+  // Fetch tasks
+  const activeTasksQuery = useQuery(
+    convexQuery(api.tasks.get, { archived: false })
+  );
+  const archivedTasksQuery = useQuery(
+    convexQuery(api.tasks.get, { archived: true })
+  );
 
-export const TaskList = memo(function TaskList({
-  activeTasks,
-  archivedTasks,
-}: TaskListProps) {
+  const activeTasks = activeTasksQuery.data || [];
+  const archivedTasks = archivedTasksQuery.data || [];
+
   const [tab, setTab] = useState<"all" | "archived">("all");
   const tasks = useMemo(
     () => (tab === "archived" ? archivedTasks : activeTasks),

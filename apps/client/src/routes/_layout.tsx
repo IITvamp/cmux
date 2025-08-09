@@ -4,8 +4,9 @@ import { api } from "@cmux/convex/api";
 import { type Doc } from "@cmux/convex/dataModel";
 import { convexQuery } from "@convex-dev/react-query";
 import { useUser } from "@stackframe/react";
+import { useQuery } from "@tanstack/react-query";
 import { createFileRoute, Outlet } from "@tanstack/react-router";
-import { useQueries, useQuery } from "convex/react";
+import { useQueries } from "convex/react";
 import { Suspense, useMemo } from "react";
 
 export const Route = createFileRoute("/_layout")({
@@ -17,7 +18,9 @@ export const Route = createFileRoute("/_layout")({
 
 function LayoutComponent() {
   useUser({ or: "return-null" });
-  const tasks = useQuery(api.tasks.get, {});
+  // const tasks = useQuery(api.tasks.get, {});
+  const tasksQuery = useQuery(convexQuery(api.tasks.get, {}));
+  const tasks = tasksQuery.data || [];
 
   // Sort tasks by creation date (newest first) and take the latest 5
   const recentTasks = useMemo(() => {
