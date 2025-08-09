@@ -5,20 +5,20 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import cmuxPackageJson from "../packages/cmux/package.json";
 
-// Check if port 9777 is already in use
+// Check if port 9777 is already in use (excluding Chrome/OrbStack)
 console.log("Checking if port 9777 is available...");
 try {
-  const lsofResult = await $`lsof -i :9777 | grep LISTEN`.text();
+  const lsofResult = await $`lsof -i :9777 | grep LISTEN | grep -v -E "(Google|Chrome|OrbStack)"`.text();
   const output = lsofResult.trim();
   if (output) {
-    console.log("Port 9777 is already in use. Processes listening on this port:");
+    console.log("Port 9777 is already in use by non-Chrome/OrbStack processes:");
     console.log(output);
     console.log("Please stop these processes before running this script.");
     process.exit(1);
   }
 } catch (error) {
   // lsof returns exit code 1 when no processes are found, which is what we want
-  console.log("Port 9777 is available.");
+  console.log("Port 9777 is available (ignoring Chrome/OrbStack connections).");
 }
 
 console.log("Checking if convex-local-backend is available...");
