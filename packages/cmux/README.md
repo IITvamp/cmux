@@ -4,11 +4,8 @@ A single-executable web app multiplexer with built-in Convex backend. cmux allow
 
 ## Features
 
-- 🚀 Single executable file - no installation required
-- 🔧 Built-in Convex backend for data persistence
 - 🌐 Web-based UI for managing tasks
 - 🐳 Docker integration for isolated environments
-- ⚡ Fast startup and minimal dependencies
 
 ## Installation
 

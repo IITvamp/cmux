@@ -4,7 +4,7 @@ import { existsSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnConvex } from "./convex/spawnConvex";
+import { ConvexProcesses, spawnConvex } from "./convex/spawnConvex";
 import { ensureLogFiles } from "./ensureLogFiles";
 import { logger } from "./logger";
 import { checkPorts } from "./utils/checkPorts";
@@ -121,8 +121,10 @@ program
 
     ensureLogFiles();
 
+    // Start Convex backend
+    let convexProcessesPromise: Promise<ConvexProcesses>;
     try {
-      const convexProcessesPromise = spawnConvex(convexDir).then(
+      convexProcessesPromise = spawnConvex(convexDir).then(
         async (convexProcesses) => {
           status.convexReady = true;
           await logger.info("Convex is ready!");
@@ -133,6 +135,9 @@ program
         const convexProcesses = await convexProcessesPromise;
         convexProcesses.backend.kill();
       });
+      
+      // Wait for Convex to be ready before proceeding
+      await convexProcessesPromise;
     } catch (error) {
       await logger.error(`Failed to start Convex: ${error}`);
       console.error("Failed to start Convex:", error);

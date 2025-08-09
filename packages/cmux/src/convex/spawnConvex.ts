@@ -83,7 +83,7 @@ export async function spawnConvex(
     const shouldUpgrade =
       currentVersion.trim() !== bundleVersion ||
       process.env.FORCE_UPGRADE === "true";
-    console.log("shouldUpgrade", shouldUpgrade);
+    await logger.info(`shouldUpgrade: ${shouldUpgrade}`);
     if (shouldUpgrade) {
       await logger.info(
         `Version changed from ${currentVersion.trim()} to ${bundleVersion}, upgrading...`
@@ -312,14 +312,14 @@ export async function spawnConvex(
       // Create .env.local if it doesn't exist
       const envLocalPath = path.join(convexDir, ".env.local");
       if (!existsSync(envLocalPath)) {
-        await $`echo "CONVEX_URL=http://localhost:${convexPort}" > ${envLocalPath}`;
+        await $`echo "CONVEX_URL=http://localhost:${convexPort}" > ${envLocalPath}`.quiet();
       }
 
-      console.log("process.execPath", process.execPath);
-      console.log("convexDir", convexDir);
+      await logger.info(`process.execPath: ${process.execPath}`);
+      await logger.info(`convexDir: ${convexDir}`);
       // Run convex deploy using the bundled CLI
       const deployResult =
-        await $`cd ${convexDir} && BUN_BE_BUN=1 ${process.execPath} install && BUN_BE_BUN=1 ${process.execPath} x convex deploy --url http://localhost:${convexPort} --admin-key ${convexAdminKey}`;
+        await $`cd ${convexDir} && BUN_BE_BUN=1 ${process.execPath} install 2>&1 | tee -a ${convexDir}/logs/convex-install.log && BUN_BE_BUN=1 ${process.execPath} x convex deploy --url http://localhost:${convexPort} --admin-key ${convexAdminKey} 2>&1 | tee -a ${convexDir}/logs/convex-deploy.log`.quiet();
 
       if (deployResult.exitCode === 0) {
         await logger.info("Convex functions deployed successfully!");

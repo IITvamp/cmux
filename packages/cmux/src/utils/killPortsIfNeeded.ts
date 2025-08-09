@@ -36,7 +36,7 @@ export async function killPortsIfNeeded(portsToCheck: number[]): Promise<string[
           );
           
           if (isProtected) {
-            console.log(`\x1b[33m!\x1b[0m Skipping protected process: ${command} (PID: ${pid}) on port ${port}`);
+            // Silently skip protected processes - no console output
           } else {
             try {
               // Try graceful shutdown first
