@@ -8,10 +8,10 @@ import cmuxPackageJson from "../packages/cmux/package.json";
 // Check if port 9777 is already in use
 console.log("Checking if port 9777 is available...");
 try {
-  const lsofResult = await $`lsof -i :9777`.text();
+  const lsofResult = await $`lsof -i :9777 | grep LISTEN`.text();
   const output = lsofResult.trim();
   if (output) {
-    console.log("Port 9777 is already in use. Processes using this port:");
+    console.log("Port 9777 is already in use. Processes listening on this port:");
     console.log(output);
     console.log("Please stop these processes before running this script.");
     process.exit(1);
