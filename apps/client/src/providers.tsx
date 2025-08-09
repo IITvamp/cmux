@@ -1,6 +1,6 @@
 import { ThemeProvider } from "@/components/theme/theme-provider";
 import { SocketProvider } from "@/contexts/socket/socket-provider";
-import { StackProvider } from "@stackframe/react";
+import { StackProvider, StackTheme } from "@stackframe/react";
 import { ConfigProvider, theme, type ThemeConfig } from "antd";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { stackClientApp } from "./stack";
@@ -62,12 +62,14 @@ export function Providers({ children }: ProvidersProps) {
   }, [isDarkMode]);
 
   return (
-    <StackProvider app={stackClientApp}>
-      <ThemeProvider>
-        <ConfigProvider theme={antdTheme}>
-          <SocketProvider>{children}</SocketProvider>
-        </ConfigProvider>
-      </ThemeProvider>
-    </StackProvider>
+    <ThemeProvider>
+      <StackTheme>
+        <StackProvider app={stackClientApp}>
+          <ConfigProvider theme={antdTheme}>
+            <SocketProvider>{children}</SocketProvider>
+          </ConfigProvider>
+        </StackProvider>
+      </StackTheme>
+    </ThemeProvider>
   );
 }

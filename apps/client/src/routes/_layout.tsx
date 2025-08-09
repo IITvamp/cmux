@@ -1,4 +1,5 @@
 import { Sidebar } from "@/components/Sidebar";
+import { isFakeConvexId } from "@/lib/fakeConvexId";
 import { api } from "@cmux/convex/api";
 import { type Doc } from "@cmux/convex/dataModel";
 import { convexQuery } from "@convex-dev/react-query";
@@ -6,7 +7,6 @@ import { useUser } from "@stackframe/react";
 import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { useQueries, useQuery } from "convex/react";
 import { Suspense, useMemo } from "react";
-import { isFakeConvexId } from "@/lib/fakeConvexId";
 
 export const Route = createFileRoute("/_layout")({
   component: LayoutComponent,
@@ -16,7 +16,7 @@ export const Route = createFileRoute("/_layout")({
 });
 
 function LayoutComponent() {
-  useUser({ or: "redirect" });
+  useUser({ or: "return-null" });
   const tasks = useQuery(api.tasks.get, {});
 
   // Sort tasks by creation date (newest first) and take the latest 5
@@ -31,7 +31,7 @@ function LayoutComponent() {
   // Create queries object for all recent tasks with memoization, filtering out fake IDs
   const taskRunQueries = useMemo(() => {
     return recentTasks
-      .filter(task => !isFakeConvexId(task._id))
+      .filter((task) => !isFakeConvexId(task._id))
       .reduce(
         (acc, task) => ({
           ...acc,

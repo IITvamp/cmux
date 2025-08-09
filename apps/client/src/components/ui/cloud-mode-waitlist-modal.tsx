@@ -1,7 +1,8 @@
-import { useUser } from "@stackframe/react";
+import { SignUp, useUser } from "@stackframe/react";
+import { useNavigate } from "@tanstack/react-router";
 import { Form, Input, Modal, Typography } from "antd";
 import { Cloud } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "./button";
 
 const { Title, Paragraph } = Typography;
@@ -20,19 +21,45 @@ export function CloudModeWaitlistModal({
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
-  const user = useUser({ or: "redirect" });
+  const user = useUser({ or: "return-null" });
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (user) {
+      return;
+    }
+    if (visible) {
+      navigate({
+        to: "/dashboard",
+        search: { after_auth_return_to: "/dashboard?waitlist=true" },
+        replace: true,
+      });
+    } else {
+      navigate({
+        to: "/dashboard",
+        replace: true,
+      });
+    }
+  }, [visible]);
 
   const handleSubmit = async (values: { email: string }) => {
     setLoading(true);
     try {
       // Save to Stack Auth client metadata
-      await user.update({
-        clientMetadata: {
-          ...user.clientMetadata,
-          cloudModeWaitlist: true,
-          cloudModeWaitlistEmail: values.email,
-          cloudModeWaitlistDate: new Date().toISOString(),
-        },
+      if (user) {
+        await user.update({
+          clientMetadata: {
+            ...user.clientMetadata,
+            cloudModeWaitlist: true,
+            cloudModeWaitlistEmail: values.email,
+            cloudModeWaitlistDate: new Date().toISOString(),
+          },
+        });
+      }
+
+      navigate({
+        to: "/dashboard",
+        replace: true,
       });
 
       // Show success state
@@ -61,7 +88,11 @@ export function CloudModeWaitlistModal({
       closable={!success}
     >
       <div className="flex flex-col items-center text-center py-4">
-        {success ? (
+        {!user ? (
+          <div className="w-full flex justify-center">
+            <SignUp />
+          </div>
+        ) : success ? (
           <>
             <div className="flex items-center justify-center w-16 h-16 rounded-full bg-green-100 dark:bg-green-900/20 mb-4">
               <svg
