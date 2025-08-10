@@ -7,6 +7,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 NC='\033[0m' # No Color
 
+
 # Save current state
 START_COMMIT=$(git rev-parse HEAD)
 ORIGINAL_PACKAGE_JSON=""
@@ -70,6 +71,14 @@ trap 'error "Process interrupted by user"; undo' INT
 
 echo "Starting publish process..."
 
+# Step 0: Check Docker authentication
+echo "Checking Docker Hub authentication..."
+if ! docker info 2>/dev/null | grep -q "Username"; then
+  error "Not logged in to Docker Hub. Please run 'docker login' first."
+  exit 1
+fi
+success "Docker Hub authentication verified"
+
 # Step 1: Check for uncommitted changes
 echo "Checking git status..."
 git update-index -q --refresh
@@ -116,35 +125,25 @@ success "Version bumped to v$NEW_VERSION"
 
 bun run typecheck
 
-# Step 6: Build CLI and Docker image in parallel
-echo "Building CLI and Docker image in parallel..."
-
-# Run both builds in background
-./scripts/build-cli.ts &
-CLI_PID=$!
-
-./scripts/docker-push.sh "$NEW_VERSION" &
-DOCKER_PID=$!
-
-# Wait for both to complete
-wait $CLI_PID
-CLI_EXIT=$?
-
-wait $DOCKER_PID
-DOCKER_EXIT=$?
-
-# Check if both succeeded
-if [ $CLI_EXIT -ne 0 ]; then
+# Step 6: Build CLI and Docker image
+echo "Building CLI..."
+echo "----------------------------------------"
+./scripts/build-cli.ts
+if [ $? -ne 0 ]; then
   error "CLI build failed"
   exit 1
 fi
+success "CLI build complete"
 
-if [ $DOCKER_EXIT -ne 0 ]; then
-  error "Docker build failed"
+echo ""
+echo "Building and pushing Docker image..."
+echo "----------------------------------------"
+./scripts/docker-push.sh "$NEW_VERSION"
+if [ $? -ne 0 ]; then
+  error "Docker build/push failed"
   exit 1
 fi
-
-success "CLI build and Docker image push complete"
+success "Docker build and push complete"
 
 # Step 7: Commit changes
 echo "Committing changes..."
@@ -173,3 +172,4 @@ echo ""
 echo "Next steps:"
 echo "  - Verify the package on npm: https://www.npmjs.com/package/cmux"
 echo "  - Test installation: npm install -g cmux@$NEW_VERSION"
+echo "  - Verify Docker image: docker pull lawrencecchen/cmux:$NEW_VERSION"
