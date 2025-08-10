@@ -71,13 +71,19 @@ trap 'error "Process interrupted by user"; undo' INT
 
 echo "Starting publish process..."
 
-# Step 0: Check Docker authentication
+# Step 0: Check Docker authentication by attempting to pull a small test image
 echo "Checking Docker Hub authentication..."
-if ! docker info 2>/dev/null | grep -q "Username"; then
-  error "Not logged in to Docker Hub. Please run 'docker login' first."
+if ! docker pull alpine:latest >/dev/null 2>&1; then
+  error "Unable to pull from Docker Hub. Please run 'docker login' first."
   exit 1
 fi
-success "Docker Hub authentication verified"
+
+# Also check if config.json exists with auth
+if [ ! -f ~/.docker/config.json ] || ! grep -q '"auths"' ~/.docker/config.json 2>/dev/null; then
+  warning "Docker config not found or incomplete. You may have issues pushing."
+fi
+
+success "Docker Hub connectivity verified"
 
 # Step 1: Check for uncommitted changes
 echo "Checking git status..."
