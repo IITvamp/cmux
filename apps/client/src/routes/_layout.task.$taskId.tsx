@@ -80,18 +80,6 @@ function TaskDetailPage() {
 
   const flatRuns = flattenRuns(taskRuns || []);
 
-  // If no runId is in the URL yet, automatically navigate to the first one so
-  // that the details pane shows something useful.
-  useEffect(() => {
-    if (flatRuns.length > 0 && !activeRunId) {
-      navigate({
-        to: "/task/$taskId/run/$taskRunId",
-        params: { taskId, taskRunId: flatRuns[0]._id },
-        replace: true,
-      });
-    }
-  }, [flatRuns, activeRunId, taskId, navigate]);
-
   const handleCopyTaskText = () => {
     if (task?.text) {
       clipboard.copy(task.text);
@@ -180,7 +168,6 @@ function TaskDetailPage() {
           )}
         </div>
       )}
-
       {WITH_TABS && flatRuns.length > 0 && (
         <div className="border-b border-neutral-200 dark:border-neutral-700">
           <div className="flex overflow-x-auto">
@@ -215,7 +202,6 @@ function TaskDetailPage() {
           </div>
         </div>
       )}
-
       <div className="grow flex flex-col min-h-0">
         <Suspense fallback={<div>Loading...</div>}>
           <Outlet />
