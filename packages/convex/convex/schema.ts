@@ -160,4 +160,71 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   }),
+  taskDiffs: defineTable({
+    taskId: v.id("tasks"),
+    runId: v.optional(v.id("taskRuns")),
+    files: v.array(
+      v.object({
+        path: v.string(),
+        oldContent: v.string(),
+        newContent: v.string(),
+        additions: v.number(),
+        deletions: v.number(),
+        hunks: v.array(
+          v.object({
+            oldStart: v.number(),
+            oldLines: v.number(),
+            newStart: v.number(),
+            newLines: v.number(),
+            content: v.string(),
+          })
+        ),
+        fileStatus: v.union(
+          v.literal("added"),
+          v.literal("deleted"),
+          v.literal("modified"),
+          v.literal("renamed")
+        ),
+        oldPath: v.optional(v.string()),
+      })
+    ),
+    stats: v.object({
+      additions: v.number(),
+      deletions: v.number(),
+      filesChanged: v.number(),
+    }),
+    baseBranch: v.string(),
+    headBranch: v.string(),
+    baseCommit: v.optional(v.string()),
+    headCommit: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_task", ["taskId", "updatedAt"])
+    .index("by_run", ["runId"]),
+  pullRequests: defineTable({
+    taskId: v.id("tasks"),
+    runId: v.optional(v.id("taskRuns")),
+    prNumber: v.optional(v.number()),
+    prUrl: v.optional(v.string()),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("open"),
+      v.literal("closed"),
+      v.literal("merged")
+    ),
+    title: v.string(),
+    body: v.optional(v.string()),
+    baseBranch: v.string(),
+    headBranch: v.string(),
+    repoFullName: v.string(),
+    mergeMethod: v.optional(
+      v.union(v.literal("squash"), v.literal("merge"), v.literal("rebase"))
+    ),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_task", ["taskId"])
+    .index("by_run", ["runId"])
+    .index("by_status", ["status"]),
 });
