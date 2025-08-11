@@ -216,14 +216,6 @@ function DashboardComponent() {
         )
       );
 
-      // Create task in Convex with storage IDs
-      const taskId = await createTask({
-        text: content?.text || taskDescription, // Use content.text which includes image references
-        projectFullName,
-        branch,
-        images: uploadedImages.length > 0 ? uploadedImages : undefined,
-      });
-
       // Clear input after successful task creation
       setTaskDescription("");
       // Force editor to clear
@@ -231,6 +223,14 @@ function DashboardComponent() {
       if (editorApiRef.current?.clear) {
         editorApiRef.current.clear();
       }
+
+      // Create task in Convex with storage IDs
+      const taskId = await createTask({
+        text: content?.text || taskDescription, // Use content.text which includes image references
+        projectFullName,
+        branch,
+        images: uploadedImages.length > 0 ? uploadedImages : undefined,
+      });
 
       const repoUrl = `https://github.com/${projectFullName}.git`;
 
