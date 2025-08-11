@@ -144,12 +144,15 @@ success "CLI build complete"
 echo ""
 echo "Building and pushing Docker image..."
 echo "----------------------------------------"
-./scripts/docker-push.sh "$NEW_VERSION"
+# Use simple push script to work around OrbStack issues
+./scripts/docker-push-simple.sh "$NEW_VERSION"
+# Don't fail on Docker push issues as they're often transient with OrbStack
 if [ $? -ne 0 ]; then
-  error "Docker build/push failed"
-  exit 1
+  warning "Docker push had issues (common with OrbStack)"
+  warning "You may need to manually push later: docker push lawrencecchen/cmux:$NEW_VERSION"
+else
+  success "Docker build and push complete"
 fi
-success "Docker build and push complete"
 
 # Step 7: Commit changes
 echo "Committing changes..."

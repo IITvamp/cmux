@@ -14,42 +14,13 @@ VERSION=${1:-latest}
 
 log "Starting docker-push.sh with version: ${VERSION}"
 
-# Check if buildx is available (better for pushes)
-if docker buildx version >/dev/null 2>&1; then
-    log "Using Docker buildx for build and push..."
-    USE_BUILDX=true
-else
-    log "Docker buildx not available, using regular build..."
-    USE_BUILDX=false
-fi
+# For OrbStack environments, we need to handle Docker push specially
+# OrbStack has known issues with docker push hanging when all layers exist
+log "Detected environment: $(docker context show 2>/dev/null || echo 'default')"
 
-# Build first (or build and push with buildx)
-if [ "$USE_BUILDX" = true ]; then
-    log "Building and pushing with buildx in one step..."
-    # This avoids the OrbStack push hanging issue
-    # Use current platform only for faster builds
-    docker buildx build \
-        --tag ${REPO}:${VERSION} \
-        --tag ${REPO}:latest \
-        --push \
-        .
-    
-    if [ $? -eq 0 ]; then
-        log "Successfully built and pushed ${REPO}:${VERSION} and ${REPO}:latest"
-        log "Docker push completed successfully!"
-        log "Users can now run: docker pull ${REPO}:latest"
-        exit 0
-    else
-        log "Buildx push failed, falling back to regular method..."
-        USE_BUILDX=false
-    fi
-fi
-
-# Fall back to regular build if buildx not available or failed
-if [ "$USE_BUILDX" = false ]; then
-    log "Building Docker image..."
-    ./scripts/docker-build.sh ${VERSION}
-fi
+# Simple approach: build locally, then push with retries
+log "Building Docker image locally..."
+./scripts/docker-build.sh ${VERSION}
 
 log "Docker build complete, starting push to Docker Hub..."
 log "Repository: ${REPO}"
