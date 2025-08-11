@@ -152,6 +152,24 @@ function DashboardComponent() {
   // Add mutation for generating upload URL
   const generateUploadUrl = useMutation(api.storage.generateUploadUrl);
 
+  // Create refs for values that don't need to trigger callback recreation
+  const themeRef = useRef(theme);
+  const isCloudModeRef = useRef(isCloudMode);
+  const selectedAgentsRef = useRef(selectedAgents);
+  
+  // Update refs when values change
+  useEffect(() => {
+    themeRef.current = theme;
+  }, [theme]);
+  
+  useEffect(() => {
+    isCloudModeRef.current = isCloudMode;
+  }, [isCloudMode]);
+  
+  useEffect(() => {
+    selectedAgentsRef.current = selectedAgents;
+  }, [selectedAgents]);
+
   const handleStartTask = useCallback(async () => {
     if (!selectedProject[0] || !taskDescription.trim()) {
       console.error("Please select a project and enter a task description");
@@ -240,10 +258,10 @@ function DashboardComponent() {
           projectFullName,
           taskId,
           selectedAgents:
-            selectedAgents.length > 0 ? selectedAgents : undefined,
-          isCloudMode,
+            selectedAgentsRef.current.length > 0 ? selectedAgentsRef.current : undefined,
+          isCloudMode: isCloudModeRef.current,
           images: images.length > 0 ? images : undefined,
-          theme,
+          theme: themeRef.current,
         },
         (response) => {
           if ("error" in response) {
@@ -264,10 +282,7 @@ function DashboardComponent() {
     selectedBranch,
     createTask,
     handleTaskDescriptionChange,
-    selectedAgents,
-    isCloudMode,
     generateUploadUrl,
-    theme,
   ]);
 
   // Fetch repos on mount if none exist
@@ -291,25 +306,32 @@ function DashboardComponent() {
   }, [selectedRepo, branches, fetchBranches]);
 
   // Format repos for multiselect
-  const projectOptions = Object.entries(reposByOrg || {}).flatMap(([, repos]) =>
-    repos.map((repo) => repo.fullName)
+  const projectOptions = useMemo(
+    () =>
+      Object.entries(reposByOrg || {}).flatMap(([, repos]) =>
+        repos.map((repo) => repo.fullName)
+      ),
+    [reposByOrg]
   );
 
   const branchOptions = branches || [];
 
   // Derive effective selected branch - if nothing selected, auto-select a sensible default
-  const effectiveSelectedBranch =
-    selectedBranch.length > 0
-      ? selectedBranch
-      : branches && branches.length > 0
-        ? [
-            branches.includes("main")
-              ? "main"
-              : branches.includes("master")
-                ? "master"
-                : branches[0],
-          ]
-        : [];
+  const effectiveSelectedBranch = useMemo(
+    () =>
+      selectedBranch.length > 0
+        ? selectedBranch
+        : branches && branches.length > 0
+          ? [
+              branches.includes("main")
+                ? "main"
+                : branches.includes("master")
+                  ? "master"
+                  : branches[0],
+            ]
+          : [],
+    [selectedBranch, branches]
+  );
 
   // Cloud mode toggle handler
   const handleCloudModeToggle = useCallback(() => {
