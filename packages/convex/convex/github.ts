@@ -51,6 +51,28 @@ export const getBranchesByRepo = query({
   },
 });
 
+export const getRepoByFullName = query({
+  args: { fullName: v.string() },
+  handler: async (ctx, { fullName }) => {
+    const repo = await ctx.db
+      .query("repos")
+      .filter((q) => q.eq(q.field("fullName"), fullName))
+      .first();
+    return repo || null;
+  },
+});
+
+export const getPullRequestForTask = query({
+  args: { taskId: v.id("tasks") },
+  handler: async (ctx, { taskId }) => {
+    const pr = await ctx.db
+      .query("pullRequests")
+      .withIndex("by_task", (q) => q.eq("taskId", taskId))
+      .first();
+    return pr || null;
+  },
+});
+
 // Internal mutations
 export const insertRepo = internalMutation({
   args: {

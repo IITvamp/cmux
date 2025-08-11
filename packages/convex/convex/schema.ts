@@ -160,4 +160,66 @@ export default defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   }),
+  // Fast git diff snapshots for UI
+  diffSnapshots: defineTable({
+    taskId: v.id("tasks"),
+    branch: v.optional(v.string()),
+    repoUrl: v.optional(v.string()),
+    baseSha: v.optional(v.string()),
+    headSha: v.optional(v.string()),
+    status: v.union(
+      v.literal("ready"),
+      v.literal("updating"),
+      v.literal("error")
+    ),
+    errorMessage: v.optional(v.string()),
+    // Small metadata summary (counts etc)
+    summary: v.optional(
+      v.object({
+        filesChanged: v.number(),
+        additions: v.number(),
+        deletions: v.number(),
+      })
+    ),
+    // File-level diffs. For large file contents, store in _storage and reference ids.
+    files: v.array(
+      v.object({
+        path: v.string(),
+        status: v.union(
+          v.literal("modified"),
+          v.literal("added"),
+          v.literal("deleted"),
+          v.literal("renamed"),
+          v.literal("copied")
+        ),
+        additions: v.number(),
+        deletions: v.number(),
+        oldTextStorageId: v.optional(v.id("_storage")),
+        newTextStorageId: v.optional(v.id("_storage")),
+        // Unified diff (small) for quick preview
+        patch: v.optional(v.string()),
+      })
+    ),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_task", ["taskId", "updatedAt"]) // latest-first query per task
+    .index("by_status", ["status", "updatedAt"]),
+  // Optional: track PR per task for quick access from UI
+  pullRequests: defineTable({
+    taskId: v.id("tasks"),
+    url: v.string(),
+    state: v.union(
+      v.literal("draft"),
+      v.literal("open"),
+      v.literal("merged"),
+      v.literal("closed")
+    ),
+    headBranch: v.optional(v.string()),
+    baseBranch: v.optional(v.string()),
+    provider: v.optional(v.string()),
+    number: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index("by_task", ["taskId"]),
 });
