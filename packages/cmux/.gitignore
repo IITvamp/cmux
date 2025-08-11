@@ -7,3 +7,4 @@ upload-artifact/
 .env.local
 .env.production.local
 .env.development.local
+npm-publish
