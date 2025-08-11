@@ -169,17 +169,17 @@ export const TaskItem = memo(function TaskItem({ task }: TaskItemProps) {
             <div className="flex-1 min-w-0 flex items-center gap-2">
               <span className="text-[14px] truncate min-w-0">{task.text}</span>
               {(task.projectFullName ||
-                (task.branch && task.branch !== "main")) && (
+                (task.baseBranch && task.baseBranch !== "main")) && (
                 <span className="text-[11px] text-neutral-400 dark:text-neutral-500 flex-shrink-0 ml-auto mr-0">
                   {task.projectFullName && (
                     <span>{task.projectFullName.split("/")[1]}</span>
                   )}
                   {task.projectFullName &&
-                    task.branch &&
-                    task.branch !== "main" &&
+                    task.baseBranch &&
+                    task.baseBranch !== "main" &&
                     "/"}
-                  {task.branch && task.branch !== "main" && (
-                    <span>{task.branch}</span>
+                  {task.baseBranch && task.baseBranch !== "main" && (
+                    <span>{task.baseBranch}</span>
                   )}
                 </span>
               )}
@@ -258,7 +258,7 @@ export const TaskItem = memo(function TaskItem({ task }: TaskItemProps) {
           <OpenWithDropdown
             vscodeUrl={vscodeUrl}
             worktreePath={runWithVSCode?.worktreePath || task.worktreePath}
-            branch={task.branch}
+            branch={task.baseBranch}
           />
 
           {/* Keep-alive button */}

@@ -170,7 +170,7 @@ export function TaskTree({ task, level = 0 }: TaskTreeProps) {
               run={run}
               level={level + 1}
               taskId={task._id}
-              branch={task.branch}
+              branch={task.baseBranch}
             />
           ))}
         </div>

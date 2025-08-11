@@ -133,7 +133,7 @@ function DashboardComponent() {
           text: args.text,
           description: args.description,
           projectFullName: args.projectFullName,
-          branch: args.branch,
+          baseBranch: args.baseBranch,
           worktreePath: args.worktreePath,
           isCompleted: false,
           isArchived: false,
@@ -228,7 +228,7 @@ function DashboardComponent() {
       const taskId = await createTask({
         text: content?.text || taskDescription, // Use content.text which includes image references
         projectFullName,
-        branch,
+        baseBranch: branch,
         images: uploadedImages.length > 0 ? uploadedImages : undefined,
       });
 
