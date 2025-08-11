@@ -170,6 +170,7 @@ export function TaskTree({ task, level = 0 }: TaskTreeProps) {
               run={run}
               level={level + 1}
               taskId={task._id}
+              branch={task.branch}
             />
           ))}
         </div>
@@ -182,9 +183,10 @@ interface TaskRunTreeProps {
   run: TaskRunWithChildren;
   level: number;
   taskId: string;
+  branch?: string;
 }
 
-function TaskRunTree({ run, level, taskId }: TaskRunTreeProps) {
+function TaskRunTree({ run, level, taskId, branch }: TaskRunTreeProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const hasChildren = run.children.length > 0;
 
@@ -289,6 +291,7 @@ function TaskRunTree({ run, level, taskId }: TaskRunTreeProps) {
         <OpenWithDropdown
           vscodeUrl={vscodeUrl}
           worktreePath={run.worktreePath}
+          branch={branch}
           className="bg-neutral-100/80 dark:bg-neutral-700/80 hover:bg-neutral-200/80 dark:hover:bg-neutral-600/80 text-neutral-600 dark:text-neutral-400"
           iconClassName="w-3 h-3"
         />
@@ -302,6 +305,7 @@ function TaskRunTree({ run, level, taskId }: TaskRunTreeProps) {
               run={childRun}
               level={level + 1}
               taskId={taskId}
+              branch={branch}
             />
           ))}
         </div>
