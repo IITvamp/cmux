@@ -290,26 +290,33 @@ function DashboardComponent() {
     }
   }, [selectedRepo, branches, fetchBranches]);
 
-  // Format repos for multiselect
-  const projectOptions = Object.entries(reposByOrg || {}).flatMap(([, repos]) =>
-    repos.map((repo) => repo.fullName)
+  // Format repos for multiselect - memoized to prevent unnecessary rerenders
+  const projectOptions = useMemo(
+    () => Object.entries(reposByOrg || {}).flatMap(([, repos]) =>
+      repos.map((repo) => repo.fullName)
+    ),
+    [reposByOrg]
   );
 
-  const branchOptions = branches || [];
+  // Memoize branch options to prevent unnecessary rerenders
+  const branchOptions = useMemo(() => branches || [], [branches]);
 
   // Derive effective selected branch - if nothing selected, auto-select a sensible default
-  const effectiveSelectedBranch =
-    selectedBranch.length > 0
-      ? selectedBranch
-      : branches && branches.length > 0
-        ? [
-            branches.includes("main")
-              ? "main"
-              : branches.includes("master")
-                ? "master"
-                : branches[0],
-          ]
-        : [];
+  const effectiveSelectedBranch = useMemo(
+    () =>
+      selectedBranch.length > 0
+        ? selectedBranch
+        : branches && branches.length > 0
+          ? [
+              branches.includes("main")
+                ? "main"
+                : branches.includes("master")
+                  ? "master"
+                  : branches[0],
+            ]
+          : [],
+    [selectedBranch, branches]
+  );
 
   // Cloud mode toggle handler
   const handleCloudModeToggle = useCallback(() => {
