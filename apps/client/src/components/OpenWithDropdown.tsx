@@ -11,6 +11,7 @@ type EditorType = "vscode-remote" | "cursor" | "vscode" | "windsurf" | "finder";
 interface OpenWithDropdownProps {
   vscodeUrl?: string | null;
   worktreePath?: string | null;
+  branch?: string | null;
   className?: string;
   iconClassName?: string;
 }
@@ -18,6 +19,7 @@ interface OpenWithDropdownProps {
 export function OpenWithDropdown({
   vscodeUrl,
   worktreePath,
+  branch,
   className,
   iconClassName = "w-3.5 h-3.5",
 }: OpenWithDropdownProps) {
@@ -69,6 +71,16 @@ export function OpenWithDropdown({
     },
     [socket, worktreePath, vscodeUrl]
   );
+
+  const handleCopyBranch = useCallback(() => {
+    if (branch) {
+      navigator.clipboard.writeText(branch).then(() => {
+        toast.success(`Copied branch: ${branch}`);
+      }).catch(() => {
+        toast.error("Failed to copy branch");
+      });
+    }
+  }, [branch]);
 
   const menuItems = [
     {
@@ -150,6 +162,17 @@ export function OpenWithDropdown({
                 {item.name}
               </Menu.Item>
             ))}
+            {branch && (
+              <>
+                <Menu.Separator className="h-px bg-neutral-200 dark:bg-neutral-800 my-1" />
+                <Menu.Item
+                  onClick={handleCopyBranch}
+                  className="flex cursor-default py-2 pr-8 pl-4 text-sm leading-4 outline-none select-none data-[highlighted]:relative data-[highlighted]:z-0 data-[highlighted]:text-neutral-50 dark:data-[highlighted]:text-neutral-900 data-[highlighted]:before:absolute data-[highlighted]:before:inset-x-1 data-[highlighted]:before:inset-y-0 data-[highlighted]:before:z-[-1] data-[highlighted]:before:rounded-sm data-[highlighted]:before:bg-neutral-900 dark:data-[highlighted]:before:bg-neutral-100"
+                >
+                  Copy branch: {branch}
+                </Menu.Item>
+              </>
+            )}
           </Menu.Popup>
         </Menu.Positioner>
       </Menu.Portal>

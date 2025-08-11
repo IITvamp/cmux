@@ -258,6 +258,7 @@ export const TaskItem = memo(function TaskItem({ task }: TaskItemProps) {
           <OpenWithDropdown
             vscodeUrl={vscodeUrl}
             worktreePath={runWithVSCode?.worktreePath || task.worktreePath}
+            branch={task.branch}
           />
 
           {/* Keep-alive button */}
