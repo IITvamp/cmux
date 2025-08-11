@@ -3,6 +3,8 @@ import {
   type EditorApi,
 } from "@/components/dashboard/DashboardInput";
 import { DashboardInputControls } from "@/components/dashboard/DashboardInputControls";
+import { DashboardInputFooter } from "@/components/dashboard/DashboardInputFooter";
+import { DashboardStartTaskButton } from "@/components/dashboard/DashboardStartTaskButton";
 import { TaskList } from "@/components/dashboard/TaskList";
 import { FloatingPane } from "@/components/floating-pane";
 import { ProviderStatusPills } from "@/components/provider-status-pills";
@@ -152,6 +154,8 @@ function DashboardComponent() {
   // Add mutation for generating upload URL
   const generateUploadUrl = useMutation(api.storage.generateUploadUrl);
 
+  // Removed ref indirection; we will limit callback consumers instead
+
   const handleStartTask = useCallback(async () => {
     if (!selectedProject[0] || !taskDescription.trim()) {
       console.error("Please select a project and enter a task description");
@@ -262,12 +266,12 @@ function DashboardComponent() {
     taskDescription,
     socket,
     selectedBranch,
-    createTask,
-    handleTaskDescriptionChange,
     selectedAgents,
     isCloudMode,
-    generateUploadUrl,
     theme,
+    createTask,
+    handleTaskDescriptionChange,
+    generateUploadUrl,
   ]);
 
   // Fetch repos on mount if none exist
@@ -291,25 +295,32 @@ function DashboardComponent() {
   }, [selectedRepo, branches, fetchBranches]);
 
   // Format repos for multiselect
-  const projectOptions = Object.entries(reposByOrg || {}).flatMap(([, repos]) =>
-    repos.map((repo) => repo.fullName)
+  const projectOptions = useMemo(
+    () =>
+      Object.entries(reposByOrg || {}).flatMap(([, repos]) =>
+        repos.map((repo) => repo.fullName)
+      ),
+    [reposByOrg]
   );
 
   const branchOptions = branches || [];
 
   // Derive effective selected branch - if nothing selected, auto-select a sensible default
-  const effectiveSelectedBranch =
-    selectedBranch.length > 0
-      ? selectedBranch
-      : branches && branches.length > 0
-        ? [
-            branches.includes("main")
-              ? "main"
-              : branches.includes("master")
-                ? "master"
-                : branches[0],
-          ]
-        : [];
+  const effectiveSelectedBranch = useMemo(
+    () =>
+      selectedBranch.length > 0
+        ? selectedBranch
+        : branches && branches.length > 0
+          ? [
+              branches.includes("main")
+                ? "main"
+                : branches.includes("master")
+                  ? "master"
+                  : branches[0],
+            ]
+          : [],
+    [selectedBranch, branches]
+  );
 
   // Cloud mode toggle handler
   const handleCloudModeToggle = useCallback(() => {
@@ -489,23 +500,29 @@ function DashboardComponent() {
                 maxHeight="300px"
               />
 
-              {/* Integrated controls */}
-              <DashboardInputControls
-                projectOptions={projectOptions}
-                selectedProject={selectedProject}
-                onProjectChange={handleProjectChange}
-                branchOptions={branchOptions}
-                selectedBranch={effectiveSelectedBranch}
-                onBranchChange={handleBranchChange}
-                selectedAgents={selectedAgents}
-                onAgentChange={handleAgentChange}
-                isCloudMode={isCloudMode}
-                onCloudModeToggle={handleCloudModeToggle}
-                isLoadingProjects={reposByOrgQuery.isLoading}
-                isLoadingBranches={isLoadingBranches || branchesQuery.isLoading}
-                canSubmit={canSubmit}
-                onStartTask={handleStartTask}
-              />
+              {/* Bottom bar: controls + submit button */}
+              <DashboardInputFooter>
+                <DashboardInputControls
+                  projectOptions={projectOptions}
+                  selectedProject={selectedProject}
+                  onProjectChange={handleProjectChange}
+                  branchOptions={branchOptions}
+                  selectedBranch={effectiveSelectedBranch}
+                  onBranchChange={handleBranchChange}
+                  selectedAgents={selectedAgents}
+                  onAgentChange={handleAgentChange}
+                  isCloudMode={isCloudMode}
+                  onCloudModeToggle={handleCloudModeToggle}
+                  isLoadingProjects={reposByOrgQuery.isLoading}
+                  isLoadingBranches={
+                    isLoadingBranches || branchesQuery.isLoading
+                  }
+                />
+                <DashboardStartTaskButton
+                  canSubmit={canSubmit}
+                  onStartTask={handleStartTask}
+                />
+              </DashboardInputFooter>
             </div>
 
             {/* Task List */}
