@@ -291,25 +291,39 @@ function DashboardComponent() {
   }, [selectedRepo, branches, fetchBranches]);
 
   // Format repos for multiselect
-  const projectOptions = Object.entries(reposByOrg || {}).flatMap(([, repos]) =>
-    repos.map((repo) => repo.fullName)
-  );
+  const projectOptions = useMemo(() => {
+    return Object.entries(reposByOrg || {}).flatMap(([, repos]) =>
+      repos.map((repo) => repo.fullName)
+    );
+  }, [reposByOrg]);
 
-  const branchOptions = branches || [];
+  const branchOptions = useMemo(() => branches || [], [branches]);
 
   // Derive effective selected branch - if nothing selected, auto-select a sensible default
-  const effectiveSelectedBranch =
-    selectedBranch.length > 0
-      ? selectedBranch
-      : branches && branches.length > 0
-        ? [
-            branches.includes("main")
-              ? "main"
-              : branches.includes("master")
-                ? "master"
-                : branches[0],
-          ]
-        : [];
+  const effectiveSelectedBranch = useMemo(() => {
+    if (selectedBranch.length > 0) {
+      return selectedBranch;
+    }
+    if (branches && branches.length > 0) {
+      const defaultBranch = branches.includes("main")
+        ? "main"
+        : branches.includes("master")
+          ? "master"
+          : branches[0];
+      return [defaultBranch];
+    }
+    return [];
+  }, [selectedBranch, branches]);
+
+  // Keep a stable onStartTask prop to avoid unnecessary re-renders in child components
+  const handleStartTaskRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    handleStartTaskRef.current = handleStartTask;
+  }, [handleStartTask]);
+
+  const stableOnStartTask = useCallback(() => {
+    handleStartTaskRef.current();
+  }, []);
 
   // Cloud mode toggle handler
   const handleCloudModeToggle = useCallback(() => {
@@ -504,7 +518,7 @@ function DashboardComponent() {
                 isLoadingProjects={reposByOrgQuery.isLoading}
                 isLoadingBranches={isLoadingBranches || branchesQuery.isLoading}
                 canSubmit={canSubmit}
-                onStartTask={handleStartTask}
+                onStartTask={stableOnStartTask}
               />
             </div>
 
