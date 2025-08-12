@@ -83,10 +83,6 @@ function TaskDetailPage() {
     selectedRun ? { taskRunId: selectedRun._id } : "skip"
   );
 
-  // Debug logging
-  console.log("Selected run:", selectedRun?._id);
-  console.log("Diffs fetched:", diffs?.length, diffs);
-
   // Check for new changes on mount and periodically
   useEffect(() => {
     if (!selectedRun) return;
@@ -134,6 +130,7 @@ function TaskDetailPage() {
   const [stableDiffs, setStableDiffs] = useState<typeof diffs>();
   useEffect(() => {
     if (!diffs || isCheckingDiffs) return;
+    console.log("updating diffs");
     setStableDiffs((prev) => {
       if (!prev) return diffs;
       const prevByPath = new Map(prev.map((d) => [d.filePath, d]));
