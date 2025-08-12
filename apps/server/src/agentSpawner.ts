@@ -14,11 +14,6 @@ import {
   generateNewBranchName,
   generateUniqueBranchNames,
 } from "./utils/branchNameGenerator.js";
-// Dynamic import for Node.js-specific module
-const getClaudeCompletionChecker = async () => {
-  const module = await import("@cmux/shared/src/providers/anthropic/completion-detector.ts");
-  return module.checkClaudeProjectFileCompletion;
-};
 import { convex } from "./utils/convexClient.js";
 import { serverLogger } from "./utils/fileLogger.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
