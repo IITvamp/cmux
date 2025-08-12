@@ -59,6 +59,7 @@ export const WorkerCreateTerminalSchema = z.object({
   command: z.string().optional(),
   args: z.array(z.string()).optional(),
   taskId: z.string().optional(),
+  agentType: z.enum(["claude", "codex", "gemini", "amp", "opencode"]).optional(),
   authFiles: z.array(AuthFileSchema).optional(),
   startupCommands: z.array(z.string()).optional(),
 });

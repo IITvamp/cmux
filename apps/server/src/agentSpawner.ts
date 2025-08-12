@@ -859,6 +859,17 @@ export interface AgentSpawnResult {
   error?: string;
 }
 
+// Helper function to determine agent type from agent name
+function getAgentType(agentName: string): "claude" | "codex" | "gemini" | "amp" | "opencode" | undefined {
+  const nameLower = agentName.toLowerCase();
+  if (nameLower.includes("claude")) return "claude";
+  if (nameLower.includes("codex")) return "codex";
+  if (nameLower.includes("gemini")) return "gemini";
+  if (nameLower.includes("amp")) return "amp";
+  if (nameLower.includes("opencode")) return "opencode";
+  return undefined;
+}
+
 export async function spawnAgent(
   agent: AgentConfig,
   taskId: string | Id<"tasks">,
@@ -1472,6 +1483,7 @@ export async function spawnAgent(
     };
     const commandString = [actualCommand, ...actualArgs].map(shellEscaped).join(" ");
 
+    const agentType = getAgentType(agent.name);
     const terminalCreationCommand: WorkerCreateTerminal = {
       terminalId: tmuxSessionName,
       command: "tmux",
@@ -1488,6 +1500,7 @@ export async function spawnAgent(
       rows: 74,
       env: envVars,
       taskId: taskRunId,
+      agentType,
       authFiles,
       startupCommands,
       cwd: "/root/workspace",

@@ -29,6 +29,7 @@ import { promisify } from "node:util";
 import { Server, type Namespace, type Socket } from "socket.io";
 import { checkDockerReadiness } from "./checkDockerReadiness.js";
 import { detectTerminalIdle } from "./detectTerminalIdle.js";
+import { detectTaskCompletionWithFallback } from "./detectTaskCompletion.js";
 import { log } from "./logger.js";
 
 const execAsync = promisify(exec);
@@ -432,6 +433,7 @@ managementIO.on("connection", (socket) => {
         command: validated.command,
         args: validated.args,
         taskId: validated.taskId,
+        agentType: validated.agentType,
         startupCommands: validated.startupCommands,
       });
 
@@ -824,6 +826,7 @@ async function createTerminal(
     command?: string;
     args?: string[];
     taskId?: string;
+    agentType?: "claude" | "codex" | "gemini" | "amp" | "opencode";
     startupCommands?: string[];
   } = {}
 ): Promise<void> {
@@ -1025,17 +1028,77 @@ async function createTerminal(
         ? spawnArgs[sessionIndex + 1]
         : terminalId;
 
-    log("INFO", "Setting up idle detection for terminal", {
+    log("INFO", "Setting up task completion detection for terminal", {
       terminalId,
       sessionName,
       spawnCommand,
       originalCommand: command,
+      agentType: options.agentType,
+      taskId: options.taskId,
     });
 
-    // Track if idle detection completed successfully
+    // Track if detection completed successfully
     let idleDetectionCompleted = false;
 
-    detectTerminalIdle({
+    // Use new task completion detection if agentType is provided
+    if (options.agentType && options.taskId) {
+      const detector = await detectTaskCompletionWithFallback({
+        taskId: options.taskId,
+        agentType: options.agentType,
+        workingDir: cwd,
+        terminalId: sessionName || terminalId,
+        idleTimeoutMs: 15000,
+        onTerminalIdle: () => {
+          if (!idleDetectionCompleted) {
+            idleDetectionCompleted = true;
+            const elapsedMs = Date.now() - processStartTime;
+            log("INFO", "Task completion detected (fallback to terminal idle)", {
+              terminalId,
+              taskId: options.taskId,
+              agentType: options.agentType,
+              elapsedMs,
+            });
+            if (options.taskId) {
+              emitToMainServer("worker:terminal-idle", {
+                workerId: WORKER_ID,
+                terminalId,
+                taskId: options.taskId,
+                elapsedMs,
+              });
+            }
+          }
+        },
+      });
+
+      // Listen for task completion from project files
+      detector.on("task-complete", (data) => {
+        if (!idleDetectionCompleted) {
+          idleDetectionCompleted = true;
+          log("INFO", "Task completion detected from project files", data);
+          emitToMainServer("worker:terminal-idle", {
+            workerId: WORKER_ID,
+            terminalId,
+            taskId: options.taskId,
+            elapsedMs: data.elapsedMs,
+          });
+        }
+      });
+
+      detector.on("task-timeout", (data) => {
+        if (!idleDetectionCompleted) {
+          idleDetectionCompleted = true;
+          log("WARN", "Task timeout detected", data);
+          emitToMainServer("worker:terminal-idle", {
+            workerId: WORKER_ID,
+            terminalId,
+            taskId: options.taskId,
+            elapsedMs: data.elapsedMs,
+          });
+        }
+      });
+    } else {
+      // Fallback to original terminal idle detection
+      detectTerminalIdle({
       sessionName: sessionName || terminalId,
       idleTimeoutMs: 15000, // 15 seconds - for longer tasks that may pause
       onIdle: () => {
@@ -1106,6 +1169,7 @@ async function createTerminal(
         });
         // Don't emit idle event for early exits/failures
       });
+    }
   }
 
   log("INFO", "Terminal creation complete", { terminalId });
