@@ -82,6 +82,16 @@ async function createPullRequestForWinner(
 
 ---
 🤖 Generated with [cmux](https://github.com/lawrencecchen/cmux)`;
+
+    // Persist PR description on the task in Convex
+    try {
+      await convex.mutation(api.tasks.setPullRequestDescription, {
+        id: taskId,
+        pullRequestDescription: prBody,
+      });
+    } catch (e) {
+      serverLogger.error(`[CrownEvaluator] Failed to save PR description:`, e);
+    }
     
     // Use the newBranch from the task run
     const branchName = taskRun.newBranch || `cmux-crown-${taskRunId.slice(-8)}`;

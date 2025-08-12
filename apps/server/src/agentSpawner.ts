@@ -303,6 +303,16 @@ ${taskRun.crownReason || "This implementation was selected as the best solution.
 ---
 *This PR was automatically created by cmux crown feature after evaluating implementations from multiple AI coding assistants.*`;
 
+          // Persist PR description on the task in Convex
+          try {
+            await convex.mutation(api.tasks.setPullRequestDescription, {
+              id: task._id as Id<"tasks">,
+              pullRequestDescription: prBody,
+            });
+          } catch (e) {
+            serverLogger.error(`[AgentSpawner] Failed to save PR description:`, e);
+          }
+
           const prCommand = `gh pr create --title "${prTitle.replace(/"/g, '\\"')}" --body "${prBody.replace(/"/g, '\\"').replace(/\n/g, "\\n")}"`;
 
           const prResult = await new Promise<{
