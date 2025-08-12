@@ -2,7 +2,7 @@ import { useTheme } from "@/components/theme/use-theme";
 import { useSocket } from "@/contexts/socket/use-socket";
 import { cn } from "@/lib/utils";
 import type { Doc } from "@cmux/convex/dataModel";
-import { DiffEditor, type OnMount } from "@monaco-editor/react";
+import { DiffEditor } from "@monaco-editor/react";
 import {
   ChevronDown,
   ChevronRight,
@@ -12,11 +12,8 @@ import {
   FilePlus,
   FileText,
 } from "lucide-react";
-// TODO: this doesnt work for some reason...
-// import { type editor } from "monaco-editor";
+import { type editor } from "monaco-editor";
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-
-type IStandaloneDiffEditor = Parameters<OnMount>[0];
 
 interface GitDiffViewerProps {
   diffs: Doc<"gitDiffs">[];
@@ -73,7 +70,7 @@ export function GitDiffViewer({
 }: GitDiffViewerProps) {
   const { theme } = useTheme();
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
-  const editorRefs = useRef<Record<string, IStandaloneDiffEditor>>({});
+  const editorRefs = useRef<Record<string, editor.IStandaloneDiffEditor>>({});
   const [lazyContents, setLazyContents] = useState<
     Record<string, { oldContent: string; newContent: string }>
   >({});
@@ -232,7 +229,7 @@ interface FileDiffRowProps {
   onToggle: () => void;
   theme: string | undefined;
   calculateEditorHeight: (oldContent: string, newContent: string) => number;
-  setEditorRef: (ed: IStandaloneDiffEditor) => void;
+  setEditorRef: (ed: editor.IStandaloneDiffEditor) => void;
 }
 
 function FileDiffRow({

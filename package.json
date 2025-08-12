@@ -31,5 +31,5 @@
     "typescript": "5.8.3"
   },
   "postinstall": "patch-package",
-  "packageManager": "pnpm@10.13.1"
+  "packageManager": "pnpm@10.14.0"
 }
