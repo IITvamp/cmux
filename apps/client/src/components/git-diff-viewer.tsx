@@ -1,10 +1,22 @@
-import { DiffEditor } from "@monaco-editor/react";
 import { useTheme } from "@/components/theme/use-theme";
-import { cn } from "@/lib/utils";
-import { ChevronDown, ChevronRight, FileText, FilePlus, FileMinus, FileEdit, FileCode } from "lucide-react";
-import type { Doc } from "@cmux/convex/dataModel";
-import { useState, useEffect, useRef, memo, useMemo } from "react";
 import { useSocket } from "@/contexts/socket/use-socket";
+import { cn } from "@/lib/utils";
+import type { Doc } from "@cmux/convex/dataModel";
+import { DiffEditor, type OnMount } from "@monaco-editor/react";
+import {
+  ChevronDown,
+  ChevronRight,
+  FileCode,
+  FileEdit,
+  FileMinus,
+  FilePlus,
+  FileText,
+} from "lucide-react";
+// TODO: this doesnt work for some reason...
+// import { type editor } from "monaco-editor";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
+
+type IStandaloneDiffEditor = Parameters<OnMount>[0];
 
 interface GitDiffViewerProps {
   diffs: Doc<"gitDiffs">[];
@@ -54,29 +66,41 @@ function getStatusIcon(status: Doc<"gitDiffs">["status"]) {
   }
 }
 
-export function GitDiffViewer({ diffs, isLoading, taskRunId }: GitDiffViewerProps) {
+export function GitDiffViewer({
+  diffs,
+  isLoading,
+  taskRunId,
+}: GitDiffViewerProps) {
   const { theme } = useTheme();
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
-  const editorRefs = useRef<Record<string, import('monaco-editor').editor.IStandaloneDiffEditor>>({});
-  const [lazyContents, setLazyContents] = useState<Record<string, { oldContent: string; newContent: string }>>({});
+  const editorRefs = useRef<Record<string, IStandaloneDiffEditor>>({});
+  const [lazyContents, setLazyContents] = useState<
+    Record<string, { oldContent: string; newContent: string }>
+  >({});
   const { socket } = useSocket();
 
   // Group diffs by file
-  const fileGroups: FileGroup[] = useMemo(() => diffs.map(diff => ({
-    filePath: diff.filePath,
-    status: diff.status,
-    additions: diff.additions,
-    deletions: diff.deletions,
-    oldContent: (lazyContents[diff.filePath]?.oldContent ?? diff.oldContent) || "",
-    newContent: (lazyContents[diff.filePath]?.newContent ?? diff.newContent) || "",
-    patch: diff.patch,
-    isBinary: diff.isBinary,
-  })), [diffs, lazyContents]);
+  const fileGroups: FileGroup[] = useMemo(
+    () =>
+      diffs.map((diff) => ({
+        filePath: diff.filePath,
+        status: diff.status,
+        additions: diff.additions,
+        deletions: diff.deletions,
+        oldContent:
+          (lazyContents[diff.filePath]?.oldContent ?? diff.oldContent) || "",
+        newContent:
+          (lazyContents[diff.filePath]?.newContent ?? diff.newContent) || "",
+        patch: diff.patch,
+        isBinary: diff.isBinary,
+      })),
+    [diffs, lazyContents]
+  );
 
   // Auto-expand files on initial load or when diffs change
   useEffect(() => {
     // Expand all files by default (like GitHub)
-    setExpandedFiles(new Set(fileGroups.map(f => f.filePath)));
+    setExpandedFiles(new Set(fileGroups.map((f) => f.filePath)));
   }, [diffs]);
 
   const toggleFile = (filePath: string) => {
@@ -86,34 +110,39 @@ export function GitDiffViewer({ diffs, isLoading, taskRunId }: GitDiffViewerProp
     } else {
       newExpanded.add(filePath);
       // If content was omitted due to size, fetch on demand
-      const diff = diffs.find(d => d.filePath === filePath);
+      const diff = diffs.find((d) => d.filePath === filePath);
       if (diff && diff.contentOmitted && taskRunId && socket) {
-        socket.emit("git-diff-file-contents", { taskRunId, filePath }, (res) => {
-          if (res.ok) {
-            setLazyContents(prev => ({
-              ...prev,
-              [filePath]: { oldContent: res.oldContent || "", newContent: res.newContent || "" },
-            }));
+        socket.emit(
+          "git-diff-file-contents",
+          { taskRunId, filePath },
+          (res) => {
+            if (res.ok) {
+              setLazyContents((prev) => ({
+                ...prev,
+                [filePath]: {
+                  oldContent: res.oldContent || "",
+                  newContent: res.newContent || "",
+                },
+              }));
+            }
           }
-        });
+        );
       }
     }
     setExpandedFiles(newExpanded);
   };
 
   const expandAll = () => {
-    setExpandedFiles(new Set(fileGroups.map(f => f.filePath)));
+    setExpandedFiles(new Set(fileGroups.map((f) => f.filePath)));
   };
 
   const collapseAll = () => {
     setExpandedFiles(new Set());
   };
 
-  
-
   const calculateEditorHeight = (oldContent: string, newContent: string) => {
-    const oldLines = oldContent.split('\n').length;
-    const newLines = newContent.split('\n').length;
+    const oldLines = oldContent.split("\n").length;
+    const newLines = newContent.split("\n").length;
     const maxLines = Math.max(oldLines, newLines);
     // approximate using compact line height of 18px + small padding
     return Math.max(100, maxLines * 18 + 24);
@@ -149,7 +178,7 @@ export function GitDiffViewer({ diffs, isLoading, taskRunId }: GitDiffViewerProp
         <div className="px-3 py-1 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="text-xs font-medium text-neutral-900 dark:text-neutral-100">
-              {diffs.length} changed {diffs.length === 1 ? 'file' : 'files'}
+              {diffs.length} changed {diffs.length === 1 ? "file" : "files"}
             </div>
             <div className="flex items-center gap-2 text-xs">
               <span className="text-green-600 dark:text-green-400 font-medium">
@@ -187,7 +216,9 @@ export function GitDiffViewer({ diffs, isLoading, taskRunId }: GitDiffViewerProp
             onToggle={() => toggleFile(file.filePath)}
             theme={theme}
             calculateEditorHeight={calculateEditorHeight}
-            setEditorRef={(ed) => { if (ed) editorRefs.current[file.filePath] = ed; }}
+            setEditorRef={(ed) => {
+              if (ed) editorRefs.current[file.filePath] = ed;
+            }}
           />
         ))}
       </div>
@@ -201,11 +232,20 @@ interface FileDiffRowProps {
   onToggle: () => void;
   theme: string | undefined;
   calculateEditorHeight: (oldContent: string, newContent: string) => number;
-  setEditorRef: (ed: import('monaco-editor').editor.IStandaloneDiffEditor | null) => void;
+  setEditorRef: (ed: IStandaloneDiffEditor) => void;
 }
 
-function FileDiffRow({ file, isExpanded, onToggle, theme, calculateEditorHeight, setEditorRef }: FileDiffRowProps) {
-  const [height, setHeight] = useState<number>(() => calculateEditorHeight(file.oldContent, file.newContent));
+function FileDiffRow({
+  file,
+  isExpanded,
+  onToggle,
+  theme,
+  calculateEditorHeight,
+  setEditorRef,
+}: FileDiffRowProps) {
+  const [height, setHeight] = useState<number>(() =>
+    calculateEditorHeight(file.oldContent, file.newContent)
+  );
 
   return (
     <div className="bg-white dark:bg-neutral-900 rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
@@ -214,7 +254,11 @@ function FileDiffRow({ file, isExpanded, onToggle, theme, calculateEditorHeight,
         className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors text-left group"
       >
         <div className="text-neutral-400 dark:text-neutral-500 group-hover:text-neutral-600 dark:group-hover:text-neutral-400">
-          {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+          {isExpanded ? (
+            <ChevronDown className="w-3.5 h-3.5" />
+          ) : (
+            <ChevronRight className="w-3.5 h-3.5" />
+          )}
         </div>
         <div className={cn("flex-shrink-0", getStatusColor(file.status))}>
           {getStatusIcon(file.status)}
@@ -224,8 +268,12 @@ function FileDiffRow({ file, isExpanded, onToggle, theme, calculateEditorHeight,
             {file.filePath}
           </span>
           <div className="flex items-center gap-2 text-[11px]">
-            <span className="text-green-600 dark:text-green-400 font-medium">+{file.additions}</span>
-            <span className="text-red-600 dark:text-red-400 font-medium">−{file.deletions}</span>
+            <span className="text-green-600 dark:text-green-400 font-medium">
+              +{file.additions}
+            </span>
+            <span className="text-red-600 dark:text-red-400 font-medium">
+              −{file.deletions}
+            </span>
           </div>
         </div>
       </button>
@@ -253,10 +301,18 @@ function FileDiffRow({ file, isExpanded, onToggle, theme, calculateEditorHeight,
                   const updateHeight = () => {
                     const modifiedEditor = editor.getModifiedEditor();
                     const originalEditor = editor.getOriginalEditor();
-                    const modifiedContentHeight = modifiedEditor.getContentHeight();
-                    const originalContentHeight = originalEditor.getContentHeight();
-                    const newHeight = Math.max(120, Math.max(modifiedContentHeight, originalContentHeight) + 20);
-                    setHeight((prev) => (prev !== newHeight ? newHeight : prev));
+                    const modifiedContentHeight =
+                      modifiedEditor.getContentHeight();
+                    const originalContentHeight =
+                      originalEditor.getContentHeight();
+                    const newHeight = Math.max(
+                      120,
+                      Math.max(modifiedContentHeight, originalContentHeight) +
+                        20
+                    );
+                    setHeight((prev) =>
+                      prev !== newHeight ? newHeight : prev
+                    );
                   };
                   const mod = editor.getModifiedEditor();
                   const orig = editor.getOriginalEditor();
@@ -284,8 +340,8 @@ function FileDiffRow({ file, isExpanded, onToggle, theme, calculateEditorHeight,
                   automaticLayout: true,
                   renderOverviewRuler: false,
                   scrollbar: {
-                    vertical: 'hidden',
-                    horizontal: 'hidden',
+                    vertical: "hidden",
+                    horizontal: "hidden",
                     verticalScrollbarSize: 8,
                     horizontalScrollbarSize: 8,
                     handleMouseWheel: false,
@@ -326,28 +382,25 @@ function FileDiffRow({ file, isExpanded, onToggle, theme, calculateEditorHeight,
   );
 }
 
-const MemoFileDiffRow = memo(
-  FileDiffRow,
-  (prev, next) => {
-    const a = prev.file;
-    const b = next.file;
-    return (
-      prev.isExpanded === next.isExpanded &&
-      prev.theme === next.theme &&
-      a.filePath === b.filePath &&
-      a.status === b.status &&
-      a.additions === b.additions &&
-      a.deletions === b.deletions &&
-      a.isBinary === b.isBinary &&
-      (a.patch || "") === (b.patch || "") &&
-      a.oldContent === b.oldContent &&
-      a.newContent === b.newContent
-    );
-  }
-);
+const MemoFileDiffRow = memo(FileDiffRow, (prev, next) => {
+  const a = prev.file;
+  const b = next.file;
+  return (
+    prev.isExpanded === next.isExpanded &&
+    prev.theme === next.theme &&
+    a.filePath === b.filePath &&
+    a.status === b.status &&
+    a.additions === b.additions &&
+    a.deletions === b.deletions &&
+    a.isBinary === b.isBinary &&
+    (a.patch || "") === (b.patch || "") &&
+    a.oldContent === b.oldContent &&
+    a.newContent === b.newContent
+  );
+});
 
 function getLanguageFromPath(path: string): string {
-  const ext = path.split('.').pop()?.toLowerCase();
+  const ext = path.split(".").pop()?.toLowerCase();
   const languageMap: Record<string, string> = {
     ts: "typescript",
     tsx: "typescript",
@@ -378,6 +431,6 @@ function getLanguageFromPath(path: string): string {
     sql: "sql",
     dockerfile: "dockerfile",
   };
-  
+
   return languageMap[ext || ""] || "plaintext";
 }

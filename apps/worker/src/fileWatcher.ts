@@ -56,10 +56,12 @@ export class FileWatcher {
     // Get initial git status
     await this.updateGitStatus();
     
-    // Start watching recursively
+    // Start watching; use recursive only on platforms that support it (macOS/Windows)
+    const supportsRecursive =
+      process.platform === "darwin" || process.platform === "win32";
     this.watcher = watch(
       this.watchPath,
-      { recursive: true },
+      supportsRecursive ? { recursive: true } : undefined,
       this.handleFileChange.bind(this)
     );
     

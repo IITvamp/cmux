@@ -171,12 +171,14 @@ export abstract class VSCodeInstance extends EventEmitter {
 
   startFileWatch(worktreePath: string): void {
     if (this.workerSocket && this.workerConnected) {
+      // Always watch the container workspace path; host paths are not valid inside the container
+      const containerWorkspace = "/root/workspace";
       dockerLogger.info(
-        `[VSCodeInstance ${this.instanceId}] Starting file watch for ${worktreePath}`
+        `[VSCodeInstance ${this.instanceId}] Starting file watch for ${worktreePath} -> ${containerWorkspace}`
       );
       this.workerSocket.emit("worker:start-file-watch", {
         taskId: this.taskRunId,
-        worktreePath
+        worktreePath: containerWorkspace,
       });
     } else {
       dockerLogger.warn(
