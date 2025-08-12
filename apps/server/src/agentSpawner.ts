@@ -44,6 +44,8 @@ export async function storeGitDiffs(taskRunId: Id<"taskRuns">, gitDiff: string, 
     const diffSections = gitDiff.split(/^diff --git /m).slice(1);
     serverLogger.info(`[AgentSpawner] Found ${diffSections.length} diff sections to parse`);
     
+    const toStore: any[] = [];
+
     for (const section of diffSections) {
       // Extract file paths - handle spaces in filenames
       const fileMatch = section.match(/^a\/(.*?) b\/(.*)$/m);
@@ -154,9 +156,22 @@ export async function storeGitDiffs(taskRunId: Id<"taskRuns">, gitDiff: string, 
         payload.contentOmitted = false;
       }
 
-      await convex.mutation(api.gitDiffs.upsertDiff, payload);
-      
-      serverLogger.info(`[AgentSpawner] Stored diff for ${filePath}: ${status} (+${additions}/-${deletions})`);
+      toStore.push({
+        filePath,
+        oldPath: status === "renamed" ? oldPath : undefined,
+        status,
+        additions,
+        deletions,
+        isBinary,
+        patchSize,
+        oldSize,
+        newSize,
+        patch: payload.patch,
+        oldContent: payload.oldContent,
+        newContent: payload.newContent,
+        contentOmitted: payload.contentOmitted,
+      });
+      serverLogger.info(`[AgentSpawner] Prepared diff for ${filePath}: ${status} (+${additions}/-${deletions})`);
     }
     
     // Also handle files from git status that might not be in the diff
@@ -182,19 +197,24 @@ export async function storeGitDiffs(taskRunId: Id<"taskRuns">, gitDiff: string, 
       );
       
       if (!alreadyStored) {
-        await convex.mutation(api.gitDiffs.upsertDiff, {
-          taskRunId,
+        toStore.push({
           filePath,
           status,
           additions: 0,
           deletions: 0,
           isBinary: false,
+          contentOmitted: false,
         });
-        
-        serverLogger.info(`[AgentSpawner] Stored status-only diff for ${filePath}: ${status}`);
+        serverLogger.info(`[AgentSpawner] Prepared status-only diff for ${filePath}: ${status}`);
       }
     }
     
+    // Bulk replace the diffs in one mutation
+    await convex.mutation(api.gitDiffs.replaceForTaskRun, {
+      taskRunId,
+      diffs: toStore,
+    });
+
     // Update the timestamp
     await convex.mutation(api.gitDiffs.updateDiffsTimestamp, {
       taskRunId,

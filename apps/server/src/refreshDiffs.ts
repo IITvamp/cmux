@@ -92,9 +92,9 @@ export async function refreshDiffsForTaskRun(taskRunId: string): Promise<{ succe
       const diffSections = gitDiff.split(/^diff --git /m).slice(1);
       serverLogger.info(`[RefreshDiffs] Found ${diffSections.length} diff sections`);
       
-      // Clear existing diffs for this task run
-      await convex.mutation(api.gitDiffs.clearByTaskRun, { taskRunId: taskRunId as Id<"taskRuns"> });
-      
+      // Prepare diffs to store in bulk to avoid incremental updates
+      const toStore: any[] = [];
+
       // Process each diff section
       for (const section of diffSections) {
         const fileMatch = section.match(/^a\/(.*?) b\/(.*)$/m);
@@ -177,7 +177,6 @@ export async function refreshDiffsForTaskRun(taskRunId: string): Promise<{ succe
         const totalApprox = patchSize + oldSize + newSize;
         const MAX_DOC_SIZE = 950 * 1024; // keep margin under 1 MiB
         let payload: any = {
-          taskRunId: taskRunId as Id<"taskRuns">,
           filePath,
           oldPath: status === "renamed" ? oldPath : undefined,
           status,
@@ -203,10 +202,8 @@ export async function refreshDiffsForTaskRun(taskRunId: string): Promise<{ succe
           payload.contentOmitted = false;
         }
 
-        // Store the diff
-        await convex.mutation(api.gitDiffs.upsertDiff, payload);
-        
-        serverLogger.info(`[RefreshDiffs] Stored diff for ${filePath}: ${status} (+${additions}/-${deletions})`);
+        toStore.push(payload);
+        serverLogger.info(`[RefreshDiffs] Prepared diff for ${filePath}: ${status} (+${additions}/-${deletions})`);
       }
       
       // Also process files from git status that might not be in the diff
@@ -245,8 +242,7 @@ export async function refreshDiffsForTaskRun(taskRunId: string): Promise<{ succe
           }
         }
         
-        await convex.mutation(api.gitDiffs.upsertDiff, {
-          taskRunId: taskRunId as Id<"taskRuns">,
+        toStore.push({
           filePath,
           status,
           additions: 0,
@@ -254,10 +250,16 @@ export async function refreshDiffsForTaskRun(taskRunId: string): Promise<{ succe
           oldContent: "",
           newContent,
           isBinary: false,
+          contentOmitted: false,
         });
-        
-        serverLogger.info(`[RefreshDiffs] Stored status-only diff for ${filePath}: ${status}`);
+        serverLogger.info(`[RefreshDiffs] Prepared status-only diff for ${filePath}: ${status}`);
       }
+
+      // Bulk replace in a single mutation
+      await convex.mutation(api.gitDiffs.replaceForTaskRun, {
+        taskRunId: taskRunId as Id<"taskRuns">,
+        diffs: toStore,
+      });
       
       // Update the timestamp
       await convex.mutation(api.gitDiffs.updateDiffsTimestamp, {

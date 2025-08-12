@@ -129,6 +129,38 @@ function TaskDetailPage() {
     return () => clearInterval(interval);
   }, [selectedRun?._id]);
 
+  // Stabilize diffs to avoid rerenders mid-refresh; only apply when not checking
+  const [stableDiffs, setStableDiffs] = useState<typeof diffs>();
+  useEffect(() => {
+    if (!diffs || isCheckingDiffs) return;
+    setStableDiffs((prev) => {
+      if (!prev) return diffs;
+      const prevByPath = new Map(prev.map((d) => [d.filePath, d]));
+      const next: typeof diffs = diffs.map((d) => {
+        const p = prevByPath.get(d.filePath);
+        if (!p) return d;
+        const same =
+          p.status === d.status &&
+          p.additions === d.additions &&
+          p.deletions === d.deletions &&
+          p.isBinary === d.isBinary &&
+          (p.patch || "") === (d.patch || "") &&
+          (p.oldContent || "") === (d.oldContent || "") &&
+          (p.newContent || "") === (d.newContent || "") &&
+          (p.contentOmitted || false) === (d.contentOmitted || false);
+        return same ? p : d;
+      });
+      return next;
+    });
+  }, [diffs, isCheckingDiffs]);
+
+  // When a refresh cycle ends, apply whatever the latest diffs are
+  useEffect(() => {
+    if (!isCheckingDiffs && diffs) {
+      setStableDiffs(diffs);
+    }
+  }, [isCheckingDiffs]);
+
   const handleCopyBranch = () => {
     if (selectedRun?.newBranch) {
       clipboard.copy(selectedRun.newBranch);
@@ -315,7 +347,7 @@ function TaskDetailPage() {
     <FloatingPane header={header}>
       {/* Git diff viewer */}
       <div className="flex-1 overflow-hidden bg-white dark:bg-neutral-950">
-        <GitDiffViewer diffs={diffs || []} isLoading={!diffs && !!selectedRun} taskRunId={selectedRun?._id} />
+        <GitDiffViewer diffs={(stableDiffs || diffs || [])} isLoading={!diffs && !!selectedRun} taskRunId={selectedRun?._id} />
       </div>
     </FloatingPane>
   );

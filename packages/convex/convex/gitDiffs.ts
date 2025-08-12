@@ -89,3 +89,50 @@ export const updateDiffsTimestamp = mutation({
     });
   },
 });
+
+export const replaceForTaskRun = mutation({
+  args: {
+    taskRunId: v.id("taskRuns"),
+    diffs: v.array(
+      v.object({
+        filePath: v.string(),
+        oldPath: v.optional(v.string()),
+        status: v.union(
+          v.literal("added"),
+          v.literal("modified"),
+          v.literal("deleted"),
+          v.literal("renamed")
+        ),
+        additions: v.number(),
+        deletions: v.number(),
+        patch: v.optional(v.string()),
+        oldContent: v.optional(v.string()),
+        newContent: v.optional(v.string()),
+        isBinary: v.boolean(),
+        contentOmitted: v.optional(v.boolean()),
+        oldSize: v.optional(v.number()),
+        newSize: v.optional(v.number()),
+        patchSize: v.optional(v.number()),
+      })
+    ),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    const existing = await ctx.db
+      .query("gitDiffs")
+      .withIndex("by_taskRun", (q) => q.eq("taskRunId", args.taskRunId))
+      .collect();
+    for (const diff of existing) {
+      await ctx.db.delete(diff._id);
+    }
+    for (const d of args.diffs) {
+      await ctx.db.insert("gitDiffs", {
+        taskRunId: args.taskRunId,
+        ...d,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+    return args.diffs.length;
+  },
+});

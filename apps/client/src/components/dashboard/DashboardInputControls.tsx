@@ -52,7 +52,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
   }, []);
 
   return (
-    <div className="flex items-end gap-1">
+    <div className="flex items-end gap-1 grow">
       <div className="flex items-end gap-1">
         <AntdMultiSelect
           options={projectOptions}
@@ -89,7 +89,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
         />
       </div>
 
-      <div className="flex items-center gap-2.5">
+      <div className="flex items-center justify-end gap-2.5 ml-auto mr-0 pr-1">
         {/* Cloud/Local Mode Toggle */}
         <ModeToggleTooltip
           isCloudMode={isCloudMode}
