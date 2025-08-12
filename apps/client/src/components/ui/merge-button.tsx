@@ -1,7 +1,7 @@
+import { cn } from "@/lib/utils";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { ChevronDown, GitMerge, GitPullRequest } from "lucide-react";
 import { useState } from "react";
-import { cn } from "@/lib/utils";
 
 export type MergeMethod = "squash" | "rebase" | "merge";
 
@@ -42,7 +42,9 @@ export function MergeButton({
   const [selectedMethod, setSelectedMethod] = useState<MergeMethod>("squash");
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
-  const selectedOption = mergeOptions.find((opt) => opt.value === selectedMethod);
+  const selectedOption = mergeOptions.find(
+    (opt) => opt.value === selectedMethod
+  );
 
   const handleMerge = () => {
     onMerge(selectedMethod);
@@ -54,7 +56,7 @@ export function MergeButton({
         onClick={() => onMerge("squash")}
         disabled={disabled}
         className={cn(
-          "flex items-center gap-1.5 px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium text-xs select-none",
+          "flex items-center gap-1.5 px-3 py-1 bg-[#1f883d] text-white rounded hover:bg-[#1f883d]/90 disabled:opacity-50 disabled:cursor-not-allowed font-medium text-xs select-none",
           className
         )}
       >
@@ -77,7 +79,7 @@ export function MergeButton({
         <GitMerge className="w-3.5 h-3.5" />
         {selectedOption?.label}
       </button>
-      
+
       <DropdownMenu.Root open={dropdownOpen} onOpenChange={setDropdownOpen}>
         <DropdownMenu.Trigger asChild>
           <button
@@ -101,7 +103,8 @@ export function MergeButton({
                   "flex flex-col items-start px-2 py-1.5 mb-[1px] text-xs rounded cursor-default outline-none select-none",
                   "hover:bg-neutral-100 dark:hover:bg-neutral-800",
                   "focus-visible:bg-neutral-100 dark:focus-visible:bg-neutral-800 focus-visible:ring-2 focus-visible:ring-black dark:focus-visible:ring-white focus-visible:ring-offset-1",
-                  selectedMethod === option.value && "bg-neutral-100 dark:bg-neutral-800"
+                  selectedMethod === option.value &&
+                    "bg-neutral-100 dark:bg-neutral-800"
                 )}
               >
                 <div className="flex items-center gap-2 font-medium">

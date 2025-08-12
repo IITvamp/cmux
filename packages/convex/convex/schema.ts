@@ -37,6 +37,28 @@ export default defineSchema({
   })
     .index("by_created", ["createdAt"])
     .index("by_user", ["userId", "createdAt"]),
+  gitDiffs: defineTable({
+    taskRunId: v.id("taskRuns"), // Link to the task run
+    filePath: v.string(), // File path relative to repo root
+    oldPath: v.optional(v.string()), // For renamed files
+    status: v.union(
+      v.literal("added"),
+      v.literal("modified"), 
+      v.literal("deleted"),
+      v.literal("renamed")
+    ),
+    additions: v.number(), // Number of lines added
+    deletions: v.number(), // Number of lines deleted
+    patch: v.optional(v.string()), // Diff patch content
+    oldContent: v.optional(v.string()), // Original file content
+    newContent: v.optional(v.string()), // New file content
+    isBinary: v.boolean(), // Whether file is binary
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_taskRun", ["taskRunId", "filePath"])
+    .index("by_taskRun_status", ["taskRunId", "status"]),
+
   taskRuns: defineTable({
     taskId: v.id("tasks"),
     parentRunId: v.optional(v.id("taskRuns")), // For tree structure
@@ -60,6 +82,7 @@ export default defineSchema({
     isCrowned: v.optional(v.boolean()), // Whether this run won the crown evaluation
     crownReason: v.optional(v.string()), // LLM's reasoning for why this run was crowned
     pullRequestUrl: v.optional(v.string()), // URL of the created PR (only for crowned runs)
+    diffsLastUpdated: v.optional(v.number()), // Timestamp when diffs were last fetched/updated
     // VSCode instance information
     vscode: v.optional(
       v.object({
