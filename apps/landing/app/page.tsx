@@ -103,48 +103,15 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Divider */}
       <div className="flex justify-center py-8">
-        <div className="w-24 h-px bg-neutral-800"></div>
+        <div className="w-48 h-px bg-neutral-800"></div>
       </div>
 
-      {/* The Problem */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8"> 
-        <div className="max-w-4xl mx-auto">
-          <h2 className="text-2xl font-bold mb-6">New paradigm for developers</h2>
-          <div className="space-y-4 text-neutral-400">
-            <p>
-              Developers now spend more time in the terminal + VS Code git extension, prompting agents and reviewing diffs. 
-              Developers are the product managers of the future, commanding AI agents to do various tasks in parallel.
-            </p>
-            <p>
-              Typically, only four or five Claude instances can be juggled at once across different parts of the codebase. 
-              Constantly switching back to VS Code UI for diffs becomes the bottleneck. Figuring out which agent is working on which part of the codebase is a pain. 
-              Verifying that the agent successfully completed the task is hard. We make it easy to manage your coding agent fleet without losing track of anything.
-            </p>
-            <p>
-              cmux spawns isolated VS Code instances for every task/coding CLI fanout. 
-              Each instance opens with the git extension's diff UI and a terminal running the agent. 
-              Makes <code className="px-1.5 py-0.5 bg-neutral-900 rounded text-xs">--dangerously-skip-permissions</code> actually safer.
-            </p>
-          </div>
-        </div>
-      </section>
-
-      {/* Divider */}
-      <div className="flex justify-center py-8">
-        <div className="w-24 h-px bg-neutral-800"></div>
-      </div>
-
-      {/* Demo Section */}
       <section className="py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto">
-          <h2 className="text-2xl font-bold mb-6">See cmux in action</h2>
           
           <div className="space-y-8">
-            {/* Terminal + Dashboard Demo */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Terminal Install */}
               <div className="bg-neutral-950 border border-neutral-800 rounded-lg overflow-hidden">
                 <div className="flex items-center gap-2 px-4 py-2 bg-neutral-900 border-b border-neutral-800">
                   <div className="flex gap-1.5">
@@ -165,7 +132,6 @@ export default function LandingPage() {
                 </div>
               </div>
 
-              {/* Dashboard Preview */}
               <div className="bg-neutral-950 border border-neutral-800 rounded-lg overflow-hidden">
                 <div className="flex items-center gap-2 px-4 py-2 bg-neutral-900 border-b border-neutral-800">
                   <div className="flex gap-1.5">
@@ -209,11 +175,9 @@ export default function LandingPage() {
               </div>
             </div>
 
-            {/* Agent Parallel Execution */}
             <div className="bg-neutral-950 border border-neutral-800 rounded-lg p-6">
               <h3 className="text-lg font-semibold mb-4">Parallel execution</h3>
               <div className="space-y-4">
-                {/* Agent Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="bg-neutral-900 rounded-lg p-3">
                     <div className="flex items-center gap-2 mb-2">
@@ -250,7 +214,6 @@ export default function LandingPage() {
                   </div>
                 </div>
                 
-                {/* Progress Bar */}
                 <div className="bg-neutral-900 rounded-lg p-3">
                   <div className="flex justify-between text-xs text-neutral-500 mb-2">
                     <span>2 of 3 tasks done</span>
@@ -266,12 +229,37 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Divider */}
       <div className="flex justify-center py-8">
-        <div className="w-24 h-px bg-neutral-800"></div>
+        <div className="w-48 h-px bg-neutral-800"></div>
       </div>
 
-      {/* Features */}
+
+      <section className="py-16 px-4 sm:px-6 lg:px-8"> 
+        <div className="max-w-4xl mx-auto">
+          <h2 className="text-2xl font-bold text-center mb-8">New paradigm for developers</h2>
+          <div className="space-y-4 text-neutral-400">
+            <p>
+              Developers now spend more time in the terminal + VS Code git extension, prompting agents and reviewing diffs. 
+              Developers are the product managers of the future, commanding AI agents to do various tasks in parallel.
+            </p>
+            <p>
+              Typically, only four or five Claude instances can be juggled at once across different parts of the codebase. 
+              Constantly switching back to VS Code UI for diffs becomes the bottleneck. Figuring out which agent is working on which part of the codebase is a pain. 
+              Verifying that the agent successfully completed the task is hard. We make it easy to manage your coding agent fleet without losing track of anything.
+            </p>
+            <p>
+              cmux spawns isolated VS Code instances for every task/coding CLI fanout. 
+              Each instance opens with the git extension's diff UI and a terminal running the agent. 
+              Makes <code className="px-1.5 py-0.5 bg-neutral-900 rounded text-xs">--dangerously-skip-permissions</code> actually safer.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <div className="flex justify-center py-8">
+        <div className="w-48 h-px bg-neutral-800"></div>
+      </div>
+
       <section className="py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto">
           <h2 className="text-2xl font-bold mb-8 text-center">Become a 100x developer</h2>
@@ -350,12 +338,10 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Divider */}
       <div className="flex justify-center py-8">
-        <div className="w-24 h-px bg-neutral-800"></div>
+        <div className="w-48 h-px bg-neutral-800"></div>
       </div>
 
-      {/* Roadmap */}
       <section className="py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto">
           <h2 className="text-2xl font-bold mb-8 text-center">The Roadmap</h2>
@@ -382,12 +368,10 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Divider */}
       <div className="flex justify-center py-8">
-        <div className="w-24 h-px bg-neutral-800"></div>
+        <div className="w-48 h-px bg-neutral-800"></div>
       </div>
 
-      {/* Requirements */}
       <section className="py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="text-2xl font-bold mb-4">Requirements</h2>
@@ -396,7 +380,7 @@ export default function LandingPage() {
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center text-sm">
             <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-6 py-3">
-              Docker Desktop installed
+              Docker installed
             </div>
             <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-6 py-3">
               Node.js 18+ or Bun
@@ -408,12 +392,10 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Divider */}
       <div className="flex justify-center py-8">
-        <div className="w-24 h-px bg-neutral-800"></div>
+        <div className="w-48 h-px bg-neutral-800"></div>
       </div>
 
-      {/* Footer */}
       <footer className="py-8 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-2">
