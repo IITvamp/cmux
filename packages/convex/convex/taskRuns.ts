@@ -13,6 +13,7 @@ export const create = mutation({
     taskId: v.id("tasks"),
     parentRunId: v.optional(v.id("taskRuns")),
     prompt: v.string(),
+    newBranch: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
@@ -20,6 +21,7 @@ export const create = mutation({
       taskId: args.taskId,
       parentRunId: args.parentRunId,
       prompt: args.prompt,
+      newBranch: args.newBranch,
       status: "pending",
       log: "",
       createdAt: now,
