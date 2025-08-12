@@ -16,7 +16,6 @@ export default function LandingPage() {
 
   return (
     <div className="min-h-screen bg-black text-white overflow-y-auto">
-      {/* Navigation */}
       <nav className="sticky top-0 w-full z-50 bg-black/90 backdrop-blur-sm border-b border-neutral-900">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-14">
@@ -35,33 +34,22 @@ export default function LandingPage() {
                 <span>GitHub</span>
                 <ClientIcon icon={Star} className="h-3 w-3" aria-hidden="true" />
               </a>
-              <a 
-                href="https://github.com/manaflow-ai/cmux" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 px-4 py-2 text-sm rounded-lg border border-neutral-800 hover:bg-neutral-900 transition-colors"
-              >
-                Get Started
-                <ClientIcon icon={ArrowRight} className="h-3 w-3" aria-hidden="true" />
-              </a>
             </div>
           </div>
         </div>
       </nav>
 
-      {/* Hero Section */}
       <section className="pt-24 pb-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto">
           <h1 className="text-3xl sm:text-4xl font-bold mb-4 font-mono">
-            Orchestrate AI coding agents to do tasks in parallel
+            Orchestrate AI coding agents in parallel
           </h1>
           
           <p className="text-lg text-neutral-400 mb-8 leading-relaxed">
-            cmux spawns Claude Code, Codex, Gemini CLI, Amp, Opencode, and other coding agent CLIs in parallel across multiple tasks. 
-            For each run, cmux spawns an isolated VS Code instance via Docker with the git diff UI and terminal.
+          cmux spawns Claude Code, Codex, Gemini CLI, Amp, Opencode, and other coding agent CLIs in parallel across multiple tasks. 
+          For each run, cmux spawns an isolated VS Code instance via Docker with the git diff UI and terminal.
           </p>
 
-          {/* Installation Commands */}
           <div className="flex flex-col sm:flex-row gap-3 mb-12">
             <div className="flex-1 bg-gradient-to-r from-neutral-900 to-neutral-900/50 border border-neutral-800 rounded-lg px-4 py-3 font-mono text-sm flex items-center justify-between">
               <span className="text-white">$ bunx cmux</span>
@@ -84,20 +72,24 @@ export default function LandingPage() {
           </div>
 
           <div className="flex flex-col sm:flex-row items-center gap-4">
-            <Button size="lg" className="bg-white text-black hover:bg-neutral-200" onClick={() => copyToClipboard('bunx cmux')}>
-              <ClientIcon icon={Terminal} className="mr-2 h-4 w-4" aria-hidden="true" />
-              Get Started with cmux
-              <ClientIcon icon={ArrowRight} className="ml-2 h-4 w-4" aria-hidden="true" />
-            </Button>
             <a 
               href="https://github.com/manaflow-ai/cmux" 
               target="_blank" 
               rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-6 py-3 bg-white text-black hover:bg-neutral-200 rounded-lg font-medium transition-colors"
+            >
+              <ClientIcon icon={Github} className="h-5 w-5" aria-hidden="true" />
+              <span>View on GitHub</span>
+              <ClientIcon icon={Star} className="h-4 w-4 text-yellow-600" aria-hidden="true" />
+            </a>
+            <a 
+              href="https://github.com/manaflow-ai/cmux#readme" 
+              target="_blank" 
+              rel="noopener noreferrer"
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-neutral-800 hover:bg-neutral-900 transition-colors"
             >
-              <ClientIcon icon={Github} className="h-4 w-4 cursor-default" aria-hidden="true" />
-              <span>Star on GitHub</span>
-              <ClientIcon icon={Star} className="h-3 w-3 text-yellow-500" aria-hidden="true" />
+              <span>Documentation</span>
+              <ClientIcon icon={ArrowRight} className="h-3 w-3" aria-hidden="true" />
             </a>
           </div>
         </div>
@@ -109,18 +101,18 @@ export default function LandingPage() {
       </div>
 
       {/* The Problem */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8">
+      <section className="py-16 px-4 sm:px-6 lg:px-8"> 
         <div className="max-w-4xl mx-auto">
-          <h2 className="text-2xl font-bold mb-6">The shift of the developer workflow</h2>
+          <h2 className="text-2xl font-bold mb-6">New paradigm for developers</h2>
           <div className="space-y-4 text-neutral-400">
             <p>
-              Developers now spend more time in the terminal + VS Code git extension, prompting agents and reviewing diffs.
-              The workflow for coders has fundamentally changed.
+              Developers now spend more time in the terminal + VS Code git extension, prompting agents and reviewing diffs. 
+              Developers are the product managers of the future, commanding AI agents to do various tasks in parallel.
             </p>
             <p>
               Typically, only four or five Claude instances can be juggled at once across different parts of the codebase. 
               Constantly switching back to VS Code UI for diffs becomes the bottleneck. Figuring out which agent is working on which part of the codebase is a pain. 
-              Verifying that the agent successfully completed the task is hard.
+              Verifying that the agent successfully completed the task is hard. We make it easy to manage your coding agent fleet without losing track of anything.
             </p>
             <p>
               cmux spawns isolated VS Code instances for every task/coding CLI fanout. 
@@ -139,7 +131,7 @@ export default function LandingPage() {
       {/* Demo Section */}
       <section className="py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto">
-          <h2 className="text-2xl font-bold mb-6">See it in action</h2>
+          <h2 className="text-2xl font-bold mb-6">See cmux in action</h2>
           
           <div className="space-y-8">
             {/* Terminal + Dashboard Demo */}
@@ -155,12 +147,12 @@ export default function LandingPage() {
                   <span className="text-xs text-neutral-500 font-mono ml-2">terminal</span>
                 </div>
                 <div className="p-4 font-mono text-sm space-y-2">
-                  <div className="text-neutral-500">$ bunx cmux</div>
+                  <div className="text-neutral-500">$ ./scripts/dev.sh</div>
                   <div className="text-green-400">✓ Docker containers ready</div>
-                  <div className="text-green-400">✓ VS Code server initialized</div>
-                  <div className="text-green-400">✓ Dashboard on localhost:3000</div>
+                  <div className="text-green-400">✓ VS Code servers initialized</div>
+                  <div className="text-green-400">✓ Dashboard running on :3000</div>
                   <div className="text-neutral-400 mt-4">
-                    Spawning isolated workspaces...
+                    Ready to spawn AI agents...
                   </div>
                 </div>
               </div>
@@ -274,7 +266,7 @@ export default function LandingPage() {
       {/* Features */}
       <section className="py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto">
-          <h2 className="text-2xl font-bold mb-8 text-center">10x coding productivity</h2>
+          <h2 className="text-2xl font-bold mb-8 text-center">Become a 100x developer</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-6">
@@ -387,69 +379,23 @@ export default function LandingPage() {
         <div className="w-24 h-px bg-neutral-800"></div>
       </div>
 
-      {/* CTA */}
+      {/* Requirements */}
       <section className="py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-2xl font-bold mb-4">Get Started in Seconds</h2>
+          <h2 className="text-2xl font-bold mb-4">Requirements</h2>
           <p className="text-neutral-400 mb-8">
-            Run cmux directly from your terminal. No installation required.
+            cmux runs locally on your machine. You'll need:
           </p>
-          
-          <div className="flex flex-col sm:flex-row gap-4 justify-center mb-8">
-            <div className="bg-gradient-to-r from-neutral-900 to-neutral-900/50 border border-neutral-800 rounded-lg px-6 py-3 font-mono text-sm flex items-center justify-between">
-              <span>$ bunx cmux</span>
-              <button
-                onClick={() => copyToClipboard('bunx cmux')}
-                className="ml-4 text-neutral-500 hover:text-white transition-colors"
-              >
-                {copiedCommand === 'bunx cmux' ? <ClientIcon icon={Check} className="h-4 w-4 text-green-400" aria-hidden="true" /> : <ClientIcon icon={Copy} className="h-4 w-4" aria-hidden="true" />}
-              </button>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center text-sm">
+            <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-6 py-3">
+              Docker Desktop installed
             </div>
-            <div className="bg-gradient-to-r from-neutral-900 to-neutral-900/50 border border-neutral-800 rounded-lg px-6 py-3 font-mono text-sm flex items-center justify-between">
-              <span>$ npx cmux</span>
-              <button
-                onClick={() => copyToClipboard('npx cmux')}
-                className="ml-4 text-neutral-500 hover:text-white transition-colors"
-              >
-                {copiedCommand === 'npx cmux' ? <ClientIcon icon={Check} className="h-4 w-4 text-green-400" aria-hidden="true" /> : <ClientIcon icon={Copy} className="h-4 w-4" aria-hidden="true" />}
-              </button>
+            <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-6 py-3">
+              Node.js 18+ or Bun
             </div>
-          </div>
-
-          <p className="text-sm text-neutral-500 mb-6">
-            Requires Docker. Electron and cloud versions coming soon.
-          </p>
-
-          <div className="flex items-center justify-center gap-4 text-sm">
-            <a 
-              href="https://github.com/manaflow-ai/cmux" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="text-neutral-400 hover:text-white transition-colors flex items-center gap-2"
-            >
-              <ClientIcon icon={Github} className="h-4 w-4" />
-              View on GitHub
-            </a>
-            <span className="text-neutral-700">•</span>
-            <a 
-              href="https://github.com/manaflow-ai/cmux#installation" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="text-neutral-400 hover:text-white transition-colors flex items-center gap-2"
-            >
-              Installation Guide
-              <ClientIcon icon={ExternalLink} className="h-3 w-3" aria-hidden="true" />
-            </a>
-            <span className="text-neutral-700">•</span>
-            <a 
-              href="https://cal.com/team/manaflow/meeting" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="text-neutral-400 hover:text-white transition-colors flex items-center gap-2"
-            >
-              Book a Demo
-              <ClientIcon icon={ExternalLink} className="h-3 w-3" aria-hidden="true" />
-            </a>
+            <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-6 py-3">
+              macOS or Linux
+            </div>
           </div>
         </div>
       </section>
