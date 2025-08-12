@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { ArrowRight, Terminal, GitBranch, Star, Copy, Check, ExternalLink, Github, FileText, Users, Zap, Cloud } from 'lucide-react'
 import { ClientIcon } from '@/components/client-icon'
 import { useState } from 'react'
+import Image from 'next/image'
 
 export default function LandingPage() {
   const [copiedCommand, setCopiedCommand] = useState<string | null>(null)
@@ -32,7 +33,6 @@ export default function LandingPage() {
               >
                 <ClientIcon icon={Github} className="h-4 w-4" aria-hidden="true" />
                 <span>GitHub</span>
-                <ClientIcon icon={Star} className="h-3 w-3" aria-hidden="true" />
               </a>
               <a 
                 href="https://cal.com/team/manaflow/meeting" 
@@ -58,21 +58,21 @@ export default function LandingPage() {
           For each run, cmux spawns an isolated VS Code instance via Docker with the git diff UI and terminal.
           </p>
 
-          <div className="flex flex-col sm:flex-row gap-3 mb-12">
-            <div className="flex-1 bg-gradient-to-r from-neutral-900 to-neutral-900/50 border border-neutral-800 rounded-lg px-4 py-3 font-mono text-sm flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row gap-3 mb-12 max-w-lg">
+            <div className="bg-gradient-to-r from-neutral-900 to-neutral-900/50 border border-neutral-800 rounded-lg px-4 py-3 font-mono text-sm flex items-center gap-3">
               <span className="text-white">$ bunx cmux</span>
               <button
                 onClick={() => copyToClipboard('bunx cmux')}
-                className="ml-4 text-neutral-500 hover:text-white transition-colors"
+                className="text-neutral-500 hover:text-white transition-colors"
               >
                 {copiedCommand === 'bunx cmux' ? <ClientIcon icon={Check} className="h-4 w-4 text-green-400" aria-hidden="true" /> : <ClientIcon icon={Copy} className="h-4 w-4" aria-hidden="true" />}
               </button>
             </div>
-            <div className="flex-1 bg-gradient-to-r from-neutral-900 to-neutral-900/50 border border-neutral-800 rounded-lg px-4 py-3 font-mono text-sm flex items-center justify-between">
+            <div className="bg-gradient-to-r from-neutral-900 to-neutral-900/50 border border-neutral-800 rounded-lg px-4 py-3 font-mono text-sm flex items-center gap-3">
               <span className="text-white">$ npx cmux</span>
               <button
                 onClick={() => copyToClipboard('npx cmux')}
-                className="ml-4 text-neutral-500 hover:text-white transition-colors"
+                className="text-neutral-500 hover:text-white transition-colors"
               >
                 {copiedCommand === 'npx cmux' ? <ClientIcon icon={Check} className="h-4 w-4 text-green-400" aria-hidden="true" /> : <ClientIcon icon={Copy} className="h-4 w-4" aria-hidden="true" />}
               </button>
@@ -88,7 +88,6 @@ export default function LandingPage() {
             >
               <ClientIcon icon={Github} className="h-5 w-5" aria-hidden="true" />
               <span>View on GitHub</span>
-              <ClientIcon icon={Star} className="h-4 w-4 text-yellow-600" aria-hidden="true" />
             </a>
             <a 
               href="https://cal.com/team/manaflow/meeting" 
@@ -109,8 +108,17 @@ export default function LandingPage() {
 
       <section className="py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto">
-          
           <div className="space-y-8">
+            <div className="relative rounded-lg overflow-hidden border border-neutral-800">
+              <Image 
+                src="/cmux-demo.png" 
+                alt="cmux dashboard showing parallel AI agent execution"
+                width={1200}
+                height={800}
+                className="w-full h-auto"
+                priority
+              />
+            </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div className="bg-neutral-950 border border-neutral-800 rounded-lg overflow-hidden">
                 <div className="flex items-center gap-2 px-4 py-2 bg-neutral-900 border-b border-neutral-800">
@@ -229,6 +237,8 @@ export default function LandingPage() {
         </div>
       </section>
 
+      
+
       <div className="flex justify-center py-8">
         <div className="w-48 h-px bg-neutral-800"></div>
       </div>
@@ -236,7 +246,7 @@ export default function LandingPage() {
 
       <section className="py-16 px-4 sm:px-6 lg:px-8"> 
         <div className="max-w-4xl mx-auto">
-          <h2 className="text-2xl font-bold text-center mb-8">New paradigm for developers</h2>
+          <h2 className="text-2xl font-bold text-center mb-8">Why cmux?</h2>
           <div className="space-y-4 text-neutral-400">
             <p>
               Developers now spend more time in the terminal + VS Code git extension, prompting agents and reviewing diffs. 
@@ -262,7 +272,7 @@ export default function LandingPage() {
 
       <section className="py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto">
-          <h2 className="text-2xl font-bold mb-8 text-center">Become a 100x developer</h2>
+          <h2 className="text-2xl font-bold mb-8 text-center">Key Features</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-6">
