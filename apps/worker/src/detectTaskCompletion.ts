@@ -4,7 +4,14 @@ import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import os from "node:os";
 import { log } from "./logger.js";
-import { checkClaudeProjectFileCompletion, getClaudeProjectPath } from "@cmux/shared";
+// Dynamic imports for Node.js-specific modules
+const getClaudeHelpers = async () => {
+  const module = await import("@cmux/shared/src/providers/anthropic/completion-detector.ts");
+  return {
+    checkClaudeProjectFileCompletion: module.checkClaudeProjectFileCompletion,
+    getClaudeProjectPath: module.getClaudeProjectPath
+  };
+};
 
 interface TaskCompletionOptions {
   taskId: string;
@@ -97,6 +104,9 @@ export class TaskCompletionDetector extends EventEmitter {
 
   private async checkClaudeCompletion(): Promise<boolean> {
     try {
+      // Get the Claude helper functions
+      const { getClaudeProjectPath, checkClaudeProjectFileCompletion } = await getClaudeHelpers();
+      
       const projectDir = getClaudeProjectPath(this.options.workingDir);
 
       // Check if project directory exists
