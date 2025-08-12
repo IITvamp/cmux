@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { Button } from '../components/ui/button'
-import { ArrowRight, Terminal, GitBranch, Star, Copy, Check, ExternalLink, Github, FileText, Users, Zap, Globe, Shield, Cloud } from 'lucide-react'
+import { ArrowRight, Terminal, GitBranch, Star, Copy, Check, ExternalLink, Github, FileText, Users, Zap, Cloud } from 'lucide-react'
 import { useState } from 'react'
 
 export const Route = createFileRoute('/landing')({
@@ -49,38 +49,40 @@ function LandingPage() {
       <section className="pt-24 pb-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto">
           <h1 className="text-3xl sm:text-4xl font-bold mb-4 font-mono">
-            Orchestrate 20+ coding agents in parallel with a powerful web UI
+            Orchestrate AI coding agents to do tasks in parallel
           </h1>
           
           <p className="text-lg text-neutral-400 mb-8 leading-relaxed">
-            cmux is a sophisticated web application that lets you run Claude, GPT-5, Gemini, and 20+ other coding agents simultaneously. 
-            Rich text editor with image support, GitHub integration, and isolated VS Code instances for every task.
+            cmux orchestrates Claude, GPT-5, Gemini, and other coding agents simultaneously. 
+            Each task spawns an isolated VS Code instance with git integration.
           </p>
 
-          {/* Key Features Banner */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-12">
-            <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-4 py-3 text-center">
-              <div className="text-2xl font-bold text-white">20+</div>
-              <div className="text-sm text-neutral-400">AI Agents</div>
+          {/* Installation Commands */}
+          <div className="flex flex-col sm:flex-row gap-3 mb-12">
+            <div className="flex-1 bg-gradient-to-r from-neutral-900 to-neutral-900/50 border border-neutral-800 rounded-lg px-4 py-3 font-mono text-sm flex items-center justify-between">
+              <span className="text-white">$ bunx cmux</span>
+              <button
+                onClick={() => copyToClipboard('bunx cmux')}
+                className="ml-4 text-neutral-500 hover:text-white transition-colors"
+              >
+                {copiedCommand === 'bunx cmux' ? <Check className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
+              </button>
             </div>
-            <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-4 py-3 text-center">
-              <div className="text-2xl font-bold text-white">Web UI</div>
-              <div className="text-sm text-neutral-400">Rich Editor</div>
-            </div>
-            <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-4 py-3 text-center">
-              <div className="text-2xl font-bold text-white">GitHub</div>
-              <div className="text-sm text-neutral-400">Integration</div>
-            </div>
-            <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-4 py-3 text-center">
-              <div className="text-2xl font-bold text-white">VS Code</div>
-              <div className="text-sm text-neutral-400">Instances</div>
+            <div className="flex-1 bg-gradient-to-r from-neutral-900 to-neutral-900/50 border border-neutral-800 rounded-lg px-4 py-3 font-mono text-sm flex items-center justify-between">
+              <span className="text-white">$ npx cmux</span>
+              <button
+                onClick={() => copyToClipboard('npx cmux')}
+                className="ml-4 text-neutral-500 hover:text-white transition-colors"
+              >
+                {copiedCommand === 'npx cmux' ? <Check className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
+              </button>
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            <Button asChild className="bg-white text-black hover:bg-neutral-200">
+          <div className="flex flex-col sm:flex-row items-center gap-4">
+            <Button asChild size="lg" className="bg-white text-black hover:bg-neutral-200">
               <Link to="/dashboard">
-                Try cmux
+                Open Dashboard
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Link>
             </Button>
@@ -88,168 +90,169 @@ function LandingPage() {
               href="https://github.com/manaflow-ai/cmux" 
               target="_blank" 
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border border-neutral-800 hover:bg-neutral-900 transition-colors"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-neutral-800 hover:bg-neutral-900 transition-colors"
             >
-              <Star className="h-4 w-4" />
-              Star on GitHub
+              <Github className="h-4 w-4" />
+              <span>Star on GitHub</span>
+              <Star className="h-3 w-3 text-yellow-500" />
             </a>
           </div>
         </div>
       </section>
 
+      {/* Divider */}
+      <div className="flex justify-center py-8">
+        <div className="w-24 h-px bg-neutral-800"></div>
+      </div>
+
       {/* The Problem */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8 border-t border-neutral-900">
+      <section className="py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto">
-          <h2 className="text-2xl font-bold mb-6">The Problem</h2>
+          <h2 className="text-2xl font-bold mb-6">Why cmux exists</h2>
           <div className="space-y-4 text-neutral-400">
             <p>
-              If you're like me, you've almost completely moved from Cursor to Claude Code. 
-              You spend more time in the terminal + VS Code git extension than in Cursor's sidebar.
+              Developers have shifted from traditional IDEs to AI-powered coding assistants. 
+              Running multiple agents simultaneously requires juggling terminals and VS Code instances.
             </p>
             <p>
-              But you can only juggle four or five Claudes at a time in different parts of the codebase. 
-              And you still keep going back to the VS Code UI for diffs.
+              Managing parallel tasks across different codebases becomes complex without proper orchestration. 
+              Context switching between agents, reviewing diffs, and tracking progress slows development.
             </p>
             <p>
-              That's why I built cmux — to spawn isolated VS Code instances (making <code className="px-1.5 py-0.5 bg-neutral-900 rounded text-sm">--dangerously-skip-permissions</code> safer!) 
-              for every task/coding CLI fanout.
+              cmux solves this by providing a unified dashboard for spawning and managing multiple AI agents, 
+              each with isolated VS Code instances and automatic git integration.
             </p>
           </div>
         </div>
       </section>
 
+      {/* Divider */}
+      <div className="flex justify-center py-8">
+        <div className="w-24 h-px bg-neutral-800"></div>
+      </div>
+
       {/* Demo Section */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8 border-t border-neutral-900">
+      <section className="py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto">
           <h2 className="text-2xl font-bold mb-6">How it works</h2>
           
           <div className="space-y-8">
-            {/* Dashboard UI Demo */}
-            <div className="bg-neutral-950 border border-neutral-800 rounded-lg overflow-hidden">
-              <div className="flex items-center gap-2 px-4 py-2 bg-neutral-900 border-b border-neutral-800">
-                <div className="flex gap-1.5">
-                  <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                  <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                  <div className="w-3 h-3 rounded-full bg-green-500"></div>
+            {/* Terminal + Dashboard Demo */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Terminal Install */}
+              <div className="bg-neutral-950 border border-neutral-800 rounded-lg overflow-hidden">
+                <div className="flex items-center gap-2 px-4 py-2 bg-neutral-900 border-b border-neutral-800">
+                  <div className="flex gap-1.5">
+                    <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                    <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                    <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                  </div>
+                  <span className="text-xs text-neutral-500 font-mono ml-2">terminal</span>
                 </div>
-                <span className="text-xs text-neutral-500 font-mono ml-2">cmux dashboard</span>
+                <div className="p-4 font-mono text-sm space-y-2">
+                  <div className="text-neutral-500">$ bunx cmux</div>
+                  <div className="text-green-400">✓ Installing cmux...</div>
+                  <div className="text-green-400">✓ Setting up environment...</div>
+                  <div className="text-green-400">✓ Starting web server on http://localhost:3000</div>
+                  <div className="text-neutral-400 mt-4">
+                    Opening dashboard in browser...
+                  </div>
+                </div>
               </div>
-              <div className="p-4">
-                {/* Mock Dashboard UI */}
-                <div className="space-y-4">
-                  {/* Task Input Area */}
-                  <div className="bg-neutral-900 rounded-lg p-3 border border-neutral-800">
-                    <div className="text-sm text-neutral-400 mb-2">Task Description</div>
-                    <div className="bg-neutral-950 rounded p-2 min-h-[60px] text-sm">
-                      <span className="text-white">Fix authentication flow and add comprehensive test coverage. Also check for any security vulnerabilities in the current implementation.</span>
+
+              {/* Dashboard Preview */}
+              <div className="bg-neutral-950 border border-neutral-800 rounded-lg overflow-hidden">
+                <div className="flex items-center gap-2 px-4 py-2 bg-neutral-900 border-b border-neutral-800">
+                  <div className="flex gap-1.5">
+                    <div className="w-3 h-3 rounded-full bg-red-500"></div>
+                    <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                    <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                  </div>
+                  <span className="text-xs text-neutral-500 font-mono ml-2">localhost:3000</span>
+                </div>
+                <div className="p-4">
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-semibold">Active Tasks</span>
+                      <span className="text-xs text-neutral-500">3 running</span>
                     </div>
-                    <div className="flex gap-2 mt-2">
-                      <button className="text-xs px-2 py-1 bg-neutral-800 rounded text-neutral-400">📎 Add image</button>
-                      <button className="text-xs px-2 py-1 bg-neutral-800 rounded text-neutral-400">🎤 Voice input</button>
+                    <div className="space-y-2">
+                      <div className="bg-neutral-900 rounded p-2 text-xs">
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                          <span>Implement auth flow</span>
+                        </div>
+                        <div className="text-neutral-500 ml-4">Claude Opus 4.1 • 2m ago</div>
+                      </div>
+                      <div className="bg-neutral-900 rounded p-2 text-xs">
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                          <span>Add test coverage</span>
+                        </div>
+                        <div className="text-neutral-500 ml-4">GPT-5 • 3m ago</div>
+                      </div>
+                      <div className="bg-neutral-900 rounded p-2 text-xs">
+                        <div className="flex items-center gap-2 mb-1">
+                          <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                          <span>Security audit</span>
+                        </div>
+                        <div className="text-neutral-500 ml-4">Gemini Pro • 5m ago</div>
+                      </div>
                     </div>
                   </div>
-                  
-                  {/* Agent Selection */}
-                  <div className="bg-neutral-900 rounded-lg p-3 border border-neutral-800">
-                    <div className="text-sm text-neutral-400 mb-2">Select Agents (20+ available)</div>
-                    <div className="grid grid-cols-2 gap-2 text-xs">
-                      <label className="flex items-center gap-2">
-                        <input type="checkbox" checked readOnly className="rounded" />
-                        <span>Claude Opus 4.1</span>
-                      </label>
-                      <label className="flex items-center gap-2">
-                        <input type="checkbox" checked readOnly className="rounded" />
-                        <span>GPT-5</span>
-                      </label>
-                      <label className="flex items-center gap-2">
-                        <input type="checkbox" checked readOnly className="rounded" />
-                        <span>Gemini Pro</span>
-                      </label>
-                      <label className="flex items-center gap-2">
-                        <input type="checkbox" className="rounded" readOnly />
-                        <span>Kimi K2</span>
-                      </label>
-                    </div>
-                    <div className="text-xs text-neutral-500 mt-2">+ 16 more agents available...</div>
-                  </div>
-                  
-                  {/* GitHub Integration */}
-                  <div className="flex gap-2">
-                    <div className="flex-1 bg-neutral-900 rounded-lg px-3 py-2 border border-neutral-800">
-                      <div className="text-xs text-neutral-500">Repository</div>
-                      <div className="text-sm">manaflow-ai/cmux</div>
-                    </div>
-                    <div className="flex-1 bg-neutral-900 rounded-lg px-3 py-2 border border-neutral-800">
-                      <div className="text-xs text-neutral-500">Branch</div>
-                      <div className="text-sm">feature/auth-fixes</div>
-                    </div>
-                  </div>
-                  
-                  <button className="w-full bg-white text-black py-2 rounded-lg font-medium text-sm hover:bg-neutral-200 transition-colors">
-                    Run Agents in Parallel
-                  </button>
                 </div>
               </div>
             </div>
 
-            {/* Task List View */}
-            <div className="bg-neutral-950 border border-neutral-800 rounded-lg overflow-hidden">
-              <div className="px-4 py-2 bg-neutral-900 border-b border-neutral-800">
-                <span className="text-sm font-medium">Active Tasks</span>
-              </div>
-              <div className="divide-y divide-neutral-800">
-                <div className="p-3 hover:bg-neutral-900/50 transition-colors">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                        <span className="text-sm">Fix authentication flow and add tests</span>
-                      </div>
-                      <div className="flex gap-4 text-xs text-neutral-500">
-                        <span>Claude Opus 4.1</span>
-                        <span>•</span>
-                        <span>manaflow-ai/cmux</span>
-                        <span>•</span>
-                        <span>2 minutes ago</span>
-                      </div>
+            {/* Agent Parallel Execution */}
+            <div className="bg-neutral-950 border border-neutral-800 rounded-lg p-6">
+              <h3 className="text-lg font-semibold mb-4">Parallel Agent Execution</h3>
+              <div className="space-y-4">
+                {/* Agent Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-neutral-900 rounded-lg p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Terminal className="h-4 w-4 text-blue-500" />
+                      <span className="text-sm font-mono">Claude Opus 4.1</span>
                     </div>
-                    <button className="text-xs px-2 py-1 bg-neutral-800 rounded hover:bg-neutral-700">Open VS Code</button>
+                    <div className="text-xs text-neutral-500 space-y-1">
+                      <div>Task: Authentication flow</div>
+                      <div>Status: <span className="text-yellow-400">In progress</span></div>
+                      <div>Port: 8001</div>
+                    </div>
+                  </div>
+                  <div className="bg-neutral-900 rounded-lg p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Terminal className="h-4 w-4 text-purple-500" />
+                      <span className="text-sm font-mono">GPT-5</span>
+                    </div>
+                    <div className="text-xs text-neutral-500 space-y-1">
+                      <div>Task: Test coverage</div>
+                      <div>Status: <span className="text-green-400">Complete</span></div>
+                      <div>Port: 8002</div>
+                    </div>
+                  </div>
+                  <div className="bg-neutral-900 rounded-lg p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Terminal className="h-4 w-4 text-green-500" />
+                      <span className="text-sm font-mono">Gemini Pro</span>
+                    </div>
+                    <div className="text-xs text-neutral-500 space-y-1">
+                      <div>Task: Security audit</div>
+                      <div>Status: <span className="text-yellow-400">In progress</span></div>
+                      <div>Port: 8003</div>
+                    </div>
                   </div>
                 </div>
-                <div className="p-3 hover:bg-neutral-900/50 transition-colors">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                        <span className="text-sm">Optimize database queries</span>
-                      </div>
-                      <div className="flex gap-4 text-xs text-neutral-500">
-                        <span>GPT-5</span>
-                        <span>•</span>
-                        <span>backend-api</span>
-                        <span>•</span>
-                        <span>5 minutes ago</span>
-                      </div>
-                    </div>
-                    <button className="text-xs px-2 py-1 bg-neutral-800 rounded hover:bg-neutral-700">View Diff</button>
+                
+                {/* Progress Bar */}
+                <div className="bg-neutral-900 rounded-lg p-3">
+                  <div className="flex justify-between text-xs text-neutral-500 mb-2">
+                    <span>Overall Progress</span>
+                    <span>67% Complete</span>
                   </div>
-                </div>
-                <div className="p-3 hover:bg-neutral-900/50 transition-colors">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                        <span className="text-sm">Implement dark mode toggle</span>
-                      </div>
-                      <div className="flex gap-4 text-xs text-neutral-500">
-                        <span>Gemini Pro</span>
-                        <span>•</span>
-                        <span>frontend-app</span>
-                        <span>•</span>
-                        <span>8 minutes ago</span>
-                      </div>
-                    </div>
-                    <button className="text-xs px-2 py-1 bg-neutral-800 rounded hover:bg-neutral-700">Keep Alive</button>
+                  <div className="w-full bg-neutral-800 rounded-full h-2">
+                    <div className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full" style={{width: '67%'}}></div>
                   </div>
                 </div>
               </div>
@@ -258,10 +261,15 @@ function LandingPage() {
         </div>
       </section>
 
+      {/* Divider */}
+      <div className="flex justify-center py-8">
+        <div className="w-24 h-px bg-neutral-800"></div>
+      </div>
+
       {/* Features */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8 border-t border-neutral-900">
+      <section className="py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto">
-          <h2 className="text-2xl font-bold mb-6">Why cmux?</h2>
+          <h2 className="text-2xl font-bold mb-8 text-center">Core Features</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-6">
@@ -337,42 +345,70 @@ function LandingPage() {
         </div>
       </section>
 
-      {/* Caveats */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8 border-t border-neutral-900">
+      {/* Divider */}
+      <div className="flex justify-center py-8">
+        <div className="w-24 h-px bg-neutral-800"></div>
+      </div>
+
+      {/* Roadmap */}
+      <section className="py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto">
-          <h2 className="text-2xl font-bold mb-6">Current limitations</h2>
-          <div className="space-y-4 text-neutral-400">
-            <p>
-              The bottleneck of running many agents in parallel is still reviewing and verifying the work. 
-              We're working on:
-            </p>
-            <ul className="list-disc list-inside space-y-2 ml-4">
-              <li>"Vercel preview environments" for any repo with a proper devcontainer.json</li>
-              <li>Computer-using agents to click around and take before/after screenshots for UI changes</li>
-              <li>A real "manager" abstraction above manually reviewing code and merging PRs</li>
-            </ul>
+          <h2 className="text-2xl font-bold mb-8 text-center">Coming Soon</h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4">
+              <h3 className="font-semibold mb-2 text-sm">Preview Environments</h3>
+              <p className="text-xs text-neutral-500">
+                Automatic preview deployments for every task with devcontainer.json support
+              </p>
+            </div>
+            <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4">
+              <h3 className="font-semibold mb-2 text-sm">Visual Testing</h3>
+              <p className="text-xs text-neutral-500">
+                Computer-using agents capture before/after screenshots of UI changes
+              </p>
+            </div>
+            <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4">
+              <h3 className="font-semibold mb-2 text-sm">Manager Agent</h3>
+              <p className="text-xs text-neutral-500">
+                Automated code review and PR merging across parallel agent outputs
+              </p>
+            </div>
           </div>
         </div>
       </section>
 
+      {/* Divider */}
+      <div className="flex justify-center py-8">
+        <div className="w-24 h-px bg-neutral-800"></div>
+      </div>
+
       {/* CTA */}
-      <section className="py-16 px-4 sm:px-6 lg:px-8 border-t border-neutral-900">
+      <section className="py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-2xl font-bold mb-4">Ready to parallelize your coding?</h2>
+          <h2 className="text-2xl font-bold mb-4">Start using cmux</h2>
           <p className="text-neutral-400 mb-8">
-            Install in seconds. No credit card required.
+            Install via CLI or use the web dashboard directly
           </p>
           
-          <div className="flex flex-col items-center gap-4 mb-8">
-            <Button asChild size="lg" className="bg-white text-black hover:bg-neutral-200">
-              <Link to="/dashboard">
-                Open cmux Dashboard
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Link>
-            </Button>
-            <p className="text-xs text-neutral-500">
-              Web-based interface • No installation required • Start for free
-            </p>
+          <div className="flex flex-col sm:flex-row gap-4 justify-center mb-8">
+            <div className="bg-gradient-to-r from-neutral-900 to-neutral-900/50 border border-neutral-800 rounded-lg px-6 py-3 font-mono text-sm flex items-center justify-between">
+              <span>$ bunx cmux</span>
+              <button
+                onClick={() => copyToClipboard('bunx cmux')}
+                className="ml-4 text-neutral-500 hover:text-white transition-colors"
+              >
+                {copiedCommand === 'bunx cmux' ? <Check className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
+              </button>
+            </div>
+            <div className="bg-gradient-to-r from-neutral-900 to-neutral-900/50 border border-neutral-800 rounded-lg px-6 py-3 font-mono text-sm flex items-center justify-between">
+              <span>$ npx cmux</span>
+              <button
+                onClick={() => copyToClipboard('npx cmux')}
+                className="ml-4 text-neutral-500 hover:text-white transition-colors"
+              >
+                {copiedCommand === 'npx cmux' ? <Check className="h-4 w-4 text-green-400" /> : <Copy className="h-4 w-4" />}
+              </button>
+            </div>
           </div>
 
           <div className="flex items-center justify-center gap-4 text-sm">
@@ -395,16 +431,17 @@ function LandingPage() {
               Book a call
               <ExternalLink className="h-3 w-3" />
             </a>
-            <span className="text-neutral-700">•</span>
-            <Link to="/dashboard" className="text-neutral-400 hover:text-white transition-colors">
-              Documentation
-            </Link>
           </div>
         </div>
       </section>
 
+      {/* Divider */}
+      <div className="flex justify-center py-8">
+        <div className="w-24 h-px bg-neutral-800"></div>
+      </div>
+
       {/* Footer */}
-      <footer className="py-8 px-4 sm:px-6 lg:px-8 border-t border-neutral-900">
+      <footer className="py-8 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-2">
             <Terminal className="h-4 w-4 text-neutral-500" />
@@ -412,8 +449,8 @@ function LandingPage() {
           </div>
           <div className="flex items-center gap-6 text-sm text-neutral-500">
             <a href="https://github.com/manaflow-ai/cmux" className="hover:text-white transition-colors">GitHub</a>
-            <a href="https://twitter.com" className="hover:text-white transition-colors">Twitter</a>
-            <a href="https://discord.com" className="hover:text-white transition-colors">Discord</a>
+            <a href="https://twitter.com/manaflowai" className="hover:text-white transition-colors">Twitter</a>
+            <a href="https://discord.gg/7VY58tftMg" className="hover:text-white transition-colors">Discord</a>
           </div>
         </div>
       </footer>
