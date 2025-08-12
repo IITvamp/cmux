@@ -7,6 +7,7 @@ import {
   type EnvironmentResult,
 } from "@cmux/shared/agentConfig";
 import type { WorkerCreateTerminal } from "@cmux/shared/worker-schemas";
+import { checkClaudeProjectFileCompletion } from "@cmux/shared";
 import { convex } from "./utils/convexClient.js";
 import { serverLogger } from "./utils/fileLogger.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
@@ -26,6 +27,82 @@ function sanitizeTmuxSessionName(name: string): string {
   // Replace all invalid characters with underscores
   // Allow only alphanumeric characters, hyphens, and underscores
   return name.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+/**
+ * Check Claude completion via remote execution in the container
+ * This is a helper that runs the Claude completion check logic remotely
+ */
+async function checkClaudeCompletionRemote(
+  vscodeInstance: VSCodeInstance,
+  workingDir: string
+): Promise<boolean> {
+  const workerSocket = vscodeInstance.getWorkerSocket();
+  if (!workerSocket || !vscodeInstance.isWorkerConnected()) {
+    return false;
+  }
+
+  // Use the same logic as the shared module, but execute it remotely
+  // The command checks if the last message in the JSONL file is from assistant
+  const encodedPath = workingDir.replace(/\//g, "-");
+  const checkCmd = `
+    # Check Claude completion
+    CLAUDE_DIR="$HOME/.claude/projects/${encodedPath}"
+    if [ ! -d "$CLAUDE_DIR" ]; then
+      echo "no_dir"
+      exit 0
+    fi
+    
+    # Get most recent JSONL file
+    LATEST_FILE=$(ls -t "$CLAUDE_DIR"/*.jsonl 2>/dev/null | head -1)
+    if [ -z "$LATEST_FILE" ]; then
+      echo "no_file"
+      exit 0
+    fi
+    
+    # Check if last message is from assistant
+    tail -1 "$LATEST_FILE" | python3 -c "
+import sys, json
+try:
+    d = json.loads(sys.stdin.read())
+    if d.get('type') == 'assistant':
+        print('completed')
+    else:
+        print('in_progress')
+except:
+    print('error')
+" 2>/dev/null || echo "error"
+  `.trim();
+
+  try {
+    const result = await new Promise<{ success: boolean; stdout?: string }>((resolve) => {
+      workerSocket
+        .timeout(5000)
+        .emit(
+          "worker:exec",
+          {
+            command: "bash",
+            args: ["-c", checkCmd],
+            cwd: workingDir,
+            env: {},
+          },
+          (timeoutError, response) => {
+            if (timeoutError || response.error) {
+              resolve({ success: false });
+            } else {
+              resolve({ 
+                success: true, 
+                stdout: response.data?.stdout || "" 
+              });
+            }
+          }
+        );
+    });
+
+    return result.success && result.stdout?.trim() === "completed";
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -1782,47 +1859,10 @@ export async function spawnAgent(
             return;
           }
           
-          // Use worker:exec to check the Claude project file
-          // Simple detection: if the last message is from assistant, task is complete
-          // (If still working, there would be a user message with tool results after)
-          const checkCmd = `tail -1 /root/.claude/projects/-root-workspace/*.jsonl 2>/dev/null | python3 -c "
-import sys, json
-try:
-    d = json.loads(sys.stdin.read())
-    # If the last message is from assistant, the task is complete
-    if d.get('type') == 'assistant':
-        print('completed')
-    else:
-        print('')
-except:
-    print('')
-" 2>/dev/null || echo ""`;
+          // Check Claude completion via remote execution
+          const isComplete = await checkClaudeCompletionRemote(vscodeInstance, "/root/workspace");
           
-          const workerSocket = vscodeInstance.getWorkerSocket();
-          if (!workerSocket || !vscodeInstance.isWorkerConnected()) {
-            return;
-          }
-          
-          const result = await new Promise<{ success: boolean; stdout?: string }>((resolve) => {
-            workerSocket
-              .timeout(5000)
-              .emit(
-                "worker:exec",
-                {
-                  command: checkCmd,
-                  cwd: "/root/workspace",
-                },
-                (response: any) => {
-                  if (!response || response.error) {
-                    resolve({ success: false });
-                  } else {
-                    resolve({ success: true, stdout: response.data?.stdout || "" });
-                  }
-                }
-              );
-          });
-          
-          if (result.stdout && result.stdout.trim() === "completed") {
+          if (isComplete) {
             serverLogger.info(`[AgentSpawner] Claude agent ${agent.name} completed (detected via periodic check)`);
             clearInterval(checkInterval);
             

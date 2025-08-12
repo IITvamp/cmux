@@ -4,6 +4,7 @@ import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import os from "node:os";
 import { log } from "./logger.js";
+import { checkClaudeProjectFileCompletion, getClaudeProjectPath } from "@cmux/shared";
 
 interface TaskCompletionOptions {
   taskId: string;
@@ -24,8 +25,6 @@ export class TaskCompletionDetector extends EventEmitter {
   private checkInterval: NodeJS.Timeout | null = null;
   private startTime: number;
   private isRunning = false;
-  private lastCheckedFile: string | null = null;
-  private lastCheckedPosition = 0;
 
   constructor(private options: TaskCompletionOptions) {
     super();
@@ -98,10 +97,7 @@ export class TaskCompletionDetector extends EventEmitter {
 
   private async checkClaudeCompletion(): Promise<boolean> {
     try {
-      // Claude stores project files in ~/.claude/projects/{encoded-path}/
-      const homeDir = os.homedir();
-      const encodedPath = this.options.workingDir.replace(/\//g, "-");
-      const projectDir = path.join(homeDir, ".claude", "projects", encodedPath);
+      const projectDir = getClaudeProjectPath(this.options.workingDir);
 
       // Check if project directory exists
       try {
@@ -111,56 +107,29 @@ export class TaskCompletionDetector extends EventEmitter {
         return false;
       }
 
-      // Get the most recent JSONL file
-      const files = await fs.readdir(projectDir);
-      const jsonlFiles = files
-        .filter((f) => f.endsWith(".jsonl"))
-        .sort((a, b) => b.localeCompare(a)); // Sort by name (most recent first)
-
-      if (jsonlFiles.length === 0) {
-        log("INFO", "No Claude project files found");
-        return false;
-      }
-
-      // Check the most recent file
-      const latestFile = path.join(projectDir, jsonlFiles[0]!);
+      // Use the shared module to check completion
+      const isComplete = await checkClaudeProjectFileCompletion(projectDir);
       
-      // If we're checking a different file, reset position
-      if (latestFile !== this.lastCheckedFile) {
-        this.lastCheckedFile = latestFile;
-        this.lastCheckedPosition = 0;
-      }
-
-      // Read new lines from the file
-      const content = await fs.readFile(latestFile, "utf-8");
-      const lines = content.split("\n").filter((line) => line.trim());
-      
-      // Check only new lines since last check
-      const newLines = lines.slice(this.lastCheckedPosition || 0);
-      this.lastCheckedPosition = lines.length;
-
-      // Simple completion detection: check if the last message is from assistant
-      // If Claude is still working, there would be a user message after (with tool results)
-      if (lines.length > 0) {
-        const lastLine = lines[lines.length - 1];
-        if (lastLine) {
-          try {
-            const lastMessage = JSON.parse(lastLine);
-            
-            // If the last message in the file is from assistant, task is complete
-            if (lastMessage.type === "assistant") {
-              log("INFO", `Claude task complete: last message is from assistant`);
-              log("INFO", `Claude completion detected in file: ${latestFile}`);
-              log("INFO", `Message type: ${lastMessage.type}, timestamp: ${lastMessage.timestamp}`);
-              return true;
-            }
-          } catch (e) {
-            log("WARN", `Failed to parse last line: ${e}`);
+      if (isComplete) {
+        log("INFO", `Claude task complete: last message is from assistant`);
+        log("INFO", `Claude completion detected for project: ${projectDir}`);
+        
+        // Get the most recent JSONL file for logging
+        const files = await fs.readdir(projectDir);
+        const jsonlFiles = files
+          .filter((f) => f.endsWith(".jsonl"))
+          .sort((a, b) => b.localeCompare(a));
+        
+        if (jsonlFiles.length > 0) {
+          const firstFile = jsonlFiles[0];
+          if (firstFile) {
+            const latestFile = path.join(projectDir, firstFile);
+            log("INFO", `Completion detected in file: ${latestFile}`);
           }
         }
       }
-
-      return false;
+      
+      return isComplete;
     } catch (error) {
       log("ERROR", `Error checking Claude completion: ${error}`);
       return false;
