@@ -89,6 +89,7 @@ export const TaskItem = memo(function TaskItem({ task }: TaskItemProps) {
     navigate({
       to: "/task/$taskId",
       params: { taskId: task._id },
+      search: { runId: undefined },
     });
   }, [navigate, task._id]);
 

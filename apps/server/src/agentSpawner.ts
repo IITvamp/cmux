@@ -885,6 +885,7 @@ export async function spawnAgent(
     const taskRunId = await convex.mutation(api.taskRuns.create, {
       taskId: taskId as Id<"tasks">,
       prompt: `${options.taskDescription} (${agent.name})`,
+      agentName: agent.name,
       newBranch,
     });
 

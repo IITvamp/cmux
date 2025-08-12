@@ -63,6 +63,7 @@ export default defineSchema({
     taskId: v.id("tasks"),
     parentRunId: v.optional(v.id("taskRuns")), // For tree structure
     prompt: v.string(), // The prompt that will be passed to claude
+    agentName: v.optional(v.string()), // Name of the agent that ran this task (e.g., "claude/sonnet-4")
     summary: v.optional(v.string()), // Markdown summary of the run
     status: v.union(
       v.literal("pending"),

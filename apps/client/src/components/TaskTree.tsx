@@ -93,6 +93,7 @@ export function TaskTree({ task, level = 0 }: TaskTreeProps) {
           <Link
             to="/task/$taskId"
             params={{ taskId: task._id }}
+            search={{ runId: undefined }}
             className={clsx(
               "flex items-center px-0.5 py-1 text-sm rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default",
               "[&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800"

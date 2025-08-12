@@ -5,21 +5,28 @@ import { api } from "@cmux/convex/api";
 import { type Id } from "@cmux/convex/dataModel";
 import { convexQuery } from "@convex-dev/react-query";
 import { useClipboard } from "@mantine/hooks";
-import { createFileRoute } from "@tanstack/react-router";
+import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import {
   Check,
+  ChevronDown,
   Copy,
   ExternalLink,
   GitBranch,
   Package,
-  Trash2,
   RefreshCw,
+  Trash2,
 } from "lucide-react";
-import { useState, useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export const Route = createFileRoute("/_layout/task/$taskId/")({
   component: TaskDetailPage,
+  validateSearch: (search: Record<string, unknown>) => {
+    return {
+      runId: search.runId as string | undefined,
+    };
+  },
   loader: async (opts) => {
     await Promise.all([
       opts.context.queryClient.ensureQueryData(
@@ -38,11 +45,12 @@ export const Route = createFileRoute("/_layout/task/$taskId/")({
 
 function TaskDetailPage() {
   const { taskId } = Route.useParams();
+  const { runId } = Route.useSearch();
+  const navigate = useNavigate();
   const clipboard = useClipboard({ timeout: 2000 });
   const [isHovering, setIsHovering] = useState(false);
   const [prIsOpen, setPrIsOpen] = useState(false); // Track if PR is open
   const [isCheckingDiffs, setIsCheckingDiffs] = useState(false);
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
   const task = useQuery(api.tasks.getById, {
     id: taskId as Id<"tasks">,
@@ -53,19 +61,23 @@ function TaskDetailPage() {
 
   // Find the crowned run (if any)
   const crownedRun = taskRuns?.find((run) => run.isCrowned);
-  
-  // Select the run to display (either explicitly selected, crowned, or first available)
+
+  // Select the run to display (either from query param, crowned, or first available)
   const selectedRun = useMemo(() => {
-    if (selectedRunId) {
-      return taskRuns?.find(run => run._id === selectedRunId);
+    if (runId) {
+      return taskRuns?.find((run) => run._id === runId);
     }
     // Default to crowned run if available, otherwise first completed run
-    return crownedRun || taskRuns?.find(run => run.status === "completed") || taskRuns?.[0];
-  }, [selectedRunId, taskRuns, crownedRun]);
-  
+    return (
+      crownedRun ||
+      taskRuns?.find((run) => run.status === "completed") ||
+      taskRuns?.[0]
+    );
+  }, [runId, taskRuns, crownedRun]);
+
   // Fetch diffs for the selected run
   const diffs = useQuery(
-    api.gitDiffs.getByTaskRun, 
+    api.gitDiffs.getByTaskRun,
     selectedRun ? { taskRunId: selectedRun._id } : "skip"
   );
 
@@ -122,7 +134,10 @@ function TaskDetailPage() {
     <div className="bg-neutral-900 text-white px-4 py-3">
       {/* Task title with loading indicator */}
       <div className="flex items-center gap-2">
-        <h1 className="text-lg font-normal truncate flex-1" title={task?.text}>
+        <h1
+          className="text-lg font-normal truncate flex-1 min-w-0 overflow-ellipsis"
+          title={task?.text}
+        >
           {task?.text || "Loading..."}
         </h1>
         {isCheckingDiffs && (
@@ -175,6 +190,64 @@ function TaskDetailPage() {
             {task.projectFullName}
           </span>
         )}
+
+        {/* Agent selector dropdown */}
+        {taskRuns && taskRuns.length > 0 && (
+          <>
+            <span className="text-neutral-600">by</span>
+            <DropdownMenu.Root>
+              <DropdownMenu.Trigger asChild>
+                <button className="flex items-center gap-1 text-neutral-300 hover:text-white transition-colors text-xs">
+                  <span>
+                    {selectedRun?.agentName ||
+                      selectedRun?.prompt?.match(/\(([^)]+)\)$/)?.[1] ||
+                      "Unknown agent"}
+                  </span>
+                  <ChevronDown className="w-3 h-3" />
+                </button>
+              </DropdownMenu.Trigger>
+
+              <DropdownMenu.Portal>
+                <DropdownMenu.Content
+                  className="min-w-[180px] bg-neutral-800 border border-neutral-700 rounded-md p-1 shadow-lg z-50"
+                  sideOffset={5}
+                >
+                  {taskRuns.map((run) => {
+                    const agentName =
+                      run.agentName ||
+                      run.prompt?.match(/\(([^)]+)\)$/)?.[1] ||
+                      "Unknown agent";
+                    const isSelected = run._id === selectedRun?._id;
+
+                    return (
+                      <DropdownMenu.Item
+                        key={run._id}
+                        onClick={() => {
+                          navigate({
+                            to: "/task/$taskId",
+                            params: { taskId },
+                            search: { runId: run._id },
+                          });
+                        }}
+                        className={`
+                          flex items-center justify-between px-2 py-1.5 text-xs rounded cursor-default outline-none select-none
+                          ${isSelected ? "bg-neutral-700 text-white" : "text-neutral-300 hover:bg-neutral-700 hover:text-white"}
+                        `}
+                      >
+                        <span>{agentName}</span>
+                        {run.isCrowned && (
+                          <span className="text-yellow-500 text-[10px]">
+                            👑
+                          </span>
+                        )}
+                      </DropdownMenu.Item>
+                    );
+                  })}
+                </DropdownMenu.Content>
+              </DropdownMenu.Portal>
+            </DropdownMenu.Root>
+          </>
+        )}
       </div>
 
       {/* Action buttons - more compact */}
@@ -187,7 +260,7 @@ function TaskDetailPage() {
         />
 
         {/* View PR button */}
-        <button 
+        <button
           onClick={handleViewPR}
           className="flex items-center gap-1.5 px-3 py-1 bg-neutral-800 text-white border border-neutral-700 rounded hover:bg-neutral-700 font-medium text-xs select-none"
           disabled={!crownedRun?.newBranch}
@@ -217,10 +290,7 @@ function TaskDetailPage() {
     <FloatingPane header={header}>
       {/* Git diff viewer */}
       <div className="flex-1 overflow-hidden bg-white dark:bg-neutral-950">
-        <GitDiffViewer 
-          diffs={diffs || []} 
-          isLoading={!diffs && !!crownedRun}
-        />
+        <GitDiffViewer diffs={diffs || []} isLoading={!diffs && !!crownedRun} />
       </div>
     </FloatingPane>
   );
