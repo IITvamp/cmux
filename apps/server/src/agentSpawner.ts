@@ -10,6 +10,7 @@ import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import { convex } from "./utils/convexClient.js";
 import { serverLogger } from "./utils/fileLogger.js";
+import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { MorphVSCodeInstance } from "./vscode/MorphVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
@@ -44,7 +45,7 @@ export async function storeGitDiffs(taskRunId: Id<"taskRuns">, gitDiff: string, 
     const diffSections = gitDiff.split(/^diff --git /m).slice(1);
     serverLogger.info(`[AgentSpawner] Found ${diffSections.length} diff sections to parse`);
     
-    const toStore: any[] = [];
+    const toStore: ReplaceDiffEntry[] = [];
 
     for (const section of diffSections) {
       // Extract file paths - handle spaces in filenames
@@ -130,8 +131,7 @@ export async function storeGitDiffs(taskRunId: Id<"taskRuns">, gitDiff: string, 
       const newSize = newContent ? Buffer.byteLength(newContent, 'utf8') : 0;
       const totalApprox = patchSize + oldSize + newSize;
       const MAX_DOC_SIZE = 950 * 1024;
-      let payload: any = {
-        taskRunId,
+      let payload: ReplaceDiffEntry = {
         filePath,
         oldPath: status === "renamed" ? oldPath : undefined,
         status,

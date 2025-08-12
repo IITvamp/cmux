@@ -6,6 +6,7 @@ import * as path from "node:path";
 import { promisify } from "node:util";
 import { convex } from "./utils/convexClient.js";
 import { serverLogger } from "./utils/fileLogger.js";
+import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
 
 const execAsync = promisify(exec);
 
@@ -93,7 +94,7 @@ export async function refreshDiffsForTaskRun(taskRunId: string): Promise<{ succe
       serverLogger.info(`[RefreshDiffs] Found ${diffSections.length} diff sections`);
       
       // Prepare diffs to store in bulk to avoid incremental updates
-      const toStore: any[] = [];
+      const toStore: ReplaceDiffEntry[] = [];
 
       // Process each diff section
       for (const section of diffSections) {
@@ -176,7 +177,7 @@ export async function refreshDiffsForTaskRun(taskRunId: string): Promise<{ succe
         const newSize = newContent ? Buffer.byteLength(newContent, 'utf8') : 0;
         const totalApprox = patchSize + oldSize + newSize;
         const MAX_DOC_SIZE = 950 * 1024; // keep margin under 1 MiB
-        let payload: any = {
+        let payload: ReplaceDiffEntry = {
           filePath,
           oldPath: status === "renamed" ? oldPath : undefined,
           status,

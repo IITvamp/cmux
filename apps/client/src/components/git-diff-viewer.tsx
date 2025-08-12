@@ -88,8 +88,8 @@ export function GitDiffViewer({ diffs, isLoading, taskRunId }: GitDiffViewerProp
       // If content was omitted due to size, fetch on demand
       const diff = diffs.find(d => d.filePath === filePath);
       if (diff && diff.contentOmitted && taskRunId && socket) {
-        socket.emit("git-diff-file-contents", { taskRunId, filePath }, (res: any) => {
-          if (res?.ok) {
+        socket.emit("git-diff-file-contents", { taskRunId, filePath }, (res) => {
+          if (res.ok) {
             setLazyContents(prev => ({
               ...prev,
               [filePath]: { oldContent: res.oldContent || "", newContent: res.newContent || "" },
