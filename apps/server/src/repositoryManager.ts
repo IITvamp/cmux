@@ -382,14 +382,15 @@ export class RepositoryManager {
       );
       serverLogger.info(`Successfully pulled latest changes for ${branch}`);
     } catch (error) {
-      // If pull fails due to conflicts or divergent branches, try to recover
+      // If pull fails due to conflicts, divergent or unrelated histories, try to recover
       if (
         error instanceof Error &&
         (error.message.includes("divergent branches") ||
-          error.message.includes("conflict"))
+          error.message.includes("conflict") ||
+          error.message.includes("unrelated histories"))
       ) {
         serverLogger.warn(
-          `Pull failed due to conflicts, attempting to reset to origin/${branch}`
+          `Pull failed (likely conflicts/divergence). Attempting hard reset to origin/${branch}`
         );
         try {
           // Fetch the latest state

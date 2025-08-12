@@ -67,7 +67,7 @@ if [ -n "$VSCODE_THEME" ]; then
     fi
     
     # Update VS Code settings files with theme
-    SETTINGS_JSON='{"workbench.startupEditor": "none", "workbench.colorTheme": "'$COLOR_THEME'"}'
+    SETTINGS_JSON='{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "workbench.colorTheme": "'$COLOR_THEME'"}'
     
     # Update all VS Code settings locations
     echo "$SETTINGS_JSON" > /root/.openvscode-server/data/User/settings.json

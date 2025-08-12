@@ -83,20 +83,8 @@ async function createPullRequestForWinner(
 ---
 🤖 Generated with [cmux](https://github.com/lawrencecchen/cmux)`;
     
-    // Create sanitized branch name
-    const sanitizedTaskDesc = (task.text || "task")
-      .toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, "")
-      .trim()
-      .split(/\s+/)
-      .slice(0, 5)
-      .join("-")
-      .substring(0, 30);
-    
-    const branchName = `cmux-${agentName}-${sanitizedTaskDesc}-${taskRunId}`
-      .toLowerCase()
-      .replace(/[^a-z0-9-]/g, "-")
-      .replace(/--+/g, "-");
+    // Use the newBranch from the task run
+    const branchName = taskRun.newBranch || `cmux-crown-${taskRunId.slice(-8)}`;
     
     // Create commit message
     const truncatedDescription = prTitle.length > 72

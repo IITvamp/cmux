@@ -19,7 +19,7 @@ export default defineSchema({
     isArchived: v.optional(v.boolean()),
     description: v.optional(v.string()),
     projectFullName: v.optional(v.string()),
-    branch: v.optional(v.string()),
+    baseBranch: v.optional(v.string()),
     worktreePath: v.optional(v.string()),
     createdAt: v.optional(v.number()),
     updatedAt: v.optional(v.number()),
@@ -50,6 +50,7 @@ export default defineSchema({
     ),
     log: v.string(), // CLI output log, will be appended to in real-time
     worktreePath: v.optional(v.string()), // Path to the git worktree for this run
+    newBranch: v.optional(v.string()), // The generated branch name for this run
     createdAt: v.number(),
     updatedAt: v.number(),
     completedAt: v.optional(v.number()),

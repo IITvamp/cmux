@@ -15,6 +15,7 @@ import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWorktreePath, setupProjectWorkspace } from "./workspace.js";
 import { evaluateCrownWithClaudeCode } from "./crownEvaluator.js";
 import { captureGitDiffViaTerminal } from "./gitDiffCapture.js";
+import { generateNewBranchName, generateUniqueBranchNames } from "./utils/branchNameGenerator.js";
 
 /**
  * Sanitize a string to be used as a tmux session name.
@@ -52,21 +53,12 @@ async function performAutoCommitAndPush(
       `[AgentSpawner] Task run ${taskRunId} crowned status: ${isCrowned}`
     );
 
-    // Create a unique branch name for this task run
-    // Include a sanitized version of the task description for better clarity
-    const sanitizedTaskDesc = taskDescription
-      .toLowerCase()
-      .replace(/[^a-z0-9\s-]/g, "") // Remove special chars except spaces and hyphens
-      .trim()
-      .split(/\s+/) // Split by whitespace
-      .slice(0, 5) // Take first 5 words max
-      .join("-")
-      .substring(0, 30); // Limit length
-
-    const branchName = `cmux-${agent.name}-${sanitizedTaskDesc}-${taskRunId}`
-      .toLowerCase()
-      .replace(/[^a-z0-9-]/g, "-")
-      .replace(/--+/g, "-");
+    // Use the newBranch from the task run, or fallback to old logic if not set
+    const branchName = taskRun?.newBranch || 
+      `cmux-${agent.name}-${taskRunId.slice(-8)}`
+        .toLowerCase()
+        .replace(/[^a-z0-9-]/g, "-")
+        .replace(/--+/g, "-");
 
     // Use task description as the main commit message
     // Truncate if too long (git has limits on commit message length)
@@ -881,17 +873,20 @@ export async function spawnAgent(
       altText: string;
     }>;
     theme?: "dark" | "light" | "system";
+    newBranch?: string; // Optional pre-generated branch name
   }
 ): Promise<AgentSpawnResult> {
   try {
+    // Use provided branch name or generate a new one
+    const newBranch = options.newBranch || await generateNewBranchName(options.taskDescription);
+    serverLogger.info(`[AgentSpawner] Using branch name: ${newBranch}`);
+
     // Create a task run for this specific agent
     const taskRunId = await convex.mutation(api.taskRuns.create, {
       taskId: taskId as Id<"tasks">,
       prompt: `${options.taskDescription} (${agent.name})`,
+      newBranch,
     });
-
-    // Fetch API keys from Convex first
-    const apiKeys = await convex.query(api.apiKeys.getAllForAgents);
 
     // Fetch the task to get image storage IDs
     const task = await convex.query(api.tasks.getById, {
@@ -1018,6 +1013,9 @@ export async function spawnAgent(
       startupCommands = envResult.startupCommands || [];
     }
 
+    // Fetch API keys from Convex
+    const apiKeys = await convex.query(api.apiKeys.getAllForAgents);
+    
     // Add required API keys from Convex
     if (agent.apiKeys) {
       for (const keyConfig of agent.apiKeys) {
@@ -1076,11 +1074,12 @@ export async function spawnAgent(
         branch: options.branch,
       });
 
-      // Append agent name to branch name to make it unique
-      // Replace forward slashes in agent name with hyphens for filesystem compatibility
-      const sanitizedAgentName = agent.name.replace(/\//g, '-');
-      worktreeInfo.branchName = `${worktreeInfo.branchName}-${sanitizedAgentName}`;
-      worktreeInfo.worktreePath = `${worktreeInfo.worktreePath}-${sanitizedAgentName}`;
+      // Use the newBranch name for both the git branch and worktree directory
+      worktreeInfo.branchName = newBranch;
+      worktreeInfo.worktreePath = worktreeInfo.worktreePath.replace(
+        /worktree-[^/]+$/,
+        `worktree-${newBranch.replace(/[^a-zA-Z0-9-]/g, '-')}`
+      );
 
       // Setup workspace
       const workspaceResult = await setupProjectWorkspace({
@@ -1748,8 +1747,6 @@ export async function spawnAllAgents(
     theme?: "dark" | "light" | "system";
   }
 ): Promise<AgentSpawnResult[]> {
-  // Spawn agents sequentially to avoid git lock conflicts
-
   // If selectedAgents is provided, filter AGENT_CONFIGS to only include selected agents
   const agentsToSpawn = options.selectedAgents
     ? AGENT_CONFIGS.filter((agent) =>
@@ -1757,13 +1754,24 @@ export async function spawnAllAgents(
       )
     : AGENT_CONFIGS;
 
-  // const results: AgentSpawnResult[] = [];
-  // for (const agent of agentsToSpawn) {
-  //   const result = await spawnAgent(agent, taskId, options);
-  //   results.push(result);
-  // }
+  // Generate unique branch names for all agents at once to ensure no collisions
+  const branchNames = await generateUniqueBranchNames(
+    options.taskDescription,
+    agentsToSpawn.length
+  );
+  
+  serverLogger.info(
+    `[AgentSpawner] Generated ${branchNames.length} unique branch names for agents`
+  );
+
+  // Spawn all agents in parallel with their pre-generated branch names
   const results = await Promise.all(
-    agentsToSpawn.map((agent) => spawnAgent(agent, taskId, options))
+    agentsToSpawn.map((agent, index) => 
+      spawnAgent(agent, taskId, {
+        ...options,
+        newBranch: branchNames[index],
+      })
+    )
   );
 
   return results;

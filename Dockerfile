@@ -108,11 +108,11 @@ RUN /app/openvscode-server/bin/openvscode-server --install-extension /tmp/cmux-e
 
 # Create VS Code user settings
 RUN mkdir -p /root/.openvscode-server/data/User && \
-    echo '{"workbench.startupEditor": "none"}' > /root/.openvscode-server/data/User/settings.json && \
+    echo '{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true}' > /root/.openvscode-server/data/User/settings.json && \
     mkdir -p /root/.openvscode-server/data/User/profiles/default-profile && \
-    echo '{"workbench.startupEditor": "none"}' > /root/.openvscode-server/data/User/profiles/default-profile/settings.json && \
+    echo '{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true}' > /root/.openvscode-server/data/User/profiles/default-profile/settings.json && \
     mkdir -p /root/.openvscode-server/data/Machine && \
-    echo '{"workbench.startupEditor": "none"}' > /root/.openvscode-server/data/Machine/settings.json
+    echo '{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true}' > /root/.openvscode-server/data/Machine/settings.json
 
 # Stage 2: Runtime stage
 FROM ubuntu:24.04 AS runtime

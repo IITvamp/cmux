@@ -7,6 +7,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 NC='\033[0m' # No Color
 
+
 # Save current state
 START_COMMIT=$(git rev-parse HEAD)
 ORIGINAL_PACKAGE_JSON=""
@@ -70,6 +71,20 @@ trap 'error "Process interrupted by user"; undo' INT
 
 echo "Starting publish process..."
 
+# Step 0: Check Docker authentication by attempting to pull a small test image
+echo "Checking Docker Hub authentication..."
+if ! docker pull alpine:latest >/dev/null 2>&1; then
+  error "Unable to pull from Docker Hub. Please run 'docker login' first."
+  exit 1
+fi
+
+# Also check if config.json exists with auth
+if [ ! -f ~/.docker/config.json ] || ! grep -q '"auths"' ~/.docker/config.json 2>/dev/null; then
+  warning "Docker config not found or incomplete. You may have issues pushing."
+fi
+
+success "Docker Hub connectivity verified"
+
 # Step 1: Check for uncommitted changes
 echo "Checking git status..."
 git update-index -q --refresh
@@ -116,35 +131,28 @@ success "Version bumped to v$NEW_VERSION"
 
 bun run typecheck
 
-# Step 6: Build CLI and Docker image in parallel
-echo "Building CLI and Docker image in parallel..."
-
-# Run both builds in background
-./scripts/build-cli.ts &
-CLI_PID=$!
-
-./scripts/docker-push.sh "$NEW_VERSION" &
-DOCKER_PID=$!
-
-# Wait for both to complete
-wait $CLI_PID
-CLI_EXIT=$?
-
-wait $DOCKER_PID
-DOCKER_EXIT=$?
-
-# Check if both succeeded
-if [ $CLI_EXIT -ne 0 ]; then
+# Step 6: Build CLI and Docker image
+echo "Building CLI..."
+echo "----------------------------------------"
+./scripts/build-cli.ts
+if [ $? -ne 0 ]; then
   error "CLI build failed"
   exit 1
 fi
+success "CLI build complete"
 
-if [ $DOCKER_EXIT -ne 0 ]; then
-  error "Docker build failed"
-  exit 1
+echo ""
+echo "Building and pushing Docker image..."
+echo "----------------------------------------"
+# Use simple push script to work around OrbStack issues
+./scripts/docker-push-simple.sh "$NEW_VERSION"
+# Don't fail on Docker push issues as they're often transient with OrbStack
+if [ $? -ne 0 ]; then
+  warning "Docker push had issues (common with OrbStack)"
+  warning "You may need to manually push later: docker push lawrencecchen/cmux:$NEW_VERSION"
+else
+  success "Docker build and push complete"
 fi
-
-success "CLI build and Docker image push complete"
 
 # Step 7: Commit changes
 echo "Committing changes..."
@@ -173,3 +181,4 @@ echo ""
 echo "Next steps:"
 echo "  - Verify the package on npm: https://www.npmjs.com/package/cmux"
 echo "  - Test installation: npm install -g cmux@$NEW_VERSION"
+echo "  - Verify Docker image: docker pull lawrencecchen/cmux:$NEW_VERSION"

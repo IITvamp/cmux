@@ -1,15 +1,8 @@
 import AntdMultiSelect from "@/components/AntdMultiSelect";
-import { Button } from "@/components/ui/button";
 import { ModeToggleTooltip } from "@/components/ui/mode-toggle-tooltip";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
 import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
 import clsx from "clsx";
-import { Command, Image, Mic } from "lucide-react";
+import { Image, Mic } from "lucide-react";
 import { memo, useCallback, useMemo } from "react";
 
 interface DashboardInputControlsProps {
@@ -25,8 +18,6 @@ interface DashboardInputControlsProps {
   onCloudModeToggle: () => void;
   isLoadingProjects: boolean;
   isLoadingBranches: boolean;
-  canSubmit: boolean;
-  onStartTask: () => void;
 }
 
 export const DashboardInputControls = memo(function DashboardInputControls({
@@ -42,15 +33,13 @@ export const DashboardInputControls = memo(function DashboardInputControls({
   onCloudModeToggle,
   isLoadingProjects,
   isLoadingBranches,
-  canSubmit,
-  onStartTask,
 }: DashboardInputControlsProps) {
   const agentOptions = useMemo(
     () => AGENT_CONFIGS.map((agent) => agent.name),
     []
   );
-  const isMac = navigator.userAgent.toUpperCase().indexOf("MAC") >= 0;
-  const shortcutKey = isMac ? "⌘" : "Ctrl";
+  // Determine OS for potential future UI tweaks
+  // const isMac = navigator.userAgent.toUpperCase().indexOf("MAC") >= 0;
 
   const handleImageClick = useCallback(() => {
     // Trigger the file select from ImagePlugin
@@ -63,7 +52,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
   }, []);
 
   return (
-    <div className="flex items-end justify-between p-2 gap-1">
+    <div className="flex items-end gap-1">
       <div className="flex items-end gap-1">
         <AntdMultiSelect
           options={projectOptions}
@@ -134,33 +123,6 @@ export const DashboardInputControls = memo(function DashboardInputControls({
         >
           <Mic className="w-4 h-4" />
         </button>
-
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                size="sm"
-                variant="default"
-                className="!h-7"
-                onClick={onStartTask}
-                disabled={!canSubmit}
-              >
-                Start task
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent
-              side="bottom"
-              className="flex items-center gap-1 bg-black text-white border-black [&>*:last-child]:bg-black [&>*:last-child]:fill-black"
-            >
-              {isMac ? (
-                <Command className="w-3 h-3" />
-              ) : (
-                <span className="text-xs">{shortcutKey}</span>
-              )}
-              <span>+ Enter</span>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
       </div>
     </div>
   );

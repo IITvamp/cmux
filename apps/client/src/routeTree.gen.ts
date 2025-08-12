@@ -17,6 +17,7 @@ import { Route as LayoutSettingsRouteImport } from './routes/_layout.settings'
 import { Route as LayoutProfileRouteImport } from './routes/_layout.profile'
 import { Route as LayoutDashboardRouteImport } from './routes/_layout.dashboard'
 import { Route as LayoutTaskTaskIdRouteImport } from './routes/_layout.task.$taskId'
+import { Route as LayoutTaskTaskIdIndexRouteImport } from './routes/_layout.task.$taskId.index'
 import { Route as LayoutTaskTaskIdRunTaskRunIdRouteImport } from './routes/_layout.task.$taskId.run.$taskRunId'
 
 const LandingRoute = LandingRouteImport.update({
@@ -58,6 +59,11 @@ const LayoutTaskTaskIdRoute = LayoutTaskTaskIdRouteImport.update({
   path: '/task/$taskId',
   getParentRoute: () => LayoutRoute,
 } as any)
+const LayoutTaskTaskIdIndexRoute = LayoutTaskTaskIdIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => LayoutTaskTaskIdRoute,
+} as any)
 const LayoutTaskTaskIdRunTaskRunIdRoute =
   LayoutTaskTaskIdRunTaskRunIdRouteImport.update({
     id: '/run/$taskRunId',
@@ -73,6 +79,7 @@ export interface FileRoutesByFullPath {
   '/settings': typeof LayoutSettingsRoute
   '/handler/$': typeof HandlerSplatRoute
   '/task/$taskId': typeof LayoutTaskTaskIdRouteWithChildren
+  '/task/$taskId/': typeof LayoutTaskTaskIdIndexRoute
   '/task/$taskId/run/$taskRunId': typeof LayoutTaskTaskIdRunTaskRunIdRoute
 }
 export interface FileRoutesByTo {
@@ -82,7 +89,7 @@ export interface FileRoutesByTo {
   '/profile': typeof LayoutProfileRoute
   '/settings': typeof LayoutSettingsRoute
   '/handler/$': typeof HandlerSplatRoute
-  '/task/$taskId': typeof LayoutTaskTaskIdRouteWithChildren
+  '/task/$taskId': typeof LayoutTaskTaskIdIndexRoute
   '/task/$taskId/run/$taskRunId': typeof LayoutTaskTaskIdRunTaskRunIdRoute
 }
 export interface FileRoutesById {
@@ -95,6 +102,7 @@ export interface FileRoutesById {
   '/_layout/settings': typeof LayoutSettingsRoute
   '/handler/$': typeof HandlerSplatRoute
   '/_layout/task/$taskId': typeof LayoutTaskTaskIdRouteWithChildren
+  '/_layout/task/$taskId/': typeof LayoutTaskTaskIdIndexRoute
   '/_layout/task/$taskId/run/$taskRunId': typeof LayoutTaskTaskIdRunTaskRunIdRoute
 }
 export interface FileRouteTypes {
@@ -107,6 +115,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/handler/$'
     | '/task/$taskId'
+    | '/task/$taskId/'
     | '/task/$taskId/run/$taskRunId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -128,6 +137,7 @@ export interface FileRouteTypes {
     | '/_layout/settings'
     | '/handler/$'
     | '/_layout/task/$taskId'
+    | '/_layout/task/$taskId/'
     | '/_layout/task/$taskId/run/$taskRunId'
   fileRoutesById: FileRoutesById
 }
@@ -196,6 +206,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutTaskTaskIdRouteImport
       parentRoute: typeof LayoutRoute
     }
+    '/_layout/task/$taskId/': {
+      id: '/_layout/task/$taskId/'
+      path: '/'
+      fullPath: '/task/$taskId/'
+      preLoaderRoute: typeof LayoutTaskTaskIdIndexRouteImport
+      parentRoute: typeof LayoutTaskTaskIdRoute
+    }
     '/_layout/task/$taskId/run/$taskRunId': {
       id: '/_layout/task/$taskId/run/$taskRunId'
       path: '/run/$taskRunId'
@@ -207,10 +224,12 @@ declare module '@tanstack/react-router' {
 }
 
 interface LayoutTaskTaskIdRouteChildren {
+  LayoutTaskTaskIdIndexRoute: typeof LayoutTaskTaskIdIndexRoute
   LayoutTaskTaskIdRunTaskRunIdRoute: typeof LayoutTaskTaskIdRunTaskRunIdRoute
 }
 
 const LayoutTaskTaskIdRouteChildren: LayoutTaskTaskIdRouteChildren = {
+  LayoutTaskTaskIdIndexRoute: LayoutTaskTaskIdIndexRoute,
   LayoutTaskTaskIdRunTaskRunIdRoute: LayoutTaskTaskIdRunTaskRunIdRoute,
 }
 

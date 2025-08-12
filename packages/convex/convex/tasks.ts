@@ -33,7 +33,7 @@ export const create = mutation({
     text: v.string(),
     description: v.optional(v.string()),
     projectFullName: v.optional(v.string()),
-    branch: v.optional(v.string()),
+    baseBranch: v.optional(v.string()),
     worktreePath: v.optional(v.string()),
     images: v.optional(v.array(v.object({
       storageId: v.id("_storage"),
@@ -47,7 +47,7 @@ export const create = mutation({
       text: args.text,
       description: args.description,
       projectFullName: args.projectFullName,
-      branch: args.branch,
+      baseBranch: args.baseBranch,
       worktreePath: args.worktreePath,
       isCompleted: false,
       createdAt: now,
