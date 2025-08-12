@@ -9,6 +9,10 @@ import { serverLogger } from "./fileLogger.js";
  */
 export function toKebabCase(input: string): string {
   return input
+    // First, handle camelCase by inserting hyphens before capital letters
+    .replace(/([a-z])([A-Z])/g, "$1-$2")
+    // Also handle sequences like "HTTPServer" -> "HTTP-Server"
+    .replace(/([A-Z])([A-Z][a-z])/g, "$1-$2")
     .toLowerCase()
     // Replace any sequence of non-alphanumeric characters with a single hyphen
     .replace(/[^a-z0-9]+/g, "-")
