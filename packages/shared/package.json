@@ -32,6 +32,14 @@
     "./convex-ready": {
       "import": "./src/convex-ready.ts",
       "types": "./src/convex-ready.ts"
+    },
+    "./src/providers/anthropic/completion-detector": {
+      "import": "./src/providers/anthropic/completion-detector.ts",
+      "types": "./src/providers/anthropic/completion-detector.ts"
+    },
+    "./src/providers/anthropic/completion-detector.ts": {
+      "import": "./src/providers/anthropic/completion-detector.ts",
+      "types": "./src/providers/anthropic/completion-detector.ts"
     }
   },
   "dependencies": {
