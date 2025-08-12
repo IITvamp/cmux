@@ -53,8 +53,8 @@ function LandingPage() {
           </h1>
           
           <p className="text-lg text-neutral-400 mb-8 leading-relaxed">
-            cmux orchestrates Claude, GPT-5, Gemini, and other coding agents simultaneously. 
-            Each task spawns an isolated VS Code instance with git integration.
+            cmux spawns Claude Code, Codex, Gemini CLI, Amp, Opencode, and other coding agent CLIs in parallel across multiple tasks. 
+            For each run, cmux spawns an isolated VS Code instance via Docker with the git diff UI and terminal.
           </p>
 
           {/* Installation Commands */}
@@ -108,19 +108,21 @@ function LandingPage() {
       {/* The Problem */}
       <section className="py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto">
-          <h2 className="text-2xl font-bold mb-6">Why cmux exists</h2>
+          <h2 className="text-2xl font-bold mb-6">The shift of the developer workflow</h2>
           <div className="space-y-4 text-neutral-400">
             <p>
-              Developers have shifted from traditional IDEs to AI-powered coding assistants. 
-              Running multiple agents simultaneously requires juggling terminals and VS Code instances.
+              Developers now spend more time in the terminal + VS Code git extension, prompting agents and reviewing diffs.
+              The workflow for coders has fundamentally changed.
             </p>
             <p>
-              Managing parallel tasks across different codebases becomes complex without proper orchestration. 
-              Context switching between agents, reviewing diffs, and tracking progress slows development.
+              Typically, only four or five Claude instances can be juggled at once across different parts of the codebase. 
+              Constantly switching back to VS Code UI for diffs becomes the bottleneck. Figuring out which agent is working on which part of the codebase is a pain. 
+              Verifying that the agent successfully completed the task is hard.
             </p>
             <p>
-              cmux solves this by providing a unified dashboard for spawning and managing multiple AI agents, 
-              each with isolated VS Code instances and automatic git integration.
+              cmux spawns isolated VS Code instances for every task/coding CLI fanout. 
+              Each instance opens with the git extension's diff UI and a terminal running the agent. 
+              Makes <code className="px-1.5 py-0.5 bg-neutral-900 rounded text-xs">--dangerously-skip-permissions</code> actually safer.
             </p>
           </div>
         </div>
@@ -134,7 +136,7 @@ function LandingPage() {
       {/* Demo Section */}
       <section className="py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto">
-          <h2 className="text-2xl font-bold mb-6">How it works</h2>
+          <h2 className="text-2xl font-bold mb-6">See it in action</h2>
           
           <div className="space-y-8">
             {/* Terminal + Dashboard Demo */}
@@ -151,11 +153,11 @@ function LandingPage() {
                 </div>
                 <div className="p-4 font-mono text-sm space-y-2">
                   <div className="text-neutral-500">$ bunx cmux</div>
-                  <div className="text-green-400">✓ Installing cmux...</div>
-                  <div className="text-green-400">✓ Setting up environment...</div>
-                  <div className="text-green-400">✓ Starting web server on http://localhost:3000</div>
+                  <div className="text-green-400">✓ Docker containers ready</div>
+                  <div className="text-green-400">✓ VS Code server initialized</div>
+                  <div className="text-green-400">✓ Dashboard on localhost:3000</div>
                   <div className="text-neutral-400 mt-4">
-                    Opening dashboard in browser...
+                    Spawning isolated workspaces...
                   </div>
                 </div>
               </div>
@@ -180,23 +182,23 @@ function LandingPage() {
                       <div className="bg-neutral-900 rounded p-2 text-xs">
                         <div className="flex items-center gap-2 mb-1">
                           <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                          <span>Implement auth flow</span>
+                          <span>Refactor auth module</span>
                         </div>
-                        <div className="text-neutral-500 ml-4">Claude Opus 4.1 • 2m ago</div>
+                        <div className="text-neutral-500 ml-4">Claude Code • port 8001</div>
                       </div>
                       <div className="bg-neutral-900 rounded p-2 text-xs">
                         <div className="flex items-center gap-2 mb-1">
                           <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
                           <span>Add test coverage</span>
                         </div>
-                        <div className="text-neutral-500 ml-4">GPT-5 • 3m ago</div>
+                        <div className="text-neutral-500 ml-4">Codex • port 8002</div>
                       </div>
                       <div className="bg-neutral-900 rounded p-2 text-xs">
                         <div className="flex items-center gap-2 mb-1">
                           <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                          <span>Security audit</span>
+                          <span>Database migration</span>
                         </div>
-                        <div className="text-neutral-500 ml-4">Gemini Pro • 5m ago</div>
+                        <div className="text-neutral-500 ml-4">Gemini CLI • complete</div>
                       </div>
                     </div>
                   </div>
@@ -206,41 +208,41 @@ function LandingPage() {
 
             {/* Agent Parallel Execution */}
             <div className="bg-neutral-950 border border-neutral-800 rounded-lg p-6">
-              <h3 className="text-lg font-semibold mb-4">Parallel Agent Execution</h3>
+              <h3 className="text-lg font-semibold mb-4">Parallel execution</h3>
               <div className="space-y-4">
                 {/* Agent Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="bg-neutral-900 rounded-lg p-3">
                     <div className="flex items-center gap-2 mb-2">
                       <Terminal className="h-4 w-4 text-blue-500" />
-                      <span className="text-sm font-mono">Claude Opus 4.1</span>
+                      <span className="text-sm font-mono">Claude Code</span>
                     </div>
                     <div className="text-xs text-neutral-500 space-y-1">
-                      <div>Task: Authentication flow</div>
-                      <div>Status: <span className="text-yellow-400">In progress</span></div>
-                      <div>Port: 8001</div>
+                      <div>Task: auth module</div>
+                      <div>VS Code: <span className="text-yellow-400">port 8001</span></div>
+                      <div>Git: 3 files changed</div>
                     </div>
                   </div>
                   <div className="bg-neutral-900 rounded-lg p-3">
                     <div className="flex items-center gap-2 mb-2">
                       <Terminal className="h-4 w-4 text-purple-500" />
-                      <span className="text-sm font-mono">GPT-5</span>
+                      <span className="text-sm font-mono">Codex</span>
                     </div>
                     <div className="text-xs text-neutral-500 space-y-1">
-                      <div>Task: Test coverage</div>
-                      <div>Status: <span className="text-green-400">Complete</span></div>
-                      <div>Port: 8002</div>
+                      <div>Task: test coverage</div>
+                      <div>VS Code: <span className="text-green-400">port 8002</span></div>
+                      <div>Git: tests added</div>
                     </div>
                   </div>
                   <div className="bg-neutral-900 rounded-lg p-3">
                     <div className="flex items-center gap-2 mb-2">
                       <Terminal className="h-4 w-4 text-green-500" />
-                      <span className="text-sm font-mono">Gemini Pro</span>
+                      <span className="text-sm font-mono">Gemini CLI</span>
                     </div>
                     <div className="text-xs text-neutral-500 space-y-1">
-                      <div>Task: Security audit</div>
-                      <div>Status: <span className="text-yellow-400">In progress</span></div>
-                      <div>Port: 8003</div>
+                      <div>Task: API endpoints</div>
+                      <div>VS Code: <span className="text-green-400">port 8003</span></div>
+                      <div>Git: ready to commit</div>
                     </div>
                   </div>
                 </div>
@@ -248,11 +250,11 @@ function LandingPage() {
                 {/* Progress Bar */}
                 <div className="bg-neutral-900 rounded-lg p-3">
                   <div className="flex justify-between text-xs text-neutral-500 mb-2">
-                    <span>Overall Progress</span>
-                    <span>67% Complete</span>
+                    <span>2 of 3 tasks done</span>
+                    <span>~4 min left</span>
                   </div>
                   <div className="w-full bg-neutral-800 rounded-full h-2">
-                    <div className="bg-gradient-to-r from-blue-500 to-purple-500 h-2 rounded-full" style={{width: '67%'}}></div>
+                    <div className="bg-blue-500 h-2 rounded-full" style={{width: '67%'}}></div>
                   </div>
                 </div>
               </div>
@@ -269,40 +271,40 @@ function LandingPage() {
       {/* Features */}
       <section className="py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto">
-          <h2 className="text-2xl font-bold mb-8 text-center">Core Features</h2>
+          <h2 className="text-2xl font-bold mb-8 text-center">10x coding productivity</h2>
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="space-y-6">
               <div>
                 <h3 className="font-semibold mb-2 flex items-center gap-2">
                   <GitBranch className="h-4 w-4 text-neutral-500" />
-                  Isolated workspaces
+                  Separate VS Code windows
                 </h3>
                 <p className="text-sm text-neutral-400">
-                  Each agent gets its own VS Code instance with isolated git worktrees. 
-                  No more conflicts or accidental overwrites.
+                  Each agent runs in its own VS Code on a different port. 
+                  localhost:8001, :8002, :8003. Click to open any of them.
                 </p>
               </div>
               
               <div>
                 <h3 className="font-semibold mb-2 flex items-center gap-2">
                   <Users className="h-4 w-4 text-neutral-500" />
-                  20+ AI agents
+                  Multiple agent support
                 </h3>
                 <p className="text-sm text-neutral-400">
-                  Claude (Sonnet, Opus 4.1, Opus 4), GPT-5, O3, Gemini (Flash, Pro), 
-                  Kimi K2, Qwen3 Coder, GLM-4.5, and many more - all in one interface.
+                  Claude Code, Codex, Gemini CLI, Amp, plus OpenCode variants. 
+                  Particularly useful for Kimi K2, Qwen3 Coder, and GLM-4.5 alongside Claude Opus.
                 </p>
               </div>
               
               <div>
                 <h3 className="font-semibold mb-2 flex items-center gap-2">
                   <Star className="h-4 w-4 text-neutral-500" />
-                  Git-first workflow
+                  Git extension UI
                 </h3>
                 <p className="text-sm text-neutral-400">
-                  Automatically opens git diff UI and terminal with your agent. 
-                  Review changes instantly without context switching.
+                  On mount, VS Code opens the git extension's diff UI. 
+                  Review changes without context switching.
                 </p>
               </div>
             </div>
@@ -311,22 +313,22 @@ function LandingPage() {
               <div>
                 <h3 className="font-semibold mb-2 flex items-center gap-2">
                   <FileText className="h-4 w-4 text-neutral-500" />
-                  Rich task editor
+                  Rich task input
                 </h3>
                 <p className="text-sm text-neutral-400">
-                  Markdown support, image uploads, @mentions for files, voice input, 
-                  and persistent drafts. Not just a CLI - a full web experience.
+                  Paste images, reference files with @mentions, 
+                  use markdown formatting. Full web dashboard.
                 </p>
               </div>
               
               <div>
                 <h3 className="font-semibold mb-2 flex items-center gap-2">
                   <Cloud className="h-4 w-4 text-neutral-500" />
-                  Cloud & local modes
+                  Configurable sandboxes
                 </h3>
                 <p className="text-sm text-neutral-400">
-                  Run agents in the cloud or locally. Configurable sandboxes with 
-                  Docker, Freestyle, Morph, Daytona, Modal, Beam, or E2B.
+                  Docker by default, or configure with Freestyle, Morph, 
+                  Daytona, Modal, Beam, or E2B.
                 </p>
               </div>
               
@@ -336,8 +338,8 @@ function LandingPage() {
                   Task management
                 </h3>
                 <p className="text-sm text-neutral-400">
-                  Track all running tasks, view history, keep containers alive, 
-                  and manage multiple projects from one dashboard.
+                  Track parallel executions, view task history, 
+                  keep containers alive when needed.
                 </p>
               </div>
             </div>
@@ -353,24 +355,24 @@ function LandingPage() {
       {/* Roadmap */}
       <section className="py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto">
-          <h2 className="text-2xl font-bold mb-8 text-center">Coming Soon</h2>
+          <h2 className="text-2xl font-bold mb-8 text-center">The Roadmap</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4">
-              <h3 className="font-semibold mb-2 text-sm">Preview Environments</h3>
+              <h3 className="font-semibold mb-2 text-sm">Preview environments</h3>
               <p className="text-xs text-neutral-500">
-                Automatic preview deployments for every task with devcontainer.json support
+                Vercel-style previews for any repo with proper devcontainer.json
               </p>
             </div>
             <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4">
-              <h3 className="font-semibold mb-2 text-sm">Visual Testing</h3>
+              <h3 className="font-semibold mb-2 text-sm">Visual verification</h3>
               <p className="text-xs text-neutral-500">
-                Computer-using agents capture before/after screenshots of UI changes
+                Computer-using agents for UI change screenshots
               </p>
             </div>
             <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-4">
-              <h3 className="font-semibold mb-2 text-sm">Manager Agent</h3>
+              <h3 className="font-semibold mb-2 text-sm">Manager abstraction</h3>
               <p className="text-xs text-neutral-500">
-                Automated code review and PR merging across parallel agent outputs
+                Automated code review and PR merging across parallel outputs
               </p>
             </div>
           </div>
@@ -385,9 +387,9 @@ function LandingPage() {
       {/* CTA */}
       <section className="py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-2xl font-bold mb-4">Start using cmux</h2>
+          <h2 className="text-2xl font-bold mb-4">Install</h2>
           <p className="text-neutral-400 mb-8">
-            Install via CLI or use the web dashboard directly
+            Try it in your terminal. Electron + cloud version coming soon.
           </p>
           
           <div className="flex flex-col sm:flex-row gap-4 justify-center mb-8">
