@@ -82,7 +82,7 @@ function TaskDetailPage() {
     api.gitDiffs.getByTaskRun,
     selectedRun ? { taskRunId: selectedRun._id } : "skip"
   );
-  
+
   // Debug logging
   console.log("Selected run:", selectedRun?._id);
   console.log("Diffs fetched:", diffs?.length, diffs);
@@ -93,7 +93,7 @@ function TaskDetailPage() {
 
     const checkForChanges = async () => {
       setIsCheckingDiffs(true);
-      
+
       try {
         // Use Socket.IO to request diff refresh from the server
         if (!socket) {
@@ -101,8 +101,9 @@ function TaskDetailPage() {
           setIsCheckingDiffs(false);
           return;
         }
-        
-        socket.emit("refresh-diffs", 
+
+        socket.emit(
+          "refresh-diffs",
           { taskRunId: selectedRun._id },
           (response: { success: boolean; message?: string }) => {
             if (response.success) {
@@ -347,7 +348,12 @@ function TaskDetailPage() {
     <FloatingPane header={header}>
       {/* Git diff viewer */}
       <div className="flex-1 overflow-hidden bg-white dark:bg-neutral-950">
-        <GitDiffViewer diffs={(stableDiffs || diffs || [])} isLoading={!diffs && !!selectedRun} taskRunId={selectedRun?._id} />
+        <GitDiffViewer
+          diffs={stableDiffs || diffs || []}
+          isLoading={!diffs && !!selectedRun}
+          taskRunId={selectedRun?._id}
+          key={selectedRun?._id}
+        />
       </div>
     </FloatingPane>
   );
