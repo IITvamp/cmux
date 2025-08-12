@@ -515,6 +515,18 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         `Failed to connect to worker for container ${this.containerName}:`,
         error
       );
+      // Capture recent container logs to aid debugging worker startup issues
+      try {
+        const recentLogs = await this.getLogs(300);
+        dockerLogger.error(
+          `Recent container logs for ${this.containerName}:\n${recentLogs}`
+        );
+      } catch (e) {
+        dockerLogger.error(
+          `Unable to fetch logs for ${this.containerName}:`,
+          e
+        );
+      }
       // Continue anyway - the instance is running even if we can't connect to the worker
     }
 
@@ -540,6 +552,18 @@ export class DockerVSCodeInstance extends VSCodeInstance {
             `Container ${this.containerName} exited with status:`,
             data
           );
+          // Attempt to capture recent logs on exit to aid debugging
+          try {
+            const recentLogs = await this.getLogs(300);
+            dockerLogger.error(
+              `Recent container logs for ${this.containerName} (on exit):\n${recentLogs}`
+            );
+          } catch (e) {
+            dockerLogger.error(
+              `Unable to fetch logs for ${this.containerName} on exit:`,
+              e
+            );
+          }
           // Update mapping status to stopped
           const mapping = containerMappings.get(this.containerName);
           if (mapping) {

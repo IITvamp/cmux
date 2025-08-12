@@ -25,6 +25,10 @@
       "import": "./src/worker-schemas.ts",
       "types": "./src/worker-schemas.ts"
     },
+    "./diff-types": {
+      "import": "./src/diff-types.ts",
+      "types": "./src/diff-types.ts"
+    },
     "./convex-ready": {
       "import": "./src/convex-ready.ts",
       "types": "./src/convex-ready.ts"

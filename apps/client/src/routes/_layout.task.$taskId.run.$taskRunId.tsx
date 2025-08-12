@@ -61,7 +61,7 @@ function TaskRunComponent() {
   });
 
   return (
-    <div className="flex flex-col grow min-h-0">
+    <div className="flex flex-col grow min-h-0 border-l border-neutral-200 dark:border-neutral-800">
       <div className="flex flex-row grow min-h-0 relative">
         <div
           ref={containerRef}

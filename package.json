@@ -7,6 +7,8 @@
     "node": ">=20.0.0"
   },
   "scripts": {
+    "clean": "bash scripts/clean.sh",
+    "clean:node_modules": "bash scripts/clean.sh",
     "typecheck": "run-p typecheck:*",
     "typecheck:client": "cd apps/client && bun run typecheck",
     "typecheck:server": "cd apps/server && bun run typecheck",
@@ -25,8 +27,9 @@
   "devDependencies": {
     "@eslint/js": "^9.33.0",
     "npm-run-all": "^4.1.5",
-    "prettier": "^3.6.2"
+    "prettier": "^3.6.2",
+    "typescript": "5.8.3"
   },
   "postinstall": "patch-package",
-  "packageManager": "pnpm@10.13.1"
+  "packageManager": "pnpm@10.14.0"
 }

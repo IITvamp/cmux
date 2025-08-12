@@ -31,6 +31,7 @@ import { checkDockerReadiness } from "./checkDockerReadiness.js";
 import { detectTerminalIdle } from "./detectTerminalIdle.js";
 import { detectTaskCompletionWithFallback } from "./detectTaskCompletion.js";
 import { log } from "./logger.js";
+import { FileWatcher, computeGitDiff, getFileWithDiff } from "./fileWatcher.js";
 
 const execAsync = promisify(exec);
 
@@ -144,6 +145,9 @@ let mainServerSocket: Socket<
   ServerToWorkerEvents,
   WorkerToServerEvents
 > | null = null;
+
+// Track active file watchers by taskId
+const activeFileWatchers: Map<string, FileWatcher> = new Map();
 
 // Queue for pending events when mainServerSocket is not connected
 interface PendingEvent {
@@ -787,6 +791,80 @@ managementIO.on("connection", (socket) => {
     gracefulShutdown();
   });
 
+  // Handle file watcher start request
+  socket.on("worker:start-file-watch", async (data) => {
+    const { taskId, worktreePath } = data;
+    
+    if (!taskId || !worktreePath) {
+      log("ERROR", "Missing taskId or worktreePath for file watch");
+      return;
+    }
+    
+    // Stop existing watcher if any
+    const existingWatcher = activeFileWatchers.get(taskId);
+    if (existingWatcher) {
+      existingWatcher.stop();
+      activeFileWatchers.delete(taskId);
+    }
+    
+    // Create new file watcher
+    const watcher = new FileWatcher({
+      watchPath: worktreePath,
+      taskId,
+      debounceMs: 2000, // 2 second debounce
+      gitIgnore: true,
+      onFileChange: async (changes) => {
+        log("INFO", `[Worker] File changes detected for task ${taskId}:`, {
+          changeCount: changes.length,
+          taskId
+        });
+        
+        // Compute git diff for changed files
+        const changedFiles = changes.map(c => c.path);
+        const gitDiff = await computeGitDiff(worktreePath, changedFiles);
+        
+        // Get detailed diffs for each file
+        const fileDiffs = [];
+        for (const change of changes) {
+          const diff = await getFileWithDiff(change.path, worktreePath);
+          fileDiffs.push({
+            path: change.path,
+            type: change.type,
+            ...diff
+          });
+        }
+        
+        // Emit file changes to main server
+        emitToMainServer("worker:file-changes", {
+          workerId: WORKER_ID,
+          taskId,
+          changes,
+          gitDiff,
+          fileDiffs,
+          timestamp: Date.now()
+        });
+      }
+    });
+    
+    // Start watching
+    await watcher.start();
+    activeFileWatchers.set(taskId, watcher);
+    
+    log("INFO", `[Worker] Started file watcher for task ${taskId} at ${worktreePath}`);
+  });
+
+  // Handle file watcher stop request
+  socket.on("worker:stop-file-watch", (data) => {
+    const { taskId } = data;
+    
+    const watcher = activeFileWatchers.get(taskId);
+    if (watcher) {
+      watcher.stop();
+      activeFileWatchers.delete(taskId);
+      log("INFO", `[Worker] Stopped file watcher for task ${taskId}`);
+    }
+  });
+
   socket.on("disconnect", (reason) => {
     log("WARNING", `Main server disconnected from worker ${WORKER_ID}`, { reason });
     mainServerSocket = null;
@@ -1279,6 +1357,13 @@ setInterval(() => {
 // Graceful shutdown
 function gracefulShutdown() {
   console.log(`Worker ${WORKER_ID} shutting down...`);
+
+  // Stop all file watchers
+  for (const [taskId, watcher] of activeFileWatchers) {
+    watcher.stop();
+    log("INFO", `Stopped file watcher for task ${taskId} during shutdown`);
+  }
+  activeFileWatchers.clear();
 
   // Close server
   io.close(() => {
