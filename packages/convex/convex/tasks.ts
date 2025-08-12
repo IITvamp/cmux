@@ -178,6 +178,20 @@ export const updateCrownError = mutation({
   },
 });
 
+export const updatePrTitle = mutation({
+  args: {
+    id: v.id("tasks"),
+    prTitle: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const { id, prTitle } = args;
+    await ctx.db.patch(id, {
+      prTitle,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
 export const createVersion = mutation({
   args: {
     taskId: v.id("tasks"),
@@ -285,45 +299,4 @@ export const checkAndEvaluateCrown = mutation({
     const task = await ctx.db.get(args.taskId);
     if (task?.crownEvaluationError === "pending_evaluation" || 
         task?.crownEvaluationError === "in_progress") {
-      console.log(`[CheckCrown] Crown evaluation already ${task.crownEvaluationError} for task ${args.taskId}`);
-      return "pending";
-    }
-    
-    console.log(`[CheckCrown] No existing evaluation, proceeding with crown evaluation`);
-    
-    // Only evaluate if we have at least 2 completed runs
-    const completedRuns = taskRuns.filter(run => run.status === "completed");
-    if (completedRuns.length < 2) {
-      console.log(`[CheckCrown] Not enough completed runs (${completedRuns.length} < 2)`);
-      return null;
-    }
-
-    // Trigger crown evaluation with error handling
-    let winnerId = null;
-    try {
-      console.log(`[CheckCrown] Starting crown evaluation for task ${args.taskId}`);
-      winnerId = await ctx.runMutation(api.crown.evaluateAndCrownWinner, {
-        taskId: args.taskId,
-      });
-      console.log(`[CheckCrown] Crown evaluation completed, winner: ${winnerId}`);
-    } catch (error) {
-      console.error(`[CheckCrown] Crown evaluation failed:`, error);
-      // Store the error message on the task
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      await ctx.db.patch(args.taskId, {
-        crownEvaluationError: errorMessage,
-        updatedAt: Date.now(),
-      });
-      // Continue to mark task as completed even if crown evaluation fails
-    }
-
-    // Mark the task as completed since all runs are done
-    await ctx.db.patch(args.taskId, {
-      isCompleted: true,
-      updatedAt: Date.now(),
-    });
-    console.log(`[CheckCrown] Marked task ${args.taskId} as completed`);
-
-    return winnerId;
-  },
-});
+      console.log(`

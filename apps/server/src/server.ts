@@ -622,6 +622,191 @@ export async function startServer({
       }
     });
 
+    socket.on("create-draft-pr", async (data, callback) => {
+      try {
+        const { taskRunId, taskId } = data as { taskRunId: string; taskId: string };
+        
+        serverLogger.info(`Creating draft PR for task run ${taskRunId}`);
+        
+        // Get the task run and task details
+        const taskRun = await convex.query(api.taskRuns.get, { id: taskRunId as Id<"taskRuns"> });
+        const task = await convex.query(api.tasks.getById, { id: taskId as Id<"tasks"> });
+        
+        if (!taskRun || !task) {
+          callback({
+            success: false,
+            error: "Task or task run not found"
+          });
+          return;
+        }
+        
+        // Find the VSCode instance for this task run
+        const instances = VSCodeInstance.getInstances();
+        let vscodeInstance: VSCodeInstance | null = null;
+        
+        for (const [id, instance] of instances) {
+          if (instance.getTaskRunId() === taskRunId) {
+            vscodeInstance = instance;
+            break;
+          }
+        }
+        
+        if (!vscodeInstance) {
+          callback({
+            success: false,
+            error: "VSCode instance not found for task run"
+          });
+          return;
+        }
+        
+        // Get GitHub token from API keys
+        const apiKeys = await convex.query(api.apiKeys.getApiKeys, {});
+        const githubToken = apiKeys?.GITHUB_TOKEN;
+        
+        if (!githubToken) {
+          callback({
+            success: false,
+            error: "GitHub token not configured"
+          });
+          return;
+        }
+        
+        // Extract agent name from prompt
+        const agentMatch = taskRun.prompt.match(/\(([^)]+)\)$/);
+        const agentName = agentMatch ? agentMatch[1] : "Unknown";
+        
+        // Use task prTitle if available, otherwise use task text
+        const prTitle = task.prTitle || task.text || "Task completed by cmux";
+        const prBody = `## Summary
+- Task: ${task.text}
+- Agent: ${agentName}
+- ${task.description || "No description provided"}
+
+## Details
+- Task ID: ${taskId}
+- Task Run ID: ${taskRunId}
+- Branch: ${taskRun.newBranch || "unknown"}
+
+---
+🤖 Generated with [cmux](https://github.com/lawrencecchen/cmux)`;
+        
+        // Use the newBranch from the task run
+        const branchName = taskRun.newBranch || `cmux-${agentName}-${taskRunId.slice(-8)}`;
+        
+        // Create commit message
+        const truncatedDescription = prTitle.length > 72
+          ? prTitle.substring(0, 69) + "..."
+          : prTitle;
+        
+        const commitMessage = `${truncatedDescription}
+
+Task completed by ${agentName} agent
+${task.description ? `\n${task.description}` : ''}
+
+🤖 Generated with cmux
+Agent: ${agentName}
+Task Run ID: ${taskRunId}
+Branch: ${branchName}`;
+        
+        const workerSocket = vscodeInstance.getWorkerSocket();
+        if (!workerSocket || !vscodeInstance.isWorkerConnected()) {
+          callback({
+            success: false,
+            error: "No worker connection available"
+          });
+          return;
+        }
+        
+        // Execute git commands via worker
+        const gitCommands = [
+          { cmd: "git add .", desc: "Staging changes" },
+          { cmd: `git checkout -b ${branchName}`, desc: "Creating branch" },
+          { cmd: `git commit -m "${commitMessage.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\$/g, "\\$")}"`, desc: "Committing" },
+          { cmd: `git push -u origin ${branchName}`, desc: "Pushing branch" },
+          // Create draft PR
+          { 
+            cmd: `GH_TOKEN="${githubToken}" gh pr create --draft --title "${prTitle.replace(/"/g, '\\"')}" --body "${prBody.replace(/"/g, '\\"').replace(/\n/g, '\\n')}" --head "${branchName}"`,
+            desc: "Creating draft PR"
+          }
+        ];
+        
+        let prUrl: string | null = null;
+        
+        for (const { cmd, desc } of gitCommands) {
+          serverLogger.info(`[CreateDraftPR] ${desc}...`);
+          
+          const result = await new Promise<{ success: boolean; error?: string; stdout?: string; stderr?: string }>((resolve) => {
+            workerSocket
+              .timeout(30000)
+              .emit(
+                "worker:exec",
+                {
+                  command: "/bin/bash",
+                  args: ["-c", cmd],
+                  cwd: "/root/workspace",
+                  env: { GH_TOKEN: githubToken },
+                },
+                (timeoutError: any, result: any) => {
+                  if (timeoutError) {
+                    resolve({ success: false, error: "Command timeout" });
+                    return;
+                  }
+                  if (result.error) {
+                    resolve({ success: false, error: result.error.message });
+                    return;
+                  }
+                  
+                  const { stdout, stderr, exitCode } = result.data;
+                  resolve({ success: exitCode === 0, stdout, stderr });
+                }
+              );
+          });
+          
+          if (!result.success) {
+            serverLogger.error(`[CreateDraftPR] Failed at step: ${desc}`, result.error);
+            
+            // If branch already exists, try to continue
+            if (cmd.includes("git checkout") && (result.stderr?.includes("already exists") || result.error?.includes("already exists"))) {
+              serverLogger.info(`[CreateDraftPR] Branch already exists, continuing...`);
+              continue;
+            }
+            
+            callback({
+              success: false,
+              error: `Failed at step: ${desc} - ${result.error || result.stderr}`
+            });
+            return;
+          }
+          
+          // Capture PR URL from gh pr create output
+          if (cmd.includes("gh pr create") && result.stdout) {
+            prUrl = result.stdout.trim();
+            serverLogger.info(`[CreateDraftPR] Draft PR created: ${prUrl}`);
+          }
+        }
+        
+        // Update the task run with the PR URL
+        if (prUrl) {
+          await convex.mutation(api.taskRuns.updatePullRequestUrl, {
+            id: taskRunId as Id<"taskRuns">,
+            pullRequestUrl: prUrl
+          });
+        }
+        
+        callback({
+          success: true,
+          prUrl: prUrl || undefined
+        });
+        
+      } catch (error) {
+        serverLogger.error("Error creating draft PR:", error);
+        callback({
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error"
+        });
+      }
+    });
+
     socket.on("disconnect", () => {
       serverLogger.info("Client disconnected:", socket.id);
       // No need to kill terminals on disconnect since they're global

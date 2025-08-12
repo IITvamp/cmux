@@ -18,6 +18,7 @@ export default defineSchema({
     isCompleted: v.boolean(),
     isArchived: v.optional(v.boolean()),
     description: v.optional(v.string()),
+    prTitle: v.optional(v.string()), // Generated PR title for the task
     projectFullName: v.optional(v.string()),
     baseBranch: v.optional(v.string()),
     worktreePath: v.optional(v.string()),

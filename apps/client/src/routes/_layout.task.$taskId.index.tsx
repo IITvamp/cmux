@@ -181,9 +181,24 @@ function TaskDetailPage() {
   const handleViewPR = () => {
     if (crownedRun?.pullRequestUrl && crownedRun.pullRequestUrl !== "pending") {
       window.open(crownedRun.pullRequestUrl, "_blank");
-    } else {
-      // TODO: Create draft PR if it doesn't exist
+    } else if (crownedRun && socket) {
+      // Create draft PR
       console.log("Creating draft PR...");
+      socket.emit("create-draft-pr", 
+        { 
+          taskRunId: crownedRun._id, 
+          taskId: task._id 
+        }, 
+        (response: { success: boolean; error?: string; prUrl?: string }) => {
+          if (response.success && response.prUrl) {
+            // Open the PR in a new tab
+            window.open(response.prUrl, "_blank");
+          } else {
+            console.error("Failed to create draft PR:", response.error);
+            // TODO: Show error toast to user
+          }
+        }
+      );
     }
   };
 

@@ -13,6 +13,7 @@ import { storeGitDiffs } from "./storeGitDiffs.js";
 import {
   generateNewBranchName,
   generateUniqueBranchNames,
+  generatePRTitle,
 } from "./utils/branchNameGenerator.js";
 import { convex } from "./utils/convexClient.js";
 import { serverLogger } from "./utils/fileLogger.js";
@@ -1929,6 +1930,26 @@ export async function spawnAllAgents(
   serverLogger.info(
     `[AgentSpawner] Generated ${branchNames.length} unique branch names for agents`
   );
+
+  // Generate PR title from task description and persist it
+  try {
+    // Get API keys for PR title generation
+    const apiKeys = await convex.query(api.apiKeys.getApiKeys, {});
+    if (apiKeys) {
+      const prTitle = await generatePRTitle(options.taskDescription, apiKeys);
+      if (prTitle) {
+        serverLogger.info(`[AgentSpawner] Generated PR title: ${prTitle}`);
+        // Update the task with the PR title
+        await convex.mutation(api.tasks.updatePrTitle, {
+          id: taskId as Id<"tasks">,
+          prTitle,
+        });
+      }
+    }
+  } catch (error) {
+    serverLogger.error(`[AgentSpawner] Error generating PR title:`, error);
+    // Continue even if PR title generation fails
+  }
 
   // Spawn all agents in parallel with their pre-generated branch names
   const results = await Promise.all(
