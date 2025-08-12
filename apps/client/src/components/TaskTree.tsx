@@ -291,7 +291,7 @@ function TaskRunTree({ run, level, taskId, branch }: TaskRunTreeProps) {
         <OpenWithDropdown
           vscodeUrl={vscodeUrl}
           worktreePath={run.worktreePath}
-          branch={branch}
+          branch={run.newBranch}
           className="bg-neutral-100/80 dark:bg-neutral-700/80 hover:bg-neutral-200/80 dark:hover:bg-neutral-600/80 text-neutral-600 dark:text-neutral-400"
           iconClassName="w-3 h-3"
         />
