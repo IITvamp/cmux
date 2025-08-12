@@ -93,6 +93,7 @@ export function TaskTree({ task, level = 0 }: TaskTreeProps) {
           <Link
             to="/task/$taskId"
             params={{ taskId: task._id }}
+            search={{ runId: undefined }}
             className={clsx(
               "flex items-center px-0.5 py-1 text-sm rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default",
               "[&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800"
@@ -291,7 +292,7 @@ function TaskRunTree({ run, level, taskId, branch }: TaskRunTreeProps) {
         <OpenWithDropdown
           vscodeUrl={vscodeUrl}
           worktreePath={run.worktreePath}
-          branch={branch}
+          branch={run.newBranch}
           className="bg-neutral-100/80 dark:bg-neutral-700/80 hover:bg-neutral-200/80 dark:hover:bg-neutral-600/80 text-neutral-600 dark:text-neutral-400"
           iconClassName="w-3 h-3"
         />

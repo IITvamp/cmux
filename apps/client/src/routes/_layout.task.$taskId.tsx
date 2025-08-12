@@ -124,7 +124,7 @@ function TaskDetailPage() {
   }
 
   return (
-    <div className="flex flex-col grow min-h-0 border-l border-neutral-200 dark:border-neutral-800">
+    <div className="flex flex-col grow min-h-0 min-w-0">
       {WITH_HEADER && (
         <div className="border-b border-neutral-200 dark:border-neutral-700 px-3 py-2">
           <div className="relative group">

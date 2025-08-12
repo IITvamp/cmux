@@ -44,7 +44,8 @@ wait_for_dockerd() {
     fi
 }
 
-wait_for_dockerd
+# Don't block startup on Docker readiness; start check in background
+wait_for_dockerd &
 
 # Create log directory
 mkdir -p /var/log/cmux
@@ -122,4 +123,4 @@ export IS_SANDBOX=true
 
 rm -f /startup.sh
 
-node /builtins/build/index.js > /var/log/cmux/worker-proc.log 2>&1
+exec node /builtins/build/index.js

@@ -36,6 +36,7 @@ import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWorktreePath } from "./workspace.js";
 import { evaluateCrownWithClaudeCode } from "./crownEvaluator.js";
+import { refreshDiffsForTaskRun } from "./refreshDiffs.js";
 import type { Id } from "@cmux/convex/dataModel";
 
 const execAsync = promisify(exec);
@@ -217,6 +218,62 @@ export async function startServer({
         socket.emit("git-full-diff-response", {
           diff: "",
           error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    });
+
+    // Provide file contents on demand to avoid large Convex docs
+    socket.on("git-diff-file-contents", async (data, callback) => {
+      try {
+        const { taskRunId, filePath } = data as { taskRunId: string; filePath: string };
+        const taskRun = await convex.query(api.taskRuns.get, { id: taskRunId as any });
+        if (!taskRun?.worktreePath) {
+          callback?.({ ok: false, error: "Worktree not found" });
+          return;
+        }
+        const worktreePath = taskRun.worktreePath as string;
+        // Determine status from stored diff to handle deleted/added cases
+        const diffs = await convex.query(api.gitDiffs.getByTaskRun, { taskRunId: taskRunId as any });
+        const fileDiff = diffs?.find((d: any) => d.filePath === filePath);
+        const status = fileDiff?.status ?? "modified";
+        let oldContent = "";
+        let newContent = "";
+        if (status === "deleted") {
+          oldContent = "";
+          newContent = "";
+        } else {
+          try {
+            newContent = await fs.readFile(path.join(worktreePath, filePath), "utf-8");
+          } catch {
+            newContent = "";
+          }
+          try {
+            const { stdout } = await execAsync(`git show HEAD:"${filePath}"`, { cwd: worktreePath, maxBuffer: 5 * 1024 * 1024 });
+            oldContent = stdout;
+          } catch {
+            oldContent = "";
+          }
+        }
+        callback?.({ ok: true, oldContent, newContent, isBinary: fileDiff?.isBinary ?? false });
+      } catch (error) {
+        serverLogger.error("Error in git-diff-file-contents:", error);
+        callback?.({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
+      }
+    });
+
+    socket.on("refresh-diffs", async (data, callback) => {
+      try {
+        const { taskRunId } = data;
+        serverLogger.info(`[Server] Refresh diffs requested for taskRun ${taskRunId}`);
+        
+        // Use the simplified approach that works directly with the filesystem
+        const result = await refreshDiffsForTaskRun(taskRunId);
+        callback(result);
+      } catch (error) {
+        serverLogger.error("Error refreshing diffs:", error);
+        callback({ 
+          success: false, 
+          message: error instanceof Error ? error.message : "Unknown error" 
         });
       }
     });

@@ -143,6 +143,14 @@ export abstract class VSCodeInstance extends EventEmitter {
         this.emit("terminal-failed", data);
       });
 
+      this.workerSocket.on("worker:file-changes", (data) => {
+        dockerLogger.info(
+          `[VSCodeInstance ${this.instanceId}] File changes detected:`,
+          { taskId: data.taskId, changeCount: data.changes.length }
+        );
+        this.emit("file-changes", data);
+      });
+
       this.workerSocket.on("worker:error", (data) => {
         dockerLogger.error(
           `[VSCodeInstance ${this.instanceId}] Worker error:`,
@@ -159,6 +167,35 @@ export abstract class VSCodeInstance extends EventEmitter {
 
   isWorkerConnected(): boolean {
     return this.workerConnected;
+  }
+
+  startFileWatch(worktreePath: string): void {
+    if (this.workerSocket && this.workerConnected) {
+      // Always watch the container workspace path; host paths are not valid inside the container
+      const containerWorkspace = "/root/workspace";
+      dockerLogger.info(
+        `[VSCodeInstance ${this.instanceId}] Starting file watch for ${worktreePath} -> ${containerWorkspace}`
+      );
+      this.workerSocket.emit("worker:start-file-watch", {
+        taskId: this.taskRunId,
+        worktreePath: containerWorkspace,
+      });
+    } else {
+      dockerLogger.warn(
+        `[VSCodeInstance ${this.instanceId}] Cannot start file watch - worker not connected`
+      );
+    }
+  }
+
+  stopFileWatch(): void {
+    if (this.workerSocket && this.workerConnected) {
+      dockerLogger.info(
+        `[VSCodeInstance ${this.instanceId}] Stopping file watch`
+      );
+      this.workerSocket.emit("worker:stop-file-watch", {
+        taskId: this.taskRunId
+      });
+    }
   }
 
   getInstanceId(): string {
@@ -186,6 +223,8 @@ export abstract class VSCodeInstance extends EventEmitter {
 
   // Override stop to also remove from registry
   protected async baseStop(): Promise<void> {
+    // Stop file watching before disconnecting
+    this.stopFileWatch();
     await this.disconnectFromWorker();
     VSCodeInstance.instances.delete(this.instanceId);
   }

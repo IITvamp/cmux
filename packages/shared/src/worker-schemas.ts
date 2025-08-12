@@ -220,6 +220,10 @@ export interface ServerToWorkerEvents {
     callback: (result: ErrorOr<WorkerExecResult>) => void
   ) => void;
 
+  // File watching events
+  "worker:start-file-watch": (data: { taskId: string; worktreePath: string }) => void;
+  "worker:stop-file-watch": (data: { taskId: string }) => void;
+
   // Management events
   "worker:terminal-assignment": (data: TerminalAssignment) => void;
   "worker:command": (data: ServerToWorkerCommand) => void;
@@ -229,6 +233,20 @@ export interface ServerToWorkerEvents {
   "worker:check-docker": (
     callback: (response: DockerReadinessResponse) => void
   ) => void;
+}
+
+export interface WorkerFileChange {
+  type: "added" | "modified" | "deleted";
+  path: string;
+  timestamp: number;
+}
+
+export interface WorkerFileDiff {
+  path: string;
+  type: "added" | "modified" | "deleted";
+  oldContent: string;
+  newContent: string;
+  patch: string;
 }
 
 export interface WorkerToServerEvents {
@@ -243,6 +261,16 @@ export interface WorkerToServerEvents {
   "worker:terminal-closed": (data: WorkerTerminalClosed) => void;
   "worker:terminal-idle": (data: WorkerTerminalIdle) => void;
   "worker:terminal-failed": (data: WorkerTerminalFailed) => void;
+
+  // File change events
+  "worker:file-changes": (data: {
+    workerId: string;
+    taskId: string;
+    changes: WorkerFileChange[];
+    gitDiff: string;
+    fileDiffs: WorkerFileDiff[];
+    timestamp: number;
+  }) => void;
 
   // Error reporting
   "worker:error": (data: { workerId: string; error: string }) => void;

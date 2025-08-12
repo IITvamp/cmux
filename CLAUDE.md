@@ -13,6 +13,7 @@ Use pnpm to install dependencies and run the project.
 
 This project uses Convex.
 Schemas are defined in packages/convex/convex/schema.ts.
+Do not use Convex actions. Instead, use the socket.io server with custom events.
 
 # Frontend
 

@@ -12,6 +12,7 @@ import type * as apiKeys from "../apiKeys.js";
 import type * as auth from "../auth.js";
 import type * as containerSettings from "../containerSettings.js";
 import type * as crown from "../crown.js";
+import type * as gitDiffs from "../gitDiffs.js";
 import type * as github from "../github.js";
 import type * as storage from "../storage.js";
 import type * as taskRunLogChunks from "../taskRunLogChunks.js";
@@ -38,6 +39,7 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   containerSettings: typeof containerSettings;
   crown: typeof crown;
+  gitDiffs: typeof gitDiffs;
   github: typeof github;
   storage: typeof storage;
   taskRunLogChunks: typeof taskRunLogChunks;
