@@ -1,7 +1,7 @@
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
 import type { ReplaceDiffEntry } from "@cmux/shared";
-import { fs } from "node:fs/promises";
+import { promises as fs } from "node:fs";
 import * as path from "path";
 import { convex } from "./utils/convexClient";
 import { serverLogger } from "./utils/fileLogger";

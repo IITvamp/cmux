@@ -16,12 +16,11 @@ async function main() {
     console.log("Running in interactive mode. Press Ctrl+C to exit.\n");
   }
 
-  // Find claude-sonnet agent config
   const agentConfig = AGENT_CONFIGS.find(
-    (agent) => agent.name === "claude-sonnet"
+    (agent) => agent.name === "codex/gpt-5"
   );
   if (!agentConfig) {
-    console.error("Could not find claude-sonnet agent config");
+    console.error("Could not find codex/gpt-5 agent config");
     process.exit(1);
   }
 

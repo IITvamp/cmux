@@ -7,6 +7,8 @@
     "node": ">=20.0.0"
   },
   "scripts": {
+    "clean": "bash scripts/clean.sh",
+    "clean:node_modules": "bash scripts/clean.sh",
     "typecheck": "run-p typecheck:*",
     "typecheck:client": "cd apps/client && bun run typecheck",
     "typecheck:server": "cd apps/server && bun run typecheck",
