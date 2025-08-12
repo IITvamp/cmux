@@ -25,7 +25,7 @@ export function GitDiffViewer({ diffs, isLoading }: GitDiffViewerProps) {
   const { theme } = useTheme();
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
   const [editorHeights, setEditorHeights] = useState<Record<string, number>>({});
-  const editorRefs = useRef<Record<string, any>>({});
+  const editorRefs = useRef<Record<string, import('monaco-editor').editor.IStandaloneDiffEditor>>({});
 
   // Group diffs by file
   const fileGroups: FileGroup[] = diffs.map(diff => ({
@@ -94,13 +94,11 @@ export function GitDiffViewer({ diffs, isLoading }: GitDiffViewerProps) {
     }
   };
 
-  // Calculate editor height based on content
   const calculateEditorHeight = (oldContent: string, newContent: string) => {
     const oldLines = oldContent.split('\n').length;
     const newLines = newContent.split('\n').length;
     const maxLines = Math.max(oldLines, newLines);
-    // 20px per line + padding, min 200px, max 800px for very large files
-    return Math.min(Math.max(200, maxLines * 20 + 40), 800);
+    return Math.max(120, maxLines * 20 + 40);
   };
 
   if (isLoading) {
@@ -218,27 +216,31 @@ export function GitDiffViewer({ diffs, isLoading }: GitDiffViewerProps) {
                         theme={theme === "dark" ? "vs-dark" : "vs"}
                         onMount={(editor) => {
                           editorRefs.current[file.filePath] = editor;
-                          // Auto-adjust height based on content
                           const updateHeight = () => {
                             const modifiedEditor = editor.getModifiedEditor();
                             const originalEditor = editor.getOriginalEditor();
-                            if (modifiedEditor && originalEditor) {
-                              const modifiedContentHeight = modifiedEditor.getContentHeight();
-                              const originalContentHeight = originalEditor.getContentHeight();
-                              const newHeight = Math.min(
-                                Math.max(200, Math.max(modifiedContentHeight, originalContentHeight) + 20),
-                                800
-                              );
-                              if (newHeight !== editorHeights[file.filePath]) {
-                                setEditorHeights(prev => ({
-                                  ...prev,
-                                  [file.filePath]: newHeight
-                                }));
-                              }
+                            const modifiedContentHeight = modifiedEditor.getContentHeight();
+                            const originalContentHeight = originalEditor.getContentHeight();
+                            const newHeight = Math.max(120, Math.max(modifiedContentHeight, originalContentHeight) + 20);
+                            if (newHeight !== editorHeights[file.filePath]) {
+                              setEditorHeights(prev => ({
+                                ...prev,
+                                [file.filePath]: newHeight
+                              }));
                             }
                           };
-                          // Update height on content change
-                          setTimeout(updateHeight, 100);
+                          const mod = editor.getModifiedEditor();
+                          const orig = editor.getOriginalEditor();
+                          const disposables = [
+                            mod.onDidContentSizeChange(updateHeight),
+                            orig.onDidContentSizeChange(updateHeight),
+                            mod.onDidChangeHiddenAreas(updateHeight),
+                            orig.onDidChangeHiddenAreas(updateHeight),
+                          ];
+                          setTimeout(updateHeight, 50);
+                          return () => {
+                            disposables.forEach(d => d.dispose());
+                          };
                         }}
                         options={{
                           readOnly: true,
@@ -250,7 +252,7 @@ export function GitDiffViewer({ diffs, isLoading }: GitDiffViewerProps) {
                           wordWrap: "off",
                           automaticLayout: true,
                           scrollbar: {
-                            vertical: 'auto',
+                            vertical: 'hidden',
                             horizontal: 'auto',
                             verticalScrollbarSize: 10,
                             horizontalScrollbarSize: 10,
@@ -272,6 +274,12 @@ export function GitDiffViewer({ diffs, isLoading }: GitDiffViewerProps) {
                           renderWhitespace: "selection",
                           guides: {
                             indentation: false,
+                          },
+                          hideUnchangedRegions: {
+                            enabled: true,
+                            revealLineCount: 3,
+                            minimumLineCount: 50,
+                            contextLineCount: 3,
                           },
                         }}
                       />
