@@ -1,6 +1,6 @@
 import { createFileRoute, Link } from '@tanstack/react-router'
 import { Button } from '../components/ui/button'
-import { ArrowRight, Terminal, GitBranch, Star, Copy, Check, ExternalLink, Github } from 'lucide-react'
+import { ArrowRight, Terminal, GitBranch, Star, Copy, Check, ExternalLink, Github, FileText, Users, Zap, Globe, Shield, Cloud } from 'lucide-react'
 import { useState } from 'react'
 
 export const Route = createFileRoute('/landing')({
@@ -49,33 +49,31 @@ function LandingPage() {
       <section className="pt-24 pb-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto">
           <h1 className="text-3xl sm:text-4xl font-bold mb-4 font-mono">
-            Claude Code manager that spawns Codex/Gemini/OpenCode/Amp in parallel
+            Orchestrate 20+ coding agents in parallel with a powerful web UI
           </h1>
           
           <p className="text-lg text-neutral-400 mb-8 leading-relaxed">
-            cmux spawns Claude Code, Codex, Gemini CLI, Amp, Opencode, and other coding agent CLIs in parallel across multiple tasks. 
-            Each run gets an isolated VS Code instance via Docker with the git diff UI and a terminal running your agent.
+            cmux is a sophisticated web application that lets you run Claude, GPT-5, Gemini, and 20+ other coding agents simultaneously. 
+            Rich text editor with image support, GitHub integration, and isolated VS Code instances for every task.
           </p>
 
-          {/* Quick Install */}
-          <div className="flex flex-col sm:flex-row gap-3 mb-12">
-            <div className="flex-1 bg-neutral-900 border border-neutral-800 rounded-lg px-4 py-3 font-mono text-sm flex items-center justify-between">
-              <span>bunx cmux</span>
-              <button
-                onClick={() => copyToClipboard('bunx cmux')}
-                className="ml-4 text-neutral-500 hover:text-white transition-colors"
-              >
-                {copiedCommand === 'bunx cmux' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-              </button>
+          {/* Key Features Banner */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-12">
+            <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-4 py-3 text-center">
+              <div className="text-2xl font-bold text-white">20+</div>
+              <div className="text-sm text-neutral-400">AI Agents</div>
             </div>
-            <div className="flex-1 bg-neutral-900 border border-neutral-800 rounded-lg px-4 py-3 font-mono text-sm flex items-center justify-between">
-              <span>npx cmux</span>
-              <button
-                onClick={() => copyToClipboard('npx cmux')}
-                className="ml-4 text-neutral-500 hover:text-white transition-colors"
-              >
-                {copiedCommand === 'npx cmux' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-              </button>
+            <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-4 py-3 text-center">
+              <div className="text-2xl font-bold text-white">Web UI</div>
+              <div className="text-sm text-neutral-400">Rich Editor</div>
+            </div>
+            <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-4 py-3 text-center">
+              <div className="text-2xl font-bold text-white">GitHub</div>
+              <div className="text-sm text-neutral-400">Integration</div>
+            </div>
+            <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-4 py-3 text-center">
+              <div className="text-2xl font-bold text-white">VS Code</div>
+              <div className="text-sm text-neutral-400">Instances</div>
             </div>
           </div>
 
@@ -126,7 +124,7 @@ function LandingPage() {
           <h2 className="text-2xl font-bold mb-6">How it works</h2>
           
           <div className="space-y-8">
-            {/* Terminal Demo */}
+            {/* Dashboard UI Demo */}
             <div className="bg-neutral-950 border border-neutral-800 rounded-lg overflow-hidden">
               <div className="flex items-center gap-2 px-4 py-2 bg-neutral-900 border-b border-neutral-800">
                 <div className="flex gap-1.5">
@@ -134,65 +132,125 @@ function LandingPage() {
                   <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
                   <div className="w-3 h-3 rounded-full bg-green-500"></div>
                 </div>
-                <span className="text-xs text-neutral-500 font-mono ml-2">terminal</span>
+                <span className="text-xs text-neutral-500 font-mono ml-2">cmux dashboard</span>
               </div>
-              <div className="p-4 font-mono text-sm space-y-2">
-                <div className="text-neutral-500">$ cmux</div>
-                <div className="text-green-400">✓ Starting cmux...</div>
-                <div className="text-neutral-400">
-                  <br />
-                  Select agents to spawn:<br />
-                  [x] Claude Code<br />
-                  [x] Codex CLI<br />
-                  [x] Gemini CLI<br />
-                  [ ] Amp<br />
-                  [ ] OpenCode<br />
-                  <br />
-                  Enter task: <span className="text-white">Fix authentication flow and add tests</span><br />
-                  <br />
+              <div className="p-4">
+                {/* Mock Dashboard UI */}
+                <div className="space-y-4">
+                  {/* Task Input Area */}
+                  <div className="bg-neutral-900 rounded-lg p-3 border border-neutral-800">
+                    <div className="text-sm text-neutral-400 mb-2">Task Description</div>
+                    <div className="bg-neutral-950 rounded p-2 min-h-[60px] text-sm">
+                      <span className="text-white">Fix authentication flow and add comprehensive test coverage. Also check for any security vulnerabilities in the current implementation.</span>
+                    </div>
+                    <div className="flex gap-2 mt-2">
+                      <button className="text-xs px-2 py-1 bg-neutral-800 rounded text-neutral-400">📎 Add image</button>
+                      <button className="text-xs px-2 py-1 bg-neutral-800 rounded text-neutral-400">🎤 Voice input</button>
+                    </div>
+                  </div>
+                  
+                  {/* Agent Selection */}
+                  <div className="bg-neutral-900 rounded-lg p-3 border border-neutral-800">
+                    <div className="text-sm text-neutral-400 mb-2">Select Agents (20+ available)</div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <label className="flex items-center gap-2">
+                        <input type="checkbox" checked readOnly className="rounded" />
+                        <span>Claude Opus 4.1</span>
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input type="checkbox" checked readOnly className="rounded" />
+                        <span>GPT-5</span>
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input type="checkbox" checked readOnly className="rounded" />
+                        <span>Gemini Pro</span>
+                      </label>
+                      <label className="flex items-center gap-2">
+                        <input type="checkbox" className="rounded" readOnly />
+                        <span>Kimi K2</span>
+                      </label>
+                    </div>
+                    <div className="text-xs text-neutral-500 mt-2">+ 16 more agents available...</div>
+                  </div>
+                  
+                  {/* GitHub Integration */}
+                  <div className="flex gap-2">
+                    <div className="flex-1 bg-neutral-900 rounded-lg px-3 py-2 border border-neutral-800">
+                      <div className="text-xs text-neutral-500">Repository</div>
+                      <div className="text-sm">manaflow-ai/cmux</div>
+                    </div>
+                    <div className="flex-1 bg-neutral-900 rounded-lg px-3 py-2 border border-neutral-800">
+                      <div className="text-xs text-neutral-500">Branch</div>
+                      <div className="text-sm">feature/auth-fixes</div>
+                    </div>
+                  </div>
+                  
+                  <button className="w-full bg-white text-black py-2 rounded-lg font-medium text-sm hover:bg-neutral-200 transition-colors">
+                    Run Agents in Parallel
+                  </button>
                 </div>
-                <div className="text-green-400">→ Spawning 3 isolated VS Code instances...</div>
-                <div className="text-neutral-500">→ Claude Code: workspace-1 (port 8001)</div>
-                <div className="text-neutral-500">→ Codex CLI: workspace-2 (port 8002)</div>
-                <div className="text-neutral-500">→ Gemini CLI: workspace-3 (port 8003)</div>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <Terminal className="h-4 w-4 text-green-500" />
-                  <span className="text-sm font-mono">Claude Code</span>
-                </div>
-                <div className="text-xs text-neutral-500 font-mono space-y-1">
-                  <div>Analyzing auth flow...</div>
-                  <div>Found 3 issues</div>
-                  <div>Writing fixes...</div>
-                  <div className="text-green-400">✓ Complete</div>
-                </div>
+            {/* Task List View */}
+            <div className="bg-neutral-950 border border-neutral-800 rounded-lg overflow-hidden">
+              <div className="px-4 py-2 bg-neutral-900 border-b border-neutral-800">
+                <span className="text-sm font-medium">Active Tasks</span>
               </div>
-              <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <Terminal className="h-4 w-4 text-blue-500" />
-                  <span className="text-sm font-mono">Codex CLI</span>
+              <div className="divide-y divide-neutral-800">
+                <div className="p-3 hover:bg-neutral-900/50 transition-colors">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                        <span className="text-sm">Fix authentication flow and add tests</span>
+                      </div>
+                      <div className="flex gap-4 text-xs text-neutral-500">
+                        <span>Claude Opus 4.1</span>
+                        <span>•</span>
+                        <span>manaflow-ai/cmux</span>
+                        <span>•</span>
+                        <span>2 minutes ago</span>
+                      </div>
+                    </div>
+                    <button className="text-xs px-2 py-1 bg-neutral-800 rounded hover:bg-neutral-700">Open VS Code</button>
+                  </div>
                 </div>
-                <div className="text-xs text-neutral-500 font-mono space-y-1">
-                  <div>Reviewing code...</div>
-                  <div>Generating tests...</div>
-                  <div>Running test suite...</div>
-                  <div className="text-yellow-400">→ In progress</div>
+                <div className="p-3 hover:bg-neutral-900/50 transition-colors">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                        <span className="text-sm">Optimize database queries</span>
+                      </div>
+                      <div className="flex gap-4 text-xs text-neutral-500">
+                        <span>GPT-5</span>
+                        <span>•</span>
+                        <span>backend-api</span>
+                        <span>•</span>
+                        <span>5 minutes ago</span>
+                      </div>
+                    </div>
+                    <button className="text-xs px-2 py-1 bg-neutral-800 rounded hover:bg-neutral-700">View Diff</button>
+                  </div>
                 </div>
-              </div>
-              <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <Terminal className="h-4 w-4 text-purple-500" />
-                  <span className="text-sm font-mono">Gemini CLI</span>
-                </div>
-                <div className="text-xs text-neutral-500 font-mono space-y-1">
-                  <div>Checking edge cases...</div>
-                  <div>Adding error handling...</div>
-                  <div>Updating docs...</div>
-                  <div className="text-green-400">✓ Complete</div>
+                <div className="p-3 hover:bg-neutral-900/50 transition-colors">
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                        <span className="text-sm">Implement dark mode toggle</span>
+                      </div>
+                      <div className="flex gap-4 text-xs text-neutral-500">
+                        <span>Gemini Pro</span>
+                        <span>•</span>
+                        <span>frontend-app</span>
+                        <span>•</span>
+                        <span>8 minutes ago</span>
+                      </div>
+                    </div>
+                    <button className="text-xs px-2 py-1 bg-neutral-800 rounded hover:bg-neutral-700">Keep Alive</button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -220,12 +278,12 @@ function LandingPage() {
               
               <div>
                 <h3 className="font-semibold mb-2 flex items-center gap-2">
-                  <Terminal className="h-4 w-4 text-neutral-500" />
-                  Multi-agent support
+                  <Users className="h-4 w-4 text-neutral-500" />
+                  20+ AI agents
                 </h3>
                 <p className="text-sm text-neutral-400">
-                  Works with Claude Code, Codex, Gemini CLI, Amp, OpenCode, and more. 
-                  Try Kimi K2, Qwen 3 Coder, and GLM-4.5 alongside Claude Opus.
+                  Claude (Sonnet, Opus 4.1, Opus 4), GPT-5, O3, Gemini (Flash, Pro), 
+                  Kimi K2, Qwen3 Coder, GLM-4.5, and many more - all in one interface.
                 </p>
               </div>
               
@@ -243,24 +301,35 @@ function LandingPage() {
             
             <div className="space-y-6">
               <div>
-                <h3 className="font-semibold mb-2">Configurable sandboxes</h3>
+                <h3 className="font-semibold mb-2 flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-neutral-500" />
+                  Rich task editor
+                </h3>
                 <p className="text-sm text-neutral-400">
-                  Use Docker by default or configure with Freestyle, Morph, Daytona, Modal, Beam, or E2B.
+                  Markdown support, image uploads, @mentions for files, voice input, 
+                  and persistent drafts. Not just a CLI - a full web experience.
                 </p>
               </div>
               
               <div>
-                <h3 className="font-semibold mb-2">Safer permissions</h3>
+                <h3 className="font-semibold mb-2 flex items-center gap-2">
+                  <Cloud className="h-4 w-4 text-neutral-500" />
+                  Cloud & local modes
+                </h3>
                 <p className="text-sm text-neutral-400">
-                  Makes <code className="px-1.5 py-0.5 bg-neutral-900 rounded text-xs">--dangerously-skip-permissions</code> actually safe 
-                  with proper isolation.
+                  Run agents in the cloud or locally. Configurable sandboxes with 
+                  Docker, Freestyle, Morph, Daytona, Modal, Beam, or E2B.
                 </p>
               </div>
               
               <div>
-                <h3 className="font-semibold mb-2">Open source</h3>
+                <h3 className="font-semibold mb-2 flex items-center gap-2">
+                  <Zap className="h-4 w-4 text-neutral-500" />
+                  Task management
+                </h3>
                 <p className="text-sm text-neutral-400">
-                  MIT licensed. Contribute on GitHub or fork for your own needs.
+                  Track all running tasks, view history, keep containers alive, 
+                  and manage multiple projects from one dashboard.
                 </p>
               </div>
             </div>
@@ -294,16 +363,16 @@ function LandingPage() {
             Install in seconds. No credit card required.
           </p>
           
-          <div className="flex flex-col sm:flex-row gap-4 justify-center mb-8">
-            <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-6 py-3 font-mono text-sm flex items-center justify-between">
-              <span>bunx cmux</span>
-              <button
-                onClick={() => copyToClipboard('bunx cmux')}
-                className="ml-4 text-neutral-500 hover:text-white transition-colors"
-              >
-                {copiedCommand === 'bunx cmux' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-              </button>
-            </div>
+          <div className="flex flex-col items-center gap-4 mb-8">
+            <Button asChild size="lg" className="bg-white text-black hover:bg-neutral-200">
+              <Link to="/dashboard">
+                Open cmux Dashboard
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+            <p className="text-xs text-neutral-500">
+              Web-based interface • No installation required • Start for free
+            </p>
           </div>
 
           <div className="flex items-center justify-center gap-4 text-sm">
