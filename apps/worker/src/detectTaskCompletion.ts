@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import os from "node:os";
+import { log } from "./logger.js";
 
 interface TaskCompletionOptions {
   taskId: string;
@@ -37,6 +38,8 @@ export class TaskCompletionDetector extends EventEmitter {
   async start(): Promise<void> {
     if (this.isRunning) return;
     this.isRunning = true;
+    
+    log("INFO", `TaskCompletionDetector started for ${this.options.agentType} task ${this.options.taskId}`);
 
     this.checkInterval = setInterval(async () => {
       try {
@@ -57,7 +60,7 @@ export class TaskCompletionDetector extends EventEmitter {
           });
         }
       } catch (error) {
-        console.error(`Error checking task completion: ${error}`);
+        log("ERROR", `Error checking task completion: ${error}`);
       }
     }, this.options.checkIntervalMs);
   }
@@ -104,7 +107,7 @@ export class TaskCompletionDetector extends EventEmitter {
       try {
         await fs.access(projectDir);
       } catch {
-        console.log(`Claude project directory not found: ${projectDir}`);
+        log("DEBUG", `Claude project directory not found: ${projectDir} - waiting for Claude to create it`);
         return false;
       }
 
@@ -115,7 +118,7 @@ export class TaskCompletionDetector extends EventEmitter {
         .sort((a, b) => b.localeCompare(a)); // Sort by name (most recent first)
 
       if (jsonlFiles.length === 0) {
-        console.log("No Claude project files found");
+        log("INFO", "No Claude project files found");
         return false;
       }
 
@@ -149,14 +152,16 @@ export class TaskCompletionDetector extends EventEmitter {
             
             // Claude Code is complete when stop_reason is "end_turn" or "stop_sequence"
             if (stopReason === "end_turn" || stopReason === "stop_sequence") {
-              console.log(`Claude task complete: stop_reason = ${stopReason}`);
+              log("INFO", `Claude task complete: stop_reason = ${stopReason}`);
+              log("INFO", `Claude completion detected in file: ${latestFile}`);
+              log("INFO", `Message type: ${message.type}, timestamp: ${message.timestamp}`);
               return true;
             }
           }
           
           // Also check for error states that indicate completion
           if (message.error || message.message?.error) {
-            console.log("Claude task complete: error encountered");
+            log("INFO", "Claude task complete: error encountered");
             return true;
           }
         } catch (e) {
@@ -167,7 +172,7 @@ export class TaskCompletionDetector extends EventEmitter {
 
       return false;
     } catch (error) {
-      console.error(`Error checking Claude completion: ${error}`);
+      log("ERROR", `Error checking Claude completion: ${error}`);
       return false;
     }
   }
@@ -182,16 +187,16 @@ export class TaskCompletionDetector extends EventEmitter {
       try {
         await fs.access(codexDir);
       } catch {
-        console.log(`Codex directory not found: ${codexDir}`);
+        log("INFO", `Codex directory not found: ${codexDir}`);
         return false;
       }
 
       // TODO: Implement Codex-specific completion detection
       // For now, return false and we'll implement this case-by-case as requested
-      console.log("Codex completion detection not yet implemented");
+      log("INFO", "Codex completion detection not yet implemented");
       return false;
     } catch (error) {
-      console.error(`Error checking Codex completion: ${error}`);
+      log("ERROR", `Error checking Codex completion: ${error}`);
       return false;
     }
   }
@@ -236,7 +241,7 @@ export async function detectTaskCompletionWithFallback(
       sessionName: options.terminalId,
       idleTimeoutMs: options.idleTimeoutMs || 15000,
       onIdle: () => {
-        console.log("Terminal idle detected (fallback)");
+        log("INFO", "Terminal idle detected (fallback)");
         detector.stop();
         options.onTerminalIdle!();
       },

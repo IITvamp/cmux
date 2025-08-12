@@ -1042,13 +1042,22 @@ async function createTerminal(
 
     // Use new task completion detection if agentType is provided
     if (options.agentType && options.taskId) {
+      // For Claude models, only use project file detection, no terminal idle fallback
+      const useTerminalIdleFallback = options.agentType !== "claude";
+      
+      log("INFO", `Setting up task completion detection for ${options.agentType}`, {
+        useTerminalIdleFallback,
+        taskId: options.taskId,
+        workingDir: cwd,
+      });
+      
       const detector = await detectTaskCompletionWithFallback({
         taskId: options.taskId,
         agentType: options.agentType,
         workingDir: cwd,
-        terminalId: sessionName || terminalId,
-        idleTimeoutMs: 15000,
-        onTerminalIdle: () => {
+        terminalId: useTerminalIdleFallback ? (sessionName || terminalId) : undefined,
+        idleTimeoutMs: useTerminalIdleFallback ? 15000 : undefined,
+        onTerminalIdle: useTerminalIdleFallback ? () => {
           if (!idleDetectionCompleted) {
             idleDetectionCompleted = true;
             const elapsedMs = Date.now() - processStartTime;
@@ -1059,15 +1068,17 @@ async function createTerminal(
               elapsedMs,
             });
             if (options.taskId) {
-              emitToMainServer("worker:terminal-idle", {
+              emitToMainServer("worker:task-complete", {
                 workerId: WORKER_ID,
                 terminalId,
                 taskId: options.taskId,
+                agentType: options.agentType!,
                 elapsedMs,
+                detectionMethod: "terminal-idle",
               });
             }
           }
-        },
+        } : undefined,
       });
 
       // Listen for task completion from project files
@@ -1075,11 +1086,13 @@ async function createTerminal(
         if (!idleDetectionCompleted) {
           idleDetectionCompleted = true;
           log("INFO", "Task completion detected from project files", data);
-          emitToMainServer("worker:terminal-idle", {
+          emitToMainServer("worker:task-complete", {
             workerId: WORKER_ID,
             terminalId,
             taskId: options.taskId,
+            agentType: options.agentType,
             elapsedMs: data.elapsedMs,
+            detectionMethod: "project-file",
           });
         }
       });
@@ -1088,11 +1101,13 @@ async function createTerminal(
         if (!idleDetectionCompleted) {
           idleDetectionCompleted = true;
           log("WARN", "Task timeout detected", data);
-          emitToMainServer("worker:terminal-idle", {
+          emitToMainServer("worker:task-complete", {
             workerId: WORKER_ID,
             terminalId,
             taskId: options.taskId,
+            agentType: options.agentType,
             elapsedMs: data.elapsedMs,
+            detectionMethod: "project-file",
           });
         }
       });

@@ -1294,6 +1294,15 @@ export async function spawnAgent(
         data
       );
 
+      // For Claude agents, ignore terminal exit as tmux exits immediately after creating session
+      const agentType = getAgentType(agent.name);
+      if (agentType === "claude") {
+        serverLogger.info(
+          `[AgentSpawner] Ignoring terminal exit for Claude agent ${agent.name} (tmux exits immediately, waiting for project file completion)`
+        );
+        return;
+      }
+
       if (data.terminalId === terminalId) {
         if (hasFailed) {
           serverLogger.warn(
@@ -1309,7 +1318,39 @@ export async function spawnAgent(
       }
     });
 
-    // Set up terminal-idle event handler
+    // Set up task-complete event handler (from project file detection)
+    vscodeInstance.on("task-complete", async (data) => {
+      serverLogger.info(
+        `[AgentSpawner] Task complete detected for ${agent.name} (${data.detectionMethod}):`,
+        data
+      );
+      if (hasFailed) {
+        serverLogger.warn(
+          `[AgentSpawner] Ignoring task completion for ${agent.name} (already marked failed)`
+        );
+        return;
+      }
+      
+      // Debug logging to understand what's being compared
+      serverLogger.info(`[AgentSpawner] Task completion comparison:`);
+      serverLogger.info(`[AgentSpawner]   data.taskId: "${data.taskId}"`);
+      serverLogger.info(`[AgentSpawner]   taskRunId: "${taskRunId}"`);
+      serverLogger.info(`[AgentSpawner]   Match: ${data.taskId === taskRunId}`);
+
+      // Update the task run as completed
+      if (data.taskId === taskRunId) {
+        serverLogger.info(`[AgentSpawner] Task ID matched! Marking task as complete for ${agent.name}`);
+        // CRITICAL: Add a delay to ensure changes are written to disk
+        serverLogger.info(`[AgentSpawner] Waiting 3 seconds for file system to settle before capturing git diff...`);
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        await handleTaskCompletion(0);
+      } else {
+        serverLogger.warn(`[AgentSpawner] Task ID did not match, ignoring task complete event`);
+      }
+    });
+
+    // Set up terminal-idle event handler (legacy, for non-Claude agents)
     vscodeInstance.on("terminal-idle", async (data) => {
       serverLogger.info(
         `[AgentSpawner] Terminal idle detected for ${agent.name}:`,
@@ -1722,6 +1763,68 @@ export async function spawnAgent(
         `[AgentSpawner] Emitted worker:create-terminal at ${new Date().toISOString()}`
       );
     });
+
+    // For Claude agents, set up a periodic check as a temporary workaround
+    // until the Docker image is rebuilt with the new detection code
+    const agentTypeForCheck = getAgentType(agent.name);
+    if (agentTypeForCheck === "claude" && vscodeInstance.isWorkerConnected()) {
+      serverLogger.info(`[AgentSpawner] Setting up periodic completion check for Claude agent ${agent.name}`);
+      
+      const checkInterval = setInterval(async () => {
+        try {
+          // Check if task is already marked complete
+          const taskRun = await convex.query(api.taskRuns.get, {
+            id: taskRunId as Id<"taskRuns">,
+          });
+          
+          if (taskRun?.status === "completed" || taskRun?.status === "failed") {
+            clearInterval(checkInterval);
+            return;
+          }
+          
+          // Use worker:exec to check the Claude project file
+          const checkCmd = `tail -1 /root/.claude/projects/-root-workspace/*.jsonl 2>/dev/null | python3 -c "import sys, json; try: d=json.loads(sys.stdin.read()); print(d.get('message', {}).get('stop_reason', '')) except: print('')" 2>/dev/null || echo ""`;
+          
+          const workerSocket = vscodeInstance.getWorkerSocket();
+          if (!workerSocket || !vscodeInstance.isWorkerConnected()) {
+            return;
+          }
+          
+          const result = await new Promise<{ success: boolean; stdout?: string }>((resolve) => {
+            workerSocket
+              .timeout(5000)
+              .emit(
+                "worker:exec",
+                {
+                  command: checkCmd,
+                  cwd: "/root/workspace",
+                },
+                (response: any) => {
+                  if (response.error) {
+                    resolve({ success: false });
+                  } else {
+                    resolve({ success: true, stdout: response.data?.stdout || "" });
+                  }
+                }
+              );
+          });
+          
+          if (result.stdout && (result.stdout.trim() === "end_turn" || result.stdout.trim() === "stop_sequence")) {
+            serverLogger.info(`[AgentSpawner] Claude agent ${agent.name} completed (detected stop_reason: ${result.stdout.trim()})`);
+            clearInterval(checkInterval);
+            
+            // Wait for filesystem to settle
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            await handleTaskCompletion(0);
+          }
+        } catch (error) {
+          // Ignore errors, will retry on next interval
+        }
+      }, 10000); // Check every 10 seconds
+      
+      // Stop checking after 20 minutes
+      setTimeout(() => clearInterval(checkInterval), 20 * 60 * 1000);
+    }
 
     return {
       agentName: agent.name,
