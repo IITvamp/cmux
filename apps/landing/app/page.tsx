@@ -34,6 +34,14 @@ export default function LandingPage() {
                 <span>GitHub</span>
                 <ClientIcon icon={Star} className="h-3 w-3" aria-hidden="true" />
               </a>
+              <a 
+                href="https://cal.com/team/manaflow/meeting" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="text-sm text-neutral-400 hover:text-white transition-colors"
+              >
+                Contact
+              </a>
             </div>
           </div>
         </div>
@@ -83,12 +91,12 @@ export default function LandingPage() {
               <ClientIcon icon={Star} className="h-4 w-4 text-yellow-600" aria-hidden="true" />
             </a>
             <a 
-              href="https://github.com/manaflow-ai/cmux#readme" 
+              href="https://cal.com/team/manaflow/meeting" 
               target="_blank" 
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-neutral-800 hover:bg-neutral-900 transition-colors"
             >
-              <span>Documentation</span>
+              <span>Contact us</span>
               <ClientIcon icon={ArrowRight} className="h-3 w-3" aria-hidden="true" />
             </a>
           </div>
