@@ -25,18 +25,28 @@ function shouldIgnoreOutput(data: Buffer, ignorePatterns: RegExp[]): boolean {
 
   // Check each line of output
   const lines = str.split("\n");
+  let hasNonIgnoredContent = false;
+  
   for (const line of lines) {
-    // If any line doesn't match ignore patterns, it's real activity
+    // Skip completely empty lines
+    if (line.length === 0) {
+      continue;
+    }
+    
+    // Check if this line matches any ignore pattern
     const shouldIgnoreLine = ignorePatterns.some((pattern) =>
       pattern.test(line)
     );
-    if (line.length > 0 && !shouldIgnoreLine) {
-      return false;
+    
+    // If we find any line that doesn't match ignore patterns, it's real activity
+    if (!shouldIgnoreLine) {
+      hasNonIgnoredContent = true;
+      break;
     }
   }
 
-  // All lines matched ignore patterns
-  return true;
+  // Return true only if all non-empty lines matched ignore patterns
+  return !hasNonIgnoredContent;
 }
 
 // Helper function to check if tmux session exists
@@ -138,6 +148,7 @@ export async function detectTerminalIdle(
   let stdoutBuffer = "";
   let stderrBuffer = "";
   let detachCommandSentTime: number | null = null;
+  let lastTimerResetTime = Date.now();
 
   return new Promise(async (resolve, reject) => {
     // Set a maximum timeout for the entire detection process
@@ -378,6 +389,22 @@ export async function detectTerminalIdle(
       // This is real user activity
       lastActivityTime = currentTime;
 
+      // Debounce timer resets - only reset if enough time has passed since last reset
+      const TIMER_DEBOUNCE_MS = 100;
+      if (currentTime - lastTimerResetTime < TIMER_DEBOUNCE_MS) {
+        log(
+          "DEBUG",
+          `[detectTerminalIdle] Skipping timer reset due to debounce`,
+          {
+            sessionName,
+            timeSinceLastReset: currentTime - lastTimerResetTime,
+          }
+        );
+        return;
+      }
+
+      lastTimerResetTime = currentTime;
+
       log(
         "DEBUG",
         `[detectTerminalIdle] Real activity detected on stdout - resetting idle timer`,
@@ -453,6 +480,22 @@ export async function detectTerminalIdle(
 
       // This is real user activity
       lastActivityTime = currentTime;
+
+      // Debounce timer resets - only reset if enough time has passed since last reset
+      const TIMER_DEBOUNCE_MS = 100;
+      if (currentTime - lastTimerResetTime < TIMER_DEBOUNCE_MS) {
+        log(
+          "DEBUG",
+          `[detectTerminalIdle] Skipping timer reset due to debounce`,
+          {
+            sessionName,
+            timeSinceLastReset: currentTime - lastTimerResetTime,
+          }
+        );
+        return;
+      }
+
+      lastTimerResetTime = currentTime;
 
       log(
         "DEBUG",
