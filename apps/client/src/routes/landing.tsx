@@ -92,7 +92,7 @@ function LandingPage() {
               rel="noopener noreferrer"
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-neutral-800 hover:bg-neutral-900 transition-colors"
             >
-              <Github className="h-4 w-4" />
+              <Github className="h-4 w-4 cursor-default" />
               <span>Star on GitHub</span>
               <Star className="h-3 w-3 text-yellow-500" />
             </a>
