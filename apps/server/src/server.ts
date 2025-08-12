@@ -38,6 +38,7 @@ import { getWorktreePath } from "./workspace.js";
 import { evaluateCrownWithClaudeCode } from "./crownEvaluator.js";
 import { refreshDiffsForTaskRun } from "./refreshDiffs.js";
 import type { Id } from "@cmux/convex/dataModel";
+import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
 
 const execAsync = promisify(exec);
 
@@ -275,6 +276,87 @@ export async function startServer({
           success: false, 
           message: error instanceof Error ? error.message : "Unknown error" 
         });
+      }
+    });
+
+    // Create a draft PR for a crowned task run
+    socket.on("github-create-draft-pr", async (data, callback) => {
+      try {
+        const { taskId, taskRunId } = data;
+        serverLogger.info(`[Server] Draft PR requested for task ${taskId}, run ${taskRunId}`);
+
+        const run = await convex.query(api.taskRuns.get, { id: taskRunId as any });
+        const task = await convex.query(api.tasks.getById, { id: taskId as any });
+        if (!run || !task) {
+          callback({ success: false, error: "Task or run not found" });
+          return;
+        }
+        if (!run.newBranch) {
+          callback({ success: false, error: "No branch associated with run" });
+          return;
+        }
+
+        // Prefer persisted PR title, else fall back to task.text
+        const prTitle = task.prTitle || task.text || "Draft PR";
+        const prBody = task.description || task.text || "";
+
+        // Find the VSCode instance for this run to execute gh inside the container workspace
+        const vscodeInstance = VSCodeInstance.getInstance(taskRunId);
+        if (!vscodeInstance || !vscodeInstance.isWorkerConnected()) {
+          callback({ success: false, error: "Worker not connected for this run" });
+          return;
+        }
+
+        const workerSocket = vscodeInstance.getWorkerSocket();
+        if (!workerSocket) {
+          callback({ success: false, error: "Worker socket unavailable" });
+          return;
+        }
+
+        // Attempt to obtain GitHub token for gh CLI
+        const githubToken = await getGitHubTokenFromKeychain(convex);
+        const envPrefix = githubToken ? `GH_TOKEN=\"${githubToken}\" ` : "";
+        const safeTitle = prTitle.replace(/"/g, '\\"');
+        const safeBody = prBody.replace(/"/g, '\\"').replace(/\n/g, "\\n");
+        const cmd = `${envPrefix}gh pr create --title "${safeTitle}" --body "${safeBody}" --draft --head "${run.newBranch}"`;
+
+        const result = await new Promise<{ success: boolean; stdout?: string; stderr?: string }>((resolve) => {
+          workerSocket
+            .timeout(30000)
+            .emit(
+              "worker:exec",
+              {
+                command: "/bin/bash",
+                args: ["-c", `cd /root/workspace && ${cmd}`],
+              },
+              (response: any) => {
+                if (response.error) {
+                  resolve({ success: false, stderr: response.error.message || String(response.error) });
+                } else {
+                  resolve({ success: true, stdout: response.data?.stdout || response.stdout });
+                }
+              }
+            );
+        });
+
+        if (!result.success) {
+          callback({ success: false, error: result.stderr || "Failed to create draft PR" });
+          return;
+        }
+
+        const output = (result.stdout || "").trim();
+        const prUrlMatch = output.match(/https:\/\/github\.com\/[\w-]+\/[\w-]+\/pull\/\d+/);
+        const prUrl = prUrlMatch ? prUrlMatch[0] : output;
+        if (!prUrl) {
+          callback({ success: false, error: "PR URL not found in output" });
+          return;
+        }
+
+        await convex.mutation(api.taskRuns.updatePullRequestUrl, { id: taskRunId as any, pullRequestUrl: prUrl });
+        callback({ success: true, url: prUrl });
+      } catch (error) {
+        serverLogger.error("Error creating draft PR:", error);
+        callback({ success: false, error: error instanceof Error ? error.message : "Unknown error" });
       }
     });
 

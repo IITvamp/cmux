@@ -34,6 +34,7 @@ export default defineSchema({
         })
       )
     ),
+    prTitle: v.optional(v.string()), // Persisted PR title generated when spawning agents
   })
     .index("by_created", ["createdAt"])
     .index("by_user", ["userId", "createdAt"]),

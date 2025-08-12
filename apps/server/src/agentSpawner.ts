@@ -13,6 +13,7 @@ import { storeGitDiffs } from "./storeGitDiffs.js";
 import {
   generateNewBranchName,
   generateUniqueBranchNames,
+  generatePRTitle,
 } from "./utils/branchNameGenerator.js";
 import { convex } from "./utils/convexClient.js";
 import { serverLogger } from "./utils/fileLogger.js";
@@ -1919,6 +1920,28 @@ export async function spawnAllAgents(
         options.selectedAgents!.includes(agent.name)
       )
     : AGENT_CONFIGS;
+
+  // Ensure we persist a PR title for this task (used by View PR and drafts)
+  try {
+    const task = await convex.query(api.tasks.getById, { id: taskId as Id<"tasks"> });
+    if (task) {
+      if (!task.prTitle) {
+        const apiKeys = await convex.query(api.apiKeys.getAllForAgents, {} as any);
+        const computedTitle = await generatePRTitle(options.taskDescription, apiKeys as unknown as Record<string, string>);
+        const titleToUse = (computedTitle || options.taskDescription || "feature").toString();
+        await convex.mutation(api.tasks.update, { id: taskId as Id<"tasks">, text: task.text });
+        // Patch tasks table prTitle via a dedicated mutation (add minimal updater inline if not present)
+        // Using generic patch through a new mutation under tasks: setPrTitle
+        try {
+          await convex.mutation(api.tasks.setPrTitle as any, { id: taskId as Id<"tasks">, prTitle: titleToUse });
+        } catch (e) {
+          serverLogger.warn("[AgentSpawner] tasks.setPrTitle not found; skipping PR title persist");
+        }
+      }
+    }
+  } catch (e) {
+    serverLogger.warn("[AgentSpawner] Failed to persist PR title", e);
+  }
 
   // Generate unique branch names for all agents at once to ensure no collisions
   const branchNames = await generateUniqueBranchNames(

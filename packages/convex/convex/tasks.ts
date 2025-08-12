@@ -105,6 +105,17 @@ export const update = mutation({
   },
 });
 
+export const setPrTitle = mutation({
+  args: { id: v.id("tasks"), prTitle: v.string() },
+  handler: async (ctx, args) => {
+    const task = await ctx.db.get(args.id);
+    if (task === null) {
+      throw new Error("Task not found");
+    }
+    await ctx.db.patch(args.id, { prTitle: args.prTitle, updatedAt: Date.now() });
+  },
+});
+
 export const getById = query({
   args: { id: v.id("tasks") },
   handler: async (ctx, args) => {

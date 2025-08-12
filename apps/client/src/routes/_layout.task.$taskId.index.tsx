@@ -182,8 +182,18 @@ function TaskDetailPage() {
     if (crownedRun?.pullRequestUrl && crownedRun.pullRequestUrl !== "pending") {
       window.open(crownedRun.pullRequestUrl, "_blank");
     } else {
-      // TODO: Create draft PR if it doesn't exist
-      console.log("Creating draft PR...");
+      if (!socket || !crownedRun?._id || !task?._id) return;
+      socket.emit(
+        "github-create-draft-pr",
+        { taskId: task._id, taskRunId: crownedRun._id },
+        (response: { success: true; url: string } | { success: false; error: string }) => {
+          if (response.success) {
+            window.open(response.url, "_blank");
+          } else {
+            console.error("Failed to create draft PR:", response.error);
+          }
+        }
+      );
     }
   };
 

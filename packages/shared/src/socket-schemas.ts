@@ -344,6 +344,10 @@ export interface ClientToServerEvents {
     data: GitHubFetchBranches,
     callback: (response: GitHubBranchesResponse) => void
   ) => void;
+  "github-create-draft-pr": (
+    data: { taskId: string; taskRunId: string },
+    callback: (response: { success: true; url: string } | { success: false; error: string }) => void
+  ) => void;
   "check-provider-status": (
     callback: (response: ProviderStatusResponse) => void
   ) => void;
