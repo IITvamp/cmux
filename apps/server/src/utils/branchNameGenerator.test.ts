@@ -55,6 +55,22 @@ describe("toKebabCase", () => {
     expect(toKebabCase("café")).toBe("caf");
     expect(toKebabCase("naïve")).toBe("na-ve");
   });
+
+  it("should handle camelCase by adding hyphens", () => {
+    expect(toKebabCase("camelCase")).toBe("camel-case");
+    expect(toKebabCase("handleCamelCaseWithHyphens")).toBe("handle-camel-case-with-hyphens");
+    expect(toKebabCase("myVariableName")).toBe("my-variable-name");
+    expect(toKebabCase("APIResponse")).toBe("api-response");
+    expect(toKebabCase("HTTPSConnection")).toBe("https-connection");
+    expect(toKebabCase("XMLHttpRequest")).toBe("xml-http-request");
+    expect(toKebabCase("IOError")).toBe("io-error");
+  });
+
+  it("should handle mixed camelCase and spaces", () => {
+    expect(toKebabCase("Add myNewFeature")).toBe("add-my-new-feature");
+    expect(toKebabCase("Fix getUserById bug")).toBe("fix-get-user-by-id-bug");
+    expect(toKebabCase("Update APIEndpoint")).toBe("update-api-endpoint");
+  });
 });
 
 describe("generateRandomId", () => {
