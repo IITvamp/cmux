@@ -30,6 +30,10 @@ export const upsertDiff = mutation({
     patch: v.optional(v.string()),
     oldContent: v.optional(v.string()),
     newContent: v.optional(v.string()),
+    contentOmitted: v.optional(v.boolean()),
+    oldSize: v.optional(v.number()),
+    newSize: v.optional(v.number()),
+    patchSize: v.optional(v.number()),
     isBinary: v.boolean(),
   },
   handler: async (ctx, args) => {

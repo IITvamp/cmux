@@ -315,7 +315,7 @@ function TaskDetailPage() {
     <FloatingPane header={header}>
       {/* Git diff viewer */}
       <div className="flex-1 overflow-hidden bg-white dark:bg-neutral-950">
-        <GitDiffViewer diffs={diffs || []} isLoading={!diffs && !!selectedRun} />
+        <GitDiffViewer diffs={diffs || []} isLoading={!diffs && !!selectedRun} taskRunId={selectedRun?._id} />
       </div>
     </FloatingPane>
   );

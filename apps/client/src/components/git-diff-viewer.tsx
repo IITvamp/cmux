@@ -4,10 +4,12 @@ import { cn } from "@/lib/utils";
 import { ChevronDown, ChevronRight, FileText, FilePlus, FileMinus, FileEdit, FileCode } from "lucide-react";
 import type { Doc } from "@cmux/convex/dataModel";
 import { useState, useEffect, useRef } from "react";
+import { useSocket } from "@/contexts/socket/use-socket";
 
 interface GitDiffViewerProps {
   diffs: Doc<"gitDiffs">[];
   isLoading?: boolean;
+  taskRunId?: string;
 }
 
 interface FileGroup {
@@ -21,11 +23,13 @@ interface FileGroup {
   isBinary: boolean;
 }
 
-export function GitDiffViewer({ diffs, isLoading }: GitDiffViewerProps) {
+export function GitDiffViewer({ diffs, isLoading, taskRunId }: GitDiffViewerProps) {
   const { theme } = useTheme();
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
   const [editorHeights, setEditorHeights] = useState<Record<string, number>>({});
   const editorRefs = useRef<Record<string, import('monaco-editor').editor.IStandaloneDiffEditor>>({});
+  const [lazyContents, setLazyContents] = useState<Record<string, { oldContent: string; newContent: string }>>({});
+  const { socket } = useSocket();
 
   // Group diffs by file
   const fileGroups: FileGroup[] = diffs.map(diff => ({
@@ -33,8 +37,8 @@ export function GitDiffViewer({ diffs, isLoading }: GitDiffViewerProps) {
     status: diff.status,
     additions: diff.additions,
     deletions: diff.deletions,
-    oldContent: diff.oldContent || "",
-    newContent: diff.newContent || "",
+    oldContent: (lazyContents[diff.filePath]?.oldContent ?? diff.oldContent) || "",
+    newContent: (lazyContents[diff.filePath]?.newContent ?? diff.newContent) || "",
     patch: diff.patch,
     isBinary: diff.isBinary,
   }));
@@ -51,6 +55,18 @@ export function GitDiffViewer({ diffs, isLoading }: GitDiffViewerProps) {
       newExpanded.delete(filePath);
     } else {
       newExpanded.add(filePath);
+      // If content was omitted due to size, fetch on demand
+      const diff = diffs.find(d => d.filePath === filePath);
+      if (diff && diff.contentOmitted && taskRunId && socket) {
+        socket.emit("git-diff-file-contents", { taskRunId, filePath }, (res: any) => {
+          if (res?.ok) {
+            setLazyContents(prev => ({
+              ...prev,
+              [filePath]: { oldContent: res.oldContent || "", newContent: res.newContent || "" },
+            }));
+          }
+        });
+      }
     }
     setExpandedFiles(newExpanded);
   };
@@ -98,7 +114,8 @@ export function GitDiffViewer({ diffs, isLoading }: GitDiffViewerProps) {
     const oldLines = oldContent.split('\n').length;
     const newLines = newContent.split('\n').length;
     const maxLines = Math.max(oldLines, newLines);
-    return Math.max(120, maxLines * 20 + 40);
+    // approximate using compact line height of 18px + small padding
+    return Math.max(100, maxLines * 18 + 24);
   };
 
   if (isLoading) {
@@ -125,15 +142,15 @@ export function GitDiffViewer({ diffs, isLoading }: GitDiffViewerProps) {
   const totalDeletions = diffs.reduce((sum, d) => sum + d.deletions, 0);
 
   return (
-    <div className="h-full overflow-y-auto bg-neutral-50 dark:bg-neutral-950">
+    <div className="h-full overflow-y-auto hide-scrollbar bg-neutral-50 dark:bg-neutral-950">
       {/* Header with summary - GitHub style */}
       <div className="sticky top-0 z-10 bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800">
-        <div className="px-4 py-2 flex items-center justify-between">
+        <div className="px-3 py-1 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <div className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+            <div className="text-xs font-medium text-neutral-900 dark:text-neutral-100">
               {diffs.length} changed {diffs.length === 1 ? 'file' : 'files'}
             </div>
-            <div className="flex items-center gap-2 text-sm">
+            <div className="flex items-center gap-2 text-xs">
               <span className="text-green-600 dark:text-green-400 font-medium">
                 +{totalAdditions}
               </span>
@@ -145,13 +162,13 @@ export function GitDiffViewer({ diffs, isLoading }: GitDiffViewerProps) {
           <div className="flex items-center gap-1">
             <button
               onClick={expandAll}
-              className="text-xs px-3 py-1 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-400 font-medium"
+              className="text-[11px] px-2 py-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-400 font-medium"
             >
               Expand all
             </button>
             <button
               onClick={collapseAll}
-              className="text-xs px-3 py-1 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-400 font-medium"
+              className="text-[11px] px-2 py-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-400 font-medium"
             >
               Collapse all
             </button>
@@ -160,7 +177,7 @@ export function GitDiffViewer({ diffs, isLoading }: GitDiffViewerProps) {
       </div>
 
       {/* Diff sections */}
-      <div className="p-4 space-y-4">
+      <div className="p-2 space-y-2">
         {fileGroups.map((file) => {
           const isExpanded = expandedFiles.has(file.filePath);
           const editorHeight = editorHeights[file.filePath] || calculateEditorHeight(file.oldContent, file.newContent);
@@ -173,19 +190,19 @@ export function GitDiffViewer({ diffs, isLoading }: GitDiffViewerProps) {
               {/* File header - GitHub style */}
               <button
                 onClick={() => toggleFile(file.filePath)}
-                className="w-full px-4 py-2 flex items-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors text-left group"
+                className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors text-left group"
               >
                 <div className="text-neutral-400 dark:text-neutral-500 group-hover:text-neutral-600 dark:group-hover:text-neutral-400">
-                  {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                  {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
                 </div>
                 <div className={cn("flex-shrink-0", getStatusColor(file.status))}>
                   {getStatusIcon(file.status)}
                 </div>
                 <div className="flex-1 min-w-0 flex items-center gap-3">
-                  <span className="font-mono text-sm text-neutral-700 dark:text-neutral-300 truncate">
+                  <span className="font-mono text-xs text-neutral-700 dark:text-neutral-300 truncate">
                     {file.filePath}
                   </span>
-                  <div className="flex items-center gap-2 text-xs">
+                  <div className="flex items-center gap-2 text-[11px]">
                     <span className="text-green-600 dark:text-green-400 font-medium">
                       +{file.additions}
                     </span>
@@ -200,11 +217,11 @@ export function GitDiffViewer({ diffs, isLoading }: GitDiffViewerProps) {
               {isExpanded && (
                 <div className="border-t border-neutral-200 dark:border-neutral-800">
                   {file.isBinary ? (
-                    <div className="px-4 py-8 text-center text-neutral-500 dark:text-neutral-400 text-sm bg-neutral-50 dark:bg-neutral-900/50">
+                    <div className="px-3 py-6 text-center text-neutral-500 dark:text-neutral-400 text-xs bg-neutral-50 dark:bg-neutral-900/50">
                       Binary file not shown
                     </div>
                   ) : file.status === "deleted" ? (
-                    <div className="px-4 py-8 text-center text-neutral-500 dark:text-neutral-400 text-sm bg-neutral-50 dark:bg-neutral-900/50">
+                    <div className="px-3 py-6 text-center text-neutral-500 dark:text-neutral-400 text-xs bg-neutral-50 dark:bg-neutral-900/50">
                       File was deleted
                     </div>
                   ) : (
@@ -247,15 +264,16 @@ export function GitDiffViewer({ diffs, isLoading }: GitDiffViewerProps) {
                           renderSideBySide: true,
                           minimap: { enabled: false },
                           scrollBeyondLastLine: false,
-                          fontSize: 13,
+                          fontSize: 12,
+                          lineHeight: 18,
                           fontFamily: "'SF Mono', Monaco, 'Courier New', monospace",
                           wordWrap: "off",
                           automaticLayout: true,
                           scrollbar: {
                             vertical: 'hidden',
                             horizontal: 'auto',
-                            verticalScrollbarSize: 10,
-                            horizontalScrollbarSize: 10,
+                            verticalScrollbarSize: 8,
+                            horizontalScrollbarSize: 8,
                             alwaysConsumeMouseWheel: false,
                           },
                           lineNumbers: "on",
@@ -266,8 +284,8 @@ export function GitDiffViewer({ diffs, isLoading }: GitDiffViewerProps) {
                           diffWordWrap: "off",
                           renderIndicators: true,
                           renderMarginRevertIcon: false,
-                          lineDecorationsWidth: 3,
-                          lineNumbersMinChars: 4,
+                          lineDecorationsWidth: 2,
+                          lineNumbersMinChars: 3,
                           glyphMargin: false,
                           folding: false,
                           contextmenu: false,
@@ -275,6 +293,7 @@ export function GitDiffViewer({ diffs, isLoading }: GitDiffViewerProps) {
                           guides: {
                             indentation: false,
                           },
+                          padding: { top: 2, bottom: 2 },
                           hideUnchangedRegions: {
                             enabled: true,
                             revealLineCount: 3,

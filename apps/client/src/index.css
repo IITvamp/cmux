@@ -222,6 +222,16 @@
   }
 }
 
+/* Hide scrollbars while keeping scroll functional */
+.hide-scrollbar {
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
+}
+.hide-scrollbar::-webkit-scrollbar {
+  width: 0px; /* Chrome, Safari, Opera */
+  height: 0px;
+}
+
 /* Lexical Editor Styles */
 .editor-container {
   @apply relative;

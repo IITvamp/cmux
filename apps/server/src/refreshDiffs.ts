@@ -170,19 +170,41 @@ export async function refreshDiffsForTaskRun(taskRunId: string): Promise<{ succe
           }
         }
         
-        // Store the diff
-        await convex.mutation(api.gitDiffs.upsertDiff, {
+        // Decide whether to omit large content to respect Convex 1 MiB limit
+        const patchSize = !isBinary && patch ? Buffer.byteLength(patch, 'utf8') : 0;
+        const oldSize = oldContent ? Buffer.byteLength(oldContent, 'utf8') : 0;
+        const newSize = newContent ? Buffer.byteLength(newContent, 'utf8') : 0;
+        const totalApprox = patchSize + oldSize + newSize;
+        const MAX_DOC_SIZE = 950 * 1024; // keep margin under 1 MiB
+        let payload: any = {
           taskRunId: taskRunId as Id<"taskRuns">,
           filePath,
           oldPath: status === "renamed" ? oldPath : undefined,
           status,
           additions,
           deletions,
-          patch: !isBinary ? patch : undefined,
-          oldContent,
-          newContent,
           isBinary,
-        });
+          patchSize,
+          oldSize,
+          newSize,
+        };
+        if (!isBinary && totalApprox <= MAX_DOC_SIZE) {
+          payload.patch = patch;
+          payload.oldContent = oldContent;
+          payload.newContent = newContent;
+          payload.contentOmitted = false;
+        } else if (!isBinary) {
+          // Try keep patch if alone it's small
+          payload.patch = patchSize < MAX_DOC_SIZE ? patch : undefined;
+          payload.oldContent = undefined;
+          payload.newContent = undefined;
+          payload.contentOmitted = true;
+        } else {
+          payload.contentOmitted = false;
+        }
+
+        // Store the diff
+        await convex.mutation(api.gitDiffs.upsertDiff, payload);
         
         serverLogger.info(`[RefreshDiffs] Stored diff for ${filePath}: ${status} (+${additions}/-${deletions})`);
       }

@@ -52,6 +52,11 @@ export default defineSchema({
     patch: v.optional(v.string()), // Diff patch content
     oldContent: v.optional(v.string()), // Original file content
     newContent: v.optional(v.string()), // New file content
+    // For very large diffs, we omit content from Convex to stay under 1 MiB limit
+    contentOmitted: v.optional(v.boolean()),
+    oldSize: v.optional(v.number()),
+    newSize: v.optional(v.number()),
+    patchSize: v.optional(v.number()),
     isBinary: v.boolean(), // Whether file is binary
     createdAt: v.number(),
     updatedAt: v.number(),

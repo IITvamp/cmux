@@ -324,6 +324,10 @@ export interface ClientToServerEvents {
     data: { taskRunId: string },
     callback: (response: { success: boolean; message?: string }) => void
   ) => void;
+  "git-diff-file-contents": (
+    data: { taskRunId: string; filePath: string },
+    callback: (response: { ok: true; oldContent: string; newContent: string; isBinary: boolean } | { ok: false; error: string }) => void
+  ) => void;
   "open-in-editor": (
     data: OpenInEditor,
     callback: (response: OpenInEditorResponse) => void
