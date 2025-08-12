@@ -139,34 +139,24 @@ export class TaskCompletionDetector extends EventEmitter {
       const newLines = lines.slice(this.lastCheckedPosition || 0);
       this.lastCheckedPosition = lines.length;
 
-      // Check the last few messages for completion indicators
-      for (let i = newLines.length - 1; i >= Math.max(0, newLines.length - 5); i--) {
-        const line = newLines[i];
-        if (!line) continue;
-        try {
-          const message = JSON.parse(line);
-          
-          // Check if this is an assistant message with stop_reason
-          if (message.type === "assistant" && message.message) {
-            const stopReason = message.message.stop_reason;
+      // Simple completion detection: check if the last message is from assistant
+      // If Claude is still working, there would be a user message after (with tool results)
+      if (lines.length > 0) {
+        const lastLine = lines[lines.length - 1];
+        if (lastLine) {
+          try {
+            const lastMessage = JSON.parse(lastLine);
             
-            // Claude Code is complete when stop_reason is "end_turn" or "stop_sequence"
-            if (stopReason === "end_turn" || stopReason === "stop_sequence") {
-              log("INFO", `Claude task complete: stop_reason = ${stopReason}`);
+            // If the last message in the file is from assistant, task is complete
+            if (lastMessage.type === "assistant") {
+              log("INFO", `Claude task complete: last message is from assistant`);
               log("INFO", `Claude completion detected in file: ${latestFile}`);
-              log("INFO", `Message type: ${message.type}, timestamp: ${message.timestamp}`);
+              log("INFO", `Message type: ${lastMessage.type}, timestamp: ${lastMessage.timestamp}`);
               return true;
             }
+          } catch (e) {
+            log("WARN", `Failed to parse last line: ${e}`);
           }
-          
-          // Also check for error states that indicate completion
-          if (message.error || message.message?.error) {
-            log("INFO", "Claude task complete: error encountered");
-            return true;
-          }
-        } catch (e) {
-          // Skip lines that aren't valid JSON
-          continue;
         }
       }
 

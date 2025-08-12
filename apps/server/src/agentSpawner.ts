@@ -1783,7 +1783,20 @@ export async function spawnAgent(
           }
           
           // Use worker:exec to check the Claude project file
-          const checkCmd = `tail -1 /root/.claude/projects/-root-workspace/*.jsonl 2>/dev/null | python3 -c "import sys, json; try: d=json.loads(sys.stdin.read()); print(d.get('message', {}).get('stop_reason', '')) except: print('')" 2>/dev/null || echo ""`;
+          // Simple detection: if the last message is from assistant, task is complete
+          // (If still working, there would be a user message with tool results after)
+          const checkCmd = `tail -1 /root/.claude/projects/-root-workspace/*.jsonl 2>/dev/null | python3 -c "
+import sys, json
+try:
+    d = json.loads(sys.stdin.read())
+    # If the last message is from assistant, the task is complete
+    if d.get('type') == 'assistant':
+        print('completed')
+    else:
+        print('')
+except:
+    print('')
+" 2>/dev/null || echo ""`;
           
           const workerSocket = vscodeInstance.getWorkerSocket();
           if (!workerSocket || !vscodeInstance.isWorkerConnected()) {
@@ -1800,7 +1813,7 @@ export async function spawnAgent(
                   cwd: "/root/workspace",
                 },
                 (response: any) => {
-                  if (response.error) {
+                  if (!response || response.error) {
                     resolve({ success: false });
                   } else {
                     resolve({ success: true, stdout: response.data?.stdout || "" });
@@ -1809,8 +1822,8 @@ export async function spawnAgent(
               );
           });
           
-          if (result.stdout && (result.stdout.trim() === "end_turn" || result.stdout.trim() === "stop_sequence")) {
-            serverLogger.info(`[AgentSpawner] Claude agent ${agent.name} completed (detected stop_reason: ${result.stdout.trim()})`);
+          if (result.stdout && result.stdout.trim() === "completed") {
+            serverLogger.info(`[AgentSpawner] Claude agent ${agent.name} completed (detected via periodic check)`);
             clearInterval(checkInterval);
             
             // Wait for filesystem to settle
