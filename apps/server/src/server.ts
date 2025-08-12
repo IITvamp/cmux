@@ -36,6 +36,7 @@ import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWorktreePath } from "./workspace.js";
 import { evaluateCrownWithClaudeCode } from "./crownEvaluator.js";
+import { refreshDiffsForTaskRun } from "./refreshDiffs.js";
 import type { Id } from "@cmux/convex/dataModel";
 
 const execAsync = promisify(exec);
@@ -217,6 +218,23 @@ export async function startServer({
         socket.emit("git-full-diff-response", {
           diff: "",
           error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    });
+
+    socket.on("refresh-diffs", async (data, callback) => {
+      try {
+        const { taskRunId } = data;
+        serverLogger.info(`[Server] Refresh diffs requested for taskRun ${taskRunId}`);
+        
+        // Use the simplified approach that works directly with the filesystem
+        const result = await refreshDiffsForTaskRun(taskRunId);
+        callback(result);
+      } catch (error) {
+        serverLogger.error("Error refreshing diffs:", error);
+        callback({ 
+          success: false, 
+          message: error instanceof Error ? error.message : "Unknown error" 
         });
       }
     });

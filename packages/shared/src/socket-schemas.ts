@@ -320,6 +320,10 @@ export interface ClientToServerEvents {
   "git-status": (data: GitStatusRequest) => void;
   "git-diff": (data: GitDiffRequest) => void;
   "git-full-diff": (data: GitFullDiffRequest) => void;
+  "refresh-diffs": (
+    data: { taskRunId: string },
+    callback: (response: { success: boolean; message?: string }) => void
+  ) => void;
   "open-in-editor": (
     data: OpenInEditor,
     callback: (response: OpenInEditorResponse) => void

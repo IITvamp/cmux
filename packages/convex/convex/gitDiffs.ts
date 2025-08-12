@@ -4,10 +4,13 @@ import { mutation, query } from "./_generated/server";
 export const getByTaskRun = query({
   args: { taskRunId: v.id("taskRuns") },
   handler: async (ctx, args) => {
-    return await ctx.db
+    const results = await ctx.db
       .query("gitDiffs")
       .withIndex("by_taskRun", (q) => q.eq("taskRunId", args.taskRunId))
       .collect();
+    
+    console.log(`[gitDiffs.getByTaskRun] Found ${results.length} diffs for taskRun ${args.taskRunId}`);
+    return results;
   },
 });
 

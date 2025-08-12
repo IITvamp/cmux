@@ -1,5 +1,4 @@
 import { api } from "@cmux/convex/api";
-
 import type { Id } from "@cmux/convex/dataModel";
 import {
   AGENT_CONFIGS,
@@ -7,6 +6,8 @@ import {
   type EnvironmentResult,
 } from "@cmux/shared/agentConfig";
 import type { WorkerCreateTerminal } from "@cmux/shared/worker-schemas";
+import { promises as fs } from "node:fs";
+import * as path from "node:path";
 import { convex } from "./utils/convexClient.js";
 import { serverLogger } from "./utils/fileLogger.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
@@ -26,6 +27,163 @@ function sanitizeTmuxSessionName(name: string): string {
   // Replace all invalid characters with underscores
   // Allow only alphanumeric characters, hyphens, and underscores
   return name.replace(/[^a-zA-Z0-9_-]/g, "_");
+}
+
+/**
+ * Parse git diff output and store in Convex gitDiffs table
+ */
+export async function storeGitDiffs(taskRunId: Id<"taskRuns">, gitDiff: string, vscodeInstance?: VSCodeInstance, worktreePath?: string): Promise<void> {
+  try {
+    serverLogger.info(`[AgentSpawner] Parsing and storing git diffs for taskRun ${taskRunId}`);
+    
+    // Parse git status section if present
+    const statusMatch = gitDiff.match(/=== Git Status \(porcelain\) ===\n([\s\S]*?)\n\n/);
+    const statusLines = statusMatch ? statusMatch[1].split('\n').filter(l => l.trim()) : [];
+    
+    // Parse files from git diff
+    const diffSections = gitDiff.split(/^diff --git /m).slice(1);
+    serverLogger.info(`[AgentSpawner] Found ${diffSections.length} diff sections to parse`);
+    
+    for (const section of diffSections) {
+      // Extract file paths - handle spaces in filenames
+      const fileMatch = section.match(/^a\/(.*?) b\/(.*)$/m);
+      if (!fileMatch) {
+        serverLogger.warn(`[AgentSpawner] Could not parse file paths from diff section: ${section.substring(0, 100)}`);
+        continue;
+      }
+      
+      const oldPath = fileMatch[1];
+      const newPath = fileMatch[2];
+      const filePath = newPath !== '/dev/null' ? newPath : oldPath;
+      
+      // Determine status
+      let status: "added" | "modified" | "deleted" | "renamed" = "modified";
+      if (section.includes('new file mode')) {
+        status = "added";
+      } else if (section.includes('deleted file mode')) {
+        status = "deleted";
+      } else if (section.includes('rename from')) {
+        status = "renamed";
+      }
+      
+      // Count additions and deletions
+      const additions = (section.match(/^\+[^+]/gm) || []).length;
+      const deletions = (section.match(/^-[^-]/gm) || []).length;
+      
+      // Extract the patch content
+      const patchMatch = section.match(/^@@[\s\S]*/m);
+      const patch = patchMatch ? patchMatch[0] : '';
+      
+      // Check if binary
+      const isBinary = section.includes('Binary files') || section.includes('differ');
+      
+      // Try to read file contents if we have worktreePath
+      let oldContent: string | undefined;
+      let newContent: string | undefined;
+      
+      if (worktreePath && !isBinary) {
+        const fullPath = path.join(worktreePath, filePath);
+        
+        try {
+          if (status === "deleted") {
+            // For deleted files, we can't read the current content, but we could get it from git
+            // For now, just use the patch
+            oldContent = undefined;
+            newContent = undefined;
+          } else if (status === "added") {
+            // For added files, there's no old content
+            oldContent = "";
+            newContent = await fs.readFile(fullPath, 'utf-8');
+          } else {
+            // For modified files, read the current content
+            // We'd need to use git show HEAD:filepath to get the old content
+            // For now, just get the new content
+            newContent = await fs.readFile(fullPath, 'utf-8');
+            
+            // Try to get old content using git
+            try {
+              const { exec } = await import('node:child_process');
+              const { promisify } = await import('node:util');
+              const execAsync = promisify(exec);
+              
+              const result = await execAsync(
+                `git show HEAD:"${filePath}"`,
+                { cwd: worktreePath }
+              );
+              oldContent = result.stdout;
+            } catch (error) {
+              // If git show fails (e.g., file is new), use empty string
+              oldContent = "";
+              serverLogger.info(`[AgentSpawner] Could not get old content for ${filePath}, assuming new file`);
+            }
+          }
+        } catch (error) {
+          serverLogger.warn(`[AgentSpawner] Could not read file ${fullPath}:`, error);
+        }
+      }
+      
+      // Store the diff
+      await convex.mutation(api.gitDiffs.upsertDiff, {
+        taskRunId,
+        filePath,
+        oldPath: status === "renamed" ? oldPath : undefined,
+        status,
+        additions,
+        deletions,
+        patch: !isBinary ? patch : undefined,
+        oldContent,
+        newContent,
+        isBinary,
+      });
+      
+      serverLogger.info(`[AgentSpawner] Stored diff for ${filePath}: ${status} (+${additions}/-${deletions})`);
+    }
+    
+    // Also handle files from git status that might not be in the diff
+    for (const statusLine of statusLines) {
+      const [statusCode, ...pathParts] = statusLine.trim().split(/\s+/);
+      const filePath = pathParts.join(' ');
+      
+      if (!filePath) continue;
+      
+      // Map git status codes to our status types
+      let status: "added" | "modified" | "deleted" | "renamed" = "modified";
+      if (statusCode.includes('A') || statusCode === '??') {
+        status = "added";
+      } else if (statusCode.includes('D')) {
+        status = "deleted";
+      } else if (statusCode.includes('R')) {
+        status = "renamed";
+      }
+      
+      // Check if we already stored this file from the diff
+      const alreadyStored = diffSections.some(section => 
+        section.includes(filePath)
+      );
+      
+      if (!alreadyStored) {
+        await convex.mutation(api.gitDiffs.upsertDiff, {
+          taskRunId,
+          filePath,
+          status,
+          additions: 0,
+          deletions: 0,
+          isBinary: false,
+        });
+        
+        serverLogger.info(`[AgentSpawner] Stored status-only diff for ${filePath}: ${status}`);
+      }
+    }
+    
+    // Update the timestamp
+    await convex.mutation(api.gitDiffs.updateDiffsTimestamp, {
+      taskRunId,
+    });
+    
+    serverLogger.info(`[AgentSpawner] Successfully stored all diffs for taskRun ${taskRunId}`);
+  } catch (error) {
+    serverLogger.error(`[AgentSpawner] Error storing git diffs:`, error);
+  }
 }
 
 /**
@@ -1131,6 +1289,10 @@ export async function spawnAgent(
     serverLogger.info(
       `VSCode instance spawned for agent ${agent.name}: ${vscodeUrl}`
     );
+    
+    // Start file watching for real-time diff updates
+    serverLogger.info(`[AgentSpawner] Starting file watch for ${agent.name} at ${worktreePath}`);
+    vscodeInstance.startFileWatch(worktreePath);
 
     // Handler for completing the task
     const handleTaskCompletion = async (exitCode: number = 0) => {
@@ -1148,13 +1310,16 @@ export async function spawnAgent(
         serverLogger.info(`[AgentSpawner] Captured git diff for ${agent.name}: ${gitDiff.length} chars`);
         serverLogger.info(`[AgentSpawner] First 100 chars of diff: ${gitDiff.substring(0, 100)}`);
         
-        // Append git diff to the log
+        // Append git diff to the log AND store in gitDiffs table
         if (gitDiff && gitDiff.length > 0) {
           await convex.mutation(api.taskRuns.appendLogPublic, {
             id: taskRunId as Id<"taskRuns">,
             content: `\n\n=== GIT DIFF ===\n${gitDiff}\n=== END GIT DIFF ===\n`,
           });
           serverLogger.info(`[AgentSpawner] Successfully appended ${gitDiff.length} chars of git diff to log for ${taskRunId}`);
+          
+          // Parse and store the diff in the gitDiffs table
+          await storeGitDiffs(taskRunId as Id<"taskRuns">, gitDiff, vscodeInstance, worktreePath);
         } else {
           serverLogger.error(`[AgentSpawner] NO GIT DIFF TO APPEND for ${agent.name} (${taskRunId})`);
           serverLogger.error(`[AgentSpawner] This will cause crown evaluation to fail!`);
@@ -1299,6 +1464,42 @@ export async function spawnAgent(
       }
     });
 
+    // Set up file change event handler for real-time diff updates
+    vscodeInstance.on("file-changes", async (data) => {
+      serverLogger.info(
+        `[AgentSpawner] File changes detected for ${agent.name}:`,
+        { changeCount: data.changes.length, taskId: data.taskId }
+      );
+      
+      // Store the incremental diffs in Convex
+      if (data.taskId === taskRunId && data.fileDiffs.length > 0) {
+        for (const fileDiff of data.fileDiffs) {
+          const relativePath = path.relative(worktreePath, fileDiff.path);
+          
+          await convex.mutation(api.gitDiffs.upsertDiff, {
+            taskRunId: taskRunId as Id<"taskRuns">,
+            filePath: relativePath,
+            status: fileDiff.type as "added" | "modified" | "deleted",
+            additions: (fileDiff.patch.match(/^\+[^+]/gm) || []).length,
+            deletions: (fileDiff.patch.match(/^-[^-]/gm) || []).length,
+            patch: fileDiff.patch,
+            oldContent: fileDiff.oldContent,
+            newContent: fileDiff.newContent,
+            isBinary: false,
+          });
+        }
+        
+        // Update the timestamp
+        await convex.mutation(api.gitDiffs.updateDiffsTimestamp, {
+          taskRunId: taskRunId as Id<"taskRuns">,
+        });
+        
+        serverLogger.info(
+          `[AgentSpawner] Stored ${data.fileDiffs.length} incremental diffs for ${agent.name}`
+        );
+      }
+    });
+
     // Set up terminal-idle event handler
     vscodeInstance.on("terminal-idle", async (data) => {
       serverLogger.info(
@@ -1325,6 +1526,8 @@ export async function spawnAgent(
         serverLogger.info(`[AgentSpawner] Waiting 3 seconds for file system to settle before capturing git diff...`);
         await new Promise(resolve => setTimeout(resolve, 3000));
         
+        // Stop file watching before completing
+        vscodeInstance.stopFileWatch();
         await handleTaskCompletion(0);
       } else {
         serverLogger.warn(`[AgentSpawner] Task ID did not match, ignoring idle event`);

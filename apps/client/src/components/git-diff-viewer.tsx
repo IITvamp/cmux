@@ -1,9 +1,9 @@
 import { DiffEditor } from "@monaco-editor/react";
 import { useTheme } from "@/components/theme/use-theme";
-import { useState } from "react";
 import { cn } from "@/lib/utils";
-import { FileText } from "lucide-react";
+import { ChevronDown, ChevronRight, FileText, FilePlus, FileMinus, FileEdit, FileCode } from "lucide-react";
 import type { Doc } from "@cmux/convex/dataModel";
+import { useState, useEffect, useRef } from "react";
 
 interface GitDiffViewerProps {
   diffs: Doc<"gitDiffs">[];
@@ -23,7 +23,9 @@ interface FileGroup {
 
 export function GitDiffViewer({ diffs, isLoading }: GitDiffViewerProps) {
   const { theme } = useTheme();
-  const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
+  const [editorHeights, setEditorHeights] = useState<Record<string, number>>({});
+  const editorRefs = useRef<Record<string, any>>({});
 
   // Group diffs by file
   const fileGroups: FileGroup[] = diffs.map(diff => ({
@@ -37,36 +39,68 @@ export function GitDiffViewer({ diffs, isLoading }: GitDiffViewerProps) {
     isBinary: diff.isBinary,
   }));
 
-  const selectedDiff = fileGroups.find(f => f.filePath === selectedFile);
+  // Auto-expand files on initial load or when diffs change
+  useEffect(() => {
+    // Expand all files by default (like GitHub)
+    setExpandedFiles(new Set(fileGroups.map(f => f.filePath)));
+  }, [diffs]);
+
+  const toggleFile = (filePath: string) => {
+    const newExpanded = new Set(expandedFiles);
+    if (newExpanded.has(filePath)) {
+      newExpanded.delete(filePath);
+    } else {
+      newExpanded.add(filePath);
+    }
+    setExpandedFiles(newExpanded);
+  };
+
+  const expandAll = () => {
+    setExpandedFiles(new Set(fileGroups.map(f => f.filePath)));
+  };
+
+  const collapseAll = () => {
+    setExpandedFiles(new Set());
+  };
 
   const getStatusColor = (status: Doc<"gitDiffs">["status"]) => {
     switch (status) {
       case "added":
-        return "text-green-500";
+        return "text-green-600 dark:text-green-400";
       case "deleted":
-        return "text-red-500";
+        return "text-red-600 dark:text-red-400";
       case "modified":
-        return "text-yellow-500";
+        return "text-yellow-600 dark:text-yellow-400";
       case "renamed":
-        return "text-blue-500";
+        return "text-blue-600 dark:text-blue-400";
       default:
         return "text-neutral-500";
     }
   };
 
-  const getStatusLabel = (status: Doc<"gitDiffs">["status"]) => {
+  const getStatusIcon = (status: Doc<"gitDiffs">["status"]) => {
+    const iconClass = "w-4 h-4 flex-shrink-0";
     switch (status) {
       case "added":
-        return "A";
+        return <FilePlus className={iconClass} />;
       case "deleted":
-        return "D";
+        return <FileMinus className={iconClass} />;
       case "modified":
-        return "M";
+        return <FileEdit className={iconClass} />;
       case "renamed":
-        return "R";
+        return <FileCode className={iconClass} />;
       default:
-        return "?";
+        return <FileText className={iconClass} />;
     }
+  };
+
+  // Calculate editor height based on content
+  const calculateEditorHeight = (oldContent: string, newContent: string) => {
+    const oldLines = oldContent.split('\n').length;
+    const newLines = newContent.split('\n').length;
+    const maxLines = Math.max(oldLines, newLines);
+    // 20px per line + padding, min 200px, max 800px for very large files
+    return Math.min(Math.max(200, maxLines * 20 + 40), 800);
   };
 
   if (isLoading) {
@@ -89,73 +123,165 @@ export function GitDiffViewer({ diffs, isLoading }: GitDiffViewerProps) {
     );
   }
 
+  const totalAdditions = diffs.reduce((sum, d) => sum + d.additions, 0);
+  const totalDeletions = diffs.reduce((sum, d) => sum + d.deletions, 0);
+
   return (
-    <div className="flex h-full">
-      {/* File list sidebar */}
-      <div className="w-80 border-r border-neutral-200 dark:border-neutral-800 overflow-y-auto">
-        <div className="p-3 border-b border-neutral-200 dark:border-neutral-800">
-          <div className="text-sm font-medium">
-            {diffs.length} changed files
-          </div>
-          <div className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
-            +{diffs.reduce((sum, d) => sum + d.additions, 0)} -{diffs.reduce((sum, d) => sum + d.deletions, 0)}
-          </div>
-        </div>
-        
-        <div className="p-2">
-          {fileGroups.map((file) => (
-            <button
-              key={file.filePath}
-              onClick={() => setSelectedFile(file.filePath)}
-              className={cn(
-                "w-full text-left px-2 py-1.5 rounded text-xs hover:bg-neutral-100 dark:hover:bg-neutral-800 flex items-center gap-2",
-                selectedFile === file.filePath && "bg-neutral-100 dark:bg-neutral-800"
-              )}
-            >
-              <span className={cn("font-mono font-bold", getStatusColor(file.status))}>
-                {getStatusLabel(file.status)}
+    <div className="h-full overflow-y-auto bg-neutral-50 dark:bg-neutral-950">
+      {/* Header with summary - GitHub style */}
+      <div className="sticky top-0 z-10 bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800">
+        <div className="px-4 py-2 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <div className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+              {diffs.length} changed {diffs.length === 1 ? 'file' : 'files'}
+            </div>
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-green-600 dark:text-green-400 font-medium">
+                +{totalAdditions}
               </span>
-              <FileText className="w-3.5 h-3.5 text-neutral-400" />
-              <div className="flex-1 truncate">
-                <div className="truncate">{file.filePath}</div>
-                <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                  +{file.additions} -{file.deletions}
-                </div>
-              </div>
+              <span className="text-red-600 dark:text-red-400 font-medium">
+                −{totalDeletions}
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={expandAll}
+              className="text-xs px-3 py-1 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-400 font-medium"
+            >
+              Expand all
             </button>
-          ))}
+            <button
+              onClick={collapseAll}
+              className="text-xs px-3 py-1 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-400 font-medium"
+            >
+              Collapse all
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Diff viewer */}
-      <div className="flex-1">
-        {selectedDiff ? (
-          selectedDiff.isBinary ? (
-            <div className="flex items-center justify-center h-full text-neutral-500 dark:text-neutral-400">
-              Binary file not shown
+      {/* Diff sections */}
+      <div className="p-4 space-y-4">
+        {fileGroups.map((file) => {
+          const isExpanded = expandedFiles.has(file.filePath);
+          const editorHeight = editorHeights[file.filePath] || calculateEditorHeight(file.oldContent, file.newContent);
+          
+          return (
+            <div 
+              key={file.filePath} 
+              className="bg-white dark:bg-neutral-900 rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden"
+            >
+              {/* File header - GitHub style */}
+              <button
+                onClick={() => toggleFile(file.filePath)}
+                className="w-full px-4 py-2 flex items-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors text-left group"
+              >
+                <div className="text-neutral-400 dark:text-neutral-500 group-hover:text-neutral-600 dark:group-hover:text-neutral-400">
+                  {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                </div>
+                <div className={cn("flex-shrink-0", getStatusColor(file.status))}>
+                  {getStatusIcon(file.status)}
+                </div>
+                <div className="flex-1 min-w-0 flex items-center gap-3">
+                  <span className="font-mono text-sm text-neutral-700 dark:text-neutral-300 truncate">
+                    {file.filePath}
+                  </span>
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="text-green-600 dark:text-green-400 font-medium">
+                      +{file.additions}
+                    </span>
+                    <span className="text-red-600 dark:text-red-400 font-medium">
+                      −{file.deletions}
+                    </span>
+                  </div>
+                </div>
+              </button>
+
+              {/* Diff content */}
+              {isExpanded && (
+                <div className="border-t border-neutral-200 dark:border-neutral-800">
+                  {file.isBinary ? (
+                    <div className="px-4 py-8 text-center text-neutral-500 dark:text-neutral-400 text-sm bg-neutral-50 dark:bg-neutral-900/50">
+                      Binary file not shown
+                    </div>
+                  ) : file.status === "deleted" ? (
+                    <div className="px-4 py-8 text-center text-neutral-500 dark:text-neutral-400 text-sm bg-neutral-50 dark:bg-neutral-900/50">
+                      File was deleted
+                    </div>
+                  ) : (
+                    <div style={{ height: `${editorHeight}px` }}>
+                      <DiffEditor
+                        original={file.oldContent}
+                        modified={file.newContent}
+                        language={getLanguageFromPath(file.filePath)}
+                        theme={theme === "dark" ? "vs-dark" : "vs"}
+                        onMount={(editor) => {
+                          editorRefs.current[file.filePath] = editor;
+                          // Auto-adjust height based on content
+                          const updateHeight = () => {
+                            const modifiedEditor = editor.getModifiedEditor();
+                            const originalEditor = editor.getOriginalEditor();
+                            if (modifiedEditor && originalEditor) {
+                              const modifiedContentHeight = modifiedEditor.getContentHeight();
+                              const originalContentHeight = originalEditor.getContentHeight();
+                              const newHeight = Math.min(
+                                Math.max(200, Math.max(modifiedContentHeight, originalContentHeight) + 20),
+                                800
+                              );
+                              if (newHeight !== editorHeights[file.filePath]) {
+                                setEditorHeights(prev => ({
+                                  ...prev,
+                                  [file.filePath]: newHeight
+                                }));
+                              }
+                            }
+                          };
+                          // Update height on content change
+                          setTimeout(updateHeight, 100);
+                        }}
+                        options={{
+                          readOnly: true,
+                          renderSideBySide: true,
+                          minimap: { enabled: false },
+                          scrollBeyondLastLine: false,
+                          fontSize: 13,
+                          fontFamily: "'SF Mono', Monaco, 'Courier New', monospace",
+                          wordWrap: "off",
+                          automaticLayout: true,
+                          scrollbar: {
+                            vertical: 'auto',
+                            horizontal: 'auto',
+                            verticalScrollbarSize: 10,
+                            horizontalScrollbarSize: 10,
+                            alwaysConsumeMouseWheel: false,
+                          },
+                          lineNumbers: "on",
+                          renderLineHighlight: "none",
+                          hideCursorInOverviewRuler: true,
+                          overviewRulerBorder: false,
+                          renderValidationDecorations: "off",
+                          diffWordWrap: "off",
+                          renderIndicators: true,
+                          renderMarginRevertIcon: false,
+                          lineDecorationsWidth: 3,
+                          lineNumbersMinChars: 4,
+                          glyphMargin: false,
+                          folding: false,
+                          contextmenu: false,
+                          renderWhitespace: "selection",
+                          guides: {
+                            indentation: false,
+                          },
+                        }}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-          ) : (
-            <DiffEditor
-              original={selectedDiff.oldContent}
-              modified={selectedDiff.newContent}
-              language={getLanguageFromPath(selectedDiff.filePath)}
-              theme={theme === "dark" ? "vs-dark" : "light"}
-              options={{
-                readOnly: true,
-                renderSideBySide: true,
-                minimap: { enabled: false },
-                scrollBeyondLastLine: false,
-                fontSize: 12,
-                wordWrap: "on",
-                automaticLayout: true,
-              }}
-            />
-          )
-        ) : (
-          <div className="flex items-center justify-center h-full text-neutral-500 dark:text-neutral-400">
-            Select a file to view changes
-          </div>
-        )}
+          );
+        })}
       </div>
     </div>
   );

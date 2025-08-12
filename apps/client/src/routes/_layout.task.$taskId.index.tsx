@@ -1,6 +1,7 @@
 import { FloatingPane } from "@/components/floating-pane";
 import { GitDiffViewer } from "@/components/git-diff-viewer";
 import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
+import { useSocket } from "@/contexts/socket/use-socket";
 import { api } from "@cmux/convex/api";
 import { type Id } from "@cmux/convex/dataModel";
 import { convexQuery } from "@convex-dev/react-query";
@@ -51,6 +52,7 @@ function TaskDetailPage() {
   const [isHovering, setIsHovering] = useState(false);
   const [prIsOpen, setPrIsOpen] = useState(false); // Track if PR is open
   const [isCheckingDiffs, setIsCheckingDiffs] = useState(false);
+  const { socket } = useSocket();
 
   const task = useQuery(api.tasks.getById, {
     id: taskId as Id<"tasks">,
@@ -80,6 +82,10 @@ function TaskDetailPage() {
     api.gitDiffs.getByTaskRun,
     selectedRun ? { taskRunId: selectedRun._id } : "skip"
   );
+  
+  // Debug logging
+  console.log("Selected run:", selectedRun?._id);
+  console.log("Diffs fetched:", diffs?.length, diffs);
 
   // Check for new changes on mount and periodically
   useEffect(() => {
@@ -87,12 +93,31 @@ function TaskDetailPage() {
 
     const checkForChanges = async () => {
       setIsCheckingDiffs(true);
-      // TODO: Implement actual diff fetching from git
-      // This would call a server endpoint that:
-      // 1. Runs git diff in the worktree
-      // 2. Compares with stored diffs
-      // 3. Updates if different
-      setTimeout(() => setIsCheckingDiffs(false), 1000);
+      
+      try {
+        // Use Socket.IO to request diff refresh from the server
+        if (!socket) {
+          console.warn("Socket not available");
+          setIsCheckingDiffs(false);
+          return;
+        }
+        
+        socket.emit("refresh-diffs", 
+          { taskRunId: selectedRun._id },
+          (response: { success: boolean; message?: string }) => {
+            if (response.success) {
+              console.log("Diff refresh:", response.message);
+              // The diffs will be updated reactively via the useQuery hook
+            } else {
+              console.log("Could not refresh diffs:", response.message);
+            }
+            setIsCheckingDiffs(false);
+          }
+        );
+      } catch (error) {
+        console.error("Error refreshing diffs:", error);
+        setIsCheckingDiffs(false);
+      }
     };
 
     // Check on mount
@@ -290,7 +315,7 @@ function TaskDetailPage() {
     <FloatingPane header={header}>
       {/* Git diff viewer */}
       <div className="flex-1 overflow-hidden bg-white dark:bg-neutral-950">
-        <GitDiffViewer diffs={diffs || []} isLoading={!diffs && !!crownedRun} />
+        <GitDiffViewer diffs={diffs || []} isLoading={!diffs && !!selectedRun} />
       </div>
     </FloatingPane>
   );
