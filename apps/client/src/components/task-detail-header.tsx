@@ -17,7 +17,7 @@ import {
   RefreshCw,
   Trash2,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { toast } from "sonner";
 
 interface TaskDetailHeaderProps {
@@ -53,6 +53,23 @@ export function TaskDetailHeader({
   const clipboard = useClipboard({ timeout: 2000 });
   const [prIsOpen, setPrIsOpen] = useState(false);
   const { socket } = useSocket();
+  const [agentMenuOpen, setAgentMenuOpen] = useState(false);
+  const handleAgentOpenChange = useCallback((...args: unknown[]) => {
+    const maybe = args[0] as unknown;
+    if (typeof maybe === "boolean") {
+      setAgentMenuOpen(maybe);
+      return;
+    }
+    if (
+      maybe &&
+      typeof (maybe as { open?: unknown }).open !== "undefined"
+    ) {
+      setAgentMenuOpen(Boolean((maybe as { open?: unknown }).open));
+      return;
+    }
+    // Fallback toggle
+    setAgentMenuOpen((v) => !v);
+  }, []);
 
   // Determine if there are any diffs to open a PR for
   const hasChanges = useMemo(() => {
@@ -259,8 +276,16 @@ export function TaskDetailHeader({
           {taskRuns && taskRuns.length > 0 && (
             <>
               <span className="text-neutral-600">by</span>
-              <Dropdown.Root>
-                <Dropdown.Trigger className="flex items-center gap-1 text-neutral-300 hover:text-white transition-colors text-xs">
+              <Dropdown.Root
+                open={agentMenuOpen}
+                onOpenChange={
+                  handleAgentOpenChange as import("./ui/dropdown").DropdownRootProps["onOpenChange"]
+                }
+              >
+                <Dropdown.Trigger
+                  className="flex items-center gap-1 text-neutral-300 hover:text-white transition-colors text-xs"
+                  onClick={() => setAgentMenuOpen((v) => !v)}
+                >
                   <span>{selectedRun?.agentName || "Unknown agent"}</span>
                   <ChevronDown className="w-3 h-3" />
                 </Dropdown.Trigger>
@@ -287,7 +312,11 @@ export function TaskDetailHeader({
                                   search: { runId: run._id },
                                 });
                               }
+                              // Close dropdown after selection
+                              setAgentMenuOpen(false);
                             }}
+                            // Also close when selecting the same option
+                            onClick={() => setAgentMenuOpen(false)}
                           >
                             <Dropdown.CheckboxItemIndicator>
                               <Check className="w-3 h-3" />

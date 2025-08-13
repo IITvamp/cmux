@@ -2,12 +2,15 @@ import { Menu } from "@base-ui-components/react/menu";
 import clsx from "clsx";
 import * as React from "react";
 
-export interface DropdownProps {
-  children: React.ReactNode;
-}
+export type DropdownRootProps = React.ComponentPropsWithoutRef<
+  typeof Menu.Root
+>;
 
-export const DropdownRoot: React.FC<DropdownProps> = ({ children }) => {
-  return <Menu.Root>{children}</Menu.Root>;
+export const DropdownRoot: React.FC<DropdownRootProps> = ({
+  children,
+  ...props
+}) => {
+  return <Menu.Root {...props}>{children}</Menu.Root>;
 };
 
 export interface DropdownTriggerProps
@@ -18,10 +21,7 @@ export const DropdownTrigger: React.FC<DropdownTriggerProps> = ({
   ...props
 }) => {
   return (
-    <Menu.Trigger
-      {...props}
-      className={clsx("outline-none", className)}
-    />
+    <Menu.Trigger {...props} className={clsx("outline-none", className)} />
   );
 };
 
@@ -171,14 +171,16 @@ export const DropdownCheckboxItem: React.FC<DropdownCheckboxItemProps> = ({
 export interface DropdownCheckboxItemIndicatorProps
   extends React.ComponentPropsWithoutRef<typeof Menu.CheckboxItemIndicator> {}
 
-export const DropdownCheckboxItemIndicator: React.FC<DropdownCheckboxItemIndicatorProps> = ({
-  className,
-  ...props
-}) => {
+export const DropdownCheckboxItemIndicator: React.FC<
+  DropdownCheckboxItemIndicatorProps
+> = ({ className, ...props }) => {
   return (
     <Menu.CheckboxItemIndicator
       {...props}
-      className={clsx("col-start-1 flex items-center justify-center", className)}
+      className={clsx(
+        "col-start-1 flex items-center justify-center",
+        className
+      )}
     />
   );
 };
