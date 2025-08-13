@@ -18,8 +18,15 @@ const getCodexHelpers = async () => {
   const module = await import("@cmux/shared/src/providers/openai/completion-detector.ts");
   return {
     checkCodexCompletionSince: module.checkCodexCompletionSince,
+    didLatestSessionCompleteInTuiLog: module.didLatestSessionCompleteInTuiLog,
+    getLatestCodexSessionIdSince: module.getLatestCodexSessionIdSince,
+    findCodexRolloutPathForSession: module.findCodexRolloutPathForSession,
+    checkCodexNotifyFileCompletion: module.checkCodexNotifyFileCompletion,
   };
 };
+
+// Other providers will be implemented with provider-specific detectors later
+
 
 interface TaskCompletionOptions {
   taskId: string;
@@ -163,10 +170,18 @@ export class TaskCompletionDetector extends EventEmitter {
 
   private async checkCodexCompletion(): Promise<boolean> {
     try {
+      // Notify-file based completion (no idleness): check codex-turns.jsonl
+      const { checkCodexNotifyFileCompletion } = await getCodexHelpers();
+      const notifyDone = await checkCodexNotifyFileCompletion(this.options.workingDir, this.startTime);
+      if (notifyDone) {
+        log("INFO", "Codex task complete via notify (agent-turn-complete)");
+        return true;
+      }
       // Codex stores session logs in ~/.codex/sessions and codex-tui.log.
       // Use shared detector to find the session since this detector started,
       // then check whether the latest update_plan marks all steps completed.
       const { checkCodexCompletionSince } = await getCodexHelpers();
+      log("INFO", "Invoking checkCodexCompletionSince", { since: this.startTime });
       const res = await checkCodexCompletionSince(this.startTime);
       if (res.isComplete) {
         log("INFO", `Codex task complete via ~/.codex rollout`, {
@@ -174,8 +189,27 @@ export class TaskCompletionDetector extends EventEmitter {
           rolloutPath: res.rolloutPath,
           plan: res.latestPlan,
         });
+        return true;
       }
-      return res.isComplete;
+
+      // Extra debug logging when not complete
+      const {
+        didLatestSessionCompleteInTuiLog,
+        getLatestCodexSessionIdSince,
+        findCodexRolloutPathForSession,
+      } = await getCodexHelpers();
+      const tui = await didLatestSessionCompleteInTuiLog(this.startTime);
+      const sessionId = tui?.sessionId || (await getLatestCodexSessionIdSince(this.startTime));
+      const rolloutPath = sessionId
+        ? await findCodexRolloutPathForSession(sessionId)
+        : undefined;
+      log("INFO", "Codex detector not complete yet", {
+        tuiStatus: tui,
+        sessionId,
+        rolloutPath,
+      });
+
+      return false;
     } catch (error) {
       log("ERROR", `Error checking Codex completion: ${error}`);
       return false;

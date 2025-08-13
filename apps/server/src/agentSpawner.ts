@@ -23,82 +23,6 @@ import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWorktreePath, setupProjectWorkspace } from "./workspace.js";
 
 /**
- * Check Claude completion via remote execution in the container
- * This is a helper that runs the Claude completion check logic remotely
- */
-async function checkClaudeCompletionRemote(
-  vscodeInstance: VSCodeInstance,
-  workingDir: string
-): Promise<boolean> {
-  const workerSocket = vscodeInstance.getWorkerSocket();
-  if (!workerSocket || !vscodeInstance.isWorkerConnected()) {
-    return false;
-  }
-
-  // Use the same logic as the shared module, but execute it remotely
-  // The command checks if the last message in the JSONL file is from assistant
-  const encodedPath = workingDir.replace(/\//g, "-");
-  const checkCmd = `
-    # Check Claude completion
-    CLAUDE_DIR="$HOME/.claude/projects/${encodedPath}"
-    if [ ! -d "$CLAUDE_DIR" ]; then
-      echo "no_dir"
-      exit 0
-    fi
-    
-    # Get most recent JSONL file
-    LATEST_FILE=$(ls -t "$CLAUDE_DIR"/*.jsonl 2>/dev/null | head -1)
-    if [ -z "$LATEST_FILE" ]; then
-      echo "no_file"
-      exit 0
-    fi
-    
-    # Check if last message is from assistant
-    tail -1 "$LATEST_FILE" | python3 -c "
-import sys, json
-try:
-    d = json.loads(sys.stdin.read())
-    if d.get('type') == 'assistant':
-        print('completed')
-    else:
-        print('in_progress')
-except:
-    print('error')
-" 2>/dev/null || echo "error"
-  `.trim();
-
-  try {
-    const result = await new Promise<{ success: boolean; stdout?: string }>((resolve) => {
-      workerSocket
-        .timeout(5000)
-        .emit(
-          "worker:exec",
-          {
-            command: "bash",
-            args: ["-c", checkCmd],
-            cwd: workingDir,
-            env: {},
-          },
-          (timeoutError, response) => {
-            if (timeoutError || response.error) {
-              resolve({ success: false });
-            } else {
-              resolve({ 
-                success: true, 
-                stdout: response.data?.stdout || "" 
-              });
-            }
-          }
-        );
-    });
-
-    return result.success && result.stdout?.trim() === "completed";
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Automatically commit and push changes when a task completes
  */
 async function performAutoCommitAndPush(
@@ -1522,11 +1446,11 @@ export async function spawnAgent(
         data
       );
 
-      // For Claude agents, ignore terminal exit as tmux exits immediately after creating session
+      // For Claude and Codex agents, ignore terminal exit as tmux exits immediately after creating session
       const agentType = getAgentType(agent.name);
-      if (agentType === "claude") {
+      if (agentType === "claude" || agentType === "codex") {
         serverLogger.info(
-          `[AgentSpawner] Ignoring terminal exit for Claude agent ${agent.name} (tmux exits immediately, waiting for project file completion)`
+          `[AgentSpawner] Ignoring terminal exit for ${agentType} agent ${agent.name} (tmux exits immediately, waiting for detector completion)`
         );
         return;
       }
@@ -2111,43 +2035,6 @@ export async function spawnAgent(
       );
     });
 
-    // For Claude agents, set up a periodic check as a temporary workaround
-    // until the Docker image is rebuilt with the new detection code
-    const agentTypeForCheck = getAgentType(agent.name);
-    if (agentTypeForCheck === "claude" && vscodeInstance.isWorkerConnected()) {
-      serverLogger.info(`[AgentSpawner] Setting up periodic completion check for Claude agent ${agent.name}`);
-      
-      const checkInterval = setInterval(async () => {
-        try {
-          // Check if task is already marked complete
-          const taskRun = await convex.query(api.taskRuns.get, {
-            id: taskRunId as Id<"taskRuns">,
-          });
-          
-          if (taskRun?.status === "completed" || taskRun?.status === "failed") {
-            clearInterval(checkInterval);
-            return;
-          }
-          
-          // Check Claude completion via remote execution
-          const isComplete = await checkClaudeCompletionRemote(vscodeInstance, "/root/workspace");
-          
-          if (isComplete) {
-            serverLogger.info(`[AgentSpawner] Claude agent ${agent.name} completed (detected via periodic check)`);
-            clearInterval(checkInterval);
-            
-            // Wait for filesystem to settle
-            await new Promise(resolve => setTimeout(resolve, 3000));
-            await handleTaskCompletion(0);
-          }
-        } catch (error) {
-          // Ignore errors, will retry on next interval
-        }
-      }, 10000); // Check every 10 seconds
-      
-      // Stop checking after 20 minutes
-      setTimeout(() => clearInterval(checkInterval), 20 * 60 * 1000);
-    }
 
     return {
       agentName: agent.name,

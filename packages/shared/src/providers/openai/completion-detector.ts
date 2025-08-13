@@ -68,7 +68,8 @@ function parseUpdatePlanArguments(args: unknown): UpdatePlanArgsParsed | null {
  */
 function isPlanCompleted(plan: PlanItemArg[] | undefined): boolean {
   if (!plan || plan.length === 0) return false;
-  return plan.every((p) => p.status === "completed");
+  // Only accept explicit "completed" statuses to avoid false positives
+  return plan.every((p) => String(p.status ?? "").toLowerCase().trim() === "completed");
 }
 
 /**
@@ -104,6 +105,99 @@ export async function getLatestCodexSessionIdSince(
     return latest ? latest.id : null;
   } catch {
     return null;
+  }
+}
+
+/**
+ * Inspect codex-tui.log to determine if the session that started since `sinceEpochMs`
+ * has emitted a TaskComplete event. We detect this by:
+ * 1) Finding the last SessionConfigured(session_id) at or after sinceEpochMs
+ * 2) Scanning subsequent lines until the next SessionConfigured for a TaskComplete marker
+ */
+export async function didLatestSessionCompleteInTuiLog(
+  sinceEpochMs: number
+): Promise<{ sessionId: string; completed: boolean } | null> {
+  const logPath = path.join(os.homedir(), ".codex", "log", "codex-tui.log");
+  try {
+    const content = await fs.readFile(logPath, "utf-8");
+    console.log(`[Codex Detector] Reading TUI log: ${logPath} (${content.length} bytes)`);
+    const lines = content.split("\n");
+    const sessionRegex = /SessionConfigured\(SessionConfiguredEvent\s*\{\s*session_id:\s*([0-9a-fA-F-]{36})/;
+    const tsRegex = /^(\x1B\[[0-9;]*m)?([0-9T:\-.]+Z)(.*)$/;
+
+    // Collect indices of SessionConfigured lines with timestamps
+    const sessions: { idx: number; when: number; id: string }[] = [];
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i] as string;
+      const m = sessionRegex.exec(line);
+      if (!m || !m[1]) continue;
+      const tsMatch = line.match(tsRegex);
+      let when = Date.now();
+      if (tsMatch && tsMatch[2]) {
+        const t = Date.parse(tsMatch[2]);
+        if (!Number.isNaN(t)) when = t;
+      }
+      sessions.push({ idx: i, when, id: m[1] });
+    }
+    console.log(`[Codex Detector] Found ${sessions.length} SessionConfigured entries`);
+    // Find the last SessionConfigured at or after sinceEpochMs
+    const candidates = sessions.filter((s) => s.when >= sinceEpochMs);
+    if (candidates.length === 0) return null;
+    const latest = candidates.reduce((a, b) => (b.when >= a.when ? b : a));
+    console.log(`[Codex Detector] Latest session since ${new Date(sinceEpochMs).toISOString()}:`, latest);
+
+    // Determine the scan window end (next SessionConfigured or EOF)
+    const nextSession = sessions.find((s) => s.idx > latest.idx);
+    const startIdx = latest.idx + 1;
+    const endIdx = nextSession ? nextSession.idx : lines.length;
+
+    // Look for TaskComplete markers within the window
+    const taskCompleteRegexes = [
+      /TaskComplete\(/, // Debug print of enum variant
+      /task_complete/, // JSON-style snake_case
+    ];
+    let taskCompleteLine: string | null = null;
+    for (let i = startIdx; i < endIdx; i++) {
+      const line = lines[i] as string;
+      if (taskCompleteRegexes.some((r) => r.test(line))) {
+        taskCompleteLine = line;
+        return { sessionId: latest.id, completed: true };
+      }
+    }
+    console.log(
+      `[Codex Detector] TaskComplete not found in window [${startIdx}, ${endIdx}); last 5 lines:`,
+      lines.slice(Math.max(startIdx, endIdx - 5), endIdx)
+    );
+    return { sessionId: latest.id, completed: false };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Check Codex notify sink file in the working directory for agent-turn-complete markers.
+ * Requires codex to be launched with: -c notify=["sh","-lc","printf %s\\n \"$1\" | tee -a ./codex-turns.jsonl >/dev/null"]
+ */
+export async function checkCodexNotifyFileCompletion(
+  workingDir: string,
+  sinceEpochMs: number
+): Promise<boolean> {
+  try {
+    const filePath = path.join(workingDir, "codex-turns.jsonl");
+    const stat = await fs.stat(filePath);
+    // Ignore stale files from before this run
+    if (stat.mtime.getTime() < sinceEpochMs) {
+      console.log(`[Codex Detector] Notify file present but stale: ${filePath}`);
+      return false;
+    }
+    const content = await fs.readFile(filePath, "utf-8");
+    const lines = content.split("\n").filter(Boolean);
+    // Look for kebab-case type from UserNotification::AgentTurnComplete
+    const found = lines.some((l) => l.includes('"type":"agent-turn-complete"'));
+    console.log(`[Codex Detector] Notify file check: path=${filePath}, lines=${lines.length}, found=${found}`);
+    return found;
+  } catch {
+    return false;
   }
 }
 
@@ -164,18 +258,9 @@ export async function checkCodexRolloutCompletion(
     let latestPlan: PlanItemArg[] | undefined;
     let updatePlanCount = 0;
     let lastFewEntries: string[] = [];
-    let lastAssistantMessage = "";
     let lastUpdatePlanIndex = -1;
-    let lastActivityTimestamp = Date.now();
-    let fileLastModified = Date.now();
     
-    // Get file last modified time
-    try {
-      const stats = await fs.stat(rolloutPath);
-      fileLastModified = stats.mtime.getTime();
-    } catch {
-      // ignore
-    }
+    // (Idle detection removed by design)
     
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
@@ -206,12 +291,9 @@ export async function checkCodexRolloutCompletion(
           }
         }
         
-        // Track all assistant messages, not just those after plan updates
-        if ((obj as CodexMessageEntry).type === "message" && 
-            (obj as CodexMessageEntry).role === "assistant") {
-          lastAssistantMessage = JSON.stringify(obj);
-          console.log(`[Codex Detector] Found assistant message at index ${i}`);
-        }
+        // Ignore assistant message tracking (no idle/phrase heuristics)
+
+        // Do not use stop/finish markers alone; too noisy across tool phases
       } catch {
         // ignore malformed lines
       }
@@ -219,7 +301,6 @@ export async function checkCodexRolloutCompletion(
     
     console.log(`[Codex Detector] Last few entries:`, lastFewEntries);
     console.log(`[Codex Detector] Total update_plan calls: ${updatePlanCount}`);
-    console.log(`[Codex Detector] Last assistant message (truncated):`, lastAssistantMessage.substring(0, 200));
     if (latestPlan) {
       console.log(`[Codex Detector] Latest plan steps:`, latestPlan.map(p => ({ step: p.step.substring(0, 50), status: p.status })));
     }
@@ -227,31 +308,9 @@ export async function checkCodexRolloutCompletion(
     // Check if all steps are complete
     const allStepsComplete = isPlanCompleted(latestPlan);
     
-    // Check if file hasn't been modified for at least 15 seconds (indicating Codex has stopped)
-    const timeSinceLastActivity = Date.now() - fileLastModified;
-    const isIdle = timeSinceLastActivity > 15000;
-    
-    // Check for completion phrases in the last assistant message
-    const completionPhrases = [
-      "task complete",
-      "all done",
-      "finished",
-      "completed successfully",
-      "task has been completed",
-      "everything is done",
-      "all steps complete",
-      "successfully completed"
-    ];
-    const hasCompletionPhrase = lastAssistantMessage.toLowerCase().split(" ").some(word =>
-      completionPhrases.some(phrase => lastAssistantMessage.toLowerCase().includes(phrase))
-    );
-    
-    // More robust completion detection:
-    // 1. All steps are marked as completed OR
-    // 2. (File is idle for 15+ seconds AND there's an assistant message with completion indicators)
-    const isComplete = allStepsComplete || (isIdle && hasCompletionPhrase && lastAssistantMessage !== "");
-    
-    console.log(`[Codex Detector] Completion decision: allStepsComplete=${allStepsComplete}, isIdle=${isIdle} (${timeSinceLastActivity}ms), hasCompletionPhrase=${hasCompletionPhrase}, final=${isComplete}`);
+    // Completion detection: strictly require latest plan to be all completed
+    const isComplete = allStepsComplete;
+    console.log(`[Codex Detector] Completion decision: allStepsComplete=${allStepsComplete}, final=${isComplete}`);
 
     return { isComplete, latestPlan };
   } catch (err) {
@@ -274,14 +333,22 @@ export async function checkCodexCompletionSince(
 }> {
   // Debug logging
   console.log(`[Codex Detector] Checking for completion since ${new Date(sinceEpochMs).toISOString()}`);
-  
-  const sessionId = await getLatestCodexSessionIdSince(sinceEpochMs);
+  // First: check codex-tui.log for an explicit TaskComplete for the latest session
+  const tuiStatus = await didLatestSessionCompleteInTuiLog(sinceEpochMs);
+  if (tuiStatus && tuiStatus.completed) {
+    console.log(`[Codex Detector] TaskComplete detected in codex-tui.log for session ${tuiStatus.sessionId}`);
+    const rolloutPath = await findCodexRolloutPathForSession(tuiStatus.sessionId);
+    return { isComplete: true, sessionId: tuiStatus.sessionId, rolloutPath: rolloutPath ?? undefined };
+  }
+
+  // Fallback to plan-based rollout detection
+  const sessionId = tuiStatus?.sessionId || (await getLatestCodexSessionIdSince(sinceEpochMs));
   if (!sessionId) {
     console.log(`[Codex Detector] No session ID found since ${sinceEpochMs}`);
     return { isComplete: false };
   }
   console.log(`[Codex Detector] Found session ID: ${sessionId}`);
-  
+
   const rolloutPath = await findCodexRolloutPathForSession(sessionId);
   if (!rolloutPath) {
     console.log(`[Codex Detector] No rollout file found for session ${sessionId}`);
@@ -368,5 +435,6 @@ export default {
   checkCodexRolloutCompletion,
   checkCodexCompletionSince,
   monitorCodexCompletion,
+  didLatestSessionCompleteInTuiLog,
+  checkCodexNotifyFileCompletion,
 };
-
