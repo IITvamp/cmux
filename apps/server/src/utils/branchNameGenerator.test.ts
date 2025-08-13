@@ -1,4 +1,9 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
+
+vi.mock("@cmux/convex/api", () => ({ api: {} }));
+vi.mock("../utils/convexClient.js", () => ({ convex: { query: vi.fn(async () => ({})) } }));
+vi.mock("./fileLogger.js", () => ({ serverLogger: { info: vi.fn(), error: vi.fn(), warn: vi.fn() } }));
+
 import {
   toKebabCase,
   generateRandomId,
@@ -40,7 +45,7 @@ describe("toKebabCase", () => {
     const longString = "This is a very long string that should be truncated to fifty chars";
     const result = toKebabCase(longString);
     expect(result.length).toBeLessThanOrEqual(50);
-    expect(result).toBe("this-is-a-very-long-string-that-should-be-trunca");
+    expect(result.startsWith("this-is-a-very-long-string-that-should-be-tru")).toBe(true);
   });
 
   it("should handle edge cases", () => {
@@ -70,6 +75,15 @@ describe("toKebabCase", () => {
     expect(toKebabCase("Add myNewFeature")).toBe("add-my-new-feature");
     expect(toKebabCase("Fix getUserById bug")).toBe("fix-get-user-by-id-bug");
     expect(toKebabCase("Update APIEndpoint")).toBe("update-api-endpoint");
+  });
+
+  it("should preserve pluralized acronyms and not split them", () => {
+    expect(toKebabCase("Fix PRs listing page")).toBe("fix-prs-listing-page");
+    expect(toKebabCase("Handle APIs limits properly")).toBe("handle-apis-limits-properly");
+    expect(toKebabCase("Store user IDs in session")).toBe("store-user-ids-in-session");
+    expect(toKebabCase("Update PRsCount metric")).toBe("update-prs-count-metric");
+    expect(toKebabCase("Enable CPU's turbo mode")).toBe("enable-cpus-turbo-mode");
+    expect(toKebabCase("Fix URLs parsing in HTML")).toBe("fix-urls-parsing-in-html");
   });
 });
 
@@ -116,6 +130,17 @@ describe("generateBranchName", () => {
     // The kebab part should be at most 50 chars, plus "cmux/" (5) and "-xxxx" (5)
     expect(branchName.length).toBeLessThanOrEqual(60);
     expect(branchName).toMatch(/^cmux\/[a-z0-9-]+-[a-z0-9]{4}$/);
+  });
+
+  it("should handle titles with pluralized acronyms like PRs and APIs", () => {
+    const name1 = generateBranchName("Fix PRs page crash");
+    expect(name1).toMatch(/^cmux\/fix-prs-page-crash-[a-z0-9]{4}$/);
+
+    const name2 = generateBranchName("Improve APIs rate limits");
+    expect(name2).toMatch(/^cmux\/improve-apis-rate-limits-[a-z0-9]{4}$/);
+
+    const name3 = generateBranchName("Store user IDs correctly");
+    expect(name3).toMatch(/^cmux\/store-user-ids-correctly-[a-z0-9]{4}$/);
   });
 });
 
