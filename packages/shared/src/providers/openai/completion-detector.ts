@@ -144,9 +144,10 @@ export async function findCodexRolloutPathForSession(
 
 /**
  * Read a rollout JSONL file and determine if the task is complete.
- * A task is considered complete when either:
- * 1. The latest update_plan has all steps marked as "completed"
- * 2. There's a final assistant message after the plan updates (indicating the task is done)
+ * A task is considered complete when:
+ * 1. The latest update_plan has all steps marked as "completed" OR
+ * 2. There's a completion-indicating assistant message (e.g., "Task complete", "All done") 
+ *    after plan updates AND sufficient time has passed since last activity
  */
 export async function checkCodexRolloutCompletion(
   rolloutPath: string
@@ -163,8 +164,18 @@ export async function checkCodexRolloutCompletion(
     let latestPlan: PlanItemArg[] | undefined;
     let updatePlanCount = 0;
     let lastFewEntries: string[] = [];
-    let hasAssistantMessageAfterPlan = false;
+    let lastAssistantMessage = "";
     let lastUpdatePlanIndex = -1;
+    let lastActivityTimestamp = Date.now();
+    let fileLastModified = Date.now();
+    
+    // Get file last modified time
+    try {
+      const stats = await fs.stat(rolloutPath);
+      fileLastModified = stats.mtime.getTime();
+    } catch {
+      // ignore
+    }
     
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
@@ -178,7 +189,8 @@ export async function checkCodexRolloutCompletion(
             type: (obj as any).type,
             name: (obj as any).name,
             role: (obj as any).role,
-          }).substring(0, 100));
+            content: (obj as any).content?.substring(0, 50),
+          }).substring(0, 150));
         }
         
         if ((obj as CodexFunctionCallEntry).type === "function_call") {
@@ -190,19 +202,15 @@ export async function checkCodexRolloutCompletion(
             if (parsed?.plan) {
               latestPlan = parsed.plan;
               console.log(`[Codex Detector] Found update_plan #${updatePlanCount} with ${parsed.plan.length} steps`);
-              // Reset the assistant message flag when we see a new plan
-              hasAssistantMessageAfterPlan = false;
             }
           }
         }
         
-        // Check for assistant message after the last plan update
+        // Track all assistant messages, not just those after plan updates
         if ((obj as CodexMessageEntry).type === "message" && 
-            (obj as CodexMessageEntry).role === "assistant" &&
-            i > lastUpdatePlanIndex && 
-            lastUpdatePlanIndex !== -1) {
-          hasAssistantMessageAfterPlan = true;
-          console.log(`[Codex Detector] Found assistant message after plan update at index ${i}`);
+            (obj as CodexMessageEntry).role === "assistant") {
+          lastAssistantMessage = JSON.stringify(obj);
+          console.log(`[Codex Detector] Found assistant message at index ${i}`);
         }
       } catch {
         // ignore malformed lines
@@ -211,16 +219,39 @@ export async function checkCodexRolloutCompletion(
     
     console.log(`[Codex Detector] Last few entries:`, lastFewEntries);
     console.log(`[Codex Detector] Total update_plan calls: ${updatePlanCount}`);
-    console.log(`[Codex Detector] Has assistant message after plan: ${hasAssistantMessageAfterPlan}`);
+    console.log(`[Codex Detector] Last assistant message (truncated):`, lastAssistantMessage.substring(0, 200));
     if (latestPlan) {
       console.log(`[Codex Detector] Latest plan steps:`, latestPlan.map(p => ({ step: p.step.substring(0, 50), status: p.status })));
     }
 
-    // Consider task complete if either all steps are done OR there's a final assistant message
+    // Check if all steps are complete
     const allStepsComplete = isPlanCompleted(latestPlan);
-    const isComplete = allStepsComplete || hasAssistantMessageAfterPlan;
     
-    console.log(`[Codex Detector] Completion decision: allStepsComplete=${allStepsComplete}, hasAssistantMessage=${hasAssistantMessageAfterPlan}, final=${isComplete}`);
+    // Check if file hasn't been modified for at least 15 seconds (indicating Codex has stopped)
+    const timeSinceLastActivity = Date.now() - fileLastModified;
+    const isIdle = timeSinceLastActivity > 15000;
+    
+    // Check for completion phrases in the last assistant message
+    const completionPhrases = [
+      "task complete",
+      "all done",
+      "finished",
+      "completed successfully",
+      "task has been completed",
+      "everything is done",
+      "all steps complete",
+      "successfully completed"
+    ];
+    const hasCompletionPhrase = lastAssistantMessage.toLowerCase().split(" ").some(word =>
+      completionPhrases.some(phrase => lastAssistantMessage.toLowerCase().includes(phrase))
+    );
+    
+    // More robust completion detection:
+    // 1. All steps are marked as completed OR
+    // 2. (File is idle for 15+ seconds AND there's an assistant message with completion indicators)
+    const isComplete = allStepsComplete || (isIdle && hasCompletionPhrase && lastAssistantMessage !== "");
+    
+    console.log(`[Codex Detector] Completion decision: allStepsComplete=${allStepsComplete}, isIdle=${isIdle} (${timeSinceLastActivity}ms), hasCompletionPhrase=${hasCompletionPhrase}, final=${isComplete}`);
 
     return { isComplete, latestPlan };
   } catch (err) {

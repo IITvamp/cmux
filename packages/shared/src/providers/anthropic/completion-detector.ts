@@ -9,6 +9,7 @@ interface ClaudeMessage {
   type: "user" | "assistant" | "system";
   timestamp?: string;
   content?: string;
+  hasToolUse?: boolean;
   [key: string]: unknown;
 }
 
@@ -131,7 +132,12 @@ export async function checkClaudeProjectFileCompletion(
     }
 
     // Parse the last few messages to understand the pattern
-    const recentMessages: Array<{ type: string; timestamp?: string; content?: string }> = [];
+    const recentMessages: Array<{ 
+      type: string; 
+      timestamp?: string; 
+      content?: string;
+      hasToolUse?: boolean;
+    }> = [];
     const linesToCheck = Math.min(10, lines.length); // Check last 10 messages
     
     for (let i = lines.length - linesToCheck; i < lines.length; i++) {
@@ -139,12 +145,15 @@ export async function checkClaudeProjectFileCompletion(
         const msg = JSON.parse(lines[i] as string);
         const messageContent = msg.message?.content;
         let textContent = "";
+        let hasToolUse = false;
         
         // Extract text content from Claude's message structure
         if (Array.isArray(messageContent)) {
           for (const item of messageContent) {
             if (item?.type === "text" && item?.text) {
               textContent += item.text + " ";
+            } else if (item?.type === "tool_use") {
+              hasToolUse = true;
             }
           }
         } else if (typeof messageContent === "string") {
@@ -154,7 +163,8 @@ export async function checkClaudeProjectFileCompletion(
         recentMessages.push({
           type: msg.type,
           timestamp: msg.timestamp,
-          content: textContent.trim()
+          content: textContent.trim(),
+          hasToolUse
         });
       } catch {
         // Skip malformed lines
@@ -172,7 +182,14 @@ export async function checkClaudeProjectFileCompletion(
       return false;
     }
     
-    // Check 2: Check if the session has been idle
+    // Check 2: CRITICAL - If the last assistant message has tool_use, it's NOT complete
+    // Claude is waiting for tool results when it has tool_use in its message
+    if (lastMessage.hasToolUse) {
+      console.log(`[Claude Detector] Not complete: Last assistant message has tool_use (waiting for tool result)`);
+      return false;
+    }
+    
+    // Check 3: Check if the session has been idle
     if (lastMessage.timestamp) {
       const lastMessageTime = new Date(lastMessage.timestamp).getTime();
       const timeSinceLastMessage = Date.now() - lastMessageTime;
@@ -184,7 +201,8 @@ export async function checkClaudeProjectFileCompletion(
       }
     }
     
-    // Check 3: Look for completion indicators in the last assistant message
+    // Check 4: Optional - Look for completion indicators in the last assistant message
+    // This is now secondary since the main indicator is no tool_use
     const completionPhrases = [
       "completed successfully",
       "task is complete",
@@ -216,24 +234,22 @@ export async function checkClaudeProjectFileCompletion(
     const content = lastMessage.content?.toLowerCase() || "";
     const hasCompletionPhrase = completionPhrases.some(phrase => content.includes(phrase));
     
-    // Also check if there's been a pattern of user->assistant without more user messages
-    // (indicating Claude has stopped asking for tool use)
-    const lastThreeTypes = recentMessages.slice(-3).map(m => m?.type);
-    const endsWithAssistantOnly = 
-      lastThreeTypes.length >= 2 &&
-      lastThreeTypes[lastThreeTypes.length - 1] === "assistant" &&
-      lastThreeTypes[lastThreeTypes.length - 2] === "user";
-    
     console.log(`[Claude Detector] Completion check:`, {
       isAssistant: lastMessage?.type === "assistant",
+      hasToolUse: lastMessage.hasToolUse,
       idleTime: lastMessage.timestamp ? Date.now() - new Date(lastMessage.timestamp).getTime() : 0,
       hasCompletionPhrase,
-      endsWithAssistantOnly,
       contentPreview: content.substring(0, 100)
     });
     
-    // Consider complete if it's been idle AND (has completion phrase OR ends with simple user->assistant)
-    return hasCompletionPhrase || endsWithAssistantOnly;
+    // Claude is complete when:
+    // 1. Last message is from assistant (checked above)
+    // 2. Last message has NO tool_use (checked above) 
+    // 3. Session has been idle for minIdleTimeMs (checked above)
+    // 4. Optionally has completion phrases (bonus indicator)
+    
+    // If we've passed all the checks above, Claude is complete
+    return true;
     
   } catch (error) {
     console.error(`[Claude Detector] Error checking completion:`, error);
