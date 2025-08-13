@@ -78,7 +78,32 @@ async function getLastMessage(filePath: string): Promise<ClaudeMessage | null> {
     }
 
     try {
-      const lastMessage = JSON.parse(lastLine) as ClaudeMessage;
+      const parsed = JSON.parse(lastLine);
+      const lastMessage: ClaudeMessage = {
+        type: parsed.type,
+        timestamp: parsed.timestamp,
+        content: "",
+        hasToolUse: false,
+      };
+      
+      // Extract content and check for tool_use
+      const messageContent = parsed.message?.content;
+      if (Array.isArray(messageContent)) {
+        for (const item of messageContent) {
+          if (item?.type === "text" && item?.text) {
+            lastMessage.content = (lastMessage.content || "") + item.text + " ";
+          } else if (item?.type === "tool_use") {
+            lastMessage.hasToolUse = true;
+          }
+        }
+      } else if (typeof messageContent === "string") {
+        lastMessage.content = messageContent;
+      }
+      
+      if (lastMessage.content) {
+        lastMessage.content = lastMessage.content.trim();
+      }
+      
       return lastMessage;
     } catch {
       // Failed to parse JSON
@@ -96,8 +121,12 @@ async function getLastMessage(filePath: string): Promise<ClaudeMessage | null> {
  * Claude completion detection logic:
  * - Claude is considered complete when:
  *   1. The last message is from assistant AND
- *   2. There has been no new activity for a certain period (indicating Claude has stopped) AND
- *   3. The assistant message contains completion indicators (like "completed", "finished", "done")
+ *   2. The assistant message has NO tool_use (just text response) AND
+ *   3. There has been no new activity for a certain period (indicating Claude has stopped)
+ * 
+ * The key indicator is that Claude's last message must NOT contain tool_use.
+ * When Claude includes tool_use in its message, it's waiting for tool results to continue.
+ * When Claude responds with only text (no tool_use), it has finished its current task.
  * 
  * @param projectPath The Claude project directory path (or use workingDir to auto-compute)
  * @param workingDir Optional working directory to compute project path from
