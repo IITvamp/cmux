@@ -53,8 +53,9 @@
 [ ] zach2: because of conductor's quirks, it can't use github cli -- bugbot + greptile (just cancelded?) -- bugbot makes good comments. would be nice to just @claude to fix it. tell claude to look at PR comments using gh cli and fix it.
 
 austin
-[ ] keep crown, remove auto-pr
-[ ] detectTerminalIdle fixes + tests
+[x] keep crown, remove auto-pr
+[x] make task complete work reliably for codex and claude code without terminal-idle
+[ ] make task complete work reliably for others without terminal-idle
 
 lawrence
 [ ] finish git diff editor
