@@ -13,6 +13,14 @@ const getClaudeHelpers = async () => {
   };
 };
 
+// Codex (OpenAI) helpers
+const getCodexHelpers = async () => {
+  const module = await import("@cmux/shared/src/providers/openai/completion-detector.ts");
+  return {
+    checkCodexCompletionSince: module.checkCodexCompletionSince,
+  };
+};
+
 interface TaskCompletionOptions {
   taskId: string;
   agentType: "claude" | "codex" | "gemini" | "amp" | "opencode";
@@ -104,6 +112,12 @@ export class TaskCompletionDetector extends EventEmitter {
 
   private async checkClaudeCompletion(): Promise<boolean> {
     try {
+      // Don't check for completion too early - Claude needs time to set up
+      const elapsedTime = Date.now() - this.startTime;
+      if (elapsedTime < this.options.minRuntimeMs!) {
+        return false;
+      }
+      
       // Get the Claude helper functions
       const { getClaudeProjectPath, checkClaudeProjectFileCompletion } = await getClaudeHelpers();
       
@@ -117,11 +131,12 @@ export class TaskCompletionDetector extends EventEmitter {
         return false;
       }
 
-      // Use the shared module to check completion
-      const isComplete = await checkClaudeProjectFileCompletion(projectDir);
+      // Use the shared module to check completion with idle time requirement
+      // Claude must be idle for at least 10 seconds to be considered complete
+      const isComplete = await checkClaudeProjectFileCompletion(projectDir, undefined, 10000);
       
       if (isComplete) {
-        log("INFO", `Claude task complete: last message is from assistant`);
+        log("INFO", `Claude task complete: detected completion pattern`);
         log("INFO", `Claude completion detected for project: ${projectDir}`);
         
         // Get the most recent JSONL file for logging
@@ -148,22 +163,19 @@ export class TaskCompletionDetector extends EventEmitter {
 
   private async checkCodexCompletion(): Promise<boolean> {
     try {
-      // Codex stores files in ~/.codex/
-      const homeDir = os.homedir();
-      const codexDir = path.join(homeDir, ".codex");
-
-      // Check if codex directory exists
-      try {
-        await fs.access(codexDir);
-      } catch {
-        log("INFO", `Codex directory not found: ${codexDir}`);
-        return false;
+      // Codex stores session logs in ~/.codex/sessions and codex-tui.log.
+      // Use shared detector to find the session since this detector started,
+      // then check whether the latest update_plan marks all steps completed.
+      const { checkCodexCompletionSince } = await getCodexHelpers();
+      const res = await checkCodexCompletionSince(this.startTime);
+      if (res.isComplete) {
+        log("INFO", `Codex task complete via ~/.codex rollout`, {
+          sessionId: res.sessionId,
+          rolloutPath: res.rolloutPath,
+          plan: res.latestPlan,
+        });
       }
-
-      // TODO: Implement Codex-specific completion detection
-      // For now, return false and we'll implement this case-by-case as requested
-      log("INFO", "Codex completion detection not yet implemented");
-      return false;
+      return res.isComplete;
     } catch (error) {
       log("ERROR", `Error checking Codex completion: ${error}`);
       return false;

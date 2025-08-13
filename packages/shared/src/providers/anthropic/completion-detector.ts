@@ -93,16 +93,20 @@ async function getLastMessage(filePath: string): Promise<ClaudeMessage | null> {
  * Check if a Claude session is complete based on JSONL files
  * 
  * Claude completion detection logic:
- * - If the last message in the JSONL file is from the assistant, the task is complete
- * - If Claude is still working, there would be a user message after (with tool results)
+ * - Claude is considered complete when:
+ *   1. The last message is from assistant AND
+ *   2. There has been no new activity for a certain period (indicating Claude has stopped) AND
+ *   3. The assistant message contains completion indicators (like "completed", "finished", "done")
  * 
  * @param projectPath The Claude project directory path (or use workingDir to auto-compute)
  * @param workingDir Optional working directory to compute project path from
+ * @param minIdleTimeMs Minimum time since last message to consider session idle (default 10 seconds)
  * @returns true if the session is complete, false otherwise
  */
 export async function checkClaudeProjectFileCompletion(
   projectPath?: string,
-  workingDir?: string
+  workingDir?: string,
+  minIdleTimeMs: number = 10000
 ): Promise<boolean> {
   // Compute project path if not provided
   const projectDir = projectPath || (workingDir ? getClaudeProjectPath(workingDir) : null);
@@ -118,16 +122,123 @@ export async function checkClaudeProjectFileCompletion(
     return false;
   }
 
-  // Get the last message from the file
-  const lastMessage = await getLastMessage(jsonlFile);
-  if (!lastMessage) {
-    // Unable to parse last message
+  try {
+    const fileContent = await fs.readFile(jsonlFile, "utf-8");
+    const lines = fileContent.split("\n").filter((line) => line.trim());
+    
+    if (lines.length === 0) {
+      return false;
+    }
+
+    // Parse the last few messages to understand the pattern
+    const recentMessages: Array<{ type: string; timestamp?: string; content?: string }> = [];
+    const linesToCheck = Math.min(10, lines.length); // Check last 10 messages
+    
+    for (let i = lines.length - linesToCheck; i < lines.length; i++) {
+      try {
+        const msg = JSON.parse(lines[i] as string);
+        const messageContent = msg.message?.content;
+        let textContent = "";
+        
+        // Extract text content from Claude's message structure
+        if (Array.isArray(messageContent)) {
+          for (const item of messageContent) {
+            if (item?.type === "text" && item?.text) {
+              textContent += item.text + " ";
+            }
+          }
+        } else if (typeof messageContent === "string") {
+          textContent = messageContent;
+        }
+        
+        recentMessages.push({
+          type: msg.type,
+          timestamp: msg.timestamp,
+          content: textContent.trim()
+        });
+      } catch {
+        // Skip malformed lines
+      }
+    }
+    
+    if (recentMessages.length === 0) {
+      return false;
+    }
+    
+    const lastMessage = recentMessages[recentMessages.length - 1];
+    
+    // Check 1: Last message must be from assistant
+    if (lastMessage?.type !== "assistant") {
+      return false;
+    }
+    
+    // Check 2: Check if the session has been idle
+    if (lastMessage.timestamp) {
+      const lastMessageTime = new Date(lastMessage.timestamp).getTime();
+      const timeSinceLastMessage = Date.now() - lastMessageTime;
+      
+      if (timeSinceLastMessage < minIdleTimeMs) {
+        // Not enough idle time - Claude might still be working
+        console.log(`[Claude Detector] Not idle long enough: ${timeSinceLastMessage}ms < ${minIdleTimeMs}ms`);
+        return false;
+      }
+    }
+    
+    // Check 3: Look for completion indicators in the last assistant message
+    const completionPhrases = [
+      "completed successfully",
+      "task is complete",
+      "task complete",
+      "finished successfully", 
+      "i've completed",
+      "i have completed",
+      "successfully completed",
+      "successfully implemented",
+      "changes have been made",
+      "implementation is complete",
+      "everything is working",
+      "should now work",
+      "should be working",
+      "is now working",
+      "has been fixed",
+      "has been implemented",
+      "has been added",
+      "has been updated",
+      "ready to use",
+      "ready for use",
+      "all set",
+      "you're all set",
+      "done!",
+      "complete!",
+      "finished!",
+    ];
+    
+    const content = lastMessage.content?.toLowerCase() || "";
+    const hasCompletionPhrase = completionPhrases.some(phrase => content.includes(phrase));
+    
+    // Also check if there's been a pattern of user->assistant without more user messages
+    // (indicating Claude has stopped asking for tool use)
+    const lastThreeTypes = recentMessages.slice(-3).map(m => m?.type);
+    const endsWithAssistantOnly = 
+      lastThreeTypes.length >= 2 &&
+      lastThreeTypes[lastThreeTypes.length - 1] === "assistant" &&
+      lastThreeTypes[lastThreeTypes.length - 2] === "user";
+    
+    console.log(`[Claude Detector] Completion check:`, {
+      isAssistant: lastMessage?.type === "assistant",
+      idleTime: lastMessage.timestamp ? Date.now() - new Date(lastMessage.timestamp).getTime() : 0,
+      hasCompletionPhrase,
+      endsWithAssistantOnly,
+      contentPreview: content.substring(0, 100)
+    });
+    
+    // Consider complete if it's been idle AND (has completion phrase OR ends with simple user->assistant)
+    return hasCompletionPhrase || endsWithAssistantOnly;
+    
+  } catch (error) {
+    console.error(`[Claude Detector] Error checking completion:`, error);
     return false;
   }
-
-  // If the last message is from assistant, task is complete
-  // (If Claude is still working, there would be a user message with tool results after)
-  return lastMessage.type === "assistant";
 }
 
 /**
@@ -184,7 +295,8 @@ export function monitorClaudeCompletion(
       }
 
       // Check if Claude session is complete
-      const isComplete = await checkClaudeProjectFileCompletion(projectPath);
+      // Use a 10 second idle time to ensure Claude has actually stopped
+      const isComplete = await checkClaudeProjectFileCompletion(projectPath, undefined, 10000);
       if (isComplete) {
         stop();
         if (onComplete) {
@@ -254,7 +366,8 @@ export async function getClaudeSessionInfo(workingDir: string): Promise<ClaudeSe
       if (firstFile) {
         mostRecentFile = path.join(projectPath, firstFile);
         lastMessage = await getLastMessage(mostRecentFile);
-        isComplete = lastMessage?.type === "assistant";
+        // Use the more robust completion check
+        isComplete = await checkClaudeProjectFileCompletion(projectPath);
       }
     }
   } catch {

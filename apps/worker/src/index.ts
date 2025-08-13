@@ -1120,8 +1120,8 @@ async function createTerminal(
 
     // Use new task completion detection if agentType is provided
     if (options.agentType && options.taskId) {
-      // For Claude models, only use project file detection, no terminal idle fallback
-      const useTerminalIdleFallback = options.agentType !== "claude";
+      // For Claude and Codex, only use project/log file detection (no terminal idle fallback)
+      const useTerminalIdleFallback = !(options.agentType === "claude" || options.agentType === "codex");
       
       log("INFO", `Setting up task completion detection for ${options.agentType}`, {
         useTerminalIdleFallback,

@@ -40,6 +40,14 @@
     "./src/providers/anthropic/completion-detector.ts": {
       "import": "./src/providers/anthropic/completion-detector.ts",
       "types": "./src/providers/anthropic/completion-detector.ts"
+    },
+    "./src/providers/openai/completion-detector": {
+      "import": "./src/providers/openai/completion-detector.ts",
+      "types": "./src/providers/openai/completion-detector.ts"
+    },
+    "./src/providers/openai/completion-detector.ts": {
+      "import": "./src/providers/openai/completion-detector.ts",
+      "types": "./src/providers/openai/completion-detector.ts"
     }
   },
   "dependencies": {
