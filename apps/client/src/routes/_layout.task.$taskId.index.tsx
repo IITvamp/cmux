@@ -166,7 +166,6 @@ function TaskDetailPage() {
     <FloatingPane>
       <div className="flex h-full min-h-0 flex-col relative">
         <div className="flex-1 min-h-0 overflow-y-auto">
-          <div className="h-3"></div>
           <TaskDetailHeader
             task={task ?? null}
             taskRuns={taskRuns ?? null}
@@ -180,9 +179,8 @@ function TaskDetailPage() {
             onExpandAll={diffControls?.expandAll}
             onCollapseAll={diffControls?.collapseAll}
           />
-          <div className="h-1.5"></div>
           {task?.text && (
-            <div className="mb-2 px-4">
+            <div className="mb-2 px-3.5">
               <div className="text-xs text-neutral-300">
                 <span className="text-neutral-400">Prompt:</span>{" "}
                 <span className="font-medium">{task.text}</span>

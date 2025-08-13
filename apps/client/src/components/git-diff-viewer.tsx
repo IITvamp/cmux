@@ -61,7 +61,7 @@ function getStatusColor(status: Doc<"gitDiffs">["status"]) {
 }
 
 function getStatusIcon(status: Doc<"gitDiffs">["status"]) {
-  const iconClass = "w-4 h-4 flex-shrink-0";
+  const iconClass = "w-3.5 h-3.5 flex-shrink-0";
   switch (status) {
     case "added":
       return <FilePlus className={iconClass} />;
@@ -313,7 +313,7 @@ function FileDiffRow({
     <div className="bg-white dark:bg-neutral-900">
       <button
         onClick={onToggle}
-        className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors text-left group pt-1 z-10 bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800 sticky top-[80px]"
+        className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors text-left group pt-1 z-10 bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800 sticky top-[56px]"
       >
         <div className="text-neutral-400 dark:text-neutral-500 group-hover:text-neutral-600 dark:group-hover:text-neutral-400">
           {isExpanded ? (
