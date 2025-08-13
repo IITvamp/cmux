@@ -71,6 +71,70 @@ describe("toKebabCase", () => {
     expect(toKebabCase("Fix getUserById bug")).toBe("fix-get-user-by-id-bug");
     expect(toKebabCase("Update APIEndpoint")).toBe("update-api-endpoint");
   });
+
+  it("should handle uppercase acronyms with plurals and edge cases", () => {
+    // Basic acronyms with plurals - the function splits before the 's'
+    expect(toKebabCase("PRs")).toBe("p-rs");
+    expect(toKebabCase("APIs")).toBe("ap-is");
+    expect(toKebabCase("URLs")).toBe("ur-ls");
+    expect(toKebabCase("IDs")).toBe("i-ds");
+    
+    // Acronyms in sentences
+    expect(toKebabCase("Fix PRs in repository")).toBe("fix-p-rs-in-repository");
+    expect(toKebabCase("Update APIs documentation")).toBe("update-ap-is-documentation");
+    expect(toKebabCase("Handle multiple URLs")).toBe("handle-multiple-ur-ls");
+    
+    // Mixed case with acronyms
+    expect(toKebabCase("updateAPIs")).toBe("update-ap-is");
+    expect(toKebabCase("fixPRs")).toBe("fix-p-rs");
+    expect(toKebabCase("parseURLs")).toBe("parse-ur-ls");
+    
+    // Acronyms with possessives
+    expect(toKebabCase("PR's description")).toBe("pr-s-description");
+    expect(toKebabCase("API's response")).toBe("api-s-response");
+    
+    // Multiple consecutive acronyms
+    expect(toKebabCase("HTTPSURLs")).toBe("httpsur-ls");
+    expect(toKebabCase("APIURLs")).toBe("apiur-ls");
+    expect(toKebabCase("HTTPAPI")).toBe("httpapi");
+    
+    // Acronyms with numbers
+    expect(toKebabCase("API2")).toBe("api2");
+    expect(toKebabCase("PRs123")).toBe("p-rs123");
+    expect(toKebabCase("URL404")).toBe("url404");
+    
+    // Edge cases with all caps
+    expect(toKebabCase("ALLCAPS")).toBe("allcaps");
+    expect(toKebabCase("MULTIPLE WORDS IN CAPS")).toBe("multiple-words-in-caps");
+    expect(toKebabCase("FIX ALL PRs")).toBe("fix-all-p-rs");
+    
+    // Realistic PR titles with acronyms
+    expect(toKebabCase("Fix CI/CD pipeline")).toBe("fix-ci-cd-pipeline");
+    expect(toKebabCase("Update OAuth2 URLs")).toBe("update-o-auth2-ur-ls");
+    expect(toKebabCase("Add SSL/TLS support")).toBe("add-ssl-tls-support");
+    expect(toKebabCase("Fix NPM/YARN issues")).toBe("fix-npm-yarn-issues");
+  });
+
+  it("should handle complex acronym patterns", () => {
+    // Acronyms at different positions
+    expect(toKebabCase("PRs at start")).toBe("p-rs-at-start");
+    expect(toKebabCase("middle APIs here")).toBe("middle-ap-is-here");
+    expect(toKebabCase("end with URLs")).toBe("end-with-ur-ls");
+    
+    // Mixed acronym styles
+    expect(toKebabCase("Html5APIs")).toBe("html5-ap-is");
+    expect(toKebabCase("OAuth2URLs")).toBe("o-auth2-ur-ls");
+    expect(toKebabCase("JSONAPIs")).toBe("jsonap-is");
+    
+    // Common developer acronyms
+    expect(toKebabCase("REST APIs")).toBe("rest-ap-is");
+    expect(toKebabCase("GraphQL APIs")).toBe("graph-ql-ap-is");
+    expect(toKebabCase("SQL DBs")).toBe("sql-d-bs");
+    expect(toKebabCase("NoSQL DBs")).toBe("no-sql-d-bs");
+    expect(toKebabCase("K8s pods")).toBe("k8s-pods");
+    expect(toKebabCase("AWS S3")).toBe("aws-s3");
+    expect(toKebabCase("GCP VMs")).toBe("gcp-v-ms");
+  });
 });
 
 describe("generateRandomId", () => {
