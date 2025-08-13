@@ -500,88 +500,185 @@ function SettingsComponent() {
               </div>
             </div>
 
-            {/* API Keys */}
+            {/* AI Provider Authentication */}
             <div className="bg-white dark:bg-neutral-950 rounded-lg border border-neutral-200 dark:border-neutral-800">
               <div className="px-4 py-3 border-b border-neutral-200 dark:border-neutral-800">
                 <h2 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
-                  API Keys
+                  AI Provider Authentication
                 </h2>
               </div>
-              <div className="p-4 space-y-3">
-                {apiKeys.length === 0 ? (
-                  <p className="text-sm text-neutral-500 dark:text-neutral-400">
-                    No API keys required for the configured agents.
-                  </p>
-                ) : (
-                  apiKeys.map((key) => (
-                    <div key={key.envVar} className="space-y-1">
-                      <label
-                        htmlFor={key.envVar}
-                        className="block text-sm font-medium text-neutral-700 dark:text-neutral-300"
-                      >
-                        {key.displayName}
-                      </label>
-                      {key.description && (
-                        <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                          {key.description}
-                        </p>
-                      )}
-                      <div className="relative mt-2">
-                        <input
-                          type={showKeys[key.envVar] ? "text" : "password"}
-                          id={key.envVar}
-                          value={apiKeyValues[key.envVar] || ""}
-                          onChange={(e) =>
-                            handleApiKeyChange(key.envVar, e.target.value)
-                          }
-                          className="w-full px-3 py-2 pr-10 border border-neutral-300 dark:border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100"
-                          placeholder={`Enter your ${key.displayName}`}
-                        />
-                        <button
-                          type="button"
-                          onClick={() => toggleShowKey(key.envVar)}
-                          className="absolute inset-y-0 right-0 pr-3 flex items-center text-neutral-500"
-                        >
-                          {showKeys[key.envVar] ? (
-                            <svg
-                              className="h-5 w-5"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
-                              />
-                            </svg>
-                          ) : (
-                            <svg
-                              className="h-5 w-5"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                              />
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={2}
-                                d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                              />
-                            </svg>
-                          )}
-                        </button>
-                      </div>
+              <div className="p-4">
+                {/* OAuth Providers Notice */}
+                <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg">
+                  <div className="flex items-start gap-2">
+                    <svg className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
+                        OAuth-based providers (Gemini, AMP)
+                      </p>
+                      <p className="text-xs text-blue-700 dark:text-blue-300">
+                        These providers use OAuth authentication. When you first run them, they'll open a browser for you to authorize access. No API keys needed.
+                      </p>
                     </div>
-                  ))
-                )}
+                  </div>
+                </div>
+
+                {/* API Keys Section */}
+                <div className="space-y-3">
+                  {apiKeys.length === 0 ? (
+                    <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                      No API keys required for the configured agents.
+                    </p>
+                  ) : (
+                    <>
+                      <div className="mb-3">
+                        <h3 className="text-sm font-medium text-neutral-900 dark:text-neutral-100 mb-1">
+                          API Key Authentication
+                        </h3>
+                        <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                          The following providers require API keys. Get your keys from their respective platforms:
+                        </p>
+                      </div>
+                      
+                      {/* Group API keys by provider for better organization */}
+                      {apiKeys.map((key) => {
+                        const getProviderInfo = (envVar: string) => {
+                          switch (envVar) {
+                            case "ANTHROPIC_API_KEY":
+                              return {
+                                name: "Anthropic (Claude models via Opencode)",
+                                url: "https://console.anthropic.com/settings/keys",
+                                models: ["opus-4", "opus-4.1", "sonnet-4", "qwen3-coder"],
+                                instructions: "Create an API key in your Anthropic Console"
+                              };
+                            case "OPENAI_API_KEY":
+                              return {
+                                name: "OpenAI (GPT/O-series models via Opencode/Codex)",
+                                url: "https://platform.openai.com/api-keys",
+                                models: ["gpt-5", "gpt-5-mini", "gpt-5-nano", "o3-pro"],
+                                instructions: "Generate an API key from OpenAI Platform"
+                              };
+                            case "OPENROUTER_API_KEY":
+                              return {
+                                name: "OpenRouter (Multiple models via Opencode)",
+                                url: "https://openrouter.ai/keys",
+                                models: ["kimi-k2", "glm-4.5"],
+                                instructions: "Get your API key from OpenRouter dashboard"
+                              };
+                            default:
+                              return null;
+                          }
+                        };
+                        
+                        const providerInfo = getProviderInfo(key.envVar);
+                        
+                        return (
+                          <div key={key.envVar} className="border border-neutral-200 dark:border-neutral-800 rounded-lg p-3 space-y-2">
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <label
+                                  htmlFor={key.envVar}
+                                  className="block text-sm font-medium text-neutral-700 dark:text-neutral-300"
+                                >
+                                  {providerInfo?.name || key.displayName}
+                                </label>
+                                {providerInfo && (
+                                  <div className="mt-1 space-y-1">
+                                    <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                                      {providerInfo.instructions}
+                                    </p>
+                                    <p className="text-xs text-neutral-500 dark:text-neutral-400">
+                                      Used for models: <span className="font-medium">{providerInfo.models.join(", ")}</span>
+                                    </p>
+                                  </div>
+                                )}
+                              </div>
+                              {providerInfo?.url && (
+                                <a
+                                  href={providerInfo.url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 flex items-center gap-1"
+                                >
+                                  Get key
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                  </svg>
+                                </a>
+                              )}
+                            </div>
+                            <div className="relative">
+                              <input
+                                type={showKeys[key.envVar] ? "text" : "password"}
+                                id={key.envVar}
+                                value={apiKeyValues[key.envVar] || ""}
+                                onChange={(e) =>
+                                  handleApiKeyChange(key.envVar, e.target.value)
+                                }
+                                className="w-full px-3 py-2 pr-10 border border-neutral-300 dark:border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 font-mono text-sm"
+                                placeholder={key.envVar === "ANTHROPIC_API_KEY" ? "sk-ant-api03-..." : 
+                                           key.envVar === "OPENAI_API_KEY" ? "sk-proj-..." : 
+                                           key.envVar === "OPENROUTER_API_KEY" ? "sk-or-v1-..." : 
+                                           `Enter your ${key.displayName}`}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => toggleShowKey(key.envVar)}
+                                className="absolute inset-y-0 right-0 pr-3 flex items-center text-neutral-500"
+                              >
+                                {showKeys[key.envVar] ? (
+                                  <svg
+                                    className="h-5 w-5"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
+                                    />
+                                  </svg>
+                                ) : (
+                                  <svg
+                                    className="h-5 w-5"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                                    />
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                                    />
+                                  </svg>
+                                )}
+                              </button>
+                            </div>
+                            {apiKeyValues[key.envVar] && (
+                              <div className="flex items-center gap-1">
+                                <svg className="w-3 h-3 text-green-500 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                </svg>
+                                <span className="text-xs text-green-600 dark:text-green-400">API key configured</span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </>
+                  )}
+                </div>
               </div>
             </div>
 
