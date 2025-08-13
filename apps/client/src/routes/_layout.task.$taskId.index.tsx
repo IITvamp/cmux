@@ -127,7 +127,9 @@ function TaskDetailPage() {
   }, [selectedRun?._id]);
 
   // Stabilize diffs per-run to avoid cross-run flashes
-  const [stableDiffsByRun, setStableDiffsByRun] = useState<Record<string, typeof diffs>>({});
+  const [stableDiffsByRun, setStableDiffsByRun] = useState<
+    Record<string, typeof diffs>
+  >({});
   useEffect(() => {
     if (!diffs || isCheckingDiffs || !selectedRun?._id) return;
     const runKey = selectedRun._id as string;
@@ -350,7 +352,13 @@ function TaskDetailPage() {
       {/* Git diff viewer */}
       <div className="flex-1 overflow-hidden bg-white dark:bg-neutral-950">
         <GitDiffViewer
-          diffs={(selectedRun?._id ? stableDiffsByRun[selectedRun._id as string] : undefined) || diffs || []}
+          diffs={
+            (selectedRun?._id
+              ? stableDiffsByRun[selectedRun._id as string]
+              : undefined) ||
+            diffs ||
+            []
+          }
           isLoading={!diffs && !!selectedRun}
           taskRunId={selectedRun?._id}
           key={selectedRun?._id}
