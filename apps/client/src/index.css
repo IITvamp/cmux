@@ -404,3 +404,7 @@
 .margin-view-overlays {
   user-select: none;
 }
+
+.diff-hidden-lines-widget {
+  user-select: none;
+}

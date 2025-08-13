@@ -1,5 +1,5 @@
-import { Dropdown } from "@/components/ui/dropdown";
 import { OpenEditorSplitButton } from "@/components/OpenEditorSplitButton";
+import { Dropdown } from "@/components/ui/dropdown";
 import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
 import { useSocket } from "@/contexts/socket/use-socket";
 import type { Doc } from "@cmux/convex/dataModel";
@@ -60,6 +60,7 @@ export function TaskDetailHeader({
 
   // Determine if there are any diffs to open a PR for
   const hasChanges = useMemo(() => {
+    console.log({ hasAnyDiffs, totalAdditions, totalDeletions });
     if (typeof hasAnyDiffs === "boolean") return hasAnyDiffs;
     if (
       typeof totalAdditions !== "number" ||
@@ -171,14 +172,10 @@ export function TaskDetailHeader({
             <button
               onClick={handleViewPR}
               className="flex items-center gap-1.5 px-3 py-1 bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white border border-neutral-300 dark:border-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-700 font-medium text-xs select-none disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
-              disabled={
-                selectedRun?.status !== "completed" ||
-                isCreatingPr ||
-                !hasChanges
-              }
+              disabled={isCreatingPr || !hasChanges}
             >
               <ExternalLink className="w-3.5 h-3.5" />
-              {isCreatingPr ? "Creating PR..." : "Open draft PR"}
+              {isCreatingPr ? "Creating draft PR..." : "Open draft PR"}
             </button>
           )}
 
@@ -251,7 +248,9 @@ export function TaskDetailHeader({
             )}
           </button>
 
-          <span className="text-neutral-500 dark:text-neutral-600 select-none">in</span>
+          <span className="text-neutral-500 dark:text-neutral-600 select-none">
+            in
+          </span>
 
           {task?.projectFullName && (
             <span className="font-mono text-neutral-600 dark:text-neutral-300 truncate min-w-0 max-w-[40%] whitespace-nowrap select-none">
@@ -261,7 +260,9 @@ export function TaskDetailHeader({
 
           {taskRuns && taskRuns.length > 0 && (
             <>
-              <span className="text-neutral-500 dark:text-neutral-600 select-none">by</span>
+              <span className="text-neutral-500 dark:text-neutral-600 select-none">
+                by
+              </span>
               <Dropdown.Root
                 open={agentMenuOpen}
                 onOpenChange={handleAgentOpenChange}
