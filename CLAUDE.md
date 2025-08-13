@@ -7,7 +7,7 @@ Use pnpm to install dependencies and run the project.
 
 - `--force-docker-build`: Rebuild worker image even if cached.
 - `--show-compose-logs`: Also stream Docker Compose logs to the console (they are always written to `logs/docker-compose.log`). Docker build logs are always shown.
-  After finishing a task, run `bun run typecheck` in root to typecheck everything.
+  After finishing a task, run `bun run typecheck` in root to typecheck everything. You should always cd to root and run this command; do not manually run tsc any other way.
 
 # Backend
 
@@ -26,6 +26,7 @@ Always support dark mode.
 Always use node: prefixes for node imports.
 Do not use the any type.
 Don't modify README.md unless explicitly asked.
+Do not use dynamic imports unless absolutely necessary. Exceptions include when you're following existing patterns in the codebase.
 
 ## Logs
 

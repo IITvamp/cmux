@@ -3,7 +3,7 @@ import { TaskTreeSkeleton } from "@/components/TaskTreeSkeleton";
 import { isElectron } from "@/lib/electron";
 import { type Doc } from "@cmux/convex/dataModel";
 import { Link } from "@tanstack/react-router";
-import { Terminal, Plus } from "lucide-react";
+import { Plus, Terminal } from "lucide-react";
 import {
   type CSSProperties,
   useCallback,
@@ -23,6 +23,8 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
   const MAX_WIDTH = 600;
 
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const containerLeftRef = useRef<number>(0);
+  const rafIdRef = useRef<number | null>(null);
   const [width, setWidth] = useState<number>(() => {
     const stored = localStorage.getItem("sidebarWidth");
     const parsed = stored ? Number.parseInt(stored, 10) : DEFAULT_WIDTH;
@@ -36,13 +38,18 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
   }, [width]);
 
   const onMouseMove = useCallback((e: MouseEvent) => {
-    if (!containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const newWidth = Math.min(
-      Math.max(e.clientX - rect.left, MIN_WIDTH),
-      MAX_WIDTH
-    );
-    setWidth(newWidth);
+    // Batch width updates to once per animation frame to reduce layout thrash
+    if (rafIdRef.current != null) return;
+    rafIdRef.current = window.requestAnimationFrame(() => {
+      rafIdRef.current = null;
+      const containerLeft = containerLeftRef.current;
+      const clientX = e.clientX;
+      const newWidth = Math.min(
+        Math.max(clientX - containerLeft, MIN_WIDTH),
+        MAX_WIDTH
+      );
+      setWidth(newWidth);
+    });
   }, []);
 
   const stopResizing = useCallback(() => {
@@ -50,6 +57,10 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
     document.body.style.cursor = "";
     document.body.classList.remove("select-none");
     document.body.classList.remove("cmux-sidebar-resizing");
+    if (rafIdRef.current != null) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    }
     // Restore iframe pointer events
     const iframes = Array.from(document.querySelectorAll("iframe"));
     for (const el of iframes) {
@@ -79,6 +90,11 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
       document.body.style.cursor = "col-resize";
       document.body.classList.add("select-none");
       document.body.classList.add("cmux-sidebar-resizing");
+      // Snapshot the container's left position so we don't force layout on every move
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        containerLeftRef.current = rect.left;
+      }
       // Disable pointer events on all iframes so dragging works over them
       const iframes = Array.from(document.querySelectorAll("iframe"));
       for (const el of iframes) {
@@ -115,7 +131,7 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
       }}
     >
       <div
-        className="h-[38px] flex items-center pl-3 pr-1.5 shrink-0 border-b border-neutral-200 dark:border-neutral-900 bg-white/80 dark:bg-black/90 backdrop-blur-sm"
+        className="h-[38px] flex items-center pl-3 pr-1.5 shrink-0 border-b border-neutral-200 dark:border-neutral-900"
         style={{ WebkitAppRegion: "drag" } as CSSProperties}
       >
         {isElectron && <div className="w-[68px]"></div>}
@@ -124,8 +140,13 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
           className="flex items-center gap-2 select-none cursor-default"
           style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
         >
-          <Terminal className="h-4 w-4 text-neutral-600 dark:text-neutral-300" aria-hidden="true" />
-          <span className="text-sm font-mono text-neutral-900 dark:text-white">cmux</span>
+          <Terminal
+            className="h-4 w-4 text-neutral-600 dark:text-neutral-300"
+            aria-hidden="true"
+          />
+          <span className="text-sm font-mono text-neutral-900 dark:text-white">
+            cmux
+          </span>
         </Link>
         <div className="grow"></div>
         <Link
@@ -134,7 +155,10 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
           title="New task"
           style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
         >
-          <Plus className="w-4 h-4 text-neutral-700 dark:text-neutral-300" aria-hidden="true" />
+          <Plus
+            className="w-4 h-4 text-neutral-700 dark:text-neutral-300"
+            aria-hidden="true"
+          />
         </Link>
       </div>
       <nav className="grow flex flex-col overflow-hidden">

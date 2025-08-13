@@ -1,8 +1,9 @@
 import { api } from "@cmux/convex/api";
+import type { Id } from "@cmux/convex/dataModel";
 import {
   GitFullDiffRequestSchema,
-  GitHubFetchBranchesSchema,
   GitHubCreateDraftPrSchema,
+  GitHubFetchBranchesSchema,
   ListFilesRequestSchema,
   OpenInEditorSchema,
   StartTaskSchema,
@@ -12,7 +13,7 @@ import {
   type ServerToClientEvents,
   type SocketData,
 } from "@cmux/shared";
-import * as fuzzysort from "fuzzysort";
+import fuzzysort from "fuzzysort";
 import { minimatch } from "minimatch";
 import { exec, spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
@@ -25,9 +26,13 @@ import { spawnAllAgents } from "./agentSpawner.js";
 import { execWithEnv } from "./execWithEnv.js";
 import { GitDiffManager } from "./gitDiff.js";
 import { createProxyApp, setupWebSocketProxy } from "./proxyApp.js";
+import { refreshDiffsForTaskRun } from "./refreshDiffs.js";
 import { RepositoryManager } from "./repositoryManager.js";
+import { getPRTitleFromTaskDescription } from "./utils/branchNameGenerator.js";
 import { convex } from "./utils/convexClient.js";
+import { ensureRunWorktreeAndBranch } from "./utils/ensureRunWorktree.js";
 import { dockerLogger, serverLogger } from "./utils/fileLogger.js";
+import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
 import { checkAllProvidersStatus } from "./utils/providerStatus.js";
 import {
   refreshBranchesForRepo,
@@ -37,12 +42,6 @@ import { waitForConvex } from "./utils/waitForConvex.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWorktreePath } from "./workspace.js";
-import { evaluateCrownWithClaudeCode } from "./crownEvaluator.js";
-import { refreshDiffsForTaskRun } from "./refreshDiffs.js";
-import type { Id } from "@cmux/convex/dataModel";
-import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
-import { ensureRunWorktreeAndBranch } from "./utils/ensureRunWorktree.js";
-import { getPRTitleFromTaskDescription } from "./utils/branchNameGenerator.js";
 
 const execAsync = promisify(exec);
 
@@ -116,7 +115,7 @@ export async function startServer({
     },
     maxHttpBufferSize: 50 * 1024 * 1024, // 50MB to handle multiple images
     pingTimeout: 120000, // 120 seconds - match worker settings
-    pingInterval: 30000, // 30 seconds - match worker settings  
+    pingInterval: 30000, // 30 seconds - match worker settings
     allowEIO3: true, // Allow different Socket.IO versions
   });
 
@@ -152,7 +151,9 @@ export async function startServer({
         // Generate PR title early from the task description
         let generatedTitle: string | null = null;
         try {
-          generatedTitle = await getPRTitleFromTaskDescription(taskData.taskDescription);
+          generatedTitle = await getPRTitleFromTaskDescription(
+            taskData.taskDescription
+          );
           // Persist to Convex immediately
           await convex.mutation(api.tasks.setPullRequestTitle, {
             id: taskId as Id<"tasks">,
@@ -160,7 +161,10 @@ export async function startServer({
           });
           serverLogger.info(`[Server] Saved early PR title: ${generatedTitle}`);
         } catch (e) {
-          serverLogger.error(`[Server] Failed generating/saving early PR title:`, e);
+          serverLogger.error(
+            `[Server] Failed generating/saving early PR title:`,
+            e
+          );
         }
 
         // Spawn all agents in parallel (each will create its own taskRun)
@@ -281,15 +285,22 @@ export async function startServer({
     // Provide file contents on demand to avoid large Convex docs
     socket.on("git-diff-file-contents", async (data, callback) => {
       try {
-        const { taskRunId, filePath } = data as { taskRunId: string; filePath: string };
-        const taskRun = await convex.query(api.taskRuns.get, { id: taskRunId as any });
+        const { taskRunId, filePath } = data as {
+          taskRunId: string;
+          filePath: string;
+        };
+        const taskRun = await convex.query(api.taskRuns.get, {
+          id: taskRunId as any,
+        });
         if (!taskRun?.worktreePath) {
           callback?.({ ok: false, error: "Worktree not found" });
           return;
         }
         const worktreePath = taskRun.worktreePath as string;
         // Determine status from stored diff to handle deleted/added cases
-        const diffs = await convex.query(api.gitDiffs.getByTaskRun, { taskRunId: taskRunId as any });
+        const diffs = await convex.query(api.gitDiffs.getByTaskRun, {
+          taskRunId: taskRunId as any,
+        });
         const fileDiff = diffs?.find((d: any) => d.filePath === filePath);
         const status = fileDiff?.status ?? "modified";
         let oldContent = "";
@@ -299,37 +310,53 @@ export async function startServer({
           newContent = "";
         } else {
           try {
-            newContent = await fs.readFile(path.join(worktreePath, filePath), "utf-8");
+            newContent = await fs.readFile(
+              path.join(worktreePath, filePath),
+              "utf-8"
+            );
           } catch {
             newContent = "";
           }
           try {
-            const { stdout } = await execAsync(`git show HEAD:"${filePath}"`, { cwd: worktreePath, maxBuffer: 5 * 1024 * 1024 });
+            const { stdout } = await execAsync(`git show HEAD:"${filePath}"`, {
+              cwd: worktreePath,
+              maxBuffer: 5 * 1024 * 1024,
+            });
             oldContent = stdout;
           } catch {
             oldContent = "";
           }
         }
-        callback?.({ ok: true, oldContent, newContent, isBinary: fileDiff?.isBinary ?? false });
+        callback?.({
+          ok: true,
+          oldContent,
+          newContent,
+          isBinary: fileDiff?.isBinary ?? false,
+        });
       } catch (error) {
         serverLogger.error("Error in git-diff-file-contents:", error);
-        callback?.({ ok: false, error: error instanceof Error ? error.message : "Unknown error" });
+        callback?.({
+          ok: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
       }
     });
 
     socket.on("refresh-diffs", async (data, callback) => {
       try {
         const { taskRunId } = data;
-        serverLogger.info(`[Server] Refresh diffs requested for taskRun ${taskRunId}`);
-        
+        serverLogger.info(
+          `[Server] Refresh diffs requested for taskRun ${taskRunId}`
+        );
+
         // Use the simplified approach that works directly with the filesystem
         const result = await refreshDiffsForTaskRun(taskRunId);
         callback(result);
       } catch (error) {
         serverLogger.error("Error refreshing diffs:", error);
-        callback({ 
-          success: false, 
-          message: error instanceof Error ? error.message : "Unknown error" 
+        callback({
+          success: false,
+          message: error instanceof Error ? error.message : "Unknown error",
         });
       }
     });
@@ -671,7 +698,8 @@ export async function startServer({
         const { taskRunId } = GitHubCreateDraftPrSchema.parse(data);
 
         // Ensure worktree exists and we are on the correct branch
-        const { run, task, worktreePath, branchName, baseBranch } = await ensureRunWorktreeAndBranch(taskRunId as any);
+        const { run, task, worktreePath, branchName, baseBranch } =
+          await ensureRunWorktreeAndBranch(taskRunId as any);
 
         // Get GitHub token from keychain/Convex
         const githubToken = await getGitHubTokenFromKeychain(convex);
@@ -682,9 +710,10 @@ export async function startServer({
 
         // Create PR title/body and commit message using stored task title when available
         const title = task.pullRequestTitle || task.text || "cmux changes";
-        const truncatedTitle = title.length > 72 ? `${title.slice(0, 69)}...` : title;
+        const truncatedTitle =
+          title.length > 72 ? `${title.slice(0, 69)}...` : title;
         const commitMessage = `${truncatedTitle}\n\nGenerated by cmux for task ${String(task._id)}.`;
-        const body = task.pullRequestDescription || `## Summary\n\n${title}`;
+        const body = task.text || `## Summary\n\n${title}`;
 
         // Ensure on branch, commit, push, and create draft PR using local filesystem
         const cwd = worktreePath;
@@ -692,66 +721,131 @@ export async function startServer({
 
         // 1) Fetch base (optional but helpful)
         try {
-          await execAsync(`git fetch origin ${baseBranch}`, { cwd, env: { ...process.env }, maxBuffer: 10 * 1024 * 1024 });
+          await execAsync(`git fetch origin ${baseBranch}`, {
+            cwd,
+            env: { ...process.env },
+            maxBuffer: 10 * 1024 * 1024,
+          });
         } catch (e: unknown) {
-          const err = e as { stdout?: string; stderr?: string; message?: string };
-          serverLogger.warn(`[DraftPR] Fetch base failed (continuing): ${err?.stderr || err?.message || "unknown"}`);
+          const err = e as {
+            stdout?: string;
+            stderr?: string;
+            message?: string;
+          };
+          serverLogger.warn(
+            `[DraftPR] Fetch base failed (continuing): ${err?.stderr || err?.message || "unknown"}`
+          );
         }
 
         // 2) Ensure we are on branchName without discarding local changes
         try {
-          const { stdout: cbOut } = await execAsync(`git rev-parse --abbrev-ref HEAD`, { cwd, env: { ...process.env } });
+          const { stdout: cbOut } = await execAsync(
+            `git rev-parse --abbrev-ref HEAD`,
+            { cwd, env: { ...process.env } }
+          );
           const currentBranch = cbOut.trim();
           if (currentBranch !== branchName) {
             // Try create from current HEAD; if exists, just switch
             try {
-              await execAsync(`git checkout -b ${branchName}`, { cwd, env: { ...process.env } });
+              await execAsync(`git checkout -b ${branchName}`, {
+                cwd,
+                env: { ...process.env },
+              });
             } catch {
-              await execAsync(`git checkout ${branchName}`, { cwd, env: { ...process.env } });
+              await execAsync(`git checkout ${branchName}`, {
+                cwd,
+                env: { ...process.env },
+              });
             }
           }
         } catch (e: unknown) {
-          const err = e as { stdout?: string; stderr?: string; message?: string };
-          const msg = err?.message || err?.stderr || err?.stdout || "unknown error";
+          const err = e as {
+            stdout?: string;
+            stderr?: string;
+            message?: string;
+          };
+          const msg =
+            err?.message || err?.stderr || err?.stdout || "unknown error";
           serverLogger.error(`[DraftPR] Failed at 'Ensure branch': ${msg}`);
-          callback({ success: false, error: `Failed at 'Ensure branch': ${msg}` });
+          callback({
+            success: false,
+            error: `Failed at 'Ensure branch': ${msg}`,
+          });
           return;
         }
 
         // 3) Stage and commit changes (no-op safe)
         try {
           await execAsync("git add -A", { cwd, env: { ...process.env } });
-          await execAsync(`git commit -m ${JSON.stringify(commitMessage)} || echo 'No changes to commit'`, { cwd, env: { ...process.env }, shell: "/bin/bash" });
+          await execAsync(
+            `git commit -m ${JSON.stringify(commitMessage)} || echo 'No changes to commit'`,
+            { cwd, env: { ...process.env }, shell: "/bin/bash" }
+          );
         } catch (e: unknown) {
-          const err = e as { stdout?: string; stderr?: string; message?: string };
-          const msg = err?.message || err?.stderr || err?.stdout || "unknown error";
+          const err = e as {
+            stdout?: string;
+            stderr?: string;
+            message?: string;
+          };
+          const msg =
+            err?.message || err?.stderr || err?.stdout || "unknown error";
           serverLogger.error(`[DraftPR] Failed at 'Commit changes': ${msg}`);
-          callback({ success: false, error: `Failed at 'Commit changes': ${msg}` });
+          callback({
+            success: false,
+            error: `Failed at 'Commit changes': ${msg}`,
+          });
           return;
         }
 
         // 4) If remote branch exists, pull --rebase to integrate updates
         try {
-          const { stdout: lsOut } = await execAsync(`git ls-remote --heads origin ${branchName}`, { cwd, env: { ...process.env } });
+          const { stdout: lsOut } = await execAsync(
+            `git ls-remote --heads origin ${branchName}`,
+            { cwd, env: { ...process.env } }
+          );
           if ((lsOut || "").trim().length > 0) {
-            await execAsync(`git pull --rebase origin ${branchName}`, { cwd, env: { ...process.env }, maxBuffer: 10 * 1024 * 1024 });
+            await execAsync(`git pull --rebase origin ${branchName}`, {
+              cwd,
+              env: { ...process.env },
+              maxBuffer: 10 * 1024 * 1024,
+            });
           }
         } catch (e: unknown) {
-          const err = e as { stdout?: string; stderr?: string; message?: string };
-          const msg = err?.message || err?.stderr || err?.stdout || "unknown error";
+          const err = e as {
+            stdout?: string;
+            stderr?: string;
+            message?: string;
+          };
+          const msg =
+            err?.message || err?.stderr || err?.stdout || "unknown error";
           serverLogger.error(`[DraftPR] Failed at 'Pull --rebase': ${msg}`);
-          callback({ success: false, error: `Failed at 'Pull --rebase': ${msg}` });
+          callback({
+            success: false,
+            error: `Failed at 'Pull --rebase': ${msg}`,
+          });
           return;
         }
 
         // 5) Push branch (set upstream)
         try {
-          await execAsync(`git push -u origin ${branchName}`, { cwd, env: { ...process.env }, maxBuffer: 10 * 1024 * 1024 });
+          await execAsync(`git push -u origin ${branchName}`, {
+            cwd,
+            env: { ...process.env },
+            maxBuffer: 10 * 1024 * 1024,
+          });
         } catch (e: unknown) {
-          const err = e as { stdout?: string; stderr?: string; message?: string };
-          const msg = err?.message || err?.stderr || err?.stdout || "unknown error";
+          const err = e as {
+            stdout?: string;
+            stderr?: string;
+            message?: string;
+          };
+          const msg =
+            err?.message || err?.stderr || err?.stdout || "unknown error";
           serverLogger.error(`[DraftPR] Failed at 'Push branch': ${msg}`);
-          callback({ success: false, error: `Failed at 'Push branch': ${msg}` });
+          callback({
+            success: false,
+            error: `Failed at 'Push branch': ${msg}`,
+          });
           return;
         }
 
@@ -770,7 +864,11 @@ export async function startServer({
             )} --body-file ${JSON.stringify(tmpBodyPath)} --head ${JSON.stringify(
               branchName
             )} --base ${JSON.stringify(baseBranch)}`,
-            { cwd, env: { ...process.env, GH_TOKEN: githubToken }, maxBuffer: 10 * 1024 * 1024 }
+            {
+              cwd,
+              env: { ...process.env, GH_TOKEN: githubToken },
+              maxBuffer: 10 * 1024 * 1024,
+            }
           );
           const out = (stdout || stderr || "").trim();
           const match = out.match(/https:\/\/github\.com\/[^\s]+/);
@@ -780,10 +878,18 @@ export async function startServer({
             await fs.unlink(tmpBodyPath);
           } catch {}
         } catch (e: unknown) {
-          const err = e as { stdout?: string; stderr?: string; message?: string };
-          const msg = err?.message || err?.stderr || err?.stdout || "unknown error";
+          const err = e as {
+            stdout?: string;
+            stderr?: string;
+            message?: string;
+          };
+          const msg =
+            err?.message || err?.stderr || err?.stdout || "unknown error";
           serverLogger.error(`[DraftPR] Failed at 'Create draft PR': ${msg}`);
-          callback({ success: false, error: `Failed at 'Create draft PR': ${msg}` });
+          callback({
+            success: false,
+            error: `Failed at 'Create draft PR': ${msg}`,
+          });
           return;
         }
 
@@ -798,7 +904,10 @@ export async function startServer({
         callback({ success: true, url: prUrl });
       } catch (error) {
         serverLogger.error("Error creating draft PR:", error);
-        callback({ success: false, error: error instanceof Error ? error.message : "Unknown error" });
+        callback({
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
       }
     });
 

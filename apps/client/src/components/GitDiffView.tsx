@@ -108,6 +108,14 @@ export const GitDiffView: React.FC<GitDiffViewProps> = ({
             No changes to display
           </div>
         )}
+        {/* End-of-diff message */}
+        {diffContent && (
+          <div className="mt-4 pt-4 border-t border-neutral-800 text-center">
+            <span className="text-xs text-neutral-400 select-none">
+              You’ve reached the end of the diff — nice work ✨
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );

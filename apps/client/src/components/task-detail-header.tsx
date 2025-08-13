@@ -1,3 +1,4 @@
+import { OpenEditorSplitButton } from "@/components/OpenEditorSplitButton";
 import { Dropdown } from "@/components/ui/dropdown";
 import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
 import { useSocket } from "@/contexts/socket/use-socket";
@@ -13,11 +14,10 @@ import {
   EllipsisVertical,
   ExternalLink,
   GitBranch,
-  Package,
   RefreshCw,
   Trash2,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 interface TaskDetailHeaderProps {
@@ -30,6 +30,7 @@ interface TaskDetailHeaderProps {
   onMerge: (method: MergeMethod) => void;
   totalAdditions?: number;
   totalDeletions?: number;
+  hasAnyDiffs?: boolean;
   onExpandAll?: () => void;
   onCollapseAll?: () => void;
 }
@@ -44,6 +45,7 @@ export function TaskDetailHeader({
   onMerge,
   totalAdditions,
   totalDeletions,
+  hasAnyDiffs,
   onExpandAll,
   onCollapseAll,
 }: TaskDetailHeaderProps) {
@@ -51,11 +53,23 @@ export function TaskDetailHeader({
   const clipboard = useClipboard({ timeout: 2000 });
   const [prIsOpen, setPrIsOpen] = useState(false);
   const { socket } = useSocket();
+  const [agentMenuOpen, setAgentMenuOpen] = useState(false);
+  const handleAgentOpenChange = useCallback((open: boolean) => {
+    setAgentMenuOpen(open);
+  }, []);
 
-  const crownedRun = useMemo(
-    () => taskRuns?.find((r) => r.isCrowned) ?? null,
-    [taskRuns]
-  );
+  // Determine if there are any diffs to open a PR for
+  const hasChanges = useMemo(() => {
+    console.log({ hasAnyDiffs, totalAdditions, totalDeletions });
+    if (typeof hasAnyDiffs === "boolean") return hasAnyDiffs;
+    if (
+      typeof totalAdditions !== "number" ||
+      typeof totalDeletions !== "number"
+    ) {
+      return false;
+    }
+    return (totalAdditions || 0) + (totalDeletions || 0) > 0;
+  }, [hasAnyDiffs, totalAdditions, totalDeletions]);
 
   const taskTitle = task?.pullRequestTitle || task?.text;
 
@@ -73,15 +87,18 @@ export function TaskDetailHeader({
   };
 
   const handleViewPR = () => {
-    if (!socket || !crownedRun?._id) return;
-    if (crownedRun.pullRequestUrl && crownedRun.pullRequestUrl !== "pending") {
-      window.open(crownedRun.pullRequestUrl, "_blank");
+    if (!socket || !selectedRun?._id) return;
+    if (
+      selectedRun.pullRequestUrl &&
+      selectedRun.pullRequestUrl !== "pending"
+    ) {
+      window.open(selectedRun.pullRequestUrl, "_blank");
       return;
     }
     setIsCreatingPr(true);
     socket.emit(
       "github-create-draft-pr",
-      { taskRunId: crownedRun._id as string },
+      { taskRunId: selectedRun._id as string },
       (resp: { success: boolean; url?: string; error?: string }) => {
         setIsCreatingPr(false);
         if (resp.success && resp.url) {
@@ -96,15 +113,17 @@ export function TaskDetailHeader({
     );
   };
 
+  const worktreePath = useMemo(
+    () => selectedRun?.worktreePath || task?.worktreePath || null,
+    [selectedRun?.worktreePath, task?.worktreePath]
+  );
+
   return (
-    <div className="bg-neutral-900 text-white px-3.5 sticky top-0 z-20 py-2">
-      <div className="grid grid-cols-[1fr_auto_auto] gap-x-3 gap-y-1">
+    <div className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white px-3.5 sticky top-0 z-20 py-2">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-3 gap-y-1">
         {/* Title row */}
-        <div className="flex items-center gap-2 relative">
-          <h1
-            className="text-sm font-bold truncate min-w-0 overflow-ellipsis"
-            title={taskTitle}
-          >
+        <div className="flex items-center gap-2 relative min-w-0">
+          <h1 className="text-sm font-bold truncate min-w-0" title={taskTitle}>
             {taskTitle || "Loading..."}
           </h1>
           {typeof totalAdditions === "number" &&
@@ -113,7 +132,7 @@ export function TaskDetailHeader({
                 <span className="text-green-600 dark:text-green-400 font-medium select-none">
                   +{totalAdditions}
                 </span>
-                <span className="text-red-600 dark:text-red-400 font-medium">
+                <span className="text-red-600 dark:text-red-400 font-medium select-none">
                   −{totalDeletions}
                 </span>
               </div>
@@ -132,48 +151,45 @@ export function TaskDetailHeader({
         </div>
 
         {/* Actions on right, vertically centered across rows */}
-        <div className="col-start-3 row-start-1 row-span-2 self-center flex items-center gap-2">
+        <div className="col-start-3 row-start-1 row-span-2 self-center flex items-center gap-2 shrink-0">
           <MergeButton
             onMerge={handleMerge}
             isOpen={prIsOpen}
-            disabled={!crownedRun?.newBranch}
+            disabled={selectedRun?.status !== "completed" || !hasChanges}
           />
-          {crownedRun?.pullRequestUrl &&
-          crownedRun.pullRequestUrl !== "pending" ? (
+          {selectedRun?.pullRequestUrl &&
+          selectedRun.pullRequestUrl !== "pending" ? (
             <a
-              href={crownedRun.pullRequestUrl}
+              href={selectedRun.pullRequestUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1.5 px-3 py-1 bg-neutral-800 text-white border border-neutral-700 rounded hover:bg-neutral-700 font-medium text-xs select-none"
+              className="flex items-center gap-1.5 px-3 py-1 bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white border border-neutral-300 dark:border-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-700 font-medium text-xs select-none whitespace-nowrap"
             >
               <ExternalLink className="w-3.5 h-3.5" />
-              {crownedRun.pullRequestIsDraft ? "View draft PR" : "View PR"}
+              {selectedRun.pullRequestIsDraft ? "View draft PR" : "View PR"}
             </a>
           ) : (
             <button
               onClick={handleViewPR}
-              className="flex items-center gap-1.5 px-3 py-1 bg-neutral-800 text-white border border-neutral-700 rounded hover:bg-neutral-700 font-medium text-xs select-none disabled:opacity-60 disabled:cursor-not-allowed"
-              disabled={!crownedRun?.newBranch || isCreatingPr}
+              className="flex items-center gap-1.5 px-3 py-1 bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white border border-neutral-300 dark:border-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-700 font-medium text-xs select-none disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
+              disabled={isCreatingPr || !hasChanges}
             >
               <ExternalLink className="w-3.5 h-3.5" />
-              {isCreatingPr ? "Creating PR..." : "Open draft PR"}
+              {isCreatingPr ? "Creating draft PR..." : "Open draft PR"}
             </button>
           )}
 
-          <button className="flex items-center gap-1.5 px-3 py-1 bg-neutral-800 text-white border border-neutral-700 rounded hover:bg-neutral-700 font-medium text-xs select-none">
-            <Package className="w-3.5 h-3.5" />
-            Open in VS Code
-          </button>
+          <OpenEditorSplitButton worktreePath={worktreePath} />
 
-          <button className="p-1 text-neutral-400 hover:text-white select-none hidden">
+          <button className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-white select-none hidden">
             <ExternalLink className="w-3.5 h-3.5" />
           </button>
-          <button className="p-1 text-neutral-400 hover:text-white select-none hidden">
+          <button className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-white select-none hidden">
             <Trash2 className="w-3.5 h-3.5" />
           </button>
           <Dropdown.Root>
             <Dropdown.Trigger
-              className="p-1 text-neutral-400 hover:text-white select-none"
+              className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-white select-none"
               aria-label="More actions"
             >
               <EllipsisVertical className="w-3.5 h-3.5" />
@@ -195,10 +211,10 @@ export function TaskDetailHeader({
         </div>
 
         {/* Branch row */}
-        <div className="flex items-center gap-2 text-xs text-neutral-400">
+        <div className="flex items-center gap-2 text-xs text-neutral-400 min-w-0">
           <button
             onClick={handleCopyBranch}
-            className="flex items-center gap-1 hover:text-white transition-colors group"
+            className="flex items-center gap-1 hover:text-neutral-700 dark:hover:text-white transition-colors group"
           >
             <div className="relative w-3 h-3">
               <GitBranch
@@ -224,7 +240,7 @@ export function TaskDetailHeader({
               />
             </div>
             {selectedRun?.newBranch ? (
-              <span className="font-mono text-neutral-300 group-hover:text-white text-[11px]">
+              <span className="font-mono text-neutral-600 dark:text-neutral-300 group-hover:text-neutral-900 dark:group-hover:text-white text-[11px] truncate min-w-0 max-w-full select-none">
                 {selectedRun.newBranch}
               </span>
             ) : (
@@ -232,27 +248,34 @@ export function TaskDetailHeader({
             )}
           </button>
 
-          <span className="text-neutral-600">in</span>
+          <span className="text-neutral-500 dark:text-neutral-600 select-none">
+            in
+          </span>
 
           {task?.projectFullName && (
-            <span className="font-mono text-neutral-300">
+            <span className="font-mono text-neutral-600 dark:text-neutral-300 truncate min-w-0 max-w-[40%] whitespace-nowrap select-none">
               {task.projectFullName}
             </span>
           )}
 
           {taskRuns && taskRuns.length > 0 && (
             <>
-              <span className="text-neutral-600">by</span>
-              <Dropdown.Root>
-                <Dropdown.Trigger className="flex items-center gap-1 text-neutral-300 hover:text-white transition-colors text-xs">
+              <span className="text-neutral-500 dark:text-neutral-600 select-none">
+                by
+              </span>
+              <Dropdown.Root
+                open={agentMenuOpen}
+                onOpenChange={handleAgentOpenChange}
+              >
+                <Dropdown.Trigger className="flex items-center gap-1 text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white transition-colors text-xs whitespace-nowrap select-none">
                   <span>{selectedRun?.agentName || "Unknown agent"}</span>
                   <ChevronDown className="w-3 h-3" />
                 </Dropdown.Trigger>
 
                 <Dropdown.Portal>
                   <Dropdown.Positioner sideOffset={5}>
-                    <Dropdown.Arrow />
                     <Dropdown.Popup className="min-w-[200px]">
+                      <Dropdown.Arrow />
                       {taskRuns.map((run) => {
                         const agentName =
                           run.agentName ||
@@ -271,7 +294,11 @@ export function TaskDetailHeader({
                                   search: { runId: run._id },
                                 });
                               }
+                              // Close dropdown after selection
+                              setAgentMenuOpen(false);
                             }}
+                            // Also close when selecting the same option
+                            onClick={() => setAgentMenuOpen(false)}
                           >
                             <Dropdown.CheckboxItemIndicator>
                               <Check className="w-3 h-3" />

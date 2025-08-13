@@ -1,33 +1,13 @@
 import { api } from "@cmux/convex/api";
-import { convexQuery } from "@convex-dev/react-query";
-import { useQuery } from "@tanstack/react-query";
-import { memo, useMemo, useState } from "react";
+import { useQuery } from "convex/react";
+import { memo, useState } from "react";
 import { TaskItem } from "./TaskItem";
 
 export const TaskList = memo(function TaskList() {
-  // Fetch tasks
-  const activeTasksQuery = useQuery(
-    convexQuery(api.tasks.get, { archived: false })
-  );
-  const archivedTasksQuery = useQuery(
-    convexQuery(api.tasks.get, { archived: true })
-  );
-
-  const activeTasks = activeTasksQuery.data || [];
-  const archivedTasks = archivedTasksQuery.data || [];
-
+  const allTasks = useQuery(api.tasks.get, {});
+  const archivedTasks = useQuery(api.tasks.get, { archived: true });
   const [tab, setTab] = useState<"all" | "archived">("all");
-  const tasks = useMemo(
-    () => (tab === "archived" ? archivedTasks : activeTasks),
-    [tab, activeTasks, archivedTasks]
-  );
-
-  if (
-    (tasks?.length || 0) === 0 &&
-    (tab === "all" ? activeTasks.length === 0 : archivedTasks.length === 0)
-  ) {
-    return null;
-  }
+  const tasks = tab === "archived" ? archivedTasks : allTasks;
 
   return (
     <div className="mt-6">
@@ -60,9 +40,13 @@ export const TaskList = memo(function TaskList() {
         </div>
       </div>
       <div className="flex flex-col gap-1">
-        {tasks.map((task) => (
-          <TaskItem key={task._id} task={task} />
-        ))}
+        {tasks === undefined ? (
+          <div>Loading...</div>
+        ) : tasks.length === 0 ? (
+          <div>No tasks</div>
+        ) : (
+          tasks.map((task) => <TaskItem key={task._id} task={task} />)
+        )}
       </div>
     </div>
   );

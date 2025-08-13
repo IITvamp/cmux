@@ -162,6 +162,13 @@ function TaskDetailPage() {
     // TODO: Implement merge logic
     console.log("Merging with method:", method);
   };
+
+  const hasAnyDiffs = !!(
+    (selectedRun?._id ? stableDiffsByRun[selectedRun._id as string] : diffs) ||
+    []
+  ).length;
+  console.log({ hasAnyDiffs });
+
   return (
     <FloatingPane>
       <div className="flex h-full min-h-0 flex-col relative isolate">
@@ -176,13 +183,16 @@ function TaskDetailPage() {
             onMerge={handleMerge}
             totalAdditions={diffControls?.totalAdditions}
             totalDeletions={diffControls?.totalDeletions}
+            hasAnyDiffs={hasAnyDiffs}
             onExpandAll={diffControls?.expandAll}
             onCollapseAll={diffControls?.collapseAll}
           />
           {task?.text && (
             <div className="mb-2 px-3.5">
-              <div className="text-xs text-neutral-300">
-                <span className="text-neutral-400 select-none">Prompt: </span>
+              <div className="text-xs text-neutral-600 dark:text-neutral-300">
+                <span className="text-neutral-500 dark:text-neutral-400 select-none">
+                  Prompt:{" "}
+                </span>
                 <span className="font-medium">{task.text}</span>
               </div>
             </div>

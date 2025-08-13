@@ -230,7 +230,7 @@ export function GitDiffViewer({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="text-neutral-500 dark:text-neutral-400">
+        <div className="text-neutral-500 dark:text-neutral-400 text-sm">
           Loading diffs...
         </div>
       </div>
@@ -240,7 +240,7 @@ export function GitDiffViewer({
   if (diffs.length === 0) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="text-neutral-500 dark:text-neutral-400">
+        <div className="text-neutral-500 dark:text-neutral-400 text-sm">
           No changes to display
         </div>
       </div>
@@ -248,7 +248,10 @@ export function GitDiffViewer({
   }
 
   return (
-    <div key={taskRunId ?? "_"} className="bg-neutral-50 dark:bg-neutral-950">
+    <div
+      key={taskRunId ?? "_"}
+      className="grow bg-neutral-50 dark:bg-neutral-950"
+    >
       {/* Diff sections */}
       <div className="">
         {fileGroups.map((file) => (
@@ -266,6 +269,12 @@ export function GitDiffViewer({
             runId={taskRunId}
           />
         ))}
+        {/* End-of-diff message */}
+        <div className="px-3 py-6 text-center">
+          <span className="text-xs text-neutral-500 dark:text-neutral-400 select-none">
+            You’ve reached the end of the diff — nice work ✨
+          </span>
+        </div>
       </div>
     </div>
   );
@@ -333,7 +342,7 @@ function FileDiffRow({
             <span className="text-green-600 dark:text-green-400 font-medium select-none">
               +{file.additions}
             </span>
-            <span className="text-red-600 dark:text-red-400 font-medium">
+            <span className="text-red-600 dark:text-red-400 font-medium select-none">
               −{file.deletions}
             </span>
           </div>
