@@ -248,7 +248,10 @@ export function GitDiffViewer({
   }
 
   return (
-    <div key={taskRunId ?? "_"} className="bg-neutral-50 dark:bg-neutral-950">
+    <div
+      key={taskRunId ?? "_"}
+      className="grow bg-neutral-50 dark:bg-neutral-950"
+    >
       {/* Diff sections */}
       <div className="">
         {fileGroups.map((file) => (
@@ -266,6 +269,12 @@ export function GitDiffViewer({
             runId={taskRunId}
           />
         ))}
+        {/* End-of-diff message */}
+        <div className="px-3 py-6 text-center">
+          <span className="text-xs text-neutral-500 dark:text-neutral-400 select-none">
+            You’ve reached the end of the diff — nice work ✨
+          </span>
+        </div>
       </div>
     </div>
   );
