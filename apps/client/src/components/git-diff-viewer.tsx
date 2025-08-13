@@ -13,12 +13,25 @@ import {
   FileText,
 } from "lucide-react";
 import { type editor } from "monaco-editor";
-import { memo, useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
+import {
+  memo,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 interface GitDiffViewerProps {
   diffs: Doc<"gitDiffs">[];
   isLoading?: boolean;
   taskRunId?: string;
+  onControlsChange?: (controls: {
+    expandAll: () => void;
+    collapseAll: () => void;
+    totalAdditions: number;
+    totalDeletions: number;
+  }) => void;
 }
 
 interface FileGroup {
@@ -48,7 +61,7 @@ function getStatusColor(status: Doc<"gitDiffs">["status"]) {
 }
 
 function getStatusIcon(status: Doc<"gitDiffs">["status"]) {
-  const iconClass = "w-4 h-4 flex-shrink-0";
+  const iconClass = "w-3.5 h-3.5 flex-shrink-0";
   switch (status) {
     case "added":
       return <FilePlus className={iconClass} />;
@@ -67,6 +80,7 @@ export function GitDiffViewer({
   diffs,
   isLoading,
   taskRunId,
+  onControlsChange,
 }: GitDiffViewerProps) {
   const { theme } = useTheme();
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
@@ -87,49 +101,80 @@ export function GitDiffViewer({
         deletions: diff.deletions,
         oldContent:
           (lazyContents[`${taskRunId ?? "_"}:${diff.filePath}`]?.oldContent ??
-            diff.oldContent) || "",
+            diff.oldContent) ||
+          "",
         newContent:
           (lazyContents[`${taskRunId ?? "_"}:${diff.filePath}`]?.newContent ??
-            diff.newContent) || "",
+            diff.newContent) ||
+          "",
         patch: diff.patch,
         isBinary: diff.isBinary,
       })),
     [diffs, lazyContents, taskRunId]
   );
 
-  // Auto-expand files on initial load or when diffs change
+  // Maintain minimal reactivity; no debug logging in production
   useEffect(() => {
-    // Expand all files by default (like GitHub)
-    setExpandedFiles(new Set(fileGroups.map((f) => f.filePath)));
+    // No-op effect to keep hook ordering consistent if needed later
+  }, [diffs]);
+
+  // Maintain expansion state across refreshes:
+  // - On first load: expand all
+  // - On subsequent diffs changes: preserve existing expansions, expand only truly new files
+  //   (detected via previous file list, not by expansion set)
+  const prevFilesRef = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const nextPathsArr = diffs.map((d) => d.filePath);
+    const nextPaths = new Set(nextPathsArr);
+    setExpandedFiles((prev) => {
+      // First load: expand everything
+      if (prevFilesRef.current == null) {
+        return new Set(nextPaths);
+      }
+      const next = new Set<string>();
+      // Keep expansions that still exist
+      for (const p of prev) {
+        if (nextPaths.has(p)) next.add(p);
+      }
+      // Expand only files not seen before (true additions)
+      for (const p of nextPaths) {
+        if (!prevFilesRef.current.has(p)) next.add(p);
+      }
+      return next;
+    });
+    // Update the seen file set after computing the next expansion state
+    prevFilesRef.current = nextPaths;
   }, [diffs]);
 
   const toggleFile = (filePath: string) => {
-    const newExpanded = new Set(expandedFiles);
-    if (newExpanded.has(filePath)) {
-      newExpanded.delete(filePath);
-    } else {
-      newExpanded.add(filePath);
+    setExpandedFiles((prev) => {
+      const newExpanded = new Set(prev);
+      const wasExpanded = newExpanded.has(filePath);
+      if (wasExpanded) newExpanded.delete(filePath);
+      else newExpanded.add(filePath);
       // If content was omitted due to size, fetch on demand
-      const diff = diffs.find((d) => d.filePath === filePath);
-      if (diff && diff.contentOmitted && taskRunId && socket) {
-        socket.emit(
-          "git-diff-file-contents",
-          { taskRunId, filePath },
-          (res) => {
-            if (res.ok) {
-              setLazyContents((prev) => ({
-                ...prev,
-                [`${taskRunId}:${filePath}`]: {
-                  oldContent: res.oldContent || "",
-                  newContent: res.newContent || "",
-                },
-              }));
+      if (!wasExpanded) {
+        const diff = diffs.find((d) => d.filePath === filePath);
+        if (diff && diff.contentOmitted && taskRunId && socket) {
+          socket.emit(
+            "git-diff-file-contents",
+            { taskRunId, filePath },
+            (res) => {
+              if (res.ok) {
+                setLazyContents((prev) => ({
+                  ...prev,
+                  [`${taskRunId}:${filePath}`]: {
+                    oldContent: res.oldContent || "",
+                    newContent: res.newContent || "",
+                  },
+                }));
+              }
             }
-          }
-        );
+          );
+        }
       }
-    }
-    setExpandedFiles(newExpanded);
+      return newExpanded;
+    });
   };
 
   const expandAll = () => {
@@ -154,6 +199,34 @@ export function GitDiffViewer({
     return Math.max(100, maxLines * 18 + 24);
   };
 
+  // Compute totals consistently before any conditional early-returns
+  const totalAdditions = diffs.reduce((sum, d) => sum + d.additions, 0);
+  const totalDeletions = diffs.reduce((sum, d) => sum + d.deletions, 0);
+
+  // Keep a stable ref to the controls handler to avoid effect loops
+  const controlsHandlerRef = useRef<
+    | ((args: {
+        expandAll: () => void;
+        collapseAll: () => void;
+        totalAdditions: number;
+        totalDeletions: number;
+      }) => void)
+    | null
+  >(null);
+  useEffect(() => {
+    controlsHandlerRef.current = onControlsChange ?? null;
+  }, [onControlsChange]);
+  useEffect(() => {
+    controlsHandlerRef.current?.({
+      expandAll,
+      collapseAll,
+      totalAdditions,
+      totalDeletions,
+    });
+    // Totals update when diffs change; avoid including function identities
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [totalAdditions, totalDeletions, diffs.length]);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -174,49 +247,10 @@ export function GitDiffViewer({
     );
   }
 
-  const totalAdditions = diffs.reduce((sum, d) => sum + d.additions, 0);
-  const totalDeletions = diffs.reduce((sum, d) => sum + d.deletions, 0);
-
   return (
-    <div
-      key={taskRunId ?? "_"}
-      className="h-full overflow-y-auto hide-scrollbar bg-neutral-50 dark:bg-neutral-950"
-    >
-      {/* Header with summary - GitHub style */}
-      <div className="sticky top-0 z-10 bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800">
-        <div className="px-3 py-1 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="text-xs font-medium text-neutral-900 dark:text-neutral-100">
-              {diffs.length} changed {diffs.length === 1 ? "file" : "files"}
-            </div>
-            <div className="flex items-center gap-2 text-xs">
-              <span className="text-green-600 dark:text-green-400 font-medium">
-                +{totalAdditions}
-              </span>
-              <span className="text-red-600 dark:text-red-400 font-medium">
-                −{totalDeletions}
-              </span>
-            </div>
-          </div>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={expandAll}
-              className="text-[11px] px-2 py-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-400 font-medium"
-            >
-              Expand all
-            </button>
-            <button
-              onClick={collapseAll}
-              className="text-[11px] px-2 py-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-400 font-medium"
-            >
-              Collapse all
-            </button>
-          </div>
-        </div>
-      </div>
-
+    <div key={taskRunId ?? "_"} className="bg-neutral-50 dark:bg-neutral-950">
       {/* Diff sections */}
-      <div className="p-2 space-y-2">
+      <div className="">
         {fileGroups.map((file) => (
           <MemoFileDiffRow
             key={`${taskRunId ?? "_"}:${file.filePath}`}
@@ -270,11 +304,16 @@ function FileDiffRow({
     // Only depend on file contents used for initial sizing
   }, [file.oldContent, file.newContent, calculateEditorHeight]);
 
+  // No debug logs in production
+  useEffect(() => {
+    // noop
+  }, [isExpanded, file.filePath]);
+
   return (
-    <div className="bg-white dark:bg-neutral-900 rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
+    <div className="bg-white dark:bg-neutral-900">
       <button
         onClick={onToggle}
-        className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors text-left group"
+        className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors text-left group pt-1 z-10 bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800 sticky top-[56px]"
       >
         <div className="text-neutral-400 dark:text-neutral-500 group-hover:text-neutral-600 dark:group-hover:text-neutral-400">
           {isExpanded ? (
@@ -287,11 +326,11 @@ function FileDiffRow({
           {getStatusIcon(file.status)}
         </div>
         <div className="flex-1 min-w-0 flex items-center gap-3">
-          <span className="font-mono text-xs text-neutral-700 dark:text-neutral-300 truncate">
+          <span className="font-mono text-xs text-neutral-700 dark:text-neutral-300 truncate select-none">
             {file.filePath}
           </span>
           <div className="flex items-center gap-2 text-[11px]">
-            <span className="text-green-600 dark:text-green-400 font-medium">
+            <span className="text-green-600 dark:text-green-400 font-medium select-none">
               +{file.additions}
             </span>
             <span className="text-red-600 dark:text-red-400 font-medium">
@@ -302,7 +341,7 @@ function FileDiffRow({
       </button>
 
       {isExpanded && (
-        <div className="border-t border-neutral-200 dark:border-neutral-800">
+        <div className="border-t border-neutral-200 dark:border-neutral-800 overflow-hidden">
           {file.isBinary ? (
             <div className="px-3 py-6 text-center text-neutral-500 dark:text-neutral-400 text-xs bg-neutral-50 dark:bg-neutral-900/50">
               Binary file not shown
@@ -349,7 +388,10 @@ function FileDiffRow({
                       language,
                       modifiedUri
                     );
-                    editor.setModel({ original: originalModel, modified: modifiedModel });
+                    editor.setModel({
+                      original: originalModel,
+                      modified: modifiedModel,
+                    });
                   } catch {
                     // ignore if monaco not available
                   }
@@ -377,7 +419,8 @@ function FileDiffRow({
                         if (current !== newHeight) {
                           containerRef.current.style.height = `${newHeight}px`;
                         }
-                        const width = containerRef.current.clientWidth || undefined;
+                        const width =
+                          containerRef.current.clientWidth || undefined;
                         if (typeof width === "number") {
                           editor.layout({ width, height: newHeight });
                           // Double-rAF to ensure Monaco settles after DOM style changes
@@ -412,10 +455,18 @@ function FileDiffRow({
                   };
                   const mod = editor.getModifiedEditor();
                   const orig = editor.getOriginalEditor();
-                  const d1 = mod.onDidContentSizeChange(scheduleMeasureAndLayout);
-                  const d2 = orig.onDidContentSizeChange(scheduleMeasureAndLayout);
-                  const d3 = mod.onDidChangeHiddenAreas(scheduleMeasureAndLayout);
-                  const d4 = orig.onDidChangeHiddenAreas(scheduleMeasureAndLayout);
+                  const d1 = mod.onDidContentSizeChange(
+                    scheduleMeasureAndLayout
+                  );
+                  const d2 = orig.onDidContentSizeChange(
+                    scheduleMeasureAndLayout
+                  );
+                  const d3 = mod.onDidChangeHiddenAreas(
+                    scheduleMeasureAndLayout
+                  );
+                  const d4 = orig.onDidChangeHiddenAreas(
+                    scheduleMeasureAndLayout
+                  );
                   const d5 = editor.onDidUpdateDiff?.(scheduleMeasureAndLayout);
 
                   // Observe container size changes to trigger layout
