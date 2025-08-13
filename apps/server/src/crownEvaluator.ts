@@ -27,16 +27,16 @@ const CrownEvaluationResponseSchema = z.object({
 
 type CrownEvaluationResponse = z.infer<typeof CrownEvaluationResponseSchema>;
 
-async function createPullRequestForWinner(
+export async function createPullRequestForWinner(
   convex: ConvexHttpClient,
   taskRunId: Id<"taskRuns">,
   taskId: Id<"tasks">,
   githubToken?: string | null
 ): Promise<void> {
   try {
-    // Check workspace settings toggle (default: enabled)
+    // Check workspace settings toggle (default: disabled)
     const ws = await convex.query(api.workspaceSettings.get);
-    const autoPrEnabled = ((ws as unknown) as { autoPrEnabled?: boolean })?.autoPrEnabled ?? true;
+    const autoPrEnabled = ((ws as unknown) as { autoPrEnabled?: boolean })?.autoPrEnabled ?? false;
     if (!autoPrEnabled) {
       serverLogger.info(`[CrownEvaluator] Auto-PR disabled in settings; skipping.`);
       return;
