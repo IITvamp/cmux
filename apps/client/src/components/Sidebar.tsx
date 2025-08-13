@@ -23,6 +23,8 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
   const MAX_WIDTH = 600;
 
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const containerLeftRef = useRef<number>(0);
+  const rafIdRef = useRef<number | null>(null);
   const [width, setWidth] = useState<number>(() => {
     const stored = localStorage.getItem("sidebarWidth");
     const parsed = stored ? Number.parseInt(stored, 10) : DEFAULT_WIDTH;
@@ -36,13 +38,18 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
   }, [width]);
 
   const onMouseMove = useCallback((e: MouseEvent) => {
-    if (!containerRef.current) return;
-    const rect = containerRef.current.getBoundingClientRect();
-    const newWidth = Math.min(
-      Math.max(e.clientX - rect.left, MIN_WIDTH),
-      MAX_WIDTH
-    );
-    setWidth(newWidth);
+    // Batch width updates to once per animation frame to reduce layout thrash
+    if (rafIdRef.current != null) return;
+    rafIdRef.current = window.requestAnimationFrame(() => {
+      rafIdRef.current = null;
+      const containerLeft = containerLeftRef.current;
+      const clientX = e.clientX;
+      const newWidth = Math.min(
+        Math.max(clientX - containerLeft, MIN_WIDTH),
+        MAX_WIDTH
+      );
+      setWidth(newWidth);
+    });
   }, []);
 
   const stopResizing = useCallback(() => {
@@ -50,6 +57,10 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
     document.body.style.cursor = "";
     document.body.classList.remove("select-none");
     document.body.classList.remove("cmux-sidebar-resizing");
+    if (rafIdRef.current != null) {
+      cancelAnimationFrame(rafIdRef.current);
+      rafIdRef.current = null;
+    }
     // Restore iframe pointer events
     const iframes = Array.from(document.querySelectorAll("iframe"));
     for (const el of iframes) {
@@ -79,6 +90,11 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
       document.body.style.cursor = "col-resize";
       document.body.classList.add("select-none");
       document.body.classList.add("cmux-sidebar-resizing");
+      // Snapshot the container's left position so we don't force layout on every move
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        containerLeftRef.current = rect.left;
+      }
       // Disable pointer events on all iframes so dragging works over them
       const iframes = Array.from(document.querySelectorAll("iframe"));
       for (const el of iframes) {
