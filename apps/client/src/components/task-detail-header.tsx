@@ -1,4 +1,5 @@
 import { Dropdown } from "@/components/ui/dropdown";
+import { OpenEditorSplitButton } from "@/components/OpenEditorSplitButton";
 import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
 import { useSocket } from "@/contexts/socket/use-socket";
 import type { Doc } from "@cmux/convex/dataModel";
@@ -13,7 +14,6 @@ import {
   EllipsisVertical,
   ExternalLink,
   GitBranch,
-  Package,
   RefreshCw,
   Trash2,
 } from "lucide-react";
@@ -112,6 +112,11 @@ export function TaskDetailHeader({
     );
   };
 
+  const worktreePath = useMemo(
+    () => selectedRun?.worktreePath || task?.worktreePath || null,
+    [selectedRun?.worktreePath, task?.worktreePath]
+  );
+
   return (
     <div className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white px-3.5 sticky top-0 z-20 py-2">
       <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-3 gap-y-1">
@@ -177,10 +182,7 @@ export function TaskDetailHeader({
             </button>
           )}
 
-          <button className="flex items-center gap-1.5 px-3 py-1 bg-neutral-800 text-white border border-neutral-700 rounded hover:bg-neutral-700 font-medium text-xs select-none whitespace-nowrap">
-            <Package className="w-3.5 h-3.5" />
-            Open in VS Code
-          </button>
+          <OpenEditorSplitButton worktreePath={worktreePath} />
 
           <button className="p-1 text-neutral-400 hover:text-white select-none hidden">
             <ExternalLink className="w-3.5 h-3.5" />
@@ -241,7 +243,7 @@ export function TaskDetailHeader({
               />
             </div>
             {selectedRun?.newBranch ? (
-              <span className="font-mono text-neutral-300 group-hover:text-white text-[11px] truncate min-w-0 max-w-full">
+              <span className="font-mono text-neutral-300 group-hover:text-white text-[11px] truncate min-w-0 max-w-full select-none">
                 {selectedRun.newBranch}
               </span>
             ) : (
@@ -252,7 +254,7 @@ export function TaskDetailHeader({
           <span className="text-neutral-600 select-none">in</span>
 
           {task?.projectFullName && (
-            <span className="font-mono text-neutral-300 truncate min-w-0 max-w-[40%] whitespace-nowrap">
+            <span className="font-mono text-neutral-300 truncate min-w-0 max-w-[40%] whitespace-nowrap select-none">
               {task.projectFullName}
             </span>
           )}
@@ -264,7 +266,7 @@ export function TaskDetailHeader({
                 open={agentMenuOpen}
                 onOpenChange={handleAgentOpenChange}
               >
-                <Dropdown.Trigger className="flex items-center gap-1 text-neutral-300 hover:text-white transition-colors text-xs whitespace-nowrap">
+                <Dropdown.Trigger className="flex items-center gap-1 text-neutral-300 hover:text-white transition-colors text-xs whitespace-nowrap select-none">
                   <span>{selectedRun?.agentName || "Unknown agent"}</span>
                   <ChevronDown className="w-3 h-3" />
                 </Dropdown.Trigger>

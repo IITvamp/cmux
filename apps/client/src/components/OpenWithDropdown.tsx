@@ -15,6 +15,12 @@ interface OpenWithDropdownProps {
   iconClassName?: string;
 }
 
+type MenuItem = {
+  id: EditorType;
+  name: string;
+  enabled: boolean;
+};
+
 export function OpenWithDropdown({
   vscodeUrl,
   worktreePath,
@@ -84,20 +90,20 @@ export function OpenWithDropdown({
     }
   }, [branch]);
 
-  const menuItems = [
+  const menuItems: MenuItem[] = [
     {
-      id: "vscode-remote" as EditorType,
+      id: "vscode-remote" as const,
       name: "VS Code (remote)",
       enabled: !!vscodeUrl,
     },
-    { id: "cursor" as EditorType, name: "Cursor", enabled: !!worktreePath },
     {
-      id: "vscode" as EditorType,
+      id: "vscode" as const,
       name: "VS Code (local)",
       enabled: !!worktreePath,
     },
-    { id: "windsurf" as EditorType, name: "Windsurf", enabled: !!worktreePath },
-    { id: "finder" as EditorType, name: "Finder", enabled: !!worktreePath },
+    { id: "cursor" as const, name: "Cursor", enabled: !!worktreePath },
+    { id: "windsurf" as const, name: "Windsurf", enabled: !!worktreePath },
+    { id: "finder" as const, name: "Finder", enabled: !!worktreePath },
   ];
 
   return (
