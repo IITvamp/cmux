@@ -1,14 +1,16 @@
+import { Dropdown } from "@/components/ui/dropdown";
 import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
 import { useSocket } from "@/contexts/socket/use-socket";
 import type { Doc } from "@cmux/convex/dataModel";
 import { useClipboard } from "@mantine/hooks";
-import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
 import {
   Check,
   ChevronDown,
   Copy,
+  Crown,
+  EllipsisVertical,
   ExternalLink,
   GitBranch,
   Package,
@@ -26,6 +28,10 @@ interface TaskDetailHeaderProps {
   isCreatingPr: boolean;
   setIsCreatingPr: (v: boolean) => void;
   onMerge: (method: MergeMethod) => void;
+  totalAdditions?: number;
+  totalDeletions?: number;
+  onExpandAll?: () => void;
+  onCollapseAll?: () => void;
 }
 
 export function TaskDetailHeader({
@@ -36,6 +42,10 @@ export function TaskDetailHeader({
   isCreatingPr,
   setIsCreatingPr,
   onMerge,
+  totalAdditions,
+  totalDeletions,
+  onExpandAll,
+  onCollapseAll,
 }: TaskDetailHeaderProps) {
   const navigate = useNavigate();
   const clipboard = useClipboard({ timeout: 2000 });
@@ -151,56 +161,52 @@ export function TaskDetailHeader({
         {taskRuns && taskRuns.length > 0 && (
           <>
             <span className="text-neutral-600">by</span>
-            <DropdownMenu.Root>
-              <DropdownMenu.Trigger asChild>
-                <button className="flex items-center gap-1 text-neutral-300 hover:text-white transition-colors text-xs">
-                  <span>
-                    {selectedRun?.agentName ||
-                      selectedRun?.prompt?.match(/\(([^)]+)\)$/)?.[1] ||
-                      "Unknown agent"}
-                  </span>
-                  <ChevronDown className="w-3 h-3" />
-                </button>
-              </DropdownMenu.Trigger>
+            <Dropdown.Root>
+              <Dropdown.Trigger className="flex items-center gap-1 text-neutral-300 hover:text-white transition-colors text-xs">
+                <span>{selectedRun?.agentName || "Unknown agent"}</span>
+                <ChevronDown className="w-3 h-3" />
+              </Dropdown.Trigger>
 
-              <DropdownMenu.Portal>
-                <DropdownMenu.Content
-                  className="min-w-[180px] bg-neutral-800 border border-neutral-700 rounded-md p-1 shadow-lg z-50"
-                  sideOffset={5}
-                >
-                  {taskRuns.map((run) => {
-                    const agentName =
-                      run.agentName ||
-                      run.prompt?.match(/\(([^)]+)\)$/)?.[1] ||
-                      "Unknown agent";
-                    const isSelected = run._id === selectedRun?._id;
-                    return (
-                      <DropdownMenu.Item
-                        key={run._id}
-                        onClick={() => {
-                          navigate({
-                            to: "/task/$taskId",
-                            params: { taskId: task?._id as string },
-                            search: { runId: run._id },
-                          });
-                        }}
-                        className={`
-                          flex items-center justify-between px-2 py-1.5 text-xs rounded cursor-default outline-none select-none
-                          ${isSelected ? "bg-neutral-700 text-white" : "text-neutral-300 hover:bg-neutral-700 hover:text-white"}
-                        `}
-                      >
-                        <span>{agentName}</span>
-                        {run.isCrowned && (
-                          <span className="text-yellow-500 text-[10px]">
-                            👑
+              <Dropdown.Portal>
+                <Dropdown.Positioner sideOffset={5}>
+                  <Dropdown.Arrow />
+                  <Dropdown.Popup className="min-w-[200px]">
+                    {taskRuns.map((run) => {
+                      const agentName =
+                        run.agentName ||
+                        run.prompt?.match(/\(([^)]+)\)$/)?.[1] ||
+                        "Unknown agent";
+                      const isSelected = run._id === selectedRun?._id;
+                      return (
+                        <Dropdown.CheckboxItem
+                          key={run._id}
+                          checked={isSelected}
+                          onCheckedChange={() => {
+                            if (!isSelected) {
+                              navigate({
+                                to: "/task/$taskId",
+                                params: { taskId: task?._id as string },
+                                search: { runId: run._id },
+                              });
+                            }
+                          }}
+                        >
+                          <Dropdown.CheckboxItemIndicator>
+                            <Check className="w-3 h-3" />
+                          </Dropdown.CheckboxItemIndicator>
+                          <span className="col-start-2 flex items-center gap-1.5">
+                            {agentName}
+                            {run.isCrowned && (
+                              <Crown className="w-3 h-3 text-yellow-500 absolute right-4" />
+                            )}
                           </span>
-                        )}
-                      </DropdownMenu.Item>
-                    );
-                  })}
-                </DropdownMenu.Content>
-              </DropdownMenu.Portal>
-            </DropdownMenu.Root>
+                        </Dropdown.CheckboxItem>
+                      );
+                    })}
+                  </Dropdown.Popup>
+                </Dropdown.Positioner>
+              </Dropdown.Portal>
+            </Dropdown.Root>
           </>
         )}
       </div>
@@ -251,6 +257,38 @@ export function TaskDetailHeader({
         <button className="p-1 text-neutral-400 hover:text-white select-none">
           <Trash2 className="w-3.5 h-3.5" />
         </button>
+        <Dropdown.Root>
+          <Dropdown.Trigger
+            className="p-1 text-neutral-400 hover:text-white select-none"
+            aria-label="More actions"
+          >
+            <EllipsisVertical className="w-3.5 h-3.5" />
+          </Dropdown.Trigger>
+          <Dropdown.Portal>
+            <Dropdown.Positioner sideOffset={5}>
+              <Dropdown.Popup>
+                <Dropdown.Arrow />
+                <Dropdown.Item onClick={() => onExpandAll?.()}>
+                  Expand all
+                </Dropdown.Item>
+                <Dropdown.Item onClick={() => onCollapseAll?.()}>
+                  Collapse all
+                </Dropdown.Item>
+              </Dropdown.Popup>
+            </Dropdown.Positioner>
+          </Dropdown.Portal>
+        </Dropdown.Root>
+        {typeof totalAdditions === "number" &&
+          typeof totalDeletions === "number" && (
+            <div className="flex items-center gap-2 text-[11px] ml-1">
+              <span className="text-green-600 dark:text-green-400 font-medium select-none">
+                +{totalAdditions}
+              </span>
+              <span className="text-red-600 dark:text-red-400 font-medium">
+                −{totalDeletions}
+              </span>
+            </div>
+          )}
       </div>
     </div>
   );

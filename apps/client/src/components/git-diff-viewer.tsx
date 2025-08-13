@@ -26,6 +26,12 @@ interface GitDiffViewerProps {
   diffs: Doc<"gitDiffs">[];
   isLoading?: boolean;
   taskRunId?: string;
+  onControlsChange?: (controls: {
+    expandAll: () => void;
+    collapseAll: () => void;
+    totalAdditions: number;
+    totalDeletions: number;
+  }) => void;
 }
 
 interface FileGroup {
@@ -74,6 +80,7 @@ export function GitDiffViewer({
   diffs,
   isLoading,
   taskRunId,
+  onControlsChange,
 }: GitDiffViewerProps) {
   const { theme } = useTheme();
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
@@ -192,6 +199,34 @@ export function GitDiffViewer({
     return Math.max(100, maxLines * 18 + 24);
   };
 
+  // Compute totals consistently before any conditional early-returns
+  const totalAdditions = diffs.reduce((sum, d) => sum + d.additions, 0);
+  const totalDeletions = diffs.reduce((sum, d) => sum + d.deletions, 0);
+
+  // Keep a stable ref to the controls handler to avoid effect loops
+  const controlsHandlerRef = useRef<
+    | ((args: {
+        expandAll: () => void;
+        collapseAll: () => void;
+        totalAdditions: number;
+        totalDeletions: number;
+      }) => void)
+    | null
+  >(null);
+  useEffect(() => {
+    controlsHandlerRef.current = onControlsChange ?? null;
+  }, [onControlsChange]);
+  useEffect(() => {
+    controlsHandlerRef.current?.({
+      expandAll,
+      collapseAll,
+      totalAdditions,
+      totalDeletions,
+    });
+    // Totals update when diffs change; avoid including function identities
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [totalAdditions, totalDeletions, diffs.length]);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -212,44 +247,8 @@ export function GitDiffViewer({
     );
   }
 
-  const totalAdditions = diffs.reduce((sum, d) => sum + d.additions, 0);
-  const totalDeletions = diffs.reduce((sum, d) => sum + d.deletions, 0);
-
   return (
     <div key={taskRunId ?? "_"} className="bg-neutral-50 dark:bg-neutral-950">
-      {/* Header with summary - scrolls with content */}
-      <div className="bg-white dark:bg-neutral-900">
-        <div className="px-3 py-1 flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <div className="text-xs font-medium text-neutral-900 dark:text-neutral-100">
-              {diffs.length} changed {diffs.length === 1 ? "file" : "files"}
-            </div>
-            <div className="flex items-center gap-2 text-xs">
-              <span className="text-green-600 dark:text-green-400 font-medium select-none">
-                +{totalAdditions}
-              </span>
-              <span className="text-red-600 dark:text-red-400 font-medium">
-                −{totalDeletions}
-              </span>
-            </div>
-          </div>
-          <div className="flex items-center gap-1">
-            <button
-              onClick={expandAll}
-              className="text-[11px] px-2 py-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-400 font-medium"
-            >
-              Expand all
-            </button>
-            <button
-              onClick={collapseAll}
-              className="text-[11px] px-2 py-0.5 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-400 font-medium"
-            >
-              Collapse all
-            </button>
-          </div>
-        </div>
-      </div>
-
       {/* Diff sections */}
       <div className="">
         {fileGroups.map((file) => (
@@ -342,7 +341,7 @@ function FileDiffRow({
       </button>
 
       {isExpanded && (
-        <div className="border-t border-neutral-200 dark:border-neutral-800 overflow-hidden rounded-b-lg">
+        <div className="border-t border-neutral-200 dark:border-neutral-800 overflow-hidden">
           {file.isBinary ? (
             <div className="px-3 py-6 text-center text-neutral-500 dark:text-neutral-400 text-xs bg-neutral-50 dark:bg-neutral-900/50">
               Binary file not shown

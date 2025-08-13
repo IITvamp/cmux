@@ -39,6 +39,15 @@ function TaskDetailPage() {
 
   const [isCreatingPr, setIsCreatingPr] = useState(false);
   const [isCheckingDiffs, setIsCheckingDiffs] = useState(false);
+  const [diffControls, setDiffControls] = useState<
+    | {
+        expandAll: () => void;
+        collapseAll: () => void;
+        totalAdditions: number;
+        totalDeletions: number;
+      }
+    | null
+  >(null);
   const { socket } = useSocket();
 
   const task = useQuery(api.tasks.getById, {
@@ -168,6 +177,10 @@ function TaskDetailPage() {
             isCreatingPr={isCreatingPr}
             setIsCreatingPr={setIsCreatingPr}
             onMerge={handleMerge}
+            totalAdditions={diffControls?.totalAdditions}
+            totalDeletions={diffControls?.totalDeletions}
+            onExpandAll={diffControls?.expandAll}
+            onCollapseAll={diffControls?.collapseAll}
           />
           <div className="bg-white dark:bg-neutral-950">
             <GitDiffViewer
@@ -181,6 +194,7 @@ function TaskDetailPage() {
               isLoading={!diffs && !!selectedRun}
               taskRunId={selectedRun?._id}
               key={selectedRun?._id}
+              onControlsChange={(c) => setDiffControls(c)}
             />
           </div>
         </div>
