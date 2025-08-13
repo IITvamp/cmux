@@ -499,11 +499,52 @@ export const updatePullRequestUrl = mutation({
     id: v.id("taskRuns"),
     pullRequestUrl: v.string(),
     isDraft: v.optional(v.boolean()),
+    state: v.optional(
+      v.union(
+        v.literal("none"),
+        v.literal("draft"),
+        v.literal("open"),
+        v.literal("merged"),
+        v.literal("closed"),
+        v.literal("unknown")
+      )
+    ),
+    number: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.id, {
       pullRequestUrl: args.pullRequestUrl,
       pullRequestIsDraft: args.isDraft,
+      ...(args.state ? { pullRequestState: args.state } : {}),
+      ...(args.number !== undefined ? { pullRequestNumber: args.number } : {}),
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+export const updatePullRequestState = mutation({
+  args: {
+    id: v.id("taskRuns"),
+    state: v.union(
+      v.literal("none"),
+      v.literal("draft"),
+      v.literal("open"),
+      v.literal("merged"),
+      v.literal("closed"),
+      v.literal("unknown")
+    ),
+    isDraft: v.optional(v.boolean()),
+    number: v.optional(v.number()),
+    url: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.id, {
+      pullRequestState: args.state,
+      ...(args.isDraft !== undefined
+        ? { pullRequestIsDraft: args.isDraft }
+        : {}),
+      ...(args.number !== undefined ? { pullRequestNumber: args.number } : {}),
+      ...(args.url ? { pullRequestUrl: args.url } : {}),
       updatedAt: Date.now(),
     });
   },
