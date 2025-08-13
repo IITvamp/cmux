@@ -224,6 +224,16 @@ export const GitHubCreateDraftPrSchema = z.object({
   taskRunId: z.string(),
 });
 
+// Open PR (create non-draft or convert draft to ready)
+export const GitHubOpenPrSchema = z.object({
+  taskRunId: z.string(),
+});
+
+// Sync PR state
+export const GitHubSyncPrStateSchema = z.object({
+  taskRunId: z.string(),
+});
+
 // Provider status schemas
 export const ProviderStatusSchema = z.object({
   name: z.string(),
@@ -309,6 +319,8 @@ export type GitHubBranchesResponse = z.infer<
 export type GitHubReposResponse = z.infer<typeof GitHubReposResponseSchema>;
 export type GitHubAuthResponse = z.infer<typeof GitHubAuthResponseSchema>;
 export type GitHubCreateDraftPr = z.infer<typeof GitHubCreateDraftPrSchema>;
+export type GitHubOpenPr = z.infer<typeof GitHubOpenPrSchema>;
+export type GitHubSyncPrState = z.infer<typeof GitHubSyncPrStateSchema>;
 export type ProviderStatus = z.infer<typeof ProviderStatusSchema>;
 export type DockerStatus = z.infer<typeof DockerStatusSchema>;
 export type GitStatus = z.infer<typeof GitStatusSchema>;
@@ -354,6 +366,25 @@ export interface ClientToServerEvents {
   "github-create-draft-pr": (
     data: GitHubCreateDraftPr,
     callback: (response: { success: boolean; url?: string; error?: string }) => void
+  ) => void;
+  // Open PR: create a normal PR or mark draft ready
+  "github-open-pr": (
+    data: GitHubOpenPr,
+    callback: (response: { success: boolean; url?: string; state?: string; error?: string }) => void
+  ) => void;
+  // Sync PR state with GitHub and update Convex
+  "github-sync-pr-state": (
+    data: GitHubSyncPrState,
+    callback: (
+      response: {
+        success: boolean;
+        url?: string;
+        number?: number;
+        state?: string;
+        isDraft?: boolean;
+        error?: string;
+      }
+    ) => void
   ) => void;
   "check-provider-status": (
     callback: (response: ProviderStatusResponse) => void

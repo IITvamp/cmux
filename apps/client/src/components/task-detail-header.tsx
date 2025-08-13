@@ -51,7 +51,7 @@ export function TaskDetailHeader({
 }: TaskDetailHeaderProps) {
   const navigate = useNavigate();
   const clipboard = useClipboard({ timeout: 2000 });
-  const [prIsOpen, setPrIsOpen] = useState(false);
+  const prIsOpen = selectedRun?.pullRequestState === "open";
   const { socket } = useSocket();
   const [agentMenuOpen, setAgentMenuOpen] = useState(false);
   const handleAgentOpenChange = useCallback((open: boolean) => {
@@ -80,10 +80,28 @@ export function TaskDetailHeader({
   };
 
   const handleMerge = (method: MergeMethod) => {
+    // Merge options UI hook; keep behavior but do not change PR state here.
     onMerge(method);
-    if (!prIsOpen) {
-      setPrIsOpen(true);
-    }
+  };
+
+  const handleOpenPR = () => {
+    if (!socket || !selectedRun?._id) return;
+    // Create PR or mark draft ready
+    setIsCreatingPr(true);
+    socket.emit(
+      "github-open-pr",
+      { taskRunId: selectedRun._id as string },
+      (resp: { success: boolean; url?: string; error?: string }) => {
+        setIsCreatingPr(false);
+        if (resp.success && resp.url) {
+          // Open PR in a new tab
+          window.open(resp.url, "_blank");
+        } else if (!resp.success) {
+          console.error("Failed to open PR:", resp.error);
+          toast.error("Failed to open PR", { description: resp.error });
+        }
+      }
+    );
   };
 
   const handleViewPR = () => {
@@ -153,7 +171,7 @@ export function TaskDetailHeader({
         {/* Actions on right, vertically centered across rows */}
         <div className="col-start-3 row-start-1 row-span-2 self-center flex items-center gap-2 shrink-0">
           <MergeButton
-            onMerge={handleMerge}
+            onMerge={prIsOpen ? handleMerge : () => handleOpenPR()}
             isOpen={prIsOpen}
             disabled={selectedRun?.status !== "completed" || !hasChanges}
           />

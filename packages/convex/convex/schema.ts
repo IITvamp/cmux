@@ -89,8 +89,19 @@ export default defineSchema({
     userId: v.optional(v.string()), // Link to user who created the run
     isCrowned: v.optional(v.boolean()), // Whether this run won the crown evaluation
     crownReason: v.optional(v.string()), // LLM's reasoning for why this run was crowned
-    pullRequestUrl: v.optional(v.string()), // URL of the created PR (only for crowned runs)
+    pullRequestUrl: v.optional(v.string()), // URL of the PR
     pullRequestIsDraft: v.optional(v.boolean()), // Whether the PR is a draft
+    pullRequestState: v.optional(
+      v.union(
+        v.literal("none"), // no PR exists yet
+        v.literal("draft"), // PR exists and is draft
+        v.literal("open"), // PR exists and is open/ready for review
+        v.literal("merged"), // PR merged
+        v.literal("closed"), // PR closed without merge
+        v.literal("unknown") // fallback/unsure
+      )
+    ),
+    pullRequestNumber: v.optional(v.number()), // Numeric PR number on provider
     diffsLastUpdated: v.optional(v.number()), // Timestamp when diffs were last fetched/updated
     // VSCode instance information
     vscode: v.optional(

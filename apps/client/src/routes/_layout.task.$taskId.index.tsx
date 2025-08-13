@@ -76,6 +76,18 @@ function TaskDetailPage() {
     selectedRun ? { taskRunId: selectedRun._id } : "skip"
   );
 
+  // On selection, sync PR state with GitHub so UI reflects latest
+  useEffect(() => {
+    if (!selectedRun?._id || !socket) return;
+    socket.emit(
+      "github-sync-pr-state",
+      { taskRunId: selectedRun._id as string },
+      (_resp: { success: boolean }) => {
+        // Convex subscription will update UI automatically
+      }
+    );
+  }, [selectedRun?._id, socket]);
+
   // Check for new changes on mount and periodically
   useEffect(() => {
     if (!selectedRun) return;
