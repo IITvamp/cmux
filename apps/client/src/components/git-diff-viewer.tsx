@@ -230,7 +230,7 @@ export function GitDiffViewer({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="text-neutral-500 dark:text-neutral-400">
+        <div className="text-neutral-500 dark:text-neutral-400 text-sm">
           Loading diffs...
         </div>
       </div>
@@ -240,7 +240,7 @@ export function GitDiffViewer({
   if (diffs.length === 0) {
     return (
       <div className="flex items-center justify-center h-full">
-        <div className="text-neutral-500 dark:text-neutral-400">
+        <div className="text-neutral-500 dark:text-neutral-400 text-sm">
           No changes to display
         </div>
       </div>
