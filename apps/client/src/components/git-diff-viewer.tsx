@@ -106,29 +106,9 @@ export function GitDiffViewer({
     [diffs, lazyContents, taskRunId]
   );
 
-  // Debug: log file list and detect duplicates to diagnose mismatched toggles
+  // Maintain minimal reactivity; no debug logging in production
   useEffect(() => {
-    try {
-      const paths = fileGroups.map((f) => f.filePath);
-      const dupes = new Set<string>();
-      const seen = new Set<string>();
-      for (const p of paths) {
-        if (seen.has(p)) dupes.add(p);
-        else seen.add(p);
-      }
-      const joined = paths.join(" | ");
-      // only log when diffs change to keep noise low
-      // eslint-disable-next-line no-console
-      console.log(`[GitDiffViewer] files(${paths.length}): ${joined}`);
-      if (dupes.size > 0) {
-        for (const d of dupes) {
-          // eslint-disable-next-line no-console
-          console.warn(`[GitDiffViewer] duplicate: ${d}`);
-        }
-      }
-    } catch {}
-    // Intentionally depend on diffs, not lazyContents, to log when server data changes
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // No-op effect to keep hook ordering consistent if needed later
   }, [diffs]);
 
   // Maintain expansion state across refreshes:
@@ -165,10 +145,6 @@ export function GitDiffViewer({
       const wasExpanded = newExpanded.has(filePath);
       if (wasExpanded) newExpanded.delete(filePath);
       else newExpanded.add(filePath);
-      // eslint-disable-next-line no-console
-      console.log(
-        `[GitDiffViewer] toggle index=${index ?? -1} path=${filePath} wasExpanded=${wasExpanded ? 1 : 0} nextExpanded=${newExpanded.size}`
-      );
       // If content was omitted due to size, fetch on demand
       if (!wasExpanded) {
         const diff = diffs.find((d) => d.filePath === filePath);
@@ -190,10 +166,6 @@ export function GitDiffViewer({
           );
         }
       }
-      // eslint-disable-next-line no-console
-      console.log(
-        `[GitDiffViewer] expandedAfter(${newExpanded.size}): ${Array.from(newExpanded).join(" | ")}`
-      );
       return newExpanded;
     });
   };
@@ -333,12 +305,9 @@ function FileDiffRow({
     // Only depend on file contents used for initial sizing
   }, [file.oldContent, file.newContent, calculateEditorHeight]);
 
-  // Debug: trace row expansion changes
+  // No debug logs in production
   useEffect(() => {
-    // eslint-disable-next-line no-console
-    console.log(
-      `[GitDiffViewer] row path=${file.filePath} expanded=${isExpanded ? 1 : 0}`
-    );
+    // noop
   }, [isExpanded, file.filePath]);
 
   return (
@@ -358,7 +327,7 @@ function FileDiffRow({
           {getStatusIcon(file.status)}
         </div>
         <div className="flex-1 min-w-0 flex items-center gap-3">
-          <span className="font-mono text-xs text-neutral-700 dark:text-neutral-300 truncate">
+          <span className="font-mono text-xs text-neutral-700 dark:text-neutral-300 truncate select-none">
             {file.filePath}
           </span>
           <div className="flex items-center gap-2 text-[11px]">
