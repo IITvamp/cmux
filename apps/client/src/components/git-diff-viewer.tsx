@@ -13,7 +13,7 @@ import {
   FileText,
 } from "lucide-react";
 import { type editor } from "monaco-editor";
-import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
 
 interface GitDiffViewerProps {
   diffs: Doc<"gitDiffs">[];
@@ -71,6 +71,7 @@ export function GitDiffViewer({
   const { theme } = useTheme();
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
   const editorRefs = useRef<Record<string, editor.IStandaloneDiffEditor>>({});
+  // Cache fetched contents per run+file to avoid cross-run flashes
   const [lazyContents, setLazyContents] = useState<
     Record<string, { oldContent: string; newContent: string }>
   >({});
@@ -85,13 +86,15 @@ export function GitDiffViewer({
         additions: diff.additions,
         deletions: diff.deletions,
         oldContent:
-          (lazyContents[diff.filePath]?.oldContent ?? diff.oldContent) || "",
+          (lazyContents[`${taskRunId ?? "_"}:${diff.filePath}`]?.oldContent ??
+            diff.oldContent) || "",
         newContent:
-          (lazyContents[diff.filePath]?.newContent ?? diff.newContent) || "",
+          (lazyContents[`${taskRunId ?? "_"}:${diff.filePath}`]?.newContent ??
+            diff.newContent) || "",
         patch: diff.patch,
         isBinary: diff.isBinary,
       })),
-    [diffs, lazyContents]
+    [diffs, lazyContents, taskRunId]
   );
 
   // Auto-expand files on initial load or when diffs change
@@ -116,7 +119,7 @@ export function GitDiffViewer({
             if (res.ok) {
               setLazyContents((prev) => ({
                 ...prev,
-                [filePath]: {
+                [`${taskRunId}:${filePath}`]: {
                   oldContent: res.oldContent || "",
                   newContent: res.newContent || "",
                 },
@@ -136,6 +139,12 @@ export function GitDiffViewer({
   const collapseAll = () => {
     setExpandedFiles(new Set());
   };
+
+  // Clear per-run caches on run switch to prevent flashing old content
+  useEffect(() => {
+    // Reset lazy contents for new run
+    setLazyContents({});
+  }, [taskRunId]);
 
   const calculateEditorHeight = (oldContent: string, newContent: string) => {
     const oldLines = oldContent.split("\n").length;
@@ -169,7 +178,10 @@ export function GitDiffViewer({
   const totalDeletions = diffs.reduce((sum, d) => sum + d.deletions, 0);
 
   return (
-    <div className="h-full overflow-y-auto hide-scrollbar bg-neutral-50 dark:bg-neutral-950">
+    <div
+      key={taskRunId ?? "_"}
+      className="h-full overflow-y-auto hide-scrollbar bg-neutral-50 dark:bg-neutral-950"
+    >
       {/* Header with summary - GitHub style */}
       <div className="sticky top-0 z-10 bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800">
         <div className="px-3 py-1 flex items-center justify-between">
@@ -217,6 +229,7 @@ export function GitDiffViewer({
               if (ed)
                 editorRefs.current[`${taskRunId ?? "_"}:${file.filePath}`] = ed;
             }}
+            runId={taskRunId}
           />
         ))}
       </div>
@@ -231,6 +244,7 @@ interface FileDiffRowProps {
   theme: string | undefined;
   calculateEditorHeight: (oldContent: string, newContent: string) => number;
   setEditorRef: (ed: editor.IStandaloneDiffEditor) => void;
+  runId?: string;
 }
 
 function FileDiffRow({
@@ -240,13 +254,15 @@ function FileDiffRow({
   theme,
   calculateEditorHeight,
   setEditorRef,
+  runId,
 }: FileDiffRowProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const rafIdRef = useRef<number | null>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
+  const revealedRef = useRef<boolean>(false);
 
-  // Set an initial height based on content before Monaco mounts
-  useEffect(() => {
+  // Set an initial height before paint to reduce flicker
+  useLayoutEffect(() => {
     const initial = calculateEditorHeight(file.oldContent, file.newContent);
     if (containerRef.current) {
       containerRef.current.style.height = `${Math.max(120, initial)}px`;
@@ -298,13 +314,45 @@ function FileDiffRow({
           ) : (
             <div ref={containerRef}>
               <DiffEditor
-                key={file.filePath}
+                key={`${runId ?? "_"}:${theme ?? "_"}:${file.filePath}`}
                 original={file.oldContent}
                 modified={file.newContent}
                 language={getLanguageFromPath(file.filePath)}
                 theme={theme === "dark" ? "vs-dark" : "vs"}
-                onMount={(editor) => {
+                onMount={(editor, monaco) => {
                   setEditorRef(editor);
+                  // Start hidden to avoid intermediate flashes
+                  if (containerRef.current) {
+                    containerRef.current.style.visibility = "hidden";
+                  }
+
+                  // Create fresh models per run+file to avoid reuse across runs
+                  try {
+                    const language = getLanguageFromPath(file.filePath);
+                    const originalUri = monaco.Uri.parse(
+                      `inmemory://diff/${runId ?? "_"}/${encodeURIComponent(
+                        file.filePath
+                      )}?side=original`
+                    );
+                    const modifiedUri = monaco.Uri.parse(
+                      `inmemory://diff/${runId ?? "_"}/${encodeURIComponent(
+                        file.filePath
+                      )}?side=modified`
+                    );
+                    const originalModel = monaco.editor.createModel(
+                      file.oldContent,
+                      language,
+                      originalUri
+                    );
+                    const modifiedModel = monaco.editor.createModel(
+                      file.newContent,
+                      language,
+                      modifiedUri
+                    );
+                    editor.setModel({ original: originalModel, modified: modifiedModel });
+                  } catch {
+                    // ignore if monaco not available
+                  }
                   const scheduleMeasureAndLayout = () => {
                     if (rafIdRef.current != null) {
                       cancelAnimationFrame(rafIdRef.current);
@@ -332,11 +380,33 @@ function FileDiffRow({
                         const width = containerRef.current.clientWidth || undefined;
                         if (typeof width === "number") {
                           editor.layout({ width, height: newHeight });
+                          // Double-rAF to ensure Monaco settles after DOM style changes
+                          requestAnimationFrame(() => {
+                            editor.layout({ width, height: newHeight });
+                            if (containerRef.current && !revealedRef.current) {
+                              containerRef.current.style.visibility = "visible";
+                              revealedRef.current = true;
+                            }
+                          });
                         } else {
                           editor.layout();
+                          requestAnimationFrame(() => {
+                            editor.layout();
+                            if (containerRef.current && !revealedRef.current) {
+                              containerRef.current.style.visibility = "visible";
+                              revealedRef.current = true;
+                            }
+                          });
                         }
                       } else {
                         editor.layout();
+                        requestAnimationFrame(() => {
+                          editor.layout();
+                          if (containerRef.current && !revealedRef.current) {
+                            containerRef.current.style.visibility = "visible";
+                            revealedRef.current = true;
+                          }
+                        });
                       }
                     });
                   };
@@ -374,6 +444,16 @@ function FileDiffRow({
                       resizeObserverRef.current.disconnect();
                       resizeObserverRef.current = null;
                     }
+                    // Dispose models we created to avoid leaks and reuse
+                    try {
+                      const model = editor.getModel();
+                      if (model?.original) {
+                        model.original.dispose?.();
+                      }
+                      if (model?.modified) {
+                        model.modified.dispose?.();
+                      }
+                    } catch {}
                   };
                 }}
                 options={{
