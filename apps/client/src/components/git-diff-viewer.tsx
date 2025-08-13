@@ -530,7 +530,7 @@ function FileDiffRow({
                     verticalScrollbarSize: 8,
                     horizontalScrollbarSize: 8,
                     handleMouseWheel: true,
-                    alwaysConsumeMouseWheel: true,
+                    alwaysConsumeMouseWheel: false,
                   },
                   lineNumbers: "on",
                   renderLineHighlight: "none",
