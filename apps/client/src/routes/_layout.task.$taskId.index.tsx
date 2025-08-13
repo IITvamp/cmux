@@ -164,7 +164,7 @@ function TaskDetailPage() {
   };
   return (
     <FloatingPane>
-      <div className="flex h-full min-h-0 flex-col relative">
+      <div className="flex h-full min-h-0 flex-col relative isolate">
         <div className="flex-1 min-h-0 overflow-y-auto">
           <TaskDetailHeader
             task={task ?? null}
