@@ -7,6 +7,9 @@ import { z } from "zod";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 
+// Global flag to enable/disable automatic PR creation
+const ENABLE_PR_CREATION = false;
+
 // Define schemas for structured output
 const ImplementationSchema = z.object({
   modelName: z.string(),
@@ -32,6 +35,10 @@ async function createPullRequestForWinner(
   githubToken?: string | null
 ): Promise<void> {
   try {
+    if (!ENABLE_PR_CREATION) {
+      serverLogger.info(`[CrownEvaluator] PR creation is disabled by flag; skipping.`);
+      return;
+    }
     serverLogger.info(`[CrownEvaluator] Creating pull request for winner ${taskRunId}`);
     
     // Get the task run details
@@ -71,6 +78,15 @@ async function createPullRequestForWinner(
     
     // Create PR title and body
     const prTitle = task.text || "Task completed by cmux";
+    // Persist PR title immediately after generation
+    try {
+      await convex.mutation(api.tasks.setPullRequestTitle, {
+        id: taskId,
+        pullRequestTitle: prTitle,
+      });
+    } catch (e) {
+      serverLogger.error(`[CrownEvaluator] Failed to save PR title:`, e);
+    }
     const prBody = `## Summary
 - Task completed by ${agentName} agent 🏆
 - ${taskRun.crownReason || "Selected as the best implementation"}
@@ -82,6 +98,16 @@ async function createPullRequestForWinner(
 
 ---
 🤖 Generated with [cmux](https://github.com/lawrencecchen/cmux)`;
+
+    // Persist PR description on the task in Convex
+    try {
+      await convex.mutation(api.tasks.setPullRequestDescription, {
+        id: taskId,
+        pullRequestDescription: prBody,
+      });
+    } catch (e) {
+      serverLogger.error(`[CrownEvaluator] Failed to save PR description:`, e);
+    }
     
     // Use the newBranch from the task run
     const branchName = taskRun.newBranch || `cmux-crown-${taskRunId.slice(-8)}`;

@@ -178,6 +178,36 @@ export const updateCrownError = mutation({
   },
 });
 
+// Set or update the generated pull request description for a task
+export const setPullRequestDescription = mutation({
+  args: {
+    id: v.id("tasks"),
+    pullRequestDescription: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { id, pullRequestDescription } = args;
+    await ctx.db.patch(id, {
+      pullRequestDescription,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+// Set or update the generated pull request title for a task
+export const setPullRequestTitle = mutation({
+  args: {
+    id: v.id("tasks"),
+    pullRequestTitle: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { id, pullRequestTitle } = args;
+    await ctx.db.patch(id, {
+      pullRequestTitle,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
 export const createVersion = mutation({
   args: {
     taskId: v.id("tasks"),

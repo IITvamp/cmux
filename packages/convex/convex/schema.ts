@@ -18,6 +18,8 @@ export default defineSchema({
     isCompleted: v.boolean(),
     isArchived: v.optional(v.boolean()),
     description: v.optional(v.string()),
+    pullRequestTitle: v.optional(v.string()),
+    pullRequestDescription: v.optional(v.string()),
     projectFullName: v.optional(v.string()),
     baseBranch: v.optional(v.string()),
     worktreePath: v.optional(v.string()),
