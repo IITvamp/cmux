@@ -31,6 +31,14 @@ import { RepositoryManager } from "./repositoryManager.js";
 import { getPRTitleFromTaskDescription } from "./utils/branchNameGenerator.js";
 import { convex } from "./utils/convexClient.js";
 import { ensureRunWorktreeAndBranch } from "./utils/ensureRunWorktree.js";
+import {
+  fetchPrByHead,
+  fetchPrDetail,
+  createReadyPr,
+  markPrReady,
+  reopenPr,
+  parseRepoFromUrl,
+} from "./utils/githubPr.js";
 import { dockerLogger, serverLogger } from "./utils/fileLogger.js";
 import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
 import { checkAllProvidersStatus } from "./utils/providerStatus.js";
@@ -243,48 +251,31 @@ export async function startServer({
         let [owner, repo] = repoFullName.split("/");
         const branchName = run.newBranch || "";
 
-        const ghBase = `https://api.github.com`;
-        async function ghApi<T>(path: string, init?: RequestInit): Promise<T> {
-          const res = await fetch(`${ghBase}${path}`, {
-            ...init,
-            headers: {
-              Accept: "application/vnd.github+json",
-              Authorization: `token ${githubToken}`,
-              ...(init?.headers as Record<string, string> | undefined),
-            },
-          });
-          if (!res.ok) {
-            const txt = await res.text();
-            throw new Error(`GitHub API ${res.status}: ${txt}`);
-          }
-          return (await res.json()) as T;
-        }
-
         // Determine PR via URL number when available
         let prNumber: number | null = null;
         if (run.pullRequestNumber) {
           prNumber = run.pullRequestNumber;
         } else if (run.pullRequestUrl) {
-          const m = run.pullRequestUrl.match(/github\.com\/(.*?)\/(.*?)\/pull\/(\d+)/i);
-          if (m) {
-            owner = owner || m[1];
-            repo = repo || m[2];
-            prNumber = parseInt(m[3], 10);
+          const parsed = parseRepoFromUrl(run.pullRequestUrl);
+          if (parsed.owner && parsed.repo) {
+            owner = owner || parsed.owner;
+            repo = repo || parsed.repo;
           }
+          if (parsed.number) prNumber = parsed.number;
         }
 
         let prBasic: { number: number; html_url: string; state: string; draft?: boolean } | null = null;
         if (owner && repo && prNumber) {
-          prBasic = await ghApi(`/repos/${owner}/${repo}/pulls/${prNumber}`);
+          const detail = await fetchPrDetail(githubToken, owner, repo, prNumber);
+          prBasic = {
+            number: detail.number,
+            html_url: detail.html_url,
+            state: detail.state,
+            draft: detail.draft,
+          };
         } else if (owner && repo && branchName) {
           // Find PR by head branch
-          const qs = new URLSearchParams({ state: "all", head: `${owner}:${branchName}` }).toString();
-          const list = await ghApi<Array<{ number: number; html_url: string; state: string; draft?: boolean }>>(
-            `/repos/${owner}/${repo}/pulls?${qs}`
-          );
-          if (Array.isArray(list) && list.length > 0) {
-            prBasic = list[0];
-          }
+          prBasic = await fetchPrByHead(githubToken, owner, repo, owner, branchName);
         }
 
         if (!prBasic) {
@@ -300,9 +291,7 @@ export async function startServer({
         }
 
         // Fetch detailed PR to detect merged
-        const prDetail = await ghApi<{ merged_at: string | null; draft?: boolean }>(
-          `/repos/${owner}/${repo}/pulls/${prBasic.number}`
-        );
+        const prDetail = await fetchPrDetail(githubToken, owner, repo, prBasic.number);
         const isMerged = !!prDetail.merged_at;
         const isDraft = prDetail.draft ?? prBasic.draft ?? false;
 
@@ -1016,26 +1005,8 @@ export async function startServer({
         const body = task.text || `## Summary\n\n${title}`;
 
         const cwd = worktreePath;
-
-        // GitHub API helpers (for open PR flow)
         const repoFullNameOpen = task.projectFullName || ""; // e.g. owner/name
         const [owner, repo] = repoFullNameOpen.split("/");
-        const ghBaseOpen = `https://api.github.com`;
-        async function ghApi<T>(path: string, init?: RequestInit): Promise<T> {
-          const res = await fetch(`${ghBaseOpen}${path}`, {
-            ...init,
-            headers: {
-              Accept: "application/vnd.github+json",
-              Authorization: `token ${githubToken}`,
-              ...(init?.headers as Record<string, string> | undefined),
-            },
-          });
-          if (!res.ok) {
-            const txt = await res.text();
-            throw new Error(`GitHub API ${res.status}: ${txt}`);
-          }
-          return (await res.json()) as T;
-        }
 
         // Stage/commit/push branch, similar to draft flow, but tolerant to no-op
         try {
@@ -1062,54 +1033,30 @@ export async function startServer({
           serverLogger.warn(`[OpenPR] Push warning: ${msg}`);
         }
 
-        // Helper to fetch PR info for this branch (GitHub REST API)
-        async function fetchPrInfo(): Promise<
-          | { exists: false }
-          | { exists: true; url: string; number: number; state: string; isDraft: boolean }
-        > {
-          if (!owner || !repo) return { exists: false };
-          const qs = new URLSearchParams({ state: "all", head: `${owner}:${branchName}` }).toString();
-          const arr = await ghApi<Array<{ html_url: string; number: number; state: string; draft?: boolean }>>(
-            `/repos/${owner}/${repo}/pulls?${qs}`
-          );
-          if (Array.isArray(arr) && arr.length > 0) {
-            const pr = arr[0];
-            return {
-              exists: true,
-              url: pr.html_url,
-              number: pr.number,
-              state: pr.state,
-              isDraft: !!pr.draft,
-            };
-          }
-          return { exists: false };
-        }
+        // PR resolution via helpers
+        const initialBasic = owner && repo
+          ? await fetchPrByHead(githubToken, owner, repo, owner, branchName)
+          : null;
 
-        const initial = await fetchPrInfo();
-        let finalUrl = initial.exists ? initial.url : undefined;
-        let finalNumber = initial.exists ? initial.number : undefined;
-        let finalState = initial.exists ? initial.state : undefined;
-        let finalIsDraft = initial.exists ? initial.isDraft : undefined;
+        let finalUrl: string | undefined;
+        let finalNumber: number | undefined;
+        let finalState: string | undefined; // GitHub state string
+        let finalIsDraft: boolean | undefined;
 
-        if (!initial.exists) {
-          // No PR exists: create a non-draft PR via GitHub API
+        if (!initialBasic) {
           if (!owner || !repo) {
             callback({ success: false, error: "Unknown repo for task" });
             return;
           }
           try {
-            const created = await ghApi<{ html_url: string; number: number; state: string; draft?: boolean }>(
-              `/repos/${owner}/${repo}/pulls`,
-              {
-                method: "POST",
-                body: JSON.stringify({
-                  title: truncatedTitle,
-                  head: branchName,
-                  base: baseBranch,
-                  body,
-                  draft: false,
-                }),
-              }
+            const created = await createReadyPr(
+              githubToken,
+              owner,
+              repo,
+              truncatedTitle,
+              branchName,
+              baseBranch,
+              body
             );
             finalUrl = created.html_url;
             finalNumber = created.number;
@@ -1123,103 +1070,59 @@ export async function startServer({
               return;
             }
           }
-
-          const info = await fetchPrInfo();
-          if (info.exists) {
-            finalUrl = info.url;
-            finalNumber = info.number;
-            finalState = info.state;
-            finalIsDraft = info.isDraft;
+          const latest = owner && repo
+            ? await fetchPrByHead(githubToken, owner, repo, owner, branchName)
+            : null;
+          if (latest) {
+            finalUrl = latest.html_url;
+            finalNumber = latest.number;
+            finalState = latest.state;
+            finalIsDraft = !!latest.draft;
           }
-        } else if (initial.exists && initial.isDraft) {
-          // PR exists and is draft: mark as ready via API
-          let readyOk = false;
-          // Try PUT first
+        } else if (initialBasic.draft) {
           try {
-            await ghApi<void>(`/repos/${owner}/${repo}/pulls/${initial.number}/ready_for_review`, {
-              method: "PUT",
-            });
-            readyOk = true;
-          } catch (e1: unknown) {
-            const m1 = e1 instanceof Error ? e1.message : String(e1);
-            serverLogger.warn(`[OpenPR] PUT ready_for_review failed: ${m1}`);
-            // Try POST as a fallback (some environments accept POST)
-            try {
-              await ghApi<void>(`/repos/${owner}/${repo}/pulls/${initial.number}/ready_for_review`, {
-                method: "POST",
-              });
-              readyOk = true;
-            } catch (e2: unknown) {
-              const m2 = e2 instanceof Error ? e2.message : String(e2);
-              serverLogger.warn(`[OpenPR] POST ready_for_review failed: ${m2}`);
-              // Try GraphQL fallback
-              try {
-                // Fetch PR to get GraphQL node id
-                const pr = await ghApi<{ node_id: string }>(
-                  `/repos/${owner}/${repo}/pulls/${initial.number}`
-                );
-                const gqlRes = await fetch(`https://api.github.com/graphql`, {
-                  method: "POST",
-                  headers: {
-                    Accept: "application/vnd.github+json",
-                    Authorization: `Bearer ${githubToken}`,
-                    "Content-Type": "application/json",
-                  },
-                  body: JSON.stringify({
-                    query: `mutation MarkReady($id:ID!){ markPullRequestReadyForReview(input:{pullRequestId:$id}){ pullRequest { id isDraft } } }`,
-                    variables: { id: pr.node_id },
-                  }),
-                });
-                const gqlJson = (await gqlRes.json()) as { data?: unknown; errors?: unknown };
-                if (!gqlRes.ok || gqlJson.errors) {
-                  throw new Error(`GraphQL error: ${JSON.stringify(gqlJson.errors)}`);
-                }
-                readyOk = true;
-              } catch (e3: unknown) {
-                const m3 = e3 instanceof Error ? e3.message : String(e3);
-                serverLogger.error(`[OpenPR] GraphQL ready_for_review failed: ${m3}`);
-                callback({ success: false, error: `Failed to mark PR ready: ${m3}` });
-                return;
-              }
-            }
+            await markPrReady(githubToken, owner!, repo!, initialBasic.number);
+          } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            serverLogger.error(`[OpenPR] markPrReady failed: ${msg}`);
+            callback({ success: false, error: `Failed to mark PR ready: ${msg}` });
+            return;
           }
-          const info = await fetchPrInfo();
-          if (info.exists) {
-            finalUrl = info.url || finalUrl;
-            finalNumber = info.number;
-            finalState = info.state;
-            finalIsDraft = info.isDraft;
+          const latest = await fetchPrByHead(githubToken, owner!, repo!, owner!, branchName);
+          if (latest) {
+            finalUrl = latest.html_url;
+            finalNumber = latest.number;
+            finalState = latest.state;
+            finalIsDraft = !!latest.draft;
           }
         } else {
-          // Exists and already open/merged/closed — handle CLOSED by reopening via API
-          if ((initial.state || "").toUpperCase() === "CLOSED") {
+          // Exists but not draft; if closed, attempt reopen
+          if ((initialBasic.state || "").toUpperCase() === "CLOSED") {
             try {
-              await ghApi<void>(`/repos/${owner}/${repo}/pulls/${initial.number}`, {
-                method: "PATCH",
-                body: JSON.stringify({ state: "open" }),
-              });
-              const info = await fetchPrInfo();
-              if (info.exists) {
-                finalUrl = info.url || finalUrl;
-                finalNumber = info.number;
-                finalState = info.state;
-                finalIsDraft = info.isDraft;
-              }
+              await reopenPr(githubToken, owner!, repo!, initialBasic.number);
             } catch (e: unknown) {
               const msg = e instanceof Error ? e.message : String(e);
               serverLogger.warn(`[OpenPR] Failed to reopen PR via API: ${msg}`);
             }
           }
-          // If merged, we do not create a new PR automatically; reflect state
+          // Reflect latest state
+          const latest = await fetchPrByHead(githubToken, owner!, repo!, owner!, branchName);
+          if (latest) {
+            finalUrl = latest.html_url;
+            finalNumber = latest.number;
+            finalState = latest.state;
+            finalIsDraft = !!latest.draft;
+          }
         }
 
-        // Map gh state to our union
-        const stateMap = (s?: string, isDraft?: boolean):
+        // Map gh state to our union (consider merged flag)
+        const stateMap = (s?: string, isDraft?: boolean, merged?: boolean):
           | "open"
           | "draft"
           | "merged"
           | "closed"
           | "unknown" => {
+          if (merged) return "merged";
           if (isDraft) return "draft";
           switch ((s || "").toUpperCase()) {
             case "OPEN":
@@ -1233,10 +1136,19 @@ export async function startServer({
           }
         };
 
+        // Determine merged via detail
+        let merged = false;
+        if (owner && repo && finalNumber) {
+          try {
+            const detail = await fetchPrDetail(githubToken, owner, repo, finalNumber);
+            merged = !!detail.merged_at;
+          } catch {}
+        }
+
         await convex.mutation(api.taskRuns.updatePullRequestState, {
           id: run._id as any,
           state:
-            finalUrl ? stateMap(finalState, finalIsDraft) : ("none" as const),
+            finalUrl ? stateMap(finalState, finalIsDraft, merged) : ("none" as const),
           isDraft: finalIsDraft,
           number: finalNumber,
           url: finalUrl,
@@ -1245,7 +1157,7 @@ export async function startServer({
         callback({
           success: true,
           url: finalUrl,
-          state: finalUrl ? stateMap(finalState, finalIsDraft) : "none",
+          state: finalUrl ? stateMap(finalState, finalIsDraft, merged) : "none",
         });
       } catch (error) {
         serverLogger.error("Error opening PR:", error);

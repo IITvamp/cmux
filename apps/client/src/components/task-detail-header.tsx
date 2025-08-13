@@ -54,6 +54,7 @@ export function TaskDetailHeader({
   const prIsOpen = selectedRun?.pullRequestState === "open";
   const { socket } = useSocket();
   const [agentMenuOpen, setAgentMenuOpen] = useState(false);
+  const [isOpeningPr, setIsOpeningPr] = useState(false);
   const handleAgentOpenChange = useCallback((open: boolean) => {
     setAgentMenuOpen(open);
   }, []);
@@ -87,18 +88,18 @@ export function TaskDetailHeader({
   const handleOpenPR = () => {
     if (!socket || !selectedRun?._id) return;
     // Create PR or mark draft ready
-    setIsCreatingPr(true);
+    setIsOpeningPr(true);
+    const toastId = toast.loading("Opening PR...");
     socket.emit(
       "github-open-pr",
       { taskRunId: selectedRun._id as string },
       (resp: { success: boolean; url?: string; error?: string }) => {
-        setIsCreatingPr(false);
-        if (resp.success && resp.url) {
-          // Open PR in a new tab
-          window.open(resp.url, "_blank");
-        } else if (!resp.success) {
+        setIsOpeningPr(false);
+        if (resp.success) {
+          toast.success("PR opened", { id: toastId, description: resp.url });
+        } else {
           console.error("Failed to open PR:", resp.error);
-          toast.error("Failed to open PR", { description: resp.error });
+          toast.error("Failed to open PR", { id: toastId, description: resp.error });
         }
       }
     );
@@ -173,7 +174,7 @@ export function TaskDetailHeader({
           <MergeButton
             onMerge={prIsOpen ? handleMerge : () => handleOpenPR()}
             isOpen={prIsOpen}
-            disabled={selectedRun?.status !== "completed" || !hasChanges}
+            disabled={isOpeningPr || isCreatingPr || !hasChanges}
           />
           {selectedRun?.pullRequestUrl &&
           selectedRun.pullRequestUrl !== "pending" ? (
@@ -190,7 +191,7 @@ export function TaskDetailHeader({
             <button
               onClick={handleViewPR}
               className="flex items-center gap-1.5 px-3 py-1 bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white border border-neutral-300 dark:border-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-700 font-medium text-xs select-none disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
-              disabled={isCreatingPr || !hasChanges}
+              disabled={isCreatingPr || isOpeningPr || !hasChanges}
             >
               <ExternalLink className="w-3.5 h-3.5" />
               {isCreatingPr ? "Creating draft PR..." : "Open draft PR"}
