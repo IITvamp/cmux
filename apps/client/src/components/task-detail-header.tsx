@@ -4,6 +4,7 @@ import type { Doc } from "@cmux/convex/dataModel";
 import { useClipboard } from "@mantine/hooks";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { useNavigate } from "@tanstack/react-router";
+import clsx from "clsx";
 import {
   Check,
   ChevronDown,
@@ -95,12 +96,15 @@ export function TaskDetailHeader({
         >
           {taskTitle || "Loading..."}
         </h1>
-        {isCheckingDiffs && (
-          <div className="flex items-center gap-1 text-xs text-neutral-400">
-            <RefreshCw className="w-3 h-3 animate-spin" />
-            <span>Checking for changes...</span>
-          </div>
-        )}
+        <div
+          className={clsx(
+            "flex items-center gap-1 text-xs text-neutral-400 absolute right-2 transition-opacity duration-150 bg-neutral-900 px-2 py-1 rounded-md",
+            isCheckingDiffs ? "opacity-100" : "opacity-0"
+          )}
+        >
+          <RefreshCw className="w-3 h-3 animate-spin" />
+          <span>Checking for changes...</span>
+        </div>
       </div>
 
       <div className="flex items-center gap-2 text-xs text-neutral-400 mb-1">
@@ -139,7 +143,9 @@ export function TaskDetailHeader({
         <span className="text-neutral-600">in</span>
 
         {task?.projectFullName && (
-          <span className="font-mono text-neutral-300">{task.projectFullName}</span>
+          <span className="font-mono text-neutral-300">
+            {task.projectFullName}
+          </span>
         )}
 
         {taskRuns && taskRuns.length > 0 && (
@@ -185,7 +191,9 @@ export function TaskDetailHeader({
                       >
                         <span>{agentName}</span>
                         {run.isCrowned && (
-                          <span className="text-yellow-500 text-[10px]">👑</span>
+                          <span className="text-yellow-500 text-[10px]">
+                            👑
+                          </span>
                         )}
                       </DropdownMenu.Item>
                     );
@@ -199,13 +207,19 @@ export function TaskDetailHeader({
 
       {task?.text && (
         <div className="text-xs text-neutral-300 mb-2">
-          <span className="text-neutral-400">Prompt:</span> <span className="font-medium">{task.text}</span>
+          <span className="text-neutral-400">Prompt:</span>{" "}
+          <span className="font-medium">{task.text}</span>
         </div>
       )}
 
       <div className="flex items-center gap-2">
-        <MergeButton onMerge={handleMerge} isOpen={prIsOpen} disabled={!crownedRun?.newBranch} />
-        {crownedRun?.pullRequestUrl && crownedRun.pullRequestUrl !== "pending" ? (
+        <MergeButton
+          onMerge={handleMerge}
+          isOpen={prIsOpen}
+          disabled={!crownedRun?.newBranch}
+        />
+        {crownedRun?.pullRequestUrl &&
+        crownedRun.pullRequestUrl !== "pending" ? (
           <a
             href={crownedRun.pullRequestUrl}
             target="_blank"
@@ -241,4 +255,3 @@ export function TaskDetailHeader({
     </div>
   );
 }
-
