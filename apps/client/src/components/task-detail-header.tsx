@@ -162,7 +162,7 @@ export function TaskDetailHeader({
               href={selectedRun.pullRequestUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1.5 px-3 py-1 bg-neutral-800 text-white border border-neutral-700 rounded hover:bg-neutral-700 font-medium text-xs select-none whitespace-nowrap"
+              className="flex items-center gap-1.5 px-3 py-1 bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white border border-neutral-300 dark:border-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-700 font-medium text-xs select-none whitespace-nowrap"
             >
               <ExternalLink className="w-3.5 h-3.5" />
               {selectedRun.pullRequestIsDraft ? "View draft PR" : "View PR"}
@@ -170,7 +170,7 @@ export function TaskDetailHeader({
           ) : (
             <button
               onClick={handleViewPR}
-              className="flex items-center gap-1.5 px-3 py-1 bg-neutral-800 text-white border border-neutral-700 rounded hover:bg-neutral-700 font-medium text-xs select-none disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
+              className="flex items-center gap-1.5 px-3 py-1 bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white border border-neutral-300 dark:border-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-700 font-medium text-xs select-none disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
               disabled={
                 selectedRun?.status !== "completed" ||
                 isCreatingPr ||
@@ -184,15 +184,15 @@ export function TaskDetailHeader({
 
           <OpenEditorSplitButton worktreePath={worktreePath} />
 
-          <button className="p-1 text-neutral-400 hover:text-white select-none hidden">
+          <button className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-white select-none hidden">
             <ExternalLink className="w-3.5 h-3.5" />
           </button>
-          <button className="p-1 text-neutral-400 hover:text-white select-none hidden">
+          <button className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-white select-none hidden">
             <Trash2 className="w-3.5 h-3.5" />
           </button>
           <Dropdown.Root>
             <Dropdown.Trigger
-              className="p-1 text-neutral-400 hover:text-white select-none"
+              className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-white select-none"
               aria-label="More actions"
             >
               <EllipsisVertical className="w-3.5 h-3.5" />
@@ -217,7 +217,7 @@ export function TaskDetailHeader({
         <div className="flex items-center gap-2 text-xs text-neutral-400 min-w-0">
           <button
             onClick={handleCopyBranch}
-            className="flex items-center gap-1 hover:text-white transition-colors group"
+            className="flex items-center gap-1 hover:text-neutral-700 dark:hover:text-white transition-colors group"
           >
             <div className="relative w-3 h-3">
               <GitBranch
@@ -243,7 +243,7 @@ export function TaskDetailHeader({
               />
             </div>
             {selectedRun?.newBranch ? (
-              <span className="font-mono text-neutral-300 group-hover:text-white text-[11px] truncate min-w-0 max-w-full select-none">
+              <span className="font-mono text-neutral-600 dark:text-neutral-300 group-hover:text-neutral-900 dark:group-hover:text-white text-[11px] truncate min-w-0 max-w-full select-none">
                 {selectedRun.newBranch}
               </span>
             ) : (
@@ -251,22 +251,22 @@ export function TaskDetailHeader({
             )}
           </button>
 
-          <span className="text-neutral-600 select-none">in</span>
+          <span className="text-neutral-500 dark:text-neutral-600 select-none">in</span>
 
           {task?.projectFullName && (
-            <span className="font-mono text-neutral-300 truncate min-w-0 max-w-[40%] whitespace-nowrap select-none">
+            <span className="font-mono text-neutral-600 dark:text-neutral-300 truncate min-w-0 max-w-[40%] whitespace-nowrap select-none">
               {task.projectFullName}
             </span>
           )}
 
           {taskRuns && taskRuns.length > 0 && (
             <>
-              <span className="text-neutral-600 select-none">by</span>
+              <span className="text-neutral-500 dark:text-neutral-600 select-none">by</span>
               <Dropdown.Root
                 open={agentMenuOpen}
                 onOpenChange={handleAgentOpenChange}
               >
-                <Dropdown.Trigger className="flex items-center gap-1 text-neutral-300 hover:text-white transition-colors text-xs whitespace-nowrap select-none">
+                <Dropdown.Trigger className="flex items-center gap-1 text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white transition-colors text-xs whitespace-nowrap select-none">
                   <span>{selectedRun?.agentName || "Unknown agent"}</span>
                   <ChevronDown className="w-3 h-3" />
                 </Dropdown.Trigger>
