@@ -219,6 +219,11 @@ export const GitHubAuthResponseSchema = z.object({
   error: z.string().optional(),
 });
 
+// Create draft PR input
+export const GitHubCreateDraftPrSchema = z.object({
+  taskRunId: z.string(),
+});
+
 // Provider status schemas
 export const ProviderStatusSchema = z.object({
   name: z.string(),
@@ -303,6 +308,7 @@ export type GitHubBranchesResponse = z.infer<
 >;
 export type GitHubReposResponse = z.infer<typeof GitHubReposResponseSchema>;
 export type GitHubAuthResponse = z.infer<typeof GitHubAuthResponseSchema>;
+export type GitHubCreateDraftPr = z.infer<typeof GitHubCreateDraftPrSchema>;
 export type ProviderStatus = z.infer<typeof ProviderStatusSchema>;
 export type DockerStatus = z.infer<typeof DockerStatusSchema>;
 export type GitStatus = z.infer<typeof GitStatusSchema>;
@@ -343,6 +349,11 @@ export interface ClientToServerEvents {
   "github-fetch-branches": (
     data: GitHubFetchBranches,
     callback: (response: GitHubBranchesResponse) => void
+  ) => void;
+  // Create a draft pull request for a given task run
+  "github-create-draft-pr": (
+    data: GitHubCreateDraftPr,
+    callback: (response: { success: boolean; url?: string; error?: string }) => void
   ) => void;
   "check-provider-status": (
     callback: (response: ProviderStatusResponse) => void
