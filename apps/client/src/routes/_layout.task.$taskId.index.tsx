@@ -1,7 +1,7 @@
+import { FloatingPane } from "@/components/floating-pane";
 import { GitDiffViewer } from "@/components/git-diff-viewer";
 import { TaskDetailHeader } from "@/components/task-detail-header";
 import { type MergeMethod } from "@/components/ui/merge-button";
-import { FloatingPane } from "@/components/floating-pane";
 import { useSocket } from "@/contexts/socket/use-socket";
 import { api } from "@cmux/convex/api";
 import { type Id } from "@cmux/convex/dataModel";
@@ -36,7 +36,7 @@ export const Route = createFileRoute("/_layout/task/$taskId/")({
 function TaskDetailPage() {
   const { taskId } = Route.useParams();
   const { runId } = Route.useSearch();
-  
+
   const [isCreatingPr, setIsCreatingPr] = useState(false);
   const [isCheckingDiffs, setIsCheckingDiffs] = useState(false);
   const { socket } = useSocket();

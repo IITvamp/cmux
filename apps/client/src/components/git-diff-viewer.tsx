@@ -106,39 +106,96 @@ export function GitDiffViewer({
     [diffs, lazyContents, taskRunId]
   );
 
-  // Auto-expand files on initial load or when diffs change
+  // Debug: log file list and detect duplicates to diagnose mismatched toggles
   useEffect(() => {
-    // Expand all files by default (like GitHub)
-    setExpandedFiles(new Set(fileGroups.map((f) => f.filePath)));
+    try {
+      const paths = fileGroups.map((f) => f.filePath);
+      const dupes = new Set<string>();
+      const seen = new Set<string>();
+      for (const p of paths) {
+        if (seen.has(p)) dupes.add(p);
+        else seen.add(p);
+      }
+      const joined = paths.join(" | ");
+      // only log when diffs change to keep noise low
+      // eslint-disable-next-line no-console
+      console.log(`[GitDiffViewer] files(${paths.length}): ${joined}`);
+      if (dupes.size > 0) {
+        for (const d of dupes) {
+          // eslint-disable-next-line no-console
+          console.warn(`[GitDiffViewer] duplicate: ${d}`);
+        }
+      }
+    } catch {}
+    // Intentionally depend on diffs, not lazyContents, to log when server data changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [diffs]);
 
-  const toggleFile = (filePath: string) => {
-    const newExpanded = new Set(expandedFiles);
-    if (newExpanded.has(filePath)) {
-      newExpanded.delete(filePath);
-    } else {
-      newExpanded.add(filePath);
-      // If content was omitted due to size, fetch on demand
-      const diff = diffs.find((d) => d.filePath === filePath);
-      if (diff && diff.contentOmitted && taskRunId && socket) {
-        socket.emit(
-          "git-diff-file-contents",
-          { taskRunId, filePath },
-          (res) => {
-            if (res.ok) {
-              setLazyContents((prev) => ({
-                ...prev,
-                [`${taskRunId}:${filePath}`]: {
-                  oldContent: res.oldContent || "",
-                  newContent: res.newContent || "",
-                },
-              }));
-            }
-          }
-        );
+  // Maintain expansion state across refreshes:
+  // - On first load: expand all
+  // - On subsequent diffs changes: preserve existing expansions, expand only truly new files
+  //   (detected via previous file list, not by expansion set)
+  const prevFilesRef = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    const nextPathsArr = diffs.map((d) => d.filePath);
+    const nextPaths = new Set(nextPathsArr);
+    setExpandedFiles((prev) => {
+      // First load: expand everything
+      if (prevFilesRef.current == null) {
+        return new Set(nextPaths);
       }
-    }
-    setExpandedFiles(newExpanded);
+      const next = new Set<string>();
+      // Keep expansions that still exist
+      for (const p of prev) {
+        if (nextPaths.has(p)) next.add(p);
+      }
+      // Expand only files not seen before (true additions)
+      for (const p of nextPaths) {
+        if (!prevFilesRef.current.has(p)) next.add(p);
+      }
+      return next;
+    });
+    // Update the seen file set after computing the next expansion state
+    prevFilesRef.current = nextPaths;
+  }, [diffs]);
+
+  const toggleFile = (filePath: string, index?: number) => {
+    setExpandedFiles((prev) => {
+      const newExpanded = new Set(prev);
+      const wasExpanded = newExpanded.has(filePath);
+      if (wasExpanded) newExpanded.delete(filePath);
+      else newExpanded.add(filePath);
+      // eslint-disable-next-line no-console
+      console.log(
+        `[GitDiffViewer] toggle index=${index ?? -1} path=${filePath} wasExpanded=${wasExpanded ? 1 : 0} nextExpanded=${newExpanded.size}`
+      );
+      // If content was omitted due to size, fetch on demand
+      if (!wasExpanded) {
+        const diff = diffs.find((d) => d.filePath === filePath);
+        if (diff && diff.contentOmitted && taskRunId && socket) {
+          socket.emit(
+            "git-diff-file-contents",
+            { taskRunId, filePath },
+            (res) => {
+              if (res.ok) {
+                setLazyContents((prev) => ({
+                  ...prev,
+                  [`${taskRunId}:${filePath}`]: {
+                    oldContent: res.oldContent || "",
+                    newContent: res.newContent || "",
+                  },
+                }));
+              }
+            }
+          );
+        }
+      }
+      // eslint-disable-next-line no-console
+      console.log(
+        `[GitDiffViewer] expandedAfter(${newExpanded.size}): ${Array.from(newExpanded).join(" | ")}`
+      );
+      return newExpanded;
+    });
   };
 
   const expandAll = () => {
@@ -223,12 +280,12 @@ export function GitDiffViewer({
 
       {/* Diff sections */}
       <div className="">
-        {fileGroups.map((file) => (
+        {fileGroups.map((file, idx) => (
           <MemoFileDiffRow
             key={`${taskRunId ?? "_"}:${file.filePath}`}
             file={file}
             isExpanded={expandedFiles.has(file.filePath)}
-            onToggle={() => toggleFile(file.filePath)}
+            onToggle={() => toggleFile(file.filePath, idx)}
             theme={theme}
             calculateEditorHeight={calculateEditorHeight}
             setEditorRef={(ed) => {
@@ -275,6 +332,14 @@ function FileDiffRow({
     }
     // Only depend on file contents used for initial sizing
   }, [file.oldContent, file.newContent, calculateEditorHeight]);
+
+  // Debug: trace row expansion changes
+  useEffect(() => {
+    // eslint-disable-next-line no-console
+    console.log(
+      `[GitDiffViewer] row path=${file.filePath} expanded=${isExpanded ? 1 : 0}`
+    );
+  }, [isExpanded, file.filePath]);
 
   return (
     <div className="bg-white dark:bg-neutral-900">
