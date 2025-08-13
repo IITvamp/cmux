@@ -284,6 +284,15 @@ Completed: ${new Date().toISOString()}`;
         });
         if (task) {
           const prTitle = `[Crown] ${task.text}`;
+          // Persist PR title immediately after generation
+          try {
+            await convex.mutation(api.tasks.setPullRequestTitle, {
+              id: task._id as Id<"tasks">,
+              pullRequestTitle: prTitle,
+            });
+          } catch (e) {
+            serverLogger.error(`[AgentSpawner] Failed to save PR title:`, e);
+          }
           const prBody = `## 🏆 Crown Winner: ${agent.name}
 
 ### Task Description
