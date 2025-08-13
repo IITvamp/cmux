@@ -1788,6 +1788,18 @@ export async function spawnAgent(
       if (s.includes("$CMUX_PROMPT")) {
         return `"${s.replace(/"/g, '\\"')}"`;
       }
+      // Special handling for notify command - needs very careful quoting
+      // The notify command needs to survive: tmux -> bash -lc -> exec -> bunx
+      // We need to preserve the JSON array structure and the $1 variable
+      if (s.startsWith("notify=")) {
+        // Original: notify=["sh","-lc","printf '%s\n' \"$1\" | tee -a ./codex-turns.jsonl >/dev/null"]
+        // For bash -c context, we need to escape for shell interpretation
+        // Use single quotes to preserve everything literally, except we need to handle the internal single quotes
+        const notifyContent = s.substring(7); // Remove "notify=" prefix
+        // Replace single quotes in the content with '\'' to break out, add literal quote, and re-enter
+        const escaped = notifyContent.replace(/'/g, "'\\''");
+        return `'notify=${escaped}'`;
+      }
       // Otherwise single-quote and escape any existing single quotes
       return `'${s.replace(/'/g, "'\\''")}'`;
     };
@@ -1795,19 +1807,47 @@ export async function spawnAgent(
       .map(shellEscaped)
       .join(" ");
 
+    // Log the actual command for Codex agents to debug notify command
+    if (agent.name.toLowerCase().includes("codex")) {
+      serverLogger.info(`[AgentSpawner] Codex command string: ${commandString}`);
+      serverLogger.info(`[AgentSpawner] Codex raw args:`, actualArgs);
+    }
+
     const agentType = getAgentType(agent.name);
+    
+    // For Codex agents, use direct command execution to preserve notify argument
+    // The notify command contains complex JSON that gets mangled through shell layers
+    const tmuxArgs = agent.name.toLowerCase().includes("codex") 
+      ? [
+          "new-session",
+          "-d",
+          "-s",
+          tmuxSessionName,
+          "-c",
+          "/root/workspace",
+          actualCommand,
+          ...actualArgs.map(arg => {
+            // Replace $CMUX_PROMPT with actual prompt value
+            if (arg === "$CMUX_PROMPT") {
+              return processedTaskDescription;
+            }
+            return arg;
+          })
+        ]
+      : [
+          "new-session",
+          "-d",
+          "-s",
+          tmuxSessionName,
+          "bash",
+          "-lc",
+          `exec ${commandString}`,
+        ];
+    
     const terminalCreationCommand: WorkerCreateTerminal = {
       terminalId: tmuxSessionName,
       command: "tmux",
-      args: [
-        "new-session",
-        "-d",
-        "-s",
-        tmuxSessionName,
-        "bash",
-        "-lc",
-        `exec ${commandString}`,
-      ],
+      args: tmuxArgs,
       cols: 80,
       rows: 74,
       env: envVars,

@@ -182,21 +182,60 @@ export async function checkCodexNotifyFileCompletion(
   workingDir: string,
   sinceEpochMs: number
 ): Promise<boolean> {
+  const filePath = path.join(workingDir, "codex-turns.jsonl");
+  console.log(`[Codex Detector] Checking notify file: ${filePath}`);
+  
   try {
-    const filePath = path.join(workingDir, "codex-turns.jsonl");
     const stat = await fs.stat(filePath);
+    console.log(`[Codex Detector] Notify file stats:`, {
+      exists: true,
+      size: stat.size,
+      mtime: stat.mtime.toISOString(),
+      mtimeMs: stat.mtime.getTime(),
+      sinceEpochMs,
+      isStale: stat.mtime.getTime() < sinceEpochMs
+    });
+    
     // Ignore stale files from before this run
     if (stat.mtime.getTime() < sinceEpochMs) {
       console.log(`[Codex Detector] Notify file present but stale: ${filePath}`);
       return false;
     }
+    
     const content = await fs.readFile(filePath, "utf-8");
+    console.log(`[Codex Detector] Notify file content (first 500 chars):`, content.substring(0, 500));
+    
     const lines = content.split("\n").filter(Boolean);
+    console.log(`[Codex Detector] Notify file has ${lines.length} lines`);
+    
+    // Log each line for debugging
+    lines.forEach((line, idx) => {
+      console.log(`[Codex Detector] Line ${idx + 1}: ${line.substring(0, 200)}`);
+    });
+    
     // Look for kebab-case type from UserNotification::AgentTurnComplete
     const found = lines.some((l) => l.includes('"type":"agent-turn-complete"'));
-    console.log(`[Codex Detector] Notify file check: path=${filePath}, lines=${lines.length}, found=${found}`);
+    console.log(`[Codex Detector] Looking for \"type\":\"agent-turn-complete\", found=${found}`);
+    
+    // Also check for other potential completion markers
+    const alternativeMarkers = [
+      '"agent_turn_complete"',
+      '"AgentTurnComplete"',
+      '"task_complete"',
+      '"TaskComplete"'
+    ];
+    
+    alternativeMarkers.forEach(marker => {
+      const hasMarker = lines.some(l => l.includes(marker));
+      if (hasMarker) {
+        console.log(`[Codex Detector] Found alternative marker: ${marker}`);
+      }
+    });
+    
     return found;
-  } catch {
+  } catch (error) {
+    console.log(`[Codex Detector] Error checking notify file:`, error);
+    console.log(`[Codex Detector] File path was: ${filePath}`);
     return false;
   }
 }

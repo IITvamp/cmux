@@ -170,12 +170,22 @@ export class TaskCompletionDetector extends EventEmitter {
 
   private async checkCodexCompletion(): Promise<boolean> {
     try {
+      log("INFO", `[Codex Detector] Starting completion check for task ${this.options.taskId}`, {
+        workingDir: this.options.workingDir,
+        startTime: new Date(this.startTime).toISOString(),
+        elapsedMs: Date.now() - this.startTime
+      });
+      
       // Notify-file based completion (no idleness): check codex-turns.jsonl
       const { checkCodexNotifyFileCompletion } = await getCodexHelpers();
+      log("INFO", "[Codex Detector] Checking notify file for completion...");
       const notifyDone = await checkCodexNotifyFileCompletion(this.options.workingDir, this.startTime);
+      
       if (notifyDone) {
         log("INFO", "Codex task complete via notify (agent-turn-complete)");
         return true;
+      } else {
+        log("DEBUG", "[Codex Detector] Notify file check returned false");
       }
       // Codex stores session logs in ~/.codex/sessions and codex-tui.log.
       // Use shared detector to find the session since this detector started,
