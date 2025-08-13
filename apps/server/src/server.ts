@@ -31,14 +31,15 @@ import { RepositoryManager } from "./repositoryManager.js";
 import { getPRTitleFromTaskDescription } from "./utils/branchNameGenerator.js";
 import { convex } from "./utils/convexClient.js";
 import { ensureRunWorktreeAndBranch } from "./utils/ensureRunWorktree.js";
-import {
-  fetchPrByHead,
-  fetchPrDetail,
-  createReadyPr,
-  markPrReady,
-  reopenPr,
-  parseRepoFromUrl,
-} from "./utils/githubPr.js";
+  import {
+    fetchPrByHead,
+    fetchPrDetail,
+    createReadyPr,
+    markPrReady,
+    reopenPr,
+    parseRepoFromUrl,
+    mergePr,
+  } from "./utils/githubPr.js";
 import { dockerLogger, serverLogger } from "./utils/fileLogger.js";
 import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
 import { checkAllProvidersStatus } from "./utils/providerStatus.js";
@@ -320,6 +321,96 @@ export async function startServer({
           success: false,
           error: error instanceof Error ? error.message : "Unknown error",
         });
+      }
+    });
+
+    // Merge PR for a run
+    socket.on("github-merge-pr", async (data, callback) => {
+      try {
+        const { taskRunId, method } = (data as { taskRunId: string; method: "squash" | "rebase" | "merge" });
+
+        const run = await convex.query(api.taskRuns.get, { id: taskRunId as any });
+        if (!run) return callback({ success: false, error: "Task run not found" });
+        const task = await convex.query(api.tasks.getById, { id: run.taskId });
+        if (!task) return callback({ success: false, error: "Task not found" });
+
+        const githubToken = await getGitHubTokenFromKeychain(convex);
+        if (!githubToken) return callback({ success: false, error: "GitHub token is not configured" });
+
+        let [owner, repo] = (task.projectFullName || "").split("/");
+        let prNumber: number | null = run.pullRequestNumber || null;
+        if ((!owner || !repo || !prNumber) && run.pullRequestUrl) {
+          const parsed = parseRepoFromUrl(run.pullRequestUrl);
+          owner = owner || parsed.owner || owner;
+          repo = repo || parsed.repo || repo;
+          prNumber = prNumber || parsed.number || null;
+        }
+
+        if (!owner || !repo) return callback({ success: false, error: "Unknown repo for task" });
+
+        // If PR number still unknown, try to locate via branch
+        if (!prNumber && run.newBranch) {
+          const found = await fetchPrByHead(githubToken, owner, repo, owner, run.newBranch);
+          if (found) {
+            prNumber = found.number;
+          }
+        }
+
+        if (!prNumber) return callback({ success: false, error: "Pull request not found for this run" });
+
+        // Ensure PR is open and not draft
+        const detail = await fetchPrDetail(githubToken, owner, repo, prNumber);
+        if (detail.draft) {
+          // Try to mark ready
+          try {
+            await markPrReady(githubToken, owner, repo, prNumber);
+          } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            return callback({ success: false, error: `PR is draft and could not be made ready: ${msg}` });
+          }
+        }
+        if (detail.state === "closed") {
+          // Try to reopen
+          try {
+            await reopenPr(githubToken, owner, repo, prNumber);
+          } catch (e: unknown) {
+            const msg = e instanceof Error ? e.message : String(e);
+            return callback({ success: false, error: `PR is closed and could not be reopened: ${msg}` });
+          }
+        }
+
+        // Optional: commit title/message
+        const title = task.pullRequestTitle || task.text || `cmux changes`;
+        const truncatedTitle = title.length > 72 ? `${title.slice(0, 69)}...` : title;
+        const commitMessage = `Merged by cmux for task ${String(task._id)}.`;
+
+        // Merge
+        try {
+          const res = await mergePr(
+            githubToken,
+            owner,
+            repo,
+            prNumber,
+            method,
+            truncatedTitle,
+            commitMessage
+          );
+          // Update Convex: merged
+          await convex.mutation(api.taskRuns.updatePullRequestState, {
+            id: run._id as any,
+            state: "merged",
+            isDraft: false,
+            number: prNumber,
+            url: detail.html_url,
+          });
+          callback({ success: true, merged: !!res.merged, state: "merged", url: detail.html_url });
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : String(e);
+          callback({ success: false, error: `Failed to merge PR: ${msg}` });
+        }
+      } catch (error) {
+        serverLogger.error("Error merging PR:", error);
+        callback({ success: false, error: error instanceof Error ? error.message : "Unknown error" });
       }
     });
 

@@ -14,6 +14,7 @@ import {
   EllipsisVertical,
   ExternalLink,
   GitBranch,
+  GitMerge,
   RefreshCw,
   Trash2,
 } from "lucide-react";
@@ -27,7 +28,7 @@ interface TaskDetailHeaderProps {
   isCheckingDiffs: boolean;
   isCreatingPr: boolean;
   setIsCreatingPr: (v: boolean) => void;
-  onMerge: (method: MergeMethod) => void;
+  onMerge: (method: MergeMethod) => Promise<void>;
   totalAdditions?: number;
   totalDeletions?: number;
   hasAnyDiffs?: boolean;
@@ -52,6 +53,7 @@ export function TaskDetailHeader({
   const navigate = useNavigate();
   const clipboard = useClipboard({ timeout: 2000 });
   const prIsOpen = selectedRun?.pullRequestState === "open";
+  const prIsMerged = selectedRun?.pullRequestState === "merged";
   const { socket } = useSocket();
   const [agentMenuOpen, setAgentMenuOpen] = useState(false);
   const [isOpeningPr, setIsOpeningPr] = useState(false);
@@ -80,9 +82,14 @@ export function TaskDetailHeader({
     }
   };
 
-  const handleMerge = (method: MergeMethod) => {
-    // Merge options UI hook; keep behavior but do not change PR state here.
-    onMerge(method);
+  const [isMerging, setIsMerging] = useState(false);
+  const handleMerge = async (method: MergeMethod) => {
+    setIsMerging(true);
+    try {
+      await onMerge(method);
+    } finally {
+      setIsMerging(false);
+    }
   };
 
   const handleOpenPR = () => {
@@ -171,11 +178,26 @@ export function TaskDetailHeader({
 
         {/* Actions on right, vertically centered across rows */}
         <div className="col-start-3 row-start-1 row-span-2 self-center flex items-center gap-2 shrink-0">
-          <MergeButton
-            onMerge={prIsOpen ? handleMerge : () => handleOpenPR()}
-            isOpen={prIsOpen}
-            disabled={isOpeningPr || isCreatingPr || !hasChanges}
-          />
+          {prIsMerged ? (
+            <div
+              className="flex items-center gap-1.5 px-3 py-1 bg-[#8250df] text-white rounded font-medium text-xs select-none whitespace-nowrap border border-[#6e40cc] dark:bg-[#8250df] dark:border-[#6e40cc]"
+              title="Pull request has been merged"
+            >
+              <GitMerge className="w-3.5 h-3.5" />
+              Merged
+            </div>
+          ) : (
+            <MergeButton
+              onMerge={prIsOpen ? handleMerge : async () => { handleOpenPR(); }}
+              isOpen={prIsOpen}
+              disabled={
+                isOpeningPr ||
+                isCreatingPr ||
+                isMerging ||
+                (!prIsOpen && !hasChanges)
+              }
+            />
+          )}
           {selectedRun?.pullRequestUrl &&
           selectedRun.pullRequestUrl !== "pending" ? (
             <a
@@ -191,7 +213,7 @@ export function TaskDetailHeader({
             <button
               onClick={handleViewPR}
               className="flex items-center gap-1.5 px-3 py-1 bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white border border-neutral-300 dark:border-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-700 font-medium text-xs select-none disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
-              disabled={isCreatingPr || isOpeningPr || !hasChanges}
+              disabled={isCreatingPr || isOpeningPr || isMerging || !hasChanges}
             >
               <ExternalLink className="w-3.5 h-3.5" />
               {isCreatingPr ? "Creating draft PR..." : "Open draft PR"}

@@ -234,6 +234,12 @@ export const GitHubSyncPrStateSchema = z.object({
   taskRunId: z.string(),
 });
 
+// Merge PR
+export const GitHubMergePrSchema = z.object({
+  taskRunId: z.string(),
+  method: z.enum(["squash", "rebase", "merge"]),
+});
+
 // Provider status schemas
 export const ProviderStatusSchema = z.object({
   name: z.string(),
@@ -321,6 +327,7 @@ export type GitHubAuthResponse = z.infer<typeof GitHubAuthResponseSchema>;
 export type GitHubCreateDraftPr = z.infer<typeof GitHubCreateDraftPrSchema>;
 export type GitHubOpenPr = z.infer<typeof GitHubOpenPrSchema>;
 export type GitHubSyncPrState = z.infer<typeof GitHubSyncPrStateSchema>;
+export type GitHubMergePr = z.infer<typeof GitHubMergePrSchema>;
 export type ProviderStatus = z.infer<typeof ProviderStatusSchema>;
 export type DockerStatus = z.infer<typeof DockerStatusSchema>;
 export type GitStatus = z.infer<typeof GitStatusSchema>;
@@ -385,6 +392,11 @@ export interface ClientToServerEvents {
         error?: string;
       }
     ) => void
+  ) => void;
+  // Merge PR with selected method
+  "github-merge-pr": (
+    data: GitHubMergePr,
+    callback: (response: { success: boolean; merged?: boolean; state?: string; url?: string; error?: string }) => void
   ) => void;
   "check-provider-status": (
     callback: (response: ProviderStatusResponse) => void

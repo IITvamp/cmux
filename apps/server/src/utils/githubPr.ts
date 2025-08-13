@@ -1,3 +1,4 @@
+import { getOctokit } from "./octokit.js";
 
 export type PrBasic = {
   number: number;
@@ -21,24 +22,6 @@ export function parseRepoFromUrl(url: string): { owner?: string; repo?: string; 
   return { owner: m[1], repo: m[2], number: parseInt(m[3] || "", 10) || undefined };
 }
 
-type HttpInit = { method?: string; headers?: Record<string, string>; body?: string };
-
-async function ghApi<T>(token: string, path: string, init?: HttpInit): Promise<T> {
-  const res = await fetch(`https://api.github.com${path}`, {
-    ...init,
-    headers: {
-      Accept: "application/vnd.github+json",
-      Authorization: `token ${token}`,
-      ...(init?.headers as Record<string, string> | undefined),
-    },
-  });
-  if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(`GitHub API ${res.status}: ${txt}`);
-  }
-  return (await res.json()) as T;
-}
-
 export async function fetchPrByHead(
   token: string,
   owner: string,
@@ -46,9 +29,17 @@ export async function fetchPrByHead(
   headOwner: string,
   branchName: string
 ): Promise<PrBasic | null> {
-  const qs = new URLSearchParams({ state: "all", head: `${headOwner}:${branchName}` }).toString();
-  const list = await ghApi<PrBasic[]>(token, `/repos/${owner}/${repo}/pulls?${qs}`);
-  return Array.isArray(list) && list.length > 0 ? list[0] : null;
+  const octokit = getOctokit(token);
+  const head = `${headOwner}:${branchName}`;
+  const { data } = await octokit.rest.pulls.list({ owner, repo, state: "all", head, per_page: 10 });
+  if (!Array.isArray(data) || data.length === 0) return null;
+  const pr = data[0];
+  return {
+    number: pr.number,
+    html_url: pr.html_url,
+    state: pr.state,
+    draft: pr.draft ?? undefined,
+  };
 }
 
 export async function fetchPrDetail(
@@ -57,7 +48,16 @@ export async function fetchPrDetail(
   repo: string,
   number: number
 ): Promise<PrDetail> {
-  return await ghApi<PrDetail>(token, `/repos/${owner}/${repo}/pulls/${number}`);
+  const octokit = getOctokit(token);
+  const { data } = await octokit.rest.pulls.get({ owner, repo, pull_number: number });
+  return {
+    number: data.number,
+    html_url: data.html_url,
+    state: data.state,
+    draft: data.draft ?? undefined,
+    merged_at: data.merged_at,
+    node_id: data.node_id,
+  };
 }
 
 export async function createReadyPr(
@@ -69,10 +69,22 @@ export async function createReadyPr(
   base: string,
   body: string
 ): Promise<PrBasic> {
-  return await ghApi<PrBasic>(token, `/repos/${owner}/${repo}/pulls`, {
-    method: "POST",
-    body: JSON.stringify({ title, head, base, body, draft: false }),
+  const octokit = getOctokit(token);
+  const { data } = await octokit.rest.pulls.create({
+    owner,
+    repo,
+    title,
+    head,
+    base,
+    body,
+    draft: false,
   });
+  return {
+    number: data.number,
+    html_url: data.html_url,
+    state: data.state,
+    draft: data.draft ?? undefined,
+  };
 }
 
 export async function markPrReady(
@@ -81,36 +93,11 @@ export async function markPrReady(
   repo: string,
   number: number
 ): Promise<void> {
-  // Try REST first
-  const path = `/repos/${owner}/${repo}/pulls/${number}/ready_for_review`;
-  try {
-    await ghApi<void>(token, path, { method: "PUT" });
-    return;
-  } catch {}
-  try {
-    await ghApi<void>(token, path, { method: "POST" });
-    return;
-  } catch {}
-
-  // GraphQL fallback
-  const pr = await fetchPrDetail(token, owner, repo, number);
-  const gqlRes = await fetch(`https://api.github.com/graphql`, {
-    method: "POST",
-    headers: {
-      Accept: "application/vnd.github+json",
-      Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      query:
-        "mutation MarkReady($id:ID!){ markPullRequestReadyForReview(input:{pullRequestId:$id}){ pullRequest { id isDraft } } }",
-      variables: { id: pr.node_id },
-    }),
-  });
-  const json = (await gqlRes.json()) as { data?: unknown; errors?: unknown };
-  if (!gqlRes.ok || json.errors) {
-    throw new Error(`GraphQL error: ${JSON.stringify(json.errors)}`);
-  }
+  const octokit = getOctokit(token);
+  await octokit.request(
+    "PUT /repos/{owner}/{repo}/pulls/{pull_number}/ready_for_review",
+    { owner, repo, pull_number: number }
+  );
 }
 
 export async function reopenPr(
@@ -119,8 +106,32 @@ export async function reopenPr(
   repo: string,
   number: number
 ): Promise<void> {
-  await ghApi<void>(token, `/repos/${owner}/${repo}/pulls/${number}`, {
-    method: "PATCH",
-    body: JSON.stringify({ state: "open" }),
+  const octokit = getOctokit(token);
+  await octokit.rest.pulls.update({ owner, repo, pull_number: number, state: "open" });
+}
+
+export async function mergePr(
+  token: string,
+  owner: string,
+  repo: string,
+  number: number,
+  method: "squash" | "rebase" | "merge",
+  commitTitle?: string,
+  commitMessage?: string
+): Promise<{ merged: boolean; sha?: string; message?: string; html_url?: string }> {
+  const octokit = getOctokit(token);
+  const { data } = await octokit.rest.pulls.merge({
+    owner,
+    repo,
+    pull_number: number,
+    merge_method: method,
+    commit_title: commitTitle,
+    commit_message: commitMessage,
   });
+  return {
+    merged: data.merged ?? false,
+    sha: data.sha,
+    message: data.message,
+    html_url: (data as unknown as { html_url?: string }).html_url,
+  };
 }

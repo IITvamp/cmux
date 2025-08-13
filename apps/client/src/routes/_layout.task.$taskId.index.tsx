@@ -9,6 +9,7 @@ import { convexQuery } from "@convex-dev/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/_layout/task/$taskId/")({
   component: TaskDetailPage,
@@ -170,9 +171,26 @@ function TaskDetailPage() {
     }
   }, [isCheckingDiffs, diffs, selectedRun?._id]);
 
-  const handleMerge = (method: MergeMethod) => {
-    // TODO: Implement merge logic
-    console.log("Merging with method:", method);
+  const [, setIsMerging] = useState(false);
+  const handleMerge = async (method: MergeMethod): Promise<void> => {
+    if (!socket || !selectedRun?._id) return;
+    setIsMerging(true);
+    const toastId = toast.loading(`Merging PR (${method})...`);
+    await new Promise<void>((resolve) => {
+      socket.emit(
+        "github-merge-pr",
+        { taskRunId: selectedRun._id as string, method },
+        (resp: { success: boolean; merged?: boolean; state?: string; url?: string; error?: string }) => {
+          setIsMerging(false);
+          if (resp.success) {
+            toast.success("PR merged", { id: toastId, description: resp.url });
+          } else {
+            toast.error("Failed to merge PR", { id: toastId, description: resp.error });
+          }
+          resolve();
+        }
+      );
+    });
   };
 
   const hasAnyDiffs = !!(
