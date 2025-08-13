@@ -334,9 +334,9 @@ function TaskDetailPage() {
       </div>
 
       {task?.text && (
-        <div className="text-xs text-neutral-300 mb-2">
+        <div className="text-xs text-neutral-300 mb-2 overflow-hidden">
           <span className="text-neutral-400">Prompt:</span>{" "}
-          <span className="font-medium">{task.text}</span>
+          <span className="font-medium whitespace-nowrap overflow-hidden text-ellipsis inline-block max-w-full">{task.text}</span>
         </div>
       )}
 
