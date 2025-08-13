@@ -28,7 +28,8 @@ function SettingsComponent() {
   const [worktreePath, setWorktreePath] = useState<string>("");
   const [originalWorktreePath, setOriginalWorktreePath] = useState<string>("");
   const [autoPrEnabled, setAutoPrEnabled] = useState<boolean>(false);
-  const [originalAutoPrEnabled, setOriginalAutoPrEnabled] = useState<boolean>(false);
+  const [originalAutoPrEnabled, setOriginalAutoPrEnabled] =
+    useState<boolean>(false);
   const [isSaveButtonVisible, setIsSaveButtonVisible] = useState(true);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const saveButtonRef = useRef<HTMLDivElement>(null);
@@ -84,7 +85,9 @@ function SettingsComponent() {
     if (workspaceSettings !== undefined) {
       setWorktreePath(workspaceSettings?.worktreePath || "");
       setOriginalWorktreePath(workspaceSettings?.worktreePath || "");
-      const enabled = (workspaceSettings as unknown as { autoPrEnabled?: boolean })?.autoPrEnabled;
+      const enabled = (
+        workspaceSettings as unknown as { autoPrEnabled?: boolean }
+      )?.autoPrEnabled;
       const effective = enabled === undefined ? false : Boolean(enabled);
       setAutoPrEnabled(effective);
       setOriginalAutoPrEnabled(effective);
@@ -167,8 +170,9 @@ function SettingsComponent() {
     const worktreePathChanged = worktreePath !== originalWorktreePath;
 
     // Check GitHub token changes
-    const githubTokenChanged = 
-      (apiKeyValues["GITHUB_TOKEN"] || "") !== (originalApiKeyValues["GITHUB_TOKEN"] || "");
+    const githubTokenChanged =
+      (apiKeyValues["GITHUB_TOKEN"] || "") !==
+      (originalApiKeyValues["GITHUB_TOKEN"] || "");
 
     // Check all required API keys for changes
     const apiKeysChanged = apiKeys.some((keyConfig) => {
@@ -187,7 +191,13 @@ function SettingsComponent() {
     // Auto PR toggle changes
     const autoPrChanged = autoPrEnabled !== originalAutoPrEnabled;
 
-    return worktreePathChanged || autoPrChanged || githubTokenChanged || apiKeysChanged || containerSettingsChanged;
+    return (
+      worktreePathChanged ||
+      autoPrChanged ||
+      githubTokenChanged ||
+      apiKeysChanged ||
+      containerSettingsChanged
+    );
   };
 
   const saveApiKeys = async () => {
@@ -198,7 +208,10 @@ function SettingsComponent() {
       let deletedCount = 0;
 
       // Save worktree path / auto PR if changed
-      if (worktreePath !== originalWorktreePath || autoPrEnabled !== originalAutoPrEnabled) {
+      if (
+        worktreePath !== originalWorktreePath ||
+        autoPrEnabled !== originalAutoPrEnabled
+      ) {
         await convex.mutation(api.workspaceSettings.update, {
           worktreePath: worktreePath || undefined,
           autoPrEnabled,
@@ -223,8 +236,9 @@ function SettingsComponent() {
 
       // Save GitHub token if changed
       const githubTokenValue = apiKeyValues["GITHUB_TOKEN"] || "";
-      const originalGithubTokenValue = originalApiKeyValues["GITHUB_TOKEN"] || "";
-      
+      const originalGithubTokenValue =
+        originalApiKeyValues["GITHUB_TOKEN"] || "";
+
       if (githubTokenValue !== originalGithubTokenValue) {
         if (githubTokenValue.trim()) {
           await saveApiKeyMutation.mutateAsync({
@@ -311,40 +325,6 @@ function SettingsComponent() {
 
           {/* Settings Sections */}
           <div className="space-y-4">
-            {/* Crown Evaluator */}
-            <div className="bg-white dark:bg-neutral-950 rounded-lg border border-neutral-200 dark:border-neutral-800">
-              <div className="px-4 py-3 border-b border-neutral-200 dark:border-neutral-800">
-                <h2 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
-                  Crown Evaluator
-                </h2>
-              </div>
-              <div className="p-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-neutral-900 dark:text-neutral-100">
-                      Auto pull request for crown winner
-                    </label>
-                    <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
-                      When enabled, cmux automatically creates a pull request for the winning model’s code diff.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    aria-pressed={autoPrEnabled}
-                    onClick={() => setAutoPrEnabled((v) => !v)}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                      autoPrEnabled ? "bg-blue-600" : "bg-neutral-300 dark:bg-neutral-700"
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-5 w-5 transform rounded-full bg-white dark:bg-neutral-900 shadow transition-transform ${
-                        autoPrEnabled ? "translate-x-5" : "translate-x-1"
-                      }`}
-                    />
-                  </button>
-                </div>
-              </div>
-            </div>
             {/* Appearance */}
             <div className="bg-white dark:bg-neutral-950 rounded-lg border border-neutral-200 dark:border-neutral-800">
               <div className="px-4 py-3 border-b border-neutral-200 dark:border-neutral-800">
@@ -377,6 +357,44 @@ function SettingsComponent() {
                       System
                     </button>
                   </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Crown Evaluator */}
+            <div className="bg-white dark:bg-neutral-950 rounded-lg border border-neutral-200 dark:border-neutral-800">
+              <div className="px-4 py-3 border-b border-neutral-200 dark:border-neutral-800">
+                <h2 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                  Crown Evaluator
+                </h2>
+              </div>
+              <div className="p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                      Auto pull request for crown winner
+                    </label>
+                    <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                      When enabled, cmux automatically creates a pull request
+                      for the winning model’s code diff.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    aria-pressed={autoPrEnabled}
+                    onClick={() => setAutoPrEnabled((v) => !v)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      autoPrEnabled
+                        ? "bg-blue-600"
+                        : "bg-neutral-300 dark:bg-neutral-700"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-5 w-5 transform rounded-full bg-white dark:bg-neutral-900 shadow transition-transform ${
+                        autoPrEnabled ? "translate-x-5" : "translate-x-1"
+                      }`}
+                    />
+                  </button>
                 </div>
               </div>
             </div>
@@ -511,15 +529,27 @@ function SettingsComponent() {
                 {/* OAuth Providers Notice */}
                 <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg">
                   <div className="flex items-start gap-2">
-                    <svg className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    <svg
+                      className="w-4 h-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
                     </svg>
                     <div className="space-y-2">
                       <p className="text-sm font-medium text-blue-900 dark:text-blue-100">
                         OAuth-based providers (Gemini, AMP)
                       </p>
                       <p className="text-xs text-blue-700 dark:text-blue-300">
-                        These providers use OAuth authentication. When you first run them, they'll open a browser for you to authorize access. No API keys needed.
+                        These providers use OAuth authentication. When you first
+                        run them, they'll open a browser for you to authorize
+                        access. No API keys needed.
                       </p>
                     </div>
                   </div>
@@ -538,10 +568,11 @@ function SettingsComponent() {
                           API Key Authentication
                         </h3>
                         <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                          The following providers require API keys. Get your keys from their respective platforms:
+                          The following providers require API keys. Get your
+                          keys from their respective platforms:
                         </p>
                       </div>
-                      
+
                       {/* Group API keys by provider for better organization */}
                       {apiKeys.map((key) => {
                         const getProviderInfo = (envVar: string) => {
@@ -550,32 +581,48 @@ function SettingsComponent() {
                               return {
                                 name: "Anthropic (Claude models via Opencode)",
                                 url: "https://console.anthropic.com/settings/keys",
-                                models: ["opus-4", "opus-4.1", "sonnet-4", "qwen3-coder"],
-                                instructions: "Create an API key in your Anthropic Console"
+                                models: [
+                                  "opus-4",
+                                  "opus-4.1",
+                                  "sonnet-4",
+                                  "qwen3-coder",
+                                ],
+                                instructions:
+                                  "Create an API key in your Anthropic Console",
                               };
                             case "OPENAI_API_KEY":
                               return {
                                 name: "OpenAI (GPT/O-series models via Opencode/Codex)",
                                 url: "https://platform.openai.com/api-keys",
-                                models: ["gpt-5", "gpt-5-mini", "gpt-5-nano", "o3-pro"],
-                                instructions: "Generate an API key from OpenAI Platform"
+                                models: [
+                                  "gpt-5",
+                                  "gpt-5-mini",
+                                  "gpt-5-nano",
+                                  "o3-pro",
+                                ],
+                                instructions:
+                                  "Generate an API key from OpenAI Platform",
                               };
                             case "OPENROUTER_API_KEY":
                               return {
                                 name: "OpenRouter (Multiple models via Opencode)",
                                 url: "https://openrouter.ai/keys",
                                 models: ["kimi-k2", "glm-4.5"],
-                                instructions: "Get your API key from OpenRouter dashboard"
+                                instructions:
+                                  "Get your API key from OpenRouter dashboard",
                               };
                             default:
                               return null;
                           }
                         };
-                        
+
                         const providerInfo = getProviderInfo(key.envVar);
-                        
+
                         return (
-                          <div key={key.envVar} className="border border-neutral-200 dark:border-neutral-800 rounded-lg p-3 space-y-2">
+                          <div
+                            key={key.envVar}
+                            className="border border-neutral-200 dark:border-neutral-800 rounded-lg p-3 space-y-2"
+                          >
                             <div className="flex items-start justify-between">
                               <div className="flex-1">
                                 <label
@@ -590,7 +637,10 @@ function SettingsComponent() {
                                       {providerInfo.instructions}
                                     </p>
                                     <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                                      Used for models: <span className="font-medium">{providerInfo.models.join(", ")}</span>
+                                      Used for models:{" "}
+                                      <span className="font-medium">
+                                        {providerInfo.models.join(", ")}
+                                      </span>
                                     </p>
                                   </div>
                                 )}
@@ -603,25 +653,42 @@ function SettingsComponent() {
                                   className="text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 flex items-center gap-1"
                                 >
                                   Get key
-                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                  <svg
+                                    className="w-3 h-3"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth={2}
+                                      d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                                    />
                                   </svg>
                                 </a>
                               )}
                             </div>
                             <div className="relative">
                               <input
-                                type={showKeys[key.envVar] ? "text" : "password"}
+                                type={
+                                  showKeys[key.envVar] ? "text" : "password"
+                                }
                                 id={key.envVar}
                                 value={apiKeyValues[key.envVar] || ""}
                                 onChange={(e) =>
                                   handleApiKeyChange(key.envVar, e.target.value)
                                 }
                                 className="w-full px-3 py-2 pr-10 border border-neutral-300 dark:border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 font-mono text-sm"
-                                placeholder={key.envVar === "ANTHROPIC_API_KEY" ? "sk-ant-api03-..." : 
-                                           key.envVar === "OPENAI_API_KEY" ? "sk-proj-..." : 
-                                           key.envVar === "OPENROUTER_API_KEY" ? "sk-or-v1-..." : 
-                                           `Enter your ${key.displayName}`}
+                                placeholder={
+                                  key.envVar === "ANTHROPIC_API_KEY"
+                                    ? "sk-ant-api03-..."
+                                    : key.envVar === "OPENAI_API_KEY"
+                                      ? "sk-proj-..."
+                                      : key.envVar === "OPENROUTER_API_KEY"
+                                        ? "sk-or-v1-..."
+                                        : `Enter your ${key.displayName}`
+                                }
                               />
                               <button
                                 type="button"
@@ -667,10 +734,22 @@ function SettingsComponent() {
                             </div>
                             {apiKeyValues[key.envVar] && (
                               <div className="flex items-center gap-1">
-                                <svg className="w-3 h-3 text-green-500 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                <svg
+                                  className="w-3 h-3 text-green-500 dark:text-green-400"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  viewBox="0 0 24 24"
+                                >
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    strokeWidth={2}
+                                    d="M5 13l4 4L19 7"
+                                  />
                                 </svg>
-                                <span className="text-xs text-green-600 dark:text-green-400">API key configured</span>
+                                <span className="text-xs text-green-600 dark:text-green-400">
+                                  API key configured
+                                </span>
                               </div>
                             )}
                           </div>

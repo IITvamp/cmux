@@ -3,7 +3,7 @@ import { TaskTreeSkeleton } from "@/components/TaskTreeSkeleton";
 import { isElectron } from "@/lib/electron";
 import { type Doc } from "@cmux/convex/dataModel";
 import { Link } from "@tanstack/react-router";
-import { Terminal, Plus } from "lucide-react";
+import { Plus, Terminal } from "lucide-react";
 import {
   type CSSProperties,
   useCallback,
@@ -115,7 +115,7 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
       }}
     >
       <div
-        className="h-[38px] flex items-center pl-3 pr-1.5 shrink-0 border-b border-neutral-200 dark:border-neutral-900 bg-white dark:bg-black/90 backdrop-blur-sm"
+        className="h-[38px] flex items-center pl-3 pr-1.5 shrink-0 border-b border-neutral-200 dark:border-neutral-900"
         style={{ WebkitAppRegion: "drag" } as CSSProperties}
       >
         {isElectron && <div className="w-[68px]"></div>}
@@ -124,8 +124,13 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
           className="flex items-center gap-2 select-none cursor-default"
           style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
         >
-          <Terminal className="h-4 w-4 text-neutral-600 dark:text-neutral-300" aria-hidden="true" />
-          <span className="text-sm font-mono text-neutral-900 dark:text-white">cmux</span>
+          <Terminal
+            className="h-4 w-4 text-neutral-600 dark:text-neutral-300"
+            aria-hidden="true"
+          />
+          <span className="text-sm font-mono text-neutral-900 dark:text-white">
+            cmux
+          </span>
         </Link>
         <div className="grow"></div>
         <Link
@@ -134,7 +139,10 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
           title="New task"
           style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
         >
-          <Plus className="w-4 h-4 text-neutral-700 dark:text-neutral-300" aria-hidden="true" />
+          <Plus
+            className="w-4 h-4 text-neutral-700 dark:text-neutral-300"
+            aria-hidden="true"
+          />
         </Link>
       </div>
       <nav className="grow flex flex-col overflow-hidden">
