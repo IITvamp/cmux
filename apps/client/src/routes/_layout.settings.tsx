@@ -27,8 +27,8 @@ function SettingsComponent() {
   const [isSaving, setIsSaving] = useState(false);
   const [worktreePath, setWorktreePath] = useState<string>("");
   const [originalWorktreePath, setOriginalWorktreePath] = useState<string>("");
-  const [autoPrEnabled, setAutoPrEnabled] = useState<boolean>(true);
-  const [originalAutoPrEnabled, setOriginalAutoPrEnabled] = useState<boolean>(true);
+  const [autoPrEnabled, setAutoPrEnabled] = useState<boolean>(false);
+  const [originalAutoPrEnabled, setOriginalAutoPrEnabled] = useState<boolean>(false);
   const [isSaveButtonVisible, setIsSaveButtonVisible] = useState(true);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const saveButtonRef = useRef<HTMLDivElement>(null);
@@ -85,7 +85,7 @@ function SettingsComponent() {
       setWorktreePath(workspaceSettings?.worktreePath || "");
       setOriginalWorktreePath(workspaceSettings?.worktreePath || "");
       const enabled = (workspaceSettings as unknown as { autoPrEnabled?: boolean })?.autoPrEnabled;
-      const effective = enabled === undefined ? true : Boolean(enabled);
+      const effective = enabled === undefined ? false : Boolean(enabled);
       setAutoPrEnabled(effective);
       setOriginalAutoPrEnabled(effective);
     }
