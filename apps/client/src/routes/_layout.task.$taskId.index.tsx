@@ -188,15 +188,17 @@ function TaskDetailPage() {
     }
   };
 
+  const taskTitle = task?.pullRequestTitle || task?.text;
+
   const header = (
     <div className="bg-neutral-900 text-white px-4 py-3">
       {/* Task title with loading indicator */}
       <div className="flex items-center gap-2">
         <h1
           className="text-lg font-normal truncate flex-1 min-w-0 overflow-ellipsis"
-          title={task?.text}
+          title={taskTitle}
         >
-          {task?.text || "Loading..."}
+          {taskTitle || "Loading..."}
         </h1>
         {isCheckingDiffs && (
           <div className="flex items-center gap-1 text-xs text-neutral-400">
@@ -308,11 +310,10 @@ function TaskDetailPage() {
         )}
       </div>
 
-      {/* PR Title (if available) */}
-      {task?.pullRequestTitle && (
+      {task?.text && (
         <div className="text-xs text-neutral-300 mb-2">
-          <span className="text-neutral-400">PR Title:</span>{" "}
-          <span className="font-medium">{task.pullRequestTitle}</span>
+          <span className="text-neutral-400">Prompt:</span>{" "}
+          <span className="font-medium">{task.text}</span>
         </div>
       )}
 

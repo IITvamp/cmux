@@ -13,6 +13,7 @@ import { storeGitDiffs } from "./storeGitDiffs.js";
 import {
   generateNewBranchName,
   generateUniqueBranchNames,
+  generateUniqueBranchNamesFromTitle,
 } from "./utils/branchNameGenerator.js";
 import { convex } from "./utils/convexClient.js";
 import { serverLogger } from "./utils/fileLogger.js";
@@ -2156,6 +2157,7 @@ export async function spawnAllAgents(
     repoUrl: string;
     branch?: string;
     taskDescription: string;
+    prTitle?: string;
     selectedAgents?: string[];
     isCloudMode?: boolean;
     images?: Array<{
@@ -2174,10 +2176,9 @@ export async function spawnAllAgents(
     : AGENT_CONFIGS;
 
   // Generate unique branch names for all agents at once to ensure no collisions
-  const branchNames = await generateUniqueBranchNames(
-    options.taskDescription,
-    agentsToSpawn.length
-  );
+  const branchNames = options.prTitle
+    ? generateUniqueBranchNamesFromTitle(options.prTitle!, agentsToSpawn.length)
+    : await generateUniqueBranchNames(options.taskDescription, agentsToSpawn.length);
 
   serverLogger.info(
     `[AgentSpawner] Generated ${branchNames.length} unique branch names for agents`
