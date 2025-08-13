@@ -3,6 +3,7 @@ import { TaskTreeSkeleton } from "@/components/TaskTreeSkeleton";
 import { isElectron } from "@/lib/electron";
 import { type Doc } from "@cmux/convex/dataModel";
 import { Link } from "@tanstack/react-router";
+import { Terminal, Plus } from "lucide-react";
 import {
   type CSSProperties,
   useCallback,
@@ -114,37 +115,26 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
       }}
     >
       <div
-        className="h-[38px] flex items-center pl-3 pr-1.5 shrink-0"
+        className="h-[38px] flex items-center pl-3 pr-1.5 shrink-0 border-b border-neutral-200 dark:border-neutral-900 bg-white/80 dark:bg-black/90 backdrop-blur-sm"
         style={{ WebkitAppRegion: "drag" } as CSSProperties}
       >
         {isElectron && <div className="w-[68px]"></div>}
         <Link
           to="/dashboard"
-          className="w-[50px] h-[25px] bg-[#7d2fc7] hover:bg-[#7d2fc7]/80 transition text-white flex items-center justify-center font-medium rounded-lg text-xs select-none cursor-default"
+          className="flex items-center gap-2 select-none cursor-default"
           style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
         >
-          cmux
+          <Terminal className="h-4 w-4 text-neutral-600 dark:text-neutral-300" aria-hidden="true" />
+          <span className="text-sm font-mono text-neutral-900 dark:text-white">cmux</span>
         </Link>
         <div className="grow"></div>
         <Link
           to="/dashboard"
-          className="w-[25px] h-[25px] bg-neutral-200 dark:bg-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-600 rounded-lg flex items-center justify-center transition-colors cursor-default"
+          className="w-[25px] h-[25px] border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-900 rounded-lg flex items-center justify-center transition-colors cursor-default"
           title="New task"
           style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
         >
-          <svg
-            className="w-4 h-4 text-neutral-600 dark:text-neutral-300"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 4v16m8-8H4"
-            />
-          </svg>
+          <Plus className="w-4 h-4 text-neutral-700 dark:text-neutral-300" aria-hidden="true" />
         </Link>
       </div>
       <nav className="grow flex flex-col overflow-hidden">

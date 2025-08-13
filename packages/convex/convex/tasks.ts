@@ -284,12 +284,6 @@ export const checkAndEvaluateCrown = mutation({
     console.log(`[CheckCrown] Task ${args.taskId} has ${taskRuns.length} runs`);
     console.log(`[CheckCrown] Run statuses:`, taskRuns.map(r => ({ id: r._id, status: r.status, isCrowned: r.isCrowned })));
 
-    // Check if we have multiple runs
-    if (taskRuns.length < 2) {
-      console.log(`[CheckCrown] Not enough runs (${taskRuns.length} < 2)`);
-      return null;
-    }
-
     // Check if all runs are completed or failed
     const allCompleted = taskRuns.every(
       (run) => run.status === "completed" || run.status === "failed"
@@ -297,6 +291,32 @@ export const checkAndEvaluateCrown = mutation({
 
     if (!allCompleted) {
       console.log(`[CheckCrown] Not all runs completed`);
+      return null;
+    }
+
+    // Special handling for single agent scenario
+    if (taskRuns.length === 1) {
+      console.log(`[CheckCrown] Single agent scenario - marking task complete`);
+      
+      // Mark the task as completed
+      await ctx.db.patch(args.taskId, {
+        isCompleted: true,
+        updatedAt: Date.now(),
+      });
+      
+      // If the single run was successful, return it as the "winner" for potential auto-PR
+      const singleRun = taskRuns[0];
+      if (singleRun.status === "completed") {
+        console.log(`[CheckCrown] Single agent completed successfully: ${singleRun._id}`);
+        return singleRun._id;
+      }
+      
+      return null;
+    }
+
+    // For multiple runs, require at least 2 to perform crown evaluation
+    if (taskRuns.length < 2) {
+      console.log(`[CheckCrown] Not enough runs (${taskRuns.length} < 2)`);
       return null;
     }
 
