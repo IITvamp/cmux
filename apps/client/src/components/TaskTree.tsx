@@ -20,7 +20,7 @@ import {
   Loader2,
   XCircle,
 } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 
 interface TaskRunWithChildren extends Doc<"taskRuns"> {
   children: TaskRunWithChildren[];
@@ -52,7 +52,7 @@ function getRunDisplayText(run: TaskRunWithChildren): string {
   return run.prompt.substring(0, 50) + "...";
 }
 
-export function TaskTree({ task, level = 0 }: TaskTreeProps) {
+function TaskTreeInner({ task, level = 0 }: TaskTreeProps) {
   // Get the current route to determine if this task is selected
   const location = useLocation();
   const isTaskSelected = useMemo(
@@ -187,7 +187,7 @@ interface TaskRunTreeProps {
   branch?: string;
 }
 
-function TaskRunTree({ run, level, taskId, branch }: TaskRunTreeProps) {
+function TaskRunTreeInner({ run, level, taskId, branch }: TaskRunTreeProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const hasChildren = run.children.length > 0;
 
@@ -314,3 +314,7 @@ function TaskRunTree({ run, level, taskId, branch }: TaskRunTreeProps) {
     </div>
   );
 }
+
+// Prevent unnecessary re-renders of large trees during unrelated state changes
+export const TaskTree = memo(TaskTreeInner);
+const TaskRunTree = memo(TaskRunTreeInner);
