@@ -20,6 +20,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/_layout/task/$taskId/")({
   component: TaskDetailPage,
@@ -51,6 +52,7 @@ function TaskDetailPage() {
   const clipboard = useClipboard({ timeout: 2000 });
   const [isHovering, setIsHovering] = useState(false);
   const [prIsOpen, setPrIsOpen] = useState(false); // Track if PR is open
+  const [isCreatingPr, setIsCreatingPr] = useState(false);
   const [isCheckingDiffs, setIsCheckingDiffs] = useState(false);
   const { socket } = useSocket();
 
@@ -183,12 +185,30 @@ function TaskDetailPage() {
   };
 
   const handleViewPR = () => {
+    if (!socket) return;
+    if (!crownedRun?._id) return;
+
     if (crownedRun?.pullRequestUrl && crownedRun.pullRequestUrl !== "pending") {
       window.open(crownedRun.pullRequestUrl, "_blank");
-    } else {
-      // TODO: Create draft PR if it doesn't exist
-      console.log("Creating draft PR...");
+      return;
     }
+
+    setIsCreatingPr(true);
+    socket.emit(
+      "github-create-draft-pr",
+      { taskRunId: crownedRun._id as string },
+      (resp: { success: boolean; url?: string; error?: string }) => {
+        setIsCreatingPr(false);
+        if (resp.success && resp.url) {
+          window.open(resp.url, "_blank");
+        } else if (resp.error) {
+          console.error("Failed to create draft PR:", resp.error);
+          toast.error("Failed to create draft PR", {
+            description: resp.error,
+          });
+        }
+      }
+    );
   };
 
   const taskTitle = task?.pullRequestTitle || task?.text;
@@ -332,11 +352,11 @@ function TaskDetailPage() {
         {/* View PR button */}
         <button
           onClick={handleViewPR}
-          className="flex items-center gap-1.5 px-3 py-1 bg-neutral-800 text-white border border-neutral-700 rounded hover:bg-neutral-700 font-medium text-xs select-none"
-          disabled={!crownedRun?.newBranch}
+          className="flex items-center gap-1.5 px-3 py-1 bg-neutral-800 text-white border border-neutral-700 rounded hover:bg-neutral-700 font-medium text-xs select-none disabled:opacity-60 disabled:cursor-not-allowed"
+          disabled={!crownedRun?.newBranch || isCreatingPr}
         >
           <ExternalLink className="w-3.5 h-3.5" />
-          View PR
+          {isCreatingPr ? "Creating PR..." : "View PR"}
         </button>
 
         <button className="flex items-center gap-1.5 px-3 py-1 bg-neutral-800 text-white border border-neutral-700 rounded hover:bg-neutral-700 font-medium text-xs select-none">
