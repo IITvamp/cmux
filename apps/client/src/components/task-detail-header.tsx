@@ -98,7 +98,7 @@ export function TaskDetailHeader({
   };
 
   return (
-    <div className="bg-neutral-900 text-white px-4 py-3">
+    <div className="bg-neutral-900 text-white px-4 sticky top-0 z-10 pb-1.5">
       <div className="flex items-center gap-2">
         <h1
           className="text-lg font-normal truncate flex-1 min-w-0 overflow-ellipsis"
@@ -210,13 +210,6 @@ export function TaskDetailHeader({
           </>
         )}
       </div>
-
-      {task?.text && (
-        <div className="text-xs text-neutral-300 mb-2">
-          <span className="text-neutral-400">Prompt:</span>{" "}
-          <span className="font-medium">{task.text}</span>
-        </div>
-      )}
 
       <div className="flex items-center gap-2">
         <MergeButton

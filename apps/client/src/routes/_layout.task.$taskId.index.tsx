@@ -39,15 +39,12 @@ function TaskDetailPage() {
 
   const [isCreatingPr, setIsCreatingPr] = useState(false);
   const [isCheckingDiffs, setIsCheckingDiffs] = useState(false);
-  const [diffControls, setDiffControls] = useState<
-    | {
-        expandAll: () => void;
-        collapseAll: () => void;
-        totalAdditions: number;
-        totalDeletions: number;
-      }
-    | null
-  >(null);
+  const [diffControls, setDiffControls] = useState<{
+    expandAll: () => void;
+    collapseAll: () => void;
+    totalAdditions: number;
+    totalDeletions: number;
+  } | null>(null);
   const { socket } = useSocket();
 
   const task = useQuery(api.tasks.getById, {
@@ -167,8 +164,9 @@ function TaskDetailPage() {
   };
   return (
     <FloatingPane>
-      <div className="flex h-full min-h-0 flex-col">
+      <div className="flex h-full min-h-0 flex-col relative">
         <div className="flex-1 min-h-0 overflow-y-auto">
+          <div className="h-3"></div>
           <TaskDetailHeader
             task={task ?? null}
             taskRuns={taskRuns ?? null}
@@ -182,6 +180,15 @@ function TaskDetailPage() {
             onExpandAll={diffControls?.expandAll}
             onCollapseAll={diffControls?.collapseAll}
           />
+          <div className="h-1.5"></div>
+          {task?.text && (
+            <div className="mb-2 px-4">
+              <div className="text-xs text-neutral-300">
+                <span className="text-neutral-400">Prompt:</span>{" "}
+                <span className="font-medium">{task.text}</span>
+              </div>
+            </div>
+          )}
           <div className="bg-white dark:bg-neutral-950">
             <GitDiffViewer
               diffs={
