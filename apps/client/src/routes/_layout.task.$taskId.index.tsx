@@ -83,10 +83,6 @@ function TaskDetailPage() {
     selectedRun ? { taskRunId: selectedRun._id } : "skip"
   );
 
-  // Debug logging
-  console.log("Selected run:", selectedRun?._id);
-  console.log("Diffs fetched:", diffs?.length, diffs);
-
   // Check for new changes on mount and periodically
   useEffect(() => {
     if (!selectedRun) return;
@@ -130,13 +126,17 @@ function TaskDetailPage() {
     return () => clearInterval(interval);
   }, [selectedRun?._id]);
 
-  // Stabilize diffs to avoid rerenders mid-refresh; only apply when not checking
-  const [stableDiffs, setStableDiffs] = useState<typeof diffs>();
+  // Stabilize diffs per-run to avoid cross-run flashes
+  const [stableDiffsByRun, setStableDiffsByRun] = useState<
+    Record<string, typeof diffs>
+  >({});
   useEffect(() => {
-    if (!diffs || isCheckingDiffs) return;
-    setStableDiffs((prev) => {
-      if (!prev) return diffs;
-      const prevByPath = new Map(prev.map((d) => [d.filePath, d]));
+    if (!diffs || isCheckingDiffs || !selectedRun?._id) return;
+    const runKey = selectedRun._id as string;
+    setStableDiffsByRun((prev) => {
+      const prevForRun = prev[runKey];
+      if (!prevForRun) return { ...prev, [runKey]: diffs };
+      const prevByPath = new Map(prevForRun.map((d) => [d.filePath, d]));
       const next: typeof diffs = diffs.map((d) => {
         const p = prevByPath.get(d.filePath);
         if (!p) return d;
@@ -151,16 +151,19 @@ function TaskDetailPage() {
           (p.contentOmitted || false) === (d.contentOmitted || false);
         return same ? p : d;
       });
-      return next;
+      return { ...prev, [runKey]: next };
     });
-  }, [diffs, isCheckingDiffs]);
+  }, [diffs, isCheckingDiffs, selectedRun?._id]);
 
-  // When a refresh cycle ends, apply whatever the latest diffs are
+  // When a refresh cycle ends, apply whatever the latest diffs are for this run
   useEffect(() => {
-    if (!isCheckingDiffs && diffs) {
-      setStableDiffs(diffs);
+    if (!isCheckingDiffs && diffs && selectedRun?._id) {
+      setStableDiffsByRun((prev) => ({
+        ...prev,
+        [selectedRun._id as string]: diffs,
+      }));
     }
-  }, [isCheckingDiffs]);
+  }, [isCheckingDiffs, diffs, selectedRun?._id]);
 
   const handleCopyBranch = () => {
     if (selectedRun?.newBranch) {
@@ -358,9 +361,16 @@ function TaskDetailPage() {
       {/* Git diff viewer */}
       <div className="flex-1 overflow-hidden bg-white dark:bg-neutral-950">
         <GitDiffViewer
-          diffs={stableDiffs || diffs || []}
+          diffs={
+            (selectedRun?._id
+              ? stableDiffsByRun[selectedRun._id as string]
+              : undefined) ||
+            diffs ||
+            []
+          }
           isLoading={!diffs && !!selectedRun}
           taskRunId={selectedRun?._id}
+          key={selectedRun?._id}
         />
       </div>
     </FloatingPane>

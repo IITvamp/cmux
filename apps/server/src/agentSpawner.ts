@@ -23,82 +23,6 @@ import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWorktreePath, setupProjectWorkspace } from "./workspace.js";
 
 /**
- * Check Claude completion via remote execution in the container
- * This is a helper that runs the Claude completion check logic remotely
- */
-async function checkClaudeCompletionRemote(
-  vscodeInstance: VSCodeInstance,
-  workingDir: string
-): Promise<boolean> {
-  const workerSocket = vscodeInstance.getWorkerSocket();
-  if (!workerSocket || !vscodeInstance.isWorkerConnected()) {
-    return false;
-  }
-
-  // Use the same logic as the shared module, but execute it remotely
-  // The command checks if the last message in the JSONL file is from assistant
-  const encodedPath = workingDir.replace(/\//g, "-");
-  const checkCmd = `
-    # Check Claude completion
-    CLAUDE_DIR="$HOME/.claude/projects/${encodedPath}"
-    if [ ! -d "$CLAUDE_DIR" ]; then
-      echo "no_dir"
-      exit 0
-    fi
-    
-    # Get most recent JSONL file
-    LATEST_FILE=$(ls -t "$CLAUDE_DIR"/*.jsonl 2>/dev/null | head -1)
-    if [ -z "$LATEST_FILE" ]; then
-      echo "no_file"
-      exit 0
-    fi
-    
-    # Check if last message is from assistant
-    tail -1 "$LATEST_FILE" | python3 -c "
-import sys, json
-try:
-    d = json.loads(sys.stdin.read())
-    if d.get('type') == 'assistant':
-        print('completed')
-    else:
-        print('in_progress')
-except:
-    print('error')
-" 2>/dev/null || echo "error"
-  `.trim();
-
-  try {
-    const result = await new Promise<{ success: boolean; stdout?: string }>((resolve) => {
-      workerSocket
-        .timeout(5000)
-        .emit(
-          "worker:exec",
-          {
-            command: "bash",
-            args: ["-c", checkCmd],
-            cwd: workingDir,
-            env: {},
-          },
-          (timeoutError, response) => {
-            if (timeoutError || response.error) {
-              resolve({ success: false });
-            } else {
-              resolve({ 
-                success: true, 
-                stdout: response.data?.stdout || "" 
-              });
-            }
-          }
-        );
-    });
-
-    return result.success && result.stdout?.trim() === "completed";
-  } catch {
-    return false;
-  }
-}
-
-/**
  * Automatically commit and push changes when a task completes
  */
 async function performAutoCommitAndPush(
@@ -1001,17 +925,6 @@ export interface AgentSpawnResult {
   error?: string;
 }
 
-// Helper function to determine agent type from agent name
-function getAgentType(agentName: string): "claude" | "codex" | "gemini" | "amp" | "opencode" | undefined {
-  const nameLower = agentName.toLowerCase();
-  if (nameLower.includes("claude")) return "claude";
-  if (nameLower.includes("codex")) return "codex";
-  if (nameLower.includes("gemini")) return "gemini";
-  if (nameLower.includes("amp")) return "amp";
-  if (nameLower.includes("opencode")) return "opencode";
-  return undefined;
-}
-
 export async function spawnAgent(
   agent: AgentConfig,
   taskId: string | Id<"tasks">,
@@ -1505,15 +1418,6 @@ export async function spawnAgent(
         data
       );
 
-      // For Claude agents, ignore terminal exit as tmux exits immediately after creating session
-      const agentType = getAgentType(agent.name);
-      if (agentType === "claude") {
-        serverLogger.info(
-          `[AgentSpawner] Ignoring terminal exit for Claude agent ${agent.name} (tmux exits immediately, waiting for project file completion)`
-        );
-        return;
-      }
-
       if (data.terminalId === terminalId) {
         if (hasFailed) {
           serverLogger.warn(
@@ -1567,105 +1471,7 @@ export async function spawnAgent(
       }
     });
 
-    // Set up task-complete event handler (from project file detection)
-    vscodeInstance.on("task-complete", async (data) => {
-      serverLogger.info(
-        `[AgentSpawner] Task complete detected for ${agent.name} (${data.detectionMethod}):`,
-        data
-      );
-      if (hasFailed) {
-        serverLogger.warn(
-          `[AgentSpawner] Ignoring task completion for ${agent.name} (already marked failed)`
-        );
-        return;
-      }
-      
-      // Debug logging to understand what's being compared
-      serverLogger.info(`[AgentSpawner] Task completion comparison:`);
-      serverLogger.info(`[AgentSpawner]   data.taskId: "${data.taskId}"`);
-      serverLogger.info(`[AgentSpawner]   taskRunId: "${taskRunId}"`);
-      serverLogger.info(`[AgentSpawner]   Match: ${data.taskId === taskRunId}`);
-
-      // Update the task run as completed
-      if (data.taskId === taskRunId) {
-        serverLogger.info(`[AgentSpawner] Task ID matched! Marking task as complete for ${agent.name}`);
-        // CRITICAL: Add a delay to ensure changes are written to disk
-        serverLogger.info(`[AgentSpawner] Waiting 3 seconds for file system to settle before capturing git diff...`);
-        await new Promise(resolve => setTimeout(resolve, 3000));
-        
-        await handleTaskCompletion(data.exitCode || 0);
-      }
-    });
-
-    // Set up file change event handler for real-time diff updates
-    vscodeInstance.on("file-changes", async (data) => {
-      serverLogger.info(
-        `[AgentSpawner] File changes detected for ${agent.name}:`,
-        { changeCount: data.changes.length, taskId: data.taskId }
-      );
-
-      // Store the incremental diffs in Convex
-      if (data.taskId === taskRunId && data.fileDiffs.length > 0) {
-        for (const fileDiff of data.fileDiffs) {
-          const relativePath = path.relative(worktreePath, fileDiff.path);
-
-          await convex.mutation(api.gitDiffs.upsertDiff, {
-            taskRunId: taskRunId as Id<"taskRuns">,
-            filePath: relativePath,
-            status: fileDiff.type as "added" | "modified" | "deleted",
-            additions: (fileDiff.patch.match(/^\+[^+]/gm) || []).length,
-            deletions: (fileDiff.patch.match(/^-[^-]/gm) || []).length,
-            patch: fileDiff.patch,
-            oldContent: fileDiff.oldContent,
-            newContent: fileDiff.newContent,
-            isBinary: false,
-          });
-        }
-
-        // Update the timestamp
-        await convex.mutation(api.gitDiffs.updateDiffsTimestamp, {
-          taskRunId: taskRunId as Id<"taskRuns">,
-        });
-
-        serverLogger.info(
-          `[AgentSpawner] Stored ${data.fileDiffs.length} incremental diffs for ${agent.name}`
-        );
-      }
-    });
-
-    // Set up task-complete event handler (from project file detection)
-    vscodeInstance.on("task-complete", async (data) => {
-      serverLogger.info(
-        `[AgentSpawner] Task complete detected for ${agent.name} (${data.detectionMethod}):`,
-        data
-      );
-      if (hasFailed) {
-        serverLogger.warn(
-          `[AgentSpawner] Ignoring task completion for ${agent.name} (already marked failed)`
-        );
-        return;
-      }
-      
-      // Debug logging to understand what's being compared
-      serverLogger.info(`[AgentSpawner] Task completion comparison:`);
-      serverLogger.info(`[AgentSpawner]   data.taskId: "${data.taskId}"`);
-      serverLogger.info(`[AgentSpawner]   taskRunId: "${taskRunId}"`);
-      serverLogger.info(`[AgentSpawner]   Match: ${data.taskId === taskRunId}`);
-
-      // Update the task run as completed
-      if (data.taskId === taskRunId) {
-        serverLogger.info(`[AgentSpawner] Task ID matched! Marking task as complete for ${agent.name}`);
-        // CRITICAL: Add a delay to ensure changes are written to disk
-        serverLogger.info(`[AgentSpawner] Waiting 3 seconds for file system to settle before capturing git diff...`);
-        await new Promise(resolve => setTimeout(resolve, 3000));
-        
-        await handleTaskCompletion(0);
-      } else {
-        serverLogger.warn(`[AgentSpawner] Task ID did not match, ignoring task complete event`);
-      }
-    });
-
-    // Set up terminal-idle event handler (legacy, for non-Claude agents)
+    // Set up terminal-idle event handler
     vscodeInstance.on("terminal-idle", async (data) => {
       serverLogger.info(
         `[AgentSpawner] Terminal idle detected for ${agent.name}:`,
@@ -1852,7 +1658,6 @@ export async function spawnAgent(
       .map(shellEscaped)
       .join(" ");
 
-    const agentType = getAgentType(agent.name);
     const terminalCreationCommand: WorkerCreateTerminal = {
       terminalId: tmuxSessionName,
       command: "tmux",
@@ -1869,7 +1674,6 @@ export async function spawnAgent(
       rows: 74,
       env: envVars,
       taskId: taskRunId,
-      agentType,
       authFiles,
       startupCommands,
       cwd: "/root/workspace",
@@ -2091,44 +1895,6 @@ export async function spawnAgent(
         `[AgentSpawner] Emitted worker:create-terminal at ${new Date().toISOString()}`
       );
     });
-
-    // For Claude agents, set up a periodic check as a temporary workaround
-    // until the Docker image is rebuilt with the new detection code
-    const agentTypeForCheck = getAgentType(agent.name);
-    if (agentTypeForCheck === "claude" && vscodeInstance.isWorkerConnected()) {
-      serverLogger.info(`[AgentSpawner] Setting up periodic completion check for Claude agent ${agent.name}`);
-      
-      const checkInterval = setInterval(async () => {
-        try {
-          // Check if task is already marked complete
-          const taskRun = await convex.query(api.taskRuns.get, {
-            id: taskRunId as Id<"taskRuns">,
-          });
-          
-          if (taskRun?.status === "completed" || taskRun?.status === "failed") {
-            clearInterval(checkInterval);
-            return;
-          }
-          
-          // Check Claude completion via remote execution
-          const isComplete = await checkClaudeCompletionRemote(vscodeInstance, "/root/workspace");
-          
-          if (isComplete) {
-            serverLogger.info(`[AgentSpawner] Claude agent ${agent.name} completed (detected via periodic check)`);
-            clearInterval(checkInterval);
-            
-            // Wait for filesystem to settle
-            await new Promise(resolve => setTimeout(resolve, 3000));
-            await handleTaskCompletion(0);
-          }
-        } catch (error) {
-          // Ignore errors, will retry on next interval
-        }
-      }, 10000); // Check every 10 seconds
-      
-      // Stop checking after 20 minutes
-      setTimeout(() => clearInterval(checkInterval), 20 * 60 * 1000);
-    }
 
     return {
       agentName: agent.name,
