@@ -139,7 +139,7 @@ export function GitDiffViewer({
     prevFilesRef.current = nextPaths;
   }, [diffs]);
 
-  const toggleFile = (filePath: string, index?: number) => {
+  const toggleFile = (filePath: string) => {
     setExpandedFiles((prev) => {
       const newExpanded = new Set(prev);
       const wasExpanded = newExpanded.has(filePath);
@@ -225,7 +225,7 @@ export function GitDiffViewer({
               {diffs.length} changed {diffs.length === 1 ? "file" : "files"}
             </div>
             <div className="flex items-center gap-2 text-xs">
-              <span className="text-green-600 dark:text-green-400 font-medium">
+              <span className="text-green-600 dark:text-green-400 font-medium select-none">
                 +{totalAdditions}
               </span>
               <span className="text-red-600 dark:text-red-400 font-medium">
@@ -252,12 +252,12 @@ export function GitDiffViewer({
 
       {/* Diff sections */}
       <div className="">
-        {fileGroups.map((file, idx) => (
+        {fileGroups.map((file) => (
           <MemoFileDiffRow
             key={`${taskRunId ?? "_"}:${file.filePath}`}
             file={file}
             isExpanded={expandedFiles.has(file.filePath)}
-            onToggle={() => toggleFile(file.filePath, idx)}
+            onToggle={() => toggleFile(file.filePath)}
             theme={theme}
             calculateEditorHeight={calculateEditorHeight}
             setEditorRef={(ed) => {
@@ -331,7 +331,7 @@ function FileDiffRow({
             {file.filePath}
           </span>
           <div className="flex items-center gap-2 text-[11px]">
-            <span className="text-green-600 dark:text-green-400 font-medium">
+            <span className="text-green-600 dark:text-green-400 font-medium select-none">
               +{file.additions}
             </span>
             <span className="text-red-600 dark:text-red-400 font-medium">
