@@ -170,6 +170,7 @@ export default defineSchema({
   }).index("by_envVar", ["envVar"]),
   workspaceSettings: defineTable({
     worktreePath: v.optional(v.string()), // Custom path for git worktrees
+    autoPullRequests: v.optional(v.boolean()), // Auto-create PRs for crown winners
     createdAt: v.number(),
     updatedAt: v.number(),
   }),

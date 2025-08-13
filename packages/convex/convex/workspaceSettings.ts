@@ -12,6 +12,7 @@ export const get = query({
 export const update = mutation({
   args: {
     worktreePath: v.optional(v.string()),
+    autoPullRequests: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const existing = await ctx.db.query("workspaceSettings").first();
@@ -20,11 +21,13 @@ export const update = mutation({
     if (existing) {
       await ctx.db.patch(existing._id, {
         worktreePath: args.worktreePath,
+        autoPullRequests: args.autoPullRequests,
         updatedAt: now,
       });
     } else {
       await ctx.db.insert("workspaceSettings", {
         worktreePath: args.worktreePath,
+        autoPullRequests: args.autoPullRequests,
         createdAt: now,
         updatedAt: now,
       });
