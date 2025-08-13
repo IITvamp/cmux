@@ -187,7 +187,7 @@ function TaskDetailPage() {
               </div>
             </div>
           )}
-          <div className="bg-white dark:bg-neutral-950">
+          <div className="bg-white dark:bg-neutral-950 h-full">
             <GitDiffViewer
               diffs={
                 (selectedRun?._id
