@@ -27,6 +27,8 @@ function SettingsComponent() {
   const [isSaving, setIsSaving] = useState(false);
   const [worktreePath, setWorktreePath] = useState<string>("");
   const [originalWorktreePath, setOriginalWorktreePath] = useState<string>("");
+  const [autoPrEnabled, setAutoPrEnabled] = useState<boolean>(true);
+  const [originalAutoPrEnabled, setOriginalAutoPrEnabled] = useState<boolean>(true);
   const [isSaveButtonVisible, setIsSaveButtonVisible] = useState(true);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const saveButtonRef = useRef<HTMLDivElement>(null);
@@ -82,6 +84,10 @@ function SettingsComponent() {
     if (workspaceSettings !== undefined) {
       setWorktreePath(workspaceSettings?.worktreePath || "");
       setOriginalWorktreePath(workspaceSettings?.worktreePath || "");
+      const enabled = (workspaceSettings as unknown as { autoPrEnabled?: boolean })?.autoPrEnabled;
+      const effective = enabled === undefined ? true : Boolean(enabled);
+      setAutoPrEnabled(effective);
+      setOriginalAutoPrEnabled(effective);
     }
   }, [workspaceSettings]);
 
@@ -178,7 +184,10 @@ function SettingsComponent() {
       JSON.stringify(containerSettingsData) !==
         JSON.stringify(originalContainerSettingsData);
 
-    return worktreePathChanged || githubTokenChanged || apiKeysChanged || containerSettingsChanged;
+    // Auto PR toggle changes
+    const autoPrChanged = autoPrEnabled !== originalAutoPrEnabled;
+
+    return worktreePathChanged || autoPrChanged || githubTokenChanged || apiKeysChanged || containerSettingsChanged;
   };
 
   const saveApiKeys = async () => {
@@ -188,12 +197,14 @@ function SettingsComponent() {
       let savedCount = 0;
       let deletedCount = 0;
 
-      // Save worktree path if changed
-      if (worktreePath !== originalWorktreePath) {
+      // Save worktree path / auto PR if changed
+      if (worktreePath !== originalWorktreePath || autoPrEnabled !== originalAutoPrEnabled) {
         await convex.mutation(api.workspaceSettings.update, {
           worktreePath: worktreePath || undefined,
+          autoPrEnabled,
         });
         setOriginalWorktreePath(worktreePath);
+        setOriginalAutoPrEnabled(autoPrEnabled);
       }
 
       // Save container settings if changed
@@ -300,6 +311,40 @@ function SettingsComponent() {
 
           {/* Settings Sections */}
           <div className="space-y-4">
+            {/* Crown Evaluator */}
+            <div className="bg-white dark:bg-neutral-950 rounded-lg border border-neutral-200 dark:border-neutral-800">
+              <div className="px-4 py-3 border-b border-neutral-200 dark:border-neutral-800">
+                <h2 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                  Crown Evaluator
+                </h2>
+              </div>
+              <div className="p-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                      Auto pull request for crown winner
+                    </label>
+                    <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
+                      When enabled, cmux automatically creates a pull request for the winning model’s code diff.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    aria-pressed={autoPrEnabled}
+                    onClick={() => setAutoPrEnabled((v) => !v)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                      autoPrEnabled ? "bg-blue-600" : "bg-neutral-300 dark:bg-neutral-700"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-5 w-5 transform rounded-full bg-white dark:bg-neutral-900 shadow transition-transform ${
+                        autoPrEnabled ? "translate-x-5" : "translate-x-1"
+                      }`}
+                    />
+                  </button>
+                </div>
+              </div>
+            </div>
             {/* Appearance */}
             <div className="bg-white dark:bg-neutral-950 rounded-lg border border-neutral-200 dark:border-neutral-800">
               <div className="px-4 py-3 border-b border-neutral-200 dark:border-neutral-800">

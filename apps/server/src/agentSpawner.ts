@@ -192,6 +192,15 @@ Completed: ${new Date().toISOString()}`;
     }
 
     if (isCrowned) {
+      // Respect workspace setting for auto-PR
+      const ws = await convex.query(api.workspaceSettings.get);
+      const autoPrEnabled = ((ws as unknown) as { autoPrEnabled?: boolean })?.autoPrEnabled ?? true;
+      if (!autoPrEnabled) {
+        serverLogger.info(
+          `[AgentSpawner] Auto-PR is disabled in settings; skipping PR creation.`
+        );
+        return;
+      }
       serverLogger.info(
         `[AgentSpawner] 🏆 Crown winner! Auto-commit and push completed for ${agent.name} on branch ${branchName}`
       );
