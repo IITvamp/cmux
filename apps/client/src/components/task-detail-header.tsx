@@ -17,7 +17,7 @@ import {
   RefreshCw,
   Trash2,
 } from "lucide-react";
-import { useMemo, useState, useCallback } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 interface TaskDetailHeaderProps {
@@ -54,21 +54,8 @@ export function TaskDetailHeader({
   const [prIsOpen, setPrIsOpen] = useState(false);
   const { socket } = useSocket();
   const [agentMenuOpen, setAgentMenuOpen] = useState(false);
-  const handleAgentOpenChange = useCallback((...args: unknown[]) => {
-    const maybe = args[0] as unknown;
-    if (typeof maybe === "boolean") {
-      setAgentMenuOpen(maybe);
-      return;
-    }
-    if (
-      maybe &&
-      typeof (maybe as { open?: unknown }).open !== "undefined"
-    ) {
-      setAgentMenuOpen(Boolean((maybe as { open?: unknown }).open));
-      return;
-    }
-    // Fallback toggle
-    setAgentMenuOpen((v) => !v);
+  const handleAgentOpenChange = useCallback((open: boolean) => {
+    setAgentMenuOpen(open);
   }, []);
 
   // Determine if there are any diffs to open a PR for
@@ -130,10 +117,7 @@ export function TaskDetailHeader({
       <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-3 gap-y-1">
         {/* Title row */}
         <div className="flex items-center gap-2 relative min-w-0">
-          <h1
-            className="text-sm font-bold truncate min-w-0"
-            title={taskTitle}
-          >
+          <h1 className="text-sm font-bold truncate min-w-0" title={taskTitle}>
             {taskTitle || "Loading..."}
           </h1>
           {typeof totalAdditions === "number" &&
@@ -142,7 +126,7 @@ export function TaskDetailHeader({
                 <span className="text-green-600 dark:text-green-400 font-medium select-none">
                   +{totalAdditions}
                 </span>
-                <span className="text-red-600 dark:text-red-400 font-medium">
+                <span className="text-red-600 dark:text-red-400 font-medium select-none">
                   −{totalDeletions}
                 </span>
               </div>
@@ -265,7 +249,7 @@ export function TaskDetailHeader({
             )}
           </button>
 
-          <span className="text-neutral-600">in</span>
+          <span className="text-neutral-600 select-none">in</span>
 
           {task?.projectFullName && (
             <span className="font-mono text-neutral-300 truncate min-w-0 max-w-[40%]">
@@ -275,12 +259,10 @@ export function TaskDetailHeader({
 
           {taskRuns && taskRuns.length > 0 && (
             <>
-              <span className="text-neutral-600">by</span>
+              <span className="text-neutral-600 select-none">by</span>
               <Dropdown.Root
                 open={agentMenuOpen}
-                onOpenChange={
-                  handleAgentOpenChange as import("./ui/dropdown").DropdownRootProps["onOpenChange"]
-                }
+                onOpenChange={handleAgentOpenChange}
               >
                 <Dropdown.Trigger
                   className="flex items-center gap-1 text-neutral-300 hover:text-white transition-colors text-xs"
@@ -292,8 +274,8 @@ export function TaskDetailHeader({
 
                 <Dropdown.Portal>
                   <Dropdown.Positioner sideOffset={5}>
-                    <Dropdown.Arrow />
                     <Dropdown.Popup className="min-w-[200px]">
+                      <Dropdown.Arrow />
                       {taskRuns.map((run) => {
                         const agentName =
                           run.agentName ||

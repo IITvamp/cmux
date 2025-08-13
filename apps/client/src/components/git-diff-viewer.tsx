@@ -333,7 +333,7 @@ function FileDiffRow({
             <span className="text-green-600 dark:text-green-400 font-medium select-none">
               +{file.additions}
             </span>
-            <span className="text-red-600 dark:text-red-400 font-medium">
+            <span className="text-red-600 dark:text-red-400 font-medium select-none">
               −{file.deletions}
             </span>
           </div>
