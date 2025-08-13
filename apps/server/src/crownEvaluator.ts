@@ -7,8 +7,7 @@ import { z } from "zod";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 
-// Global flag to enable/disable automatic PR creation
-const ENABLE_PR_CREATION = false;
+// Auto PR behavior is controlled via workspace settings in Convex
 
 // Define schemas for structured output
 const ImplementationSchema = z.object({
@@ -35,8 +34,11 @@ async function createPullRequestForWinner(
   githubToken?: string | null
 ): Promise<void> {
   try {
-    if (!ENABLE_PR_CREATION) {
-      serverLogger.info(`[CrownEvaluator] PR creation is disabled by flag; skipping.`);
+    // Check workspace settings toggle (default: enabled)
+    const ws = await convex.query(api.workspaceSettings.get);
+    const autoPrEnabled = ((ws as unknown) as { autoPrEnabled?: boolean })?.autoPrEnabled ?? true;
+    if (!autoPrEnabled) {
+      serverLogger.info(`[CrownEvaluator] Auto-PR disabled in settings; skipping.`);
       return;
     }
     serverLogger.info(`[CrownEvaluator] Creating pull request for winner ${taskRunId}`);
