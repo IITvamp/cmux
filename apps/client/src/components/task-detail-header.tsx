@@ -30,6 +30,7 @@ interface TaskDetailHeaderProps {
   onMerge: (method: MergeMethod) => void;
   totalAdditions?: number;
   totalDeletions?: number;
+  hasAnyDiffs?: boolean;
   onExpandAll?: () => void;
   onCollapseAll?: () => void;
 }
@@ -44,6 +45,7 @@ export function TaskDetailHeader({
   onMerge,
   totalAdditions,
   totalDeletions,
+  hasAnyDiffs,
   onExpandAll,
   onCollapseAll,
 }: TaskDetailHeaderProps) {
@@ -52,10 +54,17 @@ export function TaskDetailHeader({
   const [prIsOpen, setPrIsOpen] = useState(false);
   const { socket } = useSocket();
 
-  const crownedRun = useMemo(
-    () => taskRuns?.find((r) => r.isCrowned) ?? null,
-    [taskRuns]
-  );
+  // Determine if there are any diffs to open a PR for
+  const hasChanges = useMemo(() => {
+    if (typeof hasAnyDiffs === "boolean") return hasAnyDiffs;
+    if (
+      typeof totalAdditions !== "number" ||
+      typeof totalDeletions !== "number"
+    ) {
+      return false;
+    }
+    return (totalAdditions || 0) + (totalDeletions || 0) > 0;
+  }, [hasAnyDiffs, totalAdditions, totalDeletions]);
 
   const taskTitle = task?.pullRequestTitle || task?.text;
 
@@ -73,15 +82,18 @@ export function TaskDetailHeader({
   };
 
   const handleViewPR = () => {
-    if (!socket || !crownedRun?._id) return;
-    if (crownedRun.pullRequestUrl && crownedRun.pullRequestUrl !== "pending") {
-      window.open(crownedRun.pullRequestUrl, "_blank");
+    if (!socket || !selectedRun?._id) return;
+    if (
+      selectedRun.pullRequestUrl &&
+      selectedRun.pullRequestUrl !== "pending"
+    ) {
+      window.open(selectedRun.pullRequestUrl, "_blank");
       return;
     }
     setIsCreatingPr(true);
     socket.emit(
       "github-create-draft-pr",
-      { taskRunId: crownedRun._id as string },
+      { taskRunId: selectedRun._id as string },
       (resp: { success: boolean; url?: string; error?: string }) => {
         setIsCreatingPr(false);
         if (resp.success && resp.url) {
@@ -132,35 +144,39 @@ export function TaskDetailHeader({
         </div>
 
         {/* Actions on right, vertically centered across rows */}
-        <div className="col-start-3 row-start-1 row-span-2 self-center flex items-center gap-2">
+        <div className="col-start-3 row-start-1 row-span-2 self-center flex items-center gap-2 shrink-0">
           <MergeButton
             onMerge={handleMerge}
             isOpen={prIsOpen}
-            disabled={!crownedRun?.newBranch}
+            disabled={selectedRun?.status !== "completed" || !hasChanges}
           />
-          {crownedRun?.pullRequestUrl &&
-          crownedRun.pullRequestUrl !== "pending" ? (
+          {selectedRun?.pullRequestUrl &&
+          selectedRun.pullRequestUrl !== "pending" ? (
             <a
-              href={crownedRun.pullRequestUrl}
+              href={selectedRun.pullRequestUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1.5 px-3 py-1 bg-neutral-800 text-white border border-neutral-700 rounded hover:bg-neutral-700 font-medium text-xs select-none"
+              className="flex items-center gap-1.5 px-3 py-1 bg-neutral-800 text-white border border-neutral-700 rounded hover:bg-neutral-700 font-medium text-xs select-none whitespace-nowrap"
             >
               <ExternalLink className="w-3.5 h-3.5" />
-              {crownedRun.pullRequestIsDraft ? "View draft PR" : "View PR"}
+              {selectedRun.pullRequestIsDraft ? "View draft PR" : "View PR"}
             </a>
           ) : (
             <button
               onClick={handleViewPR}
-              className="flex items-center gap-1.5 px-3 py-1 bg-neutral-800 text-white border border-neutral-700 rounded hover:bg-neutral-700 font-medium text-xs select-none disabled:opacity-60 disabled:cursor-not-allowed"
-              disabled={!crownedRun?.newBranch || isCreatingPr}
+              className="flex items-center gap-1.5 px-3 py-1 bg-neutral-800 text-white border border-neutral-700 rounded hover:bg-neutral-700 font-medium text-xs select-none disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
+              disabled={
+                selectedRun?.status !== "completed" ||
+                isCreatingPr ||
+                !hasChanges
+              }
             >
               <ExternalLink className="w-3.5 h-3.5" />
               {isCreatingPr ? "Creating PR..." : "Open draft PR"}
             </button>
           )}
 
-          <button className="flex items-center gap-1.5 px-3 py-1 bg-neutral-800 text-white border border-neutral-700 rounded hover:bg-neutral-700 font-medium text-xs select-none">
+          <button className="flex items-center gap-1.5 px-3 py-1 bg-neutral-800 text-white border border-neutral-700 rounded hover:bg-neutral-700 font-medium text-xs select-none whitespace-nowrap">
             <Package className="w-3.5 h-3.5" />
             Open in VS Code
           </button>

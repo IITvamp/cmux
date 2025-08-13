@@ -56,7 +56,7 @@ export function MergeButton({
         onClick={() => onMerge("squash")}
         disabled={disabled}
         className={cn(
-          "flex items-center gap-1.5 px-3 py-1 bg-[#1f883d] text-white rounded hover:bg-[#1f883d]/90 disabled:opacity-50 disabled:cursor-not-allowed font-medium text-xs select-none",
+          "flex items-center gap-1.5 px-3 py-1 bg-[#1f883d] text-white rounded hover:bg-[#1f883d]/90 disabled:opacity-50 disabled:cursor-not-allowed font-medium text-xs select-none whitespace-nowrap",
           className
         )}
       >
@@ -72,7 +72,7 @@ export function MergeButton({
         onClick={handleMerge}
         disabled={disabled}
         className={cn(
-          "flex items-center gap-1.5 px-3 py-1 bg-green-600 text-white rounded-l hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium text-xs border-r border-green-700 select-none",
+          "flex items-center gap-1.5 px-3 py-1 bg-green-600 text-white rounded-l hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium text-xs border-r border-green-700 select-none whitespace-nowrap",
           className
         )}
       >

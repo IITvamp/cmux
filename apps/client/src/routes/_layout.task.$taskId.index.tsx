@@ -176,6 +176,13 @@ function TaskDetailPage() {
             onMerge={handleMerge}
             totalAdditions={diffControls?.totalAdditions}
             totalDeletions={diffControls?.totalDeletions}
+            hasAnyDiffs={
+              !!(
+                (selectedRun?._id
+                  ? stableDiffsByRun[selectedRun._id as string]
+                  : diffs) || []
+              ).length
+            }
             onExpandAll={diffControls?.expandAll}
             onCollapseAll={diffControls?.collapseAll}
           />
