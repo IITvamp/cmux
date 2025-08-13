@@ -113,7 +113,7 @@ export function TaskDetailHeader({
   };
 
   return (
-    <div className="bg-neutral-900 text-white px-3.5 sticky top-0 z-20 py-2">
+    <div className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white px-3.5 sticky top-0 z-20 py-2">
       <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-3 gap-y-1">
         {/* Title row */}
         <div className="flex items-center gap-2 relative min-w-0">
@@ -252,7 +252,7 @@ export function TaskDetailHeader({
           <span className="text-neutral-600 select-none">in</span>
 
           {task?.projectFullName && (
-            <span className="font-mono text-neutral-300 truncate min-w-0 max-w-[40%]">
+            <span className="font-mono text-neutral-300 truncate min-w-0 max-w-[40%] whitespace-nowrap">
               {task.projectFullName}
             </span>
           )}
@@ -264,10 +264,7 @@ export function TaskDetailHeader({
                 open={agentMenuOpen}
                 onOpenChange={handleAgentOpenChange}
               >
-                <Dropdown.Trigger
-                  className="flex items-center gap-1 text-neutral-300 hover:text-white transition-colors text-xs"
-                  onClick={() => setAgentMenuOpen((v) => !v)}
-                >
+                <Dropdown.Trigger className="flex items-center gap-1 text-neutral-300 hover:text-white transition-colors text-xs whitespace-nowrap">
                   <span>{selectedRun?.agentName || "Unknown agent"}</span>
                   <ChevronDown className="w-3 h-3" />
                 </Dropdown.Trigger>
