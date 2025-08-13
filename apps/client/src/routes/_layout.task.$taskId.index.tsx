@@ -20,6 +20,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/_layout/task/$taskId/")({
   component: TaskDetailPage,
@@ -202,6 +203,9 @@ function TaskDetailPage() {
           window.open(resp.url, "_blank");
         } else if (resp.error) {
           console.error("Failed to create draft PR:", resp.error);
+          toast.error("Failed to create draft PR", {
+            description: resp.error,
+          });
         }
       }
     );

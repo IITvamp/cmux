@@ -677,7 +677,21 @@ export async function startServer({
           return;
         }
 
-        // 4) Push branch (set upstream)
+        // 4) If remote branch exists, pull --rebase to integrate updates
+        try {
+          const { stdout: lsOut } = await execAsync(`git ls-remote --heads origin ${branchName}`, { cwd, env: { ...process.env } });
+          if ((lsOut || "").trim().length > 0) {
+            await execAsync(`git pull --rebase origin ${branchName}`, { cwd, env: { ...process.env }, maxBuffer: 10 * 1024 * 1024 });
+          }
+        } catch (e: unknown) {
+          const err = e as { stdout?: string; stderr?: string; message?: string };
+          const msg = err?.message || err?.stderr || err?.stdout || "unknown error";
+          serverLogger.error(`[DraftPR] Failed at 'Pull --rebase': ${msg}`);
+          callback({ success: false, error: `Failed at 'Pull --rebase': ${msg}` });
+          return;
+        }
+
+        // 5) Push branch (set upstream)
         try {
           await execAsync(`git push -u origin ${branchName}`, { cwd, env: { ...process.env }, maxBuffer: 10 * 1024 * 1024 });
         } catch (e: unknown) {
@@ -688,7 +702,7 @@ export async function startServer({
           return;
         }
 
-        // 5) Create draft PR
+        // 6) Create draft PR
         try {
           const { stdout, stderr } = await execAsync(
             `gh pr create --draft --title ${JSON.stringify(truncatedTitle)} --body ${JSON.stringify(body)} --head ${JSON.stringify(branchName)} --base ${JSON.stringify(baseBranch)}`,
