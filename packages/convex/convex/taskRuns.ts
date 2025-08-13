@@ -498,10 +498,12 @@ export const updatePullRequestUrl = mutation({
   args: {
     id: v.id("taskRuns"),
     pullRequestUrl: v.string(),
+    isDraft: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.id, {
       pullRequestUrl: args.pullRequestUrl,
+      pullRequestIsDraft: args.isDraft,
       updatedAt: Date.now(),
     });
   },

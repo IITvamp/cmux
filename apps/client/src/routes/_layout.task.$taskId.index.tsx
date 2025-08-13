@@ -20,6 +20,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/_layout/task/$taskId/")({
   component: TaskDetailPage,
@@ -51,6 +52,7 @@ function TaskDetailPage() {
   const clipboard = useClipboard({ timeout: 2000 });
   const [isHovering, setIsHovering] = useState(false);
   const [prIsOpen, setPrIsOpen] = useState(false); // Track if PR is open
+  const [isCreatingPr, setIsCreatingPr] = useState(false);
   const [isCheckingDiffs, setIsCheckingDiffs] = useState(false);
   const { socket } = useSocket();
 
@@ -82,10 +84,6 @@ function TaskDetailPage() {
     api.gitDiffs.getByTaskRun,
     selectedRun ? { taskRunId: selectedRun._id } : "skip"
   );
-  
-  // Debug logging
-  console.log("Selected run:", selectedRun?._id);
-  console.log("Diffs fetched:", diffs?.length, diffs);
 
   // Check for new changes on mount and periodically
   useEffect(() => {
@@ -93,7 +91,7 @@ function TaskDetailPage() {
 
     const checkForChanges = async () => {
       setIsCheckingDiffs(true);
-      
+
       try {
         // Use Socket.IO to request diff refresh from the server
         if (!socket) {
@@ -101,8 +99,9 @@ function TaskDetailPage() {
           setIsCheckingDiffs(false);
           return;
         }
-        
-        socket.emit("refresh-diffs", 
+
+        socket.emit(
+          "refresh-diffs",
           { taskRunId: selectedRun._id },
           (response: { success: boolean; message?: string }) => {
             if (response.success) {
@@ -129,13 +128,17 @@ function TaskDetailPage() {
     return () => clearInterval(interval);
   }, [selectedRun?._id]);
 
-  // Stabilize diffs to avoid rerenders mid-refresh; only apply when not checking
-  const [stableDiffs, setStableDiffs] = useState<typeof diffs>();
+  // Stabilize diffs per-run to avoid cross-run flashes
+  const [stableDiffsByRun, setStableDiffsByRun] = useState<
+    Record<string, typeof diffs>
+  >({});
   useEffect(() => {
-    if (!diffs || isCheckingDiffs) return;
-    setStableDiffs((prev) => {
-      if (!prev) return diffs;
-      const prevByPath = new Map(prev.map((d) => [d.filePath, d]));
+    if (!diffs || isCheckingDiffs || !selectedRun?._id) return;
+    const runKey = selectedRun._id as string;
+    setStableDiffsByRun((prev) => {
+      const prevForRun = prev[runKey];
+      if (!prevForRun) return { ...prev, [runKey]: diffs };
+      const prevByPath = new Map(prevForRun.map((d) => [d.filePath, d]));
       const next: typeof diffs = diffs.map((d) => {
         const p = prevByPath.get(d.filePath);
         if (!p) return d;
@@ -150,16 +153,19 @@ function TaskDetailPage() {
           (p.contentOmitted || false) === (d.contentOmitted || false);
         return same ? p : d;
       });
-      return next;
+      return { ...prev, [runKey]: next };
     });
-  }, [diffs, isCheckingDiffs]);
+  }, [diffs, isCheckingDiffs, selectedRun?._id]);
 
-  // When a refresh cycle ends, apply whatever the latest diffs are
+  // When a refresh cycle ends, apply whatever the latest diffs are for this run
   useEffect(() => {
-    if (!isCheckingDiffs && diffs) {
-      setStableDiffs(diffs);
+    if (!isCheckingDiffs && diffs && selectedRun?._id) {
+      setStableDiffsByRun((prev) => ({
+        ...prev,
+        [selectedRun._id as string]: diffs,
+      }));
     }
-  }, [isCheckingDiffs]);
+  }, [isCheckingDiffs, diffs, selectedRun?._id]);
 
   const handleCopyBranch = () => {
     if (selectedRun?.newBranch) {
@@ -179,13 +185,33 @@ function TaskDetailPage() {
   };
 
   const handleViewPR = () => {
+    if (!socket) return;
+    if (!crownedRun?._id) return;
+
     if (crownedRun?.pullRequestUrl && crownedRun.pullRequestUrl !== "pending") {
       window.open(crownedRun.pullRequestUrl, "_blank");
-    } else {
-      // TODO: Create draft PR if it doesn't exist
-      console.log("Creating draft PR...");
+      return;
     }
+
+    setIsCreatingPr(true);
+    socket.emit(
+      "github-create-draft-pr",
+      { taskRunId: crownedRun._id as string },
+      (resp: { success: boolean; url?: string; error?: string }) => {
+        setIsCreatingPr(false);
+        if (resp.success && resp.url) {
+          window.open(resp.url, "_blank");
+        } else if (resp.error) {
+          console.error("Failed to create draft PR:", resp.error);
+          toast.error("Failed to create draft PR", {
+            description: resp.error,
+          });
+        }
+      }
+    );
   };
+
+  const taskTitle = task?.pullRequestTitle || task?.text;
 
   const header = (
     <div className="bg-neutral-900 text-white px-4 py-3">
@@ -193,9 +219,9 @@ function TaskDetailPage() {
       <div className="flex items-center gap-2">
         <h1
           className="text-lg font-normal truncate flex-1 min-w-0 overflow-ellipsis"
-          title={task?.text}
+          title={taskTitle}
         >
-          {task?.text || "Loading..."}
+          {taskTitle || "Loading..."}
         </h1>
         {isCheckingDiffs && (
           <div className="flex items-center gap-1 text-xs text-neutral-400">
@@ -206,7 +232,7 @@ function TaskDetailPage() {
       </div>
 
       {/* Branch and repo info - more compact */}
-      <div className="flex items-center gap-2 text-xs text-neutral-400 mb-2">
+      <div className="flex items-center gap-2 text-xs text-neutral-400 mb-1">
         <button
           onClick={handleCopyBranch}
           onMouseEnter={() => setIsHovering(true)}
@@ -307,6 +333,13 @@ function TaskDetailPage() {
         )}
       </div>
 
+      {task?.text && (
+        <div className="text-xs text-neutral-300 mb-2">
+          <span className="text-neutral-400">Prompt:</span>{" "}
+          <span className="font-medium">{task.text}</span>
+        </div>
+      )}
+
       {/* Action buttons - more compact */}
       <div className="flex items-center gap-2">
         {/* Merge button with dropdown */}
@@ -316,15 +349,27 @@ function TaskDetailPage() {
           disabled={!crownedRun?.newBranch}
         />
 
-        {/* View PR button */}
-        <button
-          onClick={handleViewPR}
-          className="flex items-center gap-1.5 px-3 py-1 bg-neutral-800 text-white border border-neutral-700 rounded hover:bg-neutral-700 font-medium text-xs select-none"
-          disabled={!crownedRun?.newBranch}
-        >
-          <ExternalLink className="w-3.5 h-3.5" />
-          View PR
-        </button>
+        {/* View PR button or link */}
+        {crownedRun?.pullRequestUrl && crownedRun.pullRequestUrl !== "pending" ? (
+          <a
+            href={crownedRun.pullRequestUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 px-3 py-1 bg-neutral-800 text-white border border-neutral-700 rounded hover:bg-neutral-700 font-medium text-xs select-none"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            {crownedRun.pullRequestIsDraft ? "View draft PR" : "View PR"}
+          </a>
+        ) : (
+          <button
+            onClick={handleViewPR}
+            className="flex items-center gap-1.5 px-3 py-1 bg-neutral-800 text-white border border-neutral-700 rounded hover:bg-neutral-700 font-medium text-xs select-none disabled:opacity-60 disabled:cursor-not-allowed"
+            disabled={!crownedRun?.newBranch || isCreatingPr}
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            {isCreatingPr ? "Creating PR..." : "Open draft PR"}
+          </button>
+        )}
 
         <button className="flex items-center gap-1.5 px-3 py-1 bg-neutral-800 text-white border border-neutral-700 rounded hover:bg-neutral-700 font-medium text-xs select-none">
           <Package className="w-3.5 h-3.5" />
@@ -347,7 +392,18 @@ function TaskDetailPage() {
     <FloatingPane header={header}>
       {/* Git diff viewer */}
       <div className="flex-1 overflow-hidden bg-white dark:bg-neutral-950">
-        <GitDiffViewer diffs={(stableDiffs || diffs || [])} isLoading={!diffs && !!selectedRun} taskRunId={selectedRun?._id} />
+        <GitDiffViewer
+          diffs={
+            (selectedRun?._id
+              ? stableDiffsByRun[selectedRun._id as string]
+              : undefined) ||
+            diffs ||
+            []
+          }
+          isLoading={!diffs && !!selectedRun}
+          taskRunId={selectedRun?._id}
+          key={selectedRun?._id}
+        />
       </div>
     </FloatingPane>
   );

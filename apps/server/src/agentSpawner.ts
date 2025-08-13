@@ -13,6 +13,7 @@ import { storeGitDiffs } from "./storeGitDiffs.js";
 import {
   generateNewBranchName,
   generateUniqueBranchNames,
+  generateUniqueBranchNamesFromTitle,
 } from "./utils/branchNameGenerator.js";
 import { convex } from "./utils/convexClient.js";
 import { serverLogger } from "./utils/fileLogger.js";
@@ -267,6 +268,15 @@ Completed: ${new Date().toISOString()}`;
     }
 
     if (isCrowned) {
+      // Respect workspace setting for auto-PR
+      const ws = await convex.query(api.workspaceSettings.get);
+      const autoPrEnabled = ((ws as unknown) as { autoPrEnabled?: boolean })?.autoPrEnabled ?? true;
+      if (!autoPrEnabled) {
+        serverLogger.info(
+          `[AgentSpawner] Auto-PR is disabled in settings; skipping PR creation.`
+        );
+        return;
+      }
       serverLogger.info(
         `[AgentSpawner] 🏆 Crown winner! Auto-commit and push completed for ${agent.name} on branch ${branchName}`
       );
@@ -283,7 +293,18 @@ Completed: ${new Date().toISOString()}`;
           id: taskRun.taskId,
         });
         if (task) {
-          const prTitle = `[Crown] ${task.text}`;
+          // Use existing task PR title when present, otherwise derive and persist
+          const prTitle = task.pullRequestTitle || `[Crown] ${task.text}`;
+          if (!task.pullRequestTitle || task.pullRequestTitle !== prTitle) {
+            try {
+              await convex.mutation(api.tasks.setPullRequestTitle, {
+                id: task._id as Id<"tasks">,
+                pullRequestTitle: prTitle,
+              });
+            } catch (e) {
+              serverLogger.error(`[AgentSpawner] Failed to save PR title:`, e);
+            }
+          }
           const prBody = `## 🏆 Crown Winner: ${agent.name}
 
 ### Task Description
@@ -298,12 +319,26 @@ ${taskRun.crownReason || "This implementation was selected as the best solution.
 - **Task ID**: ${task._id}
 - **Run ID**: ${taskRun._id}
 - **Branch**: ${branchName}
-- **Completed**: ${new Date(taskRun.completedAt || Date.now()).toISOString()}
+- **Completed**: ${new Date(taskRun.completedAt || Date.now()).toISOString()}`;
 
----
-*This PR was automatically created by cmux crown feature after evaluating implementations from multiple AI coding assistants.*`;
+          // Persist PR description on the task in Convex
+          try {
+            await convex.mutation(api.tasks.setPullRequestDescription, {
+              id: task._id as Id<"tasks">,
+              pullRequestDescription: prBody,
+            });
+          } catch (e) {
+            serverLogger.error(`[AgentSpawner] Failed to save PR description:`, e);
+          }
 
-          const prCommand = `gh pr create --title "${prTitle.replace(/"/g, '\\"')}" --body "${prBody.replace(/"/g, '\\"').replace(/\n/g, "\\n")}"`;
+          const bodyFileVar = `cmux_pr_body_${Date.now()}_${Math.random().toString(36).slice(2)}.md`;
+          const prScript = `set -e\n` +
+            `BODY_FILE=\"/tmp/${bodyFileVar}\"\n` +
+            `cat <<'CMUX_EOF' > \"$BODY_FILE\"\n` +
+            `${prBody}\n` +
+            `CMUX_EOF\n` +
+            `gh pr create --title \"${prTitle.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}\" --body-file \"$BODY_FILE\"\n` +
+            `rm -f \"$BODY_FILE\"`;
 
           const prResult = await new Promise<{
             success: boolean;
@@ -313,7 +348,8 @@ ${taskRun.crownReason || "This implementation was selected as the best solution.
             workerSocket.timeout(30000).emit(
               "worker:exec",
               {
-                command: prCommand,
+                command: "/bin/bash",
+                args: ["-lc", prScript],
                 cwd: "/root/workspace",
               },
               (response: any) => {
@@ -341,6 +377,7 @@ ${taskRun.crownReason || "This implementation was selected as the best solution.
             await convex.mutation(api.taskRuns.updatePullRequestUrl, {
               id: taskRunId as Id<"taskRuns">,
               pullRequestUrl: prResult.output,
+              isDraft: false,
             });
           } else {
             serverLogger.error(
@@ -2139,6 +2176,7 @@ export async function spawnAllAgents(
     repoUrl: string;
     branch?: string;
     taskDescription: string;
+    prTitle?: string;
     selectedAgents?: string[];
     isCloudMode?: boolean;
     images?: Array<{
@@ -2157,10 +2195,9 @@ export async function spawnAllAgents(
     : AGENT_CONFIGS;
 
   // Generate unique branch names for all agents at once to ensure no collisions
-  const branchNames = await generateUniqueBranchNames(
-    options.taskDescription,
-    agentsToSpawn.length
-  );
+  const branchNames = options.prTitle
+    ? generateUniqueBranchNamesFromTitle(options.prTitle!, agentsToSpawn.length)
+    : await generateUniqueBranchNames(options.taskDescription, agentsToSpawn.length);
 
   serverLogger.info(
     `[AgentSpawner] Generated ${branchNames.length} unique branch names for agents`

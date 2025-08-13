@@ -18,6 +18,8 @@ export default defineSchema({
     isCompleted: v.boolean(),
     isArchived: v.optional(v.boolean()),
     description: v.optional(v.string()),
+    pullRequestTitle: v.optional(v.string()),
+    pullRequestDescription: v.optional(v.string()),
     projectFullName: v.optional(v.string()),
     baseBranch: v.optional(v.string()),
     worktreePath: v.optional(v.string()),
@@ -88,6 +90,7 @@ export default defineSchema({
     isCrowned: v.optional(v.boolean()), // Whether this run won the crown evaluation
     crownReason: v.optional(v.string()), // LLM's reasoning for why this run was crowned
     pullRequestUrl: v.optional(v.string()), // URL of the created PR (only for crowned runs)
+    pullRequestIsDraft: v.optional(v.boolean()), // Whether the PR is a draft
     diffsLastUpdated: v.optional(v.number()), // Timestamp when diffs were last fetched/updated
     // VSCode instance information
     vscode: v.optional(
@@ -167,6 +170,7 @@ export default defineSchema({
   }).index("by_envVar", ["envVar"]),
   workspaceSettings: defineTable({
     worktreePath: v.optional(v.string()), // Custom path for git worktrees
+    autoPrEnabled: v.optional(v.boolean()), // Auto-create PR for crown winner (default: true)
     createdAt: v.number(),
     updatedAt: v.number(),
   }),
