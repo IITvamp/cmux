@@ -110,11 +110,11 @@ export function TaskDetailHeader({
 
   return (
     <div className="bg-neutral-900 text-white px-3.5 sticky top-0 z-20 py-2">
-      <div className="grid grid-cols-[1fr_auto_auto] gap-x-3 gap-y-1">
+      <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-3 gap-y-1">
         {/* Title row */}
-        <div className="flex items-center gap-2 relative">
+        <div className="flex items-center gap-2 relative min-w-0">
           <h1
-            className="text-sm font-bold truncate min-w-0 overflow-ellipsis"
+            className="text-sm font-bold truncate min-w-0"
             title={taskTitle}
           >
             {taskTitle || "Loading..."}
@@ -211,7 +211,7 @@ export function TaskDetailHeader({
         </div>
 
         {/* Branch row */}
-        <div className="flex items-center gap-2 text-xs text-neutral-400">
+        <div className="flex items-center gap-2 text-xs text-neutral-400 min-w-0">
           <button
             onClick={handleCopyBranch}
             className="flex items-center gap-1 hover:text-white transition-colors group"
@@ -240,7 +240,7 @@ export function TaskDetailHeader({
               />
             </div>
             {selectedRun?.newBranch ? (
-              <span className="font-mono text-neutral-300 group-hover:text-white text-[11px]">
+              <span className="font-mono text-neutral-300 group-hover:text-white text-[11px] truncate min-w-0 max-w-full">
                 {selectedRun.newBranch}
               </span>
             ) : (
@@ -251,7 +251,7 @@ export function TaskDetailHeader({
           <span className="text-neutral-600">in</span>
 
           {task?.projectFullName && (
-            <span className="font-mono text-neutral-300">
+            <span className="font-mono text-neutral-300 truncate min-w-0 max-w-[40%]">
               {task.projectFullName}
             </span>
           )}
