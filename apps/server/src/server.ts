@@ -13,7 +13,7 @@ import {
   type ServerToClientEvents,
   type SocketData,
 } from "@cmux/shared";
-import * as fuzzysort from "fuzzysort";
+import fuzzysort from "fuzzysort";
 import { minimatch } from "minimatch";
 import { exec, spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
