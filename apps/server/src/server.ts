@@ -682,26 +682,7 @@ export async function startServer({
         // Ensure on branch, commit, push, and create draft PR using local filesystem
         const cwd = worktreePath;
         let prUrl: string | undefined;
-
-        // 1) Fetch base (optional but helpful)
-        try {
-          await execAsync(`git fetch origin ${baseBranch}`, {
-            cwd,
-            env: { ...process.env },
-            maxBuffer: 10 * 1024 * 1024,
-          });
-        } catch (e: unknown) {
-          const err = e as {
-            stdout?: string;
-            stderr?: string;
-            message?: string;
-          };
-          serverLogger.warn(
-            `[DraftPR] Fetch base failed (continuing): ${err?.stderr || err?.message || "unknown"}`
-          );
-        }
-
-        // 2) Ensure we are on branchName without discarding local changes
+        // 1) Ensure we are on branchName without discarding local changes
         try {
           const { stdout: cbOut } = await execAsync(
             `git rev-parse --abbrev-ref HEAD`,
@@ -738,7 +719,7 @@ export async function startServer({
           return;
         }
 
-        // 3) Stage and commit changes (no-op safe)
+        // 2) Stage and commit changes (no-op safe)
         try {
           await execAsync("git add -A", { cwd, env: { ...process.env } });
           await execAsync(
@@ -761,73 +742,46 @@ export async function startServer({
           return;
         }
 
-        // 4) If remote branch exists, pull --rebase to integrate updates
-        try {
-          const { stdout: lsOut } = await execAsync(
-            `git ls-remote --heads origin ${branchName}`,
-            { cwd, env: { ...process.env } }
-          );
-          if ((lsOut || "").trim().length > 0) {
-            await execAsync(`git pull --rebase origin ${branchName}`, {
-              cwd,
-              env: { ...process.env },
-              maxBuffer: 10 * 1024 * 1024,
-            });
-          }
-        } catch (e: unknown) {
-          const err = e as {
-            stdout?: string;
-            stderr?: string;
-            message?: string;
-          };
-          const msg =
-            err?.message || err?.stderr || err?.stdout || "unknown error";
-          serverLogger.error(`[DraftPR] Failed at 'Pull --rebase': ${msg}`);
-          callback({
-            success: false,
-            error: `Failed at 'Pull --rebase': ${msg}`,
-          });
-          return;
-        }
-
-        // 5) Push branch (set upstream)
+        // 3) Push branch (set upstream). If it fails, try a quick rebase/pull then push again.
+        let pushed = false;
         try {
           await execAsync(`git push -u origin ${branchName}`, {
             cwd,
             env: { ...process.env },
             maxBuffer: 10 * 1024 * 1024,
           });
+          pushed = true;
         } catch (e: unknown) {
-          const err = e as {
-            stdout?: string;
-            stderr?: string;
-            message?: string;
-          };
-          const msg =
-            err?.message || err?.stderr || err?.stdout || "unknown error";
-          serverLogger.error(`[DraftPR] Failed at 'Push branch': ${msg}`);
-          callback({
-            success: false,
-            error: `Failed at 'Push branch': ${msg}`,
-          });
-          return;
+          const err = e as { stdout?: string; stderr?: string; message?: string };
+          const msg = err?.message || err?.stderr || err?.stdout || "unknown error";
+          serverLogger.warn(`[DraftPR] Initial push failed, attempting rebase then push: ${msg}`);
+          try {
+            await execAsync(`git pull --rebase origin ${branchName}`, {
+              cwd,
+              env: { ...process.env },
+              maxBuffer: 10 * 1024 * 1024,
+            });
+            await execAsync(`git push -u origin ${branchName}`, {
+              cwd,
+              env: { ...process.env },
+              maxBuffer: 10 * 1024 * 1024,
+            });
+            pushed = true;
+          } catch (e2: unknown) {
+            const err2 = e2 as { stdout?: string; stderr?: string; message?: string };
+            const msg2 = err2?.message || err2?.stderr || err2?.stdout || "unknown error";
+            serverLogger.error(`[DraftPR] Failed at 'Push branch' after rebase: ${msg2}`);
+            callback({ success: false, error: `Failed at 'Push branch': ${msg2}` });
+            return;
+          }
         }
 
-        // 6) Create draft PR
+        // 4) Create draft PR
         try {
-          // Write body to a temp file to preserve Markdown formatting
-          const tmpBodyPath = path.join(
-            os.tmpdir(),
-            `cmux_pr_body_${Date.now()}_${Math.random().toString(36).slice(2)}.md`
-          );
-          await fs.writeFile(tmpBodyPath, body, "utf8");
-
           const { stdout, stderr } = await execAsync(
-            `gh pr create --draft --title ${JSON.stringify(
-              truncatedTitle
-            )} --body-file ${JSON.stringify(tmpBodyPath)} --head ${JSON.stringify(
-              branchName
-            )} --base ${JSON.stringify(baseBranch)}`,
+            `gh pr create --draft --title ${JSON.stringify(truncatedTitle)} --body ${JSON.stringify(
+              body
+            )} --head ${JSON.stringify(branchName)} --base ${JSON.stringify(baseBranch)}`,
             {
               cwd,
               env: { ...process.env, GH_TOKEN: githubToken },
@@ -837,23 +791,15 @@ export async function startServer({
           const out = (stdout || stderr || "").trim();
           const match = out.match(/https:\/\/github\.com\/[^\s]+/);
           prUrl = match ? match[0] : out;
-          // Clean up temp file
-          try {
-            await fs.unlink(tmpBodyPath);
-          } catch {}
         } catch (e: unknown) {
           const err = e as {
             stdout?: string;
             stderr?: string;
             message?: string;
           };
-          const msg =
-            err?.message || err?.stderr || err?.stdout || "unknown error";
+          const msg = err?.message || err?.stderr || err?.stdout || "unknown error";
           serverLogger.error(`[DraftPR] Failed at 'Create draft PR': ${msg}`);
-          callback({
-            success: false,
-            error: `Failed at 'Create draft PR': ${msg}`,
-          });
+          callback({ success: false, error: `Failed at 'Create draft PR': ${msg}` });
           return;
         }
 
