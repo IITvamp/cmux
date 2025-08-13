@@ -115,7 +115,7 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
       }}
     >
       <div
-        className="h-[38px] flex items-center pl-3 pr-1.5 shrink-0 border-b border-neutral-200 dark:border-neutral-900 bg-white/80 dark:bg-black/90 backdrop-blur-sm"
+        className="h-[38px] flex items-center pl-3 pr-1.5 shrink-0 border-b border-neutral-200 dark:border-neutral-900 bg-white dark:bg-black/90 backdrop-blur-sm"
         style={{ WebkitAppRegion: "drag" } as CSSProperties}
       >
         {isElectron && <div className="w-[68px]"></div>}
