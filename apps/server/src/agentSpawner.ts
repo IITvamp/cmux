@@ -13,6 +13,7 @@ import { storeGitDiffs } from "./storeGitDiffs.js";
 import {
   generateNewBranchName,
   generateUniqueBranchNames,
+  generateUniqueBranchNamesFromTitle,
 } from "./utils/branchNameGenerator.js";
 import { convex } from "./utils/convexClient.js";
 import { serverLogger } from "./utils/fileLogger.js";
@@ -208,6 +209,15 @@ Completed: ${new Date().toISOString()}`;
         });
         if (task) {
           const prTitle = `[Crown] ${task.text}`;
+          // Persist PR title immediately after generation
+          try {
+            await convex.mutation(api.tasks.setPullRequestTitle, {
+              id: task._id as Id<"tasks">,
+              pullRequestTitle: prTitle,
+            });
+          } catch (e) {
+            serverLogger.error(`[AgentSpawner] Failed to save PR title:`, e);
+          }
           const prBody = `## 🏆 Crown Winner: ${agent.name}
 
 ### Task Description
@@ -226,6 +236,16 @@ ${taskRun.crownReason || "This implementation was selected as the best solution.
 
 ---
 *This PR was automatically created by cmux crown feature after evaluating implementations from multiple AI coding assistants.*`;
+
+          // Persist PR description on the task in Convex
+          try {
+            await convex.mutation(api.tasks.setPullRequestDescription, {
+              id: task._id as Id<"tasks">,
+              pullRequestDescription: prBody,
+            });
+          } catch (e) {
+            serverLogger.error(`[AgentSpawner] Failed to save PR description:`, e);
+          }
 
           const prCommand = `gh pr create --title "${prTitle.replace(/"/g, '\\"')}" --body "${prBody.replace(/"/g, '\\"').replace(/\n/g, "\\n")}"`;
 
@@ -1903,6 +1923,7 @@ export async function spawnAllAgents(
     repoUrl: string;
     branch?: string;
     taskDescription: string;
+    prTitle?: string;
     selectedAgents?: string[];
     isCloudMode?: boolean;
     images?: Array<{
@@ -1921,10 +1942,9 @@ export async function spawnAllAgents(
     : AGENT_CONFIGS;
 
   // Generate unique branch names for all agents at once to ensure no collisions
-  const branchNames = await generateUniqueBranchNames(
-    options.taskDescription,
-    agentsToSpawn.length
-  );
+  const branchNames = options.prTitle
+    ? generateUniqueBranchNamesFromTitle(options.prTitle!, agentsToSpawn.length)
+    : await generateUniqueBranchNames(options.taskDescription, agentsToSpawn.length);
 
   serverLogger.info(
     `[AgentSpawner] Generated ${branchNames.length} unique branch names for agents`

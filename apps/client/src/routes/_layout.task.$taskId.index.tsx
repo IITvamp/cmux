@@ -211,15 +211,17 @@ function TaskDetailPage() {
     );
   };
 
+  const taskTitle = task?.pullRequestTitle || task?.text;
+
   const header = (
     <div className="bg-neutral-900 text-white px-4 py-3">
       {/* Task title with loading indicator */}
       <div className="flex items-center gap-2">
         <h1
           className="text-lg font-normal truncate flex-1 min-w-0 overflow-ellipsis"
-          title={task?.text}
+          title={taskTitle}
         >
-          {task?.text || "Loading..."}
+          {taskTitle || "Loading..."}
         </h1>
         {isCheckingDiffs && (
           <div className="flex items-center gap-1 text-xs text-neutral-400">
@@ -230,7 +232,7 @@ function TaskDetailPage() {
       </div>
 
       {/* Branch and repo info - more compact */}
-      <div className="flex items-center gap-2 text-xs text-neutral-400 mb-2">
+      <div className="flex items-center gap-2 text-xs text-neutral-400 mb-1">
         <button
           onClick={handleCopyBranch}
           onMouseEnter={() => setIsHovering(true)}
@@ -330,6 +332,13 @@ function TaskDetailPage() {
           </>
         )}
       </div>
+
+      {task?.text && (
+        <div className="text-xs text-neutral-300 mb-2">
+          <span className="text-neutral-400">Prompt:</span>{" "}
+          <span className="font-medium">{task.text}</span>
+        </div>
+      )}
 
       {/* Action buttons - more compact */}
       <div className="flex items-center gap-2">

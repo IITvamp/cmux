@@ -41,6 +41,7 @@ import { refreshDiffsForTaskRun } from "./refreshDiffs.js";
 import type { Id } from "@cmux/convex/dataModel";
 import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
 import { ensureRunWorktreeAndBranch } from "./utils/ensureRunWorktree.js";
+import { getPRTitleFromTaskDescription } from "./utils/branchNameGenerator.js";
 
 const execAsync = promisify(exec);
 
@@ -116,11 +117,26 @@ export async function startServer({
         // Use the taskId provided by the client
         const taskId = taskData.taskId;
 
+        // Generate PR title early from the task description
+        let generatedTitle: string | null = null;
+        try {
+          generatedTitle = await getPRTitleFromTaskDescription(taskData.taskDescription);
+          // Persist to Convex immediately
+          await convex.mutation(api.tasks.setPullRequestTitle, {
+            id: taskId as Id<"tasks">,
+            pullRequestTitle: generatedTitle,
+          });
+          serverLogger.info(`[Server] Saved early PR title: ${generatedTitle}`);
+        } catch (e) {
+          serverLogger.error(`[Server] Failed generating/saving early PR title:`, e);
+        }
+
         // Spawn all agents in parallel (each will create its own taskRun)
         const agentResults = await spawnAllAgents(taskId, {
           repoUrl: taskData.repoUrl,
           branch: taskData.branch,
           taskDescription: taskData.taskDescription,
+          prTitle: generatedTitle ?? undefined,
           selectedAgents: taskData.selectedAgents,
           isCloudMode: taskData.isCloudMode,
           images: taskData.images,

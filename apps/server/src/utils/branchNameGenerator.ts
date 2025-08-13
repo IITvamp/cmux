@@ -199,6 +199,31 @@ export async function generateBranchBaseName(
 }
 
 /**
+ * Get a PR title for a given task description using available API keys.
+ * Falls back to a simple 5-word prefix of the task description.
+ */
+export async function getPRTitleFromTaskDescription(
+  taskDescription: string
+): Promise<string> {
+  const apiKeys = await convex.query(api.apiKeys.getAllForAgents);
+  const prTitle = await generatePRTitle(taskDescription, apiKeys);
+  return prTitle || taskDescription.split(/\s+/).slice(0, 5).join(" ") || "feature update";
+}
+
+/**
+ * Generate multiple unique branch names given a PR title
+ */
+export function generateUniqueBranchNamesFromTitle(
+  prTitle: string,
+  count: number
+): string[] {
+  const baseName = `cmux/${toKebabCase(prTitle)}`;
+  const ids = new Set<string>();
+  while (ids.size < count) ids.add(generateRandomId());
+  return Array.from(ids).map((id) => `${baseName}-${id}`);
+}
+
+/**
  * Generate a new branch name for a task run with a specific ID
  * @param taskDescription The task description
  * @param uniqueId Optional unique ID to use (if not provided, generates one)
