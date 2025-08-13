@@ -40,7 +40,7 @@ describe("toKebabCase", () => {
     const longString = "This is a very long string that should be truncated to fifty chars";
     const result = toKebabCase(longString);
     expect(result.length).toBeLessThanOrEqual(50);
-    expect(result).toBe("this-is-a-very-long-string-that-should-be-trunca");
+    expect(result).toBe("this-is-a-very-long-string-that-should-be-truncate");
   });
 
   it("should handle edge cases", () => {
@@ -70,6 +70,26 @@ describe("toKebabCase", () => {
     expect(toKebabCase("Add myNewFeature")).toBe("add-my-new-feature");
     expect(toKebabCase("Fix getUserById bug")).toBe("fix-get-user-by-id-bug");
     expect(toKebabCase("Update APIEndpoint")).toBe("update-api-endpoint");
+  });
+
+  it("should handle pluralized uppercase acronyms sensibly", () => {
+    // Standalone plural acronyms
+    expect(toKebabCase("PRs")).toBe("prs");
+    expect(toKebabCase("APIs")).toBe("apis");
+    expect(toKebabCase("IDs")).toBe("ids");
+    expect(toKebabCase("URLs")).toBe("urls");
+
+    // In phrases
+    expect(toKebabCase("Fix PRs in UI")).toBe("fix-prs-in-ui");
+    expect(toKebabCase("Handle APIs in URLs")).toBe("handle-apis-in-urls");
+
+    // Followed by another capitalized word (camel-style)
+    expect(toKebabCase("PRsFix")).toBe("prs-fix");
+    expect(toKebabCase("APIsParser")).toBe("apis-parser");
+
+    // With punctuation and numbers
+    expect(toKebabCase("PRs: open 2")).toBe("prs-open-2");
+    expect(toKebabCase("Track URLs2")).toBe("track-urls2");
   });
 });
 

@@ -9,6 +9,11 @@ import { serverLogger } from "./fileLogger.js";
  */
 export function toKebabCase(input: string): string {
   return input
+    // Treat pluralized acronyms like "PRs"/"APIs"/"IDs" as single tokens
+    // - If a word starts with 2+ capitals followed by a lone lowercase 's',
+    //   optionally followed by another capitalized sequence, keep the 's' with the acronym
+    //   so we don't insert a hyphen inside it (e.g., "PRs" -> "PRS", "PRsFix" -> "PRSFix").
+    .replace(/\b([A-Z]{2,})s(?=\b|[^a-z])/g, "$1S")
     // First, handle camelCase by inserting hyphens before capital letters
     .replace(/([a-z])([A-Z])/g, "$1-$2")
     // Also handle sequences like "HTTPServer" -> "HTTP-Server"
