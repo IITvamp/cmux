@@ -59,8 +59,8 @@ export interface AgentConfig {
 }
 
 export const AGENT_CONFIGS: AgentConfig[] = [
-  CLAUDE_SONNET_CONFIG,
   CLAUDE_OPUS_4_1_CONFIG,
+  CLAUDE_SONNET_CONFIG,
   CLAUDE_OPUS_4_CONFIG,
   CODEX_GPT_5_CONFIG,
   CODEX_O3_CONFIG,
