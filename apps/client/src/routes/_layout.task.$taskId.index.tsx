@@ -165,7 +165,7 @@ function TaskDetailPage() {
   return (
     <FloatingPane>
       <div className="flex h-full min-h-0 flex-col relative isolate">
-        <div className="flex-1 min-h-0 overflow-y-auto">
+        <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
           <TaskDetailHeader
             task={task ?? null}
             taskRuns={taskRuns ?? null}
@@ -187,7 +187,7 @@ function TaskDetailPage() {
               </div>
             </div>
           )}
-          <div className="bg-white dark:bg-neutral-950 h-full">
+          <div className="bg-white dark:bg-neutral-950 grow flex flex-col">
             <GitDiffViewer
               diffs={
                 (selectedRun?._id
