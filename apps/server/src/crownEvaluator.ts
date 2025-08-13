@@ -76,16 +76,18 @@ async function createPullRequestForWinner(
     const agentMatch = taskRun.prompt.match(/\(([^)]+)\)$/);
     const agentName = agentMatch ? agentMatch[1] : "Unknown";
     
-    // Create PR title and body
-    const prTitle = task.text || "Task completed by cmux";
-    // Persist PR title immediately after generation
-    try {
-      await convex.mutation(api.tasks.setPullRequestTitle, {
-        id: taskId,
-        pullRequestTitle: prTitle,
-      });
-    } catch (e) {
-      serverLogger.error(`[CrownEvaluator] Failed to save PR title:`, e);
+    // Create PR title and body using stored task title when available
+    const prTitle = task.pullRequestTitle || task.text || "Task completed by cmux";
+    // Persist PR title if not already set or differs
+    if (!task.pullRequestTitle || task.pullRequestTitle !== prTitle) {
+      try {
+        await convex.mutation(api.tasks.setPullRequestTitle, {
+          id: taskId,
+          pullRequestTitle: prTitle,
+        });
+      } catch (e) {
+        serverLogger.error(`[CrownEvaluator] Failed to save PR title:`, e);
+      }
     }
     const prBody = `## Summary
 - Task completed by ${agentName} agent 🏆
@@ -94,10 +96,7 @@ async function createPullRequestForWinner(
 ## Details
 - Task ID: ${taskId}
 - Agent: ${agentName}
-- Completed: ${new Date().toISOString()}
-
----
-🤖 Generated with [cmux](https://github.com/lawrencecchen/cmux)`;
+- Completed: ${new Date().toISOString()}`;
 
     // Persist PR description on the task in Convex
     try {
@@ -170,6 +169,7 @@ Completed: ${new Date().toISOString()}`;
     }
     
     // Execute git commands via worker:exec (more reliable than terminal-input)
+    const bodyFileName = `cmux_pr_body_${Date.now()}_${Math.random().toString(36).slice(2)}.md`;
     const gitCommands = [
       // Add all changes
       { cmd: "git add .", desc: "Staging changes" },
@@ -184,8 +184,16 @@ Completed: ${new Date().toISOString()}`;
     // Only add PR creation command if GitHub token is available
     if (githubToken) {
       gitCommands.push({
-        cmd: `GH_TOKEN="${githubToken}" gh pr create --title "${prTitle.replace(/"/g, '\\"')}" --body "${prBody.replace(/"/g, '\\"').replace(/\n/g, '\\n')}" --head "${branchName}"`,
-        desc: "Creating PR"
+        cmd: `cat <<'CMUX_EOF' > /tmp/${bodyFileName}\n${prBody}\nCMUX_EOF`,
+        desc: "Writing PR body",
+      });
+      gitCommands.push({
+        cmd: `GH_TOKEN=\"${githubToken}\" gh pr create --title \"${prTitle.replace(/"/g, '\\"')}\" --body-file /tmp/${bodyFileName} --head \"${branchName}\"`,
+        desc: "Creating PR",
+      });
+      gitCommands.push({
+        cmd: `rm -f /tmp/${bodyFileName}`,
+        desc: "Cleaning up PR body",
       });
     } else {
       serverLogger.info(`[CrownEvaluator] Skipping PR creation - no GitHub token configured`);

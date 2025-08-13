@@ -208,15 +208,17 @@ Completed: ${new Date().toISOString()}`;
           id: taskRun.taskId,
         });
         if (task) {
-          const prTitle = `[Crown] ${task.text}`;
-          // Persist PR title immediately after generation
-          try {
-            await convex.mutation(api.tasks.setPullRequestTitle, {
-              id: task._id as Id<"tasks">,
-              pullRequestTitle: prTitle,
-            });
-          } catch (e) {
-            serverLogger.error(`[AgentSpawner] Failed to save PR title:`, e);
+          // Use existing task PR title when present, otherwise derive and persist
+          const prTitle = task.pullRequestTitle || `[Crown] ${task.text}`;
+          if (!task.pullRequestTitle || task.pullRequestTitle !== prTitle) {
+            try {
+              await convex.mutation(api.tasks.setPullRequestTitle, {
+                id: task._id as Id<"tasks">,
+                pullRequestTitle: prTitle,
+              });
+            } catch (e) {
+              serverLogger.error(`[AgentSpawner] Failed to save PR title:`, e);
+            }
           }
           const prBody = `## 🏆 Crown Winner: ${agent.name}
 
@@ -232,10 +234,7 @@ ${taskRun.crownReason || "This implementation was selected as the best solution.
 - **Task ID**: ${task._id}
 - **Run ID**: ${taskRun._id}
 - **Branch**: ${branchName}
-- **Completed**: ${new Date(taskRun.completedAt || Date.now()).toISOString()}
-
----
-*This PR was automatically created by cmux crown feature after evaluating implementations from multiple AI coding assistants.*`;
+- **Completed**: ${new Date(taskRun.completedAt || Date.now()).toISOString()}`;
 
           // Persist PR description on the task in Convex
           try {
@@ -247,7 +246,14 @@ ${taskRun.crownReason || "This implementation was selected as the best solution.
             serverLogger.error(`[AgentSpawner] Failed to save PR description:`, e);
           }
 
-          const prCommand = `gh pr create --title "${prTitle.replace(/"/g, '\\"')}" --body "${prBody.replace(/"/g, '\\"').replace(/\n/g, "\\n")}"`;
+          const bodyFileVar = `cmux_pr_body_${Date.now()}_${Math.random().toString(36).slice(2)}.md`;
+          const prScript = `set -e\n` +
+            `BODY_FILE=\"/tmp/${bodyFileVar}\"\n` +
+            `cat <<'CMUX_EOF' > \"$BODY_FILE\"\n` +
+            `${prBody}\n` +
+            `CMUX_EOF\n` +
+            `gh pr create --title \"${prTitle.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}\" --body-file \"$BODY_FILE\"\n` +
+            `rm -f \"$BODY_FILE\"`;
 
           const prResult = await new Promise<{
             success: boolean;
@@ -257,7 +263,8 @@ ${taskRun.crownReason || "This implementation was selected as the best solution.
             workerSocket.timeout(30000).emit(
               "worker:exec",
               {
-                command: prCommand,
+                command: "/bin/bash",
+                args: ["-lc", prScript],
                 cwd: "/root/workspace",
               },
               (response: any) => {
@@ -285,6 +292,7 @@ ${taskRun.crownReason || "This implementation was selected as the best solution.
             await convex.mutation(api.taskRuns.updatePullRequestUrl, {
               id: taskRunId as Id<"taskRuns">,
               pullRequestUrl: prResult.output,
+              isDraft: false,
             });
           } else {
             serverLogger.error(

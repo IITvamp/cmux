@@ -349,15 +349,27 @@ function TaskDetailPage() {
           disabled={!crownedRun?.newBranch}
         />
 
-        {/* View PR button */}
-        <button
-          onClick={handleViewPR}
-          className="flex items-center gap-1.5 px-3 py-1 bg-neutral-800 text-white border border-neutral-700 rounded hover:bg-neutral-700 font-medium text-xs select-none disabled:opacity-60 disabled:cursor-not-allowed"
-          disabled={!crownedRun?.newBranch || isCreatingPr}
-        >
-          <ExternalLink className="w-3.5 h-3.5" />
-          {isCreatingPr ? "Creating PR..." : "View PR"}
-        </button>
+        {/* View PR button or link */}
+        {crownedRun?.pullRequestUrl && crownedRun.pullRequestUrl !== "pending" ? (
+          <a
+            href={crownedRun.pullRequestUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1.5 px-3 py-1 bg-neutral-800 text-white border border-neutral-700 rounded hover:bg-neutral-700 font-medium text-xs select-none"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            {crownedRun.pullRequestIsDraft ? "View draft PR" : "View PR"}
+          </a>
+        ) : (
+          <button
+            onClick={handleViewPR}
+            className="flex items-center gap-1.5 px-3 py-1 bg-neutral-800 text-white border border-neutral-700 rounded hover:bg-neutral-700 font-medium text-xs select-none disabled:opacity-60 disabled:cursor-not-allowed"
+            disabled={!crownedRun?.newBranch || isCreatingPr}
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            {isCreatingPr ? "Creating PR..." : "Open draft PR"}
+          </button>
+        )}
 
         <button className="flex items-center gap-1.5 px-3 py-1 bg-neutral-800 text-white border border-neutral-700 rounded hover:bg-neutral-700 font-medium text-xs select-none">
           <Package className="w-3.5 h-3.5" />

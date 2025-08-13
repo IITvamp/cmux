@@ -57,7 +57,7 @@ export function CrownEvaluation({ taskId }: CrownEvaluationProps) {
                 rel="noopener noreferrer"
                 className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
               >
-                View PR on GitHub →
+                {crownedRun.pullRequestIsDraft ? "View draft PR" : "View PR"} →
               </a>
             </div>
           )}

@@ -90,6 +90,7 @@ export default defineSchema({
     isCrowned: v.optional(v.boolean()), // Whether this run won the crown evaluation
     crownReason: v.optional(v.string()), // LLM's reasoning for why this run was crowned
     pullRequestUrl: v.optional(v.string()), // URL of the created PR (only for crowned runs)
+    pullRequestIsDraft: v.optional(v.boolean()), // Whether the PR is a draft
     diffsLastUpdated: v.optional(v.number()), // Timestamp when diffs were last fetched/updated
     // VSCode instance information
     vscode: v.optional(
