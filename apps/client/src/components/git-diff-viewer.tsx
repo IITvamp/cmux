@@ -13,7 +13,14 @@ import {
   FileText,
 } from "lucide-react";
 import { type editor } from "monaco-editor";
-import { memo, useEffect, useMemo, useRef, useState, useLayoutEffect } from "react";
+import {
+  memo,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 interface GitDiffViewerProps {
   diffs: Doc<"gitDiffs">[];
@@ -87,10 +94,12 @@ export function GitDiffViewer({
         deletions: diff.deletions,
         oldContent:
           (lazyContents[`${taskRunId ?? "_"}:${diff.filePath}`]?.oldContent ??
-            diff.oldContent) || "",
+            diff.oldContent) ||
+          "",
         newContent:
           (lazyContents[`${taskRunId ?? "_"}:${diff.filePath}`]?.newContent ??
-            diff.newContent) || "",
+            diff.newContent) ||
+          "",
         patch: diff.patch,
         isBinary: diff.isBinary,
       })),
@@ -178,12 +187,9 @@ export function GitDiffViewer({
   const totalDeletions = diffs.reduce((sum, d) => sum + d.deletions, 0);
 
   return (
-    <div
-      key={taskRunId ?? "_"}
-      className="h-full overflow-y-auto hide-scrollbar bg-neutral-50 dark:bg-neutral-950"
-    >
-      {/* Header with summary - GitHub style */}
-      <div className="sticky top-0 z-10 bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800">
+    <div key={taskRunId ?? "_"} className="bg-neutral-50 dark:bg-neutral-950">
+      {/* Header with summary - scrolls with content */}
+      <div className="bg-white dark:bg-neutral-900">
         <div className="px-3 py-1 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <div className="text-xs font-medium text-neutral-900 dark:text-neutral-100">
@@ -216,7 +222,7 @@ export function GitDiffViewer({
       </div>
 
       {/* Diff sections */}
-      <div className="p-2 space-y-2">
+      <div className="">
         {fileGroups.map((file) => (
           <MemoFileDiffRow
             key={`${taskRunId ?? "_"}:${file.filePath}`}
@@ -271,10 +277,10 @@ function FileDiffRow({
   }, [file.oldContent, file.newContent, calculateEditorHeight]);
 
   return (
-    <div className="bg-white dark:bg-neutral-900 rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
+    <div className="bg-white dark:bg-neutral-900">
       <button
         onClick={onToggle}
-        className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors text-left group"
+        className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors text-left group pt-1 z-10 bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800 sticky top-0"
       >
         <div className="text-neutral-400 dark:text-neutral-500 group-hover:text-neutral-600 dark:group-hover:text-neutral-400">
           {isExpanded ? (
@@ -302,7 +308,7 @@ function FileDiffRow({
       </button>
 
       {isExpanded && (
-        <div className="border-t border-neutral-200 dark:border-neutral-800">
+        <div className="border-t border-neutral-200 dark:border-neutral-800 overflow-hidden rounded-b-lg">
           {file.isBinary ? (
             <div className="px-3 py-6 text-center text-neutral-500 dark:text-neutral-400 text-xs bg-neutral-50 dark:bg-neutral-900/50">
               Binary file not shown
@@ -349,7 +355,10 @@ function FileDiffRow({
                       language,
                       modifiedUri
                     );
-                    editor.setModel({ original: originalModel, modified: modifiedModel });
+                    editor.setModel({
+                      original: originalModel,
+                      modified: modifiedModel,
+                    });
                   } catch {
                     // ignore if monaco not available
                   }
@@ -377,7 +386,8 @@ function FileDiffRow({
                         if (current !== newHeight) {
                           containerRef.current.style.height = `${newHeight}px`;
                         }
-                        const width = containerRef.current.clientWidth || undefined;
+                        const width =
+                          containerRef.current.clientWidth || undefined;
                         if (typeof width === "number") {
                           editor.layout({ width, height: newHeight });
                           // Double-rAF to ensure Monaco settles after DOM style changes
@@ -412,10 +422,18 @@ function FileDiffRow({
                   };
                   const mod = editor.getModifiedEditor();
                   const orig = editor.getOriginalEditor();
-                  const d1 = mod.onDidContentSizeChange(scheduleMeasureAndLayout);
-                  const d2 = orig.onDidContentSizeChange(scheduleMeasureAndLayout);
-                  const d3 = mod.onDidChangeHiddenAreas(scheduleMeasureAndLayout);
-                  const d4 = orig.onDidChangeHiddenAreas(scheduleMeasureAndLayout);
+                  const d1 = mod.onDidContentSizeChange(
+                    scheduleMeasureAndLayout
+                  );
+                  const d2 = orig.onDidContentSizeChange(
+                    scheduleMeasureAndLayout
+                  );
+                  const d3 = mod.onDidChangeHiddenAreas(
+                    scheduleMeasureAndLayout
+                  );
+                  const d4 = orig.onDidChangeHiddenAreas(
+                    scheduleMeasureAndLayout
+                  );
                   const d5 = editor.onDidUpdateDiff?.(scheduleMeasureAndLayout);
 
                   // Observe container size changes to trigger layout
