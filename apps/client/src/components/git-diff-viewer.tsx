@@ -266,6 +266,12 @@ export function GitDiffViewer({
             runId={taskRunId}
           />
         ))}
+        {/* End-of-diff message */}
+        <div className="px-3 py-6 text-center border-t border-neutral-200 dark:border-neutral-800">
+          <span className="text-xs text-neutral-500 dark:text-neutral-400 select-none">
+            You’ve reached the end of the diff — nice work ✨
+          </span>
+        </div>
       </div>
     </div>
   );
