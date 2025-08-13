@@ -49,7 +49,6 @@ export function TaskDetailHeader({
 }: TaskDetailHeaderProps) {
   const navigate = useNavigate();
   const clipboard = useClipboard({ timeout: 2000 });
-  const [isHovering, setIsHovering] = useState(false);
   const [prIsOpen, setPrIsOpen] = useState(false);
   const { socket } = useSocket();
 
@@ -164,10 +163,10 @@ export function TaskDetailHeader({
             Open in VS Code
           </button>
 
-          <button className="p-1 text-neutral-400 hover:text-white select-none">
+          <button className="p-1 text-neutral-400 hover:text-white select-none hidden">
             <ExternalLink className="w-3.5 h-3.5" />
           </button>
-          <button className="p-1 text-neutral-400 hover:text-white select-none">
+          <button className="p-1 text-neutral-400 hover:text-white select-none hidden">
             <Trash2 className="w-3.5 h-3.5" />
           </button>
           <Dropdown.Root>
@@ -197,24 +196,28 @@ export function TaskDetailHeader({
         <div className="flex items-center gap-2 text-xs text-neutral-400">
           <button
             onClick={handleCopyBranch}
-            onMouseEnter={() => setIsHovering(true)}
-            onMouseLeave={() => setIsHovering(false)}
             className="flex items-center gap-1 hover:text-white transition-colors group"
           >
             <div className="relative w-3 h-3">
               <GitBranch
-                className="w-3 h-3 absolute inset-0 transition-opacity duration-150"
-                style={{ opacity: isHovering || clipboard.copied ? 0 : 1 }}
-                aria-hidden={isHovering || clipboard.copied}
+                className={clsx(
+                  "w-3 h-3 absolute inset-0 z-0",
+                  clipboard.copied ? "hidden" : "block group-hover:hidden"
+                )}
+                aria-hidden={clipboard.copied}
               />
               <Copy
-                className="w-3 h-3 absolute inset-0 transition-opacity duration-150"
-                style={{ opacity: isHovering && !clipboard.copied ? 1 : 0 }}
-                aria-hidden={!isHovering || clipboard.copied}
+                className={clsx(
+                  "w-3 h-3 absolute inset-0 z-10",
+                  clipboard.copied ? "hidden" : "hidden group-hover:block"
+                )}
+                aria-hidden={clipboard.copied}
               />
               <Check
-                className="w-3 h-3 text-green-400 absolute inset-0 transition-opacity duration-150"
-                style={{ opacity: clipboard.copied ? 1 : 0 }}
+                className={clsx(
+                  "w-3 h-3 text-green-400 absolute inset-0 z-20",
+                  clipboard.copied ? "block" : "hidden"
+                )}
                 aria-hidden={!clipboard.copied}
               />
             </div>

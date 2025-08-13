@@ -182,7 +182,7 @@ function TaskDetailPage() {
           {task?.text && (
             <div className="mb-2 px-3.5">
               <div className="text-xs text-neutral-300">
-                <span className="text-neutral-400">Prompt:</span>{" "}
+                <span className="text-neutral-400 select-none">Prompt: </span>
                 <span className="font-medium">{task.text}</span>
               </div>
             </div>
