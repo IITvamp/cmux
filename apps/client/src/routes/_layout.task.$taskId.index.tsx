@@ -220,7 +220,6 @@ function TaskDetailPage() {
   const hasAnyDiffs = !!(
     (selectedRun?._id ? stableDiffsByRun[selectedRun._id] : diffs) || []
   ).length;
-  console.log({ hasAnyDiffs });
 
   return (
     <FloatingPane>

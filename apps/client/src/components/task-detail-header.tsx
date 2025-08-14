@@ -64,7 +64,6 @@ export function TaskDetailHeader({
 
   // Determine if there are any diffs to open a PR for
   const hasChanges = useMemo(() => {
-    console.log({ hasAnyDiffs, totalAdditions, totalDeletions });
     if (typeof hasAnyDiffs === "boolean") return hasAnyDiffs;
     if (
       typeof totalAdditions !== "number" ||
