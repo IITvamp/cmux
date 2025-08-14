@@ -76,6 +76,7 @@ cleanup() {
     [ -n "$CLIENT_PID" ] && kill $CLIENT_PID 2>/dev/null
     [ -n "$CONVEX_DEV_PID" ] && kill $CONVEX_DEV_PID 2>/dev/null
     [ -n "$DOCKER_COMPOSE_PID" ] && kill $DOCKER_COMPOSE_PID 2>/dev/null
+    [ -n "$SERVER_GLOBAL_PID" ] && kill $SERVER_GLOBAL_PID 2>/dev/null
     # Give processes time to cleanup
     sleep 1
     # Force kill any remaining processes
@@ -83,6 +84,7 @@ cleanup() {
     [ -n "$CLIENT_PID" ] && kill -9 $CLIENT_PID 2>/dev/null
     [ -n "$CONVEX_DEV_PID" ] && kill -9 $CONVEX_DEV_PID 2>/dev/null
     [ -n "$DOCKER_COMPOSE_PID" ] && kill -9 $DOCKER_COMPOSE_PID 2>/dev/null
+    [ -n "$SERVER_GLOBAL_PID" ] && kill -9 $SERVER_GLOBAL_PID 2>/dev/null
     exit
 }
 
@@ -153,6 +155,12 @@ check_process $DOCKER_COMPOSE_PID "Docker Compose"
 CONVEX_DEV_PID=$!
 check_process $CONVEX_DEV_PID "Convex Dev"
 CONVEX_PID=$CONVEX_DEV_PID
+
+# Start the global server
+echo -e "${GREEN}Starting global server on port 9779...${NC}"
+(cd apps/server-global && exec bash -c 'trap "kill -9 0" EXIT; bun run dev 2>&1 | tee "$LOG_DIR/server-global.log" | prefix_output "SERVER-GLOBAL" "$RED"') &
+SERVER_GLOBAL_PID=$!
+check_process $SERVER_GLOBAL_PID "Global Server"
 
 
 # Start the backend server
