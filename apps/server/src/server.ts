@@ -31,17 +31,17 @@ import { RepositoryManager } from "./repositoryManager.js";
 import { getPRTitleFromTaskDescription } from "./utils/branchNameGenerator.js";
 import { convex } from "./utils/convexClient.js";
 import { ensureRunWorktreeAndBranch } from "./utils/ensureRunWorktree.js";
-  import {
-    fetchPrByHead,
-    fetchPrDetail,
-    createReadyPr,
-    markPrReady,
-    reopenPr,
-    parseRepoFromUrl,
-    mergePr,
-  } from "./utils/githubPr.js";
 import { dockerLogger, serverLogger } from "./utils/fileLogger.js";
 import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
+import {
+  createReadyPr,
+  fetchPrByHead,
+  fetchPrDetail,
+  markPrReady,
+  mergePr,
+  parseRepoFromUrl,
+  reopenPr,
+} from "./utils/githubPr.js";
 import { checkAllProvidersStatus } from "./utils/providerStatus.js";
 import {
   refreshBranchesForRepo,
@@ -118,14 +118,10 @@ export async function startServer({
     }
 
     socket.on("start-task", async (data, callback) => {
+      const taskData = StartTaskSchema.parse(data);
+      serverLogger.info("starting task!", taskData);
+      const taskId = taskData.taskId;
       try {
-        serverLogger.info("got data", data);
-        const taskData = StartTaskSchema.parse(data);
-        serverLogger.info("starting task!", taskData);
-
-        // Use the taskId provided by the client
-        const taskId = taskData.taskId;
-
         // Generate PR title early from the task description
         let generatedTitle: string | null = null;
         try {
@@ -134,7 +130,7 @@ export async function startServer({
           );
           // Persist to Convex immediately
           await convex.mutation(api.tasks.setPullRequestTitle, {
-            id: taskId as Id<"tasks">,
+            id: taskId,
             pullRequestTitle: generatedTitle,
           });
           serverLogger.info(`[Server] Saved early PR title: ${generatedTitle}`);
@@ -163,7 +159,7 @@ export async function startServer({
         );
         if (successfulAgents.length === 0) {
           callback({
-            taskId: "error",
+            taskId,
             error: "Failed to spawn any agents",
           });
           return;
@@ -219,7 +215,7 @@ export async function startServer({
       } catch (error) {
         serverLogger.error("Error in start-task:", error);
         callback({
-          taskId: "error",
+          taskId,
           error: error instanceof Error ? error.message : "Unknown error",
         });
       }
@@ -231,7 +227,9 @@ export async function startServer({
         const { taskRunId } = GitHubCreateDraftPrSchema.parse(data);
 
         // Load run and task (no worktree setup to keep it light)
-        const run = await convex.query(api.taskRuns.get, { id: taskRunId as any });
+        const run = await convex.query(api.taskRuns.get, {
+          id: taskRunId as Id<"taskRuns">,
+        });
         if (!run) {
           callback({ success: false, error: "Task run not found" });
           return;
@@ -265,9 +263,19 @@ export async function startServer({
           if (parsed.number) prNumber = parsed.number;
         }
 
-        let prBasic: { number: number; html_url: string; state: string; draft?: boolean } | null = null;
+        let prBasic: {
+          number: number;
+          html_url: string;
+          state: string;
+          draft?: boolean;
+        } | null = null;
         if (owner && repo && prNumber) {
-          const detail = await fetchPrDetail(githubToken, owner, repo, prNumber);
+          const detail = await fetchPrDetail(
+            githubToken,
+            owner,
+            repo,
+            prNumber
+          );
           prBasic = {
             number: detail.number,
             html_url: detail.html_url,
@@ -276,45 +284,96 @@ export async function startServer({
           };
         } else if (owner && repo && branchName) {
           // Find PR by head branch
-          prBasic = await fetchPrByHead(githubToken, owner, repo, owner, branchName);
+          prBasic = await fetchPrByHead(
+            githubToken,
+            owner,
+            repo,
+            owner,
+            branchName
+          );
         }
 
         if (!prBasic) {
           await convex.mutation(api.taskRuns.updatePullRequestState, {
-            id: run._id as any,
+            id: run._id,
             state: "none",
             isDraft: undefined,
             number: undefined,
             url: undefined,
-          } as any);
+          });
+          // Update task merge status to none
+          await convex.mutation(api.tasks.updateMergeStatus, {
+            id: task._id,
+            mergeStatus: "none",
+          });
           callback({ success: true, state: "none" });
           return;
         }
 
         // Fetch detailed PR to detect merged
-        const prDetail = await fetchPrDetail(githubToken, owner, repo, prBasic.number);
+        const prDetail = await fetchPrDetail(
+          githubToken,
+          owner,
+          repo,
+          prBasic.number
+        );
         const isMerged = !!prDetail.merged_at;
         const isDraft = prDetail.draft ?? prBasic.draft ?? false;
 
-        const state: "open" | "closed" | "merged" | "draft" | "unknown" = isMerged
-          ? "merged"
-          : isDraft
-          ? "draft"
-          : prBasic.state === "open"
-          ? "open"
-          : prBasic.state === "closed"
-          ? "closed"
-          : "unknown";
+        const state: "open" | "closed" | "merged" | "draft" | "unknown" =
+          isMerged
+            ? "merged"
+            : isDraft
+              ? "draft"
+              : prBasic.state === "open"
+                ? "open"
+                : prBasic.state === "closed"
+                  ? "closed"
+                  : "unknown";
 
         await convex.mutation(api.taskRuns.updatePullRequestState, {
-          id: run._id as any,
+          id: run._id,
           state,
           isDraft,
           number: prBasic.number,
           url: prBasic.html_url,
         });
 
-        callback({ success: true, url: prBasic.html_url, number: prBasic.number, state, isDraft });
+        // Update task merge status based on PR state
+        let taskMergeStatus:
+          | "none"
+          | "pr_draft"
+          | "pr_open"
+          | "pr_merged"
+          | "pr_closed" = "none";
+        switch (state) {
+          case "draft":
+            taskMergeStatus = "pr_draft";
+            break;
+          case "open":
+            taskMergeStatus = "pr_open";
+            break;
+          case "merged":
+            taskMergeStatus = "pr_merged";
+            break;
+          case "closed":
+            taskMergeStatus = "pr_closed";
+            break;
+        }
+        if (taskMergeStatus !== "none") {
+          await convex.mutation(api.tasks.updateMergeStatus, {
+            id: task._id,
+            mergeStatus: taskMergeStatus,
+          });
+        }
+
+        callback({
+          success: true,
+          url: prBasic.html_url,
+          number: prBasic.number,
+          state,
+          isDraft,
+        });
       } catch (error) {
         serverLogger.error("Error syncing PR state:", error);
         callback({
@@ -327,15 +386,25 @@ export async function startServer({
     // Merge PR for a run
     socket.on("github-merge-pr", async (data, callback) => {
       try {
-        const { taskRunId, method } = (data as { taskRunId: string; method: "squash" | "rebase" | "merge" });
+        const { taskRunId, method } = data as {
+          taskRunId: string;
+          method: "squash" | "rebase" | "merge";
+        };
 
-        const run = await convex.query(api.taskRuns.get, { id: taskRunId as any });
-        if (!run) return callback({ success: false, error: "Task run not found" });
+        const run = await convex.query(api.taskRuns.get, {
+          id: taskRunId as Id<"taskRuns">,
+        });
+        if (!run)
+          return callback({ success: false, error: "Task run not found" });
         const task = await convex.query(api.tasks.getById, { id: run.taskId });
         if (!task) return callback({ success: false, error: "Task not found" });
 
         const githubToken = await getGitHubTokenFromKeychain(convex);
-        if (!githubToken) return callback({ success: false, error: "GitHub token is not configured" });
+        if (!githubToken)
+          return callback({
+            success: false,
+            error: "GitHub token is not configured",
+          });
 
         let [owner, repo] = (task.projectFullName || "").split("/");
         let prNumber: number | null = run.pullRequestNumber || null;
@@ -346,17 +415,28 @@ export async function startServer({
           prNumber = prNumber || parsed.number || null;
         }
 
-        if (!owner || !repo) return callback({ success: false, error: "Unknown repo for task" });
+        if (!owner || !repo)
+          return callback({ success: false, error: "Unknown repo for task" });
 
         // If PR number still unknown, try to locate via branch
         if (!prNumber && run.newBranch) {
-          const found = await fetchPrByHead(githubToken, owner, repo, owner, run.newBranch);
+          const found = await fetchPrByHead(
+            githubToken,
+            owner,
+            repo,
+            owner,
+            run.newBranch
+          );
           if (found) {
             prNumber = found.number;
           }
         }
 
-        if (!prNumber) return callback({ success: false, error: "Pull request not found for this run" });
+        if (!prNumber)
+          return callback({
+            success: false,
+            error: "Pull request not found for this run",
+          });
 
         // Ensure PR is open and not draft
         const detail = await fetchPrDetail(githubToken, owner, repo, prNumber);
@@ -366,7 +446,10 @@ export async function startServer({
             await markPrReady(githubToken, owner, repo, prNumber);
           } catch (e: unknown) {
             const msg = e instanceof Error ? e.message : String(e);
-            return callback({ success: false, error: `PR is draft and could not be made ready: ${msg}` });
+            return callback({
+              success: false,
+              error: `PR is draft and could not be made ready: ${msg}`,
+            });
           }
         }
         if (detail.state === "closed") {
@@ -375,13 +458,17 @@ export async function startServer({
             await reopenPr(githubToken, owner, repo, prNumber);
           } catch (e: unknown) {
             const msg = e instanceof Error ? e.message : String(e);
-            return callback({ success: false, error: `PR is closed and could not be reopened: ${msg}` });
+            return callback({
+              success: false,
+              error: `PR is closed and could not be reopened: ${msg}`,
+            });
           }
         }
 
         // Optional: commit title/message
         const title = task.pullRequestTitle || task.text || `cmux changes`;
-        const truncatedTitle = title.length > 72 ? `${title.slice(0, 69)}...` : title;
+        const truncatedTitle =
+          title.length > 72 ? `${title.slice(0, 69)}...` : title;
         const commitMessage = `Merged by cmux for task ${String(task._id)}.`;
 
         // Merge
@@ -397,20 +484,33 @@ export async function startServer({
           );
           // Update Convex: merged
           await convex.mutation(api.taskRuns.updatePullRequestState, {
-            id: run._id as any,
+            id: run._id,
             state: "merged",
             isDraft: false,
             number: prNumber,
             url: detail.html_url,
           });
-          callback({ success: true, merged: !!res.merged, state: "merged", url: detail.html_url });
+          // Update task merge status to merged
+          await convex.mutation(api.tasks.updateMergeStatus, {
+            id: task._id,
+            mergeStatus: "pr_merged",
+          });
+          callback({
+            success: true,
+            merged: !!res.merged,
+            state: "merged",
+            url: detail.html_url,
+          });
         } catch (e: unknown) {
           const msg = e instanceof Error ? e.message : String(e);
           callback({ success: false, error: `Failed to merge PR: ${msg}` });
         }
       } catch (error) {
         serverLogger.error("Error merging PR:", error);
-        callback({ success: false, error: error instanceof Error ? error.message : "Unknown error" });
+        callback({
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
       }
     });
 
@@ -452,7 +552,7 @@ export async function startServer({
           filePath: string;
         };
         const taskRun = await convex.query(api.taskRuns.get, {
-          id: taskRunId as any,
+          id: taskRunId as Id<"taskRuns">,
         });
         if (!taskRun?.worktreePath) {
           callback?.({ ok: false, error: "Worktree not found" });
@@ -461,9 +561,9 @@ export async function startServer({
         const worktreePath = taskRun.worktreePath as string;
         // Determine status from stored diff to handle deleted/added cases
         const diffs = await convex.query(api.gitDiffs.getByTaskRun, {
-          taskRunId: taskRunId as any,
+          taskRunId: taskRunId as Id<"taskRuns">,
         });
-        const fileDiff = diffs?.find((d: any) => d.filePath === filePath);
+        const fileDiff = diffs?.find((d) => d.filePath === filePath);
         const status = fileDiff?.status ?? "modified";
         let oldContent = "";
         let newContent = "";
@@ -861,7 +961,7 @@ export async function startServer({
 
         // Ensure worktree exists and we are on the correct branch
         const { run, task, worktreePath, branchName, baseBranch } =
-          await ensureRunWorktreeAndBranch(taskRunId as any);
+          await ensureRunWorktreeAndBranch(taskRunId as Id<"taskRuns">);
 
         // Get GitHub token from keychain/Convex
         const githubToken = await getGitHubTokenFromKeychain(convex);
@@ -880,7 +980,6 @@ export async function startServer({
         // Ensure on branch, commit, push, and create draft PR using local filesystem
         const cwd = worktreePath;
 
-        
         let prUrl: string | undefined;
 
         // 1) Fetch base (optional but helpful)
@@ -1059,9 +1158,14 @@ export async function startServer({
 
         if (prUrl) {
           await convex.mutation(api.taskRuns.updatePullRequestUrl, {
-            id: run._id as any,
+            id: run._id,
             pullRequestUrl: prUrl,
             isDraft: true,
+          });
+          // Update task merge status to draft PR
+          await convex.mutation(api.tasks.updateMergeStatus, {
+            id: task._id,
+            mergeStatus: "pr_draft",
           });
         }
 
@@ -1081,7 +1185,7 @@ export async function startServer({
         const { taskRunId } = GitHubCreateDraftPrSchema.parse(data);
 
         const { run, task, worktreePath, branchName, baseBranch } =
-          await ensureRunWorktreeAndBranch(taskRunId as any);
+          await ensureRunWorktreeAndBranch(taskRunId);
 
         const githubToken = await getGitHubTokenFromKeychain(convex);
         if (!githubToken) {
@@ -1107,8 +1211,13 @@ export async function startServer({
             { cwd, env: { ...process.env }, shell: "/bin/bash" }
           );
         } catch (e: unknown) {
-          const err = e as { stdout?: string; stderr?: string; message?: string };
-          const msg = err?.message || err?.stderr || err?.stdout || "unknown error";
+          const err = e as {
+            stdout?: string;
+            stderr?: string;
+            message?: string;
+          };
+          const msg =
+            err?.message || err?.stderr || err?.stdout || "unknown error";
           serverLogger.warn(`[OpenPR] Commit step warning: ${msg}`);
         }
 
@@ -1119,15 +1228,21 @@ export async function startServer({
             maxBuffer: 10 * 1024 * 1024,
           });
         } catch (e: unknown) {
-          const err = e as { stdout?: string; stderr?: string; message?: string };
-          const msg = err?.message || err?.stderr || err?.stdout || "unknown error";
+          const err = e as {
+            stdout?: string;
+            stderr?: string;
+            message?: string;
+          };
+          const msg =
+            err?.message || err?.stderr || err?.stdout || "unknown error";
           serverLogger.warn(`[OpenPR] Push warning: ${msg}`);
         }
 
         // PR resolution via helpers
-        const initialBasic = owner && repo
-          ? await fetchPrByHead(githubToken, owner, repo, owner, branchName)
-          : null;
+        const initialBasic =
+          owner && repo
+            ? await fetchPrByHead(githubToken, owner, repo, owner, branchName)
+            : null;
 
         let finalUrl: string | undefined;
         let finalNumber: number | undefined;
@@ -1157,13 +1272,17 @@ export async function startServer({
             const msg = e instanceof Error ? e.message : String(e);
             if (!/already exists/i.test(msg)) {
               serverLogger.error(`[OpenPR] Failed creating PR via API: ${msg}`);
-              callback({ success: false, error: `Failed to create PR: ${msg}` });
+              callback({
+                success: false,
+                error: `Failed to create PR: ${msg}`,
+              });
               return;
             }
           }
-          const latest = owner && repo
-            ? await fetchPrByHead(githubToken, owner, repo, owner, branchName)
-            : null;
+          const latest =
+            owner && repo
+              ? await fetchPrByHead(githubToken, owner, repo, owner, branchName)
+              : null;
           if (latest) {
             finalUrl = latest.html_url;
             finalNumber = latest.number;
@@ -1176,10 +1295,19 @@ export async function startServer({
           } catch (e: unknown) {
             const msg = e instanceof Error ? e.message : String(e);
             serverLogger.error(`[OpenPR] markPrReady failed: ${msg}`);
-            callback({ success: false, error: `Failed to mark PR ready: ${msg}` });
+            callback({
+              success: false,
+              error: `Failed to mark PR ready: ${msg}`,
+            });
             return;
           }
-          const latest = await fetchPrByHead(githubToken, owner!, repo!, owner!, branchName);
+          const latest = await fetchPrByHead(
+            githubToken,
+            owner!,
+            repo!,
+            owner!,
+            branchName
+          );
           if (latest) {
             finalUrl = latest.html_url;
             finalNumber = latest.number;
@@ -1197,7 +1325,13 @@ export async function startServer({
             }
           }
           // Reflect latest state
-          const latest = await fetchPrByHead(githubToken, owner!, repo!, owner!, branchName);
+          const latest = await fetchPrByHead(
+            githubToken,
+            owner!,
+            repo!,
+            owner!,
+            branchName
+          );
           if (latest) {
             finalUrl = latest.html_url;
             finalNumber = latest.number;
@@ -1207,12 +1341,11 @@ export async function startServer({
         }
 
         // Map gh state to our union (consider merged flag)
-        const stateMap = (s?: string, isDraft?: boolean, merged?: boolean):
-          | "open"
-          | "draft"
-          | "merged"
-          | "closed"
-          | "unknown" => {
+        const stateMap = (
+          s?: string,
+          isDraft?: boolean,
+          merged?: boolean
+        ): "open" | "draft" | "merged" | "closed" | "unknown" => {
           if (merged) return "merged";
           if (isDraft) return "draft";
           switch ((s || "").toUpperCase()) {
@@ -1231,19 +1364,56 @@ export async function startServer({
         let merged = false;
         if (owner && repo && finalNumber) {
           try {
-            const detail = await fetchPrDetail(githubToken, owner, repo, finalNumber);
+            const detail = await fetchPrDetail(
+              githubToken,
+              owner,
+              repo,
+              finalNumber
+            );
             merged = !!detail.merged_at;
           } catch {}
         }
 
         await convex.mutation(api.taskRuns.updatePullRequestState, {
           id: run._id as any,
-          state:
-            finalUrl ? stateMap(finalState, finalIsDraft, merged) : ("none" as const),
+          state: finalUrl
+            ? stateMap(finalState, finalIsDraft, merged)
+            : ("none" as const),
           isDraft: finalIsDraft,
           number: finalNumber,
           url: finalUrl,
         });
+
+        // Update task merge status based on PR state
+        const prState = finalUrl
+          ? stateMap(finalState, finalIsDraft, merged)
+          : "none";
+        let taskMergeStatus:
+          | "none"
+          | "pr_draft"
+          | "pr_open"
+          | "pr_merged"
+          | "pr_closed" = "none";
+        switch (prState) {
+          case "draft":
+            taskMergeStatus = "pr_draft";
+            break;
+          case "open":
+            taskMergeStatus = "pr_open";
+            break;
+          case "merged":
+            taskMergeStatus = "pr_merged";
+            break;
+          case "closed":
+            taskMergeStatus = "pr_closed";
+            break;
+        }
+        if (taskMergeStatus !== "none") {
+          await convex.mutation(api.tasks.updateMergeStatus, {
+            id: task._id,
+            mergeStatus: taskMergeStatus,
+          });
+        }
 
         callback({
           success: true,

@@ -194,7 +194,8 @@ Completed: ${new Date().toISOString()}`;
     if (isCrowned) {
       // Respect workspace setting for auto-PR
       const ws = await convex.query(api.workspaceSettings.get);
-      const autoPrEnabled = ((ws as unknown) as { autoPrEnabled?: boolean })?.autoPrEnabled ?? false;
+      const autoPrEnabled =
+        (ws as unknown as { autoPrEnabled?: boolean })?.autoPrEnabled ?? false;
       if (!autoPrEnabled) {
         serverLogger.info(
           `[AgentSpawner] Auto-PR is disabled in settings; skipping PR creation.`
@@ -222,7 +223,7 @@ Completed: ${new Date().toISOString()}`;
           if (!task.pullRequestTitle || task.pullRequestTitle !== prTitle) {
             try {
               await convex.mutation(api.tasks.setPullRequestTitle, {
-                id: task._id as Id<"tasks">,
+                id: task._id,
                 pullRequestTitle: prTitle,
               });
             } catch (e) {
@@ -248,15 +249,19 @@ ${taskRun.crownReason || "This implementation was selected as the best solution.
           // Persist PR description on the task in Convex
           try {
             await convex.mutation(api.tasks.setPullRequestDescription, {
-              id: task._id as Id<"tasks">,
+              id: task._id,
               pullRequestDescription: prBody,
             });
           } catch (e) {
-            serverLogger.error(`[AgentSpawner] Failed to save PR description:`, e);
+            serverLogger.error(
+              `[AgentSpawner] Failed to save PR description:`,
+              e
+            );
           }
 
           const bodyFileVar = `cmux_pr_body_${Date.now()}_${Math.random().toString(36).slice(2)}.md`;
-          const prScript = `set -e\n` +
+          const prScript =
+            `set -e\n` +
             `BODY_FILE=\"/tmp/${bodyFileVar}\"\n` +
             `cat <<'CMUX_EOF' > \"$BODY_FILE\"\n` +
             `${prBody}\n` +
@@ -944,7 +949,7 @@ export interface AgentSpawnResult {
 
 export async function spawnAgent(
   agent: AgentConfig,
-  taskId: string | Id<"tasks">,
+  taskId: Id<"tasks">,
   options: {
     repoUrl: string;
     branch?: string;
@@ -968,7 +973,7 @@ export async function spawnAgent(
 
     // Create a task run for this specific agent
     const taskRunId = await convex.mutation(api.taskRuns.create, {
-      taskId: taskId as Id<"tasks">,
+      taskId: taskId,
       prompt: `${options.taskDescription} (${agent.name})`,
       agentName: agent.name,
       newBranch,
@@ -976,7 +981,7 @@ export async function spawnAgent(
 
     // Fetch the task to get image storage IDs
     const task = await convex.query(api.tasks.getById, {
-      id: taskId as Id<"tasks">,
+      id: taskId,
     });
 
     // Process prompt to handle images
@@ -1148,7 +1153,8 @@ export async function spawnAgent(
       // For Morph, create the instance and we'll clone the repo via socket command
       vscodeInstance = new MorphVSCodeInstance({
         agentName: agent.name,
-        taskRunId: taskRunId as string,
+        taskRunId,
+        taskId,
         theme: options.theme,
       });
 
@@ -1193,7 +1199,8 @@ export async function spawnAgent(
       vscodeInstance = new DockerVSCodeInstance({
         workspacePath: worktreePath,
         agentName: agent.name,
-        taskRunId: taskRunId as string,
+        taskRunId,
+        taskId,
         theme: options.theme,
       });
     }
@@ -1371,35 +1378,46 @@ export async function spawnAgent(
             serverLogger.info(
               `[AgentSpawner] Task completed with winner: ${winnerId}`
             );
-            
+
             // For single agent scenario, trigger auto-PR if enabled
-            const taskRuns = await convex.query(api.taskRuns.getByTask, { 
-              taskId: taskRunData.taskId 
+            const taskRuns = await convex.query(api.taskRuns.getByTask, {
+              taskId: taskRunData.taskId,
             });
-            
+
             if (taskRuns.length === 1) {
               serverLogger.info(
                 `[AgentSpawner] Single agent scenario - checking auto-PR settings`
               );
-              
+
               // Check if auto-PR is enabled
               const ws = await convex.query(api.workspaceSettings.get);
-              const autoPrEnabled = ((ws as unknown) as { autoPrEnabled?: boolean })?.autoPrEnabled ?? false;
-              
+              const autoPrEnabled =
+                (ws as unknown as { autoPrEnabled?: boolean })?.autoPrEnabled ??
+                false;
+
               if (autoPrEnabled && winnerId) {
                 serverLogger.info(
                   `[AgentSpawner] Triggering auto-PR for single agent completion`
                 );
-                
+
                 // Import and call the createPullRequestForWinner function
-                const { createPullRequestForWinner } = await import("./crownEvaluator.js");
-                const { getGitHubTokenFromKeychain } = await import("./utils/getGitHubToken.js");
+                const { createPullRequestForWinner } = await import(
+                  "./crownEvaluator.js"
+                );
+                const { getGitHubTokenFromKeychain } = await import(
+                  "./utils/getGitHubToken.js"
+                );
                 const githubToken = await getGitHubTokenFromKeychain(convex);
-                
+
                 // Small delay to ensure git diff is persisted
                 setTimeout(async () => {
                   try {
-                    await createPullRequestForWinner(convex, winnerId, taskRunData.taskId, githubToken || undefined);
+                    await createPullRequestForWinner(
+                      convex,
+                      winnerId,
+                      taskRunData.taskId,
+                      githubToken || undefined
+                    );
                     serverLogger.info(
                       `[AgentSpawner] Auto-PR completed for single agent`
                     );
@@ -1510,7 +1528,7 @@ export async function spawnAgent(
           const relativePath = path.relative(worktreePath, fileDiff.path);
 
           await convex.mutation(api.gitDiffs.upsertDiff, {
-            taskRunId: taskRunId as Id<"taskRuns">,
+            taskRunId,
             filePath: relativePath,
             status: fileDiff.type as "added" | "modified" | "deleted",
             additions: (fileDiff.patch.match(/^\+[^+]/gm) || []).length,
@@ -1524,7 +1542,7 @@ export async function spawnAgent(
 
         // Update the timestamp
         await convex.mutation(api.gitDiffs.updateDiffsTimestamp, {
-          taskRunId: taskRunId as Id<"taskRuns">,
+          taskRunId,
         });
 
         serverLogger.info(
@@ -1735,7 +1753,8 @@ export async function spawnAgent(
       cols: 80,
       rows: 74,
       env: envVars,
-      taskId: taskRunId,
+      taskId: taskId,
+      taskRunId,
       authFiles,
       startupCommands,
       cwd: "/root/workspace",
@@ -1980,7 +1999,7 @@ export async function spawnAgent(
 }
 
 export async function spawnAllAgents(
-  taskId: string | Id<"tasks">,
+  taskId: Id<"tasks">,
   options: {
     repoUrl: string;
     branch?: string;
@@ -2006,7 +2025,10 @@ export async function spawnAllAgents(
   // Generate unique branch names for all agents at once to ensure no collisions
   const branchNames = options.prTitle
     ? generateUniqueBranchNamesFromTitle(options.prTitle!, agentsToSpawn.length)
-    : await generateUniqueBranchNames(options.taskDescription, agentsToSpawn.length);
+    : await generateUniqueBranchNames(
+        options.taskDescription,
+        agentsToSpawn.length
+      );
 
   serverLogger.info(
     `[AgentSpawner] Generated ${branchNames.length} unique branch names for agents`

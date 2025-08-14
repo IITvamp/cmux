@@ -32,9 +32,14 @@
     "./convex-ready": {
       "import": "./src/convex-ready.ts",
       "types": "./src/convex-ready.ts"
+    },
+    "./utils/typed-zid": {
+      "import": "./src/utils/typed-zid.ts",
+      "types": "./src/utils/typed-zid.ts"
     }
   },
   "dependencies": {
+    "@cmux/convex": "workspace:*",
     "zod": "^3.25.67"
   },
   "devDependencies": {

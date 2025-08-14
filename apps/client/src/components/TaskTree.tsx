@@ -6,7 +6,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useArchiveTask } from "@/hooks/useArchiveTask";
 import { ContextMenu } from "@base-ui-components/react/context-menu";
-import { type Doc } from "@cmux/convex/dataModel";
+import { type Doc, type Id } from "@cmux/convex/dataModel";
 import { Link, useLocation } from "@tanstack/react-router";
 import clsx from "clsx";
 import {
@@ -17,6 +17,10 @@ import {
   Circle,
   Copy as CopyIcon,
   Crown,
+  GitMerge,
+  GitPullRequest,
+  GitPullRequestClosed,
+  GitPullRequestDraft,
   Loader2,
   XCircle,
 } from "lucide-react";
@@ -117,16 +121,80 @@ function TaskTreeInner({ task, level = 0 }: TaskTreeProps) {
             </button>
 
             <div className="mr-2 flex-shrink-0">
-              {task.isCompleted ? (
-                <CheckCircle className="w-3 h-3 text-green-500" />
-              ) : (
-                <Circle className="w-3 h-3 text-neutral-400 animate-pulse" />
-              )}
+              {(() => {
+                // Show merge status icon if PR activity exists
+                if (task.mergeStatus && task.mergeStatus !== "none") {
+                  switch (task.mergeStatus) {
+                    case "pr_draft":
+                      return (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <GitPullRequestDraft className="w-3 h-3 text-neutral-500" />
+                          </TooltipTrigger>
+                          <TooltipContent>Draft PR</TooltipContent>
+                        </Tooltip>
+                      );
+                    case "pr_open":
+                      return (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <GitPullRequest className="w-3 h-3 text-blue-500" />
+                          </TooltipTrigger>
+                          <TooltipContent>PR Open</TooltipContent>
+                        </Tooltip>
+                      );
+                    case "pr_approved":
+                      return (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <GitPullRequest className="w-3 h-3 text-green-500" />
+                          </TooltipTrigger>
+                          <TooltipContent>PR Approved</TooltipContent>
+                        </Tooltip>
+                      );
+                    case "pr_changes_requested":
+                      return (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <GitPullRequest className="w-3 h-3 text-yellow-500" />
+                          </TooltipTrigger>
+                          <TooltipContent>Changes Requested</TooltipContent>
+                        </Tooltip>
+                      );
+                    case "pr_merged":
+                      return (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <GitMerge className="w-3 h-3 text-purple-500" />
+                          </TooltipTrigger>
+                          <TooltipContent>Merged</TooltipContent>
+                        </Tooltip>
+                      );
+                    case "pr_closed":
+                      return (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <GitPullRequestClosed className="w-3 h-3 text-red-500" />
+                          </TooltipTrigger>
+                          <TooltipContent>PR Closed</TooltipContent>
+                        </Tooltip>
+                      );
+                    default:
+                      return null;
+                  }
+                }
+                // Fallback to completion status if no merge status
+                return task.isCompleted ? (
+                  <CheckCircle className="w-3 h-3 text-green-500" />
+                ) : (
+                  <Circle className="w-3 h-3 text-neutral-400 animate-pulse" />
+                );
+              })()}
             </div>
 
             <div className="flex-1 min-w-0">
               <p className="truncate text-neutral-900 dark:text-neutral-100 text-xs">
-                {task.text}
+                {task.pullRequestTitle || task.text}
               </p>
             </div>
           </Link>
@@ -183,7 +251,7 @@ function TaskTreeInner({ task, level = 0 }: TaskTreeProps) {
 interface TaskRunTreeProps {
   run: TaskRunWithChildren;
   level: number;
-  taskId: string;
+  taskId: Id<"tasks">;
   branch?: string;
 }
 

@@ -1,7 +1,7 @@
 import { useTheme } from "@/components/theme/use-theme";
 import { useSocket } from "@/contexts/socket/use-socket";
 import { cn } from "@/lib/utils";
-import type { Doc } from "@cmux/convex/dataModel";
+import type { Doc, Id } from "@cmux/convex/dataModel";
 import { DiffEditor } from "@monaco-editor/react";
 import {
   ChevronDown,
@@ -25,7 +25,7 @@ import {
 interface GitDiffViewerProps {
   diffs: Doc<"gitDiffs">[];
   isLoading?: boolean;
-  taskRunId?: string;
+  taskRunId?: Id<"taskRuns">;
   onControlsChange?: (controls: {
     expandAll: () => void;
     collapseAll: () => void;

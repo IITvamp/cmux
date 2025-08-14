@@ -5,29 +5,44 @@ import { type MergeMethod } from "@/components/ui/merge-button";
 import { useSocket } from "@/contexts/socket/use-socket";
 import { api } from "@cmux/convex/api";
 import { type Id } from "@cmux/convex/dataModel";
+import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { convexQuery } from "@convex-dev/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import z from "zod";
+
+const paramsSchema = z.object({
+  taskId: typedZid("tasks"),
+});
 
 export const Route = createFileRoute("/_layout/task/$taskId/")({
   component: TaskDetailPage,
+  params: {
+    parse: paramsSchema.parse,
+    stringify: (params) => {
+      return {
+        taskId: params.taskId,
+      };
+    },
+  },
   validateSearch: (search: Record<string, unknown>) => {
+    const runId = typedZid("taskRuns").optional().parse(search.runId);
     return {
-      runId: search.runId as string | undefined,
+      runId: runId,
     };
   },
   loader: async (opts) => {
     await Promise.all([
       opts.context.queryClient.ensureQueryData(
         convexQuery(api.taskRuns.getByTask, {
-          taskId: opts.params.taskId as Id<"tasks">,
+          taskId: opts.params.taskId,
         })
       ),
       opts.context.queryClient.ensureQueryData(
         convexQuery(api.tasks.getById, {
-          id: opts.params.taskId as Id<"tasks">,
+          id: opts.params.taskId,
         })
       ),
     ]);
@@ -49,10 +64,10 @@ function TaskDetailPage() {
   const { socket } = useSocket();
 
   const task = useQuery(api.tasks.getById, {
-    id: taskId as Id<"tasks">,
+    id: taskId,
   });
   const taskRuns = useQuery(api.taskRuns.getByTask, {
-    taskId: taskId as Id<"tasks">,
+    taskId: taskId,
   });
 
   // Find the crowned run (if any)
@@ -82,7 +97,7 @@ function TaskDetailPage() {
     if (!selectedRun?._id || !socket) return;
     socket.emit(
       "github-sync-pr-state",
-      { taskRunId: selectedRun._id as string },
+      { taskRunId: selectedRun._id },
       (_resp: { success: boolean }) => {
         // Convex subscription will update UI automatically
       }
@@ -134,11 +149,11 @@ function TaskDetailPage() {
 
   // Stabilize diffs per-run to avoid cross-run flashes
   const [stableDiffsByRun, setStableDiffsByRun] = useState<
-    Record<string, typeof diffs>
+    Record<Id<"taskRuns">, typeof diffs>
   >({});
   useEffect(() => {
     if (!diffs || isCheckingDiffs || !selectedRun?._id) return;
-    const runKey = selectedRun._id as string;
+    const runKey = selectedRun._id;
     setStableDiffsByRun((prev) => {
       const prevForRun = prev[runKey];
       if (!prevForRun) return { ...prev, [runKey]: diffs };
@@ -166,7 +181,7 @@ function TaskDetailPage() {
     if (!isCheckingDiffs && diffs && selectedRun?._id) {
       setStableDiffsByRun((prev) => ({
         ...prev,
-        [selectedRun._id as string]: diffs,
+        [selectedRun._id]: diffs,
       }));
     }
   }, [isCheckingDiffs, diffs, selectedRun?._id]);
@@ -179,13 +194,22 @@ function TaskDetailPage() {
     await new Promise<void>((resolve) => {
       socket.emit(
         "github-merge-pr",
-        { taskRunId: selectedRun._id as string, method },
-        (resp: { success: boolean; merged?: boolean; state?: string; url?: string; error?: string }) => {
+        { taskRunId: selectedRun._id, method },
+        (resp: {
+          success: boolean;
+          merged?: boolean;
+          state?: string;
+          url?: string;
+          error?: string;
+        }) => {
           setIsMerging(false);
           if (resp.success) {
             toast.success("PR merged", { id: toastId, description: resp.url });
           } else {
-            toast.error("Failed to merge PR", { id: toastId, description: resp.error });
+            toast.error("Failed to merge PR", {
+              id: toastId,
+              description: resp.error,
+            });
           }
           resolve();
         }
@@ -194,17 +218,15 @@ function TaskDetailPage() {
   };
 
   const hasAnyDiffs = !!(
-    (selectedRun?._id ? stableDiffsByRun[selectedRun._id as string] : diffs) ||
-    []
+    (selectedRun?._id ? stableDiffsByRun[selectedRun._id] : diffs) || []
   ).length;
-  console.log({ hasAnyDiffs });
 
   return (
     <FloatingPane>
       <div className="flex h-full min-h-0 flex-col relative isolate">
         <div className="flex-1 min-h-0 overflow-y-auto flex flex-col">
           <TaskDetailHeader
-            task={task ?? null}
+            task={task}
             taskRuns={taskRuns ?? null}
             selectedRun={selectedRun ?? null}
             isCheckingDiffs={isCheckingDiffs}
@@ -231,7 +253,7 @@ function TaskDetailPage() {
             <GitDiffViewer
               diffs={
                 (selectedRun?._id
-                  ? stableDiffsByRun[selectedRun._id as string]
+                  ? stableDiffsByRun[selectedRun._id]
                   : undefined) ||
                 diffs ||
                 []

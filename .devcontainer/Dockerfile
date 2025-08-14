@@ -32,7 +32,7 @@ ENV PATH="/home/$USERNAME/.bun/bin:$PATH"
 USER root
 
 # Enable corepack for pnpm
-RUN corepack enable && corepack prepare pnpm@10.13.1 --activate
+RUN corepack enable && corepack prepare pnpm@10.14.0 --activate
 
 # Install nvm and Node versions
 ENV NVM_DIR=/home/$USERNAME/.nvm

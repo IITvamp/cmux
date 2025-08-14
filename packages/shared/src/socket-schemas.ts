@@ -1,4 +1,6 @@
+import type { Id } from "@cmux/convex/dataModel";
 import { z } from "zod";
+import { typedZid } from "./utils/typed-zid.js";
 
 // Client to Server Events
 export const CreateTerminalSchema = z.object({
@@ -27,14 +29,18 @@ export const StartTaskSchema = z.object({
   branch: z.string().optional(),
   taskDescription: z.string(),
   projectFullName: z.string(),
-  taskId: z.string(),
+  taskId: typedZid("tasks"),
   selectedAgents: z.array(z.string()).optional(),
   isCloudMode: z.boolean().optional().default(false),
-  images: z.array(z.object({
-    src: z.string(),
-    fileName: z.string().optional(),
-    altText: z.string(),
-  })).optional(),
+  images: z
+    .array(
+      z.object({
+        src: z.string(),
+        fileName: z.string().optional(),
+        altText: z.string(),
+      })
+    )
+    .optional(),
   theme: z.enum(["dark", "light", "system"]).optional(),
 });
 
@@ -68,13 +74,13 @@ export const TerminalRestoreSchema = z.object({
 });
 
 export const TaskStartedSchema = z.object({
-  taskId: z.string(),
+  taskId: typedZid("tasks"),
   worktreePath: z.string(),
   terminalId: z.string(),
 });
 
 export const TaskErrorSchema = z.object({
-  taskId: z.string(),
+  taskId: typedZid("tasks"),
   error: z.string(),
 });
 
@@ -221,22 +227,22 @@ export const GitHubAuthResponseSchema = z.object({
 
 // Create draft PR input
 export const GitHubCreateDraftPrSchema = z.object({
-  taskRunId: z.string(),
+  taskRunId: typedZid("taskRuns"),
 });
 
 // Open PR (create non-draft or convert draft to ready)
 export const GitHubOpenPrSchema = z.object({
-  taskRunId: z.string(),
+  taskRunId: typedZid("taskRuns"),
 });
 
 // Sync PR state
 export const GitHubSyncPrStateSchema = z.object({
-  taskRunId: z.string(),
+  taskRunId: typedZid("taskRuns"),
 });
 
 // Merge PR
 export const GitHubMergePrSchema = z.object({
-  taskRunId: z.string(),
+  taskRunId: typedZid("taskRuns"),
   method: z.enum(["squash", "rebase", "merge"]),
 });
 
@@ -251,11 +257,13 @@ export const DockerStatusSchema = z.object({
   isRunning: z.boolean(),
   version: z.string().optional(),
   error: z.string().optional(),
-  workerImage: z.object({
-    name: z.string(),
-    isAvailable: z.boolean(),
-    isPulling: z.boolean().optional(),
-  }).optional(),
+  workerImage: z
+    .object({
+      name: z.string(),
+      isAvailable: z.boolean(),
+      isPulling: z.boolean().optional(),
+    })
+    .optional(),
 });
 
 export const GitStatusSchema = z.object({
@@ -332,7 +340,9 @@ export type ProviderStatus = z.infer<typeof ProviderStatusSchema>;
 export type DockerStatus = z.infer<typeof DockerStatusSchema>;
 export type GitStatus = z.infer<typeof GitStatusSchema>;
 export type GitHubStatus = z.infer<typeof GitHubStatusSchema>;
-export type ProviderStatusResponse = z.infer<typeof ProviderStatusResponseSchema>;
+export type ProviderStatusResponse = z.infer<
+  typeof ProviderStatusResponseSchema
+>;
 export type DefaultRepo = z.infer<typeof DefaultRepoSchema>;
 
 // Socket.io event map types
@@ -346,12 +356,21 @@ export interface ClientToServerEvents {
   "git-diff": (data: GitDiffRequest) => void;
   "git-full-diff": (data: GitFullDiffRequest) => void;
   "refresh-diffs": (
-    data: { taskRunId: string },
+    data: { taskRunId: Id<"taskRuns"> },
     callback: (response: { success: boolean; message?: string }) => void
   ) => void;
   "git-diff-file-contents": (
-    data: { taskRunId: string; filePath: string },
-    callback: (response: { ok: true; oldContent: string; newContent: string; isBinary: boolean } | { ok: false; error: string }) => void
+    data: { taskRunId: Id<"taskRuns">; filePath: string },
+    callback: (
+      response:
+        | {
+            ok: true;
+            oldContent: string;
+            newContent: string;
+            isBinary: boolean;
+          }
+        | { ok: false; error: string }
+    ) => void
   ) => void;
   "open-in-editor": (
     data: OpenInEditor,
@@ -372,31 +391,44 @@ export interface ClientToServerEvents {
   // Create a draft pull request for a given task run
   "github-create-draft-pr": (
     data: GitHubCreateDraftPr,
-    callback: (response: { success: boolean; url?: string; error?: string }) => void
+    callback: (response: {
+      success: boolean;
+      url?: string;
+      error?: string;
+    }) => void
   ) => void;
   // Open PR: create a normal PR or mark draft ready
   "github-open-pr": (
     data: GitHubOpenPr,
-    callback: (response: { success: boolean; url?: string; state?: string; error?: string }) => void
+    callback: (response: {
+      success: boolean;
+      url?: string;
+      state?: string;
+      error?: string;
+    }) => void
   ) => void;
   // Sync PR state with GitHub and update Convex
   "github-sync-pr-state": (
     data: GitHubSyncPrState,
-    callback: (
-      response: {
-        success: boolean;
-        url?: string;
-        number?: number;
-        state?: string;
-        isDraft?: boolean;
-        error?: string;
-      }
-    ) => void
+    callback: (response: {
+      success: boolean;
+      url?: string;
+      number?: number;
+      state?: string;
+      isDraft?: boolean;
+      error?: string;
+    }) => void
   ) => void;
   // Merge PR with selected method
   "github-merge-pr": (
     data: GitHubMergePr,
-    callback: (response: { success: boolean; merged?: boolean; state?: string; url?: string; error?: string }) => void
+    callback: (response: {
+      success: boolean;
+      merged?: boolean;
+      state?: string;
+      url?: string;
+      error?: string;
+    }) => void
   ) => void;
   "check-provider-status": (
     callback: (response: ProviderStatusResponse) => void
