@@ -1297,6 +1297,49 @@ export async function spawnAgent(
           `[AgentSpawner] Updated taskRun ${taskRunId} as completed with exit code ${exitCode}`
         );
 
+        // Clean up codex-turns.jsonl file if this was a Codex agent
+        if (agent.name.toLowerCase().includes("codex")) {
+          try {
+            const workerSocket = vscodeInstance.getWorkerSocket();
+            if (workerSocket && vscodeInstance.isWorkerConnected()) {
+              serverLogger.info(
+                `[AgentSpawner] Cleaning up codex-turns.jsonl for ${agent.name}`
+              );
+              
+              await new Promise<void>((resolve) => {
+                workerSocket
+                  .timeout(5000)
+                  .emit(
+                    "worker:exec",
+                    {
+                      command: "rm",
+                      args: ["-f", "/root/workspace/codex-turns.jsonl"],
+                      cwd: "/root/workspace",
+                      env: {},
+                    },
+                    (timeoutError, response) => {
+                      if (timeoutError || response.error) {
+                        serverLogger.warn(
+                          `[AgentSpawner] Failed to delete codex-turns.jsonl: ${timeoutError || response.error}`
+                        );
+                      } else {
+                        serverLogger.info(
+                          `[AgentSpawner] Successfully deleted codex-turns.jsonl`
+                        );
+                      }
+                      resolve();
+                    }
+                  );
+              });
+            }
+          } catch (error) {
+            serverLogger.warn(
+              `[AgentSpawner] Error cleaning up codex-turns.jsonl:`,
+              error
+            );
+          }
+        }
+
         // Check if all runs are complete and evaluate crown
         const taskRunData = await convex.query(api.taskRuns.get, {
           id: taskRunId as Id<"taskRuns">,
