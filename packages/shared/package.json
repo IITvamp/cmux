@@ -35,6 +35,8 @@
     }
   },
   "dependencies": {
+    "@cmux/convex": "workspace:*",
+    "convex-helpers": "^0.1.103",
     "zod": "^3.25.67"
   },
   "devDependencies": {

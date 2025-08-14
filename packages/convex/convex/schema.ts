@@ -1,7 +1,7 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
-export default defineSchema({
+const convexSchema = defineSchema({
   users: defineTable({
     stackUserId: v.string(), // Stack Auth user ID
     email: v.string(),
@@ -56,7 +56,7 @@ export default defineSchema({
     oldPath: v.optional(v.string()), // For renamed files
     status: v.union(
       v.literal("added"),
-      v.literal("modified"), 
+      v.literal("modified"),
       v.literal("deleted"),
       v.literal("renamed")
     ),
@@ -217,3 +217,5 @@ export default defineSchema({
     updatedAt: v.number(),
   }),
 });
+
+export default convexSchema;
