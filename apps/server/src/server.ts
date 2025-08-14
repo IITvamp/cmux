@@ -287,6 +287,11 @@ export async function startServer({
             number: undefined,
             url: undefined,
           } as any);
+          // Update task merge status to none
+          await convex.mutation(api.tasks.updateMergeStatus, {
+            id: task._id,
+            mergeStatus: "none",
+          });
           callback({ success: true, state: "none" });
           return;
         }
@@ -313,6 +318,29 @@ export async function startServer({
           number: prBasic.number,
           url: prBasic.html_url,
         });
+        
+        // Update task merge status based on PR state
+        let taskMergeStatus: "none" | "pr_draft" | "pr_open" | "pr_merged" | "pr_closed" = "none";
+        switch (state) {
+          case "draft":
+            taskMergeStatus = "pr_draft";
+            break;
+          case "open":
+            taskMergeStatus = "pr_open";
+            break;
+          case "merged":
+            taskMergeStatus = "pr_merged";
+            break;
+          case "closed":
+            taskMergeStatus = "pr_closed";
+            break;
+        }
+        if (taskMergeStatus !== "none") {
+          await convex.mutation(api.tasks.updateMergeStatus, {
+            id: task._id,
+            mergeStatus: taskMergeStatus,
+          });
+        }
 
         callback({ success: true, url: prBasic.html_url, number: prBasic.number, state, isDraft });
       } catch (error) {
@@ -402,6 +430,11 @@ export async function startServer({
             isDraft: false,
             number: prNumber,
             url: detail.html_url,
+          });
+          // Update task merge status to merged
+          await convex.mutation(api.tasks.updateMergeStatus, {
+            id: task._id,
+            mergeStatus: "pr_merged",
           });
           callback({ success: true, merged: !!res.merged, state: "merged", url: detail.html_url });
         } catch (e: unknown) {
@@ -1063,6 +1096,11 @@ export async function startServer({
             pullRequestUrl: prUrl,
             isDraft: true,
           });
+          // Update task merge status to draft PR
+          await convex.mutation(api.tasks.updateMergeStatus, {
+            id: task._id,
+            mergeStatus: "pr_draft",
+          });
         }
 
         callback({ success: true, url: prUrl });
@@ -1244,6 +1282,30 @@ export async function startServer({
           number: finalNumber,
           url: finalUrl,
         });
+        
+        // Update task merge status based on PR state
+        const prState = finalUrl ? stateMap(finalState, finalIsDraft, merged) : "none";
+        let taskMergeStatus: "none" | "pr_draft" | "pr_open" | "pr_merged" | "pr_closed" = "none";
+        switch (prState) {
+          case "draft":
+            taskMergeStatus = "pr_draft";
+            break;
+          case "open":
+            taskMergeStatus = "pr_open";
+            break;
+          case "merged":
+            taskMergeStatus = "pr_merged";
+            break;
+          case "closed":
+            taskMergeStatus = "pr_closed";
+            break;
+        }
+        if (taskMergeStatus !== "none") {
+          await convex.mutation(api.tasks.updateMergeStatus, {
+            id: task._id,
+            mergeStatus: taskMergeStatus,
+          });
+        }
 
         callback({
           success: true,

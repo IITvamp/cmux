@@ -27,6 +27,17 @@ export default defineSchema({
     updatedAt: v.optional(v.number()),
     userId: v.optional(v.string()), // Link to user who created the task
     crownEvaluationError: v.optional(v.string()), // Error message if crown evaluation failed
+    mergeStatus: v.optional(
+      v.union(
+        v.literal("none"), // No PR activity yet
+        v.literal("pr_draft"), // PR created as draft
+        v.literal("pr_open"), // PR opened and ready for review
+        v.literal("pr_approved"), // PR has been approved
+        v.literal("pr_changes_requested"), // PR has changes requested
+        v.literal("pr_merged"), // PR has been merged
+        v.literal("pr_closed") // PR closed without merging
+      )
+    ),
     images: v.optional(
       v.array(
         v.object({
