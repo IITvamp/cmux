@@ -36,7 +36,7 @@ function DashboardComponent() {
   const [selectedBranch, setSelectedBranch] = useState<string[]>([]);
   const [selectedAgents, setSelectedAgents] = useState<string[]>(() => {
     const stored = localStorage.getItem("selectedAgents");
-    return stored ? JSON.parse(stored) : ["claude/sonnet-4", "codex/gpt-4.1"];
+    return stored ? JSON.parse(stored) : ["claude/opus-4.1", "codex/gpt-5"];
   });
   const [taskDescription, setTaskDescription] = useState<string>("");
   const [isCloudMode, setIsCloudMode] = useState<boolean>(() => {
