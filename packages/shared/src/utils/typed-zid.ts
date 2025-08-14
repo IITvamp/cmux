@@ -1,6 +1,7 @@
-import type { DataModel } from "@cmux/convex/dataModel";
-import { zid } from "convex-helpers/server/zod";
+import type { DataModel, Id } from "@cmux/convex/dataModel";
+import { z } from "zod";
 
-export function typedZid<T extends keyof DataModel>(tableName: T) {
-  return zid(tableName);
+// Minimal local replacement for convex-helpers' zid
+export function typedZid<T extends keyof DataModel>(_tableName: T) {
+  return z.string().transform((s) => s as Id<T>);
 }

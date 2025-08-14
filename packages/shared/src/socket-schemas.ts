@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { typedZid } from "./utils/typed-zid";
+import { typedZid } from "./utils/typed-zid.js";
 
 // Client to Server Events
 export const CreateTerminalSchema = z.object({

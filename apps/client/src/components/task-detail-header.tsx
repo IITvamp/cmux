@@ -106,7 +106,10 @@ export function TaskDetailHeader({
           toast.success("PR opened", { id: toastId, description: resp.url });
         } else {
           console.error("Failed to open PR:", resp.error);
-          toast.error("Failed to open PR", { id: toastId, description: resp.error });
+          toast.error("Failed to open PR", {
+            id: toastId,
+            description: resp.error,
+          });
         }
       }
     );
@@ -124,7 +127,7 @@ export function TaskDetailHeader({
     setIsCreatingPr(true);
     socket.emit(
       "github-create-draft-pr",
-      { taskRunId: selectedRun._id as string },
+      { taskRunId: selectedRun._id },
       (resp: { success: boolean; url?: string; error?: string }) => {
         setIsCreatingPr(false);
         if (resp.success && resp.url) {
@@ -188,7 +191,13 @@ export function TaskDetailHeader({
             </div>
           ) : (
             <MergeButton
-              onMerge={prIsOpen ? handleMerge : async () => { handleOpenPR(); }}
+              onMerge={
+                prIsOpen
+                  ? handleMerge
+                  : async () => {
+                      handleOpenPR();
+                    }
+              }
               isOpen={prIsOpen}
               disabled={
                 isOpeningPr ||
