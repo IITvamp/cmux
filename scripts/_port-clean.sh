@@ -27,8 +27,9 @@ clean_ports() {
 
   for port in "${ports[@]}"; do
     # Get PIDs of processes listening on the port, excluding Google Chrome and OrbStack
+    # Be resilient to set -euo pipefail in callers: lsof returns non-zero when no matches
     local pids
-    pids=$(lsof -ti :"$port" 2>/dev/null | while read -r pid; do
+    pids=$({ lsof -ti :"$port" 2>/dev/null || true; } | while read -r pid; do
       local proc
       proc=$(ps -p "$pid" -o comm= 2>/dev/null || echo "")
       if [[ ! "$proc" =~ (Google|Chrome|OrbStack) ]]; then
@@ -49,4 +50,3 @@ clean_ports() {
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   clean_ports "$@"
 fi
-
