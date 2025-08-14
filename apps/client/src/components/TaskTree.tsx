@@ -6,7 +6,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useArchiveTask } from "@/hooks/useArchiveTask";
 import { ContextMenu } from "@base-ui-components/react/context-menu";
-import { type Doc } from "@cmux/convex/dataModel";
+import { type Doc, type Id } from "@cmux/convex/dataModel";
 import { Link, useLocation } from "@tanstack/react-router";
 import clsx from "clsx";
 import {
@@ -251,7 +251,7 @@ function TaskTreeInner({ task, level = 0 }: TaskTreeProps) {
 interface TaskRunTreeProps {
   run: TaskRunWithChildren;
   level: number;
-  taskId: string;
+  taskId: Id<"tasks">;
   branch?: string;
 }
 

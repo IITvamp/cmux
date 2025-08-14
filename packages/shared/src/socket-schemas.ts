@@ -1,3 +1,4 @@
+import type { Id } from "@cmux/convex/dataModel";
 import { z } from "zod";
 import { typedZid } from "./utils/typed-zid.js";
 
@@ -28,7 +29,7 @@ export const StartTaskSchema = z.object({
   branch: z.string().optional(),
   taskDescription: z.string(),
   projectFullName: z.string(),
-  taskId: z.string(),
+  taskId: typedZid("tasks"),
   selectedAgents: z.array(z.string()).optional(),
   isCloudMode: z.boolean().optional().default(false),
   images: z
@@ -73,13 +74,13 @@ export const TerminalRestoreSchema = z.object({
 });
 
 export const TaskStartedSchema = z.object({
-  taskId: z.string(),
+  taskId: typedZid("tasks"),
   worktreePath: z.string(),
   terminalId: z.string(),
 });
 
 export const TaskErrorSchema = z.object({
-  taskId: z.string(),
+  taskId: typedZid("tasks"),
   error: z.string(),
 });
 
@@ -231,17 +232,17 @@ export const GitHubCreateDraftPrSchema = z.object({
 
 // Open PR (create non-draft or convert draft to ready)
 export const GitHubOpenPrSchema = z.object({
-  taskRunId: z.string(),
+  taskRunId: typedZid("taskRuns"),
 });
 
 // Sync PR state
 export const GitHubSyncPrStateSchema = z.object({
-  taskRunId: z.string(),
+  taskRunId: typedZid("taskRuns"),
 });
 
 // Merge PR
 export const GitHubMergePrSchema = z.object({
-  taskRunId: z.string(),
+  taskRunId: typedZid("taskRuns"),
   method: z.enum(["squash", "rebase", "merge"]),
 });
 
@@ -355,11 +356,11 @@ export interface ClientToServerEvents {
   "git-diff": (data: GitDiffRequest) => void;
   "git-full-diff": (data: GitFullDiffRequest) => void;
   "refresh-diffs": (
-    data: { taskRunId: string },
+    data: { taskRunId: Id<"taskRuns"> },
     callback: (response: { success: boolean; message?: string }) => void
   ) => void;
   "git-diff-file-contents": (
-    data: { taskRunId: string; filePath: string },
+    data: { taskRunId: Id<"taskRuns">; filePath: string },
     callback: (
       response:
         | {

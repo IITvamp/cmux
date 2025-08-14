@@ -3,6 +3,7 @@ import { Dropdown } from "@/components/ui/dropdown";
 import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
 import { useSocket } from "@/contexts/socket/use-socket";
 import type { Doc } from "@cmux/convex/dataModel";
+import { Skeleton } from "@heroui/react";
 import { useClipboard } from "@mantine/hooks";
 import { useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
@@ -99,7 +100,7 @@ export function TaskDetailHeader({
     const toastId = toast.loading("Opening PR...");
     socket.emit(
       "github-open-pr",
-      { taskRunId: selectedRun._id as string },
+      { taskRunId: selectedRun._id },
       (resp: { success: boolean; url?: string; error?: string }) => {
         setIsOpeningPr(false);
         if (resp.success) {
@@ -313,59 +314,67 @@ export function TaskDetailHeader({
               <span className="text-neutral-500 dark:text-neutral-600 select-none">
                 by
               </span>
-              <Dropdown.Root
-                open={agentMenuOpen}
-                onOpenChange={handleAgentOpenChange}
-              >
-                <Dropdown.Trigger className="flex items-center gap-1 text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white transition-colors text-xs whitespace-nowrap select-none">
-                  <span>{selectedRun?.agentName || "Unknown agent"}</span>
-                  <ChevronDown className="w-3 h-3" />
-                </Dropdown.Trigger>
+              <Skeleton isLoaded={!!task} className="rounded-md">
+                <Dropdown.Root
+                  open={agentMenuOpen}
+                  onOpenChange={handleAgentOpenChange}
+                >
+                  <Dropdown.Trigger className="flex items-center gap-1 text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white transition-colors text-xs whitespace-nowrap select-none">
+                    <span>{selectedRun?.agentName || "Unknown agent"}</span>
+                    <ChevronDown className="w-3 h-3" />
+                  </Dropdown.Trigger>
 
-                <Dropdown.Portal>
-                  <Dropdown.Positioner sideOffset={5}>
-                    <Dropdown.Popup className="min-w-[200px]">
-                      <Dropdown.Arrow />
-                      {taskRuns.map((run) => {
-                        const agentName =
-                          run.agentName ||
-                          run.prompt?.match(/\(([^)]+)\)$/)?.[1] ||
-                          "Unknown agent";
-                        const isSelected = run._id === selectedRun?._id;
-                        return (
-                          <Dropdown.CheckboxItem
-                            key={run._id}
-                            checked={isSelected}
-                            onCheckedChange={() => {
-                              if (!isSelected) {
-                                navigate({
-                                  to: "/task/$taskId",
-                                  params: { taskId: task?._id as string },
-                                  search: { runId: run._id },
-                                });
-                              }
-                              // Close dropdown after selection
-                              setAgentMenuOpen(false);
-                            }}
-                            // Also close when selecting the same option
-                            onClick={() => setAgentMenuOpen(false)}
-                          >
-                            <Dropdown.CheckboxItemIndicator>
-                              <Check className="w-3 h-3" />
-                            </Dropdown.CheckboxItemIndicator>
-                            <span className="col-start-2 flex items-center gap-1.5">
-                              {agentName}
-                              {run.isCrowned && (
-                                <Crown className="w-3 h-3 text-yellow-500 absolute right-4" />
-                              )}
-                            </span>
-                          </Dropdown.CheckboxItem>
-                        );
-                      })}
-                    </Dropdown.Popup>
-                  </Dropdown.Positioner>
-                </Dropdown.Portal>
-              </Dropdown.Root>
+                  <Dropdown.Portal>
+                    <Dropdown.Positioner sideOffset={5}>
+                      <Dropdown.Popup className="min-w-[200px]">
+                        <Dropdown.Arrow />
+                        {taskRuns?.map((run) => {
+                          const agentName =
+                            run.agentName ||
+                            run.prompt?.match(/\(([^)]+)\)$/)?.[1] ||
+                            "Unknown agent";
+                          const isSelected = run._id === selectedRun?._id;
+                          return (
+                            <Dropdown.CheckboxItem
+                              key={run._id}
+                              checked={isSelected}
+                              onCheckedChange={() => {
+                                if (!task?._id) {
+                                  console.error(
+                                    "[TaskDetailHeader] No task ID"
+                                  );
+                                  return;
+                                }
+                                if (!isSelected) {
+                                  navigate({
+                                    to: "/task/$taskId",
+                                    params: { taskId: task?._id },
+                                    search: { runId: run._id },
+                                  });
+                                }
+                                // Close dropdown after selection
+                                setAgentMenuOpen(false);
+                              }}
+                              // Also close when selecting the same option
+                              onClick={() => setAgentMenuOpen(false)}
+                            >
+                              <Dropdown.CheckboxItemIndicator>
+                                <Check className="w-3 h-3" />
+                              </Dropdown.CheckboxItemIndicator>
+                              <span className="col-start-2 flex items-center gap-1.5">
+                                {agentName}
+                                {run.isCrowned && (
+                                  <Crown className="w-3 h-3 text-yellow-500 absolute right-4" />
+                                )}
+                              </span>
+                            </Dropdown.CheckboxItem>
+                          );
+                        })}
+                      </Dropdown.Popup>
+                    </Dropdown.Positioner>
+                  </Dropdown.Portal>
+                </Dropdown.Root>
+              </Skeleton>
             </>
           )}
         </div>

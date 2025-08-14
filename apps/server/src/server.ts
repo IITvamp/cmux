@@ -118,14 +118,10 @@ export async function startServer({
     }
 
     socket.on("start-task", async (data, callback) => {
+      const taskData = StartTaskSchema.parse(data);
+      serverLogger.info("starting task!", taskData);
+      const taskId = taskData.taskId;
       try {
-        serverLogger.info("got data", data);
-        const taskData = StartTaskSchema.parse(data);
-        serverLogger.info("starting task!", taskData);
-
-        // Use the taskId provided by the client
-        const taskId = taskData.taskId;
-
         // Generate PR title early from the task description
         let generatedTitle: string | null = null;
         try {
@@ -134,7 +130,7 @@ export async function startServer({
           );
           // Persist to Convex immediately
           await convex.mutation(api.tasks.setPullRequestTitle, {
-            id: taskId as Id<"tasks">,
+            id: taskId,
             pullRequestTitle: generatedTitle,
           });
           serverLogger.info(`[Server] Saved early PR title: ${generatedTitle}`);
@@ -163,7 +159,7 @@ export async function startServer({
         );
         if (successfulAgents.length === 0) {
           callback({
-            taskId: "error",
+            taskId,
             error: "Failed to spawn any agents",
           });
           return;
@@ -219,7 +215,7 @@ export async function startServer({
       } catch (error) {
         serverLogger.error("Error in start-task:", error);
         callback({
-          taskId: "error",
+          taskId,
           error: error instanceof Error ? error.message : "Unknown error",
         });
       }

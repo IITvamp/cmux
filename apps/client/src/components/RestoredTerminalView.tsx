@@ -9,7 +9,7 @@ import { useQuery } from "convex/react";
 import { useEffect, useRef } from "react";
 
 export interface RestoredTerminalViewProps {
-  runId: string;
+  runId: Id<"taskRuns">;
 }
 
 export function RestoredTerminalView({ runId }: RestoredTerminalViewProps) {
@@ -19,7 +19,7 @@ export function RestoredTerminalView({ runId }: RestoredTerminalViewProps) {
 
   // Fetch log chunks from Convex
   const logChunks = useQuery(api.taskRunLogChunks.getChunks, {
-    taskRunId: runId as Id<"taskRuns">,
+    taskRunId: runId,
   });
 
   useEffect(() => {
@@ -69,7 +69,9 @@ export function RestoredTerminalView({ runId }: RestoredTerminalViewProps) {
     xtermRef.current.clear();
 
     // Concatenate all chunks to reconstruct the serialized data
-    const serializedData = logChunks.map((chunk: { content: string }) => chunk.content).join("");
+    const serializedData = logChunks
+      .map((chunk: { content: string }) => chunk.content)
+      .join("");
 
     // Write the serialized data to restore the terminal state
     if (serializedData) {

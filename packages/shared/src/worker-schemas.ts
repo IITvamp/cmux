@@ -1,4 +1,6 @@
+import type { Id } from "@cmux/convex/dataModel";
 import { z } from "zod";
+import { typedZid } from "./utils/typed-zid";
 
 // Auth file schema for file uploads and environment setup
 export const AuthFileSchema = z.object({
@@ -39,7 +41,7 @@ export const WorkerHeartbeatSchema = z.object({
 export const TerminalAssignmentSchema = z.object({
   terminalId: z.string(),
   workerId: z.string(),
-  taskId: z.string().optional(),
+  taskId: typedZid("tasks").optional(),
 });
 
 // Worker Status
@@ -58,7 +60,8 @@ export const WorkerCreateTerminalSchema = z.object({
   env: z.record(z.string()).optional(),
   command: z.string().optional(),
   args: z.array(z.string()).optional(),
-  taskId: z.string().optional(),
+  taskId: typedZid("tasks").optional(),
+  taskRunId: typedZid("taskRuns").optional(),
   authFiles: z.array(AuthFileSchema).optional(),
   startupCommands: z.array(z.string()).optional(),
 });
@@ -105,7 +108,7 @@ export const WorkerTerminalClosedSchema = z.object({
 export const WorkerTerminalIdleSchema = z.object({
   workerId: z.string(),
   terminalId: z.string(),
-  taskId: z.string().optional(),
+  taskId: typedZid("tasks").optional(),
   elapsedMs: z.number(),
 });
 
@@ -113,7 +116,7 @@ export const WorkerTerminalIdleSchema = z.object({
 export const WorkerTerminalFailedSchema = z.object({
   workerId: z.string(),
   terminalId: z.string(),
-  taskId: z.string().optional(),
+  taskId: typedZid("tasks").optional(),
   errorMessage: z.string(),
   elapsedMs: z.number().optional(),
 });
@@ -204,7 +207,7 @@ export interface ServerToWorkerEvents {
     data: WorkerCreateTerminal,
     callback: (result: ErrorOr<WorkerTerminalCreated>) => void
   ) => void;
-  
+
   // Terminal input
   "worker:terminal-input": (data: WorkerTerminalInput) => void;
 
@@ -221,8 +224,11 @@ export interface ServerToWorkerEvents {
   ) => void;
 
   // File watching events
-  "worker:start-file-watch": (data: { taskId: string; worktreePath: string }) => void;
-  "worker:stop-file-watch": (data: { taskId: string }) => void;
+  "worker:start-file-watch": (data: {
+    taskId: Id<"tasks">;
+    worktreePath: string;
+  }) => void;
+  "worker:stop-file-watch": (data: { taskId: Id<"tasks"> }) => void;
 
   // Management events
   "worker:terminal-assignment": (data: TerminalAssignment) => void;
@@ -265,7 +271,7 @@ export interface WorkerToServerEvents {
   // File change events
   "worker:file-changes": (data: {
     workerId: string;
-    taskId: string;
+    taskId: Id<"tasks">;
     changes: WorkerFileChange[];
     gitDiff: string;
     fileDiffs: WorkerFileDiff[];

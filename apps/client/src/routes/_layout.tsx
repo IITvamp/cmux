@@ -1,7 +1,7 @@
 import { Sidebar } from "@/components/Sidebar";
 import { isFakeConvexId } from "@/lib/fakeConvexId";
 import { api } from "@cmux/convex/api";
-import { type Doc } from "@cmux/convex/dataModel";
+import { type Doc, type Id } from "@cmux/convex/dataModel";
 import { convexQuery } from "@convex-dev/react-query";
 import { useUser } from "@stackframe/react";
 import { createFileRoute, Outlet } from "@tanstack/react-router";
@@ -41,8 +41,11 @@ function LayoutComponent() {
           },
         }),
         {} as Record<
-          string,
-          { query: typeof api.taskRuns.getByTask; args: { taskId: string } }
+          Id<"tasks">,
+          {
+            query: typeof api.taskRuns.getByTask;
+            args: { taskId: Id<"tasks"> };
+          }
         >
       );
   }, [recentTasks]);
