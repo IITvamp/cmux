@@ -5,6 +5,7 @@ import { type Doc, type Id } from "@cmux/convex/dataModel";
 import { convexQuery } from "@convex-dev/react-query";
 import { useUser } from "@stackframe/react";
 import { createFileRoute, Outlet } from "@tanstack/react-router";
+import { ExpandTasksProvider } from "@/contexts/expand-tasks/ExpandTasksProvider";
 import { useQueries, useQuery } from "convex/react";
 import { Suspense, useMemo } from "react";
 
@@ -65,15 +66,17 @@ function LayoutComponent() {
 
   return (
     <>
-      <div className="flex flex-row grow bg-white dark:bg-black">
-        <Sidebar tasks={tasks} tasksWithRuns={tasksWithRuns} />
+      <ExpandTasksProvider>
+        <div className="flex flex-row grow bg-white dark:bg-black">
+          <Sidebar tasks={tasks} tasksWithRuns={tasksWithRuns} />
 
-        {/* <div className="flex flex-col grow overflow-hidden bg-white dark:bg-neutral-950"> */}
-        <Suspense fallback={<div>Loading...</div>}>
-          <Outlet />
-        </Suspense>
-        {/* </div> */}
-      </div>
+          {/* <div className="flex flex-col grow overflow-hidden bg-white dark:bg-neutral-950"> */}
+          <Suspense fallback={<div>Loading...</div>}>
+            <Outlet />
+          </Suspense>
+          {/* </div> */}
+        </div>
+      </ExpandTasksProvider>
 
       <button
         onClick={() => {

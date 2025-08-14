@@ -1,5 +1,6 @@
 import { TaskTree, type TaskWithRuns } from "@/components/TaskTree";
 import { TaskTreeSkeleton } from "@/components/TaskTreeSkeleton";
+import { useExpandTasks } from "@/contexts/expand-tasks/ExpandTasksContext";
 import { isElectron } from "@/lib/electron";
 import { type Doc } from "@cmux/convex/dataModel";
 import { Link } from "@tanstack/react-router";
@@ -33,32 +34,7 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
   });
   const [isResizing, setIsResizing] = useState(false);
 
-  // Track newly created task IDs so we can auto-expand them once
-  const prevTaskIdsRef = useRef<Set<string>>(new Set());
-  const [newTaskIds, setNewTaskIds] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    if (!tasks) return;
-    const currentIds = new Set<string>(tasks.map((t) => t._id));
-    const prev = prevTaskIdsRef.current;
-
-    // Detect any IDs that weren't present previously
-    const added = new Set<string>();
-    for (const id of currentIds) {
-      if (!prev.has(id)) added.add(id);
-    }
-
-    if (added.size > 0) {
-      setNewTaskIds((existing) => {
-        const next = new Set(existing);
-        for (const id of added) next.add(id);
-        return next;
-      });
-    }
-
-    // Update the ref for next comparison
-    prevTaskIdsRef.current = currentIds;
-  }, [tasks]);
+  const { expandTaskIds } = useExpandTasks();
 
   useEffect(() => {
     localStorage.setItem("sidebarWidth", String(width));
@@ -204,7 +180,7 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
                   <TaskTree
                     key={task._id}
                     task={task}
-                    defaultExpanded={newTaskIds.has(task._id)}
+                    defaultExpanded={expandTaskIds?.includes(task._id) ?? false}
                   />
                 ))
               ) : (
