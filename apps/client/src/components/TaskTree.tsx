@@ -37,6 +37,8 @@ export interface TaskWithRuns extends Doc<"tasks"> {
 interface TaskTreeProps {
   task: TaskWithRuns;
   level?: number;
+  // When true, expand the task node on initial mount
+  defaultExpanded?: boolean;
 }
 
 // Extract the display text logic to avoid re-creating it on every render
@@ -56,7 +58,7 @@ function getRunDisplayText(run: TaskRunWithChildren): string {
   return run.prompt.substring(0, 50) + "...";
 }
 
-function TaskTreeInner({ task, level = 0 }: TaskTreeProps) {
+function TaskTreeInner({ task, level = 0, defaultExpanded = false }: TaskTreeProps) {
   // Get the current route to determine if this task is selected
   const location = useLocation();
   const isTaskSelected = useMemo(
@@ -64,8 +66,10 @@ function TaskTreeInner({ task, level = 0 }: TaskTreeProps) {
     [location.pathname, task._id]
   );
 
-  // Default to collapsed unless this task is selected
-  const [isExpanded, setIsExpanded] = useState(isTaskSelected);
+  // Default to collapsed unless this task is selected or flagged to expand
+  const [isExpanded, setIsExpanded] = useState<boolean>(
+    isTaskSelected || defaultExpanded
+  );
   const hasRuns = task.runs && task.runs.length > 0;
 
   // Memoize the toggle handler

@@ -33,6 +33,33 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
   });
   const [isResizing, setIsResizing] = useState(false);
 
+  // Track newly created task IDs so we can auto-expand them once
+  const prevTaskIdsRef = useRef<Set<string>>(new Set());
+  const [newTaskIds, setNewTaskIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!tasks) return;
+    const currentIds = new Set<string>(tasks.map((t) => t._id));
+    const prev = prevTaskIdsRef.current;
+
+    // Detect any IDs that weren't present previously
+    const added = new Set<string>();
+    for (const id of currentIds) {
+      if (!prev.has(id)) added.add(id);
+    }
+
+    if (added.size > 0) {
+      setNewTaskIds((existing) => {
+        const next = new Set(existing);
+        for (const id of added) next.add(id);
+        return next;
+      });
+    }
+
+    // Update the ref for next comparison
+    prevTaskIdsRef.current = currentIds;
+  }, [tasks]);
+
   useEffect(() => {
     localStorage.setItem("sidebarWidth", String(width));
   }, [width]);
@@ -174,7 +201,11 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
                 <TaskTreeSkeleton count={5} />
               ) : tasksWithRuns.length > 0 ? (
                 tasksWithRuns.map((task) => (
-                  <TaskTree key={task._id} task={task} />
+                  <TaskTree
+                    key={task._id}
+                    task={task}
+                    defaultExpanded={newTaskIds.has(task._id)}
+                  />
                 ))
               ) : (
                 <p className="px-2 py-1.5 text-xs text-center text-neutral-500 dark:text-neutral-400 select-none">
