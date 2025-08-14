@@ -5,6 +5,8 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ConvexProcesses, spawnConvex } from "./convex/spawnConvex";
+import { ensureBundleExtracted } from "./convex/ensureBundleExtracted";
+import { deployConvexFunctions } from "./convex/deployConvex";
 import { ensureLogFiles } from "./ensureLogFiles";
 import { logger } from "./logger";
 import { checkPorts } from "./utils/checkPorts";
@@ -121,6 +123,17 @@ program
 
     ensureLogFiles();
 
+    // Ensure bundled assets are extracted early so static files exist
+    let didExtract = false;
+    try {
+      const res = await ensureBundleExtracted(convexDir);
+      didExtract = res.didExtract;
+    } catch (e) {
+      await logger.error(`Failed to extract bundled assets: ${e}`);
+      console.error("Failed to extract bundled assets:", e);
+      process.exit(1);
+    }
+
     // Start Convex backend
     let convexProcessesPromise: Promise<ConvexProcesses>;
     try {
@@ -142,6 +155,17 @@ program
       await logger.error(`Failed to start Convex: ${error}`);
       console.error("Failed to start Convex:", error);
       process.exit(1);
+    }
+
+    // Deploy convex functions only on first install/upgrade
+    if (didExtract) {
+      try {
+        await deployConvexFunctions(convexDir, process.env.CONVEX_PORT || "9777");
+      } catch (error) {
+        await logger.error(`Convex deployment failed: ${error}`);
+        console.error("Convex deployment failed:", error);
+        process.exit(1);
+      }
     }
 
     // Check if static directory exists

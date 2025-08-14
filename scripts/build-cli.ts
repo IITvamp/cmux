@@ -17,7 +17,8 @@ const logError = (msg: string) => {
 // Check if port 9777 is already in use (excluding Chrome/OrbStack)
 log("Checking if port 9777 is available...");
 try {
-  const lsofResult = await $`lsof -i :9777 | grep LISTEN | grep -v -E "(Google|Chrome|OrbStack)"`.text();
+  const lsofResult =
+    await $`lsof -i :9777 | grep LISTEN | grep -v -E "(Google|Chrome|OrbStack)"`.text();
   const output = lsofResult.trim();
   if (output) {
     logError("Port 9777 is already in use by non-Chrome/OrbStack processes:");
@@ -77,7 +78,11 @@ await $`bun build ./packages/cmux/node_modules/convex/dist/cli.bundle.cjs --outd
 log("Building client app...");
 await $`cd ./apps/client && VITE_CONVEX_URL=http://localhost:9777 bun run build`;
 
-await $`cp -r ./apps/client/dist ./packages/cmux/public`;
+// refresh bundled static assets without blowing away tracked files
+await $`rm -rf ./packages/cmux/public/dist`;
+await $`mkdir -p ./packages/cmux/public`;
+// copy new dist into public/dist (CLI expects public/dist)
+await $`cp -r ./apps/client/dist ./packages/cmux/public/`;
 
 log("Starting convex backend process...");
 const convexBackendProcess = spawn(
@@ -117,7 +122,9 @@ let retries = 0;
 const maxRetries = 100;
 
 while ((!instance || !instance.ok) && retries < maxRetries) {
-  log(`Waiting for convex instance to be ready (attempt ${retries}/${maxRetries})`);
+  log(
+    `Waiting for convex instance to be ready (attempt ${retries}/${maxRetries})`
+  );
   try {
     instance = await fetch(`http://localhost:9777/`);
   } catch (error) {
@@ -160,7 +167,9 @@ await $`cd ./packages/cmux/src/convex/convex-bundle && bunx convex@1.26.0-alpha.
 
 log("Killing convex backend process...");
 convexBackendProcess.kill();
-log(`Convex backend process killed with signal, PID was: ${convexBackendProcess.pid}`);
+log(
+  `Convex backend process killed with signal, PID was: ${convexBackendProcess.pid}`
+);
 
 // Wait a moment for the database to be fully written
 log("Waiting 1 second for database to be fully written...");
@@ -185,16 +194,18 @@ await $`cp -r ./packages/cmux/src/convex/convex-bundle/convex_local_storage /tmp
 // Copy the correct package.json from cmux package (overwrite the convex one)
 // await $`cp ./packages/cmux/package.json /tmp/cmux-bundle/`;
 
-// Copy public files (client dist)
-log("Copying public files (client dist)...");
+// Copy public files (client dist) from the single source of truth
+// We already refreshed ./packages/cmux/public/dist above
+log("Copying public files (client dist) into bundle...");
 await $`mkdir -p /tmp/cmux-bundle/public`;
-await $`cp -r ./apps/client/dist /tmp/cmux-bundle/public/`;
+await $`cp -r ./packages/cmux/public/dist /tmp/cmux-bundle/public/`;
 
 // Create the cmux-bundle.zip
 log("Creating cmux-bundle.zip...");
 // Use quiet mode and redirect stderr to avoid terminal control characters
 await $`cd /tmp && zip -qr cmux-bundle.zip cmux-bundle 2>/dev/null`;
-await $`mv /tmp/cmux-bundle.zip ./packages/cmux/src/convex/`;
+await $`mkdir -p ./packages/cmux/src/assets`;
+await $`mv /tmp/cmux-bundle.zip ./packages/cmux/src/assets/`;
 log("Bundle zip created successfully");
 
 // Clean up temp directory
@@ -210,12 +221,13 @@ log("Successfully built cmux-cli binary");
 
 // Ensure all output is flushed
 log("Flushing output buffers...");
-await new Promise(resolve => setTimeout(resolve, 100));
+await new Promise((resolve) => setTimeout(resolve, 100));
 
 // Check for any remaining child processes
 log("Checking for remaining child processes...");
 try {
-  const psResult = await $`ps aux | grep -E "(convex|bun)" | grep -v grep`.text();
+  const psResult =
+    await $`ps aux | grep -E "(convex|bun)" | grep -v grep`.text();
   if (psResult.trim()) {
     log("Warning: Found possibly related processes still running:");
     console.log(psResult);

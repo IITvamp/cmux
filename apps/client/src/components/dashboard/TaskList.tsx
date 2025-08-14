@@ -41,9 +41,13 @@ export const TaskList = memo(function TaskList() {
       </div>
       <div className="flex flex-col gap-1">
         {tasks === undefined ? (
-          <div>Loading...</div>
+          <div className="text-sm text-neutral-500 dark:text-neutral-400 py-2 select-none">
+            Loading...
+          </div>
         ) : tasks.length === 0 ? (
-          <div>No tasks</div>
+          <div className="text-sm text-neutral-500 dark:text-neutral-400 py-2 select-none">
+            {tab === "all" ? "No active tasks" : "No archived tasks"}
+          </div>
         ) : (
           tasks.map((task) => <TaskItem key={task._id} task={task} />)
         )}
