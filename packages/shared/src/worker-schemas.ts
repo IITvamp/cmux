@@ -1,6 +1,6 @@
 import type { Id } from "@cmux/convex/dataModel";
 import { z } from "zod";
-import { typedZid } from "./utils/typed-zid";
+import { typedZid } from "./utils/typed-zid.js";
 
 // Auth file schema for file uploads and environment setup
 export const AuthFileSchema = z.object({

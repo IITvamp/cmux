@@ -1153,7 +1153,8 @@ export async function spawnAgent(
       // For Morph, create the instance and we'll clone the repo via socket command
       vscodeInstance = new MorphVSCodeInstance({
         agentName: agent.name,
-        taskRunId: taskRunId as string,
+        taskRunId,
+        taskId,
         theme: options.theme,
       });
 
@@ -1198,7 +1199,8 @@ export async function spawnAgent(
       vscodeInstance = new DockerVSCodeInstance({
         workspacePath: worktreePath,
         agentName: agent.name,
-        taskRunId: taskRunId as string,
+        taskRunId,
+        taskId,
         theme: options.theme,
       });
     }
@@ -1526,7 +1528,7 @@ export async function spawnAgent(
           const relativePath = path.relative(worktreePath, fileDiff.path);
 
           await convex.mutation(api.gitDiffs.upsertDiff, {
-            taskRunId: taskRunId as Id<"taskRuns">,
+            taskRunId,
             filePath: relativePath,
             status: fileDiff.type as "added" | "modified" | "deleted",
             additions: (fileDiff.patch.match(/^\+[^+]/gm) || []).length,
@@ -1540,7 +1542,7 @@ export async function spawnAgent(
 
         // Update the timestamp
         await convex.mutation(api.gitDiffs.updateDiffsTimestamp, {
-          taskRunId: taskRunId as Id<"taskRuns">,
+          taskRunId,
         });
 
         serverLogger.info(
@@ -1752,7 +1754,7 @@ export async function spawnAgent(
       rows: 74,
       env: envVars,
       taskId: taskId,
-      taskRunId: taskRunId,
+      taskRunId,
       authFiles,
       startupCommands,
       cwd: "/root/workspace",

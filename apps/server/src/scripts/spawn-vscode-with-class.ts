@@ -1,3 +1,4 @@
+import { Id } from "@cmux/convex/dataModel";
 import fs from "node:fs";
 import { DockerVSCodeInstance } from "../vscode/DockerVSCodeInstance.js";
 
@@ -13,7 +14,8 @@ async function main() {
   // Create VSCode instance using the abstraction
   const vscodeInstance = new DockerVSCodeInstance({
     agentName: "claude-demo",
-    taskRunId: "test-task-run-id", // Add required taskRunId for testing
+    taskRunId: "test-task-run-id" as Id<"taskRuns">, // Add required taskRunId for testing
+    taskId: "test-task-id" as Id<"tasks">, // Add required taskId for testing
   });
 
   try {
@@ -35,10 +37,10 @@ async function main() {
     const terminalId = "claude-terminal";
     const command = "bash";
     const escapedPrompt = prompt
-      .replace(/\\/g, "\\\\") 
-      .replace(/"/g, '\\"')    
-      .replace(/\$/g, "\\$")   
-      .replace(/`/g, "\\`");  
+      .replace(/\\/g, "\\\\")
+      .replace(/"/g, '\\"')
+      .replace(/\$/g, "\\$")
+      .replace(/`/g, "\\`");
     const args = [
       "-c",
       `bunx @anthropic-ai/claude-code --model claude-sonnet-4-20250514 --dangerously-skip-permissions "${escapedPrompt}"`,
