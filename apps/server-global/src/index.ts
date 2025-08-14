@@ -15,7 +15,9 @@ app.use(
 app.get("/", (c) => c.text("cmux!"));
 app.get("/user", async (c) => {
   const user = await stackServerApp.getUser({ tokenStore: c.req.raw });
-  console.log("user", user);
+  if (!user) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
   return c.json(user);
 });
 
