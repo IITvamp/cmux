@@ -22,25 +22,9 @@ done
 
 # Check if anything is running on ports 5173, $CONVEX_PORT, 9777, 9778
 PORTS_TO_CHECK="5173 $CONVEX_PORT 9777 9778"
-
-echo -e "${BLUE}Checking ports and cleaning up processes...${NC}"
-
-for port in $PORTS_TO_CHECK; do
-    # Get PIDs of processes listening on the port, excluding Google Chrome and OrbStack
-    PIDS=$(lsof -ti :$port 2>/dev/null | while read pid; do
-        PROCESS_NAME=$(ps -p $pid -o comm= 2>/dev/null || echo "")
-        if [[ ! "$PROCESS_NAME" =~ (Google|Chrome|OrbStack) ]]; then
-            echo $pid
-        fi
-    done)
-    
-    if [ -n "$PIDS" ]; then
-        echo -e "${YELLOW}Killing processes on port $port (excluding Chrome/OrbStack)...${NC}"
-        for pid in $PIDS; do
-            kill -9 $pid 2>/dev/null && echo -e "${GREEN}Killed process $pid on port $port${NC}"
-        done
-    fi
-done
+# Use shared port cleanup helper
+source "$(dirname "$0")/_port-clean.sh"
+clean_ports $PORTS_TO_CHECK
 
 # Build Docker image by default unless explicitly skipped
 if [ "$SKIP_DOCKER_BUILD" != "true" ] || [ "$FORCE_DOCKER_BUILD" = "true" ]; then

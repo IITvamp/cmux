@@ -46,7 +46,7 @@ export const TaskList = memo(function TaskList() {
           </div>
         ) : tasks.length === 0 ? (
           <div className="text-sm text-neutral-500 dark:text-neutral-400 py-2 select-none">
-            No tasks
+            {tab === "all" ? "No active tasks" : "No archived tasks"}
           </div>
         ) : (
           tasks.map((task) => <TaskItem key={task._id} task={task} />)
