@@ -3,7 +3,12 @@ packages:
   - packages/*
   - scripts
 
+ignoredBuiltDependencies:
+  - sharp
+  - unrs-resolver
+
 onlyBuiltDependencies:
+  - '@heroui/shared-utils'
   - '@tailwindcss/oxide'
   - '@vscode/vsce-sign'
   - cpu-features

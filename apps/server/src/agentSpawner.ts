@@ -7,6 +7,7 @@ import {
 } from "@cmux/shared/agentConfig";
 import type { WorkerCreateTerminal } from "@cmux/shared/worker-schemas";
 import * as path from "node:path";
+import { captureGitDiff } from "./captureGitDiff.js";
 import { evaluateCrownWithClaudeCode } from "./crownEvaluator.js";
 import { sanitizeTmuxSessionName } from "./sanitizeTmuxSessionName.js";
 import { storeGitDiffs } from "./storeGitDiffs.js";
@@ -21,916 +22,6 @@ import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { MorphVSCodeInstance } from "./vscode/MorphVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWorktreePath, setupProjectWorkspace } from "./workspace.js";
-
-/**
- * Automatically commit and push changes when a task completes
- */
-async function performAutoCommitAndPush(
-  vscodeInstance: VSCodeInstance,
-  agent: AgentConfig,
-  taskRunId: string | Id<"taskRuns">,
-  taskDescription: string,
-  worktreePath: string
-): Promise<void> {
-  try {
-    serverLogger.info(`[AgentSpawner] Starting auto-commit for ${agent.name}`);
-
-    // Check if this run is crowned
-    const taskRun = await convex.query(api.taskRuns.get, {
-      id: taskRunId as Id<"taskRuns">,
-    });
-    const isCrowned = taskRun?.isCrowned || false;
-
-    serverLogger.info(
-      `[AgentSpawner] Task run ${taskRunId} crowned status: ${isCrowned}`
-    );
-
-    // Use the newBranch from the task run, or fallback to old logic if not set
-    const branchName =
-      taskRun?.newBranch ||
-      `cmux-${agent.name}-${taskRunId.slice(-8)}`
-        .toLowerCase()
-        .replace(/[^a-z0-9-]/g, "-")
-        .replace(/--+/g, "-");
-
-    // Use task description as the main commit message
-    // Truncate if too long (git has limits on commit message length)
-    const truncatedDescription =
-      taskDescription.length > 72
-        ? taskDescription.substring(0, 69) + "..."
-        : taskDescription;
-
-    const commitMessage = `${truncatedDescription}
-
-Task completed by ${agent.name} agent${isCrowned ? " 🏆" : ""}
-
-🤖 Generated with cmux
-Agent: ${agent.name}
-Task Run ID: ${taskRunId}
-Branch: ${branchName}
-Completed: ${new Date().toISOString()}`;
-
-    // Try to use VSCode extension API first (more reliable)
-    const extensionResult = await tryVSCodeExtensionCommit(
-      vscodeInstance,
-      branchName,
-      commitMessage,
-      agent.name
-    );
-
-    if (extensionResult.success) {
-      serverLogger.info(
-        `[AgentSpawner] Successfully committed via VSCode extension`
-      );
-      serverLogger.info(`[AgentSpawner] Branch: ${branchName}`);
-      serverLogger.info(
-        `[AgentSpawner] Commit message: ${commitMessage.split("\n")[0]}`
-      );
-      return;
-    }
-
-    serverLogger.info(
-      `[AgentSpawner] VSCode extension method failed, falling back to git commands:`,
-      extensionResult.error
-    );
-
-    // Fallback to direct git commands
-    const workerSocket = vscodeInstance.getWorkerSocket();
-    if (!workerSocket || !vscodeInstance.isWorkerConnected()) {
-      serverLogger.info(
-        `[AgentSpawner] No worker connection for auto-commit fallback`
-      );
-      return;
-    }
-
-    // Execute git commands in sequence
-    const gitCommands = [
-      // Add all changes
-      `git add .`,
-      // Create and switch to new branch
-      `git checkout -b ${branchName}`,
-      // Commit with a descriptive message (escape properly for shell)
-      `git commit -m "${commitMessage
-        .replace(/\\/g, "\\\\")
-        .replace(/"/g, '\\"')
-        .replace(/\$/g, "\\$")
-        .replace(/`/g, "\\`")}"`,
-    ];
-
-    // Only push if this is a crowned run
-    if (isCrowned) {
-      gitCommands.push(`git push -u origin ${branchName}`);
-    }
-
-    for (const command of gitCommands) {
-      serverLogger.info(`[AgentSpawner] Executing: ${command}`);
-
-      const result = await new Promise<{
-        success: boolean;
-        stdout?: string;
-        stderr?: string;
-        exitCode?: number;
-        error?: string;
-      }>((resolve) => {
-        workerSocket
-          .timeout(30000) // 30 second timeout
-          .emit(
-            "worker:exec",
-            {
-              command: "bash",
-              args: ["-c", command],
-              cwd: "/root/workspace",
-              env: {},
-            },
-            (timeoutError, result) => {
-              if (timeoutError) {
-                serverLogger.error(
-                  `[AgentSpawner] Timeout executing: ${command}`,
-                  timeoutError
-                );
-                resolve({
-                  success: false,
-                  error: "Timeout waiting for git command",
-                });
-                return;
-              }
-              if (result.error) {
-                resolve({ success: false, error: result.error.message });
-                return;
-              }
-
-              const { stdout, stderr, exitCode } = result.data!;
-              serverLogger.info(`[AgentSpawner] Command output:`, {
-                stdout,
-                stderr,
-                exitCode,
-              });
-
-              if (exitCode === 0) {
-                resolve({ success: true, stdout, stderr, exitCode });
-              } else {
-                resolve({
-                  success: false,
-                  stdout,
-                  stderr,
-                  exitCode,
-                  error: `Command failed with exit code ${exitCode}`,
-                });
-              }
-            }
-          );
-      });
-
-      if (!result.success) {
-        serverLogger.error(
-          `[AgentSpawner] Git command failed: ${command}`,
-          result.error
-        );
-        // Don't stop on individual command failures - some might be expected (e.g., no changes to commit)
-        continue;
-      }
-    }
-
-    if (isCrowned) {
-      // Respect workspace setting for auto-PR
-      const ws = await convex.query(api.workspaceSettings.get);
-      const autoPrEnabled = ((ws as unknown) as { autoPrEnabled?: boolean })?.autoPrEnabled ?? false;
-      if (!autoPrEnabled) {
-        serverLogger.info(
-          `[AgentSpawner] Auto-PR is disabled in settings; skipping PR creation.`
-        );
-        return;
-      }
-      serverLogger.info(
-        `[AgentSpawner] 🏆 Crown winner! Auto-commit and push completed for ${agent.name} on branch ${branchName}`
-      );
-
-      // Create PR for crowned run
-      try {
-        if (!taskRun) {
-          serverLogger.error(
-            `[AgentSpawner] Task run not found for PR creation`
-          );
-          return;
-        }
-        const task = await convex.query(api.tasks.getById, {
-          id: taskRun.taskId,
-        });
-        if (task) {
-          // Use existing task PR title when present, otherwise derive and persist
-          const prTitle = task.pullRequestTitle || `[Crown] ${task.text}`;
-          if (!task.pullRequestTitle || task.pullRequestTitle !== prTitle) {
-            try {
-              await convex.mutation(api.tasks.setPullRequestTitle, {
-                id: task._id as Id<"tasks">,
-                pullRequestTitle: prTitle,
-              });
-            } catch (e) {
-              serverLogger.error(`[AgentSpawner] Failed to save PR title:`, e);
-            }
-          }
-          const prBody = `## 🏆 Crown Winner: ${agent.name}
-
-### Task Description
-${task.text}
-${task.description ? `\n${task.description}` : ""}
-
-### Crown Evaluation
-${taskRun.crownReason || "This implementation was selected as the best solution."}
-
-### Implementation Details
-- **Agent**: ${agent.name}
-- **Task ID**: ${task._id}
-- **Run ID**: ${taskRun._id}
-- **Branch**: ${branchName}
-- **Completed**: ${new Date(taskRun.completedAt || Date.now()).toISOString()}`;
-
-          // Persist PR description on the task in Convex
-          try {
-            await convex.mutation(api.tasks.setPullRequestDescription, {
-              id: task._id as Id<"tasks">,
-              pullRequestDescription: prBody,
-            });
-          } catch (e) {
-            serverLogger.error(`[AgentSpawner] Failed to save PR description:`, e);
-          }
-
-          const bodyFileVar = `cmux_pr_body_${Date.now()}_${Math.random().toString(36).slice(2)}.md`;
-          const prScript = `set -e\n` +
-            `BODY_FILE=\"/tmp/${bodyFileVar}\"\n` +
-            `cat <<'CMUX_EOF' > \"$BODY_FILE\"\n` +
-            `${prBody}\n` +
-            `CMUX_EOF\n` +
-            `gh pr create --title \"${prTitle.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}\" --body-file \"$BODY_FILE\"\n` +
-            `rm -f \"$BODY_FILE\"`;
-
-          const prResult = await new Promise<{
-            success: boolean;
-            output?: string;
-            error?: string;
-          }>((resolve) => {
-            workerSocket.timeout(30000).emit(
-              "worker:exec",
-              {
-                command: "/bin/bash",
-                args: ["-lc", prScript],
-                cwd: "/root/workspace",
-              },
-              (response: any) => {
-                if (response.error) {
-                  resolve({ success: false, error: response.error });
-                } else {
-                  // Extract PR URL from output
-                  const output = response.stdout || "";
-                  const prUrlMatch = output.match(
-                    /https:\/\/github\.com\/[\w-]+\/[\w-]+\/pull\/\d+/
-                  );
-                  resolve({
-                    success: true,
-                    output: prUrlMatch ? prUrlMatch[0] : output,
-                  });
-                }
-              }
-            );
-          });
-
-          if (prResult.success && prResult.output) {
-            serverLogger.info(
-              `[AgentSpawner] Pull request created: ${prResult.output}`
-            );
-            await convex.mutation(api.taskRuns.updatePullRequestUrl, {
-              id: taskRunId as Id<"taskRuns">,
-              pullRequestUrl: prResult.output,
-              isDraft: false,
-            });
-          } else {
-            serverLogger.error(
-              `[AgentSpawner] Failed to create PR: ${prResult.error}`
-            );
-          }
-        }
-      } catch (error) {
-        serverLogger.error(`[AgentSpawner] Error creating PR:`, error);
-      }
-    } else {
-      serverLogger.info(
-        `[AgentSpawner] Auto-commit completed for ${agent.name} on branch ${branchName} (not crowned - branch not pushed)`
-      );
-    }
-  } catch (error) {
-    serverLogger.error(`[AgentSpawner] Error in auto-commit and push:`, error);
-  }
-}
-
-/**
- * Capture the full git diff including untracked files
- */
-async function captureGitDiff(
-  vscodeInstance: VSCodeInstance,
-  worktreePath: string
-): Promise<string> {
-  try {
-    const workerSocket = vscodeInstance.getWorkerSocket();
-    if (!workerSocket || !vscodeInstance.isWorkerConnected()) {
-      serverLogger.error(
-        `[AgentSpawner] No worker connection for git diff capture`
-      );
-      return "";
-    }
-
-    serverLogger.info(
-      `[AgentSpawner] ========================================`
-    );
-    serverLogger.info(`[AgentSpawner] STARTING GIT DIFF CAPTURE`);
-    serverLogger.info(`[AgentSpawner] Local worktree path: ${worktreePath}`);
-    serverLogger.info(`[AgentSpawner] Container workspace: /root/workspace`);
-    serverLogger.info(
-      `[AgentSpawner] ========================================`
-    );
-
-    // IMPORTANT: Use /root/workspace as the working directory, not the local filesystem path
-    const containerWorkspace = "/root/workspace";
-
-    // First check if we're in the right directory and git repo
-    const pwdResult = await new Promise<{
-      success: boolean;
-      stdout?: string;
-    }>((resolve) => {
-      workerSocket.timeout(5000).emit(
-        "worker:exec",
-        {
-          command: "bash",
-          args: ["-c", "pwd && git rev-parse --show-toplevel"],
-          cwd: containerWorkspace,
-          env: {},
-        },
-        (timeoutError, result) => {
-          if (timeoutError || result.error) {
-            resolve({ success: false });
-            return;
-          }
-          resolve({
-            success: true,
-            stdout: result.data?.stdout || "",
-          });
-        }
-      );
-    });
-
-    serverLogger.info(
-      `[AgentSpawner] Working directory check: ${pwdResult.stdout}`
-    );
-
-    // First check git status to understand the repo state
-    const gitStatusVerbose = await new Promise<{
-      success: boolean;
-      stdout?: string;
-      stderr?: string;
-    }>((resolve) => {
-      workerSocket.timeout(5000).emit(
-        "worker:exec",
-        {
-          command: "bash",
-          args: ["-c", "git status --verbose"],
-          cwd: containerWorkspace,
-          env: {},
-        },
-        (timeoutError, result) => {
-          if (timeoutError || result.error) {
-            resolve({
-              success: false,
-              stderr: String(result?.error || "timeout"),
-            });
-            return;
-          }
-          resolve({
-            success: true,
-            stdout: result.data?.stdout || "",
-            stderr: result.data?.stderr || "",
-          });
-        }
-      );
-    });
-
-    serverLogger.info(
-      `[AgentSpawner] Git status verbose: ${gitStatusVerbose.stdout?.substring(0, 500) || gitStatusVerbose.stderr}`
-    );
-
-    // First, let's see what files exist
-    const lsResult = await new Promise<{
-      success: boolean;
-      stdout?: string;
-    }>((resolve) => {
-      workerSocket.timeout(5000).emit(
-        "worker:exec",
-        {
-          command: "bash",
-          args: ["-c", "ls -la"],
-          cwd: containerWorkspace,
-          env: {},
-        },
-        (timeoutError, result) => {
-          if (timeoutError || result.error) {
-            resolve({ success: false });
-            return;
-          }
-          resolve({
-            success: true,
-            stdout: result.data?.stdout || "",
-          });
-        }
-      );
-    });
-
-    serverLogger.info(
-      `[AgentSpawner] Directory listing: ${lsResult.stdout?.split("\n").length || 0} files`
-    );
-
-    // Run git status to see all changes including untracked files
-    const statusResult = await new Promise<{
-      success: boolean;
-      stdout?: string;
-      stderr?: string;
-    }>((resolve) => {
-      workerSocket.timeout(10000).emit(
-        "worker:exec",
-        {
-          command: "bash",
-          args: ["-c", "git status --porcelain"],
-          cwd: containerWorkspace,
-          env: {},
-        },
-        (timeoutError, result) => {
-          if (timeoutError || result.error) {
-            resolve({ success: false });
-            return;
-          }
-          resolve({
-            success: true,
-            stdout: result.data?.stdout || "",
-            stderr: result.data?.stderr || "",
-          });
-        }
-      );
-    });
-
-    let fullDiff = "";
-
-    if (statusResult.success && statusResult.stdout) {
-      fullDiff += `=== Git Status (porcelain) ===\n${statusResult.stdout}\n\n`;
-      serverLogger.info(
-        `[AgentSpawner] Git status shows ${statusResult.stdout.split("\n").filter((l) => l.trim()).length} changed files`
-      );
-    } else {
-      serverLogger.warn(`[AgentSpawner] Git status failed or empty`);
-    }
-
-    // First get regular diff of tracked files
-    const diffResult = await new Promise<{
-      success: boolean;
-      stdout?: string;
-    }>((resolve) => {
-      workerSocket.timeout(10000).emit(
-        "worker:exec",
-        {
-          command: "bash",
-          args: ["-c", "git diff"],
-          cwd: containerWorkspace,
-          env: {},
-        },
-        (timeoutError, result) => {
-          if (timeoutError || result.error) {
-            resolve({ success: false });
-            return;
-          }
-          resolve({
-            success: true,
-            stdout: result.data?.stdout || "",
-          });
-        }
-      );
-    });
-
-    if (diffResult.success && diffResult.stdout) {
-      fullDiff += `=== Tracked file changes (git diff) ===\n${diffResult.stdout}\n\n`;
-      serverLogger.info(
-        `[AgentSpawner] Git diff length: ${diffResult.stdout.length} chars`
-      );
-    }
-
-    // CRITICAL: Add ALL files including untracked ones
-    serverLogger.info(
-      `[AgentSpawner] Running git add -A to stage ALL files (including deletions)`
-    );
-    const addResult = await new Promise<{
-      success: boolean;
-      stdout?: string;
-      stderr?: string;
-    }>((resolve) => {
-      workerSocket.timeout(10000).emit(
-        "worker:exec",
-        {
-          command: "bash",
-          args: [
-            "-c",
-            "cd /root/workspace && git add -A && git status --short",
-          ], // Use -A to add everything including deletions
-          cwd: containerWorkspace,
-          env: {},
-        },
-        (timeoutError, result) => {
-          if (timeoutError || result.error) {
-            resolve({
-              success: false,
-              stderr: String(result?.error || "timeout"),
-            });
-            return;
-          }
-          resolve({
-            success: true,
-            stdout: result.data?.stdout || "",
-            stderr: result.data?.stderr || "",
-          });
-        }
-      );
-    });
-
-    if (addResult.success) {
-      serverLogger.info(
-        `[AgentSpawner] Git add completed. Output: ${addResult.stdout || "no output"}, Stderr: ${addResult.stderr || "no stderr"}`
-      );
-
-      // Now get diff against HEAD - this MUST show all changes
-      serverLogger.info(
-        `[AgentSpawner] Running git diff HEAD to get ALL changes`
-      );
-      const stagedDiffResult = await new Promise<{
-        success: boolean;
-        stdout?: string;
-        stderr?: string;
-      }>((resolve) => {
-        workerSocket
-          .timeout(20000) // Increase timeout for large diffs
-          .emit(
-            "worker:exec",
-            {
-              command: "bash",
-              args: ["-c", "cd /root/workspace && git diff --cached 2>&1"], // Use --cached to show staged changes
-              cwd: containerWorkspace,
-              env: {},
-            },
-            (timeoutError, result) => {
-              if (timeoutError || result.error) {
-                resolve({
-                  success: false,
-                  stderr: String(result?.error || "timeout"),
-                });
-                return;
-              }
-              resolve({
-                success: true,
-                stdout: result.data?.stdout || "",
-                stderr: result.data?.stderr || "",
-              });
-            }
-          );
-      });
-
-      if (stagedDiffResult.success) {
-        serverLogger.info(
-          `[AgentSpawner] Git diff HEAD completed. Length: ${stagedDiffResult.stdout?.length || 0}, Stderr: ${stagedDiffResult.stderr || "no stderr"}`
-        );
-
-        if (stagedDiffResult.stdout && stagedDiffResult.stdout.length > 0) {
-          fullDiff = `=== ALL CHANGES (git diff HEAD) ===\n${stagedDiffResult.stdout}\n=== END ALL CHANGES ===`;
-          serverLogger.info(
-            `[AgentSpawner] Successfully captured diff against HEAD: ${stagedDiffResult.stdout.length} chars`
-          );
-        } else {
-          serverLogger.error(
-            `[AgentSpawner] git diff HEAD returned empty! This should not happen after git add .`
-          );
-
-          // Debug: Check what git thinks is staged
-          const debugStatusResult = await new Promise<{
-            success: boolean;
-            stdout?: string;
-          }>((resolve) => {
-            workerSocket.timeout(5000).emit(
-              "worker:exec",
-              {
-                command: "bash",
-                args: ["-c", "git status --short"],
-                cwd: containerWorkspace,
-                env: {},
-              },
-              (timeoutError, result) => {
-                if (timeoutError || result.error) {
-                  resolve({ success: false });
-                  return;
-                }
-                resolve({
-                  success: true,
-                  stdout: result.data?.stdout || "",
-                });
-              }
-            );
-          });
-
-          serverLogger.error(
-            `[AgentSpawner] Git status after add: ${debugStatusResult.stdout}`
-          );
-          fullDiff = `ERROR: git diff --cached was empty. Git status:\n${debugStatusResult.stdout}`;
-        }
-      } else {
-        serverLogger.error(
-          `[AgentSpawner] Git diff --cached failed: ${stagedDiffResult.stderr}`
-        );
-      }
-
-      // IMPORTANT: Keep files staged so crown evaluation can see them
-      serverLogger.info(
-        `[AgentSpawner] Keeping files staged for crown evaluation`
-      );
-    } else {
-      serverLogger.error(
-        `[AgentSpawner] Git add . failed: ${addResult.stderr}`
-      );
-    }
-
-    // If still no diff, try to show what files are in the directory
-    if (!fullDiff || fullDiff === "No changes detected") {
-      const findResult = await new Promise<{
-        success: boolean;
-        stdout?: string;
-      }>((resolve) => {
-        workerSocket.timeout(5000).emit(
-          "worker:exec",
-          {
-            command: "bash",
-            args: [
-              "-c",
-              "find . -type f -name '*.md' -o -name '*.txt' -o -name '*.js' -o -name '*.ts' -o -name '*.json' | head -20",
-            ],
-            cwd: containerWorkspace,
-            env: {},
-          },
-          (timeoutError, result) => {
-            if (timeoutError || result.error) {
-              resolve({ success: false });
-              return;
-            }
-            resolve({
-              success: true,
-              stdout: result.data?.stdout || "",
-            });
-          }
-        );
-      });
-
-      if (findResult.success && findResult.stdout) {
-        fullDiff = `No git changes detected. Files in directory:\n${findResult.stdout}`;
-      }
-    }
-
-    // AGGRESSIVE FINAL CHECK - Get ALL changes by any means necessary
-    if (!fullDiff || fullDiff.length < 50 || !fullDiff.includes("diff --git")) {
-      serverLogger.warn(
-        `[AgentSpawner] No meaningful diff found, using AGGRESSIVE capture`
-      );
-
-      // Method 1: Get list of all changed files from git status
-      const changedFilesResult = await new Promise<{
-        success: boolean;
-        stdout?: string;
-      }>((resolve) => {
-        workerSocket.timeout(10000).emit(
-          "worker:exec",
-          {
-            command: "bash",
-            args: ["-c", "git status --porcelain | awk '{print $2}'"],
-            cwd: containerWorkspace,
-            env: {},
-          },
-          (timeoutError, result) => {
-            if (timeoutError || result.error) {
-              resolve({ success: false });
-              return;
-            }
-            resolve({
-              success: true,
-              stdout: result.data?.stdout || "",
-            });
-          }
-        );
-      });
-
-      if (changedFilesResult.success && changedFilesResult.stdout) {
-        const files = changedFilesResult.stdout
-          .split("\n")
-          .filter((f) => f.trim());
-        serverLogger.info(
-          `[AgentSpawner] Found ${files.length} changed files to capture`
-        );
-
-        fullDiff = "=== AGGRESSIVE DIFF CAPTURE ===\n";
-
-        // For each file, get its content
-        for (const file of files) {
-          if (!file) continue;
-
-          // Check if file exists
-          const fileExistsResult = await new Promise<{
-            success: boolean;
-            stdout?: string;
-          }>((resolve) => {
-            workerSocket.timeout(5000).emit(
-              "worker:exec",
-              {
-                command: "bash",
-                args: [
-                  "-c",
-                  `test -f "${file}" && echo "exists" || echo "not found"`,
-                ],
-                cwd: containerWorkspace,
-                env: {},
-              },
-              (timeoutError, result) => {
-                if (timeoutError || result.error) {
-                  resolve({ success: false });
-                  return;
-                }
-                resolve({
-                  success: true,
-                  stdout: result.data?.stdout || "",
-                });
-              }
-            );
-          });
-
-          if (
-            fileExistsResult.success &&
-            fileExistsResult.stdout?.includes("exists")
-          ) {
-            // Get file content
-            const fileContentResult = await new Promise<{
-              success: boolean;
-              stdout?: string;
-            }>((resolve) => {
-              workerSocket.timeout(5000).emit(
-                "worker:exec",
-                {
-                  command: "bash",
-                  args: ["-c", `cat "${file}" 2>/dev/null | head -1000`],
-                  cwd: containerWorkspace,
-                  env: {},
-                },
-                (timeoutError, result) => {
-                  if (timeoutError || result.error) {
-                    resolve({ success: false });
-                    return;
-                  }
-                  resolve({
-                    success: true,
-                    stdout: result.data?.stdout || "",
-                  });
-                }
-              );
-            });
-
-            if (fileContentResult.success && fileContentResult.stdout) {
-              fullDiff += `\n=== NEW FILE: ${file} ===\n${fileContentResult.stdout}\n=== END FILE ===\n`;
-            }
-          }
-        }
-      }
-
-      // Method 2: If still nothing, just list all files
-      if (!fullDiff || fullDiff.length < 100) {
-        const allFilesResult = await new Promise<{
-          success: boolean;
-          stdout?: string;
-        }>((resolve) => {
-          workerSocket.timeout(5000).emit(
-            "worker:exec",
-            {
-              command: "bash",
-              args: [
-                "-c",
-                "find . -type f -name '*.txt' -o -name '*.md' -o -name '*.js' -o -name '*.ts' -o -name '*.json' -o -name '*.py' -o -name '*.java' -o -name '*.c' -o -name '*.cpp' -o -name '*.go' -o -name '*.rs' | grep -v node_modules | grep -v .git | head -50",
-              ],
-              cwd: containerWorkspace,
-              env: {},
-            },
-            (timeoutError, result) => {
-              if (timeoutError || result.error) {
-                resolve({ success: false });
-                return;
-              }
-              resolve({
-                success: true,
-                stdout: result.data?.stdout || "",
-              });
-            }
-          );
-        });
-
-        if (allFilesResult.success && allFilesResult.stdout) {
-          fullDiff = `=== NO GIT DIFF FOUND - SHOWING ALL FILES ===\n${allFilesResult.stdout}\n`;
-        }
-      }
-    }
-
-    serverLogger.info(
-      `[AgentSpawner] Total diff captured: ${fullDiff.length} chars`
-    );
-    serverLogger.info(
-      `[AgentSpawner] First 200 chars: ${fullDiff.substring(0, 200)}`
-    );
-    return fullDiff || "No changes detected";
-  } catch (error) {
-    serverLogger.error(`[AgentSpawner] Error capturing git diff:`, error);
-    return "";
-  }
-}
-
-/**
- * Try to use VSCode extension API for git operations
- */
-async function tryVSCodeExtensionCommit(
-  vscodeInstance: VSCodeInstance,
-  branchName: string,
-  commitMessage: string,
-  agentName: string
-): Promise<{ success: boolean; error?: string; message?: string }> {
-  try {
-    // For Docker instances, get the extension port
-    let extensionPort: string | undefined;
-    if (vscodeInstance instanceof DockerVSCodeInstance) {
-      const ports = (vscodeInstance as DockerVSCodeInstance).getPorts();
-      extensionPort = ports?.extension;
-    }
-
-    if (!extensionPort) {
-      return { success: false, error: "Extension port not available" };
-    }
-
-    // Connect to VSCode extension socket
-    const { io } = await import("socket.io-client");
-    const extensionSocket = io(`http://localhost:${extensionPort}`, {
-      timeout: 10000,
-    });
-
-    return new Promise((resolve) => {
-      const timeout = setTimeout(() => {
-        extensionSocket.disconnect();
-        resolve({
-          success: false,
-          error: "Timeout connecting to VSCode extension",
-        });
-      }, 15000);
-
-      extensionSocket.on("connect", () => {
-        serverLogger.info(
-          `[AgentSpawner] Connected to VSCode extension on port ${extensionPort}`
-        );
-
-        extensionSocket.emit(
-          "vscode:auto-commit-push",
-          {
-            branchName,
-            commitMessage,
-            agentName,
-          },
-          (response: any) => {
-            clearTimeout(timeout);
-            extensionSocket.disconnect();
-
-            if (response.success) {
-              resolve({ success: true, message: response.message });
-            } else {
-              resolve({ success: false, error: response.error });
-            }
-          }
-        );
-      });
-
-      extensionSocket.on("connect_error", (error) => {
-        clearTimeout(timeout);
-        extensionSocket.disconnect();
-        resolve({
-          success: false,
-          error: `Connection error: ${error.message}`,
-        });
-      });
-    });
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Unknown error",
-    };
-  }
-}
 
 export interface AgentSpawnResult {
   agentName: string;
@@ -955,7 +46,7 @@ function getAgentType(agentName: string): "claude" | "codex" | "gemini" | "amp" 
 
 export async function spawnAgent(
   agent: AgentConfig,
-  taskId: string | Id<"tasks">,
+  taskId: Id<"tasks">,
   options: {
     repoUrl: string;
     branch?: string;
@@ -979,7 +70,7 @@ export async function spawnAgent(
 
     // Create a task run for this specific agent
     const taskRunId = await convex.mutation(api.taskRuns.create, {
-      taskId: taskId as Id<"tasks">,
+      taskId: taskId,
       prompt: `${options.taskDescription} (${agent.name})`,
       agentName: agent.name,
       newBranch,
@@ -987,7 +78,7 @@ export async function spawnAgent(
 
     // Fetch the task to get image storage IDs
     const task = await convex.query(api.tasks.getById, {
-      id: taskId as Id<"tasks">,
+      id: taskId,
     });
 
     // Process prompt to handle images
@@ -1159,7 +250,8 @@ export async function spawnAgent(
       // For Morph, create the instance and we'll clone the repo via socket command
       vscodeInstance = new MorphVSCodeInstance({
         agentName: agent.name,
-        taskRunId: taskRunId as string,
+        taskRunId,
+        taskId,
         theme: options.theme,
       });
 
@@ -1204,7 +296,8 @@ export async function spawnAgent(
       vscodeInstance = new DockerVSCodeInstance({
         workspacePath: worktreePath,
         agentName: agent.name,
-        taskRunId: taskRunId as string,
+        taskRunId,
+        taskId,
         theme: options.theme,
       });
     }
@@ -1425,35 +518,46 @@ export async function spawnAgent(
             serverLogger.info(
               `[AgentSpawner] Task completed with winner: ${winnerId}`
             );
-            
+
             // For single agent scenario, trigger auto-PR if enabled
-            const taskRuns = await convex.query(api.taskRuns.getByTask, { 
-              taskId: taskRunData.taskId 
+            const taskRuns = await convex.query(api.taskRuns.getByTask, {
+              taskId: taskRunData.taskId,
             });
-            
+
             if (taskRuns.length === 1) {
               serverLogger.info(
                 `[AgentSpawner] Single agent scenario - checking auto-PR settings`
               );
-              
+
               // Check if auto-PR is enabled
               const ws = await convex.query(api.workspaceSettings.get);
-              const autoPrEnabled = ((ws as unknown) as { autoPrEnabled?: boolean })?.autoPrEnabled ?? false;
-              
+              const autoPrEnabled =
+                (ws as unknown as { autoPrEnabled?: boolean })?.autoPrEnabled ??
+                false;
+
               if (autoPrEnabled && winnerId) {
                 serverLogger.info(
                   `[AgentSpawner] Triggering auto-PR for single agent completion`
                 );
-                
+
                 // Import and call the createPullRequestForWinner function
-                const { createPullRequestForWinner } = await import("./crownEvaluator.js");
-                const { getGitHubTokenFromKeychain } = await import("./utils/getGitHubToken.js");
+                const { createPullRequestForWinner } = await import(
+                  "./crownEvaluator.js"
+                );
+                const { getGitHubTokenFromKeychain } = await import(
+                  "./utils/getGitHubToken.js"
+                );
                 const githubToken = await getGitHubTokenFromKeychain(convex);
-                
+
                 // Small delay to ensure git diff is persisted
                 setTimeout(async () => {
                   try {
-                    await createPullRequestForWinner(convex, winnerId, taskRunData.taskId, githubToken || undefined);
+                    await createPullRequestForWinner(
+                      convex,
+                      winnerId,
+                      taskRunData.taskId,
+                      githubToken || undefined
+                    );
                     serverLogger.info(
                       `[AgentSpawner] Auto-PR completed for single agent`
                     );
@@ -1575,7 +679,7 @@ export async function spawnAgent(
           const relativePath = path.relative(worktreePath, fileDiff.path);
 
           await convex.mutation(api.gitDiffs.upsertDiff, {
-            taskRunId: taskRunId as Id<"taskRuns">,
+            taskRunId,
             filePath: relativePath,
             status: fileDiff.type as "added" | "modified" | "deleted",
             additions: (fileDiff.patch.match(/^\+[^+]/gm) || []).length,
@@ -1589,7 +693,73 @@ export async function spawnAgent(
 
         // Update the timestamp
         await convex.mutation(api.gitDiffs.updateDiffsTimestamp, {
-          taskRunId: taskRunId as Id<"taskRuns">,
+          taskRunId,
+        });
+
+        serverLogger.info(
+          `[AgentSpawner] Stored ${data.fileDiffs.length} incremental diffs for ${agent.name}`
+        );
+      }
+    });
+
+    // Set up task-complete event handler (from project file detection)
+    vscodeInstance.on("task-complete", async (data) => {
+      serverLogger.info(
+        `[AgentSpawner] Task complete detected for ${agent.name} (${data.detectionMethod}):`,
+        data
+      );
+      if (hasFailed) {
+        serverLogger.warn(
+          `[AgentSpawner] Ignoring task completion for ${agent.name} (already marked failed)`
+        );
+        return;
+      }
+      
+      // Debug logging to understand what's being compared
+      serverLogger.info(`[AgentSpawner] Task completion comparison:`);
+      serverLogger.info(`[AgentSpawner]   data.taskId: "${data.taskId}"`);
+      serverLogger.info(`[AgentSpawner]   taskRunId: "${taskRunId}"`);
+      serverLogger.info(`[AgentSpawner]   Match: ${data.taskId === taskRunId}`);
+
+      // Update the task run as completed
+      if (data.taskId === taskRunId) {
+        serverLogger.info(`[AgentSpawner] Task ID matched! Marking task as complete for ${agent.name}`);
+        // CRITICAL: Add a delay to ensure changes are written to disk
+        serverLogger.info(`[AgentSpawner] Waiting 3 seconds for file system to settle before capturing git diff...`);
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        
+        await handleTaskCompletion(data.exitCode || 0);
+      }
+    });
+
+    // Set up file change event handler for real-time diff updates
+    vscodeInstance.on("file-changes", async (data) => {
+      serverLogger.info(
+        `[AgentSpawner] File changes detected for ${agent.name}:`,
+        { changeCount: data.changes.length, taskId: data.taskId }
+      );
+
+      // Store the incremental diffs in Convex
+      if (data.taskId === taskRunId && data.fileDiffs.length > 0) {
+        for (const fileDiff of data.fileDiffs) {
+          const relativePath = path.relative(worktreePath, fileDiff.path);
+
+          await convex.mutation(api.gitDiffs.upsertDiff, {
+            taskRunId,
+            filePath: relativePath,
+            status: fileDiff.type as "added" | "modified" | "deleted",
+            additions: (fileDiff.patch.match(/^\+[^+]/gm) || []).length,
+            deletions: (fileDiff.patch.match(/^-[^-]/gm) || []).length,
+            patch: fileDiff.patch,
+            oldContent: fileDiff.oldContent,
+            newContent: fileDiff.newContent,
+            isBinary: false,
+          });
+        }
+
+        // Update the timestamp
+        await convex.mutation(api.gitDiffs.updateDiffsTimestamp, {
+          taskRunId,
         });
 
         serverLogger.info(
@@ -1939,7 +1109,8 @@ export async function spawnAgent(
       cols: 80,
       rows: 74,
       env: envVars,
-      taskId: taskRunId,
+      taskId: taskId,
+      taskRunId,
       agentType,
       authFiles,
       startupCommands,
@@ -2186,7 +1357,7 @@ export async function spawnAgent(
 }
 
 export async function spawnAllAgents(
-  taskId: string | Id<"tasks">,
+  taskId: Id<"tasks">,
   options: {
     repoUrl: string;
     branch?: string;
@@ -2212,7 +1383,10 @@ export async function spawnAllAgents(
   // Generate unique branch names for all agents at once to ensure no collisions
   const branchNames = options.prTitle
     ? generateUniqueBranchNamesFromTitle(options.prTitle!, agentsToSpawn.length)
-    : await generateUniqueBranchNames(options.taskDescription, agentsToSpawn.length);
+    : await generateUniqueBranchNames(
+        options.taskDescription,
+        agentsToSpawn.length
+      );
 
   serverLogger.info(
     `[AgentSpawner] Generated ${branchNames.length} unique branch names for agents`

@@ -1,3 +1,4 @@
+import { Id } from "@cmux/convex/dataModel";
 import type { ServerToWorkerEvents, WorkerToServerEvents } from "@cmux/shared";
 import { EventEmitter } from "node:events";
 import { io, type Socket } from "socket.io-client";
@@ -7,7 +8,8 @@ export interface VSCodeInstanceConfig {
   workspacePath?: string;
   initialCommand?: string;
   agentName?: string;
-  taskRunId: string; // Required: Convex taskRun ID
+  taskRunId: Id<"taskRuns">;
+  taskId: Id<"tasks">;
   theme?: "dark" | "light" | "system";
 }
 
@@ -15,7 +17,7 @@ export interface VSCodeInstanceInfo {
   url: string;
   workspaceUrl: string;
   instanceId: string;
-  taskRunId: string;
+  taskRunId: Id<"taskRuns">;
   provider: "docker" | "morph" | "daytona";
 }
 
@@ -25,7 +27,8 @@ export abstract class VSCodeInstance extends EventEmitter {
 
   protected config: VSCodeInstanceConfig;
   protected instanceId: string;
-  protected taskRunId: string;
+  protected taskRunId: Id<"taskRuns">;
+  protected taskId: Id<"tasks">;
   protected workerSocket: Socket<
     WorkerToServerEvents,
     ServerToWorkerEvents
@@ -36,6 +39,7 @@ export abstract class VSCodeInstance extends EventEmitter {
     super();
     this.config = config;
     this.taskRunId = config.taskRunId;
+    this.taskId = config.taskId;
     // Use taskRunId as instanceId for backward compatibility
     this.instanceId = config.taskRunId;
 
@@ -81,7 +85,9 @@ export abstract class VSCodeInstance extends EventEmitter {
       });
 
       this.workerSocket.on("connect", () => {
-        dockerLogger.info(`[VSCodeInstance ${this.instanceId}] Connected to worker`);
+        dockerLogger.info(
+          `[VSCodeInstance ${this.instanceId}] Connected to worker`
+        );
         this.workerConnected = true;
         this.emit("worker-connected");
         resolve();
@@ -185,7 +191,7 @@ export abstract class VSCodeInstance extends EventEmitter {
         `[VSCodeInstance ${this.instanceId}] Starting file watch for ${worktreePath} -> ${containerWorkspace}`
       );
       this.workerSocket.emit("worker:start-file-watch", {
-        taskId: this.taskRunId,
+        taskId: this.taskId,
         worktreePath: containerWorkspace,
       });
     } else {
@@ -201,7 +207,7 @@ export abstract class VSCodeInstance extends EventEmitter {
         `[VSCodeInstance ${this.instanceId}] Stopping file watch`
       );
       this.workerSocket.emit("worker:stop-file-watch", {
-        taskId: this.taskRunId
+        taskId: this.taskId,
       });
     }
   }

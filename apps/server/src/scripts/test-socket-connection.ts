@@ -1,4 +1,5 @@
 #!/usr/bin/env tsx
+import { Id } from "@cmux/convex/dataModel";
 import { DockerVSCodeInstance } from "../vscode/DockerVSCodeInstance.js";
 
 async function main() {
@@ -7,7 +8,8 @@ async function main() {
   // Create VSCode instance
   const vscodeInstance = new DockerVSCodeInstance({
     agentName: "test-socket",
-    taskRunId: "test-task-run-id", // Add required taskRunId for testing
+    taskRunId: "test-task-run-id" as Id<"taskRuns">, // Add required taskRunId for testing
+    taskId: "test-task-id" as Id<"tasks">, // Add required taskId for testing
   });
 
   try {
@@ -19,7 +21,7 @@ async function main() {
 
     // Get the worker socket
     const workerSocket = vscodeInstance.getWorkerSocket();
-    
+
     console.log(`\nSocket status:`);
     console.log(`  Socket exists: ${!!workerSocket}`);
     console.log(`  Worker connected: ${vscodeInstance.isWorkerConnected()}`);
@@ -36,7 +38,7 @@ async function main() {
     console.log(`Emitted worker:check-docker`);
 
     // Wait a bit
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
 
     // Now try with callback
     console.log(`\nTesting emit with callback...`);
@@ -71,20 +73,15 @@ async function main() {
       }, 10000);
 
       console.log(`About to emit worker:create-terminal...`);
-      workerSocket.emit(
-        "worker:create-terminal",
-        terminalCommand,
-        (result) => {
-          clearTimeout(timeout);
-          console.log(`Got terminal creation result:`, result);
-          resolve(result);
-        }
-      );
+      workerSocket.emit("worker:create-terminal", terminalCommand, (result) => {
+        clearTimeout(timeout);
+        console.log(`Got terminal creation result:`, result);
+        resolve(result);
+      });
       console.log(`Emitted worker:create-terminal`);
     });
 
     console.log(`\n✅ All tests passed!`);
-
   } catch (error) {
     console.error(`\n❌ Test failed:`, error);
   } finally {

@@ -1,7 +1,7 @@
 import { useTheme } from "@/components/theme/use-theme";
 import { useSocket } from "@/contexts/socket/use-socket";
 import { cn } from "@/lib/utils";
-import type { Doc } from "@cmux/convex/dataModel";
+import type { Doc, Id } from "@cmux/convex/dataModel";
 import { DiffEditor } from "@monaco-editor/react";
 import {
   ChevronDown,
@@ -25,7 +25,7 @@ import {
 interface GitDiffViewerProps {
   diffs: Doc<"gitDiffs">[];
   isLoading?: boolean;
-  taskRunId?: string;
+  taskRunId?: Id<"taskRuns">;
   onControlsChange?: (controls: {
     expandAll: () => void;
     collapseAll: () => void;
@@ -248,10 +248,7 @@ export function GitDiffViewer({
   }
 
   return (
-    <div
-      key={taskRunId ?? "_"}
-      className="grow bg-neutral-50 dark:bg-neutral-950"
-    >
+    <div key={taskRunId ?? "_"} className="grow bg-white dark:bg-neutral-900">
       {/* Diff sections */}
       <div className="">
         {fileGroups.map((file) => (
@@ -322,7 +319,7 @@ function FileDiffRow({
     <div className="bg-white dark:bg-neutral-900">
       <button
         onClick={onToggle}
-        className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors text-left group pt-1 z-10 bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800 sticky top-[56px]"
+        className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors text-left group pt-1 bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800 sticky top-[56px] z-40"
       >
         <div className="text-neutral-400 dark:text-neutral-500 group-hover:text-neutral-600 dark:group-hover:text-neutral-400">
           {isExpanded ? (
@@ -529,10 +526,10 @@ function FileDiffRow({
                   renderOverviewRuler: false,
                   scrollbar: {
                     vertical: "hidden",
-                    horizontal: "hidden",
+                    horizontal: "auto",
                     verticalScrollbarSize: 8,
                     horizontalScrollbarSize: 8,
-                    handleMouseWheel: false,
+                    handleMouseWheel: true,
                     alwaysConsumeMouseWheel: false,
                   },
                   lineNumbers: "on",

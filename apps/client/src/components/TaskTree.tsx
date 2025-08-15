@@ -6,7 +6,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useArchiveTask } from "@/hooks/useArchiveTask";
 import { ContextMenu } from "@base-ui-components/react/context-menu";
-import { type Doc } from "@cmux/convex/dataModel";
+import { type Doc, type Id } from "@cmux/convex/dataModel";
 import { Link, useLocation } from "@tanstack/react-router";
 import clsx from "clsx";
 import {
@@ -17,6 +17,10 @@ import {
   Circle,
   Copy as CopyIcon,
   Crown,
+  GitMerge,
+  GitPullRequest,
+  GitPullRequestClosed,
+  GitPullRequestDraft,
   Loader2,
   XCircle,
 } from "lucide-react";
@@ -33,6 +37,8 @@ export interface TaskWithRuns extends Doc<"tasks"> {
 interface TaskTreeProps {
   task: TaskWithRuns;
   level?: number;
+  // When true, expand the task node on initial mount
+  defaultExpanded?: boolean;
 }
 
 // Extract the display text logic to avoid re-creating it on every render
@@ -52,7 +58,11 @@ function getRunDisplayText(run: TaskRunWithChildren): string {
   return run.prompt.substring(0, 50) + "...";
 }
 
-function TaskTreeInner({ task, level = 0 }: TaskTreeProps) {
+function TaskTreeInner({
+  task,
+  level = 0,
+  defaultExpanded = false,
+}: TaskTreeProps) {
   // Get the current route to determine if this task is selected
   const location = useLocation();
   const isTaskSelected = useMemo(
@@ -60,8 +70,10 @@ function TaskTreeInner({ task, level = 0 }: TaskTreeProps) {
     [location.pathname, task._id]
   );
 
-  // Default to collapsed unless this task is selected
-  const [isExpanded, setIsExpanded] = useState(isTaskSelected);
+  // Default to collapsed unless this task is selected or flagged to expand
+  const [isExpanded, setIsExpanded] = useState<boolean>(
+    isTaskSelected || defaultExpanded
+  );
   const hasRuns = task.runs && task.runs.length > 0;
 
   // Memoize the toggle handler
@@ -117,16 +129,86 @@ function TaskTreeInner({ task, level = 0 }: TaskTreeProps) {
             </button>
 
             <div className="mr-2 flex-shrink-0">
-              {task.isCompleted ? (
-                <CheckCircle className="w-3 h-3 text-green-500" />
-              ) : (
-                <Circle className="w-3 h-3 text-neutral-400 animate-pulse" />
-              )}
+              {(() => {
+                // Show merge status icon if PR activity exists
+                if (task.mergeStatus && task.mergeStatus !== "none") {
+                  switch (task.mergeStatus) {
+                    case "pr_draft":
+                      return (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <GitPullRequestDraft className="w-3 h-3 text-neutral-500" />
+                          </TooltipTrigger>
+                          <TooltipContent side="right">Draft PR</TooltipContent>
+                        </Tooltip>
+                      );
+                    case "pr_open":
+                      return (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <GitPullRequest className="w-3 h-3 text-[#1f883d] dark:text-[#238636]" />
+                          </TooltipTrigger>
+                          <TooltipContent side="right">PR Open</TooltipContent>
+                        </Tooltip>
+                      );
+                    case "pr_approved":
+                      return (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <GitPullRequest className="w-3 h-3 text-[#1f883d] dark:text-[#238636]" />
+                          </TooltipTrigger>
+                          <TooltipContent side="right">
+                            PR Approved
+                          </TooltipContent>
+                        </Tooltip>
+                      );
+                    case "pr_changes_requested":
+                      return (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <GitPullRequest className="w-3 h-3 text-yellow-500" />
+                          </TooltipTrigger>
+                          <TooltipContent side="right">
+                            Changes Requested
+                          </TooltipContent>
+                        </Tooltip>
+                      );
+                    case "pr_merged":
+                      return (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <GitMerge className="w-3 h-3 text-purple-500" />
+                          </TooltipTrigger>
+                          <TooltipContent side="right">Merged</TooltipContent>
+                        </Tooltip>
+                      );
+                    case "pr_closed":
+                      return (
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <GitPullRequestClosed className="w-3 h-3 text-red-500" />
+                          </TooltipTrigger>
+                          <TooltipContent side="right">
+                            PR Closed
+                          </TooltipContent>
+                        </Tooltip>
+                      );
+                    default:
+                      return null;
+                  }
+                }
+                // Fallback to completion status if no merge status
+                return task.isCompleted ? (
+                  <CheckCircle className="w-3 h-3 text-green-500" />
+                ) : (
+                  <Circle className="w-3 h-3 text-neutral-400 animate-pulse" />
+                );
+              })()}
             </div>
 
             <div className="flex-1 min-w-0">
               <p className="truncate text-neutral-900 dark:text-neutral-100 text-xs">
-                {task.text}
+                {task.pullRequestTitle || task.text}
               </p>
             </div>
           </Link>
@@ -183,7 +265,7 @@ function TaskTreeInner({ task, level = 0 }: TaskTreeProps) {
 interface TaskRunTreeProps {
   run: TaskRunWithChildren;
   level: number;
-  taskId: string;
+  taskId: Id<"tasks">;
   branch?: string;
 }
 

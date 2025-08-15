@@ -1,1 +1,4 @@
-client
+dist/
+assets/
+index.html
+vite.svg

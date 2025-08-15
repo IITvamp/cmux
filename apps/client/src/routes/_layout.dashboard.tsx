@@ -9,6 +9,7 @@ import { TaskList } from "@/components/dashboard/TaskList";
 import { FloatingPane } from "@/components/floating-pane";
 import { ProviderStatusPills } from "@/components/provider-status-pills";
 import { useTheme } from "@/components/theme/use-theme";
+import { useExpandTasks } from "@/contexts/expand-tasks/ExpandTasksContext";
 import { useSocket } from "@/contexts/socket/use-socket";
 import { createFakeConvexId } from "@/lib/fakeConvexId";
 import { api } from "@cmux/convex/api";
@@ -28,6 +29,7 @@ function DashboardComponent() {
   // Authentication is handled by the parent layout
   const { socket } = useSocket();
   const { theme } = useTheme();
+  const { addTaskToExpand } = useExpandTasks();
 
   const [selectedProject, setSelectedProject] = useState<string[]>(() => {
     const stored = localStorage.getItem("selectedProject");
@@ -36,7 +38,7 @@ function DashboardComponent() {
   const [selectedBranch, setSelectedBranch] = useState<string[]>([]);
   const [selectedAgents, setSelectedAgents] = useState<string[]>(() => {
     const stored = localStorage.getItem("selectedAgents");
-    return stored ? JSON.parse(stored) : ["claude/sonnet-4", "codex/gpt-4.1"];
+    return stored ? JSON.parse(stored) : ["claude/opus-4.1", "codex/gpt-5"];
   });
   const [taskDescription, setTaskDescription] = useState<string>("");
   const [isCloudMode, setIsCloudMode] = useState<boolean>(() => {
@@ -231,6 +233,9 @@ function DashboardComponent() {
         baseBranch: branch,
         images: uploadedImages.length > 0 ? uploadedImages : undefined,
       });
+
+      // Hint the sidebar to auto-expand this task once it appears
+      addTaskToExpand(taskId);
 
       const repoUrl = `https://github.com/${projectFullName}.git`;
 

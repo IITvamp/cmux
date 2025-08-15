@@ -3,6 +3,7 @@ import { Dropdown } from "@/components/ui/dropdown";
 import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
 import { useSocket } from "@/contexts/socket/use-socket";
 import type { Doc } from "@cmux/convex/dataModel";
+import { Skeleton } from "@heroui/react";
 import { useClipboard } from "@mantine/hooks";
 import { useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
@@ -14,6 +15,7 @@ import {
   EllipsisVertical,
   ExternalLink,
   GitBranch,
+  GitMerge,
   RefreshCw,
   Trash2,
 } from "lucide-react";
@@ -27,7 +29,7 @@ interface TaskDetailHeaderProps {
   isCheckingDiffs: boolean;
   isCreatingPr: boolean;
   setIsCreatingPr: (v: boolean) => void;
-  onMerge: (method: MergeMethod) => void;
+  onMerge: (method: MergeMethod) => Promise<void>;
   totalAdditions?: number;
   totalDeletions?: number;
   hasAnyDiffs?: boolean;
@@ -51,16 +53,17 @@ export function TaskDetailHeader({
 }: TaskDetailHeaderProps) {
   const navigate = useNavigate();
   const clipboard = useClipboard({ timeout: 2000 });
-  const [prIsOpen, setPrIsOpen] = useState(false);
+  const prIsOpen = selectedRun?.pullRequestState === "open";
+  const prIsMerged = selectedRun?.pullRequestState === "merged";
   const { socket } = useSocket();
   const [agentMenuOpen, setAgentMenuOpen] = useState(false);
+  const [isOpeningPr, setIsOpeningPr] = useState(false);
   const handleAgentOpenChange = useCallback((open: boolean) => {
     setAgentMenuOpen(open);
   }, []);
 
   // Determine if there are any diffs to open a PR for
   const hasChanges = useMemo(() => {
-    console.log({ hasAnyDiffs, totalAdditions, totalDeletions });
     if (typeof hasAnyDiffs === "boolean") return hasAnyDiffs;
     if (
       typeof totalAdditions !== "number" ||
@@ -79,11 +82,37 @@ export function TaskDetailHeader({
     }
   };
 
-  const handleMerge = (method: MergeMethod) => {
-    onMerge(method);
-    if (!prIsOpen) {
-      setPrIsOpen(true);
+  const [isMerging, setIsMerging] = useState(false);
+  const handleMerge = async (method: MergeMethod) => {
+    setIsMerging(true);
+    try {
+      await onMerge(method);
+    } finally {
+      setIsMerging(false);
     }
+  };
+
+  const handleOpenPR = () => {
+    if (!socket || !selectedRun?._id) return;
+    // Create PR or mark draft ready
+    setIsOpeningPr(true);
+    const toastId = toast.loading("Opening PR...");
+    socket.emit(
+      "github-open-pr",
+      { taskRunId: selectedRun._id },
+      (resp: { success: boolean; url?: string; error?: string }) => {
+        setIsOpeningPr(false);
+        if (resp.success) {
+          toast.success("PR opened", { id: toastId, description: resp.url });
+        } else {
+          console.error("Failed to open PR:", resp.error);
+          toast.error("Failed to open PR", {
+            id: toastId,
+            description: resp.error,
+          });
+        }
+      }
+    );
   };
 
   const handleViewPR = () => {
@@ -98,7 +127,7 @@ export function TaskDetailHeader({
     setIsCreatingPr(true);
     socket.emit(
       "github-create-draft-pr",
-      { taskRunId: selectedRun._id as string },
+      { taskRunId: selectedRun._id },
       (resp: { success: boolean; url?: string; error?: string }) => {
         setIsCreatingPr(false);
         if (resp.success && resp.url) {
@@ -119,7 +148,7 @@ export function TaskDetailHeader({
   );
 
   return (
-    <div className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white px-3.5 sticky top-0 z-20 py-2">
+    <div className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white px-3.5 sticky top-0 z-50 py-2">
       <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-3 gap-y-1">
         {/* Title row */}
         <div className="flex items-center gap-2 relative min-w-0">
@@ -152,11 +181,32 @@ export function TaskDetailHeader({
 
         {/* Actions on right, vertically centered across rows */}
         <div className="col-start-3 row-start-1 row-span-2 self-center flex items-center gap-2 shrink-0">
-          <MergeButton
-            onMerge={handleMerge}
-            isOpen={prIsOpen}
-            disabled={selectedRun?.status !== "completed" || !hasChanges}
-          />
+          {prIsMerged ? (
+            <div
+              className="flex items-center gap-1.5 px-3 py-1 bg-[#8250df] text-white rounded font-medium text-xs select-none whitespace-nowrap border border-[#6e40cc] dark:bg-[#8250df] dark:border-[#6e40cc]"
+              title="Pull request has been merged"
+            >
+              <GitMerge className="w-3.5 h-3.5" />
+              Merged
+            </div>
+          ) : (
+            <MergeButton
+              onMerge={
+                prIsOpen
+                  ? handleMerge
+                  : async () => {
+                      handleOpenPR();
+                    }
+              }
+              isOpen={prIsOpen}
+              disabled={
+                isOpeningPr ||
+                isCreatingPr ||
+                isMerging ||
+                (!prIsOpen && !hasChanges)
+              }
+            />
+          )}
           {selectedRun?.pullRequestUrl &&
           selectedRun.pullRequestUrl !== "pending" ? (
             <a
@@ -172,7 +222,7 @@ export function TaskDetailHeader({
             <button
               onClick={handleViewPR}
               className="flex items-center gap-1.5 px-3 py-1 bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white border border-neutral-300 dark:border-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-700 font-medium text-xs select-none disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
-              disabled={isCreatingPr || !hasChanges}
+              disabled={isCreatingPr || isOpeningPr || isMerging || !hasChanges}
             >
               <ExternalLink className="w-3.5 h-3.5" />
               {isCreatingPr ? "Creating draft PR..." : "Open draft PR"}
@@ -233,7 +283,7 @@ export function TaskDetailHeader({
               />
               <Check
                 className={clsx(
-                  "w-3 h-3 text-green-400 absolute inset-0 z-20",
+                  "w-3 h-3 text-green-400 absolute inset-0 z-50",
                   clipboard.copied ? "block" : "hidden"
                 )}
                 aria-hidden={!clipboard.copied}
@@ -263,59 +313,67 @@ export function TaskDetailHeader({
               <span className="text-neutral-500 dark:text-neutral-600 select-none">
                 by
               </span>
-              <Dropdown.Root
-                open={agentMenuOpen}
-                onOpenChange={handleAgentOpenChange}
-              >
-                <Dropdown.Trigger className="flex items-center gap-1 text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white transition-colors text-xs whitespace-nowrap select-none">
-                  <span>{selectedRun?.agentName || "Unknown agent"}</span>
-                  <ChevronDown className="w-3 h-3" />
-                </Dropdown.Trigger>
+              <Skeleton isLoaded={!!task} className="rounded-md">
+                <Dropdown.Root
+                  open={agentMenuOpen}
+                  onOpenChange={handleAgentOpenChange}
+                >
+                  <Dropdown.Trigger className="flex items-center gap-1 text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white transition-colors text-xs whitespace-nowrap select-none">
+                    <span>{selectedRun?.agentName || "Unknown agent"}</span>
+                    <ChevronDown className="w-3 h-3" />
+                  </Dropdown.Trigger>
 
-                <Dropdown.Portal>
-                  <Dropdown.Positioner sideOffset={5}>
-                    <Dropdown.Popup className="min-w-[200px]">
-                      <Dropdown.Arrow />
-                      {taskRuns.map((run) => {
-                        const agentName =
-                          run.agentName ||
-                          run.prompt?.match(/\(([^)]+)\)$/)?.[1] ||
-                          "Unknown agent";
-                        const isSelected = run._id === selectedRun?._id;
-                        return (
-                          <Dropdown.CheckboxItem
-                            key={run._id}
-                            checked={isSelected}
-                            onCheckedChange={() => {
-                              if (!isSelected) {
-                                navigate({
-                                  to: "/task/$taskId",
-                                  params: { taskId: task?._id as string },
-                                  search: { runId: run._id },
-                                });
-                              }
-                              // Close dropdown after selection
-                              setAgentMenuOpen(false);
-                            }}
-                            // Also close when selecting the same option
-                            onClick={() => setAgentMenuOpen(false)}
-                          >
-                            <Dropdown.CheckboxItemIndicator>
-                              <Check className="w-3 h-3" />
-                            </Dropdown.CheckboxItemIndicator>
-                            <span className="col-start-2 flex items-center gap-1.5">
-                              {agentName}
-                              {run.isCrowned && (
-                                <Crown className="w-3 h-3 text-yellow-500 absolute right-4" />
-                              )}
-                            </span>
-                          </Dropdown.CheckboxItem>
-                        );
-                      })}
-                    </Dropdown.Popup>
-                  </Dropdown.Positioner>
-                </Dropdown.Portal>
-              </Dropdown.Root>
+                  <Dropdown.Portal>
+                    <Dropdown.Positioner sideOffset={5}>
+                      <Dropdown.Popup className="min-w-[200px]">
+                        <Dropdown.Arrow />
+                        {taskRuns?.map((run) => {
+                          const agentName =
+                            run.agentName ||
+                            run.prompt?.match(/\(([^)]+)\)$/)?.[1] ||
+                            "Unknown agent";
+                          const isSelected = run._id === selectedRun?._id;
+                          return (
+                            <Dropdown.CheckboxItem
+                              key={run._id}
+                              checked={isSelected}
+                              onCheckedChange={() => {
+                                if (!task?._id) {
+                                  console.error(
+                                    "[TaskDetailHeader] No task ID"
+                                  );
+                                  return;
+                                }
+                                if (!isSelected) {
+                                  navigate({
+                                    to: "/task/$taskId",
+                                    params: { taskId: task?._id },
+                                    search: { runId: run._id },
+                                  });
+                                }
+                                // Close dropdown after selection
+                                setAgentMenuOpen(false);
+                              }}
+                              // Also close when selecting the same option
+                              onClick={() => setAgentMenuOpen(false)}
+                            >
+                              <Dropdown.CheckboxItemIndicator>
+                                <Check className="w-3 h-3" />
+                              </Dropdown.CheckboxItemIndicator>
+                              <span className="col-start-2 flex items-center gap-1.5">
+                                {agentName}
+                                {run.isCrowned && (
+                                  <Crown className="w-3 h-3 text-yellow-500 absolute right-4" />
+                                )}
+                              </span>
+                            </Dropdown.CheckboxItem>
+                          );
+                        })}
+                      </Dropdown.Popup>
+                    </Dropdown.Positioner>
+                  </Dropdown.Portal>
+                </Dropdown.Root>
+              </Skeleton>
             </>
           )}
         </div>

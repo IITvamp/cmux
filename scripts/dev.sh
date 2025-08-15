@@ -22,25 +22,9 @@ done
 
 # Check if anything is running on ports 5173, $CONVEX_PORT, 9777, 9778
 PORTS_TO_CHECK="5173 $CONVEX_PORT 9777 9778"
-
-echo -e "${BLUE}Checking ports and cleaning up processes...${NC}"
-
-for port in $PORTS_TO_CHECK; do
-    # Get PIDs of processes listening on the port, excluding Google Chrome and OrbStack
-    PIDS=$(lsof -ti :$port 2>/dev/null | while read pid; do
-        PROCESS_NAME=$(ps -p $pid -o comm= 2>/dev/null || echo "")
-        if [[ ! "$PROCESS_NAME" =~ (Google|Chrome|OrbStack) ]]; then
-            echo $pid
-        fi
-    done)
-    
-    if [ -n "$PIDS" ]; then
-        echo -e "${YELLOW}Killing processes on port $port (excluding Chrome/OrbStack)...${NC}"
-        for pid in $PIDS; do
-            kill -9 $pid 2>/dev/null && echo -e "${GREEN}Killed process $pid on port $port${NC}"
-        done
-    fi
-done
+# Use shared port cleanup helper
+source "$(dirname "$0")/_port-clean.sh"
+clean_ports $PORTS_TO_CHECK
 
 # Build Docker image by default unless explicitly skipped
 if [ "$SKIP_DOCKER_BUILD" != "true" ] || [ "$FORCE_DOCKER_BUILD" = "true" ]; then
@@ -76,6 +60,7 @@ cleanup() {
     [ -n "$CLIENT_PID" ] && kill $CLIENT_PID 2>/dev/null
     [ -n "$CONVEX_DEV_PID" ] && kill $CONVEX_DEV_PID 2>/dev/null
     [ -n "$DOCKER_COMPOSE_PID" ] && kill $DOCKER_COMPOSE_PID 2>/dev/null
+    [ -n "$SERVER_GLOBAL_PID" ] && kill $SERVER_GLOBAL_PID 2>/dev/null
     # Give processes time to cleanup
     sleep 1
     # Force kill any remaining processes
@@ -83,6 +68,7 @@ cleanup() {
     [ -n "$CLIENT_PID" ] && kill -9 $CLIENT_PID 2>/dev/null
     [ -n "$CONVEX_DEV_PID" ] && kill -9 $CONVEX_DEV_PID 2>/dev/null
     [ -n "$DOCKER_COMPOSE_PID" ] && kill -9 $DOCKER_COMPOSE_PID 2>/dev/null
+    [ -n "$SERVER_GLOBAL_PID" ] && kill -9 $SERVER_GLOBAL_PID 2>/dev/null
     exit
 }
 
@@ -153,6 +139,12 @@ check_process $DOCKER_COMPOSE_PID "Docker Compose"
 CONVEX_DEV_PID=$!
 check_process $CONVEX_DEV_PID "Convex Dev"
 CONVEX_PID=$CONVEX_DEV_PID
+
+# Start the global server
+echo -e "${GREEN}Starting global server on port 9779...${NC}"
+(cd apps/server-global && exec bash -c 'trap "kill -9 0" EXIT; bun run dev 2>&1 | tee "$LOG_DIR/server-global.log" | prefix_output "SERVER-GLOBAL" "$RED"') &
+SERVER_GLOBAL_PID=$!
+check_process $SERVER_GLOBAL_PID "Global Server"
 
 
 # Start the backend server

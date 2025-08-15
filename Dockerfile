@@ -28,7 +28,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
     rm -rf /var/lib/apt/lists/* && \
     npm install -g node-gyp && \
     corepack enable && \
-    corepack prepare pnpm@10.13.1 --activate
+    corepack prepare pnpm@10.14.0 --activate
 
 # Install Bun
 RUN curl -fsSL https://bun.sh/install | bash && \
@@ -153,7 +153,7 @@ RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
     apt-get install -y nodejs && \
     rm -rf /var/lib/apt/lists/* && \
     corepack enable && \
-    corepack prepare pnpm@10.13.1 --activate
+    corepack prepare pnpm@10.14.0 --activate
 
 # Copy Bun from builder
 COPY --from=builder /usr/local/bin/bun /usr/local/bin/bun

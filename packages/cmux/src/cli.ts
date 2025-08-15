@@ -5,11 +5,14 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { ConvexProcesses, spawnConvex } from "./convex/spawnConvex";
+import { ensureBundleExtracted } from "./convex/ensureBundleExtracted";
+import { deployConvexFunctions } from "./convex/deployConvex";
 import { ensureLogFiles } from "./ensureLogFiles";
 import { logger } from "./logger";
 import { checkPorts } from "./utils/checkPorts";
 import { getGitRepoInfo } from "./utils/gitUtils";
 import { killPortsIfNeeded } from "./utils/killPortsIfNeeded";
+import { checkDockerStatus } from "./utils/checkDocker";
 
 const versionPadding = " ".repeat(Math.max(0, 14 - VERSION.toString().length));
 console.log("\n\x1b[36m╔══════════════════════════════════════╗\x1b[0m");
@@ -85,6 +88,41 @@ program
     "disable automatic killing of processes on required ports"
   )
   .action(async (repoPath, options) => {
+    // Ensure Docker is installed and the daemon is running before proceeding
+    const dockerStatus = checkDockerStatus();
+    if (dockerStatus !== "ok") {
+      const isMac = process.platform === "darwin";
+      if (dockerStatus === "not_installed") {
+        console.log("\x1b[33m⚠\x1b[0m Docker is not installed.");
+        if (isMac) {
+          console.log(
+            "\nInstall one of the following and relaunch cmux:\n" +
+              "  • \x1b[36mbrew install --cask orbstack\x1b[0m  (recommended — more battery efficient)\n" +
+              "  • \x1b[36mbrew install docker\x1b[0m\n"
+          );
+        } else {
+          console.log(
+            "\nPlease install Docker Engine or a Docker Desktop alternative, then relaunch cmux."
+          );
+        }
+        process.exit(1);
+      }
+
+      if (dockerStatus === "not_running") {
+        console.log(
+          "\x1b[33m⚠\x1b[0m Docker is installed but the daemon is not running."
+        );
+        if (isMac) {
+          console.log(
+            "\nStart \x1b[36mOrbStack\x1b[0m or \x1b[36mDocker Desktop\x1b[0m, then relaunch cmux.\n"
+          );
+        } else {
+          console.log("\nStart the Docker daemon, then relaunch cmux.\n");
+        }
+        process.exit(1);
+      }
+    }
+
     const port = parseInt(options.port);
 
     if (repoPath) {
@@ -121,6 +159,17 @@ program
 
     ensureLogFiles();
 
+    // Ensure bundled assets are extracted early so static files exist
+    let didExtract = false;
+    try {
+      const res = await ensureBundleExtracted(convexDir);
+      didExtract = res.didExtract;
+    } catch (e) {
+      await logger.error(`Failed to extract bundled assets: ${e}`);
+      console.error("Failed to extract bundled assets:", e);
+      process.exit(1);
+    }
+
     // Start Convex backend
     let convexProcessesPromise: Promise<ConvexProcesses>;
     try {
@@ -142,6 +191,17 @@ program
       await logger.error(`Failed to start Convex: ${error}`);
       console.error("Failed to start Convex:", error);
       process.exit(1);
+    }
+
+    // Deploy convex functions only on first install/upgrade
+    if (didExtract) {
+      try {
+        await deployConvexFunctions(convexDir, process.env.CONVEX_PORT || "9777");
+      } catch (error) {
+        await logger.error(`Convex deployment failed: ${error}`);
+        console.error("Convex deployment failed:", error);
+        process.exit(1);
+      }
     }
 
     // Check if static directory exists

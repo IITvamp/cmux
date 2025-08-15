@@ -270,6 +270,31 @@ export const getTasksWithPendingCrownEvaluation = query({
   },
 });
 
+export const updateMergeStatus = mutation({
+  args: {
+    id: v.id("tasks"),
+    mergeStatus: v.union(
+      v.literal("none"),
+      v.literal("pr_draft"),
+      v.literal("pr_open"),
+      v.literal("pr_approved"),
+      v.literal("pr_changes_requested"),
+      v.literal("pr_merged"),
+      v.literal("pr_closed")
+    ),
+  },
+  handler: async (ctx, args) => {
+    const task = await ctx.db.get(args.id);
+    if (task === null) {
+      throw new Error("Task not found");
+    }
+    await ctx.db.patch(args.id, {
+      mergeStatus: args.mergeStatus,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
 export const checkAndEvaluateCrown = mutation({
   args: {
     taskId: v.id("tasks"),

@@ -5,9 +5,9 @@ import httpProxy from "http-proxy";
 import { Buffer } from "node:buffer";
 import path from "node:path";
 import { convex } from "./utils/convexClient.js";
+import { serverLogger } from "./utils/fileLogger.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
-import { serverLogger } from "./utils/fileLogger.js";
 
 // Port cache to avoid hammering Docker
 interface PortCacheEntry {
@@ -256,7 +256,10 @@ export function createProxyApp({
 
         // Handle proxy errors
         proxy.on("error", (err: Error) => {
-          serverLogger.error(`HTTP proxy error for ${fullContainerName}:${actualPort}:`, err.message);
+          serverLogger.error(
+            `HTTP proxy error for ${fullContainerName}:${actualPort}:`,
+            err.message
+          );
           if (!res.headersSent) {
             res.status(502).send(`Proxy error: ${err.message}`);
           }
@@ -285,6 +288,7 @@ export function createProxyApp({
           // Need to create a new instance
           const newInstance = new DockerVSCodeInstance({
             taskRunId: taskRun._id,
+            taskId: taskRun.taskId,
             workspacePath: taskRun.worktreePath,
           });
 
@@ -392,7 +396,7 @@ export function setupWebSocketProxy(server: Server) {
       // Keep the socket alive
       socket.setKeepAlive(true, 30000); // Send keepalive every 30 seconds
       socket.setNoDelay(true); // Disable Nagle algorithm for lower latency
-      
+
       // Handle proxy errors
       proxy.on("error", (err: Error) => {
         serverLogger.error(
@@ -403,12 +407,14 @@ export function setupWebSocketProxy(server: Server) {
           socket.end("HTTP/1.1 502 Bad Gateway\r\n\r\n");
         }
       });
-      
+
       proxy.on("proxyReqWs", (proxyReq, req, socket) => {
         // Log WebSocket upgrade for debugging
-        serverLogger.info(`WebSocket upgrade for ${containerName}:${actualPort} established`);
+        serverLogger.info(
+          `WebSocket upgrade for ${containerName}:${actualPort} established`
+        );
       });
-      
+
       proxy.ws(request, socket, head);
     }
   );

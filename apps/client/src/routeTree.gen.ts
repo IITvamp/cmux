@@ -14,6 +14,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as HandlerSplatRouteImport } from './routes/handler.$'
 import { Route as LayoutSettingsRouteImport } from './routes/_layout.settings'
 import { Route as LayoutProfileRouteImport } from './routes/_layout.profile'
+import { Route as LayoutDebugRouteImport } from './routes/_layout.debug'
 import { Route as LayoutDashboardRouteImport } from './routes/_layout.dashboard'
 import { Route as LayoutTaskTaskIdRouteImport } from './routes/_layout.task.$taskId'
 import { Route as LayoutTaskTaskIdIndexRouteImport } from './routes/_layout.task.$taskId.index'
@@ -43,6 +44,11 @@ const LayoutProfileRoute = LayoutProfileRouteImport.update({
   path: '/profile',
   getParentRoute: () => LayoutRoute,
 } as any)
+const LayoutDebugRoute = LayoutDebugRouteImport.update({
+  id: '/debug',
+  path: '/debug',
+  getParentRoute: () => LayoutRoute,
+} as any)
 const LayoutDashboardRoute = LayoutDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
@@ -68,6 +74,7 @@ const LayoutTaskTaskIdRunTaskRunIdRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/dashboard': typeof LayoutDashboardRoute
+  '/debug': typeof LayoutDebugRoute
   '/profile': typeof LayoutProfileRoute
   '/settings': typeof LayoutSettingsRoute
   '/handler/$': typeof HandlerSplatRoute
@@ -78,6 +85,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/dashboard': typeof LayoutDashboardRoute
+  '/debug': typeof LayoutDebugRoute
   '/profile': typeof LayoutProfileRoute
   '/settings': typeof LayoutSettingsRoute
   '/handler/$': typeof HandlerSplatRoute
@@ -89,6 +97,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_layout': typeof LayoutRouteWithChildren
   '/_layout/dashboard': typeof LayoutDashboardRoute
+  '/_layout/debug': typeof LayoutDebugRoute
   '/_layout/profile': typeof LayoutProfileRoute
   '/_layout/settings': typeof LayoutSettingsRoute
   '/handler/$': typeof HandlerSplatRoute
@@ -101,6 +110,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/dashboard'
+    | '/debug'
     | '/profile'
     | '/settings'
     | '/handler/$'
@@ -111,6 +121,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/dashboard'
+    | '/debug'
     | '/profile'
     | '/settings'
     | '/handler/$'
@@ -121,6 +132,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_layout'
     | '/_layout/dashboard'
+    | '/_layout/debug'
     | '/_layout/profile'
     | '/_layout/settings'
     | '/handler/$'
@@ -172,6 +184,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutProfileRouteImport
       parentRoute: typeof LayoutRoute
     }
+    '/_layout/debug': {
+      id: '/_layout/debug'
+      path: '/debug'
+      fullPath: '/debug'
+      preLoaderRoute: typeof LayoutDebugRouteImport
+      parentRoute: typeof LayoutRoute
+    }
     '/_layout/dashboard': {
       id: '/_layout/dashboard'
       path: '/dashboard'
@@ -218,6 +237,7 @@ const LayoutTaskTaskIdRouteWithChildren =
 
 interface LayoutRouteChildren {
   LayoutDashboardRoute: typeof LayoutDashboardRoute
+  LayoutDebugRoute: typeof LayoutDebugRoute
   LayoutProfileRoute: typeof LayoutProfileRoute
   LayoutSettingsRoute: typeof LayoutSettingsRoute
   LayoutTaskTaskIdRoute: typeof LayoutTaskTaskIdRouteWithChildren
@@ -225,6 +245,7 @@ interface LayoutRouteChildren {
 
 const LayoutRouteChildren: LayoutRouteChildren = {
   LayoutDashboardRoute: LayoutDashboardRoute,
+  LayoutDebugRoute: LayoutDebugRoute,
   LayoutProfileRoute: LayoutProfileRoute,
   LayoutSettingsRoute: LayoutSettingsRoute,
   LayoutTaskTaskIdRoute: LayoutTaskTaskIdRouteWithChildren,

@@ -78,10 +78,10 @@ smart_push() {
     docker push ${image} &
     local push_pid=$!
     
-    # Monitor the push for up to 90 seconds
+    # Monitor the push for up to 20 minutes
     local elapsed=0
     local check_interval=5
-    local max_wait=90
+    local max_wait=1200
     
     while [ $elapsed -lt $max_wait ]; do
         # Check if push is still running

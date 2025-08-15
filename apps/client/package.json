@@ -20,6 +20,7 @@
     "@cmux/convex": "workspace:*",
     "@cmux/shared": "workspace:*",
     "@convex-dev/react-query": "^0.0.0-alpha.11",
+    "@heroui/react": "^2.8.2",
     "@lexical/code": "^0.32.1",
     "@lexical/history": "^0.32.1",
     "@lexical/link": "^0.32.1",
