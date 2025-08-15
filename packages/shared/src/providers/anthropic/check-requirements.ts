@@ -24,12 +24,27 @@ export async function checkClaudeRequirements(): Promise<string[]> {
       .catch(() => false);
 
     if (!hasCredentialsFile) {
-      // Check for API key in keychain
+      // Check for API key in keychain - try both Claude Code and Claude Code-credentials
+      let foundInKeychain = false;
+      
       try {
         await execAsync(
           "security find-generic-password -a $USER -w -s 'Claude Code'"
         );
+        foundInKeychain = true;
       } catch {
+        // Try Claude Code-credentials as fallback
+        try {
+          await execAsync(
+            "security find-generic-password -a $USER -w -s 'Claude Code-credentials'"
+          );
+          foundInKeychain = true;
+        } catch {
+          // Neither keychain entry found
+        }
+      }
+      
+      if (!foundInKeychain) {
         missing.push(
           "Claude credentials (no .credentials.json or API key in keychain)"
         );
