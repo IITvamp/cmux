@@ -59,10 +59,37 @@ start_devcontainer() {
         # Use a subshell to ensure errors don't propagate
         (
             cd /root/workspace
+            
+            # First, start the devcontainer
             bunx @devcontainers/cli up --workspace-folder . >> /var/log/cmux/devcontainer.log 2>&1 || {
                 echo "[Startup] Devcontainer startup failed (non-fatal), check logs at /var/log/cmux/devcontainer.log" >> /var/log/cmux/startup.log
                 echo "[Startup] Devcontainer error (non-fatal): $(tail -5 /var/log/cmux/devcontainer.log)" >> /var/log/cmux/startup.log
+                exit 0  # Exit subshell but don't fail
             }
+            
+            echo "[Startup] Devcontainer started successfully" >> /var/log/cmux/startup.log
+            
+            # If devcontainer started successfully and dev.sh exists, run it
+            if [ -f "/root/workspace/scripts/dev.sh" ]; then
+                echo "[Startup] Running ./scripts/dev.sh in devcontainer..." >> /var/log/cmux/startup.log
+                
+                # Get the container name/id from the devcontainer CLI output
+                CONTAINER_ID=$(bunx @devcontainers/cli read-configuration --workspace-folder . 2>/dev/null | grep -o '"containerId":"[^"]*"' | cut -d'"' -f4)
+                
+                if [ -n "$CONTAINER_ID" ]; then
+                    # Execute dev.sh inside the devcontainer
+                    docker exec -d "$CONTAINER_ID" bash -c "cd /workspaces/$(basename /root/workspace) && ./scripts/dev.sh" >> /var/log/cmux/devcontainer-dev.log 2>&1 || {
+                        echo "[Startup] Failed to run dev.sh in devcontainer (non-fatal)" >> /var/log/cmux/startup.log
+                    }
+                    echo "[Startup] Started dev.sh in devcontainer (logs at /var/log/cmux/devcontainer-dev.log)" >> /var/log/cmux/startup.log
+                else
+                    # Fallback: try to run it directly if we can't get container ID
+                    bunx @devcontainers/cli exec --workspace-folder . bash -c "./scripts/dev.sh" >> /var/log/cmux/devcontainer-dev.log 2>&1 &
+                    echo "[Startup] Attempted to run dev.sh via devcontainer CLI (logs at /var/log/cmux/devcontainer-dev.log)" >> /var/log/cmux/startup.log
+                fi
+            else
+                echo "[Startup] No scripts/dev.sh found in workspace, skipping dev script" >> /var/log/cmux/startup.log
+            fi
         ) &
         
         echo "[Startup] Devcontainer startup initiated in background (logs at /var/log/cmux/devcontainer.log)" >> /var/log/cmux/startup.log
