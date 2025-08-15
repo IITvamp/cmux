@@ -414,6 +414,15 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     await this.container.start();
     dockerLogger.info(`Container started`);
 
+    // Fire-and-forget: bootstrap devcontainer in background if present
+    // Do not block agent startup
+    this.bootstrapDevcontainerIfPresent().catch((err) => {
+      dockerLogger.warn(
+        `Devcontainer bootstrap skipped or failed for ${this.containerName}:`,
+        err
+      );
+    });
+
     // Get container info including port mappings
     const containerInfo = await this.container.inspect();
     const ports = containerInfo.NetworkSettings.Ports;
@@ -728,6 +737,97 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     // Convert the stream to string
     const logs = stream.toString("utf8");
     return logs;
+  }
+
+  // Detect and start devcontainer tooling inside the running OpenVSCode container
+  // Runs in background and writes output to /root/workspace/.cmux/devcontainer.log
+  private async bootstrapDevcontainerIfPresent(): Promise<void> {
+    try {
+      if (!this.container) {
+        dockerLogger.debug(
+          `bootstrapDevcontainerIfPresent: container not available for ${this.containerName}`
+        );
+        return;
+      }
+
+      // Only attempt when workspace is mounted
+      const workspaceHostPath = this.config.workspacePath;
+      if (!workspaceHostPath) {
+        dockerLogger.debug(
+          `bootstrapDevcontainerIfPresent: no workspacePath for ${this.containerName}`
+        );
+        return;
+      }
+
+      // Check host for .devcontainer/devcontainer.json
+      const fs = await import("fs");
+      const devcontainerFile = path.join(
+        workspaceHostPath,
+        ".devcontainer",
+        "devcontainer.json"
+      );
+      try {
+        await fs.promises.access(devcontainerFile, fs.constants.F_OK);
+      } catch {
+        dockerLogger.info(
+          `No devcontainer found at ${devcontainerFile}; skipping setup.`
+        );
+        return;
+      }
+
+      dockerLogger.info(
+        `Devcontainer detected. Bootstrapping inside ${this.containerName} (non-blocking)...`
+      );
+
+      // Prepare background command inside the container
+      const bootstrapCmd = [
+        "bash",
+        "-lc",
+        [
+          "set -euo pipefail",
+          "mkdir -p /root/workspace/.cmux",
+          // Only run if devcontainer file exists in container mount as well
+          "if [ -f /root/workspace/.devcontainer/devcontainer.json ]; then",
+          // Run in background; redirect output to a log inside workspace
+          "  (cd /root/workspace && nohup bunx @devcontainers/cli up --workspace-folder . >> /root/workspace/.cmux/devcontainer.log 2>&1 &)",
+          "  echo 'devcontainer up triggered in background' >> /root/workspace/.cmux/devcontainer.log",
+          "else",
+          "  echo 'devcontainer.json not found in container' >> /root/workspace/.cmux/devcontainer.log",
+          "fi",
+        ].join(" && "),
+      ];
+
+      const exec = await this.container.exec({
+        Cmd: bootstrapCmd,
+        AttachStdout: true,
+        AttachStderr: true,
+      });
+
+      await new Promise<void>((resolve, reject) => {
+        exec.start((err: Error | null, stream?: NodeJS.ReadableStream) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+          if (stream) {
+            // Drain and detach immediately; the actual work is backgrounded
+            stream.on("end", () => resolve());
+            stream.resume();
+          } else {
+            resolve();
+          }
+        });
+      });
+
+      dockerLogger.info(
+        `Devcontainer bootstrap command issued for ${this.containerName}`
+      );
+    } catch (error) {
+      dockerLogger.warn(
+        `Devcontainer bootstrap error for ${this.containerName}:`,
+        error
+      );
+    }
   }
 
   getContainerName(): string {
