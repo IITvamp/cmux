@@ -4,7 +4,8 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "bun run --hot  --env-file ../../.env src/index.ts"
+    "dev": "bun run --hot  --env-file ../../.env src/index.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json --deprecation"
   },
   "devDependencies": {
     "@types/bun": "latest"
@@ -13,6 +14,8 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "@hono/swagger-ui": "^0.5.2",
+    "@hono/zod-openapi": "^1.1.0",
     "@stackframe/js": "^2.8.28",
     "@t3-oss/env-core": "^0.13.8",
     "hono": "^4.9.1",
