@@ -14,22 +14,9 @@ const logError = (msg: string) => {
   console.error(`[${new Date().toISOString()}] ERROR: ${msg}`);
 };
 
-// Check if port 9777 is already in use (excluding Chrome/OrbStack)
-log("Checking if port 9777 is available...");
-try {
-  const lsofResult =
-    await $`lsof -i :9777 | grep LISTEN | grep -v -E "(Google|Chrome|OrbStack)"`.text();
-  const output = lsofResult.trim();
-  if (output) {
-    logError("Port 9777 is already in use by non-Chrome/OrbStack processes:");
-    console.log(output);
-    logError("Please stop these processes before running this script.");
-    process.exit(1);
-  }
-} catch (error) {
-  // lsof returns exit code 1 when no processes are found, which is what we want
-  log("Port 9777 is available (ignoring Chrome/OrbStack connections).");
-}
+// Clean up dev ports using shared helper (excludes Chrome/OrbStack)
+log("Ensuring dev ports are free via _port-clean.sh...");
+await $`bash scripts/_port-clean.sh`;
 
 log("Checking if convex-local-backend is available...");
 // If missing packages/convex/convex-local-backend, download it from github

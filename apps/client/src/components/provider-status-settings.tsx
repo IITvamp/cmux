@@ -78,21 +78,6 @@ export function ProviderStatusSettings() {
 
   return (
     <div className="space-y-3">
-      {/* Info section */}
-      <div className="text-xs text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-900 p-2 rounded-lg">
-        <p className="font-medium mb-1">Authentication Types:</p>
-        <ul className="space-y-0.5 ml-3">
-          <li>
-            • <span className="font-medium">OAuth:</span> Gemini, AMP -
-            Authorize via browser on first use
-          </li>
-          <li>
-            • <span className="font-medium">API Key:</span> OpenRouter,
-            Anthropic, OpenAI - Configure keys above
-          </li>
-        </ul>
-      </div>
-
       {/* Refresh button */}
       <div className="flex justify-end -mt-1 -mb-2">
         <button

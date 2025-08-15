@@ -57,5 +57,5 @@ austin
 [ ] detectTerminalIdle fixes + tests
 
 lawrence
-[ ] finish git diff editor
+[x] finish git diff editor
 [ ] dev servers
