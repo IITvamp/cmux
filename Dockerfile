@@ -130,6 +130,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     bash \
     nano \
     net-tools \
+    lsof \
     sudo \
     supervisor \
     iptables \
