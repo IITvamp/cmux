@@ -5,10 +5,10 @@
   "private": true,
   "scripts": {
     "dev": "bun run --hot  --env-file ../../.env src/index.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json --deprecation"
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/node": "^24.3.0"
   },
   "peerDependencies": {
     "typescript": "^5"

@@ -11,7 +11,7 @@ export const BookSchema = z
     author: z.string().openapi({
       example: "F. Scott Fitzgerald",
     }),
-    isbn: z.string().openapi({
+    isbn: z.string().optional().openapi({
       example: "978-0-7432-7356-5",
     }),
     publishedYear: z.number().openapi({

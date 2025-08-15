@@ -37,13 +37,16 @@ export const UpdateUserSchema = z
   .openapi("UpdateUser");
 
 export const UserParamsSchema = z.object({
-  id: z.string().min(1).openapi({
-    param: {
-      name: "id",
-      in: "path",
-    },
-    example: "user-123",
-  }),
+  id: z
+    .string()
+    .min(1)
+    .openapi({
+      param: {
+        name: "id",
+        in: "path",
+      },
+      example: "user-123",
+    }),
 });
 
 export const UserListSchema = z
@@ -56,25 +59,38 @@ export const UserListSchema = z
   .openapi("UserList");
 
 export const UserQuerySchema = z.object({
-  page: z.string().regex(/^\d+$/).transform(Number).default("1").openapi({
-    param: {
-      name: "page",
-      in: "query",
-    },
-    example: "1",
-  }),
-  pageSize: z.string().regex(/^\d+$/).transform(Number).default("10").openapi({
-    param: {
-      name: "pageSize",
-      in: "query",
-    },
-    example: "10",
-  }),
-  search: z.string().optional().openapi({
-    param: {
-      name: "search",
-      in: "query",
-    },
-    example: "john",
-  }),
+  page: z
+    .string()
+    .regex(/^\d+$/)
+    .transform(Number)
+    .default(1)
+    .openapi({
+      param: {
+        name: "page",
+        in: "query",
+      },
+      example: "1",
+    }),
+  pageSize: z
+    .string()
+    .regex(/^\d+$/)
+    .transform(Number)
+    .default(10)
+    .openapi({
+      param: {
+        name: "pageSize",
+        in: "query",
+      },
+      example: "10",
+    }),
+  search: z
+    .string()
+    .optional()
+    .openapi({
+      param: {
+        name: "search",
+        in: "query",
+      },
+      example: "john",
+    }),
 });
