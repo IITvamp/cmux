@@ -4,6 +4,18 @@ set -e
 
 export CONVEX_PORT=9777
 
+# Detect if we're running inside a devcontainer
+IS_DEVCONTAINER=false
+if [ -f /.dockerenv ] || [ -n "$REMOTE_CONTAINERS" ] || [ -n "$CODESPACES" ]; then
+    IS_DEVCONTAINER=true
+    # Set workspace directory for devcontainer
+    APP_DIR="/workspace"
+else
+    # Get the directory where this script is located
+    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+    APP_DIR="$(dirname "$SCRIPT_DIR")"
+fi
+
 # Parse command line arguments
 FORCE_DOCKER_BUILD=false
 SHOW_COMPOSE_LOGS=false
@@ -20,23 +32,31 @@ for arg in "$@"; do
     esac
 done
 
-# Check if anything is running on ports 5173, $CONVEX_PORT, 9777, 9778
-PORTS_TO_CHECK="5173 $CONVEX_PORT 9777 9778"
-# Use shared port cleanup helper
-source "$(dirname "$0")/_port-clean.sh"
-clean_ports $PORTS_TO_CHECK
-
-# Build Docker image by default unless explicitly skipped
-if [ "$SKIP_DOCKER_BUILD" != "true" ] || [ "$FORCE_DOCKER_BUILD" = "true" ]; then
-    echo "Building Docker image..."
-    docker build -t cmux-worker:0.0.1 . || exit 1
-else
-    echo "Skipping Docker build (SKIP_DOCKER_BUILD=true)"
+# Only clean ports when not in devcontainer (devcontainer handles this)
+if [ "$IS_DEVCONTAINER" = "false" ]; then
+    # Check if anything is running on ports 5173, $CONVEX_PORT, 9777, 9778
+    PORTS_TO_CHECK="5173 $CONVEX_PORT 9777 9778"
+    # Use shared port cleanup helper
+    source "$(dirname "$0")/_port-clean.sh"
+    clean_ports $PORTS_TO_CHECK
 fi
 
-# Get the directory where this script is located
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-APP_DIR="$(dirname "$SCRIPT_DIR")"
+# Build Docker image (different logic for devcontainer vs host)
+if [ "$IS_DEVCONTAINER" = "true" ]; then
+    # In devcontainer, always build since we have access to docker socket
+    echo "Building Docker image..."
+    docker build -t cmux-worker:0.0.1 /workspace || exit 1
+else
+    # On host, build by default unless explicitly skipped
+    if [ "$SKIP_DOCKER_BUILD" != "true" ] || [ "$FORCE_DOCKER_BUILD" = "true" ]; then
+        echo "Building Docker image..."
+        docker build -t cmux-worker:0.0.1 . || exit 1
+    else
+        echo "Skipping Docker build (SKIP_DOCKER_BUILD=true)"
+    fi
+fi
+
+# APP_DIR is already set above based on environment"
 
 # Colors for output - export them for subshells
 export GREEN='\033[0;32m'
@@ -124,38 +144,46 @@ check_process() {
     fi
 }
 
-(cd .devcontainer && exec bash -c 'trap "kill -9 0" EXIT; \
-  COMPOSE_PROJECT_NAME=cmux-convex docker compose up 2>&1 | tee "$LOG_DIR/docker-compose.log" | { \
-    if [ "${SHOW_COMPOSE_LOGS}" = "true" ]; then \
-      prefix_output "DOCKER-COMPOSE" "$MAGENTA"; \
-    else \
-      cat >/dev/null; \
-    fi; \
-  }') &
-DOCKER_COMPOSE_PID=$!
-check_process $DOCKER_COMPOSE_PID "Docker Compose"
+# Start Convex backend (different for devcontainer vs host)
+if [ "$IS_DEVCONTAINER" = "true" ]; then
+    # In devcontainer, Convex is already running as part of docker-compose
+    echo -e "${GREEN}Convex backend already running in devcontainer...${NC}"
+else
+    # On host, start Convex via docker-compose
+    (cd .devcontainer && exec bash -c 'trap "kill -9 0" EXIT; \
+      COMPOSE_PROJECT_NAME=cmux-convex docker compose -f docker-compose.convex.yml up 2>&1 | tee "$LOG_DIR/docker-compose.log" | { \
+        if [ "${SHOW_COMPOSE_LOGS}" = "true" ]; then \
+          prefix_output "DOCKER-COMPOSE" "$MAGENTA"; \
+        else \
+          cat >/dev/null; \
+        fi; \
+      }') &
+    DOCKER_COMPOSE_PID=$!
+    check_process $DOCKER_COMPOSE_PID "Docker Compose"
+fi
 
-(cd packages/convex && exec bash -c 'trap "kill -9 0" EXIT; source ~/.nvm/nvm.sh && bunx convex dev --env-file .env.convex 2>&1 | tee "$LOG_DIR/convex-dev.log" | prefix_output "CONVEX-DEV" "$BLUE"') &
+# Start convex dev (works the same in both environments)
+(cd "$APP_DIR/packages/convex" && exec bash -c 'trap "kill -9 0" EXIT; source ~/.nvm/nvm.sh 2>/dev/null || true; bunx convex dev --env-file .env.convex 2>&1 | tee "$LOG_DIR/convex-dev.log" | prefix_output "CONVEX-DEV" "$BLUE"') &
 CONVEX_DEV_PID=$!
 check_process $CONVEX_DEV_PID "Convex Dev"
 CONVEX_PID=$CONVEX_DEV_PID
 
 # Start the global server
 echo -e "${GREEN}Starting global server on port 9779...${NC}"
-(cd apps/server-global && exec bash -c 'trap "kill -9 0" EXIT; bun run dev 2>&1 | tee "$LOG_DIR/server-global.log" | prefix_output "SERVER-GLOBAL" "$RED"') &
+(cd "$APP_DIR/apps/server-global" && exec bash -c 'trap "kill -9 0" EXIT; bun run dev 2>&1 | tee "$LOG_DIR/server-global.log" | prefix_output "SERVER-GLOBAL" "$RED"') &
 SERVER_GLOBAL_PID=$!
 check_process $SERVER_GLOBAL_PID "Global Server"
 
 
 # Start the backend server
 echo -e "${GREEN}Starting backend server on port 9776...${NC}"
-(cd apps/server && exec bash -c 'trap "kill -9 0" EXIT; bun run dev 2>&1 | tee "$LOG_DIR/server.log" | prefix_output "SERVER" "$YELLOW"') &
+(cd "$APP_DIR/apps/server" && exec bash -c 'trap "kill -9 0" EXIT; bun run dev 2>&1 | tee "$LOG_DIR/server.log" | prefix_output "SERVER" "$YELLOW"') &
 SERVER_PID=$!
 check_process $SERVER_PID "Backend Server"
 
 # Start the frontend
 echo -e "${GREEN}Starting frontend on port 5173...${NC}"
-(cd apps/client && exec bash -c 'trap "kill -9 0" EXIT; VITE_CONVEX_URL=http://localhost:$CONVEX_PORT bun run dev 2>&1 | tee "$LOG_DIR/client.log" | prefix_output "CLIENT" "$CYAN"') &
+(cd "$APP_DIR/apps/client" && exec bash -c 'trap "kill -9 0" EXIT; VITE_CONVEX_URL=http://localhost:$CONVEX_PORT bun run dev 2>&1 | tee "$LOG_DIR/client.log" | prefix_output "CLIENT" "$CYAN"') &
 CLIENT_PID=$!
 check_process $CLIENT_PID "Frontend Client"
 

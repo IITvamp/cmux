@@ -1,6 +1,7 @@
 {
   "name": "cmux Development Container",
-  "dockerComposeFile": "docker-compose.yml",
+  "dockerComposeFile": "docker-compose.devcontainer.yml",
+  "service": "app",
   "workspaceFolder": "/workspace",
   "customizations": {
     "vscode": {
@@ -67,7 +68,7 @@
     }
   },
   "postCreateCommand": "CI=1 pnpm install --frozen-lockfile",
-  "postStartCommand": "bash /workspace/.devcontainer/dev.sh",
+  "postStartCommand": "bash /workspace/scripts/dev.sh",
   "remoteUser": "node",
   "features": {
     "ghcr.io/devcontainers/features/git:1": {},
