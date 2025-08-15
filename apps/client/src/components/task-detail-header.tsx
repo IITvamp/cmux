@@ -148,7 +148,7 @@ export function TaskDetailHeader({
   );
 
   return (
-    <div className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white px-3.5 sticky top-0 z-40 py-2">
+    <div className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white px-3.5 sticky top-0 z-50 py-2">
       <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-3 gap-y-1">
         {/* Title row */}
         <div className="flex items-center gap-2 relative min-w-0">
@@ -283,7 +283,7 @@ export function TaskDetailHeader({
               />
               <Check
                 className={clsx(
-                  "w-3 h-3 text-green-400 absolute inset-0 z-40",
+                  "w-3 h-3 text-green-400 absolute inset-0 z-50",
                   clipboard.copied ? "block" : "hidden"
                 )}
                 aria-hidden={!clipboard.copied}
