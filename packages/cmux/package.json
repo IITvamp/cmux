@@ -1,6 +1,6 @@
 {
   "name": "cmux",
-  "version": "0.2.33",
+  "version": "0.2.34",
   "description": "Open source Claude Code manager that supports Codex/Gemini/OpenCode/Amp CLI",
   "type": "module",
   "main": "dist/index.js",
