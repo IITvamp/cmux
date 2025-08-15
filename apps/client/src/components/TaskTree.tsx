@@ -58,7 +58,11 @@ function getRunDisplayText(run: TaskRunWithChildren): string {
   return run.prompt.substring(0, 50) + "...";
 }
 
-function TaskTreeInner({ task, level = 0, defaultExpanded = false }: TaskTreeProps) {
+function TaskTreeInner({
+  task,
+  level = 0,
+  defaultExpanded = false,
+}: TaskTreeProps) {
   // Get the current route to determine if this task is selected
   const location = useLocation();
   const isTaskSelected = useMemo(
@@ -135,25 +139,27 @@ function TaskTreeInner({ task, level = 0, defaultExpanded = false }: TaskTreePro
                           <TooltipTrigger asChild>
                             <GitPullRequestDraft className="w-3 h-3 text-neutral-500" />
                           </TooltipTrigger>
-                          <TooltipContent>Draft PR</TooltipContent>
+                          <TooltipContent side="right">Draft PR</TooltipContent>
                         </Tooltip>
                       );
                     case "pr_open":
                       return (
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <GitPullRequest className="w-3 h-3 text-blue-500" />
+                            <GitPullRequest className="w-3 h-3 text-[#1f883d] dark:text-[#238636]" />
                           </TooltipTrigger>
-                          <TooltipContent>PR Open</TooltipContent>
+                          <TooltipContent side="right">PR Open</TooltipContent>
                         </Tooltip>
                       );
                     case "pr_approved":
                       return (
                         <Tooltip>
                           <TooltipTrigger asChild>
-                            <GitPullRequest className="w-3 h-3 text-green-500" />
+                            <GitPullRequest className="w-3 h-3 text-[#1f883d] dark:text-[#238636]" />
                           </TooltipTrigger>
-                          <TooltipContent>PR Approved</TooltipContent>
+                          <TooltipContent side="right">
+                            PR Approved
+                          </TooltipContent>
                         </Tooltip>
                       );
                     case "pr_changes_requested":
@@ -162,7 +168,9 @@ function TaskTreeInner({ task, level = 0, defaultExpanded = false }: TaskTreePro
                           <TooltipTrigger asChild>
                             <GitPullRequest className="w-3 h-3 text-yellow-500" />
                           </TooltipTrigger>
-                          <TooltipContent>Changes Requested</TooltipContent>
+                          <TooltipContent side="right">
+                            Changes Requested
+                          </TooltipContent>
                         </Tooltip>
                       );
                     case "pr_merged":
@@ -171,7 +179,7 @@ function TaskTreeInner({ task, level = 0, defaultExpanded = false }: TaskTreePro
                           <TooltipTrigger asChild>
                             <GitMerge className="w-3 h-3 text-purple-500" />
                           </TooltipTrigger>
-                          <TooltipContent>Merged</TooltipContent>
+                          <TooltipContent side="right">Merged</TooltipContent>
                         </Tooltip>
                       );
                     case "pr_closed":
@@ -180,7 +188,9 @@ function TaskTreeInner({ task, level = 0, defaultExpanded = false }: TaskTreePro
                           <TooltipTrigger asChild>
                             <GitPullRequestClosed className="w-3 h-3 text-red-500" />
                           </TooltipTrigger>
-                          <TooltipContent>PR Closed</TooltipContent>
+                          <TooltipContent side="right">
+                            PR Closed
+                          </TooltipContent>
                         </Tooltip>
                       );
                     default:
