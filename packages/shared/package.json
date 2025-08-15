@@ -57,6 +57,15 @@
       "import": "./src/providers/openai/completion-detector.ts",
       "types": "./src/providers/openai/completion-detector.ts"
     }
+    ,
+    "./src/providers/gemini/completion-detector": {
+      "import": "./src/providers/gemini/completion-detector.ts",
+      "types": "./src/providers/gemini/completion-detector.ts"
+    },
+    "./src/providers/gemini/completion-detector.ts": {
+      "import": "./src/providers/gemini/completion-detector.ts",
+      "types": "./src/providers/gemini/completion-detector.ts"
+    }
   },
   "dependencies": {
     "@cmux/convex": "workspace:*",

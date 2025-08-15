@@ -25,6 +25,15 @@ const getCodexHelpers = async () => {
   };
 };
 
+// Gemini helpers
+const getGeminiHelpers = async () => {
+  const module = await import("@cmux/shared/src/providers/gemini/completion-detector.ts");
+  return {
+    getGeminiProjectPath: module.getGeminiProjectPath,
+    checkGeminiProjectFileCompletion: module.checkGeminiProjectFileCompletion,
+  };
+};
+
 // Other providers will be implemented with provider-specific detectors later
 
 
@@ -227,9 +236,32 @@ export class TaskCompletionDetector extends EventEmitter {
   }
 
   private async checkGeminiCompletion(): Promise<boolean> {
-    // TODO: Implement Gemini-specific completion detection
-    console.log("Gemini completion detection not yet implemented");
-    return false;
+    try {
+      // Give Gemini some time to set up
+      const elapsed = Date.now() - this.startTime;
+      if (elapsed < this.options.minRuntimeMs!) return false;
+
+      const { getGeminiProjectPath, checkGeminiProjectFileCompletion } = await getGeminiHelpers();
+      const projectDir = getGeminiProjectPath(this.options.workingDir);
+
+      // Ensure the project directory exists before checking
+      try {
+        await fs.access(projectDir);
+      } catch {
+        log("DEBUG", `Gemini project directory not found: ${projectDir}`);
+        return false;
+      }
+
+      const isComplete = await checkGeminiProjectFileCompletion(projectDir, undefined, 10000);
+      if (isComplete) {
+        log("INFO", `Gemini task complete: detected completion pattern`);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      log("ERROR", `Error checking Gemini completion: ${error}`);
+      return false;
+    }
   }
 
   private async checkAmpCompletion(): Promise<boolean> {
