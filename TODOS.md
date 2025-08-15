@@ -62,3 +62,4 @@
 [ ] make control+j/k on home page start focusing on the list of tasks.
 [ ] refactor antdmultiselect to use cmdk pako
 [ ] make tui that renders tasks that needs attention as well as starting tasks. should also let user configure which agents to run.
+[ ] use gh webhook cli to update all git sync states faster
