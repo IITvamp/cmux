@@ -347,7 +347,7 @@ function FileDiffRow({
       </button>
 
       {isExpanded && (
-        <div className="border-t border-neutral-200 dark:border-neutral-800 overflow-hidden">
+        <div className="border-t border-neutral-200 dark:border-neutral-800 overflow-hidden isolate">
           {file.isBinary ? (
             <div className="px-3 py-6 text-center text-neutral-500 dark:text-neutral-400 text-xs bg-neutral-50 dark:bg-neutral-900/50">
               Binary file not shown
