@@ -60,3 +60,4 @@
 [ ] make cmd+v paste automatically into the editor even if the editor is not focused on the home page
 [ ] ship electron
 [ ] make control+j/k on home page start focusing on the list of tasks.
+[ ] refactor antdmultiselect to use cmdk pako
