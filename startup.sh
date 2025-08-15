@@ -56,8 +56,14 @@ start_devcontainer() {
         echo "[Startup] Found .devcontainer/devcontainer.json, starting devcontainer..." >> /var/log/cmux/startup.log
         
         # Start the devcontainer in the background using @devcontainers/cli
-        cd /root/workspace
-        bunx @devcontainers/cli up --workspace-folder . >> /var/log/cmux/devcontainer.log 2>&1 &
+        # Use a subshell to ensure errors don't propagate
+        (
+            cd /root/workspace
+            bunx @devcontainers/cli up --workspace-folder . >> /var/log/cmux/devcontainer.log 2>&1 || {
+                echo "[Startup] Devcontainer startup failed (non-fatal), check logs at /var/log/cmux/devcontainer.log" >> /var/log/cmux/startup.log
+                echo "[Startup] Devcontainer error (non-fatal): $(tail -5 /var/log/cmux/devcontainer.log)" >> /var/log/cmux/startup.log
+            }
+        ) &
         
         echo "[Startup] Devcontainer startup initiated in background (logs at /var/log/cmux/devcontainer.log)" >> /var/log/cmux/startup.log
     else
