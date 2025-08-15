@@ -1,0 +1,534 @@
+import { serverLogger } from "./utils/fileLogger";
+import { VSCodeInstance } from "./vscode/VSCodeInstance";
+
+/**
+ * Capture the full git diff including untracked files
+ */
+export async function captureGitDiff(
+  vscodeInstance: VSCodeInstance,
+  worktreePath: string
+): Promise<string> {
+  try {
+    const workerSocket = vscodeInstance.getWorkerSocket();
+    if (!workerSocket || !vscodeInstance.isWorkerConnected()) {
+      serverLogger.error(
+        `[AgentSpawner] No worker connection for git diff capture`
+      );
+      return "";
+    }
+
+    serverLogger.info(
+      `[AgentSpawner] ========================================`
+    );
+    serverLogger.info(`[AgentSpawner] STARTING GIT DIFF CAPTURE`);
+    serverLogger.info(`[AgentSpawner] Local worktree path: ${worktreePath}`);
+    serverLogger.info(`[AgentSpawner] Container workspace: /root/workspace`);
+    serverLogger.info(
+      `[AgentSpawner] ========================================`
+    );
+
+    // IMPORTANT: Use /root/workspace as the working directory, not the local filesystem path
+    const containerWorkspace = "/root/workspace";
+
+    // First check if we're in the right directory and git repo
+    const pwdResult = await new Promise<{
+      success: boolean;
+      stdout?: string;
+    }>((resolve) => {
+      workerSocket.timeout(5000).emit(
+        "worker:exec",
+        {
+          command: "bash",
+          args: ["-c", "pwd && git rev-parse --show-toplevel"],
+          cwd: containerWorkspace,
+          env: {},
+        },
+        (timeoutError, result) => {
+          if (timeoutError || result.error) {
+            resolve({ success: false });
+            return;
+          }
+          resolve({
+            success: true,
+            stdout: result.data?.stdout || "",
+          });
+        }
+      );
+    });
+
+    serverLogger.info(
+      `[AgentSpawner] Working directory check: ${pwdResult.stdout}`
+    );
+
+    // First check git status to understand the repo state
+    const gitStatusVerbose = await new Promise<{
+      success: boolean;
+      stdout?: string;
+      stderr?: string;
+    }>((resolve) => {
+      workerSocket.timeout(5000).emit(
+        "worker:exec",
+        {
+          command: "bash",
+          args: ["-c", "git status --verbose"],
+          cwd: containerWorkspace,
+          env: {},
+        },
+        (timeoutError, result) => {
+          if (timeoutError || result.error) {
+            resolve({
+              success: false,
+              stderr: String(result?.error || "timeout"),
+            });
+            return;
+          }
+          resolve({
+            success: true,
+            stdout: result.data?.stdout || "",
+            stderr: result.data?.stderr || "",
+          });
+        }
+      );
+    });
+
+    serverLogger.info(
+      `[AgentSpawner] Git status verbose: ${gitStatusVerbose.stdout?.substring(0, 500) || gitStatusVerbose.stderr}`
+    );
+
+    // First, let's see what files exist
+    const lsResult = await new Promise<{
+      success: boolean;
+      stdout?: string;
+    }>((resolve) => {
+      workerSocket.timeout(5000).emit(
+        "worker:exec",
+        {
+          command: "bash",
+          args: ["-c", "ls -la"],
+          cwd: containerWorkspace,
+          env: {},
+        },
+        (timeoutError, result) => {
+          if (timeoutError || result.error) {
+            resolve({ success: false });
+            return;
+          }
+          resolve({
+            success: true,
+            stdout: result.data?.stdout || "",
+          });
+        }
+      );
+    });
+
+    serverLogger.info(
+      `[AgentSpawner] Directory listing: ${lsResult.stdout?.split("\n").length || 0} files`
+    );
+
+    // Run git status to see all changes including untracked files
+    const statusResult = await new Promise<{
+      success: boolean;
+      stdout?: string;
+      stderr?: string;
+    }>((resolve) => {
+      workerSocket.timeout(10000).emit(
+        "worker:exec",
+        {
+          command: "bash",
+          args: ["-c", "git status --porcelain"],
+          cwd: containerWorkspace,
+          env: {},
+        },
+        (timeoutError, result) => {
+          if (timeoutError || result.error) {
+            resolve({ success: false });
+            return;
+          }
+          resolve({
+            success: true,
+            stdout: result.data?.stdout || "",
+            stderr: result.data?.stderr || "",
+          });
+        }
+      );
+    });
+
+    let fullDiff = "";
+
+    if (statusResult.success && statusResult.stdout) {
+      fullDiff += `=== Git Status (porcelain) ===\n${statusResult.stdout}\n\n`;
+      serverLogger.info(
+        `[AgentSpawner] Git status shows ${statusResult.stdout.split("\n").filter((l) => l.trim()).length} changed files`
+      );
+    } else {
+      serverLogger.warn(`[AgentSpawner] Git status failed or empty`);
+    }
+
+    // First get regular diff of tracked files
+    const diffResult = await new Promise<{
+      success: boolean;
+      stdout?: string;
+    }>((resolve) => {
+      workerSocket.timeout(10000).emit(
+        "worker:exec",
+        {
+          command: "bash",
+          args: ["-c", "git diff"],
+          cwd: containerWorkspace,
+          env: {},
+        },
+        (timeoutError, result) => {
+          if (timeoutError || result.error) {
+            resolve({ success: false });
+            return;
+          }
+          resolve({
+            success: true,
+            stdout: result.data?.stdout || "",
+          });
+        }
+      );
+    });
+
+    if (diffResult.success && diffResult.stdout) {
+      fullDiff += `=== Tracked file changes (git diff) ===\n${diffResult.stdout}\n\n`;
+      serverLogger.info(
+        `[AgentSpawner] Git diff length: ${diffResult.stdout.length} chars`
+      );
+    }
+
+    // CRITICAL: Add ALL files including untracked ones
+    serverLogger.info(
+      `[AgentSpawner] Running git add -A to stage ALL files (including deletions)`
+    );
+    const addResult = await new Promise<{
+      success: boolean;
+      stdout?: string;
+      stderr?: string;
+    }>((resolve) => {
+      workerSocket.timeout(10000).emit(
+        "worker:exec",
+        {
+          command: "bash",
+          args: [
+            "-c",
+            "cd /root/workspace && git add -A && git status --short",
+          ], // Use -A to add everything including deletions
+          cwd: containerWorkspace,
+          env: {},
+        },
+        (timeoutError, result) => {
+          if (timeoutError || result.error) {
+            resolve({
+              success: false,
+              stderr: String(result?.error || "timeout"),
+            });
+            return;
+          }
+          resolve({
+            success: true,
+            stdout: result.data?.stdout || "",
+            stderr: result.data?.stderr || "",
+          });
+        }
+      );
+    });
+
+    if (addResult.success) {
+      serverLogger.info(
+        `[AgentSpawner] Git add completed. Output: ${addResult.stdout || "no output"}, Stderr: ${addResult.stderr || "no stderr"}`
+      );
+
+      // Now get diff against HEAD - this MUST show all changes
+      serverLogger.info(
+        `[AgentSpawner] Running git diff HEAD to get ALL changes`
+      );
+      const stagedDiffResult = await new Promise<{
+        success: boolean;
+        stdout?: string;
+        stderr?: string;
+      }>((resolve) => {
+        workerSocket
+          .timeout(20000) // Increase timeout for large diffs
+          .emit(
+            "worker:exec",
+            {
+              command: "bash",
+              args: ["-c", "cd /root/workspace && git diff --cached 2>&1"], // Use --cached to show staged changes
+              cwd: containerWorkspace,
+              env: {},
+            },
+            (timeoutError, result) => {
+              if (timeoutError || result.error) {
+                resolve({
+                  success: false,
+                  stderr: String(result?.error || "timeout"),
+                });
+                return;
+              }
+              resolve({
+                success: true,
+                stdout: result.data?.stdout || "",
+                stderr: result.data?.stderr || "",
+              });
+            }
+          );
+      });
+
+      if (stagedDiffResult.success) {
+        serverLogger.info(
+          `[AgentSpawner] Git diff HEAD completed. Length: ${stagedDiffResult.stdout?.length || 0}, Stderr: ${stagedDiffResult.stderr || "no stderr"}`
+        );
+
+        if (stagedDiffResult.stdout && stagedDiffResult.stdout.length > 0) {
+          fullDiff = `=== ALL CHANGES (git diff HEAD) ===\n${stagedDiffResult.stdout}\n=== END ALL CHANGES ===`;
+          serverLogger.info(
+            `[AgentSpawner] Successfully captured diff against HEAD: ${stagedDiffResult.stdout.length} chars`
+          );
+        } else {
+          serverLogger.error(
+            `[AgentSpawner] git diff HEAD returned empty! This should not happen after git add .`
+          );
+
+          // Debug: Check what git thinks is staged
+          const debugStatusResult = await new Promise<{
+            success: boolean;
+            stdout?: string;
+          }>((resolve) => {
+            workerSocket.timeout(5000).emit(
+              "worker:exec",
+              {
+                command: "bash",
+                args: ["-c", "git status --short"],
+                cwd: containerWorkspace,
+                env: {},
+              },
+              (timeoutError, result) => {
+                if (timeoutError || result.error) {
+                  resolve({ success: false });
+                  return;
+                }
+                resolve({
+                  success: true,
+                  stdout: result.data?.stdout || "",
+                });
+              }
+            );
+          });
+
+          serverLogger.error(
+            `[AgentSpawner] Git status after add: ${debugStatusResult.stdout}`
+          );
+          fullDiff = `ERROR: git diff --cached was empty. Git status:\n${debugStatusResult.stdout}`;
+        }
+      } else {
+        serverLogger.error(
+          `[AgentSpawner] Git diff --cached failed: ${stagedDiffResult.stderr}`
+        );
+      }
+
+      // IMPORTANT: Keep files staged so crown evaluation can see them
+      serverLogger.info(
+        `[AgentSpawner] Keeping files staged for crown evaluation`
+      );
+    } else {
+      serverLogger.error(
+        `[AgentSpawner] Git add . failed: ${addResult.stderr}`
+      );
+    }
+
+    // If still no diff, try to show what files are in the directory
+    if (!fullDiff || fullDiff === "No changes detected") {
+      const findResult = await new Promise<{
+        success: boolean;
+        stdout?: string;
+      }>((resolve) => {
+        workerSocket.timeout(5000).emit(
+          "worker:exec",
+          {
+            command: "bash",
+            args: [
+              "-c",
+              "find . -type f -name '*.md' -o -name '*.txt' -o -name '*.js' -o -name '*.ts' -o -name '*.json' | head -20",
+            ],
+            cwd: containerWorkspace,
+            env: {},
+          },
+          (timeoutError, result) => {
+            if (timeoutError || result.error) {
+              resolve({ success: false });
+              return;
+            }
+            resolve({
+              success: true,
+              stdout: result.data?.stdout || "",
+            });
+          }
+        );
+      });
+
+      if (findResult.success && findResult.stdout) {
+        fullDiff = `No git changes detected. Files in directory:\n${findResult.stdout}`;
+      }
+    }
+
+    // AGGRESSIVE FINAL CHECK - Get ALL changes by any means necessary
+    if (!fullDiff || fullDiff.length < 50 || !fullDiff.includes("diff --git")) {
+      serverLogger.warn(
+        `[AgentSpawner] No meaningful diff found, using AGGRESSIVE capture`
+      );
+
+      // Method 1: Get list of all changed files from git status
+      const changedFilesResult = await new Promise<{
+        success: boolean;
+        stdout?: string;
+      }>((resolve) => {
+        workerSocket.timeout(10000).emit(
+          "worker:exec",
+          {
+            command: "bash",
+            args: ["-c", "git status --porcelain | awk '{print $2}'"],
+            cwd: containerWorkspace,
+            env: {},
+          },
+          (timeoutError, result) => {
+            if (timeoutError || result.error) {
+              resolve({ success: false });
+              return;
+            }
+            resolve({
+              success: true,
+              stdout: result.data?.stdout || "",
+            });
+          }
+        );
+      });
+
+      if (changedFilesResult.success && changedFilesResult.stdout) {
+        const files = changedFilesResult.stdout
+          .split("\n")
+          .filter((f) => f.trim());
+        serverLogger.info(
+          `[AgentSpawner] Found ${files.length} changed files to capture`
+        );
+
+        fullDiff = "=== AGGRESSIVE DIFF CAPTURE ===\n";
+
+        // For each file, get its content
+        for (const file of files) {
+          if (!file) continue;
+
+          // Check if file exists
+          const fileExistsResult = await new Promise<{
+            success: boolean;
+            stdout?: string;
+          }>((resolve) => {
+            workerSocket.timeout(5000).emit(
+              "worker:exec",
+              {
+                command: "bash",
+                args: [
+                  "-c",
+                  `test -f "${file}" && echo "exists" || echo "not found"`,
+                ],
+                cwd: containerWorkspace,
+                env: {},
+              },
+              (timeoutError, result) => {
+                if (timeoutError || result.error) {
+                  resolve({ success: false });
+                  return;
+                }
+                resolve({
+                  success: true,
+                  stdout: result.data?.stdout || "",
+                });
+              }
+            );
+          });
+
+          if (
+            fileExistsResult.success &&
+            fileExistsResult.stdout?.includes("exists")
+          ) {
+            // Get file content
+            const fileContentResult = await new Promise<{
+              success: boolean;
+              stdout?: string;
+            }>((resolve) => {
+              workerSocket.timeout(5000).emit(
+                "worker:exec",
+                {
+                  command: "bash",
+                  args: ["-c", `cat "${file}" 2>/dev/null | head -1000`],
+                  cwd: containerWorkspace,
+                  env: {},
+                },
+                (timeoutError, result) => {
+                  if (timeoutError || result.error) {
+                    resolve({ success: false });
+                    return;
+                  }
+                  resolve({
+                    success: true,
+                    stdout: result.data?.stdout || "",
+                  });
+                }
+              );
+            });
+
+            if (fileContentResult.success && fileContentResult.stdout) {
+              fullDiff += `\n=== NEW FILE: ${file} ===\n${fileContentResult.stdout}\n=== END FILE ===\n`;
+            }
+          }
+        }
+      }
+
+      // Method 2: If still nothing, just list all files
+      if (!fullDiff || fullDiff.length < 100) {
+        const allFilesResult = await new Promise<{
+          success: boolean;
+          stdout?: string;
+        }>((resolve) => {
+          workerSocket.timeout(5000).emit(
+            "worker:exec",
+            {
+              command: "bash",
+              args: [
+                "-c",
+                "find . -type f -name '*.txt' -o -name '*.md' -o -name '*.js' -o -name '*.ts' -o -name '*.json' -o -name '*.py' -o -name '*.java' -o -name '*.c' -o -name '*.cpp' -o -name '*.go' -o -name '*.rs' | grep -v node_modules | grep -v .git | head -50",
+              ],
+              cwd: containerWorkspace,
+              env: {},
+            },
+            (timeoutError, result) => {
+              if (timeoutError || result.error) {
+                resolve({ success: false });
+                return;
+              }
+              resolve({
+                success: true,
+                stdout: result.data?.stdout || "",
+              });
+            }
+          );
+        });
+
+        if (allFilesResult.success && allFilesResult.stdout) {
+          fullDiff = `=== NO GIT DIFF FOUND - SHOWING ALL FILES ===\n${allFilesResult.stdout}\n`;
+        }
+      }
+    }
+
+    serverLogger.info(
+      `[AgentSpawner] Total diff captured: ${fullDiff.length} chars`
+    );
+    serverLogger.info(
+      `[AgentSpawner] First 200 chars: ${fullDiff.substring(0, 200)}`
+    );
+    return fullDiff || "No changes detected";
+  } catch (error) {
+    serverLogger.error(`[AgentSpawner] Error capturing git diff:`, error);
+    return "";
+  }
+}
