@@ -44,8 +44,26 @@ wait_for_dockerd() {
     fi
 }
 
-# Don't block startup on Docker readiness; start check in background
-wait_for_dockerd &
+# Function to start devcontainer if present
+start_devcontainer() {
+    echo "[Startup] Checking for devcontainer configuration..." >> /var/log/cmux/startup.log
+    
+    # Wait for Docker to be ready first
+    wait_for_dockerd
+    
+    # Check if devcontainer.json exists in the workspace
+    if [ -f "/root/workspace/.devcontainer/devcontainer.json" ]; then
+        echo "[Startup] Found .devcontainer/devcontainer.json, starting devcontainer..." >> /var/log/cmux/startup.log
+        
+        # Start the devcontainer in the background using @devcontainers/cli
+        cd /root/workspace
+        bunx @devcontainers/cli up --workspace-folder . >> /var/log/cmux/devcontainer.log 2>&1 &
+        
+        echo "[Startup] Devcontainer startup initiated in background (logs at /var/log/cmux/devcontainer.log)" >> /var/log/cmux/startup.log
+    else
+        echo "[Startup] No .devcontainer/devcontainer.json found, skipping devcontainer startup" >> /var/log/cmux/startup.log
+    fi
+}
 
 # Create log directory
 mkdir -p /var/log/cmux
@@ -120,6 +138,9 @@ export NODE_ENV=production
 export WORKER_PORT=39377
 # temporary hack to get around Claude's --dangerously-skip-permissions cannot be used with root/sudo privileges for security reasons
 export IS_SANDBOX=true
+
+# Start Docker readiness check and devcontainer in background
+start_devcontainer &
 
 rm -f /startup.sh
 
