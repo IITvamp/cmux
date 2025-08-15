@@ -13,6 +13,10 @@
       "import": "./src/index.ts",
       "types": "./src/index.ts"
     },
+    "./model-usage": {
+      "import": "./src/model-usage.ts",
+      "types": "./src/model-usage.ts"
+    },
     "./agentConfig": {
       "import": "./src/agentConfig.ts",
       "types": "./src/agentConfig.ts"

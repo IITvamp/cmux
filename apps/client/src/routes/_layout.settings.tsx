@@ -6,6 +6,7 @@ import { TitleBar } from "@/components/TitleBar";
 import { api } from "@cmux/convex/api";
 import type { Doc } from "@cmux/convex/dataModel";
 import { AGENT_CONFIGS, type AgentConfig } from "@cmux/shared/agentConfig";
+import { API_KEY_MODELS_BY_ENV } from "@cmux/shared/model-usage";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useConvex } from "convex/react";
@@ -33,6 +34,9 @@ function SettingsComponent() {
   const [isSaveButtonVisible, setIsSaveButtonVisible] = useState(true);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const saveButtonRef = useRef<HTMLDivElement>(null);
+  const usedListRefs = useRef<Record<string, HTMLSpanElement | null>>({});
+  const [expandedUsedList, setExpandedUsedList] = useState<Record<string, boolean>>({});
+  const [overflowUsedList, setOverflowUsedList] = useState<Record<string, boolean>>({});
   const [containerSettingsData, setContainerSettingsData] = useState<{
     maxRunningContainers: number;
     reviewPeriodMinutes: number;
@@ -51,6 +55,9 @@ function SettingsComponent() {
       )
     ).values()
   );
+
+  // Global mapping of envVar -> models (from shared)
+  const apiKeyModelsByEnv = API_KEY_MODELS_BY_ENV;
 
   // Query existing API keys
   const { data: existingKeys } = useQuery({
@@ -127,6 +134,38 @@ function SettingsComponent() {
       window.removeEventListener("resize", checkSaveButtonVisibility);
     };
   }, []);
+
+  // Recompute overflow detection for "Used for agents" lines
+  useEffect(() => {
+    const recompute = () => {
+      const updates: Record<string, boolean> = {};
+      for (const key of Object.keys(usedListRefs.current)) {
+        const el = usedListRefs.current[key];
+        if (!el) continue;
+        updates[key] = el.scrollWidth > el.clientWidth;
+      }
+      setOverflowUsedList((prev) => {
+        let changed = false;
+        const next: Record<string, boolean> = { ...prev };
+        for (const k of Object.keys(updates)) {
+          if (prev[k] !== updates[k]) {
+            next[k] = updates[k];
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    };
+
+    recompute();
+    const handler = () => recompute();
+    window.addEventListener("resize", handler);
+    const id = window.setTimeout(recompute, 0);
+    return () => {
+      window.removeEventListener("resize", handler);
+      window.clearTimeout(id);
+    };
+  }, [apiKeys, apiKeyModelsByEnv]);
 
   // Mutation to save API keys
   const saveApiKeyMutation = useMutation({
@@ -592,37 +631,15 @@ function SettingsComponent() {
                           switch (envVar) {
                             case "ANTHROPIC_API_KEY":
                               return {
-                                name: "Anthropic (Claude models via Opencode)",
                                 url: "https://console.anthropic.com/settings/keys",
-                                models: [
-                                  "opus-4",
-                                  "opus-4.1",
-                                  "sonnet-4",
-                                  "qwen3-coder",
-                                ],
-                                instructions:
-                                  "Create an API key in your Anthropic Console",
                               };
                             case "OPENAI_API_KEY":
                               return {
-                                name: "OpenAI (GPT/O-series models via Opencode/Codex)",
                                 url: "https://platform.openai.com/api-keys",
-                                models: [
-                                  "gpt-5",
-                                  "gpt-5-mini",
-                                  "gpt-5-nano",
-                                  "o3-pro",
-                                ],
-                                instructions:
-                                  "Generate an API key from OpenAI Platform",
                               };
                             case "OPENROUTER_API_KEY":
                               return {
-                                name: "OpenRouter (Multiple models via Opencode)",
                                 url: "https://openrouter.ai/keys",
-                                models: ["kimi-k2", "glm-4.5"],
-                                instructions:
-                                  "Get your API key from OpenRouter dashboard",
                               };
                             default:
                               return null;
@@ -630,6 +647,7 @@ function SettingsComponent() {
                         };
 
                         const providerInfo = getProviderInfo(key.envVar);
+                        const usedModels = apiKeyModelsByEnv[key.envVar] ?? [];
 
                         return (
                           <div
@@ -637,24 +655,51 @@ function SettingsComponent() {
                             className="border border-neutral-200 dark:border-neutral-800 rounded-lg p-3 space-y-2"
                           >
                             <div className="flex items-start justify-between">
-                              <div className="flex-1">
+                              <div className="flex-1 min-w-0">
                                 <label
                                   htmlFor={key.envVar}
                                   className="block text-sm font-medium text-neutral-700 dark:text-neutral-300"
                                 >
-                                  {providerInfo?.name || key.displayName}
+                                  {key.displayName}
                                 </label>
-                                {providerInfo && (
+                                {usedModels.length > 0 && (
                                   <div className="mt-1 space-y-1">
-                                    <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                                      {providerInfo.instructions}
-                                    </p>
-                                    <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                                      Used for models:{" "}
-                                      <span className="font-medium">
-                                        {providerInfo.models.join(", ")}
-                                      </span>
-                                    </p>
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <p className="text-xs text-neutral-500 dark:text-neutral-400 flex-1 min-w-0">
+                                        Used for agents:{" "}
+                                        <span className="inline-flex items-center gap-1 min-w-0 align-middle w-full">
+                                          <span
+                                            ref={(el) => {
+                                              usedListRefs.current[key.envVar] = el;
+                                            }}
+                                            className={`font-medium min-w-0 ${
+                                              expandedUsedList[key.envVar]
+                                                ? "flex-1 whitespace-normal break-words"
+                                                : "flex-1 truncate"
+                                            }`}
+                                          >
+                                            {usedModels.join(", ")}
+                                          </span>
+                                          {overflowUsedList[key.envVar] && (
+                                            <a
+                                              href="#"
+                                              onClick={(e) => {
+                                                e.preventDefault();
+                                                setExpandedUsedList((prev) => ({
+                                                  ...prev,
+                                                  [key.envVar]: !prev[key.envVar],
+                                                }));
+                                              }}
+                                              className="flex-none text-[10px] text-blue-600 hover:underline dark:text-blue-400"
+                                            >
+                                              {expandedUsedList[key.envVar]
+                                                ? "Hide more"
+                                                : "Show more"}
+                                            </a>
+                                          )}
+                                        </span>
+                                      </p>
+                                    </div>
                                   </div>
                                 )}
                               </div>
