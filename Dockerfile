@@ -187,6 +187,22 @@ RUN <<-'EOF'
     docker --version
 EOF
 
+# Install Docker Compose and Buildx plugins
+RUN <<-'EOF'
+    set -eux; \
+    mkdir -p /usr/local/lib/docker/cli-plugins; \
+    arch="$(uname -m)"; \
+    # Install Docker Compose
+    curl -SL "https://github.com/docker/compose/releases/download/v2.32.2/docker-compose-linux-${arch}" \
+        -o /usr/local/lib/docker/cli-plugins/docker-compose; \
+    chmod +x /usr/local/lib/docker/cli-plugins/docker-compose; \
+    # Install Docker Buildx
+    curl -SL "https://github.com/docker/buildx/releases/download/v0.18.0/buildx-v0.18.0.linux-${arch}" \
+        -o /usr/local/lib/docker/cli-plugins/docker-buildx; \
+    chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx; \
+    echo "Docker plugins installed successfully"
+EOF
+
 # Skip docker-init installation - ubuntu-dind doesn't have it
 
 # Set Bun path
