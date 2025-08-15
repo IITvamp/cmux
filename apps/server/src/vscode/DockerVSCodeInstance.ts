@@ -804,7 +804,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       });
 
       await new Promise<void>((resolve, reject) => {
-        exec.start((err: Error | null, stream?: NodeJS.ReadableStream) => {
+        exec.start({}, (err: Error | null, stream?: NodeJS.ReadableStream) => {
           if (err) {
             reject(err);
             return;

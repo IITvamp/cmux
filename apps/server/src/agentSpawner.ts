@@ -5,7 +5,15 @@ import {
   type AgentConfig,
   type EnvironmentResult,
 } from "@cmux/shared/agentConfig";
-import type { WorkerCreateTerminal } from "@cmux/shared/worker-schemas";
+import type {
+  WorkerCreateTerminal,
+  WorkerTerminalExit,
+  WorkerTerminalIdle,
+  WorkerTaskComplete,
+  WorkerTerminalFailed,
+  WorkerFileChange,
+  WorkerFileDiff,
+} from "@cmux/shared/worker-schemas";
 import * as path from "node:path";
 import { captureGitDiff } from "./captureGitDiff.js";
 import { evaluateCrownWithClaudeCode } from "./crownEvaluator.js";
@@ -90,8 +98,13 @@ export async function spawnAgent(
 
     // If task has images with storage IDs, download them
     if (task && task.images && task.images.length > 0) {
+      type TaskImageWithUrl = {
+        url?: string | null;
+        fileName?: string;
+        altText: string;
+      };
       const downloadedImages = await Promise.all(
-        task.images.map(async (image: any) => {
+        (task.images as TaskImageWithUrl[]).map(async (image) => {
           if (image.url) {
             // Download image from Convex storage
             const response = await fetch(image.url);
@@ -410,7 +423,7 @@ export async function spawnAgent(
                       cwd: "/root/workspace",
                       env: {},
                     },
-                    (timeoutError, response) => {
+                    (timeoutError: any, response: { error: any; }) => {
                       if (timeoutError || response.error) {
                         serverLogger.warn(
                           `[AgentSpawner] Failed to delete codex-turns.jsonl: ${timeoutError || response.error}`
@@ -632,7 +645,7 @@ export async function spawnAgent(
     let hasFailed = false;
 
     // Set up terminal-exit event handler
-    vscodeInstance.on("terminal-exit", async (data) => {
+    vscodeInstance.on("terminal-exit", async (data: WorkerTerminalExit) => {
       serverLogger.info(
         `[AgentSpawner] Terminal exited for ${agent.name}:`,
         data
@@ -662,19 +675,28 @@ export async function spawnAgent(
         );
         await new Promise((resolve) => setTimeout(resolve, 3000));
 
-        await handleTaskCompletion(data.exitCode || 0);
+        await handleTaskCompletion(data.exitCode ?? 0);
       }
     });
 
     // Set up file change event handler for real-time diff updates
-    vscodeInstance.on("file-changes", async (data) => {
-      serverLogger.info(
-        `[AgentSpawner] File changes detected for ${agent.name}:`,
-        { changeCount: data.changes.length, taskId: data.taskId }
-      );
+    vscodeInstance.on(
+      "file-changes",
+      async (data: {
+        workerId: string;
+        taskId: Id<"tasks">;
+        changes: WorkerFileChange[];
+        gitDiff: string;
+        fileDiffs: WorkerFileDiff[];
+        timestamp: number;
+      }) => {
+        serverLogger.info(
+          `[AgentSpawner] File changes detected for ${agent.name}:`,
+          { changeCount: data.changes.length, taskId: data.taskId }
+        );
 
       // Store the incremental diffs in Convex
-      if (data.taskId === taskRunId && data.fileDiffs.length > 0) {
+      if (data.taskId === taskId && data.fileDiffs.length > 0) {
         for (const fileDiff of data.fileDiffs) {
           const relativePath = path.relative(worktreePath, fileDiff.path);
 
@@ -703,7 +725,7 @@ export async function spawnAgent(
     });
 
     // Set up task-complete event handler (from project file detection)
-    vscodeInstance.on("task-complete", async (data) => {
+    vscodeInstance.on("task-complete", async (data: WorkerTaskComplete) => {
       serverLogger.info(
         `[AgentSpawner] Task complete detected for ${agent.name} (${data.detectionMethod}):`,
         data
@@ -719,28 +741,37 @@ export async function spawnAgent(
       serverLogger.info(`[AgentSpawner] Task completion comparison:`);
       serverLogger.info(`[AgentSpawner]   data.taskId: "${data.taskId}"`);
       serverLogger.info(`[AgentSpawner]   taskRunId: "${taskRunId}"`);
-      serverLogger.info(`[AgentSpawner]   Match: ${data.taskId === taskRunId}`);
+      serverLogger.info(`[AgentSpawner]   Match: ${data.taskId === taskId}`);
 
       // Update the task run as completed
-      if (data.taskId === taskRunId) {
+      if (data.taskId === taskId) {
         serverLogger.info(`[AgentSpawner] Task ID matched! Marking task as complete for ${agent.name}`);
         // CRITICAL: Add a delay to ensure changes are written to disk
         serverLogger.info(`[AgentSpawner] Waiting 3 seconds for file system to settle before capturing git diff...`);
         await new Promise(resolve => setTimeout(resolve, 3000));
         
-        await handleTaskCompletion(data.exitCode || 0);
+        await handleTaskCompletion(0);
       }
     });
 
     // Set up file change event handler for real-time diff updates
-    vscodeInstance.on("file-changes", async (data) => {
-      serverLogger.info(
-        `[AgentSpawner] File changes detected for ${agent.name}:`,
-        { changeCount: data.changes.length, taskId: data.taskId }
-      );
+    vscodeInstance.on(
+      "file-changes",
+      async (data: {
+        workerId: string;
+        taskId: Id<"tasks">;
+        changes: WorkerFileChange[];
+        gitDiff: string;
+        fileDiffs: WorkerFileDiff[];
+        timestamp: number;
+      }) => {
+        serverLogger.info(
+          `[AgentSpawner] File changes detected for ${agent.name}:`,
+          { changeCount: data.changes.length, taskId: data.taskId }
+        );
 
       // Store the incremental diffs in Convex
-      if (data.taskId === taskRunId && data.fileDiffs.length > 0) {
+      if (data.taskId === taskId && data.fileDiffs.length > 0) {
         for (const fileDiff of data.fileDiffs) {
           const relativePath = path.relative(worktreePath, fileDiff.path);
 
@@ -769,7 +800,7 @@ export async function spawnAgent(
     });
 
     // Set up task-complete event handler (from project file detection)
-    vscodeInstance.on("task-complete", async (data) => {
+    vscodeInstance.on("task-complete", async (data: WorkerTaskComplete) => {
       serverLogger.info(
         `[AgentSpawner] Task complete detected for ${agent.name} (${data.detectionMethod}):`,
         data
@@ -785,16 +816,16 @@ export async function spawnAgent(
       serverLogger.info(`[AgentSpawner] Task completion comparison:`);
       serverLogger.info(`[AgentSpawner]   data.taskId: "${data.taskId}"`);
       serverLogger.info(`[AgentSpawner]   taskRunId: "${taskRunId}"`);
-      serverLogger.info(`[AgentSpawner]   Match: ${data.taskId === taskRunId}`);
+      serverLogger.info(`[AgentSpawner]   Match: ${data.taskId === taskId}`);
 
       // Update the task run as completed
-      if (data.taskId === taskRunId) {
+      if (data.taskId === taskId) {
         serverLogger.info(`[AgentSpawner] Task ID matched! Marking task as complete for ${agent.name}`);
         // CRITICAL: Add a delay to ensure changes are written to disk
         serverLogger.info(`[AgentSpawner] Waiting 3 seconds for file system to settle before capturing git diff...`);
         await new Promise(resolve => setTimeout(resolve, 3000));
         
-        await handleTaskCompletion(data.exitCode || 0);
+        await handleTaskCompletion(0);
       }
     });
 
@@ -806,7 +837,7 @@ export async function spawnAgent(
       );
 
       // Store the incremental diffs in Convex
-      if (data.taskId === taskRunId && data.fileDiffs.length > 0) {
+      if (data.taskId === taskId && data.fileDiffs.length > 0) {
         for (const fileDiff of data.fileDiffs) {
           const relativePath = path.relative(worktreePath, fileDiff.path);
 
@@ -851,10 +882,10 @@ export async function spawnAgent(
       serverLogger.info(`[AgentSpawner] Task completion comparison:`);
       serverLogger.info(`[AgentSpawner]   data.taskId: "${data.taskId}"`);
       serverLogger.info(`[AgentSpawner]   taskRunId: "${taskRunId}"`);
-      serverLogger.info(`[AgentSpawner]   Match: ${data.taskId === taskRunId}`);
+      serverLogger.info(`[AgentSpawner]   Match: ${data.taskId === taskId}`);
 
       // Update the task run as completed
-      if (data.taskId === taskRunId) {
+      if (data.taskId === taskId) {
         serverLogger.info(`[AgentSpawner] Task ID matched! Marking task as complete for ${agent.name}`);
         // CRITICAL: Add a delay to ensure changes are written to disk
         serverLogger.info(`[AgentSpawner] Waiting 3 seconds for file system to settle before capturing git diff...`);
@@ -867,7 +898,7 @@ export async function spawnAgent(
     });
 
     // Set up terminal-idle event handler (legacy, for non-Claude agents)
-    vscodeInstance.on("terminal-idle", async (data) => {
+    vscodeInstance.on("terminal-idle", async (data: WorkerTerminalIdle) => {
       serverLogger.info(
         `[AgentSpawner] Terminal idle detected for ${agent.name}:`,
         data
@@ -883,10 +914,10 @@ export async function spawnAgent(
       serverLogger.info(`[AgentSpawner] Terminal idle comparison:`);
       serverLogger.info(`[AgentSpawner]   data.taskId: "${data.taskId}"`);
       serverLogger.info(`[AgentSpawner]   taskRunId: "${taskRunId}"`);
-      serverLogger.info(`[AgentSpawner]   Match: ${data.taskId === taskRunId}`);
+      serverLogger.info(`[AgentSpawner]   Match: ${data.taskId === taskId}`);
 
       // Update the task run as completed
-      if (data.taskId === taskRunId) {
+      if (data.taskId === taskId) {
         serverLogger.info(
           `[AgentSpawner] Task ID matched! Marking task as complete for ${agent.name}`
         );
@@ -907,13 +938,13 @@ export async function spawnAgent(
     });
 
     // Set up terminal-failed event handler
-    vscodeInstance.on("terminal-failed", async (data: any) => {
+    vscodeInstance.on("terminal-failed", async (data: WorkerTerminalFailed) => {
       try {
         serverLogger.error(
           `[AgentSpawner] Terminal failed for ${agent.name}:`,
           data
         );
-        if (data.taskId !== taskRunId) {
+        if (data.taskId !== taskId) {
           serverLogger.warn(
             `[AgentSpawner] Failure event taskId mismatch; ignoring`
           );
@@ -930,10 +961,11 @@ export async function spawnAgent(
         }
 
         // Mark the run as failed with error message
-        await convex.mutation(api.taskRuns.fail as any, {
+        await convex.mutation(api.taskRuns.fail, {
           id: taskRunId as Id<"taskRuns">,
           errorMessage: data.errorMessage || "Terminal failed",
-          exitCode: typeof data.exitCode === "number" ? data.exitCode : 1,
+          // WorkerTerminalFailed does not include exitCode in schema; default to 1
+          exitCode: 1,
         });
 
         serverLogger.info(
@@ -1163,7 +1195,7 @@ export async function spawnAgent(
               cwd: "/root",
               env: {},
             },
-            (timeoutError, result) => {
+            (timeoutError: any, result: any) => {
               if (timeoutError) {
                 serverLogger.error(
                   "Timeout waiting for git clone",
@@ -1233,7 +1265,7 @@ export async function spawnAgent(
             cwd: "/root",
             env: {},
           },
-          (timeoutError, result) => {
+          (timeoutError: any, result: { error: any; }) => {
             if (timeoutError || result.error) {
               serverLogger.error(
                 "Failed to create prompt directory",
@@ -1314,7 +1346,7 @@ export async function spawnAgent(
       workerSocket.emit(
         "worker:create-terminal",
         terminalCreationCommand,
-        (result) => {
+        (result: { error: any; data: unknown; }) => {
           clearTimeout(timeout);
           serverLogger.info(
             `[AgentSpawner] Got response from worker:create-terminal at ${new Date().toISOString()}:`,
