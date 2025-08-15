@@ -82,11 +82,17 @@ export function ProviderStatusSettings() {
       <div className="text-xs text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-900 p-2 rounded-lg">
         <p className="font-medium mb-1">Authentication Types:</p>
         <ul className="space-y-0.5 ml-3">
-          <li>• <span className="font-medium">OAuth:</span> Gemini, AMP - Authorize via browser on first use</li>
-          <li>• <span className="font-medium">API Key:</span> OpenRouter, Anthropic, OpenAI - Configure keys above</li>
+          <li>
+            • <span className="font-medium">OAuth:</span> Gemini, AMP -
+            Authorize via browser on first use
+          </li>
+          <li>
+            • <span className="font-medium">API Key:</span> OpenRouter,
+            Anthropic, OpenAI - Configure keys above
+          </li>
         </ul>
       </div>
-      
+
       {/* Refresh button */}
       <div className="flex justify-end -mt-1 -mb-2">
         <button
@@ -133,7 +139,9 @@ export function ProviderStatusSettings() {
             <span className="text-xs text-neutral-700 dark:text-neutral-300">
               {dockerImage.name}
               {dockerImage.isPulling && " (pulling...)"}
-              {!dockerImage.isAvailable && !dockerImage.isPulling && " (not available)"}
+              {!dockerImage.isAvailable &&
+                !dockerImage.isPulling &&
+                " (not available)"}
             </span>
           </div>
         )}
@@ -155,10 +163,6 @@ export function ProviderStatusSettings() {
 
         {/* AI Providers */}
         {status.providers?.map((provider: ProviderStatus) => {
-          // Determine authentication type based on provider name
-          const isOAuthProvider = provider.name.includes("gemini") || provider.name === "amp";
-          const authType = isOAuthProvider ? "OAuth" : "API Key";
-          
           return (
             <div key={provider.name} className="flex items-center gap-2">
               {provider.isAvailable ? (
@@ -170,9 +174,6 @@ export function ProviderStatusSettings() {
                 <div className="flex items-center gap-1">
                   <span className="text-xs text-neutral-700 dark:text-neutral-300">
                     {provider.name}
-                  </span>
-                  <span className="text-xs text-neutral-400 dark:text-neutral-500">
-                    ({authType})
                   </span>
                 </div>
                 {!provider.isAvailable &&
