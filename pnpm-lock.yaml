@@ -469,6 +469,9 @@ importers:
       '@types/node':
         specifier: ^24.3.0
         version: 24.3.0
+      esbuild:
+        specifier: ^0.25.8
+        version: 0.25.8
 
   apps/worker:
     dependencies:

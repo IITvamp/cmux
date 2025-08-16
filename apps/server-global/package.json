@@ -5,12 +5,13 @@
   "main": "dist/serve.js",
   "scripts": {
     "dev": "bun run --hot  --env-file ../../.env src/index.ts",
-    "build": "bun build src/serve.ts --target node --outdir dist",
+    "build": "esbuild src/serve.ts --bundle --platform=node --outdir=dist --format=esm --packages=external",
     "start": "node dist/serve.js",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {
-    "@types/node": "^24.3.0"
+    "@types/node": "^24.3.0",
+    "esbuild": "^0.25.8"
   },
   "peerDependencies": {
     "typescript": "^5"
