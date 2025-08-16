@@ -5,8 +5,6 @@
   "main": "dist/serve.js",
   "scripts": {
     "dev": "bun run --hot  --env-file ../../.env src/index.ts",
-    "build": "esbuild src/serve.ts --bundle --platform=node --outdir=dist --format=esm --packages=external",
-    "start": "node dist/serve.js",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {
