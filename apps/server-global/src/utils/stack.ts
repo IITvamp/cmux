@@ -1,5 +1,5 @@
 import { StackServerApp } from "@stackframe/js";
-import { env } from "./env";
+import { env } from "./env.js";
 
 export const stackServerApp = new StackServerApp({
   projectId: env.STACK_PROJECT_ID,
