@@ -462,9 +462,6 @@ importers:
       hono:
         specifier: ^4.9.1
         version: 4.9.1
-      typescript:
-        specifier: ^5
-        version: 5.8.3
       zod:
         specifier: ^4.0.17
         version: 4.0.17
@@ -475,6 +472,9 @@ importers:
       esbuild:
         specifier: ^0.25.8
         version: 0.25.8
+      typescript:
+        specifier: ^5.8.3
+        version: 5.8.3
 
   apps/worker:
     dependencies:
