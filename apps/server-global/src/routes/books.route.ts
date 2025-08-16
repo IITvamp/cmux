@@ -1,22 +1,25 @@
 import { createRoute, OpenAPIHono } from "@hono/zod-openapi";
 import {
+  BookListSchema,
+  BookParamsSchema,
   BookSchema,
   CreateBookSchema,
-  BookParamsSchema,
-  BookListSchema,
   ErrorSchema,
   ValidationErrorSchema,
-} from "../schemas";
+} from "../schemas/index.js";
 
-const booksDb = new Map<string, {
-  id: string;
-  title: string;
-  author: string;
-  isbn?: string;
-  publishedYear: number;
-  genre: "fiction" | "non-fiction" | "science" | "history" | "biography";
-  available: boolean;
-}>();
+const booksDb = new Map<
+  string,
+  {
+    id: string;
+    title: string;
+    author: string;
+    isbn?: string;
+    publishedYear: number;
+    genre: "fiction" | "non-fiction" | "science" | "history" | "biography";
+    available: boolean;
+  }
+>();
 
 booksDb.set("book-1", {
   id: "book-1",
@@ -58,13 +61,17 @@ booksRouter.openapi(
     },
   }),
   (c) => {
-  const books = Array.from(booksDb.values());
-  
-  return c.json({
-    books,
-    total: books.length,
-  }, 200);
-});
+    const books = Array.from(booksDb.values());
+
+    return c.json(
+      {
+        books,
+        total: books.length,
+      },
+      200
+    );
+  }
+);
 
 booksRouter.openapi(
   createRoute({
@@ -95,18 +102,22 @@ booksRouter.openapi(
     },
   }),
   (c) => {
-  const { id } = c.req.valid("param");
-  const book = booksDb.get(id);
-  
-  if (!book) {
-    return c.json({
-      code: 404,
-      message: "Book not found",
-    }, 404);
+    const { id } = c.req.valid("param");
+    const book = booksDb.get(id);
+
+    if (!book) {
+      return c.json(
+        {
+          code: 404,
+          message: "Book not found",
+        },
+        404
+      );
+    }
+
+    return c.json(book, 200);
   }
-  
-  return c.json(book, 200);
-});
+);
 
 booksRouter.openapi(
   createRoute({
@@ -144,19 +155,20 @@ booksRouter.openapi(
     },
   }),
   (c) => {
-  const data = c.req.valid("json");
-  
-  const id = `book-${Date.now()}`;
-  const newBook = {
-    id,
-    ...data,
-    available: true,
-  };
-  
-  booksDb.set(id, newBook);
-  
-  return c.json(newBook, 201);
-});
+    const data = c.req.valid("json");
+
+    const id = `book-${Date.now()}`;
+    const newBook = {
+      id,
+      ...data,
+      available: true,
+    };
+
+    booksDb.set(id, newBook);
+
+    return c.json(newBook, 201);
+  }
+);
 
 booksRouter.openapi(
   createRoute({
@@ -195,28 +207,35 @@ booksRouter.openapi(
     },
   }),
   (c) => {
-  const { id } = c.req.valid("param");
-  const book = booksDb.get(id);
-  
-  if (!book) {
-    return c.json({
-      code: 404,
-      message: "Book not found",
-    }, 404);
+    const { id } = c.req.valid("param");
+    const book = booksDb.get(id);
+
+    if (!book) {
+      return c.json(
+        {
+          code: 404,
+          message: "Book not found",
+        },
+        404
+      );
+    }
+
+    if (!book.available) {
+      return c.json(
+        {
+          code: 400,
+          message: "Book is not available for borrowing",
+        },
+        400
+      );
+    }
+
+    book.available = false;
+    booksDb.set(id, book);
+
+    return c.json(book, 200);
   }
-  
-  if (!book.available) {
-    return c.json({
-      code: 400,
-      message: "Book is not available for borrowing",
-    }, 400);
-  }
-  
-  book.available = false;
-  booksDb.set(id, book);
-  
-  return c.json(book, 200);
-});
+);
 
 booksRouter.openapi(
   createRoute({
@@ -255,25 +274,32 @@ booksRouter.openapi(
     },
   }),
   (c) => {
-  const { id } = c.req.valid("param");
-  const book = booksDb.get(id);
-  
-  if (!book) {
-    return c.json({
-      code: 404,
-      message: "Book not found",
-    }, 404);
+    const { id } = c.req.valid("param");
+    const book = booksDb.get(id);
+
+    if (!book) {
+      return c.json(
+        {
+          code: 404,
+          message: "Book not found",
+        },
+        404
+      );
+    }
+
+    if (book.available) {
+      return c.json(
+        {
+          code: 400,
+          message: "Book is already available",
+        },
+        400
+      );
+    }
+
+    book.available = true;
+    booksDb.set(id, book);
+
+    return c.json(book, 200);
   }
-  
-  if (book.available) {
-    return c.json({
-      code: 400,
-      message: "Book is already available",
-    }, 400);
-  }
-  
-  book.available = true;
-  booksDb.set(id, book);
-  
-  return c.json(book, 200);
-});
+);

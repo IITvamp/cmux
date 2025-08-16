@@ -1,22 +1,25 @@
 import { createRoute, OpenAPIHono } from "@hono/zod-openapi";
 import {
-  UserSchema,
   CreateUserSchema,
-  UpdateUserSchema,
-  UserParamsSchema,
-  UserListSchema,
-  UserQuerySchema,
   ErrorSchema,
+  UpdateUserSchema,
+  UserListSchema,
+  UserParamsSchema,
+  UserQuerySchema,
+  UserSchema,
   ValidationErrorSchema,
-} from "../schemas";
+} from "../schemas/index.js";
 
-const usersDb = new Map<string, {
-  id: string;
-  name: string;
-  email: string;
-  age?: number;
-  createdAt: string;
-}>();
+const usersDb = new Map<
+  string,
+  {
+    id: string;
+    name: string;
+    email: string;
+    age?: number;
+    createdAt: string;
+  }
+>();
 
 usersDb.set("user-1", {
   id: "user-1",
@@ -57,28 +60,33 @@ usersRouter.openapi(
     },
   }),
   (c) => {
-  const { page, pageSize, search } = c.req.valid("query");
-  
-  let users = Array.from(usersDb.values());
-  
-  if (search) {
-    users = users.filter(user => 
-      user.name.toLowerCase().includes(search.toLowerCase()) ||
-      user.email.toLowerCase().includes(search.toLowerCase())
+    const { page, pageSize, search } = c.req.valid("query");
+
+    let users = Array.from(usersDb.values());
+
+    if (search) {
+      users = users.filter(
+        (user) =>
+          user.name.toLowerCase().includes(search.toLowerCase()) ||
+          user.email.toLowerCase().includes(search.toLowerCase())
+      );
+    }
+
+    const start = (page - 1) * pageSize;
+    const end = start + pageSize;
+    const paginatedUsers = users.slice(start, end);
+
+    return c.json(
+      {
+        users: paginatedUsers,
+        total: users.length,
+        page,
+        pageSize,
+      },
+      200
     );
   }
-  
-  const start = (page - 1) * pageSize;
-  const end = start + pageSize;
-  const paginatedUsers = users.slice(start, end);
-  
-  return c.json({
-    users: paginatedUsers,
-    total: users.length,
-    page,
-    pageSize,
-  }, 200);
-});
+);
 
 usersRouter.openapi(
   createRoute({
@@ -109,18 +117,22 @@ usersRouter.openapi(
     },
   }),
   (c) => {
-  const { id } = c.req.valid("param");
-  const user = usersDb.get(id);
-  
-  if (!user) {
-    return c.json({
-      code: 404,
-      message: "User not found",
-    }, 404);
+    const { id } = c.req.valid("param");
+    const user = usersDb.get(id);
+
+    if (!user) {
+      return c.json(
+        {
+          code: 404,
+          message: "User not found",
+        },
+        404
+      );
+    }
+
+    return c.json(user, 200);
   }
-  
-  return c.json(user, 200);
-});
+);
 
 usersRouter.openapi(
   createRoute({
@@ -158,19 +170,20 @@ usersRouter.openapi(
     },
   }),
   (c) => {
-  const data = c.req.valid("json");
-  
-  const id = `user-${Date.now()}`;
-  const newUser = {
-    id,
-    ...data,
-    createdAt: new Date().toISOString(),
-  };
-  
-  usersDb.set(id, newUser);
-  
-  return c.json(newUser, 201);
-});
+    const data = c.req.valid("json");
+
+    const id = `user-${Date.now()}`;
+    const newUser = {
+      id,
+      ...data,
+      createdAt: new Date().toISOString(),
+    };
+
+    usersDb.set(id, newUser);
+
+    return c.json(newUser, 201);
+  }
+);
 
 usersRouter.openapi(
   createRoute({
@@ -217,26 +230,30 @@ usersRouter.openapi(
     },
   }),
   (c) => {
-  const { id } = c.req.valid("param");
-  const updates = c.req.valid("json");
-  
-  const user = usersDb.get(id);
-  if (!user) {
-    return c.json({
-      code: 404,
-      message: "User not found",
-    }, 404);
+    const { id } = c.req.valid("param");
+    const updates = c.req.valid("json");
+
+    const user = usersDb.get(id);
+    if (!user) {
+      return c.json(
+        {
+          code: 404,
+          message: "User not found",
+        },
+        404
+      );
+    }
+
+    const updatedUser = {
+      ...user,
+      ...updates,
+    };
+
+    usersDb.set(id, updatedUser);
+
+    return c.json(updatedUser, 200);
   }
-  
-  const updatedUser = {
-    ...user,
-    ...updates,
-  };
-  
-  usersDb.set(id, updatedUser);
-  
-  return c.json(updatedUser, 200);
-});
+);
 
 usersRouter.openapi(
   createRoute({
@@ -262,16 +279,20 @@ usersRouter.openapi(
     },
   }),
   (c) => {
-  const { id } = c.req.valid("param");
-  
-  if (!usersDb.has(id)) {
-    return c.json({
-      code: 404,
-      message: "User not found",
-    }, 404);
+    const { id } = c.req.valid("param");
+
+    if (!usersDb.has(id)) {
+      return c.json(
+        {
+          code: 404,
+          message: "User not found",
+        },
+        404
+      );
+    }
+
+    usersDb.delete(id);
+
+    return c.body(null, 204);
   }
-  
-  usersDb.delete(id);
-  
-  return c.body(null, 204);
-});
+);

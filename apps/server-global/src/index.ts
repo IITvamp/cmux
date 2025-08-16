@@ -3,8 +3,8 @@ import { OpenAPIHono } from "@hono/zod-openapi";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { prettyJSON } from "hono/pretty-json";
-import { booksRouter, healthRouter, usersRouter } from "./routes";
-import { stackServerApp } from "./utils/stack";
+import { booksRouter, healthRouter, usersRouter } from "./routes/index.js";
+import { stackServerApp } from "./utils/stack.js";
 
 const app = new OpenAPIHono({
   defaultHook: (result, c) => {
@@ -103,6 +103,6 @@ app.doc31("/doc/v3.1", {
 app.get("/ui", swaggerUI({ url: "/doc" }));
 
 export default {
+  ...app,
   port: 9779,
-  fetch: app.fetch,
 };
