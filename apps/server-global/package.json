@@ -1,5 +1,5 @@
 {
-  "name": "server-global",
+  "name": "@cmux/server-global",
   "type": "module",
   "private": true,
   "main": "dist/serve.js",
