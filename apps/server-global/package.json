@@ -5,6 +5,8 @@
   "main": "src/index.ts",
   "scripts": {
     "dev": "bun run --hot  --env-file ../../.env src/index.ts",
+    "build": "esbuild src/serve.ts --bundle --platform=node --outfile=dist/serve.js",
+    "vercel-build": "bun build src/entrypoint.ts --target=node --outfile=dist/entrypoint.js",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {
