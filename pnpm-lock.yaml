@@ -441,6 +441,9 @@ importers:
 
   apps/server-global:
     dependencies:
+      '@asteasolutions/zod-to-openapi':
+        specifier: ^8.1.0
+        version: 8.1.0(zod@4.0.17)
       '@hono/node-server':
         specifier: ^1.18.1
         version: 1.18.1(hono@4.9.1)
