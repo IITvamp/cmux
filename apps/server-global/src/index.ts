@@ -102,7 +102,4 @@ app.doc31("/doc/v3.1", {
 
 app.get("/ui", swaggerUI({ url: "/doc" }));
 
-export default {
-  ...app,
-  port: 9779,
-};
+export default app;
