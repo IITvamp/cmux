@@ -40,12 +40,16 @@ healthRouter.openapi(
     },
   }),
   (c) => {
-  const uptime = Math.floor((Date.now() - startTime) / 1000);
-  
-  return c.json({
-    status: "healthy" as const,
-    timestamp: new Date().toISOString(),
-    version: "1.0.0",
-    uptime,
-  }, 200);
-});
+    const uptime = Math.floor((Date.now() - startTime) / 1000);
+
+    return c.json(
+      {
+        status: "healthy" as const,
+        timestamp: new Date().toISOString(),
+        version: "1.0.0",
+        uptime,
+      },
+      200
+    );
+  }
+);
