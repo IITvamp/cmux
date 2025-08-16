@@ -2,7 +2,9 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "outputDirectory": "dist",
   "functions": {
-    "dist/entrypoint.js": {}
+    "dist/entrypoint.js": {
+      "maxDuration": 60
+    }
   },
   "rewrites": [
     {
