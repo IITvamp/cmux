@@ -24,7 +24,7 @@ export const healthRouter = new OpenAPIHono();
 
 healthRouter.openapi(
   createRoute({
-    method: "get",
+    method: "get" as const,
     path: "/health",
     tags: ["System"],
     summary: "Health check endpoint",

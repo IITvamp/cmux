@@ -45,7 +45,7 @@ export const booksRouter = new OpenAPIHono();
 
 booksRouter.openapi(
   createRoute({
-    method: "get",
+    method: "get" as const,
     path: "/books",
     tags: ["Books"],
     summary: "List all books",
@@ -75,7 +75,7 @@ booksRouter.openapi(
 
 booksRouter.openapi(
   createRoute({
-    method: "get",
+    method: "get" as const,
     path: "/books/{id}",
     tags: ["Books"],
     summary: "Get a book by ID",
@@ -121,7 +121,7 @@ booksRouter.openapi(
 
 booksRouter.openapi(
   createRoute({
-    method: "post",
+    method: "post" as const,
     path: "/books",
     tags: ["Books"],
     summary: "Add a new book",
@@ -172,7 +172,7 @@ booksRouter.openapi(
 
 booksRouter.openapi(
   createRoute({
-    method: "post",
+    method: "post" as const,
     path: "/books/{id}/borrow",
     tags: ["Books"],
     summary: "Borrow a book",
@@ -239,7 +239,7 @@ booksRouter.openapi(
 
 booksRouter.openapi(
   createRoute({
-    method: "post",
+    method: "post" as const,
     path: "/books/{id}/return",
     tags: ["Books"],
     summary: "Return a book",

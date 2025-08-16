@@ -41,7 +41,7 @@ export const usersRouter = new OpenAPIHono();
 
 usersRouter.openapi(
   createRoute({
-    method: "get",
+    method: "get" as const,
     path: "/users",
     tags: ["Users"],
     summary: "List all users",
@@ -90,7 +90,7 @@ usersRouter.openapi(
 
 usersRouter.openapi(
   createRoute({
-    method: "get",
+    method: "get" as const,
     path: "/users/{id}",
     tags: ["Users"],
     summary: "Get a user by ID",
@@ -136,7 +136,7 @@ usersRouter.openapi(
 
 usersRouter.openapi(
   createRoute({
-    method: "post",
+    method: "post" as const,
     path: "/users",
     tags: ["Users"],
     summary: "Create a new user",
@@ -187,7 +187,7 @@ usersRouter.openapi(
 
 usersRouter.openapi(
   createRoute({
-    method: "patch",
+    method: "patch" as const,
     path: "/users/{id}",
     tags: ["Users"],
     summary: "Update a user",
@@ -257,7 +257,7 @@ usersRouter.openapi(
 
 usersRouter.openapi(
   createRoute({
-    method: "delete",
+    method: "delete" as const,
     path: "/users/{id}",
     tags: ["Users"],
     summary: "Delete a user",
