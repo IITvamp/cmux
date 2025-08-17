@@ -1,6 +1,5 @@
-import pkg from "@stackframe/js";
-const { StackServerApp } = pkg;
-import { env } from "./env.js";
+import { StackServerApp } from "@stackframe/js";
+import { env } from "./env";
 
 export const stackServerApp = new StackServerApp({
   projectId: env.STACK_PROJECT_ID,
