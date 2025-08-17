@@ -6,7 +6,7 @@ import {
   CreateBookSchema,
   ErrorSchema,
   ValidationErrorSchema,
-} from "../schemas/index.js";
+} from "../schemas/index";
 
 const booksDb = new Map<
   string,

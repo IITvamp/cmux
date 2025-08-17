@@ -8,7 +8,7 @@ import {
   UserQuerySchema,
   UserSchema,
   ValidationErrorSchema,
-} from "../schemas/index.js";
+} from "../schemas/index";
 
 const usersDb = new Map<
   string,
