@@ -44,6 +44,10 @@ app.use(
   })
 );
 
+app.get("/", (c) => {
+  return c.text("cmux!");
+});
+
 // Routes - Next.js passes the full /api/* path
 app.route("/", healthRouter);
 app.route("/", usersRouter);
