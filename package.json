@@ -18,6 +18,7 @@
     "typecheck:convex": "cd packages/convex && bun run typecheck",
     "typecheck:cmux": "cd packages/cmux && bun run typecheck",
     "typecheck:preview-service": "cd apps/preview-service && bun run typecheck",
+    "typecheck:www": "cd apps/www && pnpm run typecheck",
     "typecheck:landing": "cd apps/landing && pnpm run typecheck",
     "landing:dev": "cd apps/landing && pnpm run dev",
     "landing:build": "cd apps/landing && pnpm run build",

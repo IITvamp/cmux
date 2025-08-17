@@ -1,0 +1,75 @@
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    volumes:
+      - ..:/workspace:cached
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: sleep infinity
+    environment:
+      - CONVEX_SELF_HOSTED_ADMIN_KEY=cmux-dev|017aebe6643f7feb3fe831fbb93a348653c63e5711d2427d1a34b670e3151b0165d86a5ff9
+      - CONVEX_PORT=9777
+      - VITE_CONVEX_URL=http://localhost:9777
+    ports:
+      - "5173:5173"
+      - "9776:9776"
+      - "9779:9779"
+    depends_on:
+      convex_backend:
+        condition: service_healthy
+
+  convex_backend:
+    image: ghcr.io/get-convex/convex-backend:6efab6f2b6c182b90255774d747328cfc7b80dd9
+    stop_grace_period: 10s
+    stop_signal: SIGINT
+    ports:
+      - "9777:3210"
+      - "9778:3211"
+    volumes:
+      - convex-data:/convex/data
+    environment:
+      - INSTANCE_NAME=cmux-dev
+      - INSTANCE_SECRET=29dd272e3cd3cce53ff444cac387925c2f6f53fd9f50803a24e5a11832d36b9c
+      - CONVEX_SELF_HOSTED_ADMIN_KEY=cmux-dev|017aebe6643f7feb3fe831fbb93a348653c63e5711d2427d1a34b670e3151b0165d86a5ff9
+      - CONVEX_RELEASE_VERSION_DEV=
+      - ACTIONS_USER_TIMEOUT_SECS=
+      - CONVEX_CLOUD_ORIGIN=http://127.0.0.1:3210
+      - CONVEX_SITE_ORIGIN=http://127.0.0.1:3211
+      - DATABASE_URL=
+      - DISABLE_BEACON=1
+      - REDACT_LOGS_TO_CLIENT=
+      - DO_NOT_REQUIRE_SSL=
+      - POSTGRES_URL=
+      - MYSQL_URL=
+      - RUST_LOG=info
+      - RUST_BACKTRACE=
+      - AWS_REGION=
+      - AWS_ACCESS_KEY_ID=
+      - AWS_SECRET_ACCESS_KEY=
+      - AWS_SESSION_TOKEN=
+      - S3_STORAGE_EXPORTS_BUCKET=
+      - S3_STORAGE_SNAPSHOT_IMPORTS_BUCKET=
+      - S3_STORAGE_MODULES_BUCKET=
+      - S3_STORAGE_FILES_BUCKET=
+      - S3_STORAGE_SEARCH_BUCKET=
+      - S3_ENDPOINT_URL=
+    healthcheck:
+      test: curl -f http://localhost:3210/
+      interval: 5s
+      start_period: 10s
+
+  convex_dashboard:
+    image: ghcr.io/get-convex/convex-dashboard:6efab6f2b6c182b90255774d747328cfc7b80dd9
+    stop_grace_period: 10s
+    stop_signal: SIGINT
+    ports:
+      - "6791:6791"
+    environment:
+      - NEXT_PUBLIC_DEPLOYMENT_URL=http://127.0.0.1:9777
+    depends_on:
+      convex_backend:
+        condition: service_healthy
+
+volumes:
+  convex-data:

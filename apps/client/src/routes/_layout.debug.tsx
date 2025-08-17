@@ -17,7 +17,7 @@ function DebugComponent() {
               throw new Error("No user");
             }
             const authHeaders = await user.getAuthHeaders();
-            fetch("http://localhost:9779/user", {
+            fetch("http://localhost:9779/api/user", {
               headers: {
                 ...authHeaders,
               },
