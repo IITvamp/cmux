@@ -65,7 +65,7 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY --parents apps/*/package.json packages/*/package.json scripts/package.json ./
 
 # Install dependencies with cache (non-interactive)
-RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store CI=1 pnpm install --frozen-lockfile
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store CI=1 pnpm install --frozen-lockfile=true --filter "@cmux/worker @cmux/shared @cmux/vscode-extension"
 
 RUN mkdir -p /builtins && \
     echo '{"name":"builtins","type":"module","version":"1.0.0"}' > /builtins/package.json

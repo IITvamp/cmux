@@ -1,4 +1,5 @@
 import { booksRouter, healthRouter, usersRouter } from "@/lib/routes/index";
+import { stackServerApp } from "@/lib/utils/stack";
 import { swaggerUI } from "@hono/swagger-ui";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { cors } from "hono/cors";
@@ -39,13 +40,19 @@ app.use("*", prettyJSON());
 app.use(
   "*",
   cors({
-    origin: ["http://localhost:3000", "http://localhost:4321"],
+    origin: ["http://localhost:5173", "http://localhost:9779"],
     credentials: true,
+    allowHeaders: ["x-stack-access-header"],
   })
 );
 
 app.get("/", (c) => {
   return c.text("cmux!");
+});
+
+app.get("/user", async (c) => {
+  const payload = await stackServerApp.getUser({ tokenStore: c.req.raw });
+  return c.json(payload);
 });
 
 // Routes - Next.js passes the full /api/* path

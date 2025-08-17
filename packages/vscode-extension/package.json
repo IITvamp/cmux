@@ -1,5 +1,5 @@
 {
-  "name": "cmux-extension",
+  "name": "@cmux/vscode-extension",
   "displayName": "cmux Extension",
   "description": "cmux VS Code Extension",
   "version": "0.0.1",

@@ -34,8 +34,8 @@ done
 
 # Only clean ports when not in devcontainer (devcontainer handles this)
 if [ "$IS_DEVCONTAINER" = "false" ]; then
-    # Check if anything is running on ports 5173, $CONVEX_PORT, 9777, 9778, 4321
-    PORTS_TO_CHECK="5173 $CONVEX_PORT 9777 9778 4321"
+    # Check if anything is running on ports 5173, $CONVEX_PORT, 9777, 9778, 9779
+    PORTS_TO_CHECK="5173 $CONVEX_PORT 9777 9778 9779"
     # Use shared port cleanup helper
     source "$(dirname "$0")/_port-clean.sh"
     clean_ports $PORTS_TO_CHECK
@@ -183,7 +183,7 @@ CLIENT_PID=$!
 check_process $CLIENT_PID "Frontend Client"
 
 # Start the www app
-echo -e "${GREEN}Starting www app on port 4321...${NC}"
+echo -e "${GREEN}Starting www app on port 9779...${NC}"
 (cd "$APP_DIR/apps/www" && exec bash -c 'trap "kill -9 0" EXIT; bun run dev 2>&1 | tee "$LOG_DIR/www.log" | prefix_output "WWW" "$GREEN"') &
 WWW_PID=$!
 check_process $WWW_PID "WWW App"
@@ -191,7 +191,7 @@ check_process $WWW_PID "WWW App"
 echo -e "${GREEN}Terminal app is running!${NC}"
 echo -e "${BLUE}Frontend: http://localhost:5173${NC}"
 echo -e "${BLUE}Backend: http://localhost:9776${NC}"
-echo -e "${BLUE}WWW: http://localhost:4321${NC}"
+echo -e "${BLUE}WWW: http://localhost:9779${NC}"
 echo -e "${BLUE}Convex: http://localhost:$CONVEX_PORT${NC}"
 echo -e "\nPress Ctrl+C to stop all services"
 
