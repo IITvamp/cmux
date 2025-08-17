@@ -1,11 +1,10 @@
-import { handle } from "hono/vercel";
+import { booksRouter, healthRouter, usersRouter } from "@/lib/routes/index";
 import { swaggerUI } from "@hono/swagger-ui";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { prettyJSON } from "hono/pretty-json";
-import { booksRouter, healthRouter, usersRouter } from "@/lib/routes/index";
-import { stackServerApp } from "@/lib/utils/stack";
+import { handle } from "hono/vercel";
 
 const app = new OpenAPIHono({
   defaultHook: (result, c) => {
@@ -21,11 +20,11 @@ const app = new OpenAPIHono({
           message: "Validation Error",
           errors,
         },
-        422,
+        422
       );
     }
   },
-});
+}).basePath("/api");
 
 // Debug middleware
 app.use("*", async (c, next) => {
@@ -42,35 +41,16 @@ app.use(
   cors({
     origin: ["http://localhost:3000", "http://localhost:4321"],
     credentials: true,
-  }),
+  })
 );
 
 // Routes - Next.js passes the full /api/* path
-app.route("/api", healthRouter);
-app.route("/api", usersRouter);
-app.route("/api", booksRouter);
-
-// Authentication endpoints
-app.post("/api/auth/signup", async (c) => {
-  const body = await c.req.json();
-  const user = await stackServerApp.signUpWithCredential({
-    email: body.email,
-    password: body.password,
-  });
-  return c.json({ user });
-});
-
-app.post("/api/auth/signin", async (c) => {
-  const body = await c.req.json();
-  const user = await stackServerApp.signInWithCredential({
-    email: body.email,
-    password: body.password,
-  });
-  return c.json({ user });
-});
+app.route("/", healthRouter);
+app.route("/", usersRouter);
+app.route("/", booksRouter);
 
 // OpenAPI documentation
-app.doc("/api/doc", {
+app.doc("/doc", {
   openapi: "3.0.0",
   info: {
     version: "1.0.0",
@@ -79,7 +59,7 @@ app.doc("/api/doc", {
   },
 });
 
-app.get("/api/swagger", swaggerUI({ url: "/api/doc" }));
+app.get("/swagger", swaggerUI({ url: "/doc" }));
 
 // 404 handler
 app.notFound((c) => {
@@ -88,7 +68,7 @@ app.notFound((c) => {
       code: 404,
       message: `Route ${c.req.path} not found`,
     },
-    404,
+    404
   );
 });
 
@@ -100,7 +80,7 @@ app.onError((err, c) => {
       code: 500,
       message: "Internal Server Error",
     },
-    500,
+    500
   );
 });
 
