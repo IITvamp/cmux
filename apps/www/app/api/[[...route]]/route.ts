@@ -42,7 +42,7 @@ app.use(
   cors({
     origin: ["http://localhost:5173", "http://localhost:9779"],
     credentials: true,
-    allowHeaders: ["x-stack-access-header"],
+    allowHeaders: ["x-stack-auth"],
   })
 );
 

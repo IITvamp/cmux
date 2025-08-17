@@ -1,5 +1,5 @@
 {
-  "name": "@cmux/vscode-extension",
+  "name": "cmux-vscode-extension",
   "displayName": "cmux Extension",
   "description": "cmux VS Code Extension",
   "version": "0.0.1",
@@ -39,7 +39,7 @@
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src --ext ts",
     "test": "vscode-test",
-    "package": "vsce package --allow-missing-repository --no-dependencies --allow-star-activation",
+    "package": "bunx @vscode/vsce package --allow-missing-repository --no-dependencies --allow-star-activation",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "devDependencies": {
