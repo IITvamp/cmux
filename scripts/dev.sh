@@ -34,8 +34,8 @@ done
 
 # Only clean ports when not in devcontainer (devcontainer handles this)
 if [ "$IS_DEVCONTAINER" = "false" ]; then
-    # Check if anything is running on ports 5173, $CONVEX_PORT, 9777, 9778
-    PORTS_TO_CHECK="5173 $CONVEX_PORT 9777 9778"
+    # Check if anything is running on ports 5173, $CONVEX_PORT, 9777, 9778, 4321
+    PORTS_TO_CHECK="5173 $CONVEX_PORT 9777 9778 4321"
     # Use shared port cleanup helper
     source "$(dirname "$0")/_port-clean.sh"
     clean_ports $PORTS_TO_CHECK
@@ -78,6 +78,7 @@ cleanup() {
     # Kill the bash processes which will trigger their EXIT traps to kill all children
     [ -n "$SERVER_PID" ] && kill $SERVER_PID 2>/dev/null
     [ -n "$CLIENT_PID" ] && kill $CLIENT_PID 2>/dev/null
+    [ -n "$WWW_PID" ] && kill $WWW_PID 2>/dev/null
     [ -n "$CONVEX_DEV_PID" ] && kill $CONVEX_DEV_PID 2>/dev/null
     [ -n "$DOCKER_COMPOSE_PID" ] && kill $DOCKER_COMPOSE_PID 2>/dev/null
     [ -n "$SERVER_GLOBAL_PID" ] && kill $SERVER_GLOBAL_PID 2>/dev/null
@@ -86,6 +87,7 @@ cleanup() {
     # Force kill any remaining processes
     [ -n "$SERVER_PID" ] && kill -9 $SERVER_PID 2>/dev/null
     [ -n "$CLIENT_PID" ] && kill -9 $CLIENT_PID 2>/dev/null
+    [ -n "$WWW_PID" ] && kill -9 $WWW_PID 2>/dev/null
     [ -n "$CONVEX_DEV_PID" ] && kill -9 $CONVEX_DEV_PID 2>/dev/null
     [ -n "$DOCKER_COMPOSE_PID" ] && kill -9 $DOCKER_COMPOSE_PID 2>/dev/null
     [ -n "$SERVER_GLOBAL_PID" ] && kill -9 $SERVER_GLOBAL_PID 2>/dev/null
@@ -168,13 +170,6 @@ CONVEX_DEV_PID=$!
 check_process $CONVEX_DEV_PID "Convex Dev"
 CONVEX_PID=$CONVEX_DEV_PID
 
-# Start the global server
-echo -e "${GREEN}Starting global server on port 9779...${NC}"
-(cd "$APP_DIR/apps/server-global" && exec bash -c 'trap "kill -9 0" EXIT; bun run dev 2>&1 | tee "$LOG_DIR/server-global.log" | prefix_output "SERVER-GLOBAL" "$RED"') &
-SERVER_GLOBAL_PID=$!
-check_process $SERVER_GLOBAL_PID "Global Server"
-
-
 # Start the backend server
 echo -e "${GREEN}Starting backend server on port 9776...${NC}"
 (cd "$APP_DIR/apps/server" && exec bash -c 'trap "kill -9 0" EXIT; bun run dev 2>&1 | tee "$LOG_DIR/server.log" | prefix_output "SERVER" "$YELLOW"') &
@@ -187,9 +182,16 @@ echo -e "${GREEN}Starting frontend on port 5173...${NC}"
 CLIENT_PID=$!
 check_process $CLIENT_PID "Frontend Client"
 
+# Start the www app
+echo -e "${GREEN}Starting www app on port 4321...${NC}"
+(cd "$APP_DIR/apps/www" && exec bash -c 'trap "kill -9 0" EXIT; bun run dev 2>&1 | tee "$LOG_DIR/www.log" | prefix_output "WWW" "$GREEN"') &
+WWW_PID=$!
+check_process $WWW_PID "WWW App"
+
 echo -e "${GREEN}Terminal app is running!${NC}"
 echo -e "${BLUE}Frontend: http://localhost:5173${NC}"
 echo -e "${BLUE}Backend: http://localhost:9776${NC}"
+echo -e "${BLUE}WWW: http://localhost:4321${NC}"
 echo -e "${BLUE}Convex: http://localhost:$CONVEX_PORT${NC}"
 echo -e "\nPress Ctrl+C to stop all services"
 
