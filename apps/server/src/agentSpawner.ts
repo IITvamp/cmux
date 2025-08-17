@@ -226,9 +226,9 @@ export async function spawnAgent(
           const existingContent = JSON.parse(
             Buffer.from(existingFile.contentBase64, "base64").toString("utf-8")
           );
-          // Only update if selectedAuthType is not already set to USE_GEMINI
-          if (existingContent.selectedAuthType !== "USE_GEMINI") {
-            existingContent.selectedAuthType = "USE_GEMINI";
+          // Only update if selectedAuthType is not already set to USE_API_KEY
+          if (existingContent.selectedAuthType !== "USE_API_KEY") {
+            existingContent.selectedAuthType = "USE_API_KEY";
             authFiles[settingsFileIndex] = {
               ...existingFile,
               contentBase64: Buffer.from(JSON.stringify(existingContent)).toString("base64"),
@@ -236,7 +236,7 @@ export async function spawnAgent(
           }
         } catch (e) {
           // If we can't parse the existing settings, replace it entirely
-          const settingsJson = JSON.stringify({ selectedAuthType: "USE_GEMINI" });
+          const settingsJson = JSON.stringify({ selectedAuthType: "USE_API_KEY" });
           authFiles[settingsFileIndex] = {
             ...existingFile,
             contentBase64: Buffer.from(settingsJson).toString("base64"),
@@ -244,7 +244,7 @@ export async function spawnAgent(
         }
       } else {
         // No settings file exists, create one
-        const settingsJson = JSON.stringify({ selectedAuthType: "USE_GEMINI" });
+        const settingsJson = JSON.stringify({ selectedAuthType: "USE_API_KEY" });
         authFiles.push({
           destinationPath: "$HOME/.gemini/settings.json",
           contentBase64: Buffer.from(settingsJson).toString("base64"),
@@ -252,7 +252,7 @@ export async function spawnAgent(
         });
       }
       // Also hint the default via env for good measure
-      envVars.GEMINI_DEFAULT_AUTH_TYPE = "USE_GEMINI";
+      envVars.GEMINI_DEFAULT_AUTH_TYPE = "USE_API_KEY";
     }
 
     // Replace $PROMPT placeholders in args with $CMUX_PROMPT token for shell-time expansion
