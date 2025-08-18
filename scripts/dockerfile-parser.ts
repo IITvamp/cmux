@@ -237,7 +237,9 @@ export class DockerfileExecutor {
     private projectRoot: string
   ) {}
 
-  async execute(dockerfile: ParsedDockerfile): Promise<DockerfileExecutionResult> {
+  async execute(
+    dockerfile: ParsedDockerfile
+  ): Promise<DockerfileExecutionResult> {
     console.log("Executing Dockerfile instructions on Morph instance...");
 
     // Track environment variables and working directory
@@ -354,7 +356,7 @@ export class DockerfileExecutor {
     return {
       exposedPorts: this.exposedPorts,
       entrypoint: this.entrypoint,
-      cmd: this.cmd
+      cmd: this.cmd,
     };
   }
 
@@ -480,21 +482,24 @@ export class DockerfileExecutor {
 
     // Collect all files to copy
     const filesToCopy: Array<{ localPath: string; relativePath: string }> = [];
-    
+
     for (const source of sources) {
       const localPath = path.join(this.projectRoot, source);
-      
+
       try {
         const stats = await fs.stat(localPath);
-        
+
         if (stats.isDirectory()) {
           // For directories, we need to get all files recursively
-          const files = await this.getDirectoryFiles(localPath, this.projectRoot);
+          const files = await this.getDirectoryFiles(
+            localPath,
+            this.projectRoot
+          );
           filesToCopy.push(...files);
         } else {
           filesToCopy.push({
             localPath,
-            relativePath: path.relative(this.projectRoot, localPath)
+            relativePath: path.relative(this.projectRoot, localPath),
           });
         }
       } catch (error) {
@@ -527,7 +532,7 @@ export class DockerfileExecutor {
 
       // Create tar archive with all files
       const tarCommand = preserveParents
-        ? `cd "${this.projectRoot}" && tar ${tarFlags} "${tarballPath}" ${filesToCopy.map(f => `"${f.relativePath}"`).join(" ")}`
+        ? `cd "${this.projectRoot}" && tar ${tarFlags} "${tarballPath}" ${filesToCopy.map((f) => `"${f.relativePath}"`).join(" ")}`
         : await this.createNonParentsTar(filesToCopy, tarballPath, tarFlags);
 
       execSync(tarCommand, { stdio: "pipe" });
@@ -537,14 +542,15 @@ export class DockerfileExecutor {
 
       // Determine if destination is a file or directory
       // If copying a single file to a path without trailing slash, it's likely a file destination
-      const isSingleFile = filesToCopy.length === 1 && !remoteDest.endsWith("/");
-      
+      const isSingleFile =
+        filesToCopy.length === 1 && !remoteDest.endsWith("/");
+
       if (isSingleFile) {
         // For single file, extract to parent directory and rename if needed
         const destDir = path.dirname(remoteDest);
         const destFileName = path.basename(remoteDest);
         const sourceFileName = path.basename(filesToCopy[0].localPath);
-        
+
         await this.runSSHCommand(`mkdir -p ${destDir}`, true, "    ", false);
         await this.runSSHCommand(
           `cd ${destDir} && tar -xzf /tmp/${tarballName}`,
@@ -552,7 +558,7 @@ export class DockerfileExecutor {
           "    ",
           false
         );
-        
+
         // If the destination filename is different from source, rename it
         if (destFileName !== sourceFileName && !preserveParents) {
           await this.runSSHCommand(
@@ -562,7 +568,7 @@ export class DockerfileExecutor {
             false
           );
         }
-        
+
         await this.runSSHCommand(`rm /tmp/${tarballName}`, true, "    ", false);
       } else {
         // For directories or multiple files, extract into the destination directory
@@ -597,17 +603,25 @@ export class DockerfileExecutor {
     const dockerignorePath = path.join(baseDir, ".dockerignore");
     const gitignorePath = path.join(baseDir, ".gitignore");
     const ignorePatterns: string[] = [];
-    
+
     try {
       const dockerignore = await fs.readFile(dockerignorePath, "utf-8");
-      ignorePatterns.push(...dockerignore.split("\n").filter(line => line.trim() && !line.startsWith("#")));
+      ignorePatterns.push(
+        ...dockerignore
+          .split("\n")
+          .filter((line) => line.trim() && !line.startsWith("#"))
+      );
     } catch (e) {
       // No .dockerignore
     }
-    
+
     try {
       const gitignore = await fs.readFile(gitignorePath, "utf-8");
-      ignorePatterns.push(...gitignore.split("\n").filter(line => line.trim() && !line.startsWith("#")));
+      ignorePatterns.push(
+        ...gitignore
+          .split("\n")
+          .filter((line) => line.trim() && !line.startsWith("#"))
+      );
     } catch (e) {
       // No .gitignore
     }
@@ -615,25 +629,30 @@ export class DockerfileExecutor {
     for (const entry of entries) {
       const fullPath = path.join(dirPath, entry.name);
       const relativePath = path.relative(baseDir, fullPath);
-      
+
       // Skip if matches ignore patterns
       if (this.shouldIgnore(relativePath, ignorePatterns)) {
         continue;
       }
-      
+
       // Skip special files
-      if (entry.isSocket() || entry.isFIFO() || entry.isCharacterDevice() || entry.isBlockDevice()) {
+      if (
+        entry.isSocket() ||
+        entry.isFIFO() ||
+        entry.isCharacterDevice() ||
+        entry.isBlockDevice()
+      ) {
         console.log(`    Skipping special file: ${relativePath}`);
         continue;
       }
-      
+
       if (entry.isDirectory()) {
         const subFiles = await this.getDirectoryFiles(fullPath, baseDir);
         files.push(...subFiles);
       } else if (entry.isFile()) {
         files.push({
           localPath: fullPath,
-          relativePath
+          relativePath,
         });
       } else if (entry.isSymbolicLink()) {
         // For symlinks, check if target exists and is a regular file
@@ -642,7 +661,7 @@ export class DockerfileExecutor {
           if (stats.isFile()) {
             files.push({
               localPath: fullPath,
-              relativePath
+              relativePath,
             });
           }
         } catch (e) {
@@ -657,13 +676,13 @@ export class DockerfileExecutor {
   private shouldIgnore(filePath: string, patterns: string[]): boolean {
     // Common patterns to always ignore
     const alwaysIgnore = ["node_modules", ".git", ".DS_Store"];
-    
+
     for (const ignore of alwaysIgnore) {
       if (filePath.includes(ignore)) {
         return true;
       }
     }
-    
+
     for (const pattern of patterns) {
       // Simple pattern matching (not full gitignore spec)
       if (pattern.endsWith("/")) {
@@ -679,12 +698,16 @@ export class DockerfileExecutor {
         }
       } else {
         // Exact match or path contains
-        if (filePath === pattern || filePath.startsWith(pattern + "/") || filePath.includes("/" + pattern)) {
+        if (
+          filePath === pattern ||
+          filePath.startsWith(pattern + "/") ||
+          filePath.includes("/" + pattern)
+        ) {
           return true;
         }
       }
     }
-    
+
     return false;
   }
 
@@ -699,9 +722,9 @@ export class DockerfileExecutor {
       .split("\n")
       .filter((f) => f);
 
-    return files.map(file => ({
+    return files.map((file) => ({
       localPath: path.join(this.projectRoot, file),
-      relativePath: file
+      relativePath: file,
     }));
   }
 
@@ -711,7 +734,9 @@ export class DockerfileExecutor {
     tarFlags: string
   ): Promise<string> {
     // For non-parents mode, we need to create a staging directory
-    const stagingDir = await fs.mkdtemp(path.join(os.tmpdir(), "morph-staging-"));
+    const stagingDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "morph-staging-")
+    );
 
     // Copy all files to staging with just their basenames
     for (const file of files) {
@@ -719,13 +744,18 @@ export class DockerfileExecutor {
       try {
         // Check if it's a regular file before copying
         const stats = await fs.lstat(file.localPath);
-        if (stats.isFile() || (stats.isSymbolicLink() && (await fs.stat(file.localPath)).isFile())) {
+        if (
+          stats.isFile() ||
+          (stats.isSymbolicLink() && (await fs.stat(file.localPath)).isFile())
+        ) {
           await fs.copyFile(file.localPath, destPath);
         } else {
-          console.log(`    Skipping non-file during staging: ${file.relativePath}`);
+          console.log(
+            `    Skipping non-file during staging: ${file.relativePath}`
+          );
         }
       } catch (err: any) {
-        if (err.code === 'ENOTSUP' || err.code === 'EISDIR') {
+        if (err.code === "ENOTSUP" || err.code === "EISDIR") {
           console.log(`    Skipping special file: ${file.relativePath}`);
         } else {
           throw err;
@@ -737,8 +767,6 @@ export class DockerfileExecutor {
     const cleanupCommand = ` && rm -rf "${stagingDir}"`;
     return `cd "${stagingDir}" && tar ${tarFlags} "${tarballPath}" .${cleanupCommand}`;
   }
-
-
 
   private async executeAdd(
     instruction: DockerfileInstruction,
@@ -844,17 +872,20 @@ export class DockerfileExecutor {
     }
   }
 
-
   private async runSSHCommand(
     command: string,
     sudo = false,
     indent = "  ",
     showCommand = true
   ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-    // Wrap commands with cd in bash -c when using sudo
+    // Wrap commands with cd/&& in bash -c when using sudo.
+    // Avoid double-wrapping if caller already used `bash -c`.
     let fullCommand = command;
     if (sudo && !command.startsWith("sudo ")) {
-      if (command.includes("cd ") || command.includes("&&")) {
+      if (command.startsWith("bash -c ")) {
+        // Already wrapped; just prefix sudo
+        fullCommand = `sudo ${command}`;
+      } else if (command.includes("cd ") || command.includes("&&")) {
         fullCommand = `sudo bash -c "${command.replace(/"/g, '\\"')}"`;
       } else {
         fullCommand = `sudo ${command}`;
@@ -870,7 +901,14 @@ export class DockerfileExecutor {
       console.log(`${indent}→ ${displayCommand}`);
     }
 
-    const result = await this.instance.exec(fullCommand);
+    const result = await this.instance.exec(fullCommand, {
+      onStderr(content) {
+        console.error(`${indent}  ⚠ ${content}`);
+      },
+      onStdout(content) {
+        console.log(`${indent}  ${content}`);
+      },
+    });
 
     if (result.stdout) {
       // Indent output for better readability
