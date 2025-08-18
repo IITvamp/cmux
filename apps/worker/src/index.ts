@@ -1241,30 +1241,33 @@ async function createTerminal(
         } : undefined,
       }));
 
-      // Listen for task completion from project files
+      // Listen for task completion from project/log detectors
       detector.on("task-complete", (data) => {
         if (!idleDetectionCompleted) {
           idleDetectionCompleted = true;
           log("INFO", "Task completion detected from project files", data);
+          const detectionMethod = providerResolved === "gemini" ? "telemetry-log" : "project-file";
           emitToMainServer("worker:task-complete", {
             workerId: WORKER_ID,
             terminalId,
             taskId: options.taskId,
             agentModel: options.agentModel,
             elapsedMs: data.elapsedMs,
+            detectionMethod,
           });
         }
       });
 
+      // On timeout, do NOT mark complete; mark as failed for deterministic behavior
       detector.on("task-timeout", (data) => {
         if (!idleDetectionCompleted) {
           idleDetectionCompleted = true;
           log("WARN", "Task timeout detected", data);
-          emitToMainServer("worker:task-complete", {
+          emitToMainServer("worker:terminal-failed", {
             workerId: WORKER_ID,
             terminalId,
             taskId: options.taskId,
-            agentModel: options.agentModel,
+            errorMessage: `Detector timeout after ${data.elapsedMs}ms`,
             elapsedMs: data.elapsedMs,
           });
         }
@@ -1568,6 +1571,7 @@ const getClaudeHelpers = async () => {
   return {
     checkClaudeProjectFileCompletion: module.checkClaudeProjectFileCompletion,
     getClaudeProjectPath: module.getClaudeProjectPath,
+    checkClaudeStopHookCompletion: module.checkClaudeStopHookCompletion,
   };
 };
 const getCodexHelpers = async () => {
@@ -1615,19 +1619,16 @@ function buildDetectorConfig(params: {
       allowTerminalIdleFallback: false,
       async checkCompletion({ startTime, options }) {
         try {
-          const { getClaudeProjectPath, checkClaudeProjectFileCompletion } = await getClaudeHelpers();
-          const projectDir = getClaudeProjectPath(options.workingDir);
-          try {
-            await fs.access(projectDir);
-          } catch {
-            log("DEBUG", `Claude project dir not found yet: ${projectDir}`);
-            return false;
-          }
-          const done = await checkClaudeProjectFileCompletion(projectDir, undefined, 10000);
+          const { checkClaudeStopHookCompletion } = await getClaudeHelpers();
+          
+          // Check for stop hook marker (ONLY method - hook MUST work)
+          const done = await checkClaudeStopHookCompletion(options.taskId);
           if (done) {
-            log("INFO", `Claude task complete for project: ${projectDir}`);
+            log("INFO", `Claude task complete via stop hook for task: ${options.taskId}`);
+            return true;
           }
-          return done;
+          
+          return false;
         } catch (e) {
           log("ERROR", `Claude completion error: ${e}`);
           return false;

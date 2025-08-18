@@ -213,6 +213,12 @@ export async function spawnAgent(
       serverLogger.info(`[AgentSpawner] Setting Gemini telemetry path: ${envVars.GEMINI_TELEMETRY_PATH}`);
     }
 
+    // For Claude agents, pass the task ID for the stop hook to use
+    if (agent.provider === "claude") {
+      envVars.CMUX_TASK_ID = taskId;
+      serverLogger.info(`[AgentSpawner] Setting CMUX_TASK_ID for Claude stop hook: ${taskId}`);
+    }
+
     // Fetch API keys from Convex
     const apiKeys = await convex.query(api.apiKeys.getAllForAgents);
 
@@ -407,11 +413,12 @@ export async function spawnAgent(
           `[AgentSpawner] Updated taskRun ${taskRunId} as completed with exit code ${exitCode}`
         );
 
-        // Clean up codex-turns.jsonl file if this was a Codex agent
-        if (agent.name.toLowerCase().includes("codex")) {
-          try {
-            const workerSocket = vscodeInstance.getWorkerSocket();
-            if (workerSocket && vscodeInstance.isWorkerConnected()) {
+        // Clean up temporary files based on agent type
+        try {
+          const workerSocket = vscodeInstance.getWorkerSocket();
+          if (workerSocket && vscodeInstance.isWorkerConnected()) {
+            // Clean up Codex turns file
+            if (agent.name.toLowerCase().includes("codex")) {
               serverLogger.info(
                 `[AgentSpawner] Cleaning up codex-turns.jsonl for ${agent.name}`
               );
@@ -445,12 +452,45 @@ export async function spawnAgent(
                   );
               });
             }
-          } catch (error) {
-            serverLogger.warn(
-              `[AgentSpawner] Error cleaning up codex-turns.jsonl:`,
-              error
-            );
+            
+            // Clean up Claude stop hook marker file
+            if (agent.provider === "claude") {
+              serverLogger.info(
+                `[AgentSpawner] Cleaning up Claude stop hook marker for task ${taskId}`
+              );
+              
+              await new Promise<void>((resolve) => {
+                workerSocket
+                  .timeout(5000)
+                  .emit(
+                    "worker:exec",
+                    {
+                      command: "rm",
+                      args: ["-f", `/tmp/cmux/claude-complete-${taskId}`],
+                      cwd: "/tmp",
+                      env: {},
+                    },
+                    (timeoutError: any, response: { error: any; }) => {
+                      if (timeoutError || response.error) {
+                        serverLogger.warn(
+                          `[AgentSpawner] Failed to delete Claude marker file: ${timeoutError || response.error}`
+                        );
+                      } else {
+                        serverLogger.info(
+                          `[AgentSpawner] Successfully deleted Claude marker file`
+                        );
+                      }
+                      resolve();
+                    }
+                  );
+              });
+            }
           }
+        } catch (error) {
+          serverLogger.warn(
+            `[AgentSpawner] Error cleaning up temporary files:`,
+            error
+          );
         }
 
         // Check if all runs are complete and evaluate crown
@@ -754,8 +794,15 @@ export async function spawnAgent(
       }
     });
 
-    // Set up terminal-idle event handler (legacy, for non-Claude agents)
+    // Set up terminal-idle event handler (legacy; ignore for deterministic agents like OpenCode)
     vscodeInstance.on("terminal-idle", async (data: WorkerTerminalIdle) => {
+      // For OpenCode, never rely on terminal idle; wait for deterministic signals
+      if (agent.provider === "opencode") {
+        serverLogger.info(
+          `[AgentSpawner] Ignoring terminal idle for OpenCode agent ${agent.name} (use deterministic detection)`
+        );
+        return;
+      }
       serverLogger.info(
         `[AgentSpawner] Terminal idle detected for ${agent.name}:`,
         data
