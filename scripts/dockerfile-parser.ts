@@ -1,6 +1,7 @@
 import { execSync } from "child_process";
 import fs from "fs/promises";
 import type { Instance } from "morphcloud";
+import os from "os";
 import path from "path";
 
 export interface DockerfileInstruction {
@@ -29,12 +30,11 @@ export class DockerfileParser {
   private heredocContent: string = "";
 
   constructor(
-    dockerfilePath: string,
+    _dockerfilePath: string,
     private projectRoot: string
   ) {
     this.content = "";
     this.lines = [];
-    this.projectRoot = projectRoot;
   }
 
   async parse(dockerfilePath: string): Promise<ParsedDockerfile> {
@@ -116,12 +116,6 @@ export class DockerfileParser {
   }
 
   private parseInstruction(line: string): void {
-    // Handle heredoc syntax
-    if (line.includes("<<")) {
-      this.parseHeredoc(line);
-      return;
-    }
-
     const parts = line.split(/\s+/);
     const instruction = parts[0].toUpperCase();
     const value = parts.slice(1).join(" ");
@@ -220,11 +214,12 @@ export class DockerfileParser {
       options,
     });
   }
+}
 
-  private parseHeredoc(line: string): void {
-    // This method is now obsolete since we handle heredocs in the main parse loop
-    // Keeping it empty to avoid breaking existing code structure
-  }
+export interface DockerfileExecutionResult {
+  exposedPorts: Array<{ port: number; name: string }>;
+  entrypoint: string | null;
+  cmd: string | null;
 }
 
 export class DockerfileExecutor {
@@ -234,18 +229,16 @@ export class DockerfileExecutor {
   private stepStartTime: number = 0;
   private updateInterval: NodeJS.Timeout | null = null;
   private exposedPorts: Array<{ port: number; name: string }> = [];
+  private entrypoint: string | null = null;
+  private cmd: string | null = null;
 
   constructor(
     private instance: Instance,
-    private projectRoot: string,
-    private localTempDir: string = "/tmp/morph-docker-build"
+    private projectRoot: string
   ) {}
 
-  async execute(dockerfile: ParsedDockerfile): Promise<void> {
+  async execute(dockerfile: ParsedDockerfile): Promise<DockerfileExecutionResult> {
     console.log("Executing Dockerfile instructions on Morph instance...");
-
-    // Create temp directory for local operations
-    await fs.mkdir(this.localTempDir, { recursive: true });
 
     // Track environment variables and working directory
     let currentWorkdir = "/";
@@ -320,10 +313,12 @@ export class DockerfileExecutor {
             await this.executeVolume(instruction);
             break;
           case "ENTRYPOINT":
+            this.entrypoint = instruction.value;
+            console.log(`  Setting ENTRYPOINT: ${instruction.value}`);
+            break;
           case "CMD":
-            console.log(
-              `  Note: ${instruction.type} saved for container runtime`
-            );
+            this.cmd = instruction.value;
+            console.log(`  Setting CMD: ${instruction.value}`);
             break;
           case "SYNTAX":
             console.log(`  Using syntax: ${instruction.value}`);
@@ -355,23 +350,12 @@ export class DockerfileExecutor {
     const totalTime = ((Date.now() - this.startTime) / 1000).toFixed(1);
     console.log(`\n==> Build completed in ${totalTime}s`);
 
-    // Expose all collected ports
-    if (this.exposedPorts.length > 0) {
-      console.log(
-        `\n==> Exposing ${this.exposedPorts.length} HTTP service(s)...`
-      );
-      for (const { port, name } of this.exposedPorts) {
-        try {
-          const service = await this.instance.exposeHttpService(name, port);
-          console.log(`  ✓ Exposed ${name} on port ${port} -> ${service.url}`);
-        } catch (err) {
-          console.error(`  ✗ Failed to expose ${name} on port ${port}:`, err);
-        }
-      }
-    }
-
-    // Cleanup temp directory
-    await fs.rm(this.localTempDir, { recursive: true, force: true });
+    // Return the results for the caller to handle
+    return {
+      exposedPorts: this.exposedPorts,
+      entrypoint: this.entrypoint,
+      cmd: this.cmd
+    };
   }
 
   private printStepHeader(instruction: DockerfileInstruction): void {
@@ -482,146 +466,279 @@ export class DockerfileExecutor {
       ? dest
       : path.join(workdir, dest);
 
-    // Ensure destination ends with / when copying multiple files
-    const destForMultiple =
-      sources.length > 1 && !absoluteDest.endsWith("/")
-        ? absoluteDest + "/"
-        : absoluteDest;
+    // Batch all files into a single tar archive for efficient transfer
+    await this.batchCopyFiles(sources, absoluteDest, workdir, hasParents);
+  }
 
+  private async batchCopyFiles(
+    sources: string[],
+    remoteDest: string,
+    _workdir: string,
+    preserveParents: boolean
+  ): Promise<void> {
+    console.log(`  Copying ${sources.length} source(s) to ${remoteDest}`);
+
+    // Collect all files to copy
+    const filesToCopy: Array<{ localPath: string; relativePath: string }> = [];
+    
     for (const source of sources) {
       const localPath = path.join(this.projectRoot, source);
-
+      
       try {
         const stats = await fs.stat(localPath);
-
+        
         if (stats.isDirectory()) {
-          await this.copyDirectory(localPath, destForMultiple, hasParents);
+          // For directories, we need to get all files recursively
+          const files = await this.getDirectoryFiles(localPath, this.projectRoot);
+          filesToCopy.push(...files);
         } else {
-          await this.copyFile(localPath, destForMultiple, hasParents);
+          filesToCopy.push({
+            localPath,
+            relativePath: path.relative(this.projectRoot, localPath)
+          });
         }
       } catch (error) {
         // Handle glob patterns
         if (source.includes("*")) {
-          await this.copyGlob(source, destForMultiple, hasParents);
+          const files = await this.expandGlobPattern(source);
+          filesToCopy.push(...files);
         } else {
-          console.error(`  Failed to copy ${source}:`, error);
+          console.error(`  Failed to process ${source}:`, error);
           throw error;
         }
       }
     }
-  }
 
-  private async copyFile(
-    localPath: string,
-    remoteDest: string,
-    preserveParents: boolean
-  ): Promise<void> {
-    console.log(`  Copying file: ${localPath} -> ${remoteDest}`);
-
-    const relativePath = path.relative(this.projectRoot, localPath);
-    let remoteFilePath: string;
-    let remoteDir: string;
-
-    // Handle destination properly
-    if (remoteDest.endsWith("/")) {
-      // Destination is a directory
-      remoteDir = remoteDest;
-      remoteFilePath = preserveParents
-        ? path.join(remoteDest, relativePath)
-        : path.join(remoteDest, path.basename(localPath));
-    } else {
-      // Destination might be a file or directory
-      // If copying multiple files, remoteDest must be a directory
-      remoteFilePath = preserveParents
-        ? path.join(remoteDest, relativePath)
-        : remoteDest;
-      remoteDir = path.dirname(remoteFilePath);
+    if (filesToCopy.length === 0) {
+      console.log(`  No files to copy`);
+      return;
     }
 
-    await this.runSSHCommand(`mkdir -p ${remoteDir}`, true, "    ", false);
-
-    // Upload directly to the final destination
-    try {
-      await this.instance.sync(
-        localPath,
-        `${this.instance.id}:${remoteFilePath}`,
-        {
-          delete: true,
-          respectGitignore: true,
-        }
-      );
-      console.log(`    ✓ Uploaded ${path.basename(localPath)}`);
-    } catch (err) {
-      console.error(`  ✗ Failed to sync file:`, err);
-      throw new Error(
-        `Failed to copy ${localPath} to ${remoteFilePath}: ${err}`
-      );
-    }
-  }
-
-  private async copyDirectory(
-    localPath: string,
-    remoteDest: string,
-    preserveParents: boolean
-  ): Promise<void> {
-    console.log(`  Copying directory: ${localPath} -> ${remoteDest}`);
-
-    // Create tarball for efficient transfer
+    // Create a single tar archive with all files
     const tarballName = `transfer-${Date.now()}.tar.gz`;
-    const tarballPath = path.join(this.localTempDir, tarballName);
+    // Use proper temp directory with mkdtemp
+    const tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "morph-transfer-"));
+    const tarballPath = path.join(tempDir, tarballName);
 
-    if (preserveParents) {
-      const relativePath = path.relative(this.projectRoot, localPath);
-      execSync(
-        `cd "${this.projectRoot}" && tar -czf "${tarballPath}" "${relativePath}"`,
-        { stdio: "pipe" }
-      );
-    } else {
-      execSync(`cd "${localPath}" && tar -czf "${tarballPath}" .`, {
-        stdio: "pipe",
-      });
+    try {
+      // Detect if we're on macOS to use --no-xattrs
+      const isMacOS = process.platform === "darwin";
+      const tarFlags = isMacOS ? "--no-xattrs -czf" : "-czf";
+
+      // Create tar archive with all files
+      const tarCommand = preserveParents
+        ? `cd "${this.projectRoot}" && tar ${tarFlags} "${tarballPath}" ${filesToCopy.map(f => `"${f.relativePath}"`).join(" ")}`
+        : await this.createNonParentsTar(filesToCopy, tarballPath, tarFlags);
+
+      execSync(tarCommand, { stdio: "pipe" });
+
+      // Upload the tar archive
+      await this.instance.sync(tempDir, `${this.instance.id}:/tmp`);
+
+      // Determine if destination is a file or directory
+      // If copying a single file to a path without trailing slash, it's likely a file destination
+      const isSingleFile = filesToCopy.length === 1 && !remoteDest.endsWith("/");
+      
+      if (isSingleFile) {
+        // For single file, extract to parent directory and rename if needed
+        const destDir = path.dirname(remoteDest);
+        const destFileName = path.basename(remoteDest);
+        const sourceFileName = path.basename(filesToCopy[0].localPath);
+        
+        await this.runSSHCommand(`mkdir -p ${destDir}`, true, "    ", false);
+        await this.runSSHCommand(
+          `cd ${destDir} && tar -xzf /tmp/${tarballName}`,
+          true,
+          "    ",
+          false
+        );
+        
+        // If the destination filename is different from source, rename it
+        if (destFileName !== sourceFileName && !preserveParents) {
+          await this.runSSHCommand(
+            `cd ${destDir} && mv "${sourceFileName}" "${destFileName}"`,
+            true,
+            "    ",
+            false
+          );
+        }
+        
+        await this.runSSHCommand(`rm /tmp/${tarballName}`, true, "    ", false);
+      } else {
+        // For directories or multiple files, extract into the destination directory
+        await this.runSSHCommand(`mkdir -p ${remoteDest}`, true, "    ", false);
+        await this.runSSHCommand(
+          `cd ${remoteDest} && tar -xzf /tmp/${tarballName} && rm /tmp/${tarballName}`,
+          true,
+          "    ",
+          false
+        );
+      }
+
+      console.log(`    ✓ Uploaded ${filesToCopy.length} file(s)`);
+    } finally {
+      // Clean up temp directory
+      try {
+        await fs.rm(tempDir, { recursive: true, force: true });
+      } catch (e) {
+        // Ignore cleanup errors
+      }
     }
-
-    // Upload and extract
-    await this.instance.sync(
-      tarballPath,
-      `${this.instance.id}:/tmp/${tarballName}`
-    );
-    await this.runSSHCommand(`mkdir -p ${remoteDest}`, true, "    ", false);
-    await this.runSSHCommand(
-      `cd ${remoteDest} && tar -xzf /tmp/${tarballName} && rm /tmp/${tarballName}`,
-      true,
-      "    ",
-      false
-    );
-
-    // Clean up local tarball
-    await fs.unlink(tarballPath);
   }
 
-  private async copyGlob(
-    pattern: string,
-    remoteDest: string,
-    preserveParents: boolean
-  ): Promise<void> {
-    console.log(`  Copying glob pattern: ${pattern} -> ${remoteDest}`);
+  private async getDirectoryFiles(
+    dirPath: string,
+    baseDir: string
+  ): Promise<Array<{ localPath: string; relativePath: string }>> {
+    const files: Array<{ localPath: string; relativePath: string }> = [];
+    const entries = await fs.readdir(dirPath, { withFileTypes: true });
 
-    // Use shell to expand glob pattern
+    // Check for .dockerignore and .gitignore
+    const dockerignorePath = path.join(baseDir, ".dockerignore");
+    const gitignorePath = path.join(baseDir, ".gitignore");
+    const ignorePatterns: string[] = [];
+    
+    try {
+      const dockerignore = await fs.readFile(dockerignorePath, "utf-8");
+      ignorePatterns.push(...dockerignore.split("\n").filter(line => line.trim() && !line.startsWith("#")));
+    } catch (e) {
+      // No .dockerignore
+    }
+    
+    try {
+      const gitignore = await fs.readFile(gitignorePath, "utf-8");
+      ignorePatterns.push(...gitignore.split("\n").filter(line => line.trim() && !line.startsWith("#")));
+    } catch (e) {
+      // No .gitignore
+    }
+
+    for (const entry of entries) {
+      const fullPath = path.join(dirPath, entry.name);
+      const relativePath = path.relative(baseDir, fullPath);
+      
+      // Skip if matches ignore patterns
+      if (this.shouldIgnore(relativePath, ignorePatterns)) {
+        continue;
+      }
+      
+      // Skip special files
+      if (entry.isSocket() || entry.isFIFO() || entry.isCharacterDevice() || entry.isBlockDevice()) {
+        console.log(`    Skipping special file: ${relativePath}`);
+        continue;
+      }
+      
+      if (entry.isDirectory()) {
+        const subFiles = await this.getDirectoryFiles(fullPath, baseDir);
+        files.push(...subFiles);
+      } else if (entry.isFile()) {
+        files.push({
+          localPath: fullPath,
+          relativePath
+        });
+      } else if (entry.isSymbolicLink()) {
+        // For symlinks, check if target exists and is a regular file
+        try {
+          const stats = await fs.stat(fullPath);
+          if (stats.isFile()) {
+            files.push({
+              localPath: fullPath,
+              relativePath
+            });
+          }
+        } catch (e) {
+          console.log(`    Skipping broken symlink: ${relativePath}`);
+        }
+      }
+    }
+
+    return files;
+  }
+
+  private shouldIgnore(filePath: string, patterns: string[]): boolean {
+    // Common patterns to always ignore
+    const alwaysIgnore = ["node_modules", ".git", ".DS_Store"];
+    
+    for (const ignore of alwaysIgnore) {
+      if (filePath.includes(ignore)) {
+        return true;
+      }
+    }
+    
+    for (const pattern of patterns) {
+      // Simple pattern matching (not full gitignore spec)
+      if (pattern.endsWith("/")) {
+        // Directory pattern
+        if (filePath.startsWith(pattern) || filePath.includes("/" + pattern)) {
+          return true;
+        }
+      } else if (pattern.includes("*")) {
+        // Glob pattern - simplified
+        const regex = new RegExp(pattern.replace(/\*/g, ".*"));
+        if (regex.test(filePath)) {
+          return true;
+        }
+      } else {
+        // Exact match or path contains
+        if (filePath === pattern || filePath.startsWith(pattern + "/") || filePath.includes("/" + pattern)) {
+          return true;
+        }
+      }
+    }
+    
+    return false;
+  }
+
+  private async expandGlobPattern(
+    pattern: string
+  ): Promise<Array<{ localPath: string; relativePath: string }>> {
     const files = execSync(
       `cd "${this.projectRoot}" && ls -d ${pattern} 2>/dev/null || true`,
-      {
-        encoding: "utf-8",
-      }
+      { encoding: "utf-8" }
     )
       .trim()
       .split("\n")
       .filter((f) => f);
 
-    for (const file of files) {
-      const localPath = path.join(this.projectRoot, file);
-      await this.copyFile(localPath, remoteDest, preserveParents);
-    }
+    return files.map(file => ({
+      localPath: path.join(this.projectRoot, file),
+      relativePath: file
+    }));
   }
+
+  private async createNonParentsTar(
+    files: Array<{ localPath: string; relativePath: string }>,
+    tarballPath: string,
+    tarFlags: string
+  ): Promise<string> {
+    // For non-parents mode, we need to create a staging directory
+    const stagingDir = await fs.mkdtemp(path.join(os.tmpdir(), "morph-staging-"));
+
+    // Copy all files to staging with just their basenames
+    for (const file of files) {
+      const destPath = path.join(stagingDir, path.basename(file.localPath));
+      try {
+        // Check if it's a regular file before copying
+        const stats = await fs.lstat(file.localPath);
+        if (stats.isFile() || (stats.isSymbolicLink() && (await fs.stat(file.localPath)).isFile())) {
+          await fs.copyFile(file.localPath, destPath);
+        } else {
+          console.log(`    Skipping non-file during staging: ${file.relativePath}`);
+        }
+      } catch (err: any) {
+        if (err.code === 'ENOTSUP' || err.code === 'EISDIR') {
+          console.log(`    Skipping special file: ${file.relativePath}`);
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    // Clean up staging dir after tar creation
+    const cleanupCommand = ` && rm -rf "${stagingDir}"`;
+    return `cd "${stagingDir}" && tar ${tarFlags} "${tarballPath}" .${cleanupCommand}`;
+  }
+
+
 
   private async executeAdd(
     instruction: DockerfileInstruction,
@@ -727,14 +844,22 @@ export class DockerfileExecutor {
     }
   }
 
+
   private async runSSHCommand(
     command: string,
     sudo = false,
     indent = "  ",
     showCommand = true
   ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-    const fullCommand =
-      sudo && !command.startsWith("sudo ") ? `sudo ${command}` : command;
+    // Wrap commands with cd in bash -c when using sudo
+    let fullCommand = command;
+    if (sudo && !command.startsWith("sudo ")) {
+      if (command.includes("cd ") || command.includes("&&")) {
+        fullCommand = `sudo bash -c "${command.replace(/"/g, '\\"')}"`;
+      } else {
+        fullCommand = `sudo ${command}`;
+      }
+    }
 
     if (showCommand) {
       // Show abbreviated command for readability

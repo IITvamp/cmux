@@ -2,15 +2,92 @@
 import dotenv from "dotenv";
 import fs from "fs/promises";
 import { MorphCloudClient } from "morphcloud";
+import type { Instance } from "morphcloud";
 import path from "path";
 import { fileURLToPath } from "url";
-import { DockerfileParser, DockerfileExecutor } from "./dockerfile-parser.js";
+import { DockerfileParser, DockerfileExecutor, type DockerfileExecutionResult } from "./dockerfile-parser.js";
 
 // Load environment variables
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootEnvPath = path.join(__dirname, "..", ".env");
 const scriptsEnvPath = path.join(__dirname, ".env");
 dotenv.config({ path: (await fs.stat(rootEnvPath).then(() => rootEnvPath).catch(() => scriptsEnvPath)) });
+
+async function startServicesAndWait(instance: Instance, result: DockerfileExecutionResult): Promise<void> {
+  console.log(`\n==> Starting services for snapshot...`);
+  
+  // Parse and combine ENTRYPOINT and CMD
+  const parseDockerCommand = (command: string): string => {
+    if (command.startsWith("[") && command.endsWith("]")) {
+      try {
+        const parsed = JSON.parse(command);
+        return parsed.join(" ");
+      } catch (e) {
+        return command;
+      }
+    }
+    return command;
+  };
+  
+  let startupCommand = "";
+  if (result.entrypoint) {
+    startupCommand = parseDockerCommand(result.entrypoint);
+  }
+  if (result.cmd) {
+    const cmd = parseDockerCommand(result.cmd);
+    startupCommand = startupCommand ? `${startupCommand} ${cmd}` : cmd;
+  }
+  
+  if (!startupCommand) {
+    console.log("  No startup command to execute");
+    return;
+  }
+  
+  console.log(`  Starting: ${startupCommand}`);
+  
+  // Start the services in the background
+  const fullCommand = `nohup ${startupCommand} > /var/log/startup.log 2>&1 &`;
+  await instance.exec(fullCommand);
+  
+  // Wait for services to be ready
+  console.log("  Waiting for services to be ready...");
+  
+  const maxWaitTime = 60000; // 60 seconds max
+  const checkInterval = 2000; // Check every 2 seconds
+  const startTime = Date.now();
+  
+  while (Date.now() - startTime < maxWaitTime) {
+    // Check if exposed ports are listening
+    let portsReady = true;
+    if (result.exposedPorts.length > 0) {
+      const portsToCheck = result.exposedPorts.map(p => p.port).join("|");
+      const checkResult = await instance.exec(
+        `ss -tulnp 2>/dev/null | grep -E ":(${portsToCheck})\\s" | wc -l`
+      );
+      const listeningCount = parseInt(checkResult.stdout.trim()) || 0;
+      portsReady = listeningCount >= result.exposedPorts.length;
+    }
+    
+    if (portsReady) {
+      console.log("    ✓ Ports are listening");
+      
+      // Give it a few more seconds to fully stabilize
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      console.log("    ✓ Services appear ready");
+      return;
+    }
+    
+    // Show progress
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    process.stdout.write(`\r    ⏳ Waiting for services... ${elapsed}s`);
+    
+    await new Promise(resolve => setTimeout(resolve, checkInterval));
+  }
+  
+  // Clear the progress line
+  process.stdout.write("\r" + " ".repeat(50) + "\r");
+  console.log("    ⚠ Timeout waiting for services (continuing anyway)");
+}
 
 async function main() {
   try {
@@ -49,7 +126,25 @@ async function main() {
       
       console.log("\n--- Executing Dockerfile instructions ---");
       const executor = new DockerfileExecutor(instance, projectRoot);
-      await executor.execute(parsedDockerfile);
+      const result = await executor.execute(parsedDockerfile);
+      
+      // Start services if ENTRYPOINT/CMD is defined
+      if (result.entrypoint || result.cmd) {
+        await startServicesAndWait(instance, result);
+      }
+      
+      // Expose ports
+      if (result.exposedPorts.length > 0) {
+        console.log(`\n==> Exposing ${result.exposedPorts.length} HTTP service(s)...`);
+        for (const { port, name } of result.exposedPorts) {
+          try {
+            const service = await instance.exposeHttpService(name, port);
+            console.log(`  ✓ Exposed ${name} on port ${port} -> ${service.url}`);
+          } catch (err) {
+            console.error(`  ✗ Failed to expose ${name} on port ${port}:`, err);
+          }
+        }
+      }
       
       // Create final snapshot
       console.log("\n--- Creating final snapshot ---");
