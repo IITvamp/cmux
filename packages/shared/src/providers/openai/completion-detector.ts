@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
+import { parseJsonSafe, readJsonl } from "../../utils/jsonl.js";
 
 /**
  * Types for Codex rollout JSONL entries (best-effort, minimal fields)
@@ -221,10 +222,7 @@ export async function checkCodexNotifyFileCompletion(
       return false;
     }
     
-    const content = await fs.readFile(filePath, "utf-8");
-    console.log(`[Codex Detector] Notify file content (first 500 chars):`, content.substring(0, 500));
-    
-    const lines = content.split("\n").filter(Boolean);
+    const lines = await readJsonl(filePath);
     console.log(`[Codex Detector] Notify file has ${lines.length} lines`);
     
     // Log each line for debugging
@@ -305,11 +303,7 @@ export async function checkCodexRolloutCompletion(
   rolloutPath: string
 ): Promise<{ isComplete: boolean; latestPlan?: PlanItemArg[] }> {
   try {
-    const content = await fs.readFile(rolloutPath, "utf-8");
-    const lines = content
-      .split("\n")
-      .map((l) => l.trim())
-      .filter(Boolean);
+    const lines = await readJsonl(rolloutPath);
 
     console.log(`[Codex Detector] Processing ${lines.length} lines from rollout file`);
     
@@ -324,7 +318,8 @@ export async function checkCodexRolloutCompletion(
       const line = lines[i];
       if (!line) continue;
       try {
-        const obj = JSON.parse(line) as CodexRolloutEntry;
+        const obj = parseJsonSafe<CodexRolloutEntry>(line);
+        if (!obj) continue;
         
         // Keep track of last 5 entries for debugging
         if (i >= lines.length - 5) {

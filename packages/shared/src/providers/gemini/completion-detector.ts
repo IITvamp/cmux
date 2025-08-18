@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
+import { getLastJsonlObject, readJsonl } from "../../utils/jsonl.js";
 
 /**
  * Gemini session/message types (best-effort)
@@ -42,28 +43,12 @@ async function getMostRecentJsonlFile(projectDir: string): Promise<string | null
 }
 
 async function getLastMessage(filePath: string): Promise<GeminiMessageLike | null> {
-  try {
-    const content = await fs.readFile(filePath, "utf-8");
-    const lines = content.split("\n").filter((l) => l.trim());
-    if (!lines.length) return null;
-    // Scan from end for a parseable JSON object
-    for (let i = lines.length - 1; i >= 0; i--) {
-      const line = lines[i] as string;
-      try {
-        const obj = JSON.parse(line) as GeminiMessageLike;
-        // Try to normalize a couple of common shapes
-        let role = obj.role;
-        let content = obj.content;
-        if (!content && typeof (obj as any).text === "string") content = (obj as any).text;
-        return { ...obj, role, content };
-      } catch {
-        // continue scanning up
-      }
-    }
-    return null;
-  } catch {
-    return null;
-  }
+  const obj = await getLastJsonlObject<any>(filePath);
+  if (!obj) return null;
+  const role = obj.role;
+  let content = obj.content as string | undefined;
+  if (!content && typeof (obj as any).text === "string") content = (obj as any).text;
+  return { ...obj, role, content } as GeminiMessageLike;
 }
 
 /**
@@ -180,4 +165,3 @@ export default {
   checkGeminiProjectFileCompletion,
   monitorGeminiCompletion,
 };
-

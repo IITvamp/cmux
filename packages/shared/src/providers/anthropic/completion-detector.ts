@@ -1,6 +1,7 @@
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
+import { getLastJsonlObject, parseJsonSafe, readJsonl, tailJsonlObjects } from "../../utils/jsonl.js";
 
 /**
  * Interface for a parsed Claude JSONL message
@@ -64,55 +65,28 @@ async function getMostRecentJsonlFile(projectDir: string): Promise<string | null
  * @returns The last message, or null if unable to parse
  */
 async function getLastMessage(filePath: string): Promise<ClaudeMessage | null> {
-  try {
-    const content = await fs.readFile(filePath, "utf-8");
-    const lines = content.split("\n").filter((line) => line.trim());
-    
-    if (lines.length === 0) {
-      return null;
-    }
-
-    const lastLine = lines[lines.length - 1];
-    if (!lastLine) {
-      return null;
-    }
-
-    try {
-      const parsed = JSON.parse(lastLine);
-      const lastMessage: ClaudeMessage = {
-        type: parsed.type,
-        timestamp: parsed.timestamp,
-        content: "",
-        hasToolUse: false,
-      };
-      
-      // Extract content and check for tool_use
-      const messageContent = parsed.message?.content;
-      if (Array.isArray(messageContent)) {
-        for (const item of messageContent) {
-          if (item?.type === "text" && item?.text) {
-            lastMessage.content = (lastMessage.content || "") + item.text + " ";
-          } else if (item?.type === "tool_use") {
-            lastMessage.hasToolUse = true;
-          }
-        }
-      } else if (typeof messageContent === "string") {
-        lastMessage.content = messageContent;
+  const parsed = await getLastJsonlObject<any>(filePath);
+  if (!parsed) return null;
+  const lastMessage: ClaudeMessage = {
+    type: parsed.type,
+    timestamp: parsed.timestamp,
+    content: "",
+    hasToolUse: false,
+  };
+  const messageContent = parsed.message?.content;
+  if (Array.isArray(messageContent)) {
+    for (const item of messageContent) {
+      if (item?.type === "text" && item?.text) {
+        lastMessage.content = (lastMessage.content || "") + item.text + " ";
+      } else if (item?.type === "tool_use") {
+        lastMessage.hasToolUse = true;
       }
-      
-      if (lastMessage.content) {
-        lastMessage.content = lastMessage.content.trim();
-      }
-      
-      return lastMessage;
-    } catch {
-      // Failed to parse JSON
-      return null;
     }
-  } catch {
-    // Failed to read file
-    return null;
+  } else if (typeof messageContent === "string") {
+    lastMessage.content = messageContent;
   }
+  if (lastMessage.content) lastMessage.content = lastMessage.content.trim();
+  return lastMessage;
 }
 
 /**
@@ -153,8 +127,7 @@ export async function checkClaudeProjectFileCompletion(
   }
 
   try {
-    const fileContent = await fs.readFile(jsonlFile, "utf-8");
-    const lines = fileContent.split("\n").filter((line) => line.trim());
+    const lines = await readJsonl(jsonlFile);
     
     if (lines.length === 0) {
       return false;
@@ -171,7 +144,8 @@ export async function checkClaudeProjectFileCompletion(
     
     for (let i = lines.length - linesToCheck; i < lines.length; i++) {
       try {
-        const msg = JSON.parse(lines[i] as string);
+        const msg = parseJsonSafe<any>(lines[i] as string);
+        if (!msg) continue;
         const messageContent = msg.message?.content;
         let textContent = "";
         let hasToolUse = false;
