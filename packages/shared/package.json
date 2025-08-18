@@ -66,6 +66,15 @@
       "import": "./src/providers/gemini/completion-detector.ts",
       "types": "./src/providers/gemini/completion-detector.ts"
     }
+    ,
+    "./src/providers/opencode/completion-detector": {
+      "import": "./src/providers/opencode/completion-detector.ts",
+      "types": "./src/providers/opencode/completion-detector.ts"
+    },
+    "./src/providers/opencode/completion-detector.ts": {
+      "import": "./src/providers/opencode/completion-detector.ts",
+      "types": "./src/providers/opencode/completion-detector.ts"
+    }
   },
   "dependencies": {
     "@cmux/convex": "workspace:*",

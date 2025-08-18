@@ -1042,8 +1042,72 @@ async function createTerminal(
   let initialStderrBuffer = "";
   const INITIAL_ERROR_CAPTURE_WINDOW_MS = 30000; // capture up to first 30s
   const stopErrorCaptureAt = Date.now() + INITIAL_ERROR_CAPTURE_WINDOW_MS;
+  let opencodeStdoutBuf = "";
   childProcess.stdout.on("data", (data: Buffer) => {
-    headlessTerminal.write(data.toString());
+    const chunk = data.toString();
+    headlessTerminal.write(chunk);
+    // Parse OpenCode stdout for deterministic completion events
+    if (options.agentType === "opencode" && options.taskId) {
+      try {
+        opencodeStdoutBuf += chunk;
+        // Process complete lines only
+        const lines = opencodeStdoutBuf.split(/\r?\n/);
+        opencodeStdoutBuf = lines.pop() || ""; // keep last partial
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          let detected = false;
+          let reason = "";
+          // Try JSON first
+          if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+            try {
+              const obj = JSON.parse(trimmed) as any;
+              const payload = obj.payload || obj.event || obj;
+              const done = payload?.Done === true || payload?.done === true;
+              const type = String(payload?.Type || payload?.type || "").toLowerCase();
+              const isResponse = type.includes("response");
+              const isSummarize = type.includes("summarize");
+              const finish = payload?.finish || obj?.finish || obj?.response?.finish;
+              reason = String(finish?.reason || "").toLowerCase();
+              if ((done && (isResponse || isSummarize)) || (finish && reason !== "tool_use" && reason !== "")) {
+                detected = true;
+              }
+            } catch {
+              // fall through to regex
+            }
+          }
+          if (!detected) {
+            // Regex fallback for non-JSON lines
+            const doneRe = /"?done"?\s*:\s*true/i;
+            const typeRe = /"?type"?\s*:\s*"?([a-zA-Z_\-]+)"?/i;
+            const finishReasonRe = /finish[^\n\r]*?reason\s*[:=]\s*"?([a-zA-Z_\-]+)"?/i;
+            const hasDone = doneRe.test(trimmed);
+            const typeMatch = typeRe.exec(trimmed);
+            const typeStr = (typeMatch?.[1] || "").toLowerCase();
+            const isResponse = typeStr.includes("response");
+            const isSummarize = typeStr.includes("summarize");
+            const fr = finishReasonRe.exec(trimmed);
+            reason = (fr?.[1] || reason || "").toLowerCase();
+            if ((hasDone && (isResponse || isSummarize)) || (reason && reason !== "tool_use")) {
+              detected = true;
+            }
+          }
+          if (detected) {
+            log("INFO", "[OpenCode stdout] Detected completion event", { reason });
+            emitToMainServer("worker:task-complete", {
+              workerId: WORKER_ID,
+              terminalId,
+              taskId: options.taskId,
+              agentType: options.agentType,
+              elapsedMs: Date.now() - processStartTime,
+              detectionMethod: "stdout-event",
+            });
+          }
+        }
+      } catch (e) {
+        // ignore parse errors
+      }
+    }
   });
 
   childProcess.stderr.on("data", (data: Buffer) => {
@@ -1124,7 +1188,8 @@ async function createTerminal(
       const useTerminalIdleFallback = !(
         options.agentType === "claude" ||
         options.agentType === "codex" ||
-        options.agentType === "gemini"
+        options.agentType === "gemini" ||
+        options.agentType === "opencode"
       );
       
       log("INFO", `Setting up task completion detection for ${options.agentType}`, {

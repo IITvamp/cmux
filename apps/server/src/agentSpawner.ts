@@ -199,6 +199,13 @@ export async function spawnAgent(
       // Keep PROMPT for backward compatibility if any consumer uses it
       PROMPT: processedTaskDescription,
     };
+    
+    // For Gemini agents, set a unique telemetry log path using taskId (not taskRunId)
+    // This must match what the detector expects
+    if (agent.name.toLowerCase().includes("gemini")) {
+      envVars.GEMINI_TELEMETRY_PATH = `/tmp/gemini-telemetry-${taskId}.log`;
+      serverLogger.info(`[AgentSpawner] Setting Gemini telemetry path: ${envVars.GEMINI_TELEMETRY_PATH}`);
+    }
 
     let authFiles: EnvironmentResult["files"] = [];
     let startupCommands: string[] = [];
@@ -654,9 +661,9 @@ export async function spawnAgent(
         data
       );
 
-      // For Claude and Codex agents, ignore terminal exit as tmux exits immediately after creating session
+      // For Claude, Codex, Gemini, and OpenCode agents, ignore terminal exit as tmux exits immediately after creating session
       const agentType = getAgentType(agent.name);
-      if (agentType === "claude" || agentType === "codex") {
+      if (agentType === "claude" || agentType === "codex" || agentType === "gemini" || agentType === "opencode") {
         serverLogger.info(
           `[AgentSpawner] Ignoring terminal exit for ${agentType} agent ${agent.name} (tmux exits immediately, waiting for detector completion)`
         );
@@ -1179,6 +1186,33 @@ export async function spawnAgent(
     }
 
     // Send the terminal creation command
+    // Clean up old Gemini telemetry file if it exists
+    if (agent.name.toLowerCase().includes("gemini")) {
+      const telemetryPath = envVars.GEMINI_TELEMETRY_PATH;
+      if (telemetryPath) {
+        serverLogger.info(`[AgentSpawner] Cleaning up old Gemini telemetry file: ${telemetryPath}`);
+        await new Promise<void>((resolve) => {
+          workerSocket.timeout(5000).emit(
+            "worker:exec",
+            {
+              command: "rm",
+              args: ["-f", telemetryPath],
+              cwd: "/tmp",
+              env: {},
+            },
+            (timeoutError: any, result: { error: any; }) => {
+              if (timeoutError || result.error) {
+                serverLogger.warn(`[AgentSpawner] Failed to delete old telemetry file: ${timeoutError || result.error}`);
+              } else {
+                serverLogger.info(`[AgentSpawner] Successfully deleted old telemetry file`);
+              }
+              resolve();
+            }
+          );
+        });
+      }
+    }
+
     serverLogger.info(
       `[AgentSpawner] About to emit worker:create-terminal at ${new Date().toISOString()}`
     );

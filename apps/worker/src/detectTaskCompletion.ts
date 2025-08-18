@@ -237,25 +237,65 @@ export class TaskCompletionDetector extends EventEmitter {
 
   private async checkGeminiCompletion(): Promise<boolean> {
     try {
-      // Give Gemini some time to set up
+      // Gemini needs more time to set up and start writing telemetry
       const elapsed = Date.now() - this.startTime;
-      if (elapsed < this.options.minRuntimeMs!) return false;
-
-      const { checkGeminiTelemetryCompletion, GEMINI_TELEMETRY_LOG_PATH } = await getGeminiHelpers();
-      
-      // Check if telemetry file exists
-      try {
-        await fs.access(GEMINI_TELEMETRY_LOG_PATH);
-      } catch {
-        log("DEBUG", `Gemini telemetry log not found yet: ${GEMINI_TELEMETRY_LOG_PATH}`);
+      if (elapsed < this.options.minRuntimeMs!) {
+        log("DEBUG", `[Gemini Detector] Too early to check (elapsed: ${elapsed}ms < minRuntime: ${this.options.minRuntimeMs}ms)`);
         return false;
       }
 
-      // Check telemetry for completion events with 5 second idle requirement
-      const isComplete = await checkGeminiTelemetryCompletion(GEMINI_TELEMETRY_LOG_PATH, 5000);
+      const { checkGeminiTelemetryCompletion, GEMINI_TELEMETRY_LOG_PATH } = await getGeminiHelpers();
+      
+      // The telemetry path should be determined based on the task
+      // Since we're in the worker, we don't have direct access to the env var passed to tmux
+      // We need to construct the path using the taskId
+      const telemetryPath = `/tmp/gemini-telemetry-${this.options.taskId}.log`;
+      
+      log("INFO", `[Gemini Detector] Checking telemetry at ${telemetryPath} (taskId: ${this.options.taskId}, elapsed: ${elapsed}ms)`);
+      
+      // Check if telemetry file exists
+      try {
+        await fs.access(telemetryPath);
+        const stats = await fs.stat(telemetryPath);
+        log("INFO", `[Gemini Detector] Telemetry log found: size=${stats.size} bytes, modified=${new Date(stats.mtime).toISOString()}, age=${Date.now() - stats.mtime.getTime()}ms`);
+        
+        // If file is empty, wait
+        if (stats.size === 0) {
+          log("INFO", `[Gemini Detector] Telemetry log is empty, waiting for events...`);
+          return false;
+        }
+        
+        // Read first 500 bytes to see what's in the file
+        const buffer = Buffer.alloc(500);
+        const fd = await fs.open(telemetryPath, 'r');
+        try {
+          await fd.read(buffer, 0, 500, 0);
+          const preview = buffer.toString('utf-8').trim();
+          if (preview) {
+            log("INFO", `[Gemini Detector] Telemetry log preview (first 500 chars): ${preview.substring(0, 500)}`);
+          }
+        } finally {
+          await fd.close();
+        }
+      } catch (err) {
+        log("INFO", `[Gemini Detector] Telemetry log not found yet: ${telemetryPath} - ${err}`);
+        return false;
+      }
+
+      // Check telemetry for completion events with shorter idle requirement
+      // Looking for gemini_cli.next_speaker_check event with result: "user"
+      // Pass startTime to ignore events from previous runs
+      const isComplete = await checkGeminiTelemetryCompletion(
+        telemetryPath, 
+        2000, // Reduced idle time for faster detection
+        this.startTime // Only consider events after task started
+      );
+      
       if (isComplete) {
-        log("INFO", `Gemini task complete: detected completion event in telemetry log`);
+        log("INFO", `[Gemini Detector] Task complete: detected "gemini_cli.next_speaker_check" with result="user" in telemetry log`);
         return true;
+      } else {
+        log("INFO", `[Gemini Detector] No completion event found yet in telemetry log`);
       }
       return false;
     } catch (error) {
@@ -271,9 +311,21 @@ export class TaskCompletionDetector extends EventEmitter {
   }
 
   private async checkOpencodeCompletion(): Promise<boolean> {
-    // TODO: Implement Opencode-specific completion detection
-    console.log("Opencode completion detection not yet implemented");
-    return false;
+    try {
+      // Opencode deterministic completion:
+      // Prefer provider-normalized finish events with reason != tool_use
+      // We approximate by scanning opencode event/log files under ~/.local/share/opencode
+      const module = await import("@cmux/shared/src/providers/opencode/completion-detector.ts");
+      const done = await module.checkOpencodeCompletionSince(this.startTime, this.options.workingDir);
+      if (done) {
+        log("INFO", "Opencode task complete via finish.reason != tool_use");
+        return true;
+      }
+      return false;
+    } catch (error) {
+      log("ERROR", `Error checking Opencode completion: ${error}`);
+      return false;
+    }
   }
 }
 
@@ -291,7 +343,14 @@ export async function detectTaskCompletionWithFallback(
   await detector.start();
 
   // If terminal ID is provided, also set up terminal idle detection as fallback
-  if (options.terminalId && options.onTerminalIdle) {
+  // Hard-disable terminal idle fallback for Claude, Codex, and Gemini to avoid relying on terminal idle
+  const allowTerminalIdleFallback = !(
+    options.agentType === "claude" || 
+    options.agentType === "codex" || 
+    options.agentType === "gemini" ||
+    options.agentType === "opencode"
+  );
+  if (allowTerminalIdleFallback && options.terminalId && options.onTerminalIdle) {
     const { detectTerminalIdle } = await import("./detectTerminalIdle");
     
     detectTerminalIdle({
