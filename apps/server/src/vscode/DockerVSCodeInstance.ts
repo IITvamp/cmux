@@ -292,19 +292,6 @@ export class DockerVSCodeInstance extends VSCodeInstance {
           dockerLogger.info(`  No SSH directory found at ${sshDir}`);
         }
 
-        // Mount GitHub CLI config for authentication
-        const ghConfigDir = path.join(homeDir, ".config", "gh");
-        try {
-          const fs = await import("fs");
-          await fs.promises.access(ghConfigDir);
-          binds.push(`${ghConfigDir}:/root/.config/gh:rw`);
-          dockerLogger.info(
-            `  GitHub CLI config mount: ${ghConfigDir} -> /root/.config/gh (read-write)`
-          );
-        } catch {
-          dockerLogger.info(`  No GitHub CLI config found at ${ghConfigDir}`);
-        }
-
         // Mount git config if it exists
         try {
           const fs = await import("fs");
@@ -743,7 +730,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
   private async bootstrapContainerEnvironment(): Promise<void> {
     // First, set up GitHub authentication
     await this.bootstrapGitHubAuth();
-    
+
     // Then, bootstrap devcontainer if present
     await this.bootstrapDevcontainerIfPresent();
   }
@@ -775,7 +762,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       const authCmd = [
         "bash",
         "-lc",
-        `echo '${githubToken}' | gh auth login --with-token 2>&1`
+        `echo '${githubToken}' | gh auth login --with-token 2>&1`,
       ];
 
       const exec = await this.container.exec({
@@ -791,12 +778,15 @@ export class DockerVSCodeInstance extends VSCodeInstance {
             return;
           }
           if (stream) {
-            let output = '';
-            stream.on('data', (chunk) => {
+            let output = "";
+            stream.on("data", (chunk) => {
               output += chunk.toString();
             });
-            stream.on('end', () => {
-              if (output.includes('Logged in as') || output.includes('already logged in')) {
+            stream.on("end", () => {
+              if (
+                output.includes("Logged in as") ||
+                output.includes("already logged in")
+              ) {
                 dockerLogger.info(
                   `GitHub CLI authenticated successfully in container ${this.containerName}`
                 );
