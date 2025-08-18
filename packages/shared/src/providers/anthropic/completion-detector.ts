@@ -17,16 +17,11 @@ export async function checkClaudeStopHookCompletion(taskId: string): Promise<boo
   }
 }
 
-// Legacy exports for backward compatibility (will be removed in future)
-export function getClaudeProjectPath(workingDir: string): string {
-  // No longer used - keeping for backward compatibility
-  return "";
-}
 
 export async function checkClaudeProjectFileCompletion(
-  projectPath?: string,
-  workingDir?: string,
-  minIdleTimeMs?: number
+  _projectPath?: string,
+  _workingDir?: string,
+  _minIdleTimeMs?: number
 ): Promise<boolean> {
   // No longer used - keeping for backward compatibility
   return false;
