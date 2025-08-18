@@ -307,7 +307,9 @@ export class DockerfileExecutor {
               } else {
                 // Don't set empty values for ARGs without defaults
                 // They should remain unset so conditional logic in RUN commands works
-                console.log(`  Declaring build arg: ${name} (no default, will remain unset)`);
+                console.log(
+                  `  Declaring build arg: ${name} (no default, will remain unset)`
+                );
               }
             }
             break;
@@ -431,11 +433,14 @@ export class DockerfileExecutor {
     for (const [key, value] of Object.entries(envVars)) {
       // Replace ${VAR} syntax - only if the variable has a value
       if (value) {
-        command = command.replace(new RegExp(`\\$\\{${key}\\}`, 'g'), value);
+        command = command.replace(new RegExp(`\\$\\{${key}\\}`, "g"), value);
       }
       // Replace $VAR syntax - only if the variable has a value
       if (value) {
-        command = command.replace(new RegExp(`\\$${key}(?![A-Za-z0-9_])`, 'g'), value);
+        command = command.replace(
+          new RegExp(`\\$${key}(?![A-Za-z0-9_])`, "g"),
+          value
+        );
       }
     }
 
@@ -537,10 +542,14 @@ export class DockerfileExecutor {
 
     // Upload directly to the final destination
     try {
-      await this.instance.sync(localPath, remoteFilePath, {
-        delete: true,
-        respectGitignore: true,
-      });
+      await this.instance.sync(
+        localPath,
+        `${this.instance.id}:${remoteFilePath}`,
+        {
+          delete: true,
+          respectGitignore: true,
+        }
+      );
       console.log(`    ✓ Uploaded ${path.basename(localPath)}`);
     } catch (err) {
       console.error(`  ✗ Failed to sync file:`, err);
