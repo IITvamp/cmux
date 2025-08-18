@@ -227,6 +227,22 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
     const envVars = ["NODE_ENV=production", "WORKER_PORT=39377"];
 
+    // Pass GitHub auth into the container so `gh` works without keychain
+    try {
+      const githubToken = await getGitHubTokenFromKeychain(convex);
+      if (githubToken) {
+        envVars.push(`GH_TOKEN=${githubToken}`);
+        envVars.push(`GITHUB_TOKEN=${githubToken}`);
+        dockerLogger.info("  Injected GH_TOKEN/GITHUB_TOKEN into container env");
+      } else {
+        dockerLogger.info(
+          "  No GitHub token found on host (Convex, gh, or keychain)"
+        );
+      }
+    } catch (e) {
+      dockerLogger.warn("  Skipped injecting GitHub token due to error", e as any);
+    }
+
     // Add theme environment variable if provided
     if (this.config.theme) {
       envVars.push(`VSCODE_THEME=${this.config.theme}`);
