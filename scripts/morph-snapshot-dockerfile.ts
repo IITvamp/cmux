@@ -9,7 +9,10 @@ import { DockerfileParser, DockerfileExecutor } from "./dockerfile-parser.js";
 
 // Load environment variables
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.join(__dirname, ".env") });
+// Load env from repo root if available; fall back to scripts/.env
+const rootEnvPath = path.join(__dirname, "..", ".env");
+const scriptsEnvPath = path.join(__dirname, ".env");
+dotenv.config({ path: (await fs.stat(rootEnvPath).then(() => rootEnvPath).catch(() => scriptsEnvPath)) });
 
 async function runSSHCommand(
   instance: Instance,
@@ -380,23 +383,63 @@ async function testWorker(instance: Instance) {
     true
   );
 
+  // Start OpenVSCode server in the background
+  await runSSHCommand(
+    instance,
+    [
+      "/app/openvscode-server/bin/openvscode-server",
+      "--host 0.0.0.0",
+      "--port 39378",
+      "--without-connection-token",
+      "--disable-workspace-trust",
+      "--disable-telemetry",
+      "--disable-updates",
+      "--profile default-profile",
+      "/root/workspace",
+      "> /var/log/cmux/server.log 2>&1 &",
+    ].join(" "),
+    true
+  );
+
   // Expose HTTP services
   await instance.exposeHttpService("worker", 39377);
+  await instance.exposeHttpService("vscode", 39378);
 
   console.log("Worker started, services exposed");
 
-  // Wait for worker to initialize
-  await new Promise((resolve) => setTimeout(resolve, 5000));
+  // Wait for local services to initialize
+  console.log("Waiting for local worker and VSCode readiness...");
+  for (let i = 0; i < 30; i++) {
+    const workerReady = await runSSHCommand(
+      instance,
+      "curl -s -o /dev/null -w '%{http_code}' http://localhost:39377/socket.io/?EIO=4&transport=polling || true",
+      true,
+      false
+    );
+    const vscodeReady = await runSSHCommand(
+      instance,
+      "curl -s -o /dev/null -w '%{http_code}' 'http://localhost:39378/?folder=/root/workspace' || true",
+      true,
+      false
+    );
+    if (workerReady.stdout.includes("200") && vscodeReady.stdout.includes("200")) {
+      console.log("Local services are ready");
+      break;
+    }
+    await new Promise((r) => setTimeout(r, 2000));
+  }
 
   // Get the instance networking info to find the exposed URLs
   const client = new MorphCloudClient();
   const freshInstance = await client.instances.get({ instanceId: instance.id });
 
   let workerUrl: string | null = null;
+  let vscodeUrl: string | null = null;
   for (const service of freshInstance.networking.httpServices) {
     if (service.name === "worker") {
       workerUrl = service.url;
-      break;
+    } else if (service.name === "vscode") {
+      vscodeUrl = service.url + "/?folder=/root/workspace";
     }
   }
 
@@ -406,13 +449,34 @@ async function testWorker(instance: Instance) {
   }
 
   console.log("Worker URL:", workerUrl);
+  if (vscodeUrl) {
+    console.log("VSCode URL:", vscodeUrl);
+  }
 
-  // Basic connectivity test
+  // Basic external connectivity tests
   try {
-    const response = await fetch(workerUrl);
+    const response = await fetch(`${workerUrl}/api/health`).catch(() => fetch(workerUrl));
     console.log(`Worker responded with status: ${response.status}`);
   } catch (error) {
     console.log("Worker connectivity test failed:", error);
+  }
+
+  // Test socket.io polling endpoint
+  try {
+    const sio = await fetch(`${workerUrl}/socket.io/?EIO=4&transport=polling`);
+    console.log(`Socket.io polling responded with status: ${sio.status}`);
+  } catch (error) {
+    console.log("Socket.io polling test failed:", error);
+  }
+
+  // Test OpenVSCode external URL if available
+  if (vscodeUrl) {
+    try {
+      const vs = await fetch(vscodeUrl);
+      console.log(`VSCode responded with status: ${vs.status}`);
+    } catch (error) {
+      console.log("VSCode connectivity test failed:", error);
+    }
   }
 }
 
@@ -425,9 +489,9 @@ async function main() {
     const MEMORY = 8192; // Increased memory for build process
     const DISK_SIZE = 16384; // Increased disk size
 
-    console.log("Creating initial snapshot with Ubuntu 24.04...");
+    console.log("Creating initial snapshot from morphvm-minimal...");
     const initialSnapshot = await client.snapshots.create({
-      imageId: "ubuntu-2404", // Using Ubuntu 24.04 base
+      imageId: "morphvm-minimal", // Use known-good minimal image
       vcpus: VCPUS,
       memory: MEMORY,
       diskSize: DISK_SIZE,

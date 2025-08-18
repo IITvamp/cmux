@@ -1,7 +1,7 @@
-import fs from "fs/promises";
-import path from "path";
 import { execSync } from "child_process";
+import fs from "fs/promises";
 import type { Instance } from "morphcloud";
+import path from "path";
 
 export interface DockerfileInstruction {
   type: string;
@@ -28,7 +28,10 @@ export class DockerfileParser {
   private heredocDelimiter: string = "";
   private heredocContent: string = "";
 
-  constructor(dockerfilePath: string, private projectRoot: string) {
+  constructor(
+    dockerfilePath: string,
+    private projectRoot: string
+  ) {
     this.content = "";
     this.lines = [];
     this.projectRoot = projectRoot;
@@ -37,7 +40,7 @@ export class DockerfileParser {
   async parse(dockerfilePath: string): Promise<ParsedDockerfile> {
     this.content = await fs.readFile(dockerfilePath, "utf-8");
     this.lines = this.content.split("\n");
-    
+
     let currentInstruction = "";
     let isMultiline = false;
 
@@ -51,7 +54,7 @@ export class DockerfileParser {
           this.instructions.push({
             type: "RUN",
             value: this.heredocContent.trim(),
-            args: { heredoc: true }
+            args: { heredoc: true },
           });
           this.isInHeredoc = false;
           this.heredocDelimiter = "";
@@ -95,7 +98,7 @@ export class DockerfileParser {
         if (line.startsWith("# syntax=")) {
           this.instructions.push({
             type: "SYNTAX",
-            value: line.replace("# syntax=", "").trim()
+            value: line.replace("# syntax=", "").trim(),
           });
         }
         continue;
@@ -108,7 +111,7 @@ export class DockerfileParser {
       instructions: this.instructions,
       buildArgs: this.buildArgs,
       currentStage: this.currentStage,
-      stages: this.stages
+      stages: this.stages,
     };
   }
 
@@ -176,7 +179,7 @@ export class DockerfileParser {
     this.instructions.push({
       type: "FROM",
       value: baseImage,
-      args: stageName ? { stage: stageName } : undefined
+      args: stageName ? { stage: stageName } : undefined,
     });
   }
 
@@ -186,7 +189,7 @@ export class DockerfileParser {
     this.instructions.push({
       type: "ARG",
       value,
-      args: { name, defaultValue }
+      args: { name, defaultValue },
     });
   }
 
@@ -195,7 +198,7 @@ export class DockerfileParser {
     this.instructions.push({
       type: "ENV",
       value,
-      args: { name, value: envValue }
+      args: { name, value: envValue },
     });
   }
 
@@ -214,7 +217,7 @@ export class DockerfileParser {
     this.instructions.push({
       type: "COPY",
       value: cleanValue,
-      options
+      options,
     });
   }
 
@@ -225,6 +228,13 @@ export class DockerfileParser {
 }
 
 export class DockerfileExecutor {
+  private stepNumber: number = 0;
+  private totalSteps: number = 0;
+  private startTime: number = 0;
+  private stepStartTime: number = 0;
+  private updateInterval: NodeJS.Timeout | null = null;
+  private exposedPorts: Array<{ port: number; name: string }> = [];
+
   constructor(
     private instance: Instance,
     private projectRoot: string,
@@ -233,7 +243,7 @@ export class DockerfileExecutor {
 
   async execute(dockerfile: ParsedDockerfile): Promise<void> {
     console.log("Executing Dockerfile instructions on Morph instance...");
-    
+
     // Create temp directory for local operations
     await fs.mkdir(this.localTempDir, { recursive: true });
 
@@ -241,9 +251,27 @@ export class DockerfileExecutor {
     let currentWorkdir = "/";
     const envVars: Record<string, string> = {};
 
+    // Count total steps (excluding metadata instructions)
+    this.totalSteps = dockerfile.instructions.filter(
+      (i) =>
+        (!["SYNTAX", "ARG"].includes(i.type) && i.type !== "FROM") ||
+        i.args?.stage
+    ).length;
+    this.startTime = Date.now();
+
     for (const instruction of dockerfile.instructions) {
-      console.log(`\nExecuting ${instruction.type}: ${instruction.value.substring(0, 100)}...`);
-      
+      // Skip counting for certain instructions
+      if (!["SYNTAX", "ARG"].includes(instruction.type)) {
+        this.stepNumber++;
+        this.stepStartTime = Date.now();
+
+        // Start real-time timer update
+        this.startTimerUpdate();
+
+        // Print step header
+        this.printStepHeader(instruction);
+      }
+
       try {
         switch (instruction.type) {
           case "FROM":
@@ -259,7 +287,10 @@ export class DockerfileExecutor {
             await this.executeAdd(instruction, currentWorkdir);
             break;
           case "WORKDIR":
-            currentWorkdir = await this.executeWorkdir(instruction, currentWorkdir);
+            currentWorkdir = await this.executeWorkdir(
+              instruction,
+              currentWorkdir
+            );
             break;
           case "ENV":
             this.executeEnv(instruction, envVars);
@@ -267,32 +298,73 @@ export class DockerfileExecutor {
           case "ARG":
             if (instruction.args?.name) {
               const name = String(instruction.args.name);
-              const defVal = instruction.args?.defaultValue ? String(instruction.args.defaultValue) : "";
+              const defVal = instruction.args?.defaultValue
+                ? String(instruction.args.defaultValue)
+                : "";
               if (defVal) {
                 envVars[name] = defVal;
-                console.log(`Set build arg: ${name}=${defVal}`);
-              } else if (!(name in envVars)) {
-                envVars[name] = "";
-                console.log(`Declared build arg: ${name} (no default)`);
+                console.log(`  Setting build arg: ${name}=${defVal}`);
+              } else {
+                // Don't set empty values for ARGs without defaults
+                // They should remain unset so conditional logic in RUN commands works
+                console.log(`  Declaring build arg: ${name} (no default, will remain unset)`);
               }
             }
             break;
           case "EXPOSE":
-            console.log(`Note: EXPOSE ${instruction.value} - ports will need to be exposed via Morph`);
+            await this.executeExpose(instruction);
             break;
           case "VOLUME":
             await this.executeVolume(instruction);
             break;
           case "ENTRYPOINT":
           case "CMD":
-            console.log(`Note: ${instruction.type} saved for container runtime`);
+            console.log(
+              `  Note: ${instruction.type} saved for container runtime`
+            );
+            break;
+          case "SYNTAX":
+            console.log(`  Using syntax: ${instruction.value}`);
             break;
           default:
-            console.log(`Skipping unsupported instruction: ${instruction.type}`);
+            console.log(
+              `  Skipping unsupported instruction: ${instruction.type}`
+            );
+        }
+
+        // Stop timer update after successful execution
+        this.stopTimerUpdate();
+
+        // Print completion time for this step
+        if (!["SYNTAX", "ARG"].includes(instruction.type)) {
+          const stepTime = ((Date.now() - this.stepStartTime) / 1000).toFixed(
+            1
+          );
+          console.log(`  ✓ Step completed in ${stepTime}s\n`);
         }
       } catch (error) {
-        console.error(`Error executing ${instruction.type}:`, error);
+        this.stopTimerUpdate();
+        console.error(`\n  ✗ Error executing ${instruction.type}:`, error);
         throw error;
+      }
+    }
+
+    // Print total build time
+    const totalTime = ((Date.now() - this.startTime) / 1000).toFixed(1);
+    console.log(`\n==> Build completed in ${totalTime}s`);
+
+    // Expose all collected ports
+    if (this.exposedPorts.length > 0) {
+      console.log(
+        `\n==> Exposing ${this.exposedPorts.length} HTTP service(s)...`
+      );
+      for (const { port, name } of this.exposedPorts) {
+        try {
+          const service = await this.instance.exposeHttpService(name, port);
+          console.log(`  ✓ Exposed ${name} on port ${port} -> ${service.url}`);
+        } catch (err) {
+          console.error(`  ✗ Failed to expose ${name} on port ${port}:`, err);
+        }
       }
     }
 
@@ -300,13 +372,45 @@ export class DockerfileExecutor {
     await fs.rm(this.localTempDir, { recursive: true, force: true });
   }
 
+  private printStepHeader(instruction: DockerfileInstruction): void {
+    const elapsed = ((Date.now() - this.startTime) / 1000).toFixed(1);
+    let displayValue = instruction.value;
+
+    // Truncate long commands for header
+    if (displayValue.length > 80) {
+      displayValue = displayValue.substring(0, 77) + "...";
+    }
+
+    console.log(
+      `\n[${this.stepNumber}/${this.totalSteps}] ${instruction.type} ${displayValue}`
+    );
+    console.log(`  ⏱  Elapsed: ${elapsed}s`);
+  }
+
+  private startTimerUpdate(): void {
+    // Update timer every 100ms for real-time feel
+    this.updateInterval = setInterval(() => {
+      const stepElapsed = ((Date.now() - this.stepStartTime) / 1000).toFixed(1);
+      process.stdout.write(`\r  ⏳ Running... ${stepElapsed}s`);
+    }, 100);
+  }
+
+  private stopTimerUpdate(): void {
+    if (this.updateInterval) {
+      clearInterval(this.updateInterval);
+      this.updateInterval = null;
+      // Clear the running line
+      process.stdout.write("\r" + " ".repeat(30) + "\r");
+    }
+  }
+
   private async executeFrom(instruction: DockerfileInstruction): Promise<void> {
     const baseImage = instruction.value;
-    console.log(`Setting up base image environment for: ${baseImage}`);
-    
+    console.log(`  Setting up base image environment for: ${baseImage}`);
+
     // For Ubuntu-based images, ensure basic packages are installed
     if (baseImage.includes("ubuntu")) {
-      await this.runSSHCommand("apt-get update", true);
+      await this.runSSHCommand("apt-get update", true, "  ");
     }
   }
 
@@ -316,19 +420,34 @@ export class DockerfileExecutor {
     workdir: string
   ): Promise<void> {
     let command = instruction.value;
-    
+
     // Handle heredoc content
     if (instruction.args?.heredoc) {
       command = instruction.value;
     }
 
-    // Prepare environment variables
+    // Replace ARG/ENV variables in the command
+    // This handles ${VAR} syntax in the command
+    for (const [key, value] of Object.entries(envVars)) {
+      // Replace ${VAR} syntax - only if the variable has a value
+      if (value) {
+        command = command.replace(new RegExp(`\\$\\{${key}\\}`, 'g'), value);
+      }
+      // Replace $VAR syntax - only if the variable has a value
+      if (value) {
+        command = command.replace(new RegExp(`\\$${key}(?![A-Za-z0-9_])`, 'g'), value);
+      }
+    }
+
+    // Prepare environment variables - only include variables with values
     const envString = Object.entries(envVars)
+      .filter(([_, value]) => value) // Only export variables that have values
       .map(([key, value]) => `export ${key}="${value}"`)
       .join("; ");
 
-    const fullCommand = `cd ${workdir} && ${envString ? envString + " && " : ""}${command}`;
-    await this.runSSHCommand(fullCommand, true);
+    // Use bash -c to properly handle cd and other shell built-ins
+    const fullCommand = `bash -c "cd ${workdir} && ${envString ? envString + " && " : ""}${command.replace(/"/g, '\\"')}"`;
+    await this.runSSHCommand(fullCommand, true, "  ");
   }
 
   private async executeCopy(
@@ -338,36 +457,50 @@ export class DockerfileExecutor {
     const parts = instruction.value.trim().split(/\s+/);
     const dest = parts[parts.length - 1];
     const sources = parts.slice(0, -1);
-    
+
     // Check for --parents option
-    const hasParents = instruction.options?.some(opt => opt.startsWith("--parents")) ?? false;
-    
+    const hasParents =
+      instruction.options?.some((opt) => opt.startsWith("--parents")) ?? false;
+
     // Check for --from option (copy from another stage)
-    const fromOption = instruction.options?.find(opt => opt.startsWith("--from="));
+    const fromOption = instruction.options?.find((opt) =>
+      opt.startsWith("--from=")
+    );
     if (fromOption) {
-      console.log(`Note: --from option not yet supported, skipping stage copy`);
+      console.log(
+        `  Note: --from option not yet supported, skipping stage copy`
+      );
       return;
     }
 
-    const absoluteDest = path.isAbsolute(dest) ? dest : path.join(workdir, dest);
+    const absoluteDest = path.isAbsolute(dest)
+      ? dest
+      : path.join(workdir, dest);
+
+    // Ensure destination ends with / when copying multiple files
+    const destForMultiple =
+      sources.length > 1 && !absoluteDest.endsWith("/")
+        ? absoluteDest + "/"
+        : absoluteDest;
 
     for (const source of sources) {
       const localPath = path.join(this.projectRoot, source);
-      
+
       try {
         const stats = await fs.stat(localPath);
-        
+
         if (stats.isDirectory()) {
-          await this.copyDirectory(localPath, absoluteDest, hasParents);
+          await this.copyDirectory(localPath, destForMultiple, hasParents);
         } else {
-          await this.copyFile(localPath, absoluteDest, hasParents);
+          await this.copyFile(localPath, destForMultiple, hasParents);
         }
       } catch (error) {
         // Handle glob patterns
         if (source.includes("*")) {
-          await this.copyGlob(source, absoluteDest, hasParents);
+          await this.copyGlob(source, destForMultiple, hasParents);
         } else {
-          console.error(`Failed to copy ${source}:`, error);
+          console.error(`  Failed to copy ${source}:`, error);
+          throw error;
         }
       }
     }
@@ -378,32 +511,42 @@ export class DockerfileExecutor {
     remoteDest: string,
     preserveParents: boolean
   ): Promise<void> {
-    console.log(`Copying file: ${localPath} -> ${remoteDest}`);
+    console.log(`  Copying file: ${localPath} -> ${remoteDest}`);
 
     const relativePath = path.relative(this.projectRoot, localPath);
-    const remoteFilePath = preserveParents
-      ? path.join(remoteDest, relativePath)
-      : remoteDest;
-    const remoteDir = preserveParents
-      ? path.dirname(remoteFilePath)
-      : remoteDest.endsWith("/")
-        ? remoteDest
-        : path.dirname(remoteDest);
+    let remoteFilePath: string;
+    let remoteDir: string;
 
-    await this.runSSHCommand(`mkdir -p ${remoteDir}`, true);
+    // Handle destination properly
+    if (remoteDest.endsWith("/")) {
+      // Destination is a directory
+      remoteDir = remoteDest;
+      remoteFilePath = preserveParents
+        ? path.join(remoteDest, relativePath)
+        : path.join(remoteDest, path.basename(localPath));
+    } else {
+      // Destination might be a file or directory
+      // If copying multiple files, remoteDest must be a directory
+      remoteFilePath = preserveParents
+        ? path.join(remoteDest, relativePath)
+        : remoteDest;
+      remoteDir = path.dirname(remoteFilePath);
+    }
 
-    // Upload to a temp path first, then move into place to avoid sync quirks
-    const tmpName = `upload-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    const tmpRemote = `/tmp/${tmpName}`;
+    await this.runSSHCommand(`mkdir -p ${remoteDir}`, true, "    ", false);
+
+    // Upload directly to the final destination
     try {
-      await this.instance.sync(localPath, `${this.instance.id}:${tmpRemote}`);
-      await this.runSSHCommand(`mv ${tmpRemote} ${remoteFilePath}`, true);
+      await this.instance.sync(localPath, remoteFilePath, {
+        delete: true,
+        respectGitignore: true,
+      });
+      console.log(`    ✓ Uploaded ${path.basename(localPath)}`);
     } catch (err) {
-      console.error(`Failed to sync file via direct upload, attempting fallback:`, err);
-      // Fallback: base64 encode and write remotely
-      const data = await fs.readFile(localPath, { encoding: "base64" });
-      const writeCmd = `mkdir -p ${remoteDir} && echo '${data}' | base64 -d > ${remoteFilePath}`;
-      await this.runSSHCommand(writeCmd, true);
+      console.error(`  ✗ Failed to sync file:`, err);
+      throw new Error(
+        `Failed to copy ${localPath} to ${remoteFilePath}: ${err}`
+      );
     }
   }
 
@@ -412,33 +555,37 @@ export class DockerfileExecutor {
     remoteDest: string,
     preserveParents: boolean
   ): Promise<void> {
-    console.log(`Copying directory: ${localPath} -> ${remoteDest}`);
-    
+    console.log(`  Copying directory: ${localPath} -> ${remoteDest}`);
+
     // Create tarball for efficient transfer
     const tarballName = `transfer-${Date.now()}.tar.gz`;
     const tarballPath = path.join(this.localTempDir, tarballName);
-    
+
     if (preserveParents) {
       const relativePath = path.relative(this.projectRoot, localPath);
       execSync(
         `cd "${this.projectRoot}" && tar -czf "${tarballPath}" "${relativePath}"`,
-        { stdio: "inherit" }
+        { stdio: "pipe" }
       );
     } else {
-      execSync(
-        `cd "${localPath}" && tar -czf "${tarballPath}" .`,
-        { stdio: "inherit" }
-      );
+      execSync(`cd "${localPath}" && tar -czf "${tarballPath}" .`, {
+        stdio: "pipe",
+      });
     }
-    
+
     // Upload and extract
-    await this.instance.sync(tarballPath, `${this.instance.id}:/tmp/${tarballName}`);
-    await this.runSSHCommand(`mkdir -p ${remoteDest}`, true);
+    await this.instance.sync(
+      tarballPath,
+      `${this.instance.id}:/tmp/${tarballName}`
+    );
+    await this.runSSHCommand(`mkdir -p ${remoteDest}`, true, "    ", false);
     await this.runSSHCommand(
       `cd ${remoteDest} && tar -xzf /tmp/${tarballName} && rm /tmp/${tarballName}`,
-      true
+      true,
+      "    ",
+      false
     );
-    
+
     // Clean up local tarball
     await fs.unlink(tarballPath);
   }
@@ -448,13 +595,19 @@ export class DockerfileExecutor {
     remoteDest: string,
     preserveParents: boolean
   ): Promise<void> {
-    console.log(`Copying glob pattern: ${pattern} -> ${remoteDest}`);
-    
+    console.log(`  Copying glob pattern: ${pattern} -> ${remoteDest}`);
+
     // Use shell to expand glob pattern
-    const files = execSync(`cd "${this.projectRoot}" && ls -d ${pattern} 2>/dev/null || true`, {
-      encoding: "utf-8"
-    }).trim().split("\n").filter(f => f);
-    
+    const files = execSync(
+      `cd "${this.projectRoot}" && ls -d ${pattern} 2>/dev/null || true`,
+      {
+        encoding: "utf-8",
+      }
+    )
+      .trim()
+      .split("\n")
+      .filter((f) => f);
+
     for (const file of files) {
       const localPath = path.join(this.projectRoot, file);
       await this.copyFile(localPath, remoteDest, preserveParents);
@@ -469,17 +622,36 @@ export class DockerfileExecutor {
     const parts = instruction.value.trim().split(/\s+/);
     const dest = parts[parts.length - 1];
     const source = parts[0];
-    
-    const absoluteDest = path.isAbsolute(dest) ? dest : path.join(workdir, dest);
-    
+
+    const absoluteDest = path.isAbsolute(dest)
+      ? dest
+      : path.join(workdir, dest);
+
     if (source.startsWith("http://") || source.startsWith("https://")) {
       // Download from URL
-      await this.runSSHCommand(`mkdir -p ${path.dirname(absoluteDest)}`, true);
-      await this.runSSHCommand(`curl -fsSL -o ${absoluteDest} ${source}`, true);
-      
+      console.log(`  Downloading from URL: ${source}`);
+      await this.runSSHCommand(
+        `mkdir -p ${path.dirname(absoluteDest)}`,
+        true,
+        "  "
+      );
+      await this.runSSHCommand(
+        `curl -fsSL -o ${absoluteDest} ${source}`,
+        true,
+        "  "
+      );
+
       // If it's a tar file, extract it
-      if (source.endsWith(".tar") || source.endsWith(".tar.gz") || source.endsWith(".tgz")) {
-        await this.runSSHCommand(`cd ${path.dirname(absoluteDest)} && tar -xf ${path.basename(absoluteDest)}`, true);
+      if (
+        source.endsWith(".tar") ||
+        source.endsWith(".tar.gz") ||
+        source.endsWith(".tgz")
+      ) {
+        await this.runSSHCommand(
+          `cd ${path.dirname(absoluteDest)} && tar -xf ${path.basename(absoluteDest)}`,
+          true,
+          "  "
+        );
       }
     } else {
       // Local file - use COPY logic
@@ -492,11 +664,13 @@ export class DockerfileExecutor {
     currentWorkdir: string
   ): Promise<string> {
     const dir = instruction.value.trim();
-    const absoluteDir = path.isAbsolute(dir) ? dir : path.join(currentWorkdir, dir);
-    
-    await this.runSSHCommand(`mkdir -p ${absoluteDir}`, true);
-    console.log(`Changed working directory to: ${absoluteDir}`);
-    
+    const absoluteDir = path.isAbsolute(dir)
+      ? dir
+      : path.join(currentWorkdir, dir);
+
+    await this.runSSHCommand(`mkdir -p ${absoluteDir}`, true, "  ", false);
+    console.log(`  Changed working directory to: ${absoluteDir}`);
+
     return absoluteDir;
   }
 
@@ -507,39 +681,83 @@ export class DockerfileExecutor {
     if (instruction.args?.name && instruction.args?.value) {
       const name = instruction.args.name;
       const value = instruction.args.value;
-      if (typeof name === 'string' && typeof value === 'string') {
+      if (typeof name === "string" && typeof value === "string") {
         envVars[name] = value;
-        console.log(`Set environment variable: ${name}=${value}`);
+        console.log(`  Set environment variable: ${name}=${value}`);
       }
     }
   }
 
-  private async executeVolume(instruction: DockerfileInstruction): Promise<void> {
+  private async executeVolume(
+    instruction: DockerfileInstruction
+  ): Promise<void> {
     const volume = instruction.value.trim();
-    await this.runSSHCommand(`mkdir -p ${volume}`, true);
-    console.log(`Created volume directory: ${volume}`);
+    await this.runSSHCommand(`mkdir -p ${volume}`, true, "  ", false);
+    console.log(`  Created volume directory: ${volume}`);
+  }
+
+  private async executeExpose(
+    instruction: DockerfileInstruction
+  ): Promise<void> {
+    const ports = instruction.value.trim().split(/\s+/);
+
+    for (const portSpec of ports) {
+      // Parse port number (ignore protocol like /tcp or /udp)
+      const port = parseInt(portSpec.split("/")[0]);
+
+      if (!isNaN(port)) {
+        // Simple naming: port-XXXX
+        const serviceName = `port-${port}`;
+
+        // Store for later exposure after build completes
+        this.exposedPorts.push({ port, name: serviceName });
+        console.log(`  Marked port ${port} for exposure as '${serviceName}'`);
+      } else {
+        console.log(`  Warning: Invalid port specification: ${portSpec}`);
+      }
+    }
   }
 
   private async runSSHCommand(
     command: string,
-    sudo = false
+    sudo = false,
+    indent = "  ",
+    showCommand = true
   ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-    const fullCommand = sudo && !command.startsWith("sudo ") ? `sudo ${command}` : command;
-    
-    console.log(`Running: ${fullCommand}`);
+    const fullCommand =
+      sudo && !command.startsWith("sudo ") ? `sudo ${command}` : command;
+
+    if (showCommand) {
+      // Show abbreviated command for readability
+      let displayCommand = fullCommand;
+      if (displayCommand.length > 100) {
+        displayCommand = displayCommand.substring(0, 97) + "...";
+      }
+      console.log(`${indent}→ ${displayCommand}`);
+    }
+
     const result = await this.instance.exec(fullCommand);
-    
+
     if (result.stdout) {
-      console.log(result.stdout);
+      // Indent output for better readability
+      const lines = result.stdout.split("\n").filter((line) => line.trim());
+      for (const line of lines) {
+        console.log(`${indent}  ${line}`);
+      }
     }
     if (result.stderr) {
-      console.error(`ERR: ${result.stderr}`);
+      const lines = result.stderr.split("\n").filter((line) => line.trim());
+      for (const line of lines) {
+        console.error(`${indent}  ⚠ ${line}`);
+      }
     }
-    
+
     if (result.exit_code !== 0) {
-      console.log(`Command returned non-zero exit (${result.exit_code}), continuing: ${fullCommand}`);
+      console.log(
+        `${indent}  ⚠ Command returned exit code ${result.exit_code}`
+      );
     }
-    
+
     return {
       exitCode: result.exit_code,
       stdout: result.stdout,

@@ -3,11 +3,14 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
   "dependencies": {
     "@cmux/shared": "workspace:*",
     "@daytonaio/sdk": "^0.22.1",
     "dotenv": "^16.6.1",
-    "morphcloud": "^0.0.14",
+    "morphcloud": "^0.0.17",
     "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
