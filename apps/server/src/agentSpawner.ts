@@ -466,8 +466,8 @@ export async function spawnAgent(
                     "worker:exec",
                     {
                       command: "rm",
-                      args: ["-f", `/tmp/cmux/claude-complete-${taskId}`],
-                      cwd: "/tmp",
+                      args: ["-f", `/root/lifecycle/claude-complete-${taskId}`],
+                      cwd: "/root/lifecycle",
                       env: {},
                     },
                     (timeoutError: any, response: { error: any; }) => {

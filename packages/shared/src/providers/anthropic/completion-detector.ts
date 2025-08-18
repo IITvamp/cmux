@@ -6,7 +6,7 @@ import { promises as fs } from "node:fs";
  * @returns true if the completion marker exists, false otherwise
  */
 export async function checkClaudeStopHookCompletion(taskId: string): Promise<boolean> {
-  const markerPath = `/tmp/cmux/claude-complete-${taskId}`;
+  const markerPath = `/root/lifecycle/claude-complete-${taskId}`;
   try {
     await fs.access(markerPath);
     console.log(`[Claude Detector] Stop hook marker found at ${markerPath}`);

@@ -186,7 +186,7 @@ export async function checkCodexNotifyFileCompletion(
   const cmuxTmpPath = path.join(workingDir, ".cmux", "tmp", "codex-turns.jsonl");
   const logsPath = path.join(workingDir, "logs", "codex-turns.jsonl");
   const rootPath = path.join(workingDir, "codex-turns.jsonl");
-  const containerTmpPath = "/tmp/cmux/codex-turns.jsonl"; // preferred absolute path
+  const containerTmpPath = "/root/lifecycle/codex-turns.jsonl"; // preferred absolute path
   let filePath = containerTmpPath;
   try {
     await fs.stat(containerTmpPath);

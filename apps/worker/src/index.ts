@@ -1549,18 +1549,18 @@ async function createTaskCompletionDetector(
   await detector.start();
 
   // Optional terminal idle fallback
-  const allowFallback = deps.allowTerminalIdleFallback !== false; // default true unless explicitly false
-  if (allowFallback && deps.terminalId && deps.onTerminalIdle) {
-    detectTerminalIdle({
-      sessionName: deps.terminalId,
-      idleTimeoutMs: deps.idleTimeoutMs || 15000,
-      onIdle: () => {
-        log("INFO", "Terminal idle detected (fallback)");
-        detector.stop();
-        deps.onTerminalIdle && deps.onTerminalIdle();
-      },
-    });
-  }
+  // const allowFallback = deps.allowTerminalIdleFallback !== false; // default true unless explicitly false
+  // if (allowFallback && deps.terminalId && deps.onTerminalIdle) {
+  //   detectTerminalIdle({
+  //     sessionName: deps.terminalId,
+  //     idleTimeoutMs: deps.idleTimeoutMs || 15000,
+  //     onIdle: () => {
+  //       log("INFO", "Terminal idle detected (fallback)");
+  //       detector.stop();
+  //       deps.onTerminalIdle && deps.onTerminalIdle();
+  //     },
+  //   });
+  // }
 
   return detector;
 }

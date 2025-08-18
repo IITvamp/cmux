@@ -12,14 +12,14 @@ export async function getOpenAIEnvironment(): Promise<EnvironmentResult> {
 
   // Ensure .codex directory exists
   startupCommands.push("mkdir -p ~/.codex");
-  // Ensure notify sink starts clean for this run; write JSONL under /tmp/cmux (outside repo)
-  startupCommands.push("mkdir -p /tmp/cmux/bin");
-  startupCommands.push("rm -f /root/workspace/.cmux/tmp/codex-turns.jsonl /root/workspace/codex-turns.jsonl /root/workspace/logs/codex-turns.jsonl /tmp/codex-turns.jsonl /tmp/cmux/codex-turns.jsonl || true");
+  // Ensure notify sink starts clean for this run; write JSONL under /root/lifecycle
+  startupCommands.push("mkdir -p /root/lifecycle");
+  startupCommands.push("rm -f /root/workspace/.cmux/tmp/codex-turns.jsonl /root/workspace/codex-turns.jsonl /root/workspace/logs/codex-turns.jsonl /tmp/codex-turns.jsonl /tmp/cmux/codex-turns.jsonl /root/lifecycle/codex-turns.jsonl || true");
 
   // Add a small notify handler script that appends the payload to .cmux/tmp/codex-turns.jsonl
-  const notifyScript = `#!/usr/bin/env sh\nset -eu\nmkdir -p /tmp/cmux\necho \"$1\" >> /tmp/cmux/codex-turns.jsonl\n`;
+  const notifyScript = `#!/usr/bin/env sh\nset -eu\necho \"$1\" >> /root/lifecycle/codex-turns.jsonl\n`;
   files.push({
-    destinationPath: "/tmp/cmux/bin/codex-notify.sh",
+    destinationPath: "/root/lifecycle/codex-notify.sh",
     contentBase64: Buffer.from(notifyScript).toString("base64"),
     mode: "755",
   });

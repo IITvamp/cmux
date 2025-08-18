@@ -98,18 +98,17 @@ export async function getClaudeEnvironment(): Promise<EnvironmentResult> {
     }
   }
 
-  // Ensure .claude directory exists
+  // Ensure directories exist
   startupCommands.unshift("mkdir -p ~/.claude");
+  startupCommands.push("mkdir -p /root/lifecycle/claude");
   
-  // Create the stop hook script and settings.json in the project directory via startup commands
-  // This ensures they're created AFTER the workspace exists
+  // Create the stop hook script in /root/lifecycle (outside git repo)
   const stopHookScript = `#!/bin/bash
 # Claude Code stop hook for cmux task completion detection
 # This script is called when Claude Code finishes responding
 
 # Log to multiple places for debugging
-LOG_FILE="/tmp/cmux/claude-hook.log"
-mkdir -p /tmp/cmux
+LOG_FILE="/root/lifecycle/claude-hook.log"
 
 echo "[CMUX Stop Hook] Script started at $(date)" >> "$LOG_FILE"
 echo "[CMUX Stop Hook] CMUX_TASK_ID=\${CMUX_TASK_ID}" >> "$LOG_FILE"
@@ -118,7 +117,7 @@ echo "[CMUX Stop Hook] All env vars:" >> "$LOG_FILE"
 env | grep -E "(CMUX|CLAUDE|TASK)" >> "$LOG_FILE" 2>&1
 
 # Create a completion marker file that cmux can detect
-COMPLETION_MARKER="/tmp/cmux/claude-complete-\${CMUX_TASK_ID:-unknown}"
+COMPLETION_MARKER="/root/lifecycle/claude-complete-\${CMUX_TASK_ID:-unknown}"
 echo "$(date +%s)" > "$COMPLETION_MARKER"
 
 # Log success
@@ -132,14 +131,12 @@ echo "[CMUX Stop Hook] Created marker file: $COMPLETION_MARKER" >&2
 # Always allow Claude to stop (don't block)
 exit 0`;
 
-  // Add startup commands to create hook files in project directory
-  startupCommands.push("mkdir -p /root/workspace/.claude");
-  
-  // Create the stop hook script
-  startupCommands.push(`cat > /root/workspace/.claude/stop-hook.sh << 'EOF'
-${stopHookScript}
-EOF`);
-  startupCommands.push("chmod +x /root/workspace/.claude/stop-hook.sh");
+  // Add stop hook script to files array (like Codex does) to ensure it's created before git init
+  files.push({
+    destinationPath: "/root/lifecycle/claude/stop-hook.sh",
+    contentBase64: Buffer.from(stopHookScript).toString("base64"),
+    mode: "755",
+  });
   
   // Create settings.json with hooks configuration
   const settingsConfig = {
@@ -149,7 +146,7 @@ EOF`);
           hooks: [
             {
               type: "command",
-              command: "/root/workspace/.claude/stop-hook.sh"
+              command: "/root/lifecycle/claude/stop-hook.sh"
             }
           ]
         }
@@ -157,13 +154,20 @@ EOF`);
     }
   };
   
-  startupCommands.push(`cat > /root/workspace/.claude/settings.json << 'EOF'
-${JSON.stringify(settingsConfig, null, 2)}
-EOF`);
+  // Add settings.json to files array as well
+  files.push({
+    destinationPath: "/root/lifecycle/claude/settings.json",
+    contentBase64: Buffer.from(JSON.stringify(settingsConfig, null, 2)).toString("base64"),
+    mode: "644",
+  });
+  
+  // Create symlink from ~/.claude/settings.json to /root/lifecycle/claude/settings.json
+  // Claude looks for settings in ~/.claude/settings.json
+  startupCommands.push("ln -sf /root/lifecycle/claude/settings.json /root/.claude/settings.json");
   
   // Log the files for debugging
-  startupCommands.push("echo '[CMUX] Created Claude hook files:' && ls -la /root/workspace/.claude/");
-  startupCommands.push("echo '[CMUX] Settings content:' && cat /root/workspace/.claude/settings.json");
+  startupCommands.push("echo '[CMUX] Created Claude hook files in /root/lifecycle:' && ls -la /root/lifecycle/claude/");
+  startupCommands.push("echo '[CMUX] Settings symlink in ~/.claude:' && ls -la /root/.claude/");
 
   return { files, env, startupCommands };
 }
