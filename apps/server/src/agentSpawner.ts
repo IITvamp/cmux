@@ -200,13 +200,6 @@ export async function spawnAgent(
       PROMPT: processedTaskDescription,
     };
     
-    // For Gemini agents, set a unique telemetry log path using taskId (not taskRunId)
-    // This must match what the detector expects
-    if (agent.name.toLowerCase().includes("gemini")) {
-      envVars.GEMINI_TELEMETRY_PATH = `/tmp/gemini-telemetry-${taskId}.log`;
-      serverLogger.info(`[AgentSpawner] Setting Gemini telemetry path: ${envVars.GEMINI_TELEMETRY_PATH}`);
-    }
-
     let authFiles: EnvironmentResult["files"] = [];
     let startupCommands: string[] = [];
 
@@ -219,6 +212,14 @@ export async function spawnAgent(
       };
       authFiles = envResult.files;
       startupCommands = envResult.startupCommands || [];
+    }
+    
+    // For Gemini agents, set a unique telemetry log path using taskId (not taskRunId)
+    // This must match what the detector expects
+    // IMPORTANT: This must be set AFTER the environment function to avoid being overwritten
+    if (agent.name.toLowerCase().includes("gemini")) {
+      envVars.GEMINI_TELEMETRY_PATH = `/tmp/gemini-telemetry-${taskId}.log`;
+      serverLogger.info(`[AgentSpawner] Setting Gemini telemetry path: ${envVars.GEMINI_TELEMETRY_PATH}`);
     }
 
     // Fetch API keys from Convex

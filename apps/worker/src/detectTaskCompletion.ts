@@ -60,7 +60,7 @@ export class TaskCompletionDetector extends EventEmitter {
   constructor(private options: TaskCompletionOptions) {
     super();
     this.startTime = Date.now();
-    this.options.checkIntervalMs = this.options.checkIntervalMs || 5000; // Check every 5 seconds
+    this.options.checkIntervalMs = this.options.checkIntervalMs || 5000; // Check every 2 seconds for faster detection
     this.options.maxRuntimeMs = this.options.maxRuntimeMs || 20 * 60 * 1000; // 20 minutes max
     this.options.minRuntimeMs = this.options.minRuntimeMs || 30000; // 30 seconds minimum
   }
@@ -239,10 +239,7 @@ export class TaskCompletionDetector extends EventEmitter {
     try {
       // Gemini needs more time to set up and start writing telemetry
       const elapsed = Date.now() - this.startTime;
-      if (elapsed < this.options.minRuntimeMs!) {
-        log("DEBUG", `[Gemini Detector] Too early to check (elapsed: ${elapsed}ms < minRuntime: ${this.options.minRuntimeMs}ms)`);
-        return false;
-      }
+      if (elapsed < this.options.minRuntimeMs!) return false;
 
       const { checkGeminiTelemetryCompletion, GEMINI_TELEMETRY_LOG_PATH } = await getGeminiHelpers();
       
@@ -251,34 +248,21 @@ export class TaskCompletionDetector extends EventEmitter {
       // We need to construct the path using the taskId
       const telemetryPath = `/tmp/gemini-telemetry-${this.options.taskId}.log`;
       
-      log("INFO", `[Gemini Detector] Checking telemetry at ${telemetryPath} (taskId: ${this.options.taskId}, elapsed: ${elapsed}ms)`);
+      log("DEBUG", `[Gemini Detector] Checking telemetry at ${telemetryPath} (taskId: ${this.options.taskId}, elapsed: ${elapsed}ms)`);
       
       // Check if telemetry file exists
       try {
         await fs.access(telemetryPath);
         const stats = await fs.stat(telemetryPath);
-        log("INFO", `[Gemini Detector] Telemetry log found: size=${stats.size} bytes, modified=${new Date(stats.mtime).toISOString()}, age=${Date.now() - stats.mtime.getTime()}ms`);
+        log("DEBUG", `[Gemini Detector] Telemetry log stats: size=${stats.size} bytes, modified=${new Date(stats.mtime).toISOString()}, age=${Date.now() - stats.mtime.getTime()}ms`);
         
         // If file is empty, wait
         if (stats.size === 0) {
-          log("INFO", `[Gemini Detector] Telemetry log is empty, waiting for events...`);
+          log("DEBUG", `[Gemini Detector] Telemetry log is empty, waiting for events...`);
           return false;
         }
-        
-        // Read first 500 bytes to see what's in the file
-        const buffer = Buffer.alloc(500);
-        const fd = await fs.open(telemetryPath, 'r');
-        try {
-          await fd.read(buffer, 0, 500, 0);
-          const preview = buffer.toString('utf-8').trim();
-          if (preview) {
-            log("INFO", `[Gemini Detector] Telemetry log preview (first 500 chars): ${preview.substring(0, 500)}`);
-          }
-        } finally {
-          await fd.close();
-        }
       } catch (err) {
-        log("INFO", `[Gemini Detector] Telemetry log not found yet: ${telemetryPath} - ${err}`);
+        log("DEBUG", `[Gemini Detector] Telemetry log not found yet: ${telemetryPath}`);
         return false;
       }
 
@@ -295,7 +279,7 @@ export class TaskCompletionDetector extends EventEmitter {
         log("INFO", `[Gemini Detector] Task complete: detected "gemini_cli.next_speaker_check" with result="user" in telemetry log`);
         return true;
       } else {
-        log("INFO", `[Gemini Detector] No completion event found yet in telemetry log`);
+        log("DEBUG", `[Gemini Detector] No completion event found yet in telemetry log`);
       }
       return false;
     } catch (error) {
