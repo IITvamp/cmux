@@ -2,182 +2,250 @@ import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
 
-type FinishReason =
-  | "end_turn"
-  | "max_tokens"
-  | "tool_use"
-  | "stop_sequence"
-  | "unknown"
-  | string;
+/**
+ * OpenCode completion detection based on session/message JSON files.
+ * 
+ * OpenCode stores session state in JSON files under:
+ * ~/.local/share/opencode/project/{workspace}/storage/session/
+ * 
+ * We look for messages with:
+ * - time.completed field present (indicates message is done)
+ * - role: "assistant" 
+ * - No active tool use in progress
+ */
 
-interface FinishPartLike {
-  finish?: {
-    reason?: FinishReason;
-    time?: number; // epoch seconds
-    [key: string]: unknown;
+interface OpenCodeMessage {
+  id: string;
+  role: string;
+  time?: {
+    created?: number;
+    completed?: number;
+  };
+  tokens?: {
+    input?: number;
+    output?: number;
+  };
+  sessionID?: string;
+}
+
+interface OpenCodeSession {
+  id: string;
+  status?: string;
+  messages?: string[];
+  time?: {
+    created?: number;
+    updated?: number;
   };
 }
 
 /**
- * Try to parse a JSON line and extract a finish part if present.
- * The opencode DB serializes message parts; logs and JSONL may contain a `finish` part.
+ * Find OpenCode storage directories
  */
-function extractFinishPart(line: string): { reason?: FinishReason; timeMs?: number } | null {
-  try {
-    const obj = JSON.parse(line) as FinishPartLike & Record<string, unknown>;
-    // Common shapes:
-    //  - { parts: [{ type: "finish", reason: "end_turn", time: 1723600000 }] }
-    //  - { finish: { reason: "end_turn", time: 1723600000 } }
-    //  - nested in event.response.finish or message.finish
-    if (obj.finish && typeof obj.finish === "object") {
-      const t = (obj.finish as any).time;
-      return {
-        reason: (obj.finish as any).reason as FinishReason | undefined,
-        timeMs: typeof t === "number" ? (t > 2_000_000_000 ? t : t * 1000) : undefined,
-      };
-    }
-
-    const parts = (obj as any).parts as unknown;
-    if (Array.isArray(parts)) {
-      for (const p of parts) {
-        if (!p) continue;
-        if (p.type === "finish" || p.finish) {
-          const reason = (p.finish?.reason ?? p.reason) as FinishReason | undefined;
-          const t = p.finish?.time ?? p.time;
-          return {
-            reason,
-            timeMs: typeof t === "number" ? (t > 2_000_000_000 ? t : t * 1000) : undefined,
-          };
-        }
-      }
-    }
-
-    // Event-like payloads
-    const event = (obj as any).event || (obj as any).payload || (obj as any).response;
-    if (event && typeof event === "object") {
-      const finish = (event as any).finish;
-      if (finish && typeof finish === "object") {
-        const t = (finish as any).time;
-        return {
-          reason: (finish as any).reason as FinishReason | undefined,
-          timeMs: typeof t === "number" ? (t > 2_000_000_000 ? t : t * 1000) : undefined,
-        };
-      }
-    }
-  } catch {
-    // ignore parse errors; we'll also try text heuristics below
-  }
-
-  // Text fallback: look for finish reason markers
-  // e.g., "finish.reason":"end_turn" or finish_reason=end_turn
-  const m = line.match(/finish\s*[:_]\s*\{?[^}]*reason\s*[:=]\s*"?([a-zA-Z0-9_\-]+)"?/);
-  if (m && m[1]) {
-    return { reason: m[1] };
-  }
-  return null;
-}
-
-/**
- * Enumerate candidate files where OpenCode may write logs/events.
- * We avoid strong assumptions and scan a small, bounded set.
- */
-async function findCandidateEventFiles(workingDir?: string): Promise<string[]> {
+async function findOpenCodeStorageDirs(): Promise<string[]> {
   const home = os.homedir();
-  const candidates: string[] = [];
-  const tryDirs = [
-    path.join(home, ".local", "share", "opencode"),
-    path.join(home, ".config", "opencode"),
-    path.join(home, ".opencode"),
+  const dirs: string[] = [];
+  
+  // Common OpenCode storage locations
+  const basePaths = [
+    path.join(home, ".local", "share", "opencode", "project"),
+    path.join(home, ".config", "opencode", "project"),
+    path.join(home, ".opencode", "project"),
   ];
-
-  // Also look inside the workspace for logs/artifacts
-  if (workingDir) {
-    const wd = workingDir;
-    const wdCandidates = [
-      path.join(wd, "logs"),
-      path.join(wd, ".cmux", "tmp"),
-      wd,
-    ];
-    for (const d of wdCandidates) {
-      tryDirs.push(d);
-    }
-  }
-
-  for (const dir of tryDirs) {
+  
+  for (const basePath of basePaths) {
     try {
-      const entries = await fs.readdir(dir);
-      for (const e of entries) {
-        const full = path.join(dir, e);
+      const entries = await fs.readdir(basePath);
+      for (const entry of entries) {
+        const storagePath = path.join(basePath, entry, "storage", "session");
         try {
-          const st = await fs.stat(full);
-          if (!st.isFile()) continue;
-          // Prioritize JSON/JSONL/logs written recently and opencode-related names
-          if (/(jsonl|json|log|txt)$/i.test(e) && /(open.?code|events|agent|turns|messages)/i.test(e)) {
-            candidates.push(full);
-          }
+          await fs.access(storagePath);
+          dirs.push(storagePath);
         } catch {
-          // ignore
+          // Storage path doesn't exist
         }
       }
     } catch {
-      // dir may not exist
+      // Base path doesn't exist
     }
   }
-
-  // Sort by mtime desc to check freshest first
-  const withStats: Array<{ p: string; mtime: number }> = [];
-  for (const p of candidates) {
-    try {
-      const s = await fs.stat(p);
-      withStats.push({ p, mtime: s.mtime.getTime() });
-    } catch {
-      // ignore
-    }
-  }
-  withStats.sort((a, b) => b.mtime - a.mtime);
-  return withStats.map((x) => x.p);
+  
+  return dirs;
 }
 
 /**
- * Inspect opencode event/log files for a non-tool_use finish signal since a timestamp.
- * Returns true if a deterministic completion is observed.
+ * Check if a message indicates completion
+ */
+function isMessageComplete(message: OpenCodeMessage, sinceMs: number): boolean {
+  // Must be from assistant
+  if (message.role !== "assistant") return false;
+  
+  // Check if message has completed timestamp
+  if (!message.time?.completed) return false;
+  
+  // Check if completion is after our start time
+  if (message.time.completed < sinceMs) return false;
+  
+  console.log(`[OpenCode Detector] Found completed assistant message: ${message.id}, completed at ${new Date(message.time.completed).toISOString()}`);
+  return true;
+}
+
+/**
+ * Check OpenCode log files for completion patterns
+ */
+async function checkOpenCodeLogs(sinceMs: number): Promise<boolean> {
+  const home = os.homedir();
+  const logDirs = [
+    path.join(home, ".local", "share", "opencode", "log"),
+    path.join(home, ".config", "opencode", "log"),
+    path.join(home, ".opencode", "log"),
+  ];
+  
+  for (const logDir of logDirs) {
+    try {
+      const files = await fs.readdir(logDir);
+      for (const file of files) {
+        if (!file.endsWith('.log')) continue;
+        
+        const logPath = path.join(logDir, file);
+        const stat = await fs.stat(logPath);
+        
+        // Skip old logs
+        if (stat.mtime.getTime() < sinceMs) continue;
+        
+        const content = await fs.readFile(logPath, 'utf-8');
+        const lines = content.split('\n');
+        
+        // Look for session idle or finish events in the last 100 lines
+        const recentLines = lines.slice(Math.max(0, lines.length - 100));
+        
+        for (const line of recentLines) {
+          // Look for session idle or finish patterns
+          if (line.includes('type=finish part') || 
+              line.includes('type=session.idle') ||
+              line.includes('session.idle publishing')) {
+            
+            // Extract timestamp if possible
+            const timestampMatch = line.match(/(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})/);
+            if (timestampMatch && timestampMatch[1]) {
+              const eventTime = new Date(timestampMatch[1]).getTime();
+              if (eventTime >= sinceMs) {
+                console.log(`[OpenCode Detector] Found completion in log: ${line.substring(0, 100)}`);
+                return true;
+              }
+            } else {
+              // No timestamp, but file was modified recently, so likely current
+              console.log(`[OpenCode Detector] Found completion pattern in log: ${line.substring(0, 100)}`);
+              return true;
+            }
+          }
+        }
+      }
+    } catch {
+      // Log directory doesn't exist
+    }
+  }
+  
+  return false;
+}
+
+/**
+ * Check for OpenCode completion by examining session and message files
  */
 export async function checkOpencodeCompletionSince(
   sinceEpochMs: number,
   workingDir?: string
 ): Promise<boolean> {
-  const files = await findCandidateEventFiles(workingDir);
-  // Debug: log candidate files considered
-  console.log(`[OpenCode Detector] Considering ${files.length} candidate files`, files.slice(0, 10));
-  for (const file of files) {
+  console.log(`[OpenCode Detector] Checking for completion since ${new Date(sinceEpochMs).toISOString()}`);
+  
+  // First check logs for completion patterns
+  const logComplete = await checkOpenCodeLogs(sinceEpochMs);
+  if (logComplete) {
+    console.log(`[OpenCode Detector] ✅ Task completion detected from logs`);
+    return true;
+  }
+  
+  // Then check session storage
+  const storageDirs = await findOpenCodeStorageDirs();
+  
+  if (storageDirs.length === 0) {
+    console.log(`[OpenCode Detector] No storage directories found`);
+    return false;
+  }
+  
+  console.log(`[OpenCode Detector] Checking ${storageDirs.length} storage directories`);
+  
+  for (const storageDir of storageDirs) {
     try {
-      const stat = await fs.stat(file);
-      if (stat.mtime.getTime() < sinceEpochMs) {
-        console.log(`[OpenCode Detector] Skipping stale file: ${file}`);
-        continue; // stale
-      }
-
-      const content = await fs.readFile(file, "utf-8");
-      const lines = content.split("\n").filter(Boolean);
-      // Only scan last ~500 lines to bound work
-      const window = lines.slice(Math.max(0, lines.length - 500));
-      console.log(`[OpenCode Detector] Scanning file: ${file} (total lines: ${lines.length}, scanning: ${window.length})`);
-      for (const line of window) {
-        const fin = extractFinishPart(line);
-        if (!fin) continue;
-        if (fin.reason && String(fin.reason).toLowerCase() === "tool_use") {
-          console.log(`[OpenCode Detector] Ignoring tool_use finish in ${file}`);
-          continue; // not final
+      // Check message directory for completed messages
+      const messageDirs = await fs.readdir(path.join(storageDir, "message")).catch(() => []);
+      
+      for (const sessionId of messageDirs) {
+        const sessionMessageDir = path.join(storageDir, "message", sessionId);
+        
+        try {
+          const messageFiles = await fs.readdir(sessionMessageDir);
+          
+          // Sort by name (usually includes timestamp) to get most recent first
+          messageFiles.sort().reverse();
+          
+          for (const messageFile of messageFiles) {
+            if (!messageFile.endsWith('.json')) continue;
+            
+            const messagePath = path.join(sessionMessageDir, messageFile);
+            
+            try {
+              const content = await fs.readFile(messagePath, 'utf-8');
+              const message = JSON.parse(content) as OpenCodeMessage;
+              
+              if (isMessageComplete(message, sinceEpochMs)) {
+                console.log(`[OpenCode Detector] ✅ Task completion detected in session ${sessionId}`);
+                return true;
+              }
+            } catch {
+              // Failed to parse message file
+            }
+          }
+        } catch {
+          // Failed to read session message directory
         }
-        if (fin.timeMs && fin.timeMs < sinceEpochMs) continue; // old
-        // Found a finish without tool_use => task complete
-        console.log(`[OpenCode Detector] Completion detected in ${file}`, fin);
-        return true;
       }
-    } catch {
-      // ignore file read errors
+      
+      // Also check session info files
+      const sessionInfoDir = path.join(storageDir, "info");
+      try {
+        const sessionFiles = await fs.readdir(sessionInfoDir);
+        
+        for (const sessionFile of sessionFiles) {
+          if (!sessionFile.endsWith('.json')) continue;
+          
+          const sessionPath = path.join(sessionInfoDir, sessionFile);
+          const stat = await fs.stat(sessionPath);
+          
+          // Skip old sessions
+          if (stat.mtime.getTime() < sinceEpochMs) continue;
+          
+          try {
+            const content = await fs.readFile(sessionPath, 'utf-8');
+            const session = JSON.parse(content) as OpenCodeSession;
+            
+            // Check if session status indicates completion
+            if (session.status === 'idle' || session.status === 'completed') {
+              console.log(`[OpenCode Detector] ✅ Found ${session.status} session: ${session.id}`);
+              return true;
+            }
+          } catch {
+            // Failed to parse session file
+          }
+        }
+      } catch {
+        // Session info directory doesn't exist
+      }
+    } catch (error) {
+      // Storage directory not accessible
+      console.log(`[OpenCode Detector] Error checking storage dir: ${error}`);
     }
   }
+  
   return false;
 }
 
