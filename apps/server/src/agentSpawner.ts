@@ -418,8 +418,11 @@ export async function spawnAgent(
                   .emit(
                     "worker:exec",
                     {
-                      command: "rm",
-                      args: ["-f", "/root/workspace/codex-turns.jsonl"],
+                      command: "sh",
+                      args: [
+                        "-lc",
+                        "rm -f /tmp/cmux/codex-turns.jsonl /tmp/codex-turns.jsonl /root/workspace/.cmux/tmp/codex-turns.jsonl /root/workspace/logs/codex-turns.jsonl /root/workspace/codex-turns.jsonl || true",
+                      ],
                       cwd: "/root/workspace",
                       env: {},
                     },
@@ -680,156 +683,6 @@ export async function spawnAgent(
     });
 
     // Set up file change event handler for real-time diff updates
-    vscodeInstance.on(
-      "file-changes",
-      async (data: {
-        workerId: string;
-        taskId: Id<"tasks">;
-        changes: WorkerFileChange[];
-        gitDiff: string;
-        fileDiffs: WorkerFileDiff[];
-        timestamp: number;
-      }) => {
-        serverLogger.info(
-          `[AgentSpawner] File changes detected for ${agent.name}:`,
-          { changeCount: data.changes.length, taskId: data.taskId }
-        );
-
-      // Store the incremental diffs in Convex
-      if (data.taskId === taskId && data.fileDiffs.length > 0) {
-        for (const fileDiff of data.fileDiffs) {
-          const relativePath = path.relative(worktreePath, fileDiff.path);
-
-          await convex.mutation(api.gitDiffs.upsertDiff, {
-            taskRunId,
-            filePath: relativePath,
-            status: fileDiff.type as "added" | "modified" | "deleted",
-            additions: (fileDiff.patch.match(/^\+[^+]/gm) || []).length,
-            deletions: (fileDiff.patch.match(/^-[^-]/gm) || []).length,
-            patch: fileDiff.patch,
-            oldContent: fileDiff.oldContent,
-            newContent: fileDiff.newContent,
-            isBinary: false,
-          });
-        }
-
-        // Update the timestamp
-        await convex.mutation(api.gitDiffs.updateDiffsTimestamp, {
-          taskRunId,
-        });
-
-        serverLogger.info(
-          `[AgentSpawner] Stored ${data.fileDiffs.length} incremental diffs for ${agent.name}`
-        );
-      }
-    });
-
-    // Set up task-complete event handler (from project file detection)
-    vscodeInstance.on("task-complete", async (data: WorkerTaskComplete) => {
-      serverLogger.info(
-        `[AgentSpawner] Task complete detected for ${agent.name} (${data.detectionMethod}):`,
-        data
-      );
-      if (hasFailed) {
-        serverLogger.warn(
-          `[AgentSpawner] Ignoring task completion for ${agent.name} (already marked failed)`
-        );
-        return;
-      }
-      
-      // Debug logging to understand what's being compared
-      serverLogger.info(`[AgentSpawner] Task completion comparison:`);
-      serverLogger.info(`[AgentSpawner]   data.taskId: "${data.taskId}"`);
-      serverLogger.info(`[AgentSpawner]   taskRunId: "${taskRunId}"`);
-      serverLogger.info(`[AgentSpawner]   Match: ${data.taskId === taskId}`);
-
-      // Update the task run as completed
-      if (data.taskId === taskId) {
-        serverLogger.info(`[AgentSpawner] Task ID matched! Marking task as complete for ${agent.name}`);
-        // CRITICAL: Add a delay to ensure changes are written to disk
-        serverLogger.info(`[AgentSpawner] Waiting 3 seconds for file system to settle before capturing git diff...`);
-        await new Promise(resolve => setTimeout(resolve, 3000));
-        
-        await handleTaskCompletion(0);
-      }
-    });
-
-    // Set up file change event handler for real-time diff updates
-    vscodeInstance.on(
-      "file-changes",
-      async (data: {
-        workerId: string;
-        taskId: Id<"tasks">;
-        changes: WorkerFileChange[];
-        gitDiff: string;
-        fileDiffs: WorkerFileDiff[];
-        timestamp: number;
-      }) => {
-        serverLogger.info(
-          `[AgentSpawner] File changes detected for ${agent.name}:`,
-          { changeCount: data.changes.length, taskId: data.taskId }
-        );
-
-      // Store the incremental diffs in Convex
-      if (data.taskId === taskId && data.fileDiffs.length > 0) {
-        for (const fileDiff of data.fileDiffs) {
-          const relativePath = path.relative(worktreePath, fileDiff.path);
-
-          await convex.mutation(api.gitDiffs.upsertDiff, {
-            taskRunId,
-            filePath: relativePath,
-            status: fileDiff.type as "added" | "modified" | "deleted",
-            additions: (fileDiff.patch.match(/^\+[^+]/gm) || []).length,
-            deletions: (fileDiff.patch.match(/^-[^-]/gm) || []).length,
-            patch: fileDiff.patch,
-            oldContent: fileDiff.oldContent,
-            newContent: fileDiff.newContent,
-            isBinary: false,
-          });
-        }
-
-        // Update the timestamp
-        await convex.mutation(api.gitDiffs.updateDiffsTimestamp, {
-          taskRunId,
-        });
-
-        serverLogger.info(
-          `[AgentSpawner] Stored ${data.fileDiffs.length} incremental diffs for ${agent.name}`
-        );
-      }
-    });
-
-    // Set up task-complete event handler (from project file detection)
-    vscodeInstance.on("task-complete", async (data: WorkerTaskComplete) => {
-      serverLogger.info(
-        `[AgentSpawner] Task complete detected for ${agent.name} (${data.detectionMethod}):`,
-        data
-      );
-      if (hasFailed) {
-        serverLogger.warn(
-          `[AgentSpawner] Ignoring task completion for ${agent.name} (already marked failed)`
-        );
-        return;
-      }
-      
-      // Debug logging to understand what's being compared
-      serverLogger.info(`[AgentSpawner] Task completion comparison:`);
-      serverLogger.info(`[AgentSpawner]   data.taskId: "${data.taskId}"`);
-      serverLogger.info(`[AgentSpawner]   taskRunId: "${taskRunId}"`);
-      serverLogger.info(`[AgentSpawner]   Match: ${data.taskId === taskId}`);
-
-      // Update the task run as completed
-      if (data.taskId === taskId) {
-        serverLogger.info(`[AgentSpawner] Task ID matched! Marking task as complete for ${agent.name}`);
-        // CRITICAL: Add a delay to ensure changes are written to disk
-        serverLogger.info(`[AgentSpawner] Waiting 3 seconds for file system to settle before capturing git diff...`);
-        await new Promise(resolve => setTimeout(resolve, 3000));
-        
-        await handleTaskCompletion(0);
-      }
-    });
-
-    // Set up file change event handler for real-time diff updates
     vscodeInstance.on("file-changes", async (data) => {
       serverLogger.info(
         `[AgentSpawner] File changes detected for ${agent.name}:`,
@@ -881,7 +734,7 @@ export async function spawnAgent(
       // Debug logging to understand what's being compared
       serverLogger.info(`[AgentSpawner] Task completion comparison:`);
       serverLogger.info(`[AgentSpawner]   data.taskId: "${data.taskId}"`);
-      serverLogger.info(`[AgentSpawner]   taskRunId: "${taskRunId}"`);
+      serverLogger.info(`[AgentSpawner]   taskId: "${taskId}"`);
       serverLogger.info(`[AgentSpawner]   Match: ${data.taskId === taskId}`);
 
       // Update the task run as completed

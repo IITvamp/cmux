@@ -1168,13 +1168,15 @@ async function createTerminal(
         if (!idleDetectionCompleted) {
           idleDetectionCompleted = true;
           log("INFO", "Task completion detected from project files", data);
+          // Use telemetry-log detection method for Gemini
+          const detectionMethod = options.agentType === "gemini" ? "telemetry-log" : "project-file";
           emitToMainServer("worker:task-complete", {
             workerId: WORKER_ID,
             terminalId,
             taskId: options.taskId,
             agentType: options.agentType,
             elapsedMs: data.elapsedMs,
-            detectionMethod: "project-file",
+            detectionMethod,
           });
         }
       });

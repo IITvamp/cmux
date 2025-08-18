@@ -117,10 +117,10 @@ export const WorkerTerminalIdleSchema = z.object({
 export const WorkerTaskCompleteSchema = z.object({
   workerId: z.string(),
   terminalId: z.string(),
-  taskId: z.string(),
+  taskId: typedZid("tasks"),
   agentType: z.enum(["claude", "codex", "gemini", "amp", "opencode"]),
   elapsedMs: z.number(),
-  detectionMethod: z.enum(["project-file", "terminal-idle"]),
+  detectionMethod: z.enum(["project-file", "terminal-idle", "telemetry-log"]),
 });
 
 // Terminal failure event (e.g., tmux spawn/agent command failed)

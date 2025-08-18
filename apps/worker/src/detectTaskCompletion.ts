@@ -27,10 +27,10 @@ const getCodexHelpers = async () => {
 
 // Gemini helpers
 const getGeminiHelpers = async () => {
-  const module = await import("@cmux/shared/src/providers/gemini/completion-detector.ts");
+  const module = await import("../../../packages/shared/src/providers/gemini/telemetry-detector.js");
   return {
-    getGeminiProjectPath: module.getGeminiProjectPath,
-    checkGeminiProjectFileCompletion: module.checkGeminiProjectFileCompletion,
+    checkGeminiTelemetryCompletion: module.checkGeminiTelemetryCompletion,
+    GEMINI_TELEMETRY_LOG_PATH: module.GEMINI_TELEMETRY_LOG_PATH,
   };
 };
 
@@ -241,20 +241,20 @@ export class TaskCompletionDetector extends EventEmitter {
       const elapsed = Date.now() - this.startTime;
       if (elapsed < this.options.minRuntimeMs!) return false;
 
-      const { getGeminiProjectPath, checkGeminiProjectFileCompletion } = await getGeminiHelpers();
-      const projectDir = getGeminiProjectPath(this.options.workingDir);
-
-      // Ensure the project directory exists before checking
+      const { checkGeminiTelemetryCompletion, GEMINI_TELEMETRY_LOG_PATH } = await getGeminiHelpers();
+      
+      // Check if telemetry file exists
       try {
-        await fs.access(projectDir);
+        await fs.access(GEMINI_TELEMETRY_LOG_PATH);
       } catch {
-        log("DEBUG", `Gemini project directory not found: ${projectDir}`);
+        log("DEBUG", `Gemini telemetry log not found yet: ${GEMINI_TELEMETRY_LOG_PATH}`);
         return false;
       }
 
-      const isComplete = await checkGeminiProjectFileCompletion(projectDir, undefined, 10000);
+      // Check telemetry for completion events with 5 second idle requirement
+      const isComplete = await checkGeminiTelemetryCompletion(GEMINI_TELEMETRY_LOG_PATH, 5000);
       if (isComplete) {
-        log("INFO", `Gemini task complete: detected completion pattern`);
+        log("INFO", `Gemini task complete: detected completion event in telemetry log`);
         return true;
       }
       return false;

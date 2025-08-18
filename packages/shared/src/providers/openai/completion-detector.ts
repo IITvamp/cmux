@@ -182,7 +182,26 @@ export async function checkCodexNotifyFileCompletion(
   workingDir: string,
   sinceEpochMs: number
 ): Promise<boolean> {
-  const filePath = path.join(workingDir, "codex-turns.jsonl");
+  const cmuxTmpPath = path.join(workingDir, ".cmux", "tmp", "codex-turns.jsonl");
+  const logsPath = path.join(workingDir, "logs", "codex-turns.jsonl");
+  const rootPath = path.join(workingDir, "codex-turns.jsonl");
+  const containerTmpPath = "/tmp/cmux/codex-turns.jsonl"; // preferred absolute path
+  let filePath = containerTmpPath;
+  try {
+    await fs.stat(containerTmpPath);
+  } catch {
+    try {
+      await fs.stat(logsPath);
+      filePath = logsPath;
+    } catch {
+      try {
+        await fs.stat(cmuxTmpPath);
+        filePath = cmuxTmpPath;
+      } catch {
+        filePath = rootPath;
+      }
+    }
+  }
   console.log(`[Codex Detector] Checking notify file: ${filePath}`);
   
   try {
