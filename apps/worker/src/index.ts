@@ -1056,6 +1056,10 @@ async function createTerminal(
         for (const line of lines) {
           const trimmed = line.trim();
           if (!trimmed) continue;
+          // Debug: log lines with likely markers (limited preview)
+          if (/finish|Done|done|response|summarize/i.test(trimmed)) {
+            log("DEBUG", "[OpenCode stdout] line", { sample: trimmed.substring(0, 200) });
+          }
           let detected = false;
           let reason = "";
           // Try JSON first

@@ -236,9 +236,14 @@ export async function spawnAgent(
     }
 
     // Replace $PROMPT placeholders in args with $CMUX_PROMPT token for shell-time expansion
+    // Also replace $GEMINI_TELEMETRY_PATH with the actual path value
     const processedArgs = agent.args.map((arg) => {
       if (arg.includes("$PROMPT")) {
         return arg.replace(/\$PROMPT/g, "$CMUX_PROMPT");
+      }
+      // Replace $GEMINI_TELEMETRY_PATH with the actual path
+      if (arg.includes("$GEMINI_TELEMETRY_PATH") && envVars.GEMINI_TELEMETRY_PATH) {
+        return arg.replace(/\$GEMINI_TELEMETRY_PATH/g, envVars.GEMINI_TELEMETRY_PATH);
       }
       return arg;
     });

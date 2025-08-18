@@ -299,12 +299,22 @@ export class TaskCompletionDetector extends EventEmitter {
       // Opencode deterministic completion:
       // Prefer provider-normalized finish events with reason != tool_use
       // We approximate by scanning opencode event/log files under ~/.local/share/opencode
+      log("INFO", `[Opencode Detector] Checking completion`, {
+        taskId: this.options.taskId,
+        workingDir: this.options.workingDir,
+        since: new Date(this.startTime).toISOString(),
+        elapsedMs: Date.now() - this.startTime,
+      });
       const module = await import("@cmux/shared/src/providers/opencode/completion-detector.ts");
-      const done = await module.checkOpencodeCompletionSince(this.startTime, this.options.workingDir);
+      const done = await module.checkOpencodeCompletionSince(
+        this.startTime,
+        this.options.workingDir
+      );
       if (done) {
         log("INFO", "Opencode task complete via finish.reason != tool_use");
         return true;
       }
+      log("DEBUG", "[Opencode Detector] Not complete yet (no non-tool_use finish detected)");
       return false;
     } catch (error) {
       log("ERROR", `Error checking Opencode completion: ${error}`);

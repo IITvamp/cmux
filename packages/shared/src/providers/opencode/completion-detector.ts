@@ -152,16 +152,21 @@ export async function checkOpencodeCompletionSince(
   for (const file of files) {
     try {
       const stat = await fs.stat(file);
-      if (stat.mtime.getTime() < sinceEpochMs) continue; // stale
+      if (stat.mtime.getTime() < sinceEpochMs) {
+        console.log(`[OpenCode Detector] Skipping stale file: ${file}`);
+        continue; // stale
+      }
 
       const content = await fs.readFile(file, "utf-8");
       const lines = content.split("\n").filter(Boolean);
       // Only scan last ~500 lines to bound work
       const window = lines.slice(Math.max(0, lines.length - 500));
+      console.log(`[OpenCode Detector] Scanning file: ${file} (total lines: ${lines.length}, scanning: ${window.length})`);
       for (const line of window) {
         const fin = extractFinishPart(line);
         if (!fin) continue;
         if (fin.reason && String(fin.reason).toLowerCase() === "tool_use") {
+          console.log(`[OpenCode Detector] Ignoring tool_use finish in ${file}`);
           continue; // not final
         }
         if (fin.timeMs && fin.timeMs < sinceEpochMs) continue; // old
