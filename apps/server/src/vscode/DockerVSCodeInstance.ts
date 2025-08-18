@@ -297,9 +297,9 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         try {
           const fs = await import("fs");
           await fs.promises.access(ghConfigDir);
-          binds.push(`${ghConfigDir}:/root/.config/gh:ro`);
+          binds.push(`${ghConfigDir}:/root/.config/gh:rw`);
           dockerLogger.info(
-            `  GitHub CLI config mount: ${ghConfigDir} -> /root/.config/gh (read-only)`
+            `  GitHub CLI config mount: ${ghConfigDir} -> /root/.config/gh (read-write)`
           );
         } catch {
           dockerLogger.info(`  No GitHub CLI config found at ${ghConfigDir}`);
@@ -363,9 +363,9 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         try {
           const fs = await import("fs");
           await fs.promises.access(ghConfigDir);
-          binds.push(`${ghConfigDir}:/root/.config/gh:ro`);
+          binds.push(`${ghConfigDir}:/root/.config/gh:rw`);
           dockerLogger.info(
-            `  GitHub CLI config mount: ${ghConfigDir} -> /root/.config/gh (read-only)`
+            `  GitHub CLI config mount: ${ghConfigDir} -> /root/.config/gh (read-write)`
           );
         } catch {
           dockerLogger.info(`  No GitHub CLI config found at ${ghConfigDir}`);
