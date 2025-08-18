@@ -17,7 +17,6 @@ export async function checkClaudeStopHookCompletion(taskId: string): Promise<boo
   }
 }
 
-
 export async function checkClaudeProjectFileCompletion(
   _projectPath?: string,
   _workingDir?: string,
