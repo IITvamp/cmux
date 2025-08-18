@@ -65,7 +65,8 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY --parents apps/*/package.json packages/*/package.json scripts/package.json ./
 
 # Install dependencies with cache (non-interactive)
-RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store CI=1 pnpm install --frozen-lockfile
+# Note: vscode-extension filter uses the new package name without @
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store CI=1 pnpm install --frozen-lockfile=true --filter "@cmux/worker..." --filter "@cmux/shared..." --filter "cmux-vscode-extension..."
 
 RUN mkdir -p /builtins && \
     echo '{"name":"builtins","type":"module","version":"1.0.0"}' > /builtins/package.json
@@ -73,8 +74,12 @@ WORKDIR /builtins
 
 # Copy source files needed for build
 WORKDIR /cmux
-# Copy shared package source
+# Copy shared package source and config
 COPY packages/shared/src ./packages/shared/src
+COPY packages/shared/tsconfig.json ./packages/shared/
+
+# Copy convex package (needed by shared)
+COPY packages/convex ./packages/convex/
 
 # Copy worker source and scripts
 COPY apps/worker/src ./apps/worker/src
@@ -86,13 +91,16 @@ COPY packages/vscode-extension/src ./packages/vscode-extension/src
 COPY packages/vscode-extension/tsconfig.json ./packages/vscode-extension/
 COPY packages/vscode-extension/.vscodeignore ./packages/vscode-extension/
 
-# Build worker without bundling native modules
-RUN bun build /cmux/apps/worker/src/index.ts \
+# Build worker with bundling, using the installed node_modules
+RUN cd /cmux && \
+    bun build ./apps/worker/src/index.ts \
     --target node \
-    --outdir /cmux/apps/worker/build && \
+    --outdir ./apps/worker/build \
+    --external @cmux/convex \
+    --external node:* && \
     echo "Built worker" && \
-    cp -r /cmux/apps/worker/build /builtins/build && \
-    cp /cmux/apps/worker/wait-for-docker.sh /usr/local/bin/ && \
+    cp -r ./apps/worker/build /builtins/build && \
+    cp ./apps/worker/wait-for-docker.sh /usr/local/bin/ && \
     chmod +x /usr/local/bin/wait-for-docker.sh
 
 # Verify bun is still working in builder
@@ -100,11 +108,11 @@ RUN bun --version && bunx --version
 
 # Build vscode extension
 WORKDIR /cmux/packages/vscode-extension
-RUN bun run package && cp cmux-extension-0.0.1.vsix /tmp/cmux-extension-0.0.1.vsix
+RUN bun run package && cp cmux-vscode-extension-0.0.1.vsix /tmp/cmux-vscode-extension-0.0.1.vsix
 
 # Install VS Code extensions
-RUN /app/openvscode-server/bin/openvscode-server --install-extension /tmp/cmux-extension-0.0.1.vsix && \
-    rm /tmp/cmux-extension-0.0.1.vsix
+RUN /app/openvscode-server/bin/openvscode-server --install-extension /tmp/cmux-vscode-extension-0.0.1.vsix && \
+    rm /tmp/cmux-vscode-extension-0.0.1.vsix
 
 # Create VS Code user settings
 RUN mkdir -p /root/.openvscode-server/data/User && \

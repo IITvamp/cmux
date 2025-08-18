@@ -292,19 +292,6 @@ export class DockerVSCodeInstance extends VSCodeInstance {
           dockerLogger.info(`  No SSH directory found at ${sshDir}`);
         }
 
-        // Mount GitHub CLI config for authentication
-        const ghConfigDir = path.join(homeDir, ".config", "gh");
-        try {
-          const fs = await import("fs");
-          await fs.promises.access(ghConfigDir);
-          binds.push(`${ghConfigDir}:/root/.config/gh:ro`);
-          dockerLogger.info(
-            `  GitHub CLI config mount: ${ghConfigDir} -> /root/.config/gh (read-only)`
-          );
-        } catch {
-          dockerLogger.info(`  No GitHub CLI config found at ${ghConfigDir}`);
-        }
-
         // Mount git config if it exists
         try {
           const fs = await import("fs");
@@ -363,9 +350,9 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         try {
           const fs = await import("fs");
           await fs.promises.access(ghConfigDir);
-          binds.push(`${ghConfigDir}:/root/.config/gh:ro`);
+          binds.push(`${ghConfigDir}:/root/.config/gh:rw`);
           dockerLogger.info(
-            `  GitHub CLI config mount: ${ghConfigDir} -> /root/.config/gh (read-only)`
+            `  GitHub CLI config mount: ${ghConfigDir} -> /root/.config/gh (read-write)`
           );
         } catch {
           dockerLogger.info(`  No GitHub CLI config found at ${ghConfigDir}`);
@@ -414,11 +401,11 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     await this.container.start();
     dockerLogger.info(`Container started`);
 
-    // Fire-and-forget: bootstrap devcontainer in background if present
+    // Fire-and-forget: bootstrap GitHub auth and devcontainer in background
     // Do not block agent startup
-    this.bootstrapDevcontainerIfPresent().catch((err) => {
+    this.bootstrapContainerEnvironment().catch((err) => {
       dockerLogger.warn(
-        `Devcontainer bootstrap skipped or failed for ${this.containerName}:`,
+        `Container bootstrap skipped or failed for ${this.containerName}:`,
         err
       );
     });
@@ -737,6 +724,90 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     // Convert the stream to string
     const logs = stream.toString("utf8");
     return logs;
+  }
+
+  // Bootstrap container environment including GitHub auth and devcontainer
+  private async bootstrapContainerEnvironment(): Promise<void> {
+    // First, set up GitHub authentication
+    await this.bootstrapGitHubAuth();
+
+    // Then, bootstrap devcontainer if present
+    await this.bootstrapDevcontainerIfPresent();
+  }
+
+  // Authenticate GitHub CLI using token from host
+  private async bootstrapGitHubAuth(): Promise<void> {
+    try {
+      if (!this.container) {
+        dockerLogger.debug(
+          `bootstrapGitHubAuth: container not available for ${this.containerName}`
+        );
+        return;
+      }
+
+      // Get GitHub token from host
+      const githubToken = await getGitHubTokenFromKeychain(convex);
+      if (!githubToken) {
+        dockerLogger.info(
+          "No GitHub token found on host (Convex, gh, or keychain) - skipping gh auth setup"
+        );
+        return;
+      }
+
+      dockerLogger.info(
+        `Setting up GitHub CLI authentication in container ${this.containerName}...`
+      );
+
+      // Prepare command to authenticate gh CLI with token
+      const authCmd = [
+        "bash",
+        "-lc",
+        `echo '${githubToken}' | gh auth login --with-token 2>&1`,
+      ];
+
+      const exec = await this.container.exec({
+        Cmd: authCmd,
+        AttachStdout: true,
+        AttachStderr: true,
+      });
+
+      await new Promise<void>((resolve, reject) => {
+        exec.start({}, (err: Error | null, stream?: NodeJS.ReadableStream) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+          if (stream) {
+            let output = "";
+            stream.on("data", (chunk) => {
+              output += chunk.toString();
+            });
+            stream.on("end", () => {
+              if (
+                output.includes("Logged in as") ||
+                output.includes("already logged in")
+              ) {
+                dockerLogger.info(
+                  `GitHub CLI authenticated successfully in container ${this.containerName}`
+                );
+              } else {
+                dockerLogger.warn(
+                  `GitHub CLI authentication output for ${this.containerName}: ${output}`
+                );
+              }
+              resolve();
+            });
+          } else {
+            resolve();
+          }
+        });
+      });
+    } catch (error) {
+      dockerLogger.warn(
+        `GitHub CLI authentication error for ${this.containerName}:`,
+        error
+      );
+    }
   }
 
   // Detect and start devcontainer tooling inside the running OpenVSCode container
