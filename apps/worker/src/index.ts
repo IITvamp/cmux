@@ -29,7 +29,8 @@ import { promisify } from "node:util";
 import { Server, type Namespace, type Socket } from "socket.io";
 import { checkDockerReadiness } from "./checkDockerReadiness.js";
 import { detectTerminalIdle } from "./detectTerminalIdle.js";
-import { detectTaskCompletionWithFallback } from "./detectTaskCompletion.js";
+// Inlined DI-based task completion detector (replaces detectTaskCompletion.ts)
+import { EventEmitter } from "node:events";
 import { log } from "./logger.js";
 import { FileWatcher, computeGitDiff, getFileWithDiff } from "./fileWatcher.js";
 
@@ -1202,12 +1203,18 @@ async function createTerminal(
         workingDir: cwd,
       });
       
-      const detector = await detectTaskCompletionWithFallback({
-        taskId: options.taskId,
-        agentType: options.agentType,
+      const detector = await createTaskCompletionDetector({
+        taskId: options.taskId!,
+        agentType: options.agentType!,
         workingDir: cwd,
+        checkIntervalMs: 5000,
+        maxRuntimeMs: 20 * 60 * 1000,
+        minRuntimeMs: 30000,
+      }, buildDetectorConfig({
+        agentType: options.agentType!,
+        workingDir: cwd,
+        startTime: processStartTime,
         terminalId: useTerminalIdleFallback ? (sessionName || terminalId) : undefined,
-        idleTimeoutMs: useTerminalIdleFallback ? 15000 : undefined,
         onTerminalIdle: useTerminalIdleFallback ? () => {
           if (!idleDetectionCompleted) {
             idleDetectionCompleted = true;
@@ -1230,7 +1237,7 @@ async function createTerminal(
             }
           }
         } : undefined,
-      });
+      }));
 
       // Listen for task completion from project files
       detector.on("task-complete", (data) => {
@@ -1453,3 +1460,247 @@ function gracefulShutdown() {
 
 process.on("SIGTERM", gracefulShutdown);
 process.on("SIGINT", gracefulShutdown);
+
+
+// ==============================
+// Task Completion (DI approach)
+// ==============================
+
+type AgentType = "claude" | "codex" | "gemini" | "amp" | "opencode";
+
+interface TaskCompletionOptionsDI {
+  taskId: string;
+  agentType: AgentType;
+  workingDir: string;
+  checkIntervalMs?: number;
+  maxRuntimeMs?: number;
+  minRuntimeMs?: number;
+}
+
+interface DetectorDeps {
+  checkCompletion: (ctx: {
+    startTime: number;
+    options: TaskCompletionOptionsDI;
+  }) => Promise<boolean>;
+  allowTerminalIdleFallback?: boolean;
+  terminalId?: string;
+  idleTimeoutMs?: number;
+  onTerminalIdle?: () => void;
+}
+
+class TaskCompletionDetectorDI extends EventEmitter {
+  private checkInterval: NodeJS.Timeout | null = null;
+  private startTime: number;
+  private isRunning = false;
+  constructor(private options: TaskCompletionOptionsDI, private deps: DetectorDeps) {
+    super();
+    this.startTime = Date.now();
+    this.options.checkIntervalMs = this.options.checkIntervalMs || 5000;
+    this.options.maxRuntimeMs = this.options.maxRuntimeMs || 20 * 60 * 1000;
+    this.options.minRuntimeMs = this.options.minRuntimeMs || 30000;
+  }
+  async start(): Promise<void> {
+    if (this.isRunning) return;
+    this.isRunning = true;
+    log("INFO", `TaskCompletionDetector started for ${this.options.agentType} task ${this.options.taskId}`);
+    this.checkInterval = setInterval(async () => {
+      try {
+        // Don't consider too early
+        if (Date.now() - this.startTime < this.options.minRuntimeMs!) return;
+        const done = await this.deps.checkCompletion({ startTime: this.startTime, options: this.options });
+        if (done) {
+          this.stop();
+          this.emit("task-complete", {
+            taskId: this.options.taskId,
+            agentType: this.options.agentType,
+            elapsedMs: Date.now() - this.startTime,
+          });
+          return;
+        }
+        if (Date.now() - this.startTime > this.options.maxRuntimeMs!) {
+          this.stop();
+          this.emit("task-timeout", {
+            taskId: this.options.taskId,
+            agentType: this.options.agentType,
+            elapsedMs: Date.now() - this.startTime,
+          });
+        }
+      } catch (err) {
+        log("ERROR", `Error in completion loop: ${err}`);
+      }
+    }, this.options.checkIntervalMs);
+  }
+  stop(): void {
+    if (this.checkInterval) {
+      clearInterval(this.checkInterval);
+      this.checkInterval = null;
+    }
+    this.isRunning = false;
+  }
+}
+
+async function createTaskCompletionDetector(
+  options: TaskCompletionOptionsDI,
+  deps: DetectorDeps
+): Promise<TaskCompletionDetectorDI> {
+  const detector = new TaskCompletionDetectorDI(options, deps);
+  await detector.start();
+
+  // Optional terminal idle fallback
+  const allowFallback = deps.allowTerminalIdleFallback !== false; // default true unless explicitly false
+  if (allowFallback && deps.terminalId && deps.onTerminalIdle) {
+    detectTerminalIdle({
+      sessionName: deps.terminalId,
+      idleTimeoutMs: deps.idleTimeoutMs || 15000,
+      onIdle: () => {
+        log("INFO", "Terminal idle detected (fallback)");
+        detector.stop();
+        deps.onTerminalIdle && deps.onTerminalIdle();
+      },
+    });
+  }
+
+  return detector;
+}
+
+// ---- Provider helpers (dynamic imports kept local) ----
+const getClaudeHelpers = async () => {
+  const module = await import("@cmux/shared/src/providers/anthropic/completion-detector.ts");
+  return {
+    checkClaudeProjectFileCompletion: module.checkClaudeProjectFileCompletion,
+    getClaudeProjectPath: module.getClaudeProjectPath,
+  };
+};
+const getCodexHelpers = async () => {
+  const module = await import("@cmux/shared/src/providers/openai/completion-detector.ts");
+  return {
+    checkCodexCompletionSince: module.checkCodexCompletionSince,
+    didLatestSessionCompleteInTuiLog: module.didLatestSessionCompleteInTuiLog,
+    getLatestCodexSessionIdSince: module.getLatestCodexSessionIdSince,
+    findCodexRolloutPathForSession: module.findCodexRolloutPathForSession,
+    checkCodexNotifyFileCompletion: module.checkCodexNotifyFileCompletion,
+  };
+};
+const getGeminiHelpers = async () => {
+  const module = await import("../../../packages/shared/src/providers/gemini/telemetry-detector.js");
+  return {
+    checkGeminiTelemetryCompletion: module.checkGeminiTelemetryCompletion,
+    GEMINI_TELEMETRY_LOG_PATH: module.GEMINI_TELEMETRY_LOG_PATH,
+  };
+};
+
+// ---- Provider-specific checkers composed via config ----
+function buildDetectorConfig(params: {
+  agentType: AgentType;
+  workingDir: string;
+  startTime: number;
+  terminalId?: string;
+  onTerminalIdle?: () => void;
+}): DetectorDeps {
+  const { agentType, workingDir } = params;
+
+  const byAgent: Record<AgentType, DetectorDeps> = {
+    claude: {
+      allowTerminalIdleFallback: false,
+      async checkCompletion({ startTime, options }) {
+        try {
+          const { getClaudeProjectPath, checkClaudeProjectFileCompletion } = await getClaudeHelpers();
+          const projectDir = getClaudeProjectPath(options.workingDir);
+          try {
+            await fs.access(projectDir);
+          } catch {
+            log("DEBUG", `Claude project dir not found yet: ${projectDir}`);
+            return false;
+          }
+          const done = await checkClaudeProjectFileCompletion(projectDir, undefined, 10000);
+          if (done) {
+            log("INFO", `Claude task complete for project: ${projectDir}`);
+          }
+          return done;
+        } catch (e) {
+          log("ERROR", `Claude completion error: ${e}`);
+          return false;
+        }
+      },
+    },
+    codex: {
+      allowTerminalIdleFallback: false,
+      async checkCompletion({ startTime, options }) {
+        try {
+          log("INFO", `[Codex Detector] Checking`, {
+            workingDir: options.workingDir,
+            startTime: new Date(startTime).toISOString(),
+          });
+          const { checkCodexNotifyFileCompletion } = await getCodexHelpers();
+          const notifyDone = await checkCodexNotifyFileCompletion(options.workingDir, startTime);
+          if (notifyDone) return true;
+
+          const { checkCodexCompletionSince } = await getCodexHelpers();
+          const res = await checkCodexCompletionSince(startTime);
+          if (res.isComplete) return true;
+
+          const { didLatestSessionCompleteInTuiLog, getLatestCodexSessionIdSince, findCodexRolloutPathForSession } = await getCodexHelpers();
+          const tui = await didLatestSessionCompleteInTuiLog(startTime);
+          const sessionId = tui?.sessionId || (await getLatestCodexSessionIdSince(startTime));
+          const rolloutPath = sessionId ? await findCodexRolloutPathForSession(sessionId) : undefined;
+          log("INFO", "Codex not complete yet", { tuiStatus: tui, sessionId, rolloutPath });
+          return false;
+        } catch (e) {
+          log("ERROR", `Codex completion error: ${e}`);
+          return false;
+        }
+      },
+    },
+    gemini: {
+      allowTerminalIdleFallback: false,
+      async checkCompletion({ startTime, options }) {
+        try {
+          const { checkGeminiTelemetryCompletion } = await getGeminiHelpers();
+          const telemetryPath = `/tmp/gemini-telemetry-${options.taskId}.log`;
+          try {
+            await fs.access(telemetryPath);
+            const stats = await fs.stat(telemetryPath);
+            if (stats.size === 0) return false;
+          } catch {
+            log("DEBUG", `[Gemini] Telemetry log not found yet: ${telemetryPath}`);
+            return false;
+          }
+          const done = await checkGeminiTelemetryCompletion(telemetryPath, 2000, startTime);
+          if (!done) log("DEBUG", "[Gemini] No completion event yet");
+          return done;
+        } catch (e) {
+          log("ERROR", `Gemini completion error: ${e}`);
+          return false;
+        }
+      },
+    },
+    amp: {
+      // Not implemented yet; keep fallback enabled so terminal idle can be used by caller
+      allowTerminalIdleFallback: true,
+      async checkCompletion() {
+        return false;
+      },
+    },
+    opencode: {
+      allowTerminalIdleFallback: false,
+      async checkCompletion({ startTime, options }) {
+        try {
+          const module = await import("@cmux/shared/src/providers/opencode/completion-detector.ts");
+          const done = await module.checkOpencodeCompletionSince(startTime, options.workingDir);
+          if (!done) log("DEBUG", "[Opencode] Not complete yet");
+          return done;
+        } catch (e) {
+          log("ERROR", `Opencode completion error: ${e}`);
+          return false;
+        }
+      },
+    },
+  };
+
+  const base = byAgent[agentType];
+  return {
+    ...base,
+    terminalId: params.terminalId,
+    onTerminalIdle: params.onTerminalIdle,
+  };
+}
