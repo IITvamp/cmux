@@ -143,7 +143,7 @@ export abstract class VSCodeInstance extends EventEmitter {
 
       this.workerSocket.on("worker:task-complete", (data) => {
         dockerLogger.info(
-          `[VSCodeInstance ${this.instanceId}] Task complete detected (${data.detectionMethod}):`,
+          `[VSCodeInstance ${this.instanceId}] Task complete detected:`,
           data
         );
         this.emit("task-complete", data);

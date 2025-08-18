@@ -12,6 +12,7 @@ import {
   type WorkerRegister,
   type WorkerToServerEvents,
 } from "@cmux/shared";
+import { AGENT_CONFIGS, type AgentProvider } from "@cmux/shared/agentConfig";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import * as xtermHeadless from "@xterm/headless";
 import express from "express";
@@ -438,7 +439,7 @@ managementIO.on("connection", (socket) => {
         command: validated.command,
         args: validated.args,
         taskId: validated.taskId,
-        agentType: validated.agentType,
+        agentModel: (validated as any).agentModel,
         startupCommands: validated.startupCommands,
       });
 
@@ -905,7 +906,7 @@ async function createTerminal(
     command?: string;
     args?: string[];
     taskId?: string;
-    agentType?: "claude" | "codex" | "gemini" | "amp" | "opencode";
+    agentModel?: string;
     startupCommands?: string[];
   } = {}
 ): Promise<void> {
@@ -1044,11 +1045,12 @@ async function createTerminal(
   const INITIAL_ERROR_CAPTURE_WINDOW_MS = 30000; // capture up to first 30s
   const stopErrorCaptureAt = Date.now() + INITIAL_ERROR_CAPTURE_WINDOW_MS;
   let opencodeStdoutBuf = "";
+  const providerResolved = resolveProviderFromModel(options.agentModel);
   childProcess.stdout.on("data", (data: Buffer) => {
     const chunk = data.toString();
     headlessTerminal.write(chunk);
     // Parse OpenCode stdout for deterministic completion events
-    if (options.agentType === "opencode" && options.taskId) {
+    if (providerResolved === "opencode" && options.taskId) {
       try {
         opencodeStdoutBuf += chunk;
         // Process complete lines only
@@ -1103,9 +1105,8 @@ async function createTerminal(
               workerId: WORKER_ID,
               terminalId,
               taskId: options.taskId,
-              agentType: options.agentType,
+              agentModel: options.agentModel,
               elapsedMs: Date.now() - processStartTime,
-              detectionMethod: "stdout-event",
             });
           }
         }
@@ -1180,24 +1181,24 @@ async function createTerminal(
       sessionName,
       spawnCommand,
       originalCommand: command,
-      agentType: options.agentType,
+      agentModel: options.agentModel,
       taskId: options.taskId,
     });
 
     // Track if detection completed successfully
     let idleDetectionCompleted = false;
 
-    // Use new task completion detection if agentType is provided
-    if (options.agentType && options.taskId) {
-      // For Claude, Codex, and Gemini use project/log file detection (no terminal idle fallback)
+    // Use new task completion detection if agentModel is provided
+    if (options.agentModel && options.taskId) {
+      // For Claude, Codex, Gemini, and OpenCode use project/log file detection (no terminal idle fallback)
       const useTerminalIdleFallback = !(
-        options.agentType === "claude" ||
-        options.agentType === "codex" ||
-        options.agentType === "gemini" ||
-        options.agentType === "opencode"
+        providerResolved === "claude" ||
+        providerResolved === "codex" ||
+        providerResolved === "gemini" ||
+        providerResolved === "opencode"
       );
       
-      log("INFO", `Setting up task completion detection for ${options.agentType}`, {
+      log("INFO", `Setting up task completion detection for ${options.agentModel}`, {
         useTerminalIdleFallback,
         taskId: options.taskId,
         workingDir: cwd,
@@ -1205,13 +1206,15 @@ async function createTerminal(
       
       const detector = await createTaskCompletionDetector({
         taskId: options.taskId!,
-        agentType: options.agentType!,
+        agentType: providerResolved!,
+        agentModel: options.agentModel,
         workingDir: cwd,
         checkIntervalMs: 5000,
         maxRuntimeMs: 20 * 60 * 1000,
         minRuntimeMs: 30000,
       }, buildDetectorConfig({
-        agentType: options.agentType!,
+        agentType: providerResolved || undefined,
+        agentModel: options.agentModel,
         workingDir: cwd,
         startTime: processStartTime,
         terminalId: useTerminalIdleFallback ? (sessionName || terminalId) : undefined,
@@ -1222,7 +1225,7 @@ async function createTerminal(
             log("INFO", "Task completion detected (fallback to terminal idle)", {
               terminalId,
               taskId: options.taskId,
-              agentType: options.agentType,
+              agentModel: options.agentModel,
               elapsedMs,
             });
             if (options.taskId) {
@@ -1230,9 +1233,8 @@ async function createTerminal(
                 workerId: WORKER_ID,
                 terminalId,
                 taskId: options.taskId,
-                agentType: options.agentType!,
+                agentModel: options.agentModel,
                 elapsedMs,
-                detectionMethod: "terminal-idle",
               });
             }
           }
@@ -1244,15 +1246,12 @@ async function createTerminal(
         if (!idleDetectionCompleted) {
           idleDetectionCompleted = true;
           log("INFO", "Task completion detected from project files", data);
-          // Use telemetry-log detection method for Gemini
-          const detectionMethod = options.agentType === "gemini" ? "telemetry-log" : "project-file";
           emitToMainServer("worker:task-complete", {
             workerId: WORKER_ID,
             terminalId,
             taskId: options.taskId,
-            agentType: options.agentType,
+            agentModel: options.agentModel,
             elapsedMs: data.elapsedMs,
-            detectionMethod,
           });
         }
       });
@@ -1265,9 +1264,8 @@ async function createTerminal(
             workerId: WORKER_ID,
             terminalId,
             taskId: options.taskId,
-            agentType: options.agentType,
+            agentModel: options.agentModel,
             elapsedMs: data.elapsedMs,
-            detectionMethod: "project-file",
           });
         }
       });
@@ -1471,6 +1469,7 @@ type AgentType = "claude" | "codex" | "gemini" | "amp" | "opencode";
 interface TaskCompletionOptionsDI {
   taskId: string;
   agentType: AgentType;
+  agentModel?: string;
   workingDir: string;
   checkIntervalMs?: number;
   maxRuntimeMs?: number;
@@ -1590,14 +1589,26 @@ const getGeminiHelpers = async () => {
 };
 
 // ---- Provider-specific checkers composed via config ----
+function resolveProviderFromModel(model?: string): AgentType | undefined {
+  if (!model) return undefined;
+  const cfg = AGENT_CONFIGS.find((c) => c.name === model);
+  if (cfg) return (cfg.provider as AgentProvider) as AgentType;
+  const prefix = model.split("/")[0] as AgentType;
+  return ["claude", "codex", "gemini", "amp", "opencode"].includes(prefix)
+    ? prefix
+    : undefined;
+}
+
 function buildDetectorConfig(params: {
-  agentType: AgentType;
+  agentType?: AgentType;
+  agentModel?: string;
   workingDir: string;
   startTime: number;
   terminalId?: string;
   onTerminalIdle?: () => void;
 }): DetectorDeps {
-  const { agentType, workingDir } = params;
+  const agentType = params.agentType || resolveProviderFromModel(params.agentModel)!;
+  const { workingDir } = params;
 
   const byAgent: Record<AgentType, DetectorDeps> = {
     claude: {

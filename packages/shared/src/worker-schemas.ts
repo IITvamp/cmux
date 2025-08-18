@@ -1,5 +1,6 @@
 import type { Id } from "@cmux/convex/dataModel";
 import { z } from "zod";
+import { AGENT_CONFIGS } from "./agentConfig.js";
 import { typedZid } from "./utils/typed-zid.js";
 
 // Auth file schema for file uploads and environment setup
@@ -62,7 +63,14 @@ export const WorkerCreateTerminalSchema = z.object({
   args: z.array(z.string()).optional(),
   taskId: typedZid("tasks").optional(),
   taskRunId: typedZid("taskRuns").optional(),
-  agentType: z.enum(["claude", "codex", "gemini", "amp", "opencode"]).optional(),
+  // Preferred: validated against AgentConfig names at runtime (browser-safe)
+  agentModel: z
+    .string()
+    .optional()
+    .refine(
+      (val) => !val || new Set(AGENT_CONFIGS.map((c) => c.name)).has(val),
+      { message: "agentModel must be one of AGENT_CONFIGS names" }
+    ),
   authFiles: z.array(AuthFileSchema).optional(),
   startupCommands: z.array(z.string()).optional(),
 });
@@ -118,9 +126,14 @@ export const WorkerTaskCompleteSchema = z.object({
   workerId: z.string(),
   terminalId: z.string(),
   taskId: typedZid("tasks"),
-  agentType: z.enum(["claude", "codex", "gemini", "amp", "opencode"]),
+  agentModel: z
+    .string()
+    .optional()
+    .refine(
+      (val) => !val || new Set(AGENT_CONFIGS.map((c) => c.name)).has(val),
+      { message: "agentModel must be one of AGENT_CONFIGS names" }
+    ),
   elapsedMs: z.number(),
-  detectionMethod: z.enum(["project-file", "terminal-idle", "telemetry-log"]),
 });
 
 // Terminal failure event (e.g., tmux spawn/agent command failed)

@@ -41,16 +41,7 @@ export interface AgentSpawnResult {
   error?: string;
 }
 
-// Helper function to determine agent type from agent name
-function getAgentType(agentName: string): "claude" | "codex" | "gemini" | "amp" | "opencode" | undefined {
-  const nameLower = agentName.toLowerCase();
-  if (nameLower.includes("claude")) return "claude";
-  if (nameLower.includes("codex")) return "codex";
-  if (nameLower.includes("gemini")) return "gemini";
-  if (nameLower.includes("amp")) return "amp";
-  if (nameLower.includes("opencode")) return "opencode";
-  return undefined;
-}
+// Removed legacy getAgentType; rely on AgentConfig.provider
 
 export async function spawnAgent(
   agent: AgentConfig,
@@ -668,10 +659,10 @@ export async function spawnAgent(
       );
 
       // For Claude, Codex, Gemini, and OpenCode agents, ignore terminal exit as tmux exits immediately after creating session
-      const agentType = getAgentType(agent.name);
-      if (agentType === "claude" || agentType === "codex" || agentType === "gemini" || agentType === "opencode") {
+      const provider = agent.provider;
+      if (provider === "claude" || provider === "codex" || provider === "gemini" || provider === "opencode") {
         serverLogger.info(
-          `[AgentSpawner] Ignoring terminal exit for ${agentType} agent ${agent.name} (tmux exits immediately, waiting for detector completion)`
+          `[AgentSpawner] Ignoring terminal exit for ${provider} agent ${agent.name} (tmux exits immediately, waiting for detector completion)`
         );
         return;
       }
@@ -734,7 +725,7 @@ export async function spawnAgent(
     // Set up task-complete event handler (from project file detection)
     vscodeInstance.on("task-complete", async (data) => {
       serverLogger.info(
-        `[AgentSpawner] Task complete detected for ${agent.name} (${data.detectionMethod}):`,
+        `[AgentSpawner] Task complete detected for ${agent.name}:`,
         data
       );
       if (hasFailed) {
@@ -969,8 +960,6 @@ export async function spawnAgent(
       serverLogger.info(`[AgentSpawner] Codex raw args:`, actualArgs);
     }
 
-    const agentType = getAgentType(agent.name);
-    
     // For Codex agents, use direct command execution to preserve notify argument
     // The notify command contains complex JSON that gets mangled through shell layers
     const tmuxArgs = agent.name.toLowerCase().includes("codex") 
@@ -1009,7 +998,7 @@ export async function spawnAgent(
       env: envVars,
       taskId: taskId,
       taskRunId,
-      agentType,
+      agentModel: agent.name,
       authFiles,
       startupCommands,
       cwd: "/root/workspace",

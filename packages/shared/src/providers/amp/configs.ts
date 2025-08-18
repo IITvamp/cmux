@@ -5,6 +5,7 @@ import { getAmpEnvironment } from "./environment.js";
 
 export const AMP_CONFIG: AgentConfig = {
   name: "amp",
+  provider: "amp",
   command: "prompt-wrapper",
   args: [
     "--prompt-env",
