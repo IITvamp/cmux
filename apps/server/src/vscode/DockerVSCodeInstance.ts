@@ -281,6 +281,12 @@ export class DockerVSCodeInstance extends VSCodeInstance {
           `${originPath}:${originPath}:rw`, // Read-write mount for git operations
         ];
 
+        // Add pnpm cache volumes (Linux-specific, isolated from macOS)
+        const workspaceHash = require('crypto').createHash('md5').update(this.config.workspacePath).digest('hex').substring(0, 8);
+        binds.push(`cmux-pnpm-store-${workspaceHash}:/root/.local/share/pnpm/store`);
+        binds.push(`cmux-pnpm-cache-${workspaceHash}:/root/.cache/pnpm`);
+        dockerLogger.info(`  pnpm volumes: store and cache (workspace ${workspaceHash})`);
+
         // Mount SSH directory for git authentication
         const sshDir = path.join(homeDir, ".ssh");
         try {
@@ -333,6 +339,12 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         const gitConfigPath = path.join(homeDir, ".gitconfig");
 
         const binds = [`${this.config.workspacePath}:/root/workspace`];
+
+        // Add pnpm cache volumes (same as above)
+        const workspaceHash = require('crypto').createHash('md5').update(this.config.workspacePath).digest('hex').substring(0, 8);
+        binds.push(`cmux-pnpm-store-${workspaceHash}:/root/.local/share/pnpm/store`);
+        binds.push(`cmux-pnpm-cache-${workspaceHash}:/root/.cache/pnpm`);
+        dockerLogger.info(`  pnpm volumes: store and cache (workspace ${workspaceHash})`);
 
         // Mount SSH directory for git authentication
         const sshDir = path.join(homeDir, ".ssh");

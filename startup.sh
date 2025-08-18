@@ -4,6 +4,19 @@ set -e
 # Ensure bun and bunx are in PATH
 export PATH="/usr/local/bin:$PATH"
 
+# Create log directory early
+mkdir -p /var/log/cmux
+
+# Configure pnpm stores (uses Docker volumes)
+pnpm config set store-dir /root/.local/share/pnpm/store
+pnpm config set cache-dir /root/.cache/pnpm
+
+# Auto-install dependencies if needed
+if [ -f "/root/workspace/package.json" ] && [ ! -d "/root/workspace/node_modules" ]; then
+    cd /root/workspace
+    pnpm install --prefer-offline >> /var/log/cmux/pnpm-install.log 2>&1 &
+fi
+
 # Skip DinD setup that might interfere - supervisor will handle Docker startup
 
 # Start supervisor to manage dockerd (in background, but with -n for proper signal handling)
@@ -97,9 +110,6 @@ start_devcontainer() {
         echo "[Startup] No .devcontainer/devcontainer.json found, skipping devcontainer startup" >> /var/log/cmux/startup.log
     fi
 }
-
-# Create log directory
-mkdir -p /var/log/cmux
 
 # Log environment variables for debugging
 echo "[Startup] Environment variables:" > /var/log/cmux/startup.log
