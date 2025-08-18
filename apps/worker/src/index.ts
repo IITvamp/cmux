@@ -1570,7 +1570,6 @@ const getClaudeHelpers = async () => {
   const module = await import("@cmux/shared/src/providers/anthropic/completion-detector.ts");
   return {
     checkClaudeProjectFileCompletion: module.checkClaudeProjectFileCompletion,
-    getClaudeProjectPath: module.getClaudeProjectPath,
     checkClaudeStopHookCompletion: module.checkClaudeStopHookCompletion,
   };
 };
