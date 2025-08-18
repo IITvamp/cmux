@@ -1,5 +1,10 @@
 import type { EnvironmentResult } from "../common/environment-result.js";
 
+type GeminiSettings = {
+  selectedAuthType?: string;
+  [key: string]: unknown;
+};
+
 export async function getGeminiEnvironment(): Promise<EnvironmentResult> {
   // These must be lazy since configs are imported into the browser
   const { readFile, stat } = await import("node:fs/promises");
@@ -33,15 +38,61 @@ export async function getGeminiEnvironment(): Promise<EnvironmentResult> {
       return true;
     } catch (error) {
       // Only log if it's not a "file not found" error
-      if (error instanceof Error && 'code' in error && error.code !== "ENOENT") {
+      if (
+        error instanceof Error &&
+        "code" in error &&
+        error.code !== "ENOENT"
+      ) {
         console.warn(`Failed to read ${filename}:`, error);
       }
       return false;
     }
   }
 
-  // 1. Settings file (required)
-  await copyFile("settings.json", "$HOME/.gemini/settings.json");
+  // 1. Settings file (required) — ensure selectedAuthType is set
+  try {
+    const settingsPath = join(geminiDir, "settings.json");
+    let settingsContent: string | undefined;
+    try {
+      settingsContent = await readFile(settingsPath, "utf-8");
+    } catch (error) {
+      // If missing, we'll create a new one
+      const isNodeErr = (err: unknown): err is { code?: string } =>
+        typeof err === "object" && err !== null && "code" in err;
+      if (
+        !(error instanceof Error && isNodeErr(error) && error.code === "ENOENT")
+      ) {
+        console.warn("Failed to read settings.json:", error);
+      }
+    }
+
+    let settings: GeminiSettings = {};
+    if (settingsContent) {
+      try {
+        const parsed = JSON.parse(settingsContent) as unknown;
+        if (parsed && typeof parsed === "object") {
+          settings = parsed as GeminiSettings;
+        }
+      } catch (e) {
+        console.warn(
+          "Invalid JSON in settings.json; recreating with defaults.",
+          e
+        );
+      }
+    }
+
+    // Force the desired auth type
+    settings.selectedAuthType = "gemini-api-key";
+
+    const mergedContent = JSON.stringify(settings, null, 2) + "\n";
+    files.push({
+      destinationPath: "$HOME/.gemini/settings.json",
+      contentBase64: Buffer.from(mergedContent).toString("base64"),
+      mode: "644",
+    });
+  } catch (e) {
+    console.warn("Unexpected error preparing settings.json:", e);
+  }
 
   // 2. OAuth tokens (if exists)
   await copyFile("oauth_creds.json", "$HOME/.gemini/oauth_creds.json", "600");
