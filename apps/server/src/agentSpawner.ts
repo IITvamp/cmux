@@ -79,17 +79,23 @@ export async function spawnAgent(
 
     // If task has images with storage IDs, download them
     if (task && task.images && task.images.length > 0) {
+      const imageUrlsResult = await convex.query(api.storage.getUrls, {
+        storageIds: task.images.map((image) => image.storageId),
+      });
       const downloadedImages = await Promise.all(
-        task.images.map(async (image: any) => {
-          if (image.url) {
+        task.images.map(async (taskImage) => {
+          const imageUrl = imageUrlsResult.find(
+            (url) => url.storageId === taskImage.storageId
+          );
+          if (imageUrl) {
             // Download image from Convex storage
-            const response = await fetch(image.url);
+            const response = await fetch(imageUrl.url);
             const buffer = await response.arrayBuffer();
             const base64 = Buffer.from(buffer).toString("base64");
             return {
               src: `data:image/png;base64,${base64}`,
-              fileName: image.fileName,
-              altText: image.altText,
+              fileName: taskImage.fileName,
+              altText: taskImage.altText,
             };
           }
           return null;
@@ -128,32 +134,33 @@ export async function spawnAgent(
         });
 
         // Replace image reference in prompt with file path
-        // First try to replace the original filename
+        // First try to replace the original filename (exact match, no word boundaries)
         if (image.fileName) {
           const beforeReplace = processedTaskDescription;
+          // Escape special regex characters in the filename
+          const escapedFileName = image.fileName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
           processedTaskDescription = processedTaskDescription.replace(
-            new RegExp(
-              `\\b${image.fileName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
-              "g"
-            ),
+            new RegExp(escapedFileName, "g"),
             imagePath
           );
           if (beforeReplace !== processedTaskDescription) {
             serverLogger.info(
               `[AgentSpawner] Replaced "${image.fileName}" with "${imagePath}"`
             );
+          } else {
+            serverLogger.warn(
+              `[AgentSpawner] Failed to find "${image.fileName}" in prompt text`
+            );
           }
         }
 
         // Also replace just the filename without extension in case it appears that way
         const nameWithoutExt = image.fileName?.replace(/\.[^/.]+$/, "");
-        if (nameWithoutExt) {
+        if (nameWithoutExt && processedTaskDescription.includes(nameWithoutExt)) {
           const beforeReplace = processedTaskDescription;
+          const escapedName = nameWithoutExt.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
           processedTaskDescription = processedTaskDescription.replace(
-            new RegExp(
-              `\\b${nameWithoutExt.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`,
-              "g"
-            ),
+            new RegExp(escapedName, "g"),
             imagePath
           );
           if (beforeReplace !== processedTaskDescription) {
