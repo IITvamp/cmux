@@ -199,7 +199,9 @@ function DashboardComponent() {
             const blob = new Blob([byteArray], { type: "image/png" });
 
             // Get upload URL
-            const uploadUrl = await generateUploadUrl();
+            const unsafeUploadUrl = await generateUploadUrl();
+            const uploadUrl = new URL(unsafeUploadUrl);
+            uploadUrl.port = "9777";
 
             // Upload the file
             const result = await fetch(uploadUrl, {
