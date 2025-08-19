@@ -64,3 +64,4 @@
 [ ] make tui that renders tasks that needs attention as well as starting tasks. should also let user configure which agents to run.
 [ ] use gh webhook cli to update all git sync states faster
 [ ] select multiple tasks on frontend and do bulk actions on them
+[ ] notifications queue

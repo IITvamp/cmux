@@ -22,7 +22,16 @@ export const getUrls = query({
   args: { storageIds: v.array(v.id("_storage")) },
   handler: async (ctx, args) => {
     const urls = await Promise.all(
-      args.storageIds.map((id) => ctx.storage.getUrl(id))
+      args.storageIds.map(async (id) => {
+        const url = await ctx.storage.getUrl(id);
+        if (!url) {
+          throw new Error(`Failed to get URL for storage ID: ${id}`);
+        }
+        return {
+          storageId: id,
+          url,
+        };
+      })
     );
     return urls;
   },
