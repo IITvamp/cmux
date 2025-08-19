@@ -36,7 +36,7 @@ fi
 # Check if we're logged in to Docker Hub by checking if we can access Docker Hub
 log "Checking Docker Hub authentication..."
 # Try to inspect a small public image to verify connectivity
-if ! docker manifest inspect alpine:latest >/dev/null 2>&1; then
+if ! docker login >/dev/null 2>&1; then
     log "WARNING: May not be authenticated to Docker Hub properly"
     log "Attempting push anyway..."
 fi
