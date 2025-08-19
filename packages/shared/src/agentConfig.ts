@@ -49,7 +49,6 @@ export type AgentConfigApiKeys = Array<AgentConfigApiKey>;
 
 export interface AgentConfig {
   name: string;
-  provider?: "claude" | "codex" | "gemini" | "opencode" | "amp" | "cursor";
   command: string;
   args: string[];
   apiKeys?: AgentConfigApiKeys;

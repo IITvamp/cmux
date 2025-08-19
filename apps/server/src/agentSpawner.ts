@@ -214,7 +214,7 @@ export async function spawnAgent(
     }
 
     // For Claude agents, pass the task ID for the stop hook to use
-    if (agent.provider === "claude") {
+    if (agent.name.toLowerCase().includes("claude")) {
       envVars.CMUX_TASK_ID = taskId;
       serverLogger.info(`[AgentSpawner] Setting CMUX_TASK_ID for Claude stop hook: ${taskId}`);
     }
@@ -618,15 +618,6 @@ export async function spawnAgent(
         data
       );
 
-      // For Claude, Codex, Gemini, and OpenCode agents, ignore terminal exit as tmux exits immediately after creating session
-      const provider = agent.provider;
-      if (provider === "claude" || provider === "codex" || provider === "gemini" || provider === "opencode") {
-        serverLogger.info(
-          `[AgentSpawner] Ignoring terminal exit for ${provider} agent ${agent.name} (tmux exits immediately, waiting for detector completion)`
-        );
-        return;
-      }
-
       // Compare against the tmux session name (actual terminalId used by worker)
       // and also accept the taskRunId for backward compatibility
       if (data.terminalId === tmuxSessionName || data.terminalId === terminalId) {
@@ -716,13 +707,7 @@ export async function spawnAgent(
 
     // Set up terminal-idle event handler (legacy; ignore for deterministic agents like OpenCode)
     vscodeInstance.on("terminal-idle", async (data: WorkerTerminalIdle) => {
-      // For OpenCode, never rely on terminal idle; wait for deterministic signals
-      if (agent.provider === "opencode") {
-        serverLogger.info(
-          `[AgentSpawner] Ignoring terminal idle for OpenCode agent ${agent.name} (use deterministic detection)`
-        );
-        return;
-      }
+
       serverLogger.info(
         `[AgentSpawner] Terminal idle detected for ${agent.name}:`,
         data

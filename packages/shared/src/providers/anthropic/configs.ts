@@ -5,7 +5,6 @@ import { getClaudeEnvironment } from "./environment.js";
 
 export const CLAUDE_SONNET_CONFIG: AgentConfig = {
   name: "claude/sonnet-4",
-  provider: "claude",
   command: "bunx",
   args: [
     "@anthropic-ai/claude-code",
@@ -22,7 +21,6 @@ export const CLAUDE_SONNET_CONFIG: AgentConfig = {
 
 export const CLAUDE_OPUS_4_CONFIG: AgentConfig = {
   name: "claude/opus-4",
-  provider: "claude",
   command: "bunx",
   args: [
     "@anthropic-ai/claude-code",
@@ -39,7 +37,6 @@ export const CLAUDE_OPUS_4_CONFIG: AgentConfig = {
 
 export const CLAUDE_OPUS_4_1_CONFIG: AgentConfig = {
   name: "claude/opus-4.1",
-  provider: "claude",
   command: "bunx",
   args: [
     "@anthropic-ai/claude-code",

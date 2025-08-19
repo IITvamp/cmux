@@ -5,7 +5,6 @@ import { getOpenAIEnvironment } from "./environment.js";
 
 export const CODEX_GPT_5_CONFIG: AgentConfig = {
   name: "codex/gpt-5",
-  provider: "codex",
   command: "bunx",
   args: [
     "@openai/codex",
@@ -28,7 +27,6 @@ export const CODEX_GPT_5_CONFIG: AgentConfig = {
 
 export const CODEX_O3_CONFIG: AgentConfig = {
   name: "codex/o3",
-  provider: "codex",
   command: "bunx",
   args: [
     "@openai/codex",
@@ -49,7 +47,6 @@ export const CODEX_O3_CONFIG: AgentConfig = {
 
 export const CODEX_O4_MINI_CONFIG: AgentConfig = {
   name: "codex/o4-mini",
-  provider: "codex",
   command: "bunx",
   args: [
     "@openai/codex",
@@ -70,7 +67,6 @@ export const CODEX_O4_MINI_CONFIG: AgentConfig = {
 
 export const CODEX_GPT_4_1_CONFIG: AgentConfig = {
   name: "codex/gpt-4.1",
-  provider: "codex",
   command: "bunx",
   args: [
     "@openai/codex",

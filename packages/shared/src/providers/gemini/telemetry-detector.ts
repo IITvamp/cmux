@@ -428,3 +428,92 @@ export default {
   monitorGeminiTelemetry,
   streamGeminiTelemetryEvents,
 };
+
+/**
+ * Event-driven watcher: streams the telemetry file as it grows and calls onComplete
+ * when a completion event is encountered. No polling or intervals used.
+ * Returns a disposer to stop watching.
+ */
+export function watchGeminiTelemetryForCompletion(options: {
+  telemetryPath?: string;
+  onComplete: () => void | Promise<void>;
+  onError?: (error: Error) => void;
+}): () => void {
+  const telemetryPath = options.telemetryPath || GEMINI_TELEMETRY_LOG_PATH;
+  const { watch, createReadStream } = require("node:fs");
+  const { promises: fsp } = require("node:fs");
+  const path = require("node:path");
+
+  const dir = path.dirname(telemetryPath);
+  const file = path.basename(telemetryPath);
+
+  let lastSize = 0;
+  let stopped = false;
+  let fileWatcher: import("node:fs").FSWatcher | null = null;
+  let dirWatcher: import("node:fs").FSWatcher | null = null;
+
+  const parser = new JsonStreamParser(async (obj) => {
+    try {
+      if (!stopped && isCompletionEvent(obj)) {
+        stopped = true;
+        try { fileWatcher?.close(); } catch {}
+        try { dirWatcher?.close(); } catch {}
+        await options.onComplete();
+      }
+    } catch (e) {
+      options.onError?.(e instanceof Error ? e : new Error(String(e)));
+    }
+  });
+
+  const readNew = async (initial = false) => {
+    try {
+      const st = await fsp.stat(telemetryPath);
+      const start = initial ? 0 : lastSize;
+      if (st.size <= start) { lastSize = st.size; return; }
+      const end = st.size - 1;
+      await new Promise<void>((resolve) => {
+        const rs = createReadStream(telemetryPath, { start, end, encoding: "utf-8" });
+        rs.on("data", (chunk: string | Buffer) => {
+          const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
+          parser.push(text);
+        });
+        rs.on("end", () => resolve());
+        rs.on("error", () => resolve());
+      });
+      lastSize = st.size;
+    } catch {
+      // ignore until file exists
+    }
+  };
+
+  const attachFileWatcher = async () => {
+    try {
+      const st = await fsp.stat(telemetryPath);
+      lastSize = st.size;
+      await readNew(true);
+      fileWatcher = watch(telemetryPath, { persistent: false }, async (eventType: string) => {
+        if (eventType === "change" && !stopped) {
+          await readNew(false);
+        }
+      });
+    } catch {
+      // file not present yet
+    }
+  };
+
+  dirWatcher = watch(dir, { persistent: false }, async (_eventType: string, filename: string | Buffer) => {
+    const name = filename?.toString();
+    if (!stopped && name === file) {
+      await attachFileWatcher();
+    }
+  });
+
+  // Try immediately in case file already exists
+  void attachFileWatcher();
+
+  return () => {
+    stopped = true;
+    try { fileWatcher?.close(); } catch {}
+    try { dirWatcher?.close(); } catch {}
+  };
+}

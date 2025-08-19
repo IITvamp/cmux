@@ -1204,74 +1204,101 @@ async function createTerminal(
         workingDir: cwd,
       });
       
-      const detector = await createTaskCompletionDetector({
-        taskId: options.taskId!,
-        agentType: providerResolved!,
-        agentModel: options.agentModel,
-        workingDir: cwd,
-        checkIntervalMs: 5000,
-        maxRuntimeMs: 20 * 60 * 1000,
-        minRuntimeMs: 30000,
-      }, buildDetectorConfig({
-        agentType: providerResolved || undefined,
-        agentModel: options.agentModel,
-        workingDir: cwd,
-        startTime: processStartTime,
-        terminalId: useTerminalIdleFallback ? (sessionName || terminalId) : undefined,
-        onTerminalIdle: useTerminalIdleFallback ? () => {
-          if (!idleDetectionCompleted) {
-            idleDetectionCompleted = true;
-            const elapsedMs = Date.now() - processStartTime;
-            log("INFO", "Task completion detected (fallback to terminal idle)", {
-              terminalId,
-              taskId: options.taskId,
-              agentModel: options.agentModel,
-              elapsedMs,
-            });
-            if (options.taskId) {
+      if (providerResolved === "gemini") {
+        const telemetryPath = `/tmp/gemini-telemetry-${options.taskId}.log`;
+        const { watchGeminiTelemetryForCompletion } = await getGeminiHelpers();
+        const stopWatching = watchGeminiTelemetryForCompletion({
+          telemetryPath,
+          onComplete: async () => {
+            if (!idleDetectionCompleted) {
+              idleDetectionCompleted = true;
+              const elapsedMs = Date.now() - processStartTime;
+              log("INFO", "[Gemini] Completion event detected via telemetry", { telemetryPath, elapsedMs });
               emitToMainServer("worker:task-complete", {
                 workerId: WORKER_ID,
+                terminalId,
+                taskId: options.taskId!,
+                agentModel: options.agentModel,
+                elapsedMs,
+                detectionMethod: "telemetry-log",
+              });
+              stopWatching();
+            }
+          },
+          onError: (error) => {
+            log("ERROR", `[Gemini] Telemetry watcher error: ${error.message}`);
+          },
+        });
+      } else {
+        const detector = await createTaskCompletionDetector({
+          taskId: options.taskId!,
+          agentType: providerResolved!,
+          agentModel: options.agentModel,
+          workingDir: cwd,
+          checkIntervalMs: 5000,
+          maxRuntimeMs: 20 * 60 * 1000,
+          minRuntimeMs: 30000,
+        }, buildDetectorConfig({
+          agentType: providerResolved || undefined,
+          agentModel: options.agentModel,
+          workingDir: cwd,
+          startTime: processStartTime,
+          terminalId: useTerminalIdleFallback ? (sessionName || terminalId) : undefined,
+          onTerminalIdle: useTerminalIdleFallback ? () => {
+            if (!idleDetectionCompleted) {
+              idleDetectionCompleted = true;
+              const elapsedMs = Date.now() - processStartTime;
+              log("INFO", "Task completion detected (fallback to terminal idle)", {
                 terminalId,
                 taskId: options.taskId,
                 agentModel: options.agentModel,
                 elapsedMs,
               });
+              if (options.taskId) {
+                emitToMainServer("worker:task-complete", {
+                  workerId: WORKER_ID,
+                  terminalId,
+                  taskId: options.taskId,
+                  agentModel: options.agentModel,
+                  elapsedMs,
+                });
+              }
             }
+          } : undefined,
+        }));
+
+        // Listen for task completion from project/log detectors
+        detector.on("task-complete", (data) => {
+          if (!idleDetectionCompleted) {
+            idleDetectionCompleted = true;
+            log("INFO", "Task completion detected from project files", data);
+            const detectionMethod = "project-file";
+            emitToMainServer("worker:task-complete", {
+              workerId: WORKER_ID,
+              terminalId,
+              taskId: options.taskId,
+              agentModel: options.agentModel,
+              elapsedMs: data.elapsedMs,
+              detectionMethod,
+            });
           }
-        } : undefined,
-      }));
+        });
 
-      // Listen for task completion from project/log detectors
-      detector.on("task-complete", (data) => {
-        if (!idleDetectionCompleted) {
-          idleDetectionCompleted = true;
-          log("INFO", "Task completion detected from project files", data);
-          const detectionMethod = providerResolved === "gemini" ? "telemetry-log" : "project-file";
-          emitToMainServer("worker:task-complete", {
-            workerId: WORKER_ID,
-            terminalId,
-            taskId: options.taskId,
-            agentModel: options.agentModel,
-            elapsedMs: data.elapsedMs,
-            detectionMethod,
-          });
-        }
-      });
-
-      // On timeout, do NOT mark complete; mark as failed for deterministic behavior
-      detector.on("task-timeout", (data) => {
-        if (!idleDetectionCompleted) {
-          idleDetectionCompleted = true;
-          log("WARN", "Task timeout detected", data);
-          emitToMainServer("worker:terminal-failed", {
-            workerId: WORKER_ID,
-            terminalId,
-            taskId: options.taskId,
-            errorMessage: `Detector timeout after ${data.elapsedMs}ms`,
-            elapsedMs: data.elapsedMs,
-          });
-        }
-      });
+        // On timeout, do NOT mark complete; mark as failed for deterministic behavior
+        detector.on("task-timeout", (data) => {
+          if (!idleDetectionCompleted) {
+            idleDetectionCompleted = true;
+            log("WARN", "Task timeout detected", data);
+            emitToMainServer("worker:terminal-failed", {
+              workerId: WORKER_ID,
+              terminalId,
+              taskId: options.taskId,
+              errorMessage: `Detector timeout after ${data.elapsedMs}ms`,
+              elapsedMs: data.elapsedMs,
+            });
+          }
+        });
+      }
     } else {
       // Fallback to original terminal idle detection
       detectTerminalIdle({
@@ -1588,14 +1615,22 @@ const getGeminiHelpers = async () => {
   return {
     checkGeminiTelemetryCompletion: module.checkGeminiTelemetryCompletion,
     GEMINI_TELEMETRY_LOG_PATH: module.GEMINI_TELEMETRY_LOG_PATH,
+    watchGeminiTelemetryForCompletion: module.watchGeminiTelemetryForCompletion,
   };
 };
 
 // ---- Provider-specific checkers composed via config ----
 function resolveProviderFromModel(model?: string): AgentType | undefined {
   if (!model) return undefined;
-  const cfg = AGENT_CONFIGS.find((c) => c.name === model);
-  if (cfg) return cfg.provider as AgentType;
+  
+  // Extract provider from model name (e.g., "claude/sonnet-4" -> "claude")
+  // Special case: "amp" doesn't have a slash
+  if (model === "amp") return "amp";
+  
+  // Handle cursor models (cursor is not in AgentType, so skip it)
+  if (model.startsWith("cursor/")) return undefined;
+  
+  // Extract prefix before the slash
   const prefix = model.split("/")[0] as AgentType;
   return ["claude", "codex", "gemini", "amp", "opencode"].includes(prefix)
     ? prefix

@@ -9,7 +9,6 @@ import { getOpencodeEnvironment } from "./environment.js";
 
 export const OPENCODE_SONNET_CONFIG: AgentConfig = {
   name: "opencode/sonnet-4",
-  provider: "opencode",
   command: "bunx",
   args: [
     "opencode-ai@latest",
@@ -25,7 +24,6 @@ export const OPENCODE_SONNET_CONFIG: AgentConfig = {
 
 export const OPENCODE_OPUS_CONFIG: AgentConfig = {
   name: "opencode/opus-4",
-  provider: "opencode",
   command: "bunx",
   args: [
     "opencode-ai@latest",
@@ -41,7 +39,6 @@ export const OPENCODE_OPUS_CONFIG: AgentConfig = {
 
 export const OPENCODE_KIMI_K2_CONFIG: AgentConfig = {
   name: "opencode/kimi-k2",
-  provider: "opencode",
   command: "bunx",
   args: [
     "opencode-ai@latest",
@@ -57,7 +54,6 @@ export const OPENCODE_KIMI_K2_CONFIG: AgentConfig = {
 
 export const OPENCODE_QWEN3_CODER_CONFIG: AgentConfig = {
   name: "opencode/qwen3-coder",
-  provider: "opencode",
   command: "bunx",
   args: [
     "opencode-ai@latest",
@@ -73,7 +69,6 @@ export const OPENCODE_QWEN3_CODER_CONFIG: AgentConfig = {
 
 export const OPENCODE_GLM_Z1_32B_FREE_CONFIG: AgentConfig = {
   name: "opencode/glm-4.5",
-  provider: "opencode",
   command: "bunx",
   args: [
     "opencode-ai@latest",
@@ -89,7 +84,6 @@ export const OPENCODE_GLM_Z1_32B_FREE_CONFIG: AgentConfig = {
 
 export const OPENCODE_O3_PRO_CONFIG: AgentConfig = {
   name: "opencode/o3-pro",
-  provider: "opencode",
   command: "bunx",
   args: [
     "opencode-ai@latest",
@@ -105,7 +99,6 @@ export const OPENCODE_O3_PRO_CONFIG: AgentConfig = {
 
 export const OPENCODE_GPT_5_CONFIG: AgentConfig = {
   name: "opencode/gpt-5",
-  provider: "opencode",
   command: "bunx",
   args: [
     "opencode-ai@latest",
@@ -121,7 +114,6 @@ export const OPENCODE_GPT_5_CONFIG: AgentConfig = {
 
 export const OPENCODE_GPT_5_MINI_CONFIG: AgentConfig = {
   name: "opencode/gpt-5-mini",
-  provider: "opencode",
   command: "bunx",
   args: [
     "opencode-ai@latest",
@@ -137,7 +129,6 @@ export const OPENCODE_GPT_5_MINI_CONFIG: AgentConfig = {
 
 export const OPENCODE_GPT_5_NANO_CONFIG: AgentConfig = {
   name: "opencode/gpt-5-nano",
-  provider: "opencode",
   command: "bunx",
   args: [
     "opencode-ai@latest",
@@ -153,7 +144,6 @@ export const OPENCODE_GPT_5_NANO_CONFIG: AgentConfig = {
 
 export const OPENCODE_OPUS_4_1_20250805_CONFIG: AgentConfig = {
   name: "opencode/opus-4.1-20250805",
-  provider: "opencode",
   command: "bunx",
   args: [
     "opencode-ai@latest",
