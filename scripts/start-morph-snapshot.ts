@@ -6,7 +6,7 @@ import { io, Socket } from "socket.io-client";
 
 const client = new MorphCloudClient();
 const instance = await client.instances.start({
-  snapshotId: "snapshot_lsaf582l",
+  snapshotId: "snapshot_pgp8nqsw",
 });
 
 console.log(`Created instance: ${instance.id}`);

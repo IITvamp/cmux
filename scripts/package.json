@@ -10,7 +10,9 @@
     "@cmux/shared": "workspace:*",
     "@daytonaio/sdk": "^0.22.1",
     "dotenv": "^16.6.1",
+    "ignore": "^6.0.2",
     "morphcloud": "^0.0.17",
+    "node-ssh": "^13.2.0",
     "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
