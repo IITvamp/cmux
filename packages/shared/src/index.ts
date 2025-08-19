@@ -11,7 +11,6 @@ export const getClaudeCompletionDetector = async () => {
   return {
     checkClaudeStopHookCompletion: module.checkClaudeStopHookCompletion,
     checkClaudeProjectFileCompletion: module.checkClaudeProjectFileCompletion,
-    getClaudeProjectPath: module.getClaudeProjectPath,
   };
 };
 

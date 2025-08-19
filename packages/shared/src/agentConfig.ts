@@ -47,13 +47,11 @@ export type AgentConfigApiKey = {
 };
 export type AgentConfigApiKeys = Array<AgentConfigApiKey>;
 
-export type AgentProvider = "claude" | "codex" | "gemini" | "amp" | "opencode" | "cursor";
-
 export interface AgentConfig {
   name: string;
+  provider?: "claude" | "codex" | "gemini" | "opencode" | "amp" | "cursor";
   command: string;
   args: string[];
-  provider: AgentProvider;
   apiKeys?: AgentConfigApiKeys;
   environment?: () => Promise<EnvironmentResult>;
   waitForString?: string;

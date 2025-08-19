@@ -102,6 +102,10 @@ export async function getClaudeEnvironment(): Promise<EnvironmentResult> {
   startupCommands.unshift("mkdir -p ~/.claude");
   startupCommands.push("mkdir -p /root/lifecycle/claude");
   
+  // Clean up any previous Claude completion markers
+  // This should run before the agent starts to ensure clean state
+  startupCommands.push("rm -f /root/lifecycle/claude-complete-* 2>/dev/null || true");
+  
   // Create the stop hook script in /root/lifecycle (outside git repo)
   const stopHookScript = `#!/bin/bash
 # Claude Code stop hook for cmux task completion detection

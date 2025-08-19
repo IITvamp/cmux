@@ -1,7 +1,7 @@
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
-import { getLastJsonlObject, readJsonl } from "../../utils/jsonl.js";
+import { getLastJsonlObject } from "../../utils/jsonl.js";
 
 /**
  * Gemini session/message types (best-effort)

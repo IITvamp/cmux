@@ -12,7 +12,7 @@ import {
   type WorkerRegister,
   type WorkerToServerEvents,
 } from "@cmux/shared";
-import { AGENT_CONFIGS, type AgentProvider } from "@cmux/shared/agentConfig";
+import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import * as xtermHeadless from "@xterm/headless";
 import express from "express";
@@ -1595,7 +1595,7 @@ const getGeminiHelpers = async () => {
 function resolveProviderFromModel(model?: string): AgentType | undefined {
   if (!model) return undefined;
   const cfg = AGENT_CONFIGS.find((c) => c.name === model);
-  if (cfg) return (cfg.provider as AgentProvider) as AgentType;
+  if (cfg) return cfg.provider as AgentType;
   const prefix = model.split("/")[0] as AgentType;
   return ["claude", "codex", "gemini", "amp", "opencode"].includes(prefix)
     ? prefix

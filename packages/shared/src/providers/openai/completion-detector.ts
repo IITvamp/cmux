@@ -157,11 +157,9 @@ export async function didLatestSessionCompleteInTuiLog(
       /TaskComplete\(/, // Debug print of enum variant
       /task_complete/, // JSON-style snake_case
     ];
-    let taskCompleteLine: string | null = null;
     for (let i = startIdx; i < endIdx; i++) {
       const line = lines[i] as string;
       if (taskCompleteRegexes.some((r) => r.test(line))) {
-        taskCompleteLine = line;
         return { sessionId: latest.id, completed: true };
       }
     }
@@ -310,7 +308,6 @@ export async function checkCodexRolloutCompletion(
     let latestPlan: PlanItemArg[] | undefined;
     let updatePlanCount = 0;
     let lastFewEntries: string[] = [];
-    let lastUpdatePlanIndex = -1;
     
     // (Idle detection removed by design)
     
@@ -335,7 +332,6 @@ export async function checkCodexRolloutCompletion(
           const fc = obj as CodexFunctionCallEntry;
           if (fc.name === "update_plan") {
             updatePlanCount++;
-            lastUpdatePlanIndex = i;
             const parsed = parseUpdatePlanArguments(fc.arguments);
             if (parsed?.plan) {
               latestPlan = parsed.plan;

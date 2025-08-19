@@ -19,6 +19,10 @@ export async function getGeminiEnvironment(): Promise<EnvironmentResult> {
   // Ensure .gemini directory exists
   startupCommands.push("mkdir -p ~/.gemini");
   startupCommands.push("mkdir -p ~/.gemini/commands");
+  
+  // Clean up any old Gemini telemetry files from previous runs
+  // The actual telemetry path will be set by the agent spawner with the task ID
+  startupCommands.push("rm -f /tmp/gemini-telemetry-*.log 2>/dev/null || true");
 
   const geminiDir = join(homedir(), ".gemini");
 

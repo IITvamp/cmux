@@ -13,6 +13,7 @@ import type {
   WorkerTerminalFailed,
   WorkerFileChange,
   WorkerFileDiff,
+  WorkerExecResult,
 } from "@cmux/shared/worker-schemas";
 import * as path from "node:path";
 import { captureGitDiff } from "./captureGitDiff.js";
@@ -40,8 +41,6 @@ export interface AgentSpawnResult {
   success: boolean;
   error?: string;
 }
-
-// Removed legacy getAgentType; rely on AgentConfig.provider
 
 export async function spawnAgent(
   agent: AgentConfig,
@@ -205,7 +204,7 @@ export async function spawnAgent(
       authFiles = envResult.files;
       startupCommands = envResult.startupCommands || [];
     }
-    
+
     // For Gemini agents, set a unique telemetry log path using taskId (not taskRunId)
     // This must match what the detector expects
     // IMPORTANT: This must be set AFTER the environment function to avoid being overwritten
@@ -413,86 +412,6 @@ export async function spawnAgent(
         serverLogger.info(
           `[AgentSpawner] Updated taskRun ${taskRunId} as completed with exit code ${exitCode}`
         );
-
-        // Clean up temporary files based on agent type
-        try {
-          const workerSocket = vscodeInstance.getWorkerSocket();
-          if (workerSocket && vscodeInstance.isWorkerConnected()) {
-            // Clean up Codex turns file
-            if (agent.name.toLowerCase().includes("codex")) {
-              serverLogger.info(
-                `[AgentSpawner] Cleaning up codex-turns.jsonl for ${agent.name}`
-              );
-              
-              await new Promise<void>((resolve) => {
-                workerSocket
-                  .timeout(5000)
-                  .emit(
-                    "worker:exec",
-                    {
-                      command: "sh",
-                      args: [
-                        "-lc",
-                        "rm -f /tmp/cmux/codex-turns.jsonl /tmp/codex-turns.jsonl /root/workspace/.cmux/tmp/codex-turns.jsonl /root/workspace/logs/codex-turns.jsonl /root/workspace/codex-turns.jsonl || true",
-                      ],
-                      cwd: "/root/workspace",
-                      env: {},
-                    },
-                    (timeoutError: any, response: { error: any; }) => {
-                      if (timeoutError || response.error) {
-                        serverLogger.warn(
-                          `[AgentSpawner] Failed to delete codex-turns.jsonl: ${timeoutError || response.error}`
-                        );
-                      } else {
-                        serverLogger.info(
-                          `[AgentSpawner] Successfully deleted codex-turns.jsonl`
-                        );
-                      }
-                      resolve();
-                    }
-                  );
-              });
-            }
-            
-            // Clean up Claude stop hook marker file
-            if (agent.provider === "claude") {
-              serverLogger.info(
-                `[AgentSpawner] Cleaning up Claude stop hook marker for task ${taskId}`
-              );
-              
-              await new Promise<void>((resolve) => {
-                workerSocket
-                  .timeout(5000)
-                  .emit(
-                    "worker:exec",
-                    {
-                      command: "rm",
-                      args: ["-f", `/root/lifecycle/claude-complete-${taskId}`],
-                      cwd: "/root/lifecycle",
-                      env: {},
-                    },
-                    (timeoutError: any, response: { error: any; }) => {
-                      if (timeoutError || response.error) {
-                        serverLogger.warn(
-                          `[AgentSpawner] Failed to delete Claude marker file: ${timeoutError || response.error}`
-                        );
-                      } else {
-                        serverLogger.info(
-                          `[AgentSpawner] Successfully deleted Claude marker file`
-                        );
-                      }
-                      resolve();
-                    }
-                  );
-              });
-            }
-          }
-        } catch (error) {
-          serverLogger.warn(
-            `[AgentSpawner] Error cleaning up temporary files:`,
-            error
-          );
-        }
 
         // Check if all runs are complete and evaluate crown
         const taskRunData = await convex.query(api.taskRuns.get, {
@@ -1071,6 +990,9 @@ export async function spawnAgent(
     // );
     serverLogger.info(`  isCloudMode:`, options.isCloudMode);
 
+    // Type definition for worker:exec results
+    type ErrorOr<T> = { error: Error; data: null } | { error: null; data: T };
+
     // For Morph instances, we need to clone the repository first
     if (options.isCloudMode) {
       serverLogger.info(
@@ -1098,7 +1020,10 @@ export async function spawnAgent(
               cwd: "/root",
               env: {},
             },
-            (timeoutError: any, result: any) => {
+            (
+              timeoutError: unknown,
+              result: ErrorOr<WorkerExecResult>
+            ) => {
               if (timeoutError) {
                 serverLogger.error(
                   "Timeout waiting for git clone",
@@ -1115,7 +1040,7 @@ export async function spawnAgent(
                 return;
               }
 
-              const { stdout, stderr, exitCode } = result.data!;
+              const { stdout, stderr, exitCode } = result.data;
               serverLogger.info(`[AgentSpawner] Git clone stdout:`, stdout);
               if (stderr) {
                 serverLogger.info(`[AgentSpawner] Git clone stderr:`, stderr);
@@ -1168,7 +1093,10 @@ export async function spawnAgent(
             cwd: "/root",
             env: {},
           },
-          (timeoutError: any, result: { error: any; }) => {
+          (
+            timeoutError: unknown,
+            result: ErrorOr<WorkerExecResult>
+          ) => {
             if (timeoutError || result.error) {
               serverLogger.error(
                 "Failed to create prompt directory",
@@ -1229,33 +1157,6 @@ export async function spawnAgent(
     }
 
     // Send the terminal creation command
-    // Clean up old Gemini telemetry file if it exists
-    if (agent.name.toLowerCase().includes("gemini")) {
-      const telemetryPath = envVars.GEMINI_TELEMETRY_PATH;
-      if (telemetryPath) {
-        serverLogger.info(`[AgentSpawner] Cleaning up old Gemini telemetry file: ${telemetryPath}`);
-        await new Promise<void>((resolve) => {
-          workerSocket.timeout(5000).emit(
-            "worker:exec",
-            {
-              command: "rm",
-              args: ["-f", telemetryPath],
-              cwd: "/tmp",
-              env: {},
-            },
-            (timeoutError: any, result: { error: any; }) => {
-              if (timeoutError || result.error) {
-                serverLogger.warn(`[AgentSpawner] Failed to delete old telemetry file: ${timeoutError || result.error}`);
-              } else {
-                serverLogger.info(`[AgentSpawner] Successfully deleted old telemetry file`);
-              }
-              resolve();
-            }
-          );
-        });
-      }
-    }
-
     serverLogger.info(
       `[AgentSpawner] About to emit worker:create-terminal at ${new Date().toISOString()}`
     );
