@@ -1,10 +1,9 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { existsSync } from "node:fs";
-import * as fs from "node:fs/promises";
-import * as path from "node:path";
-import { tmpdir } from "node:os";
 import { exec as execCb } from "node:child_process";
+import * as fs from "node:fs/promises";
+import { tmpdir } from "node:os";
+import * as path from "node:path";
 import { promisify } from "node:util";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { RepositoryManager } from "./repositoryManager.js";
 
 const exec = promisify(execCb);
@@ -87,7 +86,10 @@ describe.sequential("RepositoryManager branch behavior (no fallbacks)", () => {
     for (const repo of REPOS) {
       const projectDir = path.join(
         TEST_BASE,
-        repo.url.split("/").pop()!.replace(/\.git$/, "")
+        repo.url
+          .split("/")
+          .pop()!
+          .replace(/\.git$/, "")
       );
       const originPath = path.join(projectDir, "origin");
       await fs.mkdir(projectDir, { recursive: true });
@@ -126,7 +128,12 @@ describe.sequential("RepositoryManager branch behavior (no fallbacks)", () => {
 
     const okWorktree = path.join(projectDir, "worktrees", "ok-branch");
     await fs.mkdir(path.dirname(okWorktree), { recursive: true });
-    await mgr.createWorktree(originPath, okWorktree, "cmux-ok", repo.defaultBranch);
+    await mgr.createWorktree(
+      originPath,
+      okWorktree,
+      "cmux-ok",
+      repo.defaultBranch
+    );
     // Worktree path directory should exist now
     const exists = await fs
       .access(okWorktree)
@@ -142,19 +149,16 @@ describe.sequential("RepositoryManager branch behavior (no fallbacks)", () => {
         "cmux-bad",
         "this-branch-should-not-exist"
       )
-    ).rejects.toThrow(/Base branch 'origin\/this-branch-should-not-exist' not found/i);
+    ).rejects.toThrow(
+      /Base branch 'origin\/this-branch-should-not-exist' not found/i
+    );
   }, 120_000);
 
-it("handles non-default 'main' branch for stack-auth and can create worktree from it", async () => {
-    // Skip in environments where shell/git cannot be invoked
-    try {
-      await exec("git --version");
-    } catch {
-      console.warn("Skipping 'stack-auth main' test: 'git --version' failed in this environment");
-      return;
-    }
+  it("handles non-default 'main' branch for stack-auth and can create worktree from it", async () => {
     const mgr = RepositoryManager.getInstance({ fetchDepth: 1 });
-    const repo = REPOS.find(r => r.url.includes("stack-auth/stack-auth.git"))!;
+    const repo = REPOS.find((r) =>
+      r.url.includes("stack-auth/stack-auth.git")
+    )!;
     const projectDir = path.join(TEST_BASE, "stack-auth-main-case");
     const originPath = path.join(projectDir, "origin");
     await fs.mkdir(projectDir, { recursive: true });
@@ -180,7 +184,10 @@ it("handles non-default 'main' branch for stack-auth and can create worktree fro
     for (const repo of REPOS) {
       const projectDir = path.join(
         TEST_BASE,
-        `default-branch-${repo.defaultBranch}-${repo.url.split("/").pop()!.replace(/\.git$/, "")}`
+        `default-branch-${repo.defaultBranch}-${repo.url
+          .split("/")
+          .pop()!
+          .replace(/\.git$/, "")}`
       );
       const originPath = path.join(projectDir, "origin");
       await fs.mkdir(projectDir, { recursive: true });
@@ -218,12 +225,16 @@ it("handles non-default 'main' branch for stack-auth and can create worktree fro
     await exec(`git commit -m A`, { cwd: dev1Path });
     await exec(`git remote add origin "${barePath}"`, { cwd: dev1Path });
     await exec(`git push -u origin main`, { cwd: dev1Path });
-    const { stdout: aShaOut } = await exec(`git rev-parse refs/heads/main`, { cwd: dev1Path });
+    const { stdout: aShaOut } = await exec(`git rev-parse refs/heads/main`, {
+      cwd: dev1Path,
+    });
     const aSha = aShaOut.trim();
 
     // Clone via RepositoryManager and land on A
     await mgr.ensureRepository(barePath, originPath, "main");
-    const { stdout: head1 } = await exec(`git rev-parse HEAD`, { cwd: originPath });
+    const { stdout: head1 } = await exec(`git rev-parse HEAD`, {
+      cwd: originPath,
+    });
     expect(head1.trim()).toBe(aSha);
 
     // Rewrite remote main to unrelated commit B
@@ -236,12 +247,16 @@ it("handles non-default 'main' branch for stack-auth and can create worktree fro
     await exec(`git commit -m B`, { cwd: dev2Path });
     await exec(`git remote add origin "${barePath}"`, { cwd: dev2Path });
     await exec(`git push -f origin main`, { cwd: dev2Path });
-    const { stdout: bShaOut } = await exec(`git rev-parse refs/heads/main`, { cwd: dev2Path });
+    const { stdout: bShaOut } = await exec(`git rev-parse refs/heads/main`, {
+      cwd: dev2Path,
+    });
     const bSha = bShaOut.trim();
 
     // Ensure again; previously this would fail on fetch non-FF; now we expect it to succeed
     await mgr.ensureRepository(barePath, originPath, "main");
-    const { stdout: head2 } = await exec(`git rev-parse HEAD`, { cwd: originPath });
+    const { stdout: head2 } = await exec(`git rev-parse HEAD`, {
+      cwd: originPath,
+    });
     expect(head2.trim()).toBe(bSha);
   }, 120_000);
 });
