@@ -764,6 +764,12 @@ async function main() {
     await executor.loadIgnoreFiles();
     await executor.connect();
     await executor.executeDockerfile(dockerfilePath);
+
+    // let user play around and tell them to press any key to continue
+    console.log("\nPress any key to snapshot...");
+    await new Promise((resolve) => process.stdin.once("data", resolve));
+    console.log("Snapshotting...");
+
     await executor.snapshot();
 
     console.log("\nBuild completed successfully!");
