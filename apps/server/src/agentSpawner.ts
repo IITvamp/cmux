@@ -629,7 +629,7 @@ export async function spawnAgent(
           const relativePath = path.relative(worktreePath, fileDiff.path);
 
           await convex.mutation(api.gitDiffs.upsertDiff, {
-            taskRunId: taskRunId as Id<"taskRuns">,
+            taskRunId,
             filePath: relativePath,
             status: fileDiff.type as "added" | "modified" | "deleted",
             additions: (fileDiff.patch.match(/^\+[^+]/gm) || []).length,
@@ -643,7 +643,7 @@ export async function spawnAgent(
 
         // Update the timestamp
         await convex.mutation(api.gitDiffs.updateDiffsTimestamp, {
-          taskRunId: taskRunId as Id<"taskRuns">,
+          taskRunId,
         });
 
         serverLogger.info(
