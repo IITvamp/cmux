@@ -628,10 +628,6 @@ export async function spawnAgent(
       if (s.includes("$CMUX_PROMPT")) {
         return `"${s.replace(/"/g, '\\"')}"`;
       }
-      // Special handling for notify command - DO NOT ESCAPE
-      if (s.startsWith("notify=")) {
-        return s;
-      }
       // Otherwise single-quote and escape any existing single quotes
       return `'${s.replace(/'/g, "'\\''")}'`;
     };
