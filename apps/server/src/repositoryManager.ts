@@ -64,6 +64,9 @@ export class RepositoryManager {
   }
 
   private getCacheKey(repoUrl: string, operation: string): string {
+    // Include the operation details (which may embed paths/branches) to avoid
+    // accidental cross-repo or cross-directory reuse. This method is kept for
+    // consistency should we later want to normalize keys.
     return `${repoUrl}:${operation}`;
   }
 
@@ -291,7 +294,10 @@ export class RepositoryManager {
     repoUrl: string,
     originPath: string
   ): Promise<void> {
-    const cloneKey = this.getCacheKey(repoUrl, "clone");
+    // Key the clone operation by both repo URL and destination path to avoid
+    // reusing a clone into a different directory, which can cause ENOENT when
+    // subsequent commands run in a non-existent cwd.
+    const cloneKey = this.getCacheKey(repoUrl, `clone:${originPath}`);
     const existingClone = this.operations.get(cloneKey);
 
     if (
@@ -316,7 +322,9 @@ export class RepositoryManager {
     originPath: string,
     branch: string
   ): Promise<void> {
-    const fetchKey = this.getCacheKey(repoUrl, `fetch:${branch}`);
+    // Similarly, key fetch operations by branch and destination path so that
+    // concurrent clones of the same repo in different origins don't conflict.
+    const fetchKey = this.getCacheKey(repoUrl, `fetch:${branch}:${originPath}`);
     const existingFetch = this.operations.get(fetchKey);
 
     if (
@@ -510,13 +518,14 @@ export class RepositoryManager {
     branch: string
   ): Promise<void> {
     try {
-      // Try to fetch the branch without specifying local name
+      // Fetch the specific branch and explicitly update the remote-tracking ref
+      // even if the clone was created with --single-branch.
       await this.executeGitCommand(
-        `git fetch --depth ${this.config.fetchDepth} origin ${branch}`,
+        `git fetch --depth ${this.config.fetchDepth} origin refs/heads/${branch}:refs/remotes/origin/${branch}`,
         { cwd: repoPath }
       );
 
-      // Checkout the branch
+      // Checkout the branch from the updated remote-tracking ref
       await this.executeGitCommand(
         `git checkout -B ${branch} origin/${branch}`,
         { cwd: repoPath }

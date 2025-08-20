@@ -3,6 +3,43 @@
 @source '../../../node_modules/@heroui/theme/dist/**/*.{js,ts,jsx,tsx}';
 @import "tw-animate-css";
 
+/* JetBrains Mono Font */
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/JetBrainsMono-Regular.woff2') format('woff2'),
+       url('/fonts/JetBrainsMono-Regular.woff') format('woff');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/JetBrainsMono-Bold.woff2') format('woff2'),
+       url('/fonts/JetBrainsMono-Bold.woff') format('woff');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/JetBrainsMono-Italic.woff2') format('woff2'),
+       url('/fonts/JetBrainsMono-Italic.woff') format('woff');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('/fonts/JetBrainsMono-BoldItalic.woff2') format('woff2'),
+       url('/fonts/JetBrainsMono-BoldItalic.woff') format('woff');
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+
 
 @custom-variant dark (&:where(.dark, .dark *));
 
@@ -225,6 +262,15 @@
   }
 }
 
+/* JetBrains Mono utility classes */
+.font-jetbrains-mono {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+code, pre, .font-mono {
+  font-family: 'JetBrains Mono', monospace;
+}
+
 /* Hide scrollbars while keeping scroll functional */
 .hide-scrollbar {
   -ms-overflow-style: none; /* IE and Edge */
@@ -325,11 +371,13 @@
 }
 
 .editor-text-code {
-  @apply bg-neutral-100 dark:bg-neutral-800 px-1 py-0.5 font-mono text-sm rounded;
+  @apply bg-neutral-100 dark:bg-neutral-800 px-1 py-0.5 text-sm rounded;
+  font-family: 'JetBrains Mono', monospace;
 }
 
 .editor-code {
-  @apply bg-neutral-100 dark:bg-neutral-800 font-mono block py-2 px-2 overflow-x-auto relative my-2 rounded text-sm;
+  @apply bg-neutral-100 dark:bg-neutral-800 block py-2 px-2 overflow-x-auto relative my-2 rounded text-sm;
+  font-family: 'JetBrains Mono', monospace;
   tab-size: 2;
 }
 

@@ -83,6 +83,30 @@ export function GitDiffViewer({
   onControlsChange,
 }: GitDiffViewerProps) {
   const { theme } = useTheme();
+  // Resolve the actual theme (handle "system" theme)
+  const [resolvedTheme, setResolvedTheme] = useState<"dark" | "light">(() => {
+    if (theme === "system") {
+      return window.matchMedia("(prefers-color-scheme: dark)").matches
+        ? "dark"
+        : "light";
+    }
+    return theme as "dark" | "light";
+  });
+
+  useEffect(() => {
+    if (theme === "system") {
+      const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+      const handleChange = () => {
+        setResolvedTheme(mediaQuery.matches ? "dark" : "light");
+      };
+      setResolvedTheme(mediaQuery.matches ? "dark" : "light");
+      mediaQuery.addEventListener("change", handleChange);
+      return () => mediaQuery.removeEventListener("change", handleChange);
+    } else {
+      setResolvedTheme(theme as "dark" | "light");
+    }
+  }, [theme]);
+
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
   const editorRefs = useRef<Record<string, editor.IStandaloneDiffEditor>>({});
   // Cache fetched contents per run+file to avoid cross-run flashes
@@ -257,7 +281,7 @@ export function GitDiffViewer({
             file={file}
             isExpanded={expandedFiles.has(file.filePath)}
             onToggle={() => toggleFile(file.filePath)}
-            theme={theme}
+            theme={resolvedTheme}
             calculateEditorHeight={calculateEditorHeight}
             setEditorRef={(ed) => {
               if (ed)
@@ -520,7 +544,7 @@ function FileDiffRow({
                   scrollBeyondLastLine: false,
                   fontSize: 12,
                   lineHeight: 18,
-                  fontFamily: "'SF Mono', Monaco, 'Courier New', monospace",
+                  fontFamily: "'JetBrains Mono', 'SF Mono', Monaco, 'Courier New', monospace",
                   wordWrap: "on",
                   automaticLayout: false,
                   renderOverviewRuler: false,
@@ -541,8 +565,8 @@ function FileDiffRow({
                   diffWordWrap: "on",
                   renderIndicators: true,
                   renderMarginRevertIcon: false,
-                  lineDecorationsWidth: 2,
-                  lineNumbersMinChars: 3,
+                  lineDecorationsWidth: 12,
+                  lineNumbersMinChars: 4,
                   glyphMargin: false,
                   folding: false,
                   contextmenu: false,

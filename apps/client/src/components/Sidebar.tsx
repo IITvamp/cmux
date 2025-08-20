@@ -4,7 +4,7 @@ import { useExpandTasks } from "@/contexts/expand-tasks/ExpandTasksContext";
 import { isElectron } from "@/lib/electron";
 import { type Doc } from "@cmux/convex/dataModel";
 import { Link } from "@tanstack/react-router";
-import { Plus, Terminal } from "lucide-react";
+import { Plus } from "lucide-react";
 import {
   type CSSProperties,
   useCallback,
@@ -12,7 +12,7 @@ import {
   useRef,
   useState,
 } from "react";
-import CmuxArrow from "./logo/cmux-arrow";
+import CmuxLogo from "./logo/cmux-logo";
 
 interface SidebarProps {
   tasks: Doc<"tasks">[] | undefined;
@@ -144,14 +144,8 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
           className="flex items-center gap-2 select-none cursor-pointer"
           style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
         >
-          <Terminal
-            className="h-4 w-4 text-neutral-600 dark:text-neutral-300"
-            aria-hidden="true"
-          />
-          <span className="text-sm font-mono text-neutral-900 dark:text-white">
-            cmux
-          </span>
-          <CmuxArrow size={16} title="cmux" />
+          {/* <Terminals */}
+          <CmuxLogo height={32} />
         </Link>
         <div className="grow"></div>
         <Link
