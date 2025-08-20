@@ -4,6 +4,7 @@ import {
   type SerializedEditorState,
 } from "lexical";
 
+import { editorStorage } from "@/lib/editorStorage";
 import { CodeNode } from "@lexical/code";
 import { AutoLinkNode, LinkNode } from "@lexical/link";
 import { ListItemNode, ListNode } from "@lexical/list";
@@ -23,7 +24,6 @@ import { HeadingNode, QuoteNode } from "@lexical/rich-text";
 import clsx from "clsx";
 import { COMMAND_PRIORITY_HIGH, KEY_ENTER_COMMAND } from "lexical";
 import { useEffect, useRef } from "react";
-import { editorStorage } from "@/lib/editorStorage";
 import { EditorStatePlugin } from "./EditorStatePlugin";
 import { ImageNode } from "./ImageNode";
 import { ImagePlugin } from "./ImagePlugin";
@@ -160,30 +160,35 @@ function LocalStoragePersistencePlugin({
   // Generate a unique ID for each image
   const generateImageId = (src: string): string => {
     // Use a hash of the first part of the image data as ID
-    const hash = src.slice(0, 100).split('').reduce((a, b) => {
-      const h = ((a << 5) - a) + b.charCodeAt(0);
-      return h & h;
-    }, 0);
+    const hash = src
+      .slice(0, 100)
+      .split("")
+      .reduce((a, b) => {
+        const h = (a << 5) - a + b.charCodeAt(0);
+        return h & h;
+      }, 0);
     return `img_${Math.abs(hash)}_${Date.now()}`;
   };
 
   // Extract images and replace with IDs
-  const extractImages = async (state: SerializedEditorState): Promise<{
+  const extractImages = async (
+    state: SerializedEditorState
+  ): Promise<{
     cleanState: SerializedEditorState;
     imageMap: Array<{ id: string; src: string }>;
     activeImageIds: Set<string>;
   }> => {
     const imageMap: Array<{ id: string; src: string }> = [];
     const activeImageIds = new Set<string>();
-    
+
     const processNode = (node: any): any => {
-      if (node.type === 'image' && node.src) {
+      if (node.type === "image" && node.src) {
         // If it's a base64 image, store it in IndexedDB
-        if (node.src.startsWith('data:')) {
+        if (node.src.startsWith("data:")) {
           const imageId = node.imageId || generateImageId(node.src);
           imageMap.push({ id: imageId, src: node.src });
           activeImageIds.add(imageId);
-          
+
           return {
             ...node,
             src: undefined, // Remove the large src
@@ -191,47 +196,49 @@ function LocalStoragePersistencePlugin({
           };
         }
       }
-      
+
       if (node.children && Array.isArray(node.children)) {
         return {
           ...node,
-          children: node.children.map(processNode)
+          children: node.children.map(processNode),
         };
       }
-      
+
       return node;
     };
 
     const cleanState = {
       ...state,
-      root: processNode(state.root)
+      root: processNode(state.root),
     };
 
     return { cleanState, imageMap, activeImageIds };
   };
 
   // Restore images from IDs
-  const restoreImages = async (state: SerializedEditorState): Promise<SerializedEditorState> => {
+  const restoreImages = async (
+    state: SerializedEditorState
+  ): Promise<SerializedEditorState> => {
     const imageIds: string[] = [];
-    
+
     // Collect all image IDs
     const collectImageIds = (node: any): void => {
-      if (node.type === 'image' && node.imageId && !node.src) {
+      if (node.type === "image" && node.imageId && !node.src) {
         imageIds.push(node.imageId);
       }
       if (node.children && Array.isArray(node.children)) {
         node.children.forEach(collectImageIds);
       }
     };
-    
+
     collectImageIds(state.root);
-    
+
     // Fetch all images from IndexedDB
     const imageMap = await editorStorage.getImages(imageIds);
-    
+
     // Restore images in the state
     const processNode = (node: any): any => {
-      if (node.type === 'image' && node.imageId && !node.src) {
+      if (node.type === "image" && node.imageId && !node.src) {
         const src = imageMap.get(node.imageId);
         if (src) {
           return {
@@ -240,20 +247,20 @@ function LocalStoragePersistencePlugin({
           };
         }
       }
-      
+
       if (node.children && Array.isArray(node.children)) {
         return {
           ...node,
-          children: node.children.map(processNode)
+          children: node.children.map(processNode),
         };
       }
-      
+
       return node;
     };
 
     return {
       ...state,
-      root: processNode(state.root)
+      root: processNode(state.root),
     };
   };
 
@@ -262,10 +269,10 @@ function LocalStoragePersistencePlugin({
     if (!persistenceKey || !isFirstRender.current) return;
 
     isFirstRender.current = false;
-    
+
     const loadState = async () => {
       const savedState = localStorage.getItem(persistenceKey);
-      
+
       if (savedState) {
         try {
           const parsedState = JSON.parse(savedState) as SerializedEditorState;
@@ -280,7 +287,7 @@ function LocalStoragePersistencePlugin({
         }
       }
     };
-    
+
     loadState();
   }, [editor, persistenceKey]);
 
@@ -305,22 +312,26 @@ function LocalStoragePersistencePlugin({
         if (latestStateRef.current) {
           try {
             // Extract images and get clean state
-            const { cleanState, imageMap, activeImageIds } = await extractImages(latestStateRef.current);
-            
+            const { cleanState, imageMap, activeImageIds } =
+              await extractImages(latestStateRef.current);
+
             // Save images to IndexedDB
             if (imageMap.length > 0) {
               await editorStorage.saveImages(imageMap);
             }
-            
+
             // Clean up orphaned images that are no longer in the editor
             await editorStorage.cleanupOrphanedImages(activeImageIds);
-            
+
             // Save clean state to localStorage
             const serialized = JSON.stringify(cleanState);
             localStorage.setItem(persistenceKey, serialized);
           } catch (error) {
-            console.error('Failed to save editor state:', error);
-            if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+            console.error("Failed to save editor state:", error);
+            if (
+              error instanceof DOMException &&
+              error.name === "QuotaExceededError"
+            ) {
               localStorage.removeItem(persistenceKey);
             }
           }
@@ -334,33 +345,35 @@ function LocalStoragePersistencePlugin({
       if (debounceTimer.current) {
         clearTimeout(debounceTimer.current);
       }
-      
+
       // Save the latest state immediately
       if (latestStateRef.current) {
         try {
-          const { cleanState, imageMap, activeImageIds } = await extractImages(latestStateRef.current);
-          
+          const { cleanState, imageMap, activeImageIds } = await extractImages(
+            latestStateRef.current
+          );
+
           // Save images to IndexedDB
           if (imageMap.length > 0) {
             await editorStorage.saveImages(imageMap);
           }
-          
+
           // Clean up orphaned images
           await editorStorage.cleanupOrphanedImages(activeImageIds);
-          
+
           // Save clean state to localStorage
           localStorage.setItem(persistenceKey, JSON.stringify(cleanState));
         } catch (error) {
-          console.error('Failed to save editor state on unload:', error);
+          console.error("Failed to save editor state on unload:", error);
         }
       }
     };
 
-    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener("beforeunload", handleBeforeUnload);
 
     return () => {
       unregister();
-      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
       if (debounceTimer.current) {
         clearTimeout(debounceTimer.current);
       }
@@ -473,6 +486,7 @@ export default function LexicalEditor({
                   {placeholder}
                 </div>
               }
+              data-cmux-input="true"
             />
           }
           ErrorBoundary={LexicalErrorBoundary}

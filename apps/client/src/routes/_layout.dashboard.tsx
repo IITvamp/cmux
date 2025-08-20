@@ -385,13 +385,16 @@ function DashboardComponent() {
   // Global keydown handler for autofocus
   useEffect(() => {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
-      // Skip if already focused on an input, textarea, or contenteditable
+      // Skip if already focused on an input, textarea, or contenteditable that's NOT the editor
       const activeElement = document.activeElement;
+      const isEditor =
+        activeElement?.getAttribute("data-cmux-input") === "true";
       if (
-        activeElement?.tagName === "INPUT" ||
-        activeElement?.tagName === "TEXTAREA" ||
-        activeElement?.getAttribute("contenteditable") === "true" ||
-        activeElement?.closest('[contenteditable="true"]')
+        !isEditor &&
+        (activeElement?.tagName === "INPUT" ||
+          activeElement?.tagName === "TEXTAREA" ||
+          activeElement?.getAttribute("contenteditable") === "true" ||
+          activeElement?.closest('[contenteditable="true"]'))
       ) {
         return;
       }
