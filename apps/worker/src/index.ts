@@ -1236,7 +1236,6 @@ async function createTerminal(
           agentType: providerResolved!,
           agentModel: options.agentModel,
           workingDir: cwd,
-          checkIntervalMs: 5000,
           maxRuntimeMs: 20 * 60 * 1000,
           minRuntimeMs: 30000,
         }, buildDetectorConfig({
@@ -1502,7 +1501,6 @@ interface TaskCompletionOptionsDI {
   agentType: AgentType;
   agentModel?: string;
   workingDir: string;
-  checkIntervalMs?: number;
   maxRuntimeMs?: number;
   minRuntimeMs?: number;
 }
@@ -1519,13 +1517,11 @@ interface DetectorDeps {
 }
 
 class TaskCompletionDetectorDI extends EventEmitter {
-  private checkInterval: NodeJS.Timeout | null = null;
   private startTime: number;
   private isRunning = false;
   constructor(private options: TaskCompletionOptionsDI, private deps: DetectorDeps) {
     super();
     this.startTime = Date.now();
-    this.options.checkIntervalMs = this.options.checkIntervalMs || 5000;
     this.options.maxRuntimeMs = this.options.maxRuntimeMs || 20 * 60 * 1000;
     this.options.minRuntimeMs = this.options.minRuntimeMs || 30000;
   }
@@ -1533,38 +1529,192 @@ class TaskCompletionDetectorDI extends EventEmitter {
     if (this.isRunning) return;
     this.isRunning = true;
     log("INFO", `TaskCompletionDetector started for ${this.options.agentType} task ${this.options.taskRunId}`);
-    this.checkInterval = setInterval(async () => {
-      try {
-        // Don't consider too early
-        if (Date.now() - this.startTime < this.options.minRuntimeMs!) return;
-        const done = await this.deps.checkCompletion({ startTime: this.startTime, options: this.options });
-        if (done) {
-          this.stop();
-          this.emit("task-complete", {
-            taskRunId: this.options.taskRunId,
-            agentType: this.options.agentType,
-            elapsedMs: Date.now() - this.startTime,
-          });
-          return;
-        }
-        if (Date.now() - this.startTime > this.options.maxRuntimeMs!) {
-          this.stop();
-          this.emit("task-timeout", {
-            taskRunId: this.options.taskRunId,
-            agentType: this.options.agentType,
-            elapsedMs: Date.now() - this.startTime,
-          });
-        }
-      } catch (err) {
-        log("ERROR", `Error in completion loop: ${err}`);
+    
+    // Set up file watchers based on agent type
+    if (this.options.agentType === "claude") {
+      // Watch for Claude stop hook marker file
+      this.watchClaudeMarkerFile();
+    } else if (this.options.agentType === "codex") {
+      // Watch for Codex completion files
+      this.watchCodexCompletionFiles();
+    } else if (this.options.agentType === "opencode") {
+      // OpenCode completion is handled via stdout parsing in createTerminal
+      // But also set up file watching as well
+      this.watchOpenCodeFiles();
+    }
+  }
+  
+  private async watchClaudeMarkerFile(): Promise<void> {
+    const markerPath = `/root/lifecycle/claude-complete-${this.options.taskRunId}`;
+    const { watch } = await import("node:fs");
+    const { access } = await import("node:fs/promises");
+    
+    // Check if file already exists
+    try {
+      await access(markerPath);
+      this.handleCompletion();
+      return;
+    } catch {
+      // File doesn't exist yet, set up watcher
+    }
+    
+    // Watch the directory for the marker file
+    const watcher = watch("/root/lifecycle", (eventType, filename) => {
+      if (filename === `claude-complete-${this.options.taskRunId}`) {
+        log("INFO", `Claude stop hook marker detected: ${markerPath}`);
+        watcher.close();
+        this.handleCompletion();
       }
-    }, this.options.checkIntervalMs);
+    });
+  }
+  
+  private async watchCodexCompletionFiles(): Promise<void> {
+    const { watch } = await import("node:fs");
+    const { existsSync } = await import("node:fs");
+    const { homedir } = await import("node:os");
+    const { checkCodexNotifyFileCompletion, checkCodexCompletionSince } = await getCodexHelpers();
+    
+    const watchers: any[] = [];
+    
+    // Set up check function for Codex completion
+    const checkCodexCompletion = async () => {
+      try {
+        // Check notify file first
+        const notifyDone = await checkCodexNotifyFileCompletion(this.options.workingDir, this.startTime);
+        if (notifyDone) {
+          log("INFO", "Codex completion detected via notify file");
+          this.handleCompletion();
+          // Close all watchers
+          watchers.forEach(w => w.close());
+          return true;
+        }
+        
+        // Check other Codex completion indicators
+        const res = await checkCodexCompletionSince(this.startTime);
+        if (res.isComplete) {
+          log("INFO", "Codex completion detected via completion log");
+          this.handleCompletion();
+          // Close all watchers
+          watchers.forEach(w => w.close());
+          return true;
+        }
+        
+        return false;
+      } catch (e) {
+        log("ERROR", `Error checking Codex completion: ${e}`);
+        return false;
+      }
+    };
+    
+    // Check immediately
+    const done = await checkCodexCompletion();
+    if (done) return;
+    
+    // Watch for changes to the notify file in working directory
+    if (existsSync(this.options.workingDir)) {
+      const watcher = watch(this.options.workingDir, async (eventType, filename) => {
+        if (filename === "codex-turns.jsonl") {
+          await checkCodexCompletion();
+        }
+      });
+      watchers.push(watcher);
+    }
+    
+    // Also watch Codex log and rollout directories
+    const home = homedir();
+    const codexLogDir = `${home}/.codex/log`;
+    const codexRolloutDir = `${home}/.codex/rollout`;
+    
+    if (existsSync(codexLogDir)) {
+      const logWatcher = watch(codexLogDir, async (eventType, filename) => {
+        if (filename && (filename.includes('tui') || filename.includes('completion'))) {
+          await checkCodexCompletion();
+        }
+      });
+      watchers.push(logWatcher);
+    }
+    
+    if (existsSync(codexRolloutDir)) {
+      const rolloutWatcher = watch(codexRolloutDir, { recursive: true }, async (eventType, filename) => {
+        if (filename && filename.endsWith('.jsonl')) {
+          await checkCodexCompletion();
+        }
+      });
+      watchers.push(rolloutWatcher);
+    }
+  }
+  
+  private async watchOpenCodeFiles(): Promise<void> {
+    const { watch } = await import("node:fs");
+    const { existsSync } = await import("node:fs");
+    const { homedir } = await import("node:os");
+    
+    // Import OpenCode completion detector
+    const getOpenCodeHelpers = async () => {
+      const module = await import("@cmux/shared/src/providers/opencode/completion-detector.ts");
+      return {
+        checkOpencodeCompletionSince: module.checkOpencodeCompletionSince,
+      };
+    };
+    
+    const { checkOpencodeCompletionSince } = await getOpenCodeHelpers();
+    
+    // Set up a check function for OpenCode completion
+    const checkOpenCodeCompletion = async () => {
+      try {
+        const done = await checkOpencodeCompletionSince(this.startTime, this.options.workingDir);
+        if (done) {
+          log("INFO", "OpenCode completion detected via session/log files");
+          this.handleCompletion();
+          return true;
+        }
+        return false;
+      } catch (e) {
+        log("ERROR", `Error checking OpenCode completion: ${e}`);
+        return false;
+      }
+    };
+    
+    // Check immediately
+    const done = await checkOpenCodeCompletion();
+    if (done) return;
+    
+    // Watch OpenCode storage directories for changes
+    const home = homedir();
+    const watchPaths = [
+      `${home}/.local/share/opencode`,
+      `${home}/.config/opencode`,
+      `${home}/.opencode`,
+    ];
+    
+    const watchers: any[] = [];
+    for (const watchPath of watchPaths) {
+      if (existsSync(watchPath)) {
+        const watcher = watch(watchPath, { recursive: true }, async (eventType, filename) => {
+          // Check on any change in OpenCode directories
+          if (filename && (filename.includes('session') || filename.includes('log'))) {
+            const completed = await checkOpenCodeCompletion();
+            if (completed) {
+              // Close all watchers
+              watchers.forEach(w => w.close());
+            }
+          }
+        });
+        watchers.push(watcher);
+      }
+    }
+  }
+  
+  private handleCompletion(): void {
+    if (!this.isRunning) return;
+    this.stop();
+    this.emit("task-complete", {
+      taskRunId: this.options.taskRunId,
+      agentType: this.options.agentType,
+      elapsedMs: Date.now() - this.startTime,
+    });
   }
   stop(): void {
-    if (this.checkInterval) {
-      clearInterval(this.checkInterval);
-      this.checkInterval = null;
-    }
     this.isRunning = false;
   }
 }

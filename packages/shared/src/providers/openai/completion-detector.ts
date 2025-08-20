@@ -411,79 +411,13 @@ export async function checkCodexCompletionSince(
   return { isComplete, sessionId, rolloutPath, latestPlan };
 }
 
-export interface CodexCompletionMonitorOptions {
-  sinceEpochMs: number;
-  checkIntervalMs?: number;
-  maxRuntimeMs?: number;
-  minRuntimeMs?: number;
-  onComplete?: (data: {
-    sessionId: string;
-    rolloutPath: string;
-    latestPlan?: PlanItemArg[];
-  }) => void | Promise<void>;
-  onError?: (error: Error) => void;
-}
-
-/**
- * Monitor Codex for completion based on ~/.codex logs and rollout JSONL.
- */
-export function monitorCodexCompletion(
-  options: CodexCompletionMonitorOptions
-): () => void {
-  const {
-    sinceEpochMs,
-    checkIntervalMs = 5000,
-    maxRuntimeMs = 20 * 60 * 1000,
-    minRuntimeMs = 30000,
-    onComplete,
-    onError,
-  } = options;
-
-  const start = Date.now();
-  let intervalId: NodeJS.Timeout | null = null;
-  let stopped = false;
-
-  const tick = async () => {
-    if (stopped) return;
-    try {
-      const elapsed = Date.now() - start;
-      if (elapsed < minRuntimeMs) return;
-      if (elapsed > maxRuntimeMs) {
-        stop();
-        if (onError) onError(new Error(`Codex session exceeded max runtime of ${maxRuntimeMs}ms`));
-        return;
-      }
-      const res = await checkCodexCompletionSince(sinceEpochMs);
-      if (res.isComplete && res.sessionId && res.rolloutPath) {
-        stop();
-        if (onComplete) await onComplete({
-          sessionId: res.sessionId,
-          rolloutPath: res.rolloutPath,
-          latestPlan: res.latestPlan,
-        });
-      }
-    } catch (err) {
-      if (onError) onError(err instanceof Error ? err : new Error(String(err)));
-    }
-  };
-
-  intervalId = setInterval(tick, checkIntervalMs);
-  setTimeout(tick, minRuntimeMs);
-
-  const stop = () => {
-    stopped = true;
-    if (intervalId) clearInterval(intervalId);
-    intervalId = null;
-  };
-  return stop;
-}
+// Removed polling-based monitor function and interface - we use event-driven detection instead
 
 export default {
   getLatestCodexSessionIdSince,
   findCodexRolloutPathForSession,
   checkCodexRolloutCompletion,
   checkCodexCompletionSince,
-  monitorCodexCompletion,
   didLatestSessionCompleteInTuiLog,
   checkCodexNotifyFileCompletion,
 };

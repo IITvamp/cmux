@@ -10,7 +10,6 @@ export const getClaudeCompletionDetector = async () => {
   const module = await import("./providers/anthropic/completion-detector.js");
   return {
     checkClaudeStopHookCompletion: module.checkClaudeStopHookCompletion,
-    checkClaudeProjectFileCompletion: module.checkClaudeProjectFileCompletion,
   };
 };
 

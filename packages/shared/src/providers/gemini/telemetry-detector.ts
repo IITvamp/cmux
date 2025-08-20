@@ -385,12 +385,6 @@ export function monitorGeminiTelemetry(options: {
     }
   };
   
-  // Start checking after minimum runtime
-  setTimeout(() => {
-    checkCompletion();
-    intervalId = setInterval(checkCompletion, checkIntervalMs);
-  }, minRuntimeMs);
-  
   const stop = () => {
     stopped = true;
     if (intervalId) {

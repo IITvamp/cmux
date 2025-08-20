@@ -160,7 +160,7 @@ export abstract class VSCodeInstance extends EventEmitter {
       this.workerSocket.on("worker:file-changes", (data) => {
         dockerLogger.info(
           `[VSCodeInstance ${this.instanceId}] File changes detected:`,
-          { taskId: data.taskId, changeCount: data.changes.length }
+          { taskId: data.taskRunId, changeCount: data.changes.length }
         );
         this.emit("file-changes", data);
       });
@@ -191,7 +191,7 @@ export abstract class VSCodeInstance extends EventEmitter {
         `[VSCodeInstance ${this.instanceId}] Starting file watch for ${worktreePath} -> ${containerWorkspace}`
       );
       this.workerSocket.emit("worker:start-file-watch", {
-        taskId: this.taskId,
+        taskRunId: this.taskRunId,
         worktreePath: containerWorkspace,
       });
     } else {
@@ -207,7 +207,7 @@ export abstract class VSCodeInstance extends EventEmitter {
         `[VSCodeInstance ${this.instanceId}] Stopping file watch`
       );
       this.workerSocket.emit("worker:stop-file-watch", {
-        taskId: this.taskId,
+        taskRunId: this.taskRunId,
       });
     }
   }

@@ -188,12 +188,8 @@ async function main() {
     }
   });
 
-  // Also poll as a fallback (some environments miss fs.watch events)
-  const interval = setInterval(onChange, 500);
-
   const cleanup = () => {
     try { watcher.close(); } catch {}
-    clearInterval(interval);
   };
   process.on('SIGINT', () => { cleanup(); process.exit(130); });
   process.on('SIGTERM', () => { cleanup(); process.exit(143); });
