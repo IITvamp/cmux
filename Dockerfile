@@ -288,7 +288,7 @@ RUN chmod +x /startup.sh /usr/local/bin/prompt-wrapper
 # 39376: VS Code Extension Socket Server
 # 39377: Worker service
 # 39378: OpenVSCode server
-EXPOSE 39376 39377 39378 39379
+EXPOSE 39376 39377 39378
 
 WORKDIR /
 
