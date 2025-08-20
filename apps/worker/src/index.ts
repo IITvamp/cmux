@@ -1194,12 +1194,11 @@ async function createTerminal(
 
     // Use new task completion detection if agentModel is provided
     if (options.agentModel && options.taskRunId) {
-      // For Claude, Codex, Gemini, and OpenCode use project/log file detection (no terminal idle fallback)
+      // For Claude, Codex, and Gemini use project/log detection only; allow idle fallback for OpenCode
       const useTerminalIdleFallback = !(
         providerResolved === "claude" ||
         providerResolved === "codex" ||
-        providerResolved === "gemini" ||
-        providerResolved === "opencode"
+        providerResolved === "gemini"
       );
       
       log("INFO", `Setting up task completion detection for ${options.agentModel}`, {
