@@ -347,6 +347,19 @@ class MorphDockerfileExecutor {
     return httpServices;
   }
 
+  async setWakeOn({
+    wakeOnSsh,
+    wakeOnHttp,
+  }: {
+    wakeOnSsh: boolean;
+    wakeOnHttp: boolean;
+  }): Promise<void> {
+    if (!this.instance) {
+      throw new Error("Instance not found");
+    }
+    await this.instance.setWakeOn(wakeOnSsh, wakeOnHttp);
+  }
+
   async snapshot(): Promise<void> {
     if (!this.instance) {
       throw new Error("Instance not found");
@@ -773,7 +786,9 @@ async function main() {
     await executor.connect();
     await executor.executeDockerfile(dockerfilePath);
 
-    // grab all the ports
+    console.log("Setting wake on");
+    await executor.setWakeOn({ wakeOnSsh: false, wakeOnHttp: true });
+
     const httpServices = await executor.getHttpServices();
     console.log("httpServices", httpServices);
 
