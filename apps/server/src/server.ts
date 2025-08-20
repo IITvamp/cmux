@@ -185,13 +185,15 @@ export async function startServer({
         });
 
         // Check if at least one agent spawned successfully
-        const successfulAgents = agentResults.filter(
-          (result) => result.success
-        );
+        const successfulAgents = agentResults.filter((result) => result.success);
         if (successfulAgents.length === 0) {
+          const errors = agentResults
+            .filter((r) => !r.success)
+            .map((r) => `${r.agentName}: ${r.error || "Unknown error"}`)
+            .join("; ");
           callback({
             taskId,
-            error: "Failed to spawn any agents",
+            error: errors || "Failed to spawn any agents",
           });
           return;
         }

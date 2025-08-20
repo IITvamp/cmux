@@ -20,6 +20,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useMutation } from "convex/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/_layout/dashboard")({
   component: DashboardComponent,
@@ -168,7 +169,8 @@ function DashboardComponent() {
       return;
     }
 
-    const branch = selectedBranch[0] || "main";
+    // Use the effective selected branch (respects available branches and sensible defaults)
+    const branch = effectiveSelectedBranch[0];
     const projectFullName = selectedProject[0];
     if (!projectFullName) {
       console.error("Please select a project");
@@ -253,6 +255,7 @@ function DashboardComponent() {
         (response) => {
           if ("error" in response) {
             console.error("Task start error:", response.error);
+            toast.error(`Task start error: ${response.error}`);
           } else {
             console.log("Task started:", response);
           }

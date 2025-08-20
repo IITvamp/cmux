@@ -106,6 +106,8 @@ export class RepositoryManager {
     this.isProcessingQueue = false;
   }
 
+  // Note: Keep all git invocations using executeGitCommand with a shell, as some CI envs lack direct execFile PATH resolution.
+
   private async executeGitCommand(
     command: string,
     options?: GitCommandOptions
@@ -119,7 +121,10 @@ export class RepositoryManager {
     if (needsQueue) {
       return this.queueOperation(async () => {
         try {
-          const result = await execAsync(command, options);
+          const result = await execAsync(command, {
+            shell: process.platform === "win32" ? "cmd.exe" : "/bin/sh",
+            ...options,
+          });
           return {
             stdout: result.stdout.toString(),
             stderr: result.stderr.toString(),
@@ -140,7 +145,10 @@ export class RepositoryManager {
 
     // Non-conflicting commands can run immediately
     try {
-      const result = await execAsync(command, options);
+      const result = await execAsync(command, {
+        shell: process.platform === "win32" ? "cmd.exe" : "/bin/sh",
+        ...options,
+      });
       return {
         stdout: result.stdout.toString(),
         stderr: result.stderr.toString(),
@@ -419,24 +427,18 @@ export class RepositoryManager {
   ): Promise<void> {
     serverLogger.info(`Fetching and checking out branch ${branch}...`);
     try {
-      const currentBranch = await this.getCurrentBranch(originPath);
-
-      if (currentBranch === branch) {
-        // Already on the requested branch, just pull latest
-        serverLogger.info(`Already on branch ${branch}, pulling latest changes...`);
-        await this.pullLatestChanges(originPath, branch);
-      } else {
-        // Fetch and checkout different branch
-        await this.switchToBranch(originPath, branch);
-      }
-
+      // Always fetch and checkout explicitly to reduce reliance on shell availability for rev-parse
+      await this.switchToBranch(originPath, branch);
+      // Then pull latest changes for safety (fast and idempotent)
+      await this.pullLatestChanges(originPath, branch);
       serverLogger.info(`Successfully on branch ${branch}`);
     } catch (error) {
-      serverLogger.warn(
-        `Failed to fetch/checkout branch ${branch}, falling back to current branch:`,
+      serverLogger.error(
+        `Failed to fetch/checkout branch ${branch}:`,
         error
       );
-      // Don't throw - we'll use whatever branch is currently checked out
+      // Propagate error so callers can surface it to users
+      throw error;
     }
   }
 
@@ -457,14 +459,8 @@ export class RepositoryManager {
         { cwd: repoPath }
       );
     } catch (error) {
-      // If branch doesn't exist remotely, try just checking out locally
-      if (error instanceof Error && error.message.includes("not found")) {
-        await this.executeGitCommand(`git checkout ${branch}`, {
-          cwd: repoPath,
-        });
-      } else {
-        throw error;
-      }
+      // No local fallback: branch must exist on remote
+      throw error;
     }
   }
 
@@ -510,6 +506,20 @@ export class RepositoryManager {
     } catch (error) {
       if (error instanceof Error && error.message.includes("already exists")) {
         throw new Error(`Worktree already exists at ${worktreePath}`);
+      }
+      // Provide a clearer error message when the base branch does not exist
+      if (error instanceof Error) {
+        const msg = error.message.toLowerCase();
+        if (
+          msg.includes("invalid reference") ||
+          msg.includes("couldn't find remote ref") ||
+          msg.includes("not a valid object name") ||
+          msg.includes("fatal: invalid reference")
+        ) {
+        throw new Error(
+          `Base branch 'origin/${baseBranch}' not found. Please select an existing branch.`
+        );
+        }
       }
       throw error;
     } finally {
