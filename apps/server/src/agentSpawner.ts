@@ -622,10 +622,11 @@ export async function spawnAgent(
     const actualCommand = agent.command;
     const actualArgs = processedArgs;
 
-    // Build a shell command string so $CMUX_PROMPT expands inside tmux session
+    // Build a shell command string so CMUX env vars expand inside tmux session
     const shellEscaped = (s: string) => {
-      // If this arg references $CMUX_PROMPT, wrap in double quotes to allow expansion
-      if (s.includes("$CMUX_PROMPT")) {
+      // If this arg references any CMUX env var (e.g., $CMUX_PROMPT, $CMUX_TASK_RUN_ID),
+      // wrap in double quotes to allow shell expansion.
+      if (s.includes("$CMUX_")) {
         return `"${s.replace(/"/g, '\\"')}"`;
       }
       // Otherwise single-quote and escape any existing single quotes
