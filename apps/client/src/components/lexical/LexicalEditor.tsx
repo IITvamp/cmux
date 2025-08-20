@@ -23,6 +23,7 @@ import { HeadingNode, QuoteNode } from "@lexical/rich-text";
 import clsx from "clsx";
 import { COMMAND_PRIORITY_HIGH, KEY_ENTER_COMMAND } from "lexical";
 import { useEffect, useRef } from "react";
+import { editorStorage } from "@/lib/editorStorage";
 import { EditorStatePlugin } from "./EditorStatePlugin";
 import { ImageNode } from "./ImageNode";
 import { ImagePlugin } from "./ImagePlugin";
@@ -142,7 +143,7 @@ function ClearEditorPlugin({ value }: { value?: string }) {
   return null;
 }
 
-// Plugin to persist editor state to localStorage
+// Plugin to persist editor state to localStorage + IndexedDB
 function LocalStoragePersistencePlugin({
   persistenceKey,
   clearOnSubmit,
@@ -156,25 +157,134 @@ function LocalStoragePersistencePlugin({
     undefined
   );
 
-  // Load initial state from localStorage
+  // Generate a unique ID for each image
+  const generateImageId = (src: string): string => {
+    // Use a hash of the first part of the image data as ID
+    const hash = src.slice(0, 100).split('').reduce((a, b) => {
+      const h = ((a << 5) - a) + b.charCodeAt(0);
+      return h & h;
+    }, 0);
+    return `img_${Math.abs(hash)}_${Date.now()}`;
+  };
+
+  // Extract images and replace with IDs
+  const extractImages = async (state: SerializedEditorState): Promise<{
+    cleanState: SerializedEditorState;
+    imageMap: Array<{ id: string; src: string }>;
+    activeImageIds: Set<string>;
+  }> => {
+    const imageMap: Array<{ id: string; src: string }> = [];
+    const activeImageIds = new Set<string>();
+    
+    const processNode = (node: any): any => {
+      if (node.type === 'image' && node.src) {
+        // If it's a base64 image, store it in IndexedDB
+        if (node.src.startsWith('data:')) {
+          const imageId = node.imageId || generateImageId(node.src);
+          imageMap.push({ id: imageId, src: node.src });
+          activeImageIds.add(imageId);
+          
+          return {
+            ...node,
+            src: undefined, // Remove the large src
+            imageId, // Store just the ID
+          };
+        }
+      }
+      
+      if (node.children && Array.isArray(node.children)) {
+        return {
+          ...node,
+          children: node.children.map(processNode)
+        };
+      }
+      
+      return node;
+    };
+
+    const cleanState = {
+      ...state,
+      root: processNode(state.root)
+    };
+
+    return { cleanState, imageMap, activeImageIds };
+  };
+
+  // Restore images from IDs
+  const restoreImages = async (state: SerializedEditorState): Promise<SerializedEditorState> => {
+    const imageIds: string[] = [];
+    
+    // Collect all image IDs
+    const collectImageIds = (node: any): void => {
+      if (node.type === 'image' && node.imageId && !node.src) {
+        imageIds.push(node.imageId);
+      }
+      if (node.children && Array.isArray(node.children)) {
+        node.children.forEach(collectImageIds);
+      }
+    };
+    
+    collectImageIds(state.root);
+    
+    // Fetch all images from IndexedDB
+    const imageMap = await editorStorage.getImages(imageIds);
+    
+    // Restore images in the state
+    const processNode = (node: any): any => {
+      if (node.type === 'image' && node.imageId && !node.src) {
+        const src = imageMap.get(node.imageId);
+        if (src) {
+          return {
+            ...node,
+            src,
+          };
+        }
+      }
+      
+      if (node.children && Array.isArray(node.children)) {
+        return {
+          ...node,
+          children: node.children.map(processNode)
+        };
+      }
+      
+      return node;
+    };
+
+    return {
+      ...state,
+      root: processNode(state.root)
+    };
+  };
+
+  // Load initial state from localStorage + IndexedDB
   useEffect(() => {
     if (!persistenceKey || !isFirstRender.current) return;
 
     isFirstRender.current = false;
-    const savedState = localStorage.getItem(persistenceKey);
-
-    if (savedState) {
-      try {
-        const parsedState = JSON.parse(savedState) as SerializedEditorState;
-        const editorState = editor.parseEditorState(parsedState);
-        editor.setEditorState(editorState);
-      } catch (error) {
-        console.error("Failed to restore editor state:", error);
+    
+    const loadState = async () => {
+      const savedState = localStorage.getItem(persistenceKey);
+      
+      if (savedState) {
+        try {
+          const parsedState = JSON.parse(savedState) as SerializedEditorState;
+          // Restore images from IndexedDB
+          const restoredState = await restoreImages(parsedState);
+          const editorState = editor.parseEditorState(restoredState);
+          editor.setEditorState(editorState);
+        } catch (error) {
+          console.error("Failed to restore editor state:", error);
+          // Clear corrupted state
+          localStorage.removeItem(persistenceKey);
+        }
       }
-    }
+    };
+    
+    loadState();
   }, [editor, persistenceKey]);
 
-  // Save state to localStorage on changes
+  // Save state to localStorage + IndexedDB on changes
   useEffect(() => {
     if (!persistenceKey) return;
 
@@ -191,15 +301,35 @@ function LocalStoragePersistencePlugin({
       }
 
       // Set new timer for debounced save
-      debounceTimer.current = setTimeout(() => {
+      debounceTimer.current = setTimeout(async () => {
         if (latestStateRef.current) {
-          localStorage.setItem(persistenceKey, JSON.stringify(latestStateRef.current));
+          try {
+            // Extract images and get clean state
+            const { cleanState, imageMap, activeImageIds } = await extractImages(latestStateRef.current);
+            
+            // Save images to IndexedDB
+            if (imageMap.length > 0) {
+              await editorStorage.saveImages(imageMap);
+            }
+            
+            // Clean up orphaned images that are no longer in the editor
+            await editorStorage.cleanupOrphanedImages(activeImageIds);
+            
+            // Save clean state to localStorage
+            const serialized = JSON.stringify(cleanState);
+            localStorage.setItem(persistenceKey, serialized);
+          } catch (error) {
+            console.error('Failed to save editor state:', error);
+            if (error instanceof DOMException && error.name === 'QuotaExceededError') {
+              localStorage.removeItem(persistenceKey);
+            }
+          }
         }
       }, 500); // 500ms debounce
     });
 
     // Save immediately before page unload
-    const handleBeforeUnload = () => {
+    const handleBeforeUnload = async () => {
       // Cancel any pending debounced save
       if (debounceTimer.current) {
         clearTimeout(debounceTimer.current);
@@ -207,7 +337,22 @@ function LocalStoragePersistencePlugin({
       
       // Save the latest state immediately
       if (latestStateRef.current) {
-        localStorage.setItem(persistenceKey, JSON.stringify(latestStateRef.current));
+        try {
+          const { cleanState, imageMap, activeImageIds } = await extractImages(latestStateRef.current);
+          
+          // Save images to IndexedDB
+          if (imageMap.length > 0) {
+            await editorStorage.saveImages(imageMap);
+          }
+          
+          // Clean up orphaned images
+          await editorStorage.cleanupOrphanedImages(activeImageIds);
+          
+          // Save clean state to localStorage
+          localStorage.setItem(persistenceKey, JSON.stringify(cleanState));
+        } catch (error) {
+          console.error('Failed to save editor state on unload:', error);
+        }
       }
     };
 
@@ -222,7 +367,7 @@ function LocalStoragePersistencePlugin({
     };
   }, [editor, persistenceKey]);
 
-  // Clear localStorage when content is cleared (e.g., after submit)
+  // Clear localStorage and IndexedDB when content is cleared (e.g., after submit)
   useEffect(() => {
     if (!persistenceKey || !clearOnSubmit) return;
 
@@ -236,6 +381,8 @@ function LocalStoragePersistencePlugin({
 
         if (isEmpty) {
           localStorage.removeItem(persistenceKey);
+          // Also clear all images from IndexedDB when editor is cleared
+          editorStorage.clear().catch(console.error);
         }
       });
     });

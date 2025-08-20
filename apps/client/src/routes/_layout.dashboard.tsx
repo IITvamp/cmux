@@ -197,11 +197,7 @@ function DashboardComponent() {
             }
             const byteArray = new Uint8Array(byteNumbers);
             const blob = new Blob([byteArray], { type: "image/png" });
-
-            // Get upload URL
             const uploadUrl = await generateUploadUrl();
-
-            // Upload the file
             const result = await fetch(uploadUrl, {
               method: "POST",
               headers: { "Content-Type": blob.type },
