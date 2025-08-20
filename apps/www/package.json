@@ -11,15 +11,18 @@
   },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^8.1.0",
+    "@cmux/shared": "workspace:*",
     "@hono/node-server": "^1.18.1",
     "@hono/swagger-ui": "^0.5.2",
     "@hono/zod-openapi": "^1.1.0",
     "@stackframe/js": "^2.8.28",
     "@t3-oss/env-core": "^0.13.8",
     "hono": "^4.9.1",
+    "morphcloud": "^0.0.18",
     "next": "15.4.6",
     "react": "19.1.0",
     "react-dom": "19.1.0",
+    "socket.io-client": "^4.8.1",
     "zod": "^4.0.17"
   },
   "devDependencies": {
