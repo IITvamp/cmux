@@ -190,4 +190,58 @@ it("handles non-default 'main' branch for stack-auth and can create worktree fro
       expect([repo.defaultBranch, "develop"]).toContain(detected);
     }
   }, 120_000);
+
+  it("force-updates remote-tracking ref on non-fast-forward remote rewrite", async () => {
+    // This test sets up a local bare repo as the remote, clones it via RepositoryManager,
+    // then rewrites the remote's main branch to an unrelated commit and ensures that a
+    // subsequent ensureRepository() call updates origin/main despite the non-FF change.
+    const mgr = RepositoryManager.getInstance({ fetchDepth: 1 });
+
+    const projectDir = path.join(TEST_BASE, "non-ff-rewrite");
+    const originPath = path.join(projectDir, "origin");
+    const dev1Path = path.join(projectDir, "dev1");
+    const dev2Path = path.join(projectDir, "dev2");
+    const barePath = path.join(projectDir, "remote.git");
+
+    await fs.mkdir(projectDir, { recursive: true });
+
+    // Init bare remote
+    await exec(`git init --bare "${barePath}"`);
+
+    // First history (commit A)
+    await fs.mkdir(dev1Path, { recursive: true });
+    await exec(`git init -b main`, { cwd: dev1Path });
+    await exec(`git config user.email test@example.com`, { cwd: dev1Path });
+    await exec(`git config user.name test`, { cwd: dev1Path });
+    await fs.writeFile(path.join(dev1Path, "a.txt"), "A\n");
+    await exec(`git add .`, { cwd: dev1Path });
+    await exec(`git commit -m A`, { cwd: dev1Path });
+    await exec(`git remote add origin "${barePath}"`, { cwd: dev1Path });
+    await exec(`git push -u origin main`, { cwd: dev1Path });
+    const { stdout: aShaOut } = await exec(`git rev-parse refs/heads/main`, { cwd: dev1Path });
+    const aSha = aShaOut.trim();
+
+    // Clone via RepositoryManager and land on A
+    await mgr.ensureRepository(barePath, originPath, "main");
+    const { stdout: head1 } = await exec(`git rev-parse HEAD`, { cwd: originPath });
+    expect(head1.trim()).toBe(aSha);
+
+    // Rewrite remote main to unrelated commit B
+    await fs.mkdir(dev2Path, { recursive: true });
+    await exec(`git init -b main`, { cwd: dev2Path });
+    await exec(`git config user.email test@example.com`, { cwd: dev2Path });
+    await exec(`git config user.name test`, { cwd: dev2Path });
+    await fs.writeFile(path.join(dev2Path, "b.txt"), "B\n");
+    await exec(`git add .`, { cwd: dev2Path });
+    await exec(`git commit -m B`, { cwd: dev2Path });
+    await exec(`git remote add origin "${barePath}"`, { cwd: dev2Path });
+    await exec(`git push -f origin main`, { cwd: dev2Path });
+    const { stdout: bShaOut } = await exec(`git rev-parse refs/heads/main`, { cwd: dev2Path });
+    const bSha = bShaOut.trim();
+
+    // Ensure again; previously this would fail on fetch non-FF; now we expect it to succeed
+    await mgr.ensureRepository(barePath, originPath, "main");
+    const { stdout: head2 } = await exec(`git rev-parse HEAD`, { cwd: originPath });
+    expect(head2.trim()).toBe(bSha);
+  }, 120_000);
 });

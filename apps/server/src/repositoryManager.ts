@@ -72,8 +72,7 @@ export class RepositoryManager {
 
   private cleanupStaleOperations(): void {
     const now = Date.now();
-    const entries = Array.from(this.operations.entries());
-    for (const [key, op] of entries) {
+    for (const [key, op] of this.operations) {
       if (now - op.timestamp > this.config.operationCacheTime) {
         this.operations.delete(key);
       }
@@ -117,36 +116,11 @@ export class RepositoryManager {
     command: string,
     options?: GitCommandOptions
   ): Promise<{ stdout: string; stderr: string }> {
-    // Prefer execFile with an absolute git path when invoking git
-    if (command.startsWith("git ")) {
-      const gitPath = await this.getGitPath();
-      const args = this.tokenizeGitArgs(command.slice(4));
-      try {
-        const result = await execFileAsync(gitPath, args, {
-          cwd: options?.cwd,
-          encoding: options?.encoding ?? "utf8",
-          windowsHide: true,
-        } as any);
-        return {
-          stdout: result.stdout.toString(),
-          stderr: result.stderr?.toString?.() || "",
-        };
-      } catch (error) {
-        // Log and fall through to shell execution for debugging context
-        serverLogger.error(`Git command failed: ${gitPath} ${args.join(" ")}`);
-        if (error instanceof Error) {
-          serverLogger.error(`Error: ${error.message}`);
-          if ((error as any).stderr) {
-            serverLogger.error(`Stderr: ${(error as any).stderr}`);
-          }
-        }
-      }
-    }
-    // Commands that modify git config or create worktrees need to be queued
-    const needsQueue = 
-      command.includes('git config') ||
-      command.includes('git worktree add') ||
-      command.includes('git clone');
+    // Commands that modify git config, create worktrees, or clone should be serialized
+    const needsQueue =
+      command.includes("git config") ||
+      command.includes("git worktree add") ||
+      command.includes("git clone");
 
     if (needsQueue) {
       return this.queueOperation(async () => {
@@ -173,7 +147,33 @@ export class RepositoryManager {
       });
     }
 
-    // Non-conflicting commands can run immediately
+    // Prefer execFile with an absolute git path when invoking non-queued git commands
+    if (command.startsWith("git ")) {
+      const gitPath = await this.getGitPath();
+      const args = this.tokenizeGitArgs(command.slice(4));
+      try {
+        const result = await execFileAsync(gitPath, args, {
+          cwd: options?.cwd,
+          encoding: options?.encoding ?? "utf8",
+          windowsHide: true,
+        } as any);
+        return {
+          stdout: result.stdout.toString(),
+          stderr: result.stderr?.toString?.() || "",
+        };
+      } catch (error) {
+        // Log and fall through to shell execution for debugging context
+        serverLogger.error(`Git command failed: ${gitPath} ${args.join(" ")}`);
+        if (error instanceof Error) {
+          serverLogger.error(`Error: ${error.message}`);
+          if ((error as any).stderr) {
+            serverLogger.error(`Stderr: ${(error as any).stderr}`);
+          }
+        }
+      }
+    }
+
+    // Non-conflicting commands can run immediately via shell
     try {
       const result = await execAsync(command, {
         shell: process.platform === "win32" ? "cmd.exe" : "/bin/sh",
@@ -233,21 +233,30 @@ export class RepositoryManager {
   }
 
   private async configureGitPullStrategy(repoPath: string): Promise<void> {
-    try {
-      const strategy =
-        this.config.pullStrategy === "ff-only"
-          ? "only"
-          : this.config.pullStrategy;
-      await this.executeGitCommand(
-        `git config pull.${
-          this.config.pullStrategy === "ff-only"
-            ? "ff"
-            : this.config.pullStrategy
-        } ${strategy === "only" ? "only" : "true"}`,
-        { cwd: repoPath }
-      );
-    } catch (error) {
-      serverLogger.warn("Failed to configure git pull strategy:", error);
+    const strategy =
+      this.config.pullStrategy === "ff-only"
+        ? "only"
+        : this.config.pullStrategy;
+    const cmd = `git config pull.${
+      this.config.pullStrategy === "ff-only" ? "ff" : this.config.pullStrategy
+    } ${strategy === "only" ? "only" : "true"}`;
+
+    // Retry a few times to avoid transient .git/config lock contention
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        await this.executeGitCommand(cmd, { cwd: repoPath });
+        return;
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        const isLock = msg.includes("could not lock config file");
+        if (attempt < maxAttempts && isLock) {
+          await new Promise((r) => setTimeout(r, 100 * attempt));
+          continue;
+        }
+        serverLogger.warn("Failed to configure git pull strategy:", error);
+        return;
+      }
     }
   }
 
@@ -305,15 +314,21 @@ export class RepositoryManager {
       Date.now() - existingClone.timestamp < this.config.operationCacheTime
     ) {
       serverLogger.info(`Reusing existing clone operation for ${repoUrl}`);
-      await existingClone.promise;
+      await existingClone.promise.catch(() => {/* swallow to allow retry below */});
+      // After the in-flight operation completes, remove it so the next call can proceed freshly
+      this.operations.delete(cloneKey);
     } else {
       const clonePromise = this.cloneRepository(repoUrl, originPath);
       this.operations.set(cloneKey, {
         promise: clonePromise,
         timestamp: Date.now(),
       });
-
-      await clonePromise;
+      try {
+        await clonePromise;
+      } finally {
+        // Remove entry so subsequent operations aren't skipped
+        this.operations.delete(cloneKey);
+      }
     }
   }
 
@@ -334,15 +349,21 @@ export class RepositoryManager {
       serverLogger.info(
         `Reusing existing fetch operation for ${repoUrl} branch ${branch}`
       );
-      await existingFetch.promise;
+      await existingFetch.promise.catch(() => {/* swallow to allow retry below */});
+      // Remove completed entry to allow a fresh fetch
+      this.operations.delete(fetchKey);
     } else {
       const fetchPromise = this.fetchAndCheckoutBranch(originPath, branch);
       this.operations.set(fetchKey, {
         promise: fetchPromise,
         timestamp: Date.now(),
       });
-
-      await fetchPromise;
+      try {
+        await fetchPromise;
+      } finally {
+        // Ensure the operation does not block subsequent real fetches
+        this.operations.delete(fetchKey);
+      }
     }
   }
 
@@ -520,8 +541,11 @@ export class RepositoryManager {
     try {
       // Fetch the specific branch and explicitly update the remote-tracking ref
       // even if the clone was created with --single-branch.
+      // Force-update the remote-tracking ref to tolerate non-fast-forward updates
+      // (e.g., when the remote branch was force-pushed). Using a leading '+'
+      // mirrors the default fetch refspec behavior: +refs/heads/*:refs/remotes/origin/*
       await this.executeGitCommand(
-        `git fetch --depth ${this.config.fetchDepth} origin refs/heads/${branch}:refs/remotes/origin/${branch}`,
+        `git fetch --depth ${this.config.fetchDepth} origin +refs/heads/${branch}:refs/remotes/origin/${branch}`,
         { cwd: repoPath }
       );
 
