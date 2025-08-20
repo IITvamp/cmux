@@ -882,10 +882,9 @@ export async function spawnAgent(
       if (s.includes("$CMUX_PROMPT")) {
         return `"${s.replace(/"/g, '\\"')}"`;
       }
-      // Special handling for notify command
-      // Format: notify=["sh","-c","mkdir -p /root/lifecycle && echo \"$1\" >> /root/lifecycle/codex-turns.jsonl"]
+      // Special handling for notify command - DO NOT ESCAPE
       if (s.startsWith("notify=")) {
-        // Don't escape the notify command - pass it as-is
+
         return s;
       }
       // Otherwise single-quote and escape any existing single quotes

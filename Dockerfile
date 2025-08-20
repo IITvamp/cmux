@@ -259,8 +259,8 @@ SCRIPT
 chmod +x /usr/local/bin/modprobe
 EOF
 
-# Create workspace directory
-RUN mkdir -p /workspace /root/workspace
+# Create workspace and lifecycle directories
+RUN mkdir -p /workspace /root/workspace /root/lifecycle
 
 VOLUME /var/lib/docker
 

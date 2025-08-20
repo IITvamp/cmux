@@ -98,8 +98,8 @@ start_devcontainer() {
     fi
 }
 
-# Create log directory
-mkdir -p /var/log/cmux
+# Create log and lifecycle directories
+mkdir -p /var/log/cmux /root/lifecycle
 
 # Log environment variables for debugging
 echo "[Startup] Environment variables:" > /var/log/cmux/startup.log

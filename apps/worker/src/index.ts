@@ -308,11 +308,6 @@ managementIO.on("connection", (socket) => {
       const validated = WorkerCreateTerminalSchema.parse(data);
       log("INFO", "worker:create-terminal validated", validated);
 
-      // Ensure lifecycle directory exists for Codex
-      if (validated.agentModel && validated.agentModel.toLowerCase().includes("codex")) {
-        await fs.mkdir("/tmp/cmux-lifecycle", { recursive: true });
-        log("INFO", "Created /tmp/cmux-lifecycle directory for Codex notifications");
-      }
 
       // Handle auth files first if provided
       if (validated.authFiles && validated.authFiles.length > 0) {
