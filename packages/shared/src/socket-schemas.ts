@@ -291,7 +291,7 @@ export const ProviderStatusResponseSchema = z.object({
 // Default repo event
 export const DefaultRepoSchema = z.object({
   repoFullName: z.string(),
-  branch: z.string(),
+  branch: z.string().optional(),
   localPath: z.string(),
 });
 

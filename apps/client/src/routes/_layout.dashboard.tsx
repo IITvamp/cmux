@@ -361,7 +361,7 @@ function DashboardComponent() {
 
     const handleDefaultRepo = (data: {
       repoFullName: string;
-      branch: string;
+      branch?: string;
       localPath: string;
     }) => {
       // Always set the selected project when a default repo is provided

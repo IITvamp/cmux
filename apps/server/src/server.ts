@@ -137,8 +137,7 @@ export async function startServer({
     if (defaultRepo?.remoteName) {
       const defaultRepoData = {
         repoFullName: defaultRepo.remoteName,
-        branch:
-          defaultRepo.currentBranch || defaultRepo.defaultBranch || "main",
+        branch: defaultRepo.currentBranch || defaultRepo.defaultBranch,
         localPath: defaultRepo.path,
       };
       serverLogger.info(
@@ -749,7 +748,7 @@ export async function startServer({
         await repoManager.ensureRepository(
           repoUrl,
           worktreeInfo.originPath,
-          branch || "main"
+          branch
         );
 
         // Check if the origin directory exists
@@ -1515,8 +1514,7 @@ export async function startServer({
         // Also emit to all connected clients
         const defaultRepoData = {
           repoFullName: defaultRepo.remoteName,
-          branch:
-            defaultRepo.currentBranch || defaultRepo.defaultBranch || "main",
+          branch: defaultRepo.currentBranch || defaultRepo.defaultBranch,
           localPath: defaultRepo.path,
         };
         serverLogger.info(`Emitting default-repo event:`, defaultRepoData);

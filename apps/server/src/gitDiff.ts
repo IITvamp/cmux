@@ -1,6 +1,7 @@
-import { exec } from "child_process";
+import { exec } from "node:child_process";
+import { RepositoryManager } from "./repositoryManager.js";
 import chokidar, { type FSWatcher } from "chokidar";
-import { promisify } from "util";
+import { promisify } from "node:util";
 import { serverLogger } from "./utils/fileLogger.js";
 
 const execAsync = promisify(exec);
@@ -10,9 +11,32 @@ export class GitDiffManager {
 
   async getFullDiff(workspacePath: string): Promise<string> {
     try {
+      // Determine a sensible base ref for diffing:
+      // 1) Use the current branch's upstream if configured
+      // 2) Otherwise, use the repository's default branch (origin/<default>)
+      // 3) Fallback to origin/main as last resort
+
+      let baseRef = "origin/main";
+      try {
+        const upstream = await execAsync(
+          "git rev-parse --abbrev-ref --symbolic-full-name @{u}",
+          { cwd: workspacePath }
+        );
+        const u = upstream.stdout.trim();
+        if (u) baseRef = "@{upstream}"; // Let git resolve symbolic upstream
+      } catch {
+        try {
+          const repoMgr = RepositoryManager.getInstance();
+          const defaultBranch = await repoMgr.getDefaultBranch(workspacePath);
+          baseRef = `origin/${defaultBranch}`;
+        } catch {
+          // keep fallback origin/main
+        }
+      }
+
       // Run git diff with color to get all changes
       const { stdout, stderr } = await execAsync(
-        "git diff --color=always origin/main",
+        `git diff --color=always ${baseRef}`,
         {
           cwd: workspacePath,
           maxBuffer: 10 * 1024 * 1024, // 10MB buffer for large diffs

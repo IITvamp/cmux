@@ -145,7 +145,7 @@ export function MentionPlugin({ repoUrl, branch }: MentionPluginProps) {
       setIsLoading(true);
       socket.emit("list-files", {
         repoUrl,
-        branch: branch || "main",
+        branch: branch || undefined,
         // Don't send pattern - we want all files
       });
 
