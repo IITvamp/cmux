@@ -206,18 +206,17 @@ export async function spawnAgent(
       startupCommands = envResult.startupCommands || [];
     }
 
-    // For Gemini agents, set a unique telemetry log path using taskId (not taskRunId)
-    // This must match what the detector expects
+    // For Gemini agents, set a unique telemetry log path using taskRunId
     // IMPORTANT: This must be set AFTER the environment function to avoid being overwritten
     if (agent.name.toLowerCase().includes("gemini")) {
-      envVars.GEMINI_TELEMETRY_PATH = `/tmp/gemini-telemetry-${taskId}.log`;
+      envVars.GEMINI_TELEMETRY_PATH = `/tmp/gemini-telemetry-${taskRunId}.log`;
       serverLogger.info(`[AgentSpawner] Setting Gemini telemetry path: ${envVars.GEMINI_TELEMETRY_PATH}`);
     }
 
-    // For Claude agents, pass the task ID for the stop hook to use
+    // For Claude agents, pass the task run ID for the stop hook to use
     if (agent.name.toLowerCase().includes("claude")) {
-      envVars.CMUX_TASK_ID = taskId;
-      serverLogger.info(`[AgentSpawner] Setting CMUX_TASK_ID for Claude stop hook: ${taskId}`);
+      envVars.CMUX_TASK_RUN_ID = taskRunId;
+      serverLogger.info(`[AgentSpawner] Setting CMUX_TASK_RUN_ID for Claude stop hook: ${taskRunId}`);
     }
 
     // Fetch API keys from Convex
@@ -640,11 +639,11 @@ export async function spawnAgent(
     vscodeInstance.on("file-changes", async (data) => {
       serverLogger.info(
         `[AgentSpawner] File changes detected for ${agent.name}:`,
-        { changeCount: data.changes.length, taskId: data.taskId }
+        { changeCount: data.changes.length, taskRunId: data.taskRunId }
       );
 
       // Store the incremental diffs in Convex
-      if (data.taskId === taskId && data.fileDiffs.length > 0) {
+      if (data.taskRunId === taskRunId && data.fileDiffs.length > 0) {
         for (const fileDiff of data.fileDiffs) {
           const relativePath = path.relative(worktreePath, fileDiff.path);
 
@@ -687,12 +686,12 @@ export async function spawnAgent(
       
       // Debug logging to understand what's being compared
       serverLogger.info(`[AgentSpawner] Task completion comparison:`);
-      serverLogger.info(`[AgentSpawner]   data.taskId: "${data.taskId}"`);
-      serverLogger.info(`[AgentSpawner]   taskId: "${taskId}"`);
-      serverLogger.info(`[AgentSpawner]   Match: ${data.taskId === taskId}`);
+      serverLogger.info(`[AgentSpawner]   data.taskRunId: "${data.taskRunId}"`);
+      serverLogger.info(`[AgentSpawner]   taskRunId: "${taskRunId}"`);
+      serverLogger.info(`[AgentSpawner]   Match: ${data.taskRunId === taskRunId}`);
 
       // Update the task run as completed
-      if (data.taskId === taskId) {
+      if (data.taskRunId === taskRunId) {
         serverLogger.info(`[AgentSpawner] Task ID matched! Marking task as complete for ${agent.name}`);
         // CRITICAL: Add a delay to ensure changes are written to disk
         serverLogger.info(`[AgentSpawner] Waiting 3 seconds for file system to settle before capturing git diff...`);
@@ -720,12 +719,12 @@ export async function spawnAgent(
 
       // Debug logging to understand what's being compared
       serverLogger.info(`[AgentSpawner] Terminal idle comparison:`);
-      serverLogger.info(`[AgentSpawner]   data.taskId: "${data.taskId}"`);
+      serverLogger.info(`[AgentSpawner]   data.taskRunId: "${data.taskRunId}"`);
       serverLogger.info(`[AgentSpawner]   taskRunId: "${taskRunId}"`);
-      serverLogger.info(`[AgentSpawner]   Match: ${data.taskId === taskId}`);
+      serverLogger.info(`[AgentSpawner]   Match: ${data.taskRunId === taskRunId}`);
 
       // Update the task run as completed
-      if (data.taskId === taskId) {
+      if (data.taskRunId === taskRunId) {
         serverLogger.info(
           `[AgentSpawner] Task ID matched! Marking task as complete for ${agent.name}`
         );
@@ -752,9 +751,9 @@ export async function spawnAgent(
           `[AgentSpawner] Terminal failed for ${agent.name}:`,
           data
         );
-        if (data.taskId !== taskId) {
+        if (data.taskRunId !== taskRunId) {
           serverLogger.warn(
-            `[AgentSpawner] Failure event taskId mismatch; ignoring`
+            `[AgentSpawner] Failure event taskRunId mismatch; ignoring`
           );
           return;
         }
@@ -947,7 +946,6 @@ export async function spawnAgent(
       cols: 80,
       rows: 74,
       env: envVars,
-      taskId: taskId,
       taskRunId,
       agentModel: agent.name,
       authFiles,

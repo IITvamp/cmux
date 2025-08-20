@@ -117,7 +117,7 @@ export const WorkerTerminalClosedSchema = z.object({
 export const WorkerTerminalIdleSchema = z.object({
   workerId: z.string(),
   terminalId: z.string(),
-  taskId: typedZid("tasks").optional(),
+  taskRunId: typedZid("taskRuns").optional(),
   elapsedMs: z.number(),
 });
 
@@ -125,7 +125,7 @@ export const WorkerTerminalIdleSchema = z.object({
 export const WorkerTaskCompleteSchema = z.object({
   workerId: z.string(),
   terminalId: z.string(),
-  taskId: typedZid("tasks"),
+  taskRunId: typedZid("taskRuns"),
   agentModel: z
     .string()
     .optional()
@@ -140,7 +140,7 @@ export const WorkerTaskCompleteSchema = z.object({
 export const WorkerTerminalFailedSchema = z.object({
   workerId: z.string(),
   terminalId: z.string(),
-  taskId: typedZid("tasks").optional(),
+  taskRunId: typedZid("taskRuns").optional(),
   errorMessage: z.string(),
   elapsedMs: z.number().optional(),
 });
@@ -250,10 +250,10 @@ export interface ServerToWorkerEvents {
 
   // File watching events
   "worker:start-file-watch": (data: {
-    taskId: Id<"tasks">;
+    taskRunId: Id<"taskRuns">;
     worktreePath: string;
   }) => void;
-  "worker:stop-file-watch": (data: { taskId: Id<"tasks"> }) => void;
+  "worker:stop-file-watch": (data: { taskRunId: Id<"taskRuns"> }) => void;
 
   // Management events
   "worker:terminal-assignment": (data: TerminalAssignment) => void;
@@ -297,7 +297,7 @@ export interface WorkerToServerEvents {
   // File change events
   "worker:file-changes": (data: {
     workerId: string;
-    taskId: Id<"tasks">;
+    taskRunId: Id<"taskRuns">;
     changes: WorkerFileChange[];
     gitDiff: string;
     fileDiffs: WorkerFileDiff[];

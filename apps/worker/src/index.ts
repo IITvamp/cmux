@@ -59,7 +59,8 @@ app.get("/health", (_req, res) => {
     pendingEvents: pendingEvents.map(e => ({
       event: e.event,
       age: Date.now() - e.timestamp,
-      taskId: e.data.taskId
+      taskId: e.data.taskId,
+      taskRunId: e.data.taskRunId,
     }))
   });
 });
@@ -148,7 +149,7 @@ let mainServerSocket: Socket<
   WorkerToServerEvents
 > | null = null;
 
-// Track active file watchers by taskId
+// Track active file watchers by taskRunId
 const activeFileWatchers: Map<string, FileWatcher> = new Map();
 
 // Queue for pending events when mainServerSocket is not connected
@@ -426,7 +427,7 @@ managementIO.on("connection", (socket) => {
           // env: validated.env,
           command: validated.command,
           args: validated.args,
-          taskId: validated.taskId,
+          taskRunId: validated.taskRunId,
         },
         WORKER_ID
       );
@@ -438,7 +439,7 @@ managementIO.on("connection", (socket) => {
         env: validated.env,
         command: validated.command,
         args: validated.args,
-        taskId: validated.taskId,
+        taskRunId: validated.taskRunId,
         agentModel: (validated as any).agentModel,
         startupCommands: validated.startupCommands,
       });
@@ -795,30 +796,30 @@ managementIO.on("connection", (socket) => {
 
   // Handle file watcher start request
   socket.on("worker:start-file-watch", async (data) => {
-    const { taskId, worktreePath } = data;
+    const { taskRunId, worktreePath } = data;
     
-    if (!taskId || !worktreePath) {
-      log("ERROR", "Missing taskId or worktreePath for file watch");
+    if (!taskRunId || !worktreePath) {
+      log("ERROR", "Missing taskRunId or worktreePath for file watch");
       return;
     }
     
     // Stop existing watcher if any
-    const existingWatcher = activeFileWatchers.get(taskId);
+    const existingWatcher = activeFileWatchers.get(taskRunId);
     if (existingWatcher) {
       existingWatcher.stop();
-      activeFileWatchers.delete(taskId);
+      activeFileWatchers.delete(taskRunId);
     }
     
     // Create new file watcher
     const watcher = new FileWatcher({
       watchPath: worktreePath,
-      taskId,
+      taskRunId,
       debounceMs: 2000, // 2 second debounce
       gitIgnore: true,
       onFileChange: async (changes) => {
-        log("INFO", `[Worker] File changes detected for task ${taskId}:`, {
+        log("INFO", `[Worker] File changes detected for task ${taskRunId}:`, {
           changeCount: changes.length,
-          taskId
+          taskRunId
         });
         
         // Compute git diff for changed files
@@ -839,7 +840,7 @@ managementIO.on("connection", (socket) => {
         // Emit file changes to main server
         emitToMainServer("worker:file-changes", {
           workerId: WORKER_ID,
-          taskId,
+          taskRunId,
           changes,
           gitDiff,
           fileDiffs,
@@ -850,20 +851,20 @@ managementIO.on("connection", (socket) => {
     
     // Start watching
     await watcher.start();
-    activeFileWatchers.set(taskId, watcher);
+    activeFileWatchers.set(taskRunId, watcher);
     
-    log("INFO", `[Worker] Started file watcher for task ${taskId} at ${worktreePath}`);
+    log("INFO", `[Worker] Started file watcher for task ${taskRunId} at ${worktreePath}`);
   });
 
   // Handle file watcher stop request
   socket.on("worker:stop-file-watch", (data) => {
-    const { taskId } = data;
+    const { taskRunId } = data;
     
-    const watcher = activeFileWatchers.get(taskId);
+    const watcher = activeFileWatchers.get(taskRunId);
     if (watcher) {
       watcher.stop();
-      activeFileWatchers.delete(taskId);
-      log("INFO", `[Worker] Stopped file watcher for task ${taskId}`);
+      activeFileWatchers.delete(taskRunId);
+      log("INFO", `[Worker] Stopped file watcher for task ${taskRunId}`);
     }
   });
 
@@ -905,7 +906,7 @@ async function createTerminal(
     env?: Record<string, string>;
     command?: string;
     args?: string[];
-    taskId?: string;
+    taskRunId?: string;
     agentModel?: string;
     startupCommands?: string[];
   } = {}
@@ -1050,7 +1051,7 @@ async function createTerminal(
     const chunk = data.toString();
     headlessTerminal.write(chunk);
     // Parse OpenCode stdout for deterministic completion events
-    if (providerResolved === "opencode" && options.taskId) {
+    if (providerResolved === "opencode" && options.taskRunId) {
       try {
         opencodeStdoutBuf += chunk;
         // Process complete lines only
@@ -1104,7 +1105,7 @@ async function createTerminal(
             emitToMainServer("worker:task-complete", {
               workerId: WORKER_ID,
               terminalId,
-              taskId: options.taskId,
+              taskRunId: options.taskRunId,
               agentModel: options.agentModel,
               elapsedMs: Date.now() - processStartTime,
             });
@@ -1182,14 +1183,14 @@ async function createTerminal(
       spawnCommand,
       originalCommand: command,
       agentModel: options.agentModel,
-      taskId: options.taskId,
+      taskRunId: options.taskRunId,
     });
 
     // Track if detection completed successfully
     let idleDetectionCompleted = false;
 
     // Use new task completion detection if agentModel is provided
-    if (options.agentModel && options.taskId) {
+    if (options.agentModel && options.taskRunId) {
       // For Claude, Codex, Gemini, and OpenCode use project/log file detection (no terminal idle fallback)
       const useTerminalIdleFallback = !(
         providerResolved === "claude" ||
@@ -1200,12 +1201,12 @@ async function createTerminal(
       
       log("INFO", `Setting up task completion detection for ${options.agentModel}`, {
         useTerminalIdleFallback,
-        taskId: options.taskId,
+        taskRunId: options.taskRunId,
         workingDir: cwd,
       });
       
       if (providerResolved === "gemini") {
-        const telemetryPath = `/tmp/gemini-telemetry-${options.taskId}.log`;
+        const telemetryPath = `/tmp/gemini-telemetry-${options.taskRunId}.log`;
         const { watchGeminiTelemetryForCompletion } = await getGeminiHelpers();
         const stopWatching = watchGeminiTelemetryForCompletion({
           telemetryPath,
@@ -1217,7 +1218,7 @@ async function createTerminal(
               emitToMainServer("worker:task-complete", {
                 workerId: WORKER_ID,
                 terminalId,
-                taskId: options.taskId!,
+                taskRunId: options.taskRunId!,
                 agentModel: options.agentModel,
                 elapsedMs,
                 detectionMethod: "telemetry-log",
@@ -1231,7 +1232,7 @@ async function createTerminal(
         });
       } else {
         const detector = await createTaskCompletionDetector({
-          taskId: options.taskId!,
+          taskRunId: options.taskRunId!,
           agentType: providerResolved!,
           agentModel: options.agentModel,
           workingDir: cwd,
@@ -1250,15 +1251,15 @@ async function createTerminal(
               const elapsedMs = Date.now() - processStartTime;
               log("INFO", "Task completion detected (fallback to terminal idle)", {
                 terminalId,
-                taskId: options.taskId,
+                taskRunId: options.taskRunId,
                 agentModel: options.agentModel,
                 elapsedMs,
               });
-              if (options.taskId) {
+              if (options.taskRunId) {
                 emitToMainServer("worker:task-complete", {
                   workerId: WORKER_ID,
                   terminalId,
-                  taskId: options.taskId,
+                  taskRunId: options.taskRunId,
                   agentModel: options.agentModel,
                   elapsedMs,
                 });
@@ -1276,7 +1277,7 @@ async function createTerminal(
             emitToMainServer("worker:task-complete", {
               workerId: WORKER_ID,
               terminalId,
-              taskId: options.taskId,
+              taskRunId: options.taskRunId,
               agentModel: options.agentModel,
               elapsedMs: data.elapsedMs,
               detectionMethod,
@@ -1292,7 +1293,7 @@ async function createTerminal(
             emitToMainServer("worker:terminal-failed", {
               workerId: WORKER_ID,
               terminalId,
-              taskId: options.taskId,
+              taskRunId: options.taskRunId,
               errorMessage: `Detector timeout after ${data.elapsedMs}ms`,
               elapsedMs: data.elapsedMs,
             });
@@ -1307,7 +1308,7 @@ async function createTerminal(
       onIdle: () => {
         log("INFO", "Terminal idle detected", {
           terminalId,
-          taskId: options.taskId,
+          taskRunId: options.taskRunId,
         });
 
         idleDetectionCompleted = true;
@@ -1315,29 +1316,29 @@ async function createTerminal(
         // Emit idle event via management socket
         log("DEBUG", "Attempting to emit worker:terminal-idle", {
           terminalId,
-          taskId: options.taskId,
+          taskRunId: options.taskRunId,
           hasMainServerSocket: !!mainServerSocket,
           mainServerSocketConnected: mainServerSocket?.connected,
           elapsedMs,
         });
 
-        if (options.taskId) {
+        if (options.taskRunId) {
           log("INFO", "Sending worker:terminal-idle event", {
             workerId: WORKER_ID,
             terminalId,
-            taskId: options.taskId,
+            taskRunId: options.taskRunId,
             elapsedMs,
           });
           emitToMainServer("worker:terminal-idle", {
             workerId: WORKER_ID,
             terminalId,
-            taskId: options.taskId,
+            taskRunId: options.taskRunId,
             elapsedMs,
           });
         } else {
-          log("WARNING", "Cannot emit worker:terminal-idle - missing taskId", {
+          log("WARNING", "Cannot emit worker:terminal-idle - missing taskRunId", {
             terminalId,
-            taskId: options.taskId,
+            taskRunId: options.taskRunId,
           });
         }
       },
@@ -1345,7 +1346,7 @@ async function createTerminal(
       .then(async ({ elapsedMs }) => {
         log("INFO", `Terminal ${terminalId} completed successfully after ${elapsedMs}ms`, {
           terminalId,
-          taskId: options.taskId,
+          taskRunId: options.taskRunId,
           idleDetectionCompleted,
         });
       })
@@ -1359,14 +1360,14 @@ async function createTerminal(
           {
             error: errMsg,
             terminalId,
-            taskId: options.taskId,
+            taskRunId: options.taskRunId,
           }
         );
         // Inform main server so it can mark the task run as failed
         emitToMainServer("worker:terminal-failed", {
           workerId: WORKER_ID,
           terminalId,
-          taskId: options.taskId,
+          taskRunId: options.taskRunId,
           errorMessage: errMsg,
           elapsedMs: Date.now() - processStartTime,
         });
@@ -1439,7 +1440,7 @@ setInterval(() => {
       log("WARNING", `Dropping old pending ${event.event} event (age: ${age}ms)`, {
         event: event.event,
         age,
-        taskId: event.data.taskId
+        taskRunId: event.data.taskRunId
       });
       return false;
     }
@@ -1458,7 +1459,7 @@ setInterval(() => {
       events: pendingEvents.map(e => ({
         event: e.event,
         age: now - e.timestamp,
-        taskId: e.data.taskId
+        taskRunId: e.data.taskRunId
       }))
     });
   }
@@ -1469,9 +1470,9 @@ function gracefulShutdown() {
   console.log(`Worker ${WORKER_ID} shutting down...`);
 
   // Stop all file watchers
-  for (const [taskId, watcher] of activeFileWatchers) {
+  for (const [taskRunId, watcher] of activeFileWatchers) {
     watcher.stop();
-    log("INFO", `Stopped file watcher for task ${taskId} during shutdown`);
+    log("INFO", `Stopped file watcher for task ${taskRunId} during shutdown`);
   }
   activeFileWatchers.clear();
 
@@ -1497,7 +1498,7 @@ process.on("SIGINT", gracefulShutdown);
 type AgentType = "claude" | "codex" | "gemini" | "amp" | "opencode";
 
 interface TaskCompletionOptionsDI {
-  taskId: string;
+  taskRunId: string;
   agentType: AgentType;
   agentModel?: string;
   workingDir: string;
@@ -1531,7 +1532,7 @@ class TaskCompletionDetectorDI extends EventEmitter {
   async start(): Promise<void> {
     if (this.isRunning) return;
     this.isRunning = true;
-    log("INFO", `TaskCompletionDetector started for ${this.options.agentType} task ${this.options.taskId}`);
+    log("INFO", `TaskCompletionDetector started for ${this.options.agentType} task ${this.options.taskRunId}`);
     this.checkInterval = setInterval(async () => {
       try {
         // Don't consider too early
@@ -1540,7 +1541,7 @@ class TaskCompletionDetectorDI extends EventEmitter {
         if (done) {
           this.stop();
           this.emit("task-complete", {
-            taskId: this.options.taskId,
+            taskRunId: this.options.taskRunId,
             agentType: this.options.agentType,
             elapsedMs: Date.now() - this.startTime,
           });
@@ -1549,7 +1550,7 @@ class TaskCompletionDetectorDI extends EventEmitter {
         if (Date.now() - this.startTime > this.options.maxRuntimeMs!) {
           this.stop();
           this.emit("task-timeout", {
-            taskId: this.options.taskId,
+            taskRunId: this.options.taskRunId,
             agentType: this.options.agentType,
             elapsedMs: Date.now() - this.startTime,
           });
@@ -1596,7 +1597,6 @@ async function createTaskCompletionDetector(
 const getClaudeHelpers = async () => {
   const module = await import("@cmux/shared/src/providers/anthropic/completion-detector.ts");
   return {
-    checkClaudeProjectFileCompletion: module.checkClaudeProjectFileCompletion,
     checkClaudeStopHookCompletion: module.checkClaudeStopHookCompletion,
   };
 };
@@ -1654,9 +1654,9 @@ function buildDetectorConfig(params: {
           const { checkClaudeStopHookCompletion } = await getClaudeHelpers();
           
           // Check for stop hook marker (ONLY method - hook MUST work)
-          const done = await checkClaudeStopHookCompletion(options.taskId);
+          const done = await checkClaudeStopHookCompletion(options.taskRunId);
           if (done) {
-            log("INFO", `Claude task complete via stop hook for task: ${options.taskId}`);
+            log("INFO", `Claude task complete via stop hook for task: ${options.taskRunId}`);
             return true;
           }
           

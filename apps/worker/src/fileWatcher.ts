@@ -15,7 +15,7 @@ interface FileChange {
 
 interface FileWatcherOptions {
   watchPath: string;
-  taskId?: string;
+  taskRunId?: string;
   onFileChange: (changes: FileChange[]) => void;
   debounceMs?: number;
   gitIgnore?: boolean;
@@ -24,7 +24,7 @@ interface FileWatcherOptions {
 export class FileWatcher {
   private watcher: FSWatcher | null = null;
   private watchPath: string;
-  private taskId?: string;
+  private taskRunId?: string;
   private onFileChange: (changes: FileChange[]) => void;
   private debounceMs: number;
   private gitIgnore: boolean;
@@ -35,7 +35,7 @@ export class FileWatcher {
   
   constructor(options: FileWatcherOptions) {
     this.watchPath = options.watchPath;
-    this.taskId = options.taskId;
+    this.taskRunId = options.taskRunId;
     this.onFileChange = options.onFileChange;
     this.debounceMs = options.debounceMs || 1000; // Default 1 second debounce
     this.gitIgnore = options.gitIgnore ?? true;
@@ -43,7 +43,7 @@ export class FileWatcher {
   
   async start(): Promise<void> {
     log("INFO", `[FileWatcher] Starting file watcher for ${this.watchPath}`, {
-      taskId: this.taskId,
+      taskRunId: this.taskRunId,
       debounceMs: this.debounceMs,
       gitIgnore: this.gitIgnore
     });
@@ -202,7 +202,7 @@ export class FileWatcher {
     this.pendingChanges.clear();
     
     log("INFO", `[FileWatcher] Detected ${changes.length} file changes`, {
-      taskId: this.taskId,
+      taskRunId: this.taskRunId,
       changes: changes.map(c => ({ type: c.type, path: path.relative(this.watchPath, c.path) }))
     });
     
