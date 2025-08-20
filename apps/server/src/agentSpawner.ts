@@ -962,9 +962,6 @@ export async function spawnAgent(
     // );
     serverLogger.info(`  isCloudMode:`, options.isCloudMode);
 
-    // Type definition for worker:exec results
-    type ErrorOr<T> = { error: Error; data: null } | { error: null; data: T };
-
     // For Morph instances, we need to clone the repository first
     if (options.isCloudMode) {
       serverLogger.info(
@@ -992,10 +989,7 @@ export async function spawnAgent(
               cwd: "/root",
               env: {},
             },
-            (
-              timeoutError: unknown,
-              result: ErrorOr<WorkerExecResult>
-            ) => {
+            (timeoutError, result) => {
               if (timeoutError) {
                 serverLogger.error(
                   "Timeout waiting for git clone",
@@ -1065,10 +1059,7 @@ export async function spawnAgent(
             cwd: "/root",
             env: {},
           },
-          (
-            timeoutError: unknown,
-            result: ErrorOr<WorkerExecResult>
-          ) => {
+          (timeoutError, result) => {
             if (timeoutError || result.error) {
               serverLogger.error(
                 "Failed to create prompt directory",
@@ -1149,7 +1140,7 @@ export async function spawnAgent(
       workerSocket.emit(
         "worker:create-terminal",
         terminalCreationCommand,
-        (result: { error: any; data: unknown; }) => {
+        (result) => {
           clearTimeout(timeout);
           serverLogger.info(
             `[AgentSpawner] Got response from worker:create-terminal at ${new Date().toISOString()}:`,
