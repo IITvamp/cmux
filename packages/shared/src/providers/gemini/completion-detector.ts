@@ -1,6 +1,6 @@
 import { promises as fs } from "node:fs";
-import * as path from "node:path";
 import * as os from "node:os";
+import * as path from "node:path";
 import { getLastJsonlObject } from "../../utils/jsonl.js";
 
 /**
@@ -24,7 +24,9 @@ export function getGeminiProjectPath(workingDir: string): string {
   return path.join(homeDir, ".gemini", "projects", encoded);
 }
 
-async function getMostRecentJsonlFile(projectDir: string): Promise<string | null> {
+async function getMostRecentJsonlFile(
+  projectDir: string
+): Promise<string | null> {
   try {
     await fs.access(projectDir);
   } catch {
@@ -32,7 +34,9 @@ async function getMostRecentJsonlFile(projectDir: string): Promise<string | null
   }
   try {
     const files = await fs.readdir(projectDir);
-    const jsonlFiles = files.filter((f) => f.endsWith(".jsonl")).sort((a, b) => b.localeCompare(a));
+    const jsonlFiles = files
+      .filter((f) => f.endsWith(".jsonl"))
+      .sort((a, b) => b.localeCompare(a));
     if (!jsonlFiles.length) return null;
     const first = jsonlFiles[0];
     if (!first) return null;
@@ -42,12 +46,15 @@ async function getMostRecentJsonlFile(projectDir: string): Promise<string | null
   }
 }
 
-async function getLastMessage(filePath: string): Promise<GeminiMessageLike | null> {
+async function getLastMessage(
+  filePath: string
+): Promise<GeminiMessageLike | null> {
   const obj = await getLastJsonlObject<any>(filePath);
   if (!obj) return null;
   const role = obj.role;
   let content = obj.content as string | undefined;
-  if (!content && typeof (obj as any).text === "string") content = (obj as any).text;
+  if (!content && typeof (obj as any).text === "string")
+    content = (obj as any).text;
   return { ...obj, role, content } as GeminiMessageLike;
 }
 
@@ -63,8 +70,10 @@ export async function checkGeminiProjectFileCompletion(
   workingDir?: string,
   minIdleTimeMs: number = 10000
 ): Promise<boolean> {
-  const projectDir = projectPath || (workingDir ? getGeminiProjectPath(workingDir) : null);
-  if (!projectDir) throw new Error("Either projectPath or workingDir must be provided");
+  const projectDir =
+    projectPath || (workingDir ? getGeminiProjectPath(workingDir) : null);
+  if (!projectDir)
+    throw new Error("Either projectPath or workingDir must be provided");
 
   const jsonl = await getMostRecentJsonlFile(projectDir);
   if (!jsonl) return false;
@@ -96,7 +105,7 @@ export default {
 /**
  * Event-driven watcher for Gemini completion via telemetry file.
  * Uses fs.watch + createReadStream to stream appended bytes and detect
- * the completion event immediately (no polling/intervals).
+ * the completion event immediately
  */
 export function watchGeminiTelemetryForCompletion(options: {
   telemetryPath: string;
@@ -140,12 +149,12 @@ export function watchGeminiTelemetryForCompletion(options: {
         if (depth > 0) buf += ch;
         continue;
       }
-      if (ch === '{') {
+      if (ch === "{") {
         depth++;
         buf += ch;
         continue;
       }
-      if (ch === '}') {
+      if (ch === "}") {
         depth--;
         buf += ch;
         if (depth === 0) {
@@ -164,11 +173,15 @@ export function watchGeminiTelemetryForCompletion(options: {
   const isCompletionEvent = (event: unknown): boolean => {
     if (!event || typeof event !== "object") return false;
     const anyEvent = event as Record<string, unknown>;
-    const attrs = (anyEvent.attributes as Record<string, unknown>) ||
-                  (anyEvent.resource && (anyEvent.resource as any).attributes) ||
-                  (anyEvent.body && (anyEvent.body as any).attributes);
+    const attrs =
+      (anyEvent.attributes as Record<string, unknown>) ||
+      (anyEvent.resource && (anyEvent.resource as any).attributes) ||
+      (anyEvent.body && (anyEvent.body as any).attributes);
     if (!attrs || typeof attrs !== "object") return false;
-    const eventName = (attrs as any)["event.name"] || (attrs as any).event?.name || (attrs as any)["event_name"];
+    const eventName =
+      (attrs as any)["event.name"] ||
+      (attrs as any).event?.name ||
+      (attrs as any)["event_name"];
     const result = (attrs as any)["result"];
     return eventName === "gemini_cli.next_speaker_check" && result === "user";
   };
@@ -177,18 +190,30 @@ export function watchGeminiTelemetryForCompletion(options: {
     try {
       const st = await fsp.stat(telemetryPath);
       const start = initial ? 0 : lastSize;
-      if (st.size <= start) { lastSize = st.size; return; }
+      if (st.size <= start) {
+        lastSize = st.size;
+        return;
+      }
       const end = st.size - 1;
       await new Promise<void>((resolve) => {
-        const rs = createReadStream(telemetryPath, { start, end, encoding: "utf-8" });
+        const rs = createReadStream(telemetryPath, {
+          start,
+          end,
+          encoding: "utf-8",
+        });
         rs.on("data", (chunk: string | Buffer) => {
-          const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
+          const text =
+            typeof chunk === "string" ? chunk : chunk.toString("utf-8");
           feed(text, async (obj) => {
             try {
               if (!stopped && isCompletionEvent(obj)) {
                 stopped = true;
-                try { fileWatcher?.close(); } catch {}
-                try { dirWatcher?.close(); } catch {}
+                try {
+                  fileWatcher?.close();
+                } catch {}
+                try {
+                  dirWatcher?.close();
+                } catch {}
                 await onComplete();
               }
             } catch (e) {
@@ -210,28 +235,40 @@ export function watchGeminiTelemetryForCompletion(options: {
       const st = await fsp.stat(telemetryPath);
       lastSize = st.size;
       await readNew(true);
-      fileWatcher = watch(telemetryPath, { persistent: false }, async (eventType: string) => {
-        if (!stopped && eventType === "change") {
-          await readNew(false);
+      fileWatcher = watch(
+        telemetryPath,
+        { persistent: false },
+        async (eventType: string) => {
+          if (!stopped && eventType === "change") {
+            await readNew(false);
+          }
         }
-      });
+      );
     } catch {
       // not created yet
     }
   };
 
-  dirWatcher = watch(dir, { persistent: false }, async (_eventType: string, filename: string | Buffer) => {
-    const name = filename?.toString();
-    if (!stopped && name === file) {
-      await attachFileWatcher();
+  dirWatcher = watch(
+    dir,
+    { persistent: false },
+    async (_eventType: string, filename: string | Buffer) => {
+      const name = filename?.toString();
+      if (!stopped && name === file) {
+        await attachFileWatcher();
+      }
     }
-  });
+  );
 
   void attachFileWatcher();
 
   return () => {
     stopped = true;
-    try { fileWatcher?.close(); } catch {}
-    try { dirWatcher?.close(); } catch {}
+    try {
+      fileWatcher?.close();
+    } catch {}
+    try {
+      dirWatcher?.close();
+    } catch {}
   };
 }
