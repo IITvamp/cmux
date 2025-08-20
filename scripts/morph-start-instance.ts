@@ -11,6 +11,9 @@ const instance = await client.instances.start({
   // 30 minutes
   ttlSeconds: 60 * 30,
   ttlAction: "pause",
+  metadata: {
+    app: "cmux-dev",
+  },
 });
 
 console.log(`Created instance: ${instance.id}`);
