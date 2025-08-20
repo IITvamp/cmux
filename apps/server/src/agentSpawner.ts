@@ -8,18 +8,12 @@ import {
 import type {
   WorkerCreateTerminal,
   WorkerTerminalExit,
-  WorkerTerminalIdle,
-  WorkerTaskComplete,
   WorkerTerminalFailed,
-  WorkerFileChange,
-  WorkerFileDiff,
-  WorkerExecResult,
+  WorkerTerminalIdle,
 } from "@cmux/shared/worker-schemas";
 import * as path from "node:path";
-import { captureGitDiff } from "./captureGitDiff.js";
-import { evaluateCrownWithClaudeCode } from "./crownEvaluator.js";
+import { handleTaskCompletion } from "./handle-task-completion.js";
 import { sanitizeTmuxSessionName } from "./sanitizeTmuxSessionName.js";
-import { storeGitDiffs } from "./storeGitDiffs.js";
 import {
   generateNewBranchName,
   generateUniqueBranchNames,
@@ -147,7 +141,10 @@ export async function spawnAgent(
         if (image.fileName) {
           const beforeReplace = processedTaskDescription;
           // Escape special regex characters in the filename
-          const escapedFileName = image.fileName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const escapedFileName = image.fileName.replace(
+            /[.*+?^${}()|[\]\\]/g,
+            "\\$&"
+          );
           processedTaskDescription = processedTaskDescription.replace(
             new RegExp(escapedFileName, "g"),
             imagePath
@@ -165,9 +162,15 @@ export async function spawnAgent(
 
         // Also replace just the filename without extension in case it appears that way
         const nameWithoutExt = image.fileName?.replace(/\.[^/.]+$/, "");
-        if (nameWithoutExt && processedTaskDescription.includes(nameWithoutExt)) {
+        if (
+          nameWithoutExt &&
+          processedTaskDescription.includes(nameWithoutExt)
+        ) {
           const beforeReplace = processedTaskDescription;
-          const escapedName = nameWithoutExt.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+          const escapedName = nameWithoutExt.replace(
+            /[.*+?^${}()|[\]\\]/g,
+            "\\$&"
+          );
           processedTaskDescription = processedTaskDescription.replace(
             new RegExp(escapedName, "g"),
             imagePath
@@ -190,7 +193,7 @@ export async function spawnAgent(
       CMUX_TASK_RUN_ID: taskRunId,
       PROMPT: processedTaskDescription,
     };
-    
+
     let authFiles: EnvironmentResult["files"] = [];
     let startupCommands: string[] = [];
 
@@ -331,264 +334,6 @@ export async function spawnAgent(
     );
     vscodeInstance.startFileWatch(worktreePath);
 
-    // Handler for completing the task
-    const handleTaskCompletion = async (exitCode: number = 0) => {
-      try {
-        // Capture git diff before marking as complete
-        serverLogger.info(
-          `[AgentSpawner] ============================================`
-        );
-        serverLogger.info(
-          `[AgentSpawner] CAPTURING GIT DIFF FOR ${agent.name}`
-        );
-        serverLogger.info(`[AgentSpawner] Task Run ID: ${taskRunId}`);
-        serverLogger.info(`[AgentSpawner] Worktree Path: ${worktreePath}`);
-        serverLogger.info(
-          `[AgentSpawner] VSCode Instance Connected: ${vscodeInstance.isWorkerConnected()}`
-        );
-        serverLogger.info(
-          `[AgentSpawner] ============================================`
-        );
-
-        // Use the original captureGitDiff function which uses worker:exec
-        const gitDiff = await captureGitDiff(vscodeInstance, worktreePath);
-        serverLogger.info(
-          `[AgentSpawner] Captured git diff for ${agent.name}: ${gitDiff.length} chars`
-        );
-        serverLogger.info(
-          `[AgentSpawner] First 100 chars of diff: ${gitDiff.substring(0, 100)}`
-        );
-
-        // Append git diff to the log AND store in gitDiffs table
-        if (gitDiff && gitDiff.length > 0) {
-          await convex.mutation(api.taskRuns.appendLogPublic, {
-            id: taskRunId as Id<"taskRuns">,
-            content: `\n\n=== GIT DIFF ===\n${gitDiff}\n=== END GIT DIFF ===\n`,
-          });
-          serverLogger.info(
-            `[AgentSpawner] Successfully appended ${gitDiff.length} chars of git diff to log for ${taskRunId}`
-          );
-
-          // Parse and store the diff in the gitDiffs table
-          await storeGitDiffs(
-            taskRunId as Id<"taskRuns">,
-            gitDiff,
-            vscodeInstance,
-            worktreePath
-          );
-        } else {
-          serverLogger.error(
-            `[AgentSpawner] NO GIT DIFF TO APPEND for ${agent.name} (${taskRunId})`
-          );
-          serverLogger.error(
-            `[AgentSpawner] This will cause crown evaluation to fail!`
-          );
-        }
-
-        await convex.mutation(api.taskRuns.complete, {
-          id: taskRunId as Id<"taskRuns">,
-          exitCode,
-        });
-
-        serverLogger.info(
-          `[AgentSpawner] Updated taskRun ${taskRunId} as completed with exit code ${exitCode}`
-        );
-
-        // Check if all runs are complete and evaluate crown
-        const taskRunData = await convex.query(api.taskRuns.get, {
-          id: taskRunId as Id<"taskRuns">,
-        });
-
-        serverLogger.info(
-          `[AgentSpawner] Task run data retrieved: ${taskRunData ? "found" : "not found"}`
-        );
-
-        if (taskRunData) {
-          serverLogger.info(
-            `[AgentSpawner] Calling checkAndEvaluateCrown for task ${taskRunData.taskId}`
-          );
-
-          const winnerId = await convex.mutation(
-            api.tasks.checkAndEvaluateCrown,
-            {
-              taskId: taskRunData.taskId,
-            }
-          );
-
-          serverLogger.info(
-            `[AgentSpawner] checkAndEvaluateCrown returned: ${winnerId}`
-          );
-
-          // If winnerId is "pending", trigger Claude Code evaluation
-          if (winnerId === "pending") {
-            serverLogger.info(
-              `[AgentSpawner] ==========================================`
-            );
-            serverLogger.info(
-              `[AgentSpawner] CROWN EVALUATION NEEDED - TRIGGERING NOW`
-            );
-            serverLogger.info(`[AgentSpawner] Task ID: ${taskRunData.taskId}`);
-            serverLogger.info(
-              `[AgentSpawner] ==========================================`
-            );
-
-            // Trigger crown evaluation immediately for faster response
-            // The periodic checker will also handle retries if this fails
-            serverLogger.info(
-              `[AgentSpawner] Triggering immediate crown evaluation`
-            );
-
-            // Small delay to ensure git diff is fully persisted in Convex
-            setTimeout(async () => {
-              try {
-                // Check if evaluation is already in progress
-                const task = await convex.query(api.tasks.getById, {
-                  id: taskRunData.taskId,
-                });
-                if (task?.crownEvaluationError === "in_progress") {
-                  serverLogger.info(
-                    `[AgentSpawner] Crown evaluation already in progress for task ${taskRunData.taskId}`
-                  );
-                  return;
-                }
-
-                await evaluateCrownWithClaudeCode(convex, taskRunData.taskId);
-                serverLogger.info(
-                  `[AgentSpawner] Crown evaluation completed successfully`
-                );
-
-                // Check if this task run won
-                const updatedTaskRun = await convex.query(api.taskRuns.get, {
-                  id: taskRunId as Id<"taskRuns">,
-                });
-
-                if (updatedTaskRun?.isCrowned) {
-                  serverLogger.info(
-                    `[AgentSpawner] 🏆 This task run won the crown! ${agent.name} is the winner!`
-                  );
-                }
-              } catch (error) {
-                serverLogger.error(
-                  `[AgentSpawner] Crown evaluation failed:`,
-                  error
-                );
-                // The periodic checker will retry
-              }
-            }, 3000); // 3 second delay to ensure data persistence
-          } else if (winnerId) {
-            serverLogger.info(
-              `[AgentSpawner] Task completed with winner: ${winnerId}`
-            );
-
-            // For single agent scenario, trigger auto-PR if enabled
-            const taskRuns = await convex.query(api.taskRuns.getByTask, {
-              taskId: taskRunData.taskId,
-            });
-
-            if (taskRuns.length === 1) {
-              serverLogger.info(
-                `[AgentSpawner] Single agent scenario - checking auto-PR settings`
-              );
-
-              // Check if auto-PR is enabled
-              const ws = await convex.query(api.workspaceSettings.get);
-              const autoPrEnabled =
-                (ws as unknown as { autoPrEnabled?: boolean })?.autoPrEnabled ??
-                false;
-
-              if (autoPrEnabled && winnerId) {
-                serverLogger.info(
-                  `[AgentSpawner] Triggering auto-PR for single agent completion`
-                );
-
-                // Import and call the createPullRequestForWinner function
-                const { createPullRequestForWinner } = await import(
-                  "./crownEvaluator.js"
-                );
-                const { getGitHubTokenFromKeychain } = await import(
-                  "./utils/getGitHubToken.js"
-                );
-                const githubToken = await getGitHubTokenFromKeychain(convex);
-
-                // Small delay to ensure git diff is persisted
-                setTimeout(async () => {
-                  try {
-                    await createPullRequestForWinner(
-                      convex,
-                      winnerId,
-                      taskRunData.taskId,
-                      githubToken || undefined
-                    );
-                    serverLogger.info(
-                      `[AgentSpawner] Auto-PR completed for single agent`
-                    );
-                  } catch (error) {
-                    serverLogger.error(
-                      `[AgentSpawner] Auto-PR failed for single agent:`,
-                      error
-                    );
-                  }
-                }, 3000);
-              } else {
-                serverLogger.info(
-                  `[AgentSpawner] Auto-PR disabled or not applicable for single agent`
-                );
-              }
-            }
-          } else {
-            serverLogger.info(
-              `[AgentSpawner] No crown evaluation needed (winnerId: ${winnerId})`
-            );
-          }
-        }
-
-        const ENABLE_AUTO_COMMIT = false; // Disabled to ensure git diff capture works
-
-        // Skip auto-commit - we'll let the user commit manually after crown evaluation
-        if (ENABLE_AUTO_COMMIT && taskRunData) {
-          serverLogger.info(
-            `[AgentSpawner] Auto-commit is disabled to ensure proper crown evaluation`
-          );
-        }
-
-        // Schedule container stop based on settings
-        const containerSettings = await convex.query(
-          api.containerSettings.getEffective
-        );
-
-        if (containerSettings.autoCleanupEnabled) {
-          if (containerSettings.stopImmediatelyOnCompletion) {
-            // Stop container immediately
-            serverLogger.info(
-              `[AgentSpawner] Stopping container immediately as per settings`
-            );
-
-            // Stop the VSCode instance
-            await vscodeInstance.stop();
-          } else {
-            // Schedule stop after review period
-            const reviewPeriodMs =
-              containerSettings.reviewPeriodMinutes * 60 * 1000;
-            const scheduledStopAt = Date.now() + reviewPeriodMs;
-
-            await convex.mutation(api.taskRuns.updateScheduledStop, {
-              id: taskRunId as Id<"taskRuns">,
-              scheduledStopAt,
-            });
-
-            serverLogger.info(
-              `[AgentSpawner] Scheduled container stop for ${new Date(scheduledStopAt).toISOString()}`
-            );
-          }
-        }
-      } catch (error) {
-        serverLogger.error(
-          `[AgentSpawner] Error handling task completion:`,
-          error
-        );
-      }
-    };
-
     // Track if this terminal already failed (to avoid completing later)
     let hasFailed = false;
 
@@ -612,7 +357,13 @@ export async function spawnAgent(
         );
         await new Promise((resolve) => setTimeout(resolve, 3000));
 
-        await handleTaskCompletion(data.exitCode ?? 0);
+        await handleTaskCompletion({
+          taskRunId,
+          agent,
+          exitCode: data.exitCode ?? 0,
+          worktreePath,
+          vscodeInstance,
+        });
       }
     });
 
@@ -664,29 +415,42 @@ export async function spawnAgent(
         );
         return;
       }
-      
+
       // Debug logging to understand what's being compared
       serverLogger.info(`[AgentSpawner] Task completion comparison:`);
       serverLogger.info(`[AgentSpawner]   data.taskRunId: "${data.taskRunId}"`);
       serverLogger.info(`[AgentSpawner]   taskRunId: "${taskRunId}"`);
-      serverLogger.info(`[AgentSpawner]   Match: ${data.taskRunId === taskRunId}`);
+      serverLogger.info(
+        `[AgentSpawner]   Match: ${data.taskRunId === taskRunId}`
+      );
 
       // Update the task run as completed
       if (data.taskRunId === taskRunId) {
-        serverLogger.info(`[AgentSpawner] Task ID matched! Marking task as complete for ${agent.name}`);
+        serverLogger.info(
+          `[AgentSpawner] Task ID matched! Marking task as complete for ${agent.name}`
+        );
         // CRITICAL: Add a delay to ensure changes are written to disk
-        serverLogger.info(`[AgentSpawner] Waiting 3 seconds for file system to settle before capturing git diff...`);
-        await new Promise(resolve => setTimeout(resolve, 3000));
-        
-        await handleTaskCompletion(0);
+        serverLogger.info(
+          `[AgentSpawner] Waiting 3 seconds for file system to settle before capturing git diff...`
+        );
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+
+        await handleTaskCompletion({
+          taskRunId,
+          agent,
+          exitCode: 0,
+          worktreePath,
+          vscodeInstance,
+        });
       } else {
-        serverLogger.warn(`[AgentSpawner] Task ID did not match, ignoring task complete event`);
+        serverLogger.warn(
+          `[AgentSpawner] Task ID did not match, ignoring task complete event`
+        );
       }
     });
 
     // Set up terminal-idle event handler (legacy; ignore for deterministic agents like OpenCode)
     vscodeInstance.on("terminal-idle", async (data: WorkerTerminalIdle) => {
-
       serverLogger.info(
         `[AgentSpawner] Terminal idle detected for ${agent.name}:`,
         data
@@ -702,22 +466,23 @@ export async function spawnAgent(
       serverLogger.info(`[AgentSpawner] Terminal idle comparison:`);
       serverLogger.info(`[AgentSpawner]   data.taskRunId: "${data.taskRunId}"`);
       serverLogger.info(`[AgentSpawner]   taskRunId: "${taskRunId}"`);
-      serverLogger.info(`[AgentSpawner]   Match: ${data.taskRunId === taskRunId}`);
+      serverLogger.info(
+        `[AgentSpawner]   Match: ${data.taskRunId === taskRunId}`
+      );
 
       // Update the task run as completed
       if (data.taskRunId === taskRunId) {
         serverLogger.info(
           `[AgentSpawner] Task ID matched! Marking task as complete for ${agent.name}`
         );
-        // CRITICAL: Add a delay to ensure changes are written to disk
-        serverLogger.info(
-          `[AgentSpawner] Waiting 3 seconds for file system to settle before capturing git diff...`
-        );
-        await new Promise((resolve) => setTimeout(resolve, 3000));
-
-        // Stop file watching before completing
         vscodeInstance.stopFileWatch();
-        await handleTaskCompletion(0);
+        await handleTaskCompletion({
+          taskRunId,
+          agent,
+          exitCode: 0,
+          worktreePath,
+          vscodeInstance,
+        });
       } else {
         serverLogger.warn(
           `[AgentSpawner] Task ID did not match, ignoring idle event`
@@ -743,14 +508,14 @@ export async function spawnAgent(
         // Append error to log for context
         if (data.errorMessage) {
           await convex.mutation(api.taskRuns.appendLogPublic, {
-            id: taskRunId as Id<"taskRuns">,
+            id: taskRunId,
             content: `\n\n=== ERROR ===\n${data.errorMessage}\n=== END ERROR ===\n`,
           });
         }
 
         // Mark the run as failed with error message
         await convex.mutation(api.taskRuns.fail, {
-          id: taskRunId as Id<"taskRuns">,
+          id: taskRunId,
           errorMessage: data.errorMessage || "Terminal failed",
           // WorkerTerminalFailed does not include exitCode in schema; default to 1
           exitCode: 1,
@@ -865,7 +630,6 @@ export async function spawnAgent(
       }
       // Special handling for notify command - DO NOT ESCAPE
       if (s.startsWith("notify=")) {
-
         return s;
       }
       // Otherwise single-quote and escape any existing single quotes
@@ -877,13 +641,15 @@ export async function spawnAgent(
 
     // Log the actual command for Codex agents to debug notify command
     if (agent.name.toLowerCase().includes("codex")) {
-      serverLogger.info(`[AgentSpawner] Codex command string: ${commandString}`);
+      serverLogger.info(
+        `[AgentSpawner] Codex command string: ${commandString}`
+      );
       serverLogger.info(`[AgentSpawner] Codex raw args:`, actualArgs);
     }
 
     // For Codex agents, use direct command execution to preserve notify argument
     // The notify command contains complex JSON that gets mangled through shell layers
-    const tmuxArgs = agent.name.toLowerCase().includes("codex") 
+    const tmuxArgs = agent.name.toLowerCase().includes("codex")
       ? [
           "new-session",
           "-d",
@@ -892,13 +658,13 @@ export async function spawnAgent(
           "-c",
           "/root/workspace",
           actualCommand,
-          ...actualArgs.map(arg => {
+          ...actualArgs.map((arg) => {
             // Replace $CMUX_PROMPT with actual prompt value
             if (arg === "$CMUX_PROMPT") {
               return processedTaskDescription;
             }
             return arg;
-          })
+          }),
         ]
       : [
           "new-session",
@@ -909,7 +675,7 @@ export async function spawnAgent(
           "-lc",
           `exec ${commandString}`,
         ];
-    
+
     const terminalCreationCommand: WorkerCreateTerminal = {
       terminalId: tmuxSessionName,
       command: "tmux",
@@ -1140,7 +906,6 @@ export async function spawnAgent(
         `[AgentSpawner] Emitted worker:create-terminal at ${new Date().toISOString()}`
       );
     });
-
 
     return {
       agentName: agent.name,
