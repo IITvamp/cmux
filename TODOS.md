@@ -65,3 +65,4 @@
 [ ] use gh webhook cli to update all git sync states faster
 [ ] select multiple tasks on frontend and do bulk actions on them
 [ ] notifications queue
+[ ] if no agents selected, error! dont spawn all at the same time

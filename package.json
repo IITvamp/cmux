@@ -11,6 +11,7 @@
     "clean:node_modules": "bash scripts/clean.sh",
     "typecheck": "run-p typecheck:*",
     "typecheck:client": "cd apps/client && bun run typecheck",
+    "typecheck:scripts": "cd scripts && bun run typecheck",
     "typecheck:server": "cd apps/server && bun run typecheck",
     "typecheck:shared": "cd packages/shared && bun run typecheck",
     "typecheck:worker": "cd apps/worker && bun run typecheck",

@@ -60,44 +60,40 @@ Next, create a route:
 
 ```ts
 import { createRoute } from "@hono/zod-openapi";
-
-const route = createRoute({
-  method: "get",
-  path: "/users/{id}",
-  request: {
-    params: ParamsSchema,
-  },
-  responses: {
-    200: {
-      content: {
-        "application/json": {
-          schema: UserSchema,
-        },
-      },
-      description: "Retrieve the user",
-    },
-  },
-});
-```
-
-Finally, set up the app:
-
-```ts
 import { OpenAPIHono } from "@hono/zod-openapi";
 
 const app = new OpenAPIHono();
 
-app.openapi(route, (c) => {
-  const { id } = c.req.valid("param");
-  return c.json(
-    {
-      id,
-      age: 20,
-      name: "Ultra-man",
+app.openapi(
+  createRoute({
+    method: "get",
+    path: "/users/{id}",
+    request: {
+      params: ParamsSchema,
     },
-    200 // You should specify the status code even if it is 200.
-  );
-});
+    responses: {
+      200: {
+        content: {
+          "application/json": {
+            schema: UserSchema,
+          },
+        },
+        description: "Retrieve the user",
+      },
+    },
+  }),
+  (c) => {
+    const { id } = c.req.valid("param");
+    return c.json(
+      {
+        id,
+        age: 20,
+        name: "Ultra-man",
+      },
+      200 // You should specify the status code even if it is 200.
+    );
+  }
+);
 
 // The OpenAPI documentation will be available at /doc
 app.doc("/doc", {
@@ -121,33 +117,34 @@ export default app;
 > ```ts
 > import { createRoute, z, OpenAPIHono } from "@hono/zod-openapi";
 >
-> const route = createRoute({
->   method: "post",
->   path: "/books",
->   request: {
->     body: {
->       content: {
->         "application/json": {
->           schema: z.object({
->             title: z.string(),
->           }),
+> const app = new OpenAPIHono();
+>
+> app.openapi(
+>   createRoute({
+>     method: "post",
+>     path: "/books",
+>     request: {
+>       body: {
+>         content: {
+>           "application/json": {
+>             schema: z.object({
+>               title: z.string(),
+>             }),
+>           },
 >         },
 >       },
 >     },
->   },
->   responses: {
->     200: {
->       description: "Success message",
+>     responses: {
+>       200: {
+>         description: "Success message",
+>       },
 >     },
->   },
-> });
->
-> const app = new OpenAPIHono();
->
-> app.openapi(route, (c) => {
->   const validatedBody = c.req.valid("json");
->   return c.json(validatedBody); // validatedBody is {}
-> });
+>   }),
+>   (c) => {
+>     const validatedBody = c.req.valid("json");
+>     return c.json(validatedBody); // validatedBody is {}
+>   }
+> );
 >
 > const res = await app.request("/books", {
 >   method: "POST",
@@ -162,22 +159,30 @@ export default app;
 > If you want to force validation of requests that do not have the proper `Content-Type`, set the value of `request.body.required` to `true`.
 >
 > ```ts
-> const route = createRoute({
->   method: "post",
->   path: "/books",
->   request: {
->     body: {
->       content: {
->         "application/json": {
->           schema: z.object({
->             title: z.string(),
->           }),
+> app.openapi(
+>   createRoute({
+>     method: "post",
+>     path: "/books",
+>     request: {
+>       body: {
+>         content: {
+>           "application/json": {
+>             schema: z.object({
+>               title: z.string(),
+>             }),
+>           },
 >         },
+>         required: true, // <== add
 >       },
->       required: true, // <== add
 >     },
->   },
-> });
+>     responses: {
+>       200: {
+>         description: "Success message",
+>       },
+>     },
+>   }),
+>   (c) => c.json(c.req.valid("json"))
+> );
 > ```
 
 ### Handling Validation Errors
@@ -197,33 +202,27 @@ const ErrorSchema = z.object({
 });
 ```
 
-Then, add the error response:
-
-```ts
-const route = createRoute({
-  method: "get",
-  path: "/users/{id}",
-  request: {
-    params: ParamsSchema,
-  },
-  responses: {
-    400: {
-      content: {
-        "application/json": {
-          schema: ErrorSchema,
-        },
-      },
-      description: "Returns an error",
-    },
-  },
-});
-```
-
-Finally, add the hook:
+Then, add the error response and hook inline:
 
 ```ts
 app.openapi(
-  route,
+  createRoute({
+    method: "get",
+    path: "/users/{id}",
+    request: {
+      params: ParamsSchema,
+    },
+    responses: {
+      400: {
+        content: {
+          "application/json": {
+            schema: ErrorSchema,
+          },
+        },
+        description: "Returns an error",
+      },
+    },
+  }),
   (c) => {
     const { id } = c.req.valid("param");
     return c.json(
@@ -342,37 +341,33 @@ app.use("/doc/*", prettyJSON());
 
 ### Configure middleware for each endpoint
 
-You can configure middleware for each endpoint from a route created by `createRoute` as follows.
+You can configure middleware for each endpoint using the `middleware` property in the route definition.
 
 ```ts
 import { prettyJSON } from "hono/pretty-json";
 import { cache } from "hono/cache";
 
-app.use(route.getRoutingPath(), prettyJSON(), cache({ cacheName: "my-cache" }));
-app.openapi(route, handler);
-```
-
-Or you can use the `middleware` property in the route definition.
-
-```ts
-const route = createRoute({
-  method: "get",
-  path: "/users/{id}",
-  request: {
-    params: ParamsSchema,
-  },
-  middleware: [prettyJSON(), cache({ cacheName: "my-cache" })] as const, // Use `as const` to ensure TypeScript infers the middleware's Context.
-  responses: {
-    200: {
-      content: {
-        "application/json": {
-          schema: UserSchema,
-        },
-      },
-      description: "Retrieve the user",
+app.openapi(
+  createRoute({
+    method: "get",
+    path: "/users/{id}",
+    request: {
+      params: ParamsSchema,
     },
-  },
-});
+    middleware: [prettyJSON(), cache({ cacheName: "my-cache" })] as const, // Use `as const` to ensure TypeScript infers the middleware's Context.
+    responses: {
+      200: {
+        content: {
+          "application/json": {
+            schema: UserSchema,
+          },
+        },
+        description: "Retrieve the user",
+      },
+    },
+  }),
+  (c) => c.json({ ok: true })
+);
 ```
 
 ### RPC Mode
@@ -381,17 +376,43 @@ Zod OpenAPI Hono supports Hono's RPC mode. You can define types for the Hono Cli
 
 ```ts
 import { hc } from "hono/client";
+import { z } from "@hono/zod-openapi";
 
-const appRoutes = app.openapi(route, (c) => {
-  const data = c.req.valid("json");
-  return c.json(
-    {
-      id: data.id,
-      message: "Success",
+const appRoutes = app.openapi(
+  createRoute({
+    method: "post",
+    path: "/rpc/example",
+    request: {
+      body: {
+        content: {
+          "application/json": {
+            schema: z.object({ id: z.string() }),
+          },
+        },
+      },
     },
-    200
-  );
-});
+    responses: {
+      200: {
+        content: {
+          "application/json": {
+            schema: z.object({ id: z.string(), message: z.string() }),
+          },
+        },
+        description: "Success",
+      },
+    },
+  }),
+  (c) => {
+    const data = c.req.valid("json");
+    return c.json(
+      {
+        id: data.id,
+        message: "Success",
+      },
+      200
+    );
+  }
+);
 
 const client = hc<typeof appRoutes>("http://localhost:8787/");
 ```
@@ -428,14 +449,21 @@ app.openAPIRegistry.registerComponent("securitySchemes", "Bearer", {
 And setup the security scheme for specific routes:
 
 ```ts
-const route = createRoute({
-  // ...
-  security: [
-    {
-      Bearer: [],
+app.openapi(
+  createRoute({
+    method: "get",
+    path: "/secure",
+    security: [
+      {
+        Bearer: [],
+      },
+    ],
+    responses: {
+      200: { description: "OK" },
     },
-  ],
-});
+  }),
+  (c) => c.text("secure")
+);
 ```
 
 ### How to access context in app.doc
@@ -463,10 +491,17 @@ app.doc("/doc", (c) => ({
 You can use `hide` property as follows:
 
 ```ts
-const route = createRoute({
-  // ...
-  hide: true,
-});
+app.openapi(
+  createRoute({
+    method: "get",
+    path: "/hidden",
+    hide: true,
+    responses: {
+      200: { description: "Hidden from docs" },
+    },
+  }),
+  (c) => c.text("hidden")
+);
 ```
 
 ## Limitations

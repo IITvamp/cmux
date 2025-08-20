@@ -1,524 +1,812 @@
-#!/usr/bin/env tsx
-import dotenv from "dotenv";
-import fs from "fs/promises";
+#!/usr/bin/env bun
+
+import ignore from "ignore";
 import { Instance, MorphCloudClient } from "morphcloud";
-import path from "path";
-import { io } from "socket.io-client";
-import { fileURLToPath } from "url";
+import { NodeSSH } from "node-ssh";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 
-// Load environment variables
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-dotenv.config({ path: path.join(__dirname, ".env") });
-
-async function runSSHCommand(
-  instance: Instance,
-  command: string,
-  sudo = false,
-  printOutput = true
-): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const fullCommand =
-    sudo && !command.startsWith("sudo ") ? `sudo ${command}` : command;
-
-  console.log(`Running: ${fullCommand}`);
-  const result = await instance.exec(fullCommand);
-
-  if (printOutput) {
-    if (result.stdout) {
-      console.log(result.stdout);
-    }
-    if (result.stderr) {
-      console.error(`ERR: ${result.stderr}`);
-    }
-  }
-
-  if (result.exit_code !== 0) {
-    console.log(`Command failed with exit code ${result.exit_code}`);
-  }
-
-  return {
-    exitCode: result.exit_code,
-    stdout: result.stdout,
-    stderr: result.stderr,
-  };
+interface DockerfileInstruction {
+  type: string;
+  content: string;
+  args?: string[];
+  heredoc?: string;
+  isHeredoc?: boolean;
 }
 
-async function setupDockerWithBuildKit(instance: Instance) {
-  console.log("\n--- Setting up Docker with BuildKit ---");
+class DockerfileParser {
+  private lines: string[];
+  private currentIndex: number = 0;
+  private buildArgs: Map<string, string> = new Map();
+  private currentStage: string = "default";
+  private stages: Map<string, string> = new Map();
 
-  // First, let's check what OS we're running on
-  const osCheck = await runSSHCommand(
-    instance,
-    "cat /etc/os-release || echo 'Unknown OS'",
-    true
-  );
-  console.log("OS Info:", osCheck.stdout);
+  constructor(content: string) {
+    this.lines = content.split("\n");
+  }
 
-  // Update package lists and install Docker
-  await runSSHCommand(
-    instance,
-    "apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y docker.io curl python3 make g++ bash nodejs npm",
-    true
-  );
+  parse(): DockerfileInstruction[] {
+    const instructions: DockerfileInstruction[] = [];
 
-  // Install Bun
-  await runSSHCommand(
-    instance,
-    "curl -fsSL https://bun.sh/install | bash",
-    true
-  );
+    while (this.currentIndex < this.lines.length) {
+      const line = this.lines[this.currentIndex].trim();
 
-  // Enable BuildKit
-  await runSSHCommand(
-    instance,
-    `mkdir -p /etc/docker && echo '{"features":{"buildkit":true}}' > /etc/docker/daemon.json && echo 'DOCKER_BUILDKIT=1' >> /etc/environment`,
-    true
-  );
+      // Skip empty lines and comments
+      if (!line || line.startsWith("#")) {
+        this.currentIndex++;
+        continue;
+      }
 
-  // Start Docker service
-  await runSSHCommand(instance, "systemctl start docker", true);
-  await runSSHCommand(instance, "systemctl enable docker", true);
-
-  // Wait for Docker to be ready
-  console.log("Waiting for Docker daemon to initialize...");
-  for (let i = 0; i < 10; i++) {
-    const result = await runSSHCommand(
-      instance,
-      "docker info >/dev/null 2>&1 && echo 'ready' || echo 'not ready'",
-      true,
-      false
-    );
-    if (result.stdout.includes("ready")) {
-      console.log("Docker is ready");
-      break;
+      // Parse instruction
+      const instruction = this.parseInstruction();
+      if (instruction) {
+        instructions.push(instruction);
+      }
     }
-    console.log(`Waiting for Docker... (${i + 1}/10)`);
-    await new Promise((resolve) => setTimeout(resolve, 3000));
+
+    return instructions;
+  }
+
+  private parseInstruction(): DockerfileInstruction | null {
+    const line = this.lines[this.currentIndex].trim();
+
+    // Check for heredoc syntax
+    if (line.match(/^(RUN|COPY)\s+<<(-)?'?([A-Z]+)'?$/)) {
+      return this.parseHeredoc();
+    }
+
+    // Parse regular instruction
+    const match = line.match(/^([A-Z]+)\s+(.*)$/);
+    if (!match) {
+      this.currentIndex++;
+      return null;
+    }
+
+    const [, type, content] = match;
+    this.currentIndex++;
+
+    // Handle multi-line continuations
+    let fullContent = content;
+    while (
+      fullContent.endsWith("\\") &&
+      this.currentIndex < this.lines.length
+    ) {
+      fullContent =
+        fullContent.slice(0, -1) + " " + this.lines[this.currentIndex].trim();
+      this.currentIndex++;
+    }
+
+    // Process specific instruction types
+    switch (type) {
+      case "ARG":
+        this.parseArg(fullContent);
+        break;
+      case "FROM":
+        this.parseFrom(fullContent);
+        break;
+    }
+
+    return {
+      type,
+      content: fullContent,
+      args: fullContent.split(/\s+/),
+    };
+  }
+
+  private parseHeredoc(): DockerfileInstruction {
+    const line = this.lines[this.currentIndex];
+    const match = line.match(/^(RUN|COPY)\s+<<(-)?'?([A-Z]+)'?$/);
+    if (!match) {
+      throw new Error(`Invalid heredoc syntax: ${line}`);
+    }
+
+    const [, type, dash, delimiter] = match;
+    this.currentIndex++;
+
+    const heredocLines: string[] = [];
+    while (this.currentIndex < this.lines.length) {
+      const currentLine = this.lines[this.currentIndex];
+      if (currentLine.trim() === delimiter) {
+        this.currentIndex++;
+        break;
+      }
+      // If dash is present, remove leading tabs
+      heredocLines.push(dash ? currentLine.replace(/^\t/, "") : currentLine);
+      this.currentIndex++;
+    }
+
+    return {
+      type,
+      content: heredocLines.join("\n"),
+      isHeredoc: true,
+      heredoc: delimiter,
+    };
+  }
+
+  private parseArg(content: string) {
+    const match = content.match(/^([A-Z_]+)(?:=(.*))?$/);
+    if (match) {
+      const [, name, value] = match;
+      if (value) {
+        this.buildArgs.set(name, value);
+      }
+    }
+  }
+
+  private parseFrom(content: string) {
+    const parts = content.split(/\s+AS\s+/i);
+    if (parts.length > 1) {
+      this.currentStage = parts[1];
+      this.stages.set(this.currentStage, parts[0]);
+    }
+  }
+
+  getBuildArgs(): Map<string, string> {
+    return this.buildArgs;
+  }
+
+  getStages(): Map<string, string> {
+    return this.stages;
   }
 }
 
-async function copyApplicationFiles(instance: Instance) {
-  console.log("\n--- Copying application files ---");
+class MorphDockerfileExecutor {
+  private ssh: NodeSSH;
+  private client: MorphCloudClient;
+  private instance: Instance | null = null;
+  private workDir: string = "/root";
+  private dockerignore: any;
+  private gitignore: any;
+  private entrypoint: string | null = null;
+  private cmd: string | null = null;
+  private stageFiles: Map<string, Set<string>> = new Map();
 
-  // Create the cmux directory structure
-  await runSSHCommand(instance, "mkdir -p /cmux", true);
+  private async findFiles(pattern: string): Promise<string[]> {
+    // Simple glob pattern matching for common cases
+    const results: string[] = [];
 
-  // Instead of syncing large directories, let's create a tarball and transfer it
-  const projectRoot = path.join(__dirname, "..");
-
-  console.log("Creating tarball of project files...");
-
-  // Create tarball excluding node_modules and other unnecessary files
-  const { execSync } = await import("child_process");
-  const tarballPath = path.join(__dirname, "cmux-files.tar.gz");
-
-  try {
-    // Create tarball with specific files we need
-    execSync(
-      `cd "${projectRoot}" && tar -czf "${tarballPath}" ` +
-        `--exclude='node_modules' --exclude='.git' --exclude='dist' --exclude='build' ` +
-        `apps packages package.json package-lock.json tsconfig.json`,
-      { stdio: "inherit" }
-    );
-
-    console.log("Uploading tarball to instance...");
-    // Upload the tarball
-    await instance.sync(tarballPath, `${instance.id}:/tmp/cmux-files.tar.gz`);
-
-    // Extract on the instance
-    console.log("Extracting files on instance...");
-    await runSSHCommand(
-      instance,
-      "cd /cmux && tar -xzf /tmp/cmux-files.tar.gz && rm /tmp/cmux-files.tar.gz",
-      true
-    );
-
-    // Clean up local tarball
-    await fs.unlink(tarballPath);
-  } catch (error) {
-    console.error("Error creating/transferring tarball:", error);
-    // Fall back to copying essential files manually
-    console.log("Falling back to manual file copy...");
-
-    const filesToCopy = ["package.json", "package-lock.json"];
-    for (const file of filesToCopy) {
-      const srcPath = path.join(projectRoot, file);
-      const destPath = `/cmux/${file}`;
-      console.log(`Copying ${file}...`);
+    // Handle patterns like "scripts/package.json", "apps/*/package.json", etc.
+    if (!pattern.includes("*") && !pattern.includes("?")) {
+      // No glob pattern, just return the file if it exists
       try {
-        const content = await fs.readFile(srcPath, "utf-8");
-        await runSSHCommand(
-          instance,
-          `cat > ${destPath} << 'EOF'
-${content}
-EOF`,
-          true
-        );
+        await fs.stat(pattern);
+        return [pattern];
+      } catch {
+        return [];
+      }
+    }
+
+    // Split pattern into directory parts
+    const parts = pattern.split("/");
+
+    // Simple implementation for common patterns like "apps/*/package.json" or "packages/*/package.json"
+    if (parts.length === 3 && parts[1] === "*") {
+      const baseDir = parts[0];
+      const fileName = parts[2];
+
+      try {
+        const entries = await fs.readdir(baseDir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (entry.isDirectory()) {
+            const filePath = path.join(baseDir, entry.name, fileName);
+            try {
+              await fs.stat(filePath);
+              results.push(filePath);
+            } catch {
+              // File doesn't exist in this directory
+            }
+          }
+        }
       } catch (err) {
-        console.log(`Skipping ${file}: ${err}`);
+        console.log(`  Warning: Could not read directory ${baseDir}: ${err}`);
+      }
+    } else if (pattern === "scripts/package.json") {
+      // Direct file check
+      try {
+        await fs.stat(pattern);
+        results.push(pattern);
+      } catch {
+        // File doesn't exist
       }
     }
-  }
-}
 
-async function buildWorkerWithBuildKit(instance: Instance) {
-  console.log("\n--- Building worker with Bun ---");
-
-  // Set up PATH for bun
-  await runSSHCommand(
-    instance,
-    "export PATH=/root/.bun/bin:$PATH && cd /cmux && npm install",
-    true
-  );
-
-  // Create builtins directory
-  await runSSHCommand(instance, "mkdir -p /builtins", true);
-
-  // Build the worker
-  await runSSHCommand(
-    instance,
-    "export PATH=/root/.bun/bin:$PATH && bun build /cmux/apps/worker/src/index.ts --target node --outdir /builtins/build",
-    true
-  );
-
-  // Copy necessary files to builtins
-  await runSSHCommand(
-    instance,
-    "cp /cmux/apps/worker/package.json /builtins/package.json",
-    true
-  );
-
-  // Copy wait-for-docker.sh
-  await runSSHCommand(
-    instance,
-    "cp /cmux/apps/worker/wait-for-docker.sh /usr/local/bin/ && chmod +x /usr/local/bin/wait-for-docker.sh",
-    true
-  );
-
-  // Create workspace directory
-  await runSSHCommand(instance, "mkdir -p /workspace", true);
-}
-
-async function createStartupScript(instance: Instance) {
-  console.log("\n--- Creating startup script ---");
-
-  const startupScript = `#!/bin/sh
-dockerd-entrypoint.sh &
-wait-for-docker.sh
-cd /builtins
-NODE_ENV=production WORKER_PORT=39377 node /builtins/build/index.js
-`;
-
-  await runSSHCommand(
-    instance,
-    `cat > /startup.sh << 'EOF'
-${startupScript}
-EOF`,
-    true
-  );
-
-  await runSSHCommand(instance, "chmod +x /startup.sh", true);
-}
-
-async function createDockerfile(instance: Instance) {
-  console.log("\n--- Creating Dockerfile for BuildKit ---");
-
-  const dockerfile = `# syntax=docker/dockerfile:1.4
-FROM docker:28.3.2-dind
-
-# Build and runtime dependencies
-RUN apk add --no-cache \\
-    curl python3 make g++ linux-headers bash \\
-    nodejs npm
-
-# Install Bun
-RUN curl -fsSL https://bun.sh/install | bash
-ENV PATH="/root/.bun/bin:$PATH"
-
-# Application source
-COPY . /cmux
-WORKDIR /cmux
-
-# Install Node deps and build the worker
-RUN npm install
-
-RUN ls /cmux
-RUN ls /cmux/apps/worker
-
-RUN bun build /cmux/apps/worker/src/index.ts --target node --outdir /cmux/apps/worker/build
-
-# Move artefacts to runtime location
-RUN mkdir -p /builtins && \\
-    cp -r ./apps/worker/build /builtins/build && \\
-    cp ./apps/worker/package.json /builtins/package.json && \\
-    cp ./apps/worker/wait-for-docker.sh /usr/local/bin/ && \\
-    chmod +x /usr/local/bin/wait-for-docker.sh
-
-# Workspace
-RUN mkdir -p /workspace
-WORKDIR /builtins
-
-# Environment
-ENV NODE_ENV=production
-ENV WORKER_PORT=39377
-
-# Ports
-EXPOSE 39375 39377
-
-# Startup script
-RUN cat > /startup.sh << 'EOF'
-#!/bin/sh
-dockerd-entrypoint.sh &
-wait-for-docker.sh
-node /builtins/build/index.js
-EOF
-RUN chmod +x /startup.sh
-
-ENTRYPOINT ["/startup.sh"]
-CMD []
-`;
-
-  await runSSHCommand(
-    instance,
-    `cat > /cmux/Dockerfile << 'EOF'
-${dockerfile}
-EOF`,
-    true
-  );
-}
-
-async function buildAndTestDocker(instance: Instance) {
-  console.log("\n--- Building Docker image with BuildKit ---");
-
-  // Build the Docker image
-  const buildResult = await runSSHCommand(
-    instance,
-    "cd /cmux && DOCKER_BUILDKIT=1 docker build --progress=plain -t cmux-worker:latest .",
-    true
-  );
-
-  if (buildResult.exitCode !== 0) {
-    throw new Error("Failed to build Docker image");
+    return results;
   }
 
-  console.log("\n--- Testing Docker container ---");
-
-  // Run a test container
-  const runResult = await runSSHCommand(
-    instance,
-    "docker run -d --privileged -p 39377:39377 --name test-worker cmux-worker:latest",
-    true
-  );
-
-  if (runResult.exitCode !== 0) {
-    throw new Error("Failed to run Docker container");
+  constructor() {
+    this.ssh = new NodeSSH();
+    this.client = new MorphCloudClient();
   }
 
-  // Wait for container to start
-  await new Promise((resolve) => setTimeout(resolve, 5000));
+  async connect(): Promise<void> {
+    console.log("Creating Morph VM snapshot...");
 
-  // Check if container is running
-  const psResult = await runSSHCommand(
-    instance,
-    "docker ps --filter name=test-worker --format '{{.Status}}'",
-    true
-  );
+    const snapshot = await this.client.snapshots.create({
+      imageId: "morphvm-minimal",
+      vcpus: 1,
+      memory: 4096,
+      diskSize: 16384,
+    });
+    console.log(`Created snapshot: ${snapshot.id}`);
 
-  console.log("Container status:", psResult.stdout);
+    console.log("Starting instance...");
+    const instance = await this.client.instances.start({
+      snapshotId: snapshot.id,
+      // 30 minutes
+      ttlSeconds: 60 * 30,
+      ttlAction: "pause",
+    });
 
-  // Stop and remove test container
-  await runSSHCommand(
-    instance,
-    "docker stop test-worker && docker rm test-worker",
-    true
-  );
-}
+    this.instance = instance;
 
-async function startWorkerDirectly(instance: Instance) {
-  console.log("\n--- Starting worker directly for testing ---");
+    console.log(`Started instance: ${this.instance.id}`);
 
-  // Start the worker process in the background
-  await runSSHCommand(
-    instance,
-    "cd /builtins && NODE_ENV=production WORKER_PORT=39377 nohup node /builtins/build/index.js > /tmp/worker.log 2>&1 &",
-    true
-  );
+    // Connect via SSH
+    console.log("Connecting to Morph VM via SSH...");
 
-  // Expose HTTP services
-  await instance.exposeHttpService("worker", 39377);
+    const privateKeyPath = path.join(
+      process.env.HOME || "",
+      ".ssh",
+      "id_ed25519_new"
+    );
 
-  console.log("Worker started, services exposed");
-}
+    await this.ssh.connect({
+      host: "ssh.cloud.morph.so",
+      username: instance.id,
+      privateKeyPath: privateKeyPath,
+      readyTimeout: 30000,
+      keepaliveInterval: 5000,
+    });
 
-async function testWorkerConnection(instance: Instance) {
-  console.log("\n--- Testing worker connection ---");
+    console.log("Connected to Morph VM");
+  }
 
-  // Get the instance networking info to find the exposed URLs
-  const client = new MorphCloudClient();
-  const freshInstance = await client.instances.get({ instanceId: instance.id });
+  async loadIgnoreFiles(): Promise<void> {
+    // Load .dockerignore
+    try {
+      const dockerignoreContent = await fs.readFile(".dockerignore", "utf-8");
+      this.dockerignore = ignore().add(dockerignoreContent);
+    } catch (error) {
+      // No .dockerignore file
+      this.dockerignore = ignore();
+    }
 
-  let managementUrl: string | null = null;
-  let workerUrl: string | null = null;
-
-  for (const service of freshInstance.networking.httpServices) {
-    if (service.name === "management") {
-      managementUrl = service.url;
-    } else if (service.name === "worker") {
-      workerUrl = service.url;
+    // Load .gitignore
+    try {
+      const gitignoreContent = await fs.readFile(".gitignore", "utf-8");
+      this.gitignore = ignore().add(gitignoreContent);
+    } catch (error) {
+      // No .gitignore file
+      this.gitignore = ignore();
     }
   }
 
-  if (!managementUrl || !workerUrl) {
-    throw new Error("Could not find exposed service URLs");
+  async executeDockerfile(dockerfilePath: string): Promise<void> {
+    const content = await fs.readFile(dockerfilePath, "utf-8");
+    const parser = new DockerfileParser(content);
+    const instructions = parser.parse();
+
+    console.log(`Parsing Dockerfile with ${instructions.length} instructions`);
+
+    // Process each instruction
+    for (const instruction of instructions) {
+      console.log(`\nExecuting: ${instruction.type}`);
+
+      switch (instruction.type) {
+        case "FROM":
+          await this.handleFrom(instruction);
+          break;
+        case "RUN":
+          await this.handleRun(instruction);
+          break;
+        case "WORKDIR":
+          await this.handleWorkdir(instruction);
+          break;
+        case "COPY":
+          await this.handleCopy(instruction);
+          break;
+        case "ADD":
+          await this.handleAdd(instruction);
+          break;
+        case "ENV":
+          await this.handleEnv(instruction);
+          break;
+        case "ARG":
+          // Already parsed
+          break;
+        case "EXPOSE":
+          // Note exposed ports but don't need to execute anything
+          console.log(`  Exposing ports: ${instruction.content}`);
+          await this.handleExpose(instruction);
+          break;
+        case "VOLUME":
+          await this.handleVolume(instruction);
+          break;
+        case "CMD":
+          await this.handleCmd(instruction);
+          break;
+        case "ENTRYPOINT":
+          await this.handleEntrypoint(instruction);
+          break;
+        default:
+          console.log(
+            `  Skipping unsupported instruction: ${instruction.type}`
+          );
+      }
+    }
+
+    // After processing all instructions, run CMD/ENTRYPOINT if present
+    await this.runFinalCommand();
   }
 
-  console.log("Management URL:", managementUrl);
-  console.log("Worker URL:", workerUrl);
+  async getHttpServices() {
+    if (!this.instance) {
+      throw new Error("Instance not found");
+    }
+    const httpServices = this.instance.networking.httpServices;
+    return httpServices;
+  }
 
-  // Test socket.io connection
-  const managementSocket = io(managementUrl);
+  async setWakeOn({
+    wakeOnSsh,
+    wakeOnHttp,
+  }: {
+    wakeOnSsh: boolean;
+    wakeOnHttp: boolean;
+  }): Promise<void> {
+    if (!this.instance) {
+      throw new Error("Instance not found");
+    }
+    await this.instance.setWakeOn(wakeOnSsh, wakeOnHttp);
+  }
 
-  return new Promise<void>((resolve, reject) => {
-    managementSocket.on("connect", () => {
-      console.log("Connected to worker management port");
-    });
+  async snapshot() {
+    if (!this.instance) {
+      throw new Error("Instance not found");
+    }
+    const snapshot = await this.instance.snapshot();
+    return snapshot;
+  }
 
-    managementSocket.on("worker:register", (data: unknown) => {
-      console.log("Worker registered:", data);
+  private async handleCmd(instruction: DockerfileInstruction): Promise<void> {
+    console.log(`  Setting CMD: ${instruction.content}`);
+    this.cmd = this.parseCommand(instruction.content);
+  }
 
-      // Test creating a terminal
-      managementSocket.emit("worker:create-terminal", {
-        terminalId: "test-terminal-1",
-        cols: 80,
-        rows: 24,
-        cwd: "/",
-      });
-    });
+  private async handleEntrypoint(
+    instruction: DockerfileInstruction
+  ): Promise<void> {
+    console.log(`  Setting ENTRYPOINT: ${instruction.content}`);
+    this.entrypoint = this.parseCommand(instruction.content);
+  }
 
-    managementSocket.on("worker:terminal-created", (data: unknown) => {
-      console.log("Terminal created:", data);
-
-      // Test sending input
-      managementSocket.emit("worker:terminal-input", {
-        terminalId: "test-terminal-1",
-        data: 'echo "Hello from MorphCloud worker!"\\r',
-      });
-    });
-
-    managementSocket.on("worker:terminal-output", (data: { data: string }) => {
-      console.log("Terminal output:", data);
-
-      if (data.data.includes("Hello from MorphCloud worker!")) {
-        console.log("Test successful!");
-        managementSocket.disconnect();
-        resolve();
+  private parseCommand(content: string): string {
+    // Handle JSON array format ["executable", "param1", "param2"]
+    if (content.startsWith("[")) {
+      try {
+        const parsed = JSON.parse(content);
+        return parsed.join(" ");
+      } catch {
+        // Not valid JSON, treat as shell format
       }
-    });
+    }
+    // Shell format
+    return content;
+  }
 
-    managementSocket.on("error", (error: unknown) => {
-      console.error("Socket error:", error);
-      reject(error);
-    });
+  private async runFinalCommand(): Promise<void> {
+    let finalCommand = "";
 
-    // Timeout after 30 seconds
-    setTimeout(() => {
-      managementSocket.disconnect();
-      reject(new Error("Test timed out"));
-    }, 30000);
-  });
+    if (this.entrypoint && this.cmd) {
+      // Both ENTRYPOINT and CMD are set
+      finalCommand = `${this.entrypoint} ${this.cmd}`;
+    } else if (this.entrypoint) {
+      // Only ENTRYPOINT is set
+      finalCommand = this.entrypoint;
+    } else if (this.cmd) {
+      // Only CMD is set
+      finalCommand = this.cmd;
+    }
+
+    if (finalCommand) {
+      console.log(`\nStarting background process: ${finalCommand}`);
+      await this.execBackground(finalCommand);
+      console.log("Background process started successfully");
+
+      // Give it a moment to start and show initial output
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+
+      // Check if process is still running
+      const result = await this.ssh.execCommand(
+        "ps aux | grep -v grep | grep -q '/bin/bash' && echo 'Process running' || echo 'Process not found'"
+      );
+      console.log(`Process status: ${result.stdout}`);
+    }
+  }
+
+  private async execBackground(command: string): Promise<void> {
+    // Run command in background using nohup and redirect output
+    const bgCommand = `nohup ${command} > /tmp/docker-output.log 2>&1 &`;
+    console.log(`  Executing in background: ${bgCommand}`);
+
+    try {
+      await this.ssh.execCommand(bgCommand, {
+        cwd: this.workDir,
+      });
+
+      // Show initial logs
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const logResult = await this.ssh.execCommand(
+        "head -20 /tmp/docker-output.log 2>/dev/null || true"
+      );
+      if (logResult.stdout) {
+        console.log("Initial output:");
+        console.log(logResult.stdout);
+      }
+    } catch (error) {
+      console.error(`Failed to start background process: ${error}`);
+    }
+  }
+
+  private async handleExpose(
+    instruction: DockerfileInstruction
+  ): Promise<void> {
+    // Parse all ports (EXPOSE can have multiple ports separated by spaces)
+    const ports = instruction.content
+      .split(/\s+/)
+      .map((p) => parseInt(p))
+      .filter((p) => !isNaN(p));
+    for (const port of ports) {
+      this.instance?.exposeHttpService(`port-${port}`, port);
+    }
+  }
+
+  private async handleFrom(instruction: DockerfileInstruction): Promise<void> {
+    const parts = instruction.content.split(/\s+AS\s+/i);
+    const image = parts[0];
+    const stage = parts[1] || "default";
+
+    console.log(`  Setting up base image: ${image} (stage: ${stage})`);
+
+    // Track this stage for multi-stage builds
+    if (!this.stageFiles.has(stage)) {
+      this.stageFiles.set(stage, new Set());
+    }
+
+    // For Ubuntu images, ensure apt-get is updated
+    if (image.includes("ubuntu")) {
+      await this.exec("apt-get update");
+    }
+  }
+
+  private async handleRun(instruction: DockerfileInstruction): Promise<void> {
+    // Check for --mount directives and remove them
+    let command = instruction.content;
+
+    // Remove --mount directives (simplified handling)
+    if (command.includes("--mount=")) {
+      command = command.replace(/--mount=[^\s]+\s*/g, "");
+      console.log(`  Note: Ignoring --mount directives`);
+    }
+
+    if (instruction.isHeredoc) {
+      // Execute heredoc content as a shell script
+      const tempFile = `/tmp/heredoc_${Date.now()}.sh`;
+      // Create a temporary local file first
+      const localTempFile = `/tmp/local_heredoc_${Date.now()}.sh`;
+      await fs.writeFile(localTempFile, command);
+      await this.ssh.putFile(localTempFile, tempFile);
+      await fs.unlink(localTempFile);
+      await this.exec(`bash ${tempFile}`);
+      await this.exec(`rm ${tempFile}`);
+    } else {
+      // Execute regular RUN command
+      await this.exec(command);
+    }
+  }
+
+  private async handleWorkdir(
+    instruction: DockerfileInstruction
+  ): Promise<void> {
+    this.workDir = instruction.content;
+    console.log(`  Changing working directory to: ${this.workDir}`);
+    await this.exec(`mkdir -p ${this.workDir}`);
+  }
+
+  private async handleCopy(instruction: DockerfileInstruction): Promise<void> {
+    // Parse COPY instruction more carefully
+    let content = instruction.content;
+    let fromStage: string | null = null;
+    let preserveParents = false;
+
+    // Check for --from=<stage> format
+    const fromMatch = content.match(/^--from=([^\s]+)\s+/);
+    if (fromMatch) {
+      fromStage = fromMatch[1];
+      content = content.substring(fromMatch[0].length);
+    }
+
+    // Check for --parents flag
+    if (content.startsWith("--parents ")) {
+      preserveParents = true;
+      content = content.substring("--parents ".length);
+    }
+
+    // Now split the remaining content
+    const args = content.trim().split(/\s+/);
+    const sources = args.slice(0, -1);
+    const dest = args[args.length - 1];
+
+    if (fromStage) {
+      console.log(
+        `  Copying from stage ${fromStage}: ${sources.join(" ")} to ${dest}`
+      );
+
+      // For multi-stage builds, the source paths exist in the build context
+      // Since we're running everything in the same VM, we just copy normally
+      // but we need to handle absolute paths from the builder stage
+      for (const source of sources) {
+        // The source is an absolute path in the builder stage
+        // We'll copy it as-is since we're in the same environment
+        const remoteDest = path.isAbsolute(dest)
+          ? dest
+          : path.join(this.workDir, dest);
+
+        // Ensure destination directory exists
+        if (sources.length > 1 || dest.endsWith("/")) {
+          await this.exec(`mkdir -p ${remoteDest}`);
+        } else {
+          const destDir = path.dirname(remoteDest);
+          await this.exec(`mkdir -p ${destDir}`);
+        }
+
+        // Copy the file/directory
+        try {
+          const stats = await this.ssh.execCommand(`stat -c %F "${source}"`);
+          if (stats.stdout.includes("directory")) {
+            await this.exec(`cp -r ${source} ${remoteDest}`);
+          } else {
+            await this.exec(`cp ${source} ${remoteDest}`);
+          }
+          console.log(`  Copied ${source} to ${remoteDest}`);
+        } catch (error) {
+          console.log(
+            `  Warning: Could not copy ${source} from stage ${fromStage}`
+          );
+        }
+      }
+      return;
+    }
+
+    // Ensure destination directory exists if copying to a directory
+    const fullDest = path.isAbsolute(dest)
+      ? dest
+      : path.join(this.workDir, dest);
+
+    // If dest is ./ or ends with /, ensure it exists
+    if (dest === "./" || dest === "." || dest.endsWith("/")) {
+      await this.exec(`mkdir -p ${fullDest}`);
+    }
+
+    console.log(
+      `  Copying ${sources.join(", ")} to ${dest}${preserveParents ? " (preserving parents)" : ""}`
+    );
+
+    for (const source of sources) {
+      // Check if source contains glob patterns
+      if (source.includes("*") || source.includes("?")) {
+        const matches = await this.findFiles(source);
+        if (matches.length === 0) {
+          console.log(`  Warning: No files matched pattern ${source}`);
+          continue;
+        }
+        for (const match of matches) {
+          await this.copyToVM(match, dest, preserveParents);
+        }
+      } else {
+        await this.copyToVM(source, dest, preserveParents);
+      }
+    }
+  }
+
+  private async handleAdd(instruction: DockerfileInstruction): Promise<void> {
+    // Similar to COPY but with URL support and auto-extraction
+    const args = instruction.content.split(/\s+/);
+    const sources = args.slice(0, -1);
+    const dest = args[args.length - 1];
+
+    for (const source of sources) {
+      if (source.startsWith("http://") || source.startsWith("https://")) {
+        console.log(`  Downloading ${source} to ${dest}`);
+        await this.exec(`curl -fsSL -o ${dest} ${source}`);
+      } else {
+        await this.copyToVM(source, dest);
+      }
+    }
+  }
+
+  private async handleEnv(instruction: DockerfileInstruction): Promise<void> {
+    const match = instruction.content.match(/^([A-Z_]+)=(.*)$/);
+    if (match) {
+      const [, name, value] = match;
+      console.log(`  Setting environment variable: ${name}=${value}`);
+      await this.exec(`export ${name}=${value}`);
+    }
+  }
+
+  private async handleVolume(
+    instruction: DockerfileInstruction
+  ): Promise<void> {
+    const volume = instruction.content;
+    console.log(`  Creating volume: ${volume}`);
+    await this.exec(`mkdir -p ${volume}`);
+  }
+
+  private async copyToVM(
+    source: string,
+    dest: string,
+    preserveParents: boolean = false
+  ): Promise<void> {
+    // Check if file should be ignored - only for relative paths
+    if (!path.isAbsolute(source)) {
+      if (this.dockerignore.ignores(source) || this.gitignore.ignores(source)) {
+        console.log(`  Skipping ignored file: ${source}`);
+        return;
+      }
+    }
+
+    const stats = await fs.stat(source).catch(() => null);
+    if (!stats) {
+      console.log(`  Warning: Source ${source} not found`);
+      return;
+    }
+
+    const remoteDest = path.isAbsolute(dest)
+      ? dest
+      : path.join(this.workDir, dest);
+
+    if (stats.isDirectory()) {
+      await this.copyDirectoryToVM(source, remoteDest, preserveParents);
+    } else {
+      // Determine proper destination path
+      let finalDest = remoteDest;
+
+      // If preserveParents is true, maintain the full directory structure
+      if (preserveParents) {
+        // For --parents, preserve the full path structure
+        // e.g., apps/client/package.json -> /cmux/apps/client/package.json
+        if (dest === "./" || dest === ".") {
+          // Copying to current workdir with structure preserved
+          finalDest = path.join(this.workDir, source);
+        } else {
+          // Append source path to destination
+          finalDest = path.join(remoteDest, source);
+        }
+        const remoteDir = path.dirname(finalDest);
+        await this.exec(`mkdir -p ${remoteDir}`);
+      } else if (dest.endsWith("/") || dest === "./" || dest === ".") {
+        // Treat as directory, preserve source filename only
+        const remoteDir =
+          dest === "." || dest === "./" ? this.workDir : remoteDest;
+        await this.exec(`mkdir -p ${remoteDir}`);
+        finalDest = path.join(remoteDir, path.basename(source));
+      } else {
+        // Destination is a specific file path (e.g., /startup.sh)
+        // Copy source to that exact path
+        finalDest = remoteDest;
+        const remoteDir = path.dirname(remoteDest);
+        // Only create parent directory if it's not root
+        if (remoteDir !== "/") {
+          await this.exec(`mkdir -p ${remoteDir}`);
+        }
+      }
+
+      console.log(`  Copying ${source} to ${finalDest}`);
+      try {
+        await this.ssh.putFile(source, finalDest);
+      } catch (error) {
+        console.error(`  Failed to copy ${source}: ${error}`);
+        throw error;
+      }
+    }
+  }
+
+  private async copyDirectoryToVM(
+    localDir: string,
+    remoteDir: string,
+    _preserveParents: boolean
+  ): Promise<void> {
+    await this.exec(`mkdir -p ${remoteDir}`);
+
+    const files = await fs.readdir(localDir, { withFileTypes: true });
+
+    for (const file of files) {
+      const localPath = path.join(localDir, file.name);
+      const remotePath = path.join(remoteDir, file.name);
+
+      // Check ignore rules
+      if (
+        this.dockerignore.ignores(localPath) ||
+        this.gitignore.ignores(localPath)
+      ) {
+        continue;
+      }
+
+      if (file.isDirectory()) {
+        await this.copyDirectoryToVM(localPath, remotePath, false);
+      } else {
+        console.log(`  Copying ${localPath} to ${remotePath}`);
+        await this.ssh.putFile(localPath, remotePath);
+      }
+    }
+  }
+
+  private async exec(command: string): Promise<void> {
+    console.log(`  Executing: ${command}`);
+
+    try {
+      const result = await this.ssh.execCommand(command, {
+        cwd: this.workDir,
+      });
+
+      if (result.stdout) {
+        console.log(result.stdout);
+      }
+
+      if (result.stderr && result.code !== 0) {
+        console.error(`Error: ${result.stderr}`);
+        throw new Error(`Command failed with exit code ${result.code}`);
+      }
+    } catch (error) {
+      console.error(`Failed to execute command: ${error}`);
+      throw error;
+    }
+  }
+
+  async disconnect(): Promise<void> {
+    this.ssh.dispose();
+
+    if (this.instance) {
+      console.log(`\nCleaning up Morph VM: ${this.instance.id}`);
+      await this.client.instances.stop({ instanceId: this.instance.id });
+    }
+  }
 }
 
 async function main() {
+  const dockerfilePath = process.argv[2] || "Dockerfile";
+
+  console.log(`Building from ${dockerfilePath}`);
+
+  const executor = new MorphDockerfileExecutor();
+
   try {
-    const client = new MorphCloudClient();
+    await executor.loadIgnoreFiles();
+    await executor.connect();
+    await executor.executeDockerfile(dockerfilePath);
 
-    // Configuration
-    const VCPUS = 4;
-    const MEMORY = 4096;
-    const DISK_SIZE = 8192;
+    console.log("Setting wake on");
+    await executor.setWakeOn({ wakeOnSsh: false, wakeOnHttp: true });
 
-    console.log("Creating initial snapshot with minimal base image...");
-    const initialSnapshot = await client.snapshots.create({
-      imageId: "morphvm-minimal", // Use minimal base image
-      vcpus: VCPUS,
-      memory: MEMORY,
-      diskSize: DISK_SIZE,
-    });
+    const httpServices = await executor.getHttpServices();
+    console.log("httpServices", httpServices);
 
-    console.log(`Starting instance from snapshot ${initialSnapshot.id}...`);
-    const instance = await client.instances.start({
-      snapshotId: initialSnapshot.id,
-    });
+    // let user play around and tell them to press any key to continue
+    console.log("\nPress any key to snapshot...");
+    await new Promise((resolve) => process.stdin.once("data", resolve));
+    console.log("Snapshotting...");
 
-    // Wait for instance to be ready
-    await instance.waitUntilReady();
+    const snapshot = await executor.snapshot();
+    console.log(`Snapshot created: ${snapshot.id}`);
 
-    try {
-      // Set up Docker with BuildKit
-      await setupDockerWithBuildKit(instance);
-
-      // Copy application files
-      await copyApplicationFiles(instance);
-
-      // Build the worker
-      await buildWorkerWithBuildKit(instance);
-
-      // Create startup script
-      await createStartupScript(instance);
-
-      // Create Dockerfile
-      await createDockerfile(instance);
-
-      // Build and test Docker image
-      await buildAndTestDocker(instance);
-
-      // Start worker directly for testing
-      await startWorkerDirectly(instance);
-
-      // Wait for worker to initialize
-      await new Promise((resolve) => setTimeout(resolve, 5000));
-
-      // Test worker connection
-      await testWorkerConnection(instance);
-
-      // Create final snapshot
-      console.log("\n--- Creating final snapshot ---");
-      const finalSnapshot = await instance.snapshot({
-        metadata: {
-          name: `cmux-worker-${Date.now()}`,
-          description: "cmux worker with Docker BuildKit support",
-        },
-      });
-
-      console.log(`\n✅ Successfully created snapshot: ${finalSnapshot.id}`);
-      console.log("\nTo use this snapshot:");
-      console.log(
-        `  const instance = await client.instances.start({ snapshotId: "${finalSnapshot.id}" });`
-      );
-
-      // Display instance information
-      console.log("\nInstance Details:");
-      console.log(`  ID: ${instance.id}`);
-      console.log(`  Snapshot ID: ${finalSnapshot.id}`);
-      console.log("\nHTTP Services:");
-      const freshInstance = await client.instances.get({
-        instanceId: instance.id,
-      });
-      for (const service of freshInstance.networking.httpServices) {
-        console.log(`  ${service.name}: ${service.url}`);
-      }
-    } finally {
-      // Stop the instance
-      console.log("\nStopping instance...");
-      await instance.stop();
-    }
+    console.log("\nBuild completed successfully!");
   } catch (error) {
-    console.error("Error:", error);
+    console.error("Build failed:", error);
     process.exit(1);
+  } finally {
+    await executor.disconnect();
   }
 }
 
-// Run the main function
-main().catch((error) => {
-  console.error("Unhandled error:", error);
-  process.exit(1);
-});
+// Run the script
+main().catch(console.error);

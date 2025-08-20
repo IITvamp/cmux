@@ -3,12 +3,14 @@ import Docker from "dockerode";
 
 async function testDocker() {
   console.log("Testing Docker connection...");
-  
+
   const configs = [
     { name: "Default", options: {} },
-    { name: "Unix socket", options: { socketPath: '/var/run/docker.sock' } },
-    { name: "OrbStack socket", options: { socketPath: `${process.env.HOME}/.orbstack/run/docker.sock` } },
-    { name: "Host", options: { host: 'localhost', port: 39375 } }
+    { name: "Unix socket", options: { socketPath: "/var/run/docker.sock" } },
+    {
+      name: "OrbStack socket",
+      options: { socketPath: `${process.env.HOME}/.orbstack/run/docker.sock` },
+    },
   ];
 
   for (const config of configs) {
@@ -23,7 +25,7 @@ async function testDocker() {
       console.log(`❌ Failed: ${error.message}`);
     }
   }
-  
+
   console.log("\n❌ All connection methods failed!");
 }
 

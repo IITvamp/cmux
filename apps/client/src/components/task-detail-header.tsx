@@ -171,7 +171,7 @@ export function TaskDetailHeader({
         {/* Centered status across both rows */}
         <div
           className={clsx(
-            "col-start-2 row-start-1 row-span-2 self-center justify-self-end flex items-center gap-1 text-xs text-neutral-400 transition-opacity duration-150",
+            "col-start-2 row-start-1 row-span-2 self-center justify-self-end flex items-center gap-1 text-xs text-neutral-400 transition-opacity duration-150 select-none",
             isCheckingDiffs ? "opacity-100" : "opacity-0"
           )}
         >
