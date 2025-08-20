@@ -10,17 +10,7 @@ export type AmpProxyOptions = {
   emitToMainServer?: (event: string, payload: any) => void;
 };
 
-export type AmpProxyHandle = {
-  recordTaskRunTerminal: (taskRunId: string, terminalId: string) => void;
-};
-
-// Internal mapping of taskRunId -> terminalId
-const taskRunToTerminalId: Map<string, string> = new Map();
-
-function getTerminalIdForTaskRun(taskRunId?: string | null): string {
-  if (!taskRunId) return "amp-proxy";
-  return taskRunToTerminalId.get(taskRunId) || "amp-proxy";
-}
+export type AmpProxyHandle = void;
 
 async function getRealAmpApiKey(): Promise<string | null> {
   try {
@@ -225,11 +215,9 @@ export function startAmpProxy(options: AmpProxyOptions = {}): AmpProxyHandle {
           ampResponseIndicatesCompletion(loggedResponseBody);
         if (completed && taskRunId) {
           const elapsedMs = Date.now() - start;
-          const terminalId = getTerminalIdForTaskRun(taskRunId);
-          logFn("INFO", "[AMP Proxy] Completion detected; notifying main server", { taskRunId, terminalId }, workerId);
+          logFn("INFO", "[AMP Proxy] Completion detected; notifying main server", { taskRunId }, workerId);
           emit("worker:task-complete", {
             workerId,
-            terminalId,
             taskRunId: taskRunId as any,
             agentModel: "amp",
             elapsedMs,
@@ -258,11 +246,5 @@ export function startAmpProxy(options: AmpProxyOptions = {}): AmpProxyHandle {
     });
   })();
 
-  return {
-    recordTaskRunTerminal(taskRunId: string, terminalId: string) {
-      try {
-        taskRunToTerminalId.set(taskRunId, terminalId);
-      } catch {}
-    },
-  };
+  return;
 }

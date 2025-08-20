@@ -1003,12 +1003,7 @@ async function createTerminal(
     envKeys: Object.keys(ptyEnv),
   });
 
-  // Record mapping from taskRunId -> terminalId for AMP proxy completion events
-  if (options.taskRunId) {
-    try {
-      ampProxyHandle.recordTaskRunTerminal(options.taskRunId, terminalId);
-    } catch {}
-  }
+  // No need to map taskRunId to terminalId for AMP; proxy emits terminalId = taskRunId
 
   let childProcess: ChildProcessWithoutNullStreams;
   const processStartTime = Date.now();
@@ -1230,7 +1225,6 @@ async function createTerminal(
               log("INFO", "[Gemini] Completion event detected via telemetry", { telemetryPath, elapsedMs });
               emitToMainServer("worker:task-complete", {
                 workerId: WORKER_ID,
-                terminalId,
                 taskRunId: options.taskRunId!,
                 agentModel: options.agentModel,
                 elapsedMs,
@@ -1270,7 +1264,6 @@ async function createTerminal(
               if (options.taskRunId) {
                 emitToMainServer("worker:task-complete", {
                   workerId: WORKER_ID,
-                  terminalId,
                   taskRunId: options.taskRunId,
                   agentModel: options.agentModel,
                   elapsedMs,
@@ -1288,7 +1281,6 @@ async function createTerminal(
             const detectionMethod = "project-file";
             emitToMainServer("worker:task-complete", {
               workerId: WORKER_ID,
-              terminalId,
               taskRunId: options.taskRunId,
               agentModel: options.agentModel,
               elapsedMs: data.elapsedMs,
@@ -1434,7 +1426,7 @@ httpServer.listen(WORKER_PORT, () => {
 });
 
 // Start AMP proxy via shared provider module
-const ampProxyHandle = startAmpProxy({
+startAmpProxy({
   ampUrl: process.env.AMP_URL,
   logsDir: "./logs",
   workerId: WORKER_ID,
