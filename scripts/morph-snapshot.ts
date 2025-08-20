@@ -360,13 +360,12 @@ class MorphDockerfileExecutor {
     await this.instance.setWakeOn(wakeOnSsh, wakeOnHttp);
   }
 
-  async snapshot(): Promise<void> {
+  async snapshot() {
     if (!this.instance) {
       throw new Error("Instance not found");
     }
     const snapshot = await this.instance.snapshot();
-    console.log(`Created snapshot: ${snapshot.id}`);
-    console.log(snapshot);
+    return snapshot;
   }
 
   private async handleCmd(instruction: DockerfileInstruction): Promise<void> {
@@ -797,7 +796,8 @@ async function main() {
     await new Promise((resolve) => process.stdin.once("data", resolve));
     console.log("Snapshotting...");
 
-    await executor.snapshot();
+    const snapshot = await executor.snapshot();
+    console.log(`Snapshot created: ${snapshot.id}`);
 
     console.log("\nBuild completed successfully!");
   } catch (error) {

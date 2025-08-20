@@ -166,13 +166,13 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
       </div>
       <nav className="grow flex flex-col overflow-hidden">
         <div className="flex-1 overflow-y-auto">
-          <div className="px-3 py-1">
+          <div className="pl-3 py-1">
             <div className="flex items-center px-1 py-1">
               <span className="text-[10px] font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-[-0.005em] select-none">
                 Recent Tasks
               </span>
             </div>
-            <div className="space-y-0.5">
+            <div className="space-y-px">
               {tasks === undefined ? (
                 <TaskTreeSkeleton count={5} />
               ) : tasksWithRuns.length > 0 ? (
@@ -198,7 +198,7 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
           href="https://github.com/manaflow-ai/cmux/issues/new"
           target="_blank"
           rel="noopener noreferrer"
-          className="flex items-center px-7 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors select-none cursor-default"
+          className="flex items-center px-7 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors select-none cursor-pointer"
         >
           <svg
             className="w-4 h-4 mr-3 text-neutral-500"

@@ -6,7 +6,7 @@ interface TaskTreeSkeletonProps {
 
 export function TaskTreeSkeleton({ count = 5 }: TaskTreeSkeletonProps) {
   return (
-    <div className="space-y-0.5">
+    <div className="space-y-px">
       {Array.from({ length: count }).map((_, i) => (
         <TaskItemSkeleton key={i} />
       ))}

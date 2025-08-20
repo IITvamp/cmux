@@ -175,6 +175,9 @@ export IS_SANDBOX=true
 # Start Docker readiness check and devcontainer in background
 start_devcontainer &
 
+# Start default empty tmux session for cmux that the agent will be spawned in
+(cd /root/workspace && tmux new-session -d -s cmux)
+
 rm -f /startup.sh
 
 exec node /builtins/build/index.js

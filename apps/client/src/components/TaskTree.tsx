@@ -207,7 +207,7 @@ function TaskTreeInner({
             </div>
 
             <div className="flex-1 min-w-0">
-              <p className="truncate text-neutral-900 dark:text-neutral-100 text-xs">
+              <p className="truncate text-neutral-900 dark:text-neutral-100 text-[13px]">
                 {task.pullRequestTitle || task.text}
               </p>
             </div>

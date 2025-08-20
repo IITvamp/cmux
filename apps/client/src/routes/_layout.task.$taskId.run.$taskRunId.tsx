@@ -61,43 +61,45 @@ function TaskRunComponent() {
   });
 
   return (
-    <div className="flex flex-col grow min-h-0 border-l border-neutral-200 dark:border-neutral-800">
-      <div className="flex flex-row grow min-h-0 relative">
-        <div
-          ref={containerRef}
-          className={clsx("grow flex relative", {
-            invisible: !taskRun?.data?.vscode?.workspaceUrl,
-          })}
-        />
-        <div
-          className={clsx(
-            "absolute inset-0 flex items-center justify-center transition",
-            {
-              "opacity-100 pointer-events-none":
-                !taskRun?.data?.vscode?.workspaceUrl,
-              "opacity-0 pointer-events-auto":
-                taskRun?.data?.vscode?.workspaceUrl,
-            }
-          )}
-        >
-          <div className="flex flex-col items-center gap-3">
-            <div className="flex gap-1">
-              <div
-                className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
-                style={{ animationDelay: "0ms" }}
-              />
-              <div
-                className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
-                style={{ animationDelay: "150ms" }}
-              />
-              <div
-                className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
-                style={{ animationDelay: "300ms" }}
-              />
+    <div className="pl-1 flex flex-col grow bg-neutral-50 dark:bg-neutral-900">
+      <div className="flex flex-col grow min-h-0 border-l border-neutral-200 dark:border-neutral-800">
+        <div className="flex flex-row grow min-h-0 relative">
+          <div
+            ref={containerRef}
+            className={clsx("grow flex relative", {
+              invisible: !taskRun?.data?.vscode?.workspaceUrl,
+            })}
+          />
+          <div
+            className={clsx(
+              "absolute inset-0 flex items-center justify-center transition",
+              {
+                "opacity-100 pointer-events-none":
+                  !taskRun?.data?.vscode?.workspaceUrl,
+                "opacity-0 pointer-events-auto":
+                  taskRun?.data?.vscode?.workspaceUrl,
+              }
+            )}
+          >
+            <div className="flex flex-col items-center gap-3">
+              <div className="flex gap-1">
+                <div
+                  className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
+                  style={{ animationDelay: "0ms" }}
+                />
+                <div
+                  className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
+                  style={{ animationDelay: "150ms" }}
+                />
+                <div
+                  className="w-2 h-2 bg-blue-500 rounded-full animate-bounce"
+                  style={{ animationDelay: "300ms" }}
+                />
+              </div>
+              <span className="text-sm text-neutral-500">
+                Starting VS Code...
+              </span>
             </div>
-            <span className="text-sm text-neutral-500">
-              Starting VS Code...
-            </span>
           </div>
         </div>
       </div>
