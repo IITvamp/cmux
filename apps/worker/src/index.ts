@@ -21,6 +21,7 @@ import {
   spawn,
   type ChildProcessWithoutNullStreams,
 } from "node:child_process";
+import { EventEmitter } from "node:events";
 import { promises as fs } from "node:fs";
 import { createServer } from "node:http";
 import { cpus, platform, totalmem } from "node:os";
@@ -29,8 +30,6 @@ import { promisify } from "node:util";
 import { Server, type Namespace, type Socket } from "socket.io";
 import { checkDockerReadiness } from "./checkDockerReadiness.js";
 import { detectTerminalIdle } from "./detectTerminalIdle.js";
-// Inlined DI-based task completion detector (replaces detectTaskCompletion.ts)
-import { EventEmitter } from "node:events";
 import { FileWatcher, computeGitDiff, getFileWithDiff } from "./fileWatcher.js";
 import { log } from "./logger.js";
 
