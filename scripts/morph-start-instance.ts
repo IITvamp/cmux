@@ -27,27 +27,47 @@ if (!vscodeService || !workerService) {
 
 console.log(`VSCode: ${vscodeService.url}/?folder=/root/workspace`);
 
+console.log("Connecting to worker...");
+
+console.log("workerService.url", workerService.url);
+
+const workerUrl = new URL(workerService.url);
+workerUrl.pathname = "/management";
+
+console.log("workerUrl", workerUrl.toString());
+
 // connect to the worker management namespace with socketio
-const clientSocket = io(workerService.url + "/management", {
+const clientSocket = io(workerUrl.toString(), {
   timeout: 10000,
   reconnectionAttempts: 3,
+  autoConnect: true,
+  transports: ["websocket"],
+  forceNew: true,
 }) as Socket<WorkerToServerEvents, ServerToWorkerEvents>;
 
+clientSocket.on("connect_error", (err) => {
+  console.error("Failed to connect to worker", err);
+});
+
 clientSocket.on("connect", () => {
-  console.log("Connected to worker");
+  console.log("Connected to worker!");
   // clientSocket.emit("get-active-terminals");
   // dispatch a tack
   clientSocket.emit(
-    "worker:create-terminal",
+    "worker:exec",
     {
-      terminalId: crypto.randomUUID(),
-      cols: 80,
-      rows: 24,
+      command: "tmux",
+      args: ["new-session", "-s", "ski", "-d"],
       cwd: "/root/workspace",
-      command: "bun x opencode-ai 'whats the time'",
+      env: {},
+      // terminalId: crypto.randomUUID(),
+      // cols: 80,
+      // rows: 24,
+      // cwd: "/root/workspace",
+      // command: "bun x opencode-ai 'whats the time'",
     },
-    () => {
-      console.log("Terminal created");
+    (payload) => {
+      console.log("worker:exec result", payload);
     }
   );
 });
