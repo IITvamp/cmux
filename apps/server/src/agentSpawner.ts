@@ -221,6 +221,14 @@ export async function spawnAgent(
       }
     }
 
+    // Force AMP to use local proxy and fake key embedding taskRunId
+    if (agent.name === "amp") {
+      // Always direct AMP CLI to the worker's internal proxy server
+      envVars.AMP_URL = `http://localhost:39379`;
+      // Use a fake key that encodes the taskRunId; the worker proxy swaps in the real key
+      envVars.AMP_API_KEY = `taskRunId:${taskRunId}`;
+    }
+
     // Replace $PROMPT placeholders in args with $CMUX_PROMPT token for shell-time expansion
     const processedArgs = agent.args.map((arg) => {
       if (arg.includes("$PROMPT")) {

@@ -16,6 +16,9 @@ import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import * as xtermHeadless from "@xterm/headless";
 import express from "express";
+import { createServer as createHttpServer } from "node:http";
+import { mkdir as fspMkdir, writeFile as fspWriteFile, readFile as fspReadFile } from "node:fs/promises";
+import { join as pathJoin } from "node:path";
 import multer from "multer";
 import {
   exec,
@@ -999,6 +1002,13 @@ async function createTerminal(
     envKeys: Object.keys(ptyEnv),
   });
 
+  // Record mapping from taskRunId -> terminalId for AMP proxy completion events
+  if (options.taskRunId) {
+    try {
+      taskRunToTerminalId.set(options.taskRunId, terminalId);
+    } catch {}
+  }
+
   let childProcess: ChildProcessWithoutNullStreams;
   const processStartTime = Date.now();
 
@@ -1421,6 +1431,258 @@ httpServer.listen(WORKER_PORT, () => {
     WORKER_ID
   );
 });
+
+// ==============================
+// AMP Proxy HTTP server (port 39379)
+// ==============================
+
+// Track taskRunId -> terminalId mapping to enrich completion events from proxy
+const taskRunToTerminalId: Map<string, string> = new Map();
+
+// Helper to resolve a terminalId for a given taskRunId if known
+function getTerminalIdForTaskRun(taskRunId?: string | null): string {
+  if (!taskRunId) return "amp-proxy";
+  return taskRunToTerminalId.get(taskRunId) || "amp-proxy";
+}
+
+const AMP_PROXY_PORT = 39379; // reserved, per request
+const AMP_TARGET_HOST = process.env.AMP_URL || "https://ampcode.com";
+const AMP_LOGS_DIR = "./logs";
+
+// Read AMP API key from user secrets if available
+async function getRealAmpApiKey(): Promise<string | null> {
+  try {
+    const home = process.env.HOME || "/root";
+    const secretsPath = `${home}/.local/share/amp/secrets.json`;
+    const raw = await fspReadFile(secretsPath, "utf8");
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const key = (parsed["apiKey@https://ampcode.com/"] || parsed["apiKey@https://ampcode.com"] || "") as string;
+    return key || null;
+  } catch {
+    return null;
+  }
+}
+
+// Extract a taskRunId from either Authorization bearer or custom header
+function extractTaskRunId(headers: Headers | Record<string, string | string[] | undefined>): string | null {
+  const get = (name: string): string | undefined => {
+    if (headers instanceof Headers) return headers.get(name) || undefined;
+    const v = headers[name.toLowerCase()] ?? headers[name];
+    if (Array.isArray(v)) return v[0];
+    return v as string | undefined;
+  };
+  // Option A only: parse from Authorization bearer token
+  const auth = get("authorization") || get("Authorization");
+  if (auth) {
+    const token = auth.replace(/^[Bb]earer\s+/, "");
+    // Accepted formats: taskRunId:<id> | taskrun:<id> | task=<id> | tr:<id>
+    const m = token.match(/(?:taskRunId|taskrun|task|tr)[:=]([a-zA-Z0-9_-]+)/);
+    if (m?.[1]) return m[1];
+  }
+  return null;
+}
+
+// Best-effort completion detector on AMP response bodies
+function ampResponseIndicatesCompletion(json: unknown): boolean {
+  try {
+    const obj = json as any;
+    const messages =
+      obj?.params?.thread?.messages || obj?.thread?.messages || obj?.messages;
+    if (Array.isArray(messages)) {
+      for (const m of messages) {
+        const t = String(m?.state?.type || "").toLowerCase();
+        if (t === "completed" || t === "complete") return true;
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return false;
+}
+
+// Create and start a lightweight HTTP proxy for AMP
+(async () => {
+  try {
+    await fspMkdir(AMP_LOGS_DIR, { recursive: true });
+  } catch {}
+
+  let requestCounter = 0;
+
+  const ampProxy = createHttpServer(async (req, res) => {
+    const start = Date.now();
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const requestId = `${timestamp}_${++requestCounter}`;
+    const targetUrl = `${AMP_TARGET_HOST}${req.url || "/"}`;
+
+    // Collect request body as Buffer
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+
+    req.on("end", async () => {
+      const reqBuffer = Buffer.concat(chunks);
+      const contentType = req.headers["content-type"] || "";
+
+      // Clone headers for upstream, removing hop-by-hop headers
+      const upstreamHeaders = new Headers();
+      for (const [key, value] of Object.entries(req.headers)) {
+        if (value == null) continue;
+        if (key.toLowerCase() === "host") continue;
+        // We'll rewrite authorization below
+        if (key.toLowerCase() === "content-length") continue;
+        if (Array.isArray(value)) {
+          upstreamHeaders.set(key, value.join(", "));
+        } else {
+          upstreamHeaders.set(key, String(value));
+        }
+      }
+
+      // Extract taskRunId from headers or bearer token
+      const taskRunId = extractTaskRunId(req.headers);
+
+      // Replace/force API key headers to real AMP key (Option A: fake key embedding taskRunId)
+      const realKey = await getRealAmpApiKey();
+      if (realKey) {
+        // Always set Authorization to real key for upstream
+        upstreamHeaders.set("authorization", `Bearer ${realKey}`);
+        // Also set common vendor headers in case AMP expects them
+        upstreamHeaders.set("x-amp-api-key", realKey);
+        upstreamHeaders.set("amp-api-key", realKey);
+        upstreamHeaders.set("x-api-key", realKey);
+      }
+
+      // Prepare request body for fetch
+      let bodyForFetch: BodyInit | undefined = undefined;
+      let loggedRequestBody: unknown = undefined;
+      if (req.method && req.method !== "GET" && req.method !== "HEAD") {
+        if (typeof contentType === "string" && contentType.includes("application/json")) {
+          const text = reqBuffer.toString("utf8");
+          bodyForFetch = text;
+          try { loggedRequestBody = JSON.parse(text); } catch { loggedRequestBody = text; }
+        } else {
+          bodyForFetch = reqBuffer;
+          loggedRequestBody = contentType && String(contentType).includes("multipart/form-data")
+            ? "[multipart/form-data]"
+            : (reqBuffer.length > 0 ? reqBuffer.toString("utf8") : "");
+        }
+      }
+
+      // Proxy the request to AMP
+      const proxyResponse = await fetch(targetUrl, {
+        method: req.method,
+        headers: upstreamHeaders,
+        body: bodyForFetch,
+        redirect: "manual",
+      });
+
+      // Prepare response to client
+      const responseHeaders = new Headers(proxyResponse.headers);
+      responseHeaders.delete("content-encoding");
+      responseHeaders.delete("content-length");
+      const responseContentType = responseHeaders.get("content-type") || "";
+
+      let responseBodyForClient: Uint8Array | string = "";
+      let loggedResponseBody: unknown = undefined;
+
+      const isBinary = /(^image\/|^video\/|^audio\/|application\/(octet-stream|pdf|zip))/i.test(responseContentType);
+      if (isBinary) {
+        const ab = await proxyResponse.arrayBuffer();
+        responseBodyForClient = new Uint8Array(ab);
+        loggedResponseBody = `[Binary data: ${ab.byteLength} bytes]`;
+      } else {
+        const text = await proxyResponse.text();
+        responseBodyForClient = text;
+        try { loggedResponseBody = JSON.parse(text); } catch { loggedResponseBody = text; }
+      }
+
+      // Log to file
+      const headersToObject = (h: any): Record<string, string> => {
+        const out: Record<string, string> = {};
+        try {
+          if (h && typeof h.forEach === "function") {
+            h.forEach((value: string, key: string) => { out[key] = value; });
+          }
+        } catch {}
+        return out;
+      };
+
+      const logData = {
+        requestId,
+        timestamp: new Date().toISOString(),
+        method: req.method,
+        url: req.url,
+        targetUrl,
+        headers: Object.fromEntries(
+          Object.entries(req.headers).map(([k, v]) => {
+            // Mask auth values in logs
+            const vv = Array.isArray(v) ? v.join(", ") : (v || "");
+            if (/^authorization$/i.test(k)) {
+              return [k, typeof vv === "string" ? vv.replace(/(Bearer\s+)[^\s]+/, "$1***") : vv];
+            }
+            return [k, vv as string];
+          })
+        ),
+        requestBody: loggedRequestBody,
+        upstreamHeaders: (() => {
+          const out: Record<string, string> = {};
+          try {
+            upstreamHeaders.forEach((value, key) => {
+              if (/^authorization$/i.test(key)) {
+                out[key] = value.replace(/(Bearer\s+)[^\s]+/, "$1***");
+              } else {
+                out[key] = value;
+              }
+            });
+          } catch {}
+          return out;
+        })(),
+        responseStatus: proxyResponse.status,
+        responseStatusText: proxyResponse.statusText,
+        responseHeaders: headersToObject(responseHeaders as any),
+        responseBody: loggedResponseBody,
+        taskRunId,
+      } as Record<string, unknown>;
+      try {
+        const logPath = pathJoin(AMP_LOGS_DIR, `${requestId}.json`);
+        await fspWriteFile(logPath, JSON.stringify(logData, null, 2), "utf8");
+        log("INFO", `[AMP Proxy] Saved log ${logPath}`);
+      } catch (e) {
+        log("ERROR", "[AMP Proxy] Failed to write log", e);
+      }
+
+      // Detect AMP completion and emit to main server
+      const completed =
+        ampResponseIndicatesCompletion(loggedRequestBody) ||
+        ampResponseIndicatesCompletion(loggedResponseBody);
+      if (completed && taskRunId) {
+        const elapsedMs = Date.now() - start;
+        const terminalId = getTerminalIdForTaskRun(taskRunId);
+        log("INFO", "[AMP Proxy] Completion detected; notifying main server", { taskRunId, terminalId });
+        emitToMainServer("worker:task-complete", {
+          workerId: WORKER_ID,
+          terminalId,
+          taskRunId: taskRunId as any, // typedZid at boundary
+          agentModel: "amp",
+          elapsedMs,
+        });
+      }
+
+      // Return proxied response
+      res.statusCode = proxyResponse.status;
+      res.statusMessage = proxyResponse.statusText;
+      responseHeaders.forEach((v, k) => res.setHeader(k, v));
+      if (typeof responseBodyForClient === "string") {
+        res.end(responseBodyForClient);
+      } else {
+        res.end(Buffer.from(responseBodyForClient));
+      }
+    });
+  });
+
+  ampProxy.listen(AMP_PROXY_PORT, () => {
+    log("INFO", `[AMP Proxy] Listening on ${AMP_PROXY_PORT}, forwarding to ${AMP_TARGET_HOST}`);
+    log("INFO", `[AMP Proxy] Logs directory: ${AMP_LOGS_DIR}`);
+  });
+})();
 
 // Periodic maintenance for pending events
 setInterval(() => {
