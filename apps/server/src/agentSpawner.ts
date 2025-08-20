@@ -618,9 +618,7 @@ export async function spawnAgent(
         data
       );
 
-      // Compare against the tmux session name (actual terminalId used by worker)
-      // and also accept the taskRunId for backward compatibility
-      if (data.terminalId === tmuxSessionName || data.terminalId === terminalId) {
+      if (data.terminalId === terminalId) {
         if (hasFailed) {
           serverLogger.warn(
             `[AgentSpawner] Not completing ${agent.name} (already marked failed)`

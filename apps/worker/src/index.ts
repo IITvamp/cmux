@@ -1611,10 +1611,8 @@ const getCodexHelpers = async () => {
   };
 };
 const getGeminiHelpers = async () => {
-  const module = await import("../../../packages/shared/src/providers/gemini/telemetry-detector.js");
+  const module = await import("@cmux/shared/src/providers/gemini/completion-detector.ts");
   return {
-    checkGeminiTelemetryCompletion: module.checkGeminiTelemetryCompletion,
-    GEMINI_TELEMETRY_LOG_PATH: module.GEMINI_TELEMETRY_LOG_PATH,
     watchGeminiTelemetryForCompletion: module.watchGeminiTelemetryForCompletion,
   };
 };
@@ -1699,25 +1697,10 @@ function buildDetectorConfig(params: {
     },
     gemini: {
       allowTerminalIdleFallback: false,
-      async checkCompletion({ startTime, options }) {
-        try {
-          const { checkGeminiTelemetryCompletion } = await getGeminiHelpers();
-          const telemetryPath = `/tmp/gemini-telemetry-${options.taskId}.log`;
-          try {
-            await fs.access(telemetryPath);
-            const stats = await fs.stat(telemetryPath);
-            if (stats.size === 0) return false;
-          } catch {
-            log("DEBUG", `[Gemini] Telemetry log not found yet: ${telemetryPath}`);
-            return false;
-          }
-          const done = await checkGeminiTelemetryCompletion(telemetryPath, 2000, startTime);
-          if (!done) log("DEBUG", "[Gemini] No completion event yet");
-          return done;
-        } catch (e) {
-          log("ERROR", `Gemini completion error: ${e}`);
-          return false;
-        }
+      async checkCompletion() {
+        // Gemini completion is handled by the event-driven watcher above.
+        // Do not poll here.
+        return false;
       },
     },
     amp: {

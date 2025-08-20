@@ -85,83 +85,153 @@ export async function checkGeminiProjectFileCompletion(
     }
   }
 
-  // Optional phrase check to increase confidence
-  const phrases = [
-    "task complete",
-    "completed successfully",
-    "i've completed",
-    "i have completed",
-    "all done",
-    "finished",
-    "implementation is complete",
-    "ready for review",
-  ];
-  const content = (last.content || "").toLowerCase();
-  const hasPhrase = phrases.some((p) => content.includes(p));
-
-  // Accept completion if assistant/model with idle; phrase is a bonus (not strictly required)
-  return true && (hasPhrase || true);
-}
-
-export interface GeminiCompletionMonitorOptions {
-  workingDir: string;
-  checkIntervalMs?: number;
-  maxRuntimeMs?: number;
-  minRuntimeMs?: number;
-  onComplete?: () => void | Promise<void>;
-  onError?: (error: Error) => void;
-}
-
-export function monitorGeminiCompletion(
-  options: GeminiCompletionMonitorOptions
-): () => void {
-  const {
-    workingDir,
-    checkIntervalMs = 5000,
-    maxRuntimeMs = 20 * 60 * 1000,
-    minRuntimeMs = 30000,
-    onComplete,
-    onError,
-  } = options;
-
-  const start = Date.now();
-  const projectDir = getGeminiProjectPath(workingDir);
-  let intervalId: NodeJS.Timeout | null = null;
-  let stopped = false;
-
-  const tick = async () => {
-    if (stopped) return;
-    try {
-      const elapsed = Date.now() - start;
-      if (elapsed < minRuntimeMs) return;
-      if (elapsed > maxRuntimeMs) {
-        stop();
-        if (onError) onError(new Error(`Gemini session exceeded max runtime of ${maxRuntimeMs}ms`));
-        return;
-      }
-      const isComplete = await checkGeminiProjectFileCompletion(projectDir, undefined, 10000);
-      if (isComplete) {
-        stop();
-        if (onComplete) await onComplete();
-      }
-    } catch (err) {
-      if (onError) onError(err instanceof Error ? err : new Error(String(err)));
-    }
-  };
-
-  intervalId = setInterval(tick, checkIntervalMs);
-  setTimeout(tick, minRuntimeMs);
-
-  const stop = () => {
-    stopped = true;
-    if (intervalId) clearInterval(intervalId);
-    intervalId = null;
-  };
-  return stop;
+  return true;
 }
 
 export default {
   getGeminiProjectPath,
   checkGeminiProjectFileCompletion,
-  monitorGeminiCompletion,
 };
+
+/**
+ * Event-driven watcher for Gemini completion via telemetry file.
+ * Uses fs.watch + createReadStream to stream appended bytes and detect
+ * the completion event immediately (no polling/intervals).
+ */
+export function watchGeminiTelemetryForCompletion(options: {
+  telemetryPath: string;
+  onComplete: () => void | Promise<void>;
+  onError?: (error: Error) => void;
+}): () => void {
+  const { telemetryPath, onComplete, onError } = options;
+  const { watch, createReadStream } = require("node:fs");
+  const { promises: fsp } = require("node:fs");
+  const path = require("node:path");
+
+  let stopped = false;
+  let lastSize = 0;
+  let fileWatcher: import("node:fs").FSWatcher | null = null;
+  let dirWatcher: import("node:fs").FSWatcher | null = null;
+
+  const dir = path.dirname(telemetryPath);
+  const file = path.basename(telemetryPath);
+
+  // Lightweight JSON object stream parser for concatenated objects
+  let buf = "";
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+  const feed = (chunk: string, onObject: (obj: unknown) => void) => {
+    for (let i = 0; i < chunk.length; i++) {
+      const ch = chunk[i];
+      if (inString) {
+        buf += ch;
+        if (escape) {
+          escape = false;
+        } else if (ch === "\\") {
+          escape = true;
+        } else if (ch === '"') {
+          inString = false;
+        }
+        continue;
+      }
+      if (ch === '"') {
+        inString = true;
+        if (depth > 0) buf += ch;
+        continue;
+      }
+      if (ch === '{') {
+        depth++;
+        buf += ch;
+        continue;
+      }
+      if (ch === '}') {
+        depth--;
+        buf += ch;
+        if (depth === 0) {
+          try {
+            const obj = JSON.parse(buf);
+            onObject(obj);
+          } catch {}
+          buf = "";
+        }
+        continue;
+      }
+      if (depth > 0) buf += ch;
+    }
+  };
+
+  const isCompletionEvent = (event: unknown): boolean => {
+    if (!event || typeof event !== "object") return false;
+    const anyEvent = event as Record<string, unknown>;
+    const attrs = (anyEvent.attributes as Record<string, unknown>) ||
+                  (anyEvent.resource && (anyEvent.resource as any).attributes) ||
+                  (anyEvent.body && (anyEvent.body as any).attributes);
+    if (!attrs || typeof attrs !== "object") return false;
+    const eventName = (attrs as any)["event.name"] || (attrs as any).event?.name || (attrs as any)["event_name"];
+    const result = (attrs as any)["result"];
+    return eventName === "gemini_cli.next_speaker_check" && result === "user";
+  };
+
+  const readNew = async (initial = false) => {
+    try {
+      const st = await fsp.stat(telemetryPath);
+      const start = initial ? 0 : lastSize;
+      if (st.size <= start) { lastSize = st.size; return; }
+      const end = st.size - 1;
+      await new Promise<void>((resolve) => {
+        const rs = createReadStream(telemetryPath, { start, end, encoding: "utf-8" });
+        rs.on("data", (chunk: string | Buffer) => {
+          const text = typeof chunk === "string" ? chunk : chunk.toString("utf-8");
+          feed(text, async (obj) => {
+            try {
+              if (!stopped && isCompletionEvent(obj)) {
+                stopped = true;
+                try { fileWatcher?.close(); } catch {}
+                try { dirWatcher?.close(); } catch {}
+                await onComplete();
+              }
+            } catch (e) {
+              onError?.(e instanceof Error ? e : new Error(String(e)));
+            }
+          });
+        });
+        rs.on("end", () => resolve());
+        rs.on("error", () => resolve());
+      });
+      lastSize = st.size;
+    } catch {
+      // until file exists
+    }
+  };
+
+  const attachFileWatcher = async () => {
+    try {
+      const st = await fsp.stat(telemetryPath);
+      lastSize = st.size;
+      await readNew(true);
+      fileWatcher = watch(telemetryPath, { persistent: false }, async (eventType: string) => {
+        if (!stopped && eventType === "change") {
+          await readNew(false);
+        }
+      });
+    } catch {
+      // not created yet
+    }
+  };
+
+  dirWatcher = watch(dir, { persistent: false }, async (_eventType: string, filename: string | Buffer) => {
+    const name = filename?.toString();
+    if (!stopped && name === file) {
+      await attachFileWatcher();
+    }
+  });
+
+  void attachFileWatcher();
+
+  return () => {
+    stopped = true;
+    try { fileWatcher?.close(); } catch {}
+    try { dirWatcher?.close(); } catch {}
+  };
+}
