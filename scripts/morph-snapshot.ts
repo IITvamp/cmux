@@ -429,7 +429,10 @@ class MorphDockerfileExecutor {
     instruction: DockerfileInstruction
   ): Promise<void> {
     // Parse all ports (EXPOSE can have multiple ports separated by spaces)
-    const ports = instruction.content.split(/\s+/).map(p => parseInt(p)).filter(p => !isNaN(p));
+    const ports = instruction.content
+      .split(/\s+/)
+      .map((p) => parseInt(p))
+      .filter((p) => !isNaN(p));
     for (const port of ports) {
       this.instance?.exposeHttpService(`port-${port}`, port);
     }
@@ -670,7 +673,7 @@ class MorphDockerfileExecutor {
         finalDest = remoteDest;
         const remoteDir = path.dirname(remoteDest);
         // Only create parent directory if it's not root
-        if (remoteDir !== '/') {
+        if (remoteDir !== "/") {
           await this.exec(`mkdir -p ${remoteDir}`);
         }
       }
