@@ -221,8 +221,6 @@ export async function spawnAgent(
       }
     }
 
-    // AMP environment overrides are handled in the AMP provider environment function
-
     // Replace $PROMPT placeholders in args with $CMUX_PROMPT token for shell-time expansion
     const processedArgs = agent.args.map((arg) => {
       if (arg.includes("$PROMPT")) {

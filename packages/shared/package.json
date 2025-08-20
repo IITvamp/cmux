@@ -13,6 +13,14 @@
       "import": "./src/index.ts",
       "types": "./src/index.ts"
     },
+    "./src/providers/amp/proxy": {
+      "import": "./src/providers/amp/proxy.ts",
+      "types": "./src/providers/amp/proxy.ts"
+    },
+    "./src/providers/amp/proxy.ts": {
+      "import": "./src/providers/amp/proxy.ts",
+      "types": "./src/providers/amp/proxy.ts"
+    },
     "./model-usage": {
       "import": "./src/model-usage.ts",
       "types": "./src/model-usage.ts"
