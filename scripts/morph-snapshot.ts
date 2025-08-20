@@ -339,6 +339,14 @@ class MorphDockerfileExecutor {
     await this.runFinalCommand();
   }
 
+  async getHttpServices() {
+    if (!this.instance) {
+      throw new Error("Instance not found");
+    }
+    const httpServices = this.instance.networking.httpServices;
+    return httpServices;
+  }
+
   async snapshot(): Promise<void> {
     if (!this.instance) {
       throw new Error("Instance not found");
@@ -764,6 +772,10 @@ async function main() {
     await executor.loadIgnoreFiles();
     await executor.connect();
     await executor.executeDockerfile(dockerfilePath);
+
+    // grab all the ports
+    const httpServices = await executor.getHttpServices();
+    console.log("httpServices", httpServices);
 
     // let user play around and tell them to press any key to continue
     console.log("\nPress any key to snapshot...");
