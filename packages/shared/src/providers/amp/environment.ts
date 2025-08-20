@@ -58,15 +58,30 @@ export async function getAmpEnvironment(): Promise<EnvironmentResult> {
     console.warn("Failed to read amp secrets.json:", error);
   }
 
-  // Check for AMP_API_KEY environment variable
+  // If user has AMP_API_KEY set locally, persist it for debugging, but
+  // it will be overridden below with the CMUX fake key to embed taskRunId.
   if (process.env.AMP_API_KEY) {
-    env.AMP_API_KEY = process.env.AMP_API_KEY;
-    
-    // Add startup command to persist the API key in .bashrc
     startupCommands.push(
-      `grep -q "export AMP_API_KEY=" ~/.bashrc || echo 'export AMP_API_KEY="${process.env.AMP_API_KEY}"' >> ~/.bashrc`
+      `grep -q "export AMP_API_KEY=\"${process.env.AMP_API_KEY}\"" ~/.bashrc || echo 'export AMP_API_KEY="${process.env.AMP_API_KEY}"' >> ~/.bashrc`
     );
   }
+
+  // Force AMP to use local proxy and encode taskRunId via CMUX env
+  // The worker's proxy (listening on port 39379) will swap in the real key.
+  env.AMP_URL = "http://localhost:39379";
+
+  // Ensure AMP_API_KEY is exported in login shells with CMUX taskRunId embedded.
+  // We write to multiple profiles to cover bash -lc behavior.
+  const exportLine = 'export AMP_API_KEY="taskRunId:$CMUX_TASK_RUN_ID"';
+  startupCommands.push(
+    `grep -q "export AMP_API_KEY=\\\"taskRunId:\\$CMUX_TASK_RUN_ID\\\"" ~/.bashrc || echo '${exportLine}' >> ~/.bashrc`
+  );
+  startupCommands.push(
+    `grep -q "export AMP_API_KEY=\\\"taskRunId:\\$CMUX_TASK_RUN_ID\\\"" ~/.bash_profile || echo '${exportLine}' >> ~/.bash_profile || true`
+  );
+  startupCommands.push(
+    `grep -q "export AMP_API_KEY=\\\"taskRunId:\\$CMUX_TASK_RUN_ID\\\"" ~/.profile || echo '${exportLine}' >> ~/.profile || true`
+  );
 
   return { files, env, startupCommands };
 }
