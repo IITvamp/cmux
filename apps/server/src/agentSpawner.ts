@@ -873,9 +873,6 @@ export async function spawnAgent(
       throw new Error("Worker socket not available");
     }
 
-    // Prepare the terminal creation command with auth files
-    // Use the original command and args directly instead of parsing agentCommand
-    // This avoids issues with quoted arguments being split incorrectly
     const actualCommand = agent.command;
     const actualArgs = processedArgs;
 
@@ -885,17 +882,11 @@ export async function spawnAgent(
       if (s.includes("$CMUX_PROMPT")) {
         return `"${s.replace(/"/g, '\\"')}"`;
       }
-      // Special handling for notify command - needs very careful quoting
-      // The notify command needs to survive: tmux -> bash -lc -> exec -> bunx
-      // We need to preserve the JSON array structure and the $1 variable
+      // Special handling for notify command
+      // Format: notify=["sh","-c","mkdir -p /root/lifecycle && echo \"$1\" >> /root/lifecycle/codex-turns.jsonl"]
       if (s.startsWith("notify=")) {
-        // Original: notify=["sh","-lc","printf '%s\n' \"$1\" | tee -a ./codex-turns.jsonl >/dev/null"]
-        // For bash -c context, we need to escape for shell interpretation
-        // Use single quotes to preserve everything literally, except we need to handle the internal single quotes
-        const notifyContent = s.substring(7); // Remove "notify=" prefix
-        // Replace single quotes in the content with '\'' to break out, add literal quote, and re-enter
-        const escaped = notifyContent.replace(/'/g, "'\\''");
-        return `'notify=${escaped}'`;
+        // Don't escape the notify command - pass it as-is
+        return s;
       }
       // Otherwise single-quote and escape any existing single quotes
       return `'${s.replace(/'/g, "'\\''")}'`;

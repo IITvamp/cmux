@@ -308,6 +308,12 @@ managementIO.on("connection", (socket) => {
       const validated = WorkerCreateTerminalSchema.parse(data);
       log("INFO", "worker:create-terminal validated", validated);
 
+      // Ensure lifecycle directory exists for Codex
+      if (validated.agentModel && validated.agentModel.toLowerCase().includes("codex")) {
+        await fs.mkdir("/tmp/cmux-lifecycle", { recursive: true });
+        log("INFO", "Created /tmp/cmux-lifecycle directory for Codex notifications");
+      }
+
       // Handle auth files first if provided
       if (validated.authFiles && validated.authFiles.length > 0) {
         log(
@@ -1064,6 +1070,7 @@ async function createTerminal(
           if (/finish|Done|done|response|summarize/i.test(trimmed)) {
             log("DEBUG", "[OpenCode stdout] line", { sample: trimmed.substring(0, 200) });
           }
+          
           let detected = false;
           let reason = "";
           // Try JSON first
@@ -1079,6 +1086,7 @@ async function createTerminal(
               reason = String(finish?.reason || "").toLowerCase();
               if ((done && (isResponse || isSummarize)) || (finish && reason !== "tool_use" && reason !== "")) {
                 detected = true;
+                log("INFO", "[OpenCode stdout] Detected JSON completion", { done, type, finish });
               }
             } catch {
               // fall through to regex
@@ -1112,7 +1120,7 @@ async function createTerminal(
           }
         }
       } catch (e) {
-        // ignore parse errors
+        log("ERROR", "[OpenCode stdout] Error parsing output", e);
       }
     }
   });
@@ -1519,6 +1527,7 @@ interface DetectorDeps {
 class TaskCompletionDetectorDI extends EventEmitter {
   private startTime: number;
   private isRunning = false;
+  private watchers: any[] = [];
   constructor(private options: TaskCompletionOptionsDI, private deps: DetectorDeps) {
     super();
     this.startTime = Date.now();
@@ -1562,147 +1571,44 @@ class TaskCompletionDetectorDI extends EventEmitter {
     const watcher = watch("/root/lifecycle", (eventType, filename) => {
       if (filename === `claude-complete-${this.options.taskRunId}`) {
         log("INFO", `Claude stop hook marker detected: ${markerPath}`);
-        watcher.close();
         this.handleCompletion();
       }
     });
+    this.watchers.push(watcher);
   }
   
   private async watchCodexCompletionFiles(): Promise<void> {
-    const { watch } = await import("node:fs");
-    const { existsSync } = await import("node:fs");
-    const { homedir } = await import("node:os");
-    const { checkCodexNotifyFileCompletion, checkCodexCompletionSince } = await getCodexHelpers();
+    const { createCodexDetector } = await import("@cmux/shared/src/providers/openai/completion-detector.ts");
     
-    const watchers: any[] = [];
+    log("INFO", "[Codex] Setting up completion detector", {
+      workingDir: this.options.workingDir,
+      taskRunId: this.options.taskRunId,
+      startTime: new Date(this.startTime).toISOString()
+    });
     
-    // Set up check function for Codex completion
-    const checkCodexCompletion = async () => {
-      try {
-        // Check notify file first
-        const notifyDone = await checkCodexNotifyFileCompletion(this.options.workingDir, this.startTime);
-        if (notifyDone) {
-          log("INFO", "Codex completion detected via notify file");
-          this.handleCompletion();
-          // Close all watchers
-          watchers.forEach(w => w.close());
-          return true;
-        }
-        
-        // Check other Codex completion indicators
-        const res = await checkCodexCompletionSince(this.startTime);
-        if (res.isComplete) {
-          log("INFO", "Codex completion detected via completion log");
-          this.handleCompletion();
-          // Close all watchers
-          watchers.forEach(w => w.close());
-          return true;
-        }
-        
-        return false;
-      } catch (e) {
-        log("ERROR", `Error checking Codex completion: ${e}`);
-        return false;
+    const detector = await createCodexDetector({
+      taskRunId: this.options.taskRunId,
+      startTime: this.startTime,
+      workingDir: this.options.workingDir,
+      onComplete: (data: any) => {
+        log("INFO", "[Codex] ✅ Completion detected", data);
+        this.handleCompletion();
+      },
+      onError: (error: any) => {
+        log("ERROR", `[Codex] Detector error: ${error.message}`);
       }
-    };
+    });
     
-    // Check immediately
-    const done = await checkCodexCompletion();
-    if (done) return;
-    
-    // Watch for changes to the notify file in working directory
-    if (existsSync(this.options.workingDir)) {
-      const watcher = watch(this.options.workingDir, async (eventType, filename) => {
-        if (filename === "codex-turns.jsonl") {
-          await checkCodexCompletion();
-        }
-      });
-      watchers.push(watcher);
-    }
-    
-    // Also watch Codex log and rollout directories
-    const home = homedir();
-    const codexLogDir = `${home}/.codex/log`;
-    const codexRolloutDir = `${home}/.codex/rollout`;
-    
-    if (existsSync(codexLogDir)) {
-      const logWatcher = watch(codexLogDir, async (eventType, filename) => {
-        if (filename && (filename.includes('tui') || filename.includes('completion'))) {
-          await checkCodexCompletion();
-        }
-      });
-      watchers.push(logWatcher);
-    }
-    
-    if (existsSync(codexRolloutDir)) {
-      const rolloutWatcher = watch(codexRolloutDir, { recursive: true }, async (eventType, filename) => {
-        if (filename && filename.endsWith('.jsonl')) {
-          await checkCodexCompletion();
-        }
-      });
-      watchers.push(rolloutWatcher);
-    }
+    // Store the detector so we can stop it later
+    this.watchers.push({
+      close: () => detector.stop()
+    } as any);
   }
   
   private async watchOpenCodeFiles(): Promise<void> {
-    const { watch } = await import("node:fs");
-    const { existsSync } = await import("node:fs");
-    const { homedir } = await import("node:os");
-    
-    // Import OpenCode completion detector
-    const getOpenCodeHelpers = async () => {
-      const module = await import("@cmux/shared/src/providers/opencode/completion-detector.ts");
-      return {
-        checkOpencodeCompletionSince: module.checkOpencodeCompletionSince,
-      };
-    };
-    
-    const { checkOpencodeCompletionSince } = await getOpenCodeHelpers();
-    
-    // Set up a check function for OpenCode completion
-    const checkOpenCodeCompletion = async () => {
-      try {
-        const done = await checkOpencodeCompletionSince(this.startTime, this.options.workingDir);
-        if (done) {
-          log("INFO", "OpenCode completion detected via session/log files");
-          this.handleCompletion();
-          return true;
-        }
-        return false;
-      } catch (e) {
-        log("ERROR", `Error checking OpenCode completion: ${e}`);
-        return false;
-      }
-    };
-    
-    // Check immediately
-    const done = await checkOpenCodeCompletion();
-    if (done) return;
-    
-    // Watch OpenCode storage directories for changes
-    const home = homedir();
-    const watchPaths = [
-      `${home}/.local/share/opencode`,
-      `${home}/.config/opencode`,
-      `${home}/.opencode`,
-    ];
-    
-    const watchers: any[] = [];
-    for (const watchPath of watchPaths) {
-      if (existsSync(watchPath)) {
-        const watcher = watch(watchPath, { recursive: true }, async (eventType, filename) => {
-          // Check on any change in OpenCode directories
-          if (filename && (filename.includes('session') || filename.includes('log'))) {
-            const completed = await checkOpenCodeCompletion();
-            if (completed) {
-              // Close all watchers
-              watchers.forEach(w => w.close());
-            }
-          }
-        });
-        watchers.push(watcher);
-      }
-    }
+    // OpenCode completion is handled via stdout parsing in createTerminal
+    // We don't need file watching for OpenCode since it doesn't have a notify mechanism like Codex
+    log("INFO", "[OpenCode] Relying on stdout parsing for completion detection");
   }
   
   private handleCompletion(): void {
@@ -1716,6 +1622,15 @@ class TaskCompletionDetectorDI extends EventEmitter {
   }
   stop(): void {
     this.isRunning = false;
+    // Close all file watchers
+    this.watchers.forEach(w => {
+      try {
+        w.close();
+      } catch (e) {
+        // Ignore errors when closing watchers
+      }
+    });
+    this.watchers = [];
   }
 }
 
@@ -1750,16 +1665,7 @@ const getClaudeHelpers = async () => {
     checkClaudeStopHookCompletion: module.checkClaudeStopHookCompletion,
   };
 };
-const getCodexHelpers = async () => {
-  const module = await import("@cmux/shared/src/providers/openai/completion-detector.ts");
-  return {
-    checkCodexCompletionSince: module.checkCodexCompletionSince,
-    didLatestSessionCompleteInTuiLog: module.didLatestSessionCompleteInTuiLog,
-    getLatestCodexSessionIdSince: module.getLatestCodexSessionIdSince,
-    findCodexRolloutPathForSession: module.findCodexRolloutPathForSession,
-    checkCodexNotifyFileCompletion: module.checkCodexNotifyFileCompletion,
-  };
-};
+// Codex helpers are now handled by the detector module
 const getGeminiHelpers = async () => {
   const module = await import("@cmux/shared/src/providers/gemini/completion-detector.ts");
   return {
@@ -1819,30 +1725,10 @@ function buildDetectorConfig(params: {
     },
     codex: {
       allowTerminalIdleFallback: false,
-      async checkCompletion({ startTime, options }) {
-        try {
-          log("INFO", `[Codex Detector] Checking`, {
-            workingDir: options.workingDir,
-            startTime: new Date(startTime).toISOString(),
-          });
-          const { checkCodexNotifyFileCompletion } = await getCodexHelpers();
-          const notifyDone = await checkCodexNotifyFileCompletion(options.workingDir, startTime);
-          if (notifyDone) return true;
-
-          const { checkCodexCompletionSince } = await getCodexHelpers();
-          const res = await checkCodexCompletionSince(startTime);
-          if (res.isComplete) return true;
-
-          const { didLatestSessionCompleteInTuiLog, getLatestCodexSessionIdSince, findCodexRolloutPathForSession } = await getCodexHelpers();
-          const tui = await didLatestSessionCompleteInTuiLog(startTime);
-          const sessionId = tui?.sessionId || (await getLatestCodexSessionIdSince(startTime));
-          const rolloutPath = sessionId ? await findCodexRolloutPathForSession(sessionId) : undefined;
-          log("INFO", "Codex not complete yet", { tuiStatus: tui, sessionId, rolloutPath });
-          return false;
-        } catch (e) {
-          log("ERROR", `Codex completion error: ${e}`);
-          return false;
-        }
+      async checkCompletion() {
+        // Codex completion is handled by the event-driven detector in watchCodexCompletionFiles
+        // This function is not used for Codex
+        return false;
       },
     },
     gemini: {
@@ -1861,7 +1747,7 @@ function buildDetectorConfig(params: {
       },
     },
     opencode: {
-      allowTerminalIdleFallback: false,
+      allowTerminalIdleFallback: true,
       async checkCompletion({ startTime, options }) {
         try {
           const module = await import("@cmux/shared/src/providers/opencode/completion-detector.ts");

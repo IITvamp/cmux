@@ -1,3 +1,5 @@
+import { EventEmitter } from "node:events";
+import { watch, type FSWatcher } from "node:fs";
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -174,33 +176,16 @@ export async function didLatestSessionCompleteInTuiLog(
 }
 
 /**
- * Check Codex notify sink file in the working directory for agent-turn-complete markers.
- * Requires codex to be launched with: -c notify=["sh","-lc","printf %s\\n \"$1\" | tee -a ./codex-turns.jsonl >/dev/null"]
+ * Check Codex notify sink file for agent-turn-complete markers.
+ * Requires codex to be launched with: -c notify=["sh","-lc","mkdir -p /root/lifecycle && printf %s\\n \"$1\" | tee -a /root/lifecycle/codex-turns.jsonl >/dev/null"]
  */
 export async function checkCodexNotifyFileCompletion(
-  workingDir: string,
+  _workingDir: string,
   sinceEpochMs: number
 ): Promise<boolean> {
-  const cmuxTmpPath = path.join(workingDir, ".cmux", "tmp", "codex-turns.jsonl");
-  const logsPath = path.join(workingDir, "logs", "codex-turns.jsonl");
-  const rootPath = path.join(workingDir, "codex-turns.jsonl");
-  const containerTmpPath = "/root/lifecycle/codex-turns.jsonl"; // preferred absolute path
-  let filePath = containerTmpPath;
-  try {
-    await fs.stat(containerTmpPath);
-  } catch {
-    try {
-      await fs.stat(logsPath);
-      filePath = logsPath;
-    } catch {
-      try {
-        await fs.stat(cmuxTmpPath);
-        filePath = cmuxTmpPath;
-      } catch {
-        filePath = rootPath;
-      }
-    }
-  }
+  // Always use the tmp lifecycle directory path (outside workspace)
+  const filePath = "/tmp/cmux-lifecycle/codex-turns.jsonl";
+  
   console.log(`[Codex Detector] Checking notify file: ${filePath}`);
   
   try {
@@ -211,46 +196,50 @@ export async function checkCodexNotifyFileCompletion(
       mtime: stat.mtime.toISOString(),
       mtimeMs: stat.mtime.getTime(),
       sinceEpochMs,
-      isStale: stat.mtime.getTime() < sinceEpochMs
+      isRecent: stat.mtime.getTime() >= sinceEpochMs
     });
     
-    // Ignore stale files from before this run
-    if (stat.mtime.getTime() < sinceEpochMs) {
-      console.log(`[Codex Detector] Notify file present but stale: ${filePath}`);
-      return false;
-    }
-    
+    // Read all lines from the file
     const lines = await readJsonl(filePath);
     console.log(`[Codex Detector] Notify file has ${lines.length} lines`);
     
-    // Log each line for debugging
-    lines.forEach((line, idx) => {
-      console.log(`[Codex Detector] Line ${idx + 1}: ${line.substring(0, 200)}`);
-    });
-    
-    // Look for kebab-case type from UserNotification::AgentTurnComplete
-    const found = lines.some((l) => l.includes('"type":"agent-turn-complete"'));
-    console.log(`[Codex Detector] Looking for \"type\":\"agent-turn-complete\", found=${found}`);
-    
-    // Also check for other potential completion markers
-    const alternativeMarkers = [
-      '"agent_turn_complete"',
-      '"AgentTurnComplete"',
-      '"task_complete"',
-      '"TaskComplete"'
-    ];
-    
-    alternativeMarkers.forEach(marker => {
-      const hasMarker = lines.some(l => l.includes(marker));
-      if (hasMarker) {
-        console.log(`[Codex Detector] Found alternative marker: ${marker}`);
+    // Parse each line and check for agent-turn-complete events
+    let foundCompletion = false;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (!line) continue;
+      
+      try {
+        const event = JSON.parse(line);
+        
+        // Check if this is an agent-turn-complete event
+        if (event.type === "agent-turn-complete") {
+          // Check if this event is after our start time
+          const eventTime = event.timestamp || event.time || Date.now();
+          if (eventTime >= sinceEpochMs) {
+            console.log(`[Codex Detector] Found agent-turn-complete event at line ${i + 1}:`, event);
+            foundCompletion = true;
+            break;
+          }
+        }
+      } catch (e) {
+        // If parsing fails, fall back to string search
+        if (line.includes('"type":"agent-turn-complete"')) {
+          console.log(`[Codex Detector] Found agent-turn-complete marker (string match) at line ${i + 1}`);
+          foundCompletion = true;
+          break;
+        }
       }
-    });
+    }
     
-    return found;
+    return foundCompletion;
   } catch (error) {
-    console.log(`[Codex Detector] Error checking notify file:`, error);
-    console.log(`[Codex Detector] File path was: ${filePath}`);
+    // File doesn't exist yet - this is normal before any events are written
+    if ((error as any).code === 'ENOENT') {
+      console.log(`[Codex Detector] Notify file does not exist yet: ${filePath}`);
+    } else {
+      console.log(`[Codex Detector] Error checking notify file:`, error);
+    }
     return false;
   }
 }
@@ -411,7 +400,153 @@ export async function checkCodexCompletionSince(
   return { isComplete, sessionId, rolloutPath, latestPlan };
 }
 
-// Removed polling-based monitor function and interface - we use event-driven detection instead
+export class CodexCompletionDetector extends EventEmitter {
+  private watchers: FSWatcher[] = [];
+  private isRunning = false;
+  private notifyFilePath = "/tmp/cmux-lifecycle/codex-turns.jsonl";
+  private lastProcessedLine = 0;
+
+  constructor(
+    private options: {
+      taskRunId: string;
+      startTime: number;
+      workingDir?: string;
+    }
+  ) {
+    super();
+    this.notifyFilePath = "/tmp/cmux-lifecycle/codex-turns.jsonl";
+  }
+
+  async start(): Promise<void> {
+    if (this.isRunning) return;
+    this.isRunning = true;
+
+    console.log(`[Codex Detector] Starting for task ${this.options.taskRunId}`);
+    console.log(`[Codex Detector] Watching ${this.notifyFilePath}`);
+
+    const hasCompletion = await this.checkNotifyFile();
+    if (hasCompletion) {
+      this.handleCompletion();
+      return;
+    }
+
+    this.setupWatcher();
+  }
+
+  private setupWatcher(): void {
+    const dir = path.dirname(this.notifyFilePath);
+    const filename = path.basename(this.notifyFilePath);
+
+    console.log(`[Codex Detector] Setting up watcher for ${filename} in ${dir}`);
+    
+    fs.mkdir(dir, { recursive: true })
+      .then(() => console.log(`[Codex Detector] Ensured directory exists: ${dir}`))
+      .catch(e => console.error(`[Codex Detector] Failed to create directory: ${e}`));
+
+    const watcher = watch(dir, async (eventType, changedFile) => {
+      console.log(`[Codex Detector] FS event: ${eventType} on ${changedFile} (looking for ${filename})`);
+      if (changedFile === filename) {
+        console.log(`[Codex Detector] Target file changed, checking for completion...`);
+        const hasCompletion = await this.checkNotifyFile();
+        if (hasCompletion) {
+          this.handleCompletion();
+        }
+      }
+    });
+
+    watcher.on('error', (error) => {
+      console.error(`[Codex Detector] Watcher error:`, error);
+    });
+
+    this.watchers.push(watcher);
+  }
+
+  private async checkNotifyFile(): Promise<boolean> {
+    try {
+      const lines = await readJsonl(this.notifyFilePath);
+      
+      for (let i = this.lastProcessedLine; i < lines.length; i++) {
+        const line = lines[i];
+        if (!line) continue;
+
+        const event = parseJsonSafe<any>(line);
+        
+        if (event) {
+          if (event.type === "agent-turn-complete") {
+            const eventTime = event.timestamp || event.time || Date.now();
+            if (eventTime >= this.options.startTime) {
+              console.log(`[Codex Detector] Found agent-turn-complete at line ${i + 1}`);
+              this.lastProcessedLine = i + 1;
+              return true;
+            }
+          }
+        } else {
+          if (line.includes('"type":"agent-turn-complete"')) {
+            console.log(`[Codex Detector] Found agent-turn-complete (string match) at line ${i + 1}`);
+            this.lastProcessedLine = i + 1;
+            return true;
+          }
+        }
+      }
+
+      this.lastProcessedLine = lines.length;
+      return false;
+    } catch (error: any) {
+      if (error.code === 'ENOENT') {
+        console.log(`[Codex Detector] Notify file does not exist yet`);
+      } else {
+        console.error(`[Codex Detector] Error reading notify file:`, error);
+      }
+      return false;
+    }
+  }
+
+  private handleCompletion(): void {
+    if (!this.isRunning) return;
+    
+    const elapsedMs = Date.now() - this.options.startTime;
+    console.log(`[Codex Detector] Task completed after ${elapsedMs}ms`);
+    
+    this.stop();
+    this.emit("complete", {
+      taskRunId: this.options.taskRunId,
+      elapsedMs,
+      detectionMethod: "notify-file"
+    });
+  }
+
+  stop(): void {
+    this.isRunning = false;
+    this.watchers.forEach(w => {
+      try {
+        w.close();
+      } catch (e) {}
+    });
+    this.watchers = [];
+  }
+}
+
+export async function createCodexDetector(options: {
+  taskRunId: string;
+  startTime: number;
+  workingDir?: string;
+  onComplete: (data: { taskRunId: string; elapsedMs: number; detectionMethod: string }) => void;
+  onError?: (error: Error) => void;
+}): Promise<CodexCompletionDetector> {
+  const detector = new CodexCompletionDetector({
+    taskRunId: options.taskRunId,
+    startTime: options.startTime,
+    workingDir: options.workingDir,
+  });
+
+  detector.on("complete", options.onComplete);
+  if (options.onError) {
+    detector.on("error", options.onError);
+  }
+
+  await detector.start();
+  return detector;
+}
 
 export default {
   getLatestCodexSessionIdSince,
