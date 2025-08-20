@@ -26,7 +26,6 @@ import { spawnAllAgents } from "./agentSpawner.js";
 import { execWithEnv } from "./execWithEnv.js";
 import { GitDiffManager } from "./gitDiff.js";
 import { createProxyApp, setupWebSocketProxy } from "./proxyApp.js";
-import { refreshDiffsForTaskRun } from "./refreshDiffs.js";
 import { RepositoryManager } from "./repositoryManager.js";
 import { getPRTitleFromTaskDescription } from "./utils/branchNameGenerator.js";
 import { convex } from "./utils/convexClient.js";
@@ -81,10 +80,19 @@ export async function startServer({
   process.on("uncaughtException", (error) => {
     serverLogger.error("Uncaught Exception:", error);
     // Don't exit for file system errors
-    if (error && typeof error === "object" && "errno" in error) {
-      const fsError = error as any;
+    if (
+      error &&
+      typeof error === "object" &&
+      "errno" in error &&
+      "syscall" in error &&
+      "path" in error
+    ) {
+      const fsError = error;
       if (fsError.errno === 0 || fsError.syscall === "TODO") {
-        serverLogger.error("File system watcher error - continuing without watching:", fsError.path);
+        serverLogger.error(
+          "File system watcher error - continuing without watching:",
+          fsError.path
+        );
         return;
       }
     }
@@ -97,7 +105,9 @@ export async function startServer({
     const { stdout } = await execAsync("ulimit -n");
     const limit = parseInt(stdout.trim(), 10);
     if (limit < 8192) {
-      serverLogger.warn(`System file descriptor limit is low: ${limit}. Consider increasing it with 'ulimit -n 8192' to avoid file watcher issues.`);
+      serverLogger.warn(
+        `System file descriptor limit is low: ${limit}. Consider increasing it with 'ulimit -n 8192' to avoid file watcher issues.`
+      );
     }
   } catch (error) {
     serverLogger.warn("Could not check system file descriptor limit:", error);
@@ -184,7 +194,9 @@ export async function startServer({
         });
 
         // Check if at least one agent spawned successfully
-        const successfulAgents = agentResults.filter((result) => result.success);
+        const successfulAgents = agentResults.filter(
+          (result) => result.success
+        );
         if (successfulAgents.length === 0) {
           const errors = agentResults
             .filter((r) => !r.success)
@@ -240,7 +252,10 @@ export async function startServer({
             }
           );
         } catch (error) {
-          serverLogger.warn("Could not set up file watching for workspace:", error);
+          serverLogger.warn(
+            "Could not set up file watching for workspace:",
+            error
+          );
           // Continue without file watching
         }
 
@@ -596,42 +611,30 @@ export async function startServer({
           return;
         }
         const worktreePath = taskRun.worktreePath as string;
-        // Determine status from stored diff to handle deleted/added cases
-        const diffs = await convex.query(api.gitDiffs.getByTaskRun, {
-          taskRunId: taskRunId as Id<"taskRuns">,
-        });
-        const fileDiff = diffs?.find((d) => d.filePath === filePath);
-        const status = fileDiff?.status ?? "modified";
         let oldContent = "";
         let newContent = "";
-        if (status === "deleted") {
-          oldContent = "";
+        try {
+          newContent = await fs.readFile(
+            path.join(worktreePath, filePath),
+            "utf-8"
+          );
+        } catch {
           newContent = "";
-        } else {
-          try {
-            newContent = await fs.readFile(
-              path.join(worktreePath, filePath),
-              "utf-8"
-            );
-          } catch {
-            newContent = "";
-          }
-          try {
-            const { stdout } = await execAsync(`git show HEAD:"${filePath}"`, {
-              cwd: worktreePath,
-              maxBuffer: 5 * 1024 * 1024,
-            });
-            oldContent = stdout;
-          } catch {
-            oldContent = "";
-          }
         }
-        callback?.({
-          ok: true,
-          oldContent,
-          newContent,
-          isBinary: fileDiff?.isBinary ?? false,
-        });
+        try {
+          // Use git CLI to read HEAD version of the file
+          const { stdout } = await execAsync(
+            `git show HEAD:"${filePath.replace(/"/g, '\\"')}"`,
+            {
+              cwd: worktreePath,
+              maxBuffer: 10 * 1024 * 1024,
+            }
+          );
+          oldContent = stdout;
+        } catch {
+          oldContent = "";
+        }
+        callback?.({ ok: true, oldContent, newContent, isBinary: false });
       } catch (error) {
         serverLogger.error("Error in git-diff-file-contents:", error);
         callback?.({
@@ -641,21 +644,32 @@ export async function startServer({
       }
     });
 
-    socket.on("refresh-diffs", async (data, callback) => {
+    // Get diffs on demand to avoid storing in Convex
+    socket.on("get-run-diffs", async (data, callback) => {
       try {
-        const { taskRunId } = data;
-        serverLogger.info(
-          `[Server] Refresh diffs requested for taskRun ${taskRunId}`
+        const { taskRunId } = data as { taskRunId: string };
+        const taskRun = await convex.query(api.taskRuns.get, {
+          id: taskRunId as Id<"taskRuns">,
+        });
+        if (!taskRun?.worktreePath) {
+          callback?.({ ok: false, error: "Worktree not found", diffs: [] });
+          return;
+        }
+        const worktreePath = taskRun.worktreePath as string;
+        const { computeEntriesNodeGit } = await import(
+          "./diffs/parseGitDiff.js"
         );
-
-        // Use the simplified approach that works directly with the filesystem
-        const result = await refreshDiffsForTaskRun(taskRunId);
-        callback(result);
+        const entries = await computeEntriesNodeGit({
+          worktreePath,
+          includeContents: true,
+        });
+        callback?.({ ok: true, diffs: entries });
       } catch (error) {
-        serverLogger.error("Error refreshing diffs:", error);
-        callback({
-          success: false,
-          message: error instanceof Error ? error.message : "Unknown error",
+        serverLogger.error("Error getting run diffs:", error);
+        callback?.({
+          ok: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+          diffs: [],
         });
       }
     });
@@ -1176,7 +1190,9 @@ export async function startServer({
           // Clean up temp file
           try {
             await fs.unlink(tmpBodyPath);
-          } catch {}
+          } catch (e) {
+            serverLogger.error("Error cleaning up temp file:", e);
+          }
         } catch (e: unknown) {
           const err = e as {
             stdout?: string;
@@ -1408,11 +1424,13 @@ export async function startServer({
               finalNumber
             );
             merged = !!detail.merged_at;
-          } catch {}
+          } catch (e) {
+            serverLogger.error("Error fetching PR detail:", e);
+          }
         }
 
         await convex.mutation(api.taskRuns.updatePullRequestState, {
-          id: run._id as any,
+          id: run._id,
           state: finalUrl
             ? stateMap(finalState, finalIsDraft, merged)
             : ("none" as const),

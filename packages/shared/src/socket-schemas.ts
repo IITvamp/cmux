@@ -355,9 +355,10 @@ export interface ClientToServerEvents {
   "git-status": (data: GitStatusRequest) => void;
   "git-diff": (data: GitDiffRequest) => void;
   "git-full-diff": (data: GitFullDiffRequest) => void;
-  "refresh-diffs": (
+  // On-demand diffs for a task run
+  "get-run-diffs": (
     data: { taskRunId: Id<"taskRuns"> },
-    callback: (response: { success: boolean; message?: string }) => void
+    callback: (response: { ok: true; diffs: import("./diff-types.js").ReplaceDiffEntry[] } | { ok: false; error: string; diffs: [] }) => void
   ) => void;
   "git-diff-file-contents": (
     data: { taskRunId: Id<"taskRuns">; filePath: string },

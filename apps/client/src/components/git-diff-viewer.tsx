@@ -1,7 +1,8 @@
 import { useTheme } from "@/components/theme/use-theme";
 import { useSocket } from "@/contexts/socket/use-socket";
 import { cn } from "@/lib/utils";
-import type { Doc, Id } from "@cmux/convex/dataModel";
+import type { Id } from "@cmux/convex/dataModel";
+import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
 import { DiffEditor } from "@monaco-editor/react";
 import {
   ChevronDown,
@@ -23,7 +24,7 @@ import {
 } from "react";
 
 interface GitDiffViewerProps {
-  diffs: Doc<"gitDiffs">[];
+  diffs: ReplaceDiffEntry[];
   isLoading?: boolean;
   taskRunId?: Id<"taskRuns">;
   onControlsChange?: (controls: {
@@ -34,18 +35,18 @@ interface GitDiffViewerProps {
   }) => void;
 }
 
-interface FileGroup {
+type FileGroup = {
   filePath: string;
-  status: Doc<"gitDiffs">["status"];
+  status: ReplaceDiffEntry["status"];
   additions: number;
   deletions: number;
   oldContent: string;
   newContent: string;
   patch?: string;
   isBinary: boolean;
-}
+};
 
-function getStatusColor(status: Doc<"gitDiffs">["status"]) {
+function getStatusColor(status: ReplaceDiffEntry["status"]) {
   switch (status) {
     case "added":
       return "text-green-600 dark:text-green-400";
@@ -60,7 +61,7 @@ function getStatusColor(status: Doc<"gitDiffs">["status"]) {
   }
 }
 
-function getStatusIcon(status: Doc<"gitDiffs">["status"]) {
+function getStatusIcon(status: ReplaceDiffEntry["status"]) {
   const iconClass = "w-3.5 h-3.5 flex-shrink-0";
   switch (status) {
     case "added":
@@ -118,7 +119,7 @@ export function GitDiffViewer({
   // Group diffs by file
   const fileGroups: FileGroup[] = useMemo(
     () =>
-      diffs.map((diff) => ({
+      (diffs || []).map((diff) => ({
         filePath: diff.filePath,
         status: diff.status,
         additions: diff.additions,
@@ -534,7 +535,9 @@ function FileDiffRow({
                       if (model?.modified) {
                         model.modified.dispose?.();
                       }
-                    } catch {}
+                    } catch (_e) {
+                      // ignore if monaco not available
+                    }
                   };
                 }}
                 options={{
@@ -544,7 +547,8 @@ function FileDiffRow({
                   scrollBeyondLastLine: false,
                   fontSize: 12,
                   lineHeight: 18,
-                  fontFamily: "'JetBrains Mono', 'SF Mono', Monaco, 'Courier New', monospace",
+                  fontFamily:
+                    "'JetBrains Mono', 'SF Mono', Monaco, 'Courier New', monospace",
                   wordWrap: "on",
                   automaticLayout: false,
                   renderOverviewRuler: false,

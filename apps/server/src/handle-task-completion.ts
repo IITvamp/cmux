@@ -6,7 +6,6 @@ import {
   createPullRequestForWinner,
   evaluateCrownWithClaudeCode,
 } from "./crownEvaluator.js";
-import { storeGitDiffs } from "./storeGitDiffs.js";
 import { convex } from "./utils/convexClient.js";
 import { serverLogger } from "./utils/fileLogger.js";
 import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
@@ -56,7 +55,7 @@ export async function handleTaskCompletion({
       `[AgentSpawner] First 100 chars of diff: ${gitDiff.substring(0, 100)}`
     );
 
-    // Append git diff to the log AND store in gitDiffs table
+    // Append git diff to the log; diffs are fetched on-demand now
     if (gitDiff && gitDiff.length > 0) {
       await convex.mutation(api.taskRuns.appendLogPublic, {
         id: taskRunId,
@@ -65,9 +64,6 @@ export async function handleTaskCompletion({
       serverLogger.info(
         `[AgentSpawner] Successfully appended ${gitDiff.length} chars of git diff to log for ${taskRunId}`
       );
-
-      // Parse and store the diff in the gitDiffs table
-      await storeGitDiffs(taskRunId, gitDiff, vscodeInstance, worktreePath);
     } else {
       serverLogger.error(
         `[AgentSpawner] NO GIT DIFF TO APPEND for ${agent.name} (${taskRunId})`

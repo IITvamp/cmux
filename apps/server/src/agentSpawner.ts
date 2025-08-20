@@ -374,33 +374,7 @@ export async function spawnAgent(
         { changeCount: data.changes.length, taskRunId: data.taskRunId }
       );
 
-      // Store the incremental diffs in Convex
-      if (data.taskRunId === taskRunId && data.fileDiffs.length > 0) {
-        for (const fileDiff of data.fileDiffs) {
-          const relativePath = path.relative(worktreePath, fileDiff.path);
-
-          await convex.mutation(api.gitDiffs.upsertDiff, {
-            taskRunId,
-            filePath: relativePath,
-            status: fileDiff.type as "added" | "modified" | "deleted",
-            additions: (fileDiff.patch.match(/^\+[^+]/gm) || []).length,
-            deletions: (fileDiff.patch.match(/^-[^-]/gm) || []).length,
-            patch: fileDiff.patch,
-            oldContent: fileDiff.oldContent,
-            newContent: fileDiff.newContent,
-            isBinary: false,
-          });
-        }
-
-        // Update the timestamp
-        await convex.mutation(api.gitDiffs.updateDiffsTimestamp, {
-          taskRunId,
-        });
-
-        serverLogger.info(
-          `[AgentSpawner] Stored ${data.fileDiffs.length} incremental diffs for ${agent.name}`
-        );
-      }
+      // On-demand diffs: no longer persisting incremental diffs to Convex
     });
 
     // Set up task-complete event handler (from project file detection)
