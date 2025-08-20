@@ -296,13 +296,13 @@ function DashboardComponent() {
   }, [selectedRepo, branches, fetchBranches]);
 
   // Format repos for multiselect
-  const projectOptions = useMemo(
-    () =>
-      Object.entries(reposByOrg || {}).flatMap(([, repos]) =>
-        repos.map((repo) => repo.fullName)
-      ),
-    [reposByOrg]
-  );
+  const projectOptions = useMemo(() => {
+    const list = Object.entries(reposByOrg || {}).flatMap(([, repos]) =>
+      repos.map((repo) => repo.fullName)
+    );
+    // Deduplicate by full name to avoid duplicate Select keys
+    return Array.from(new Set(list));
+  }, [reposByOrg]);
 
   const branchOptions = branches || [];
 
