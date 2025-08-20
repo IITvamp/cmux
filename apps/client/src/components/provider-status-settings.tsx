@@ -103,7 +103,7 @@ export function ProviderStatusSettings() {
           ) : (
             <XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
           )}
-          <span className="text-xs text-neutral-700 dark:text-neutral-300">
+          <span className="text-xs text-neutral-700 dark:text-neutral-300 select-text">
             Docker
             {dockerOk &&
               status.dockerStatus?.version &&
@@ -121,7 +121,7 @@ export function ProviderStatusSettings() {
             ) : (
               <AlertCircle className="w-3.5 h-3.5 text-yellow-500 flex-shrink-0" />
             )}
-            <span className="text-xs text-neutral-700 dark:text-neutral-300">
+            <span className="text-xs text-neutral-700 dark:text-neutral-300 select-text">
               {dockerImage.name}
               {dockerImage.isPulling && " (pulling...)"}
               {!dockerImage.isAvailable &&
@@ -138,7 +138,7 @@ export function ProviderStatusSettings() {
           ) : (
             <XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
           )}
-          <span className="text-xs text-neutral-700 dark:text-neutral-300">
+          <span className="text-xs text-neutral-700 dark:text-neutral-300 select-text">
             Git
             {gitOk &&
               status.gitStatus?.version &&
@@ -157,7 +157,7 @@ export function ProviderStatusSettings() {
               )}
               <div className="min-w-0 flex flex-col">
                 <div className="flex items-center gap-1">
-                  <span className="text-xs text-neutral-700 dark:text-neutral-300">
+                  <span className="text-xs text-neutral-700 dark:text-neutral-300 select-text">
                     {provider.name}
                   </span>
                 </div>
