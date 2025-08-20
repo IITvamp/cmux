@@ -1,4 +1,9 @@
-import { booksRouter, devServerRouter, healthRouter, usersRouter } from "@/lib/routes/index";
+import {
+  booksRouter,
+  devServerRouter,
+  healthRouter,
+  usersRouter,
+} from "@/lib/routes/index";
 import { stackServerApp } from "@/lib/utils/stack";
 import { swaggerUI } from "@hono/swagger-ui";
 import { OpenAPIHono } from "@hono/zod-openapi";

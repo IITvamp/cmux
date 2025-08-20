@@ -173,10 +173,10 @@ export WORKER_PORT=39377
 export IS_SANDBOX=true
 
 # Start Docker readiness check and devcontainer in background
-start_devcontainer &
+# start_devcontainer &
 
 # Start default empty tmux session for cmux that the agent will be spawned in
-(cd /root/workspace && tmux new-session -d -s cmux)
+# (cd /root/workspace && tmux new-session -d -s cmux)
 
 rm -f /startup.sh
 
