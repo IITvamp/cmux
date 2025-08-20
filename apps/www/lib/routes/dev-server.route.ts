@@ -164,8 +164,6 @@ devServerRouter.openapi(startDevServerRoute, async (c) => {
 
     console.log(`Created dev server instance: ${instance.id}`);
 
-    // Get exposed services
-    type HttpService = { port: number; url: string };
     const exposedServices = instance.networking.httpServices;
     const vscodeService = exposedServices.find(
       (service) => service.port === 39378
