@@ -140,7 +140,7 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
         {isElectron && <div className="w-[68px]"></div>}
         <Link
           to="/dashboard"
-          className="flex items-center gap-2 select-none cursor-default"
+          className="flex items-center gap-2 select-none cursor-pointer"
           style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
         >
           <Terminal
