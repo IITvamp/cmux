@@ -124,7 +124,6 @@ export const WorkerTerminalIdleSchema = z.object({
 // Task completion detected from project files (e.g., Claude Code)
 export const WorkerTaskCompleteSchema = z.object({
   workerId: z.string(),
-  terminalId: z.string(),
   taskRunId: typedZid("taskRuns"),
   agentModel: z
     .string()
