@@ -12,6 +12,7 @@ import {
   useRef,
   useState,
 } from "react";
+import CmuxArrow from "./logo/cmux-arrow";
 
 interface SidebarProps {
   tasks: Doc<"tasks">[] | undefined;
@@ -150,6 +151,7 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
           <span className="text-sm font-mono text-neutral-900 dark:text-white">
             cmux
           </span>
+          <CmuxArrow size={16} title="cmux" />
         </Link>
         <div className="grow"></div>
         <Link

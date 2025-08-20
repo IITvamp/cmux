@@ -1,4 +1,4 @@
-import { exec } from "child_process";
+import { exec, execFile } from "child_process";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { promisify } from "util";
@@ -10,6 +10,7 @@ import {
 import { serverLogger } from "./utils/fileLogger.js";
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 interface RepositoryOperation {
   promise: Promise<void>;
@@ -37,6 +38,7 @@ export class RepositoryManager {
   private static instance: RepositoryManager;
   private operations = new Map<string, RepositoryOperation>();
   private worktreeLocks = new Map<string, Promise<void>>();
+  private resolvedGitPath: string | null = null;
   
   // Global operation queue to prevent any git command conflicts
   private operationQueue: QueuedOperation[] = [];
@@ -112,6 +114,31 @@ export class RepositoryManager {
     command: string,
     options?: GitCommandOptions
   ): Promise<{ stdout: string; stderr: string }> {
+    // Prefer execFile with an absolute git path when invoking git
+    if (command.startsWith("git ")) {
+      const gitPath = await this.getGitPath();
+      const args = this.tokenizeGitArgs(command.slice(4));
+      try {
+        const result = await execFileAsync(gitPath, args, {
+          cwd: options?.cwd,
+          encoding: options?.encoding ?? "utf8",
+          windowsHide: true,
+        } as any);
+        return {
+          stdout: result.stdout.toString(),
+          stderr: result.stderr?.toString?.() || "",
+        };
+      } catch (error) {
+        // Log and fall through to shell execution for debugging context
+        serverLogger.error(`Git command failed: ${gitPath} ${args.join(" ")}`);
+        if (error instanceof Error) {
+          serverLogger.error(`Error: ${error.message}`);
+          if ((error as any).stderr) {
+            serverLogger.error(`Stderr: ${(error as any).stderr}`);
+          }
+        }
+      }
+    }
     // Commands that modify git config or create worktrees need to be queued
     const needsQueue = 
       command.includes('git config') ||
@@ -164,6 +191,42 @@ export class RepositoryManager {
       }
       throw error;
     }
+  }
+
+  private async getGitPath(): Promise<string> {
+    if (this.resolvedGitPath) return this.resolvedGitPath;
+    const candidates = [
+      process.env.GIT_PATH,
+      process.platform === "win32" ? "git.exe" : undefined,
+      "/opt/homebrew/bin/git",
+      "/usr/local/bin/git",
+      "/usr/bin/git",
+      "/bin/git",
+      "git",
+    ].filter(Boolean) as string[];
+
+    for (const p of candidates) {
+      try {
+        await fs.access(p);
+        this.resolvedGitPath = p;
+        return p;
+      } catch {
+        // try next
+      }
+    }
+    // Last resort
+    this.resolvedGitPath = process.platform === "win32" ? "git.exe" : "git";
+    return this.resolvedGitPath;
+  }
+
+  private tokenizeGitArgs(s: string): string[] {
+    const args: string[] = [];
+    const re = /\s*("([^"]*)"|'([^']*)'|[^\s"']+)/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(s)) !== null) {
+      args.push(m[2] ?? m[3] ?? m[1]);
+    }
+    return args;
   }
 
   private async configureGitPullStrategy(repoPath: string): Promise<void> {
