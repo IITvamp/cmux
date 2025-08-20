@@ -28,7 +28,7 @@
       }
     }
   },
-  "forwardPorts": [5173, 9777, 9778, 6791, 39375, 39376, 39377, 39378],
+  "forwardPorts": [5173, 9777, 9778, 6791, 39376, 39377, 39378],
   "portsAttributes": {
     "9776": {
       "label": "Backend Server",
@@ -49,10 +49,6 @@
     "5173": {
       "label": "Frontend (Vite)",
       "onAutoForward": "openBrowser"
-    },
-    "39375": {
-      "label": "Docker Daemon (unencrypted)",
-      "onAutoForward": "silent"
     },
     "39376": {
       "label": "VS Code Extension Socket Server",
