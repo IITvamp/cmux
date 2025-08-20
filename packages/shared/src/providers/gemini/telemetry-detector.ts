@@ -11,8 +11,12 @@ import { createReadStream } from "node:fs";
  *  - attributes["result"] === "user"
  */
 
-// Use a unique telemetry log path per process to avoid conflicts
-export const GEMINI_TELEMETRY_LOG_PATH = process.env.GEMINI_TELEMETRY_PATH || "/tmp/gemini-telemetry.log";
+// Use a unique telemetry log path per task, preferring CMUX_TASK_RUN_ID when available
+const CMUX_TASK_RUN_ID = process.env.CMUX_TASK_RUN_ID;
+export const GEMINI_TELEMETRY_LOG_PATH = 
+  (CMUX_TASK_RUN_ID
+    ? `/tmp/gemini-telemetry-${CMUX_TASK_RUN_ID}.log`
+    : "/tmp/gemini-telemetry.log");
 
 interface TelemetryEvent {
   timestamp?: string;

@@ -185,10 +185,9 @@ export async function spawnAgent(
       );
     }
 
-    // Build environment variables (use CMUX_PROMPT to avoid huge argv)
     let envVars: Record<string, string> = {
       CMUX_PROMPT: processedTaskDescription,
-      // Keep PROMPT for backward compatibility if any consumer uses it
+      CMUX_TASK_RUN_ID: taskRunId,
       PROMPT: processedTaskDescription,
     };
     
@@ -206,19 +205,6 @@ export async function spawnAgent(
       startupCommands = envResult.startupCommands || [];
     }
 
-    // For Gemini agents, set a unique telemetry log path using taskRunId
-    // IMPORTANT: This must be set AFTER the environment function to avoid being overwritten
-    if (agent.name.toLowerCase().includes("gemini")) {
-      envVars.GEMINI_TELEMETRY_PATH = `/tmp/gemini-telemetry-${taskRunId}.log`;
-      serverLogger.info(`[AgentSpawner] Setting Gemini telemetry path: ${envVars.GEMINI_TELEMETRY_PATH}`);
-    }
-
-    // For Claude agents, pass the task run ID for the stop hook to use
-    if (agent.name.toLowerCase().includes("claude")) {
-      envVars.CMUX_TASK_RUN_ID = taskRunId;
-      serverLogger.info(`[AgentSpawner] Setting CMUX_TASK_RUN_ID for Claude stop hook: ${taskRunId}`);
-    }
-
     // Fetch API keys from Convex
     const apiKeys = await convex.query(api.apiKeys.getAllForAgents);
 
@@ -233,14 +219,9 @@ export async function spawnAgent(
     }
 
     // Replace $PROMPT placeholders in args with $CMUX_PROMPT token for shell-time expansion
-    // Also replace $GEMINI_TELEMETRY_PATH with the actual path value
     const processedArgs = agent.args.map((arg) => {
       if (arg.includes("$PROMPT")) {
         return arg.replace(/\$PROMPT/g, "$CMUX_PROMPT");
-      }
-      // Replace $GEMINI_TELEMETRY_PATH with the actual path
-      if (arg.includes("$GEMINI_TELEMETRY_PATH") && envVars.GEMINI_TELEMETRY_PATH) {
-        return arg.replace(/\$GEMINI_TELEMETRY_PATH/g, envVars.GEMINI_TELEMETRY_PATH);
       }
       return arg;
     });
