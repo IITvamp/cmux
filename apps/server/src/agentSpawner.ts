@@ -255,6 +255,8 @@ export async function spawnAgent(
     let vscodeInstance: VSCodeInstance;
     let worktreePath: string;
 
+    console.log("[AgentSpawner] [isCloudMode]", options.isCloudMode);
+
     if (options.isCloudMode) {
       // For Morph, create the instance and we'll clone the repo via socket command
       vscodeInstance = new MorphVSCodeInstance({
