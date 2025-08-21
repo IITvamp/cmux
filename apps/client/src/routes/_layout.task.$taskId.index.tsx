@@ -159,7 +159,7 @@ function TaskDetailPage() {
   useEffect(() => {
     if (!selectedRun?._id) return;
     void diffsQuery.refetch();
-  }, [selectedRun?._id, diffsQuery.refetch]);
+  }, [selectedRun?._id, diffsQuery.refetch, diffsQuery]);
 
   // Stabilize diffs per-run to avoid cross-run flashes
   const [stableDiffsByRun, setStableDiffsByRun] = useState<
