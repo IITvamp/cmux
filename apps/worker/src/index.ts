@@ -1470,9 +1470,7 @@ httpServer.listen(WORKER_PORT, () => {
 // Start AMP proxy via shared provider module
 startAmpProxy({
   ampUrl: process.env.AMP_URL,
-  logsDir: "./logs",
   workerId: WORKER_ID,
-  log,
   emitToMainServer: emitToMainServer,
 });
 
