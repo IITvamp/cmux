@@ -706,24 +706,33 @@ export async function spawnAgent(
 
       // First create the prompt directory
       await new Promise<void>((resolve) => {
-        workerSocket.timeout(10000).emit(
-          "worker:exec",
-          {
-            command: "mkdir",
-            args: ["-p", "/root/prompt"],
-            cwd: "/root",
-            env: {},
-          },
-          (timeoutError, result) => {
-            if (timeoutError || result.error) {
-              serverLogger.error(
-                "Failed to create prompt directory",
-                timeoutError || result.error
-              );
+        try {
+          workerSocket.timeout(10000).emit(
+            "worker:exec",
+            {
+              command: "mkdir",
+              args: ["-p", "/root/prompt"],
+              cwd: "/root",
+              env: {},
+            },
+            (timeoutError, result) => {
+              if (timeoutError) {
+                // Handle timeout errors gracefully
+                if (timeoutError instanceof Error && timeoutError.message === "operation has timed out") {
+                  serverLogger.error("Socket timeout while creating prompt directory", timeoutError);
+                } else {
+                  serverLogger.error("Failed to create prompt directory", timeoutError);
+                }
+              } else if (result?.error) {
+                serverLogger.error("Failed to create prompt directory", result.error);
+              }
+              resolve();
             }
-            resolve();
-          }
-        );
+          );
+        } catch (err) {
+          serverLogger.error("Error emitting command to create prompt directory", err);
+          resolve();
+        }
       });
 
       // Upload each image file using HTTP endpoint

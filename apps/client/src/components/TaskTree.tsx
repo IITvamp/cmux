@@ -107,7 +107,7 @@ function TaskTreeInner({
             params={{ taskId: task._id }}
             search={{ runId: undefined }}
             className={clsx(
-              "flex items-center px-0.5 py-1 text-sm rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default",
+              "flex items-center px-0.5 pt-[2.5px] pb-[3px] text-sm rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default",
               "[&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800"
             )}
             style={{ paddingLeft: `${4 + level * 16}px` }}
@@ -115,7 +115,7 @@ function TaskTreeInner({
             <button
               onClick={handleToggle}
               className={clsx(
-                "size-4 mr-1.5 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded grid place-content-center cursor-default",
+                "size-4.5 mr-1.5 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-[5px] grid place-content-center cursor-default",
                 !hasRuns && "invisible"
               )}
               style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
@@ -297,7 +297,7 @@ function TaskRunTreeInner({ run, level, taskId, branch }: TaskRunTreeProps) {
   );
 
   return (
-    <div className="mt-px relative">
+    <div className="mt-px relative group">
       {/* Crown icon shown before status icon, with tooltip */}
       {run.isCrowned && (
         <div className="flex-shrink-0 absolute left-0 pt-[5.5px] pl-[26px]">
@@ -377,7 +377,7 @@ function TaskRunTreeInner({ run, level, taskId, branch }: TaskRunTreeProps) {
           branch={run.newBranch}
           networking={run.networking}
           className="bg-neutral-100/80 dark:bg-neutral-700/80 hover:bg-neutral-200/80 dark:hover:bg-neutral-600/80 text-neutral-600 dark:text-neutral-400"
-          iconClassName="w-3 h-3"
+          iconClassName="w-2.5 h-2.5"
         />
       </div>
 

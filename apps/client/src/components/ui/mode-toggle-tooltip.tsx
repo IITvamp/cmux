@@ -146,7 +146,7 @@ export function ModeToggleTooltip({
               <div className="relative h-4 flex items-center w-full">
                 <div className="relative w-full flex">
                   <motion.div
-                    className="flex items-center justify-center absolute inset-0"
+                    className="flex items-center justify-center absolute inset-0 will-change-transform"
                     initial={false}
                     // animate={{ x: isCloudMode ? "-150%" : "0%" }}
                     animate={{ x: isCloudMode ? "0%" : "150%" }}
@@ -155,7 +155,7 @@ export function ModeToggleTooltip({
                     <span className="text-center">Cloud Mode</span>
                   </motion.div>
                   <motion.div
-                    className="flex items-center justify-center absolute inset-0"
+                    className="flex items-center justify-center absolute inset-0 will-change-transform"
                     initial={false}
                     // animate={{ x: isCloudMode ? "0%" : "150%" }}
                     animate={{ x: isCloudMode ? "-150%" : "0%" }}

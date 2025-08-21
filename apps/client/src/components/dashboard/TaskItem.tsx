@@ -227,7 +227,7 @@ export const TaskItem = memo(function TaskItem({ task }: TaskItemProps) {
         </ContextMenu.Portal>
       </ContextMenu.Root>
       <div className="right-2 top-0 bottom-0 absolute py-2">
-        <div className="flex gap-1 group-hover:opacity-100 opacity-0">
+        <div className="flex gap-1">
           {/* Copy button */}
           <TooltipProvider>
             <Tooltip>
@@ -238,7 +238,8 @@ export const TaskItem = memo(function TaskItem({ task }: TaskItemProps) {
                     "p-1 rounded",
                     "bg-neutral-100 dark:bg-neutral-700",
                     "text-neutral-600 dark:text-neutral-400",
-                    "hover:bg-neutral-200 dark:hover:bg-neutral-600"
+                    "hover:bg-neutral-200 dark:hover:bg-neutral-600",
+                    "group-hover:opacity-100 opacity-0"
                   )}
                   title="Copy task description"
                 >
@@ -260,6 +261,7 @@ export const TaskItem = memo(function TaskItem({ task }: TaskItemProps) {
             vscodeUrl={vscodeUrl}
             worktreePath={runWithVSCode?.worktreePath || task.worktreePath}
             branch={task.baseBranch}
+            className="group-hover:opacity-100 aria-expanded:opacity-100 opacity-0"
           />
 
           {/* Keep-alive button */}
@@ -275,7 +277,9 @@ export const TaskItem = memo(function TaskItem({ task }: TaskItemProps) {
                       runWithVSCode.vscode?.keepAlive
                         ? "text-blue-600 dark:text-blue-400"
                         : "text-neutral-600 dark:text-neutral-400",
-                      "hover:bg-neutral-200 dark:hover:bg-neutral-600"
+                      "hover:bg-neutral-200 dark:hover:bg-neutral-600",
+                      "group-hover:opacity-100 opacity-0",
+                      "hidden" // TODO: show this button
                     )}
                   >
                     <Pin className="w-3.5 h-3.5" />
@@ -301,7 +305,8 @@ export const TaskItem = memo(function TaskItem({ task }: TaskItemProps) {
                       "p-1 rounded",
                       "bg-neutral-100 dark:bg-neutral-700",
                       "text-neutral-600 dark:text-neutral-400",
-                      "hover:bg-neutral-200 dark:hover:bg-neutral-600"
+                      "hover:bg-neutral-200 dark:hover:bg-neutral-600",
+                      "group-hover:opacity-100 opacity-0"
                     )}
                     title="Unarchive task"
                   >
@@ -314,7 +319,8 @@ export const TaskItem = memo(function TaskItem({ task }: TaskItemProps) {
                       "p-1 rounded",
                       "bg-neutral-100 dark:bg-neutral-700",
                       "text-neutral-600 dark:text-neutral-400",
-                      "hover:bg-neutral-200 dark:hover:bg-neutral-600"
+                      "hover:bg-neutral-200 dark:hover:bg-neutral-600",
+                      "group-hover:opacity-100 opacity-0"
                     )}
                     title="Archive task"
                   >

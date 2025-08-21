@@ -3,13 +3,7 @@ import { editorIcons, type EditorType } from "@/components/ui/dropdown-types";
 import { useSocket } from "@/contexts/socket/use-socket";
 import type { Doc } from "@cmux/convex/dataModel";
 import clsx from "clsx";
-import {
-  ChevronDown,
-  Code2,
-  ExternalLink,
-  GitBranch,
-  Globe,
-} from "lucide-react";
+import { EllipsisVertical, ExternalLink, GitBranch, Globe } from "lucide-react";
 import { useCallback, useEffect } from "react";
 import { toast } from "sonner";
 
@@ -127,8 +121,9 @@ export function OpenWithDropdown({
         )}
         title="Open with"
       >
-        <Code2 className={iconClassName} />
-        <ChevronDown className="w-2.5 h-2.5" />
+        {/* <Code2 className={iconClassName} />
+        <ChevronDown className="w-2.5 h-2.5" /> */}
+        <EllipsisVertical className={iconClassName} />
       </Dropdown.Trigger>
       <Dropdown.Portal>
         <Dropdown.Positioner sideOffset={8}>

@@ -1,5 +1,55 @@
 import { serverLogger } from "./utils/fileLogger";
 import { VSCodeInstance } from "./vscode/VSCodeInstance";
+import type { Socket } from "socket.io-client";
+import type { WorkerToServerEvents, ServerToWorkerEvents } from "@cmux/shared";
+
+/**
+ * Helper to safely execute commands via socket with timeout handling
+ */
+async function safeSocketExec(
+  workerSocket: Socket<WorkerToServerEvents, ServerToWorkerEvents>,
+  command: string,
+  args: string[],
+  cwd: string,
+  timeout: number = 5000
+): Promise<{ success: boolean; stdout?: string; stderr?: string }> {
+  return new Promise((resolve) => {
+    try {
+      workerSocket.timeout(timeout).emit(
+        "worker:exec",
+        {
+          command,
+          args,
+          cwd,
+          env: {},
+        },
+        (timeoutError, result) => {
+          if (timeoutError) {
+            if (timeoutError instanceof Error && timeoutError.message === "operation has timed out") {
+              serverLogger.error(`[captureGitDiff] Socket timeout for command: ${command}`, timeoutError);
+            } else {
+              serverLogger.error(`[captureGitDiff] Error executing ${command}:`, timeoutError);
+            }
+            resolve({ success: false, stderr: "timeout" });
+            return;
+          }
+          if (result?.error) {
+            resolve({ success: false, stderr: String(result.error) });
+            return;
+          }
+          resolve({
+            success: true,
+            stdout: result.data?.stdout || "",
+            stderr: result.data?.stderr || "",
+          });
+        }
+      );
+    } catch (err) {
+      serverLogger.error(`[captureGitDiff] Error emitting command ${command}:`, err);
+      resolve({ success: false, stderr: "error" });
+    }
+  });
+}
 
 /**
  * Capture the full git diff including untracked files
@@ -35,25 +85,37 @@ export async function captureGitDiff(
       success: boolean;
       stdout?: string;
     }>((resolve) => {
-      workerSocket.timeout(5000).emit(
-        "worker:exec",
-        {
-          command: "bash",
-          args: ["-c", "pwd && git rev-parse --show-toplevel"],
-          cwd: containerWorkspace,
-          env: {},
-        },
-        (timeoutError, result) => {
-          if (timeoutError || result.error) {
-            resolve({ success: false });
-            return;
+      try {
+        workerSocket.timeout(5000).emit(
+          "worker:exec",
+          {
+            command: "bash",
+            args: ["-c", "pwd && git rev-parse --show-toplevel"],
+            cwd: containerWorkspace,
+            env: {},
+          },
+          (timeoutError, result) => {
+            if (timeoutError) {
+              if (timeoutError instanceof Error && timeoutError.message === "operation has timed out") {
+                serverLogger.error("[captureGitDiff] Socket timeout checking pwd", timeoutError);
+              }
+              resolve({ success: false });
+              return;
+            }
+            if (result?.error) {
+              resolve({ success: false });
+              return;
+            }
+            resolve({
+              success: true,
+              stdout: result.data?.stdout || "",
+            });
           }
-          resolve({
-            success: true,
-            stdout: result.data?.stdout || "",
-          });
-        }
-      );
+        );
+      } catch (err) {
+        serverLogger.error("[captureGitDiff] Error emitting pwd check", err);
+        resolve({ success: false });
+      }
     });
 
     serverLogger.info(
@@ -66,29 +128,44 @@ export async function captureGitDiff(
       stdout?: string;
       stderr?: string;
     }>((resolve) => {
-      workerSocket.timeout(5000).emit(
-        "worker:exec",
-        {
-          command: "bash",
-          args: ["-c", "git status --verbose"],
-          cwd: containerWorkspace,
-          env: {},
-        },
-        (timeoutError, result) => {
-          if (timeoutError || result.error) {
+      try {
+        workerSocket.timeout(5000).emit(
+          "worker:exec",
+          {
+            command: "bash",
+            args: ["-c", "git status --verbose"],
+            cwd: containerWorkspace,
+            env: {},
+          },
+          (timeoutError, result) => {
+            if (timeoutError) {
+              if (timeoutError instanceof Error && timeoutError.message === "operation has timed out") {
+                serverLogger.error("[captureGitDiff] Socket timeout on git status", timeoutError);
+              }
+              resolve({
+                success: false,
+                stderr: "timeout",
+              });
+              return;
+            }
+            if (result?.error) {
+              resolve({
+                success: false,
+                stderr: String(result.error),
+              });
+              return;
+            }
             resolve({
-              success: false,
-              stderr: String(result?.error || "timeout"),
+              success: true,
+              stdout: result.data?.stdout || "",
+              stderr: result.data?.stderr || "",
             });
-            return;
           }
-          resolve({
-            success: true,
-            stdout: result.data?.stdout || "",
-            stderr: result.data?.stderr || "",
-          });
-        }
-      );
+        );
+      } catch (err) {
+        serverLogger.error("[captureGitDiff] Error emitting git status", err);
+        resolve({ success: false, stderr: "error" });
+      }
     });
 
     serverLogger.info(

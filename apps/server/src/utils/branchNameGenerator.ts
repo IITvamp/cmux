@@ -32,13 +32,14 @@ export function toKebabCase(input: string): string {
 }
 
 /**
- * Generate a random 5-digit numeric string
- * @returns A 5-character string of digits 0-9
+ * Generate a random 5-character alphanumeric string
+ * @returns A 5-character string [a-z0-9]
  */
 export function generateRandomId(): string {
+  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
   let result = "";
   for (let i = 0; i < 5; i++) {
-    result += Math.floor(Math.random() * 10).toString();
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return result;
 }

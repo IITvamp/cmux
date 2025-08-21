@@ -6,15 +6,15 @@ import {
 } from "./branchNameGenerator.js";
 
 describe("branchNameGenerator 5-digit suffix", () => {
-  it("generateRandomId returns 5 digits", () => {
+  it("generateRandomId returns 5 alphanumerics", () => {
     const id = generateRandomId();
-    expect(id).toMatch(/^\d{5}$/);
+    expect(id).toMatch(/^[a-z0-9]{5}$/);
   });
 
   it("generateBranchName ends with -5digits", () => {
     const name = generateBranchName("Implement cool feature!");
     expect(name.startsWith("cmux/")).toBe(true);
-    expect(name).toMatch(/-\d{5}$/);
+    expect(name).toMatch(/-[a-z0-9]{5}$/);
   });
 
   it("generateUniqueBranchNamesFromTitle produces unique names with 5-digit suffix", () => {
@@ -25,8 +25,7 @@ describe("branchNameGenerator 5-digit suffix", () => {
     expect(set.size).toBe(count);
     for (const n of names) {
       expect(n.startsWith("cmux/add-feature-")).toBe(true);
-      expect(n).toMatch(/-\d{5}$/);
+      expect(n).toMatch(/-[a-z0-9]{5}$/);
     }
   });
 });
-
