@@ -117,6 +117,12 @@ export function ModeToggleTooltip({
             <HardDrive className={cn(className, "size-3")} />
           )
         }
+        classNames={{
+          wrapper: cn(
+            "group-data-[selected=true]:bg-blue-500",
+            "group-data-[selected=true]:border-blue-500"
+          ),
+        }}
       />
 
       {/* Custom tooltip */}
