@@ -265,18 +265,7 @@ export async function spawnAgent(
         taskId,
         theme: options.theme,
       });
-      // then we need to set up the repo
-      console.log("[AgentSpawner] [isCloudMode] Cloning repo");
-      await workerExec({
-        workerSocket: vscodeInstance.getWorkerSocket(),
-        command: "bash",
-        args: [
-          "-c",
-          `git clone --depth=1 ${options.repoUrl} /root/workspace && git checkout ${newBranch} && git pull`,
-        ],
-        cwd: "/root",
-        env: {},
-      });
+
       worktreePath = "/root/workspace";
     } else {
       // For Docker, set up worktree as before
@@ -336,6 +325,21 @@ export async function spawnAgent(
     serverLogger.info(
       `VSCode instance spawned for agent ${agent.name}: ${vscodeUrl}`
     );
+
+    if (options.isCloudMode) {
+      // then we need to set up the repo
+      console.log("[AgentSpawner] [isCloudMode] Cloning repo");
+      await workerExec({
+        workerSocket: vscodeInstance.getWorkerSocket(),
+        command: "bash",
+        args: [
+          "-c",
+          `git clone --depth=1 ${options.repoUrl} /root/workspace && git checkout ${newBranch} && git pull`,
+        ],
+        cwd: "/root",
+        env: {},
+      });
+    }
 
     // Start file watching for real-time diff updates
     serverLogger.info(
@@ -684,88 +688,6 @@ export async function spawnAgent(
     //     2
     //   )
     // );
-    serverLogger.info(`  isCloudMode:`, options.isCloudMode);
-
-    // For Morph instances, we need to clone the repository first
-    if (options.isCloudMode) {
-      serverLogger.info(
-        `[AgentSpawner] Cloning repository for Morph instance...`
-      );
-
-      // Use worker:exec to clone the repository
-      const cloneCommand = `git clone ${options.repoUrl} /root/workspace${
-        options.branch && options.branch !== "main"
-          ? ` && cd /root/workspace && git checkout ${options.branch}`
-          : ""
-      }`;
-
-      const cloneResult = await new Promise<{
-        success: boolean;
-        error?: string;
-      }>((resolve) => {
-        workerSocket
-          .timeout(60000) // 60 second timeout for cloning
-          .emit(
-            "worker:exec",
-            {
-              command: "bash",
-              args: ["-c", cloneCommand],
-              cwd: "/root",
-              env: {},
-            },
-            (timeoutError, result) => {
-              if (timeoutError) {
-                serverLogger.error(
-                  "Timeout waiting for git clone",
-                  timeoutError
-                );
-                resolve({
-                  success: false,
-                  error: "Timeout waiting for git clone",
-                });
-                return;
-              }
-              if (result.error) {
-                resolve({ success: false, error: result.error.message });
-                return;
-              }
-
-              const { stdout, stderr, exitCode } = result.data;
-              serverLogger.info(`[AgentSpawner] Git clone stdout:`, stdout);
-              if (stderr) {
-                serverLogger.info(`[AgentSpawner] Git clone stderr:`, stderr);
-              }
-
-              if (exitCode === 0) {
-                serverLogger.info(
-                  `[AgentSpawner] Repository cloned successfully`
-                );
-                resolve({ success: true });
-              } else {
-                serverLogger.error(
-                  `[AgentSpawner] Git clone failed with exit code ${exitCode}`
-                );
-                resolve({
-                  success: false,
-                  error: `Git clone failed with exit code ${exitCode}`,
-                });
-              }
-            }
-          );
-      });
-
-      if (!cloneResult.success) {
-        return {
-          agentName: agent.name,
-          terminalId,
-          taskRunId,
-          worktreePath,
-          vscodeUrl,
-          success: false,
-          error: cloneResult.error || "Failed to clone repository",
-        };
-      }
-    }
 
     // Create image files if any
     if (imageFiles.length > 0) {

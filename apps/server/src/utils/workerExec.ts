@@ -7,20 +7,28 @@ export async function workerExec({
   args,
   cwd,
   env,
+  timeout = 60000,
 }: {
   workerSocket: Socket<WorkerToServerEvents, ServerToWorkerEvents>;
   command: string;
   args: string[];
   cwd: string;
   env: Record<string, string>;
+  timeout?: number;
 }) {
   return new Promise((resolve, reject) => {
-    workerSocket.emit("worker:exec", { command, args, cwd, env }, (payload) => {
-      if (payload.error) {
-        reject(payload.error);
-      } else {
-        resolve(payload);
-      }
-    });
+    workerSocket
+      .timeout(timeout)
+      .emit("worker:exec", { command, args, cwd, env }, (error, payload) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+        if (payload.error) {
+          reject(payload.error);
+        } else {
+          resolve(payload);
+        }
+      });
   });
 }
