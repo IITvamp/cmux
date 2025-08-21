@@ -30,4 +30,12 @@ export default tseslint.config([
       ],
     },
   },
+  // Allow Next.js app router files to export metadata and other
+  // special exports without tripping react-refresh constraints.
+  {
+    files: ['apps/*/app/**/*.{ts,tsx}'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
 ])
