@@ -108,9 +108,7 @@ export function ModeToggleTooltip({
         className={cn(
           "relative flex items-center h-5 w-9 rounded-full transition-colors",
           "border border-neutral-200 dark:border-neutral-600",
-          isCloudMode
-            ? "bg-blue-500 dark:bg-blue-600"
-            : "bg-neutral-200 dark:bg-neutral-700",
+          isCloudMode ? "bg-primary" : "bg-neutral-200 dark:bg-neutral-700",
           className
         )}
       >
@@ -121,7 +119,7 @@ export function ModeToggleTooltip({
           )}
         >
           {isCloudMode ? (
-            <Cloud className="w-2.5 h-2.5 text-blue-500" />
+            <Cloud className="w-2.5 h-2.5 text-primary" />
           ) : (
             <HardDrive className="w-2.5 h-2.5 text-neutral-600" />
           )}
@@ -165,7 +163,8 @@ export function ModeToggleTooltip({
                     transition={{ duration: 0.2, ease: "easeInOut" }}
                   >
                     <span className="text-center">
-                      {cloudModeEnabled || user?.clientMetadata?.cloudModeWaitlist
+                      {cloudModeEnabled ||
+                      user?.clientMetadata?.cloudModeWaitlist
                         ? "Local Mode"
                         : "Join waitlist"}
                     </span>

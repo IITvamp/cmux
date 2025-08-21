@@ -9,7 +9,7 @@ import {
 export class MorphVSCodeInstance extends VSCodeInstance {
   private morphClient: MorphCloudClient;
   private instance: Instance | null = null; // Morph instance type
-  private snapshotId = "snapshot_gn1wmycs"; // Default snapshot ID
+  private snapshotId = "snapshot_kco1jqb6"; // Default snapshot ID
 
   constructor(config: VSCodeInstanceConfig) {
     super(config);
@@ -23,7 +23,7 @@ export class MorphVSCodeInstance extends VSCodeInstance {
 
     // Start the Morph instance
     this.instance = await this.morphClient.instances.start({
-      snapshotId: "snapshot_kco1jqb6",
+      snapshotId: this.snapshotId,
       // 30 minutes
       ttlSeconds: 60 * 30,
       ttlAction: "pause",
@@ -54,6 +54,7 @@ export class MorphVSCodeInstance extends VSCodeInstance {
 
     // Connect to the worker
     try {
+      console.log("[MorphVSCodeInstance] Connecting to worker");
       await this.connectToWorker(workerService.url);
       dockerLogger.info(
         `Successfully connected to worker for Morph instance ${this.instance.id}`
