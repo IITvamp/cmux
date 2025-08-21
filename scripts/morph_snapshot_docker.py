@@ -50,6 +50,7 @@ snapshot = (
         "echo 'Docker commands verified'"
     )
     .exec("echo '::1     localhost' >> /etc/hosts")
+    .exec("echo big")
 )
 
 print(f"Snapshot ID: {snapshot.id}")
