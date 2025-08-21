@@ -156,7 +156,7 @@ export class MorphVSCodeInstance extends VSCodeInstance {
     }
     const forwardPortsArray = forwardPorts.data;
     const devcontainerNetwork = await Promise.all(
-      forwardPortsArray.map(async (port: number) => {
+      forwardPortsArray.map(async (port) => {
         try {
           const result = await instance.exposeHttpService(`port-${port}`, port);
           console.log(
