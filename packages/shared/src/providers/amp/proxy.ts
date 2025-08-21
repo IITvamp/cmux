@@ -108,7 +108,6 @@ export function startAmpProxy(options: AmpProxyOptions = {}): AmpProxyHandle {
 
   const logFn = options.log || ((level: string, message: string, meta?: unknown) => {
     const extra = meta ? ` ${JSON.stringify(meta)}` : "";
-    // eslint-disable-next-line no-console
     console.log(`[${level}] ${message}${extra}`);
   });
 
