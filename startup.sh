@@ -30,17 +30,26 @@ wait_for_dockerd() {
         tail -50 /var/log/dockerd.err.log
         return 1
     else
-        echo "Docker daemon is running"
-        # Give it a bit more time to fully initialize
-        sleep 2
-        # Test if Docker is actually working
-        if docker version >/dev/null 2>&1; then
-            echo "Docker is ready!"
-            docker version
-        else
-            echo "Docker daemon is running but not yet ready"
-            sleep 3
-        fi
+        echo "Docker daemon process is running, verifying it's ready..."
+        
+        # Wait for Docker to be actually ready to accept connections
+        local docker_ready_wait=30
+        local docker_waited=0
+        while [ $docker_waited -lt $docker_ready_wait ]; do
+            if docker version >/dev/null 2>&1; then
+                echo "Docker is ready!"
+                docker version
+                # Additional check: ensure docker-proxy can be spawned
+                docker network ls >/dev/null 2>&1
+                return 0
+            fi
+            echo "Waiting for Docker API to be ready... ($docker_waited/$docker_ready_wait)"
+            sleep 1
+            docker_waited=$((docker_waited + 1))
+        done
+        
+        echo "ERROR: Docker daemon is running but API is not ready after $docker_ready_wait seconds"
+        return 1
     fi
 }
 
@@ -50,6 +59,12 @@ start_devcontainer() {
     
     # Wait for Docker to be ready first
     wait_for_dockerd
+    
+    # Clean up any stale Docker resources
+    echo "[Startup] Cleaning up stale Docker resources..." >> /var/log/cmux/startup.log
+    docker system prune -f >/dev/null 2>&1 || true
+    # Kill any defunct docker-proxy processes
+    pkill -9 docker-proxy 2>/dev/null || true
     
     # Check if devcontainer.json exists in the workspace
     if [ -f "/root/workspace/.devcontainer/devcontainer.json" ]; then

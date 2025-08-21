@@ -214,6 +214,22 @@ export class MorphVSCodeInstance extends VSCodeInstance {
     });
 
     console.log("[MorphVSCodeInstance] Starting devcontainer");
+    const HACK_DEMO_DEVCONTAINER = true;
+    if (HACK_DEMO_DEVCONTAINER) {
+      await workerExec({
+        workerSocket: this.getWorkerSocket(),
+        command: "bash",
+        args: [
+          "-c",
+          "pnpm install --frozen-lockfile --prefer-offline && bash /root/workspace/scripts/dev.sh",
+        ],
+        cwd: "/root/workspace",
+        env: {
+          FORCE_INSTALL: "true",
+        },
+      });
+      return devcontainerNetwork;
+    }
 
     // Start the devcontainer
     const devcontainerStart = await workerExec({

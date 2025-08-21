@@ -12,7 +12,7 @@ fi
 
 # Detect if we're running inside a devcontainer
 IS_DEVCONTAINER=false
-if [ -f /.dockerenv ] || [ -n "$REMOTE_CONTAINERS" ] || [ -n "$CODESPACES" ]; then
+if [ -n "$REMOTE_CONTAINERS" ] || [ -n "$CODESPACES" ]; then
     IS_DEVCONTAINER=true
     # Set workspace directory for devcontainer - use current working directory's parent
     # Get the directory where this script is located

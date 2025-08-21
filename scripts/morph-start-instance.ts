@@ -109,13 +109,13 @@ await workerExec({
 
 // then start tmux
 
-await workerExec({
-  workerSocket: clientSocket,
-  command: "tmux",
-  args: ["new-session", "-s", "cmux", "-d"],
-  cwd: "/root/workspace",
-  env: {},
-});
+// await workerExec({
+//   workerSocket: clientSocket,
+//   command: "tmux",
+//   args: ["new-session", "-s", "cmux", "-d"],
+//   cwd: "/root/workspace",
+//   env: {},
+// });
 
 // then we
 
