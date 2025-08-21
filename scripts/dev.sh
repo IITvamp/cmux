@@ -29,6 +29,7 @@ echo "IS_DEVCONTAINER: $IS_DEVCONTAINER"
 # Parse command line arguments
 FORCE_DOCKER_BUILD=false
 SHOW_COMPOSE_LOGS=false
+SKIP_CONVEX="${SKIP_CONVEX:-false}"
 for arg in "$@"; do
     case $arg in
         --force-docker-build)
@@ -37,6 +38,10 @@ for arg in "$@"; do
             ;;
         --show-compose-logs)
             SHOW_COMPOSE_LOGS=true
+            shift
+            ;;
+        --skip-convex)
+            SKIP_CONVEX=true
             shift
             ;;
     esac
@@ -157,28 +162,32 @@ check_process() {
 }
 
 # Start Convex backend (different for devcontainer vs host)
-if [ "$IS_DEVCONTAINER" = "true" ]; then
-    # In devcontainer, Convex is already running as part of docker-compose
-    echo -e "${GREEN}Convex backend already running in devcontainer...${NC}"
+if [ "$SKIP_CONVEX" = "true" ]; then
+    echo -e "${YELLOW}Skipping Convex (SKIP_CONVEX=true)${NC}"
 else
-    # On host, start Convex via docker-compose
-    (cd .devcontainer && exec bash -c 'trap "kill -9 0" EXIT; \
-      COMPOSE_PROJECT_NAME=cmux-convex docker compose -f docker-compose.convex.yml up 2>&1 | tee "$LOG_DIR/docker-compose.log" | { \
-        if [ "${SHOW_COMPOSE_LOGS}" = "true" ]; then \
-          prefix_output "DOCKER-COMPOSE" "$MAGENTA"; \
-        else \
-          cat >/dev/null; \
-        fi; \
-      }') &
-    DOCKER_COMPOSE_PID=$!
-    check_process $DOCKER_COMPOSE_PID "Docker Compose"
-fi
+    if [ "$IS_DEVCONTAINER" = "true" ]; then
+        # In devcontainer, Convex is already running as part of docker-compose
+        echo -e "${GREEN}Convex backend already running in devcontainer...${NC}"
+    else
+        # On host, start Convex via docker-compose
+        (cd .devcontainer && exec bash -c 'trap "kill -9 0" EXIT; \
+          COMPOSE_PROJECT_NAME=cmux-convex docker compose -f docker-compose.convex.yml up 2>&1 | tee "$LOG_DIR/docker-compose.log" | { \
+            if [ "${SHOW_COMPOSE_LOGS}" = "true" ]; then \
+              prefix_output "DOCKER-COMPOSE" "$MAGENTA"; \
+            else \
+              cat >/dev/null; \
+            fi; \
+          }') &
+        DOCKER_COMPOSE_PID=$!
+        check_process $DOCKER_COMPOSE_PID "Docker Compose"
+    fi
 
-# Start convex dev (works the same in both environments)
-(cd "$APP_DIR/packages/convex" && exec bash -c 'trap "kill -9 0" EXIT; source ~/.nvm/nvm.sh 2>/dev/null || true; bunx convex dev --env-file .env.convex 2>&1 | tee "$LOG_DIR/convex-dev.log" | prefix_output "CONVEX-DEV" "$BLUE"') &
-CONVEX_DEV_PID=$!
-check_process $CONVEX_DEV_PID "Convex Dev"
-CONVEX_PID=$CONVEX_DEV_PID
+    # Start convex dev (works the same in both environments)
+    (cd "$APP_DIR/packages/convex" && exec bash -c 'trap "kill -9 0" EXIT; source ~/.nvm/nvm.sh 2>/dev/null || true; bunx convex dev --env-file .env.convex 2>&1 | tee "$LOG_DIR/convex-dev.log" | prefix_output "CONVEX-DEV" "$BLUE"') &
+    CONVEX_DEV_PID=$!
+    check_process $CONVEX_DEV_PID "Convex Dev"
+    CONVEX_PID=$CONVEX_DEV_PID
+fi
 
 # Start the backend server
 echo -e "${GREEN}Starting backend server on port 9776...${NC}"
@@ -202,7 +211,9 @@ echo -e "${GREEN}Terminal app is running!${NC}"
 echo -e "${BLUE}Frontend: http://localhost:5173${NC}"
 echo -e "${BLUE}Backend: http://localhost:9776${NC}"
 echo -e "${BLUE}WWW: http://localhost:9779${NC}"
-echo -e "${BLUE}Convex: http://localhost:$CONVEX_PORT${NC}"
+if [ "$SKIP_CONVEX" != "true" ]; then
+    echo -e "${BLUE}Convex: http://localhost:$CONVEX_PORT${NC}"
+fi
 echo -e "\nPress Ctrl+C to stop all services"
 
 # Wait for both processes
