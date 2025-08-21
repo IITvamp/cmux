@@ -83,14 +83,20 @@ function DashboardComponent() {
 
   // Fetch repos from Convex
   const reposByOrgQuery = useQuery(convexQuery(api.github.getReposByOrg, {}));
-  const reposByOrg = reposByOrgQuery.data || {};
+  const reposByOrg = useMemo(
+    () => reposByOrgQuery.data || {},
+    [reposByOrgQuery.data]
+  );
 
   // Fetch branches for selected repo from Convex
   const branchesQuery = useQuery({
     ...convexQuery(api.github.getBranches, { repo: selectedProject[0] || "" }),
     enabled: !!selectedProject[0],
   });
-  const branches = branchesQuery.data || [];
+  const branches = useMemo(
+    () => branchesQuery.data || [],
+    [branchesQuery.data]
+  );
 
   // Socket-based functions to fetch data from GitHub
   // Removed unused fetchRepos function - functionality is handled by Convex queries
@@ -153,11 +159,23 @@ function DashboardComponent() {
       }
     }
   );
-
-  // Add mutation for generating upload URL
   const generateUploadUrl = useMutation(api.storage.generateUploadUrl);
 
-  // Removed ref indirection; we will limit callback consumers instead
+  const effectiveSelectedBranch = useMemo(
+    () =>
+      selectedBranch.length > 0
+        ? selectedBranch
+        : branches && branches.length > 0
+          ? [
+              branches.includes("main")
+                ? "main"
+                : branches.includes("master")
+                  ? "master"
+                  : branches[0],
+            ]
+          : [],
+    [selectedBranch, branches]
+  );
 
   const handleStartTask = useCallback(async () => {
     if (!selectedProject[0] || !taskDescription.trim()) {
@@ -269,12 +287,13 @@ function DashboardComponent() {
     selectedProject,
     taskDescription,
     socket,
-    selectedBranch,
+    effectiveSelectedBranch,
+    handleTaskDescriptionChange,
+    createTask,
+    addTaskToExpand,
     selectedAgents,
     isCloudMode,
     theme,
-    createTask,
-    handleTaskDescriptionChange,
     generateUploadUrl,
   ]);
 
@@ -308,23 +327,6 @@ function DashboardComponent() {
   }, [reposByOrg]);
 
   const branchOptions = branches || [];
-
-  // Derive effective selected branch - if nothing selected, auto-select a sensible default
-  const effectiveSelectedBranch = useMemo(
-    () =>
-      selectedBranch.length > 0
-        ? selectedBranch
-        : branches && branches.length > 0
-          ? [
-              branches.includes("main")
-                ? "main"
-                : branches.includes("master")
-                  ? "master"
-                  : branches[0],
-            ]
-          : [],
-    [selectedBranch, branches]
-  );
 
   // Cloud mode toggle handler
   const handleCloudModeToggle = useCallback(() => {
