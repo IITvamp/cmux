@@ -9,14 +9,19 @@ import {
   type VSCodeInstanceInfo,
 } from "./VSCodeInstance.js";
 
+interface MorphVSCodeInstanceConfig extends VSCodeInstanceConfig {
+  snapshotId?: string;
+}
+
 export class MorphVSCodeInstance extends VSCodeInstance {
   private morphClient: MorphCloudClient;
   private instance: Instance | null = null; // Morph instance type
-  private snapshotId = "snapshot_5h9hvkqq"; // Default snapshot ID
+  private snapshotId: string;
 
-  constructor(config: VSCodeInstanceConfig) {
+  constructor(config: MorphVSCodeInstanceConfig) {
     super(config);
     this.morphClient = new MorphCloudClient();
+    this.snapshotId = config.snapshotId || "snapshot_5h9hvkqq";
   }
 
   async start(): Promise<VSCodeInstanceInfo> {
