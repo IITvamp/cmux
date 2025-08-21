@@ -170,22 +170,29 @@ export class MorphVSCodeInstance extends VSCodeInstance {
       }
     }
     await Promise.all(
-      forwardPortsArray.map(async (port) => {
-        try {
-          const result = await instance.exposeHttpService(`port-${port}`, port);
-          console.log(
-            `[MorphVSCodeInstance] Exposed port ${port} on ${instance.id}`
-          );
-          return {
-            status: "running",
-            port: result.port,
-            url: result.url,
-          };
-        } catch (_error) {
-          console.error(`[MorphVSCodeInstance] Failed to expose port ${port}`);
-        }
-        return null;
-      })
+      forwardPortsArray
+        .filter((port) => !CMUX_PORTS.has(port))
+        .map(async (port) => {
+          try {
+            const result = await instance.exposeHttpService(
+              `port-${port}`,
+              port
+            );
+            console.log(
+              `[MorphVSCodeInstance] Exposed port ${port} on ${instance.id}`
+            );
+            return {
+              status: "running",
+              port: result.port,
+              url: result.url,
+            };
+          } catch (_error) {
+            console.error(
+              `[MorphVSCodeInstance] Failed to expose port ${port}`
+            );
+          }
+          return null;
+        })
     );
     const devcontainerNetwork: Doc<"taskRuns">["networking"] =
       instance.networking.httpServices.map((service) => ({
