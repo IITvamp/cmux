@@ -346,7 +346,7 @@ export async function spawnAgent(
 
       if (vscodeInstance instanceof MorphVSCodeInstance) {
         console.log("[AgentSpawner] [isCloudMode] Setting up devcontainer");
-        await vscodeInstance.setupDevcontainer();
+        void vscodeInstance.setupDevcontainer();
       }
     }
 

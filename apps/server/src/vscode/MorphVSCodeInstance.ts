@@ -131,6 +131,7 @@ export class MorphVSCodeInstance extends VSCodeInstance {
     }
     const CMUX_PORTS = new Set([39376, 39377, 39378]);
 
+    console.log("[MorphVSCodeInstance] Reading devcontainer.json");
     // first, try to read /root/workspace/.devcontainer/devcontainer.json
     const devcontainerJson = await workerExec({
       workerSocket: this.getWorkerSocket(),
@@ -143,23 +144,32 @@ export class MorphVSCodeInstance extends VSCodeInstance {
       throw new Error("Failed to read devcontainer.json");
     }
 
+    const parsedDevcontainerJson = JSON.parse(devcontainerJson.stdout);
+
+    console.log(
+      "[MorphVSCodeInstance] Forward ports:",
+      parsedDevcontainerJson.forwardPorts
+    );
+
+    console.log("[MorphVSCodeInstance] Starting devcontainer");
+
     // Start the devcontainer
-    await workerExec({
+    const devcontainerStart = await workerExec({
       workerSocket: this.getWorkerSocket(),
+      // 5 minutes
+      timeout: 5 * 60 * 1000,
       command: "bash",
       args: [
         "-c",
-        "bunx @devcontainers/cli up --workspace-folder . >> /var/log/cmux/devcontainer.log",
+        "bunx @devcontainers/cli up --workspace-folder . >> /var/log/cmux/devcontainer.log 2>&1",
       ],
       cwd: "/root/workspace",
       env: {},
     });
 
-    const parsedDevcontainerJson = JSON.parse(devcontainerJson.stdout);
-
     console.log(
-      "[MorphVSCodeInstance] Devcontainer JSON:",
-      parsedDevcontainerJson
+      "[MorphVSCodeInstance] Devcontainer start output:",
+      devcontainerStart
     );
 
     const forwardPorts = z
