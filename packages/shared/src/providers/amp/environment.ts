@@ -1,6 +1,6 @@
-import type { EnvironmentResult } from "../common/environment-result.js";
+import type { EnvironmentContext, EnvironmentResult } from "../common/environment-result.js";
 
-export async function getAmpEnvironment(): Promise<EnvironmentResult> {
+export async function getAmpEnvironment(_ctx: EnvironmentContext): Promise<EnvironmentResult> {
   // These must be lazy since configs are imported into the browser
   const { readFile } = await import("node:fs/promises");
   const { homedir } = await import("node:os");
@@ -60,7 +60,9 @@ export async function getAmpEnvironment(): Promise<EnvironmentResult> {
 
   env.AMP_URL = "http://localhost:39379";
 
-  env.AMP_API_KEY = "$CMUX_TASK_RUN_ID";
+  // Use the taskRunId directly so the AMP proxy can extract it.
+  // Prefix with taskRunId: to be explicit, though the proxy accepts bare IDs too.
+  env.AMP_API_KEY = `taskRunId:${_ctx.taskRunId}`;
 
   return { files, env, startupCommands };
 }

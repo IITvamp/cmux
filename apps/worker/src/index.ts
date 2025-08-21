@@ -305,18 +305,6 @@ managementIO.on("connection", (socket) => {
     );
     try {
       const validated = WorkerCreateTerminalSchema.parse(data);
-      // Expand CMUX token references in env values using provided env
-      const expandEnvValue = (val: string): string => {
-        if (typeof val !== "string") return val as unknown as string;
-        const runId = validated.env?.CMUX_TASK_RUN_ID || "";
-        const prompt = validated.env?.CMUX_PROMPT || "";
-        return val
-          .replace(/\$CMUX_TASK_RUN_ID/g, runId)
-          .replace(/\$CMUX_PROMPT/g, prompt);
-      };
-      const expandedEnv: Record<string, string> = Object.fromEntries(
-        Object.entries(validated.env || {}).map(([k, v]) => [k, expandEnvValue(v)])
-      );
       log("INFO", "worker:create-terminal validated", validated);
 
       // Handle auth files first if provided
@@ -391,7 +379,7 @@ managementIO.on("connection", (socket) => {
               WORKER_ID
             );
             const { stdout, stderr } = await execAsync(command, {
-              env: { ...process.env, ...expandedEnv },
+              env: { ...process.env, ...validated.env },
             });
             if (stdout) {
               log(
@@ -447,7 +435,7 @@ managementIO.on("connection", (socket) => {
         cols: validated.cols,
         rows: validated.rows,
         cwd: validated.cwd,
-        env: expandedEnv,
+        env: validated.env,
         command: validated.command,
         args: validated.args,
         taskRunId: validated.taskRunId,

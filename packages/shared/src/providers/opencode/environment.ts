@@ -1,6 +1,6 @@
-import type { EnvironmentResult } from "../common/environment-result.js";
+import type { EnvironmentContext, EnvironmentResult } from "../common/environment-result.js";
 
-export async function getOpencodeEnvironment(): Promise<EnvironmentResult> {
+export async function getOpencodeEnvironment(_ctx: EnvironmentContext): Promise<EnvironmentResult> {
   const { readFile } = await import("node:fs/promises");
   const { homedir } = await import("node:os");
   const { Buffer } = await import("node:buffer");

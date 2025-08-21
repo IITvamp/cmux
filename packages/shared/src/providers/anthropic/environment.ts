@@ -1,6 +1,6 @@
-import type { EnvironmentResult } from "../common/environment-result.js";
+import type { EnvironmentContext, EnvironmentResult } from "../common/environment-result.js";
 
-export async function getClaudeEnvironment(): Promise<EnvironmentResult> {
+export async function getClaudeEnvironment(_ctx: EnvironmentContext): Promise<EnvironmentResult> {
   // These must be lazy since configs are imported into the browser
   const { exec } = await import("node:child_process");
   const { promisify } = await import("node:util");

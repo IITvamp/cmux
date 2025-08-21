@@ -200,7 +200,10 @@ export async function spawnAgent(
 
     // Use environment property if available
     if (agent.environment) {
-      const envResult = await agent.environment();
+      const envResult = await agent.environment({
+        taskRunId: taskRunId,
+        prompt: processedTaskDescription,
+      });
       envVars = {
         ...envVars,
         ...envResult.env,

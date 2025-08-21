@@ -5,3 +5,8 @@ export interface EnvironmentResult {
   env: Record<string, string>;
   startupCommands?: string[];
 }
+
+export type EnvironmentContext = {
+  taskRunId: string;
+  prompt: string;
+};
