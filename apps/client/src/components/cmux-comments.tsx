@@ -175,7 +175,7 @@ function CommentReplies({ commentId }: { commentId: Id<"comments"> }) {
   }
 
   return (
-    <div className="mt-3 ml-2.5 border-l-2 border-neutral-700 pl-3 space-y-2">
+    <div className="mt-3 ml-2.5 border-l-2 border-neutral-700 pl-5 space-y-2">
       {replies.map((reply) => (
         <div key={reply._id} className="flex items-start gap-2">
           <div className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center text-white text-xs font-medium flex-shrink-0">
@@ -319,7 +319,57 @@ function CommentMarker({ comment, onClick }: CommentMarkerProps) {
           style={{
             left: 0,
             top: 0,
-            transform: `translate(${Math.min(position.x + 24, window.innerWidth - 320)}px, ${position.y - 16}px)`,
+            transform: (() => {
+              const bubbleWidth = 320;
+              const bubbleHeight = 400;
+              const markerRadius = 16; // The marker is 32px (w-8 h-8) with center at position
+              const gap = 4; // Small gap between marker and bubble
+              
+              // The actual bounds of the marker (it's centered at position.x, position.y)
+              const markerLeft = position.x - markerRadius;
+              const markerRight = position.x + markerRadius;
+              const markerTop = position.y - markerRadius;
+              const markerBottom = position.y + markerRadius;
+              
+              // Calculate potential positions with gap
+              const bottomY = markerBottom + gap;
+              const rightX = markerRight + gap;
+              const leftX = markerLeft - bubbleWidth - gap;
+              const topY = markerTop - bubbleHeight - gap;
+              
+              // Check available space
+              const hasSpaceBottom = bottomY + bubbleHeight <= window.innerHeight;
+              const hasSpaceRight = rightX + bubbleWidth <= window.innerWidth;
+              const hasSpaceLeft = leftX >= 0;
+              const hasSpaceTop = topY >= 0;
+              
+              let x, y;
+              
+              // Priority: bottom first, then right, left, top
+              if (hasSpaceBottom) {
+                // Place directly below marker, centered
+                x = Math.max(0, Math.min(position.x - bubbleWidth / 2, window.innerWidth - bubbleWidth));
+                y = bottomY;
+              } else if (hasSpaceRight) {
+                // Place to the right of marker
+                x = rightX;
+                y = Math.max(0, Math.min(position.y - bubbleHeight / 3, window.innerHeight - bubbleHeight));
+              } else if (hasSpaceLeft) {
+                // Place to the left of marker
+                x = leftX;
+                y = Math.max(0, Math.min(position.y - bubbleHeight / 3, window.innerHeight - bubbleHeight));
+              } else if (hasSpaceTop) {
+                // Place above marker, centered
+                x = Math.max(0, Math.min(position.x - bubbleWidth / 2, window.innerWidth - bubbleWidth));
+                y = topY;
+              } else {
+                // Fallback: place below with scroll
+                x = Math.max(0, Math.min(position.x - bubbleWidth / 2, window.innerWidth - bubbleWidth));
+                y = bottomY;
+              }
+
+              return `translate(${x}px, ${y}px)`;
+            })(),
             width: "320px",
             maxHeight: "400px",
             background: "rgba(17, 17, 17, 0.95)",
@@ -868,7 +918,11 @@ export function CmuxComments() {
                       )}
                     </div>
                     {/* Always show replies */}
-                    <CommentReplies commentId={comment._id as Id<"comments">} />
+                    <div className="transform -translate-x-[40px]">
+                      <CommentReplies
+                        commentId={comment._id as Id<"comments">}
+                      />
+                    </div>
                   </div>
                   <button
                     onClick={() =>
