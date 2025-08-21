@@ -50,7 +50,7 @@ done
 # Only clean ports when not in devcontainer (devcontainer handles this)
 if [ "$IS_DEVCONTAINER" = "false" ]; then
     # Check if anything is running on ports 5173, $CONVEX_PORT, 9777, 9778, 9779
-    PORTS_TO_CHECK="5173 $CONVEX_PORT 9777 9778 9779"
+    PORTS_TO_CHECK="5173 9779"
     # Use shared port cleanup helper
     source "$(dirname "$0")/_port-clean.sh"
     clean_ports $PORTS_TO_CHECK
