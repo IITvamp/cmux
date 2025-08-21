@@ -7,6 +7,7 @@ import {
   GitHubFetchBranchesSchema,
   ListFilesRequestSchema,
   OpenInEditorSchema,
+  SpawnFromCommentSchema,
   StartTaskSchema,
   type ClientToServerEvents,
   type FileInfo,
@@ -1013,6 +1014,90 @@ export async function startServer({
           error: `Failed to fetch GitHub repos: ${
             error instanceof Error ? error.message : String(error)
           }`,
+        });
+      }
+    });
+
+    socket.on("spawn-from-comment", async (data, callback) => {
+      try {
+        const { url, page, pageTitle, nodeId, x, y, content, selectedAgents } =
+          SpawnFromCommentSchema.parse(data);
+        console.log("spawn-from-comment data", data);
+
+        // Format the prompt with comment metadata
+        const formattedPrompt = `Fix the issue described in this comment:
+
+Comment: "${content}"
+
+Context:
+- Page URL: ${url}${page}
+- Page Title: ${pageTitle}
+- Element XPath: ${nodeId}
+- Position: ${x * 100}% x ${y * 100}% relative to element
+
+Please address the issue mentioned in the comment above.`;
+
+        // Create a new task in Convex
+        const taskId = await convex.mutation(api.tasks.create, {
+          text: formattedPrompt,
+          projectFullName: "manaflow-ai/cmux",
+        });
+
+        serverLogger.info("Created task from comment:", { taskId, content });
+
+        // Spawn agents with the formatted prompt
+        const agentResults = await spawnAllAgents(taskId, {
+          repoUrl: "https://github.com/manaflow-ai/cmux.git",
+          branch: "main",
+          taskDescription: formattedPrompt,
+          isCloudMode: true,
+          theme: "dark",
+          // Use provided selectedAgents or default to claude/sonnet-4 and codex/gpt-5
+          selectedAgents: selectedAgents || ["claude/sonnet-4", "codex/gpt-5"],
+        });
+
+        // Check if at least one agent spawned successfully
+        const successfulAgents = agentResults.filter(
+          (result) => result.success
+        );
+
+        if (successfulAgents.length === 0) {
+          const errors = agentResults
+            .filter((r) => !r.success)
+            .map((r) => `${r.agentName}: ${r.error || "Unknown error"}`)
+            .join("; ");
+          callback({
+            success: false,
+            error: errors || "Failed to spawn any agents",
+          });
+          return;
+        }
+
+        const primaryAgent = successfulAgents[0];
+
+        // Emit VSCode URL if available
+        if (primaryAgent.vscodeUrl) {
+          io.emit("vscode-spawned", {
+            instanceId: primaryAgent.terminalId,
+            url: primaryAgent.vscodeUrl.replace("/?folder=/root/workspace", ""),
+            workspaceUrl: primaryAgent.vscodeUrl,
+            provider: "morph", // Since isCloudMode is true
+          });
+        }
+
+        callback({
+          success: true,
+          taskId,
+          taskRunId: primaryAgent.taskRunId,
+          worktreePath: primaryAgent.worktreePath,
+          terminalId: primaryAgent.terminalId,
+          vscodeUrl: primaryAgent.vscodeUrl,
+        });
+      } catch (error) {
+        serverLogger.error("Error spawning from comment:", error);
+        callback({
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error",
         });
       }
     });

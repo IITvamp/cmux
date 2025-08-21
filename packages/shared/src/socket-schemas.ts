@@ -251,6 +251,23 @@ export const ArchiveTaskSchema = z.object({
   taskId: typedZid("tasks"),
 });
 
+export const SpawnFromCommentSchema = z.object({
+  url: z.string(),
+  page: z.string(),
+  pageTitle: z.string(),
+  nodeId: z.string(), // XPath to the element
+  x: z.number(), // Relative position x (0-1)
+  y: z.number(), // Relative position y (0-1)
+  content: z.string(),
+  userId: z.string(),
+  profileImageUrl: z.string().optional(),
+  selectedAgents: z.array(z.string()).optional(),
+  userAgent: z.string().optional(),
+  screenWidth: z.number().optional(),
+  screenHeight: z.number().optional(),
+  devicePixelRatio: z.number().optional(),
+});
+
 // Provider status schemas
 export const ProviderStatusSchema = z.object({
   name: z.string(),
@@ -342,6 +359,7 @@ export type GitHubOpenPr = z.infer<typeof GitHubOpenPrSchema>;
 export type GitHubSyncPrState = z.infer<typeof GitHubSyncPrStateSchema>;
 export type GitHubMergePr = z.infer<typeof GitHubMergePrSchema>;
 export type ArchiveTask = z.infer<typeof ArchiveTaskSchema>;
+export type SpawnFromComment = z.infer<typeof SpawnFromCommentSchema>;
 export type ProviderStatus = z.infer<typeof ProviderStatusSchema>;
 export type DockerStatus = z.infer<typeof DockerStatusSchema>;
 export type GitStatus = z.infer<typeof GitStatusSchema>;
@@ -443,6 +461,18 @@ export interface ClientToServerEvents {
   "archive-task": (
     data: ArchiveTask,
     callback: (response: { success: boolean; error?: string }) => void
+  ) => void;
+  "spawn-from-comment": (
+    data: SpawnFromComment,
+    callback: (response: {
+      success: boolean;
+      taskId?: Id<"tasks">;
+      taskRunId?: string;
+      worktreePath?: string;
+      terminalId?: string;
+      vscodeUrl?: string;
+      error?: string;
+    }) => void
   ) => void;
 }
 

@@ -458,6 +458,7 @@ interface Comment {
   content: string;
   resolved?: boolean;
   userId: string;
+  profileImageUrl?: string;
   userAgent: string;
   screenWidth: number;
   screenHeight: number;
@@ -572,6 +573,7 @@ function CmuxCommentsWidget() {
     nodeId: string;
     x: number;
     y: number;
+    profileImageUrl?: string;
     userAgent: string;
     screenWidth: number;
     screenHeight: number;
@@ -679,6 +681,7 @@ function CmuxCommentsWidget() {
         nodeId,
         x,
         y,
+        profileImageUrl: undefined, // This would come from auth/user context
         userAgent: navigator.userAgent,
         screenWidth: window.innerWidth,
         screenHeight: window.innerHeight,
@@ -740,6 +743,7 @@ function CmuxCommentsWidget() {
       ...pendingCommentData,
       content: commentDraft,
       userId: "anonymous", // You'd get this from auth
+      profileImageUrl: pendingCommentData.profileImageUrl,
     });
 
     setCommentDraft("");
@@ -795,9 +799,17 @@ function CmuxCommentsWidget() {
             <div className="flex items-start gap-3">
               {/* Avatar placeholder */}
               <div className="flex-shrink-0">
-                <div className="w-10 h-10 rounded-full bg-gradient-blue flex items-center justify-center text-white font-medium">
-                  U
-                </div>
+                {pendingCommentData?.profileImageUrl ? (
+                  <img
+                    src={pendingCommentData.profileImageUrl}
+                    alt="User avatar"
+                    className="w-10 h-10 rounded-full"
+                  />
+                ) : (
+                  <div className="w-10 h-10 rounded-full bg-gradient-blue flex items-center justify-center text-white font-medium">
+                    U
+                  </div>
+                )}
               </div>
               
               {/* Input area */}
@@ -890,9 +902,17 @@ function CmuxCommentsWidget() {
             ) : (
               comments?.map((comment: Comment) => (
                 <div key={comment._id} className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-full bg-gradient-blue flex items-center justify-center text-white text-xs font-medium flex-shrink-0">
-                    U
-                  </div>
+                  {comment.profileImageUrl ? (
+                    <img
+                      src={comment.profileImageUrl}
+                      alt="User avatar"
+                      className="w-8 h-8 rounded-full flex-shrink-0"
+                    />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-gradient-blue flex items-center justify-center text-white text-xs font-medium flex-shrink-0">
+                      U
+                    </div>
+                  )}
                   <div className="flex-1">
                     <p className="text-sm text-white break-words">{comment.content}</p>
                     <p className="text-xs text-neutral-500 mt-1">

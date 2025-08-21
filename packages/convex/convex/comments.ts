@@ -11,6 +11,7 @@ export const createComment = mutation({
     y: v.number(),
     content: v.string(),
     userId: v.string(),
+    profileImageUrl: v.optional(v.string()),
     userAgent: v.string(),
     screenWidth: v.number(),
     screenHeight: v.number(),
@@ -20,6 +21,7 @@ export const createComment = mutation({
     const commentId = await ctx.db.insert("comments", {
       ...args,
       resolved: false,
+      archived: false,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
@@ -32,9 +34,10 @@ export const listComments = query({
     url: v.string(),
     page: v.optional(v.string()),
     resolved: v.optional(v.boolean()),
+    includeArchived: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    let query = ctx.db
+    const query = ctx.db
       .query("comments")
       .withIndex("by_url", (q) => q.eq("url", args.url));
 
@@ -42,7 +45,10 @@ export const listComments = query({
 
     const filtered = comments.filter((comment) => {
       if (args.page !== undefined && comment.page !== args.page) return false;
-      if (args.resolved !== undefined && comment.resolved !== args.resolved) return false;
+      if (args.resolved !== undefined && comment.resolved !== args.resolved)
+        return false;
+      // By default, don't show archived comments unless explicitly requested
+      if (!args.includeArchived && comment.archived === true) return false;
       return true;
     });
 
@@ -57,6 +63,19 @@ export const resolveComment = mutation({
   handler: async (ctx, args) => {
     await ctx.db.patch(args.commentId, {
       resolved: true,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+export const archiveComment = mutation({
+  args: {
+    commentId: v.id("comments"),
+    archived: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.commentId, {
+      archived: args.archived,
       updatedAt: Date.now(),
     });
   },

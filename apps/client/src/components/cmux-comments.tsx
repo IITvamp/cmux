@@ -1,9 +1,14 @@
+import { useSocket } from "@/contexts/socket/use-socket";
 import { api } from "@cmux/convex/api";
+import type { Id } from "@cmux/convex/dataModel";
+import type { SpawnFromComment } from "@cmux/shared";
+import { useUser } from "@stackframe/react";
+import clsx from "clsx";
 import { useMutation, useQuery } from "convex/react";
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-const PlusIcon = () => (
+const PlusIcon = ({ className }: { className?: string }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
     width="20"
@@ -14,13 +19,14 @@ const PlusIcon = () => (
     strokeWidth="2"
     strokeLinecap="round"
     strokeLinejoin="round"
+    className={className}
   >
     <path d="M5 12h14" />
     <path d="m12 5 0 14" />
   </svg>
 );
 
-const ImageIcon = () => (
+const ImageIcon = ({ className }: { className?: string }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
     width="20"
@@ -31,6 +37,7 @@ const ImageIcon = () => (
     strokeWidth="2"
     strokeLinecap="round"
     strokeLinejoin="round"
+    className={className}
   >
     <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
     <circle cx="9" cy="9" r="2" />
@@ -38,7 +45,7 @@ const ImageIcon = () => (
   </svg>
 );
 
-const TypeIcon = () => (
+const TypeIcon = ({ className }: { className?: string }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
     width="20"
@@ -49,6 +56,7 @@ const TypeIcon = () => (
     strokeWidth="2"
     strokeLinecap="round"
     strokeLinejoin="round"
+    className={className}
   >
     <polyline points="4 7 4 4 20 4 20 7" />
     <line x1="9" x2="15" y1="20" y2="20" />
@@ -56,7 +64,7 @@ const TypeIcon = () => (
   </svg>
 );
 
-const MessageIcon = () => (
+const MessageIcon = ({ className }: { className?: string }) => (
   <svg
     xmlns="http://www.w3.org/2000/svg"
     width="20"
@@ -67,8 +75,28 @@ const MessageIcon = () => (
     strokeWidth="2"
     strokeLinecap="round"
     strokeLinejoin="round"
+    className={className}
   >
     <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" />
+  </svg>
+);
+
+const ArchiveIcon = ({ className }: { className?: string }) => (
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="16"
+    height="16"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    className={className}
+  >
+    <rect width="20" height="5" x="2" y="3" rx="1" />
+    <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" />
+    <path d="M10 12h4" />
   </svg>
 );
 
@@ -82,7 +110,9 @@ interface Comment {
   y: number;
   content: string;
   resolved?: boolean;
+  archived?: boolean;
   userId: string;
+  profileImageUrl?: string;
   userAgent: string;
   screenWidth: number;
   screenHeight: number;
@@ -228,9 +258,17 @@ function CommentMarker({ comment, onClick }: CommentMarkerProps) {
         >
           <div className="p-3">
             <div className="flex items-start gap-2">
-              <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-xs font-medium flex-shrink-0">
-                U
-              </div>
+              {comment.profileImageUrl ? (
+                <img
+                  src={comment.profileImageUrl}
+                  alt="User avatar"
+                  className="w-6 h-6 rounded-full flex-shrink-0"
+                />
+              ) : (
+                <div className="w-6 h-6 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-xs font-medium flex-shrink-0">
+                  U
+                </div>
+              )}
               <div className="flex-1">
                 <p className="text-sm text-white break-words">
                   {comment.content}
@@ -257,6 +295,7 @@ function CommentMarker({ comment, onClick }: CommentMarkerProps) {
 }
 
 export function CmuxComments() {
+  const { socket } = useSocket();
   const [isOpen, setIsOpen] = useState(false);
   const [isCommenting, setIsCommenting] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -284,15 +323,18 @@ export function CmuxComments() {
   } | null>(null);
   const [cursorPos, setCursorPos] = useState({ x: 0, y: 0 });
   const [forceShow, setForceShow] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
   const widgetRef = useRef<HTMLDivElement>(null);
   const commentInputRef = useRef<HTMLTextAreaElement>(null);
 
   const comments = useQuery(api.comments.listComments, {
     url: window.location.origin,
     page: window.location.pathname,
+    includeArchived: showArchived,
   });
 
   const createComment = useMutation(api.comments.createComment);
+  const archiveComment = useMutation(api.comments.archiveComment);
 
   // Handle cursor tracking when commenting
   useEffect(() => {
@@ -312,8 +354,10 @@ export function CmuxComments() {
       // Option+C on Mac produces "ç", so we check for that
       if (e.key === "ç") {
         e.preventDefault();
-        setForceShow(true);
-        setIsOpen(true);
+        setForceShow(!forceShow);
+        if (!forceShow) {
+          setIsOpen(true);
+        }
       }
       // Regular C to enter comment mode
       else if (e.key === "c" && !e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -332,7 +376,7 @@ export function CmuxComments() {
 
     document.addEventListener("keydown", handleKeyPress);
     return () => document.removeEventListener("keydown", handleKeyPress);
-  }, []);
+  }, [forceShow, isOpen]);
 
   // Handle single click commenting
   useEffect(() => {
@@ -448,14 +492,44 @@ export function CmuxComments() {
     };
   }, [isDragging, dragStart]);
 
+  const user = useUser({ or: "redirect" });
+
   const handleSubmitComment = async () => {
     if (!pendingCommentData || !commentDraft.trim()) return;
+    const userId = user.id;
 
+    // Create the comment in Convex
     await createComment({
       ...pendingCommentData,
       content: commentDraft,
-      userId: "anonymous", // You'd get this from auth
+      userId,
+      profileImageUrl: user.profileImageUrl || undefined,
     });
+
+    // Spawn agents via socket.io to address the comment
+    if (socket) {
+      const spawnData: SpawnFromComment = {
+        ...pendingCommentData,
+        content: commentDraft,
+        userId,
+        profileImageUrl: user.profileImageUrl || undefined,
+        selectedAgents: ["claude/sonnet-4", "codex/gpt-5"], // Default agents
+      };
+
+      socket.emit("spawn-from-comment", spawnData, (response) => {
+        if (response.success) {
+          console.log("Agents spawned successfully:", response);
+          // Optionally navigate to the task page
+          if (response.taskId) {
+            // Could navigate to /task/{taskId} if desired
+            console.log("Task created:", response.taskId);
+          }
+        } else {
+          console.error("Failed to spawn agents:", response.error);
+          // Optionally show an error notification
+        }
+      });
+    }
 
     setCommentDraft("");
     setPendingCommentData(null);
@@ -482,17 +556,19 @@ export function CmuxComments() {
 
   return createPortal(
     <>
-      {/* Comment markers */}
-      {comments?.map((comment: Comment) => (
-        <CommentMarker
-          key={comment._id}
-          comment={comment}
-          onClick={() => {
-            setIsOpen(true);
-            setForceShow(true);
-          }}
-        />
-      ))}
+      {/* Comment markers - only show non-archived markers on the page */}
+      {comments
+        ?.filter((c) => !c.archived)
+        .map((comment: Comment) => (
+          <CommentMarker
+            key={comment._id}
+            comment={comment}
+            onClick={() => {
+              setIsOpen(true);
+              setForceShow(true);
+            }}
+          />
+        ))}
 
       {/* Cursor indicator when in commenting mode - simple tooltip */}
       {isCommenting && (
@@ -504,7 +580,7 @@ export function CmuxComments() {
             transform: `translate(${cursorPos.x + 10}px, ${cursorPos.y - 10}px)`,
           }}
         >
-          <div className="bg-blue-500 text-white px-3 py-1 rounded-full text-sm shadow-lg animate-pulse">
+          <div className="bg-blue-500 text-white px-3 py-1 rounded-full text-sm shadow-lg animate-pulse select-none">
             Click to comment
           </div>
         </div>
@@ -524,14 +600,22 @@ export function CmuxComments() {
             border: "1px solid rgba(255, 255, 255, 0.1)",
           }}
         >
-          <div className="p-4">
+          <div className="p-2.5">
             <div className="flex items-start gap-3">
               {/* Avatar placeholder */}
-              <div className="flex-shrink-0">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white font-medium">
-                  U
+              {user.profileImageUrl ? (
+                <img
+                  src={user.profileImageUrl}
+                  alt="User avatar"
+                  className="size-8 select-none rounded-full"
+                />
+              ) : (
+                <div className="flex-shrink-0">
+                  <div className="size-8 select-none rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white font-medium">
+                    U
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Input area */}
               <div className="flex-1">
@@ -540,11 +624,13 @@ export function CmuxComments() {
                   value={commentDraft}
                   onChange={(e) => setCommentDraft(e.target.value)}
                   placeholder="Start a new thread..."
-                  className="w-full bg-transparent border-none outline-none text-white placeholder-gray-500 resize-none"
-                  style={{ minHeight: "60px", fontSize: "15px" }}
+                  className="w-full bg-transparent border-none outline-none text-white placeholder-gray-500 resize-none text-sm"
+                  // style={{ minHeight: "60px", fontSize: "15px" }}
                   autoFocus
+                  rows={2}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                      e.preventDefault();
                       handleSubmitComment();
                     }
                     if (e.key === "Escape") {
@@ -552,69 +638,66 @@ export function CmuxComments() {
                     }
                   }}
                 />
-
-                {/* Bottom toolbar */}
-                <div className="flex items-center justify-between mt-3">
-                  <div className="flex items-center gap-1">
-                    <button className="w-8 h-8 rounded-lg hover:bg-neutral-800 text-neutral-400 flex items-center justify-center transition-all">
-                      <PlusIcon />
-                    </button>
-                    <button className="w-8 h-8 rounded-lg hover:bg-neutral-800 text-neutral-400 flex items-center justify-center transition-all">
-                      <ImageIcon />
-                    </button>
-                    <div className="w-px h-5 bg-neutral-700 mx-1"></div>
-                    <button className="w-8 h-8 rounded-lg hover:bg-neutral-800 text-neutral-400 flex items-center justify-center transition-all">
-                      <TypeIcon />
-                    </button>
-                  </div>
-
-                  {/* Send button */}
-                  <button
-                    onClick={handleSubmitComment}
-                    disabled={!commentDraft.trim()}
-                    className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all ${
-                      commentDraft.trim()
-                        ? "bg-neutral-800 hover:bg-neutral-700"
-                        : "bg-neutral-800 text-neutral-500 cursor-not-allowed opacity-50"
-                    }`}
-                  >
-                    <svg
-                      width="24"
-                      height="24"
-                      viewBox="0 0 100 64"
-                      fill="none"
-                      xmlns="http://www.w3.org/2000/svg"
-                    >
-                      <defs>
-                        <linearGradient
-                          id="cmuxGradient"
-                          x1="0%"
-                          y1="0%"
-                          x2="100%"
-                          y2="0%"
-                        >
-                          <stop
-                            offset="0%"
-                            stopColor={
-                              commentDraft.trim() ? "#00D4FF" : "#666666"
-                            }
-                          />
-                          <stop
-                            offset="100%"
-                            stopColor={
-                              commentDraft.trim() ? "#7C3AED" : "#666666"
-                            }
-                          />
-                        </linearGradient>
-                      </defs>
-                      <polygon
-                        fill="url(#cmuxGradient)"
-                        points="0,0 68,32 0,64 0,48 40,32 0,16"
-                      />
-                    </svg>
-                  </button>
-                </div>
               </div>
+            </div>
+            {/* Bottom toolbar */}
+            <div className="flex items-center justify-between mt-0">
+              <div className="flex items-center gap-2">
+                <button className="size-4 rounded hover:bg-neutral-800 text-neutral-400 flex items-center justify-center transition-all">
+                  <PlusIcon className="size-4" />
+                </button>
+                <button className="size-4 rounded hover:bg-neutral-800 text-neutral-400 flex items-center justify-center transition-all">
+                  <ImageIcon className="size-4" />
+                </button>
+                <div className="w-px h-5 bg-neutral-700 mx-1"></div>
+                <button className="size-4 rounded hover:bg-neutral-800 text-neutral-400 flex items-center justify-center transition-all">
+                  <TypeIcon className="size-4" />
+                </button>
+              </div>
+
+              {/* Send button */}
+              <button
+                onClick={handleSubmitComment}
+                disabled={!commentDraft.trim()}
+                className={clsx(
+                  "size-8 rounded-lg flex items-center justify-center transition-all bg-neutral-800",
+                  commentDraft.trim()
+                    ? "hover:bg-neutral-700"
+                    : "text-neutral-500 cursor-not-allowed opacity-50"
+                )}
+              >
+                <svg
+                  width="24"
+                  height="24"
+                  viewBox="0 0 64 64"
+                  className="size-3"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <defs>
+                    <linearGradient
+                      id="cmuxGradient"
+                      x1="0%"
+                      y1="0%"
+                      x2="100%"
+                      y2="0%"
+                    >
+                      <stop
+                        offset="0%"
+                        stopColor={commentDraft.trim() ? "#00D4FF" : "#666666"}
+                      />
+                      <stop
+                        offset="100%"
+                        stopColor={commentDraft.trim() ? "#7C3AED" : "#666666"}
+                      />
+                    </linearGradient>
+                  </defs>
+                  <polygon
+                    fill="url(#cmuxGradient)"
+                    points="0,0 68,32 0,64 0,48 40,32 0,16"
+                  />
+                </svg>
+              </button>
             </div>
           </div>
         </div>
@@ -641,39 +724,88 @@ export function CmuxComments() {
       >
         {/* Header */}
         <div
-          className="widget-header flex items-center justify-between p-4 cursor-move select-none border-b"
+          className="widget-header flex items-center justify-between pl-4 pr-2 py-2 cursor-move select-none border-b border-neutral-800"
           style={{ borderColor: "rgba(255, 255, 255, 0.1)" }}
         >
-          <h3 className="text-base font-medium text-white">Comments</h3>
-          <button
-            onClick={() => setIsOpen(false)}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-neutral-400 hover:bg-neutral-800 transition-all"
-          >
-            ✕
-          </button>
+          <h3 className="text-base font-medium text-white select-none">
+            Comments
+          </h3>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowArchived(!showArchived)}
+              className={clsx(
+                "px-2 py-1 rounded text-xs transition-all",
+                showArchived
+                  ? "bg-neutral-700 text-white"
+                  : "text-neutral-400 hover:bg-neutral-800"
+              )}
+              title={showArchived ? "Hide archived" : "Show archived"}
+            >
+              {showArchived ? "Hide" : "Show"} Archived
+            </button>
+            <button
+              onClick={() => setIsOpen(false)}
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-neutral-400 hover:bg-neutral-800 transition-all"
+            >
+              ✕
+            </button>
+          </div>
         </div>
 
         {/* Content */}
         <div className="p-4 max-h-96 overflow-y-auto">
           <div className="space-y-3">
             {comments?.length === 0 ? (
-              <p className="text-neutral-400 text-sm text-center py-8">
-                No comments yet. Press "C" to add one!
+              <p className="text-neutral-400 text-sm text-center py-8 select-none">
+                No comments yet. Press "C" to add one.
               </p>
             ) : (
               comments?.map((comment: Comment) => (
-                <div key={comment._id} className="flex items-start gap-3">
-                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-xs font-medium flex-shrink-0">
-                    U
-                  </div>
+                <div
+                  key={comment._id}
+                  className={clsx(
+                    "flex items-start gap-3 group",
+                    comment.archived && "opacity-60"
+                  )}
+                >
+                  {comment.profileImageUrl ? (
+                    <img
+                      src={comment.profileImageUrl}
+                      alt="User avatar"
+                      className="w-8 h-8 rounded-full flex-shrink-0"
+                    />
+                  ) : (
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white text-xs font-medium flex-shrink-0">
+                      U
+                    </div>
+                  )}
                   <div className="flex-1">
                     <p className="text-sm text-white break-words">
                       {comment.content}
                     </p>
-                    <p className="text-xs text-neutral-500 mt-1">
-                      {new Date(comment.createdAt).toLocaleString()}
-                    </p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <p className="text-xs text-neutral-500">
+                        {new Date(comment.createdAt).toLocaleString()}
+                      </p>
+                      {comment.archived && (
+                        <span className="text-xs text-neutral-500 italic">
+                          (Archived)
+                        </span>
+                      )}
+                    </div>
                   </div>
+                  <button
+                    onClick={() =>
+                      archiveComment({
+                        commentId: comment._id as Id<"comments">,
+                        archived: !comment.archived,
+                      })
+                    }
+                    className="opacity-0 group-hover:opacity-100 w-6 h-6 rounded flex items-center justify-center text-neutral-400 hover:bg-neutral-800 transition-all"
+                    title={comment.archived ? "Unarchive" : "Archive"}
+                  >
+                    <ArchiveIcon />
+                  </button>
                 </div>
               ))
             )}

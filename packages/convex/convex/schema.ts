@@ -213,7 +213,9 @@ const convexSchema = defineSchema({
     y: v.number(), // Y position ratio within the element (0-1)
     content: v.string(), // Comment text content
     resolved: v.optional(v.boolean()), // Whether comment is resolved
+    archived: v.optional(v.boolean()), // Whether comment is archived
     userId: v.string(), // User who created the comment
+    profileImageUrl: v.optional(v.string()), // User's profile image URL
     userAgent: v.string(), // Browser user agent
     screenWidth: v.number(), // Screen width when comment was created
     screenHeight: v.number(), // Screen height when comment was created
