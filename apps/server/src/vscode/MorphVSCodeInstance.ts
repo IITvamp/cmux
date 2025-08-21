@@ -1,7 +1,8 @@
+import type { Doc } from "@cmux/convex/dataModel";
 import { type Instance, MorphCloudClient } from "morphcloud";
-import { workerExec } from "src/utils/workerExec.js";
 import z from "zod";
 import { dockerLogger } from "../utils/fileLogger.js";
+import { workerExec } from "../utils/workerExec.js";
 import {
   VSCodeInstance,
   type VSCodeInstanceConfig,
@@ -11,7 +12,7 @@ import {
 export class MorphVSCodeInstance extends VSCodeInstance {
   private morphClient: MorphCloudClient;
   private instance: Instance | null = null; // Morph instance type
-  private snapshotId = "snapshot_kco1jqb6"; // Default snapshot ID
+  private snapshotId = "snapshot_r9jerhal"; // Default snapshot ID
 
   constructor(config: VSCodeInstanceConfig) {
     super(config);
@@ -123,11 +124,12 @@ export class MorphVSCodeInstance extends VSCodeInstance {
     }
   }
 
-  async setupDevcontainer() {
+  async setupDevcontainer(): Promise<Doc<"taskRuns">["networking"]> {
     const instance = this.instance;
     if (!instance) {
       throw new Error("Morph instance not started");
     }
+    const CMUX_PORTS = new Set([39376, 39377, 39378]);
 
     // first, try to read /root/workspace/.devcontainer/devcontainer.json
     const devcontainerJson = await workerExec({
@@ -140,6 +142,18 @@ export class MorphVSCodeInstance extends VSCodeInstance {
     if (devcontainerJson.error) {
       throw new Error("Failed to read devcontainer.json");
     }
+
+    // Start the devcontainer
+    await workerExec({
+      workerSocket: this.getWorkerSocket(),
+      command: "bash",
+      args: [
+        "-c",
+        "bunx @devcontainers/cli up --workspace-folder . >> /var/log/cmux/devcontainer.log",
+      ],
+      cwd: "/root/workspace",
+      env: {},
+    });
 
     const parsedDevcontainerJson = JSON.parse(devcontainerJson.stdout);
 
@@ -155,7 +169,13 @@ export class MorphVSCodeInstance extends VSCodeInstance {
       return;
     }
     const forwardPortsArray = forwardPorts.data;
-    const devcontainerNetwork = await Promise.all(
+    // if port conflict, throw error
+    for (const port of forwardPortsArray) {
+      if (CMUX_PORTS.has(port)) {
+        throw new Error(`Port ${port} is reserved by cmux`);
+      }
+    }
+    await Promise.all(
       forwardPortsArray.map(async (port) => {
         try {
           const result = await instance.exposeHttpService(`port-${port}`, port);
@@ -163,6 +183,7 @@ export class MorphVSCodeInstance extends VSCodeInstance {
             `[MorphVSCodeInstance] Exposed port ${port} on ${instance.id}`
           );
           return {
+            status: "running",
             port: result.port,
             url: result.url,
           };
@@ -172,8 +193,17 @@ export class MorphVSCodeInstance extends VSCodeInstance {
         return null;
       })
     );
-    console.log("[MorphVSCodeInstance] Networking:", devcontainerNetwork);
-    return devcontainerNetwork;
+    const devcontainerNetwork: Doc<"taskRuns">["networking"] =
+      instance.networking.httpServices.map((service) => ({
+        status: "running",
+        port: service.port,
+        url: service.url,
+      }));
+    const filteredNetwork = devcontainerNetwork.filter(
+      (item): item is NonNullable<typeof item> => item !== null
+    );
+    console.log("[MorphVSCodeInstance] Networking:", filteredNetwork);
+    return filteredNetwork;
   }
 
   getName(): string {
