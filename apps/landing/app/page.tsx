@@ -27,98 +27,68 @@ export default function LandingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-black text-white overflow-y-auto">
-      <nav className="sticky top-0 w-full z-50 bg-black/90 backdrop-blur-sm border-b border-neutral-900">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-14">
-            <div className="flex items-center gap-2">
-              <ClientIcon
-                icon={Terminal}
-                className="h-5 w-5"
-                aria-hidden="true"
-              />
-              <span className="text-lg font-mono">cmux</span>
+    <div className="relative min-h-screen bg-black text-white overflow-y-auto">
+      {/* Top navigation - PlanetScale-inspired */}
+      <nav className="sticky top-0 w-full z-50 border-b border-neutral-900/80 bg-black/70 backdrop-blur-md">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-14">
+            <div className="flex items-center gap-3">
+              <div className="inline-flex items-center gap-2">
+                <ClientIcon icon={Terminal} className="h-5 w-5" aria-hidden="true" />
+                <span className="text-base font-semibold tracking-tight">cmux</span>
+              </div>
+              <div className="hidden md:flex items-center gap-6 ml-6 text-sm">
+                <a href="#features" className="text-neutral-400 hover:text-white transition-colors">Product</a>
+                <a href="#how" className="text-neutral-400 hover:text-white transition-colors">How it works</a>
+                <a href="https://github.com/manaflow-ai/cmux" target="_blank" rel="noopener noreferrer" className="text-neutral-400 hover:text-white transition-colors">Docs</a>
+                <a href="https://github.com/manaflow-ai/cmux/releases" target="_blank" rel="noopener noreferrer" className="text-neutral-400 hover:text-white transition-colors">Changelog</a>
+              </div>
             </div>
             <div className="flex items-center gap-4">
-              <a
-                href="https://github.com/manaflow-ai/cmux"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 text-sm text-neutral-400 hover:text-white transition-colors"
-              >
-                <ClientIcon
-                  icon={Github}
-                  className="h-4 w-4"
-                  aria-hidden="true"
-                />
-                <span>GitHub</span>
-              </a>
-              <a
-                href="https://cal.com/team/manaflow/meeting"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-neutral-400 hover:text-white transition-colors"
-              >
-                Contact
+              <a href="https://github.com/manaflow-ai/cmux" target="_blank" rel="noopener noreferrer" className="hidden sm:inline text-sm text-neutral-400 hover:text-white transition-colors">GitHub</a>
+              <a href="https://cal.com/team/manaflow/meeting" target="_blank" rel="noopener noreferrer" className="text-sm text-neutral-400 hover:text-white transition-colors">Contact</a>
+              <a href="https://github.com/manaflow-ai/cmux" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 h-9 px-4 rounded-md bg-white text-black hover:bg-neutral-200 transition-colors font-medium">
+                <span>Start free</span>
+                <ClientIcon icon={ArrowRight} className="h-4 w-4" aria-hidden="true" />
               </a>
             </div>
           </div>
         </div>
       </nav>
 
-      <section className="pt-24 pb-16 px-4 sm:px-6 lg:px-8">
+      {/* Hero */}
+      <section className="relative pt-24 pb-16 px-4 sm:px-6 lg:px-8 overflow-hidden">
+        {/* subtle radial glow background */}
+        <div aria-hidden className="pointer-events-none absolute inset-0 -z-10">
+          <div className="absolute left-1/2 top-[-10%] h-[500px] w-[900px] -translate-x-1/2 rounded-full bg-[radial-gradient(ellipse_at_center,rgba(45,45,45,0.45),transparent_60%)]" />
+        </div>
         <div className="max-w-4xl mx-auto">
-          <h1 className="text-3xl sm:text-4xl font-bold mb-4 font-mono">
+          <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-semibold tracking-tight mb-6">
             Orchestrate AI coding agents in parallel
           </h1>
 
-          <p className="text-lg text-neutral-400 mb-8 leading-relaxed">
-            cmux spawns Claude Code, Codex, Gemini CLI, Amp, Opencode, and other
-            coding agent CLIs in parallel across multiple tasks. For each run,
-            cmux spawns an isolated VS Code instance via Docker with the git
-            diff UI and terminal.
+          <p className="text-base sm:text-lg text-neutral-400 leading-relaxed mb-8 max-w-2xl">
+            Run Claude Code, Codex CLI, Gemini CLI, Amp, Opencode, and more in isolated sandboxes. Each task gets its own OpenVSCode, git diff view, and terminal.
           </p>
 
-          <div className="flex flex-col sm:flex-row gap-3 mb-12 max-w-lg">
-            <div className="bg-gradient-to-r from-neutral-900 to-neutral-900/50 border border-neutral-800 rounded-lg px-4 py-3 font-mono text-sm flex items-center gap-3">
+          <div className="flex flex-col sm:flex-row gap-3 mb-10 max-w-xl">
+            <div className="bg-neutral-950 border border-neutral-800 rounded-md px-4 py-3 font-mono text-sm flex items-center gap-3">
               <span className="text-white">$ bunx cmux</span>
-              <button
-                onClick={() => copyToClipboard("bunx cmux")}
-                className="text-neutral-500 hover:text-white transition-colors"
-              >
+              <button onClick={() => copyToClipboard("bunx cmux")} className="text-neutral-500 hover:text-white transition-colors">
                 {copiedCommand === "bunx cmux" ? (
-                  <ClientIcon
-                    icon={Check}
-                    className="h-4 w-4 text-green-400"
-                    aria-hidden="true"
-                  />
+                  <ClientIcon icon={Check} className="h-4 w-4 text-green-400" aria-hidden="true" />
                 ) : (
-                  <ClientIcon
-                    icon={Copy}
-                    className="h-4 w-4"
-                    aria-hidden="true"
-                  />
+                  <ClientIcon icon={Copy} className="h-4 w-4" aria-hidden="true" />
                 )}
               </button>
             </div>
-            <div className="bg-gradient-to-r from-neutral-900 to-neutral-900/50 border border-neutral-800 rounded-lg px-4 py-3 font-mono text-sm flex items-center gap-3">
+            <div className="bg-neutral-950 border border-neutral-800 rounded-md px-4 py-3 font-mono text-sm flex items-center gap-3">
               <span className="text-white">$ npx cmux</span>
-              <button
-                onClick={() => copyToClipboard("npx cmux")}
-                className="text-neutral-500 hover:text-white transition-colors"
-              >
+              <button onClick={() => copyToClipboard("npx cmux")} className="text-neutral-500 hover:text-white transition-colors">
                 {copiedCommand === "npx cmux" ? (
-                  <ClientIcon
-                    icon={Check}
-                    className="h-4 w-4 text-green-400"
-                    aria-hidden="true"
-                  />
+                  <ClientIcon icon={Check} className="h-4 w-4 text-green-400" aria-hidden="true" />
                 ) : (
-                  <ClientIcon
-                    icon={Copy}
-                    className="h-4 w-4"
-                    aria-hidden="true"
-                  />
+                  <ClientIcon icon={Copy} className="h-4 w-4" aria-hidden="true" />
                 )}
               </button>
             </div>
@@ -129,27 +99,17 @@ export default function LandingPage() {
               href="https://github.com/manaflow-ai/cmux"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-6 py-3 bg-white text-black hover:bg-neutral-200 rounded-lg font-medium transition-colors"
+              className="inline-flex items-center gap-2 h-11 px-6 rounded-md bg-white text-black hover:bg-neutral-200 transition-colors font-medium"
             >
-              <ClientIcon
-                icon={Github}
-                className="h-5 w-5"
-                aria-hidden="true"
-              />
-              <span>View on GitHub</span>
+              <ClientIcon icon={Github} className="h-5 w-5" aria-hidden="true" />
+              <span>Star on GitHub</span>
             </a>
             <a
-              href="https://cal.com/team/manaflow/meeting"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-neutral-800 hover:bg-neutral-900 transition-colors"
+              href="#features"
+              className="inline-flex items-center gap-2 h-11 px-6 rounded-md border border-neutral-800 text-white hover:border-neutral-700 transition-colors"
             >
-              <span>Contact us</span>
-              <ClientIcon
-                icon={ArrowRight}
-                className="h-3 w-3"
-                aria-hidden="true"
-              />
+              <span>Explore the product</span>
+              <ClientIcon icon={ArrowRight} className="h-4 w-4" aria-hidden="true" />
             </a>
           </div>
         </div>
@@ -159,7 +119,7 @@ export default function LandingPage() {
         <div className="w-48 h-px bg-neutral-800"></div>
       </div>
 
-      <section className="py-16 px-4 sm:px-6 lg:px-8">
+      <section id="features" className="py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto">
           <div className="space-y-8">
             <div className="relative rounded-lg overflow-hidden border border-neutral-800">
@@ -338,7 +298,7 @@ export default function LandingPage() {
         <div className="w-48 h-px bg-neutral-800"></div>
       </div>
 
-      <section className="py-16 px-4 sm:px-6 lg:px-8">
+      <section id="how" className="py-16 px-4 sm:px-6 lg:px-8">
         <div className="max-w-4xl mx-auto">
           <h2 className="text-2xl font-bold text-center mb-8">
             Rethinking the developer interface
