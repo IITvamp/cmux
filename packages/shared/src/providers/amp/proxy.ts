@@ -37,8 +37,13 @@ function extractTaskRunId(
   const auth = get("authorization") || get("Authorization");
   if (auth) {
     const token = auth.replace(/^[Bb]earer\s+/, "");
+    // First, support explicit prefixes like taskRunId:<id>
     const m = token.match(/(?:taskRunId|taskrun|task|tr)[:=]([a-zA-Z0-9_-]+)/);
     if (m?.[1]) return m[1];
+    // Otherwise, if the token itself looks like a plausible ID, accept it
+    if (/^[a-zA-Z0-9_-]{16,64}$/.test(token)) {
+      return token;
+    }
   }
   return null;
 }
