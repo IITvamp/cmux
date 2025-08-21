@@ -1,7 +1,8 @@
 import { Dropdown } from "@/components/ui/dropdown";
 import { useSocket } from "@/contexts/socket/use-socket";
+import type { Doc } from "@cmux/convex/dataModel";
 import clsx from "clsx";
-import { ChevronDown, Code2 } from "lucide-react";
+import { ChevronDown, Code2, ExternalLink, Globe } from "lucide-react";
 import { useCallback, useEffect } from "react";
 import { toast } from "sonner";
 
@@ -11,6 +12,7 @@ interface OpenWithDropdownProps {
   vscodeUrl?: string | null;
   worktreePath?: string | null;
   branch?: string | null;
+  networking?: Doc<"taskRuns">["networking"];
   className?: string;
   iconClassName?: string;
 }
@@ -25,6 +27,7 @@ export function OpenWithDropdown({
   vscodeUrl,
   worktreePath,
   branch,
+  networking,
   className,
   iconClassName = "w-3.5 h-3.5",
 }: OpenWithDropdownProps) {
@@ -167,6 +170,31 @@ export function OpenWithDropdown({
                 <Dropdown.Item onClick={handleCopyBranch}>
                   Copy branch
                 </Dropdown.Item>
+              </>
+            )}
+            {networking && networking.length > 0 && (
+              <>
+                <div className="my-1 h-px bg-neutral-200 dark:bg-neutral-700" />
+                <div className="px-2 py-1 text-xs font-medium text-neutral-500 dark:text-neutral-400">
+                  Forwarded Ports
+                </div>
+                {networking
+                  .filter((service) => service.status === "running")
+                  .map((service) => (
+                    <Dropdown.Item
+                      key={service.port}
+                      onClick={() => {
+                        window.open(service.url, "_blank", "noopener,noreferrer");
+                      }}
+                      className="flex items-center justify-between"
+                    >
+                      <span className="flex items-center gap-2">
+                        <Globe className="w-3 h-3" />
+                        Port {service.port}
+                      </span>
+                      <ExternalLink className="w-3 h-3 text-neutral-400" />
+                    </Dropdown.Item>
+                  ))}
               </>
             )}
           </Dropdown.Popup>

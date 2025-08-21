@@ -119,6 +119,19 @@ const convexSchema = defineSchema({
         scheduledStopAt: v.optional(v.number()), // When container is scheduled to stop
       })
     ),
+    networking: v.optional(
+      v.array(
+        v.object({
+          status: v.union(
+            v.literal("starting"),
+            v.literal("running"),
+            v.literal("stopped")
+          ),
+          port: v.number(),
+          url: v.string(),
+        })
+      )
+    ),
   })
     .index("by_task", ["taskId", "createdAt"])
     .index("by_parent", ["parentRunId"])

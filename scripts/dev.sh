@@ -4,6 +4,12 @@ set -e
 
 export CONVEX_PORT=9777
 
+if [ -f .env ]; then
+    echo "Loading .env file"
+    export $(grep -v '^#' .env | xargs)
+    echo "Loaded .env file"
+fi
+
 # Detect if we're running inside a devcontainer
 IS_DEVCONTAINER=false
 if [ -f /.dockerenv ] || [ -n "$REMOTE_CONTAINERS" ] || [ -n "$CODESPACES" ]; then

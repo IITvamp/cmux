@@ -20,6 +20,7 @@ import {
 } from "./utils/branchNameGenerator.js";
 import { convex } from "./utils/convexClient.js";
 import { serverLogger } from "./utils/fileLogger.js";
+import { workerExec } from "./utils/workerExec.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { MorphVSCodeInstance } from "./vscode/MorphVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
@@ -257,6 +258,8 @@ export async function spawnAgent(
     let vscodeInstance: VSCodeInstance;
     let worktreePath: string;
 
+    console.log("[AgentSpawner] [isCloudMode]", options.isCloudMode);
+
     if (options.isCloudMode) {
       // For Morph, create the instance and we'll clone the repo via socket command
       vscodeInstance = new MorphVSCodeInstance({
@@ -325,6 +328,27 @@ export async function spawnAgent(
     serverLogger.info(
       `VSCode instance spawned for agent ${agent.name}: ${vscodeUrl}`
     );
+
+    if (options.isCloudMode) {
+      // then we need to set up the repo
+      console.log("[AgentSpawner] [isCloudMode] Cloning repo");
+      await workerExec({
+        workerSocket: vscodeInstance.getWorkerSocket(),
+        command: "bash",
+        args: [
+          "-c",
+          `git clone --depth=1 ${options.repoUrl} /root/workspace && git checkout ${newBranch} && git pull`,
+        ],
+        cwd: "/root",
+        env: {},
+      });
+      console.log("[AgentSpawner] [isCloudMode] Repo cloned!");
+
+      if (vscodeInstance instanceof MorphVSCodeInstance) {
+        console.log("[AgentSpawner] [isCloudMode] Setting up devcontainer");
+        await vscodeInstance.setupDevcontainer();
+      }
+    }
 
     // Start file watching for real-time diff updates
     serverLogger.info(
@@ -673,88 +697,6 @@ export async function spawnAgent(
     //     2
     //   )
     // );
-    serverLogger.info(`  isCloudMode:`, options.isCloudMode);
-
-    // For Morph instances, we need to clone the repository first
-    if (options.isCloudMode) {
-      serverLogger.info(
-        `[AgentSpawner] Cloning repository for Morph instance...`
-      );
-
-      // Use worker:exec to clone the repository
-      const cloneCommand = `git clone ${options.repoUrl} /root/workspace${
-        options.branch && options.branch !== "main"
-          ? ` && cd /root/workspace && git checkout ${options.branch}`
-          : ""
-      }`;
-
-      const cloneResult = await new Promise<{
-        success: boolean;
-        error?: string;
-      }>((resolve) => {
-        workerSocket
-          .timeout(60000) // 60 second timeout for cloning
-          .emit(
-            "worker:exec",
-            {
-              command: "bash",
-              args: ["-c", cloneCommand],
-              cwd: "/root",
-              env: {},
-            },
-            (timeoutError, result) => {
-              if (timeoutError) {
-                serverLogger.error(
-                  "Timeout waiting for git clone",
-                  timeoutError
-                );
-                resolve({
-                  success: false,
-                  error: "Timeout waiting for git clone",
-                });
-                return;
-              }
-              if (result.error) {
-                resolve({ success: false, error: result.error.message });
-                return;
-              }
-
-              const { stdout, stderr, exitCode } = result.data;
-              serverLogger.info(`[AgentSpawner] Git clone stdout:`, stdout);
-              if (stderr) {
-                serverLogger.info(`[AgentSpawner] Git clone stderr:`, stderr);
-              }
-
-              if (exitCode === 0) {
-                serverLogger.info(
-                  `[AgentSpawner] Repository cloned successfully`
-                );
-                resolve({ success: true });
-              } else {
-                serverLogger.error(
-                  `[AgentSpawner] Git clone failed with exit code ${exitCode}`
-                );
-                resolve({
-                  success: false,
-                  error: `Git clone failed with exit code ${exitCode}`,
-                });
-              }
-            }
-          );
-      });
-
-      if (!cloneResult.success) {
-        return {
-          agentName: agent.name,
-          terminalId,
-          taskRunId,
-          worktreePath,
-          vscodeUrl,
-          success: false,
-          error: cloneResult.error || "Failed to clone repository",
-        };
-      }
-    }
 
     // Create image files if any
     if (imageFiles.length > 0) {

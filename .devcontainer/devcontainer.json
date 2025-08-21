@@ -28,7 +28,7 @@
       }
     }
   },
-  "forwardPorts": [5173, 9777, 9778, 6791, 39376, 39377, 39378],
+  "forwardPorts": [5173, 9777, 9778, 6791],
   "portsAttributes": {
     "9776": {
       "label": "Backend Server",
@@ -49,18 +49,6 @@
     "5173": {
       "label": "Frontend (Vite)",
       "onAutoForward": "openBrowser"
-    },
-    "39376": {
-      "label": "VS Code Extension Socket Server",
-      "onAutoForward": "silent"
-    },
-    "39377": {
-      "label": "Worker Service",
-      "onAutoForward": "notify"
-    },
-    "39378": {
-      "label": "OpenVSCode Server",
-      "onAutoForward": "notify"
     }
   },
   "postCreateCommand": "CI=1 pnpm install --frozen-lockfile",
