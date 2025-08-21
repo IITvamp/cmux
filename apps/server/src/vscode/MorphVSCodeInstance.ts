@@ -12,7 +12,7 @@ import {
 export class MorphVSCodeInstance extends VSCodeInstance {
   private morphClient: MorphCloudClient;
   private instance: Instance | null = null; // Morph instance type
-  private snapshotId = "snapshot_r9jerhal"; // Default snapshot ID
+  private snapshotId = "snapshot_5h9hvkqq"; // Default snapshot ID
 
   constructor(config: VSCodeInstanceConfig) {
     super(config);

@@ -221,17 +221,19 @@ class MorphDockerfileExecutor {
   async connect(): Promise<void> {
     console.log("Creating Morph VM snapshot...");
 
-    const snapshot = await this.client.snapshots.create({
-      imageId: "morphvm-minimal",
-      vcpus: 1,
-      memory: 4096,
-      diskSize: 16384,
-    });
-    console.log(`Created snapshot: ${snapshot.id}`);
+    // const snapshot = await this.client.snapshots.create({
+    //   // imageId: "morphvm-minimal",
+    //   imageId: "snapshot_wdtqk4gj",
+    //   vcpus: 4,
+    //   memory: 16384,
+    //   diskSize: 32768,
+    // });
+    // console.log(`Created snapshot: ${snapshot.id}`);
 
     console.log("Starting instance...");
     const instance = await this.client.instances.start({
-      snapshotId: snapshot.id,
+      // snapshotId: snapshot.id,
+      snapshotId: "snapshot_wdtqk4gj", // the one with docker!
       // 30 minutes
       ttlSeconds: 60 * 30,
       ttlAction: "pause",
@@ -320,8 +322,10 @@ class MorphDockerfileExecutor {
           await this.handleExpose(instruction);
           break;
         case "VOLUME":
-          await this.handleVolume(instruction);
           break;
+        // Ignore volumes for now
+        // await this.handleVolume(instruction);
+        // break;
         case "CMD":
           await this.handleCmd(instruction);
           break;
