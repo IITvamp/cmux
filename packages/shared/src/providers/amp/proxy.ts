@@ -30,7 +30,7 @@ function extractTaskRunId(
 ): string | null {
   const get = (name: string): string | undefined => {
     if (headers instanceof Headers) return headers.get(name) || undefined;
-    const v = (headers as any)[name.toLowerCase()] ?? (headers as any)[name];
+    const v = headers[name.toLowerCase()] ?? headers[name];
     if (Array.isArray(v)) return v[0];
     return v as string | undefined;
   };
@@ -44,17 +44,55 @@ function extractTaskRunId(
 }
 
 function ampResponseIndicatesCompletion(json: unknown): boolean {
-  try {
-    const obj = json as any;
-    const messages =
-      obj?.params?.thread?.messages || obj?.thread?.messages || obj?.messages;
-    if (Array.isArray(messages)) {
-      for (const m of messages) {
-        const t = String(m?.state?.type || "").toLowerCase();
-        if (t === "completed" || t === "complete") return true;
+  if (json == null || typeof json !== "object") return false;
+  const root = json as Record<string, unknown>;
+
+  let messages: unknown = undefined;
+
+  // Try obj.params.thread.messages
+  const params = root["params"];
+  if (params && typeof params === "object") {
+    const threadFromParams = (params as Record<string, unknown>)["thread"];
+    if (threadFromParams && typeof threadFromParams === "object") {
+      const msgs = (threadFromParams as Record<string, unknown>)["messages"];
+      if (Array.isArray(msgs)) {
+        messages = msgs;
       }
     }
-  } catch {}
+  }
+
+  // Try obj.thread.messages
+  if (!messages) {
+    const thread = root["thread"];
+    if (thread && typeof thread === "object") {
+      const msgs = (thread as Record<string, unknown>)["messages"];
+      if (Array.isArray(msgs)) {
+        messages = msgs;
+      }
+    }
+  }
+
+  // Try obj.messages
+  if (!messages) {
+    const msgs = root["messages"];
+    if (Array.isArray(msgs)) {
+      messages = msgs;
+    }
+  }
+
+  if (!Array.isArray(messages)) return false;
+
+  for (const item of messages) {
+    if (!item || typeof item !== "object") continue;
+    const state = (item as Record<string, unknown>)["state"];
+    if (!state || typeof state !== "object") continue;
+    const typeVal = (state as Record<string, unknown>)["type"];
+    if (typeof typeVal === "string") {
+      const t = typeVal.toLowerCase();
+      if (t === "completed" || t === "complete") return true;
+    }
+  }
+
   return false;
 }
 
@@ -63,7 +101,7 @@ export function startAmpProxy(options: AmpProxyOptions = {}): AmpProxyHandle {
   const AMP_TARGET_HOST = options.ampUrl || process.env.AMP_URL || "https://ampcode.com";
   const AMP_LOGS_DIR = options.logsDir || "./logs";
 
-  const logFn = options.log || ((level, message, meta) => {
+  const logFn = options.log || ((level: string, message: string, meta?: unknown) => {
     const extra = meta ? ` ${JSON.stringify(meta)}` : "";
     // eslint-disable-next-line no-console
     console.log(`[${level}] ${message}${extra}`);
@@ -136,7 +174,7 @@ export function startAmpProxy(options: AmpProxyOptions = {}): AmpProxyHandle {
           headers: upstreamHeaders,
           body: bodyForFetch,
           redirect: "manual",
-        } as any);
+        });
 
         const responseHeaders = new Headers(proxyResponse.headers);
         responseHeaders.delete("content-encoding");
@@ -186,7 +224,7 @@ export function startAmpProxy(options: AmpProxyOptions = {}): AmpProxyHandle {
           upstreamHeaders: (() => {
             const out: Record<string, string> = {};
             try {
-              (upstreamHeaders as any).forEach?.((value: string, key: string) => {
+              upstreamHeaders.forEach?.((value: string, key: string) => {
                 if (/^authorization$/i.test(key)) {
                   out[key] = String(value).replace(/(Bearer\s+)[^\s]+/, "$1***");
                 } else {
@@ -198,7 +236,7 @@ export function startAmpProxy(options: AmpProxyOptions = {}): AmpProxyHandle {
           })(),
           responseStatus: proxyResponse.status,
           responseStatusText: proxyResponse.statusText,
-          responseHeaders: headersToObject(responseHeaders as any),
+          responseHeaders: headersToObject(responseHeaders),
           responseBody: loggedResponseBody,
           taskRunId,
         } as Record<string, unknown>;
@@ -218,14 +256,14 @@ export function startAmpProxy(options: AmpProxyOptions = {}): AmpProxyHandle {
           logFn("INFO", "[AMP Proxy] Completion detected; notifying main server", { taskRunId }, workerId);
           emit("worker:task-complete", {
             workerId,
-            taskRunId: taskRunId as any,
+            taskRunId,
             agentModel: "amp",
             elapsedMs,
           });
         }
 
         res.statusCode = proxyResponse.status;
-        res.statusMessage = proxyResponse.statusText as any;
+        res.statusMessage = proxyResponse.statusText;
         responseHeaders.forEach((v, k) => res.setHeader(k, v));
         if (typeof responseBodyForClient === "string") {
           res.end(responseBodyForClient);

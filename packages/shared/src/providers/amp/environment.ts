@@ -58,14 +58,6 @@ export async function getAmpEnvironment(): Promise<EnvironmentResult> {
     console.warn("Failed to read amp secrets.json:", error);
   }
 
-  // If user has AMP_API_KEY set locally, persist it for debugging, but
-  // it will be overridden below with the CMUX fake key to embed taskRunId.
-  if (process.env.AMP_API_KEY) {
-    startupCommands.push(
-      `grep -q "export AMP_API_KEY=\"${process.env.AMP_API_KEY}\"" ~/.bashrc || echo 'export AMP_API_KEY="${process.env.AMP_API_KEY}"' >> ~/.bashrc`
-    );
-  }
-
   // Force AMP to use local proxy and encode taskRunId via CMUX env
   // The worker's proxy (listening on port 39379) will swap in the real key.
   env.AMP_URL = "http://localhost:39379";
