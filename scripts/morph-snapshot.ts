@@ -155,8 +155,8 @@ class MorphDockerfileExecutor {
   private client: MorphCloudClient;
   private instance: Instance | null = null;
   private workDir: string = "/root";
-  private dockerignore: any;
-  private gitignore: any;
+  private dockerignore: ReturnType<typeof ignore>;
+  private gitignore: ReturnType<typeof ignore>;
   private entrypoint: string | null = null;
   private cmd: string | null = null;
   private stageFiles: Map<string, Set<string>> = new Map();
@@ -216,6 +216,8 @@ class MorphDockerfileExecutor {
   constructor() {
     this.ssh = new NodeSSH();
     this.client = new MorphCloudClient();
+    this.dockerignore = ignore();
+    this.gitignore = ignore();
   }
 
   async connect(): Promise<void> {
@@ -266,7 +268,7 @@ class MorphDockerfileExecutor {
     try {
       const dockerignoreContent = await fs.readFile(".dockerignore", "utf-8");
       this.dockerignore = ignore().add(dockerignoreContent);
-    } catch (error) {
+    } catch (_error) {
       // No .dockerignore file
       this.dockerignore = ignore();
     }
@@ -275,7 +277,7 @@ class MorphDockerfileExecutor {
     try {
       const gitignoreContent = await fs.readFile(".gitignore", "utf-8");
       this.gitignore = ignore().add(gitignoreContent);
-    } catch (error) {
+    } catch (_error) {
       // No .gitignore file
       this.gitignore = ignore();
     }
@@ -569,7 +571,7 @@ class MorphDockerfileExecutor {
             await this.exec(`cp ${source} ${remoteDest}`);
           }
           console.log(`  Copied ${source} to ${remoteDest}`);
-        } catch (error) {
+        } catch (_error) {
           console.log(
             `  Warning: Could not copy ${source} from stage ${fromStage}`
           );
