@@ -161,12 +161,29 @@ function CommentMarker({ comment, onClick }: CommentMarkerProps) {
     window.addEventListener("scroll", updatePosition, true);
     window.addEventListener("resize", updatePosition);
 
-    // Update position when DOM changes
-    const observer = new MutationObserver(updatePosition);
+    // Update position when DOM changes (but ignore hover-related attribute changes)
+    const observer = new MutationObserver((mutations) => {
+      // Skip updates if only style/class attributes changed (likely hover effects)
+      const shouldUpdate = mutations.some((mutation) => {
+        if (mutation.type === "childList") return true;
+        if (mutation.type === "attributes") {
+          // Ignore common hover-related attributes
+          const ignoredAttrs = ["style", "class", "data-hover"];
+          return !ignoredAttrs.includes(mutation.attributeName || "");
+        }
+        return false;
+      });
+
+      if (shouldUpdate) {
+        updatePosition();
+      }
+    });
+
     observer.observe(document.body, {
       childList: true,
       subtree: true,
       attributes: true,
+      attributeFilter: ["id", "data-comment-anchor"], // Only watch specific attributes
     });
 
     return () => {
@@ -182,17 +199,20 @@ function CommentMarker({ comment, onClick }: CommentMarkerProps) {
     <>
       {/* Comment marker dot */}
       <div
-        className="fixed w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white cursor-pointer shadow-lg z-[9999] transition-all duration-200 hover:scale-110"
+        className="fixed w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white cursor-pointer shadow-lg z-[9999] transition-all duration-200"
         style={{
           left: 0,
           top: 0,
           transform: `translate(${position.x - 16}px, ${position.y - 16}px)`,
         }}
-        onClick={() => setShowContent(!showContent)}
+        onClick={() => {
+          setShowContent(!showContent);
+          onClick();
+        }}
       >
         <MessageIcon />
       </div>
-      
+
       {/* Comment content bubble */}
       {showContent && (
         <div
