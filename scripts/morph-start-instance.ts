@@ -2,6 +2,7 @@
 
 import type { ServerToWorkerEvents, WorkerToServerEvents } from "@cmux/shared";
 import { MorphCloudClient } from "morphcloud";
+import readline from "readline";
 import { io, Socket } from "socket.io-client";
 
 const client = new MorphCloudClient();
@@ -10,10 +11,11 @@ console.log("Starting instance");
 const instance = await client.instances.start({
   // snapshotId: "snapshot_yawsf9cr",
   // snapshotId: "snapshot_kco1jqb6",
-  // snapshotId: "snapshot_5h9hvkqq",
-  snapshotId: "snapshot_3qyamh9h", // hacky one
-  // 30 minutes
-  ttlSeconds: 60 * 30,
+  snapshotId: "snapshot_5h9hvkqq",
+  // snapshotId: "snapshot_3qyamh9h", // hacky one
+  // snapshotId: "snapshot_c8ahthyz", // hacky one
+  // 2 hours
+  ttlSeconds: 60 * 60 * 2,
   ttlAction: "pause",
   metadata: {
     app: "cmux-dev",
@@ -40,6 +42,35 @@ console.log(`VSCode: ${vscodeService.url}/?folder=/root/workspace`);
 console.log("Connecting to worker...");
 
 console.log("workerService.url", workerService.url);
+
+// press enter to snapshot
+
+await new Promise((resolve) => {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+  rl.question("Press Enter to snapshot...", () => {
+    rl.close();
+    resolve(true);
+  });
+});
+
+const snapshot = await instance.snapshot();
+console.log("Snapshot", snapshot.id);
+
+// just wait here until user presses enter
+
+await new Promise((resolve) => {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+  rl.question("Press Enter to continue...", () => {
+    rl.close();
+    resolve(true);
+  });
+});
 
 const workerUrl = new URL(workerService.url);
 workerUrl.pathname = "/management";
@@ -99,10 +130,7 @@ console.log("Install dependencies + dev.sh");
 await workerExec({
   workerSocket: clientSocket,
   command: "bash",
-  args: [
-    "-c",
-    "pnpm install --frozen-lockfile --prefer-offline && ./scripts/dev.sh",
-  ],
+  args: ["-c", "SKIP_DOCKER_BUILD=true SKIP_CONVEX=true ./scripts/dev.sh"],
   cwd: "/root/workspace",
   env: {},
 });
