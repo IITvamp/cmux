@@ -50,32 +50,6 @@ const convexSchema = defineSchema({
   })
     .index("by_created", ["createdAt"])
     .index("by_user", ["userId", "createdAt"]),
-  gitDiffs: defineTable({
-    taskRunId: v.id("taskRuns"), // Link to the task run
-    filePath: v.string(), // File path relative to repo root
-    oldPath: v.optional(v.string()), // For renamed files
-    status: v.union(
-      v.literal("added"),
-      v.literal("modified"),
-      v.literal("deleted"),
-      v.literal("renamed")
-    ),
-    additions: v.number(), // Number of lines added
-    deletions: v.number(), // Number of lines deleted
-    patch: v.optional(v.string()), // Diff patch content
-    oldContent: v.optional(v.string()), // Original file content
-    newContent: v.optional(v.string()), // New file content
-    // For very large diffs, we omit content from Convex to stay under 1 MiB limit
-    contentOmitted: v.optional(v.boolean()),
-    oldSize: v.optional(v.number()),
-    newSize: v.optional(v.number()),
-    patchSize: v.optional(v.number()),
-    isBinary: v.boolean(), // Whether file is binary
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_taskRun", ["taskRunId", "filePath"])
-    .index("by_taskRun_status", ["taskRunId", "status"]),
 
   taskRuns: defineTable({
     taskId: v.id("tasks"),

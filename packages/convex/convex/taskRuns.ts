@@ -573,19 +573,19 @@ export const getContainersToStop = query({
     );
 
     // Sort containers by creation time (newest first) to identify which to keep
-    const sortedContainers = [...runningContainers].sort((a, b) => 
-      (b.createdAt || 0) - (a.createdAt || 0)
+    const sortedContainers = [...runningContainers].sort(
+      (a, b) => (b.createdAt || 0) - (a.createdAt || 0)
     );
-    
+
     // Get IDs of the most recent N containers to keep
     const containersToKeepIds = new Set(
-      sortedContainers.slice(0, minContainersToKeep).map(c => c._id)
+      sortedContainers.slice(0, minContainersToKeep).map((c) => c._id)
     );
 
     // Filter containers that have exceeded their scheduled stop time AND are not in the keep set
     const containersToStop = runningContainers.filter(
-      (run) => 
-        run.vscode!.scheduledStopAt && 
+      (run) =>
+        run.vscode!.scheduledStopAt &&
         run.vscode!.scheduledStopAt <= now &&
         !containersToKeepIds.has(run._id)
     );
@@ -599,7 +599,7 @@ export const getRunningContainersByCleanupPriority = query({
   handler: async (ctx) => {
     const settings = await ctx.db.query("containerSettings").first();
     const minContainersToKeep = settings?.minContainersToKeep ?? 0;
-    
+
     const activeRuns = await ctx.db
       .query("taskRuns")
       .withIndex("by_vscode_status", (q) => q.eq("vscode.status", "running"))
@@ -611,18 +611,18 @@ export const getRunningContainersByCleanupPriority = query({
     );
 
     // Sort all containers by creation time to identify which to keep
-    const sortedByCreation = [...runningContainers].sort((a, b) => 
-      (b.createdAt || 0) - (a.createdAt || 0)
+    const sortedByCreation = [...runningContainers].sort(
+      (a, b) => (b.createdAt || 0) - (a.createdAt || 0)
     );
-    
+
     // Get IDs of the most recent N containers to keep
     const containersToKeepIds = new Set(
-      sortedByCreation.slice(0, minContainersToKeep).map(c => c._id)
+      sortedByCreation.slice(0, minContainersToKeep).map((c) => c._id)
     );
 
     // Filter out containers that should be kept
     const eligibleForCleanup = runningContainers.filter(
-      c => !containersToKeepIds.has(c._id)
+      (c) => !containersToKeepIds.has(c._id)
     );
 
     // Categorize eligible containers

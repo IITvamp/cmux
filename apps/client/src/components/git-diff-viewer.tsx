@@ -1,7 +1,8 @@
 import { useTheme } from "@/components/theme/use-theme";
 import { useSocket } from "@/contexts/socket/use-socket";
 import { cn } from "@/lib/utils";
-import type { Doc, Id } from "@cmux/convex/dataModel";
+import type { Id } from "@cmux/convex/dataModel";
+import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
 import { DiffEditor } from "@monaco-editor/react";
 import {
   ChevronDown,
@@ -23,7 +24,7 @@ import {
 } from "react";
 
 interface GitDiffViewerProps {
-  diffs: Doc<"gitDiffs">[];
+  diffs: ReplaceDiffEntry[];
   isLoading?: boolean;
   taskRunId?: Id<"taskRuns">;
   onControlsChange?: (controls: {
@@ -34,18 +35,18 @@ interface GitDiffViewerProps {
   }) => void;
 }
 
-interface FileGroup {
+type FileGroup = {
   filePath: string;
-  status: Doc<"gitDiffs">["status"];
+  status: ReplaceDiffEntry["status"];
   additions: number;
   deletions: number;
   oldContent: string;
   newContent: string;
   patch?: string;
   isBinary: boolean;
-}
+};
 
-function getStatusColor(status: Doc<"gitDiffs">["status"]) {
+function getStatusColor(status: ReplaceDiffEntry["status"]) {
   switch (status) {
     case "added":
       return "text-green-600 dark:text-green-400";
@@ -60,7 +61,7 @@ function getStatusColor(status: Doc<"gitDiffs">["status"]) {
   }
 }
 
-function getStatusIcon(status: Doc<"gitDiffs">["status"]) {
+function getStatusIcon(status: ReplaceDiffEntry["status"]) {
   const iconClass = "w-3.5 h-3.5 flex-shrink-0";
   switch (status) {
     case "added":
@@ -83,6 +84,30 @@ export function GitDiffViewer({
   onControlsChange,
 }: GitDiffViewerProps) {
   const { theme } = useTheme();
+  // Resolve the actual theme (handle "system" theme)
+  const [resolvedTheme, setResolvedTheme] = useState<"dark" | "light">(() => {
+    if (theme === "system") {
+      return window.matchMedia("(prefers-color-scheme: dark)").matches
+        ? "dark"
+        : "light";
+    }
+    return theme as "dark" | "light";
+  });
+
+  useEffect(() => {
+    if (theme === "system") {
+      const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+      const handleChange = () => {
+        setResolvedTheme(mediaQuery.matches ? "dark" : "light");
+      };
+      setResolvedTheme(mediaQuery.matches ? "dark" : "light");
+      mediaQuery.addEventListener("change", handleChange);
+      return () => mediaQuery.removeEventListener("change", handleChange);
+    } else {
+      setResolvedTheme(theme as "dark" | "light");
+    }
+  }, [theme]);
+
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
   const editorRefs = useRef<Record<string, editor.IStandaloneDiffEditor>>({});
   // Cache fetched contents per run+file to avoid cross-run flashes
@@ -94,7 +119,7 @@ export function GitDiffViewer({
   // Group diffs by file
   const fileGroups: FileGroup[] = useMemo(
     () =>
-      diffs.map((diff) => ({
+      (diffs || []).map((diff) => ({
         filePath: diff.filePath,
         status: diff.status,
         additions: diff.additions,
@@ -257,7 +282,7 @@ export function GitDiffViewer({
             file={file}
             isExpanded={expandedFiles.has(file.filePath)}
             onToggle={() => toggleFile(file.filePath)}
-            theme={theme}
+            theme={resolvedTheme}
             calculateEditorHeight={calculateEditorHeight}
             setEditorRef={(ed) => {
               if (ed)
@@ -510,7 +535,9 @@ function FileDiffRow({
                       if (model?.modified) {
                         model.modified.dispose?.();
                       }
-                    } catch {}
+                    } catch (_e) {
+                      // ignore if monaco not available
+                    }
                   };
                 }}
                 options={{
@@ -520,7 +547,8 @@ function FileDiffRow({
                   scrollBeyondLastLine: false,
                   fontSize: 12,
                   lineHeight: 18,
-                  fontFamily: "'SF Mono', Monaco, 'Courier New', monospace",
+                  fontFamily:
+                    "'JetBrains Mono', 'SF Mono', Monaco, 'Courier New', monospace",
                   wordWrap: "on",
                   automaticLayout: false,
                   renderOverviewRuler: false,
@@ -541,8 +569,8 @@ function FileDiffRow({
                   diffWordWrap: "on",
                   renderIndicators: true,
                   renderMarginRevertIcon: false,
-                  lineDecorationsWidth: 2,
-                  lineNumbersMinChars: 3,
+                  lineDecorationsWidth: 12,
+                  lineNumbersMinChars: 4,
                   glyphMargin: false,
                   folding: false,
                   contextmenu: false,

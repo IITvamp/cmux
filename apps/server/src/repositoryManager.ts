@@ -1,4 +1,4 @@
-import { exec } from "child_process";
+import { exec, execFile } from "child_process";
 import * as fs from "fs/promises";
 import * as path from "path";
 import { promisify } from "util";
@@ -10,6 +10,7 @@ import {
 import { serverLogger } from "./utils/fileLogger.js";
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 interface RepositoryOperation {
   promise: Promise<void>;
@@ -37,7 +38,8 @@ export class RepositoryManager {
   private static instance: RepositoryManager;
   private operations = new Map<string, RepositoryOperation>();
   private worktreeLocks = new Map<string, Promise<void>>();
-  
+  private resolvedGitPath: string | null = null;
+
   // Global operation queue to prevent any git command conflicts
   private operationQueue: QueuedOperation[] = [];
   private isProcessingQueue = false;
@@ -62,13 +64,15 @@ export class RepositoryManager {
   }
 
   private getCacheKey(repoUrl: string, operation: string): string {
+    // Include the operation details (which may embed paths/branches) to avoid
+    // accidental cross-repo or cross-directory reuse. This method is kept for
+    // consistency should we later want to normalize keys.
     return `${repoUrl}:${operation}`;
   }
 
   private cleanupStaleOperations(): void {
     const now = Date.now();
-    const entries = Array.from(this.operations.entries());
-    for (const [key, op] of entries) {
+    for (const [key, op] of this.operations) {
       if (now - op.timestamp > this.config.operationCacheTime) {
         this.operations.delete(key);
       }
@@ -106,20 +110,25 @@ export class RepositoryManager {
     this.isProcessingQueue = false;
   }
 
-  private async executeGitCommand(
+  // Note: Keep all git invocations using executeGitCommand with a shell, as some CI envs lack direct execFile PATH resolution.
+
+  async executeGitCommand(
     command: string,
     options?: GitCommandOptions
   ): Promise<{ stdout: string; stderr: string }> {
-    // Commands that modify git config or create worktrees need to be queued
-    const needsQueue = 
-      command.includes('git config') ||
-      command.includes('git worktree add') ||
-      command.includes('git clone');
+    // Commands that modify git config, create worktrees, or clone should be serialized
+    const needsQueue =
+      command.includes("git config") ||
+      command.includes("git worktree add") ||
+      command.includes("git clone");
 
     if (needsQueue) {
       return this.queueOperation(async () => {
         try {
-          const result = await execAsync(command, options);
+          const result = await execAsync(command, {
+            shell: process.platform === "win32" ? "cmd.exe" : "/bin/sh",
+            ...options,
+          });
           return {
             stdout: result.stdout.toString(),
             stderr: result.stderr.toString(),
@@ -138,9 +147,38 @@ export class RepositoryManager {
       });
     }
 
-    // Non-conflicting commands can run immediately
+    // Prefer execFile with an absolute git path when invoking non-queued git commands
+    if (command.startsWith("git ")) {
+      const gitPath = await this.getGitPath();
+      const args = this.tokenizeGitArgs(command.slice(4));
+      try {
+        const result = await execFileAsync(gitPath, args, {
+          cwd: options?.cwd,
+          encoding: options?.encoding ?? "utf8",
+          windowsHide: true,
+        } as any);
+        return {
+          stdout: result.stdout.toString(),
+          stderr: result.stderr?.toString?.() || "",
+        };
+      } catch (error) {
+        // Log and fall through to shell execution for debugging context
+        serverLogger.error(`Git command failed: ${gitPath} ${args.join(" ")}`);
+        if (error instanceof Error) {
+          serverLogger.error(`Error: ${error.message}`);
+          if ((error as any).stderr) {
+            serverLogger.error(`Stderr: ${(error as any).stderr}`);
+          }
+        }
+      }
+    }
+
+    // Non-conflicting commands can run immediately via shell
     try {
-      const result = await execAsync(command, options);
+      const result = await execAsync(command, {
+        shell: process.platform === "win32" ? "cmd.exe" : "/bin/sh",
+        ...options,
+      });
       return {
         stdout: result.stdout.toString(),
         stderr: result.stderr.toString(),
@@ -158,22 +196,67 @@ export class RepositoryManager {
     }
   }
 
+  private async getGitPath(): Promise<string> {
+    if (this.resolvedGitPath) return this.resolvedGitPath;
+    const candidates = [
+      process.env.GIT_PATH,
+      process.platform === "win32" ? "git.exe" : undefined,
+      "/opt/homebrew/bin/git",
+      "/usr/local/bin/git",
+      "/usr/bin/git",
+      "/bin/git",
+      "git",
+    ].filter(Boolean) as string[];
+
+    for (const p of candidates) {
+      try {
+        await fs.access(p);
+        this.resolvedGitPath = p;
+        return p;
+      } catch {
+        // try next
+      }
+    }
+    // Last resort
+    this.resolvedGitPath = process.platform === "win32" ? "git.exe" : "git";
+    return this.resolvedGitPath;
+  }
+
+  private tokenizeGitArgs(s: string): string[] {
+    const args: string[] = [];
+    const re = /\s*("([^"]*)"|'([^']*)'|[^\s"']+)/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(s)) !== null) {
+      args.push(m[2] ?? m[3] ?? m[1]);
+    }
+    return args;
+  }
+
   private async configureGitPullStrategy(repoPath: string): Promise<void> {
-    try {
-      const strategy =
-        this.config.pullStrategy === "ff-only"
-          ? "only"
-          : this.config.pullStrategy;
-      await this.executeGitCommand(
-        `git config pull.${
-          this.config.pullStrategy === "ff-only"
-            ? "ff"
-            : this.config.pullStrategy
-        } ${strategy === "only" ? "only" : "true"}`,
-        { cwd: repoPath }
-      );
-    } catch (error) {
-      serverLogger.warn("Failed to configure git pull strategy:", error);
+    const strategy =
+      this.config.pullStrategy === "ff-only"
+        ? "only"
+        : this.config.pullStrategy;
+    const cmd = `git config pull.${
+      this.config.pullStrategy === "ff-only" ? "ff" : this.config.pullStrategy
+    } ${strategy === "only" ? "only" : "true"}`;
+
+    // Retry a few times to avoid transient .git/config lock contention
+    const maxAttempts = 3;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        await this.executeGitCommand(cmd, { cwd: repoPath });
+        return;
+      } catch (error) {
+        const msg = error instanceof Error ? error.message : String(error);
+        const isLock = msg.includes("could not lock config file");
+        if (attempt < maxAttempts && isLock) {
+          await new Promise((r) => setTimeout(r, 100 * attempt));
+          continue;
+        }
+        serverLogger.warn("Failed to configure git pull strategy:", error);
+        return;
+      }
     }
   }
 
@@ -191,10 +274,9 @@ export class RepositoryManager {
       await this.handleCloneOperation(repoUrl, originPath);
       // After cloning, set the remote HEAD reference
       try {
-        await this.executeGitCommand(
-          `git remote set-head origin -a`,
-          { cwd: originPath }
-        );
+        await this.executeGitCommand(`git remote set-head origin -a`, {
+          cwd: originPath,
+        });
       } catch (error) {
         serverLogger.warn("Failed to set remote HEAD after clone:", error);
       }
@@ -220,7 +302,10 @@ export class RepositoryManager {
     repoUrl: string,
     originPath: string
   ): Promise<void> {
-    const cloneKey = this.getCacheKey(repoUrl, "clone");
+    // Key the clone operation by both repo URL and destination path to avoid
+    // reusing a clone into a different directory, which can cause ENOENT when
+    // subsequent commands run in a non-existent cwd.
+    const cloneKey = this.getCacheKey(repoUrl, `clone:${originPath}`);
     const existingClone = this.operations.get(cloneKey);
 
     if (
@@ -228,15 +313,23 @@ export class RepositoryManager {
       Date.now() - existingClone.timestamp < this.config.operationCacheTime
     ) {
       serverLogger.info(`Reusing existing clone operation for ${repoUrl}`);
-      await existingClone.promise;
+      await existingClone.promise.catch(() => {
+        /* swallow to allow retry below */
+      });
+      // After the in-flight operation completes, remove it so the next call can proceed freshly
+      this.operations.delete(cloneKey);
     } else {
       const clonePromise = this.cloneRepository(repoUrl, originPath);
       this.operations.set(cloneKey, {
         promise: clonePromise,
         timestamp: Date.now(),
       });
-
-      await clonePromise;
+      try {
+        await clonePromise;
+      } finally {
+        // Remove entry so subsequent operations aren't skipped
+        this.operations.delete(cloneKey);
+      }
     }
   }
 
@@ -245,7 +338,9 @@ export class RepositoryManager {
     originPath: string,
     branch: string
   ): Promise<void> {
-    const fetchKey = this.getCacheKey(repoUrl, `fetch:${branch}`);
+    // Similarly, key fetch operations by branch and destination path so that
+    // concurrent clones of the same repo in different origins don't conflict.
+    const fetchKey = this.getCacheKey(repoUrl, `fetch:${branch}:${originPath}`);
     const existingFetch = this.operations.get(fetchKey);
 
     if (
@@ -255,15 +350,23 @@ export class RepositoryManager {
       serverLogger.info(
         `Reusing existing fetch operation for ${repoUrl} branch ${branch}`
       );
-      await existingFetch.promise;
+      await existingFetch.promise.catch(() => {
+        /* swallow to allow retry below */
+      });
+      // Remove completed entry to allow a fresh fetch
+      this.operations.delete(fetchKey);
     } else {
       const fetchPromise = this.fetchAndCheckoutBranch(originPath, branch);
       this.operations.set(fetchKey, {
         promise: fetchPromise,
         timestamp: Date.now(),
       });
-
-      await fetchPromise;
+      try {
+        await fetchPromise;
+      } finally {
+        // Ensure the operation does not block subsequent real fetches
+        this.operations.delete(fetchKey);
+      }
     }
   }
 
@@ -291,10 +394,9 @@ export class RepositoryManager {
 
       // Set the remote HEAD reference explicitly
       try {
-        await this.executeGitCommand(
-          `git remote set-head origin -a`,
-          { cwd: originPath }
-        );
+        await this.executeGitCommand(`git remote set-head origin -a`, {
+          cwd: originPath,
+        });
       } catch (error) {
         serverLogger.warn("Failed to set remote HEAD reference:", error);
       }
@@ -310,7 +412,7 @@ export class RepositoryManager {
     }
   }
 
-  private async getCurrentBranch(repoPath: string): Promise<string> {
+  async getCurrentBranch(repoPath: string): Promise<string> {
     const { stdout } = await this.executeGitCommand(
       `git rev-parse --abbrev-ref HEAD`,
       { cwd: repoPath, encoding: "utf8" }
@@ -328,7 +430,7 @@ export class RepositoryManager {
       // Extract branch name from refs/remotes/origin/main format
       const match = stdout.trim().match(/refs\/remotes\/origin\/(.+)$/);
       return match ? match[1] : "main";
-    } catch (error) {
+    } catch (_error) {
       // If that fails, try to get it from the remote
       try {
         const { stdout } = await this.executeGitCommand(
@@ -342,9 +444,11 @@ export class RepositoryManager {
         }
       } catch {
         // Fallback to common defaults
-        serverLogger.warn("Could not determine default branch, trying common names");
+        serverLogger.warn(
+          "Could not determine default branch, trying common names"
+        );
       }
-      
+
       // Try common default branch names
       const commonDefaults = ["main", "master", "dev", "develop"];
       for (const branch of commonDefaults) {
@@ -358,7 +462,7 @@ export class RepositoryManager {
           // Continue to next branch
         }
       }
-      
+
       // Final fallback
       return "main";
     }
@@ -404,7 +508,10 @@ export class RepositoryManager {
           });
           serverLogger.info(`Successfully reset to origin/${branch}`);
         } catch (resetError) {
-          serverLogger.error(`Failed to reset to origin/${branch}:`, resetError);
+          serverLogger.error(
+            `Failed to reset to origin/${branch}:`,
+            resetError
+          );
           throw resetError;
         }
       } else {
@@ -419,24 +526,15 @@ export class RepositoryManager {
   ): Promise<void> {
     serverLogger.info(`Fetching and checking out branch ${branch}...`);
     try {
-      const currentBranch = await this.getCurrentBranch(originPath);
-
-      if (currentBranch === branch) {
-        // Already on the requested branch, just pull latest
-        serverLogger.info(`Already on branch ${branch}, pulling latest changes...`);
-        await this.pullLatestChanges(originPath, branch);
-      } else {
-        // Fetch and checkout different branch
-        await this.switchToBranch(originPath, branch);
-      }
-
+      // Always fetch and checkout explicitly to reduce reliance on shell availability for rev-parse
+      await this.switchToBranch(originPath, branch);
+      // Then pull latest changes for safety (fast and idempotent)
+      await this.pullLatestChanges(originPath, branch);
       serverLogger.info(`Successfully on branch ${branch}`);
     } catch (error) {
-      serverLogger.warn(
-        `Failed to fetch/checkout branch ${branch}, falling back to current branch:`,
-        error
-      );
-      // Don't throw - we'll use whatever branch is currently checked out
+      serverLogger.error(`Failed to fetch/checkout branch ${branch}:`, error);
+      // Propagate error so callers can surface it to users
+      throw error;
     }
   }
 
@@ -444,27 +542,84 @@ export class RepositoryManager {
     repoPath: string,
     branch: string
   ): Promise<void> {
+    // Fetch the specific branch and explicitly update the remote-tracking ref
+    // even if the clone was created with --single-branch.
+    // Force-update the remote-tracking ref to tolerate non-fast-forward updates
+    // (e.g., when the remote branch was force-pushed). Using a leading '+'
+    // mirrors the default fetch refspec behavior: +refs/heads/*:refs/remotes/origin/*
+    await this.executeGitCommand(
+      `git fetch --depth ${this.config.fetchDepth} origin +refs/heads/${branch}:refs/remotes/origin/${branch}`,
+      { cwd: repoPath }
+    );
+
+    // Checkout the branch from the updated remote-tracking ref
+    await this.executeGitCommand(`git checkout -B ${branch} origin/${branch}`, {
+      cwd: repoPath,
+    });
+  }
+
+  async worktreeExists(
+    originPath: string,
+    worktreePath: string
+  ): Promise<boolean> {
     try {
-      // Try to fetch the branch without specifying local name
+      const { stdout } = await this.executeGitCommand(
+        `git worktree list --porcelain`,
+        { cwd: originPath }
+      );
+      // Check if the worktree path exists in the list
+      return stdout.includes(worktreePath);
+    } catch {
+      return false;
+    }
+  }
+
+  async removeWorktree(
+    originPath: string,
+    worktreePath: string
+  ): Promise<void> {
+    try {
       await this.executeGitCommand(
-        `git fetch --depth ${this.config.fetchDepth} origin ${branch}`,
-        { cwd: repoPath }
+        `git worktree remove "${worktreePath}" --force`,
+        { cwd: originPath }
+      );
+      serverLogger.info(`Removed worktree at ${worktreePath}`);
+    } catch (error) {
+      serverLogger.warn(`Failed to remove worktree at ${worktreePath}:`, error);
+    }
+  }
+
+  async findWorktreeUsingBranch(
+    originPath: string,
+    branchName: string
+  ): Promise<string | null> {
+    try {
+      const { stdout } = await this.executeGitCommand(
+        `git worktree list --porcelain`,
+        { cwd: originPath }
       );
 
-      // Checkout the branch
-      await this.executeGitCommand(
-        `git checkout -B ${branch} origin/${branch}`,
-        { cwd: repoPath }
-      );
-    } catch (error) {
-      // If branch doesn't exist remotely, try just checking out locally
-      if (error instanceof Error && error.message.includes("not found")) {
-        await this.executeGitCommand(`git checkout ${branch}`, {
-          cwd: repoPath,
-        });
-      } else {
-        throw error;
+      // Parse worktree list to find which worktree uses this branch
+      const lines = stdout.split("\n");
+      let currentWorktreePath: string | null = null;
+
+      for (const line of lines) {
+        if (line.startsWith("worktree ")) {
+          currentWorktreePath = line.substring(9); // Remove 'worktree ' prefix
+        } else if (
+          line.startsWith("branch refs/heads/") &&
+          currentWorktreePath
+        ) {
+          const branch = line.substring(18); // Remove 'branch refs/heads/' prefix
+          if (branch === branchName) {
+            return currentWorktreePath;
+          }
+        }
       }
+
+      return null;
+    } catch {
+      return null;
     }
   }
 
@@ -493,12 +648,48 @@ export class RepositoryManager {
     });
     this.worktreeLocks.set(originPath, lockPromise);
 
-    serverLogger.info(`Creating worktree with new branch ${branchName}...`);
+    serverLogger.info(`Creating worktree with branch ${branchName}...`);
     try {
-      await this.executeGitCommand(
-        `git worktree add -b "${branchName}" "${worktreePath}" origin/${baseBranch}`,
-        { cwd: originPath }
+      // First check if the branch is already used by another worktree
+      const existingWorktreePath = await this.findWorktreeUsingBranch(
+        originPath,
+        branchName
       );
+      if (existingWorktreePath && existingWorktreePath !== worktreePath) {
+        serverLogger.info(
+          `Branch ${branchName} is already used by worktree at ${existingWorktreePath}, removing old worktree...`
+        );
+        await this.removeWorktree(originPath, existingWorktreePath);
+      }
+
+      // Check if the branch already exists
+      let branchExists = false;
+      try {
+        await this.executeGitCommand(
+          `git rev-parse --verify refs/heads/${branchName}`,
+          { cwd: originPath }
+        );
+        branchExists = true;
+      } catch {
+        // Branch doesn't exist, which is fine
+      }
+
+      if (branchExists) {
+        // Branch exists, create worktree without -b flag
+        serverLogger.info(
+          `Branch ${branchName} already exists, creating worktree without new branch`
+        );
+        await this.executeGitCommand(
+          `git worktree add "${worktreePath}" ${branchName}`,
+          { cwd: originPath }
+        );
+      } else {
+        // Branch doesn't exist, create it with the worktree
+        await this.executeGitCommand(
+          `git worktree add -b "${branchName}" "${worktreePath}" origin/${baseBranch}`,
+          { cwd: originPath }
+        );
+      }
       serverLogger.info(`Successfully created worktree at ${worktreePath}`);
 
       // Set up branch configuration to push to the same name on remote
@@ -510,6 +701,20 @@ export class RepositoryManager {
     } catch (error) {
       if (error instanceof Error && error.message.includes("already exists")) {
         throw new Error(`Worktree already exists at ${worktreePath}`);
+      }
+      // Provide a clearer error message when the base branch does not exist
+      if (error instanceof Error) {
+        const msg = error.message.toLowerCase();
+        if (
+          msg.includes("invalid reference") ||
+          msg.includes("couldn't find remote ref") ||
+          msg.includes("not a valid object name") ||
+          msg.includes("fatal: invalid reference")
+        ) {
+          throw new Error(
+            `Base branch 'origin/${baseBranch}' not found. Please select an existing branch.`
+          );
+        }
       }
       throw error;
     } finally {
@@ -535,7 +740,10 @@ export class RepositoryManager {
         `Configured branch ${branchName} to track origin/${branchName} when pushed`
       );
     } catch (error) {
-      serverLogger.warn(`Failed to configure branch tracking for ${branchName}:`, error);
+      serverLogger.warn(
+        `Failed to configure branch tracking for ${branchName}:`,
+        error
+      );
     }
   }
 

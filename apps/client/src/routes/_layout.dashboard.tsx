@@ -20,6 +20,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useMutation } from "convex/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 
 export const Route = createFileRoute("/_layout/dashboard")({
   component: DashboardComponent,
@@ -82,14 +83,20 @@ function DashboardComponent() {
 
   // Fetch repos from Convex
   const reposByOrgQuery = useQuery(convexQuery(api.github.getReposByOrg, {}));
-  const reposByOrg = reposByOrgQuery.data || {};
+  const reposByOrg = useMemo(
+    () => reposByOrgQuery.data || {},
+    [reposByOrgQuery.data]
+  );
 
   // Fetch branches for selected repo from Convex
   const branchesQuery = useQuery({
     ...convexQuery(api.github.getBranches, { repo: selectedProject[0] || "" }),
     enabled: !!selectedProject[0],
   });
-  const branches = branchesQuery.data || [];
+  const branches = useMemo(
+    () => branchesQuery.data || [],
+    [branchesQuery.data]
+  );
 
   // Socket-based functions to fetch data from GitHub
   // Removed unused fetchRepos function - functionality is handled by Convex queries
@@ -152,11 +159,23 @@ function DashboardComponent() {
       }
     }
   );
-
-  // Add mutation for generating upload URL
   const generateUploadUrl = useMutation(api.storage.generateUploadUrl);
 
-  // Removed ref indirection; we will limit callback consumers instead
+  const effectiveSelectedBranch = useMemo(
+    () =>
+      selectedBranch.length > 0
+        ? selectedBranch
+        : branches && branches.length > 0
+          ? [
+              branches.includes("main")
+                ? "main"
+                : branches.includes("master")
+                  ? "master"
+                  : branches[0],
+            ]
+          : [],
+    [selectedBranch, branches]
+  );
 
   const handleStartTask = useCallback(async () => {
     if (!selectedProject[0] || !taskDescription.trim()) {
@@ -168,7 +187,8 @@ function DashboardComponent() {
       return;
     }
 
-    const branch = selectedBranch[0] || "main";
+    // Use the effective selected branch (respects available branches and sensible defaults)
+    const branch = effectiveSelectedBranch[0];
     const projectFullName = selectedProject[0];
     if (!projectFullName) {
       console.error("Please select a project");
@@ -253,6 +273,7 @@ function DashboardComponent() {
         (response) => {
           if ("error" in response) {
             console.error("Task start error:", response.error);
+            toast.error(`Task start error: ${response.error}`);
           } else {
             console.log("Task started:", response);
           }
@@ -266,12 +287,13 @@ function DashboardComponent() {
     selectedProject,
     taskDescription,
     socket,
-    selectedBranch,
+    effectiveSelectedBranch,
+    handleTaskDescriptionChange,
+    createTask,
+    addTaskToExpand,
     selectedAgents,
     isCloudMode,
     theme,
-    createTask,
-    handleTaskDescriptionChange,
     generateUploadUrl,
   ]);
 
@@ -305,23 +327,6 @@ function DashboardComponent() {
   }, [reposByOrg]);
 
   const branchOptions = branches || [];
-
-  // Derive effective selected branch - if nothing selected, auto-select a sensible default
-  const effectiveSelectedBranch = useMemo(
-    () =>
-      selectedBranch.length > 0
-        ? selectedBranch
-        : branches && branches.length > 0
-          ? [
-              branches.includes("main")
-                ? "main"
-                : branches.includes("master")
-                  ? "master"
-                  : branches[0],
-            ]
-          : [],
-    [selectedBranch, branches]
-  );
 
   // Cloud mode toggle handler
   const handleCloudModeToggle = useCallback(() => {
@@ -358,7 +363,7 @@ function DashboardComponent() {
 
     const handleDefaultRepo = (data: {
       repoFullName: string;
-      branch: string;
+      branch?: string;
       localPath: string;
     }) => {
       // Always set the selected project when a default repo is provided

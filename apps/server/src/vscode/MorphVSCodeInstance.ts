@@ -1,10 +1,10 @@
 import { type Instance, MorphCloudClient } from "morphcloud";
+import { dockerLogger } from "../utils/fileLogger.js";
 import {
   VSCodeInstance,
   type VSCodeInstanceConfig,
   type VSCodeInstanceInfo,
 } from "./VSCodeInstance.js";
-import { dockerLogger } from "../utils/fileLogger.js";
 
 export class MorphVSCodeInstance extends VSCodeInstance {
   private morphClient: MorphCloudClient;
@@ -17,11 +17,19 @@ export class MorphVSCodeInstance extends VSCodeInstance {
   }
 
   async start(): Promise<VSCodeInstanceInfo> {
-    dockerLogger.info(`Starting Morph VSCode instance with ID: ${this.instanceId}`);
+    dockerLogger.info(
+      `Starting Morph VSCode instance with ID: ${this.instanceId}`
+    );
 
     // Start the Morph instance
     this.instance = await this.morphClient.instances.start({
-      snapshotId: this.snapshotId,
+      snapshotId: "snapshot_kco1jqb6",
+      // 30 minutes
+      ttlSeconds: 60 * 30,
+      ttlAction: "pause",
+      metadata: {
+        app: "cmux-dev-local  ",
+      },
     });
 
     dockerLogger.info(`Morph instance created: ${this.instance.id}`);
@@ -110,5 +118,13 @@ export class MorphVSCodeInstance extends VSCodeInstance {
     } catch (_error) {
       return { running: false };
     }
+  }
+
+  getName(): string {
+    const instance = this.instance;
+    if (!instance) {
+      throw new Error("Morph instance not started");
+    }
+    return instance.id;
   }
 }

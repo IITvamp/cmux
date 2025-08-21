@@ -72,7 +72,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       // Check if image exists locally
       await docker.getImage(this.imageName).inspect();
       dockerLogger.info(`Image ${this.imageName} found locally`);
-    } catch (error) {
+    } catch (_error) {
       // Image doesn't exist locally, try to pull it
       dockerLogger.info(
         `Image ${this.imageName} not found locally, pulling...`
@@ -85,14 +85,14 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         await new Promise((resolve, reject) => {
           docker.modem.followProgress(
             stream,
-            (err: Error | null, res: any[]) => {
+            (err: Error | null, res: unknown[]) => {
               if (err) {
                 reject(err);
               } else {
                 resolve(res);
               }
             },
-            (event: any) => {
+            (event: { status: string; progress: string }) => {
               // Log pull progress
               if (event.status) {
                 dockerLogger.info(
@@ -901,8 +901,8 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     }
   }
 
-  getContainerName(): string {
-    return this.containerName;
+  getName() {
+    return `docker-${this.containerName}`;
   }
 
   getPorts(): { vscode?: string; worker?: string; extension?: string } | null {

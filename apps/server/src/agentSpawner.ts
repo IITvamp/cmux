@@ -11,7 +11,6 @@ import type {
   WorkerTerminalFailed,
   WorkerTerminalIdle,
 } from "@cmux/shared/worker-schemas";
-import * as path from "node:path";
 import { handleTaskCompletion } from "./handle-task-completion.js";
 import { sanitizeTmuxSessionName } from "./sanitizeTmuxSessionName.js";
 import {
@@ -54,11 +53,14 @@ export async function spawnAgent(
   }
 ): Promise<AgentSpawnResult> {
   try {
-    // Use provided branch name or generate a new one
     const newBranch =
       options.newBranch ||
       (await generateNewBranchName(options.taskDescription));
-    serverLogger.info(`[AgentSpawner] Using branch name: ${newBranch}`);
+    serverLogger.info(
+      `[AgentSpawner] New Branch: ${newBranch}, Base Branch: ${
+        options.branch ?? "(auto)"
+      }`
+    );
 
     // Create a task run for this specific agent
     const taskRunId = await convex.mutation(api.taskRuns.create, {
@@ -125,9 +127,8 @@ export async function spawnAgent(
         // Sanitize filename to remove special characters
         let fileName = image.fileName || `image_${index + 1}.png`;
         serverLogger.info(`[AgentSpawner] Original filename: ${fileName}`);
-
         // Replace non-ASCII characters and spaces with underscores
-        fileName = fileName.replace(/[^\x00-\x7F]/g, "_").replace(/\s+/g, "_");
+        fileName = fileName.replace(/[^\x20-\x7E]/g, "_").replace(/\s+/g, "_");
         serverLogger.info(`[AgentSpawner] Sanitized filename: ${fileName}`);
 
         const imagePath = `/root/prompt/${fileName}`;
@@ -275,19 +276,13 @@ export async function spawnAgent(
       // For Docker, set up worktree as before
       const worktreeInfo = await getWorktreePath({
         repoUrl: options.repoUrl,
-        branch: options.branch,
+        branch: newBranch,
       });
-
-      // Use the newBranch name for both the git branch and worktree directory
-      worktreeInfo.branchName = newBranch;
-      worktreeInfo.worktreePath = worktreeInfo.worktreePath.replace(
-        /worktree-[^/]+$/,
-        `worktree-${newBranch.replace(/[^a-zA-Z0-9-]/g, "-")}`
-      );
 
       // Setup workspace
       const workspaceResult = await setupProjectWorkspace({
         repoUrl: options.repoUrl,
+        // If not provided, setupProjectWorkspace detects default from origin
         branch: options.branch,
         worktreeInfo,
       });
@@ -382,33 +377,7 @@ export async function spawnAgent(
         { changeCount: data.changes.length, taskRunId: data.taskRunId }
       );
 
-      // Store the incremental diffs in Convex
-      if (data.taskRunId === taskRunId && data.fileDiffs.length > 0) {
-        for (const fileDiff of data.fileDiffs) {
-          const relativePath = path.relative(worktreePath, fileDiff.path);
-
-          await convex.mutation(api.gitDiffs.upsertDiff, {
-            taskRunId,
-            filePath: relativePath,
-            status: fileDiff.type as "added" | "modified" | "deleted",
-            additions: (fileDiff.patch.match(/^\+[^+]/gm) || []).length,
-            deletions: (fileDiff.patch.match(/^-[^-]/gm) || []).length,
-            patch: fileDiff.patch,
-            oldContent: fileDiff.oldContent,
-            newContent: fileDiff.newContent,
-            isBinary: false,
-          });
-        }
-
-        // Update the timestamp
-        await convex.mutation(api.gitDiffs.updateDiffsTimestamp, {
-          taskRunId,
-        });
-
-        serverLogger.info(
-          `[AgentSpawner] Stored ${data.fileDiffs.length} incremental diffs for ${agent.name}`
-        );
-      }
+      // On-demand diffs: no longer persisting incremental diffs to Convex
     });
 
     // Set up task-complete event handler (from project file detection)
@@ -562,10 +531,7 @@ export async function spawnAgent(
       id: taskRunId,
       vscode: {
         provider: vscodeInfo.provider,
-        containerName:
-          vscodeInstance instanceof DockerVSCodeInstance
-            ? (vscodeInstance as DockerVSCodeInstance).getContainerName()
-            : undefined,
+        containerName: vscodeInstance.getName(),
         status: "running",
         url: vscodeInfo.url,
         workspaceUrl: vscodeInfo.workspaceUrl,

@@ -39,7 +39,7 @@ export function ModeToggleTooltip({
     if (location.href.includes("waitlist")) {
       setShowWaitlistModal(true);
     }
-  }, [location.href]);
+  }, [location.href, user]);
 
   const handleClick = () => {
     // Clear any existing timeout

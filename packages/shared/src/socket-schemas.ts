@@ -153,7 +153,7 @@ export const OpenInEditorResponseSchema = z.object({
 
 // File listing events
 export const ListFilesRequestSchema = z.object({
-  repoUrl: z.string(),
+  repoPath: z.string(),
   branch: z.string().optional(),
   pattern: z.string().optional(), // Optional glob pattern for filtering
 });
@@ -291,7 +291,7 @@ export const ProviderStatusResponseSchema = z.object({
 // Default repo event
 export const DefaultRepoSchema = z.object({
   repoFullName: z.string(),
-  branch: z.string(),
+  branch: z.string().optional(),
   localPath: z.string(),
 });
 
@@ -355,9 +355,10 @@ export interface ClientToServerEvents {
   "git-status": (data: GitStatusRequest) => void;
   "git-diff": (data: GitDiffRequest) => void;
   "git-full-diff": (data: GitFullDiffRequest) => void;
-  "refresh-diffs": (
+  // On-demand diffs for a task run
+  "get-run-diffs": (
     data: { taskRunId: Id<"taskRuns"> },
-    callback: (response: { success: boolean; message?: string }) => void
+    callback: (response: { ok: true; diffs: import("./diff-types.js").ReplaceDiffEntry[] } | { ok: false; error: string; diffs: [] }) => void
   ) => void;
   "git-diff-file-contents": (
     data: { taskRunId: Id<"taskRuns">; filePath: string },
