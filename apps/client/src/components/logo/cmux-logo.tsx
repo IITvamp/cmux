@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useTheme } from "../theme/use-theme";
 
 type Props = Omit<
   React.SVGProps<SVGSVGElement>,
@@ -29,18 +30,26 @@ export default function CmuxLogo({
   style,
   ...rest
 }: Props) {
+  const { theme } = useTheme();
   const id = React.useId();
   const gradId = `cmuxGradient-${id}`;
   const titleId = label ? `cmuxTitle-${id}` : undefined;
 
+  // Determine if we should use dark mode
+  const isDarkMode = React.useMemo(() => {
+    if (theme === "dark") return true;
+    if (theme === "light") return false;
+    // For "system", check the system preference
+    return window.matchMedia("(prefers-color-scheme: dark)").matches;
+  }, [theme]);
+
+  const wordmarkColor = isDarkMode ? wordmarkDark : wordmarkLight;
+
   const css = `
     .mark-line { stroke: url(#${gradId}); stroke-width: 14; stroke-linecap: round; }
     .mark-fill { fill: url(#${gradId}); }
-    .wordmark  { fill: ${wordmarkLight}; font-weight: 700; letter-spacing: 1.5px;
+    .wordmark  { fill: ${wordmarkColor}; font-weight: 700; letter-spacing: 1.5px;
                  font-family: "JetBrains Mono","SFMono-Regular","Menlo","Consolas","ui-monospace","Monaco","Courier New",monospace; }
-    @media (prefers-color-scheme: dark) {
-      .wordmark { fill: ${wordmarkDark}; }
-    }
   `;
 
   return (
