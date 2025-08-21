@@ -2,7 +2,7 @@
   "name": "cmux Development Container",
   "dockerComposeFile": "docker-compose.devcontainer.yml",
   "service": "app",
-  "workspaceFolder": "/workspace",
+  "workspaceFolder": "/root/workspace",
   "customizations": {
     "vscode": {
       "extensions": [
@@ -51,7 +51,7 @@
       "onAutoForward": "openBrowser"
     }
   },
-  "postCreateCommand": "CI=1 pnpm install --frozen-lockfile",
+  "postCreateCommand": "sudo chown -R node:node /workspace && CI=1 pnpm install --frozen-lockfile",
   "postStartCommand": "bash /workspace/scripts/dev.sh",
   "remoteUser": "node",
   "features": {

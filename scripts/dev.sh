@@ -15,7 +15,7 @@ IS_DEVCONTAINER=false
 if [ -f /.dockerenv ] || [ -n "$REMOTE_CONTAINERS" ] || [ -n "$CODESPACES" ]; then
     IS_DEVCONTAINER=true
     # Set workspace directory for devcontainer
-    APP_DIR="/workspace"
+    APP_DIR="/root/workspace"
 else
     # Get the directory where this script is located
     SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
