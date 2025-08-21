@@ -26,7 +26,6 @@ import { spawnAllAgents } from "./agentSpawner.js";
 import { execWithEnv } from "./execWithEnv.js";
 import { GitDiffManager } from "./gitDiff.js";
 import { createProxyApp, setupWebSocketProxy } from "./proxyApp.js";
-import { refreshDiffsForTaskRun } from "./refreshDiffs.js";
 import { RepositoryManager } from "./repositoryManager.js";
 import { getPRTitleFromTaskDescription } from "./utils/branchNameGenerator.js";
 import { convex } from "./utils/convexClient.js";
@@ -81,10 +80,19 @@ export async function startServer({
   process.on("uncaughtException", (error) => {
     serverLogger.error("Uncaught Exception:", error);
     // Don't exit for file system errors
-    if (error && typeof error === "object" && "errno" in error) {
-      const fsError = error as any;
+    if (
+      error &&
+      typeof error === "object" &&
+      "errno" in error &&
+      "syscall" in error &&
+      "path" in error
+    ) {
+      const fsError = error;
       if (fsError.errno === 0 || fsError.syscall === "TODO") {
-        serverLogger.error("File system watcher error - continuing without watching:", fsError.path);
+        serverLogger.error(
+          "File system watcher error - continuing without watching:",
+          fsError.path
+        );
         return;
       }
     }
@@ -97,7 +105,9 @@ export async function startServer({
     const { stdout } = await execAsync("ulimit -n");
     const limit = parseInt(stdout.trim(), 10);
     if (limit < 8192) {
-      serverLogger.warn(`System file descriptor limit is low: ${limit}. Consider increasing it with 'ulimit -n 8192' to avoid file watcher issues.`);
+      serverLogger.warn(
+        `System file descriptor limit is low: ${limit}. Consider increasing it with 'ulimit -n 8192' to avoid file watcher issues.`
+      );
     }
   } catch (error) {
     serverLogger.warn("Could not check system file descriptor limit:", error);
@@ -137,8 +147,7 @@ export async function startServer({
     if (defaultRepo?.remoteName) {
       const defaultRepoData = {
         repoFullName: defaultRepo.remoteName,
-        branch:
-          defaultRepo.currentBranch || defaultRepo.defaultBranch || "main",
+        branch: defaultRepo.currentBranch || defaultRepo.defaultBranch,
         localPath: defaultRepo.path,
       };
       serverLogger.info(
@@ -189,9 +198,13 @@ export async function startServer({
           (result) => result.success
         );
         if (successfulAgents.length === 0) {
+          const errors = agentResults
+            .filter((r) => !r.success)
+            .map((r) => `${r.agentName}: ${r.error || "Unknown error"}`)
+            .join("; ");
           callback({
             taskId,
-            error: "Failed to spawn any agents",
+            error: errors || "Failed to spawn any agents",
           });
           return;
         }
@@ -229,7 +242,7 @@ export async function startServer({
 
         // Set up file watching for git changes (optional - don't fail if it doesn't work)
         try {
-          gitDiffManager.watchWorkspace(
+          void gitDiffManager.watchWorkspace(
             primaryAgent.worktreePath,
             (changedPath) => {
               io.emit("git-file-changed", {
@@ -239,7 +252,10 @@ export async function startServer({
             }
           );
         } catch (error) {
-          serverLogger.warn("Could not set up file watching for workspace:", error);
+          serverLogger.warn(
+            "Could not set up file watching for workspace:",
+            error
+          );
           // Continue without file watching
         }
 
@@ -587,50 +603,52 @@ export async function startServer({
           taskRunId: string;
           filePath: string;
         };
-        const taskRun = await convex.query(api.taskRuns.get, {
-          id: taskRunId as Id<"taskRuns">,
-        });
-        if (!taskRun?.worktreePath) {
-          callback?.({ ok: false, error: "Worktree not found" });
-          return;
-        }
-        const worktreePath = taskRun.worktreePath as string;
-        // Determine status from stored diff to handle deleted/added cases
-        const diffs = await convex.query(api.gitDiffs.getByTaskRun, {
-          taskRunId: taskRunId as Id<"taskRuns">,
-        });
-        const fileDiff = diffs?.find((d) => d.filePath === filePath);
-        const status = fileDiff?.status ?? "modified";
+        // Ensure the worktree exists for this run
+        const ensured = await ensureRunWorktreeAndBranch(
+          taskRunId as Id<"taskRuns">
+        );
+        const worktreePath = ensured.worktreePath as string;
         let oldContent = "";
         let newContent = "";
-        if (status === "deleted") {
-          oldContent = "";
+        try {
+          newContent = await fs.readFile(
+            path.join(worktreePath, filePath),
+            "utf-8"
+          );
+        } catch {
           newContent = "";
-        } else {
-          try {
-            newContent = await fs.readFile(
-              path.join(worktreePath, filePath),
-              "utf-8"
-            );
-          } catch {
-            newContent = "";
-          }
-          try {
-            const { stdout } = await execAsync(`git show HEAD:"${filePath}"`, {
-              cwd: worktreePath,
-              maxBuffer: 5 * 1024 * 1024,
-            });
-            oldContent = stdout;
-          } catch {
-            oldContent = "";
-          }
         }
-        callback?.({
-          ok: true,
-          oldContent,
-          newContent,
-          isBinary: fileDiff?.isBinary ?? false,
-        });
+        try {
+          // Use git CLI to read baseRef version of the file when available; fallback to HEAD
+          // Resolve base similar to full diff
+          let baseRef = "HEAD";
+          try {
+            const { stdout } = await execAsync(
+              "git rev-parse --abbrev-ref --symbolic-full-name @{u}",
+              { cwd: worktreePath }
+            );
+            if (stdout.trim()) baseRef = "@{upstream}";
+          } catch {
+            try {
+              const repoMgr = RepositoryManager.getInstance();
+              const defaultBranch = await repoMgr.getDefaultBranch(worktreePath);
+              if (defaultBranch) baseRef = `origin/${defaultBranch}`;
+            } catch {
+              baseRef = "HEAD";
+            }
+          }
+          const { stdout } = await execAsync(
+            `git show ${baseRef}:"${filePath.replace(/"/g, '\\"')}"`,
+            {
+              cwd: worktreePath,
+              maxBuffer: 10 * 1024 * 1024,
+            }
+          );
+          oldContent = stdout;
+        } catch {
+          oldContent = "";
+        }
+        callback?.({ ok: true, oldContent, newContent, isBinary: false });
       } catch (error) {
         serverLogger.error("Error in git-diff-file-contents:", error);
         callback?.({
@@ -640,21 +658,42 @@ export async function startServer({
       }
     });
 
-    socket.on("refresh-diffs", async (data, callback) => {
+    // Get diffs on demand to avoid storing in Convex
+    socket.on("get-run-diffs", async (data, callback) => {
       try {
-        const { taskRunId } = data;
-        serverLogger.info(
-          `[Server] Refresh diffs requested for taskRun ${taskRunId}`
+        const { taskRunId } = data as { taskRunId: string };
+        // Ensure the worktree exists and is on the correct branch
+        const ensured = await ensureRunWorktreeAndBranch(
+          taskRunId as Id<"taskRuns">
         );
-
-        // Use the simplified approach that works directly with the filesystem
-        const result = await refreshDiffsForTaskRun(taskRunId);
-        callback(result);
+        const worktreePath = ensured.worktreePath as string;
+        const { computeEntriesNodeGit } = await import(
+          "./diffs/parseGitDiff.js"
+        );
+        const entries = await computeEntriesNodeGit({
+          worktreePath,
+          includeContents: true,
+        });
+        // Start watching this worktree to push reactive updates to this client group
+        try {
+          void gitDiffManager.watchWorkspace(worktreePath, () => {
+            io.emit("git-file-changed", {
+              workspacePath: worktreePath,
+              filePath: "",
+            });
+          });
+        } catch (e) {
+          serverLogger.warn(
+            `Failed to start watcher for ${worktreePath}: ${String(e)}`
+          );
+        }
+        callback?.({ ok: true, diffs: entries });
       } catch (error) {
-        serverLogger.error("Error refreshing diffs:", error);
-        callback({
-          success: false,
-          message: error instanceof Error ? error.message : "Unknown error",
+        serverLogger.error("Error getting run diffs:", error);
+        callback?.({
+          ok: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+          diffs: [],
         });
       }
     });
@@ -747,7 +786,7 @@ export async function startServer({
         await repoManager.ensureRepository(
           repoUrl,
           worktreeInfo.originPath,
-          branch || "main"
+          branch
         );
 
         // Check if the origin directory exists
@@ -1175,7 +1214,9 @@ export async function startServer({
           // Clean up temp file
           try {
             await fs.unlink(tmpBodyPath);
-          } catch {}
+          } catch (e) {
+            serverLogger.error("Error cleaning up temp file:", e);
+          }
         } catch (e: unknown) {
           const err = e as {
             stdout?: string;
@@ -1407,11 +1448,13 @@ export async function startServer({
               finalNumber
             );
             merged = !!detail.merged_at;
-          } catch {}
+          } catch (e) {
+            serverLogger.error("Error fetching PR detail:", e);
+          }
         }
 
         await convex.mutation(api.taskRuns.updatePullRequestState, {
-          id: run._id as any,
+          id: run._id,
           state: finalUrl
             ? stateMap(finalState, finalIsDraft, merged)
             : ("none" as const),
@@ -1513,8 +1556,7 @@ export async function startServer({
         // Also emit to all connected clients
         const defaultRepoData = {
           repoFullName: defaultRepo.remoteName,
-          branch:
-            defaultRepo.currentBranch || defaultRepo.defaultBranch || "main",
+          branch: defaultRepo.currentBranch || defaultRepo.defaultBranch,
           localPath: defaultRepo.path,
         };
         serverLogger.info(`Emitting default-repo event:`, defaultRepoData);

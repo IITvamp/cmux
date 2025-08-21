@@ -6,7 +6,7 @@
     "dev": "bunx dotenv-cli -e ../../.env -- next dev --port 9779",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
@@ -26,12 +26,16 @@
     "zod": "^4.0.17"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "dotenv-cli": "^10.0.0",
+    "eslint": "^9.33.0",
+    "eslint-config-next": "15.5.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5.4.0",
+    "typescript-eslint": "^8.38.0"
   }
 }

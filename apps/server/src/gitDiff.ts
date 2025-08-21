@@ -1,6 +1,10 @@
-import { exec } from "child_process";
+import { exec } from "node:child_process";
+import { RepositoryManager } from "./repositoryManager.js";
 import chokidar, { type FSWatcher } from "chokidar";
-import { promisify } from "util";
+import { promises as fsp } from "node:fs";
+import * as path from "node:path";
+import ignore from "ignore";
+import { promisify } from "node:util";
 import { serverLogger } from "./utils/fileLogger.js";
 
 const execAsync = promisify(exec);
@@ -10,9 +14,32 @@ export class GitDiffManager {
 
   async getFullDiff(workspacePath: string): Promise<string> {
     try {
+      // Determine a sensible base ref for diffing:
+      // 1) Use the current branch's upstream if configured
+      // 2) Otherwise, use the repository's default branch (origin/<default>)
+      // 3) Fallback to origin/main as last resort
+
+      let baseRef = "origin/main";
+      try {
+        const upstream = await execAsync(
+          "git rev-parse --abbrev-ref --symbolic-full-name @{u}",
+          { cwd: workspacePath }
+        );
+        const u = upstream.stdout.trim();
+        if (u) baseRef = "@{upstream}"; // Let git resolve symbolic upstream
+      } catch {
+        try {
+          const repoMgr = RepositoryManager.getInstance();
+          const defaultBranch = await repoMgr.getDefaultBranch(workspacePath);
+          baseRef = `origin/${defaultBranch}`;
+        } catch {
+          // keep fallback origin/main
+        }
+      }
+
       // Run git diff with color to get all changes
       const { stdout, stderr } = await execAsync(
-        "git diff --color=always origin/main",
+        `git diff --color=always ${baseRef}`,
         {
           cwd: workspacePath,
           maxBuffer: 10 * 1024 * 1024, // 10MB buffer for large diffs
@@ -35,63 +62,62 @@ export class GitDiffManager {
     }
   }
 
-  watchWorkspace(
+  async watchWorkspace(
     workspacePath: string,
     onChange: (changedPath: string) => void
-  ): void {
+  ): Promise<void> {
     if (this.watchers.has(workspacePath)) {
       return;
     }
 
     try {
+      // Build ignore matcher from .gitignore + defaults
+      const ig = ignore();
+      try {
+        const giPath = path.join(workspacePath, ".gitignore");
+        const contents = await fsp.readFile(giPath, "utf8");
+        ig.add(contents.split("\n"));
+      } catch {
+        // no .gitignore; proceed with defaults
+      }
+      // Always ignore VCS internals and common heavy dirs
+      ig.add([
+        ".git/",
+        "node_modules/",
+        "dist/",
+        "build/",
+        ".next/",
+        "out/",
+        ".cache/",
+        ".turbo/",
+        ".parcel-cache/",
+        ".idea/",
+        ".vscode/",
+        "**/*.log",
+      ]);
+
+      const ignoredFn = (p: string): boolean => {
+        // chokidar provides absolute paths; convert to repo-relative
+        const rel = path.relative(workspacePath, p);
+        // Skip anything outside the workspace
+        if (rel.startsWith("..")) return true;
+        // Root of workspace returns ""; never test "." against ignore
+        if (rel === "") return false;
+        const relPath = rel.replace(/\\/g, "/");
+        return ig.ignores(relPath);
+      };
+
       const watcher = chokidar.watch(workspacePath, {
-        ignored: [
-          // Ignore all node_modules completely
-          /node_modules/,
-          // Ignore git internals
-          /\.git\/objects/,
-          /\.git\/logs/,
-          /\.git\/refs/,
-          /\.git\/hooks/,
-          /\.git\/info/,
-          /\.git\/index/,
-          // Ignore build outputs
-          /dist\//,
-          /build\//,
-          /\.next\//,
-          /out\//,
-          // Ignore cache directories
-          /\.cache\//,
-          /\.turbo\//,
-          /\.parcel-cache\//,
-          // Ignore temporary files
-          /\.swp$/,
-          /\.tmp$/,
-          /~$/,
-          // Ignore OS files
-          /\.DS_Store$/,
-          /Thumbs\.db$/,
-          // Ignore IDE files
-          /\.idea\//,
-          /\.vscode\//,
-          // Ignore lock files and logs
-          /\.lock$/,
-          /\.log$/,
-        ],
+        ignored: ignoredFn,
         persistent: true,
         ignoreInitial: true,
-        // Reduce depth to avoid deep traversal
-        depth: 5,
-        // Use polling as fallback if native watching fails
+        depth: 8,
         usePolling: false,
-        // Increase stability
         awaitWriteFinish: {
-          stabilityThreshold: 500,
+          stabilityThreshold: 400,
           pollInterval: 100,
         },
-        // Prevent following symlinks to avoid loops
         followSymlinks: false,
-        // Disable atomic writes handling
         atomic: false,
       });
 

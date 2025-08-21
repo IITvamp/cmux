@@ -7,7 +7,8 @@ import { api } from "@cmux/convex/api";
 import { type Id } from "@cmux/convex/dataModel";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { convexQuery } from "@convex-dev/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { useQuery as useRQ } from "@tanstack/react-query";
+import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -54,7 +55,7 @@ function TaskDetailPage() {
   const { runId } = Route.useSearch();
 
   const [isCreatingPr, setIsCreatingPr] = useState(false);
-  const [isCheckingDiffs, setIsCheckingDiffs] = useState(false);
+  // Removed periodic diff refresh; diffs are loaded on demand and on run change
   const [diffControls, setDiffControls] = useState<{
     expandAll: () => void;
     collapseAll: () => void;
@@ -62,6 +63,8 @@ function TaskDetailPage() {
     totalDeletions: number;
   } | null>(null);
   const { socket } = useSocket();
+  const router = useRouter();
+  const queryClient = router.options.context?.queryClient;
 
   const task = useQuery(api.tasks.getById, {
     id: taskId,
@@ -86,11 +89,31 @@ function TaskDetailPage() {
     );
   }, [runId, taskRuns, crownedRun]);
 
-  // Fetch diffs for the selected run
-  const diffs = useQuery(
-    api.gitDiffs.getByTaskRun,
-    selectedRun ? { taskRunId: selectedRun._id } : "skip"
-  );
+  // Fetch diffs for the selected run via socket (on-demand)
+  const diffsQuery = useRQ({
+    queryKey: ["run-diffs", selectedRun?._id ?? "none"],
+    queryFn: async () =>
+      await new Promise<import("@cmux/shared/diff-types").ReplaceDiffEntry[]>(
+        (resolve, reject) => {
+          if (!selectedRun?._id || !socket) {
+            console.error("No selected run or socket");
+            resolve([]);
+            return;
+          }
+          socket.emit(
+            "get-run-diffs",
+            { taskRunId: selectedRun._id },
+            (resp) => {
+              console.log("get-run-diffs", resp);
+              if (resp.ok) resolve(resp.diffs);
+              else reject(new Error(resp.error || "Failed to load diffs"));
+            }
+          );
+        }
+      ),
+    enabled: !!selectedRun?._id && !!socket,
+    staleTime: 10_000,
+  });
 
   // On selection, sync PR state with GitHub so UI reflects latest
   useEffect(() => {
@@ -104,55 +127,50 @@ function TaskDetailPage() {
     );
   }, [selectedRun?._id, socket]);
 
-  // Check for new changes on mount and periodically
+  // Live update diffs when files change for this worktree; mutate TanStack cache directly
   useEffect(() => {
-    if (!selectedRun) return;
-
-    const checkForChanges = async () => {
-      setIsCheckingDiffs(true);
-
-      try {
-        // Use Socket.IO to request diff refresh from the server
-        if (!socket) {
-          console.warn("Socket not available");
-          setIsCheckingDiffs(false);
-          return;
-        }
-
-        socket.emit(
-          "refresh-diffs",
-          { taskRunId: selectedRun._id },
-          (response: { success: boolean; message?: string }) => {
-            if (response.success) {
-              console.log("Diff refresh:", response.message);
-              // The diffs will be updated reactively via the useQuery hook
-            } else {
-              console.log("Could not refresh diffs:", response.message);
-            }
-            setIsCheckingDiffs(false);
+    if (!socket || !selectedRun?._id || !selectedRun?.worktreePath) return;
+    const runId = selectedRun._id as Id<"taskRuns">;
+    const workspacePath = selectedRun.worktreePath as string;
+    const onChanged = (data: { workspacePath: string; filePath: string }) => {
+      if (data.workspacePath !== workspacePath) return;
+      socket.emit(
+        "get-run-diffs",
+        { taskRunId: runId },
+        (resp: {
+          ok: boolean;
+          diffs: import("@cmux/shared/diff-types").ReplaceDiffEntry[];
+          error?: string;
+        }) => {
+          if (resp.ok && queryClient) {
+            queryClient.setQueryData(["run-diffs", runId], resp.diffs);
           }
-        );
-      } catch (error) {
-        console.error("Error refreshing diffs:", error);
-        setIsCheckingDiffs(false);
-      }
+        }
+      );
     };
+    socket.on("git-file-changed", onChanged);
+    return () => {
+      socket.off("git-file-changed", onChanged);
+    };
+  }, [socket, selectedRun?._id, selectedRun?.worktreePath, queryClient]);
 
-    // Check on mount
-    checkForChanges();
-
-    // Check periodically (every 30 seconds)
-    const interval = setInterval(checkForChanges, 30000);
-
-    return () => clearInterval(interval);
-  }, [selectedRun?._id]);
+  // Check for new changes on mount and periodically
+  // Initial load on run change
+  useEffect(() => {
+    if (!selectedRun?._id) return;
+    void diffsQuery.refetch();
+  }, [selectedRun?._id, diffsQuery.refetch, diffsQuery]);
 
   // Stabilize diffs per-run to avoid cross-run flashes
   const [stableDiffsByRun, setStableDiffsByRun] = useState<
-    Record<Id<"taskRuns">, typeof diffs>
+    Record<
+      Id<"taskRuns">,
+      import("@cmux/shared/diff-types").ReplaceDiffEntry[] | undefined
+    >
   >({});
   useEffect(() => {
-    if (!diffs || isCheckingDiffs || !selectedRun?._id) return;
+    const diffs = diffsQuery.data;
+    if (!diffs || !selectedRun?._id) return;
     const runKey = selectedRun._id;
     setStableDiffsByRun((prev) => {
       const prevForRun = prev[runKey];
@@ -174,17 +192,18 @@ function TaskDetailPage() {
       });
       return { ...prev, [runKey]: next };
     });
-  }, [diffs, isCheckingDiffs, selectedRun?._id]);
+  }, [diffsQuery.data, selectedRun?._id]);
 
   // When a refresh cycle ends, apply whatever the latest diffs are for this run
   useEffect(() => {
-    if (!isCheckingDiffs && diffs && selectedRun?._id) {
+    const diffs = diffsQuery.data;
+    if (diffs && selectedRun?._id) {
       setStableDiffsByRun((prev) => ({
         ...prev,
         [selectedRun._id]: diffs,
       }));
     }
-  }, [isCheckingDiffs, diffs, selectedRun?._id]);
+  }, [diffsQuery.data, selectedRun?._id]);
 
   const [, setIsMerging] = useState(false);
   const handleMerge = async (method: MergeMethod): Promise<void> => {
@@ -218,7 +237,8 @@ function TaskDetailPage() {
   };
 
   const hasAnyDiffs = !!(
-    (selectedRun?._id ? stableDiffsByRun[selectedRun._id] : diffs) || []
+    (selectedRun?._id ? stableDiffsByRun[selectedRun._id] : diffsQuery.data) ||
+    []
   ).length;
 
   return (
@@ -229,7 +249,6 @@ function TaskDetailPage() {
             task={task}
             taskRuns={taskRuns ?? null}
             selectedRun={selectedRun ?? null}
-            isCheckingDiffs={isCheckingDiffs}
             isCreatingPr={isCreatingPr}
             setIsCreatingPr={setIsCreatingPr}
             onMerge={handleMerge}
@@ -238,6 +257,7 @@ function TaskDetailPage() {
             hasAnyDiffs={hasAnyDiffs}
             onExpandAll={diffControls?.expandAll}
             onCollapseAll={diffControls?.collapseAll}
+            isLoading={diffsQuery.isPending}
           />
           {task?.text && (
             <div className="mb-2 px-3.5">
@@ -255,10 +275,10 @@ function TaskDetailPage() {
                 (selectedRun?._id
                   ? stableDiffsByRun[selectedRun._id]
                   : undefined) ||
-                diffs ||
+                diffsQuery.data ||
                 []
               }
-              isLoading={!diffs && !!selectedRun}
+              isLoading={!diffsQuery.data && !!selectedRun}
               taskRunId={selectedRun?._id}
               key={selectedRun?._id}
               onControlsChange={(c) => setDiffControls(c)}
