@@ -197,14 +197,22 @@ export default function LandingPage() {
           <h2 className="text-2xl font-semibold text-center mb-8">
             Rethinking the developer interface
           </h2>
+         
           <div className="space-y-4 text-neutral-400 mb-12">
-            <p>
+            <p> 
               <span className="text-white font-semibold">
                 The interface is the bottleneck.
               </span>{" "}
               We've spent years making AI agents better at coding, but almost no
               time making it easier to verify their work. The result? Developers
               spend 80% of their time reviewing and 20% prompting.
+            </p>
+            <p>
+              Running multiple agents at once sounds powerful until it turns into
+              chaos: 3-4 terminals, each on a different task, and you're asking,
+              “Which one is on auth? Did the database refactor finish?” You end
+              up bouncing between windows, running git diff, and piecing together
+              what changed where.
             </p>
             <p>
               <span className="text-white font-semibold">
@@ -216,6 +224,13 @@ export default function LandingPage() {
               independent.
             </p>
             <p>
+              The issue isn't that agents aren't good — they're getting scary
+              good. It's that our tools were designed for a different era. VS Code
+              was built for writing code, not reviewing five parallel streams of
+              AI-generated changes. Terminals expect sequential commands, not a
+              fleet of autonomous workers.
+            </p>
+            <p>
               <span className="text-white font-semibold">
                 Verification is non-negotiable.
               </span>{" "}
@@ -223,6 +238,18 @@ export default function LandingPage() {
               application, the test results, the performance metrics—all in
               real-time, for every agent, without switching contexts.
             </p>
+            <p>
+              cmux solves this by giving each agent its own world: separate Docker
+              container, separate VS Code, separate git state. VS Code opens with
+              the git diff already showing. Every change is isolated to its task,
+              so you can see exactly what each agent did — immediately — without
+              losing context. That's what makes running 10+ agents actually
+              workable.
+            </p>
+           
+            
+           
+          
           </div>
         </div>
       </section>
