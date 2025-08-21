@@ -153,7 +153,7 @@ export const OpenInEditorResponseSchema = z.object({
 
 // File listing events
 export const ListFilesRequestSchema = z.object({
-  repoUrl: z.string(),
+  repoPath: z.string(),
   branch: z.string().optional(),
   pattern: z.string().optional(), // Optional glob pattern for filtering
 });

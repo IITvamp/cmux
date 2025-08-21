@@ -5,6 +5,8 @@ import { MorphCloudClient } from "morphcloud";
 import { io, Socket } from "socket.io-client";
 
 const client = new MorphCloudClient();
+
+console.log("Starting instance");
 const instance = await client.instances.start({
   // snapshotId: "snapshot_yawsf9cr",
   snapshotId: "snapshot_kco1jqb6",
@@ -14,6 +16,12 @@ const instance = await client.instances.start({
   metadata: {
     app: "cmux-dev",
   },
+});
+
+process.on("SIGINT", async () => {
+  console.log("Stopping instance");
+  await instance.stop();
+  process.exit(0);
 });
 
 console.log(`Created instance: ${instance.id}`);
@@ -45,42 +53,70 @@ const clientSocket = io(workerUrl.toString(), {
   forceNew: true,
 }) as Socket<WorkerToServerEvents, ServerToWorkerEvents>;
 
-clientSocket.on("connect_error", (err) => {
-  console.error("Failed to connect to worker", err);
-});
-
-clientSocket.on("connect", () => {
-  console.log("Connected to worker!");
-  // clientSocket.emit("get-active-terminals");
-  // dispatch a tack
-  clientSocket.emit(
-    "worker:exec",
-    {
-      command: "tmux",
-      args: ["new-session", "-s", "ski", "-d"],
-      cwd: "/root/workspace",
-      env: {},
-      // terminalId: crypto.randomUUID(),
-      // cols: 80,
-      // rows: 24,
-      // cwd: "/root/workspace",
-      // command: "bun x opencode-ai 'whats the time'",
-    },
-    (payload) => {
-      console.log("worker:exec result", payload);
-    }
-  );
-});
-
 clientSocket.on("disconnect", () => {
   console.log("Disconnected from worker");
+  process.exit(1);
+});
+await new Promise((resolve, reject) => {
+  clientSocket.on("connect_error", (err) => {
+    console.error("Failed to connect to worker", err);
+    reject(err);
+  });
+
+  clientSocket.on("connect", () => {
+    console.log("Connected to worker!");
+    resolve(true);
+  });
 });
 
-process.on("SIGINT", async () => {
-  console.log("Stopping instance");
-  await instance.stop();
-  process.exit(0);
+async function exec({
+  clientSocket,
+  command,
+  args,
+  cwd,
+  env,
+}: {
+  clientSocket: Socket<WorkerToServerEvents, ServerToWorkerEvents>;
+  command: string;
+  args: string[];
+  cwd: string;
+  env: Record<string, string>;
+}) {
+  return new Promise((resolve, reject) => {
+    clientSocket.emit("worker:exec", { command, args, cwd, env }, (payload) => {
+      if (payload.error) {
+        reject(payload.error);
+      } else {
+        resolve(payload);
+      }
+    });
+  });
+}
+
+await exec({
+  clientSocket,
+  command: "git",
+  args: [
+    "clone",
+    "--depth=1",
+    "https://github.com/manaflow-ai/cmux",
+    "/root/workspace",
+  ],
+  cwd: "/root",
+  env: {},
 });
+
+// then start tmux
+
+await exec({
+  clientSocket,
+  command: "tmux",
+  args: ["new-session", "-s", "cmux", "-d"],
+  cwd: "/root/workspace",
+  env: {},
+});
+
+// then we
 
 console.log("Press Ctrl+C to stop instance");
 await new Promise(() => void {});

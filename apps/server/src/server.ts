@@ -49,7 +49,7 @@ import {
 import { waitForConvex } from "./utils/waitForConvex.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
-import { getWorktreePath } from "./workspace.js";
+import { getProjectPaths } from "./workspace.js";
 
 const execAsync = promisify(exec);
 
@@ -631,7 +631,8 @@ export async function startServer({
           } catch {
             try {
               const repoMgr = RepositoryManager.getInstance();
-              const defaultBranch = await repoMgr.getDefaultBranch(worktreePath);
+              const defaultBranch =
+                await repoMgr.getDefaultBranch(worktreePath);
               if (defaultBranch) baseRef = `origin/${defaultBranch}`;
             } catch {
               baseRef = "HEAD";
@@ -772,22 +773,42 @@ export async function startServer({
 
     socket.on("list-files", async (data) => {
       try {
-        const { repoUrl, branch, pattern } = ListFilesRequestSchema.parse(data);
-
-        // Get the origin path for this repository
-        const worktreeInfo = await getWorktreePath({ repoUrl, branch });
-
-        // Ensure directories exist
-        await fs.mkdir(worktreeInfo.projectPath, { recursive: true });
-
+        const {
+          repoPath: repoUrl,
+          branch,
+          pattern,
+        } = ListFilesRequestSchema.parse(data);
         const repoManager = RepositoryManager.getInstance();
 
+        // Resolve origin path without assuming any branch
+        const projectPaths = await getProjectPaths(repoUrl);
+
+        // Ensure directories exist
+        await fs.mkdir(projectPaths.projectPath, { recursive: true });
+        await fs.mkdir(projectPaths.worktreesPath, { recursive: true });
+
         // Ensure the repository is cloned/fetched with deduplication
+        // Ensure repository exists (clone if needed) without assuming branch
+        await repoManager.ensureRepository(repoUrl, projectPaths.originPath);
+
+        // Determine the effective base branch
+        const baseBranch =
+          branch ||
+          (await repoManager.getDefaultBranch(projectPaths.originPath));
+
+        // Fetch that branch to make sure origin has it
         await repoManager.ensureRepository(
           repoUrl,
-          worktreeInfo.originPath,
-          branch
+          projectPaths.originPath,
+          baseBranch
         );
+
+        // For clarity downstream, compute a proper worktreeInfo keyed by baseBranch
+        const worktreeInfo = {
+          ...projectPaths,
+          worktreePath: projectPaths.worktreesPath + "/" + baseBranch,
+          branch: baseBranch,
+        } as const;
 
         // Check if the origin directory exists
         try {

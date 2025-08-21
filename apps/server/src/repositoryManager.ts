@@ -430,7 +430,7 @@ export class RepositoryManager {
       // Extract branch name from refs/remotes/origin/main format
       const match = stdout.trim().match(/refs\/remotes\/origin\/(.+)$/);
       return match ? match[1] : "main";
-    } catch (error) {
+    } catch (_error) {
       // If that fails, try to get it from the remote
       try {
         const { stdout } = await this.executeGitCommand(

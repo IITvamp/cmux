@@ -18,9 +18,9 @@ interface WorktreeInfo {
   projectPath: string;
   originPath: string;
   worktreesPath: string;
-  branchName: string;
   worktreePath: string;
   repoName: string;
+  branch: string;
 }
 
 async function getAppDataPath(): Promise<string> {
@@ -48,7 +48,7 @@ function extractRepoName(repoUrl: string): string {
 
 export async function getWorktreePath(args: {
   repoUrl: string;
-  branch?: string;
+  branch: string;
 }): Promise<WorktreeInfo> {
   // Check for custom worktree path setting
   const settings = await convex.query(api.workspaceSettings.get);
@@ -69,9 +69,7 @@ export async function getWorktreePath(args: {
   const originPath = path.join(projectPath, "origin");
   const worktreesPath = path.join(projectPath, "worktrees");
 
-  const timestamp = Date.now();
-  const branchName = `cmux-${timestamp}`;
-  const worktreePath = path.join(worktreesPath, branchName);
+  const worktreePath = path.join(worktreesPath, args.branch);
 
   // For consistency, still return appDataPath even if not used for custom paths
   const appDataPath = await getAppDataPath();
@@ -82,8 +80,42 @@ export async function getWorktreePath(args: {
     projectPath,
     originPath,
     worktreesPath,
-    branchName,
     worktreePath,
+    repoName,
+    branch: args.branch,
+  };
+}
+
+export async function getProjectPaths(repoUrl: string): Promise<{
+  appDataPath: string;
+  projectsPath: string;
+  projectPath: string;
+  originPath: string;
+  worktreesPath: string;
+  repoName: string;
+}> {
+  const settings = await convex.query(api.workspaceSettings.get);
+
+  let projectsPath: string;
+  if (settings?.worktreePath) {
+    const expandedPath = settings.worktreePath.replace(/^~/, os.homedir());
+    projectsPath = expandedPath;
+  } else {
+    projectsPath = path.join(os.homedir(), "cmux");
+  }
+
+  const repoName = extractRepoName(repoUrl);
+  const projectPath = path.join(projectsPath, repoName);
+  const originPath = path.join(projectPath, "origin");
+  const worktreesPath = path.join(projectPath, "worktrees");
+  const appDataPath = await getAppDataPath();
+
+  return {
+    appDataPath,
+    projectsPath,
+    projectPath,
+    originPath,
+    worktreesPath,
     repoName,
   };
 }
@@ -96,6 +128,17 @@ export async function setupProjectWorkspace(args: {
   try {
     const { worktreeInfo } = args;
     const repoManager = RepositoryManager.getInstance();
+    // Normalize worktree path to avoid accidental extra folders like "cmux/<branch>"
+    const normalizedWorktreePath = path.join(
+      worktreeInfo.worktreesPath,
+      worktreeInfo.branch
+    );
+    if (worktreeInfo.worktreePath !== normalizedWorktreePath) {
+      serverLogger.info(
+        `Normalizing worktree path from ${worktreeInfo.worktreePath} to ${normalizedWorktreePath}`
+      );
+      worktreeInfo.worktreePath = normalizedWorktreePath;
+    }
 
     // Check if the projects path exists and has non-git content
     try {
@@ -142,27 +185,36 @@ export async function setupProjectWorkspace(args: {
     );
 
     // Get the default branch if not specified
-    const baseBranch = args.branch || await repoManager.getDefaultBranch(worktreeInfo.originPath);
+    const baseBranch =
+      args.branch ||
+      (await repoManager.getDefaultBranch(worktreeInfo.originPath));
 
     // Check if worktree already exists in git
     const worktreeRegistered = await repoManager.worktreeExists(
       worktreeInfo.originPath,
       worktreeInfo.worktreePath
     );
-    
+
     if (worktreeRegistered) {
       // Check if the directory actually exists
       try {
         await fs.access(worktreeInfo.worktreePath);
-        serverLogger.info(`Worktree already exists at ${worktreeInfo.worktreePath}, using existing`);
+        serverLogger.info(
+          `Worktree already exists at ${worktreeInfo.worktreePath}, using existing`
+        );
       } catch {
         // Worktree is registered but directory doesn't exist, remove and recreate
-        serverLogger.info(`Worktree registered but directory missing, recreating...`);
-        await repoManager.removeWorktree(worktreeInfo.originPath, worktreeInfo.worktreePath);
+        serverLogger.info(
+          `Worktree registered but directory missing, recreating...`
+        );
+        await repoManager.removeWorktree(
+          worktreeInfo.originPath,
+          worktreeInfo.worktreePath
+        );
         await repoManager.createWorktree(
           worktreeInfo.originPath,
           worktreeInfo.worktreePath,
-          worktreeInfo.branchName,
+          worktreeInfo.branch,
           baseBranch
         );
       }
@@ -171,7 +223,7 @@ export async function setupProjectWorkspace(args: {
       await repoManager.createWorktree(
         worktreeInfo.originPath,
         worktreeInfo.worktreePath,
-        worktreeInfo.branchName,
+        worktreeInfo.branch,
         baseBranch
       );
     }
