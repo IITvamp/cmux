@@ -1,0 +1,1 @@
+export { CommentWidget } from './components/CommentWidget';
