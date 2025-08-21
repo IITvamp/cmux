@@ -304,8 +304,8 @@ export default function LandingPage() {
                   Sandbox environment preview
                 </h3>
                 <p className="text-sm text-neutral-400">
-                  Spin up a sandbox to preview your changes safely. 
-                  cmux uses Morph instances for fast cloud sandboxes or Docker locally.
+                  Spin up isolated sandboxes to preview your changes safely. 
+                  cmux uses fast cloud sandboxes or Docker locally.
                 </p>
               </div>
 
