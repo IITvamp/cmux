@@ -52,8 +52,8 @@
     }
   },
   "postCreateCommand": "CI=1 pnpm install --frozen-lockfile --prefer-offline",
-  "postStartCommand": "bash /workspace/scripts/dev.sh",
-  "remoteUser": "node",
+  "postStartCommand": "bash /root/workspace/scripts/dev.sh",
+  "remoteUser": "root",
   "features": {
     "ghcr.io/devcontainers/features/git:1": {},
     "ghcr.io/devcontainers/features/github-cli:1": {},

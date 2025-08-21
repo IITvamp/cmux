@@ -8,36 +8,37 @@ import { serverLogger } from "./fileLogger.js";
  * @returns The kebab-cased string with only safe characters
  */
 export function toKebabCase(input: string): string {
-  return input
-    // Treat pluralized acronyms like "PRs"/"APIs"/"IDs" as single tokens
-    // - If a word starts with 2+ capitals followed by a lone lowercase 's',
-    //   optionally followed by another capitalized sequence, keep the 's' with the acronym
-    //   so we don't insert a hyphen inside it (e.g., "PRs" -> "PRS", "PRsFix" -> "PRSFix").
-    .replace(/\b([A-Z]{2,})s(?=\b|[^a-z])/g, "$1S")
-    // First, handle camelCase by inserting hyphens before capital letters
-    .replace(/([a-z])([A-Z])/g, "$1-$2")
-    // Also handle sequences like "HTTPServer" -> "HTTP-Server"
-    .replace(/([A-Z])([A-Z][a-z])/g, "$1-$2")
-    .toLowerCase()
-    // Replace any sequence of non-alphanumeric characters with a single hyphen
-    .replace(/[^a-z0-9]+/g, "-")
-    // Remove leading and trailing hyphens
-    .replace(/^-+|-+$/g, "")
-    // Replace multiple consecutive hyphens with a single hyphen
-    .replace(/-+/g, "-")
-    // Limit length to 50 characters
-    .substring(0, 50);
+  return (
+    input
+      // Treat pluralized acronyms like "PRs"/"APIs"/"IDs" as single tokens
+      // - If a word starts with 2+ capitals followed by a lone lowercase 's',
+      //   optionally followed by another capitalized sequence, keep the 's' with the acronym
+      //   so we don't insert a hyphen inside it (e.g., "PRs" -> "PRS", "PRsFix" -> "PRSFix").
+      .replace(/\b([A-Z]{2,})s(?=\b|[^a-z])/g, "$1S")
+      // First, handle camelCase by inserting hyphens before capital letters
+      .replace(/([a-z])([A-Z])/g, "$1-$2")
+      // Also handle sequences like "HTTPServer" -> "HTTP-Server"
+      .replace(/([A-Z])([A-Z][a-z])/g, "$1-$2")
+      .toLowerCase()
+      // Replace any sequence of non-alphanumeric characters with a single hyphen
+      .replace(/[^a-z0-9]+/g, "-")
+      // Remove leading and trailing hyphens
+      .replace(/^-+|-+$/g, "")
+      // Replace multiple consecutive hyphens with a single hyphen
+      .replace(/-+/g, "-")
+      // Limit length to 50 characters
+      .substring(0, 50)
+  );
 }
 
 /**
- * Generate a random 4-digit string
- * @returns A 4-character alphanumeric string
+ * Generate a random 5-digit numeric string
+ * @returns A 5-character string of digits 0-9
  */
 export function generateRandomId(): string {
-  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
   let result = "";
-  for (let i = 0; i < 4; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  for (let i = 0; i < 5; i++) {
+    result += Math.floor(Math.random() * 10).toString();
   }
   return result;
 }
@@ -66,35 +67,40 @@ export async function generatePRTitle(
   // Try OpenAI first
   if (apiKeys.OPENAI_API_KEY) {
     try {
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKeys.OPENAI_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: "gpt-4o-mini",
-          messages: [
-            {
-              role: "system",
-              content:
-                "You are a helpful assistant that generates concise PR titles. Generate a single PR title (5-10 words) that summarizes the task. Respond with ONLY the title, no quotes, no explanation.",
-            },
-            {
-              role: "user",
-              content: `Task: ${taskDescription}`,
-            },
-          ],
-          max_tokens: 50,
-          temperature: 0.3,
-        }),
-      });
+      const response = await fetch(
+        "https://api.openai.com/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKeys.OPENAI_API_KEY}`,
+          },
+          body: JSON.stringify({
+            model: "gpt-4o-mini",
+            messages: [
+              {
+                role: "system",
+                content:
+                  "You are a helpful assistant that generates concise PR titles. Generate a single PR title (5-10 words) that summarizes the task. Respond with ONLY the title, no quotes, no explanation.",
+              },
+              {
+                role: "user",
+                content: `Task: ${taskDescription}`,
+              },
+            ],
+            max_tokens: 50,
+            temperature: 0.3,
+          }),
+        }
+      );
 
       if (response.ok) {
         const data = await response.json();
         const prTitle = data.choices?.[0]?.message?.content?.trim();
         if (prTitle) {
-          serverLogger.info(`[BranchNameGenerator] Generated PR title via OpenAI: ${prTitle}`);
+          serverLogger.info(
+            `[BranchNameGenerator] Generated PR title via OpenAI: ${prTitle}`
+          );
           return prTitle;
         }
       }
@@ -130,7 +136,9 @@ export async function generatePRTitle(
         const data = await response.json();
         const prTitle = data.content?.[0]?.text?.trim();
         if (prTitle) {
-          serverLogger.info(`[BranchNameGenerator] Generated PR title via Anthropic: ${prTitle}`);
+          serverLogger.info(
+            `[BranchNameGenerator] Generated PR title via Anthropic: ${prTitle}`
+          );
           return prTitle;
         }
       }
@@ -171,7 +179,9 @@ export async function generatePRTitle(
         const data = await response.json();
         const prTitle = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
         if (prTitle) {
-          serverLogger.info(`[BranchNameGenerator] Generated PR title via Gemini: ${prTitle}`);
+          serverLogger.info(
+            `[BranchNameGenerator] Generated PR title via Gemini: ${prTitle}`
+          );
           return prTitle;
         }
       }
@@ -181,7 +191,9 @@ export async function generatePRTitle(
   }
 
   // Fallback: generate a simple title from the task description
-  serverLogger.warn("[BranchNameGenerator] No API keys available, using fallback");
+  serverLogger.warn(
+    "[BranchNameGenerator] No API keys available, using fallback"
+  );
   const words = taskDescription.split(/\s+/).slice(0, 5).join(" ");
   return words || "feature-update";
 }
@@ -196,9 +208,10 @@ export async function generateBranchBaseName(
 ): Promise<string> {
   // Fetch API keys from Convex
   const apiKeys = await convex.query(api.apiKeys.getAllForAgents);
-  
+
   const prTitle = await generatePRTitle(taskDescription, apiKeys);
-  const titleToUse = prTitle || taskDescription.split(/\s+/).slice(0, 5).join(" ") || "feature";
+  const titleToUse =
+    prTitle || taskDescription.split(/\s+/).slice(0, 5).join(" ") || "feature";
   const kebabTitle = toKebabCase(titleToUse);
   return `cmux/${kebabTitle}`;
 }
@@ -212,7 +225,11 @@ export async function getPRTitleFromTaskDescription(
 ): Promise<string> {
   const apiKeys = await convex.query(api.apiKeys.getAllForAgents);
   const prTitle = await generatePRTitle(taskDescription, apiKeys);
-  return prTitle || taskDescription.split(/\s+/).slice(0, 5).join(" ") || "feature update";
+  return (
+    prTitle ||
+    taskDescription.split(/\s+/).slice(0, 5).join(" ") ||
+    "feature update"
+  );
 }
 
 /**
@@ -254,12 +271,12 @@ export async function generateUniqueBranchNames(
   count: number
 ): Promise<string[]> {
   const baseName = await generateBranchBaseName(taskDescription);
-  
+
   // Generate unique IDs
   const ids = new Set<string>();
   while (ids.size < count) {
     ids.add(generateRandomId());
   }
-  
-  return Array.from(ids).map(id => `${baseName}-${id}`);
+
+  return Array.from(ids).map((id) => `${baseName}-${id}`);
 }

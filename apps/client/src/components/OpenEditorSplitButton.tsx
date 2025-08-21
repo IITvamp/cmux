@@ -1,7 +1,8 @@
 import { useSocket } from "@/contexts/socket/use-socket";
+import { editorIcons } from "@/components/ui/dropdown-types";
 import { Menu } from "@base-ui-components/react/menu";
 import clsx from "clsx";
-import { Check, ChevronDown, Package } from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { MenuArrow } from "./ui/menu";
@@ -93,6 +94,7 @@ export function OpenEditorSplitButton({
 
   const selected = menuItems.find((m) => m.id === selectedEditor) || null;
   const leftDisabled = !selected || !selected.enabled;
+  const SelectedIcon = selected ? editorIcons[selected.id] : null;
 
   const openSelected = useCallback(() => {
     if (!selected) return;
@@ -135,7 +137,7 @@ export function OpenEditorSplitButton({
           classNameLeft
         )}
       >
-        <Package className="w-3.5 h-3.5" />
+        {SelectedIcon && <SelectedIcon className="w-3.5 h-3.5" />}
         {selected ? selected.name : "Open in editor"}
       </button>
       <Menu.Root open={menuOpen} onOpenChange={setMenuOpen}>
@@ -149,7 +151,7 @@ export function OpenEditorSplitButton({
           <ChevronDown className="w-3.5 h-3.5" />
         </Menu.Trigger>
         <Menu.Portal>
-          <Menu.Positioner sideOffset={5} className="outline-none z-[9999]">
+          <Menu.Positioner sideOffset={5} className="outline-none z-[10001]">
             <Menu.Popup
               className={clsx(
                 "origin-[var(--transform-origin)] rounded-md bg-white dark:bg-black py-1",
@@ -162,6 +164,9 @@ export function OpenEditorSplitButton({
               )}
             >
               <MenuArrow />
+              <div className="px-2 py-1 text-xs font-medium text-neutral-500 dark:text-neutral-400">
+                Open with
+              </div>
               <Menu.RadioGroup
                 value={selected?.id}
                 onValueChange={(val) => {
@@ -169,28 +174,32 @@ export function OpenEditorSplitButton({
                   setMenuOpen(false);
                 }}
               >
-                {menuItems.map((item) => (
-                  <Menu.RadioItem
-                    key={item.id}
-                    value={item.id}
-                    disabled={!item.enabled}
-                    className={clsx(
-                      "grid cursor-default grid-cols-[0.75rem_1fr] items-center gap-2 py-2 pr-8 pl-2.5 text-sm leading-4 outline-none select-none",
-                      "data-[highlighted]:relative data-[highlighted]:z-0",
-                      "data-[highlighted]:text-neutral-50 dark:data-[highlighted]:text-neutral-900",
-                      "data-[highlighted]:before:absolute data-[highlighted]:before:inset-x-1 data-[highlighted]:before:inset-y-0",
-                      "data-[highlighted]:before:z-[-1] data-[highlighted]:before:rounded-sm",
-                      "data-[highlighted]:before:bg-neutral-900 dark:data-[highlighted]:before:bg-neutral-100",
-                      "data-[disabled]:text-neutral-400 dark:data-[disabled]:text-neutral-600 data-[disabled]:cursor-not-allowed"
-                    )}
-                    onClick={() => setMenuOpen(false)}
-                  >
-                    <Menu.RadioItemIndicator className="col-start-1">
-                      <Check className="w-3 h-3" />
-                    </Menu.RadioItemIndicator>
-                    <span className="col-start-2">{item.name}</span>
-                  </Menu.RadioItem>
-                ))}
+                {menuItems.map((item) => {
+                  const Icon = editorIcons[item.id];
+                  return (
+                    <Menu.RadioItem
+                      key={item.id}
+                      value={item.id}
+                      disabled={!item.enabled}
+                      className={clsx(
+                        "grid cursor-default grid-cols-[0.75rem_1rem_1fr] items-center gap-2 py-2 pr-8 pl-2.5 text-sm leading-4 outline-none select-none",
+                        "data-[highlighted]:relative data-[highlighted]:z-0",
+                        "data-[highlighted]:text-neutral-50 dark:data-[highlighted]:text-neutral-900",
+                        "data-[highlighted]:before:absolute data-[highlighted]:before:inset-x-1 data-[highlighted]:before:inset-y-0",
+                        "data-[highlighted]:before:z-[-1] data-[highlighted]:before:rounded-sm",
+                        "data-[highlighted]:before:bg-neutral-900 dark:data-[highlighted]:before:bg-neutral-100",
+                        "data-[disabled]:text-neutral-400 dark:data-[disabled]:text-neutral-600 data-[disabled]:cursor-not-allowed"
+                      )}
+                      onClick={() => setMenuOpen(false)}
+                    >
+                      <Menu.RadioItemIndicator className="col-start-1">
+                        <Check className="w-3 h-3" />
+                      </Menu.RadioItemIndicator>
+                      {Icon && <Icon className="w-3.5 h-3.5 col-start-2" />}
+                      <span className="col-start-3">{item.name}</span>
+                    </Menu.RadioItem>
+                  );
+                })}
               </Menu.RadioGroup>
             </Menu.Popup>
           </Menu.Positioner>

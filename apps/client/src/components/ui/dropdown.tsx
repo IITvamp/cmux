@@ -7,17 +7,14 @@ export type DropdownRootProps = React.ComponentPropsWithoutRef<
   typeof Menu.Root
 >;
 
-export const DropdownRoot: React.FC<DropdownRootProps> = ({
-  children,
-  ...props
-}) => {
+const DropdownRoot: React.FC<DropdownRootProps> = ({ children, ...props }) => {
   return <Menu.Root {...props}>{children}</Menu.Root>;
 };
 
 export interface DropdownTriggerProps
   extends React.ComponentPropsWithoutRef<typeof Menu.Trigger> {}
 
-export const DropdownTrigger: React.FC<DropdownTriggerProps> = ({
+const DropdownTrigger: React.FC<DropdownTriggerProps> = ({
   className,
   ...props
 }) => {
@@ -29,14 +26,14 @@ export const DropdownTrigger: React.FC<DropdownTriggerProps> = ({
 export interface DropdownPositionerProps
   extends React.ComponentPropsWithoutRef<typeof Menu.Positioner> {}
 
-export const DropdownPositioner: React.FC<DropdownPositionerProps> = ({
+const DropdownPositioner: React.FC<DropdownPositionerProps> = ({
   className,
   ...props
 }) => {
   return (
     <Menu.Positioner
       {...props}
-      className={clsx("outline-none z-[9999]", className)}
+      className={clsx("outline-none z-[10001]", className)}
     />
   );
 };
@@ -44,7 +41,7 @@ export const DropdownPositioner: React.FC<DropdownPositionerProps> = ({
 export interface DropdownPopupProps
   extends React.ComponentPropsWithoutRef<typeof Menu.Popup> {}
 
-export const DropdownPopup: React.FC<DropdownPopupProps> = ({
+const DropdownPopup: React.FC<DropdownPopupProps> = ({
   className,
   onClick,
   ...props
@@ -97,7 +94,7 @@ export const DropdownItem: React.FC<DropdownItemProps> = ({
 export interface DropdownArrowProps
   extends React.ComponentPropsWithoutRef<typeof Menu.Arrow> {}
 
-export const DropdownArrow: React.FC<DropdownArrowProps> = ({
+const DropdownArrow: React.FC<DropdownArrowProps> = ({
   className,
   ...props
 }) => {
@@ -133,7 +130,7 @@ export interface DropdownExports {
 export interface DropdownCheckboxItemProps
   extends React.ComponentPropsWithoutRef<typeof Menu.CheckboxItem> {}
 
-export const DropdownCheckboxItem: React.FC<DropdownCheckboxItemProps> = ({
+const DropdownCheckboxItem: React.FC<DropdownCheckboxItemProps> = ({
   className,
   ...props
 }) => {
@@ -157,7 +154,7 @@ export const DropdownCheckboxItem: React.FC<DropdownCheckboxItemProps> = ({
 export interface DropdownCheckboxItemIndicatorProps
   extends React.ComponentPropsWithoutRef<typeof Menu.CheckboxItemIndicator> {}
 
-export const DropdownCheckboxItemIndicator: React.FC<
+const DropdownCheckboxItemIndicator: React.FC<
   DropdownCheckboxItemIndicatorProps
 > = ({ className, ...props }) => {
   return (

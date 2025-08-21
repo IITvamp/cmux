@@ -78,7 +78,7 @@ start_devcontainer() {
                 
                 if [ -n "$CONTAINER_ID" ]; then
                     # Execute dev.sh inside the devcontainer
-                    docker exec -d "$CONTAINER_ID" bash -c "cd /workspaces/$(basename /root/workspace) && ./scripts/dev.sh" >> /var/log/cmux/devcontainer-dev.log 2>&1 || {
+                    docker exec -d "$CONTAINER_ID" bash -c "cd /root/workspace && ./scripts/dev.sh" >> /var/log/cmux/devcontainer-dev.log 2>&1 || {
                         echo "[Startup] Failed to run dev.sh in devcontainer (non-fatal)" >> /var/log/cmux/startup.log
                     }
                     echo "[Startup] Started dev.sh in devcontainer (logs at /var/log/cmux/devcontainer-dev.log)" >> /var/log/cmux/startup.log

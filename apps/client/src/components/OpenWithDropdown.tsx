@@ -1,12 +1,17 @@
 import { Dropdown } from "@/components/ui/dropdown";
+import { editorIcons, type EditorType } from "@/components/ui/dropdown-types";
 import { useSocket } from "@/contexts/socket/use-socket";
 import type { Doc } from "@cmux/convex/dataModel";
 import clsx from "clsx";
-import { ChevronDown, Code2, ExternalLink, Globe } from "lucide-react";
+import {
+  ChevronDown,
+  Code2,
+  ExternalLink,
+  GitBranch,
+  Globe,
+} from "lucide-react";
 import { useCallback, useEffect } from "react";
 import { toast } from "sonner";
-
-type EditorType = "vscode-remote" | "cursor" | "vscode" | "windsurf" | "finder";
 
 interface OpenWithDropdownProps {
   vscodeUrl?: string | null;
@@ -129,45 +134,60 @@ export function OpenWithDropdown({
         <Dropdown.Positioner sideOffset={8}>
           <Dropdown.Popup>
             <Dropdown.Arrow />
-            {menuItems.map((item) => (
-              <Dropdown.Item
-                key={item.id}
-                disabled={!item.enabled}
-                onClick={() => {
-                  const loadingToast = toast.loading(`Opening ${item.name}...`);
+            <div className="px-2 py-1 text-xs font-medium text-neutral-500 dark:text-neutral-400">
+              Open with
+            </div>
+            {menuItems.map((item) => {
+              const Icon = editorIcons[item.id];
+              return (
+                <Dropdown.Item
+                  key={item.id}
+                  disabled={!item.enabled}
+                  onClick={() => {
+                    const loadingToast = toast.loading(
+                      `Opening ${item.name}...`
+                    );
 
-                  handleOpenInEditor(item.id)
-                    .then(() => {
-                      toast.success(`Opened ${item.name}`, {
-                        id: loadingToast,
+                    handleOpenInEditor(item.id)
+                      .then(() => {
+                        toast.success(`Opened ${item.name}`, {
+                          id: loadingToast,
+                        });
+                      })
+                      .catch((error) => {
+                        let errorMessage = "Failed to open editor";
+
+                        // Handle specific error cases
+                        if (
+                          error.message?.includes("ENOENT") ||
+                          error.message?.includes("not found") ||
+                          error.message?.includes("command not found")
+                        ) {
+                          errorMessage = `${item.name} is not installed or not found in PATH`;
+                        } else if (error.message) {
+                          errorMessage = error.message;
+                        }
+
+                        toast.error(errorMessage, {
+                          id: loadingToast,
+                        });
                       });
-                    })
-                    .catch((error) => {
-                      let errorMessage = "Failed to open editor";
-
-                      // Handle specific error cases
-                      if (
-                        error.message?.includes("ENOENT") ||
-                        error.message?.includes("not found") ||
-                        error.message?.includes("command not found")
-                      ) {
-                        errorMessage = `${item.name} is not installed or not found in PATH`;
-                      } else if (error.message) {
-                        errorMessage = error.message;
-                      }
-
-                      toast.error(errorMessage, {
-                        id: loadingToast,
-                      });
-                    });
-                }}
-              >
-                {item.name}
-              </Dropdown.Item>
-            ))}
+                  }}
+                  className="flex items-center gap-2"
+                >
+                  {Icon && <Icon className="w-3.5 h-3.5" />}
+                  {item.name}
+                </Dropdown.Item>
+              );
+            })}
             {branch && (
               <>
-                <Dropdown.Item onClick={handleCopyBranch}>
+                <div className="my-1 h-px bg-neutral-200 dark:bg-neutral-700" />
+                <Dropdown.Item
+                  onClick={handleCopyBranch}
+                  className="flex items-center gap-2"
+                >
+                  <GitBranch className="w-3.5 h-3.5" />
                   Copy branch
                 </Dropdown.Item>
               </>
@@ -176,7 +196,7 @@ export function OpenWithDropdown({
               <>
                 <div className="my-1 h-px bg-neutral-200 dark:bg-neutral-700" />
                 <div className="px-2 py-1 text-xs font-medium text-neutral-500 dark:text-neutral-400">
-                  Forwarded Ports
+                  Forwarded ports
                 </div>
                 {networking
                   .filter((service) => service.status === "running")
@@ -184,14 +204,18 @@ export function OpenWithDropdown({
                     <Dropdown.Item
                       key={service.port}
                       onClick={() => {
-                        window.open(service.url, "_blank", "noopener,noreferrer");
+                        window.open(
+                          service.url,
+                          "_blank",
+                          "noopener,noreferrer"
+                        );
                       }}
-                      className="flex items-center justify-between"
+                      className="flex items-center justify-between w-full pr-4!"
                     >
-                      <span className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 grow">
                         <Globe className="w-3 h-3" />
                         Port {service.port}
-                      </span>
+                      </div>
                       <ExternalLink className="w-3 h-3 text-neutral-400" />
                     </Dropdown.Item>
                   ))}

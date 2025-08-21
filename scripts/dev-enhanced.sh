@@ -54,7 +54,7 @@ if [ "$USE_DEVCONTAINER" = true ]; then
     
     # Run the dev script inside the container
     echo -e "\n${YELLOW}Starting development servers inside container...${NC}"
-    docker exec -it $CONTAINER_ID /workspace/.devcontainer/dev.sh
+    docker exec -it "$CONTAINER_ID" bash -lc "cd /root/workspace && ./scripts/dev.sh"
 else
     # Run the original dev.sh script
     echo -e "${BLUE}Starting development environment locally...${NC}"
