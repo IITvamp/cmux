@@ -88,11 +88,6 @@ export async function getClaudeEnvironment(): Promise<EnvironmentResult> {
       );
       const apiKey = execResult.stdout.trim();
       env.ANTHROPIC_API_KEY = apiKey;
-
-      // Add startup command to persist the API key in .bashrc
-      startupCommands.push(
-        `grep -q "export ANTHROPIC_API_KEY=" ~/.bashrc || echo 'export ANTHROPIC_API_KEY="${apiKey}"' >> ~/.bashrc`
-      );
     } catch {
       console.warn("No Claude API key found in keychain");
     }
