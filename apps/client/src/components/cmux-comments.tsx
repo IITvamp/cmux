@@ -324,47 +324,78 @@ function CommentMarker({ comment, onClick }: CommentMarkerProps) {
               const bubbleHeight = 400;
               const markerRadius = 16; // The marker is 32px (w-8 h-8) with center at position
               const gap = 4; // Small gap between marker and bubble
-              
+
               // The actual bounds of the marker (it's centered at position.x, position.y)
               const markerLeft = position.x - markerRadius;
               const markerRight = position.x + markerRadius;
               const markerTop = position.y - markerRadius;
               const markerBottom = position.y + markerRadius;
-              
+
               // Calculate potential positions with gap
               const bottomY = markerBottom + gap;
               const rightX = markerRight + gap;
               const leftX = markerLeft - bubbleWidth - gap;
               const topY = markerTop - bubbleHeight - gap;
-              
+
               // Check available space
-              const hasSpaceBottom = bottomY + bubbleHeight <= window.innerHeight;
+              const hasSpaceBottom =
+                bottomY + bubbleHeight <= window.innerHeight;
               const hasSpaceRight = rightX + bubbleWidth <= window.innerWidth;
               const hasSpaceLeft = leftX >= 0;
               const hasSpaceTop = topY >= 0;
-              
+
               let x, y;
-              
+
               // Priority: bottom first, then right, left, top
               if (hasSpaceBottom) {
                 // Place directly below marker, centered
-                x = Math.max(0, Math.min(position.x - bubbleWidth / 2, window.innerWidth - bubbleWidth));
+                x = Math.max(
+                  0,
+                  Math.min(
+                    position.x - bubbleWidth / 2,
+                    window.innerWidth - bubbleWidth
+                  )
+                );
                 y = bottomY;
               } else if (hasSpaceRight) {
                 // Place to the right of marker
                 x = rightX;
-                y = Math.max(0, Math.min(position.y - bubbleHeight / 3, window.innerHeight - bubbleHeight));
+                y = Math.max(
+                  0,
+                  Math.min(
+                    position.y - bubbleHeight / 3,
+                    window.innerHeight - bubbleHeight
+                  )
+                );
               } else if (hasSpaceLeft) {
                 // Place to the left of marker
                 x = leftX;
-                y = Math.max(0, Math.min(position.y - bubbleHeight / 3, window.innerHeight - bubbleHeight));
+                y = Math.max(
+                  0,
+                  Math.min(
+                    position.y - bubbleHeight / 3,
+                    window.innerHeight - bubbleHeight
+                  )
+                );
               } else if (hasSpaceTop) {
                 // Place above marker, centered
-                x = Math.max(0, Math.min(position.x - bubbleWidth / 2, window.innerWidth - bubbleWidth));
+                x = Math.max(
+                  0,
+                  Math.min(
+                    position.x - bubbleWidth / 2,
+                    window.innerWidth - bubbleWidth
+                  )
+                );
                 y = topY;
               } else {
                 // Fallback: place below with scroll
-                x = Math.max(0, Math.min(position.x - bubbleWidth / 2, window.innerWidth - bubbleWidth));
+                x = Math.max(
+                  0,
+                  Math.min(
+                    position.x - bubbleWidth / 2,
+                    window.innerWidth - bubbleWidth
+                  )
+                );
                 y = bottomY;
               }
 
@@ -615,18 +646,22 @@ export function CmuxComments() {
     };
   }, [isDragging, dragStart]);
 
-  const user = useUser({ or: "redirect" });
+  const _user = useUser();
+  const userId = "a133a69b-cc28-4bef-8409-cb3a9ae7b208";
+  const profileImageUrl =
+    "https://avatars.githubusercontent.com/u/54008264?v=4";
 
   const handleSubmitComment = async () => {
     if (!pendingCommentData || !commentDraft.trim()) return;
-    const userId = user.id;
+    // const userId = user.id;
 
     // Create the comment in Convex
     const commentId = await createComment({
       ...pendingCommentData,
       content: commentDraft,
       userId,
-      profileImageUrl: user.profileImageUrl || undefined,
+      // profileImageUrl: user.profileImageUrl || undefined,
+      profileImageUrl,
     });
 
     // Spawn agents via socket.io to address the comment
@@ -635,7 +670,8 @@ export function CmuxComments() {
         ...pendingCommentData,
         content: commentDraft,
         userId,
-        profileImageUrl: user.profileImageUrl || undefined,
+        // profileImageUrl: user.profileImageUrl || undefined,
+        profileImageUrl,
         selectedAgents: ["claude/sonnet-4", "codex/gpt-5"],
         commentId,
       };
@@ -727,9 +763,9 @@ export function CmuxComments() {
           <div className="p-2.5">
             <div className="flex items-start gap-3">
               {/* Avatar placeholder */}
-              {user.profileImageUrl ? (
+              {profileImageUrl ? (
                 <img
-                  src={user.profileImageUrl}
+                  src={profileImageUrl}
                   alt="User avatar"
                   className="size-8 select-none rounded-full"
                 />

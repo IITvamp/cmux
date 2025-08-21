@@ -14,7 +14,8 @@ const instance = await client.instances.start({
   // snapshotId: "snapshot_3qyamh9h", // hacky one
   // snapshotId: "snapshot_c8ahthyz", // hacky one
   // snapshotId: "snapshot_0k4q04v3", // first good one
-  snapshotId: "snapshot_qmmp8lbq", // the big one
+  // snapshotId: "snapshot_qmmp8lbq", // the big one
+  snapshotId: "snapshot_xf8w00is", // the big one with stuff in it
   // 2 hours
   ttlSeconds: 60 * 60 * 2,
   ttlAction: "pause",
