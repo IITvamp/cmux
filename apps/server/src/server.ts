@@ -1020,8 +1020,17 @@ export async function startServer({
 
     socket.on("spawn-from-comment", async (data, callback) => {
       try {
-        const { url, page, pageTitle, nodeId, x, y, content, selectedAgents } =
-          SpawnFromCommentSchema.parse(data);
+        const {
+          url,
+          page,
+          pageTitle,
+          nodeId,
+          x,
+          y,
+          content,
+          selectedAgents,
+          commentId,
+        } = SpawnFromCommentSchema.parse(data);
         console.log("spawn-from-comment data", data);
 
         // Format the prompt with comment metadata
@@ -1083,6 +1092,22 @@ Please address the issue mentioned in the comment above.`;
             workspaceUrl: primaryAgent.vscodeUrl,
             provider: "morph", // Since isCloudMode is true
           });
+        }
+
+        // Create a comment reply with link to the task
+        try {
+          await convex.mutation(api.comments.addReply, {
+            commentId: commentId,
+            userId: "cmux",
+            content: `[View run here](http://localhost:5173/task/${taskId})`,
+          });
+          serverLogger.info("Created comment reply with task link:", {
+            commentId,
+            taskId,
+          });
+        } catch (replyError) {
+          serverLogger.error("Failed to create comment reply:", replyError);
+          // Don't fail the whole operation if reply fails
         }
 
         callback({

@@ -126,6 +126,75 @@ interface CommentMarkerProps {
   onClick: () => void;
 }
 
+// Helper function to render markdown links
+function renderMarkdownLinks(text: string): React.ReactNode {
+  // Match markdown links [text](url)
+  const linkRegex = /\[([^\]]+)\]\(([^)]+)\)/g;
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match;
+
+  while ((match = linkRegex.exec(text)) !== null) {
+    // Add text before the link
+    if (match.index > lastIndex) {
+      parts.push(text.slice(lastIndex, match.index));
+    }
+
+    // Add the link
+    const linkText = match[1];
+    const linkUrl = match[2];
+    parts.push(
+      <a
+        key={match.index}
+        href={linkUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-blue-400 hover:text-blue-300 underline"
+      >
+        {linkText}
+      </a>
+    );
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Add remaining text
+  if (lastIndex < text.length) {
+    parts.push(text.slice(lastIndex));
+  }
+
+  return parts.length > 0 ? parts : text;
+}
+
+// Component to display comment replies
+function CommentReplies({ commentId }: { commentId: Id<"comments"> }) {
+  const replies = useQuery(api.comments.getReplies, { commentId });
+
+  if (!replies || replies.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-3 ml-2.5 border-l-2 border-neutral-700 pl-3 space-y-2">
+      {replies.map((reply) => (
+        <div key={reply._id} className="flex items-start gap-2">
+          <div className="w-6 h-6 rounded-full bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center text-white text-xs font-medium flex-shrink-0">
+            {reply.userId === "cmux" ? "C" : "U"}
+          </div>
+          <div className="flex-1">
+            <p className="text-sm text-neutral-200 break-words">
+              {renderMarkdownLinks(reply.content)}
+            </p>
+            <p className="text-xs text-neutral-500 mt-1">
+              {new Date(reply.createdAt).toLocaleString()}
+            </p>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function CommentMarker({ comment, onClick }: CommentMarkerProps) {
   const [position, setPosition] = useState<{ x: number; y: number } | null>(
     null
@@ -251,12 +320,13 @@ function CommentMarker({ comment, onClick }: CommentMarkerProps) {
             left: 0,
             top: 0,
             transform: `translate(${Math.min(position.x + 24, window.innerWidth - 320)}px, ${position.y - 16}px)`,
-            width: "300px",
+            width: "320px",
+            maxHeight: "400px",
             background: "rgba(17, 17, 17, 0.95)",
             border: "1px solid rgba(255, 255, 255, 0.1)",
           }}
         >
-          <div className="p-3">
+          <div className="p-3 max-h-[380px] overflow-y-auto">
             <div className="flex items-start gap-2">
               {comment.profileImageUrl ? (
                 <img
@@ -277,6 +347,7 @@ function CommentMarker({ comment, onClick }: CommentMarkerProps) {
                   {new Date(comment.createdAt).toLocaleString()}
                 </p>
               </div>
+
               <button
                 onClick={(e) => {
                   e.stopPropagation();
@@ -287,6 +358,8 @@ function CommentMarker({ comment, onClick }: CommentMarkerProps) {
                 ✕
               </button>
             </div>
+            {/* Always show replies in anchored comment */}
+            <CommentReplies commentId={comment._id as Id<"comments">} />
           </div>
         </div>
       )}
@@ -499,7 +572,7 @@ export function CmuxComments() {
     const userId = user.id;
 
     // Create the comment in Convex
-    await createComment({
+    const commentId = await createComment({
       ...pendingCommentData,
       content: commentDraft,
       userId,
@@ -513,7 +586,8 @@ export function CmuxComments() {
         content: commentDraft,
         userId,
         profileImageUrl: user.profileImageUrl || undefined,
-        selectedAgents: ["claude/sonnet-4", "codex/gpt-5"], // Default agents
+        selectedAgents: ["claude/sonnet-4", "codex/gpt-5"],
+        commentId,
       };
 
       socket.emit("spawn-from-comment", spawnData, (response) => {
@@ -793,6 +867,8 @@ export function CmuxComments() {
                         </span>
                       )}
                     </div>
+                    {/* Always show replies */}
+                    <CommentReplies commentId={comment._id as Id<"comments">} />
                   </div>
                   <button
                     onClick={() =>
@@ -817,7 +893,7 @@ export function CmuxComments() {
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-4 right-4 w-14 h-14 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white shadow-2xl transition-all duration-300 hover:scale-110 z-[9999]"
+          className="fixed bottom-4 right-4 w-14 h-14 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white shadow-2xl transition-all z-[9999]"
         >
           <MessageIcon />
         </button>

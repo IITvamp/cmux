@@ -260,6 +260,7 @@ export const SpawnFromCommentSchema = z.object({
   y: z.number(), // Relative position y (0-1)
   content: z.string(),
   userId: z.string(),
+  commentId: typedZid("comments"),
   profileImageUrl: z.string().optional(),
   selectedAgents: z.array(z.string()).optional(),
   userAgent: z.string().optional(),
@@ -382,7 +383,11 @@ export interface ClientToServerEvents {
   // On-demand diffs for a task run
   "get-run-diffs": (
     data: { taskRunId: Id<"taskRuns"> },
-    callback: (response: { ok: true; diffs: import("./diff-types.js").ReplaceDiffEntry[] } | { ok: false; error: string; diffs: [] }) => void
+    callback: (
+      response:
+        | { ok: true; diffs: import("./diff-types.js").ReplaceDiffEntry[] }
+        | { ok: false; error: string; diffs: [] }
+    ) => void
   ) => void;
   "git-diff-file-contents": (
     data: { taskRunId: Id<"taskRuns">; filePath: string },
