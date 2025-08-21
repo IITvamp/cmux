@@ -23,6 +23,8 @@ export function ModeToggleTooltip({
   const timeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const user = useUser({ or: "return-null" });
   const location = useLocation();
+  const cloudModeEnabled =
+    user?.clientReadOnlyMetadata?.["cloudModeEnabled"] === "true";
 
   const shownWaitlistModal = useRef(false);
   useEffect(() => {
@@ -54,10 +56,13 @@ export function ModeToggleTooltip({
     }
 
     if (!isCloudMode) {
-      // Check if user already joined waitlist
+      // Check if user has cloud mode enabled or already joined waitlist
       const alreadyJoined = user.clientMetadata?.cloudModeWaitlist === true;
 
-      if (!alreadyJoined) {
+      if (cloudModeEnabled || alreadyJoined) {
+        // Allow toggle if cloudModeEnabled is true or user is on waitlist
+        onToggle();
+      } else {
         // Show waitlist modal when trying to switch to cloud mode
         setShowWaitlistModal(true);
       }
@@ -160,9 +165,9 @@ export function ModeToggleTooltip({
                     transition={{ duration: 0.2, ease: "easeInOut" }}
                   >
                     <span className="text-center">
-                      {user?.clientMetadata?.cloudModeWaitlist
-                        ? "On waitlist!"
-                        : "Local Mode"}
+                      {cloudModeEnabled || user?.clientMetadata?.cloudModeWaitlist
+                        ? "Local Mode"
+                        : "Join waitlist"}
                     </span>
                   </motion.div>
                 </div>
