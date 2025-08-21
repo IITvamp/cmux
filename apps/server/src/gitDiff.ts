@@ -1,6 +1,9 @@
 import { exec } from "node:child_process";
 import { RepositoryManager } from "./repositoryManager.js";
 import chokidar, { type FSWatcher } from "chokidar";
+import { promises as fsp } from "node:fs";
+import * as path from "node:path";
+import ignore from "ignore";
 import { promisify } from "node:util";
 import { serverLogger } from "./utils/fileLogger.js";
 
@@ -59,63 +62,62 @@ export class GitDiffManager {
     }
   }
 
-  watchWorkspace(
+  async watchWorkspace(
     workspacePath: string,
     onChange: (changedPath: string) => void
-  ): void {
+  ): Promise<void> {
     if (this.watchers.has(workspacePath)) {
       return;
     }
 
     try {
+      // Build ignore matcher from .gitignore + defaults
+      const ig = ignore();
+      try {
+        const giPath = path.join(workspacePath, ".gitignore");
+        const contents = await fsp.readFile(giPath, "utf8");
+        ig.add(contents.split("\n"));
+      } catch {
+        // no .gitignore; proceed with defaults
+      }
+      // Always ignore VCS internals and common heavy dirs
+      ig.add([
+        ".git/",
+        "node_modules/",
+        "dist/",
+        "build/",
+        ".next/",
+        "out/",
+        ".cache/",
+        ".turbo/",
+        ".parcel-cache/",
+        ".idea/",
+        ".vscode/",
+        "**/*.log",
+      ]);
+
+      const ignoredFn = (p: string): boolean => {
+        // chokidar provides absolute paths; convert to repo-relative
+        const rel = path.relative(workspacePath, p);
+        // Skip anything outside the workspace
+        if (rel.startsWith("..")) return true;
+        // Root of workspace returns ""; never test "." against ignore
+        if (rel === "") return false;
+        const relPath = rel.replace(/\\/g, "/");
+        return ig.ignores(relPath);
+      };
+
       const watcher = chokidar.watch(workspacePath, {
-        ignored: [
-          // Ignore all node_modules completely
-          /node_modules/,
-          // Ignore git internals
-          /\.git\/objects/,
-          /\.git\/logs/,
-          /\.git\/refs/,
-          /\.git\/hooks/,
-          /\.git\/info/,
-          /\.git\/index/,
-          // Ignore build outputs
-          /dist\//,
-          /build\//,
-          /\.next\//,
-          /out\//,
-          // Ignore cache directories
-          /\.cache\//,
-          /\.turbo\//,
-          /\.parcel-cache\//,
-          // Ignore temporary files
-          /\.swp$/,
-          /\.tmp$/,
-          /~$/,
-          // Ignore OS files
-          /\.DS_Store$/,
-          /Thumbs\.db$/,
-          // Ignore IDE files
-          /\.idea\//,
-          /\.vscode\//,
-          // Ignore lock files and logs
-          /\.lock$/,
-          /\.log$/,
-        ],
+        ignored: ignoredFn,
         persistent: true,
         ignoreInitial: true,
-        // Reduce depth to avoid deep traversal
-        depth: 5,
-        // Use polling as fallback if native watching fails
+        depth: 8,
         usePolling: false,
-        // Increase stability
         awaitWriteFinish: {
-          stabilityThreshold: 500,
+          stabilityThreshold: 400,
           pollInterval: 100,
         },
-        // Prevent following symlinks to avoid loops
         followSymlinks: false,
-        // Disable atomic writes handling
         atomic: false,
       });
 

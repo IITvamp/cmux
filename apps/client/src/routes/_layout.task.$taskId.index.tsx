@@ -8,7 +8,7 @@ import { type Id } from "@cmux/convex/dataModel";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { convexQuery } from "@convex-dev/react-query";
 import { useQuery as useRQ } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
@@ -63,6 +63,8 @@ function TaskDetailPage() {
     totalDeletions: number;
   } | null>(null);
   const { socket } = useSocket();
+  const router = useRouter();
+  const queryClient = router.options.context?.queryClient;
 
   const task = useQuery(api.tasks.getById, {
     id: taskId,
@@ -124,6 +126,33 @@ function TaskDetailPage() {
       }
     );
   }, [selectedRun?._id, socket]);
+
+  // Live update diffs when files change for this worktree; mutate TanStack cache directly
+  useEffect(() => {
+    if (!socket || !selectedRun?._id || !selectedRun?.worktreePath) return;
+    const runId = selectedRun._id as Id<"taskRuns">;
+    const workspacePath = selectedRun.worktreePath as string;
+    const onChanged = (data: { workspacePath: string; filePath: string }) => {
+      if (data.workspacePath !== workspacePath) return;
+      socket.emit(
+        "get-run-diffs",
+        { taskRunId: runId },
+        (resp: {
+          ok: boolean;
+          diffs: import("@cmux/shared/diff-types").ReplaceDiffEntry[];
+          error?: string;
+        }) => {
+          if (resp.ok && queryClient) {
+            queryClient.setQueryData(["run-diffs", runId], resp.diffs);
+          }
+        }
+      );
+    };
+    socket.on("git-file-changed", onChanged);
+    return () => {
+      socket.off("git-file-changed", onChanged);
+    };
+  }, [socket, selectedRun?._id, selectedRun?.worktreePath, queryClient]);
 
   // Check for new changes on mount and periodically
   // Initial load on run change

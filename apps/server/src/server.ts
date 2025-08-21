@@ -242,7 +242,7 @@ export async function startServer({
 
         // Set up file watching for git changes (optional - don't fail if it doesn't work)
         try {
-          gitDiffManager.watchWorkspace(
+          void gitDiffManager.watchWorkspace(
             primaryAgent.worktreePath,
             (changedPath) => {
               io.emit("git-file-changed", {
@@ -603,14 +603,11 @@ export async function startServer({
           taskRunId: string;
           filePath: string;
         };
-        const taskRun = await convex.query(api.taskRuns.get, {
-          id: taskRunId as Id<"taskRuns">,
-        });
-        if (!taskRun?.worktreePath) {
-          callback?.({ ok: false, error: "Worktree not found" });
-          return;
-        }
-        const worktreePath = taskRun.worktreePath as string;
+        // Ensure the worktree exists for this run
+        const ensured = await ensureRunWorktreeAndBranch(
+          taskRunId as Id<"taskRuns">
+        );
+        const worktreePath = ensured.worktreePath as string;
         let oldContent = "";
         let newContent = "";
         try {
@@ -622,9 +619,26 @@ export async function startServer({
           newContent = "";
         }
         try {
-          // Use git CLI to read HEAD version of the file
+          // Use git CLI to read baseRef version of the file when available; fallback to HEAD
+          // Resolve base similar to full diff
+          let baseRef = "HEAD";
+          try {
+            const { stdout } = await execAsync(
+              "git rev-parse --abbrev-ref --symbolic-full-name @{u}",
+              { cwd: worktreePath }
+            );
+            if (stdout.trim()) baseRef = "@{upstream}";
+          } catch {
+            try {
+              const repoMgr = RepositoryManager.getInstance();
+              const defaultBranch = await repoMgr.getDefaultBranch(worktreePath);
+              if (defaultBranch) baseRef = `origin/${defaultBranch}`;
+            } catch {
+              baseRef = "HEAD";
+            }
+          }
           const { stdout } = await execAsync(
-            `git show HEAD:"${filePath.replace(/"/g, '\\"')}"`,
+            `git show ${baseRef}:"${filePath.replace(/"/g, '\\"')}"`,
             {
               cwd: worktreePath,
               maxBuffer: 10 * 1024 * 1024,
@@ -648,14 +662,11 @@ export async function startServer({
     socket.on("get-run-diffs", async (data, callback) => {
       try {
         const { taskRunId } = data as { taskRunId: string };
-        const taskRun = await convex.query(api.taskRuns.get, {
-          id: taskRunId as Id<"taskRuns">,
-        });
-        if (!taskRun?.worktreePath) {
-          callback?.({ ok: false, error: "Worktree not found", diffs: [] });
-          return;
-        }
-        const worktreePath = taskRun.worktreePath as string;
+        // Ensure the worktree exists and is on the correct branch
+        const ensured = await ensureRunWorktreeAndBranch(
+          taskRunId as Id<"taskRuns">
+        );
+        const worktreePath = ensured.worktreePath as string;
         const { computeEntriesNodeGit } = await import(
           "./diffs/parseGitDiff.js"
         );
@@ -663,6 +674,19 @@ export async function startServer({
           worktreePath,
           includeContents: true,
         });
+        // Start watching this worktree to push reactive updates to this client group
+        try {
+          void gitDiffManager.watchWorkspace(worktreePath, () => {
+            io.emit("git-file-changed", {
+              workspacePath: worktreePath,
+              filePath: "",
+            });
+          });
+        } catch (e) {
+          serverLogger.warn(
+            `Failed to start watcher for ${worktreePath}: ${String(e)}`
+          );
+        }
         callback?.({ ok: true, diffs: entries });
       } catch (error) {
         serverLogger.error("Error getting run diffs:", error);

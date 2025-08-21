@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { promisify } from "node:util";
 import { exec } from "node:child_process";
 import type { ReplaceDiffEntry, DiffStatus } from "@cmux/shared/diff-types";
+import { RepositoryManager } from "../repositoryManager.js";
 import { serverLogger } from "../utils/fileLogger.js";
 
 export interface ParsedDiffOptions {
@@ -19,13 +20,14 @@ const execAsync = promisify(exec);
 export async function computeEntriesNodeGit(opts: ParsedDiffOptions): Promise<ReplaceDiffEntry[]> {
   const { worktreePath, includeContents = true, maxBytes = 950 * 1024 } = opts;
 
-  // Determine if repo has a HEAD commit
-  const hasHead = await hasHeadCommit(worktreePath);
+  // Resolve a primary/base ref similar to GitHub PR comparison
+  const baseRef = await resolvePrimaryBaseRef(worktreePath);
+  const compareBase = await resolveMergeBaseWithDeepen(worktreePath, baseRef);
 
-  // Collect tracked changes vs HEAD (if present)
-  const tracked = await getTrackedChanges(worktreePath, hasHead);
+  // Collect tracked changes vs baseRef (includes committed + staged + unstaged)
+  const tracked = await getTrackedChanges(worktreePath, compareBase);
 
-  // Collect untracked files
+  // Collect untracked files (relative to baseRef they are also additions)
   const untracked = await getUntrackedFiles(worktreePath);
 
   const entries: ReplaceDiffEntry[] = [];
@@ -41,8 +43,8 @@ export async function computeEntriesNodeGit(opts: ParsedDiffOptions): Promise<Re
     let newContent: string | undefined;
 
     try {
-      // additions/deletions via numstat; binary shows '-'
-      const nd = await gitNumstatForFile(worktreePath, fp);
+      // additions/deletions via numstat against baseRef; binary shows '-'
+      const nd = await gitNumstatForFile(worktreePath, compareBase, fp);
       if (nd) {
         additions = nd.additions;
         deletions = nd.deletions;
@@ -59,16 +61,16 @@ export async function computeEntriesNodeGit(opts: ParsedDiffOptions): Promise<Re
               newContent = "";
             }
           }
-          // old content from HEAD
-          if (hasHead && status !== "added") {
-            oldContent = await gitShowFile(worktreePath, fp).catch(() => "");
+          // old content from baseRef
+          if (status !== "added") {
+            oldContent = await gitShowFile(worktreePath, baseRef, fp).catch(() => "");
           } else {
             oldContent = "";
           }
         }
 
-        // patch text (omit for very large)
-        const p = await gitPatchForFile(worktreePath, fp);
+        // patch text (omit for very large) against baseRef
+        const p = await gitPatchForFile(worktreePath, compareBase, fp);
         if (p) patchText = p;
       }
     } catch (err) {
@@ -104,6 +106,18 @@ export async function computeEntriesNodeGit(opts: ParsedDiffOptions): Promise<Re
       }
     } else {
       base.contentOmitted = false;
+    }
+
+    // Filter out noisy no-op modified entries (e.g., metadata-only) that
+    // report 0/0 and have no textual patch. Keep binary and all other statuses.
+    if (
+      base.status === "modified" &&
+      !base.isBinary &&
+      base.additions === 0 &&
+      base.deletions === 0 &&
+      (!base.patch || base.patch.trim() === "")
+    ) {
+      continue;
     }
 
     entries.push(base);
@@ -144,38 +158,115 @@ export async function computeEntriesNodeGit(opts: ParsedDiffOptions): Promise<Re
   return entries;
 }
 
-async function hasHeadCommit(cwd: string): Promise<boolean> {
+async function resolvePrimaryBaseRef(cwd: string): Promise<string> {
+  // Prefer upstream; otherwise origin/<defaultBranch>; fallback origin/main
   try {
-    const { stdout } = await execAsync("git rev-parse --verify HEAD", { cwd });
-    return Boolean(stdout.trim());
-  } catch {
-    return false;
+    const { stdout } = await execAsync(
+      "git rev-parse --abbrev-ref --symbolic-full-name @{u}",
+      { cwd }
+    );
+    if (stdout.trim()) return "@{upstream}";
+  } catch (err) {
+    // Upstream not configured; fall back to default branch
+    serverLogger.debug(
+      `[Diffs] No upstream for ${cwd}: ${String((err as Error)?.message || err)}`
+    );
   }
+  try {
+    const repoMgr = RepositoryManager.getInstance();
+    const defaultBranch = await repoMgr.getDefaultBranch(cwd);
+    if (defaultBranch) return `origin/${defaultBranch}`;
+  } catch (err) {
+    // Default branch detection failed; fall back to origin/main
+    serverLogger.debug(
+      `[Diffs] Could not detect default branch for ${cwd}: ${String(
+        (err as Error)?.message || err
+      )}`
+    );
+  }
+  return "origin/main";
 }
 
-async function getTrackedChanges(cwd: string, hasHead: boolean): Promise<{
+async function resolveMergeBaseWithDeepen(cwd: string, baseRef: string): Promise<string> {
+  // Try merge-base to emulate GitHub PR compare; shallow clones may need deepen
+  const tryMergeBase = async (): Promise<string | null> => {
+    try {
+      const { stdout } = await execAsync(`git merge-base ${baseRef} HEAD`, { cwd });
+      const mb = stdout.trim();
+      return mb || null;
+    } catch {
+      return null;
+    }
+  };
+
+  let mb = await tryMergeBase();
+  if (mb) return mb;
+
+  // Determine branch name to deepen if possible
+  let remoteBranch = "";
+  try {
+    if (baseRef === "@{upstream}") {
+      const { stdout } = await execAsync(
+        "git rev-parse --abbrev-ref --symbolic-full-name @{u}",
+        { cwd }
+      );
+      remoteBranch = stdout.trim(); // e.g., origin/main
+    } else {
+      remoteBranch = baseRef; // likely origin/<branch>
+    }
+  } catch {
+    remoteBranch = baseRef;
+  }
+
+  const m = remoteBranch.match(/^origin\/(.+)$/);
+  const branchName = m ? m[1] : "";
+
+  // Attempt to deepen history progressively to locate a merge-base
+  const depths = [50, 200, 1000];
+  for (const depth of depths) {
+    try {
+      if (branchName) {
+        await execAsync(`git fetch --deepen=${depth} origin ${branchName}`, {
+          cwd,
+        });
+      } else {
+        await execAsync(`git fetch --deepen=${depth} origin`, { cwd });
+      }
+    } catch {
+      // ignore fetch errors; attempt merge-base anyway
+    }
+    mb = await tryMergeBase();
+    if (mb) return mb;
+  }
+
+  // Fallback to baseRef directly when merge-base cannot be resolved
+  return baseRef;
+}
+
+async function getTrackedChanges(cwd: string, baseRef: string): Promise<{
   status: DiffStatus;
   filePath: string;
   oldPath?: string;
 }[]> {
-  if (!hasHead) return [];
-  // name-status with renames, NUL-delimited
-  const { stdout } = await execAsync("git diff --name-status -z --find-renames HEAD", { cwd });
-  const bytes = stdout;
-  const parts = bytes.split("\0").filter(Boolean);
+  // NUL-delimited; for renames, format is: Rxxx<TAB>old<NUL>new<NUL>
+  // for normal entries: M|A|D<TAB>path<NUL>
+  const { stdout } = await execAsync(
+    `git diff --name-status -z --find-renames ${baseRef}`,
+    { cwd }
+  );
+  const tokens = stdout.split("\0").filter(Boolean);
   const items: { status: DiffStatus; filePath: string; oldPath?: string }[] = [];
-  for (let i = 0; i < parts.length; i++) {
-    const entry = parts[i]!;
-    const fields = entry.split("\t");
-    const code = fields[0]!; // e.g., M, A, D, R100
-    if (code.startsWith("R")) {
-      // Next part after this line contains the new path if not included
-      const oldPath = fields[1] ?? parts[++i];
-      const newPath = fields[2] ?? parts[i + 0];
+  let i = 0;
+  while (i < tokens.length) {
+    const code = tokens[i++]!; // e.g., 'M', 'A', 'D', 'R100'
+    if (!code) break;
+    if (code.startsWith("R") || code.startsWith("C")) {
+      const oldPath = tokens[i++] || "";
+      const newPath = tokens[i++] || "";
       if (!oldPath || !newPath) continue;
       items.push({ status: "renamed", filePath: newPath, oldPath });
     } else {
-      const fp = fields[1] ?? parts[++i];
+      const fp = tokens[i++] || "";
       if (!fp) continue;
       const status: DiffStatus = code === "A" ? "added" : code === "D" ? "deleted" : "modified";
       items.push({ status, filePath: fp });
@@ -193,9 +284,16 @@ async function getUntrackedFiles(cwd: string): Promise<string[]> {
   }
 }
 
-async function gitNumstatForFile(cwd: string, filePath: string): Promise<{ additions: number; deletions: number; isBinary: boolean } | null> {
+async function gitNumstatForFile(
+  cwd: string,
+  baseRef: string,
+  filePath: string
+): Promise<{ additions: number; deletions: number; isBinary: boolean } | null> {
   try {
-    const { stdout } = await execAsync(`git diff --numstat -- "${escapePath(filePath)}"`, { cwd });
+    const { stdout } = await execAsync(
+      `git diff --numstat ${baseRef} -- "${escapePath(filePath)}"`,
+      { cwd }
+    );
     // format: additions<TAB>deletions<TAB>path
     const line = stdout.split("\n").find((l) => l.trim().endsWith(`\t${filePath}`));
     if (!line) return { additions: 0, deletions: 0, isBinary: false };
@@ -211,17 +309,29 @@ async function gitNumstatForFile(cwd: string, filePath: string): Promise<{ addit
   }
 }
 
-async function gitPatchForFile(cwd: string, filePath: string): Promise<string | null> {
+async function gitPatchForFile(
+  cwd: string,
+  baseRef: string,
+  filePath: string
+): Promise<string | null> {
   try {
-    const { stdout } = await execAsync(`git diff --patch --binary --no-color -- "${escapePath(filePath)}"`, { cwd, maxBuffer: 10 * 1024 * 1024 });
+    const { stdout } = await execAsync(
+      `git diff --patch --binary --no-color ${baseRef} -- "${escapePath(
+        filePath
+      )}"`,
+      { cwd, maxBuffer: 10 * 1024 * 1024 }
+    );
     return stdout || null;
   } catch {
     return null;
   }
 }
 
-async function gitShowFile(cwd: string, filePath: string): Promise<string> {
-  const { stdout } = await execAsync(`git show HEAD:"${escapePath(filePath)}"`, { cwd, maxBuffer: 10 * 1024 * 1024 });
+async function gitShowFile(cwd: string, baseRef: string, filePath: string): Promise<string> {
+  const { stdout } = await execAsync(
+    `git show ${baseRef}:"${escapePath(filePath)}"`,
+    { cwd, maxBuffer: 10 * 1024 * 1024 }
+  );
   return stdout;
 }
 

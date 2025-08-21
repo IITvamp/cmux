@@ -243,9 +243,11 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
         style={
           {
             // Invisible, but with a comfortable hit area
-            width: "17px",
-            marginRight: "-9px",
-            background: "transparent",
+            width: "10px",
+            marginRight: "-5px",
+            // background: "transparent",
+            background: "red",
+            zIndex: 10000,
           } as CSSProperties
         }
       />
