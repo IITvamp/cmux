@@ -1,4 +1,5 @@
 import { useTheme } from "@/components/theme/use-theme";
+import CmuxComments from "@/components/cmux-comments";
 import type { QueryClient } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { createRootRouteWithContext, Outlet } from "@tanstack/react-router";
@@ -50,6 +51,7 @@ function RootComponent() {
       <Outlet />
       <DevTools />
       <ToasterWithTheme />
+      <CmuxComments />
     </>
   );
 }

@@ -1,9 +1,20 @@
+import { api } from "@cmux/convex/api";
+import {
+  ConvexProvider,
+  ConvexReactClient,
+  useMutation,
+  useQuery,
+} from "convex/react";
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { ConvexProvider, ConvexReactClient } from "convex/react";
-import { useQuery, useMutation } from "convex/react";
-import { api } from "../../../../packages/convex/convex/_generated/api";
-// Removed unused lucide-react import since we're using inline SVGs
+
+// Only render if NOT on localhost:5173
+const shouldRender = () => {
+  return true;
+  const hostname = window.location.hostname;
+  const port = window.location.port;
+  return !(hostname === "localhost" && port === "5173");
+};
 
 // Embedded Tailwind CSS with resets
 const TAILWIND_STYLES = `
@@ -244,6 +255,7 @@ const TAILWIND_STYLES = `
   .select-none { user-select: none; }
   .flex-col { flex-direction: column; }
   .flex-1 { flex: 1; }
+  .flex-shrink-0 { flex-shrink: 0; }
   .justify-center { justify-content: center; }
   .justify-between { justify-content: space-between; }
   .gap-3 { gap: 0.75rem; }
@@ -272,6 +284,9 @@ const TAILWIND_STYLES = `
   .bg-black { background-color: rgb(0 0 0); }
   .bg-neutral-50 { background-color: rgb(250 250 250); }
   .bg-neutral-100 { background-color: rgb(245 245 245); }
+  .bg-neutral-400 { background-color: rgb(163 163 163); }
+  .bg-neutral-500 { background-color: rgb(115 115 115); }
+  .bg-neutral-700 { background-color: rgb(64 64 64); }
   .bg-neutral-800 { background-color: rgb(38 38 38); }
   .bg-neutral-900 { background-color: rgb(23 23 23); }
   .bg-neutral-950 { background-color: rgb(10 10 10); }
@@ -293,12 +308,17 @@ const TAILWIND_STYLES = `
   .py-2 { padding-top: 0.5rem; padding-bottom: 0.5rem; }
   .py-3 { padding-top: 0.75rem; padding-bottom: 0.75rem; }
   .py-4 { padding-top: 1rem; padding-bottom: 1rem; }
+  .py-8 { padding-top: 2rem; padding-bottom: 2rem; }
   .pl-4 { padding-left: 1rem; }
   .pr-12 { padding-right: 3rem; }
+  .mt-1 { margin-top: 0.25rem; }
+  .mt-3 { margin-top: 0.75rem; }
+  .mx-1 { margin-left: 0.25rem; margin-right: 0.25rem; }
   .text-xs { font-size: 0.75rem; line-height: 1rem; }
   .text-sm { font-size: 0.875rem; line-height: 1.25rem; }
   .text-base { font-size: 1rem; line-height: 1.5rem; }
   .text-lg { font-size: 1.125rem; line-height: 1.75rem; }
+  .text-center { text-align: center; }
   .font-normal { font-weight: 400; }
   .font-medium { font-weight: 500; }
   .font-semibold { font-weight: 600; }
@@ -325,6 +345,7 @@ const TAILWIND_STYLES = `
   .duration-200 { transition-duration: 200ms; }
   .duration-300 { transition-duration: 300ms; }
   .hover\\:bg-neutral-100:hover { background-color: rgb(245 245 245); }
+  .hover\\:bg-neutral-200:hover { background-color: rgb(229 229 229); }
   .hover\\:bg-neutral-800:hover { background-color: rgb(38 38 38); }
   .hover\\:bg-blue-600:hover { background-color: rgb(37 99 235); }
   .hover\\:bg-red-600:hover { background-color: rgb(220 38 38); }
@@ -347,9 +368,12 @@ const TAILWIND_STYLES = `
   .opacity-50 { opacity: 0.5; }
   .opacity-60 { opacity: 0.6; }
   .opacity-70 { opacity: 0.7; }
+  .opacity-90 { opacity: 0.9; }
   .opacity-100 { opacity: 1; }
   .scale-95 { transform: scale(0.95); }
   .scale-100 { transform: scale(1); }
+  .inset-0 { top: 0; right: 0; bottom: 0; left: 0; }
+  .cursor-not-allowed { cursor: not-allowed; }
   
   /* Custom gradient backgrounds */
   .bg-gradient-primary {
@@ -416,34 +440,90 @@ const TAILWIND_STYLES = `
   }
 `;
 
-// Lucide icon components with embedded SVG
+// Icon components with embedded SVG
 const SendIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="20"
+    height="20"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="m22 2-7 20-4-9-9-4Z" />
+    <path d="M22 2 11 13" />
   </svg>
 );
 
 const PlusIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M5 12h14"/><path d="m12 5 0 14"/>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="20"
+    height="20"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M5 12h14" />
+    <path d="m12 5 0 14" />
   </svg>
 );
 
 const ImageIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="20"
+    height="20"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+    <circle cx="9" cy="9" r="2" />
+    <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
   </svg>
 );
 
 const TypeIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="4 7 4 4 20 4 20 7"/><line x1="9" x2="15" y1="20" y2="20"/><line x1="12" x2="12" y1="4" y2="20"/>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="20"
+    height="20"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <polyline points="4 7 4 4 20 4 20 7" />
+    <line x1="9" x2="15" y1="20" y2="20" />
+    <line x1="12" x2="12" y1="4" y2="20" />
   </svg>
 );
 
 const MessageIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="20"
+    height="20"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" />
   </svg>
 );
 
@@ -472,21 +552,23 @@ interface CommentMarkerProps {
 }
 
 function CommentMarker({ comment, onClick }: CommentMarkerProps) {
-  const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
+  const [position, setPosition] = useState<{ x: number; y: number } | null>(
+    null
+  );
 
   useEffect(() => {
     const updatePosition = () => {
       try {
         let el: HTMLElement | null = null;
-        
+
         // Check if it's an XPath (starts with /) or old CSS selector
-        if (comment.nodeId.startsWith('/')) {
+        if (comment.nodeId.startsWith("/")) {
           // It's an XPath
           const result = document.evaluate(
-            comment.nodeId, 
-            document, 
-            null, 
-            XPathResult.FIRST_ORDERED_NODE_TYPE, 
+            comment.nodeId,
+            document,
+            null,
+            XPathResult.FIRST_ORDERED_NODE_TYPE,
             null
           );
           el = result.singleNodeValue as HTMLElement;
@@ -496,15 +578,17 @@ function CommentMarker({ comment, onClick }: CommentMarkerProps) {
             el = document.querySelector(comment.nodeId) as HTMLElement;
           } catch (_e) {
             // Try escaping for old Tailwind classes
-            const escapedSelector = comment.nodeId.replace(/([:])/g, '\\$1');
+            const escapedSelector = comment.nodeId.replace(/([:])/g, "\\$1");
             try {
               el = document.querySelector(escapedSelector) as HTMLElement;
             } catch (_e2) {
-              console.warn(`Could not find element with CSS selector: ${comment.nodeId}`);
+              console.warn(
+                `Could not find element with CSS selector: ${comment.nodeId}`
+              );
             }
           }
         }
-        
+
         if (el) {
           const rect = el.getBoundingClientRect();
           const x = rect.left + rect.width * comment.x;
@@ -514,7 +598,12 @@ function CommentMarker({ comment, onClick }: CommentMarkerProps) {
           setPosition(null);
         }
       } catch (e) {
-        console.error("Failed to find element for comment:", e, "NodeId:", comment.nodeId);
+        console.error(
+          "Failed to find element for comment:",
+          e,
+          "NodeId:",
+          comment.nodeId
+        );
         setPosition(null);
       }
     };
@@ -523,20 +612,20 @@ function CommentMarker({ comment, onClick }: CommentMarkerProps) {
     updatePosition();
 
     // Update position on scroll and resize
-    window.addEventListener('scroll', updatePosition, true);
-    window.addEventListener('resize', updatePosition);
-    
+    window.addEventListener("scroll", updatePosition, true);
+    window.addEventListener("resize", updatePosition);
+
     // Update position when DOM changes
     const observer = new MutationObserver(updatePosition);
-    observer.observe(document.body, { 
-      childList: true, 
+    observer.observe(document.body, {
+      childList: true,
       subtree: true,
-      attributes: true 
+      attributes: true,
     });
 
     return () => {
-      window.removeEventListener('scroll', updatePosition, true);
-      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+      window.removeEventListener("resize", updatePosition);
       observer.disconnect();
     };
   }, [comment.nodeId, comment.x, comment.y]);
@@ -561,10 +650,16 @@ function CmuxCommentsWidget() {
   const [isOpen, setIsOpen] = useState(false);
   const [isCommenting, setIsCommenting] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [position, setPosition] = useState({ x: window.innerWidth - 400, y: window.innerHeight - 500 });
+  const [position, setPosition] = useState({
+    x: window.innerWidth - 400,
+    y: window.innerHeight - 500,
+  });
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [commentDraft, setCommentDraft] = useState("");
-  const [commentInputPos, setCommentInputPos] = useState<{ x: number; y: number } | null>(null);
+  const [commentInputPos, setCommentInputPos] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   const [pendingCommentData, setPendingCommentData] = useState<{
     url: string;
     page: string;
@@ -591,13 +686,13 @@ function CmuxCommentsWidget() {
   // Handle cursor tracking when commenting
   useEffect(() => {
     if (!isCommenting) return;
-    
+
     const handleMouseMove = (e: MouseEvent) => {
       setCursorPos({ x: e.clientX, y: e.clientY });
     };
-    
-    document.addEventListener('mousemove', handleMouseMove);
-    return () => document.removeEventListener('mousemove', handleMouseMove);
+
+    document.addEventListener("mousemove", handleMouseMove);
+    return () => document.removeEventListener("mousemove", handleMouseMove);
   }, [isCommenting]);
 
   // Handle keyboard shortcut
@@ -628,49 +723,51 @@ function CmuxCommentsWidget() {
     const handleClick = async (e: MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      
+
       const element = e.target as HTMLElement;
-      
+
       // Don't create comments on the widget itself or comment input
       if (element.closest("#cmux-comments-root")) return;
-      
+
       const rect = element.getBoundingClientRect();
       const x = (e.clientX - rect.left) / rect.width;
       const y = (e.clientY - rect.top) / rect.height;
-      
+
       // Generate XPath for the element
       const getXPath = (el: Element): string => {
         if (el.id) {
           return `//*[@id="${el.id}"]`;
         }
-        
+
         const paths: string[] = [];
         let current: Element | null = el;
-        
+
         while (current && current.nodeType === Node.ELEMENT_NODE) {
           let index = 0;
           let sibling = current.previousSibling;
-          
+
           while (sibling) {
-            if (sibling.nodeType === Node.ELEMENT_NODE && 
-                sibling.nodeName === current.nodeName) {
+            if (
+              sibling.nodeType === Node.ELEMENT_NODE &&
+              sibling.nodeName === current.nodeName
+            ) {
               index++;
             }
             sibling = sibling.previousSibling;
           }
-          
+
           const tagName = current.nodeName.toLowerCase();
-          const pathIndex = index > 0 ? `[${index + 1}]` : '';
+          const pathIndex = index > 0 ? `[${index + 1}]` : "";
           paths.unshift(`${tagName}${pathIndex}`);
-          
+
           current = current.parentElement;
         }
-        
-        return '/' + paths.join('/');
+
+        return "/" + paths.join("/");
       };
 
       const nodeId = getXPath(element);
-      
+
       // Store the comment data
       const commentData = {
         url: window.location.origin,
@@ -684,11 +781,11 @@ function CmuxCommentsWidget() {
         screenHeight: window.innerHeight,
         devicePixelRatio: window.devicePixelRatio,
       };
-      
+
       setPendingCommentData(commentData);
       setCommentInputPos({ x: e.clientX, y: e.clientY });
       setIsCommenting(false);
-      
+
       // Focus the input after it renders
       setTimeout(() => {
         commentInputRef.current?.focus();
@@ -746,7 +843,7 @@ function CmuxCommentsWidget() {
     setPendingCommentData(null);
     setCommentInputPos(null);
   };
-  
+
   const handleCancelComment = () => {
     setCommentDraft("");
     setPendingCommentData(null);
@@ -799,7 +896,7 @@ function CmuxCommentsWidget() {
                   U
                 </div>
               </div>
-              
+
               {/* Input area */}
               <div className="flex-1">
                 <textarea
@@ -819,7 +916,7 @@ function CmuxCommentsWidget() {
                     }
                   }}
                 />
-                
+
                 {/* Bottom toolbar */}
                 <div className="flex items-center justify-between mt-3">
                   <div className="flex items-center gap-1">
@@ -834,14 +931,14 @@ function CmuxCommentsWidget() {
                       <TypeIcon />
                     </button>
                   </div>
-                  
+
                   {/* Send button */}
                   <button
                     onClick={handleSubmitComment}
                     disabled={!commentDraft.trim()}
                     className={`icon-button w-9 h-9 rounded-lg transition-all ${
-                      commentDraft.trim() 
-                        ? "bg-blue-500 text-white hover:bg-blue-600" 
+                      commentDraft.trim()
+                        ? "bg-blue-500 text-white hover:bg-blue-600"
                         : "bg-neutral-800 text-neutral-500 cursor-not-allowed"
                     }`}
                   >
@@ -858,7 +955,9 @@ function CmuxCommentsWidget() {
       <div
         ref={widgetRef}
         className={`fixed z-[9999] rounded-2xl shadow-2xl transition-all duration-300 backdrop-blur ${
-          isOpen ? "opacity-100 scale-100" : "opacity-0 scale-95 pointer-events-none"
+          isOpen
+            ? "opacity-100 scale-100"
+            : "opacity-0 scale-95 pointer-events-none"
         }`}
         style={{
           left: `${position.x}px`,
@@ -870,7 +969,10 @@ function CmuxCommentsWidget() {
         onMouseDown={handleMouseDown}
       >
         {/* Header */}
-        <div className="widget-header flex items-center justify-between p-4 cursor-move select-none border-b" style={{ borderColor: "rgba(255, 255, 255, 0.1)" }}>
+        <div
+          className="widget-header flex items-center justify-between p-4 cursor-move select-none border-b"
+          style={{ borderColor: "rgba(255, 255, 255, 0.1)" }}
+        >
           <h3 className="text-base font-medium text-white">Comments</h3>
           <button
             onClick={() => setIsOpen(false)}
@@ -894,7 +996,9 @@ function CmuxCommentsWidget() {
                     U
                   </div>
                   <div className="flex-1">
-                    <p className="text-sm text-white break-words">{comment.content}</p>
+                    <p className="text-sm text-white break-words">
+                      {comment.content}
+                    </p>
                     <p className="text-xs text-neutral-500 mt-1">
                       {new Date(comment.createdAt).toLocaleString()}
                     </p>
@@ -921,6 +1025,12 @@ function CmuxCommentsWidget() {
 
 // Initialize the widget
 export function initCmuxComments(convexUrl?: string) {
+  // Check if we should render
+  if (!shouldRender()) {
+    console.log("CmuxComments: Skipping render on localhost:5173");
+    return;
+  }
+
   // Create shadow root container
   const container = document.createElement("div");
   container.id = "cmux-comments-root";
@@ -945,10 +1055,12 @@ export function initCmuxComments(convexUrl?: string) {
   shadowRoot.appendChild(reactContainer);
 
   // Get Convex URL from environment or parameter
-  const CONVEX_URL = convexUrl || process.env.NEXT_PUBLIC_CONVEX_URL || process.env.VITE_CONVEX_URL || "";
-  
+  const CONVEX_URL = convexUrl || import.meta.env.VITE_CONVEX_URL || "";
+
   if (!CONVEX_URL) {
-    console.error("Convex URL not provided. Please set NEXT_PUBLIC_CONVEX_URL or pass it to initCmuxComments()");
+    console.error(
+      "Convex URL not provided. Please set VITE_CONVEX_URL or pass it to initCmuxComments()"
+    );
     return;
   }
 
@@ -970,28 +1082,14 @@ export function initCmuxComments(convexUrl?: string) {
   };
 }
 
-// Auto-initialize if script tag has data-auto-init
-if (typeof window !== "undefined") {
-  const script = document.currentScript as HTMLScriptElement;
-  if (script?.dataset.autoInit === "true") {
-    const convexUrl = script.dataset.convexUrl;
-    if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", () => initCmuxComments(convexUrl));
-    } else {
-      initCmuxComments(convexUrl);
-    }
-  }
-}
-
-// Export for manual initialization
-declare global {
-  interface Window {
-    CmuxComments: {
-      init: (convexUrl?: string) => (() => void) | undefined;
+// Export for use in React components
+export default function CmuxComments() {
+  useEffect(() => {
+    const cleanup = initCmuxComments();
+    return () => {
+      if (cleanup) cleanup();
     };
-  }
-}
+  }, []);
 
-if (typeof window !== "undefined") {
-  window.CmuxComments = { init: initCmuxComments };
+  return null;
 }

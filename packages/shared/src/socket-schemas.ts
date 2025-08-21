@@ -246,6 +246,11 @@ export const GitHubMergePrSchema = z.object({
   method: z.enum(["squash", "rebase", "merge"]),
 });
 
+// Archive task schema
+export const ArchiveTaskSchema = z.object({
+  taskId: typedZid("tasks"),
+});
+
 // Provider status schemas
 export const ProviderStatusSchema = z.object({
   name: z.string(),
@@ -336,6 +341,7 @@ export type GitHubCreateDraftPr = z.infer<typeof GitHubCreateDraftPrSchema>;
 export type GitHubOpenPr = z.infer<typeof GitHubOpenPrSchema>;
 export type GitHubSyncPrState = z.infer<typeof GitHubSyncPrStateSchema>;
 export type GitHubMergePr = z.infer<typeof GitHubMergePrSchema>;
+export type ArchiveTask = z.infer<typeof ArchiveTaskSchema>;
 export type ProviderStatus = z.infer<typeof ProviderStatusSchema>;
 export type DockerStatus = z.infer<typeof DockerStatusSchema>;
 export type GitStatus = z.infer<typeof GitStatusSchema>;
@@ -433,6 +439,10 @@ export interface ClientToServerEvents {
   ) => void;
   "check-provider-status": (
     callback: (response: ProviderStatusResponse) => void
+  ) => void;
+  "archive-task": (
+    data: ArchiveTask,
+    callback: (response: { success: boolean; error?: string }) => void
   ) => void;
 }
 
