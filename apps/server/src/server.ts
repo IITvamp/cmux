@@ -1,6 +1,7 @@
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
 import {
+  ArchiveTaskSchema,
   GitFullDiffRequestSchema,
   GitHubCreateDraftPrSchema,
   GitHubFetchBranchesSchema,
@@ -1535,6 +1536,120 @@ export async function startServer({
         callback({ success: true, ...status });
       } catch (error) {
         serverLogger.error("Error checking provider status:", error);
+        callback({
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    });
+
+    socket.on("archive-task", async (data, callback) => {
+      try {
+        const { taskId } = ArchiveTaskSchema.parse(data);
+
+        // Get all task runs for this task
+        const taskRuns = await convex.query(api.taskRuns.getByTask, {
+          taskId,
+        });
+
+        serverLogger.info(
+          `Archiving task ${taskId} with ${taskRuns.length} runs`
+        );
+
+        // Stop/pause all containers in parallel
+        const stopPromises = taskRuns
+          .filter((run) => run.vscode && run.vscode.containerName)
+          .map(async (run) => {
+            const { provider, containerName } = run.vscode!;
+            if (!containerName) {
+              return {
+                success: false,
+                containerName: "unknown",
+                provider,
+                error: "No container name",
+              };
+            }
+            serverLogger.info(
+              `Stopping ${provider} container: ${containerName}`
+            );
+
+            try {
+              if (provider === "morph") {
+                // Extract instance ID from containerName (e.g., "morphvm_wdgnko75")
+                const instanceId = containerName;
+
+                // Import MorphCloudClient dynamically to avoid dependency issues
+                const { MorphCloudClient } = await import("morphcloud");
+                const morphClient = new MorphCloudClient();
+
+                const instance = await morphClient.instances.get({
+                  instanceId,
+                });
+                await instance.pause();
+                serverLogger.info(
+                  `Successfully paused Morph instance: ${instanceId}`
+                );
+                return { success: true, containerName, provider };
+              } else if (provider === "docker") {
+                // Stop Docker container
+                try {
+                  await execAsync(`docker stop ${containerName}`, {
+                    timeout: 10000, // 10 second timeout
+                  });
+                  serverLogger.info(
+                    `Successfully stopped Docker container: ${containerName}`
+                  );
+                  return { success: true, containerName, provider };
+                } catch (dockerError) {
+                  // Check if container is already stopped
+                  const { stdout: psOutput } = await execAsync(
+                    `docker ps -a --filter "name=${containerName}" --format "{{.Status}}"`
+                  );
+                  if (psOutput.toLowerCase().includes("exited")) {
+                    serverLogger.info(
+                      `Docker container already stopped: ${containerName}`
+                    );
+                    return { success: true, containerName, provider };
+                  } else {
+                    throw dockerError;
+                  }
+                }
+              }
+              return {
+                success: false,
+                containerName,
+                provider,
+                error: "Unknown provider",
+              };
+            } catch (error) {
+              serverLogger.error(
+                `Failed to stop ${provider} container ${containerName}:`,
+                error
+              );
+              return { success: false, containerName, provider, error };
+            }
+          });
+
+        // Wait for all stop operations to complete
+        const results = await Promise.all(stopPromises);
+
+        // Log summary
+        const successful = results.filter((r) => r.success).length;
+        const failed = results.filter((r) => !r.success).length;
+
+        if (failed > 0) {
+          serverLogger.warn(
+            `Archived task ${taskId}: ${successful} containers stopped, ${failed} failed`
+          );
+        } else {
+          serverLogger.info(
+            `Successfully archived task ${taskId}: all ${successful} containers stopped`
+          );
+        }
+
+        callback({ success: true });
+      } catch (error) {
+        serverLogger.error("Error archiving task:", error);
         callback({
           success: false,
           error: error instanceof Error ? error.message : "Unknown error",

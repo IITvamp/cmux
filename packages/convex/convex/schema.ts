@@ -203,6 +203,38 @@ const convexSchema = defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   }),
+  
+  comments: defineTable({
+    url: v.string(), // Full URL of the website where comment was created
+    page: v.string(), // Page URL/path where comment was created
+    pageTitle: v.string(), // Page title for reference
+    nodeId: v.string(), // CSS selector path to the element
+    x: v.number(), // X position ratio within the element (0-1)
+    y: v.number(), // Y position ratio within the element (0-1)
+    content: v.string(), // Comment text content
+    resolved: v.optional(v.boolean()), // Whether comment is resolved
+    userId: v.string(), // User who created the comment
+    userAgent: v.string(), // Browser user agent
+    screenWidth: v.number(), // Screen width when comment was created
+    screenHeight: v.number(), // Screen height when comment was created
+    devicePixelRatio: v.number(), // Device pixel ratio
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_url", ["url", "createdAt"])
+    .index("by_page", ["page", "createdAt"])
+    .index("by_user", ["userId", "createdAt"])
+    .index("by_resolved", ["resolved", "createdAt"]),
+  
+  commentReplies: defineTable({
+    commentId: v.id("comments"),
+    userId: v.string(),
+    content: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_comment", ["commentId", "createdAt"])
+    .index("by_user", ["userId", "createdAt"]),
 });
 
 export default convexSchema;

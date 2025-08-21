@@ -337,7 +337,8 @@ export async function spawnAgent(
         command: "bash",
         args: [
           "-c",
-          `git clone --depth=1 ${options.repoUrl} /root/workspace && git checkout ${newBranch} && git pull`,
+          // `git clone --depth=1 ${options.repoUrl} /root/workspace && git checkout ${newBranch} && git pull`,
+          `git pull && git switch -c ${newBranch}`,
         ],
         cwd: "/root",
         env: {},
@@ -718,19 +719,34 @@ export async function spawnAgent(
             (timeoutError, result) => {
               if (timeoutError) {
                 // Handle timeout errors gracefully
-                if (timeoutError instanceof Error && timeoutError.message === "operation has timed out") {
-                  serverLogger.error("Socket timeout while creating prompt directory", timeoutError);
+                if (
+                  timeoutError instanceof Error &&
+                  timeoutError.message === "operation has timed out"
+                ) {
+                  serverLogger.error(
+                    "Socket timeout while creating prompt directory",
+                    timeoutError
+                  );
                 } else {
-                  serverLogger.error("Failed to create prompt directory", timeoutError);
+                  serverLogger.error(
+                    "Failed to create prompt directory",
+                    timeoutError
+                  );
                 }
               } else if (result?.error) {
-                serverLogger.error("Failed to create prompt directory", result.error);
+                serverLogger.error(
+                  "Failed to create prompt directory",
+                  result.error
+                );
               }
               resolve();
             }
           );
         } catch (err) {
-          serverLogger.error("Error emitting command to create prompt directory", err);
+          serverLogger.error(
+            "Error emitting command to create prompt directory",
+            err
+          );
           resolve();
         }
       });

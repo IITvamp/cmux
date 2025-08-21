@@ -23,7 +23,7 @@ export class MorphVSCodeInstance extends VSCodeInstance {
   constructor(config: MorphVSCodeInstanceConfig) {
     super(config);
     this.morphClient = new MorphCloudClient();
-    this.morphSnapshotId = config.morphSnapshotId || "snapshot_5h9hvkqq";
+    this.morphSnapshotId = config.morphSnapshotId || "snapshot_xf8w00is";
   }
 
   async start(): Promise<VSCodeInstanceInfo> {
@@ -199,11 +199,13 @@ export class MorphVSCodeInstance extends VSCodeInstance {
     );
 
     const devcontainerNetwork: Doc<"taskRuns">["networking"] =
-      instance.networking.httpServices.map((service) => ({
-        status: "running",
-        port: service.port,
-        url: service.url,
-      }));
+      instance.networking.httpServices
+        .filter((service) => !CMUX_PORTS.has(service.port))
+        .map((service) => ({
+          status: "running",
+          port: service.port,
+          url: service.url,
+        }));
 
     console.log("[MorphVSCodeInstance] Networking:", devcontainerNetwork);
 
@@ -216,18 +218,18 @@ export class MorphVSCodeInstance extends VSCodeInstance {
     console.log("[MorphVSCodeInstance] Starting devcontainer");
     const HACK_DEMO_DEVCONTAINER = true;
     if (HACK_DEMO_DEVCONTAINER) {
-      await workerExec({
-        workerSocket: this.getWorkerSocket(),
-        command: "bash",
-        args: [
-          "-c",
-          "pnpm install --frozen-lockfile --prefer-offline && bash /root/workspace/scripts/dev.sh",
-        ],
-        cwd: "/root/workspace",
-        env: {
-          FORCE_INSTALL: "true",
-        },
-      });
+      // await workerExec({
+      //   workerSocket: this.getWorkerSocket(),
+      //   command: "bash",
+      //   args: [
+      //     "-c",
+      //     "pnpm install --frozen-lockfile --prefer-offline && bash /root/workspace/scripts/dev.sh",
+      //   ],
+      //   cwd: "/root/workspace",
+      //   env: {
+      //     FORCE_INSTALL: "true",
+      //   },
+      // });
       return devcontainerNetwork;
     }
 

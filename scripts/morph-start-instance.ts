@@ -2,6 +2,7 @@
 
 import type { ServerToWorkerEvents, WorkerToServerEvents } from "@cmux/shared";
 import { MorphCloudClient } from "morphcloud";
+import readline from "readline";
 import { io, Socket } from "socket.io-client";
 
 const client = new MorphCloudClient();
@@ -10,10 +11,12 @@ console.log("Starting instance");
 const instance = await client.instances.start({
   // snapshotId: "snapshot_yawsf9cr",
   // snapshotId: "snapshot_kco1jqb6",
-  // snapshotId: "snapshot_5h9hvkqq",
-  snapshotId: "snapshot_3qyamh9h", // hacky one
-  // 30 minutes
-  ttlSeconds: 60 * 30,
+  // snapshotId: "snapshot_3qyamh9h", // hacky one
+  // snapshotId: "snapshot_c8ahthyz", // hacky one
+  // snapshotId: "snapshot_0k4q04v3", // first good one
+  snapshotId: "snapshot_qmmp8lbq", // the big one
+  // 2 hours
+  ttlSeconds: 60 * 60 * 2,
   ttlAction: "pause",
   metadata: {
     app: "cmux-dev",
@@ -28,7 +31,15 @@ process.on("SIGINT", async () => {
 
 console.log(`Created instance: ${instance.id}`);
 
+const portsToExpose = [5173, 9777, 9778, 6791, 39378, 39377];
+console.log("Exposing ports", portsToExpose);
+await Promise.all(
+  portsToExpose.map((port) => instance.exposeHttpService(`port-${port}`, port))
+);
+
+console.log("Exposed services");
 const exposedServices = instance.networking.httpServices;
+console.log(exposedServices);
 const vscodeService = exposedServices.find((service) => service.port === 39378);
 const workerService = exposedServices.find((service) => service.port === 39377);
 if (!vscodeService || !workerService) {
@@ -40,6 +51,35 @@ console.log(`VSCode: ${vscodeService.url}/?folder=/root/workspace`);
 console.log("Connecting to worker...");
 
 console.log("workerService.url", workerService.url);
+
+// press enter to snapshot
+
+await new Promise((resolve) => {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+  rl.question("Press Enter to snapshot...", () => {
+    rl.close();
+    resolve(true);
+  });
+});
+
+const snapshot = await instance.snapshot();
+console.log("Snapshot", snapshot.id);
+
+// just wait here until user presses enter
+
+await new Promise((resolve) => {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+  rl.question("Press Enter to continue...", () => {
+    rl.close();
+    resolve(true);
+  });
+});
 
 const workerUrl = new URL(workerService.url);
 workerUrl.pathname = "/management";
@@ -99,10 +139,7 @@ console.log("Install dependencies + dev.sh");
 await workerExec({
   workerSocket: clientSocket,
   command: "bash",
-  args: [
-    "-c",
-    "pnpm install --frozen-lockfile --prefer-offline && ./scripts/dev.sh",
-  ],
+  args: ["-c", "SKIP_DOCKER_BUILD=true SKIP_CONVEX=true ./scripts/dev.sh"],
   cwd: "/root/workspace",
   env: {},
 });
