@@ -1017,8 +1017,6 @@ async function createTerminal(
     envKeys: Object.keys(ptyEnv),
   });
 
-  // No need to map taskRunId to terminalId for AMP; proxy emits terminalId = taskRunId
-
   let childProcess: ChildProcessWithoutNullStreams;
   const processStartTime = Date.now();
 
