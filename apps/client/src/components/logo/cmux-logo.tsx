@@ -11,9 +11,6 @@ type Props = Omit<
   /** Gradient colors for the mark. */
   from?: string; // default "#00D4FF"
   to?: string; // default "#7C3AED"
-  /** Wordmark colors (light/dark). */
-  wordmarkLight?: string; // default #0F172A
-  wordmarkDark?: string; // default #FFFFFF
   /** Toggle the wordmark. Set false for arrow-only. */
   showWordmark?: boolean; // default true
 };
@@ -23,8 +20,6 @@ export default function CmuxLogo({
   label,
   from = "#00D4FF",
   to = "#7C3AED",
-  wordmarkLight = "#0F172A",
-  wordmarkDark = "#FFFFFF",
   showWordmark = true,
   style,
   ...rest
@@ -36,11 +31,8 @@ export default function CmuxLogo({
   const css = `
     .mark-line { stroke: url(#${gradId}); stroke-width: 14; stroke-linecap: round; }
     .mark-fill { fill: url(#${gradId}); }
-    .wordmark  { fill: ${wordmarkLight}; font-weight: 700; letter-spacing: 1.5px;
+    .wordmark  { font-weight: 700; letter-spacing: 1.5px;
                  font-family: "JetBrains Mono","SFMono-Regular","Menlo","Consolas","ui-monospace","Monaco","Courier New",monospace; }
-    @media (prefers-color-scheme: dark) {
-      .wordmark { fill: ${wordmarkDark}; }
-    }
   `;
 
   return (
@@ -80,7 +72,12 @@ export default function CmuxLogo({
 
       {/* Wordmark */}
       {showWordmark && (
-        <text className="wordmark" x={208} y={162} fontSize={112}>
+        <text
+          className="wordmark fill-neutral-900 dark:fill-white"
+          x={208}
+          y={162}
+          fontSize={112}
+        >
           cmux
         </text>
       )}

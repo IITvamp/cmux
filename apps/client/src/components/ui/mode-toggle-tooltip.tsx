@@ -1,4 +1,5 @@
 import { cn } from "@/lib/utils";
+import { Switch } from "@heroui/react";
 import { useUser } from "@stackframe/react";
 import { useLocation } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "framer-motion";
@@ -100,31 +101,23 @@ export function ModeToggleTooltip({
   }, []);
 
   return (
-    <div className="relative inline-flex items-center">
-      <button
-        onClick={handleClick}
+    <div className={cn("relative inline-flex items-center", className)}>
+      <Switch
+        isSelected={isCloudMode}
+        onValueChange={() => handleClick()}
         onMouseEnter={handleMouseEnter}
         onMouseLeave={handleMouseLeave}
-        className={cn(
-          "relative flex items-center h-5 w-9 rounded-full transition-colors",
-          "border border-neutral-200 dark:border-neutral-600",
-          isCloudMode ? "bg-primary" : "bg-neutral-200 dark:bg-neutral-700",
-          className
-        )}
-      >
-        <span
-          className={cn(
-            "absolute flex items-center justify-center h-4 w-4 rounded-full bg-white dark:bg-neutral-200 shadow-sm transition-transform duration-200 ease-out",
-            isCloudMode ? "translate-x-4" : "translate-x-0.5"
-          )}
-        >
-          {isCloudMode ? (
-            <Cloud className="w-2.5 h-2.5 text-primary" />
+        color="primary"
+        size="sm"
+        aria-label={isCloudMode ? "Cloud mode" : "Local mode"}
+        thumbIcon={({ isSelected, className }) =>
+          isSelected ? (
+            <Cloud className={cn(className, "size-3")} />
           ) : (
-            <HardDrive className="w-2.5 h-2.5 text-neutral-600" />
-          )}
-        </span>
-      </button>
+            <HardDrive className={cn(className, "size-3")} />
+          )
+        }
+      />
 
       {/* Custom tooltip */}
       <AnimatePresence>
