@@ -233,7 +233,8 @@ class MorphDockerfileExecutor {
     console.log("Starting instance...");
     const instance = await this.client.instances.start({
       // snapshotId: snapshot.id,
-      snapshotId: "snapshot_wdtqk4gj", // the one with docker!
+      // snapshotId: "snapshot_wdtqk4gj", // the one with docker!
+      snapshotId: "snapshot_88da338e", // the big one!
       // 30 minutes
       ttlSeconds: 60 * 30,
       ttlAction: "pause",

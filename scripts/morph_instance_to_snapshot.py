@@ -17,7 +17,8 @@ client = MorphCloudClient()
 
 print("Getting instance")
 instance = client.instances.get(
-    "morphvm_2dqyuqt0",
+    # "morphvm_kakl0q87",
+    "morphvm_mfj8jeox",
 )
 
 print("Exposing ports")

@@ -11,9 +11,10 @@ console.log("Starting instance");
 const instance = await client.instances.start({
   // snapshotId: "snapshot_yawsf9cr",
   // snapshotId: "snapshot_kco1jqb6",
-  snapshotId: "snapshot_5h9hvkqq",
   // snapshotId: "snapshot_3qyamh9h", // hacky one
   // snapshotId: "snapshot_c8ahthyz", // hacky one
+  // snapshotId: "snapshot_0k4q04v3", // first good one
+  snapshotId: "snapshot_af7iifny", // the big one
   // 2 hours
   ttlSeconds: 60 * 60 * 2,
   ttlAction: "pause",
@@ -31,6 +32,7 @@ process.on("SIGINT", async () => {
 console.log(`Created instance: ${instance.id}`);
 
 const exposedServices = instance.networking.httpServices;
+console.log(exposedServices);
 const vscodeService = exposedServices.find((service) => service.port === 39378);
 const workerService = exposedServices.find((service) => service.port === 39377);
 if (!vscodeService || !workerService) {
