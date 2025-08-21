@@ -254,11 +254,11 @@ export default function LandingPage() {
                     className="h-4 w-4 text-neutral-500"
                     aria-hidden="true"
                   />
-                  Separate VS Code windows
+                  Separate Code editor windows
                 </h3>
                 <p className="text-sm text-neutral-400">
-                  Each agent runs in its own VS Code on a different port.
-                  localhost:8001, :8002, :8003. Click to open any of them.
+                  Each agent runs in its own VS Code instance.
+                  You can open them in your IDE of choice, locally or remotely.
                 </p>
               </div>
 
