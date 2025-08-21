@@ -14,8 +14,10 @@ fi
 IS_DEVCONTAINER=false
 if [ -f /.dockerenv ] || [ -n "$REMOTE_CONTAINERS" ] || [ -n "$CODESPACES" ]; then
     IS_DEVCONTAINER=true
-    # Set workspace directory for devcontainer
-    APP_DIR="/root/workspace"
+    # Set workspace directory for devcontainer - use current working directory's parent
+    # Get the directory where this script is located
+    SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+    APP_DIR="$(dirname "$SCRIPT_DIR")"
 else
     # Get the directory where this script is located
     SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
@@ -51,7 +53,7 @@ fi
 if [ "$IS_DEVCONTAINER" = "true" ]; then
     # In devcontainer, always build since we have access to docker socket
     echo "Building Docker image..."
-    docker build -t cmux-worker:0.0.1 /workspace || exit 1
+    docker build -t cmux-worker:0.0.1 "$APP_DIR" || exit 1
 else
     # On host, build by default unless explicitly skipped
     if [ "$SKIP_DOCKER_BUILD" != "true" ] || [ "$FORCE_DOCKER_BUILD" = "true" ]; then

@@ -10,18 +10,18 @@ import {
 } from "./VSCodeInstance.js";
 
 interface MorphVSCodeInstanceConfig extends VSCodeInstanceConfig {
-  snapshotId?: string;
+  morphSnapshotId?: string;
 }
 
 export class MorphVSCodeInstance extends VSCodeInstance {
   private morphClient: MorphCloudClient;
   private instance: Instance | null = null; // Morph instance type
-  private snapshotId: string;
+  private morphSnapshotId: string;
 
   constructor(config: MorphVSCodeInstanceConfig) {
     super(config);
     this.morphClient = new MorphCloudClient();
-    this.snapshotId = config.snapshotId || "snapshot_5h9hvkqq";
+    this.morphSnapshotId = config.morphSnapshotId || "snapshot_5h9hvkqq";
   }
 
   async start(): Promise<VSCodeInstanceInfo> {
@@ -31,7 +31,7 @@ export class MorphVSCodeInstance extends VSCodeInstance {
 
     // Start the Morph instance
     this.instance = await this.morphClient.instances.start({
-      snapshotId: this.snapshotId,
+      snapshotId: this.morphSnapshotId,
       // 30 minutes
       ttlSeconds: 60 * 30,
       ttlAction: "pause",
@@ -155,28 +155,7 @@ export class MorphVSCodeInstance extends VSCodeInstance {
       "[MorphVSCodeInstance] Forward ports:",
       parsedDevcontainerJson.forwardPorts
     );
-
-    console.log("[MorphVSCodeInstance] Starting devcontainer");
-
-    // Start the devcontainer
-    const devcontainerStart = await workerExec({
-      workerSocket: this.getWorkerSocket(),
-      // 5 minutes
-      timeout: 5 * 60 * 1000,
-      command: "bash",
-      args: [
-        "-c",
-        "bunx @devcontainers/cli up --workspace-folder . >> /var/log/cmux/devcontainer.log 2>&1",
-      ],
-      cwd: "/root/workspace",
-      env: {},
-    });
-
-    console.log(
-      "[MorphVSCodeInstance] Devcontainer start output:",
-      devcontainerStart
-    );
-
+    console.log("[MorphVSCodeInstance] Exposing network...");
     const forwardPorts = z
       .array(z.number())
       .safeParse(parsedDevcontainerJson.forwardPorts);
@@ -218,6 +197,28 @@ export class MorphVSCodeInstance extends VSCodeInstance {
       (item): item is NonNullable<typeof item> => item !== null
     );
     console.log("[MorphVSCodeInstance] Networking:", filteredNetwork);
+
+    console.log("[MorphVSCodeInstance] Starting devcontainer");
+
+    // Start the devcontainer
+    const devcontainerStart = await workerExec({
+      workerSocket: this.getWorkerSocket(),
+      // 5 minutes
+      timeout: 5 * 60 * 1000,
+      command: "bash",
+      args: [
+        "-c",
+        "bunx @devcontainers/cli up --workspace-folder . >> /var/log/cmux/devcontainer.log 2>&1",
+      ],
+      cwd: "/root/workspace",
+      env: {},
+    });
+
+    console.log(
+      "[MorphVSCodeInstance] Devcontainer start output:",
+      devcontainerStart
+    );
+
     return filteredNetwork;
   }
 
