@@ -69,15 +69,15 @@ export default function LandingPage() {
               <nav aria-label="Main" className="hidden md:flex items-center">
                 <ul className="flex flex-wrap items-center gap-x-2">
                   <li>
-                    <a className="font-semibold text-white hover:text-orange-400 transition" href="#features">Features</a>
+                    <a className="font-semibold text-white hover:text-blue-400 transition" href="#features">Features</a>
                   </li>
                   <li className="text-neutral-700 px-1" role="presentation">|</li>
                   <li>
-                    <a className="font-semibold text-white hover:text-orange-400 transition" href="#how">How it works</a>
+                    <a className="font-semibold text-white hover:text-blue-400 transition" href="#how">How it works</a>
                   </li>
                   <li className="text-neutral-700 px-1" role="presentation">|</li>
                   <li>
-                    <a className="font-semibold text-white hover:text-orange-400 transition" href="#requirements">Requirements</a>
+                    <a className="font-semibold text-white hover:text-blue-400 transition" href="#requirements">Requirements</a>
                   </li>
                   <li className="text-neutral-700 px-1" role="presentation">|</li>
                   <li>
@@ -85,7 +85,7 @@ export default function LandingPage() {
                       href="https://cal.com/team/manaflow/meeting"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex h-8 items-center bg-orange-500 px-3 text-sm font-semibold text-white hover:bg-orange-400"
+                      className="inline-flex h-8 items-center bg-blue-500 px-3 text-sm font-semibold text-white hover:bg-blue-400"
                     >
                       Book a meeting
                     </a>
@@ -100,49 +100,21 @@ export default function LandingPage() {
       <section className="pt-10 pb-16 px-4 sm:px-6 lg:px-12">
         <div className="container max-w-5xl mx-auto">
           <div className="grid grid-cols-[4px_1fr] gap-6">
-            <div className="bg-orange-500 rounded-sm" aria-hidden="true"></div>
+            <div className="bg-blue-500 rounded-sm" aria-hidden="true"></div>
             <div>
               <h1 className="text-3xl sm:text-4xl md:text-5xl font-semibold mb-6">
-                The fastest way to verify AI-written code
+                Orchestrate AI coding agents in parallel
               </h1>
 
               <p className="text-lg text-neutral-300 mb-4 leading-relaxed">
-                cmux runs multiple coding agents in parallel and gives each one an isolated
-                VS Code instance in Docker. Review changes instantly with a focused
-                verification workflow instead of context switching.
+                cmux runs Claude code, Codex, Gemini CLI, and other AI agents in parallel, giving each one an isolated
+                VS Code instance in Docker. Review changes instantly and
+                verify them instead of context switching.
               </p>
               <p className="text-lg text-neutral-300 leading-relaxed">
-                Learn more about the <a href="#features" className="text-sky-400 hover:text-sky-300 underline decoration-dotted underline-offset-4">features</a>,
-                see <a href="#how" className="text-sky-400 hover:text-sky-300 underline decoration-dotted underline-offset-4">how it works</a>, or
-                visit <a href="https://github.com/manaflow-ai/cmux" target="_blank" rel="noopener noreferrer" className="text-sky-400 hover:text-sky-300 underline decoration-dotted underline-offset-4">GitHub</a>.
+                Learn more about the <a href="#features" className="text-sky-400 hover:text-sky-300 underline decoration-dotted underline-offset-4">features</a>, <a href="#how" className="text-sky-400 hover:text-sky-300 underline decoration-dotted underline-offset-4">how it works</a>, or
+                see the <a href="#roadmap" target="_blank" rel="noopener noreferrer" className="text-sky-400 hover:text-sky-300 underline decoration-dotted underline-offset-4">roadmap</a>.
               </p>
-
-              <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 gap-x-16 gap-y-2">
-                <div className="flex items-center">
-                  <span className="mr-3 text-neutral-400">*</span>
-                  <a href="#features" className="text-sky-400 hover:text-sky-300 font-medium">Performance</a>
-                </div>
-                <div className="flex items-center">
-                  <span className="mr-3 text-neutral-400">*</span>
-                  <a href="#how" className="text-sky-400 hover:text-sky-300 font-medium">Cost</a>
-                </div>
-                <div className="flex items-center">
-                  <span className="mr-3 text-neutral-400">*</span>
-                  <a href="#requirements" className="text-sky-400 hover:text-sky-300 font-medium">Uptime</a>
-                </div>
-                <div className="flex items-center">
-                  <span className="mr-3 text-neutral-400">*</span>
-                  <a href="#roadmap" className="text-sky-400 hover:text-sky-300 font-medium">Security</a>
-                </div>
-                <div className="flex items-center">
-                  <span className="mr-3 text-neutral-400">*</span>
-                  <a href="#how" className="text-sky-400 hover:text-sky-300 font-medium">Isolation</a>
-                </div>
-                <div className="flex items-center">
-                  <span className="mr-3 text-neutral-400">*</span>
-                  <a href="#features" className="text-sky-400 hover:text-sky-300 font-medium">Features</a>
-                </div>
-              </div>
 
               <div className="mt-10 flex flex-col sm:flex-row items-center gap-4">
                 <a
@@ -222,162 +194,6 @@ export default function LandingPage() {
                 className="w-full h-auto"
                 priority
               />
-            </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="bg-neutral-950 border border-neutral-800 rounded-lg overflow-hidden">
-                <div className="flex items-center gap-2 px-4 py-2 bg-neutral-900 border-b border-neutral-800">
-                  <div className="flex gap-1.5">
-                    <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                    <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                    <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                  </div>
-                  <span className="text-xs text-neutral-500 font-mono ml-2">
-                    terminal
-                  </span>
-                </div>
-                <div className="p-4 font-mono text-sm space-y-2">
-                  <div className="text-neutral-500">$ ./scripts/dev.sh</div>
-                  <div className="text-green-400">
-                    ✓ Docker containers ready
-                  </div>
-                  <div className="text-green-400">
-                    ✓ VS Code servers initialized
-                  </div>
-                  <div className="text-green-400">
-                    ✓ Dashboard running on :3000
-                  </div>
-                  <div className="text-neutral-400 mt-4">
-                    Ready to spawn AI agents...
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-neutral-950 border border-neutral-800 rounded-lg overflow-hidden">
-                <div className="flex items-center gap-2 px-4 py-2 bg-neutral-900 border-b border-neutral-800">
-                  <div className="flex gap-1.5">
-                    <div className="w-3 h-3 rounded-full bg-red-500"></div>
-                    <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                    <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                  </div>
-                  <span className="text-xs text-neutral-500 font-mono ml-2">
-                    localhost:3000
-                  </span>
-                </div>
-                <div className="p-4">
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-semibold">Active Tasks</span>
-                      <span className="text-xs text-neutral-500">
-                        3 running
-                      </span>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="bg-neutral-900 rounded p-2 text-xs">
-                        <div className="flex items-center gap-2 mb-1">
-                          <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                          <span>Refactor auth module</span>
-                        </div>
-                        <div className="text-neutral-500 ml-4">
-                          Claude Code • port 8001
-                        </div>
-                      </div>
-                      <div className="bg-neutral-900 rounded p-2 text-xs">
-                        <div className="flex items-center gap-2 mb-1">
-                          <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                          <span>Add test coverage</span>
-                        </div>
-                        <div className="text-neutral-500 ml-4">
-                          Codex • port 8002
-                        </div>
-                      </div>
-                      <div className="bg-neutral-900 rounded p-2 text-xs">
-                        <div className="flex items-center gap-2 mb-1">
-                          <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                          <span>Database migration</span>
-                        </div>
-                        <div className="text-neutral-500 ml-4">
-                          Gemini CLI • complete
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-neutral-950 border border-neutral-800 rounded-lg p-6">
-              <h3 className="text-lg font-semibold mb-4">Parallel execution</h3>
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="bg-neutral-900 rounded-lg p-3">
-                    <div className="flex items-center gap-2 mb-2">
-                      <ClientIcon
-                        icon={Terminal}
-                        className="h-4 w-4 text-blue-500"
-                        aria-hidden="true"
-                      />
-                      <span className="text-sm font-mono">Claude Code</span>
-                    </div>
-                    <div className="text-xs text-neutral-500 space-y-1">
-                      <div>Task: auth module</div>
-                      <div>
-                        VS Code:{" "}
-                        <span className="text-yellow-400">port 8001</span>
-                      </div>
-                      <div>Git: 3 files changed</div>
-                    </div>
-                  </div>
-                  <div className="bg-neutral-900 rounded-lg p-3">
-                    <div className="flex items-center gap-2 mb-2">
-                      <ClientIcon
-                        icon={Terminal}
-                        className="h-4 w-4 text-purple-500"
-                        aria-hidden="true"
-                      />
-                      <span className="text-sm font-mono">Codex</span>
-                    </div>
-                    <div className="text-xs text-neutral-500 space-y-1">
-                      <div>Task: test coverage</div>
-                      <div>
-                        VS Code:{" "}
-                        <span className="text-green-400">port 8002</span>
-                      </div>
-                      <div>Git: tests added</div>
-                    </div>
-                  </div>
-                  <div className="bg-neutral-900 rounded-lg p-3">
-                    <div className="flex items-center gap-2 mb-2">
-                      <ClientIcon
-                        icon={Terminal}
-                        className="h-4 w-4 text-green-500"
-                        aria-hidden="true"
-                      />
-                      <span className="text-sm font-mono">Gemini CLI</span>
-                    </div>
-                    <div className="text-xs text-neutral-500 space-y-1">
-                      <div>Task: API endpoints</div>
-                      <div>
-                        VS Code:{" "}
-                        <span className="text-green-400">port 8003</span>
-                      </div>
-                      <div>Git: ready to commit</div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-neutral-900 rounded-lg p-3">
-                  <div className="flex justify-between text-xs text-neutral-500 mb-2">
-                    <span>2 of 3 tasks done</span>
-                    <span>~4 min left</span>
-                  </div>
-                  <div className="w-full bg-neutral-800 rounded-full h-2">
-                    <div
-                      className="bg-orange-500 h-2 rounded-full"
-                      style={{ width: "67%" }}
-                    ></div>
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
         </div>
