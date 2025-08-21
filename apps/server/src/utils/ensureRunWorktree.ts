@@ -37,7 +37,7 @@ export async function ensureRunWorktreeAndBranch(
   // Ensure worktree exists
   let worktreePath = run.worktreePath;
   let needsSetup = !worktreePath;
-  
+
   // Check if the worktree directory actually exists (handle manual deletion case)
   if (worktreePath) {
     try {
@@ -45,12 +45,14 @@ export async function ensureRunWorktreeAndBranch(
       // Also check if it's a valid git directory
       await fs.access(path.join(worktreePath, ".git"));
     } catch {
-      serverLogger.warn(`Worktree path ${worktreePath} doesn't exist or is not a git directory, recreating...`);
+      serverLogger.warn(
+        `Worktree path ${worktreePath} doesn't exist or is not a git directory, recreating...`
+      );
       needsSetup = true;
       worktreePath = undefined;
     }
   }
-  
+
   if (needsSetup) {
     // Derive repo URL from task.projectFullName
     if (!task.projectFullName) {
@@ -59,14 +61,8 @@ export async function ensureRunWorktreeAndBranch(
     const repoUrl = `https://github.com/${task.projectFullName}.git`;
     const worktreeInfo = await getWorktreePath({
       repoUrl,
-      branch: baseBranch || undefined,
+      branch: branchName,
     });
-    // Override with known branch name and path
-    worktreeInfo.branchName = branchName;
-    worktreeInfo.worktreePath = path.join(
-      worktreeInfo.worktreesPath,
-      branchName
-    );
 
     const res = await setupProjectWorkspace({
       repoUrl,
@@ -94,7 +90,7 @@ export async function ensureRunWorktreeAndBranch(
     const repoMgr = RepositoryManager.getInstance();
     baseBranch = await repoMgr.getDefaultBranch(worktreePath);
   }
-  
+
   // Ensure worktreePath is defined before proceeding
   if (!worktreePath) {
     throw new Error("Failed to establish worktree path");
