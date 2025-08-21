@@ -1,13 +1,12 @@
 import { createServer as createHttpServer } from "node:http";
-import { mkdir as fspMkdir, writeFile as fspWriteFile, readFile as fspReadFile } from "node:fs/promises";
-import { join as pathJoin } from "node:path";
+import { readFile as fspReadFile } from "node:fs/promises";
 
 export type AmpProxyOptions = {
   ampUrl?: string;
   logsDir?: string;
   workerId?: string;
   log?: (level: string, message: string, meta?: unknown, workerId?: string) => void;
-  emitToMainServer?: (event: string, payload: any) => void;
+  emitToMainServer?: (event: string, payload: unknown) => void;
 };
 
 export type AmpProxyHandle = void;
@@ -104,27 +103,14 @@ function ampResponseIndicatesCompletion(json: unknown): boolean {
 export function startAmpProxy(options: AmpProxyOptions = {}): AmpProxyHandle {
   const AMP_PROXY_PORT = 39379;
   const AMP_TARGET_HOST = options.ampUrl || process.env.AMP_URL || "https://ampcode.com";
-  const AMP_LOGS_DIR = options.logsDir || "./logs";
-
-  const logFn = options.log || ((level: string, message: string, meta?: unknown) => {
-    const extra = meta ? ` ${JSON.stringify(meta)}` : "";
-    console.log(`[${level}] ${message}${extra}`);
-  });
 
   const emit = options.emitToMainServer || (() => {});
   const workerId = options.workerId;
 
   (async () => {
-    try {
-      await fspMkdir(AMP_LOGS_DIR, { recursive: true });
-    } catch {}
-
-    let requestCounter = 0;
 
     const ampProxy = createHttpServer(async (req, res) => {
       const start = Date.now();
-      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-      const requestId = `${timestamp}_${++requestCounter}`;
       const targetUrl = `${AMP_TARGET_HOST}${req.url || "/"}`;
 
       const chunks: Buffer[] = [];
@@ -158,13 +144,13 @@ export function startAmpProxy(options: AmpProxyOptions = {}): AmpProxyHandle {
           upstreamHeaders.set("x-api-key", realKey);
         }
 
-        let bodyForFetch: any = undefined;
+        // Use Uint8Array for Node/Web fetch compatibility; Buffer extends Uint8Array
+        let bodyForFetch: string | Uint8Array | undefined = undefined;
         let loggedRequestBody: unknown = undefined;
         if (req.method && req.method !== "GET" && req.method !== "HEAD") {
           if (typeof contentType === "string" && contentType.includes("application/json")) {
             const text = reqBuffer.toString("utf8");
             bodyForFetch = text;
-            try { loggedRequestBody = JSON.parse(text); } catch { loggedRequestBody = text; }
           } else {
             bodyForFetch = reqBuffer;
             loggedRequestBody = contentType && String(contentType).includes("multipart/form-data")
@@ -199,65 +185,11 @@ export function startAmpProxy(options: AmpProxyOptions = {}): AmpProxyHandle {
           try { loggedResponseBody = JSON.parse(text); } catch { loggedResponseBody = text; }
         }
 
-        const headersToObject = (h: any): Record<string, string> => {
-          const out: Record<string, string> = {};
-          try {
-            if (h && typeof h.forEach === "function") {
-              h.forEach((value: string, key: string) => { out[key] = value; });
-            }
-          } catch {}
-          return out;
-        };
-
-        const logData = {
-          requestId,
-          timestamp: new Date().toISOString(),
-          method: req.method,
-          url: req.url,
-          targetUrl,
-          headers: Object.fromEntries(
-            Object.entries(req.headers).map(([k, v]) => {
-              const vv = Array.isArray(v) ? v.join(", ") : (v || "");
-              if (/^authorization$/i.test(k)) {
-                return [k, typeof vv === "string" ? vv.replace(/(Bearer\s+)[^\s]+/, "$1***") : (vv as string)];
-              }
-              return [k, vv as string];
-            })
-          ),
-          requestBody: loggedRequestBody,
-          upstreamHeaders: (() => {
-            const out: Record<string, string> = {};
-            try {
-              upstreamHeaders.forEach?.((value: string, key: string) => {
-                if (/^authorization$/i.test(key)) {
-                  out[key] = String(value).replace(/(Bearer\s+)[^\s]+/, "$1***");
-                } else {
-                  out[key] = value;
-                }
-              });
-            } catch {}
-            return out;
-          })(),
-          responseStatus: proxyResponse.status,
-          responseStatusText: proxyResponse.statusText,
-          responseHeaders: headersToObject(responseHeaders),
-          responseBody: loggedResponseBody,
-          taskRunId,
-        } as Record<string, unknown>;
-        try {
-          const logPath = pathJoin(AMP_LOGS_DIR, `${requestId}.json`);
-          await fspWriteFile(logPath, JSON.stringify(logData, null, 2), "utf8");
-          logFn("INFO", `[AMP Proxy] Saved log ${logPath}`);
-        } catch (e) {
-          logFn("ERROR", "[AMP Proxy] Failed to write log", e, workerId);
-        }
-
         const completed =
           ampResponseIndicatesCompletion(loggedRequestBody) ||
           ampResponseIndicatesCompletion(loggedResponseBody);
         if (completed && taskRunId) {
           const elapsedMs = Date.now() - start;
-          logFn("INFO", "[AMP Proxy] Completion detected; notifying main server", { taskRunId }, workerId);
           emit("worker:task-complete", {
             workerId,
             taskRunId,
@@ -277,15 +209,7 @@ export function startAmpProxy(options: AmpProxyOptions = {}): AmpProxyHandle {
       });
     });
 
-    ampProxy.listen(AMP_PROXY_PORT, () => {
-      logFn(
-        "INFO",
-        `[AMP Proxy] Listening on ${AMP_PROXY_PORT}, forwarding to ${AMP_TARGET_HOST}`,
-        undefined,
-        workerId
-      );
-      logFn("INFO", `[AMP Proxy] Logs directory: ${AMP_LOGS_DIR}`);
-    });
+    ampProxy.listen(AMP_PROXY_PORT, () => {});
   })();
 
   return;

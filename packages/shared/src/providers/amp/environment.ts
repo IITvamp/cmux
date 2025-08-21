@@ -58,9 +58,11 @@ export async function getAmpEnvironment(): Promise<EnvironmentResult> {
     console.warn("Failed to read amp secrets.json:", error);
   }
 
+  // Proxy server on localhost:39379
   env.AMP_URL = "http://localhost:39379";
-
-  env.AMP_API_KEY = "$CMUX_TASK_RUN_ID";
+  
+  // Use taskRunId as the API key and replace it with real in proxy server
+  env.AMP_API_KEY = "$taskRunId:$CMUX_TASK_RUN_ID";
 
   return { files, env, startupCommands };
 }
