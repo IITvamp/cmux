@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@cmux/preview-comments": "workspace:*",
     "@asteasolutions/zod-to-openapi": "^8.1.0",
     "@cmux/shared": "workspace:*",
     "@hono/node-server": "^1.18.1",

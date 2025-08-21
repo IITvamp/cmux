@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { PreviewCommentsWidget } from "@cmux/preview-comments";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -28,6 +29,8 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         {children}
+        {/* Floating preview comments widget */}
+        <PreviewCommentsWidget />
       </body>
     </html>
   );

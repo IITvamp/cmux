@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  transpilePackages: ["@cmux/preview-comments"],
   experimental: {
     // Ensure server bundles don't try to parse native addons
     serverComponentsExternalPackages: [
