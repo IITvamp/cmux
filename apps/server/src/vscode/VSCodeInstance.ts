@@ -175,7 +175,10 @@ export abstract class VSCodeInstance extends EventEmitter {
     });
   }
 
-  getWorkerSocket(): Socket<WorkerToServerEvents, ServerToWorkerEvents> | null {
+  getWorkerSocket(): Socket<WorkerToServerEvents, ServerToWorkerEvents> {
+    if (!this.workerSocket) {
+      throw new Error("Worker socket not connected");
+    }
     return this.workerSocket;
   }
 

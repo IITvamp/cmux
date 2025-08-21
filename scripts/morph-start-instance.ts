@@ -69,21 +69,21 @@ await new Promise((resolve, reject) => {
   });
 });
 
-async function exec({
-  clientSocket,
+async function workerExec({
+  workerSocket,
   command,
   args,
   cwd,
   env,
 }: {
-  clientSocket: Socket<WorkerToServerEvents, ServerToWorkerEvents>;
+  workerSocket: Socket<WorkerToServerEvents, ServerToWorkerEvents>;
   command: string;
   args: string[];
   cwd: string;
   env: Record<string, string>;
 }) {
   return new Promise((resolve, reject) => {
-    clientSocket.emit("worker:exec", { command, args, cwd, env }, (payload) => {
+    workerSocket.emit("worker:exec", { command, args, cwd, env }, (payload) => {
       if (payload.error) {
         reject(payload.error);
       } else {
@@ -93,8 +93,8 @@ async function exec({
   });
 }
 
-await exec({
-  clientSocket,
+await workerExec({
+  workerSocket: clientSocket,
   command: "git",
   args: [
     "clone",
@@ -108,8 +108,8 @@ await exec({
 
 // then start tmux
 
-await exec({
-  clientSocket,
+await workerExec({
+  workerSocket: clientSocket,
   command: "tmux",
   args: ["new-session", "-s", "cmux", "-d"],
   cwd: "/root/workspace",

@@ -20,6 +20,7 @@ import {
 } from "./utils/branchNameGenerator.js";
 import { convex } from "./utils/convexClient.js";
 import { serverLogger } from "./utils/fileLogger.js";
+import { workerExec } from "./utils/workerExec.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { MorphVSCodeInstance } from "./vscode/MorphVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
@@ -262,7 +263,18 @@ export async function spawnAgent(
         taskId,
         theme: options.theme,
       });
-
+      // then we need to set up the repo
+      console.log("[AgentSpawner] [isCloudMode] Cloning repo");
+      await workerExec({
+        workerSocket: vscodeInstance.getWorkerSocket(),
+        command: "bash",
+        args: [
+          "-c",
+          `git clone --depth=1 ${options.repoUrl} /root/workspace && git checkout ${newBranch} && git pull`,
+        ],
+        cwd: "/root",
+        env: {},
+      });
       worktreePath = "/root/workspace";
     } else {
       // For Docker, set up worktree as before
