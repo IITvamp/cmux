@@ -220,6 +220,8 @@ export abstract class VSCodeInstance extends EventEmitter {
     return this.taskRunId;
   }
 
+  abstract getName(): string;
+
   protected getWorkspaceUrl(baseUrl: string): string {
     return `${baseUrl}/?folder=/root/workspace`;
   }

@@ -523,10 +523,7 @@ export async function spawnAgent(
       id: taskRunId,
       vscode: {
         provider: vscodeInfo.provider,
-        containerName:
-          vscodeInstance instanceof DockerVSCodeInstance
-            ? (vscodeInstance as DockerVSCodeInstance).getContainerName()
-            : undefined,
+        containerName: vscodeInstance.getName(),
         status: "running",
         url: vscodeInfo.url,
         workspaceUrl: vscodeInfo.workspaceUrl,
