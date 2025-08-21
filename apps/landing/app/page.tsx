@@ -1,8 +1,8 @@
 "use client";
 
 import { ClientIcon } from "@/components/client-icon";
+import CmuxLogo from "@/components/logo/cmux-logo";
 import {
-  ArrowRight,
   Check,
   Cloud,
   Copy,
@@ -27,142 +27,193 @@ export default function LandingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-black text-white overflow-y-auto">
-      <nav className="sticky top-0 w-full z-50 bg-black/90 backdrop-blur-sm border-b border-neutral-900">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-14">
-            <div className="flex items-center gap-2">
-              <ClientIcon
-                icon={Terminal}
-                className="h-5 w-5"
-                aria-hidden="true"
-              />
-              <span className="text-lg font-mono">cmux</span>
-            </div>
-            <div className="flex items-center gap-4">
-              <a
-                href="https://github.com/manaflow-ai/cmux"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-2 text-sm text-neutral-400 hover:text-white transition-colors"
-              >
-                <ClientIcon
-                  icon={Github}
-                  className="h-4 w-4"
-                  aria-hidden="true"
-                />
-                <span>GitHub</span>
-              </a>
-              <a
-                href="https://cal.com/team/manaflow/meeting"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-neutral-400 hover:text-white transition-colors"
-              >
-                Contact
-              </a>
+    <div className="min-h-screen bg-background text-foreground overflow-y-auto">
+      {/* Announcement bar */}
+      <div className="w-full bg-blue-300 px-3 py-1 text-center font-medium text-black">
+        <span>
+          cmux is
+          {" "}
+          <a
+            href="https://github.com/manaflow-ai/cmux"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-black underline decoration-blue-600 decoration-dotted underline-offset-4 hover:decoration-solid"
+          >
+            open source on GitHub
+          </a>
+          .
+        </span>
+        {" "}
+        <span className="whitespace-nowrap ml-2">
+          <a
+            href="#requirements"
+            className="whitespace-nowrap bg-black px-2 py-0.5 rounded-sm font-semibold text-blue-300 hover:text-blue-200"
+          >
+            See requirements
+          </a>
+        </span>
+      </div>
+
+      {/* Header */}
+      <header className="mb-6 bg-neutral-950/80 backdrop-blur top-0 z-40 border-b border-neutral-900">
+        <div className="container max-w-7xl mx-auto px-3 sm:px-5 py-2.5">
+          <div className="grid w-full grid-cols-[auto_1fr] grid-rows-1 items-center gap-2">
+            <a
+              aria-label="Go to homepage"
+              className="col-start-1 col-end-2 inline-flex items-center"
+              href="/"
+            >
+              <CmuxLogo height={40} label="cmux" showWordmark />
+            </a>
+            <div className="col-start-2 col-end-3 flex items-center justify-end gap-2 sm:gap-3">
+              <nav aria-label="Main" className="hidden md:flex items-center">
+                <ul className="flex flex-wrap items-center gap-x-2">
+                  <li>
+                    <a className="font-semibold text-white hover:text-orange-400 transition" href="#features">Features</a>
+                  </li>
+                  <li className="text-neutral-700 px-1" role="presentation">|</li>
+                  <li>
+                    <a className="font-semibold text-white hover:text-orange-400 transition" href="#how">How it works</a>
+                  </li>
+                  <li className="text-neutral-700 px-1" role="presentation">|</li>
+                  <li>
+                    <a className="font-semibold text-white hover:text-orange-400 transition" href="#requirements">Requirements</a>
+                  </li>
+                  <li className="text-neutral-700 px-1" role="presentation">|</li>
+                  <li>
+                    <a
+                      href="https://cal.com/team/manaflow/meeting"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex h-8 items-center bg-orange-500 px-3 text-sm font-semibold text-white hover:bg-orange-400"
+                    >
+                      Book a meeting
+                    </a>
+                  </li>
+                </ul>
+              </nav>
             </div>
           </div>
         </div>
-      </nav>
+      </header>
 
-      <section className="pt-24 pb-16 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto">
-          <h1 className="text-3xl sm:text-4xl font-bold mb-4 font-mono">
-            Orchestrate AI coding agents in parallel
-          </h1>
+      <section className="pt-10 pb-16 px-4 sm:px-6 lg:px-12">
+        <div className="container max-w-5xl mx-auto">
+          <div className="grid grid-cols-[4px_1fr] gap-6">
+            <div className="bg-orange-500 rounded-sm" aria-hidden="true"></div>
+            <div>
+              <h1 className="text-3xl sm:text-4xl md:text-5xl font-semibold mb-6">
+                The fastest way to verify AI-written code
+              </h1>
 
-          <p className="text-lg text-neutral-400 mb-8 leading-relaxed">
-            cmux spawns Claude Code, Codex, Gemini CLI, Amp, Opencode, and other
-            coding agent CLIs in parallel across multiple tasks. For each run,
-            cmux spawns an isolated VS Code instance via Docker with the git
-            diff UI and terminal.
-          </p>
+              <p className="text-lg text-neutral-300 mb-4 leading-relaxed">
+                cmux runs multiple coding agents in parallel and gives each one an isolated
+                VS Code instance in Docker. Review changes instantly with a focused
+                verification workflow instead of context switching.
+              </p>
+              <p className="text-lg text-neutral-300 leading-relaxed">
+                Learn more about the <a href="#features" className="text-sky-400 hover:text-sky-300 underline decoration-dotted underline-offset-4">features</a>,
+                see <a href="#how" className="text-sky-400 hover:text-sky-300 underline decoration-dotted underline-offset-4">how it works</a>, or
+                visit <a href="https://github.com/manaflow-ai/cmux" target="_blank" rel="noopener noreferrer" className="text-sky-400 hover:text-sky-300 underline decoration-dotted underline-offset-4">GitHub</a>.
+              </p>
 
-          <div className="flex flex-col sm:flex-row gap-3 mb-12 max-w-lg">
-            <div className="bg-gradient-to-r from-neutral-900 to-neutral-900/50 border border-neutral-800 rounded-lg px-4 py-3 font-mono text-sm flex items-center gap-3">
-              <span className="text-white">$ bunx cmux</span>
-              <button
-                onClick={() => copyToClipboard("bunx cmux")}
-                className="text-neutral-500 hover:text-white transition-colors"
-              >
-                {copiedCommand === "bunx cmux" ? (
+              <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 gap-x-16 gap-y-2">
+                <div className="flex items-center">
+                  <span className="mr-3 text-neutral-400">*</span>
+                  <a href="#features" className="text-sky-400 hover:text-sky-300 font-medium">Performance</a>
+                </div>
+                <div className="flex items-center">
+                  <span className="mr-3 text-neutral-400">*</span>
+                  <a href="#how" className="text-sky-400 hover:text-sky-300 font-medium">Cost</a>
+                </div>
+                <div className="flex items-center">
+                  <span className="mr-3 text-neutral-400">*</span>
+                  <a href="#requirements" className="text-sky-400 hover:text-sky-300 font-medium">Uptime</a>
+                </div>
+                <div className="flex items-center">
+                  <span className="mr-3 text-neutral-400">*</span>
+                  <a href="#roadmap" className="text-sky-400 hover:text-sky-300 font-medium">Security</a>
+                </div>
+                <div className="flex items-center">
+                  <span className="mr-3 text-neutral-400">*</span>
+                  <a href="#how" className="text-sky-400 hover:text-sky-300 font-medium">Isolation</a>
+                </div>
+                <div className="flex items-center">
+                  <span className="mr-3 text-neutral-400">*</span>
+                  <a href="#features" className="text-sky-400 hover:text-sky-300 font-medium">Features</a>
+                </div>
+              </div>
+
+              <div className="mt-10 flex flex-col sm:flex-row items-center gap-4">
+                <a
+                  href="https://github.com/manaflow-ai/cmux"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-white text-black hover:bg-neutral-200 rounded-lg font-medium transition-colors"
+                >
                   <ClientIcon
-                    icon={Check}
-                    className="h-4 w-4 text-green-400"
+                    icon={Github}
+                    className="h-5 w-5"
                     aria-hidden="true"
                   />
-                ) : (
-                  <ClientIcon
-                    icon={Copy}
-                    className="h-4 w-4"
-                    aria-hidden="true"
-                  />
-                )}
-              </button>
+                  <span>View on GitHub</span>
+                </a>
+                <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-4 py-3 font-mono text-sm flex items-center gap-3">
+                  <span className="text-white">$ bunx cmux</span>
+                  <button
+                    onClick={() => copyToClipboard("bunx cmux")}
+                    className="text-neutral-500 hover:text-white transition-colors"
+                  >
+                    {copiedCommand === "bunx cmux" ? (
+                      <ClientIcon
+                        icon={Check}
+                        className="h-4 w-4 text-green-400"
+                        aria-hidden="true"
+                      />
+                    ) : (
+                      <ClientIcon
+                        icon={Copy}
+                        className="h-4 w-4"
+                        aria-hidden="true"
+                      />
+                    )}
+                  </button>
+                </div>
+                <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-4 py-3 font-mono text-sm flex items-center gap-3">
+                  <span className="text-white">$ npx cmux</span>
+                  <button
+                    onClick={() => copyToClipboard("npx cmux")}
+                    className="text-neutral-500 hover:text-white transition-colors"
+                  >
+                    {copiedCommand === "npx cmux" ? (
+                      <ClientIcon
+                        icon={Check}
+                        className="h-4 w-4 text-green-400"
+                        aria-hidden="true"
+                      />
+                    ) : (
+                      <ClientIcon
+                        icon={Copy}
+                        className="h-4 w-4"
+                        aria-hidden="true"
+                      />
+                    )}
+                  </button>
+                </div>
+              </div>
             </div>
-            <div className="bg-gradient-to-r from-neutral-900 to-neutral-900/50 border border-neutral-800 rounded-lg px-4 py-3 font-mono text-sm flex items-center gap-3">
-              <span className="text-white">$ npx cmux</span>
-              <button
-                onClick={() => copyToClipboard("npx cmux")}
-                className="text-neutral-500 hover:text-white transition-colors"
-              >
-                {copiedCommand === "npx cmux" ? (
-                  <ClientIcon
-                    icon={Check}
-                    className="h-4 w-4 text-green-400"
-                    aria-hidden="true"
-                  />
-                ) : (
-                  <ClientIcon
-                    icon={Copy}
-                    className="h-4 w-4"
-                    aria-hidden="true"
-                  />
-                )}
-              </button>
-            </div>
-          </div>
-
-          <div className="flex flex-col sm:flex-row items-center gap-4">
-            <a
-              href="https://github.com/manaflow-ai/cmux"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-6 py-3 bg-white text-black hover:bg-neutral-200 rounded-lg font-medium transition-colors"
-            >
-              <ClientIcon
-                icon={Github}
-                className="h-5 w-5"
-                aria-hidden="true"
-              />
-              <span>View on GitHub</span>
-            </a>
-            <a
-              href="https://cal.com/team/manaflow/meeting"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-neutral-800 hover:bg-neutral-900 transition-colors"
-            >
-              <span>Contact us</span>
-              <ClientIcon
-                icon={ArrowRight}
-                className="h-3 w-3"
-                aria-hidden="true"
-              />
-            </a>
           </div>
         </div>
       </section>
 
       <div className="flex justify-center py-8">
-        <div className="w-48 h-px bg-neutral-800"></div>
+        <div className="w-48 h-px bg-neutral-200 dark:bg-neutral-800"></div>
       </div>
 
-      <section className="py-16 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto">
+      <section className="py-16 px-4 sm:px-6 lg:px-12">
+        <div className="container max-w-7xl mx-auto">
           <div className="space-y-8">
-            <div className="relative rounded-lg overflow-hidden border border-neutral-800">
+            <div className="relative rounded-lg overflow-hidden border border-neutral-800 bg-neutral-950">
               <Image
                 src="/cmux-demo.png"
                 alt="cmux dashboard showing parallel AI agent execution"
@@ -215,9 +266,7 @@ export default function LandingPage() {
                 <div className="p-4">
                   <div className="space-y-3">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-semibold">
-                        Active Tasks
-                      </span>
+                      <span className="text-sm font-semibold">Active Tasks</span>
                       <span className="text-xs text-neutral-500">
                         3 running
                       </span>
@@ -323,7 +372,7 @@ export default function LandingPage() {
                   </div>
                   <div className="w-full bg-neutral-800 rounded-full h-2">
                     <div
-                      className="bg-blue-500 h-2 rounded-full"
+                      className="bg-orange-500 h-2 rounded-full"
                       style={{ width: "67%" }}
                     ></div>
                   </div>
@@ -335,12 +384,12 @@ export default function LandingPage() {
       </section>
 
       <div className="flex justify-center py-8">
-        <div className="w-48 h-px bg-neutral-800"></div>
+        <div className="w-48 h-px bg-neutral-200 dark:bg-neutral-800"></div>
       </div>
 
-      <section className="py-16 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto">
-          <h2 className="text-2xl font-bold text-center mb-8">
+      <section id="features" className="py-16 px-4 sm:px-6 lg:px-12">
+        <div className="container max-w-7xl mx-auto">
+          <h2 className="text-2xl font-semibold text-center mb-8">
             Rethinking the developer interface
           </h2>
           <div className="space-y-4 text-neutral-400 mb-12">
@@ -374,12 +423,12 @@ export default function LandingPage() {
       </section>
 
       <div className="flex justify-center py-8">
-        <div className="w-48 h-px bg-neutral-800"></div>
+        <div className="w-48 h-px bg-neutral-200 dark:bg-neutral-800"></div>
       </div>
 
-      <section className="py-16 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto">
-          <h2 className="text-2xl font-bold mb-8 text-center">
+      <section id="how" className="py-16 px-4 sm:px-6 lg:px-12">
+        <div className="container max-w-7xl mx-auto">
+          <h2 className="text-2xl font-semibold mb-8 text-center">
             How cmux works today
           </h2>
 
@@ -483,7 +532,7 @@ export default function LandingPage() {
       </section>
 
       <div className="flex justify-center py-8">
-        <div className="w-48 h-px bg-neutral-800"></div>
+        <div className="w-48 h-px bg-neutral-200 dark:bg-neutral-800"></div>
       </div>
 
       <section className="py-16 px-4 sm:px-6 lg:px-8">
@@ -530,12 +579,12 @@ export default function LandingPage() {
       </section>
 
       <div className="flex justify-center py-8">
-        <div className="w-48 h-px bg-neutral-800"></div>
+        <div className="w-48 h-px bg-neutral-200 dark:bg-neutral-800"></div>
       </div>
 
-      <section className="py-16 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto">
-          <h2 className="text-2xl font-bold mb-8 text-center">The roadmap</h2>
+      <section id="roadmap" className="py-16 px-4 sm:px-6 lg:px-12">
+        <div className="container max-w-7xl mx-auto">
+          <h2 className="text-2xl font-semibold mb-8 text-center">The roadmap</h2>
           <div className="space-y-6">
             <div className="text-neutral-400">
               <p className="mb-6">
@@ -588,7 +637,7 @@ export default function LandingPage() {
                 </p>
               </div>
             </div>
-            <div className="mt-8 p-6 bg-gradient-to-r from-neutral-900 to-neutral-900/50 border border-neutral-800 rounded-lg">
+            <div className="mt-8 p-6 bg-neutral-900/60 border border-neutral-800 rounded-lg">
               <h3 className="font-semibold mb-3">
                 The endgame: Autonomous verification
               </h3>
@@ -606,12 +655,12 @@ export default function LandingPage() {
       </section>
 
       <div className="flex justify-center py-8">
-        <div className="w-48 h-px bg-neutral-800"></div>
+        <div className="w-48 h-px bg-neutral-200 dark:bg-neutral-800"></div>
       </div>
 
-      <section className="py-16 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-2xl font-bold mb-4">Requirements</h2>
+      <section id="requirements" className="py-16 px-4 sm:px-6 lg:px-12">
+        <div className="container max-w-7xl mx-auto text-center">
+          <h2 className="text-2xl font-semibold mb-4">Requirements</h2>
           <p className="text-neutral-400 mb-8">
             cmux runs locally on your machine. You'll need:
           </p>
@@ -630,11 +679,11 @@ export default function LandingPage() {
       </section>
 
       <div className="flex justify-center py-8">
-        <div className="w-48 h-px bg-neutral-800"></div>
+        <div className="w-48 h-px bg-neutral-200 dark:bg-neutral-800"></div>
       </div>
 
-      <footer className="py-8 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
+      <footer className="py-8 px-4 sm:px-6 lg:px-12">
+        <div className="container max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-2">
             <ClientIcon
               icon={Terminal}
