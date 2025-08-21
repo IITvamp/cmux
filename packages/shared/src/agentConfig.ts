@@ -1,6 +1,9 @@
-import type { EnvironmentContext, EnvironmentResult } from "./providers/common/environment-result.js";
+import type {
+  EnvironmentContext,
+  EnvironmentResult,
+} from "./providers/common/environment-result.js";
 
-import { AMP_CONFIG } from "./providers/amp/configs.js";
+import { AMP_CONFIG, AMP_GPT_5_CONFIG } from "./providers/amp/configs.js";
 import {
   CLAUDE_OPUS_4_1_CONFIG,
   CLAUDE_OPUS_4_CONFIG,
@@ -69,6 +72,7 @@ export const AGENT_CONFIGS: AgentConfig[] = [
   GEMINI_FLASH_CONFIG,
   GEMINI_PRO_CONFIG,
   AMP_CONFIG,
+  AMP_GPT_5_CONFIG,
   OPENCODE_SONNET_CONFIG,
   OPENCODE_OPUS_CONFIG,
   OPENCODE_OPUS_4_1_20250805_CONFIG,

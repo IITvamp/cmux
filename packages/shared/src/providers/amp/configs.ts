@@ -18,3 +18,20 @@ export const AMP_CONFIG: AgentConfig = {
   apiKeys: [AMP_API_KEY],
   checkRequirements: checkAmpRequirements,
 };
+
+export const AMP_GPT_5_CONFIG: AgentConfig = {
+  name: "amp/gpt-5",
+  command: "prompt-wrapper",
+  args: [
+    "--prompt-env",
+    "CMUX_PROMPT",
+    "--",
+    "bunx",
+    "@sourcegraph/amp@latest",
+    "--dangerously-allow-all",
+    "--try-gpt5",
+  ],
+  environment: getAmpEnvironment,
+  apiKeys: [AMP_API_KEY],
+  checkRequirements: checkAmpRequirements,
+};
