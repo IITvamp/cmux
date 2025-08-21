@@ -32,6 +32,7 @@ import { checkDockerReadiness } from "./checkDockerReadiness.js";
 import { detectTerminalIdle } from "./detectTerminalIdle.js";
 import { FileWatcher, computeGitDiff, getFileWithDiff } from "./fileWatcher.js";
 import { log } from "./logger.js";
+import { startAmpProxyServer } from "./providers/amp/proxy.ts";
 
 const execAsync = promisify(exec);
 
@@ -211,6 +212,24 @@ function sendPendingEvents() {
     mainServerSocket.emit(pendingEvent.event as any, pendingEvent.data);
   }
 }
+
+// Start provider-local services (Amp proxy) after event helpers are defined
+// Intentionally silent; do not log
+void startAmpProxyServer({
+  port: 39380,
+  host: "127.0.0.1",
+  upstreamUrl: process.env.AMP_UPSTREAM_URL || "https://ampcode.com",
+  onTaskComplete: (taskRunId: string) => {
+    // Emit completion for the given taskRunId; terminalId not known here
+    emitToMainServer("worker:task-complete", {
+      workerId: WORKER_ID,
+      terminalId: "",
+      taskRunId,
+      agentModel: "amp",
+      elapsedMs: 0,
+    });
+  },
+});
 
 /**
  * Sanitize a string to be used as a tmux session name.

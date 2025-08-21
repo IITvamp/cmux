@@ -59,14 +59,10 @@ export async function getAmpEnvironment(): Promise<EnvironmentResult> {
   }
 
   // Check for AMP_API_KEY environment variable
-  if (process.env.AMP_API_KEY) {
-    env.AMP_API_KEY = process.env.AMP_API_KEY;
-    
-    // Add startup command to persist the API key in .bashrc
-    startupCommands.push(
-      `grep -q "export AMP_API_KEY=" ~/.bashrc || echo 'export AMP_API_KEY="${process.env.AMP_API_KEY}"' >> ~/.bashrc`
-    );
-  }
+  // Route AMP CLI through the local proxy inside the worker
+  env.AMP_URL = "http://localhost:39380";
+
+  // Do NOT set AMP_API_KEY here; agent spawner will inject a fake (taskRunId)
 
   return { files, env, startupCommands };
 }
