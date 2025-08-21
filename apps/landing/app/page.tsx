@@ -199,7 +199,7 @@ export default function LandingPage() {
           </h2>
          
           <div className="space-y-4 text-neutral-400 mb-12">
-            <p> 
+            <p>
               <span className="text-white font-semibold">
                 The interface is the bottleneck.
               </span>{" "}
@@ -207,13 +207,11 @@ export default function LandingPage() {
               time making it easier to verify their work. The result? Developers
               spend 80% of their time reviewing and 20% prompting.
             </p>
-            <p>
-              Running multiple agents at once sounds powerful until it turns into
-              chaos: 3-4 terminals, each on a different task, and you're asking,
-              “Which one is on auth? Did the database refactor finish?” You end
-              up bouncing between windows, running git diff, and piecing together
-              what changed where.
-            </p>
+            <blockquote className="border-l-2 border-neutral-800 pl-4 text-neutral-300">
+              <p>
+                Running multiple agents at once sounds powerful until it turns into chaos: 3-4 terminals, each on a different task, and you're asking, “Which one is on auth? Did the database refactor finish?” You end up bouncing between windows, running git diff, and piecing together what changed where.
+              </p>
+            </blockquote>
             <p>
               <span className="text-white font-semibold">
                 Isolation enables scale.
@@ -223,13 +221,11 @@ export default function LandingPage() {
               is clean. Every terminal output is separate. Every verification is
               independent.
             </p>
-            <p>
-              The issue isn't that agents aren't good — they're getting scary
-              good. It's that our tools were designed for a different era. VS Code
-              was built for writing code, not reviewing five parallel streams of
-              AI-generated changes. Terminals expect sequential commands, not a
-              fleet of autonomous workers.
-            </p>
+            <blockquote className="border-l-2 border-neutral-800 pl-4 text-neutral-300">
+              <p>
+                The issue isn't that agents aren't good — they're getting scary good. It's that our tools were designed for a different era. VS Code was built for writing code, not reviewing five parallel streams of AI-generated changes. Terminals expect sequential commands, not a fleet of autonomous workers.
+              </p>
+            </blockquote>
             <p>
               <span className="text-white font-semibold">
                 Verification is non-negotiable.
@@ -238,14 +234,11 @@ export default function LandingPage() {
               application, the test results, the performance metrics—all in
               real-time, for every agent, without switching contexts.
             </p>
-            <p>
-              cmux solves this by giving each agent its own world: separate Docker
-              container, separate VS Code, separate git state. VS Code opens with
-              the git diff already showing. Every change is isolated to its task,
-              so you can see exactly what each agent did — immediately — without
-              losing context. That's what makes running 10+ agents actually
-              workable.
-            </p>
+            <blockquote className="border-l-2 border-neutral-800 pl-4 text-neutral-300">
+              <p>
+                cmux solves this by giving each agent its own world: separate Docker container, separate VS Code, separate git state. VS Code opens with the git diff already showing. Every change is isolated to its task, so you can see exactly what each agent did — immediately — without losing context. That's what makes running 10+ agents actually workable.
+              </p>
+            </blockquote>
            
             
            
@@ -376,7 +369,7 @@ export default function LandingPage() {
         <div className="w-48 h-px bg-neutral-200 dark:bg-neutral-800"></div>
       </div>
 
-      <section id="roadmap" className="pt-8 px-4 sm:px-6 lg:px-12">
+      <section id="roadmap" className="pt-8 pb-8 px-4 sm:px-6 lg:px-12">
         <div className="container max-w-5xl mx-auto">
           <h2 className="text-2xl font-semibold mb-8 text-center">The roadmap</h2>
           <div className="space-y-6">
@@ -452,7 +445,7 @@ export default function LandingPage() {
         <div className="w-48 h-px bg-neutral-200 dark:bg-neutral-800"></div>
       </div>
 
-      <section id="requirements" className="pt-8 px-4 sm:px-6 lg:px-12">
+      <section id="requirements" className="py-8 px-4 sm:px-6 lg:px-12">
         <div className="container max-w-5xl mx-auto text-center">
           <h2 className="text-2xl font-semibold mb-4">Requirements</h2>
           <p className="text-neutral-400 mb-8">
