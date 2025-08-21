@@ -15,9 +15,6 @@ import {
 import { SerializeAddon } from "@xterm/addon-serialize";
 import * as xtermHeadless from "@xterm/headless";
 import express from "express";
-import { createServer as createHttpServer } from "node:http";
-import { mkdir as fspMkdir, writeFile as fspWriteFile, readFile as fspReadFile } from "node:fs/promises";
-import { join as pathJoin } from "node:path";
 import multer from "multer";
 import {
   exec,
@@ -1016,8 +1013,6 @@ async function createTerminal(
     cwd,
     envKeys: Object.keys(ptyEnv),
   });
-
-  // No need to map taskRunId to terminalId for AMP; proxy emits terminalId = taskRunId
 
   let childProcess: ChildProcessWithoutNullStreams;
   const processStartTime = Date.now();

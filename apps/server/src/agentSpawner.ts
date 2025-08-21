@@ -226,6 +226,7 @@ export async function spawnAgent(
       val
         .replace(/\$CMUX_TASK_RUN_ID/g, taskRunId)
         .replace(/\$CMUX_PROMPT/g, processedTaskDescription);
+        
     envVars = Object.fromEntries(
       Object.entries(envVars).map(([k, v]) => [k, expandEnvValue(v)])
     );
