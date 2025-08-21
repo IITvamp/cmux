@@ -221,14 +221,6 @@ export async function spawnAgent(
       }
     }
 
-    const expandEnvValue = (val: string): string =>
-      val
-        .replace(/\$CMUX_TASK_RUN_ID/g, taskRunId)
-        .replace(/\$CMUX_PROMPT/g, processedTaskDescription);
-    envVars = Object.fromEntries(
-      Object.entries(envVars).map(([k, v]) => [k, expandEnvValue(v)])
-    );
-
     // Replace $PROMPT placeholders in args with $CMUX_PROMPT token for shell-time expansion
     const processedArgs = agent.args.map((arg) => {
       if (arg.includes("$PROMPT")) {
