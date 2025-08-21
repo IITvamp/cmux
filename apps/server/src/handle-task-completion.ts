@@ -9,7 +9,7 @@ import {
 import { storeGitDiffs } from "./storeGitDiffs.js";
 import { convex } from "./utils/convexClient.js";
 import { serverLogger } from "./utils/fileLogger.js";
-import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
+import { getGitHubToken } from "./utils/getGitHubToken.js";
 import type { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 
 // Handler for completing the task
@@ -183,7 +183,7 @@ export async function handleTaskCompletion({
               `[AgentSpawner] Triggering auto-PR for single agent completion`
             );
 
-            const githubToken = await getGitHubTokenFromKeychain(convex);
+            const githubToken = await getGitHubToken();
 
             // Small delay to ensure git diff is persisted
             setTimeout(async () => {

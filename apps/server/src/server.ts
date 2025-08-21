@@ -32,7 +32,7 @@ import { getPRTitleFromTaskDescription } from "./utils/branchNameGenerator.js";
 import { convex } from "./utils/convexClient.js";
 import { ensureRunWorktreeAndBranch } from "./utils/ensureRunWorktree.js";
 import { dockerLogger, serverLogger } from "./utils/fileLogger.js";
-import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
+import { getGitHubToken } from "./utils/getGitHubToken.js";
 import {
   createReadyPr,
   fetchPrByHead,
@@ -277,7 +277,7 @@ export async function startServer({
           return;
         }
 
-        const githubToken = await getGitHubTokenFromKeychain(convex);
+        const githubToken = await getGitHubToken();
         if (!githubToken) {
           callback({ success: false, error: "GitHub token is not configured" });
           return;
@@ -436,7 +436,7 @@ export async function startServer({
         const task = await convex.query(api.tasks.getById, { id: run.taskId });
         if (!task) return callback({ success: false, error: "Task not found" });
 
-        const githubToken = await getGitHubTokenFromKeychain(convex);
+        const githubToken = await getGitHubToken();
         if (!githubToken)
           return callback({
             success: false,
@@ -1001,7 +1001,7 @@ export async function startServer({
           await ensureRunWorktreeAndBranch(taskRunId as Id<"taskRuns">);
 
         // Get GitHub token from keychain/Convex
-        const githubToken = await getGitHubTokenFromKeychain(convex);
+        const githubToken = await getGitHubToken();
         if (!githubToken) {
           callback({ success: false, error: "GitHub token is not configured" });
           return;
@@ -1224,7 +1224,7 @@ export async function startServer({
         const { run, task, worktreePath, branchName, baseBranch } =
           await ensureRunWorktreeAndBranch(taskRunId);
 
-        const githubToken = await getGitHubTokenFromKeychain(convex);
+        const githubToken = await getGitHubToken();
         if (!githubToken) {
           callback({ success: false, error: "GitHub token is not configured" });
           return;

@@ -406,8 +406,8 @@ export async function evaluateCrownWithClaudeCode(
 
   try {
     // Get GitHub token
-    const { getGitHubTokenFromKeychain } = await import("./utils/getGitHubToken.js");
-    const githubToken = await getGitHubTokenFromKeychain(convex);
+    const { getGitHubToken } = await import("./utils/getGitHubToken.js");
+    const githubToken = await getGitHubToken();
     
     // Get task and runs
     const task = await convex.query(api.tasks.getById, { id: taskId });
