@@ -338,7 +338,7 @@ export async function spawnAgent(
         args: [
           "-c",
           // `git clone --depth=1 ${options.repoUrl} /root/workspace && git checkout ${newBranch} && git pull`,
-          `git switch -c ${newBranch}`,
+          `git pull && git switch -c ${newBranch}`,
         ],
         cwd: "/root",
         env: {},

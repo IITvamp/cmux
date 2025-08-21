@@ -67,7 +67,6 @@ export default function CmuxLogo({
           className="mark-fill"
           points="100,48 168,80 100,112 100,96 140,80 100,64"
         />
-        {/* corner removed */}
       </g>
 
       {/* Wordmark */}

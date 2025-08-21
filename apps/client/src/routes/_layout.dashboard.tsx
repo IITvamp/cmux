@@ -394,12 +394,14 @@ function DashboardComponent() {
       const activeElement = document.activeElement;
       const isEditor =
         activeElement?.getAttribute("data-cmux-input") === "true";
+      const isCommentInput = activeElement?.id === "cmux-comments-root";
       if (
         !isEditor &&
         (activeElement?.tagName === "INPUT" ||
           activeElement?.tagName === "TEXTAREA" ||
           activeElement?.getAttribute("contenteditable") === "true" ||
-          activeElement?.closest('[contenteditable="true"]'))
+          activeElement?.closest('[contenteditable="true"]') ||
+          isCommentInput)
       ) {
         return;
       }
