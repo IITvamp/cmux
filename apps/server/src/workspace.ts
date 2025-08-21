@@ -144,13 +144,37 @@ export async function setupProjectWorkspace(args: {
     // Get the default branch if not specified
     const baseBranch = args.branch || await repoManager.getDefaultBranch(worktreeInfo.originPath);
 
-    // Create the worktree
-    await repoManager.createWorktree(
+    // Check if worktree already exists in git
+    const worktreeRegistered = await repoManager.worktreeExists(
       worktreeInfo.originPath,
-      worktreeInfo.worktreePath,
-      worktreeInfo.branchName,
-      baseBranch
+      worktreeInfo.worktreePath
     );
+    
+    if (worktreeRegistered) {
+      // Check if the directory actually exists
+      try {
+        await fs.access(worktreeInfo.worktreePath);
+        serverLogger.info(`Worktree already exists at ${worktreeInfo.worktreePath}, using existing`);
+      } catch {
+        // Worktree is registered but directory doesn't exist, remove and recreate
+        serverLogger.info(`Worktree registered but directory missing, recreating...`);
+        await repoManager.removeWorktree(worktreeInfo.originPath, worktreeInfo.worktreePath);
+        await repoManager.createWorktree(
+          worktreeInfo.originPath,
+          worktreeInfo.worktreePath,
+          worktreeInfo.branchName,
+          baseBranch
+        );
+      }
+    } else {
+      // Create the worktree
+      await repoManager.createWorktree(
+        worktreeInfo.originPath,
+        worktreeInfo.worktreePath,
+        worktreeInfo.branchName,
+        baseBranch
+      );
+    }
 
     return { success: true, worktreePath: worktreeInfo.worktreePath };
   } catch (error) {

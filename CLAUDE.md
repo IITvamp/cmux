@@ -29,6 +29,7 @@ Don't modify README.md unless explicitly asked.
 Do not write docs unless explicitly asked.
 Do not use dynamic imports unless absolutely necessary. Exceptions include when you're following existing patterns in the codebase.
 We're using Node 24, which supports global fetch.
+Place test files next to the file they test using a .test.ts extension.
 
 ## Logs
 
