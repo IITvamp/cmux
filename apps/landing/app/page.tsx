@@ -5,7 +5,6 @@ import CmuxLogo from "@/components/logo/cmux-logo";
 import {
   Check,
   Copy,
-  FileText,
   GitBranch,
   Github,
   Star,
@@ -13,6 +12,7 @@ import {
   Users,
   Zap,
   GitPullRequest,
+  Cloud,
 } from "lucide-react";
 import Image from "next/image";
 import { useState } from "react";
@@ -254,11 +254,11 @@ export default function LandingPage() {
                     className="h-4 w-4 text-neutral-500"
                     aria-hidden="true"
                   />
-                  Separate VS Code windows
+                  Separate VS Code IDE instances
                 </h3>
                 <p className="text-sm text-neutral-400">
-                  Each agent runs in its own VS Code on a different port.
-                  localhost:8001, :8002, :8003. Click to open any of them.
+                  Each agent runs in its own VS Code instance.
+                  You can open them in your IDE of choice, locally or remotely.
                 </p>
               </div>
 
@@ -272,9 +272,8 @@ export default function LandingPage() {
                   Multiple agent support
                 </h3>
                 <p className="text-sm text-neutral-400">
-                  Claude Code, Codex, Gemini CLI, Amp, plus OpenCode variants.
-                  Particularly useful for Kimi K2, Qwen3 Coder, and GLM-4.5
-                  alongside Claude Opus.
+                  Claude Code, Codex, Gemini CLI, Amp, Opencode, and other coding agent CLIs.
+                  Particularly useful to run agents together and find the best one for the task.
                 </p>
               </div>
 
@@ -297,16 +296,16 @@ export default function LandingPage() {
             <div className="space-y-6">
               <div>
                 <h3 className="font-semibold mb-2 flex items-center gap-2">
-                  <ClientIcon
-                    icon={FileText}
+                <ClientIcon
+                    icon={Cloud}
                     className="h-4 w-4 text-neutral-500"
                     aria-hidden="true"
                   />
-                  Rich task input
+                  Sandbox environment preview
                 </h3>
                 <p className="text-sm text-neutral-400">
-                  Paste images, reference files with @mentions, use markdown
-                  formatting. Full web dashboard.
+                  Spin up a sandbox to preview your changes safely. 
+                  cmux uses Morph instances for fast cloud sandboxes or Docker locally.
                 </p>
               </div>
 
