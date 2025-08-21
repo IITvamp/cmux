@@ -193,17 +193,17 @@ export class MorphVSCodeInstance extends VSCodeInstance {
           }
           return null;
         })
+        .filter((item): item is NonNullable<typeof item> => item !== null)
     );
+
     const devcontainerNetwork: Doc<"taskRuns">["networking"] =
       instance.networking.httpServices.map((service) => ({
         status: "running",
         port: service.port,
         url: service.url,
       }));
-    const filteredNetwork = devcontainerNetwork.filter(
-      (item): item is NonNullable<typeof item> => item !== null
-    );
-    console.log("[MorphVSCodeInstance] Networking:", filteredNetwork);
+
+    console.log("[MorphVSCodeInstance] Networking:", devcontainerNetwork);
 
     console.log("[MorphVSCodeInstance] Starting devcontainer");
 
@@ -226,7 +226,7 @@ export class MorphVSCodeInstance extends VSCodeInstance {
       devcontainerStart
     );
 
-    return filteredNetwork;
+    return devcontainerNetwork;
   }
 
   getName(): string {
