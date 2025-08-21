@@ -169,25 +169,9 @@ export function startAmpProxy(options: AmpProxyOptions = {}): AmpProxyHandle {
         const responseHeaders = new Headers(proxyResponse.headers);
         responseHeaders.delete("content-encoding");
         responseHeaders.delete("content-length");
-        const responseContentType = responseHeaders.get("content-type") || "";
+        
 
-        let responseBodyForClient: Uint8Array | string = "";
-        let loggedResponseBody: unknown = undefined;
-
-        const isBinary = /(^image\/.+|^video\/.+|^audio\/.+|application\/(octet-stream|pdf|zip))/i.test(responseContentType);
-        if (isBinary) {
-          const ab = await proxyResponse.arrayBuffer();
-          responseBodyForClient = new Uint8Array(ab);
-          loggedResponseBody = `[Binary data: ${ab.byteLength} bytes]`;
-        } else {
-          const text = await proxyResponse.text();
-          responseBodyForClient = text;
-          try { loggedResponseBody = JSON.parse(text); } catch { loggedResponseBody = text; }
-        }
-
-        const completed =
-          ampResponseIndicatesCompletion(loggedRequestBody) ||
-          ampResponseIndicatesCompletion(loggedResponseBody);
+        const completed = ampResponseIndicatesCompletion(loggedRequestBody);
         if (completed && taskRunId) {
           const elapsedMs = Date.now() - start;
           emit("worker:task-complete", {
@@ -201,11 +185,7 @@ export function startAmpProxy(options: AmpProxyOptions = {}): AmpProxyHandle {
         res.statusCode = proxyResponse.status;
         res.statusMessage = proxyResponse.statusText;
         responseHeaders.forEach((v, k) => res.setHeader(k, v));
-        if (typeof responseBodyForClient === "string") {
-          res.end(responseBodyForClient);
-        } else {
-          res.end(Buffer.from(responseBodyForClient));
-        }
+        res.end(await proxyResponse.arrayBuffer());
       });
     });
 

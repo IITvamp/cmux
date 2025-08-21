@@ -62,7 +62,7 @@ export async function getAmpEnvironment(): Promise<EnvironmentResult> {
   env.AMP_URL = "http://localhost:39379";
   
   // Use taskRunId as the API key and replace it with real in proxy server
-  env.AMP_API_KEY = "$taskRunId:$CMUX_TASK_RUN_ID";
+  env.AMP_API_KEY = "$CMUX_TASK_RUN_ID";
 
   return { files, env, startupCommands };
 }
