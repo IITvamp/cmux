@@ -1,4 +1,6 @@
 import { type Instance, MorphCloudClient } from "morphcloud";
+import { workerExec } from "src/utils/workerExec.js";
+import z from "zod";
 import { dockerLogger } from "../utils/fileLogger.js";
 import {
   VSCodeInstance,
@@ -119,6 +121,59 @@ export class MorphVSCodeInstance extends VSCodeInstance {
     } catch (_error) {
       return { running: false };
     }
+  }
+
+  async setupDevcontainer() {
+    const instance = this.instance;
+    if (!instance) {
+      throw new Error("Morph instance not started");
+    }
+
+    // first, try to read /root/workspace/.devcontainer/devcontainer.json
+    const devcontainerJson = await workerExec({
+      workerSocket: this.getWorkerSocket(),
+      command: "cat",
+      args: ["/root/workspace/.devcontainer/devcontainer.json"],
+      cwd: "/root",
+      env: {},
+    });
+    if (devcontainerJson.error) {
+      throw new Error("Failed to read devcontainer.json");
+    }
+
+    const parsedDevcontainerJson = JSON.parse(devcontainerJson.stdout);
+
+    console.log(
+      "[MorphVSCodeInstance] Devcontainer JSON:",
+      parsedDevcontainerJson
+    );
+
+    const forwardPorts = z
+      .array(z.number())
+      .safeParse(parsedDevcontainerJson.forwardPorts);
+    if (!forwardPorts.success) {
+      return;
+    }
+    const forwardPortsArray = forwardPorts.data;
+    const devcontainerNetwork = await Promise.all(
+      forwardPortsArray.map(async (port: number) => {
+        try {
+          const result = await instance.exposeHttpService(`port-${port}`, port);
+          console.log(
+            `[MorphVSCodeInstance] Exposed port ${port} on ${instance.id}`
+          );
+          return {
+            port: result.port,
+            url: result.url,
+          };
+        } catch (_error) {
+          console.error(`[MorphVSCodeInstance] Failed to expose port ${port}`);
+        }
+        return null;
+      })
+    );
+    console.log("[MorphVSCodeInstance] Networking:", devcontainerNetwork);
+    return devcontainerNetwork;
   }
 
   getName(): string {

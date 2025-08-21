@@ -339,6 +339,12 @@ export async function spawnAgent(
         cwd: "/root",
         env: {},
       });
+      console.log("[AgentSpawner] [isCloudMode] Repo cloned!");
+
+      if (vscodeInstance instanceof MorphVSCodeInstance) {
+        console.log("[AgentSpawner] [isCloudMode] Setting up devcontainer");
+        await vscodeInstance.setupDevcontainer();
+      }
     }
 
     // Start file watching for real-time diff updates

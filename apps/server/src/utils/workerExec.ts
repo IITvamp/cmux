@@ -15,7 +15,11 @@ export async function workerExec({
   cwd: string;
   env: Record<string, string>;
   timeout?: number;
-}) {
+}): Promise<{
+  stdout: string;
+  stderr: string;
+  error?: string;
+}> {
   return new Promise((resolve, reject) => {
     workerSocket
       .timeout(timeout)
@@ -27,7 +31,7 @@ export async function workerExec({
         if (payload.error) {
           reject(payload.error);
         } else {
-          resolve(payload);
+          resolve(payload.data);
         }
       });
   });
