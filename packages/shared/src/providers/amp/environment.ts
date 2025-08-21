@@ -1,6 +1,6 @@
-import type { EnvironmentResult } from "../common/environment-result.js";
+import type { EnvironmentContext, EnvironmentResult } from "../common/environment-result.js";
 
-export async function getAmpEnvironment(): Promise<EnvironmentResult> {
+export async function getAmpEnvironment(ctx: EnvironmentContext): Promise<EnvironmentResult> {
   // These must be lazy since configs are imported into the browser
   const { readFile } = await import("node:fs/promises");
   const { homedir } = await import("node:os");
@@ -58,15 +58,11 @@ export async function getAmpEnvironment(): Promise<EnvironmentResult> {
     console.warn("Failed to read amp secrets.json:", error);
   }
 
-  // Check for AMP_API_KEY environment variable
-  if (process.env.AMP_API_KEY) {
-    env.AMP_API_KEY = process.env.AMP_API_KEY;
-    
-    // Add startup command to persist the API key in .bashrc
-    startupCommands.push(
-      `grep -q "export AMP_API_KEY=" ~/.bashrc || echo 'export AMP_API_KEY="${process.env.AMP_API_KEY}"' >> ~/.bashrc`
-    );
-  }
+  env.AMP_URL = "http://localhost:39379";
+
+  // Use the taskRunId directly so the AMP proxy can extract it.
+  // Prefix with taskRunId: to be explicit, though the proxy accepts bare IDs too.
+  env.AMP_API_KEY = `taskRunId:${ctx.taskRunId}`;
 
   return { files, env, startupCommands };
 }

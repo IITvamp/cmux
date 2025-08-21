@@ -1,6 +1,6 @@
-import type { EnvironmentResult } from "../common/environment-result.js";
+import type { EnvironmentContext, EnvironmentResult } from "../common/environment-result.js";
 
-export async function getClaudeEnvironment(): Promise<EnvironmentResult> {
+export async function getClaudeEnvironment(_ctx: EnvironmentContext): Promise<EnvironmentResult> {
   // These must be lazy since configs are imported into the browser
   const { exec } = await import("node:child_process");
   const { promisify } = await import("node:util");
@@ -88,11 +88,6 @@ export async function getClaudeEnvironment(): Promise<EnvironmentResult> {
       );
       const apiKey = execResult.stdout.trim();
       env.ANTHROPIC_API_KEY = apiKey;
-
-      // Add startup command to persist the API key in .bashrc
-      startupCommands.push(
-        `grep -q "export ANTHROPIC_API_KEY=" ~/.bashrc || echo 'export ANTHROPIC_API_KEY="${apiKey}"' >> ~/.bashrc`
-      );
     } catch {
       console.warn("No Claude API key found in keychain");
     }

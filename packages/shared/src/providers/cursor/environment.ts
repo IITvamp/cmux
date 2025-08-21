@@ -1,6 +1,6 @@
-import type { EnvironmentResult } from "../common/environment-result.js";
+import type { EnvironmentContext, EnvironmentResult } from "../common/environment-result.js";
 
-export async function getCursorEnvironment(): Promise<EnvironmentResult> {
+export async function getCursorEnvironment(_ctx: EnvironmentContext): Promise<EnvironmentResult> {
   // These must be lazy since configs are imported into the browser
   const { existsSync } = await import("node:fs");
   const { readFile } = await import("node:fs/promises");

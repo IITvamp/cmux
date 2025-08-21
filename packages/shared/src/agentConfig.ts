@@ -1,4 +1,4 @@
-import type { EnvironmentResult } from "./providers/common/environment-result.js";
+import type { EnvironmentContext, EnvironmentResult } from "./providers/common/environment-result.js";
 
 import { AMP_CONFIG } from "./providers/amp/configs.js";
 import {
@@ -52,7 +52,7 @@ export interface AgentConfig {
   command: string;
   args: string[];
   apiKeys?: AgentConfigApiKeys;
-  environment?: () => Promise<EnvironmentResult>;
+  environment?: (ctx: EnvironmentContext) => Promise<EnvironmentResult>;
   waitForString?: string;
   enterKeySequence?: string; // Custom enter key sequence, defaults to "\r"
   checkRequirements?: () => Promise<string[]>; // Returns list of missing requirements

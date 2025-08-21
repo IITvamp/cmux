@@ -1,11 +1,11 @@
-import type { EnvironmentResult } from "../common/environment-result.js";
+import type { EnvironmentContext, EnvironmentResult } from "../common/environment-result.js";
 
 type GeminiSettings = {
   selectedAuthType?: string;
   [key: string]: unknown;
 };
 
-export async function getGeminiEnvironment(): Promise<EnvironmentResult> {
+export async function getGeminiEnvironment(_ctx: EnvironmentContext): Promise<EnvironmentResult> {
   // These must be lazy since configs are imported into the browser
   const { readFile, stat } = await import("node:fs/promises");
   const { homedir } = await import("node:os");
