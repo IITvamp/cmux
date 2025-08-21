@@ -7,7 +7,17 @@ import { Skeleton } from "@heroui/react";
 import { useClipboard } from "@mantine/hooks";
 import { useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
-import { Check, ChevronDown, Copy, Crown, EllipsisVertical, ExternalLink, GitBranch, GitMerge, Trash2 } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  Copy,
+  Crown,
+  EllipsisVertical,
+  ExternalLink,
+  GitBranch,
+  GitMerge,
+  Trash2,
+} from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -23,6 +33,7 @@ interface TaskDetailHeaderProps {
   hasAnyDiffs?: boolean;
   onExpandAll?: () => void;
   onCollapseAll?: () => void;
+  isLoading?: boolean;
 }
 
 export function TaskDetailHeader({
@@ -37,6 +48,7 @@ export function TaskDetailHeader({
   hasAnyDiffs,
   onExpandAll,
   onCollapseAll,
+  isLoading,
 }: TaskDetailHeaderProps) {
   const navigate = useNavigate();
   const clipboard = useClipboard({ timeout: 2000 });
@@ -142,17 +154,18 @@ export function TaskDetailHeader({
           <h1 className="text-sm font-bold truncate min-w-0" title={taskTitle}>
             {taskTitle || "Loading..."}
           </h1>
-          {typeof totalAdditions === "number" &&
-            typeof totalDeletions === "number" && (
-              <div className="flex items-center gap-2 text-[11px] ml-2 shrink-0">
-                <span className="text-green-600 dark:text-green-400 font-medium select-none">
-                  +{totalAdditions}
-                </span>
-                <span className="text-red-600 dark:text-red-400 font-medium select-none">
-                  −{totalDeletions}
-                </span>
-              </div>
-            )}
+          <div className="flex items-center gap-2 text-[11px] ml-2 shrink-0">
+            <span className="text-green-600 dark:text-green-400 font-medium select-none">
+              <Skeleton className="rounded min-w-[22px]" isLoaded={!isLoading}>
+                +{totalAdditions}
+              </Skeleton>
+            </span>
+            <span className="text-red-600 dark:text-red-400 font-medium select-none">
+              <Skeleton className="rounded min-w-[22px]" isLoaded={!isLoading}>
+                −{totalDeletions}
+              </Skeleton>
+            </span>
+          </div>
         </div>
 
         {/* Removed periodic refresh spinner */}

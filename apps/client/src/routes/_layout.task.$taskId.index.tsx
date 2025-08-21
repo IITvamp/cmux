@@ -257,6 +257,7 @@ function TaskDetailPage() {
             hasAnyDiffs={hasAnyDiffs}
             onExpandAll={diffControls?.expandAll}
             onCollapseAll={diffControls?.collapseAll}
+            isLoading={diffsQuery.isPending}
           />
           {task?.text && (
             <div className="mb-2 px-3.5">
