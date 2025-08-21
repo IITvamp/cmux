@@ -15,33 +15,29 @@ async function getRealAmpApiKey(): Promise<string | null> {
     const secretsPath = `${home}/.local/share/amp/secrets.json`;
     const raw = await fspReadFile(secretsPath, "utf8");
     const parsed = JSON.parse(raw) as Record<string, unknown>;
-    const key = (parsed["apiKey@https://ampcode.com/"] || parsed["apiKey@https://ampcode.com"] || "") as string;
+    const key = (parsed["apiKey@https://ampcode.com/"] ||
+      parsed["apiKey@https://ampcode.com"] ||
+      "") as string;
     return key || null;
   } catch {
     return null;
   }
 }
 
-function extractTaskRunId(
-  headers: Headers | Record<string, string | string[] | undefined>
-): string | null {
-  const get = (name: string): string | undefined => {
-    if (headers instanceof Headers) return headers.get(name) || undefined;
-    const v = headers[name.toLowerCase()] ?? headers[name];
-    if (Array.isArray(v)) return v[0];
-    return v as string | undefined;
-  };
-  const auth = get("authorization") || get("Authorization");
-  if (auth) {
-    const token = auth.replace(/^[Bb]earer\s+/, "");
-    // First, support explicit prefixes like taskRunId:<id>
-    const m = token.match(/(?:taskRunId|taskrun|task|tr)[:=]([a-zA-Z0-9_-]+)/);
-    if (m?.[1]) return m[1];
-    // Otherwise, if the token itself looks like a plausible ID, accept it
-    if (/^[a-zA-Z0-9_-]{16,64}$/.test(token)) {
-      return token;
-    }
+function extractTaskRunId(headers: Headers): string | null {
+  const auth = headers.get("authorization");
+  if (!auth) return null;
+
+  const token = auth.replace(/^[Bb]earer\s+/, "");
+  // First, support explicit prefixes like taskRunId:<id>
+  const m = token.match(/(?:taskRunId|taskrun|task|tr)[:=]([a-zA-Z0-9_-]+)/);
+
+  if (m?.[1]) return m[1];
+  // Otherwise, if the token itself looks like a plausible ID, accept it
+  if (/^[a-zA-Z0-9_-]{16,64}$/.test(token)) {
+    return token;
   }
+
   return null;
 }
 
@@ -100,7 +96,8 @@ function ampResponseIndicatesCompletion(json: unknown): boolean {
 
 export function startAmpProxy(options: AmpProxyOptions = {}): AmpProxyHandle {
   const AMP_PROXY_PORT = 39379;
-  const AMP_TARGET_HOST = options.ampUrl || process.env.AMP_URL || "https://ampcode.com";
+  const AMP_TARGET_HOST =
+    options.ampUrl || process.env.AMP_URL || "https://ampcode.com";
 
   const emit = options.emitToMainServer || (() => {});
   const workerId = options.workerId;
@@ -111,7 +108,9 @@ export function startAmpProxy(options: AmpProxyOptions = {}): AmpProxyHandle {
       const targetUrl = `${AMP_TARGET_HOST}${req.url || "/"}`;
 
       const chunks: Buffer[] = [];
-      req.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+      req.on("data", (chunk) =>
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+      );
 
       req.on("end", async () => {
         const reqBuffer = Buffer.concat(chunks);
@@ -130,7 +129,7 @@ export function startAmpProxy(options: AmpProxyOptions = {}): AmpProxyHandle {
           }
         }
 
-        const taskRunId = extractTaskRunId(req.headers);
+        const taskRunId = extractTaskRunId(upstreamHeaders);
 
         // Replace Authorization with real AMP key
         const realKey = await getRealAmpApiKey();
@@ -144,15 +143,25 @@ export function startAmpProxy(options: AmpProxyOptions = {}): AmpProxyHandle {
         let bodyForFetch = undefined;
         let loggedRequestBody: unknown = undefined;
         if (req.method && req.method !== "GET" && req.method !== "HEAD") {
-          if (typeof contentType === "string" && contentType.includes("application/json")) {
+          if (
+            typeof contentType === "string" &&
+            contentType.includes("application/json")
+          ) {
             const text = reqBuffer.toString("utf8");
             bodyForFetch = text;
-            try { loggedRequestBody = JSON.parse(text); } catch { loggedRequestBody = text; }
+            try {
+              loggedRequestBody = JSON.parse(text);
+            } catch {
+              loggedRequestBody = text;
+            }
           } else {
             bodyForFetch = reqBuffer;
-            loggedRequestBody = contentType && String(contentType).includes("multipart/form-data")
-              ? "[multipart/form-data]"
-              : (reqBuffer.length > 0 ? reqBuffer.toString("utf8") : "");
+            loggedRequestBody =
+              contentType && String(contentType).includes("multipart/form-data")
+                ? "[multipart/form-data]"
+                : reqBuffer.length > 0
+                  ? reqBuffer.toString("utf8")
+                  : "";
           }
         }
 
@@ -171,7 +180,10 @@ export function startAmpProxy(options: AmpProxyOptions = {}): AmpProxyHandle {
         let responseBodyForClient: Uint8Array | string = "";
         let loggedResponseBody: unknown = undefined;
 
-        const isBinary = /(^image\/.+|^video\/.+|^audio\/.+|application\/(octet-stream|pdf|zip))/i.test(responseContentType);
+        const isBinary =
+          /(^image\/.+|^video\/.+|^audio\/.+|application\/(octet-stream|pdf|zip))/i.test(
+            responseContentType
+          );
         if (isBinary) {
           const ab = await proxyResponse.arrayBuffer();
           responseBodyForClient = new Uint8Array(ab);
@@ -179,7 +191,11 @@ export function startAmpProxy(options: AmpProxyOptions = {}): AmpProxyHandle {
         } else {
           const text = await proxyResponse.text();
           responseBodyForClient = text;
-          try { loggedResponseBody = JSON.parse(text); } catch { loggedResponseBody = text; }
+          try {
+            loggedResponseBody = JSON.parse(text);
+          } catch {
+            loggedResponseBody = text;
+          }
         }
 
         const completed =
