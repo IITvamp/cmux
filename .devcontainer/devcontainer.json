@@ -51,7 +51,7 @@
       "onAutoForward": "openBrowser"
     }
   },
-  "postCreateCommand": "sudo chown -R node:node /workspace && CI=1 pnpm install --frozen-lockfile",
+  "postCreateCommand": "CI=1 pnpm install --frozen-lockfile --prefer-offline",
   "postStartCommand": "bash /workspace/scripts/dev.sh",
   "remoteUser": "node",
   "features": {

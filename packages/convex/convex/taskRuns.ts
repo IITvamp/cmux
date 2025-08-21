@@ -550,6 +550,30 @@ export const updatePullRequestState = mutation({
   },
 });
 
+// Update networking information for a task run
+export const updateNetworking = mutation({
+  args: {
+    id: v.id("taskRuns"),
+    networking: v.array(
+      v.object({
+        status: v.union(
+          v.literal("starting"),
+          v.literal("running"),
+          v.literal("stopped")
+        ),
+        port: v.number(),
+        url: v.string(),
+      })
+    ),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.id, {
+      networking: args.networking,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
 // Get containers that should be stopped based on TTL and settings
 export const getContainersToStop = query({
   handler: async (ctx) => {
