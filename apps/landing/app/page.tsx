@@ -4,7 +4,6 @@ import { ClientIcon } from "@/components/client-icon";
 import CmuxLogo from "@/components/logo/cmux-logo";
 import {
   Check,
-  Cloud,
   Copy,
   FileText,
   GitBranch,
@@ -13,6 +12,7 @@ import {
   Terminal,
   Users,
   Zap,
+  GitPullRequest,
 } from "lucide-react";
 import Image from "next/image";
 import { useState } from "react";
@@ -56,7 +56,7 @@ export default function LandingPage() {
 
       {/* Header */}
       <header className="mb-6 bg-neutral-950/80 backdrop-blur top-0 z-40 border-b border-neutral-900">
-        <div className="container max-w-7xl mx-auto px-3 sm:px-5 py-2.5">
+        <div className="container max-w-5xl mx-auto px-3 sm:px-5 py-2.5">
           <div className="grid w-full grid-cols-[auto_1fr] grid-rows-1 items-center gap-2">
             <a
               aria-label="Go to homepage"
@@ -69,11 +69,11 @@ export default function LandingPage() {
               <nav aria-label="Main" className="hidden md:flex items-center">
                 <ul className="flex flex-wrap items-center gap-x-2">
                   <li>
-                    <a className="font-semibold text-white hover:text-blue-400 transition" href="#features">Features</a>
+                    <a className="font-semibold text-white hover:text-blue-400 transition" href="#about">About</a>
                   </li>
                   <li className="text-neutral-700 px-1" role="presentation">|</li>
                   <li>
-                    <a className="font-semibold text-white hover:text-blue-400 transition" href="#how">How it works</a>
+                    <a className="font-semibold text-white hover:text-blue-400 transition" href="#features">Features</a>
                   </li>
                   <li className="text-neutral-700 px-1" role="presentation">|</li>
                   <li>
@@ -97,7 +97,7 @@ export default function LandingPage() {
         </div>
       </header>
 
-      <section className="pt-10 pb-16 px-4 sm:px-6 lg:px-12">
+      <section className="pt-10 pb-8 px-4 sm:px-6 lg:px-12">
         <div className="container max-w-5xl mx-auto">
           <div className="grid grid-cols-[4px_1fr] gap-6">
             <div className="bg-blue-500 rounded-sm" aria-hidden="true"></div>
@@ -112,8 +112,8 @@ export default function LandingPage() {
                 verify them instead of context switching.
               </p>
               <p className="text-lg text-neutral-300 leading-relaxed">
-                Learn more about the <a href="#features" className="text-sky-400 hover:text-sky-300 underline decoration-dotted underline-offset-4">features</a>, <a href="#how" className="text-sky-400 hover:text-sky-300 underline decoration-dotted underline-offset-4">how it works</a>, or
-                see the <a href="#roadmap" target="_blank" rel="noopener noreferrer" className="text-sky-400 hover:text-sky-300 underline decoration-dotted underline-offset-4">roadmap</a>.
+                Learn more about the <a href="#about" className="text-sky-400 hover:text-sky-300 underline decoration-dotted underline-offset-4"> vision</a>, <a href="#features" className="text-sky-400 hover:text-sky-300 underline decoration-dotted underline-offset-4">how it works</a>, or
+                see the <a href="#roadmap" className="text-sky-400 hover:text-sky-300 underline decoration-dotted underline-offset-4">roadmap</a>.
               </p>
 
               <div className="mt-10 flex flex-col sm:flex-row items-center gap-4">
@@ -175,36 +175,25 @@ export default function LandingPage() {
               </div>
             </div>
           </div>
-        </div>
-      </section>
-
-      <div className="flex justify-center py-8">
-        <div className="w-48 h-px bg-neutral-200 dark:bg-neutral-800"></div>
-      </div>
-
-      <section className="py-16 px-4 sm:px-6 lg:px-12">
-        <div className="container max-w-7xl mx-auto">
-          <div className="space-y-8">
-            <div className="relative rounded-lg overflow-hidden border border-neutral-800 bg-neutral-950">
-              <Image
-                src="/cmux-demo.png"
-                alt="cmux dashboard showing parallel AI agent execution"
-                width={1200}
-                height={800}
-                className="w-full h-auto"
-                priority
-              />
-            </div>
+          {/* First demo image combined with hero */}
+          <div className="mt-16 mb-8 relative overflow-hidden rounded-lg max-w-4xl mx-auto">
+            <Image
+              src="/cmux-demo-2.png"
+              alt="cmux dashboard showing parallel AI agent execution"
+              width={1200}
+              height={800}
+              className="w-full h-auto"
+              priority
+            />
+          </div>
+          <div className="flex justify-center">
+            <div className="w-48 h-px bg-neutral-200 dark:bg-neutral-800"></div>
           </div>
         </div>
       </section>
 
-      <div className="flex justify-center py-8">
-        <div className="w-48 h-px bg-neutral-200 dark:bg-neutral-800"></div>
-      </div>
-
-      <section id="features" className="py-16 px-4 sm:px-6 lg:px-12">
-        <div className="container max-w-7xl mx-auto">
+      <section id="about" className="pt-8 px-4 sm:px-6 lg:px-12">
+        <div className="container max-w-5xl mx-auto">
           <h2 className="text-2xl font-semibold text-center mb-8">
             Rethinking the developer interface
           </h2>
@@ -242,8 +231,8 @@ export default function LandingPage() {
         <div className="w-48 h-px bg-neutral-200 dark:bg-neutral-800"></div>
       </div>
 
-      <section id="how" className="py-16 px-4 sm:px-6 lg:px-12">
-        <div className="container max-w-7xl mx-auto">
+      <section id="features" className="pt-8 px-4 sm:px-6 lg:px-12">
+        <div className="container max-w-5xl mx-auto">
           <h2 className="text-2xl font-semibold mb-8 text-center">
             How cmux works today
           </h2>
@@ -316,15 +305,14 @@ export default function LandingPage() {
               <div>
                 <h3 className="font-semibold mb-2 flex items-center gap-2">
                   <ClientIcon
-                    icon={Cloud}
+                    icon={GitPullRequest}
                     className="h-4 w-4 text-neutral-500"
                     aria-hidden="true"
                   />
-                  Configurable sandboxes
+                  Code review page
                 </h3>
                 <p className="text-sm text-neutral-400">
-                  Docker by default, or configure with Freestyle, Morph,
-                  Daytona, Modal, Beam, or E2B.
+                  Central place to review changes across agents. View diffs for draft PRs and committed work without leaving the dashboard.
                 </p>
               </div>
 
@@ -344,52 +332,15 @@ export default function LandingPage() {
               </div>
             </div>
           </div>
-        </div>
-      </section>
-
-      <div className="flex justify-center py-8">
-        <div className="w-48 h-px bg-neutral-200 dark:bg-neutral-800"></div>
-      </div>
-
-      <section className="py-16 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-4xl mx-auto">
-          <h2 className="text-2xl font-bold text-center mb-8">
-            The real bottleneck
-          </h2>
-          <div className="space-y-4 text-neutral-400">
-            <p>
-              You've probably tried running multiple Claude instances at once.
-              Maybe you had 3-4 terminals open, each with a different agent
-              working on a different part of your codebase. It starts fine, but
-              quickly becomes chaos. Which terminal is working on the auth
-              system? Did the one refactoring the database actually finish?
-              You're constantly switching between windows, running git diff,
-              trying to piece together what changed where.
-            </p>
-            <p>
-              The problem isn't the agents—they're getting scary good. The
-              problem is that we're using developer tools built for a different
-              era. VS Code was designed for writing code, not for reviewing 5
-              parallel streams of AI-generated changes. Your terminal was built
-              for sequential commands, not for managing a fleet of autonomous
-              agents.
-            </p>
-            <p>
-              Every additional agent you run multiplies the confusion. You need
-              to remember which port each VS Code server is on. You need to
-              mentally map which agent is touching which files. You need to
-              verify that each task actually completed correctly, not just that
-              the agent claims it did. By the time you've verified one agent's
-              work, the other four have been sitting idle.
-            </p>
-            <p>
-              cmux fixes this by giving each agent its own world. Separate
-              Docker container, separate VS Code instance, separate git state.
-              The VS Code opens with the git diff already showing. Every change
-              is isolated to its task. You can see exactly what each agent did,
-              immediately, without losing context on the others. This isn't just
-              convenience—it's what makes running 10+ agents actually possible.
-            </p>
+          <div className="mt-8 relative overflow-hidden rounded-lg">
+            <Image
+              src="/cmux-demo-3.png"
+              alt="cmux verification view highlighting git changes and previews"
+              width={1200}
+              height={800}
+              className="w-full h-auto"
+              loading="lazy"
+            />
           </div>
         </div>
       </section>
@@ -398,8 +349,8 @@ export default function LandingPage() {
         <div className="w-48 h-px bg-neutral-200 dark:bg-neutral-800"></div>
       </div>
 
-      <section id="roadmap" className="py-16 px-4 sm:px-6 lg:px-12">
-        <div className="container max-w-7xl mx-auto">
+      <section id="roadmap" className="pt-8 px-4 sm:px-6 lg:px-12">
+        <div className="container max-w-5xl mx-auto">
           <h2 className="text-2xl font-semibold mb-8 text-center">The roadmap</h2>
           <div className="space-y-6">
             <div className="text-neutral-400">
@@ -474,8 +425,8 @@ export default function LandingPage() {
         <div className="w-48 h-px bg-neutral-200 dark:bg-neutral-800"></div>
       </div>
 
-      <section id="requirements" className="py-16 px-4 sm:px-6 lg:px-12">
-        <div className="container max-w-7xl mx-auto text-center">
+      <section id="requirements" className="pt-8 px-4 sm:px-6 lg:px-12">
+        <div className="container max-w-5xl mx-auto text-center">
           <h2 className="text-2xl font-semibold mb-4">Requirements</h2>
           <p className="text-neutral-400 mb-8">
             cmux runs locally on your machine. You'll need:
@@ -485,7 +436,7 @@ export default function LandingPage() {
               Docker installed
             </div>
             <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-6 py-3">
-              Node.js 18+ or Bun
+              Node.js 20+ or Bun 1.1.25+
             </div>
             <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-6 py-3">
               macOS or Linux
@@ -499,7 +450,7 @@ export default function LandingPage() {
       </div>
 
       <footer className="py-8 px-4 sm:px-6 lg:px-12">
-        <div className="container max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
+        <div className="container max-w-5xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-2">
             <ClientIcon
               icon={Terminal}
