@@ -23,7 +23,7 @@ export class MorphVSCodeInstance extends VSCodeInstance {
   constructor(config: MorphVSCodeInstanceConfig) {
     super(config);
     this.morphClient = new MorphCloudClient();
-    this.morphSnapshotId = config.morphSnapshotId || "snapshot_0k4q04v3";
+    this.morphSnapshotId = config.morphSnapshotId || "snapshot_xf8w00is";
   }
 
   async start(): Promise<VSCodeInstanceInfo> {

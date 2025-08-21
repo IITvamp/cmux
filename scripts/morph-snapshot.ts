@@ -228,7 +228,8 @@ class MorphDockerfileExecutor {
     // });
     // console.log(`Created snapshot: ${snapshot.id}`);
 
-    const snapshotId = "snapshot_r7dtrx12";
+    // const snapshotId = "snapshot_r7dtrx12";
+    const snapshotId = "snapshot_uvnvam3n";
 
     console.log("Starting instance from snapshot...", snapshotId);
     const instance = await this.client.instances.start({

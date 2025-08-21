@@ -20,7 +20,6 @@ snapshot = client.snapshots.create(
     vcpus=12,
     memory=32768,
     disk_size=32768,
-    digest="terminal-server-v1",
 )
 
 # Install Docker and dependencies

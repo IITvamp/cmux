@@ -14,7 +14,7 @@ const instance = await client.instances.start({
   // snapshotId: "snapshot_3qyamh9h", // hacky one
   // snapshotId: "snapshot_c8ahthyz", // hacky one
   // snapshotId: "snapshot_0k4q04v3", // first good one
-  snapshotId: "snapshot_af7iifny", // the big one
+  snapshotId: "snapshot_qmmp8lbq", // the big one
   // 2 hours
   ttlSeconds: 60 * 60 * 2,
   ttlAction: "pause",
@@ -31,6 +31,13 @@ process.on("SIGINT", async () => {
 
 console.log(`Created instance: ${instance.id}`);
 
+const portsToExpose = [5173, 9777, 9778, 6791, 39378, 39377];
+console.log("Exposing ports", portsToExpose);
+await Promise.all(
+  portsToExpose.map((port) => instance.exposeHttpService(`port-${port}`, port))
+);
+
+console.log("Exposed services");
 const exposedServices = instance.networking.httpServices;
 console.log(exposedServices);
 const vscodeService = exposedServices.find((service) => service.port === 39378);
