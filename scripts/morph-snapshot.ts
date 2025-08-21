@@ -808,6 +808,7 @@ async function main() {
     process.exit(1);
   } finally {
     await executor.disconnect();
+    process.exit(0);
   }
 }
 
