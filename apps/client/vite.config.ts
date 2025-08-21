@@ -16,8 +16,14 @@ export default defineConfig({
     tailwindcss(),
   ],
   define: {
-    'process.env': {},
-    'process.env.NODE_ENV': JSON.stringify(process.env.NODE_ENV || 'development'),
-    'global': 'globalThis',
+    "process.env": {},
+    "process.env.NODE_ENV": JSON.stringify(
+      process.env.NODE_ENV || "development"
+    ),
+    global: "globalThis",
+  },
+  // TODO: make this safe
+  server: {
+    allowedHosts: true,
   },
 });

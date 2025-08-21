@@ -10,7 +10,8 @@ console.log("Starting instance");
 const instance = await client.instances.start({
   // snapshotId: "snapshot_yawsf9cr",
   // snapshotId: "snapshot_kco1jqb6",
-  snapshotId: "snapshot_5h9hvkqq",
+  // snapshotId: "snapshot_5h9hvkqq",
+  snapshotId: "snapshot_3qyamh9h", // hacky one
   // 30 minutes
   ttlSeconds: 60 * 30,
   ttlAction: "pause",
@@ -94,18 +95,29 @@ async function workerExec({
   });
 }
 
+console.log("Install dependencies + dev.sh");
 await workerExec({
   workerSocket: clientSocket,
-  command: "git",
+  command: "bash",
   args: [
-    "clone",
-    "--depth=1",
-    "https://github.com/manaflow-ai/cmux",
-    "/root/workspace",
+    "-c",
+    "pnpm install --frozen-lockfile --prefer-offline && ./scripts/dev.sh",
   ],
-  cwd: "/root",
+  cwd: "/root/workspace",
   env: {},
 });
+// await workerExec({
+//   workerSocket: clientSocket,
+//   command: "git",
+//   args: [
+//     "clone",
+//     "--depth=1",
+//     "https://github.com/manaflow-ai/cmux",
+//     "/root/workspace",
+//   ],
+//   cwd: "/root",
+//   env: {},
+// });
 
 // then start tmux
 

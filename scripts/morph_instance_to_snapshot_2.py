@@ -21,7 +21,7 @@ instance = client.instances.get(
 )
 
 print("Exposing ports")
-ports_to_expose = [5173, 9777, 9778, 6791, 39378, 39377]
+ports_to_expose = [9779]
 for port in ports_to_expose:
     print(f"Exposing port {port}")
     instance.expose_http_service(f"port-{port}", port)
@@ -29,9 +29,9 @@ for port in ports_to_expose:
 print("Networking")
 print(instance.networking.http_services)
 
-print("Creating snapshot...")
-# make a snapshot
-snapshot = instance.snapshot()
+# print("Creating snapshot...")
+# # make a snapshot
+# snapshot = instance.snapshot()
 
-print("Snapshot")
-print(snapshot.id)
+# print("Snapshot")
+# print(snapshot.id)
