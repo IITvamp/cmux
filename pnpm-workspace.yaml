@@ -13,6 +13,7 @@ onlyBuiltDependencies:
   - '@vscode/vsce-sign'
   - cpu-features
   - electron
+  - electron-winstaller
   - esbuild
   - keytar
   - protobufjs
