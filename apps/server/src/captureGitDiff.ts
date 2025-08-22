@@ -4,6 +4,60 @@ import type { Socket } from "socket.io-client";
 import type { WorkerToServerEvents, ServerToWorkerEvents } from "@cmux/shared";
 
 /**
+ * Filter git diff output to remove changes from unnecessary files
+ */
+function filterGitDiff(diff: string): string {
+  const lines = diff.split('\n');
+  const filteredLines: string[] = [];
+  let skipCurrentFile = false;
+  
+  // Patterns for files we want to exclude from the diff
+  const excludeFilePatterns = [
+    /^diff --git a\/.*\.lock\b/,
+    /^diff --git a\/.*-lock\.(json|yaml|yml)\b/,
+    /^diff --git a\/pnpm-lock\.yaml\b/,
+    /^diff --git a\/yarn\.lock\b/,
+    /^diff --git a\/package-lock\.json\b/,
+    /^diff --git a\/Gemfile\.lock\b/,
+    /^diff --git a\/poetry\.lock\b/,
+    /^diff --git a\/Pipfile\.lock\b/,
+    /^diff --git a\/composer\.lock\b/,
+    /^diff --git a\/.*\.log\b/,
+    /^diff --git a\/.*\.tmp\b/,
+    /^diff --git a\/.*\.cache\b/,
+    /^diff --git a\/\.DS_Store\b/,
+    /^diff --git a\/node_modules\//,
+    /^diff --git a\/dist\//,
+    /^diff --git a\/build\//,
+    /^diff --git a\/\.next\//,
+    /^diff --git a\/out\//,
+    /^diff --git a\/\.turbo\//,
+    /^diff --git a\/coverage\//,
+    /^diff --git a\/\.nyc_output\//,
+    /^diff --git a\/.*\.min\.(js|css)\b/,
+    /^diff --git a\/.*\.map\b/,
+    /^diff --git a\/\.env\.local\b/,
+    /^diff --git a\/\.env\..*\.local\b/
+  ];
+  
+  for (const line of lines) {
+    // Check if this is a new file diff header
+    if (line.startsWith('diff --git')) {
+      // Check if this file should be excluded
+      skipCurrentFile = excludeFilePatterns.some(pattern => pattern.test(line));
+      if (!skipCurrentFile) {
+        filteredLines.push(line);
+      }
+    } else if (!skipCurrentFile) {
+      // Include lines that are not part of a skipped file
+      filteredLines.push(line);
+    }
+  }
+  
+  return filteredLines.join('\n');
+}
+
+/**
  * Helper to safely execute commands via socket with timeout handling
  */
 async function safeSocketExec(
@@ -274,10 +328,59 @@ export async function captureGitDiff(
       );
     }
 
-    // CRITICAL: Add ALL files including untracked ones
+    // CRITICAL: Add files selectively, excluding unnecessary files
     serverLogger.info(
-      `[AgentSpawner] Running git add -A to stage ALL files (including deletions)`
+      `[AgentSpawner] Running selective git add to stage relevant code files`
     );
+    
+    // First, reset any previously staged files to start fresh
+    await safeSocketExec(
+      workerSocket,
+      "git",
+      ["reset"],
+      containerWorkspace
+    );
+    
+    // Define patterns to exclude from git diff
+    const excludePatterns = [
+      "*.lock",
+      "*-lock.json",
+      "*-lock.yaml",
+      "pnpm-lock.yaml",
+      "yarn.lock",
+      "package-lock.json",
+      "Gemfile.lock",
+      "poetry.lock",
+      "Pipfile.lock",
+      "composer.lock",
+      "*.log",
+      "*.tmp",
+      "*.cache",
+      ".DS_Store",
+      "node_modules/**",
+      "dist/**",
+      "build/**",
+      ".next/**",
+      "out/**",
+      ".turbo/**",
+      "coverage/**",
+      ".nyc_output/**",
+      "*.min.js",
+      "*.min.css",
+      "*.map",
+      ".env.local",
+      ".env.*.local"
+    ];
+    
+    // Build git add command with pathspec magic to exclude files
+    // Using :(exclude) pathspec magic
+    const excludeArgs = excludePatterns.map(pattern => `':(exclude)${pattern}'`).join(' ');
+    const addCommand = `git add -A . ${excludeArgs}`;
+    
+    serverLogger.info(
+      `[AgentSpawner] Add command: ${addCommand}`
+    );
+    
     const addResult = await new Promise<{
       success: boolean;
       stdout?: string;
@@ -289,8 +392,8 @@ export async function captureGitDiff(
           command: "bash",
           args: [
             "-c",
-            "cd /root/workspace && git add -A && git status --short",
-          ], // Use -A to add everything including deletions
+            `cd /root/workspace && ${addCommand} && git status --short`,
+          ],
           cwd: containerWorkspace,
           env: {},
         },
@@ -316,10 +419,15 @@ export async function captureGitDiff(
         `[AgentSpawner] Git add completed. Output: ${addResult.stdout || "no output"}, Stderr: ${addResult.stderr || "no stderr"}`
       );
 
-      // Now get diff against HEAD - this MUST show all changes
+      // Now get diff of staged changes with additional filtering
       serverLogger.info(
-        `[AgentSpawner] Running git diff HEAD to get ALL changes`
+        `[AgentSpawner] Running git diff to get relevant code changes`
       );
+      
+      // Use git diff with pathspec to further filter if needed
+      // Also add --stat to get a summary first
+      const diffCommand = "git diff --cached --stat && echo '\n=== DETAILED DIFF ===' && git diff --cached";
+      
       const stagedDiffResult = await new Promise<{
         success: boolean;
         stdout?: string;
@@ -331,7 +439,7 @@ export async function captureGitDiff(
             "worker:exec",
             {
               command: "bash",
-              args: ["-c", "cd /root/workspace && git diff --cached 2>&1"], // Use --cached to show staged changes
+              args: ["-c", `cd /root/workspace && ${diffCommand} 2>&1`],
               cwd: containerWorkspace,
               env: {},
             },
@@ -358,9 +466,11 @@ export async function captureGitDiff(
         );
 
         if (stagedDiffResult.stdout && stagedDiffResult.stdout.length > 0) {
-          fullDiff = `=== ALL CHANGES (git diff HEAD) ===\n${stagedDiffResult.stdout}\n=== END ALL CHANGES ===`;
+          // Clean up the diff to remove any remaining unwanted file types
+          const cleanedDiff = filterGitDiff(stagedDiffResult.stdout);
+          fullDiff = `=== ALL CHANGES (git diff HEAD) ===\n${cleanedDiff}\n=== END ALL CHANGES ===`;
           serverLogger.info(
-            `[AgentSpawner] Successfully captured diff against HEAD: ${stagedDiffResult.stdout.length} chars`
+            `[AgentSpawner] Successfully captured diff: original ${stagedDiffResult.stdout.length} chars, cleaned ${cleanedDiff.length} chars`
           );
         } else {
           serverLogger.error(

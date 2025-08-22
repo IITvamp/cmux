@@ -447,10 +447,25 @@ export async function evaluateCrownWithClaudeCode(
     // Extract git diff from log - look for the dedicated GIT DIFF section
     let gitDiff = "No changes detected";
     
-    // Look for our well-defined git diff section
-    const gitDiffMatch = run.log.match(/=== GIT DIFF ===\n([\s\S]*?)\n=== END GIT DIFF ===/);
+    // Look for our well-defined git diff section - try multiple formats
+    let gitDiffMatch = run.log.match(/=== GIT DIFF ===\n([\s\S]*?)\n=== END GIT DIFF ===/);
+    
+    // Also try the new format with "ALL CHANGES"
+    if (!gitDiffMatch) {
+      gitDiffMatch = run.log.match(/=== ALL CHANGES \(git diff HEAD\) ===\n([\s\S]*?)\n=== END ALL CHANGES ===/);
+    }
+    
     if (gitDiffMatch && gitDiffMatch[1]) {
       gitDiff = gitDiffMatch[1].trim();
+      
+      // If the diff includes the stat summary, extract just the detailed diff part
+      if (gitDiff.includes("=== DETAILED DIFF ===")) {
+        const detailedPart = gitDiff.split("=== DETAILED DIFF ===")[1];
+        if (detailedPart) {
+          gitDiff = detailedPart.trim();
+        }
+      }
+      
       serverLogger.info(`[CrownEvaluator] Found git diff in standard format for ${agentName}: ${gitDiff.length} chars`);
     } else {
       // If no git diff section found, this is a serious problem
@@ -458,6 +473,7 @@ export async function evaluateCrownWithClaudeCode(
       serverLogger.error(`[CrownEvaluator] Log length: ${run.log.length}`);
       serverLogger.error(`[CrownEvaluator] Log contains "=== GIT DIFF ==="?: ${run.log.includes("=== GIT DIFF ===")}`)
       serverLogger.error(`[CrownEvaluator] Log contains "=== END GIT DIFF ==="?: ${run.log.includes("=== END GIT DIFF ===")}`)
+      serverLogger.error(`[CrownEvaluator] Log contains "=== ALL CHANGES"?: ${run.log.includes("=== ALL CHANGES")}`)
       
       // As a last resort, check if there's any indication of changes
       if (run.log.includes("=== ALL STAGED CHANGES") || 
@@ -512,11 +528,13 @@ export async function evaluateCrownWithClaudeCode(
 Here are the implementations to evaluate:
 ${JSON.stringify(evaluationData, null, 2)}
 
+NOTE: The git diffs shown contain only actual code changes. Lock files, build artifacts, and other non-essential files have been filtered out.
+
 Analyze these implementations and select the best one based on:
 1. Code quality and correctness
 2. Completeness of the solution
 3. Following best practices
-4. Actually having changes (if one has no changes, prefer the one with changes)
+4. Actually having meaningful code changes (if one has no changes, prefer the one with changes)
 
 Respond with a JSON object containing:
 - "winner": the index (0-based) of the best implementation
