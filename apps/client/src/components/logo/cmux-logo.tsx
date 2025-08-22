@@ -37,7 +37,7 @@ export default function CmuxLogo({
 
   return (
     <svg
-      viewBox="60 0 640 240"
+      viewBox="60 0 840 240"
       role="img"
       aria-labelledby={label ? titleId : undefined}
       aria-hidden={label ? undefined : true}
@@ -77,6 +77,7 @@ export default function CmuxLogo({
           y={162}
           fontSize={112}
         >
+          {/* cmux.dev */}
           cmux
         </text>
       )}
