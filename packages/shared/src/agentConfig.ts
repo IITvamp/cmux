@@ -20,6 +20,10 @@ import {
   GEMINI_PRO_CONFIG,
 } from "./providers/gemini/configs.js";
 import {
+  QWEN_CODER_PLUS_CONFIG,
+  QWEN_CODER_FREE_OPENROUTER_CONFIG,
+} from "./providers/qwen/configs.js";
+import {
   CODEX_GPT_4_1_CONFIG,
   CODEX_GPT_5_CONFIG,
   CODEX_O3_CONFIG,
@@ -71,6 +75,8 @@ export const AGENT_CONFIGS: AgentConfig[] = [
   CODEX_GPT_4_1_CONFIG,
   GEMINI_FLASH_CONFIG,
   GEMINI_PRO_CONFIG,
+  QWEN_CODER_PLUS_CONFIG,
+  QWEN_CODER_FREE_OPENROUTER_CONFIG,
   AMP_CONFIG,
   AMP_GPT_5_CONFIG,
   OPENCODE_SONNET_CONFIG,

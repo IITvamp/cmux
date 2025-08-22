@@ -22,6 +22,9 @@ import { convex } from "./utils/convexClient.js";
 import { serverLogger } from "./utils/fileLogger.js";
 import { workerExec } from "./utils/workerExec.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
+import { promises as fs } from "node:fs";
+import * as path from "node:path";
+import { homedir } from "node:os";
 import { MorphVSCodeInstance } from "./vscode/MorphVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWorktreePath, setupProjectWorkspace } from "./workspace.js";
@@ -386,6 +389,128 @@ export async function spawnAgent(
           worktreePath,
           vscodeInstance,
         });
+
+        // Persist updated Qwen/Gemini OAuth creds back to host (avoid stale cache)
+        if (agent.name.startsWith("qwen/")) {
+          try {
+            const sock = vscodeInstance.getWorkerSocket();
+            if (sock) {
+              await new Promise<void>((resolve) => {
+                sock.timeout(5000).emit(
+                  "worker:exec",
+                  {
+                    command: "bash",
+                    args: [
+                      "-lc",
+                      "cat $HOME/.qwen/oauth_creds.json 2>/dev/null || true",
+                    ],
+                    cwd: "/root",
+                    env: {},
+                  },
+                  async (_err: unknown, result: any) => {
+                    try {
+                      if (result && result.exitCode === 0 && result.stdout) {
+                        const qDir = path.join(homedir(), ".qwen");
+                        await fs.mkdir(qDir, { recursive: true });
+                        const dest = path.join(qDir, "oauth_creds.json");
+                        await fs.writeFile(dest, result.stdout, "utf8");
+                        serverLogger.info(
+                          "[AgentSpawner] Updated ~/.qwen/oauth_creds.json from worker"
+                        );
+                      } else {
+                        serverLogger.warn(
+                          "[AgentSpawner] Could not read qwen oauth_creds.json from worker",
+                          result
+                        );
+                      }
+                    } catch (e) {
+                      serverLogger.warn(
+                        "[AgentSpawner] Failed to persist qwen creds:",
+                        e
+                      );
+                    }
+                    resolve();
+                  }
+                );
+              });
+
+              // Also persist ~/.gemini/oauth_creds.json
+              await new Promise<void>((resolve) => {
+                sock.timeout(5000).emit(
+                  "worker:exec",
+                  {
+                    command: "bash",
+                    args: [
+                      "-lc",
+                      "cat $HOME/.gemini/oauth_creds.json 2>/dev/null || true",
+                    ],
+                    cwd: "/root",
+                    env: {},
+                  },
+                  async (_err: unknown, result: any) => {
+                    try {
+                      if (result && result.exitCode === 0 && result.stdout) {
+                        const gDir = path.join(homedir(), ".gemini");
+                        await fs.mkdir(gDir, { recursive: true });
+                        const dest = path.join(gDir, "oauth_creds.json");
+                        await fs.writeFile(dest, result.stdout, "utf8");
+                        serverLogger.info(
+                          "[AgentSpawner] Updated ~/.gemini/oauth_creds.json from worker"
+                        );
+                      }
+                    } catch (e) {
+                      serverLogger.warn(
+                        "[AgentSpawner] Failed to persist gemini creds:",
+                        e
+                      );
+                    }
+                    resolve();
+                  }
+                );
+              });
+
+              // And ~/.gemini/mcp-oauth-tokens.json
+              await new Promise<void>((resolve) => {
+                sock.timeout(5000).emit(
+                  "worker:exec",
+                  {
+                    command: "bash",
+                    args: [
+                      "-lc",
+                      "cat $HOME/.gemini/mcp-oauth-tokens.json 2>/dev/null || true",
+                    ],
+                    cwd: "/root",
+                    env: {},
+                  },
+                  async (_err: unknown, result: any) => {
+                    try {
+                      if (result && result.exitCode === 0 && result.stdout) {
+                        const gDir = path.join(homedir(), ".gemini");
+                        await fs.mkdir(gDir, { recursive: true });
+                        const dest = path.join(gDir, "mcp-oauth-tokens.json");
+                        await fs.writeFile(dest, result.stdout, "utf8");
+                        serverLogger.info(
+                          "[AgentSpawner] Updated ~/.gemini/mcp-oauth-tokens.json from worker"
+                        );
+                      }
+                    } catch (e) {
+                      serverLogger.warn(
+                        "[AgentSpawner] Failed to persist MCP tokens:",
+                        e
+                      );
+                    }
+                    resolve();
+                  }
+                );
+              });
+            }
+          } catch (e) {
+            serverLogger.warn(
+              "[AgentSpawner] Error during qwen creds persistence:",
+              e
+            );
+          }
+        }
       }
     });
 
@@ -438,6 +563,128 @@ export async function spawnAgent(
           worktreePath,
           vscodeInstance,
         });
+
+        // Persist updated Qwen/Gemini OAuth creds back to host
+        if (agent.name.startsWith("qwen/")) {
+          try {
+            const sock = vscodeInstance.getWorkerSocket();
+            if (sock) {
+              await new Promise<void>((resolve) => {
+                sock.timeout(5000).emit(
+                  "worker:exec",
+                  {
+                    command: "bash",
+                    args: [
+                      "-lc",
+                      "cat $HOME/.qwen/oauth_creds.json 2>/dev/null || true",
+                    ],
+                    cwd: "/root",
+                    env: {},
+                  },
+                  async (_err: unknown, result: any) => {
+                    try {
+                      if (result && result.exitCode === 0 && result.stdout) {
+                        const qDir = path.join(homedir(), ".qwen");
+                        await fs.mkdir(qDir, { recursive: true });
+                        const dest = path.join(qDir, "oauth_creds.json");
+                        await fs.writeFile(dest, result.stdout, "utf8");
+                        serverLogger.info(
+                          "[AgentSpawner] Updated ~/.qwen/oauth_creds.json from worker"
+                        );
+                      } else {
+                        serverLogger.warn(
+                          "[AgentSpawner] Could not read qwen oauth_creds.json from worker",
+                          result
+                        );
+                      }
+                    } catch (e) {
+                      serverLogger.warn(
+                        "[AgentSpawner] Failed to persist qwen creds:",
+                        e
+                      );
+                    }
+                    resolve();
+                  }
+                );
+              });
+
+              // Also persist ~/.gemini/oauth_creds.json
+              await new Promise<void>((resolve) => {
+                sock.timeout(5000).emit(
+                  "worker:exec",
+                  {
+                    command: "bash",
+                    args: [
+                      "-lc",
+                      "cat $HOME/.gemini/oauth_creds.json 2>/dev/null || true",
+                    ],
+                    cwd: "/root",
+                    env: {},
+                  },
+                  async (_err: unknown, result: any) => {
+                    try {
+                      if (result && result.exitCode === 0 && result.stdout) {
+                        const gDir = path.join(homedir(), ".gemini");
+                        await fs.mkdir(gDir, { recursive: true });
+                        const dest = path.join(gDir, "oauth_creds.json");
+                        await fs.writeFile(dest, result.stdout, "utf8");
+                        serverLogger.info(
+                          "[AgentSpawner] Updated ~/.gemini/oauth_creds.json from worker"
+                        );
+                      }
+                    } catch (e) {
+                      serverLogger.warn(
+                        "[AgentSpawner] Failed to persist gemini creds:",
+                        e
+                      );
+                    }
+                    resolve();
+                  }
+                );
+              });
+
+              // And ~/.gemini/mcp-oauth-tokens.json
+              await new Promise<void>((resolve) => {
+                sock.timeout(5000).emit(
+                  "worker:exec",
+                  {
+                    command: "bash",
+                    args: [
+                      "-lc",
+                      "cat $HOME/.gemini/mcp-oauth-tokens.json 2>/dev/null || true",
+                    ],
+                    cwd: "/root",
+                    env: {},
+                  },
+                  async (_err: unknown, result: any) => {
+                    try {
+                      if (result && result.exitCode === 0 && result.stdout) {
+                        const gDir = path.join(homedir(), ".gemini");
+                        await fs.mkdir(gDir, { recursive: true });
+                        const dest = path.join(gDir, "mcp-oauth-tokens.json");
+                        await fs.writeFile(dest, result.stdout, "utf8");
+                        serverLogger.info(
+                          "[AgentSpawner] Updated ~/.gemini/mcp-oauth-tokens.json from worker"
+                        );
+                      }
+                    } catch (e) {
+                      serverLogger.warn(
+                        "[AgentSpawner] Failed to persist MCP tokens:",
+                        e
+                      );
+                    }
+                    resolve();
+                  }
+                );
+              });
+            }
+          } catch (e) {
+            serverLogger.warn(
+              "[AgentSpawner] Error during qwen creds persistence:",
+              e
+            );
+          }
+        }
       } else {
         serverLogger.warn(
           `[AgentSpawner] Task ID did not match, ignoring task complete event`

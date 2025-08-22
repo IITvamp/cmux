@@ -1562,7 +1562,7 @@ process.on("SIGINT", gracefulShutdown);
 // Task Completion (DI approach)
 // ==============================
 
-type AgentType = "claude" | "codex" | "gemini" | "amp" | "opencode";
+type AgentType = "claude" | "codex" | "gemini" | "amp" | "opencode" | "qwen";
 
 interface TaskCompletionOptionsDI {
   taskRunId: string;
@@ -1761,7 +1761,7 @@ function resolveProviderFromModel(model?: string): AgentType | undefined {
 
   // Extract prefix before the slash
   const prefix = model.split("/")[0] as AgentType;
-  return ["claude", "codex", "gemini", "amp", "opencode"].includes(prefix)
+  return ["claude", "codex", "gemini", "amp", "opencode", "qwen"].includes(prefix)
     ? prefix
     : undefined;
 }
@@ -1842,6 +1842,13 @@ function buildDetectorConfig(params: {
           log("ERROR", `Opencode completion error: ${e}`);
           return false;
         }
+      },
+    },
+    qwen: {
+      // Not implemented; rely on terminal idle fallback as requested
+      allowTerminalIdleFallback: true,
+      async checkCompletion() {
+        return false;
       },
     },
   };
