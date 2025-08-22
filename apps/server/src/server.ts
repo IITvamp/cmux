@@ -1,11 +1,13 @@
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
 import {
+  ArchiveTaskSchema,
   GitFullDiffRequestSchema,
   GitHubCreateDraftPrSchema,
   GitHubFetchBranchesSchema,
   ListFilesRequestSchema,
   OpenInEditorSchema,
+  SpawnFromCommentSchema,
   StartTaskSchema,
   type ClientToServerEvents,
   type FileInfo,
@@ -1016,6 +1018,115 @@ export async function startServer({
       }
     });
 
+    socket.on("spawn-from-comment", async (data, callback) => {
+      try {
+        const {
+          url,
+          page,
+          pageTitle,
+          nodeId,
+          x,
+          y,
+          content,
+          selectedAgents,
+          commentId,
+        } = SpawnFromCommentSchema.parse(data);
+        console.log("spawn-from-comment data", data);
+
+        // Format the prompt with comment metadata
+        const formattedPrompt = `Fix the issue described in this comment:
+
+Comment: "${content}"
+
+Context:
+- Page URL: ${url}${page}
+- Page Title: ${pageTitle}
+- Element XPath: ${nodeId}
+- Position: ${x * 100}% x ${y * 100}% relative to element
+
+Please address the issue mentioned in the comment above.`;
+
+        // Create a new task in Convex
+        const taskId = await convex.mutation(api.tasks.create, {
+          text: formattedPrompt,
+          projectFullName: "manaflow-ai/cmux",
+        });
+
+        serverLogger.info("Created task from comment:", { taskId, content });
+
+        // Spawn agents with the formatted prompt
+        const agentResults = await spawnAllAgents(taskId, {
+          repoUrl: "https://github.com/manaflow-ai/cmux.git",
+          branch: "main",
+          taskDescription: formattedPrompt,
+          isCloudMode: true,
+          theme: "dark",
+          // Use provided selectedAgents or default to claude/sonnet-4 and codex/gpt-5
+          selectedAgents: selectedAgents || ["claude/sonnet-4", "codex/gpt-5"],
+        });
+
+        // Check if at least one agent spawned successfully
+        const successfulAgents = agentResults.filter(
+          (result) => result.success
+        );
+
+        if (successfulAgents.length === 0) {
+          const errors = agentResults
+            .filter((r) => !r.success)
+            .map((r) => `${r.agentName}: ${r.error || "Unknown error"}`)
+            .join("; ");
+          callback({
+            success: false,
+            error: errors || "Failed to spawn any agents",
+          });
+          return;
+        }
+
+        const primaryAgent = successfulAgents[0];
+
+        // Emit VSCode URL if available
+        if (primaryAgent.vscodeUrl) {
+          io.emit("vscode-spawned", {
+            instanceId: primaryAgent.terminalId,
+            url: primaryAgent.vscodeUrl.replace("/?folder=/root/workspace", ""),
+            workspaceUrl: primaryAgent.vscodeUrl,
+            provider: "morph", // Since isCloudMode is true
+          });
+        }
+
+        // Create a comment reply with link to the task
+        try {
+          await convex.mutation(api.comments.addReply, {
+            commentId: commentId,
+            userId: "cmux",
+            content: `[View run here](http://localhost:5173/task/${taskId})`,
+          });
+          serverLogger.info("Created comment reply with task link:", {
+            commentId,
+            taskId,
+          });
+        } catch (replyError) {
+          serverLogger.error("Failed to create comment reply:", replyError);
+          // Don't fail the whole operation if reply fails
+        }
+
+        callback({
+          success: true,
+          taskId,
+          taskRunId: primaryAgent.taskRunId,
+          worktreePath: primaryAgent.worktreePath,
+          terminalId: primaryAgent.terminalId,
+          vscodeUrl: primaryAgent.vscodeUrl,
+        });
+      } catch (error) {
+        serverLogger.error("Error spawning from comment:", error);
+        callback({
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    });
+
     socket.on("github-fetch-branches", async (data, callback) => {
       try {
         const { repo } = GitHubFetchBranchesSchema.parse(data);
@@ -1535,6 +1646,120 @@ export async function startServer({
         callback({ success: true, ...status });
       } catch (error) {
         serverLogger.error("Error checking provider status:", error);
+        callback({
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    });
+
+    socket.on("archive-task", async (data, callback) => {
+      try {
+        const { taskId } = ArchiveTaskSchema.parse(data);
+
+        // Get all task runs for this task
+        const taskRuns = await convex.query(api.taskRuns.getByTask, {
+          taskId,
+        });
+
+        serverLogger.info(
+          `Archiving task ${taskId} with ${taskRuns.length} runs`
+        );
+
+        // Stop/pause all containers in parallel
+        const stopPromises = taskRuns
+          .filter((run) => run.vscode && run.vscode.containerName)
+          .map(async (run) => {
+            const { provider, containerName } = run.vscode!;
+            if (!containerName) {
+              return {
+                success: false,
+                containerName: "unknown",
+                provider,
+                error: "No container name",
+              };
+            }
+            serverLogger.info(
+              `Stopping ${provider} container: ${containerName}`
+            );
+
+            try {
+              if (provider === "morph") {
+                // Extract instance ID from containerName (e.g., "morphvm_wdgnko75")
+                const instanceId = containerName;
+
+                // Import MorphCloudClient dynamically to avoid dependency issues
+                const { MorphCloudClient } = await import("morphcloud");
+                const morphClient = new MorphCloudClient();
+
+                const instance = await morphClient.instances.get({
+                  instanceId,
+                });
+                await instance.pause();
+                serverLogger.info(
+                  `Successfully paused Morph instance: ${instanceId}`
+                );
+                return { success: true, containerName, provider };
+              } else if (provider === "docker") {
+                // Stop Docker container
+                try {
+                  await execAsync(`docker stop ${containerName}`, {
+                    timeout: 10000, // 10 second timeout
+                  });
+                  serverLogger.info(
+                    `Successfully stopped Docker container: ${containerName}`
+                  );
+                  return { success: true, containerName, provider };
+                } catch (dockerError) {
+                  // Check if container is already stopped
+                  const { stdout: psOutput } = await execAsync(
+                    `docker ps -a --filter "name=${containerName}" --format "{{.Status}}"`
+                  );
+                  if (psOutput.toLowerCase().includes("exited")) {
+                    serverLogger.info(
+                      `Docker container already stopped: ${containerName}`
+                    );
+                    return { success: true, containerName, provider };
+                  } else {
+                    throw dockerError;
+                  }
+                }
+              }
+              return {
+                success: false,
+                containerName,
+                provider,
+                error: "Unknown provider",
+              };
+            } catch (error) {
+              serverLogger.error(
+                `Failed to stop ${provider} container ${containerName}:`,
+                error
+              );
+              return { success: false, containerName, provider, error };
+            }
+          });
+
+        // Wait for all stop operations to complete
+        const results = await Promise.all(stopPromises);
+
+        // Log summary
+        const successful = results.filter((r) => r.success).length;
+        const failed = results.filter((r) => !r.success).length;
+
+        if (failed > 0) {
+          serverLogger.warn(
+            `Archived task ${taskId}: ${successful} containers stopped, ${failed} failed`
+          );
+        } else {
+          serverLogger.info(
+            `Successfully archived task ${taskId}: all ${successful} containers stopped`
+          );
+        }
+
+        callback({ success: true });
+      } catch (error) {
+        serverLogger.error("Error archiving task:", error);
         callback({
           success: false,
           error: error instanceof Error ? error.message : "Unknown error",

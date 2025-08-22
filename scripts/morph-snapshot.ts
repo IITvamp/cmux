@@ -219,8 +219,6 @@ class MorphDockerfileExecutor {
   }
 
   async connect(): Promise<void> {
-    console.log("Creating Morph VM snapshot...");
-
     // const snapshot = await this.client.snapshots.create({
     //   // imageId: "morphvm-minimal",
     //   imageId: "snapshot_wdtqk4gj",
@@ -230,10 +228,14 @@ class MorphDockerfileExecutor {
     // });
     // console.log(`Created snapshot: ${snapshot.id}`);
 
-    console.log("Starting instance...");
+    // const snapshotId = "snapshot_r7dtrx12";
+    const snapshotId = "snapshot_uvnvam3n";
+
+    console.log("Starting instance from snapshot...", snapshotId);
     const instance = await this.client.instances.start({
       // snapshotId: snapshot.id,
-      snapshotId: "snapshot_wdtqk4gj", // the one with docker!
+      // snapshotId: "snapshot_wdtqk4gj", // the one with docker!
+      snapshotId, // the big one!
       // 30 minutes
       ttlSeconds: 60 * 30,
       ttlAction: "pause",

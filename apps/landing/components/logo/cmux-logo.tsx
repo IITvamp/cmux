@@ -4,15 +4,11 @@ type Props = Omit<
   React.SVGProps<SVGSVGElement>,
   "width" | "height" | "title"
 > & {
-  /** Visual height (e.g. "1.5rem", 48). Width stays proportional. Default: "1em". */
   height?: number | string;
-  /** Accessible label (screen readers only). If omitted, the SVG is aria-hidden. */
   label?: string;
-  /** Gradient colors for the mark. */
-  from?: string; // default "#00D4FF"
-  to?: string; // default "#7C3AED"
-  /** Toggle the wordmark. Set false for arrow-only. */
-  showWordmark?: boolean; // default true
+  from?: string;
+  to?: string;
+  showWordmark?: boolean;
 };
 
 export default function CmuxLogo({
@@ -83,3 +79,4 @@ export default function CmuxLogo({
     </svg>
   );
 }
+

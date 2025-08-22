@@ -50,7 +50,7 @@ done
 # Only clean ports when not in devcontainer (devcontainer handles this)
 if [ "$IS_DEVCONTAINER" = "false" ]; then
     # Check if anything is running on ports 5173, $CONVEX_PORT, 9777, 9778, 9779
-    PORTS_TO_CHECK="5173 $CONVEX_PORT 9777 9778 9779"
+    PORTS_TO_CHECK="5173 9779"
     # Use shared port cleanup helper
     source "$(dirname "$0")/_port-clean.sh"
     clean_ports $PORTS_TO_CHECK
@@ -181,13 +181,14 @@ else
         DOCKER_COMPOSE_PID=$!
         check_process $DOCKER_COMPOSE_PID "Docker Compose"
     fi
-
-    # Start convex dev (works the same in both environments)
-    (cd "$APP_DIR/packages/convex" && exec bash -c 'trap "kill -9 0" EXIT; source ~/.nvm/nvm.sh 2>/dev/null || true; bunx convex dev --env-file .env.convex 2>&1 | tee "$LOG_DIR/convex-dev.log" | prefix_output "CONVEX-DEV" "$BLUE"') &
-    CONVEX_DEV_PID=$!
-    check_process $CONVEX_DEV_PID "Convex Dev"
-    CONVEX_PID=$CONVEX_DEV_PID
 fi
+
+# We need to start convex dev even if we're skipping convex
+# Start convex dev (works the same in both environments)
+(cd "$APP_DIR/packages/convex" && exec bash -c 'trap "kill -9 0" EXIT; source ~/.nvm/nvm.sh 2>/dev/null || true; bunx convex dev --env-file .env.convex 2>&1 | tee "$LOG_DIR/convex-dev.log" | prefix_output "CONVEX-DEV" "$BLUE"') &
+CONVEX_DEV_PID=$!
+check_process $CONVEX_DEV_PID "Convex Dev"
+CONVEX_PID=$CONVEX_DEV_PID
 
 # Start the backend server
 echo -e "${GREEN}Starting backend server on port 9776...${NC}"

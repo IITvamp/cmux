@@ -1,9 +1,6 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { Inter } from "next/font/google";
 import "./globals.css";
-
-const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "cmux - Orchestrate AI coding agents in parallel",
@@ -27,7 +24,15 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
-      <body className={inter.className}>{children}</body>
+      <body
+        className="antialiased bg-background text-foreground"
+        style={{
+          fontFamily:
+            '"JetBrains Mono","SFMono-Regular","Menlo","Consolas","ui-monospace","Monaco","Courier New",monospace',
+        }}
+      >
+        {children}
+      </body>
     </html>
   );
 }

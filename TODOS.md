@@ -66,3 +66,5 @@
 [ ] select multiple tasks on frontend and do bulk actions on them
 [ ] notifications queue
 [ ] if no agents selected, error! dont spawn all at the same time
+
+SKIP_CONVEX=true SKIP_DOCKER_BUILD=true ./scripts/dev.sh
