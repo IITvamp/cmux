@@ -10,7 +10,7 @@ import { VSCodeInstance } from "./vscode/VSCodeInstance";
  * Automatically commit and push changes when a task completes
  */
 
-async function performAutoCommitAndPush(
+export default async function performAutoCommitAndPush(
   vscodeInstance: VSCodeInstance,
   agent: AgentConfig,
   taskRunId: string | Id<"taskRuns">,

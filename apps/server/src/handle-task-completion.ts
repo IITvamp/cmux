@@ -6,6 +6,7 @@ import {
   createPullRequestForWinner,
   evaluateCrownWithClaudeCode,
 } from "./crownEvaluator.js";
+import performAutoCommitAndPush from "./performAutoCommitAndPush.js";
 import { convex } from "./utils/convexClient.js";
 import { serverLogger } from "./utils/fileLogger.js";
 import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
@@ -213,13 +214,35 @@ export async function handleTaskCompletion({
       }
     }
 
-    const ENABLE_AUTO_COMMIT = false; // Disabled to ensure git diff capture works
-
-    // Skip auto-commit - we'll let the user commit manually after crown evaluation
-    if (ENABLE_AUTO_COMMIT && taskRunData) {
-      serverLogger.info(
-        `[AgentSpawner] Auto-commit is disabled to ensure proper crown evaluation`
-      );
+    // Enable auto-commit after task completion
+    if (taskRunData) {
+      const task = await convex.query(api.tasks.getById, {
+        id: taskRunData.taskId,
+      });
+      
+      if (task) {
+        serverLogger.info(
+          `[AgentSpawner] Performing auto-commit for ${agent.name}`
+        );
+        
+        try {
+          await performAutoCommitAndPush(
+            vscodeInstance,
+            agent,
+            taskRunId,
+            task.text,
+            worktreePath
+          );
+          serverLogger.info(
+            `[AgentSpawner] Auto-commit completed successfully for ${agent.name}`
+          );
+        } catch (error) {
+          serverLogger.error(
+            `[AgentSpawner] Auto-commit failed for ${agent.name}:`,
+            error
+          );
+        }
+      }
     }
 
     // Schedule container stop based on settings
