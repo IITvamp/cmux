@@ -1,5 +1,5 @@
 export async function checkQwenRequirements(): Promise<string[]> {
-  const { access, stat, readFile } = await import("node:fs/promises");
+  const { stat, readFile } = await import("node:fs/promises");
   const { homedir } = await import("node:os");
   const { join } = await import("node:path");
 
@@ -24,7 +24,9 @@ export async function checkQwenRequirements(): Promise<string[]> {
           hasApiKey = true;
           break;
         }
-      } catch {}
+      } catch {
+        // ignore
+      }
     }
     if (!hasApiKey) {
       missing.push("Qwen authentication (no ~/.qwen or OPENAI_API_KEY found)");
@@ -36,4 +38,3 @@ export async function checkQwenRequirements(): Promise<string[]> {
 
   return missing;
 }
-
