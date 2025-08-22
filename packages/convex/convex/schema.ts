@@ -2,17 +2,6 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 const convexSchema = defineSchema({
-  users: defineTable({
-    stackUserId: v.string(), // Stack Auth user ID
-    email: v.string(),
-    displayName: v.optional(v.string()),
-    avatarUrl: v.optional(v.string()),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-  })
-    .index("by_stackUserId", ["stackUserId"])
-    .index("by_email", ["email"]),
-
   tasks: defineTable({
     text: v.string(),
     isCompleted: v.boolean(),
@@ -203,7 +192,7 @@ const convexSchema = defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   }),
-  
+
   comments: defineTable({
     url: v.string(), // Full URL of the website where comment was created
     page: v.string(), // Page URL/path where comment was created
@@ -227,7 +216,7 @@ const convexSchema = defineSchema({
     .index("by_page", ["page", "createdAt"])
     .index("by_user", ["userId", "createdAt"])
     .index("by_resolved", ["resolved", "createdAt"]),
-  
+
   commentReplies: defineTable({
     commentId: v.id("comments"),
     userId: v.string(),
