@@ -38,7 +38,27 @@ function log(message: string, ...args: any[]) {
   }
 }
 
-async function openMultiDiffEditor() {
+async function resolveDefaultBaseRef(repositoryPath: string): Promise<string> {
+  try {
+    const { execSync } = require("node:child_process");
+    const out: string = execSync(
+      "git symbolic-ref --quiet refs/remotes/origin/HEAD || git remote show origin | sed -n 's/\tHEAD branch: //p'",
+      { cwd: repositoryPath, encoding: "utf8" }
+    );
+    const ref = out.trim();
+    if (ref.startsWith("refs/remotes/origin/")) {
+      return ref; // e.g. refs/remotes/origin/main
+    }
+    if (ref) {
+      return `origin/${ref}`;
+    }
+  } catch {
+    // ignore and fall back
+  }
+  return "origin/main";
+}
+
+async function openMultiDiffEditor(baseRef?: string) {
   // Get the Git extension
   const gitExtension = vscode.extensions.getExtension("vscode.git");
   if (!gitExtension) {
@@ -58,10 +78,13 @@ async function openMultiDiffEditor() {
 
   // The resource group IDs are: 'index', 'workingTree', 'untracked', 'merge'
   // You can open the working tree changes view even if empty
+  const repoPath = repository.rootUri.fsPath;
+  const resolvedBase = baseRef || (await resolveDefaultBaseRef(repoPath));
   await vscode.commands.executeCommand("_workbench.openScmMultiDiffEditor", {
-    title: `Git: Changes`,
-    repositoryUri: vscode.Uri.file(repository.rootUri.fsPath),
+    title: `Git: Changes vs ${resolvedBase.replace(/^refs\/remotes\//, "")}`,
+    repositoryUri: vscode.Uri.file(repoPath),
     resourceGroupId: "workingTree",
+    baseRef: resolvedBase, // hint to compare against default branch (best-effort)
   });
 }
 
@@ -241,7 +264,7 @@ function startSocketServer() {
           const git = gitExtension.exports;
           const api = git.getAPI(1);
           const repository = api.repositories[0];
-          
+
           if (!repository) {
             callback({ success: false, error: "No Git repository found" });
             return;
@@ -258,17 +281,24 @@ function startSocketServer() {
           // Commit changes
           await repository.commit(commitMessage);
           log(`Committed changes with message: ${commitMessage}`);
-          
+
           // Check current branch and remotes
           const currentBranch = repository.state.HEAD?.name;
           const remotes = repository.state.remotes;
-          log(`Current branch: ${currentBranch}, Remotes: ${JSON.stringify(remotes?.map((r: any) => r.name))}`);
-          
+          log(
+            `Current branch: ${currentBranch}, Remotes: ${JSON.stringify(remotes?.map((r: any) => r.name))}`
+          );
+
           // Set upstream branch configuration if possible
           try {
-            const branch = repository.state.refs.find((ref: any) => ref.name === `refs/heads/${branchName}`);
+            const branch = repository.state.refs.find(
+              (ref: any) => ref.name === `refs/heads/${branchName}`
+            );
             if (branch && repository.setBranchUpstream) {
-              await repository.setBranchUpstream(branchName, `refs/remotes/origin/${branchName}`);
+              await repository.setBranchUpstream(
+                branchName,
+                `refs/remotes/origin/${branchName}`
+              );
               log(`Set upstream for branch ${branchName}`);
             }
           } catch (error: any) {
@@ -282,33 +312,48 @@ function startSocketServer() {
             log(`Pushed branch ${branchName} to origin using default push`);
           } catch (error1: any) {
             log(`Default push failed: ${error1.message}, trying with refspec`);
-            
+
             try {
               // Second try: Push with full refspec
-              await repository.push("origin", `refs/heads/${branchName}:refs/heads/${branchName}`, true);
+              await repository.push(
+                "origin",
+                `refs/heads/${branchName}:refs/heads/${branchName}`,
+                true
+              );
               log(`Pushed branch ${branchName} to origin using full refspec`);
             } catch (error2: any) {
-              log(`Full refspec push failed: ${error2.message}, trying simple refspec`);
-              
+              log(
+                `Full refspec push failed: ${error2.message}, trying simple refspec`
+              );
+
               try {
                 // Third try: Push with simple refspec
-                await repository.push("origin", `${branchName}:${branchName}`, true);
-                log(`Pushed branch ${branchName} to origin using simple refspec`);
+                await repository.push(
+                  "origin",
+                  `${branchName}:${branchName}`,
+                  true
+                );
+                log(
+                  `Pushed branch ${branchName} to origin using simple refspec`
+                );
               } catch (error3: any) {
                 log(`Simple refspec push failed: ${error3.message}`);
-                throw new Error(`All push attempts failed. Last error: ${error3.message}`);
+                throw new Error(
+                  `All push attempts failed. Last error: ${error3.message}`
+                );
               }
             }
           }
 
           // Refresh the git diff view to show the new branch
           await vscode.commands.executeCommand("workbench.view.scm");
+          // Refresh diff view comparing against default branch
           await openMultiDiffEditor();
           log(`Refreshed git diff view for branch ${branchName}`);
 
-          callback({ 
-            success: true, 
-            message: `Successfully committed and pushed to branch ${branchName}` 
+          callback({
+            success: true,
+            message: `Successfully committed and pushed to branch ${branchName}`,
           });
         } catch (error: any) {
           log(`Auto-commit and push failed:`, error);
@@ -319,35 +364,44 @@ function startSocketServer() {
       // Execute shell command
       socket.on("vscode:exec-command", async (data, callback) => {
         try {
-          const { command, args = [], cwd = "/root/workspace", env = {} } = data;
-          log(`Executing shell command: ${command} ${args.join(' ')}`);
-          
+          const {
+            command,
+            args = [],
+            cwd = "/root/workspace",
+            env = {},
+          } = data;
+          log(`Executing shell command: ${command} ${args.join(" ")}`);
+
           // Use Node.js child_process to execute the command
-          const { exec } = require('child_process');
-          const fullCommand = `${command} ${args.map((arg: string) => `"${arg.replace(/"/g, '\\"')}"`).join(' ')}`;
-          
+          const { exec } = require("child_process");
+          const fullCommand = `${command} ${args.map((arg: string) => `"${arg.replace(/"/g, '\\"')}"`).join(" ")}`;
+
           // Merge provided env with process env
           const execEnv = { ...process.env, ...env };
-          
-          exec(fullCommand, { cwd, env: execEnv, shell: '/bin/bash' }, (error: any, stdout: string, stderr: string) => {
-            if (error) {
-              log(`Command execution failed: ${error.message}`);
-              log(`stderr: ${stderr}`);
-              callback({ success: false, error: error.message });
-              return;
+
+          exec(
+            fullCommand,
+            { cwd, env: execEnv, shell: "/bin/bash" },
+            (error: any, stdout: string, stderr: string) => {
+              if (error) {
+                log(`Command execution failed: ${error.message}`);
+                log(`stderr: ${stderr}`);
+                callback({ success: false, error: error.message });
+                return;
+              }
+
+              log(`Command executed successfully`);
+              log(`stdout: ${stdout}`);
+              if (stderr) {
+                log(`stderr: ${stderr}`);
+              }
+
+              callback({
+                success: true,
+                result: { stdout, stderr },
+              });
             }
-            
-            log(`Command executed successfully`);
-            log(`stdout: ${stdout}`);
-            if (stderr) {
-              log(`stderr: ${stderr}`);
-            }
-            
-            callback({ 
-              success: true, 
-              result: { stdout, stderr }
-            });
-          });
+          );
         } catch (error: any) {
           log(`Command execution error:`, error);
           callback({ success: false, error: error.message });

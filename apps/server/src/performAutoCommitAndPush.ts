@@ -54,7 +54,7 @@ Task Run ID: ${taskRunId}
 Branch: ${branchName}
 Completed: ${new Date().toISOString()}`;
 
-    // Try to use VSCode extension API first (more reliable)
+    Try to use VSCode extension API first (more reliable)
     const extensionResult = await tryVSCodeExtensionCommit(
       vscodeInstance,
       branchName,
