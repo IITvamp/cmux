@@ -25,7 +25,6 @@ function useAuthFromStack() {
     }),
     [user, fetchAccessToken]
   );
-  console.log("authResult", authResult);
   return authResult;
 }
 
