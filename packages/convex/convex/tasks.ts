@@ -10,10 +10,9 @@ export const get = query({
     archived: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const user = await ensureAuth(ctx);
-    let query = ctx.db
-      .query("tasks")
-      .withIndex("by_user", (q) => q.eq("userId", user.userId));
+    await ensureAuth(ctx);
+    let query = ctx.db.query("tasks");
+    // .withIndex("by_user", (q) => q.eq("userId", user.userId));
 
     // Default to active (non-archived) when not specified
     if (args.archived === true) {
