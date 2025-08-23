@@ -1,7 +1,8 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { ensureAuth } from "../_shared/ensureAuth";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { mutation, query } from "./_generated/server";
 
 export const get = query({
   args: {
@@ -9,7 +10,10 @@ export const get = query({
     archived: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    let query = ctx.db.query("tasks");
+    const user = await ensureAuth(ctx);
+    let query = ctx.db
+      .query("tasks")
+      .withIndex("by_user", (q) => q.eq("userId", user.userId));
 
     // Default to active (non-archived) when not specified
     if (args.archived === true) {
@@ -35,11 +39,15 @@ export const create = mutation({
     projectFullName: v.optional(v.string()),
     baseBranch: v.optional(v.string()),
     worktreePath: v.optional(v.string()),
-    images: v.optional(v.array(v.object({
-      storageId: v.id("_storage"),
-      fileName: v.optional(v.string()),
-      altText: v.string(),
-    }))),
+    images: v.optional(
+      v.array(
+        v.object({
+          storageId: v.id("_storage"),
+          fileName: v.optional(v.string()),
+          altText: v.string(),
+        })
+      )
+    ),
   },
   handler: async (ctx, args) => {
     const now = Date.now();
@@ -110,7 +118,7 @@ export const getById = query({
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.id);
     if (!task) return null;
-    
+
     // If task has images, get their URLs
     if (task.images && task.images.length > 0) {
       const imagesWithUrls = await Promise.all(
@@ -127,7 +135,7 @@ export const getById = query({
         images: imagesWithUrls,
       };
     }
-    
+
     return task;
   },
 });
@@ -250,9 +258,11 @@ export const getTasksWithPendingCrownEvaluation = query({
     // Only get tasks that are pending, not already in progress
     const tasks = await ctx.db
       .query("tasks")
-      .filter((q) => q.eq(q.field("crownEvaluationError"), "pending_evaluation"))
+      .filter((q) =>
+        q.eq(q.field("crownEvaluationError"), "pending_evaluation")
+      )
       .collect();
-    
+
     // Double-check that no evaluation exists for these tasks
     const tasksToEvaluate = [];
     for (const task of tasks) {
@@ -260,12 +270,12 @@ export const getTasksWithPendingCrownEvaluation = query({
         .query("crownEvaluations")
         .withIndex("by_task", (q) => q.eq("taskId", task._id))
         .first();
-      
+
       if (!existingEvaluation) {
         tasksToEvaluate.push(task);
       }
     }
-    
+
     return tasksToEvaluate;
   },
 });
@@ -307,7 +317,14 @@ export const checkAndEvaluateCrown = mutation({
       .collect();
 
     console.log(`[CheckCrown] Task ${args.taskId} has ${taskRuns.length} runs`);
-    console.log(`[CheckCrown] Run statuses:`, taskRuns.map(r => ({ id: r._id, status: r.status, isCrowned: r.isCrowned })));
+    console.log(
+      `[CheckCrown] Run statuses:`,
+      taskRuns.map((r) => ({
+        id: r._id,
+        status: r.status,
+        isCrowned: r.isCrowned,
+      }))
+    );
 
     // Check if all runs are completed or failed
     const allCompleted = taskRuns.every(
@@ -322,20 +339,22 @@ export const checkAndEvaluateCrown = mutation({
     // Special handling for single agent scenario
     if (taskRuns.length === 1) {
       console.log(`[CheckCrown] Single agent scenario - marking task complete`);
-      
+
       // Mark the task as completed
       await ctx.db.patch(args.taskId, {
         isCompleted: true,
         updatedAt: Date.now(),
       });
-      
+
       // If the single run was successful, return it as the "winner" for potential auto-PR
       const singleRun = taskRuns[0];
       if (singleRun.status === "completed") {
-        console.log(`[CheckCrown] Single agent completed successfully: ${singleRun._id}`);
+        console.log(
+          `[CheckCrown] Single agent completed successfully: ${singleRun._id}`
+        );
         return singleRun._id;
       }
-      
+
       return null;
     }
 
@@ -352,39 +371,54 @@ export const checkAndEvaluateCrown = mutation({
       .first();
 
     if (existingEvaluation) {
-      console.log(`[CheckCrown] Crown already evaluated for task ${args.taskId}, winner: ${existingEvaluation.winnerRunId}`);
+      console.log(
+        `[CheckCrown] Crown already evaluated for task ${args.taskId}, winner: ${existingEvaluation.winnerRunId}`
+      );
       return existingEvaluation.winnerRunId;
     }
-    
+
     // Check if crown evaluation is already pending or in progress
     const task = await ctx.db.get(args.taskId);
-    if (task?.crownEvaluationError === "pending_evaluation" || 
-        task?.crownEvaluationError === "in_progress") {
-      console.log(`[CheckCrown] Crown evaluation already ${task.crownEvaluationError} for task ${args.taskId}`);
+    if (
+      task?.crownEvaluationError === "pending_evaluation" ||
+      task?.crownEvaluationError === "in_progress"
+    ) {
+      console.log(
+        `[CheckCrown] Crown evaluation already ${task.crownEvaluationError} for task ${args.taskId}`
+      );
       return "pending";
     }
-    
-    console.log(`[CheckCrown] No existing evaluation, proceeding with crown evaluation`);
-    
+
+    console.log(
+      `[CheckCrown] No existing evaluation, proceeding with crown evaluation`
+    );
+
     // Only evaluate if we have at least 2 completed runs
-    const completedRuns = taskRuns.filter(run => run.status === "completed");
+    const completedRuns = taskRuns.filter((run) => run.status === "completed");
     if (completedRuns.length < 2) {
-      console.log(`[CheckCrown] Not enough completed runs (${completedRuns.length} < 2)`);
+      console.log(
+        `[CheckCrown] Not enough completed runs (${completedRuns.length} < 2)`
+      );
       return null;
     }
 
     // Trigger crown evaluation with error handling
     let winnerId = null;
     try {
-      console.log(`[CheckCrown] Starting crown evaluation for task ${args.taskId}`);
+      console.log(
+        `[CheckCrown] Starting crown evaluation for task ${args.taskId}`
+      );
       winnerId = await ctx.runMutation(api.crown.evaluateAndCrownWinner, {
         taskId: args.taskId,
       });
-      console.log(`[CheckCrown] Crown evaluation completed, winner: ${winnerId}`);
+      console.log(
+        `[CheckCrown] Crown evaluation completed, winner: ${winnerId}`
+      );
     } catch (error) {
       console.error(`[CheckCrown] Crown evaluation failed:`, error);
       // Store the error message on the task
-      const errorMessage = error instanceof Error ? error.message : String(error);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
       await ctx.db.patch(args.taskId, {
         crownEvaluationError: errorMessage,
         updatedAt: Date.now(),
