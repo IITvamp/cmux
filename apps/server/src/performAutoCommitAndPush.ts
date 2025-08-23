@@ -14,11 +14,11 @@ export default async function performAutoCommitAndPush(
   vscodeInstance: VSCodeInstance,
   agent: AgentConfig,
   taskRunId: string | Id<"taskRuns">,
-  taskDescription: string,
-  worktreePath: string
+  taskDescription: string
 ): Promise<void> {
   try {
     serverLogger.info(`[AgentSpawner] Starting auto-commit for ${agent.name}`);
+    const workerSocket = vscodeInstance.getWorkerSocket();
 
     // Check if this run is crowned
     const taskRun = await convex.query(api.taskRuns.get, {
@@ -39,7 +39,6 @@ export default async function performAutoCommitAndPush(
         .replace(/--+/g, "-");
 
     // Use task description as the main commit message
-    // Truncate if too long (git has limits on commit message length)
     const truncatedDescription =
       taskDescription.length > 72
         ? taskDescription.substring(0, 69) + "..."
@@ -65,61 +64,51 @@ Completed: ${new Date().toISOString()}`;
 
     if (extensionResult.success) {
       serverLogger.info(
-        `[AgentSpawner] Successfully committed via VSCode extension`
+        `[AgentSpawner] Successfully committed and pushed via VSCode extension`
       );
       serverLogger.info(`[AgentSpawner] Branch: ${branchName}`);
       serverLogger.info(
         `[AgentSpawner] Commit message: ${commitMessage.split("\n")[0]}`
       );
-      return;
-    }
-
-    serverLogger.info(
-      `[AgentSpawner] VSCode extension method failed, falling back to git commands:`,
-      extensionResult.error
-    );
-
-    // Fallback to direct git commands
-    const workerSocket = vscodeInstance.getWorkerSocket();
-    if (!workerSocket || !vscodeInstance.isWorkerConnected()) {
+    } else {
       serverLogger.info(
-        `[AgentSpawner] No worker connection for auto-commit fallback`
+        `[AgentSpawner] VSCode extension method failed, falling back to git commands:`,
+        extensionResult.error
       );
-      return;
-    }
 
-    // Execute git commands in sequence
-    const gitCommands = [
-      // Add all changes
-      `git add .`,
-      // Create and switch to new branch
-      `git checkout -b ${branchName}`,
-      // Commit with a descriptive message (escape properly for shell)
-      `git commit -m "${commitMessage
-        .replace(/\\/g, "\\\\")
-        .replace(/"/g, '\\"')
-        .replace(/\$/g, "\\$")
-        .replace(/`/g, "\\`")}"`,
-    ];
+      // Fallback to direct git commands
+      if (!workerSocket || !vscodeInstance.isWorkerConnected()) {
+        serverLogger.info(
+          `[AgentSpawner] No worker connection for auto-commit fallback`
+        );
+        return;
+      }
 
-    // Only push if this is a crowned run
-    if (isCrowned) {
-      gitCommands.push(`git push -u origin ${branchName}`);
-    }
+      // Execute git commands in sequence (robust and minimal escaping)
+      const gitCommands = [
+        // Stage all changes including deletions
+        `git add -A`,
+        // Ensure target branch exists; create or switch
+        `git checkout -b ${branchName} || git checkout ${branchName}`,
+        // Commit with JSON-escaped message; tolerate no-op
+        `git commit -m ${JSON.stringify(commitMessage)} || echo 'No changes to commit'`,
+        // If remote branch exists, integrate updates before pushing
+        `git ls-remote --heads origin ${branchName} | grep -q . && git pull --rebase origin ${branchName} || echo 'Remote branch missing; skip pull --rebase'`,
+        // Always push and set upstream
+        `git push -u origin ${branchName}`,
+      ];
 
-    for (const command of gitCommands) {
-      serverLogger.info(`[AgentSpawner] Executing: ${command}`);
+      for (const command of gitCommands) {
+        serverLogger.info(`[AgentSpawner] Executing: ${command}`);
 
-      const result = await new Promise<{
-        success: boolean;
-        stdout?: string;
-        stderr?: string;
-        exitCode?: number;
-        error?: string;
-      }>((resolve) => {
-        workerSocket
-          .timeout(30000) // 30 second timeout
-          .emit(
+        const result = await new Promise<{
+          success: boolean;
+          stdout?: string;
+          stderr?: string;
+          exitCode?: number;
+          error?: string;
+        }>((resolve) => {
+          workerSocket.timeout(30000).emit(
             "worker:exec",
             {
               command: "bash",
@@ -127,7 +116,7 @@ Completed: ${new Date().toISOString()}`;
               cwd: "/root/workspace",
               env: {},
             },
-            (timeoutError, result) => {
+            (timeoutError: unknown, execResult: any) => {
               if (timeoutError) {
                 serverLogger.error(
                   `[AgentSpawner] Timeout executing: ${command}`,
@@ -139,12 +128,16 @@ Completed: ${new Date().toISOString()}`;
                 });
                 return;
               }
-              if (result.error) {
-                resolve({ success: false, error: result.error.message });
+              if (execResult?.error) {
+                resolve({ success: false, error: String(execResult.error) });
                 return;
               }
 
-              const { stdout, stderr, exitCode } = result.data!;
+              const { stdout, stderr, exitCode } = execResult.data as {
+                stdout: string;
+                stderr: string;
+                exitCode: number;
+              };
               serverLogger.info(`[AgentSpawner] Command output:`, {
                 stdout,
                 stderr,
@@ -164,15 +157,16 @@ Completed: ${new Date().toISOString()}`;
               }
             }
           );
-      });
+        });
 
-      if (!result.success) {
-        serverLogger.error(
-          `[AgentSpawner] Git command failed: ${command}`,
-          result.error
-        );
-        // Don't stop on individual command failures - some might be expected (e.g., no changes to commit)
-        continue;
+        if (!result.success) {
+          serverLogger.error(
+            `[AgentSpawner] Git command failed: ${command}`,
+            result.error
+          );
+          // Don't stop on individual command failures - some might be expected (e.g., no changes to commit)
+          continue;
+        }
       }
     }
 
@@ -183,15 +177,15 @@ Completed: ${new Date().toISOString()}`;
         (ws as unknown as { autoPrEnabled?: boolean })?.autoPrEnabled ?? false;
       if (!autoPrEnabled) {
         serverLogger.info(
-          `[AgentSpawner] Auto-PR is disabled in settings; skipping PR creation.`
+          `[AgentSpawner] Branch pushed (auto-PR disabled). Winner: ${agent.name} on ${branchName}`
         );
         return;
       }
       serverLogger.info(
-        `[AgentSpawner] 🏆 Crown winner! Auto-commit and push completed for ${agent.name} on branch ${branchName}`
+        `[AgentSpawner] Auto-commit completed for ${agent.name} on branch ${branchName} (crowned - creating PR)`
       );
 
-      // Create PR for crowned run
+      // Create PR for crowned run only
       try {
         if (!taskRun) {
           serverLogger.error(
@@ -247,12 +241,12 @@ ${taskRun.crownReason || "This implementation was selected as the best solution.
           const bodyFileVar = `cmux_pr_body_${Date.now()}_${Math.random().toString(36).slice(2)}.md`;
           const prScript =
             `set -e\n` +
-            `BODY_FILE=\"/tmp/${bodyFileVar}\"\n` +
-            `cat <<'CMUX_EOF' > \"$BODY_FILE\"\n` +
+            `BODY_FILE="/tmp/${bodyFileVar}"\n` +
+            `cat <<'CMUX_EOF' > "$BODY_FILE"\n` +
             `${prBody}\n` +
             `CMUX_EOF\n` +
-            `gh pr create --title \"${prTitle.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}\" --body-file \"$BODY_FILE\"\n` +
-            `rm -f \"$BODY_FILE\"`;
+            `gh pr create --title ${JSON.stringify(prTitle)} --body-file "$BODY_FILE"\n` +
+            `rm -f "$BODY_FILE"`;
 
           const prResult = await new Promise<{
             success: boolean;
@@ -266,12 +260,13 @@ ${taskRun.crownReason || "This implementation was selected as the best solution.
                 args: ["-lc", prScript],
                 cwd: "/root/workspace",
               },
-              (response: any) => {
-                if (response.error) {
-                  resolve({ success: false, error: response.error });
+              (err: unknown, response: any) => {
+                if (err || response?.error) {
+                  const e = err || response?.error;
+                  resolve({ success: false, error: String(e) });
                 } else {
                   // Extract PR URL from output
-                  const output = response.stdout || "";
+                  const output = response?.stdout || "";
                   const prUrlMatch = output.match(
                     /https:\/\/github\.com\/[\w-]+\/[\w-]+\/pull\/\d+/
                   );
@@ -304,7 +299,7 @@ ${taskRun.crownReason || "This implementation was selected as the best solution.
       }
     } else {
       serverLogger.info(
-        `[AgentSpawner] Auto-commit completed for ${agent.name} on branch ${branchName} (not crowned - branch not pushed)`
+        `[AgentSpawner] Auto-commit completed for ${agent.name} on branch ${branchName} (not crowned - branch pushed)`
       );
     }
   } catch (error) {

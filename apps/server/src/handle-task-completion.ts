@@ -219,19 +219,18 @@ export async function handleTaskCompletion({
       const task = await convex.query(api.tasks.getById, {
         id: taskRunData.taskId,
       });
-      
+
       if (task) {
         serverLogger.info(
           `[AgentSpawner] Performing auto-commit for ${agent.name}`
         );
-        
+
         try {
           await performAutoCommitAndPush(
             vscodeInstance,
             agent,
             taskRunId,
-            task.text,
-            worktreePath
+            task.text
           );
           serverLogger.info(
             `[AgentSpawner] Auto-commit completed successfully for ${agent.name}`

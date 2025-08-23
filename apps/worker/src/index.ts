@@ -1272,40 +1272,51 @@ async function createTerminal(
           },
         });
       } else {
-        const detector = await createTaskCompletionDetector({
-          taskRunId: options.taskRunId!,
-          agentType: providerResolved!,
-          agentModel: options.agentModel,
-          workingDir: cwd,
-          maxRuntimeMs: 20 * 60 * 1000,
-          minRuntimeMs: 30000,
-        }, buildDetectorConfig({
-          agentType: providerResolved || undefined,
-          agentModel: options.agentModel,
-          workingDir: cwd,
-          startTime: processStartTime,
-          terminalId: useTerminalIdleFallback ? (sessionName || terminalId) : undefined,
-          onTerminalIdle: useTerminalIdleFallback ? () => {
-            if (!idleDetectionCompleted) {
-              idleDetectionCompleted = true;
-              const elapsedMs = Date.now() - processStartTime;
-              log("INFO", "Task completion detected (fallback to terminal idle)", {
-                terminalId,
-                taskRunId: options.taskRunId,
-                agentModel: options.agentModel,
-                elapsedMs,
-              });
-              if (options.taskRunId) {
-                emitToMainServer("worker:task-complete", {
-                  workerId: WORKER_ID,
-                  taskRunId: options.taskRunId,
-                  agentModel: options.agentModel,
-                  elapsedMs,
-                });
-              }
-            }
-          } : undefined,
-        }));
+        const detector = await createTaskCompletionDetector(
+          {
+            taskRunId: options.taskRunId!,
+            agentType: providerResolved!,
+            agentModel: options.agentModel,
+            workingDir: cwd,
+            maxRuntimeMs: 20 * 60 * 1000,
+            minRuntimeMs: 30000,
+          },
+          buildDetectorConfig({
+            agentType: providerResolved || undefined,
+            agentModel: options.agentModel,
+            workingDir: cwd,
+            startTime: processStartTime,
+            terminalId: useTerminalIdleFallback
+              ? sessionName || terminalId
+              : undefined,
+            onTerminalIdle: useTerminalIdleFallback
+              ? () => {
+                  if (!idleDetectionCompleted) {
+                    idleDetectionCompleted = true;
+                    const elapsedMs = Date.now() - processStartTime;
+                    log(
+                      "INFO",
+                      "Task completion detected (fallback to terminal idle)",
+                      {
+                        terminalId,
+                        taskRunId: options.taskRunId,
+                        agentModel: options.agentModel,
+                        elapsedMs,
+                      }
+                    );
+                    if (options.taskRunId) {
+                      emitToMainServer("worker:task-complete", {
+                        workerId: WORKER_ID,
+                        taskRunId: options.taskRunId,
+                        agentModel: options.agentModel,
+                        elapsedMs,
+                      });
+                    }
+                  }
+                }
+              : undefined,
+          })
+        );
 
         // Listen for task completion from project/log detectors
         detector.on("task-complete", (data) => {
