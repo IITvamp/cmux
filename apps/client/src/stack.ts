@@ -1,11 +1,10 @@
 import { StackClientApp } from "@stackframe/react";
 import { useNavigate as useTanstackNavigate } from "@tanstack/react-router";
+import { env } from "./client-env";
 
 export const stackClientApp = new StackClientApp({
-  // projectId: import.meta.env.VITE_STACK_PROJECT_ID,
-  // publishableClientKey: import.meta.env.VITE_STACK_PUBLISHABLE_CLIENT_KEY,
-  projectId: "8a877114-b905-47c5-8b64-3a2d90679577",
-  publishableClientKey: "pck_wbtp7yqb1h1xnyvgsjk53w1j8rcf72c6qt3cpdd3wmrhg",
+  projectId: env.VITE_STACK_PROJECT_ID,
+  publishableClientKey: env.VITE_STACK_PUBLISHABLE_CLIENT_KEY,
   tokenStore: "cookie",
   redirectMethod: {
     useNavigate() {
