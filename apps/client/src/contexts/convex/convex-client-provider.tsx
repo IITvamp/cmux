@@ -11,20 +11,22 @@ function useAuthFromStack() {
   const fetchAccessToken = useCallback(
     async (_opts: { forceRefreshToken: boolean }) => {
       if (!user) return null;
-      const { accessToken } = await user.getAuthJson(); // returns { accessToken }
+      const { accessToken } = await user.getAuthJson();
       return accessToken ?? null;
     },
     [user]
   );
 
-  return useMemo(
+  const authResult = useMemo(
     () => ({
-      isLoading: false, // Stack's client returns user/null without a separate loading flag
-      isAuthenticated: !!user, // Convex uses this to know whether to attempt authed calls
+      isLoading: false,
+      isAuthenticated: !!user,
       fetchAccessToken,
     }),
     [user, fetchAccessToken]
   );
+  console.log("authResult", authResult);
+  return authResult;
 }
 
 export default function ConvexClientProvider({
