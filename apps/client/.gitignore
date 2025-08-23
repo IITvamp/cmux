@@ -1,3 +1,5 @@
 out
 build
 dist-electron
+# Symlink created by postinstall script
+node_modules/electron

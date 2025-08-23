@@ -63,6 +63,8 @@ RUN if [ -z "${CODE_RELEASE}" ]; then \
 WORKDIR /cmux
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 COPY --parents apps/*/package.json packages/*/package.json scripts/package.json ./
+# Copy postinstall script
+COPY scripts/postinstall.cjs ./scripts/
 
 # Install dependencies with cache (non-interactive)
 # Note: vscode-extension filter uses the new package name without @

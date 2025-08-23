@@ -23,7 +23,8 @@
     "landing:dev": "cd apps/landing && pnpm run dev",
     "landing:build": "cd apps/landing && pnpm run build",
     "landing:start": "cd apps/landing && pnpm run start",
-    "generate-routes": "cd packages/client && bun run generate-routes"
+    "generate-routes": "cd packages/client && bun run generate-routes",
+    "postinstall": "node scripts/postinstall.cjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.33.0",
@@ -38,6 +39,5 @@
     "typescript": "5.8.3",
     "typescript-eslint": "^8.38.0"
   },
-  "postinstall": "patch-package",
   "packageManager": "pnpm@10.14.0"
 }

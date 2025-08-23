@@ -11,6 +11,7 @@ import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { prettyJSON } from "hono/pretty-json";
 import { handle } from "hono/vercel";
+import { decodeJwt } from "jose";
 
 const app = new OpenAPIHono({
   defaultHook: (result, c) => {
@@ -56,8 +57,20 @@ app.get("/", (c) => {
 });
 
 app.get("/user", async (c) => {
-  const payload = await stackServerApp.getUser({ tokenStore: c.req.raw });
-  return c.json(payload);
+  const user = await stackServerApp.getUser({ tokenStore: c.req.raw });
+  if (!user) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  const { accessToken } = await user.getAuthJson();
+  if (!accessToken) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  const jwt = decodeJwt(accessToken);
+
+  return c.json({
+    user,
+    jwt,
+  });
 });
 
 // Routes - Next.js passes the full /api/* path
