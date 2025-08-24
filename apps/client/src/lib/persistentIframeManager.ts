@@ -40,8 +40,9 @@ class PersistentIframeManager {
       for (const entry of entries) {
         const key = entry.target.getAttribute("data-iframe-target");
         if (key) {
-          if (this.debugMode)
+          if (this.debugMode) {
             console.log(`[ResizeObserver] Syncing position for ${key}`);
+          }
           this.syncIframePosition(key);
         }
       }
