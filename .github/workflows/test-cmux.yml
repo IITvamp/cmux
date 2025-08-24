@@ -2,13 +2,7 @@ name: Test Cmux Package
 
 on:
   push:
-    paths:
-      - "packages/cmux/**"
-      - ".github/workflows/test-cmux.yml"
   pull_request:
-    paths:
-      - "packages/cmux/**"
-      - ".github/workflows/test-cmux.yml"
 
 jobs:
   test:
