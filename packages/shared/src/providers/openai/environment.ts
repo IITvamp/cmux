@@ -1,6 +1,11 @@
-import type { EnvironmentContext, EnvironmentResult } from "../common/environment-result.js";
+import type {
+  EnvironmentContext,
+  EnvironmentResult,
+} from "../common/environment-result.js";
 
-export async function getOpenAIEnvironment(_ctx: EnvironmentContext): Promise<EnvironmentResult> {
+export async function getOpenAIEnvironment(
+  _ctx: EnvironmentContext
+): Promise<EnvironmentResult> {
   // These must be lazy since configs are imported into the browser
   const { readFile } = await import("node:fs/promises");
   const { homedir } = await import("node:os");
@@ -14,10 +19,16 @@ export async function getOpenAIEnvironment(_ctx: EnvironmentContext): Promise<En
   startupCommands.push("mkdir -p ~/.codex");
   // Ensure notify sink starts clean for this run; write JSONL under /root/lifecycle
   startupCommands.push("mkdir -p /root/lifecycle");
-  startupCommands.push("rm -f /root/workspace/.cmux/tmp/codex-turns.jsonl /root/workspace/codex-turns.jsonl /root/workspace/logs/codex-turns.jsonl /tmp/codex-turns.jsonl /tmp/cmux/codex-turns.jsonl /root/lifecycle/codex-turns.jsonl || true");
+  startupCommands.push(
+    "rm -f /root/workspace/.cmux/tmp/codex-turns.jsonl /root/workspace/codex-turns.jsonl /root/workspace/logs/codex-turns.jsonl /tmp/codex-turns.jsonl /tmp/cmux/codex-turns.jsonl /root/lifecycle/codex-turns.jsonl || true"
+  );
 
-  // Add a small notify handler script that appends the payload to .cmux/tmp/codex-turns.jsonl
-  const notifyScript = `#!/usr/bin/env sh\nset -eu\necho \"$1\" >> /root/lifecycle/codex-turns.jsonl\n`;
+  // Add a small notify handler script that appends the payload to JSONL and marks completion
+  const notifyScript = `#!/usr/bin/env sh
+set -eu
+echo "$1" >> /root/lifecycle/codex-turns.jsonl
+touch /root/lifecycle/codex-done.txt /root/lifecycle/done.txt
+`;
   files.push({
     destinationPath: "/root/lifecycle/codex-notify.sh",
     contentBase64: Buffer.from(notifyScript).toString("base64"),
@@ -25,9 +36,9 @@ export async function getOpenAIEnvironment(_ctx: EnvironmentContext): Promise<En
   });
 
   // List of files to copy from .codex directory
+  // Note: We handle config.toml specially below to ensure required keys (e.g. notify) are present
   const codexFiles = [
     { name: "auth.json", mode: "600" },
-    { name: "config.json", mode: "644" },
     { name: "instructions.md", mode: "644" },
   ];
 
@@ -47,6 +58,28 @@ export async function getOpenAIEnvironment(_ctx: EnvironmentContext): Promise<En
       // File doesn't exist or can't be read, skip it
       console.warn(`Failed to read .codex/${file.name}:`, error);
     }
+  }
+
+  // Ensure config.toml exists and contains a notify hook pointing to our script
+  try {
+    const rawToml = await readFile(`${homedir()}/.codex/config.toml`, "utf-8");
+    const hasNotify = /(^|\n)\s*notify\s*=/.test(rawToml);
+    const tomlOut = hasNotify
+      ? rawToml
+      : `notify = ["/root/lifecycle/codex-notify.sh"]\n` + rawToml;
+    files.push({
+      destinationPath: `$HOME/.codex/config.toml`,
+      contentBase64: Buffer.from(tomlOut).toString("base64"),
+      mode: "644",
+    });
+  } catch (_error) {
+    // No host config.toml; create a minimal one that sets notify
+    const toml = `notify = ["/root/lifecycle/codex-notify.sh"]\n`;
+    files.push({
+      destinationPath: `$HOME/.codex/config.toml`,
+      contentBase64: Buffer.from(toml).toString("base64"),
+      mode: "644",
+    });
   }
 
   return { files, env, startupCommands };

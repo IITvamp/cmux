@@ -12,11 +12,11 @@ export async function checkOpenAIRequirements(): Promise<string[]> {
     missing.push(".codex/auth.json file");
   }
 
-  // Check for .codex/config.json
+  // Check for .codex/config.toml (new preferred config)
   try {
-    await access(join(homedir(), ".codex", "config.json"));
+    await access(join(homedir(), ".codex", "config.toml"));
   } catch {
-    missing.push(".codex/config.json file");
+    missing.push(".codex/config.toml file");
   }
 
   return missing;
