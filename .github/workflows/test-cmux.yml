@@ -2,6 +2,7 @@ name: Test Cmux Package
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 jobs:
