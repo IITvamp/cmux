@@ -4,6 +4,7 @@ import type { AgentConfig } from "@cmux/shared";
 import { tryVSCodeExtensionCommit } from "./tryVSCodeExtensionCommit";
 import { convex } from "./utils/convexClient";
 import { serverLogger } from "./utils/fileLogger";
+import { workerExec } from "./utils/workerExec";
 import { VSCodeInstance } from "./vscode/VSCodeInstance";
 
 /**
@@ -13,7 +14,7 @@ import { VSCodeInstance } from "./vscode/VSCodeInstance";
 export default async function performAutoCommitAndPush(
   vscodeInstance: VSCodeInstance,
   agent: AgentConfig,
-  taskRunId: string | Id<"taskRuns">,
+  taskRunId: Id<"taskRuns">,
   taskDescription: string
 ): Promise<void> {
   try {
@@ -22,7 +23,7 @@ export default async function performAutoCommitAndPush(
 
     // Check if this run is crowned
     const taskRun = await convex.query(api.taskRuns.get, {
-      id: taskRunId as Id<"taskRuns">,
+      id: taskRunId,
     });
     const isCrowned = taskRun?.isCrowned || false;
 
@@ -53,8 +54,7 @@ Agent: ${agent.name}
 Task Run ID: ${taskRunId}
 Branch: ${branchName}
 Completed: ${new Date().toISOString()}`;
-
-    Try to use VSCode extension API first (more reliable)
+    // Try to use VSCode extension API first (more reliable)
     const extensionResult = await tryVSCodeExtensionCommit(
       vscodeInstance,
       branchName,
@@ -100,71 +100,32 @@ Completed: ${new Date().toISOString()}`;
 
       for (const command of gitCommands) {
         serverLogger.info(`[AgentSpawner] Executing: ${command}`);
-
-        const result = await new Promise<{
-          success: boolean;
-          stdout?: string;
-          stderr?: string;
-          exitCode?: number;
-          error?: string;
-        }>((resolve) => {
-          workerSocket.timeout(30000).emit(
-            "worker:exec",
-            {
-              command: "bash",
-              args: ["-c", command],
-              cwd: "/root/workspace",
-              env: {},
-            },
-            (timeoutError: unknown, execResult: any) => {
-              if (timeoutError) {
-                serverLogger.error(
-                  `[AgentSpawner] Timeout executing: ${command}`,
-                  timeoutError
-                );
-                resolve({
-                  success: false,
-                  error: "Timeout waiting for git command",
-                });
-                return;
-              }
-              if (execResult?.error) {
-                resolve({ success: false, error: String(execResult.error) });
-                return;
-              }
-
-              const { stdout, stderr, exitCode } = execResult.data as {
-                stdout: string;
-                stderr: string;
-                exitCode: number;
-              };
-              serverLogger.info(`[AgentSpawner] Command output:`, {
-                stdout,
-                stderr,
-                exitCode,
-              });
-
-              if (exitCode === 0) {
-                resolve({ success: true, stdout, stderr, exitCode });
-              } else {
-                resolve({
-                  success: false,
-                  stdout,
-                  stderr,
-                  exitCode,
-                  error: `Command failed with exit code ${exitCode}`,
-                });
-              }
-            }
-          );
-        });
-
-        if (!result.success) {
+        try {
+          const { stdout, stderr, exitCode } = await workerExec({
+            workerSocket,
+            command: "bash",
+            args: ["-c", command],
+            cwd: "/root/workspace",
+            env: {},
+            timeout: 30000,
+          });
+          serverLogger.info(`[AgentSpawner] Command output:`, {
+            stdout,
+            stderr,
+            exitCode,
+          });
+          if (exitCode !== 0) {
+            serverLogger.error(
+              `[AgentSpawner] Git command failed: ${command}`,
+              `exitCode=${exitCode}`
+            );
+          }
+        } catch (err) {
           serverLogger.error(
-            `[AgentSpawner] Git command failed: ${command}`,
-            result.error
+            `[AgentSpawner] Git command error: ${command}`,
+            err
           );
-          // Don't stop on individual command failures - some might be expected (e.g., no changes to commit)
+          // Continue with next command even on error
           continue;
         }
       }
@@ -248,50 +209,36 @@ ${taskRun.crownReason || "This implementation was selected as the best solution.
             `gh pr create --title ${JSON.stringify(prTitle)} --body-file "$BODY_FILE"\n` +
             `rm -f "$BODY_FILE"`;
 
-          const prResult = await new Promise<{
-            success: boolean;
-            output?: string;
-            error?: string;
-          }>((resolve) => {
-            workerSocket.timeout(30000).emit(
-              "worker:exec",
-              {
-                command: "/bin/bash",
-                args: ["-lc", prScript],
-                cwd: "/root/workspace",
-              },
-              (err: unknown, response: any) => {
-                if (err || response?.error) {
-                  const e = err || response?.error;
-                  resolve({ success: false, error: String(e) });
-                } else {
-                  // Extract PR URL from output
-                  const output = response?.stdout || "";
-                  const prUrlMatch = output.match(
-                    /https:\/\/github\.com\/[\w-]+\/[\w-]+\/pull\/\d+/
-                  );
-                  resolve({
-                    success: true,
-                    output: prUrlMatch ? prUrlMatch[0] : output,
-                  });
-                }
-              }
-            );
-          });
+          let prCreateOutput = "";
+          try {
+            const { stdout } = await workerExec({
+              workerSocket,
+              command: "/bin/bash",
+              args: ["-lc", prScript],
+              cwd: "/root/workspace",
+              env: {},
+              timeout: 30000,
+            });
+            prCreateOutput = stdout;
+          } catch (e) {
+            serverLogger.error(`{AgentSpawner] Error executing PR create:`, e);
+          }
 
-          if (prResult.success && prResult.output) {
+          const prUrlMatch = prCreateOutput.match(
+            /https:\/\/github\.com\/[\w-]+\/[\w-]+\/pull\/\d+/
+          );
+
+          if (prUrlMatch) {
             serverLogger.info(
-              `[AgentSpawner] Pull request created: ${prResult.output}`
+              `[AgentSpawner] Pull request created: ${prUrlMatch[0]}`
             );
             await convex.mutation(api.taskRuns.updatePullRequestUrl, {
               id: taskRunId as Id<"taskRuns">,
-              pullRequestUrl: prResult.output,
+              pullRequestUrl: prUrlMatch[0],
               isDraft: false,
             });
           } else {
-            serverLogger.error(
-              `[AgentSpawner] Failed to create PR: ${prResult.error}`
-            );
+            serverLogger.error(`[AgentSpawner] Failed to create PR`);
           }
         }
       } catch (error) {

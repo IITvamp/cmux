@@ -18,6 +18,7 @@ export async function workerExec({
 }): Promise<{
   stdout: string;
   stderr: string;
+  exitCode: number;
   error?: string;
 }> {
   return new Promise((resolve, reject) => {
@@ -38,6 +39,7 @@ export async function workerExec({
           if (payload.error) {
             reject(payload.error);
           } else {
+            // payload.data conforms to WorkerExecResult
             resolve(payload.data);
           }
         });
