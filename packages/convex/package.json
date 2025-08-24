@@ -23,6 +23,7 @@
     }
   },
   "dependencies": {
+    "@stackframe/js": "^2.8.32",
     "convex": "1.26.0-alpha.6",
     "socket.io-client": "^4.8.1",
     "typescript": "^5.8.3"

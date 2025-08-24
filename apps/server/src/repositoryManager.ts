@@ -26,6 +26,8 @@ interface GitConfig {
 interface GitCommandOptions {
   cwd: string;
   encoding?: "utf8" | "ascii" | "base64" | "hex" | "binary" | "latin1";
+  // When true, suppress logging for expected failures (e.g., existence checks)
+  suppressErrorLogging?: boolean;
 }
 
 interface QueuedOperation {
@@ -134,12 +136,14 @@ export class RepositoryManager {
             stderr: result.stderr.toString(),
           };
         } catch (error) {
-          // Log the command that failed for debugging
-          serverLogger.error(`Git command failed: ${command}`);
-          if (error instanceof Error) {
-            serverLogger.error(`Error: ${error.message}`);
-            if ("stderr" in error && error.stderr) {
-              serverLogger.error(`Stderr: ${error.stderr}`);
+          // Log only if not suppressed (some failures are expected)
+          if (!options?.suppressErrorLogging) {
+            serverLogger.error(`Git command failed: ${command}`);
+            if (error instanceof Error) {
+              serverLogger.error(`Error: ${error.message}`);
+              if ("stderr" in error && (error as any).stderr) {
+                serverLogger.error(`Stderr: ${(error as any).stderr}`);
+              }
             }
           }
           throw error;
@@ -162,12 +166,14 @@ export class RepositoryManager {
           stderr: result.stderr?.toString?.() || "",
         };
       } catch (error) {
-        // Log and fall through to shell execution for debugging context
-        serverLogger.error(`Git command failed: ${gitPath} ${args.join(" ")}`);
-        if (error instanceof Error) {
-          serverLogger.error(`Error: ${error.message}`);
-          if ((error as any).stderr) {
-            serverLogger.error(`Stderr: ${(error as any).stderr}`);
+        // Log and fall through to shell execution unless suppressed
+        if (!options?.suppressErrorLogging) {
+          serverLogger.error(`Git command failed: ${gitPath} ${args.join(" ")}`);
+          if (error instanceof Error) {
+            serverLogger.error(`Error: ${error.message}`);
+            if ((error as any).stderr) {
+              serverLogger.error(`Stderr: ${(error as any).stderr}`);
+            }
           }
         }
       }
@@ -184,12 +190,14 @@ export class RepositoryManager {
         stderr: result.stderr.toString(),
       };
     } catch (error) {
-      // Log the command that failed for debugging
-      serverLogger.error(`Git command failed: ${command}`);
-      if (error instanceof Error) {
-        serverLogger.error(`Error: ${error.message}`);
-        if ("stderr" in error && error.stderr) {
-          serverLogger.error(`Stderr: ${error.stderr}`);
+      // Log only if not suppressed
+      if (!options?.suppressErrorLogging) {
+        serverLogger.error(`Git command failed: ${command}`);
+        if (error instanceof Error) {
+          serverLogger.error(`Error: ${error.message}`);
+          if ("stderr" in error && (error as any).stderr) {
+            serverLogger.error(`Stderr: ${(error as any).stderr}`);
+          }
         }
       }
       throw error;
@@ -283,6 +291,8 @@ export class RepositoryManager {
     } else {
       // Configure git pull strategy for existing repos
       await this.configureGitPullStrategy(originPath);
+      // Ensure a usable remote named 'origin' exists and points to repoUrl
+      await this.ensureRemoteOrigin(originPath, repoUrl);
     }
 
     // If no branch specified, detect the default branch
@@ -295,6 +305,47 @@ export class RepositoryManager {
     // Only fetch if a specific branch was requested or if we detected a branch
     if (targetBranch) {
       await this.handleFetchOperation(repoUrl, originPath, targetBranch);
+    }
+  }
+
+  private async ensureRemoteOrigin(
+    repoPath: string,
+    repoUrl: string
+  ): Promise<void> {
+    try {
+      // Check if 'origin' remote exists
+      const { stdout } = await this.executeGitCommand(
+        `git remote get-url origin`,
+        { cwd: repoPath }
+      );
+      const currentUrl = stdout.trim();
+      if (!currentUrl) {
+        // Add 'origin' if missing
+        await this.executeGitCommand(`git remote add origin "${repoUrl}"`, {
+          cwd: repoPath,
+        });
+      } else if (currentUrl !== repoUrl) {
+        // Keep remote up to date with expected URL
+        await this.executeGitCommand(`git remote set-url origin "${repoUrl}"`, {
+          cwd: repoPath,
+        });
+      }
+    } catch (e) {
+      // If 'origin' does not exist, add it
+      await this.executeGitCommand(`git remote add origin "${repoUrl}"`, {
+        cwd: repoPath,
+      });
+    }
+
+    // Best-effort: set remote HEAD so default branch detection works
+    try {
+      await this.executeGitCommand(`git remote set-head origin -a`, {
+        cwd: repoPath,
+      });
+    } catch (err) {
+      serverLogger.warn(
+        `Failed to set remote HEAD for origin at ${repoPath}: ${String(err)}`
+      );
     }
   }
 
@@ -455,7 +506,7 @@ export class RepositoryManager {
         try {
           await this.executeGitCommand(
             `git rev-parse --verify origin/${branch}`,
-            { cwd: repoPath, encoding: "utf8" }
+            { cwd: repoPath, encoding: "utf8", suppressErrorLogging: true }
           );
           return branch;
         } catch {
@@ -667,7 +718,7 @@ export class RepositoryManager {
       try {
         await this.executeGitCommand(
           `git rev-parse --verify refs/heads/${branchName}`,
-          { cwd: originPath }
+          { cwd: originPath, suppressErrorLogging: true }
         );
         branchExists = true;
       } catch {

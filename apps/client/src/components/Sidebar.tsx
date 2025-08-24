@@ -126,7 +126,7 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
   return (
     <div
       ref={containerRef}
-      className="relative bg-neutral-50 dark:bg-black flex flex-col shrink-0 h-screen grow"
+      className="relative bg-neutral-50 dark:bg-black flex flex-col shrink-0 h-dvh grow"
       style={{
         width: `${width}px`,
         minWidth: `${width}px`,

@@ -1,4 +1,9 @@
+import { createAnthropic } from "@ai-sdk/anthropic";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createOpenAI } from "@ai-sdk/openai";
 import { api } from "@cmux/convex/api";
+import { generateObject, type LanguageModel } from "ai";
+import { z } from "zod";
 import { convex } from "../utils/convexClient.js";
 import { serverLogger } from "./fileLogger.js";
 
@@ -24,8 +29,8 @@ export function toKebabCase(input: string): string {
       .replace(/[^a-z0-9]+/g, "-")
       // Remove leading and trailing hyphens
       .replace(/^-+|-+$/g, "")
-      // Replace multiple consecutive hyphens with a single hyphen
-      .replace(/-+/g, "-")
+      // Replace multiple consecutive hyphens with a single hyphen (including --)
+      .replace(/-{2,}/g, "-")
       // Limit length to 50 characters
       .substring(0, 50)
   );
@@ -52,7 +57,109 @@ export function generateRandomId(): string {
 export function generateBranchName(prTitle: string): string {
   const kebabTitle = toKebabCase(prTitle);
   const randomId = generateRandomId();
-  return `cmux/${kebabTitle}-${randomId}`;
+  // Ensure no double hyphen when kebabTitle ends with hyphen
+  const separator = kebabTitle.endsWith("-") ? "" : "-";
+  return `cmux/${kebabTitle}${separator}${randomId}`;
+}
+
+const prGenerationSchema = z.object({
+  branchName: z.string().describe("A SHORT lowercase hyphenated branch name (2-4 words max, e.g., 'fix-auth', 'add-profile', 'update-deps')"),
+  prTitle: z.string().describe("A human-readable PR title (5-10 words) that summarizes the task"),
+});
+
+type PRGeneration = z.infer<typeof prGenerationSchema>;
+
+/**
+ * Get the appropriate AI model and provider name based on available API keys
+ * @param apiKeys Map of API keys
+ * @returns Object with model and provider name, or null if no keys available
+ */
+function getModelAndProvider(apiKeys: Record<string, string>): { model: LanguageModel; providerName: string } | null {
+  if (apiKeys.OPENAI_API_KEY) {
+    const openai = createOpenAI({
+      apiKey: apiKeys.OPENAI_API_KEY,
+    });
+    return {
+      model: openai("gpt-5-nano"),
+      providerName: "OpenAI",
+    };
+  }
+  
+  if (apiKeys.GEMINI_API_KEY) {
+    const google = createGoogleGenerativeAI({
+      apiKey: apiKeys.GEMINI_API_KEY,
+    });
+    return {
+      model: google("gemini-2.5-flash"),
+      providerName: "Gemini",
+    };
+  }
+  
+  if (apiKeys.ANTHROPIC_API_KEY) {
+    const anthropic = createAnthropic({
+      apiKey: apiKeys.ANTHROPIC_API_KEY,
+    });
+    return {
+      model: anthropic("claude-3-5-haiku-20241022"),
+      providerName: "Anthropic",
+    };
+  }
+  
+  return null;
+}
+
+/**
+ * Generate both a branch name and PR title from a task description
+ * @param taskDescription The task description
+ * @param apiKeys Map of API keys
+ * @returns Object with branch name and PR title, or null if no API keys available
+ */
+export async function generatePRInfo(
+  taskDescription: string,
+  apiKeys: Record<string, string>
+): Promise<PRGeneration | null> {
+  const systemPrompt =
+    "You are a helpful assistant that generates git branch names and PR titles. Generate a VERY SHORT branch name (2-4 words maximum, lowercase, hyphenated) and a concise PR title (5-10 words) that summarize the task. The branch name should be extremely concise and focus on the core action (e.g., 'fix-auth', 'add-logging', 'update-deps', 'refactor-api').";
+  const userPrompt = `Task: ${taskDescription}`;
+
+  const modelConfig = getModelAndProvider(apiKeys);
+  
+  if (!modelConfig) {
+    serverLogger.warn(
+      "[BranchNameGenerator] No API keys available, using fallback"
+    );
+    const words = taskDescription.split(/\s+/).slice(0, 5).join(" ");
+    return {
+      branchName: toKebabCase(words || "feature-update"),
+      prTitle: words || "feature update",
+    };
+  }
+
+  const { model, providerName } = modelConfig;
+
+  try {
+    const { object } = await generateObject({
+      model,
+      schema: prGenerationSchema,
+      system: systemPrompt,
+      prompt: userPrompt,
+      maxRetries: 2,
+      temperature: 0.3,
+    });
+
+    serverLogger.info(
+      `[BranchNameGenerator] Generated via ${providerName}: branch="${object.branchName}", title="${object.prTitle}"`
+    );
+    return object;
+  } catch (error) {
+    serverLogger.error(`[BranchNameGenerator] ${providerName} API error:`, error);
+    
+    const words = taskDescription.split(/\s+/).slice(0, 5).join(" ");
+    return {
+      branchName: toKebabCase(words || "feature-update"),
+      prTitle: words || "feature update",
+    };
+  }
 }
 
 /**
@@ -65,138 +172,8 @@ export async function generatePRTitle(
   taskDescription: string,
   apiKeys: Record<string, string>
 ): Promise<string | null> {
-  // Try OpenAI first
-  if (apiKeys.OPENAI_API_KEY) {
-    try {
-      const response = await fetch(
-        "https://api.openai.com/v1/chat/completions",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKeys.OPENAI_API_KEY}`,
-          },
-          body: JSON.stringify({
-            model: "gpt-4o-mini",
-            messages: [
-              {
-                role: "system",
-                content:
-                  "You are a helpful assistant that generates concise PR titles. Generate a single PR title (5-10 words) that summarizes the task. Respond with ONLY the title, no quotes, no explanation.",
-              },
-              {
-                role: "user",
-                content: `Task: ${taskDescription}`,
-              },
-            ],
-            max_tokens: 50,
-            temperature: 0.3,
-          }),
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        const prTitle = data.choices?.[0]?.message?.content?.trim();
-        if (prTitle) {
-          serverLogger.info(
-            `[BranchNameGenerator] Generated PR title via OpenAI: ${prTitle}`
-          );
-          return prTitle;
-        }
-      }
-    } catch (error) {
-      serverLogger.error("[BranchNameGenerator] OpenAI API error:", error);
-    }
-  }
-
-  // Try Anthropic
-  if (apiKeys.ANTHROPIC_API_KEY) {
-    try {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": apiKeys.ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01",
-        },
-        body: JSON.stringify({
-          model: "claude-3-5-haiku-20241022",
-          messages: [
-            {
-              role: "user",
-              content: `Generate a concise PR title (5-10 words) for this task. Respond with ONLY the title, no quotes, no explanation.\n\nTask: ${taskDescription}`,
-            },
-          ],
-          max_tokens: 50,
-          temperature: 0.3,
-        }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const prTitle = data.content?.[0]?.text?.trim();
-        if (prTitle) {
-          serverLogger.info(
-            `[BranchNameGenerator] Generated PR title via Anthropic: ${prTitle}`
-          );
-          return prTitle;
-        }
-      }
-    } catch (error) {
-      serverLogger.error("[BranchNameGenerator] Anthropic API error:", error);
-    }
-  }
-
-  // Try Gemini
-  if (apiKeys.GEMINI_API_KEY) {
-    try {
-      const response = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKeys.GEMINI_API_KEY}`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            contents: [
-              {
-                parts: [
-                  {
-                    text: `Generate a concise PR title (5-10 words) for this task. Respond with ONLY the title, no quotes, no explanation.\n\nTask: ${taskDescription}`,
-                  },
-                ],
-              },
-            ],
-            generationConfig: {
-              temperature: 0.3,
-              maxOutputTokens: 50,
-            },
-          }),
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        const prTitle = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
-        if (prTitle) {
-          serverLogger.info(
-            `[BranchNameGenerator] Generated PR title via Gemini: ${prTitle}`
-          );
-          return prTitle;
-        }
-      }
-    } catch (error) {
-      serverLogger.error("[BranchNameGenerator] Gemini API error:", error);
-    }
-  }
-
-  // Fallback: generate a simple title from the task description
-  serverLogger.warn(
-    "[BranchNameGenerator] No API keys available, using fallback"
-  );
-  const words = taskDescription.split(/\s+/).slice(0, 5).join(" ");
-  return words || "feature-update";
+  const result = await generatePRInfo(taskDescription, apiKeys);
+  return result ? result.prTitle : null;
 }
 
 /**
@@ -210,11 +187,9 @@ export async function generateBranchBaseName(
   // Fetch API keys from Convex
   const apiKeys = await convex.query(api.apiKeys.getAllForAgents);
 
-  const prTitle = await generatePRTitle(taskDescription, apiKeys);
-  const titleToUse =
-    prTitle || taskDescription.split(/\s+/).slice(0, 5).join(" ") || "feature";
-  const kebabTitle = toKebabCase(titleToUse);
-  return `cmux/${kebabTitle}`;
+  const result = await generatePRInfo(taskDescription, apiKeys);
+  const branchName = result?.branchName || toKebabCase(taskDescription.split(/\s+/).slice(0, 5).join(" ") || "feature");
+  return `cmux/${branchName}`;
 }
 
 /**
@@ -240,11 +215,18 @@ export function generateUniqueBranchNamesFromTitle(
   prTitle: string,
   count: number
 ): string[] {
-  const baseName = `cmux/${toKebabCase(prTitle)}`;
+  const kebabTitle = toKebabCase(prTitle);
+  const baseName = `cmux/${kebabTitle}`;
+  const separator = kebabTitle.endsWith("-") ? "" : "-";
   const ids = new Set<string>();
   while (ids.size < count) ids.add(generateRandomId());
-  return Array.from(ids).map((id) => `${baseName}-${id}`);
+  return Array.from(ids).map((id) => `${baseName}${separator}${id}`);
 }
+
+/**
+ * Export the PR generation schema and type for testing
+ */
+export { prGenerationSchema, type PRGeneration };
 
 /**
  * Generate a new branch name for a task run with a specific ID

@@ -22,11 +22,15 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^2.0.6",
+    "@ai-sdk/google": "^2.0.8",
+    "@ai-sdk/openai": "^2.0.19",
     "@cmux/convex": "workspace:*",
     "@cmux/shared": "workspace:*",
     "@daytonaio/sdk": "^0.22.1",
     "@xterm/addon-serialize": "^0.13.0",
     "@xterm/headless": "^5.5.0",
+    "ai": "^5.0.22",
     "ansi-escape-sequences": "^6.2.4",
     "archiver": "^7.0.1",
     "chokidar": "^4.0.3",
@@ -47,7 +51,7 @@
     "tar": "^7.4.3",
     "vite-node": "^3.2.4",
     "ws": "^8.18.3",
-    "zod": "^3.25.67"
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/archiver": "^6.0.3",
