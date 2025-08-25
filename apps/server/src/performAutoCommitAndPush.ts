@@ -5,6 +5,7 @@ import { tryVSCodeExtensionCommit } from "./tryVSCodeExtensionCommit";
 import { convex } from "./utils/convexClient";
 import { serverLogger } from "./utils/fileLogger";
 import { workerExec } from "./utils/workerExec";
+import { buildAutoCommitPushCommand } from "./utils/autoCommitPushCommand";
 import { VSCodeInstance } from "./vscode/VSCodeInstance";
 
 /**
@@ -84,50 +85,36 @@ Completed: ${new Date().toISOString()}`;
         return;
       }
 
-      // Execute git commands in sequence (robust and minimal escaping)
-      const gitCommands = [
-        // Stage all changes including deletions
-        `git add -A`,
-        // Ensure target branch exists; create or switch
-        `git checkout -b ${branchName} || git checkout ${branchName}`,
-        // Commit with JSON-escaped message; tolerate no-op
-        `git commit -m ${JSON.stringify(commitMessage)} || echo 'No changes to commit'`,
-        // If remote branch exists, integrate updates before pushing
-        `git ls-remote --heads origin ${branchName} | grep -q . && git pull --rebase origin ${branchName} || echo 'Remote branch missing; skip pull --rebase'`,
-        // Always push and set upstream
-        `git push -u origin ${branchName}`,
-      ];
-
-      for (const command of gitCommands) {
-        serverLogger.info(`[AgentSpawner] Executing: ${command}`);
-        try {
-          const { stdout, stderr, exitCode } = await workerExec({
-            workerSocket,
-            command: "bash",
-            args: ["-c", command],
-            cwd: "/root/workspace",
-            env: {},
-            timeout: 30000,
-          });
-          serverLogger.info(`[AgentSpawner] Command output:`, {
-            stdout,
-            stderr,
-            exitCode,
-          });
-          if (exitCode !== 0) {
-            serverLogger.error(
-              `[AgentSpawner] Git command failed: ${command}`,
-              `exitCode=${exitCode}`
-            );
-          }
-        } catch (err) {
+      // Execute the auto-commit/push flow in a single shell invocation
+      const autoCommitScript = buildAutoCommitPushCommand({
+        branchName,
+        commitMessage,
+      });
+      serverLogger.info(`[AgentSpawner] Executing auto-commit script...`);
+      try {
+        const { stdout, stderr, exitCode } = await workerExec({
+          workerSocket,
+          command: "bash",
+          args: ["-c", `set -o pipefail; ${autoCommitScript}`],
+          cwd: "/root/workspace",
+          env: {},
+          timeout: 60000,
+        });
+        serverLogger.info(`[AgentSpawner] Auto-commit script output:`, {
+          exitCode,
+          stdout: stdout?.slice(0, 2000),
+          stderr: stderr?.slice(0, 2000),
+        });
+        if (exitCode !== 0) {
           serverLogger.error(
-            `[AgentSpawner] Git command error: ${command}`,
-            err
+            `[AgentSpawner] Auto-commit script failed with exit code ${exitCode}`
           );
-          // Continue with next command even on error
-          continue;
         }
+      } catch (err) {
+        serverLogger.error(
+          `[AgentSpawner] Error executing auto-commit script`,
+          err
+        );
       }
     }
 
@@ -214,7 +201,7 @@ ${taskRun.crownReason || "This implementation was selected as the best solution.
             const { stdout } = await workerExec({
               workerSocket,
               command: "/bin/bash",
-              args: ["-lc", prScript],
+              args: ["-c", prScript],
               cwd: "/root/workspace",
               env: {},
               timeout: 30000,
