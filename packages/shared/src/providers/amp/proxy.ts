@@ -85,9 +85,15 @@ function ampResponseIndicatesCompletion(json: unknown): boolean {
     const state = (item as Record<string, unknown>)["state"];
     if (!state || typeof state !== "object") continue;
     const typeVal = (state as Record<string, unknown>)["type"];
-    if (typeof typeVal === "string") {
+    const stopReasonVal =
+      (state as Record<string, unknown>)["stopReason"] ??
+      (state as Record<string, unknown>)["stop_reason"];
+    if (typeof typeVal === "string" && typeof stopReasonVal === "string") {
       const t = typeVal.toLowerCase();
-      if (t === "completed" || t === "complete") return true;
+      const sr = stopReasonVal.toLowerCase();
+      if (t === "complete" && sr === "end_turn") {
+        return true;
+      }
     }
   }
 
@@ -175,32 +181,8 @@ export function startAmpProxy(options: AmpProxyOptions = {}): AmpProxyHandle {
         const responseHeaders = new Headers(proxyResponse.headers);
         responseHeaders.delete("content-encoding");
         responseHeaders.delete("content-length");
-        const responseContentType = responseHeaders.get("content-type") || "";
+        const completed = ampResponseIndicatesCompletion(loggedRequestBody);
 
-        let responseBodyForClient: Uint8Array | string = "";
-        let loggedResponseBody: unknown = undefined;
-
-        const isBinary =
-          /(^image\/.+|^video\/.+|^audio\/.+|application\/(octet-stream|pdf|zip))/i.test(
-            responseContentType
-          );
-        if (isBinary) {
-          const ab = await proxyResponse.arrayBuffer();
-          responseBodyForClient = new Uint8Array(ab);
-          loggedResponseBody = `[Binary data: ${ab.byteLength} bytes]`;
-        } else {
-          const text = await proxyResponse.text();
-          responseBodyForClient = text;
-          try {
-            loggedResponseBody = JSON.parse(text);
-          } catch {
-            loggedResponseBody = text;
-          }
-        }
-
-        const completed =
-          ampResponseIndicatesCompletion(loggedRequestBody) ||
-          ampResponseIndicatesCompletion(loggedResponseBody);
         if (completed && taskRunId) {
           const elapsedMs = Date.now() - start;
           emit("worker:task-complete", {
@@ -214,11 +196,6 @@ export function startAmpProxy(options: AmpProxyOptions = {}): AmpProxyHandle {
         res.statusCode = proxyResponse.status;
         res.statusMessage = proxyResponse.statusText;
         responseHeaders.forEach((v, k) => res.setHeader(k, v));
-        if (typeof responseBodyForClient === "string") {
-          res.end(responseBodyForClient);
-        } else {
-          res.end(Buffer.from(responseBodyForClient));
-        }
       });
     });
 
