@@ -171,7 +171,7 @@ export function TaskDetailHeader({
         {/* Removed periodic refresh spinner */}
 
         {/* Actions on right, vertically centered across rows */}
-        <div className="col-start-3 row-start-1 self-start justify-self-end flex flex-wrap items-center gap-2 gap-y-1 shrink-0">
+        <div className="col-start-3 row-start-1 row-span-2 self-center flex items-center gap-2 shrink-0">
           {prIsMerged ? (
             <div
               className="flex items-center gap-1.5 px-3 py-1 bg-[#8250df] text-white rounded font-medium text-xs select-none whitespace-nowrap border border-[#6e40cc] dark:bg-[#8250df] dark:border-[#6e40cc]"
@@ -296,7 +296,7 @@ export function TaskDetailHeader({
           </span>
 
           {task?.projectFullName && (
-            <span className="font-mono text-neutral-600 dark:text-neutral-300 truncate min-w-0 max-w-full whitespace-nowrap select-none text-[11px] flex-1">
+            <span className="font-mono text-neutral-600 dark:text-neutral-300 truncate min-w-0 max-w-[40%] whitespace-nowrap select-none text-[11px]">
               {task.projectFullName}
             </span>
           )}
