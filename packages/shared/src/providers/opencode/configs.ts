@@ -7,6 +7,21 @@ import {
 import { checkOpencodeRequirements } from "./check-requirements.js";
 import { getOpencodeEnvironment } from "./environment.js";
 
+export const OPENCODE_GROK_CODE_CONFIG: AgentConfig = {
+  name: "opencode/grok-code",
+  command: "bunx",
+  args: [
+    "opencode-ai@latest",
+    "--prompt",
+    "$PROMPT",
+    "--model",
+    "openrouter/x-ai/grok-code-fast-1",
+  ],
+  environment: getOpencodeEnvironment,
+  checkRequirements: checkOpencodeRequirements,
+  apiKeys: [OPENROUTER_API_KEY],
+};
+
 export const OPENCODE_SONNET_CONFIG: AgentConfig = {
   name: "opencode/sonnet-4",
   command: "bunx",
