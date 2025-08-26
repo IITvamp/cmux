@@ -1,3 +1,4 @@
+import { markPrReady as markPrReadyImpl } from "./markPrReady.js";
 import { getOctokit } from "./octokit.js";
 
 export type PrBasic = {
@@ -16,10 +17,18 @@ export type PrDetail = {
   node_id: string;
 };
 
-export function parseRepoFromUrl(url: string): { owner?: string; repo?: string; number?: number } {
+export function parseRepoFromUrl(url: string): {
+  owner?: string;
+  repo?: string;
+  number?: number;
+} {
   const m = url.match(/github\.com\/(.*?)\/(.*?)\/pull\/(\d+)/i);
   if (!m) return {};
-  return { owner: m[1], repo: m[2], number: parseInt(m[3] || "", 10) || undefined };
+  return {
+    owner: m[1],
+    repo: m[2],
+    number: parseInt(m[3] || "", 10) || undefined,
+  };
 }
 
 export async function fetchPrByHead(
@@ -31,7 +40,13 @@ export async function fetchPrByHead(
 ): Promise<PrBasic | null> {
   const octokit = getOctokit(token);
   const head = `${headOwner}:${branchName}`;
-  const { data } = await octokit.rest.pulls.list({ owner, repo, state: "all", head, per_page: 10 });
+  const { data } = await octokit.rest.pulls.list({
+    owner,
+    repo,
+    state: "all",
+    head,
+    per_page: 10,
+  });
   if (!Array.isArray(data) || data.length === 0) return null;
   const pr = data[0];
   return {
@@ -49,7 +64,11 @@ export async function fetchPrDetail(
   number: number
 ): Promise<PrDetail> {
   const octokit = getOctokit(token);
-  const { data } = await octokit.rest.pulls.get({ owner, repo, pull_number: number });
+  const { data } = await octokit.rest.pulls.get({
+    owner,
+    repo,
+    pull_number: number,
+  });
   return {
     number: data.number,
     html_url: data.html_url,
@@ -87,17 +106,17 @@ export async function createReadyPr(
   };
 }
 
+// Re-export markPrReady but maintain backward compatibility with the void return type
 export async function markPrReady(
   token: string,
   owner: string,
   repo: string,
   number: number
 ): Promise<void> {
-  const octokit = getOctokit(token);
-  await octokit.request(
-    "PUT /repos/{owner}/{repo}/pulls/{pull_number}/ready_for_review",
-    { owner, repo, pull_number: number }
-  );
+  const result = await markPrReadyImpl(token, owner, repo, number);
+  if (!result.success) {
+    throw new Error(result.error || "Failed to mark PR as ready");
+  }
 }
 
 export async function reopenPr(
@@ -107,7 +126,12 @@ export async function reopenPr(
   number: number
 ): Promise<void> {
   const octokit = getOctokit(token);
-  await octokit.rest.pulls.update({ owner, repo, pull_number: number, state: "open" });
+  await octokit.rest.pulls.update({
+    owner,
+    repo,
+    pull_number: number,
+    state: "open",
+  });
 }
 
 export async function mergePr(
@@ -118,7 +142,12 @@ export async function mergePr(
   method: "squash" | "rebase" | "merge",
   commitTitle?: string,
   commitMessage?: string
-): Promise<{ merged: boolean; sha?: string; message?: string; html_url?: string }> {
+): Promise<{
+  merged: boolean;
+  sha?: string;
+  message?: string;
+  html_url?: string;
+}> {
   const octokit = getOctokit(token);
   const { data } = await octokit.rest.pulls.merge({
     owner,
