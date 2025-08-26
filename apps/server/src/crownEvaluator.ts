@@ -150,8 +150,6 @@ Completed: ${new Date().toISOString()}`;
         cmd: `git commit -m "${commitMessage.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\$/g, "\\$")}" || echo 'No changes to commit'`,
         desc: "Committing",
       },
-      // Push
-      { cmd: `git push -u origin ${branchName}`, desc: "Pushing branch" },
     ];
 
     // Only add PR creation command if GitHub token is available
