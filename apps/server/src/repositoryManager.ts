@@ -168,7 +168,9 @@ export class RepositoryManager {
       } catch (error) {
         // Log and fall through to shell execution unless suppressed
         if (!options?.suppressErrorLogging) {
-          serverLogger.error(`Git command failed: ${gitPath} ${args.join(" ")}`);
+          serverLogger.error(
+            `Git command failed: ${gitPath} ${args.join(" ")}`
+          );
           if (error instanceof Error) {
             serverLogger.error(`Error: ${error.message}`);
             if ((error as any).stderr) {
@@ -680,24 +682,24 @@ export class RepositoryManager {
     branchName: string,
     baseBranch: string = "main"
   ): Promise<string> {
-    // Wait for any existing worktree operation on this repo to complete
-    const existingLock = this.worktreeLocks.get(originPath);
+    // In-process lock keyed by repo+branch to avoid concurrent add for same branch
+    const inProcessLockKey = `${originPath}::${branchName}`;
+    const existingLock = this.worktreeLocks.get(inProcessLockKey);
     if (existingLock) {
       serverLogger.info(
-        `Waiting for existing worktree operation on ${originPath}...`
+        `Waiting for existing worktree operation on ${originPath} (${branchName})...`
       );
       await existingLock;
     }
 
-    // Create a new lock for this operation
-    let releaseLock: () => void;
+    let releaseInProcessLock: () => void;
     const lockPromise = new Promise<void>((resolve) => {
-      releaseLock = () => {
-        this.worktreeLocks.delete(originPath);
+      releaseInProcessLock = () => {
+        this.worktreeLocks.delete(inProcessLockKey);
         resolve();
       };
     });
-    this.worktreeLocks.set(originPath, lockPromise);
+    this.worktreeLocks.set(inProcessLockKey, lockPromise);
 
     serverLogger.info(`Creating worktree with branch ${branchName}...`);
     try {
@@ -707,12 +709,31 @@ export class RepositoryManager {
         branchName
       );
       if (preexistingPath) {
-        serverLogger.info(
-          `Branch ${branchName} already attached to worktree at ${preexistingPath}; reusing`
-        );
-        // Best-effort ensure branch tracking + hooks
-        await this.ensureWorktreeConfigured(preexistingPath, branchName);
-        return preexistingPath;
+        if (preexistingPath !== worktreePath) {
+          serverLogger.info(
+            `Branch ${branchName} is attached to ${preexistingPath}; moving to ${worktreePath}`
+          );
+          try {
+            await this.removeWorktree(originPath, preexistingPath);
+          } catch (e) {
+            serverLogger.warn(
+              `Failed to remove old worktree ${preexistingPath} for ${branchName}:`,
+              e
+            );
+          }
+          try {
+            await fs.rm(preexistingPath, { recursive: true, force: true });
+          } catch {
+            // ignore
+          }
+        } else {
+          serverLogger.info(
+            `Branch ${branchName} already attached to worktree at ${preexistingPath}; reusing`
+          );
+          // Best-effort ensure branch tracking + hooks
+          await this.ensureWorktreeConfigured(preexistingPath, branchName);
+          return preexistingPath;
+        }
       }
       // First check if the branch is already used by another worktree
       const existingWorktreePath = await this.findWorktreeUsingBranch(
@@ -721,11 +742,23 @@ export class RepositoryManager {
       );
       if (existingWorktreePath && existingWorktreePath !== worktreePath) {
         // Another process may have just created it while we were waiting on lock
+        // Align with requested path by removing the other worktree and creating ours
         serverLogger.info(
-          `Branch ${branchName} now used by worktree at ${existingWorktreePath}; reusing`
+          `Branch ${branchName} attached at ${existingWorktreePath}; replacing with ${worktreePath}`
         );
-        await this.ensureWorktreeConfigured(existingWorktreePath, branchName);
-        return existingWorktreePath;
+        try {
+          await this.removeWorktree(originPath, existingWorktreePath);
+        } catch (e) {
+          serverLogger.warn(
+            `Failed to remove concurrent worktree ${existingWorktreePath}:`,
+            e
+          );
+        }
+        try {
+          await fs.rm(existingWorktreePath, { recursive: true, force: true });
+        } catch {
+          // Do not block the other worktree from being created
+        }
       }
 
       // Check if the branch already exists
@@ -784,7 +817,7 @@ export class RepositoryManager {
         const alreadyExists =
           msg.includes("already exists") ||
           msg.includes("is already checked out") ||
-          msg.includes("worktree add") && msg.includes("file exists");
+          (msg.includes("worktree add") && msg.includes("file exists"));
         if (alreadyExists) {
           // Re-verify actual worktree location for this branch and reuse it
           const actualPath =
@@ -820,8 +853,7 @@ export class RepositoryManager {
       }
       throw error;
     } finally {
-      // Always release the lock
-      releaseLock!();
+      releaseInProcessLock!();
     }
   }
 
