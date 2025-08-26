@@ -7,8 +7,6 @@ export type AmpProxyOptions = {
   emitToMainServer?: (event: string, payload: unknown) => void;
 };
 
-export type AmpProxyHandle = void;
-
 async function getRealAmpApiKey(): Promise<string | null> {
   try {
     const home = process.env.HOME || "/root";
@@ -45,39 +43,12 @@ function ampResponseIndicatesCompletion(json: unknown): boolean {
   if (json == null || typeof json !== "object") return false;
   const root = json as Record<string, unknown>;
 
-  let messages: unknown = undefined;
-
-  // Try obj.params.thread.messages
+  // Only support requestBody.params.thread.messages (Amp's uploadThread shape)
   const params = root["params"];
-  if (params && typeof params === "object") {
-    const threadFromParams = (params as Record<string, unknown>)["thread"];
-    if (threadFromParams && typeof threadFromParams === "object") {
-      const msgs = (threadFromParams as Record<string, unknown>)["messages"];
-      if (Array.isArray(msgs)) {
-        messages = msgs;
-      }
-    }
-  }
-
-  // Try obj.thread.messages
-  if (!messages) {
-    const thread = root["thread"];
-    if (thread && typeof thread === "object") {
-      const msgs = (thread as Record<string, unknown>)["messages"];
-      if (Array.isArray(msgs)) {
-        messages = msgs;
-      }
-    }
-  }
-
-  // Try obj.messages
-  if (!messages) {
-    const msgs = root["messages"];
-    if (Array.isArray(msgs)) {
-      messages = msgs;
-    }
-  }
-
+  if (!params || typeof params !== "object") return false;
+  const thread = (params as Record<string, unknown>)["thread"];
+  if (!thread || typeof thread !== "object") return false;
+  const messages = (thread as Record<string, unknown>)["messages"];
   if (!Array.isArray(messages)) return false;
 
   for (const item of messages) {
@@ -100,7 +71,7 @@ function ampResponseIndicatesCompletion(json: unknown): boolean {
   return false;
 }
 
-export function startAmpProxy(options: AmpProxyOptions = {}): AmpProxyHandle {
+export function startAmpProxy(options: AmpProxyOptions = {}) {
   const AMP_PROXY_PORT = 39379;
   const AMP_TARGET_HOST =
     options.ampUrl || process.env.AMP_URL || "https://ampcode.com";
