@@ -1,5 +1,5 @@
 import { api } from "@cmux/convex/api";
-import type { Doc, Id } from "@cmux/convex/dataModel";
+import type { Id } from "@cmux/convex/dataModel";
 import { spawn } from "node:child_process";
 import { z } from "zod";
 import { convex } from "./utils/convexClient.js";
@@ -392,17 +392,8 @@ export async function evaluateCrownWithClaudeCode(
       }
     };
 
-    // Prepare evaluation data (prefer worker diff; fallback to log)
-    type Candidate = {
-      index: number;
-      runId: Id<"taskRuns">;
-      agentName: string;
-      exitCode: number;
-      gitDiff: string;
-    };
-
-    const candidateData: Candidate[] = await Promise.all(
-      completedRuns.map(async (run: Doc<"taskRuns">, idx: number) => {
+    const candidateData = await Promise.all(
+      completedRuns.map(async (run, idx) => {
         // Extract agent name from prompt
         const agentMatch = run.prompt.match(/\(([^)]+)\)$/);
         const agentName = agentMatch ? agentMatch[1] : "Unknown";
@@ -488,7 +479,7 @@ export async function evaluateCrownWithClaudeCode(
           agentName,
           exitCode: run.exitCode || 0,
           gitDiff,
-        } as Candidate;
+        };
       })
     );
 
