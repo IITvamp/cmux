@@ -679,7 +679,7 @@ export class RepositoryManager {
     worktreePath: string,
     branchName: string,
     baseBranch: string = "main"
-  ): Promise<void> {
+  ): Promise<string> {
     // Wait for any existing worktree operation on this repo to complete
     const existingLock = this.worktreeLocks.get(originPath);
     if (existingLock) {
@@ -701,16 +701,31 @@ export class RepositoryManager {
 
     serverLogger.info(`Creating worktree with branch ${branchName}...`);
     try {
+      // If the branch is already attached to a worktree, reuse that path to avoid duplicates
+      const preexistingPath = await this.findWorktreeUsingBranch(
+        originPath,
+        branchName
+      );
+      if (preexistingPath) {
+        serverLogger.info(
+          `Branch ${branchName} already attached to worktree at ${preexistingPath}; reusing`
+        );
+        // Best-effort ensure branch tracking + hooks
+        await this.ensureWorktreeConfigured(preexistingPath, branchName);
+        return preexistingPath;
+      }
       // First check if the branch is already used by another worktree
       const existingWorktreePath = await this.findWorktreeUsingBranch(
         originPath,
         branchName
       );
       if (existingWorktreePath && existingWorktreePath !== worktreePath) {
+        // Another process may have just created it while we were waiting on lock
         serverLogger.info(
-          `Branch ${branchName} is already used by worktree at ${existingWorktreePath}, removing old worktree...`
+          `Branch ${branchName} now used by worktree at ${existingWorktreePath}; reusing`
         );
-        await this.removeWorktree(originPath, existingWorktreePath);
+        await this.ensureWorktreeConfigured(existingWorktreePath, branchName);
+        return existingWorktreePath;
       }
 
       // Check if the branch already exists
@@ -761,6 +776,7 @@ export class RepositoryManager {
 
       // Set up git hooks in the worktree
       await this.setupGitHooks(worktreePath);
+      return worktreePath;
     } catch (error) {
       // If another process just created the worktree, treat as success.
       if (error instanceof Error) {
@@ -770,20 +786,22 @@ export class RepositoryManager {
           msg.includes("is already checked out") ||
           msg.includes("worktree add") && msg.includes("file exists");
         if (alreadyExists) {
+          // Re-verify actual worktree location for this branch and reuse it
+          const actualPath =
+            (await this.findWorktreeUsingBranch(originPath, branchName)) ||
+            worktreePath;
           serverLogger.info(
-            `Worktree already present at ${worktreePath}; continuing configuration`
+            `Worktree already present at ${actualPath}; ensuring configuration`
           );
           try {
-            // Best-effort configure hooks/tracking in case they weren't set
-            await this.configureWorktreeBranch(worktreePath, branchName);
-            await this.setupGitHooks(worktreePath);
+            await this.ensureWorktreeConfigured(actualPath, branchName);
           } catch (e) {
             serverLogger.warn(
-              `Post-existence configuration failed for ${worktreePath}:`,
+              `Post-existence configuration failed for ${actualPath}:`,
               e
             );
           }
-          return; // Swallow as success
+          return actualPath;
         }
       }
       // Provide a clearer error message when the base branch does not exist
@@ -834,6 +852,15 @@ export class RepositoryManager {
   // Method to update configuration at runtime
   updateConfig(config: Partial<GitConfig>): void {
     this.config = { ...this.config, ...config };
+  }
+
+  // Public helper to ensure a worktree has proper branch tracking and hooks
+  async ensureWorktreeConfigured(
+    worktreePath: string,
+    branchName: string
+  ): Promise<void> {
+    await this.configureWorktreeBranch(worktreePath, branchName);
+    await this.setupGitHooks(worktreePath);
   }
 
   private async setupGitHooks(repoPath: string): Promise<void> {
