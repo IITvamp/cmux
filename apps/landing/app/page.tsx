@@ -217,7 +217,7 @@ export default function LandingPage() {
             </div>
           </div>
           {/* First demo image combined with hero */}
-          <div className="mt-16 mb-8 relative overflow-hidden rounded-lg max-w-4xl mx-auto">
+          <div className="mt-16 mb-8 relative overflow-hidden rounded-lg">
             <Image
               src="/cmux-demo-2.png"
               alt="cmux dashboard showing parallel AI agent execution"
