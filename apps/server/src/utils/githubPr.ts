@@ -166,6 +166,18 @@ export async function markPrReady(
   );
 }
 
+export async function markPrReadyGraphQL(
+  token: string,
+  nodeId: string
+): Promise<void> {
+  const octokit = getOctokit(token);
+  await octokit.request("POST /graphql", {
+    query:
+      "mutation($id:ID!){ markReadyForReview(input:{pullRequestId:$id}){ clientMutationId } }",
+    variables: { id: nodeId },
+  });
+}
+
 export async function reopenPr(
   token: string,
   owner: string,

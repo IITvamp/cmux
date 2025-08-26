@@ -43,6 +43,7 @@ import {
   fetchDefaultBranch,
   fetchLatestCommitMessage,
   markPrReady,
+  markPrReadyGraphQL,
   mergePr,
   parseRepoFromUrl,
   reopenPr,
@@ -1376,14 +1377,41 @@ Please address the issue mentioned in the comment above.`;
             finalIsDraft = !!latest.draft;
           }
         } else if (initialBasic.draft) {
+          let readyOk = false;
           try {
             await markPrReady(githubToken, owner!, repo!, initialBasic.number);
+            readyOk = true;
           } catch (e: unknown) {
             const msg = e instanceof Error ? e.message : String(e);
-            serverLogger.error(`[OpenPR] markPrReady failed: ${msg}`);
+            serverLogger.warn(`[OpenPR] markPrReady REST failed: ${msg}`);
+            // Fallback: try GraphQL mutation using node_id
+            try {
+              const detail = await fetchPrDetail(
+                githubToken,
+                owner!,
+                repo!,
+                initialBasic.number
+              );
+              if (detail.node_id) {
+                await markPrReadyGraphQL(githubToken, detail.node_id);
+                readyOk = true;
+              }
+            } catch (e2: unknown) {
+              const msg2 = e2 instanceof Error ? e2.message : String(e2);
+              serverLogger.error(`[OpenPR] markPrReady GraphQL failed: ${msg2}`);
+              callback({
+                success: false,
+                error:
+                  "Failed to mark PR ready. Ensure the token has Pull requests: write and you are the PR author or have write access.",
+              });
+              return;
+            }
+          }
+          if (!readyOk) {
             callback({
               success: false,
-              error: `Failed to mark PR ready: ${msg}`,
+              error:
+                "Failed to mark PR ready. Ensure the token has Pull requests: write and you are the PR author or have write access.",
             });
             return;
           }
