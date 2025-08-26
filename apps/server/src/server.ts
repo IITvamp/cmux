@@ -25,6 +25,7 @@ import * as path from "node:path";
 import { promisify } from "node:util";
 import { Server } from "socket.io";
 import { spawnAllAgents } from "./agentSpawner.js";
+import { stopContainersForRuns } from "./archiveTask.js";
 import { execWithEnv } from "./execWithEnv.js";
 import { GitDiffManager } from "./gitDiff.js";
 import { createProxyApp, setupWebSocketProxy } from "./proxyApp.js";
@@ -1657,91 +1658,8 @@ Please address the issue mentioned in the comment above.`;
       try {
         const { taskId } = ArchiveTaskSchema.parse(data);
 
-        // Get all task runs for this task
-        const taskRuns = await convex.query(api.taskRuns.getByTask, {
-          taskId,
-        });
-
-        serverLogger.info(
-          `Archiving task ${taskId} with ${taskRuns.length} runs`
-        );
-
-        // Stop/pause all containers in parallel
-        const stopPromises = taskRuns
-          .filter((run) => run.vscode && run.vscode.containerName)
-          .map(async (run) => {
-            const { provider, containerName } = run.vscode!;
-            if (!containerName) {
-              return {
-                success: false,
-                containerName: "unknown",
-                provider,
-                error: "No container name",
-              };
-            }
-            serverLogger.info(
-              `Stopping ${provider} container: ${containerName}`
-            );
-
-            try {
-              if (provider === "morph") {
-                // Extract instance ID from containerName (e.g., "morphvm_wdgnko75")
-                const instanceId = containerName;
-
-                // Import MorphCloudClient dynamically to avoid dependency issues
-                const { MorphCloudClient } = await import("morphcloud");
-                const morphClient = new MorphCloudClient();
-
-                const instance = await morphClient.instances.get({
-                  instanceId,
-                });
-                await instance.pause();
-                serverLogger.info(
-                  `Successfully paused Morph instance: ${instanceId}`
-                );
-                return { success: true, containerName, provider };
-              } else if (provider === "docker") {
-                // Stop Docker container
-                try {
-                  await execAsync(`docker stop ${containerName}`, {
-                    timeout: 10000, // 10 second timeout
-                  });
-                  serverLogger.info(
-                    `Successfully stopped Docker container: ${containerName}`
-                  );
-                  return { success: true, containerName, provider };
-                } catch (dockerError) {
-                  // Check if container is already stopped
-                  const { stdout: psOutput } = await execAsync(
-                    `docker ps -a --filter "name=${containerName}" --format "{{.Status}}"`
-                  );
-                  if (psOutput.toLowerCase().includes("exited")) {
-                    serverLogger.info(
-                      `Docker container already stopped: ${containerName}`
-                    );
-                    return { success: true, containerName, provider };
-                  } else {
-                    throw dockerError;
-                  }
-                }
-              }
-              return {
-                success: false,
-                containerName,
-                provider,
-                error: "Unknown provider",
-              };
-            } catch (error) {
-              serverLogger.error(
-                `Failed to stop ${provider} container ${containerName}:`,
-                error
-              );
-              return { success: false, containerName, provider, error };
-            }
-          });
-
-        // Wait for all stop operations to complete
-        const results = await Promise.all(stopPromises);
+        // Stop/pause all containers via helper (handles querying + logging)
+        const results = await stopContainersForRuns(taskId);
 
         // Log summary
         const successful = results.filter((r) => r.success).length;

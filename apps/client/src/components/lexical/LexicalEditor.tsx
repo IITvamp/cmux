@@ -22,7 +22,12 @@ import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
 import { HeadingNode, QuoteNode } from "@lexical/rich-text";
 import clsx from "clsx";
-import { COMMAND_PRIORITY_HIGH, KEY_ENTER_COMMAND } from "lexical";
+import {
+  COMMAND_PRIORITY_HIGH,
+  KEY_ENTER_COMMAND,
+  KEY_DOWN_COMMAND,
+  INSERT_LINE_BREAK_COMMAND,
+} from "lexical";
 import { useEffect, useRef } from "react";
 import { EditorStatePlugin } from "./EditorStatePlugin";
 import { ImageNode } from "./ImageNode";
@@ -105,7 +110,8 @@ function KeyboardCommandPlugin({ onSubmit }: { onSubmit?: () => void }) {
   const [editor] = useLexicalComposerContext();
 
   useEffect(() => {
-    return editor.registerCommand(
+    // Handle Cmd/Ctrl+Enter for submit
+    const unregisterEnter = editor.registerCommand(
       KEY_ENTER_COMMAND,
       (event: KeyboardEvent) => {
         if ((event.metaKey || event.ctrlKey) && onSubmit) {
@@ -117,6 +123,31 @@ function KeyboardCommandPlugin({ onSubmit }: { onSubmit?: () => void }) {
       },
       COMMAND_PRIORITY_HIGH
     );
+
+    // Map Ctrl+J to a soft line break (newline)
+    const unregisterCtrlJ = editor.registerCommand(
+      KEY_DOWN_COMMAND,
+      (event: KeyboardEvent) => {
+        // Newline on Ctrl+J without other modifiers
+        if (
+          event.ctrlKey &&
+          !event.shiftKey &&
+          !event.altKey &&
+          (event.key === "j" || event.key === "J")
+        ) {
+          event.preventDefault();
+          editor.dispatchCommand(INSERT_LINE_BREAK_COMMAND, false);
+          return true;
+        }
+        return false;
+      },
+      COMMAND_PRIORITY_HIGH
+    );
+
+    return () => {
+      unregisterEnter();
+      unregisterCtrlJ();
+    };
   }, [editor, onSubmit]);
 
   return null;

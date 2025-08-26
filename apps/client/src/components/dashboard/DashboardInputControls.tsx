@@ -84,7 +84,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
           placeholder="Select agents"
           singleSelect={false}
           maxTagCount={1}
-          className="!min-w-[200px] !rounded-2xl"
+          className="!w-[220px] !max-w-[220px] !rounded-2xl"
           showSearch
         />
       </div>
