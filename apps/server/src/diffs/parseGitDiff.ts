@@ -20,7 +20,7 @@ const execAsync = promisify(exec);
 export async function computeEntriesNodeGit(opts: ParsedDiffOptions): Promise<ReplaceDiffEntry[]> {
   const { worktreePath, includeContents = true, maxBytes = 950 * 1024 } = opts;
 
-  // Resolve a primary/base ref similar to GitHub PR comparison
+  // Resolve a primary/base ref: prefer the repo default branch (e.g., origin/main)
   const baseRef = await resolvePrimaryBaseRef(worktreePath);
   const compareBase = await resolveMergeBaseWithDeepen(worktreePath, baseRef);
 
@@ -61,9 +61,9 @@ export async function computeEntriesNodeGit(opts: ParsedDiffOptions): Promise<Re
               newContent = "";
             }
           }
-          // old content from baseRef
+          // old content from the effective comparison base (merge-base when available)
           if (status !== "added") {
-            oldContent = await gitShowFile(worktreePath, baseRef, fp).catch(() => "");
+            oldContent = await gitShowFile(worktreePath, compareBase, fp).catch(() => "");
           } else {
             oldContent = "";
           }
@@ -159,7 +159,19 @@ export async function computeEntriesNodeGit(opts: ParsedDiffOptions): Promise<Re
 }
 
 async function resolvePrimaryBaseRef(cwd: string): Promise<string> {
-  // Prefer upstream; otherwise origin/<defaultBranch>; fallback origin/main
+  // Prefer the repository default branch (e.g., origin/main)
+  try {
+    const repoMgr = RepositoryManager.getInstance();
+    const defaultBranch = await repoMgr.getDefaultBranch(cwd);
+    if (defaultBranch) return `origin/${defaultBranch}`;
+  } catch (err) {
+    serverLogger.debug(
+      `[Diffs] Could not detect default branch for ${cwd}: ${String(
+        (err as Error)?.message || err
+      )}`
+    );
+  }
+  // Fallback: use upstream only when default branch detection fails
   try {
     const { stdout } = await execAsync(
       "git rev-parse --abbrev-ref --symbolic-full-name @{u}",
@@ -167,23 +179,11 @@ async function resolvePrimaryBaseRef(cwd: string): Promise<string> {
     );
     if (stdout.trim()) return "@{upstream}";
   } catch (err) {
-    // Upstream not configured; fall back to default branch
     serverLogger.debug(
       `[Diffs] No upstream for ${cwd}: ${String((err as Error)?.message || err)}`
     );
   }
-  try {
-    const repoMgr = RepositoryManager.getInstance();
-    const defaultBranch = await repoMgr.getDefaultBranch(cwd);
-    if (defaultBranch) return `origin/${defaultBranch}`;
-  } catch (err) {
-    // Default branch detection failed; fall back to origin/main
-    serverLogger.debug(
-      `[Diffs] Could not detect default branch for ${cwd}: ${String(
-        (err as Error)?.message || err
-      )}`
-    );
-  }
+  // Final fallback
   return "origin/main";
 }
 
