@@ -1,11 +1,10 @@
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
-import { spawn } from "node:child_process";
-import { serverLogger } from "./utils/fileLogger.js";
 import type { ConvexHttpClient } from "convex/browser";
+import { spawn } from "node:child_process";
 import { z } from "zod";
+import { serverLogger } from "./utils/fileLogger.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
-import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 
 // Auto PR behavior is controlled via workspace settings in Convex
 
@@ -25,8 +24,7 @@ export async function createPullRequestForWinner(
   try {
     // Check workspace settings toggle (default: disabled)
     const ws = await convex.query(api.workspaceSettings.get);
-    const autoPrEnabled =
-      (ws as unknown as { autoPrEnabled?: boolean })?.autoPrEnabled ?? false;
+    const autoPrEnabled = !!ws?.autoPrEnabled;
     if (!autoPrEnabled) {
       serverLogger.info(
         `[CrownEvaluator] Auto-PR disabled in settings; skipping.`
@@ -58,7 +56,7 @@ export async function createPullRequestForWinner(
     let vscodeInstance: VSCodeInstance | null = null;
 
     // Look for the instance by taskRunId
-    for (const [id, instance] of instances) {
+    for (const [_id, instance] of instances) {
       if (instance.getTaskRunId() === taskRunId) {
         vscodeInstance = instance;
         break;
