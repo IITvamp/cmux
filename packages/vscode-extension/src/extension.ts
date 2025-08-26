@@ -22,6 +22,10 @@ let workerSocket: Socket<ServerToClientEvents, ClientToServerEvents> | null =
 const activeTerminals = new Map<string, vscode.Terminal>();
 let isSetupComplete = false;
 
+// Track file watcher and debounce timer
+let fileWatcher: vscode.FileSystemWatcher | null = null;
+let refreshDebounceTimer: NodeJS.Timeout | null = null;
+
 function log(message: string, ...args: any[]) {
   const timestamp = new Date().toISOString();
   const formattedMessage = `[${timestamp}] ${message}`;
@@ -87,6 +91,9 @@ async function resolveMergeBase(
   return mergeBase && /^[0-9a-f]{7,40}$/i.test(mergeBase) ? mergeBase : null;
 }
 
+// Track the current multi-diff editor URI
+let currentMultiDiffUri: string | null = null;
+
 async function openMultiDiffEditor(
   baseRef?: string,
   useMergeBase: boolean = true
@@ -141,25 +148,20 @@ async function openMultiDiffEditor(
       .filter((f) => f);
     log("Changed files:", files);
 
-    if (files.length === 0) {
-      log("No changes found!");
-      vscode.window.showInformationMessage(
-        `No changes found vs ${effectiveBase}`
-      );
-      return;
-    }
+    // Always create resources - even if empty, still open the view
+    const resources =
+      files.length > 0
+        ? files.map((file) => {
+            const fileUri = vscode.Uri.file(`${repoPath}/${file}`);
+            const baseUri = api.toGitUri(fileUri, effectiveBase);
 
-    // Create resources for the multi-diff editor - matching VS Code's internal structure
-    const resources = files.map((file) => {
-      const fileUri = vscode.Uri.file(`${repoPath}/${file}`);
-      const baseUri = api.toGitUri(fileUri, effectiveBase);
-
-      // Match the exact structure used by VS Code's git extension
-      return {
-        originalUri: baseUri,
-        modifiedUri: fileUri,
-      };
-    });
+            // Match the exact structure used by VS Code's git extension
+            return {
+              originalUri: baseUri,
+              modifiedUri: fileUri,
+            };
+          })
+        : [];
 
     log(
       "Resources for multi-diff:",
@@ -176,13 +178,39 @@ async function openMultiDiffEditor(
 
     const title = `All Changes vs ${baseBranchName}`;
 
-    // Create a multiDiffSourceUri similar to VS Code's git extension
+    // Create a consistent multiDiffSourceUri that will reuse the same editor
+    // Using a fixed scheme and path ensures VS Code reuses the existing tab
     const multiDiffSourceUri = vscode.Uri.from({
-      scheme: "git-changes",
-      path: `${repoPath}/${effectiveBase}..working-tree`,
+      scheme: "cmux-all-changes",
+      path: `${repoPath}/all-changes-vs-base`,
     });
 
-    // Use the exact same structure as VS Code's git extension
+    // Check if we have an existing multi-diff editor open
+    const multiDiffUriString = multiDiffSourceUri.toString();
+    const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs);
+    const existingTab = tabs.find(
+      (tab) => tab.label && tab.label.includes("All Changes vs")
+    );
+
+    if (existingTab) {
+      // Try to activate the existing tab first to preserve position
+      // This helps maintain scroll position and user context
+      const tabGroup = vscode.window.tabGroups.all.find((g) =>
+        g.tabs.includes(existingTab)
+      );
+      if (tabGroup) {
+        // Make sure the tab is active before updating
+        await vscode.commands.executeCommand(
+          "workbench.action.focusActiveEditorGroup"
+        );
+      }
+    }
+
+    // Store the current URI
+    currentMultiDiffUri = multiDiffUriString;
+
+    // Execute the command - VS Code will try to update the existing view if possible
+    // The multiDiffSourceUri acts as the key - same URI should update the same editor
     await vscode.commands.executeCommand("_workbench.openMultiDiffEditor", {
       multiDiffSourceUri,
       title,
@@ -190,9 +218,11 @@ async function openMultiDiffEditor(
     });
 
     log("Multi-diff editor opened successfully");
-    vscode.window.showInformationMessage(
-      `Showing ${files.length} file(s) changed vs ${effectiveBase.replace(/^refs\/remotes\//, "").replace(/^origin\//, "")}`
-    );
+    if (files.length > 0) {
+      vscode.window.showInformationMessage(
+        `Showing ${files.length} file(s) changed vs ${baseBranchName}`
+      );
+    }
   } catch (error: any) {
     log("Error opening diff:", error);
     log("Error stack:", error.stack);
@@ -437,6 +467,47 @@ export function activate(context: vscode.ExtensionContext) {
     "cmux.git.openAllChangesAgainstBase",
     async () => {
       await openMultiDiffEditor(undefined, true);
+
+      // Set up file watcher for auto-refresh if not already set up
+      if (!fileWatcher && vscode.workspace.workspaceFolders) {
+        const gitExtension = vscode.extensions.getExtension("vscode.git");
+        if (gitExtension) {
+          const git = gitExtension.exports;
+          const api = git.getAPI(1);
+          const repository = api.repositories[0];
+
+          if (repository) {
+            const repoPath = repository.rootUri.fsPath;
+            log("Setting up file watcher for auto-refresh");
+
+            // Watch all files in the repository
+            const pattern = new vscode.RelativePattern(repoPath, "**/*");
+            fileWatcher = vscode.workspace.createFileSystemWatcher(pattern);
+
+            // Debounced refresh function
+            const refreshDiffView = () => {
+              // Clear existing timer
+              if (refreshDebounceTimer) {
+                clearTimeout(refreshDebounceTimer);
+              }
+
+              // Set new timer to refresh after 500ms of no changes
+              refreshDebounceTimer = setTimeout(async () => {
+                log("Auto-refreshing diff view due to file changes");
+                await openMultiDiffEditor(undefined, true);
+              }, 500);
+            };
+
+            // Watch for file changes
+            fileWatcher.onDidChange(refreshDiffView);
+            fileWatcher.onDidCreate(refreshDiffView);
+            fileWatcher.onDidDelete(refreshDiffView);
+
+            // Clean up watcher on disposal
+            context.subscriptions.push(fileWatcher);
+          }
+        }
+      }
     }
   );
 
@@ -448,6 +519,16 @@ export function activate(context: vscode.ExtensionContext) {
 export function deactivate() {
   log("cmux extension is now deactivated!");
   isSetupComplete = false;
+
+  // Clean up file watcher and timer
+  if (fileWatcher) {
+    fileWatcher.dispose();
+    fileWatcher = null;
+  }
+  if (refreshDebounceTimer) {
+    clearTimeout(refreshDebounceTimer);
+    refreshDebounceTimer = null;
+  }
 
   // Clean up worker socket
   if (workerSocket) {
