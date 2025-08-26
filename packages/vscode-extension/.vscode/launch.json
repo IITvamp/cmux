@@ -1,0 +1,37 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run cmux VS Code Extension",
+      "type": "extensionHost",
+      "request": "launch",
+      "runtimeExecutable": "${execPath}",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}",
+        "/Users/lawrencechen/fun/cmux2"
+      ],
+      "preLaunchTask": "Build cmux extension",
+      "outFiles": [
+        "${workspaceFolder}/out/**/*.cjs"
+      ]
+    },
+    {
+      "name": "Run cmux VS Code Extension (Show Output)",
+      "type": "extensionHost",
+      "request": "launch",
+      "runtimeExecutable": "${execPath}",
+      "args": [
+        "--disable-extensions",
+        "--extensionDevelopmentPath=${workspaceFolder}",
+        "/Users/lawrencechen/fun/cmux2"
+      ],
+      "preLaunchTask": "Build cmux extension",
+      "outFiles": [
+        "${workspaceFolder}/out/**/*.cjs"
+      ],
+      "env": {
+        "CMUX_DEBUG_SHOW_OUTPUT": "1"
+      }
+    }
+  ]
+}
