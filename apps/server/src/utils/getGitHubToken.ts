@@ -1,29 +1,10 @@
-import { api } from "@cmux/convex/api";
 import { exec } from "child_process";
-import type { ConvexHttpClient } from "convex/browser";
 import { promisify } from "util";
 
 const execAsync = promisify(exec);
 
-export async function getGitHubTokenFromKeychain(
-  convex?: ConvexHttpClient
-): Promise<string | null> {
+export async function getGitHubTokenFromKeychain(): Promise<string | null> {
   try {
-    // Try to get GitHub token from Convex first (user-configured PAT)
-    if (convex) {
-      try {
-        const apiKeys = await convex.query(api.apiKeys.getAll);
-        const githubToken = apiKeys.find(
-          (key) => key.envVar === "GITHUB_TOKEN"
-        );
-        if (githubToken?.value) {
-          return githubToken.value;
-        }
-      } catch {
-        // Convex not available or query failed
-      }
-    }
-
     // Try to get GitHub token from gh CLI
     try {
       const { stdout: ghToken } = await execAsync("gh auth token 2>/dev/null");

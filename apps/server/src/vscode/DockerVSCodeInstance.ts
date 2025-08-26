@@ -746,10 +746,10 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       }
 
       // Get GitHub token from host
-      const githubToken = await getGitHubTokenFromKeychain(convex);
+      const githubToken = await getGitHubTokenFromKeychain();
       if (!githubToken) {
         dockerLogger.info(
-          "No GitHub token found on host (Convex, gh, or keychain) - skipping gh auth setup"
+          "No GitHub token found on host (gh or keychain) - skipping gh auth setup"
         );
         return;
       }

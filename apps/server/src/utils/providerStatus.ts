@@ -8,15 +8,10 @@ import {
   type ProviderStatus as SharedProviderStatus
 } from "@cmux/shared";
 import { getGitHubTokenFromKeychain } from "./getGitHubToken.js";
-import { api } from "@cmux/convex/api";
-import { ConvexHttpClient } from "convex/browser";
-
-const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL || "";
-const convex = convexUrl ? new ConvexHttpClient(convexUrl) : null;
 
 async function checkGitHubStatus(): Promise<GitHubStatus> {
   try {
-    const token = await getGitHubTokenFromKeychain(convex || undefined);
+    const token = await getGitHubTokenFromKeychain();
     return {
       isConfigured: !!token,
       hasToken: !!token,

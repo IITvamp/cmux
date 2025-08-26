@@ -215,13 +215,13 @@ export function ProviderStatusPills() {
                   )}
                 >
                   <div className="w-1.5 h-1.5 rounded-full bg-amber-500"></div>
-                  Add GitHub token
+                  GitHub auth
                 </button>
               </TooltipTrigger>
               <TooltipContent>
-                <p className="font-medium">Optional: Configure GitHub Personal Access Token</p>
+                <p className="font-medium">Optional: GitHub authentication</p>
                 <p className="text-xs opacity-90">
-                  Configure your GitHub Personal Access Token to enable automatic PR creation and repository management
+                  Authenticate via GitHub CLI (gh auth login) or set GH_TOKEN env to enable PR creation. No settings needed.
                 </p>
               </TooltipContent>
             </Tooltip>

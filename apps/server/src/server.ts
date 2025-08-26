@@ -295,7 +295,7 @@ export async function startServer({
           return;
         }
 
-        const githubToken = await getGitHubTokenFromKeychain(convex);
+        const githubToken = await getGitHubTokenFromKeychain();
         if (!githubToken) {
           callback({ success: false, error: "GitHub token is not configured" });
           return;
@@ -454,7 +454,7 @@ export async function startServer({
         const task = await convex.query(api.tasks.getById, { id: run.taskId });
         if (!task) return callback({ success: false, error: "Task not found" });
 
-        const githubToken = await getGitHubTokenFromKeychain(convex);
+        const githubToken = await getGitHubTokenFromKeychain();
         if (!githubToken)
           return callback({
             success: false,
@@ -1172,7 +1172,7 @@ Please address the issue mentioned in the comment above.`;
           await ensureRunWorktreeAndBranch(taskRunId as Id<"taskRuns">);
 
         // Get GitHub token from keychain/Convex
-        const githubToken = await getGitHubTokenFromKeychain(convex);
+        const githubToken = await getGitHubTokenFromKeychain();
         if (!githubToken) {
           callback({ success: false, error: "GitHub token is not configured" });
           return;
@@ -1397,7 +1397,7 @@ Please address the issue mentioned in the comment above.`;
         const { run, task, worktreePath, branchName, baseBranch } =
           await ensureRunWorktreeAndBranch(taskRunId);
 
-        const githubToken = await getGitHubTokenFromKeychain(convex);
+        const githubToken = await getGitHubTokenFromKeychain();
         if (!githubToken) {
           callback({ success: false, error: "GitHub token is not configured" });
           return;

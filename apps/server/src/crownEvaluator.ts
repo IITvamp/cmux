@@ -303,7 +303,7 @@ export async function evaluateCrownWithClaudeCode(
   );
 
   try {
-    const githubToken = await getGitHubTokenFromKeychain(convex);
+    const githubToken = await getGitHubTokenFromKeychain();
 
     // Get task and runs
     const task = await convex.query(api.tasks.getById, { id: taskId });
