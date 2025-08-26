@@ -16,14 +16,14 @@ export function buildAutoCommitPushCommand(options: {
     "git add -A",
     // Suppress noisy error when branch already exists, then fallback to checkout
     `(git checkout -b ${b} 2>/dev/null || git checkout ${b})`,
-    `CMUX_MSG=\$(mktemp)`,
+    `CMUX_MSG=$(mktemp)`,
   ].join(" && ");
 
-  const heredoc = `cat <<'CMUX_EOF' > "\$CMUX_MSG"\n${commitMessage}\nCMUX_EOF`;
+  const heredoc = `cat <<'CMUX_EOF' > "$CMUX_MSG"\n${commitMessage}\nCMUX_EOF`;
 
   const post = [
-    `(git commit -F "\$CMUX_MSG" || echo 'No changes to commit')`,
-    `rm -f "\$CMUX_MSG"`,
+    `(git commit -F "$CMUX_MSG" || echo 'No changes to commit')`,
+    `rm -f "$CMUX_MSG"`,
     // If remote branch exists, integrate updates before pushing
     `(git ls-remote --heads origin ${b} | grep -q . && git pull --rebase origin ${b} || echo 'Remote branch missing; skip pull --rebase')`,
     `git push -u origin ${b}`,
