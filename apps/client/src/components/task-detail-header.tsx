@@ -255,7 +255,7 @@ export function TaskDetailHeader({
         <div className="col-start-1 row-start-2 col-span-2 flex items-center gap-2 text-xs text-neutral-400 min-w-0">
           <button
             onClick={handleCopyBranch}
-            className="flex items-center gap-1 hover:text-neutral-700 dark:hover:text-white transition-colors group min-w-0 flex-1"
+            className="flex items-center gap-1 hover:text-neutral-700 dark:hover:text-white transition-colors group"
           >
             <div className="relative w-3 h-3">
               <GitBranch
