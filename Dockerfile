@@ -85,6 +85,7 @@ COPY packages/convex ./packages/convex/
 
 # Copy worker source and scripts
 COPY apps/worker/src ./apps/worker/src
+COPY apps/worker/scripts ./apps/worker/scripts
 COPY apps/worker/tsconfig.json ./apps/worker/
 COPY apps/worker/wait-for-docker.sh ./apps/worker/
 
@@ -224,6 +225,8 @@ COPY --from=builder /app/openvscode-server /app/openvscode-server
 COPY --from=builder /root/.openvscode-server /root/.openvscode-server
 COPY --from=builder /builtins /builtins
 COPY --from=builder /usr/local/bin/wait-for-docker.sh /usr/local/bin/wait-for-docker.sh
+COPY --from=builder /cmux/apps/worker/scripts/collect-relevant-diff.sh /usr/local/bin/cmux-collect-relevant-diff.sh
+RUN chmod +x /usr/local/bin/cmux-collect-relevant-diff.sh
 
 # Setup pnpm and install global packages
 RUN SHELL=/bin/bash pnpm setup && \

@@ -133,8 +133,8 @@ if [ -n "$VSCODE_THEME" ]; then
         COLOR_THEME="Default Dark Modern"
     fi
     
-    # Update VS Code settings files with theme
-    SETTINGS_JSON='{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "workbench.colorTheme": "'$COLOR_THEME'"}'
+    # Update VS Code settings files with theme and git configuration
+    SETTINGS_JSON='{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "workbench.colorTheme": "'$COLOR_THEME'", "git.openDiffOnClick": true, "scm.defaultViewMode": "tree", "git.showPushSuccessNotification": true, "git.autorefresh": true, "git.branchCompareWith": "main"}'
     
     # Update all VS Code settings locations
     echo "$SETTINGS_JSON" > /root/.openvscode-server/data/User/settings.json
@@ -142,6 +142,17 @@ if [ -n "$VSCODE_THEME" ]; then
     echo "$SETTINGS_JSON" > /root/.openvscode-server/data/Machine/settings.json
     
     echo "[Startup] VS Code theme configured to: $COLOR_THEME" >> /var/log/cmux/startup.log
+else
+    # Even if no theme is specified, configure git settings
+    echo "[Startup] Configuring VS Code git settings" >> /var/log/cmux/startup.log
+    SETTINGS_JSON='{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "git.openDiffOnClick": true, "scm.defaultViewMode": "tree", "git.showPushSuccessNotification": true, "git.autorefresh": true, "git.branchCompareWith": "main"}'
+    
+    # Update all VS Code settings locations
+    echo "$SETTINGS_JSON" > /root/.openvscode-server/data/User/settings.json
+    echo "$SETTINGS_JSON" > /root/.openvscode-server/data/User/profiles/default-profile/settings.json
+    echo "$SETTINGS_JSON" > /root/.openvscode-server/data/Machine/settings.json
+    
+    echo "[Startup] VS Code git settings configured" >> /var/log/cmux/startup.log
 fi
 
 # Start OpenVSCode server on port 39378 without authentication
