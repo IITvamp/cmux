@@ -42,17 +42,6 @@ export const NotificationPlugin = async ({ client, $ }) => {
     event: async ({ event }) => {
       // Send notification on session completion
       if (event.type === "session.idle") {
-        // Trace marker to help debugging whether plugin fires
-        try {
-          await $\`bash -lc "echo [cmux] OpenCode plugin idle at $(date -Iseconds) >> /root/lifecycle/opencode-plugin.log"\`
-        } catch (_) {}
-
-        // Best-effort macOS notify; ignore errors on Linux
-        try {
-          await $\`osascript -e 'display notification "Session completed!" with title "opencode"'\`
-        } catch (_) {}
-
-        // Always drop a completion marker for cmux worker
         try {
           await $\`bash -lc "mkdir -p /root/lifecycle && echo done > /root/lifecycle/opencode-complete-$CMUX_TASK_RUN_ID"\`
         } catch (e1) {
