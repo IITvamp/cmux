@@ -133,7 +133,7 @@ export async function handleTaskCompletion({
               return;
             }
 
-            await evaluateCrownWithClaudeCode(convex, taskRunData.taskId);
+            await evaluateCrownWithClaudeCode(taskRunData.taskId);
             serverLogger.info(
               `[AgentSpawner] Crown evaluation completed successfully`
             );
@@ -186,7 +186,6 @@ export async function handleTaskCompletion({
             setTimeout(async () => {
               try {
                 await createPullRequestForWinner(
-                  convex,
                   winnerId,
                   taskRunData.taskId,
                   githubToken || undefined

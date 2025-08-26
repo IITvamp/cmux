@@ -1,9 +1,11 @@
 import { api } from "@cmux/convex/api";
-import type { Id } from "@cmux/convex/dataModel";
-import type { ConvexHttpClient } from "convex/browser";
+import type { Doc, Id } from "@cmux/convex/dataModel";
 import { spawn } from "node:child_process";
 import { z } from "zod";
+import { convex } from "./utils/convexClient.js";
 import { serverLogger } from "./utils/fileLogger.js";
+import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
+import { workerExec } from "./utils/workerExec.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 
 // Auto PR behavior is controlled via workspace settings in Convex
@@ -16,7 +18,6 @@ const CrownEvaluationResponseSchema = z.object({
 type CrownEvaluationResponse = z.infer<typeof CrownEvaluationResponseSchema>;
 
 export async function createPullRequestForWinner(
-  convex: ConvexHttpClient,
   taskRunId: Id<"taskRuns">,
   taskId: Id<"tasks">,
   githubToken?: string | null
@@ -160,7 +161,7 @@ Completed: ${new Date().toISOString()}`;
         desc: "Writing PR body",
       });
       gitCommands.push({
-        cmd: `GH_TOKEN=\"${githubToken}\" gh pr create --title \"${prTitle.replace(/"/g, '\\"')}\" --body-file /tmp/${bodyFileName} --head \"${branchName}\"`,
+        cmd: `GH_TOKEN="${githubToken}" gh pr create --title "${prTitle.replace(/"/g, '\\"')}" --body-file /tmp/${bodyFileName} --head "${branchName}"`,
         desc: "Creating PR",
       });
       gitCommands.push({
@@ -193,7 +194,7 @@ Completed: ${new Date().toISOString()}`;
             cwd: "/root/workspace",
             env: githubToken ? { GH_TOKEN: githubToken } : {},
           },
-          (timeoutError: any, result: any) => {
+          (timeoutError, result) => {
             if (timeoutError) {
               resolve({ success: false, error: "Command timeout" });
               return;
@@ -245,12 +246,14 @@ Completed: ${new Date().toISOString()}`;
                 cwd: "/root/workspace",
                 env: githubToken ? { GH_TOKEN: githubToken } : {},
               },
-              (timeoutError: any, authResult: any) => {
+              (timeoutError, authResult) => {
                 if (timeoutError || authResult.error) {
                   resolve({
                     success: false,
                     stdout: "",
-                    stderr: timeoutError ? "timeout" : authResult.error.message,
+                    stderr: timeoutError
+                      ? "timeout"
+                      : authResult.error?.message,
                   });
                   return;
                 }
@@ -287,7 +290,6 @@ Completed: ${new Date().toISOString()}`;
 // Removed VSCode extension fallback; using worker:exec exclusively
 
 export async function evaluateCrownWithClaudeCode(
-  convex: ConvexHttpClient,
   taskId: Id<"tasks">
 ): Promise<void> {
   serverLogger.info(
@@ -301,10 +303,6 @@ export async function evaluateCrownWithClaudeCode(
   );
 
   try {
-    // Get GitHub token
-    const { getGitHubTokenFromKeychain } = await import(
-      "./utils/getGitHubToken.js"
-    );
     const githubToken = await getGitHubTokenFromKeychain(convex);
 
     // Get task and runs
@@ -313,10 +311,10 @@ export async function evaluateCrownWithClaudeCode(
       throw new Error("Task not found");
     }
 
-    const taskRuns = await convex.query(api.taskRuns.getByTask, { taskId });
-    const completedRuns = taskRuns.filter(
-      (run: any) => run.status === "completed"
-    );
+    const taskRuns = await convex.query(api.taskRuns.getByTask, {
+      taskId,
+    });
+    const completedRuns = taskRuns.filter((run) => run.status === "completed");
 
     if (completedRuns.length < 2) {
       serverLogger.info(
@@ -345,91 +343,154 @@ export async function evaluateCrownWithClaudeCode(
       return;
     }
 
-    // Prepare evaluation data
-    const candidateData = completedRuns.map((run, idx) => {
-      // Extract agent name from prompt
-      const agentMatch = run.prompt.match(/\(([^)]+)\)$/);
-      const agentName = agentMatch ? agentMatch[1] : "Unknown";
-
-      // Extract git diff from log - look for the dedicated GIT DIFF section
-      let gitDiff = "No changes detected";
-
-      // Look for our well-defined git diff section - try multiple formats
-      let gitDiffMatch = run.log.match(
-        /=== GIT DIFF ===\n([\s\S]*?)\n=== END GIT DIFF ===/
-      );
-
-      // Also try the new format with "ALL CHANGES"
-      if (!gitDiffMatch) {
-        gitDiffMatch = run.log.match(
-          /=== ALL CHANGES \(git diff HEAD\) ===\n([\s\S]*?)\n=== END ALL CHANGES ===/
+    // Helper to extract a relevant git diff using worker script when possible
+    const collectDiffViaWorker = async (
+      runId: Id<"taskRuns">
+    ): Promise<string | null> => {
+      try {
+        // Find a live VSCode instance for this run
+        const instances = VSCodeInstance.getInstances();
+        let instance: VSCodeInstance | undefined;
+        for (const [, inst] of instances) {
+          if (inst.getTaskRunId() === runId) {
+            instance = inst;
+            break;
+          }
+        }
+        if (!instance || !instance.isWorkerConnected()) {
+          serverLogger.info(
+            `[CrownEvaluator] No live worker for run ${runId}; falling back to log parsing`
+          );
+          return null;
+        }
+        const workerSocket = instance.getWorkerSocket();
+        const { stdout } = await workerExec({
+          workerSocket,
+          command: "/bin/bash",
+          args: ["-c", "/usr/local/bin/cmux-collect-relevant-diff.sh"],
+          cwd: "/root/workspace",
+          env: {},
+          timeout: 30000,
+        });
+        const diff = stdout?.trim() || "";
+        if (diff.length === 0) {
+          serverLogger.info(
+            `[CrownEvaluator] Worker diff empty for run ${runId}; falling back to log parsing`
+          );
+          return null;
+        }
+        serverLogger.info(
+          `[CrownEvaluator] Collected worker diff for ${runId} (${diff.length} chars)`
         );
+        return diff;
+      } catch (err) {
+        serverLogger.error(
+          `[CrownEvaluator] Failed collecting worker diff for run ${runId}:`,
+          err
+        );
+        return null;
       }
+    };
 
-      if (gitDiffMatch && gitDiffMatch[1]) {
-        gitDiff = gitDiffMatch[1].trim();
+    // Prepare evaluation data (prefer worker diff; fallback to log)
+    type Candidate = {
+      index: number;
+      runId: Id<"taskRuns">;
+      agentName: string;
+      exitCode: number;
+      gitDiff: string;
+    };
 
-        // If the diff includes the stat summary, extract just the detailed diff part
-        if (gitDiff.includes("=== DETAILED DIFF ===")) {
-          const detailedPart = gitDiff.split("=== DETAILED DIFF ===")[1];
-          if (detailedPart) {
-            gitDiff = detailedPart.trim();
+    const candidateData: Candidate[] = await Promise.all(
+      completedRuns.map(async (run: Doc<"taskRuns">, idx: number) => {
+        // Extract agent name from prompt
+        const agentMatch = run.prompt.match(/\(([^)]+)\)$/);
+        const agentName = agentMatch ? agentMatch[1] : "Unknown";
+        // Try to collect diff via worker
+        const workerDiff: string | null = await collectDiffViaWorker(run._id);
+        let gitDiff: string = workerDiff ?? "";
+
+        // Fallback: Extract git diff from log - look for the dedicated sections
+        if (!gitDiff) {
+          gitDiff = "No changes detected";
+
+          // Look for our well-defined git diff section - try multiple formats
+          let gitDiffMatch = run.log.match(
+            /=== GIT DIFF ===\n([\s\S]*?)\n=== END GIT DIFF ===/
+          );
+
+          // Also try the new format with "ALL CHANGES"
+          if (!gitDiffMatch) {
+            gitDiffMatch = run.log.match(
+              /=== ALL CHANGES \(git diff HEAD\) ===\n([\s\S]*?)\n=== END ALL CHANGES ===/
+            );
+          }
+
+          if (gitDiffMatch && gitDiffMatch[1]) {
+            gitDiff = gitDiffMatch[1].trim();
+
+            // If the diff includes the stat summary, extract just the detailed diff part
+            if (gitDiff.includes("=== DETAILED DIFF ===")) {
+              const detailedPart = gitDiff.split("=== DETAILED DIFF ===")[1];
+              if (detailedPart) {
+                gitDiff = detailedPart.trim();
+              }
+            }
+
+            serverLogger.info(
+              `[CrownEvaluator] Found git diff in logs for ${agentName}: ${gitDiff.length} chars`
+            );
+          } else {
+            // If no git diff section found, this is a serious problem
+            serverLogger.error(
+              `[CrownEvaluator] NO GIT DIFF SECTION FOUND for ${agentName}!`
+            );
+            serverLogger.error(
+              `[CrownEvaluator] Log contains "=== GIT DIFF ==="?: ${run.log.includes("=== GIT DIFF ===")}`
+            );
+            serverLogger.error(
+              `[CrownEvaluator] Log contains "=== END GIT DIFF ==="?: ${run.log.includes("=== END GIT DIFF ===")}`
+            );
+            serverLogger.error(
+              `[CrownEvaluator] Log contains "=== ALL CHANGES"?: ${run.log.includes("=== ALL CHANGES")}`
+            );
+
+            // As a last resort, check if there's any indication of changes
+            if (
+              run.log.includes("=== ALL STAGED CHANGES") ||
+              run.log.includes("=== AGGRESSIVE DIFF CAPTURE") ||
+              run.log.includes("ERROR: git diff --cached was empty")
+            ) {
+              // Use whatever we can find
+              const lastPart = run.log.slice(-3000);
+              gitDiff = `ERROR: Git diff not properly captured. Last part of log:\n${lastPart}`;
+            }
           }
         }
 
-        serverLogger.info(
-          `[CrownEvaluator] Found git diff in standard format for ${agentName}: ${gitDiff.length} chars`
-        );
-      } else {
-        // If no git diff section found, this is a serious problem
-        serverLogger.error(
-          `[CrownEvaluator] NO GIT DIFF SECTION FOUND for ${agentName}!`
-        );
-        serverLogger.error(`[CrownEvaluator] Log length: ${run.log.length}`);
-        serverLogger.error(
-          `[CrownEvaluator] Log contains "=== GIT DIFF ==="?: ${run.log.includes("=== GIT DIFF ===")}`
-        );
-        serverLogger.error(
-          `[CrownEvaluator] Log contains "=== END GIT DIFF ==="?: ${run.log.includes("=== END GIT DIFF ===")}`
-        );
-        serverLogger.error(
-          `[CrownEvaluator] Log contains "=== ALL CHANGES"?: ${run.log.includes("=== ALL CHANGES")}`
-        );
-
-        // As a last resort, check if there's any indication of changes
-        if (
-          run.log.includes("=== ALL STAGED CHANGES") ||
-          run.log.includes("=== AGGRESSIVE DIFF CAPTURE") ||
-          run.log.includes("ERROR: git diff --cached was empty")
-        ) {
-          // Use whatever we can find
-          const lastPart = run.log.slice(-3000);
-          gitDiff = `ERROR: Git diff not properly captured. Last part of log:\n${lastPart}`;
+        // Limit to 5000 chars for the prompt
+        if (gitDiff.length > 5000) {
+          gitDiff = gitDiff.substring(0, 5000) + "\n... (truncated)";
         }
-      }
 
-      // Limit to 5000 chars for the prompt
-      if (gitDiff.length > 5000) {
-        gitDiff = gitDiff.substring(0, 5000) + "\n... (truncated)";
-      }
+        serverLogger.info(
+          `[CrownEvaluator] Implementation ${idx} (${agentName}): ${gitDiff.length} chars of diff`
+        );
 
-      serverLogger.info(
-        `[CrownEvaluator] Implementation ${idx} (${agentName}): ${gitDiff.length} chars of diff`
-      );
+        // Log last 500 chars of the run log to debug
+        serverLogger.info(
+          `[CrownEvaluator] ${agentName} log tail: ...${run.log.slice(-500)}`
+        );
 
-      // Log last 500 chars of the run log to debug
-      serverLogger.info(
-        `[CrownEvaluator] ${agentName} log tail: ...${run.log.slice(-500)}`
-      );
-
-      return {
-        index: idx,
-        runId: run._id,
-        agentName,
-        exitCode: run.exitCode || 0,
-        gitDiff,
-      };
-    });
+        return {
+          index: idx,
+          runId: run._id,
+          agentName,
+          exitCode: run.exitCode || 0,
+          gitDiff,
+        } as Candidate;
+      })
+    );
 
     // Log what we found for debugging
     for (const c of candidateData) {
@@ -657,7 +718,6 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
         `[CrownEvaluator] Fallback winner selected: ${fallbackWinner.agentName}`
       );
       await createPullRequestForWinner(
-        convex,
         fallbackWinner.runId,
         taskId,
         githubToken || undefined
@@ -698,7 +758,6 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
         `[CrownEvaluator] Fallback winner selected: ${fallbackWinner.agentName}`
       );
       await createPullRequestForWinner(
-        convex,
         fallbackWinner.runId,
         taskId,
         githubToken || undefined
@@ -769,7 +828,6 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
             `[CrownEvaluator] Fallback winner selected: ${fallbackWinner.agentName}`
           );
           await createPullRequestForWinner(
-            convex,
             fallbackWinner.runId,
             taskId,
             githubToken || undefined
@@ -806,7 +864,6 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
           `[CrownEvaluator] Fallback winner selected: ${fallbackWinner.agentName}`
         );
         await createPullRequestForWinner(
-          convex,
           fallbackWinner.runId,
           taskId,
           githubToken || undefined
@@ -838,7 +895,6 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
         `[CrownEvaluator] Fallback winner selected: ${fallbackWinner.agentName}`
       );
       await createPullRequestForWinner(
-        convex,
         fallbackWinner.runId,
         taskId,
         githubToken || undefined
@@ -870,7 +926,6 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
 
     // Create pull request for the winner
     await createPullRequestForWinner(
-      convex,
       winner.runId,
       taskId,
       githubToken || undefined
