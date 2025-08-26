@@ -27,6 +27,7 @@ import { createServer } from "node:http";
 import { cpus, platform, totalmem } from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
+import { runWorkerExec } from "./execRunner.js";
 import { Server, type Namespace, type Socket } from "socket.io";
 import { checkDockerReadiness } from "./checkDockerReadiness.js";
 import { detectTerminalIdle } from "./detectTerminalIdle.js";
@@ -720,70 +721,19 @@ managementIO.on("connection", (socket) => {
         cwd: validated.cwd,
       });
 
-      // Special handling for shell commands (bash/sh with -c flag)
-      let commandWithArgs: string;
-      if (
-        (validated.command === "/bin/bash" ||
-          validated.command === "bash" ||
-          validated.command === "/bin/sh" ||
-          validated.command === "sh") &&
-        validated.args &&
-        validated.args[0] === "-c"
-      ) {
-        // For shell commands with -c, the command to execute should be a single argument
-        // We need to properly quote it
-        const shellCommand = validated.args.slice(1).join(" ");
-        commandWithArgs = `${validated.command} -c "${shellCommand.replace(/"/g, '\\"')}"`;
-      } else if (validated.args) {
-        // For other commands, join normally
-        commandWithArgs = `${validated.command} ${validated.args.join(" ")}`;
-      } else {
-        commandWithArgs = validated.command;
-      }
+      const result = await runWorkerExec(validated);
 
-      const execOptions = {
-        cwd: validated.cwd || process.env.HOME || "/",
-        env: { ...process.env, ...validated.env },
-        timeout: validated.timeout,
-      };
+      const logLevel = result.exitCode === 0 ? "INFO" : "WARN";
+      log(logLevel, `worker:exec completed: ${validated.command}`, {
+        exitCode: result.exitCode,
+        stdout: result.stdout.slice(0, 200),
+        stderr: result.stderr.slice(0, 200),
+      });
 
-      try {
-        const { stdout, stderr } = await execAsync(
-          commandWithArgs,
-          execOptions
-        );
-
-        log("INFO", `Command executed successfully: ${validated.command}`, {
-          stdout: stdout?.slice(0, 200),
-          stderr: stderr?.slice(0, 200),
-        });
-
-        callback({
-          error: null,
-          data: {
-            stdout: stdout || "",
-            stderr: stderr || "",
-            exitCode: 0,
-          },
-        });
-      } catch (execError: any) {
-        // exec throws when exit code is non-zero
-        log("WARN", `Command failed with non-zero exit: ${validated.command}`, {
-          exitCode: execError.code,
-          stdout: execError.stdout?.slice(0, 200),
-          stderr: execError.stderr?.slice(0, 200),
-        });
-
-        callback({
-          error: null,
-          data: {
-            stdout: execError.stdout || "",
-            stderr: execError.stderr || "",
-            exitCode: execError.code || 1,
-            signal: execError.signal,
-          },
-        });
-      }
+      callback({
+        error: null,
+        data: result,
+      });
     } catch (error) {
       log("ERROR", "Error executing command", error, WORKER_ID);
       callback({
@@ -1272,40 +1222,51 @@ async function createTerminal(
           },
         });
       } else {
-        const detector = await createTaskCompletionDetector({
-          taskRunId: options.taskRunId!,
-          agentType: providerResolved!,
-          agentModel: options.agentModel,
-          workingDir: cwd,
-          maxRuntimeMs: 20 * 60 * 1000,
-          minRuntimeMs: 30000,
-        }, buildDetectorConfig({
-          agentType: providerResolved || undefined,
-          agentModel: options.agentModel,
-          workingDir: cwd,
-          startTime: processStartTime,
-          terminalId: useTerminalIdleFallback ? (sessionName || terminalId) : undefined,
-          onTerminalIdle: useTerminalIdleFallback ? () => {
-            if (!idleDetectionCompleted) {
-              idleDetectionCompleted = true;
-              const elapsedMs = Date.now() - processStartTime;
-              log("INFO", "Task completion detected (fallback to terminal idle)", {
-                terminalId,
-                taskRunId: options.taskRunId,
-                agentModel: options.agentModel,
-                elapsedMs,
-              });
-              if (options.taskRunId) {
-                emitToMainServer("worker:task-complete", {
-                  workerId: WORKER_ID,
-                  taskRunId: options.taskRunId,
-                  agentModel: options.agentModel,
-                  elapsedMs,
-                });
-              }
-            }
-          } : undefined,
-        }));
+        const detector = await createTaskCompletionDetector(
+          {
+            taskRunId: options.taskRunId!,
+            agentType: providerResolved!,
+            agentModel: options.agentModel,
+            workingDir: cwd,
+            maxRuntimeMs: 20 * 60 * 1000,
+            minRuntimeMs: 30000,
+          },
+          buildDetectorConfig({
+            agentType: providerResolved || undefined,
+            agentModel: options.agentModel,
+            workingDir: cwd,
+            startTime: processStartTime,
+            terminalId: useTerminalIdleFallback
+              ? sessionName || terminalId
+              : undefined,
+            onTerminalIdle: useTerminalIdleFallback
+              ? () => {
+                  if (!idleDetectionCompleted) {
+                    idleDetectionCompleted = true;
+                    const elapsedMs = Date.now() - processStartTime;
+                    log(
+                      "INFO",
+                      "Task completion detected (fallback to terminal idle)",
+                      {
+                        terminalId,
+                        taskRunId: options.taskRunId,
+                        agentModel: options.agentModel,
+                        elapsedMs,
+                      }
+                    );
+                    if (options.taskRunId) {
+                      emitToMainServer("worker:task-complete", {
+                        workerId: WORKER_ID,
+                        taskRunId: options.taskRunId,
+                        agentModel: options.agentModel,
+                        elapsedMs,
+                      });
+                    }
+                  }
+                }
+              : undefined,
+          })
+        );
 
         // Listen for task completion from project/log detectors
         detector.on("task-complete", (data) => {

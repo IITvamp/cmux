@@ -870,8 +870,28 @@ export class RepositoryManager {
         `git config branch.${branchName}.merge refs/heads/${branchName}`,
         { cwd: worktreePath }
       );
+      
+      // Configure VS Code git extension to show diffs from main branch
+      await this.executeGitCommand(
+        `git config vscode.gitSCM.defaultViewMode tree`,
+        { cwd: worktreePath }
+      );
+      await this.executeGitCommand(
+        `git config vscode.gitSCM.showChangesSinceLastPublish true`,
+        { cwd: worktreePath }
+      );
+      // Set main as the base branch for comparisons
+      await this.executeGitCommand(
+        `git config diff.base main`,
+        { cwd: worktreePath }
+      );
+      await this.executeGitCommand(
+        `git config merge.base main`,
+        { cwd: worktreePath }
+      );
+      
       serverLogger.info(
-        `Configured branch ${branchName} to track origin/${branchName} when pushed`
+        `Configured branch ${branchName} to track origin/${branchName} when pushed and show diffs from main`
       );
     } catch (error) {
       serverLogger.warn(
