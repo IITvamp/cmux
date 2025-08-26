@@ -149,4 +149,89 @@ describe.sequential("stopContainersForRuns (docker E2E)", () => {
     const results = await stopContainersForRunsFromTree(treeMissing, "t-missing");
     expect(results[0]?.success).toBe(false);
   }, 60_000);
+
+  it("handles multiple containers including non-existent ones", async () => {
+    const existing = `cmux-test-exist-${randomSuffix()}`;
+    const missing1 = `docker-cmux-jn779kkrf8wb`;
+    const missing2 = `docker-cmux-jn76ybndmhcm`;
+    const missing3 = `docker-cmux-jn79e83w7d77`;
+    containers.push(existing);
+
+    // Start one real container
+    await docker(`docker run -d --name ${existing} alpine:3 sh -c 'sleep 300'`);
+
+    // Tree with both existing and non-existent containers
+    const tree = [
+      {
+        _id: zidRun.parse("r5"),
+        _creationTime: now,
+        taskId: zidTask.parse("t-mixed"),
+        prompt: "p",
+        status: "running",
+        log: "",
+        createdAt: now,
+        updatedAt: now,
+        vscode: { provider: "docker", status: "running", containerName: existing },
+        children: [],
+      },
+      {
+        _id: zidRun.parse("r6"),
+        _creationTime: now,
+        taskId: zidTask.parse("t-mixed"),
+        prompt: "p",
+        status: "running",
+        log: "",
+        createdAt: now,
+        updatedAt: now,
+        vscode: { provider: "docker", status: "running", containerName: missing1 },
+        children: [],
+      },
+      {
+        _id: zidRun.parse("r7"),
+        _creationTime: now,
+        taskId: zidTask.parse("t-mixed"),
+        prompt: "p",
+        status: "running",
+        log: "",
+        createdAt: now,
+        updatedAt: now,
+        vscode: { provider: "docker", status: "running", containerName: missing2 },
+        children: [],
+      },
+      {
+        _id: zidRun.parse("r8"),
+        _creationTime: now,
+        taskId: zidTask.parse("t-mixed"),
+        prompt: "p",
+        status: "running",
+        log: "",
+        createdAt: now,
+        updatedAt: now,
+        vscode: { provider: "docker", status: "running", containerName: missing3 },
+        children: [],
+      },
+    ] satisfies FunctionReturnType<typeof api.taskRuns.getByTask>;
+
+    const results = await stopContainersForRunsFromTree(tree, "t-mixed");
+    
+    // Should have 4 results
+    expect(results).toHaveLength(4);
+    
+    // Check that the existing container was stopped successfully
+    const existingResult = results.find(r => r.containerName === existing);
+    expect(existingResult?.success).toBe(true);
+    
+    // Check that the missing containers failed
+    const missingResults = results.filter(r => 
+      [missing1, missing2, missing3].includes(r.containerName)
+    );
+    expect(missingResults).toHaveLength(3);
+    expect(missingResults.every(r => !r.success)).toBe(true);
+    
+    // Verify the existing container is actually stopped
+    const { stdout: state } = await docker(
+      `docker inspect -f '{{.State.Running}} {{.State.Status}}' ${existing}`
+    );
+    expect(state.trim()).toMatch(/false\s+(exited|created)/);
+  }, 120_000);
 });

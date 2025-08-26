@@ -19,6 +19,8 @@
     "start-bun": "bun run src/local-dev.ts",
     "dev-bun": "bun run --hot src/local-dev.ts",
     "daytona": "bun x vite-node scripts/hello-daytona.ts",
+    "test": "vitest run",
+    "test:watch": "vitest watch",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
