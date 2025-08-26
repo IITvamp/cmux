@@ -50,7 +50,8 @@ export function OpenWithDropdown({
     (editor: EditorType): Promise<void> => {
       return new Promise((resolve, reject) => {
         if (editor === "vscode-remote" && vscodeUrl) {
-          window.open(vscodeUrl, "_blank", "noopener,noreferrer");
+          const vscodeUrlWithWorkspace = `${vscodeUrl}?folder=/root/workspace`;
+          window.open(vscodeUrlWithWorkspace, "_blank", "noopener,noreferrer");
           resolve();
         } else if (
           socket &&
@@ -95,7 +96,7 @@ export function OpenWithDropdown({
   const menuItems: MenuItem[] = [
     {
       id: "vscode-remote" as const,
-      name: "VS Code (remote)",
+      name: "VS Code (web)",
       enabled: !!vscodeUrl,
     },
     {

@@ -37,37 +37,6 @@ export interface VSCodeClientToServerEvents {
   // Health check
   "vscode:ping": (callback: (data: { timestamp: number }) => void) => void;
 
-  // Execute VS Code command
-  "vscode:execute-command": (
-    data: {
-      command: string;
-      args?: any[];
-      workingDirectory?: string;
-    },
-    callback: (response: { success: boolean; result?: any; error?: string }) => void
-  ) => void;
-
-  // Execute shell command
-  "vscode:exec-command": (
-    data: {
-      command: string;
-      args?: string[];
-      cwd?: string;
-      env?: Record<string, string>;
-    },
-    callback: (response: { success: boolean; result?: { stdout: string; stderr: string }; error?: string }) => void
-  ) => void;
-
-  // Auto-commit and push
-  "vscode:auto-commit-push": (
-    data: {
-      branchName: string;
-      commitMessage: string;
-      agentName: string;
-    },
-    callback: (response: { success: boolean; message?: string; error?: string }) => void
-  ) => void;
-
   // Create terminal
   "vscode:create-terminal": (
     data: {

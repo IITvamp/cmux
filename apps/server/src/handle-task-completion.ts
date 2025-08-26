@@ -6,6 +6,7 @@ import {
   createPullRequestForWinner,
   evaluateCrownWithClaudeCode,
 } from "./crownEvaluator.js";
+import performAutoCommitAndPush from "./performAutoCommitAndPush.js";
 import { convex } from "./utils/convexClient.js";
 import { serverLogger } from "./utils/fileLogger.js";
 import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
@@ -132,7 +133,7 @@ export async function handleTaskCompletion({
               return;
             }
 
-            await evaluateCrownWithClaudeCode(convex, taskRunData.taskId);
+            await evaluateCrownWithClaudeCode(taskRunData.taskId);
             serverLogger.info(
               `[AgentSpawner] Crown evaluation completed successfully`
             );
@@ -185,7 +186,6 @@ export async function handleTaskCompletion({
             setTimeout(async () => {
               try {
                 await createPullRequestForWinner(
-                  convex,
                   winnerId,
                   taskRunData.taskId,
                   githubToken || undefined
@@ -213,13 +213,34 @@ export async function handleTaskCompletion({
       }
     }
 
-    const ENABLE_AUTO_COMMIT = false; // Disabled to ensure git diff capture works
+    // Enable auto-commit after task completion
+    if (taskRunData) {
+      const task = await convex.query(api.tasks.getById, {
+        id: taskRunData.taskId,
+      });
 
-    // Skip auto-commit - we'll let the user commit manually after crown evaluation
-    if (ENABLE_AUTO_COMMIT && taskRunData) {
-      serverLogger.info(
-        `[AgentSpawner] Auto-commit is disabled to ensure proper crown evaluation`
-      );
+      if (task) {
+        serverLogger.info(
+          `[AgentSpawner] Performing auto-commit for ${agent.name}`
+        );
+
+        try {
+          await performAutoCommitAndPush(
+            vscodeInstance,
+            agent,
+            taskRunId,
+            task.text
+          );
+          serverLogger.info(
+            `[AgentSpawner] Auto-commit completed successfully for ${agent.name}`
+          );
+        } catch (error) {
+          serverLogger.error(
+            `[AgentSpawner] Auto-commit failed for ${agent.name}:`,
+            error
+          );
+        }
+      }
     }
 
     // Schedule container stop based on settings
