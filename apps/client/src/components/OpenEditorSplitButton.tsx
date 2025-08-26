@@ -96,35 +96,41 @@ export function OpenEditorSplitButton({
   const leftDisabled = !selected || !selected.enabled;
   const SelectedIcon = selected ? editorIcons[selected.id] : null;
 
+  const openEditorWithToasts = useCallback(
+    (editor: EditorType, name: string) => {
+      const loadingToast = toast.loading(`Opening ${name}...`);
+      handleOpenInEditor(editor)
+        .then(() => {
+          toast.success(`Opened ${name}`, { id: loadingToast });
+        })
+        .catch((error: Error) => {
+          let errorMessage = "Failed to open editor";
+          if (
+            error.message?.includes("ENOENT") ||
+            error.message?.includes("not found") ||
+            error.message?.includes("command not found")
+          ) {
+            if (editor === "vscode")
+              errorMessage = "VS Code is not installed or not found in PATH";
+            else if (editor === "cursor")
+              errorMessage = "Cursor is not installed or not found in PATH";
+            else if (editor === "windsurf")
+              errorMessage = "Windsurf is not installed or not found in PATH";
+            else if (editor === "finder")
+              errorMessage = "Finder is not available or not found";
+          } else if (error.message) {
+            errorMessage = error.message;
+          }
+          toast.error(errorMessage, { id: loadingToast });
+        });
+    },
+    [handleOpenInEditor]
+  );
+
   const openSelected = useCallback(() => {
     if (!selected) return;
-    const name = selected.name;
-    const loadingToast = toast.loading(`Opening ${name}...`);
-    handleOpenInEditor(selected.id)
-      .then(() => {
-        toast.success(`Opened ${name}`, { id: loadingToast });
-      })
-      .catch((error: Error) => {
-        let errorMessage = "Failed to open editor";
-        if (
-          error.message?.includes("ENOENT") ||
-          error.message?.includes("not found") ||
-          error.message?.includes("command not found")
-        ) {
-          if (selected.id === "vscode")
-            errorMessage = "VS Code is not installed or not found in PATH";
-          else if (selected.id === "cursor")
-            errorMessage = "Cursor is not installed or not found in PATH";
-          else if (selected.id === "windsurf")
-            errorMessage = "Windsurf is not installed or not found in PATH";
-          else if (selected.id === "finder")
-            errorMessage = "Finder is not available or not found";
-        } else if (error.message) {
-          errorMessage = error.message;
-        }
-        toast.error(errorMessage, { id: loadingToast });
-      });
-  }, [handleOpenInEditor, selected]);
+    openEditorWithToasts(selected.id, selected.name);
+  }, [openEditorWithToasts, selected]);
 
   return (
     <div className="flex items-stretch">
@@ -170,7 +176,12 @@ export function OpenEditorSplitButton({
               <Menu.RadioGroup
                 value={selected?.id}
                 onValueChange={(val) => {
-                  setSelectedEditor(val as EditorType);
+                  const editor = val as EditorType;
+                  setSelectedEditor(editor);
+                  const item = menuItems.find((m) => m.id === editor);
+                  if (item && item.enabled) {
+                    openEditorWithToasts(editor, item.name);
+                  }
                   setMenuOpen(false);
                 }}
               >
