@@ -159,19 +159,8 @@ export async function computeEntriesNodeGit(opts: ParsedDiffOptions): Promise<Re
 }
 
 async function resolvePrimaryBaseRef(cwd: string): Promise<string> {
-  // Prefer upstream; otherwise origin/<defaultBranch>; fallback origin/main
-  try {
-    const { stdout } = await execAsync(
-      "git rev-parse --abbrev-ref --symbolic-full-name @{u}",
-      { cwd }
-    );
-    if (stdout.trim()) return "@{upstream}";
-  } catch (err) {
-    // Upstream not configured; fall back to default branch
-    serverLogger.debug(
-      `[Diffs] No upstream for ${cwd}: ${String((err as Error)?.message || err)}`
-    );
-  }
+  // Always compare against the default branch (main/master) to show all changes
+  // including committed ones, not against the upstream of the current branch
   try {
     const repoMgr = RepositoryManager.getInstance();
     const defaultBranch = await repoMgr.getDefaultBranch(cwd);
