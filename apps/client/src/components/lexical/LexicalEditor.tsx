@@ -459,6 +459,8 @@ interface LexicalEditorProps {
       }>;
     };
     clear: () => void;
+    focus?: () => void;
+    insertText?: (text: string) => void;
   }) => void;
 }
 

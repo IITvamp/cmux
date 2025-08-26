@@ -53,6 +53,49 @@ function DashboardComponent() {
   // Ref to access editor API
   const editorApiRef = useRef<EditorApi | null>(null);
 
+  // Global CMD+V handler
+  useEffect(() => {
+    const handleGlobalPaste = async (e: KeyboardEvent) => {
+      // Check if CMD+V (Mac) or CTRL+V (Windows/Linux) is pressed
+      const isMetaKey = e.metaKey || e.ctrlKey;
+      if (isMetaKey && e.key === 'v') {
+        // Check if the active element is already an input, textarea, or contenteditable
+        const activeElement = document.activeElement;
+        const isInputFocused = 
+          activeElement?.tagName === 'INPUT' ||
+          activeElement?.tagName === 'TEXTAREA' ||
+          activeElement?.getAttribute('contenteditable') === 'true' ||
+          activeElement?.closest('[contenteditable="true"]');
+        
+        // If not focused on an input, focus the DashboardInput and paste
+        if (!isInputFocused && editorApiRef.current) {
+          e.preventDefault();
+          
+          // Focus the editor
+          editorApiRef.current.focus?.();
+          
+          // Read clipboard and insert text
+          try {
+            const text = await navigator.clipboard.readText();
+            if (text) {
+              // Small delay to ensure focus is complete
+              setTimeout(() => {
+                editorApiRef.current?.insertText?.(text);
+              }, 10);
+            }
+          } catch (error) {
+            console.error('Failed to read clipboard:', error);
+          }
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleGlobalPaste);
+    return () => {
+      document.removeEventListener('keydown', handleGlobalPaste);
+    };
+  }, []);
+
   // Callback for task description changes
   const handleTaskDescriptionChange = useCallback((value: string) => {
     setTaskDescription(value);
