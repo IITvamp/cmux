@@ -189,6 +189,36 @@ export async function setupProjectWorkspace(args: {
       args.branch ||
       (await repoManager.getDefaultBranch(worktreeInfo.originPath));
 
+    // If a worktree for this branch already exists anywhere, reuse it
+    try {
+      const existingByBranch = await repoManager.findWorktreeUsingBranch(
+        worktreeInfo.originPath,
+        worktreeInfo.branch
+      );
+      if (existingByBranch) {
+        if (existingByBranch !== worktreeInfo.worktreePath) {
+          serverLogger.info(
+            `Reusing existing worktree for ${worktreeInfo.branch} at ${existingByBranch}`
+          );
+          worktreeInfo.worktreePath = existingByBranch;
+        } else {
+          serverLogger.info(
+            `Worktree for ${worktreeInfo.branch} already registered at ${existingByBranch}`
+          );
+        }
+        // Ensure configuration and hooks are present
+        await repoManager.ensureWorktreeConfigured(
+          worktreeInfo.worktreePath,
+          worktreeInfo.branch
+        );
+      }
+    } catch (e) {
+      serverLogger.warn(
+        `Failed checking for existing worktree for ${worktreeInfo.branch}:`,
+        e
+      );
+    }
+
     // Check if worktree already exists in git
     const worktreeRegistered = await repoManager.worktreeExists(
       worktreeInfo.originPath,
@@ -211,21 +241,33 @@ export async function setupProjectWorkspace(args: {
           worktreeInfo.originPath,
           worktreeInfo.worktreePath
         );
-        await repoManager.createWorktree(
+        const actualPath = await repoManager.createWorktree(
           worktreeInfo.originPath,
           worktreeInfo.worktreePath,
           worktreeInfo.branch,
           baseBranch
         );
+        if (actualPath && actualPath !== worktreeInfo.worktreePath) {
+          serverLogger.info(
+            `Worktree path resolved to ${actualPath} for branch ${worktreeInfo.branch}`
+          );
+          worktreeInfo.worktreePath = actualPath;
+        }
       }
     } else {
       // Create the worktree
-      await repoManager.createWorktree(
+      const actualPath = await repoManager.createWorktree(
         worktreeInfo.originPath,
         worktreeInfo.worktreePath,
         worktreeInfo.branch,
         baseBranch
       );
+      if (actualPath && actualPath !== worktreeInfo.worktreePath) {
+        serverLogger.info(
+          `Worktree path resolved to ${actualPath} for branch ${worktreeInfo.branch}`
+        );
+        worktreeInfo.worktreePath = actualPath;
+      }
     }
 
     return { success: true, worktreePath: worktreeInfo.worktreePath };

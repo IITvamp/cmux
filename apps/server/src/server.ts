@@ -25,6 +25,7 @@ import * as path from "node:path";
 import { promisify } from "node:util";
 import { Server } from "socket.io";
 import { spawnAllAgents } from "./agentSpawner.js";
+import { stopContainersForRuns } from "./archiveTask.js";
 import { execWithEnv } from "./execWithEnv.js";
 import { GitDiffManager } from "./gitDiff.js";
 import { createProxyApp, setupWebSocketProxy } from "./proxyApp.js";
@@ -294,7 +295,7 @@ export async function startServer({
           return;
         }
 
-        const githubToken = await getGitHubTokenFromKeychain(convex);
+        const githubToken = await getGitHubTokenFromKeychain();
         if (!githubToken) {
           callback({ success: false, error: "GitHub token is not configured" });
           return;
@@ -453,7 +454,7 @@ export async function startServer({
         const task = await convex.query(api.tasks.getById, { id: run.taskId });
         if (!task) return callback({ success: false, error: "Task not found" });
 
-        const githubToken = await getGitHubTokenFromKeychain(convex);
+        const githubToken = await getGitHubTokenFromKeychain();
         if (!githubToken)
           return callback({
             success: false,
@@ -621,23 +622,25 @@ export async function startServer({
           newContent = "";
         }
         try {
-          // Use git CLI to read baseRef version of the file when available; fallback to HEAD
-          // Resolve base similar to full diff
+          // Use git CLI to read baseRef version of the file. Prefer default branch (origin/<default>),
+          // then upstream, and finally HEAD as a last resort.
           let baseRef = "HEAD";
           try {
-            const { stdout } = await execAsync(
-              "git rev-parse --abbrev-ref --symbolic-full-name @{u}",
-              { cwd: worktreePath }
-            );
-            if (stdout.trim()) baseRef = "@{upstream}";
+            const repoMgr = RepositoryManager.getInstance();
+            const defaultBranch = await repoMgr.getDefaultBranch(worktreePath);
+            if (defaultBranch) baseRef = `origin/${defaultBranch}`;
           } catch {
+            // ignore and try upstream next
+          }
+          if (baseRef === "HEAD") {
             try {
-              const repoMgr = RepositoryManager.getInstance();
-              const defaultBranch =
-                await repoMgr.getDefaultBranch(worktreePath);
-              if (defaultBranch) baseRef = `origin/${defaultBranch}`;
+              const { stdout } = await execAsync(
+                "git rev-parse --abbrev-ref --symbolic-full-name @{u}",
+                { cwd: worktreePath }
+              );
+              if (stdout.trim()) baseRef = "@{upstream}";
             } catch {
-              baseRef = "HEAD";
+              // stick with HEAD
             }
           }
           const { stdout } = await execAsync(
@@ -1171,7 +1174,7 @@ Please address the issue mentioned in the comment above.`;
           await ensureRunWorktreeAndBranch(taskRunId as Id<"taskRuns">);
 
         // Get GitHub token from keychain/Convex
-        const githubToken = await getGitHubTokenFromKeychain(convex);
+        const githubToken = await getGitHubTokenFromKeychain();
         if (!githubToken) {
           callback({ success: false, error: "GitHub token is not configured" });
           return;
@@ -1396,7 +1399,7 @@ Please address the issue mentioned in the comment above.`;
         const { run, task, worktreePath, branchName, baseBranch } =
           await ensureRunWorktreeAndBranch(taskRunId);
 
-        const githubToken = await getGitHubTokenFromKeychain(convex);
+        const githubToken = await getGitHubTokenFromKeychain();
         if (!githubToken) {
           callback({ success: false, error: "GitHub token is not configured" });
           return;
@@ -1657,91 +1660,8 @@ Please address the issue mentioned in the comment above.`;
       try {
         const { taskId } = ArchiveTaskSchema.parse(data);
 
-        // Get all task runs for this task
-        const taskRuns = await convex.query(api.taskRuns.getByTask, {
-          taskId,
-        });
-
-        serverLogger.info(
-          `Archiving task ${taskId} with ${taskRuns.length} runs`
-        );
-
-        // Stop/pause all containers in parallel
-        const stopPromises = taskRuns
-          .filter((run) => run.vscode && run.vscode.containerName)
-          .map(async (run) => {
-            const { provider, containerName } = run.vscode!;
-            if (!containerName) {
-              return {
-                success: false,
-                containerName: "unknown",
-                provider,
-                error: "No container name",
-              };
-            }
-            serverLogger.info(
-              `Stopping ${provider} container: ${containerName}`
-            );
-
-            try {
-              if (provider === "morph") {
-                // Extract instance ID from containerName (e.g., "morphvm_wdgnko75")
-                const instanceId = containerName;
-
-                // Import MorphCloudClient dynamically to avoid dependency issues
-                const { MorphCloudClient } = await import("morphcloud");
-                const morphClient = new MorphCloudClient();
-
-                const instance = await morphClient.instances.get({
-                  instanceId,
-                });
-                await instance.pause();
-                serverLogger.info(
-                  `Successfully paused Morph instance: ${instanceId}`
-                );
-                return { success: true, containerName, provider };
-              } else if (provider === "docker") {
-                // Stop Docker container
-                try {
-                  await execAsync(`docker stop ${containerName}`, {
-                    timeout: 10000, // 10 second timeout
-                  });
-                  serverLogger.info(
-                    `Successfully stopped Docker container: ${containerName}`
-                  );
-                  return { success: true, containerName, provider };
-                } catch (dockerError) {
-                  // Check if container is already stopped
-                  const { stdout: psOutput } = await execAsync(
-                    `docker ps -a --filter "name=${containerName}" --format "{{.Status}}"`
-                  );
-                  if (psOutput.toLowerCase().includes("exited")) {
-                    serverLogger.info(
-                      `Docker container already stopped: ${containerName}`
-                    );
-                    return { success: true, containerName, provider };
-                  } else {
-                    throw dockerError;
-                  }
-                }
-              }
-              return {
-                success: false,
-                containerName,
-                provider,
-                error: "Unknown provider",
-              };
-            } catch (error) {
-              serverLogger.error(
-                `Failed to stop ${provider} container ${containerName}:`,
-                error
-              );
-              return { success: false, containerName, provider, error };
-            }
-          });
-
-        // Wait for all stop operations to complete
-        const results = await Promise.all(stopPromises);
+        // Stop/pause all containers via helper (handles querying + logging)
+        const results = await stopContainersForRuns(taskId);
 
         // Log summary
         const successful = results.filter((r) => r.success).length;

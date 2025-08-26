@@ -180,7 +180,7 @@ export async function handleTaskCompletion({
               `[AgentSpawner] Triggering auto-PR for single agent completion`
             );
 
-            const githubToken = await getGitHubTokenFromKeychain(convex);
+            const githubToken = await getGitHubTokenFromKeychain();
 
             // Small delay to ensure git diff is persisted
             setTimeout(async () => {
