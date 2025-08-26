@@ -54,7 +54,7 @@ export default function LandingPage() {
 
       {/* Header */}
       <header className="mb-6 bg-neutral-950/80 backdrop-blur top-0 z-40 border-b border-neutral-900">
-        <div className="container max-w-5xl mx-auto px-3 sm:px-5 py-2.5">
+        <div className="container max-w-5xl mx-auto px-2 sm:px-4 py-2.5">
           <div className="grid w-full grid-cols-[auto_1fr] grid-rows-1 items-center gap-2">
             <a
               aria-label="Go to homepage"
