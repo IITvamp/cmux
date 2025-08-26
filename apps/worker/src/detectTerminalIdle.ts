@@ -6,6 +6,8 @@ interface IdleDetectionOptions {
   idleTimeoutMs?: number;
   onIdle?: () => void;
   ignorePatterns?: RegExp[];
+  // Optional: observer for complete stdout lines from attached tmux
+  onDataLine?: (line: string) => void;
 }
 
 // Default patterns for common background noise
@@ -120,6 +122,7 @@ export async function detectTerminalIdle(
     idleTimeoutMs = 3000,
     onIdle,
     ignorePatterns = DEFAULT_IGNORE_PATTERNS,
+    onDataLine,
   } = options;
   
   log("INFO", "[detectTerminalIdle] Starting terminal idle detection", {
@@ -410,6 +413,20 @@ export async function detectTerminalIdle(
         }
       );
       idleTimer = setTimeout(checkIdle, idleTimeoutMs);
+
+      // Accumulate stdout and notify observers with complete lines
+      stdoutBuffer += data.toString();
+      if (onDataLine) {
+        const lines = stdoutBuffer.split(/\r?\n/);
+        stdoutBuffer = lines.pop() || "";
+        for (const line of lines) {
+          try {
+            onDataLine(line);
+          } catch (err) {
+            log("ERROR", "[detectTerminalIdle] onDataLine error", err);
+          }
+        }
+      }
     });
 
     // Monitor stderr

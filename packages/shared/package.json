@@ -83,6 +83,15 @@
       "import": "./src/providers/opencode/completion-detector.ts",
       "types": "./src/providers/opencode/completion-detector.ts"
     }
+    ,
+    "./src/providers/cursor/completion-detector": {
+      "import": "./src/providers/cursor/completion-detector.ts",
+      "types": "./src/providers/cursor/completion-detector.ts"
+    },
+    "./src/providers/cursor/completion-detector.ts": {
+      "import": "./src/providers/cursor/completion-detector.ts",
+      "types": "./src/providers/cursor/completion-detector.ts"
+    }
   },
   "dependencies": {
     "@cmux/convex": "workspace:*",

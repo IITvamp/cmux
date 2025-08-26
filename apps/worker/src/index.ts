@@ -1177,11 +1177,12 @@ async function createTerminal(
 
     // Use new task completion detection if agentModel is provided
     if (options.agentModel && options.taskRunId) {
-      // For Claude, Codex, and Gemini use project/log detection only; allow idle fallback for OpenCode
+      // For Claude, Codex, Gemini, and Cursor use deterministic detection; allow idle fallback for others
       const useTerminalIdleFallback = !(
         providerResolved === "claude" ||
         providerResolved === "codex" ||
-        providerResolved === "gemini"
+        providerResolved === "gemini" ||
+        providerResolved === "cursor"
       );
 
       log(
@@ -1267,6 +1268,38 @@ async function createTerminal(
               : undefined,
           })
         );
+
+        // For Cursor, parse stream-JSON from the tmux-attached stdout to detect completion
+        if (providerResolved === "cursor" && options.taskRunId) {
+          const { parseCursorEventLine, isCursorSuccessResult } = await getCursorHelpers();
+          // Attach a non-blocking observer to the tmux session output
+          detectTerminalIdle({
+            sessionName: sessionName || terminalId,
+            // Observe lines only; do not rely on idle here
+            idleTimeoutMs: 20 * 60 * 1000,
+            ignorePatterns: [],
+            onDataLine: (line: string) => {
+              const evt = parseCursorEventLine(line);
+              if (isCursorSuccessResult(evt)) {
+                if (!idleDetectionCompleted) {
+                  idleDetectionCompleted = true;
+                  const elapsedMs = Date.now() - processStartTime;
+                  log("INFO", "[Cursor] Completion event detected via stream-json", { elapsedMs });
+                  emitToMainServer("worker:task-complete", {
+                    workerId: WORKER_ID,
+                    taskRunId: options.taskRunId!,
+                    agentModel: options.agentModel,
+                    elapsedMs,
+                    detectionMethod: "cursor-stream",
+                  });
+                }
+              }
+            },
+            // No onIdle; Cursor relies on terminal result event
+          }).catch((e) => {
+            log("ERROR", "[Cursor] tmux observer error", e);
+          });
+        }
 
         // Listen for task completion from project/log detectors
         detector.on("task-complete", (data) => {
@@ -1523,7 +1556,7 @@ process.on("SIGINT", gracefulShutdown);
 // Task Completion (DI approach)
 // ==============================
 
-type AgentType = "claude" | "codex" | "gemini" | "amp" | "opencode";
+type AgentType = "claude" | "codex" | "gemini" | "amp" | "opencode" | "cursor";
 
 interface TaskCompletionOptionsDI {
   taskRunId: string;
@@ -1709,6 +1742,16 @@ const getGeminiHelpers = async () => {
   };
 };
 
+const getCursorHelpers = async () => {
+  const module = await import(
+    "@cmux/shared/src/providers/cursor/completion-detector.ts"
+  );
+  return {
+    parseCursorEventLine: module.parseCursorEventLine,
+    isCursorSuccessResult: module.isCursorSuccessResult,
+  };
+};
+
 // ---- Provider-specific checkers composed via config ----
 function resolveProviderFromModel(model?: string): AgentType | undefined {
   if (!model) return undefined;
@@ -1717,12 +1760,12 @@ function resolveProviderFromModel(model?: string): AgentType | undefined {
   // Special case: "amp" doesn't have a slash
   if (model === "amp") return "amp";
 
-  // Handle cursor models (cursor is not in AgentType, so skip it)
-  if (model.startsWith("cursor/")) return undefined;
+  // Handle cursor models
+  if (model.startsWith("cursor/")) return "cursor";
 
   // Extract prefix before the slash
   const prefix = model.split("/")[0] as AgentType;
-  return ["claude", "codex", "gemini", "amp", "opencode"].includes(prefix)
+  return ["claude", "codex", "gemini", "amp", "opencode", "cursor"].includes(prefix)
     ? prefix
     : undefined;
 }
@@ -1803,6 +1846,13 @@ function buildDetectorConfig(params: {
           log("ERROR", `Opencode completion error: ${e}`);
           return false;
         }
+      },
+    },
+    cursor: {
+      // Cursor is deterministic via stream-JSON result event
+      allowTerminalIdleFallback: false,
+      async checkCompletion() {
+        return false;
       },
     },
   };
