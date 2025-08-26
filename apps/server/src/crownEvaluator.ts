@@ -111,22 +111,7 @@ export async function createPullRequestForWinner(
     // Use the newBranch from the task run
     const branchName = taskRun.newBranch || `cmux-crown-${taskRunId.slice(-8)}`;
 
-    // Create commit message
-    const truncatedDescription =
-      prTitle.length > 72 ? prTitle.substring(0, 69) + "..." : prTitle;
-
-    const commitMessage = `${truncatedDescription}
-
-Task completed by ${agentName} agent 🏆
-${taskRun.crownReason ? `\nReason: ${taskRun.crownReason}` : ""}
-
-🤖 Generated with cmux
-Agent: ${agentName}
-Task Run ID: ${taskRunId}
-Branch: ${branchName}
-Completed: ${new Date().toISOString()}`;
-
-    // Execute git operations via worker:exec only
+    // Execute PR creation via worker:exec only
     serverLogger.info(`[CrownEvaluator] Using worker:exec for git operations`);
 
     const workerSocket = vscodeInstance.getWorkerSocket();
@@ -135,27 +120,18 @@ Completed: ${new Date().toISOString()}`;
       return;
     }
 
-    // Execute git commands via worker:exec (more reliable than terminal-input)
+    // Since auto-commit has already handled all git operations (add, commit, push),
+    // we only need to create the PR. The branch already exists and is pushed.
     const bodyFileName = `cmux_pr_body_${Date.now()}_${Math.random().toString(36).slice(2)}.md`;
-    const gitCommands = [
-      // Add all changes
-      { cmd: "git add -A", desc: "Staging changes" },
-      // Create and switch to new branch (fallback to switch if it exists)
-      {
-        cmd: `git checkout -b ${branchName} || git checkout ${branchName}`,
-        desc: "Ensuring branch",
-      },
-      // Commit (tolerate no-op)
-      {
-        cmd: `git commit -m "${commitMessage.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\$/g, "\\$")}" || echo 'No changes to commit'`,
-        desc: "Committing",
-      },
-      // Push
-      { cmd: `git push -u origin ${branchName}`, desc: "Pushing branch" },
-    ];
+    const gitCommands = [];
 
     // Only add PR creation command if GitHub token is available
     if (githubToken) {
+      // First, switch to the branch that was already created and pushed by auto-commit
+      gitCommands.push({
+        cmd: `git checkout ${branchName}`,
+        desc: "Switching to branch",
+      });
       gitCommands.push({
         cmd: `cat <<'CMUX_EOF' > /tmp/${bodyFileName}\n${prBody}\nCMUX_EOF`,
         desc: "Writing PR body",
@@ -266,11 +242,16 @@ Completed: ${new Date().toISOString()}`;
           serverLogger.error(
             `[CrownEvaluator] gh auth status - stdout: ${authCheckResult.stdout}, stderr: ${authCheckResult.stderr}`
           );
+          
+          // For PR creation failures, we should stop
+          return;
         }
 
-        // Continue anyway for some commands
-        if (!cmd.includes("git checkout") && !cmd.includes("gh pr create")) {
-          return;
+        // For git checkout, continue since the branch should exist
+        if (cmd.includes("git checkout")) {
+          serverLogger.warn(
+            `[CrownEvaluator] Could not switch branch, but continuing since branch should already be pushed`
+          );
         }
       } else {
         // If successful and it's the PR creation command, log the URL
