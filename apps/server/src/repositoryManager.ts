@@ -726,14 +726,26 @@ export class RepositoryManager {
       }
 
       if (branchExists) {
-        // Branch exists, create worktree without -b flag
-        serverLogger.info(
-          `Branch ${branchName} already exists, creating worktree without new branch`
+        // Branch exists. If the intended worktree path already exists/registered,
+        // treat this as a no-op and proceed to configure.
+        const alreadyRegistered = await this.worktreeExists(
+          originPath,
+          worktreePath
         );
-        await this.executeGitCommand(
-          `git worktree add "${worktreePath}" ${branchName}`,
-          { cwd: originPath }
-        );
+        if (alreadyRegistered) {
+          serverLogger.info(
+            `Worktree for ${branchName} already exists at ${worktreePath}; skipping add`
+          );
+        } else {
+          // Create worktree without -b flag
+          serverLogger.info(
+            `Branch ${branchName} already exists, creating worktree without new branch`
+          );
+          await this.executeGitCommand(
+            `git worktree add "${worktreePath}" ${branchName}`,
+            { cwd: originPath }
+          );
+        }
       } else {
         // Branch doesn't exist, create it with the worktree
         await this.executeGitCommand(
@@ -750,8 +762,29 @@ export class RepositoryManager {
       // Set up git hooks in the worktree
       await this.setupGitHooks(worktreePath);
     } catch (error) {
-      if (error instanceof Error && error.message.includes("already exists")) {
-        throw new Error(`Worktree already exists at ${worktreePath}`);
+      // If another process just created the worktree, treat as success.
+      if (error instanceof Error) {
+        const msg = error.message.toLowerCase();
+        const alreadyExists =
+          msg.includes("already exists") ||
+          msg.includes("is already checked out") ||
+          msg.includes("worktree add") && msg.includes("file exists");
+        if (alreadyExists) {
+          serverLogger.info(
+            `Worktree already present at ${worktreePath}; continuing configuration`
+          );
+          try {
+            // Best-effort configure hooks/tracking in case they weren't set
+            await this.configureWorktreeBranch(worktreePath, branchName);
+            await this.setupGitHooks(worktreePath);
+          } catch (e) {
+            serverLogger.warn(
+              `Post-existence configuration failed for ${worktreePath}:`,
+              e
+            );
+          }
+          return; // Swallow as success
+        }
       }
       // Provide a clearer error message when the base branch does not exist
       if (error instanceof Error) {
