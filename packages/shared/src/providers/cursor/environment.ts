@@ -93,6 +93,25 @@ export async function getCursorEnvironment(_ctx: EnvironmentContext): Promise<En
   // Ensure directories exist
   startupCommands.push("mkdir -p ~/.cursor");
   startupCommands.push("mkdir -p ~/.config/cursor");
+  startupCommands.push("mkdir -p /root/lifecycle");
+
+  // Clean up any stale output for this run (if CMUX_TASK_RUN_ID provided)
+  startupCommands.push(
+    'if [ -n "$CMUX_TASK_RUN_ID" ]; then rm -f \\"/root/lifecycle/cursor-stream-$CMUX_TASK_RUN_ID.ndjson\\" 2>/dev/null || true; fi'
+  );
+
+  // Provide a wrapper script that forces stream-json output and writes to lifecycle file
+  const runnerScript = `#!/usr/bin/env sh
+set -eu
+TASK_ID="${CMUX_TASK_RUN_ID:-unknown}"
+OUT="/root/lifecycle/cursor-stream-$TASK_ID.ndjson"
+exec /root/.local/bin/cursor-agent "$@" > "$OUT" 2>&1
+`;
+  files.push({
+    destinationPath: "/root/lifecycle/cursor-run.sh",
+    contentBase64: Buffer.from(runnerScript).toString("base64"),
+    mode: "755",
+  });
 
   return { files, env, startupCommands };
 }
