@@ -217,7 +217,7 @@ export default function LandingPage() {
             </div>
           </div>
           {/* First demo image combined with hero */}
-          <div className="mt-16 mb-8 relative overflow-hidden rounded-lg max-w-4xl mx-auto">
+          <div className="mt-16 mb-8 relative overflow-hidden rounded-lg">
             <Image
               src="/cmux-demo-2.png"
               alt="cmux dashboard showing parallel AI agent execution"
@@ -233,8 +233,8 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <section id="about" className="pt-8 px-4 sm:px-6 lg:px-12">
-        <div className="container max-w-5xl mx-auto">
+      <section id="about" className="pt-8">
+        <div className="container max-w-5xl mx-auto px-3 sm:px-5">
           <h2 className="text-2xl font-semibold text-center mb-8">
             Rethinking the developer interface
           </h2>
@@ -307,8 +307,8 @@ export default function LandingPage() {
         <div className="w-48 h-px bg-neutral-200 dark:bg-neutral-800"></div>
       </div>
 
-      <section id="features" className="pt-8 px-4 sm:px-6 lg:px-12">
-        <div className="container max-w-5xl mx-auto">
+      <section id="features" className="pt-8">
+        <div className="container max-w-5xl mx-auto px-3 sm:px-5">
           <h2 className="text-2xl font-semibold mb-8 text-center">
             How cmux works today
           </h2>
@@ -426,8 +426,8 @@ export default function LandingPage() {
         <div className="w-48 h-px bg-neutral-200 dark:bg-neutral-800"></div>
       </div>
 
-      <section id="roadmap" className="pt-8 pb-8 px-4 sm:px-6 lg:px-12">
-        <div className="container max-w-5xl mx-auto">
+      <section id="roadmap" className="pt-8 pb-8">
+        <div className="container max-w-5xl mx-auto px-3 sm:px-5">
           <h2 className="text-2xl font-semibold mb-8 text-center">
             The roadmap
           </h2>
@@ -528,8 +528,8 @@ export default function LandingPage() {
         <div className="w-48 h-px bg-neutral-200 dark:bg-neutral-800"></div>
       </div>
 
-      <footer className="py-8 px-4 sm:px-6 lg:px-12">
-        <div className="container max-w-5xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
+      <footer className="py-8">
+        <div className="container max-w-5xl mx-auto px-3 sm:px-5 flex flex-col sm:flex-row justify-between items-center gap-4">
           <div className="flex items-center gap-2">
             <ClientIcon
               icon={Terminal}
