@@ -1635,12 +1635,34 @@ class TaskCompletionDetectorDI extends EventEmitter {
   }
 
   private async watchOpenCodeFiles(): Promise<void> {
-    // OpenCode completion is handled via stdout parsing in createTerminal
-    // We don't need file watching for OpenCode since it doesn't have a notify mechanism like Codex
-    log(
-      "INFO",
-      "[OpenCode] Relying on stdout parsing for completion detection"
+    const markerPath = `/root/lifecycle/opencode-complete-${this.options.taskRunId}`;
+    const { watch } = await import("node:fs");
+    const { access } = await import("node:fs/promises");
+
+    try {
+      await access(markerPath);
+      log(
+        "INFO",
+        `[OpenCode] Completion marker already present: ${markerPath}`
+      );
+      this.handleCompletion();
+      return;
+    } catch {
+      // Not present yet; set up watcher below
+    }
+
+    const watcher = watch(
+      "/root/lifecycle",
+      { persistent: true },
+      async (_event, filename) => {
+        if (!filename) return;
+        if (filename === `opencode-complete-${this.options.taskRunId}`) {
+          log("INFO", `[OpenCode] Completion marker detected: ${markerPath}`);
+          this.handleCompletion();
+        }
+      }
     );
+    this.watchers.push(watcher);
   }
 
   private handleCompletion(): void {
