@@ -1,11 +1,9 @@
-import { createAnthropic } from "@ai-sdk/anthropic";
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { createOpenAI } from "@ai-sdk/openai";
 import { api } from "@cmux/convex/api";
-import { generateObject, type LanguageModel } from "ai";
+import { generateObject } from "ai";
 import { z } from "zod";
 import { convex } from "../utils/convexClient.js";
 import { serverLogger } from "./fileLogger.js";
+import { getModelAndProvider } from "./modelProvider.js";
 
 /**
  * Convert a string to kebab case and filter out suspicious characters
@@ -68,45 +66,6 @@ const prGenerationSchema = z.object({
 });
 
 type PRGeneration = z.infer<typeof prGenerationSchema>;
-
-/**
- * Get the appropriate AI model and provider name based on available API keys
- * @param apiKeys Map of API keys
- * @returns Object with model and provider name, or null if no keys available
- */
-function getModelAndProvider(apiKeys: Record<string, string>): { model: LanguageModel; providerName: string } | null {
-  if (apiKeys.OPENAI_API_KEY) {
-    const openai = createOpenAI({
-      apiKey: apiKeys.OPENAI_API_KEY,
-    });
-    return {
-      model: openai("gpt-5-nano"),
-      providerName: "OpenAI",
-    };
-  }
-  
-  if (apiKeys.GEMINI_API_KEY) {
-    const google = createGoogleGenerativeAI({
-      apiKey: apiKeys.GEMINI_API_KEY,
-    });
-    return {
-      model: google("gemini-2.5-flash"),
-      providerName: "Gemini",
-    };
-  }
-  
-  if (apiKeys.ANTHROPIC_API_KEY) {
-    const anthropic = createAnthropic({
-      apiKey: apiKeys.ANTHROPIC_API_KEY,
-    });
-    return {
-      model: anthropic("claude-3-5-haiku-20241022"),
-      providerName: "Anthropic",
-    };
-  }
-  
-  return null;
-}
 
 /**
  * Generate both a branch name and PR title from a task description

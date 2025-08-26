@@ -1,26 +1,8 @@
-import { createAnthropic } from "@ai-sdk/anthropic";
-import { createGoogleGenerativeAI } from "@ai-sdk/google";
-import { createOpenAI } from "@ai-sdk/openai";
 import { api } from "@cmux/convex/api";
-import { generateText, type LanguageModel } from "ai";
+import { generateText } from "ai";
 import { convex } from "../utils/convexClient.js";
 import { serverLogger } from "./fileLogger.js";
-
-function getModelAndProvider(apiKeys: Record<string, string>): { model: LanguageModel; providerName: string } | null {
-  if (apiKeys.OPENAI_API_KEY) {
-    const openai = createOpenAI({ apiKey: apiKeys.OPENAI_API_KEY });
-    return { model: openai("gpt-5-nano"), providerName: "OpenAI" };
-  }
-  if (apiKeys.GEMINI_API_KEY) {
-    const google = createGoogleGenerativeAI({ apiKey: apiKeys.GEMINI_API_KEY });
-    return { model: google("gemini-2.5-flash"), providerName: "Gemini" };
-  }
-  if (apiKeys.ANTHROPIC_API_KEY) {
-    const anthropic = createAnthropic({ apiKey: apiKeys.ANTHROPIC_API_KEY });
-    return { model: anthropic("claude-3-5-haiku-20241022"), providerName: "Anthropic" };
-  }
-  return null;
-}
+import { getModelAndProvider } from "./modelProvider.js";
 
 export async function generateCommitMessageFromDiff(diff: string): Promise<string | null> {
   const apiKeys = await convex.query(api.apiKeys.getAllForAgents);
