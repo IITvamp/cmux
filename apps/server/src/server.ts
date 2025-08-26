@@ -1689,6 +1689,139 @@ Please address the issue mentioned in the comment above.`;
       serverLogger.info("Client disconnected:", socket.id);
       // No need to kill terminals on disconnect since they're global
     });
+
+    // Environments: create with server-side encryption
+    socket.on(
+      "environment:create",
+      async (
+        data: {
+          name: string;
+          description?: string;
+          morphSnapshotId?: string;
+          maintenanceScript?: string;
+          provider?: "morph" | "docker" | "other";
+          // plaintext secrets from client; will be encrypted on server
+          secrets?: Array<{ key: string; value: string }>;
+        },
+        callback: (resp: { success: boolean; id?: string; error?: string }) => void
+      ) => {
+        try {
+          const { getMasterKey, generateSalt, encryptSecretValue } = await import(
+            "./utils/secrets.js"
+          );
+          const masterKey = getMasterKey();
+          const dataKeySalt = generateSalt();
+          const now = Date.now();
+
+          // We must create a temporary env row to get an ID for key derivation label
+          // Instead, derive with a temporary label and patch after create with the true ID
+          // We'll create without secrets then upsert secrets with the known ID
+          const id = await convex.mutation(api.environment_morph.create, {
+            name: data.name,
+            description: data.description,
+            provider: data.provider ?? "morph",
+            morphSnapshotId: data.morphSnapshotId,
+            maintenanceScript: data.maintenanceScript,
+            dataKeySalt,
+            secrets: [],
+            vscode: {
+              provider: data.provider ?? "morph",
+              status: "stopped",
+            },
+          });
+
+          const encrypted = (data.secrets ?? []).map(({ key, value }) => {
+            const payload = encryptSecretValue({
+              masterKey,
+              dataKeySaltB64: dataKeySalt,
+              environmentId: id as unknown as string,
+              value,
+            });
+            return {
+              key,
+              ciphertext: payload.ciphertextB64,
+              iv: payload.ivB64,
+              authTag: payload.authTagB64,
+              createdAt: now,
+              updatedAt: now,
+            };
+          });
+
+          if (encrypted.length > 0) {
+            await convex.mutation(api.environment_morph.upsertSecrets, {
+              id,
+              secrets: encrypted,
+            });
+          }
+
+          await convex.mutation(api.environment_morph.update, {
+            id,
+            status: "ready",
+          });
+
+          callback({ success: true, id: id as unknown as string });
+        } catch (error) {
+          serverLogger.error("environment:create failed", error);
+          callback({
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+    );
+
+    // Upsert environment variables securely
+    socket.on(
+      "environment:upsert-secrets",
+      async (
+        data: {
+          envId: string;
+          secrets: Array<{ key: string; value: string }>;
+        },
+        callback: (resp: { success: boolean; error?: string }) => void
+      ) => {
+        try {
+          const { getMasterKey, encryptSecretValue } = await import(
+            "./utils/secrets.js"
+          );
+          const env = await convex.query(api.environment_morph.get, {
+            id: data.envId as any,
+          });
+          if (!env || !env.dataKeySalt) {
+            throw new Error("Environment not found or missing dataKeySalt");
+          }
+          const masterKey = getMasterKey();
+          const now = Date.now();
+          const encrypted = data.secrets.map(({ key, value }) => {
+            const payload = encryptSecretValue({
+              masterKey,
+              dataKeySaltB64: env.dataKeySalt as string,
+              environmentId: data.envId,
+              value,
+            });
+            return {
+              key,
+              ciphertext: payload.ciphertextB64,
+              iv: payload.ivB64,
+              authTag: payload.authTagB64,
+              createdAt: now,
+              updatedAt: now,
+            };
+          });
+          await convex.mutation(api.environment_morph.upsertSecrets, {
+            id: data.envId as any,
+            secrets: encrypted,
+          });
+          callback({ success: true });
+        } catch (error) {
+          serverLogger.error("environment:upsert-secrets failed", error);
+          callback({
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+    );
   });
 
   const server = httpServer.listen(port, async () => {

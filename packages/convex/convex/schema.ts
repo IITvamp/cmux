@@ -226,6 +226,67 @@ const convexSchema = defineSchema({
   })
     .index("by_comment", ["commentId", "createdAt"])
     .index("by_user", ["userId", "createdAt"]),
+
+  // Environments table for Morph-specific environments
+  // Stores metadata, maintenance script, and encrypted secrets
+  environment_morph: defineTable({
+    name: v.string(),
+    description: v.optional(v.string()),
+    provider: v.optional(
+      v.union(v.literal("morph"), v.literal("docker"), v.literal("other"))
+    ),
+    status: v.optional(
+      v.union(
+        v.literal("creating"),
+        v.literal("ready"),
+        v.literal("error")
+      )
+    ),
+    morphSnapshotId: v.optional(v.string()),
+    maintenanceScript: v.optional(v.string()),
+    // Salt used to derive a per-environment data key (HKDF) from the server master key
+    dataKeySalt: v.optional(v.string()), // base64
+    // Encrypted secrets (values never stored in plaintext). Values are AES-GCM encrypted with a per-env key
+    secrets: v.optional(
+      v.array(
+        v.object({
+          key: v.string(),
+          // base64-encoded ciphertext and authTag/iv
+          ciphertext: v.string(),
+          iv: v.string(),
+          authTag: v.string(),
+          createdAt: v.number(),
+          updatedAt: v.number(),
+        })
+      )
+    ),
+    // Optional VSCode instance info for environments
+    vscode: v.optional(
+      v.object({
+        provider: v.union(
+          v.literal("docker"),
+          v.literal("morph"),
+          v.literal("daytona"),
+          v.literal("other")
+        ),
+        status: v.union(
+          v.literal("starting"),
+          v.literal("running"),
+          v.literal("stopped")
+        ),
+        url: v.optional(v.string()),
+        workspaceUrl: v.optional(v.string()),
+        startedAt: v.optional(v.number()),
+        stoppedAt: v.optional(v.number()),
+      })
+    ),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    userId: v.optional(v.string()),
+  })
+    .index("by_created", ["createdAt"]) 
+    .index("by_name", ["name"]) 
+    .index("by_provider", ["provider", "createdAt"]),
 });
 
 export default convexSchema;
