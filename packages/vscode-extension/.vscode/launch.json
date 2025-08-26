@@ -8,7 +8,7 @@
       "runtimeExecutable": "${execPath}",
       "args": [
         "--extensionDevelopmentPath=${workspaceFolder}",
-        "/Users/lawrencechen/cmux/cmux/worktrees/cmux/update-readme-to-bold-the-last-line-967vq"
+        "/Users/lawrencechen/fun/cmux2"
       ],
       "preLaunchTask": "Build cmux extension",
       "outFiles": [
@@ -23,7 +23,7 @@
       "args": [
         "--disable-extensions",
         "--extensionDevelopmentPath=${workspaceFolder}",
-        "/Users/lawrencechen/cmux/cmux/worktrees/cmux/update-readme-to-bold-the-last-line-967vq"
+        "/Users/lawrencechen/fun/cmux2"
       ],
       "preLaunchTask": "Build cmux extension",
       "outFiles": [
