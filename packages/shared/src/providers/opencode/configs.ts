@@ -157,6 +157,36 @@ export const OPENCODE_GPT_5_NANO_CONFIG: AgentConfig = {
   apiKeys: [OPENAI_API_KEY],
 };
 
+export const OPENCODE_GPT_OSS_120B_CONFIG: AgentConfig = {
+  name: "opencode/gpt-oss-120b",
+  command: "bunx",
+  args: [
+    "opencode-ai@latest",
+    "--prompt",
+    "$PROMPT",
+    "--model",
+    "openrouter/openai/gpt-oss-120b",
+  ],
+  environment: getOpencodeEnvironment,
+  checkRequirements: checkOpencodeRequirements,
+  apiKeys: [OPENROUTER_API_KEY],
+};
+
+export const OPENCODE_GPT_OSS_20B_CONFIG: AgentConfig = {
+  name: "opencode/gpt-oss-20b",
+  command: "bunx",
+  args: [
+    "opencode-ai@latest",
+    "--prompt",
+    "$PROMPT",
+    "--model",
+    "openrouter/openai/gpt-oss-20b",
+  ],
+  environment: getOpencodeEnvironment,
+  checkRequirements: checkOpencodeRequirements,
+  apiKeys: [OPENROUTER_API_KEY],
+};
+
 export const OPENCODE_OPUS_4_1_20250805_CONFIG: AgentConfig = {
   name: "opencode/opus-4.1-20250805",
   command: "bunx",
