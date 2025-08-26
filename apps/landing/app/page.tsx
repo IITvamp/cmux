@@ -116,8 +116,8 @@ export default function LandingPage() {
         </div>
       </header>
 
-      <section className="pt-10 pb-8 px-4 sm:px-6 lg:px-12">
-        <div className="container max-w-5xl mx-auto">
+      <section className="pt-10 pb-8">
+        <div className="container max-w-5xl mx-auto px-3 sm:px-5">
           <div className="grid grid-cols-[4px_1fr] gap-6">
             <div className="bg-blue-500 rounded-sm" aria-hidden="true"></div>
             <div>
@@ -216,7 +216,9 @@ export default function LandingPage() {
               </div>
             </div>
           </div>
-          {/* First demo image combined with hero */}
+        </div>
+        {/* First demo image combined with hero - full width */}
+        <div className="px-4 sm:px-6 lg:px-12">
           <div className="mt-16 mb-8 relative overflow-hidden rounded-lg max-w-4xl mx-auto">
             <Image
               src="/cmux-demo-2.png"
