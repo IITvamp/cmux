@@ -26,7 +26,7 @@ async function stopDockerContainer(containerName: string): Promise<void> {
     // If docker stop failed, check if it's already exited/stopped
     try {
       const { stdout } = await execAsync(
-        `docker ps -a --filter "name=${containerName}" --format "{{.Status}}"`
+        `docker ps -a --filter "name=^${containerName}$" --format "{{.Status}}"`
       );
       if (stdout.toLowerCase().includes("exited")) {
         // Consider success if the container is already stopped
@@ -110,9 +110,13 @@ export function stopContainersForRunsFromTree(
           `Stopping ${t.provider} container for run ${t.runId}: ${t.containerName}`
         );
         if (t.provider === "docker") {
-          await stopDockerContainer(t.containerName);
+          // Remove 'docker-' prefix for actual Docker commands
+          const actualContainerName = t.containerName.startsWith("docker-") 
+            ? t.containerName.substring(7) 
+            : t.containerName;
+          await stopDockerContainer(actualContainerName);
           serverLogger.info(
-            `Successfully stopped Docker container: ${t.containerName}`
+            `Successfully stopped Docker container: ${t.containerName} (actual: ${actualContainerName})`
           );
           return { success: true, containerName: t.containerName, provider: t.provider };
         }

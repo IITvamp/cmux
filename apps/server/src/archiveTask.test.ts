@@ -149,4 +149,74 @@ describe.sequential("stopContainersForRuns (docker E2E)", () => {
     const results = await stopContainersForRunsFromTree(treeMissing, "t-missing");
     expect(results[0]?.success).toBe(false);
   }, 60_000);
+
+  it("handles container names with docker- prefix correctly", async () => {
+    // This test ensures that docker- prefixed names (as stored in DB) are properly
+    // stripped when executing Docker commands
+    const actualContainerName = `cmux-test-prefix-${randomSuffix()}`;
+    const dbStoredName = `docker-${actualContainerName}`; // How it's stored in DB
+    containers.push(actualContainerName);
+
+    // Create actual container (without docker- prefix)
+    await docker(`docker run -d --name ${actualContainerName} alpine:3 sh -c 'sleep 300'`);
+
+    // Test with docker- prefixed name (as stored in DB) - should succeed
+    const treeWithPrefix = [
+      {
+        _id: zidRun.parse("r5"),
+        _creationTime: now,
+        taskId: zidTask.parse("t-prefix"),
+        prompt: "p",
+        status: "running",
+        log: "",
+        createdAt: now,
+        updatedAt: now,
+        vscode: { provider: "docker", status: "running", containerName: dbStoredName },
+        children: [],
+      },
+    ] satisfies FunctionReturnType<typeof api.taskRuns.getByTask>;
+
+    const prefixResults = await stopContainersForRunsFromTree(treeWithPrefix, "t-prefix");
+    expect(prefixResults[0]?.success).toBe(true);
+
+    // Verify container was stopped
+    const { stdout } = await docker(
+      `docker inspect -f '{{.State.Running}}' ${actualContainerName}`
+    );
+    expect(stdout.trim()).toBe("false");
+  }, 60_000);
+
+  it("handles non-prefixed container names for backward compatibility", async () => {
+    // Test backward compatibility: containers without docker- prefix should still work
+    const containerName = `cmux-test-compat-${randomSuffix()}`;
+    containers.push(containerName);
+
+    // Create actual container
+    await docker(`docker run -d --name ${containerName} alpine:3 sh -c 'sleep 300'`);
+
+    // Test with non-prefixed name (for backward compatibility)
+    const treeNonPrefixed = [
+      {
+        _id: zidRun.parse("r7"),
+        _creationTime: now,
+        taskId: zidTask.parse("t-compat"),
+        prompt: "p",
+        status: "running",
+        log: "",
+        createdAt: now,
+        updatedAt: now,
+        vscode: { provider: "docker", status: "running", containerName: containerName },
+        children: [],
+      },
+    ] satisfies FunctionReturnType<typeof api.taskRuns.getByTask>;
+
+    const results = await stopContainersForRunsFromTree(treeNonPrefixed, "t-compat");
+    expect(results[0]?.success).toBe(true);
+
+    // Verify container was stopped
+    const { stdout } = await docker(
+      `docker inspect -f '{{.State.Running}}' ${containerName}`
+    );
+    expect(stdout.trim()).toBe("false");
+  }, 60_000);
 });
