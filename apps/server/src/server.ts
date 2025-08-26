@@ -53,6 +53,7 @@ import { waitForConvex } from "./utils/waitForConvex.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getProjectPaths } from "./workspace.js";
+import { detectAvailableApplications, openWithApplication } from "./utils/detectApplications.js";
 
 const execAsync = promisify(exec);
 
@@ -143,8 +144,20 @@ export async function startServer({
 
   setupWebSocketProxy(httpServer);
 
-  io.on("connection", (socket) => {
+  io.on("connection", async (socket) => {
     serverLogger.info("Client connected:", socket.id);
+
+    // Detect available applications and send to client immediately
+    try {
+      const applications = await detectAvailableApplications();
+      socket.emit("detected-applications", { applications });
+      serverLogger.info("Sent detected applications to client:", {
+        clientId: socket.id,
+        availableCount: applications.filter(app => app.available).length,
+      });
+    } catch (error) {
+      serverLogger.error("Failed to detect applications:", error);
+    }
 
     // Send default repo info to newly connected client if available
     if (defaultRepo?.remoteName) {
@@ -160,6 +173,16 @@ export async function startServer({
       socket.emit("default-repo", defaultRepoData);
     }
 
+    socket.on("detect-applications", async (callback) => {
+      try {
+        const applications = await detectAvailableApplications();
+        callback({ applications });
+      } catch (error) {
+        serverLogger.error("Failed to detect applications:", error);
+        callback({ applications: [] });
+      }
+    });
+    
     socket.on("start-task", async (data, callback) => {
       const taskData = StartTaskSchema.parse(data);
       serverLogger.info("starting task!", taskData);
@@ -707,63 +730,15 @@ export async function startServer({
     socket.on("open-in-editor", async (data, callback) => {
       try {
         const { editor, path } = OpenInEditorSchema.parse(data);
-
-        let command: string[];
-        switch (editor) {
-          case "vscode":
-            command = ["code", path];
-            break;
-          case "cursor":
-            command = ["cursor", path];
-            break;
-          case "windsurf":
-            command = ["windsurf", path];
-            break;
-          case "finder": {
-            if (process.platform !== "darwin") {
-              throw new Error("Finder is only supported on macOS");
-            }
-            // Use macOS 'open' to open the folder in Finder
-            command = ["open", path];
-            break;
-          }
-          default:
-            throw new Error(`Unknown editor: ${editor}`);
+        
+        serverLogger.info(`Opening ${path} with ${editor}`);
+        
+        await openWithApplication(editor, path);
+        serverLogger.info(`Successfully opened ${path} in ${editor}`);
+        
+        if (callback) {
+          callback({ success: true });
         }
-
-        console.log("command", command);
-
-        const childProcess = spawn(command[0], command.slice(1));
-
-        childProcess.on("close", (code) => {
-          if (code === 0) {
-            serverLogger.info(`Successfully opened ${path} in ${editor}`);
-            // Send success callback
-            if (callback) {
-              callback({ success: true });
-            }
-          } else {
-            serverLogger.error(
-              `Error opening ${editor}: process exited with code ${code}`
-            );
-            const error = `Failed to open ${editor}: process exited with code ${code}`;
-            socket.emit("open-in-editor-error", { error });
-            // Send error callback
-            if (callback) {
-              callback({ success: false, error });
-            }
-          }
-        });
-
-        childProcess.on("error", (error) => {
-          serverLogger.error(`Error opening ${editor}:`, error);
-          const errorMessage = `Failed to open ${editor}: ${error.message}`;
-          socket.emit("open-in-editor-error", { error: errorMessage });
-          // Send error callback
-          if (callback) {
-            callback({ success: false, error: errorMessage });
-          }
-        });
       } catch (error) {
         serverLogger.error("Error opening editor:", error);
         const errorMessage =

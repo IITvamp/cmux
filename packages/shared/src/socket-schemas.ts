@@ -138,7 +138,7 @@ export const GitFullDiffResponseSchema = z.object({
 });
 
 export const OpenInEditorSchema = z.object({
-  editor: z.enum(["vscode", "cursor", "windsurf", "finder"]),
+  editor: z.string(), // Changed to string to support dynamic app list
   path: z.string(),
 });
 
@@ -149,6 +149,19 @@ export const OpenInEditorErrorSchema = z.object({
 export const OpenInEditorResponseSchema = z.object({
   success: z.boolean(),
   error: z.string().optional(),
+});
+
+// Application detection events
+export const AvailableApplicationSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  type: z.enum(["editor", "terminal", "ide"]),
+  available: z.boolean(),
+  path: z.string().optional(),
+});
+
+export const DetectApplicationsResponseSchema = z.object({
+  applications: z.array(AvailableApplicationSchema),
 });
 
 // File listing events
@@ -344,6 +357,8 @@ export type GitFullDiffResponse = z.infer<typeof GitFullDiffResponseSchema>;
 export type OpenInEditor = z.infer<typeof OpenInEditorSchema>;
 export type OpenInEditorError = z.infer<typeof OpenInEditorErrorSchema>;
 export type OpenInEditorResponse = z.infer<typeof OpenInEditorResponseSchema>;
+export type AvailableApplication = z.infer<typeof AvailableApplicationSchema>;
+export type DetectApplicationsResponse = z.infer<typeof DetectApplicationsResponseSchema>;
 export type ListFilesRequest = z.infer<typeof ListFilesRequestSchema>;
 export type FileInfo = z.infer<typeof FileInfoSchema>;
 export type ListFilesResponse = z.infer<typeof ListFilesResponseSchema>;
@@ -372,6 +387,10 @@ export type DefaultRepo = z.infer<typeof DefaultRepoSchema>;
 
 // Socket.io event map types
 export interface ClientToServerEvents {
+  // Application detection
+  "detect-applications": (
+    callback: (response: DetectApplicationsResponse) => void
+  ) => void;
   // Terminal operations
   "start-task": (
     data: StartTask,
@@ -482,6 +501,8 @@ export interface ClientToServerEvents {
 }
 
 export interface ServerToClientEvents {
+  // Application detection
+  "detected-applications": (data: DetectApplicationsResponse) => void;
   "task-started": (data: TaskStarted) => void;
   "task-error": (data: TaskError) => void;
   "git-status-response": (data: GitStatusResponse) => void;

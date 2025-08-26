@@ -1,4 +1,4 @@
-import { OpenEditorSplitButton } from "@/components/OpenEditorSplitButton";
+import { OpenEditorSplitButtonEnhanced } from "@/components/OpenEditorSplitButton-Enhanced";
 import { Dropdown } from "@/components/ui/dropdown";
 import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
 import { useSocket } from "@/contexts/socket/use-socket";
@@ -220,7 +220,7 @@ export function TaskDetailHeader({
             </button>
           )}
 
-          <OpenEditorSplitButton worktreePath={worktreePath} />
+          <OpenEditorSplitButtonEnhanced worktreePath={worktreePath} />
 
           <button className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-white select-none hidden">
             <ExternalLink className="w-3.5 h-3.5" />
