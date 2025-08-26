@@ -235,12 +235,6 @@ function startSocketServer() {
         });
       });
 
-      
-
-      
-
-      
-
       // Terminal operations
       socket.on("vscode:create-terminal", (data, callback) => {
         try {
