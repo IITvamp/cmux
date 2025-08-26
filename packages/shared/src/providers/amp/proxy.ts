@@ -167,6 +167,33 @@ export function startAmpProxy(options: AmpProxyOptions = {}) {
         res.statusCode = proxyResponse.status;
         res.statusMessage = proxyResponse.statusText;
         responseHeaders.forEach((v, k) => res.setHeader(k, v));
+
+        const responseContentType =
+          proxyResponse.headers.get("content-type") || "";
+
+        let responseBodyForClient: string | Uint8Array | null = null;
+        try {
+          if (
+            typeof responseContentType === "string" &&
+            (responseContentType.includes("application/json") ||
+              responseContentType.startsWith("text/"))
+          ) {
+            responseBodyForClient = await proxyResponse.text();
+          } else {
+            const ab = await proxyResponse.arrayBuffer();
+            responseBodyForClient = new Uint8Array(ab);
+          }
+        } catch {
+          responseBodyForClient = null;
+        }
+
+        if (typeof responseBodyForClient === "string") {
+          res.end(responseBodyForClient);
+        } else if (responseBodyForClient) {
+          res.end(Buffer.from(responseBodyForClient));
+        } else {
+          res.end();
+        }
       });
     });
 
