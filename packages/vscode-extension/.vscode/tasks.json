@@ -1,0 +1,13 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Build cmux extension",
+      "type": "shell",
+      "command": "pnpm",
+      "args": ["-w", "--filter", "cmux-vscode-extension", "run", "compile-bun"],
+      "problemMatcher": []
+    }
+  ]
+}
+

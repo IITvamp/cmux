@@ -6,6 +6,7 @@ import * as vscode from "vscode";
 
 // Create output channel for cmux logs
 const outputChannel = vscode.window.createOutputChannel("cmux");
+const debugShowOutput = process.env.CMUX_DEBUG_SHOW_OUTPUT === "1";
 
 // Log immediately when module loads
 console.log("[cmux] Extension module loaded");
@@ -58,7 +59,36 @@ async function resolveDefaultBaseRef(repositoryPath: string): Promise<string> {
   return "origin/main";
 }
 
-async function openMultiDiffEditor(baseRef?: string) {
+function tryExecGit(repoPath: string, cmd: string): string | null {
+  try {
+    const { execSync } = require("node:child_process");
+    const out: string = execSync(cmd, { cwd: repoPath, encoding: "utf8" });
+    return out.trim();
+  } catch {
+    return null;
+  }
+}
+
+async function resolveMergeBase(
+  repositoryPath: string,
+  defaultBaseRef: string
+): Promise<string | null> {
+  const hasBase = tryExecGit(
+    repositoryPath,
+    `git rev-parse --verify --quiet "${defaultBaseRef}^{}"`
+  );
+  if (!hasBase) {
+    // Best-effort fetch to get remote refs; ignore failures
+    tryExecGit(repositoryPath, "git fetch --quiet origin --prune");
+  }
+  const mergeBase = tryExecGit(
+    repositoryPath,
+    `git merge-base HEAD "${defaultBaseRef}"`
+  );
+  return mergeBase && /^[0-9a-f]{7,40}$/i.test(mergeBase) ? mergeBase : null;
+}
+
+async function openMultiDiffEditor(baseRef?: string, useMergeBase: boolean = true) {
   // Get the Git extension
   const gitExtension = vscode.extensions.getExtension("vscode.git");
   if (!gitExtension) {
@@ -79,12 +109,20 @@ async function openMultiDiffEditor(baseRef?: string) {
   // The resource group IDs are: 'index', 'workingTree', 'untracked', 'merge'
   // You can open the working tree changes view even if empty
   const repoPath = repository.rootUri.fsPath;
-  const resolvedBase = baseRef || (await resolveDefaultBaseRef(repoPath));
+  const resolvedDefaultBase = baseRef || (await resolveDefaultBaseRef(repoPath));
+  const resolvedMergeBase = useMergeBase
+    ? await resolveMergeBase(repoPath, resolvedDefaultBase)
+    : null;
+  const effectiveBase = resolvedMergeBase || resolvedDefaultBase;
   await vscode.commands.executeCommand("_workbench.openScmMultiDiffEditor", {
-    title: `Git: Changes vs ${resolvedBase.replace(/^refs\/remotes\//, "")}`,
+    title: `Git: Changes vs ${
+      resolvedMergeBase
+        ? `merge-base(${resolvedDefaultBase.replace(/^refs\/remotes\//, "")})`
+        : resolvedDefaultBase.replace(/^refs\/remotes\//, "")
+    }`,
     repositoryUri: vscode.Uri.file(repoPath),
     resourceGroupId: "workingTree",
-    baseRef: resolvedBase, // hint to compare against default branch (best-effort)
+    baseRef: effectiveBase, // commit SHA (merge-base) or default branch ref
   });
 }
 
@@ -285,8 +323,13 @@ export function activate(context: vscode.ExtensionContext) {
 
   log("[cmux] Extension activated, output channel ready");
 
-  // Ensure output panel is hidden on activation
-  vscode.commands.executeCommand("workbench.action.closePanel");
+  // In dev runs, optionally show output for visibility
+  if (debugShowOutput) {
+    outputChannel.show(true);
+  } else {
+    // Otherwise keep the panel closed for a cleaner UX
+    vscode.commands.executeCommand("workbench.action.closePanel");
+  }
 
   log("cmux is being activated");
 
@@ -315,8 +358,17 @@ export function activate(context: vscode.ExtensionContext) {
     }
   });
 
+  // Open all changes vs default base (origin/HEAD or origin/main)
+  const openAllChangesVsBase = vscode.commands.registerCommand(
+    "cmux.git.openAllChangesAgainstBase",
+    async () => {
+      await openMultiDiffEditor(undefined, true);
+    }
+  );
+
   context.subscriptions.push(disposable);
   context.subscriptions.push(run);
+  context.subscriptions.push(openAllChangesVsBase);
 }
 
 export function deactivate() {
