@@ -22,7 +22,11 @@ import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
 import { HeadingNode, QuoteNode } from "@lexical/rich-text";
 import clsx from "clsx";
-import { COMMAND_PRIORITY_HIGH, KEY_ENTER_COMMAND } from "lexical";
+import { 
+  COMMAND_PRIORITY_HIGH, 
+  KEY_ENTER_COMMAND,
+  $insertNodes
+} from "lexical";
 import { useEffect, useRef } from "react";
 import { EditorStatePlugin } from "./EditorStatePlugin";
 import { ImageNode } from "./ImageNode";
@@ -105,7 +109,8 @@ function KeyboardCommandPlugin({ onSubmit }: { onSubmit?: () => void }) {
   const [editor] = useLexicalComposerContext();
 
   useEffect(() => {
-    return editor.registerCommand(
+    // Handle Ctrl/Cmd+Enter for submit
+    const unregisterEnter = editor.registerCommand(
       KEY_ENTER_COMMAND,
       (event: KeyboardEvent) => {
         if ((event.metaKey || event.ctrlKey) && onSubmit) {
@@ -117,6 +122,31 @@ function KeyboardCommandPlugin({ onSubmit }: { onSubmit?: () => void }) {
       },
       COMMAND_PRIORITY_HIGH
     );
+
+    // Handle Ctrl+J for inserting newline
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.ctrlKey && event.key === 'j') {
+        event.preventDefault();
+        editor.update(() => {
+          // Insert a paragraph break instead of line break for better compatibility
+          const paragraph = $createParagraphNode();
+          $insertNodes([paragraph]);
+        });
+      }
+    };
+
+    // Add event listener to the root element
+    const rootElement = editor.getRootElement();
+    if (rootElement) {
+      rootElement.addEventListener('keydown', handleKeyDown);
+    }
+
+    return () => {
+      unregisterEnter();
+      if (rootElement) {
+        rootElement.removeEventListener('keydown', handleKeyDown);
+      }
+    };
   }, [editor, onSubmit]);
 
   return null;
