@@ -1012,10 +1012,62 @@ async function createTerminal(
   const INITIAL_ERROR_CAPTURE_WINDOW_MS = 30000; // capture up to first 30s
   const stopErrorCaptureAt = Date.now() + INITIAL_ERROR_CAPTURE_WINDOW_MS;
   let opencodeStdoutBuf = "";
+  let cursorStdoutBuf = "";
+  // Track if detection completed successfully (used by multiple detection methods)
+  let idleDetectionCompleted = false;
   const providerResolved = resolveProviderFromModel(options.agentModel);
   childProcess.stdout.on("data", (data: Buffer) => {
     const chunk = data.toString();
     headlessTerminal.write(chunk);
+    
+    // Parse Cursor stdout for deterministic completion events (stream-json format)
+    if (providerResolved === "cursor" && options.taskRunId) {
+      try {
+        cursorStdoutBuf += chunk;
+        // Process complete lines only
+        const lines = cursorStdoutBuf.split(/\r?\n/);
+        cursorStdoutBuf = lines.pop() || ""; // keep last partial
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          
+          // Parse JSON line
+          try {
+            const event = JSON.parse(trimmed) as any;
+            
+            // Check for terminal result event
+            if (
+              event.type === "result" && 
+              event.subtype === "success" && 
+              event.is_error === false
+            ) {
+              log("INFO", "[Cursor] Task completion detected via stream-json", {
+                taskRunId: options.taskRunId,
+                duration_ms: event.duration_ms,
+                session_id: event.session_id,
+              });
+              
+              if (!idleDetectionCompleted) {
+                idleDetectionCompleted = true;
+                const elapsedMs = Date.now() - processStartTime;
+                emitToMainServer("worker:task-complete", {
+                  workerId: WORKER_ID,
+                  taskRunId: options.taskRunId,
+                  agentModel: options.agentModel,
+                  elapsedMs,
+                  detectionMethod: "stream-json",
+                });
+              }
+            }
+          } catch (parseErr) {
+            // Skip malformed JSON lines
+          }
+        }
+      } catch (e) {
+        log("ERROR", `[Cursor] stdout processing error: ${e}`);
+      }
+    }
+    
     // Parse OpenCode stdout for deterministic completion events
     if (providerResolved === "opencode" && options.taskRunId) {
       try {
@@ -1172,16 +1224,14 @@ async function createTerminal(
       taskRunId: options.taskRunId,
     });
 
-    // Track if detection completed successfully
-    let idleDetectionCompleted = false;
-
     // Use new task completion detection if agentModel is provided
     if (options.agentModel && options.taskRunId) {
       // For Claude, Codex, and Gemini use project/log detection only; allow idle fallback for OpenCode
       const useTerminalIdleFallback = !(
         providerResolved === "claude" ||
         providerResolved === "codex" ||
-        providerResolved === "gemini"
+        providerResolved === "gemini" ||
+        providerResolved === "cursor"
       );
 
       log(
@@ -1523,7 +1573,7 @@ process.on("SIGINT", gracefulShutdown);
 // Task Completion (DI approach)
 // ==============================
 
-type AgentType = "claude" | "codex" | "gemini" | "amp" | "opencode";
+type AgentType = "claude" | "codex" | "gemini" | "amp" | "opencode" | "cursor";
 
 interface TaskCompletionOptionsDI {
   taskRunId: string;
@@ -1717,12 +1767,9 @@ function resolveProviderFromModel(model?: string): AgentType | undefined {
   // Special case: "amp" doesn't have a slash
   if (model === "amp") return "amp";
 
-  // Handle cursor models (cursor is not in AgentType, so skip it)
-  if (model.startsWith("cursor/")) return undefined;
-
   // Extract prefix before the slash
   const prefix = model.split("/")[0] as AgentType;
-  return ["claude", "codex", "gemini", "amp", "opencode"].includes(prefix)
+  return ["claude", "codex", "gemini", "amp", "opencode", "cursor"].includes(prefix)
     ? prefix
     : undefined;
 }
@@ -1803,6 +1850,14 @@ function buildDetectorConfig(params: {
           log("ERROR", `Opencode completion error: ${e}`);
           return false;
         }
+      },
+    },
+    cursor: {
+      allowTerminalIdleFallback: false,
+      async checkCompletion() {
+        // Cursor completion is handled by the event-driven detector in stdout handler
+        // This function is not used for Cursor
+        return false;
       },
     },
   };
