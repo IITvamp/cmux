@@ -121,10 +121,33 @@ export async function markPrReady(
   number: number
 ): Promise<void> {
   const octokit = getOctokit(token);
-  await octokit.request(
-    "PUT /repos/{owner}/{repo}/pulls/{pull_number}/ready_for_review",
-    { owner, repo, pull_number: number }
-  );
+  
+  // GitHub's mark ready for review endpoint requires GraphQL
+  // First, get the PR to obtain its node_id
+  const { data: pr } = await octokit.rest.pulls.get({ 
+    owner, 
+    repo, 
+    pull_number: number 
+  });
+  
+  if (!pr.draft) {
+    // PR is already ready for review
+    return;
+  }
+  
+  // Use GraphQL mutation to mark as ready
+  await octokit.graphql(`
+    mutation markPullRequestReadyForReview($pullRequestId: ID!) {
+      markPullRequestReadyForReview(input: { pullRequestId: $pullRequestId }) {
+        pullRequest {
+          id
+          isDraft
+        }
+      }
+    }
+  `, {
+    pullRequestId: pr.node_id
+  });
 }
 
 export async function reopenPr(
