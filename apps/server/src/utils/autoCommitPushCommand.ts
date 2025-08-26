@@ -10,18 +10,24 @@ export function buildAutoCommitPushCommand(options: {
 
   // Use JSON to produce a double-quoted, escaped string safe for bash -c
   const b = JSON.stringify(branchName);
-  const m = JSON.stringify(commitMessage);
 
-  // Use pipefail so pipelines propagate failures; tolerate no-op commit and missing remote
-  const parts: string[] = [
+  // Build command in three sections so heredoc body is not broken by '&&'
+  const pre = [
     "git add -A",
     // Suppress noisy error when branch already exists, then fallback to checkout
     `(git checkout -b ${b} 2>/dev/null || git checkout ${b})`,
-    `(git commit -m ${m} || echo 'No changes to commit')`,
+    `CMUX_MSG=\$(mktemp)`,
+  ].join(" && ");
+
+  const heredoc = `cat <<'CMUX_EOF' > "\$CMUX_MSG"\n${commitMessage}\nCMUX_EOF`;
+
+  const post = [
+    `(git commit -F "\$CMUX_MSG" || echo 'No changes to commit')`,
+    `rm -f "\$CMUX_MSG"`,
     // If remote branch exists, integrate updates before pushing
     `(git ls-remote --heads origin ${b} | grep -q . && git pull --rebase origin ${b} || echo 'Remote branch missing; skip pull --rebase')`,
     `git push -u origin ${b}`,
-  ];
+  ].join(" && ");
 
-  return parts.join(" && ");
+  return `${pre}\n${heredoc}\n${post}`;
 }

@@ -2,10 +2,11 @@ import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
 import type { AgentConfig } from "@cmux/shared";
 import { tryVSCodeExtensionCommit } from "./tryVSCodeExtensionCommit";
+import { buildAutoCommitPushCommand } from "./utils/autoCommitPushCommand";
+import { generateCommitMessageFromDiff } from "./utils/commitMessageGenerator";
 import { convex } from "./utils/convexClient";
 import { serverLogger } from "./utils/fileLogger";
 import { workerExec } from "./utils/workerExec";
-import { buildAutoCommitPushCommand } from "./utils/autoCommitPushCommand";
 import { VSCodeInstance } from "./vscode/VSCodeInstance";
 
 /**
@@ -46,15 +47,43 @@ export default async function performAutoCommitAndPush(
         ? taskDescription.substring(0, 69) + "..."
         : taskDescription;
 
-    const commitMessage = `${truncatedDescription}
+    // Collect relevant diff from worker via script (does not modify repo index)
+    let commitMessage = "";
+    try {
+      const { stdout: diffOut } = await workerExec({
+        workerSocket,
+        command: "/bin/bash",
+        args: ["-c", "/usr/local/bin/cmux-collect-relevant-diff.sh"],
+        cwd: "/root/workspace",
+        env: {},
+        timeout: 30000,
+      });
+      serverLogger.info(
+        `[AgentSpawner] Collected relevant diff (${diffOut.length} chars)`
+      );
 
-Task completed by ${agent.name} agent${isCrowned ? " 🏆" : ""}
-
-🤖 Generated with cmux
-Agent: ${agent.name}
-Task Run ID: ${taskRunId}
-Branch: ${branchName}
-Completed: ${new Date().toISOString()}`;
+      const aiCommit = await generateCommitMessageFromDiff(diffOut);
+      if (aiCommit && aiCommit.trim()) {
+        commitMessage = aiCommit.trim();
+      } else {
+        console.warn(
+          "No AI commit message generated, falling back to task-based message"
+        );
+        // Fallback to task-based message
+        commitMessage = `${truncatedDescription}\n\nTask completed by ${agent.name} agent${
+          isCrowned ? " 🏆" : ""
+        }`;
+      }
+    } catch (e) {
+      serverLogger.error(
+        `[AgentSpawner] Failed to collect diff or generate commit message:`,
+        e
+      );
+      // Fallback commit message
+      commitMessage = `${truncatedDescription}\n\nTask completed by ${agent.name} agent${
+        isCrowned ? " 🏆" : ""
+      }`;
+    }
     // Try to use VSCode extension API first (more reliable)
     const extensionResult = await tryVSCodeExtensionCommit(
       vscodeInstance,
@@ -106,15 +135,16 @@ Completed: ${new Date().toISOString()}`;
           stderr: stderr?.slice(0, 2000),
         });
         if (exitCode !== 0) {
-          serverLogger.error(
-            `[AgentSpawner] Auto-commit script failed with exit code ${exitCode}`
-          );
+          const errMsg = `[AgentSpawner] Auto-commit script failed with exit code ${exitCode}`;
+          serverLogger.error(errMsg);
+          throw new Error(errMsg);
         }
       } catch (err) {
         serverLogger.error(
           `[AgentSpawner] Error executing auto-commit script`,
           err
         );
+        throw err instanceof Error ? err : new Error(String(err));
       }
     }
 
@@ -238,5 +268,5 @@ ${taskRun.crownReason || "This implementation was selected as the best solution.
     }
   } catch (error) {
     serverLogger.error(`[AgentSpawner] Error in auto-commit and push:`, error);
-  }
+    }
 }
