@@ -1,6 +1,6 @@
 import type { EnvironmentContext, EnvironmentResult } from "../common/environment-result.js";
 
-export async function getOpencodeEnvironment(_ctx: EnvironmentContext): Promise<EnvironmentResult> {
+export async function getOpencodeEnvironment(ctx: EnvironmentContext): Promise<EnvironmentResult> {
   const { readFile } = await import("node:fs/promises");
   const { homedir } = await import("node:os");
   const { Buffer } = await import("node:buffer");
@@ -24,6 +24,11 @@ export async function getOpencodeEnvironment(_ctx: EnvironmentContext): Promise<
   } catch (error) {
     console.warn("Failed to read opencode auth.json:", error);
   }
+
+  // Route OpenCode SDK/CLI through our local proxy with a per-task prefix.
+  // The proxy listens on http://localhost:39380 and expects /task/<taskRunId>/... paths
+  // so it can attribute completion events to the correct task.
+  env.OPENCODE_URL = `http://localhost:39380/task/${ctx.taskRunId}`;
 
   return { files, env, startupCommands };
 }

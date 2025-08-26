@@ -33,6 +33,7 @@ import { checkDockerReadiness } from "./checkDockerReadiness.js";
 import { detectTerminalIdle } from "./detectTerminalIdle.js";
 import { FileWatcher, computeGitDiff, getFileWithDiff } from "./fileWatcher.js";
 import { startAmpProxy } from "@cmux/shared/src/providers/amp/proxy";
+import { startOpencodeProxy } from "@cmux/shared/src/providers/opencode/proxy";
 import { log } from "./logger.js";
 
 const execAsync = promisify(exec);
@@ -1432,6 +1433,13 @@ httpServer.listen(WORKER_PORT, () => {
 // Start AMP proxy via shared provider module
 startAmpProxy({
   ampUrl: process.env.AMP_URL,
+  workerId: WORKER_ID,
+  emitToMainServer: emitToMainServer,
+});
+
+// Start OpenCode proxy (detect completion by inspecting responses)
+startOpencodeProxy({
+  upstreamUrl: process.env.OPENCODE_UPSTREAM_URL || "http://127.0.0.1:4096",
   workerId: WORKER_ID,
   emitToMainServer: emitToMainServer,
 });
