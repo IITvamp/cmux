@@ -172,6 +172,36 @@ export function OpenEditorSplitButton({
                 onValueChange={(val) => {
                   setSelectedEditor(val as EditorType);
                   setMenuOpen(false);
+                  // Auto-open the selected editor
+                  const selectedItem = menuItems.find(m => m.id === val);
+                  if (selectedItem && selectedItem.enabled) {
+                    const name = selectedItem.name;
+                    const loadingToast = toast.loading(`Opening ${name}...`);
+                    handleOpenInEditor(val as EditorType)
+                      .then(() => {
+                        toast.success(`Opened ${name}`, { id: loadingToast });
+                      })
+                      .catch((error: Error) => {
+                        let errorMessage = "Failed to open editor";
+                        if (
+                          error.message?.includes("ENOENT") ||
+                          error.message?.includes("not found") ||
+                          error.message?.includes("command not found")
+                        ) {
+                          if (val === "vscode")
+                            errorMessage = "VS Code is not installed or not found in PATH";
+                          else if (val === "cursor")
+                            errorMessage = "Cursor is not installed or not found in PATH";
+                          else if (val === "windsurf")
+                            errorMessage = "Windsurf is not installed or not found in PATH";
+                          else if (val === "finder")
+                            errorMessage = "Finder is not available or not found";
+                        } else if (error.message) {
+                          errorMessage = error.message;
+                        }
+                        toast.error(errorMessage, { id: loadingToast });
+                      });
+                  }
                 }}
               >
                 {menuItems.map((item) => {
