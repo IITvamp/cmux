@@ -138,7 +138,17 @@ export const GitFullDiffResponseSchema = z.object({
 });
 
 export const OpenInEditorSchema = z.object({
-  editor: z.enum(["vscode", "cursor", "windsurf", "finder"]),
+  editor: z.enum([
+    "vscode",
+    "cursor",
+    "windsurf",
+    "finder",
+    "terminal",
+    "iterm",
+    "ghostty",
+    "alacritty",
+    "xcode",
+  ]),
   path: z.string(),
 });
 
@@ -149,6 +159,19 @@ export const OpenInEditorErrorSchema = z.object({
 export const OpenInEditorResponseSchema = z.object({
   success: z.boolean(),
   error: z.string().optional(),
+});
+
+// Open-with capabilities
+export const OpenWithCapabilitiesSchema = z.object({
+  vscode: z.boolean().optional(),
+  cursor: z.boolean().optional(),
+  windsurf: z.boolean().optional(),
+  finder: z.boolean().optional(),
+  terminal: z.boolean().optional(),
+  iterm: z.boolean().optional(),
+  ghostty: z.boolean().optional(),
+  alacritty: z.boolean().optional(),
+  xcode: z.boolean().optional(),
 });
 
 // File listing events
@@ -344,6 +367,7 @@ export type GitFullDiffResponse = z.infer<typeof GitFullDiffResponseSchema>;
 export type OpenInEditor = z.infer<typeof OpenInEditorSchema>;
 export type OpenInEditorError = z.infer<typeof OpenInEditorErrorSchema>;
 export type OpenInEditorResponse = z.infer<typeof OpenInEditorResponseSchema>;
+export type OpenWithCapabilities = z.infer<typeof OpenWithCapabilitiesSchema>;
 export type ListFilesRequest = z.infer<typeof ListFilesRequestSchema>;
 export type FileInfo = z.infer<typeof FileInfoSchema>;
 export type ListFilesResponse = z.infer<typeof ListFilesResponseSchema>;
@@ -493,6 +517,7 @@ export interface ServerToClientEvents {
   "vscode-spawned": (data: VSCodeSpawned) => void;
   "vscode-error": (data: VSCodeError) => void;
   "default-repo": (data: DefaultRepo) => void;
+  "open-with-capabilities": (data: OpenWithCapabilities) => void;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type

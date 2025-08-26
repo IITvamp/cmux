@@ -1,4 +1,8 @@
-import type { ClientToServerEvents, ServerToClientEvents } from "@cmux/shared";
+import type {
+  ClientToServerEvents,
+  ServerToClientEvents,
+  OpenWithCapabilities,
+} from "@cmux/shared";
 import React, { useEffect, useMemo } from "react";
 import { io, Socket } from "socket.io-client";
 import { SocketContext } from "./socket-context";
@@ -6,6 +10,7 @@ import { SocketContext } from "./socket-context";
 export interface SocketContextType {
   socket: Socket<ServerToClientEvents, ClientToServerEvents> | null;
   isConnected: boolean;
+  openWithCapabilities: OpenWithCapabilities | null;
 }
 
 interface SocketProviderProps {
@@ -21,6 +26,9 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
     SocketContextType["socket"] | null
   >(null);
   const [isConnected, setIsConnected] = React.useState(false);
+  const [openWithCapabilities, setOpenWithCapabilities] = React.useState<
+    OpenWithCapabilities | null
+  >(null);
 
   useEffect(() => {
     const newSocket = io(url, {
@@ -38,6 +46,11 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
       setIsConnected(false);
     });
 
+    // Cache open-with capabilities (emitted immediately on connect by server)
+    newSocket.on("open-with-capabilities", (caps) => {
+      setOpenWithCapabilities(caps);
+    });
+
     return () => {
       newSocket.disconnect();
     };
@@ -47,8 +60,9 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
     () => ({
       socket,
       isConnected,
+      openWithCapabilities,
     }),
-    [socket, isConnected]
+    [socket, isConnected, openWithCapabilities]
   );
 
   return (

@@ -30,7 +30,7 @@ export function OpenWithDropdown({
   className,
   iconClassName = "w-3.5 h-3.5",
 }: OpenWithDropdownProps) {
-  const { socket } = useSocket();
+  const { socket, openWithCapabilities } = useSocket();
 
   useEffect(() => {
     if (!socket) return;
@@ -46,6 +46,18 @@ export function OpenWithDropdown({
     };
   }, [socket]);
 
+  const serverEditors = [
+    "cursor",
+    "vscode",
+    "windsurf",
+    "finder",
+    "terminal",
+    "iterm",
+    "ghostty",
+    "alacritty",
+    "xcode",
+  ] as const;
+
   const handleOpenInEditor = useCallback(
     (editor: EditorType): Promise<void> => {
       return new Promise((resolve, reject) => {
@@ -55,13 +67,13 @@ export function OpenWithDropdown({
           resolve();
         } else if (
           socket &&
-          ["cursor", "vscode", "windsurf", "finder"].includes(editor) &&
+          (serverEditors as readonly string[]).includes(editor) &&
           worktreePath
         ) {
           socket.emit(
             "open-in-editor",
             {
-              editor: editor as "cursor" | "vscode" | "windsurf" | "finder",
+              editor: editor as (typeof serverEditors)[number],
               path: worktreePath,
             },
             (response) => {
@@ -93,6 +105,8 @@ export function OpenWithDropdown({
     }
   }, [branch]);
 
+  const caps = openWithCapabilities;
+
   const menuItems: MenuItem[] = [
     {
       id: "vscode-remote" as const,
@@ -102,11 +116,16 @@ export function OpenWithDropdown({
     {
       id: "vscode" as const,
       name: "VS Code (local)",
-      enabled: !!worktreePath,
+      enabled: !!worktreePath && !!caps?.vscode,
     },
-    { id: "cursor" as const, name: "Cursor", enabled: !!worktreePath },
-    { id: "windsurf" as const, name: "Windsurf", enabled: !!worktreePath },
-    { id: "finder" as const, name: "Finder", enabled: !!worktreePath },
+    { id: "cursor" as const, name: "Cursor", enabled: !!worktreePath && !!caps?.cursor },
+    { id: "windsurf" as const, name: "Windsurf", enabled: !!worktreePath && !!caps?.windsurf },
+    { id: "finder" as const, name: "Finder", enabled: !!worktreePath && !!caps?.finder },
+    { id: "terminal" as const, name: "Terminal", enabled: !!worktreePath && !!caps?.terminal },
+    { id: "iterm" as const, name: "iTerm", enabled: !!worktreePath && !!caps?.iterm },
+    { id: "ghostty" as const, name: "Ghostty", enabled: !!worktreePath && !!caps?.ghostty },
+    { id: "alacritty" as const, name: "Alacritty", enabled: !!worktreePath && !!caps?.alacritty },
+    { id: "xcode" as const, name: "Xcode", enabled: !!worktreePath && !!caps?.xcode },
   ];
 
   return (

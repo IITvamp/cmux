@@ -29,6 +29,7 @@ import { stopContainersForRuns } from "./archiveTask.js";
 import { execWithEnv } from "./execWithEnv.js";
 import { GitDiffManager } from "./gitDiff.js";
 import { createProxyApp, setupWebSocketProxy } from "./proxyApp.js";
+import { detectOpenWithCapabilities } from "./utils/detectOpenWith.js";
 import { RepositoryManager } from "./repositoryManager.js";
 import { getPRTitleFromTaskDescription } from "./utils/branchNameGenerator.js";
 import { convex } from "./utils/convexClient.js";
@@ -159,6 +160,16 @@ export async function startServer({
       );
       socket.emit("default-repo", defaultRepoData);
     }
+
+    // Early capability check for "Open with" targets
+    (async () => {
+      try {
+        const caps = await detectOpenWithCapabilities();
+        socket.emit("open-with-capabilities", caps);
+      } catch (err) {
+        serverLogger.warn("Failed to detect open-with capabilities:", err);
+      }
+    })();
 
     socket.on("start-task", async (data, callback) => {
       const taskData = StartTaskSchema.parse(data);
@@ -725,6 +736,50 @@ export async function startServer({
             }
             // Use macOS 'open' to open the folder in Finder
             command = ["open", path];
+            break;
+          }
+          case "terminal": {
+            if (process.platform !== "darwin") {
+              throw new Error("Terminal is only supported on macOS in this build");
+            }
+            command = ["open", "-a", "Terminal", path];
+            break;
+          }
+          case "iterm": {
+            if (process.platform !== "darwin") {
+              throw new Error("iTerm is only supported on macOS");
+            }
+            command = ["open", "-a", "iTerm", path];
+            break;
+          }
+          case "ghostty": {
+            if (process.platform === "darwin") {
+              // Prefer CLI if present, otherwise fall back to app
+              command = ["sh", "-lc", `command -v ghostty >/dev/null 2>&1 && ghostty --working-directory ${JSON.stringify(path)} || open -a Ghostty ${JSON.stringify(path)}`];
+            } else {
+              command = ["ghostty", "--working-directory", path];
+            }
+            break;
+          }
+          case "alacritty": {
+            if (process.platform === "darwin") {
+              // Prefer CLI if present, otherwise use app
+              command = ["sh", "-lc", `command -v alacritty >/dev/null 2>&1 && alacritty --working-directory ${JSON.stringify(path)} || open -a Alacritty ${JSON.stringify(path)}`];
+            } else {
+              command = ["alacritty", "--working-directory", path];
+            }
+            break;
+          }
+          case "xcode": {
+            if (process.platform !== "darwin") {
+              throw new Error("Xcode is only supported on macOS");
+            }
+            // Prefer xed if available, otherwise use open -a Xcode
+            command = [
+              "sh",
+              "-lc",
+              `command -v xed >/dev/null 2>&1 && xed ${JSON.stringify(path)} || open -a Xcode ${JSON.stringify(path)}`,
+            ];
             break;
           }
           default:

@@ -7,7 +7,16 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { MenuArrow } from "./ui/menu";
 
-type EditorType = "cursor" | "vscode" | "windsurf" | "finder";
+type EditorType =
+  | "cursor"
+  | "vscode"
+  | "windsurf"
+  | "finder"
+  | "terminal"
+  | "iterm"
+  | "ghostty"
+  | "alacritty"
+  | "xcode";
 
 interface OpenEditorSplitButtonProps {
   worktreePath?: string | null;
@@ -20,7 +29,7 @@ export function OpenEditorSplitButton({
   classNameLeft,
   classNameRight,
 }: OpenEditorSplitButtonProps) {
-  const { socket } = useSocket();
+  const { socket, openWithCapabilities } = useSocket();
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -34,14 +43,20 @@ export function OpenEditorSplitButton({
     };
   }, [socket]);
 
+  const caps = openWithCapabilities;
   const menuItems = useMemo(
     () => [
-      { id: "vscode" as const, name: "VS Code", enabled: !!worktreePath },
-      { id: "cursor" as const, name: "Cursor", enabled: !!worktreePath },
-      { id: "windsurf" as const, name: "Windsurf", enabled: !!worktreePath },
-      { id: "finder" as const, name: "Finder", enabled: !!worktreePath },
+      { id: "vscode" as const, name: "VS Code", enabled: !!worktreePath && !!caps?.vscode },
+      { id: "cursor" as const, name: "Cursor", enabled: !!worktreePath && !!caps?.cursor },
+      { id: "windsurf" as const, name: "Windsurf", enabled: !!worktreePath && !!caps?.windsurf },
+      { id: "finder" as const, name: "Finder", enabled: !!worktreePath && !!caps?.finder },
+      { id: "terminal" as const, name: "Terminal", enabled: !!worktreePath && !!caps?.terminal },
+      { id: "iterm" as const, name: "iTerm", enabled: !!worktreePath && !!caps?.iterm },
+      { id: "ghostty" as const, name: "Ghostty", enabled: !!worktreePath && !!caps?.ghostty },
+      { id: "alacritty" as const, name: "Alacritty", enabled: !!worktreePath && !!caps?.alacritty },
+      { id: "xcode" as const, name: "Xcode", enabled: !!worktreePath && !!caps?.xcode },
     ],
-    [worktreePath]
+    [worktreePath, caps?.vscode, caps?.cursor, caps?.windsurf, caps?.finder, caps?.terminal, caps?.iterm, caps?.ghostty, caps?.alacritty, caps?.xcode]
   );
 
   const [selectedEditor, setSelectedEditor] = useState<EditorType | null>(
@@ -68,17 +83,29 @@ export function OpenEditorSplitButton({
     }
   }, [selectedEditor]);
 
+  const serverEditors = [
+    "cursor",
+    "vscode",
+    "windsurf",
+    "finder",
+    "terminal",
+    "iterm",
+    "ghostty",
+    "alacritty",
+    "xcode",
+  ] as const;
+
   const handleOpenInEditor = useCallback(
     (editor: EditorType): Promise<void> => {
       return new Promise((resolve, reject) => {
         if (
           socket &&
-          ["cursor", "vscode", "windsurf", "finder"].includes(editor) &&
+          (serverEditors as readonly string[]).includes(editor) &&
           worktreePath
         ) {
           socket.emit(
             "open-in-editor",
-            { editor, path: worktreePath },
+            { editor: editor as (typeof serverEditors)[number], path: worktreePath },
             (response: { success: boolean; error?: string }) => {
               if (response.success) resolve();
               else reject(new Error(response.error || "Failed to open editor"));
@@ -119,6 +146,16 @@ export function OpenEditorSplitButton({
             errorMessage = "Windsurf is not installed or not found in PATH";
           else if (selected.id === "finder")
             errorMessage = "Finder is not available or not found";
+          else if (selected.id === "terminal")
+            errorMessage = "Terminal is not available";
+          else if (selected.id === "iterm")
+            errorMessage = "iTerm is not installed or not found";
+          else if (selected.id === "ghostty")
+            errorMessage = "Ghostty is not installed or not found";
+          else if (selected.id === "alacritty")
+            errorMessage = "Alacritty is not installed or not found";
+          else if (selected.id === "xcode")
+            errorMessage = "Xcode is not installed or not found";
         } else if (error.message) {
           errorMessage = error.message;
         }
