@@ -1,6 +1,13 @@
 import LexicalEditor from "@/components/lexical/LexicalEditor";
 import clsx from "clsx";
-import { forwardRef, memo, useImperativeHandle, useRef, useMemo } from "react";
+import {
+  forwardRef,
+  memo,
+  useImperativeHandle,
+  useRef,
+  useMemo,
+  useEffect,
+} from "react";
 
 export interface EditorApi {
   getContent: () => {
@@ -69,6 +76,20 @@ export const DashboardInput = memo(
     const handleEditorReady = (api: EditorApi) => {
       internalApiRef.current = api;
     };
+
+    // Focus editor on Cmd+V anywhere on the page so paste goes into it
+    useEffect(() => {
+      const handleKeyDown = (e: KeyboardEvent) => {
+        if (e.metaKey && (e.key === "v" || e.key === "V")) {
+          // Focus the editor before the paste event fires
+          internalApiRef.current?.focus?.();
+          // Do not prevent default; allow the native paste to proceed
+        }
+      };
+
+      window.addEventListener("keydown", handleKeyDown, true);
+      return () => window.removeEventListener("keydown", handleKeyDown, true);
+    }, []);
 
     return (
       <LexicalEditor
