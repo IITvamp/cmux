@@ -622,23 +622,25 @@ export async function startServer({
           newContent = "";
         }
         try {
-          // Use git CLI to read baseRef version of the file when available; fallback to HEAD
-          // Resolve base similar to full diff
+          // Use git CLI to read baseRef version of the file. Prefer default branch (origin/<default>),
+          // then upstream, and finally HEAD as a last resort.
           let baseRef = "HEAD";
           try {
-            const { stdout } = await execAsync(
-              "git rev-parse --abbrev-ref --symbolic-full-name @{u}",
-              { cwd: worktreePath }
-            );
-            if (stdout.trim()) baseRef = "@{upstream}";
+            const repoMgr = RepositoryManager.getInstance();
+            const defaultBranch = await repoMgr.getDefaultBranch(worktreePath);
+            if (defaultBranch) baseRef = `origin/${defaultBranch}`;
           } catch {
+            // ignore and try upstream next
+          }
+          if (baseRef === "HEAD") {
             try {
-              const repoMgr = RepositoryManager.getInstance();
-              const defaultBranch =
-                await repoMgr.getDefaultBranch(worktreePath);
-              if (defaultBranch) baseRef = `origin/${defaultBranch}`;
+              const { stdout } = await execAsync(
+                "git rev-parse --abbrev-ref --symbolic-full-name @{u}",
+                { cwd: worktreePath }
+              );
+              if (stdout.trim()) baseRef = "@{upstream}";
             } catch {
-              baseRef = "HEAD";
+              // stick with HEAD
             }
           }
           const { stdout } = await execAsync(
