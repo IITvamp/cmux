@@ -499,8 +499,18 @@ export async function startServer({
           // Try to mark ready
           try {
             await markPrReady(githubToken, owner, repo, prNumber);
+            serverLogger.info(`[MergePR] Successfully marked PR #${prNumber} as ready for review`);
           } catch (e: unknown) {
             const msg = e instanceof Error ? e.message : String(e);
+            
+            // Check if it's a 404 error
+            if (msg.includes("not found") || msg.includes("404")) {
+              return callback({
+                success: false,
+                error: `Pull request #${prNumber} not found. It may have been deleted.`,
+              });
+            }
+            
             return callback({
               success: false,
               error: `PR is draft and could not be made ready: ${msg}`,
@@ -1451,10 +1461,22 @@ Please address the issue mentioned in the comment above.`;
         }
 
         // PR resolution via helpers
+        serverLogger.info(`[OpenPR] Fetching PR by head branch...`, {
+          owner,
+          repo,
+          branchName,
+          tokenPrefix: githubToken ? githubToken.substring(0, 10) : "NO_TOKEN"
+        });
         const initialBasic =
           owner && repo
             ? await fetchPrByHead(githubToken, owner, repo, owner, branchName)
             : null;
+        serverLogger.info(`[OpenPR] fetchPrByHead result:`, {
+          found: !!initialBasic,
+          number: initialBasic?.number,
+          draft: initialBasic?.draft,
+          state: initialBasic?.state
+        });
 
         let finalUrl: string | undefined;
         let finalNumber: number | undefined;
@@ -1503,15 +1525,41 @@ Please address the issue mentioned in the comment above.`;
           }
         } else if (initialBasic.draft) {
           try {
-            await markPrReady(githubToken, owner!, repo!, initialBasic.number);
-          } catch (e: unknown) {
-            const msg = e instanceof Error ? e.message : String(e);
-            serverLogger.error(`[OpenPR] markPrReady failed: ${msg}`);
-            callback({
-              success: false,
-              error: `Failed to mark PR ready: ${msg}`,
+            serverLogger.info(`[OpenPR] Attempting to mark PR #${initialBasic.number} as ready...`, {
+              owner: owner!,
+              repo: repo!,
+              number: initialBasic.number,
+              tokenPrefix: githubToken ? githubToken.substring(0, 10) : "NO_TOKEN"
             });
-            return;
+            await markPrReady(githubToken, owner!, repo!, initialBasic.number);
+            serverLogger.info(`[OpenPR] Successfully marked PR #${initialBasic.number} as ready for review`);
+          } catch (e: unknown) {
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            serverLogger.error(`[OpenPR] Failed to mark PR #${initialBasic.number} as ready: ${errorMessage}`);
+            
+            // If the PR wasn't found or there's a permission issue, fail the operation
+            if (errorMessage.includes("not found") || errorMessage.includes("404")) {
+              callback({
+                success: false,
+                error: `Pull request #${initialBasic.number} not found. It may have been deleted or you may not have access.`,
+              });
+              return;
+            } else if (errorMessage.includes("Permission denied") || errorMessage.includes("403")) {
+              callback({
+                success: false,
+                error: `Permission denied. Please check that your GitHub token has the required permissions.`,
+              });
+              return;
+            } else if (errorMessage.includes("Authentication failed") || errorMessage.includes("401")) {
+              callback({
+                success: false,
+                error: `Authentication failed. Please check that your GitHub token is valid.`,
+              });
+              return;
+            }
+            
+            // For other errors, log but continue (e.g., if PR is already ready)
+            serverLogger.warn(`[OpenPR] Continuing despite error: ${errorMessage}`);
           }
           const latest = await fetchPrByHead(
             githubToken,
