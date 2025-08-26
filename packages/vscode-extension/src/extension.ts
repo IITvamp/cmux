@@ -1,4 +1,5 @@
 import type { ClientToServerEvents, ServerToClientEvents } from "@cmux/shared";
+import { execSync } from "node:child_process";
 import * as http from "http";
 import { Server } from "socket.io";
 import { io, Socket } from "socket.io-client";
@@ -41,8 +42,7 @@ function log(message: string, ...args: any[]) {
 
 async function resolveDefaultBaseRef(repositoryPath: string): Promise<string> {
   try {
-    const { execSync } = require("node:child_process");
-    const out: string = execSync(
+    const out = execSync(
       "git symbolic-ref --quiet refs/remotes/origin/HEAD || git remote show origin | sed -n 's/\tHEAD branch: //p'",
       { cwd: repositoryPath, encoding: "utf8" }
     );
@@ -61,8 +61,7 @@ async function resolveDefaultBaseRef(repositoryPath: string): Promise<string> {
 
 function tryExecGit(repoPath: string, cmd: string): string | null {
   try {
-    const { execSync } = require("node:child_process");
-    const out: string = execSync(cmd, { cwd: repoPath, encoding: "utf8" });
+    const out = execSync(cmd, { cwd: repoPath, encoding: "utf8" });
     return out.trim();
   } catch {
     return null;
@@ -88,11 +87,14 @@ async function resolveMergeBase(
   return mergeBase && /^[0-9a-f]{7,40}$/i.test(mergeBase) ? mergeBase : null;
 }
 
-async function openMultiDiffEditor(baseRef?: string, useMergeBase: boolean = true) {
+async function openMultiDiffEditor(
+  baseRef?: string,
+  useMergeBase: boolean = true
+) {
   log("=== openMultiDiffEditor called ===");
   log("baseRef:", baseRef);
   log("useMergeBase:", useMergeBase);
-  
+
   // Get the Git extension
   const gitExtension = vscode.extensions.getExtension("vscode.git");
   if (!gitExtension) {
@@ -112,76 +114,85 @@ async function openMultiDiffEditor(baseRef?: string, useMergeBase: boolean = tru
 
   const repoPath = repository.rootUri.fsPath;
   log("Repository path:", repoPath);
-  
-  const resolvedDefaultBase = baseRef || (await resolveDefaultBaseRef(repoPath));
+
+  const resolvedDefaultBase =
+    baseRef || (await resolveDefaultBaseRef(repoPath));
   log("Resolved default base:", resolvedDefaultBase);
-  
+
   const resolvedMergeBase = useMergeBase
     ? await resolveMergeBase(repoPath, resolvedDefaultBase)
     : null;
   log("Resolved merge base:", resolvedMergeBase);
-  
+
   const effectiveBase = resolvedMergeBase || resolvedDefaultBase;
   log("Effective base:", effectiveBase);
-  
+
   // Get all changed files between base and current working tree
-  const { execSync } = require("node:child_process");
   try {
     // Get ALL changes - use git diff to compare base with working tree
     const cmd = `git diff --name-only ${effectiveBase}`;
     log("Running git diff command:", cmd);
-    const diffOutput: string = execSync(cmd, { cwd: repoPath, encoding: "utf8" });
+    const diffOutput = execSync(cmd, { cwd: repoPath, encoding: "utf8" });
     log("Git diff output:", diffOutput);
-    
-    const files = diffOutput.trim().split('\n').filter(f => f);
+
+    const files = diffOutput
+      .trim()
+      .split("\n")
+      .filter((f) => f);
     log("Changed files:", files);
-    
+
     if (files.length === 0) {
       log("No changes found!");
-      vscode.window.showInformationMessage(`No changes found vs ${effectiveBase}`);
+      vscode.window.showInformationMessage(
+        `No changes found vs ${effectiveBase}`
+      );
       return;
     }
-    
+
     // Create resources for the multi-diff editor - matching VS Code's internal structure
-    const resources = files.map(file => {
+    const resources = files.map((file) => {
       const fileUri = vscode.Uri.file(`${repoPath}/${file}`);
       const baseUri = api.toGitUri(fileUri, effectiveBase);
-      
+
       // Match the exact structure used by VS Code's git extension
       return {
         originalUri: baseUri,
-        modifiedUri: fileUri
+        modifiedUri: fileUri,
       };
     });
-    
-    log("Resources for multi-diff:", resources.map(r => ({
-      originalUri: r.originalUri.toString(),
-      modifiedUri: r.modifiedUri.toString()
-    })));
-    
-    const title = `All Changes vs ${effectiveBase.replace(/^refs\/remotes\//, "").replace(/^origin\//, "")}`;
-    
-    // Create a multiDiffSourceUri similar to VS Code's git extension
-    const multiDiffSourceUri = vscode.Uri.from({ 
-      scheme: 'git-changes', 
-      path: `${repoPath}/${effectiveBase}..working-tree` 
-    });
-    
-    // Use the exact same structure as VS Code's git extension
-    await vscode.commands.executeCommand(
-      '_workbench.openMultiDiffEditor',
-      {
-        multiDiffSourceUri,
-        title,
-        resources
-      }
+
+    log(
+      "Resources for multi-diff:",
+      resources.map((r) => ({
+        originalUri: r.originalUri.toString(),
+        modifiedUri: r.modifiedUri.toString(),
+      }))
     );
-    
+
+    // Extract base branch name for title (e.g., "main" from "origin/main" or "refs/remotes/origin/main")
+    const baseBranchName = resolvedDefaultBase
+      .replace(/^refs\/remotes\//, "")
+      .replace(/^origin\//, "");
+
+    const title = `All Changes vs ${baseBranchName}`;
+
+    // Create a multiDiffSourceUri similar to VS Code's git extension
+    const multiDiffSourceUri = vscode.Uri.from({
+      scheme: "git-changes",
+      path: `${repoPath}/${effectiveBase}..working-tree`,
+    });
+
+    // Use the exact same structure as VS Code's git extension
+    await vscode.commands.executeCommand("_workbench.openMultiDiffEditor", {
+      multiDiffSourceUri,
+      title,
+      resources,
+    });
+
     log("Multi-diff editor opened successfully");
     vscode.window.showInformationMessage(
       `Showing ${files.length} file(s) changed vs ${effectiveBase.replace(/^refs\/remotes\//, "").replace(/^origin\//, "")}`
     );
-    
   } catch (error: any) {
     log("Error opening diff:", error);
     log("Error stack:", error.stack);
