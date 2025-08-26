@@ -1,7 +1,6 @@
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
 import type { AgentConfig } from "@cmux/shared";
-import { tryVSCodeExtensionCommit } from "./tryVSCodeExtensionCommit";
 import { buildAutoCommitPushCommand } from "./utils/autoCommitPushCommand";
 import { generateCommitMessageFromDiff } from "./utils/commitMessageGenerator";
 import { convex } from "./utils/convexClient";
@@ -84,68 +83,39 @@ export default async function performAutoCommitAndPush(
         isCrowned ? " 🏆" : ""
       }`;
     }
-    // Try to use VSCode extension API first (more reliable)
-    const extensionResult = await tryVSCodeExtensionCommit(
-      vscodeInstance,
+    // Execute commit and push via worker:exec only
+    if (!workerSocket || !vscodeInstance.isWorkerConnected()) {
+      serverLogger.info(`{AgentSpawner] No worker connection for auto-commit`);
+      return;
+    }
+
+    const autoCommitScript = buildAutoCommitPushCommand({
       branchName,
       commitMessage,
-      agent.name
-    );
-
-    if (extensionResult.success) {
-      serverLogger.info(
-        `[AgentSpawner] Successfully committed and pushed via VSCode extension`
-      );
-      serverLogger.info(`[AgentSpawner] Branch: ${branchName}`);
-      serverLogger.info(
-        `[AgentSpawner] Commit message: ${commitMessage.split("\n")[0]}`
-      );
-    } else {
-      serverLogger.info(
-        `[AgentSpawner] VSCode extension method failed, falling back to git commands:`,
-        extensionResult.error
-      );
-
-      // Fallback to direct git commands
-      if (!workerSocket || !vscodeInstance.isWorkerConnected()) {
-        serverLogger.info(
-          `[AgentSpawner] No worker connection for auto-commit fallback`
-        );
-        return;
-      }
-
-      // Execute the auto-commit/push flow in a single shell invocation
-      const autoCommitScript = buildAutoCommitPushCommand({
-        branchName,
-        commitMessage,
+    });
+    serverLogger.info(`[AgentSpawner] Executing auto-commit script...`);
+    try {
+      const { stdout, stderr, exitCode } = await workerExec({
+        workerSocket,
+        command: "bash",
+        args: ["-c", `set -o pipefail; ${autoCommitScript}`],
+        cwd: "/root/workspace",
+        env: {},
+        timeout: 60000,
       });
-      serverLogger.info(`[AgentSpawner] Executing auto-commit script...`);
-      try {
-        const { stdout, stderr, exitCode } = await workerExec({
-          workerSocket,
-          command: "bash",
-          args: ["-c", `set -o pipefail; ${autoCommitScript}`],
-          cwd: "/root/workspace",
-          env: {},
-          timeout: 60000,
-        });
-        serverLogger.info(`[AgentSpawner] Auto-commit script output:`, {
-          exitCode,
-          stdout: stdout?.slice(0, 2000),
-          stderr: stderr?.slice(0, 2000),
-        });
-        if (exitCode !== 0) {
-          const errMsg = `[AgentSpawner] Auto-commit script failed with exit code ${exitCode}`;
-          serverLogger.error(errMsg);
-          throw new Error(errMsg);
-        }
-      } catch (err) {
-        serverLogger.error(
-          `[AgentSpawner] Error executing auto-commit script`,
-          err
-        );
-        throw err instanceof Error ? err : new Error(String(err));
+      serverLogger.info(`[AgentSpawner] Auto-commit script output:`, {
+        exitCode,
+        stdout: stdout?.slice(0, 2000),
+        stderr: stderr?.slice(0, 2000),
+      });
+      if (exitCode !== 0) {
+        const errMsg = `[AgentSpawner] Auto-commit script failed with exit code ${exitCode}`;
+        serverLogger.error(errMsg);
+        throw new Error(errMsg);
       }
+    } catch (err) {
+      serverLogger.error(`[AgentSpawner] Error executing auto-commit script`, err);
+      throw err instanceof Error ? err : new Error(String(err));
     }
 
     if (isCrowned) {
