@@ -116,8 +116,8 @@ export default function LandingPage() {
         </div>
       </header>
 
-      <section className="pt-10 pb-8 px-4 sm:px-6 lg:px-12">
-        <div className="container max-w-5xl mx-auto">
+      <section className="pt-10 pb-8">
+        <div className="container max-w-5xl mx-auto px-3 sm:px-5">
           <div className="grid grid-cols-[4px_1fr] gap-6">
             <div className="bg-blue-500 rounded-sm" aria-hidden="true"></div>
             <div>
