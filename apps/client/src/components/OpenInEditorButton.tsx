@@ -1,8 +1,17 @@
 import { useSocket } from "@/contexts/socket/use-socket";
 import { ChevronDown, ExternalLink } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 
-type EditorType = "vscode" | "cursor" | "windsurf";
+type EditorType =
+  | "vscode"
+  | "cursor"
+  | "windsurf"
+  | "finder"
+  | "iterm"
+  | "terminal"
+  | "ghostty"
+  | "alacritty"
+  | "xcode";
 
 interface OpenInEditorButtonProps {
   workspacePath: string;
@@ -12,13 +21,36 @@ export function OpenInEditorButton({ workspacePath }: OpenInEditorButtonProps) {
   const [selectedEditor, setSelectedEditor] = useState<EditorType>("cursor");
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const { socket } = useSocket();
+  const { socket, availableEditors } = useSocket();
 
-  const editors: Array<{ id: EditorType; name: string }> = [
-    { id: "cursor", name: "Cursor" },
-    { id: "vscode", name: "VS Code" },
-    { id: "windsurf", name: "Windsurf" },
-  ];
+  const editors = useMemo(() => {
+    const items: Array<{ id: EditorType; name: string }> = [];
+    if (availableEditors?.cursor ?? true)
+      items.push({ id: "cursor", name: "Cursor" });
+    if (availableEditors?.vscode ?? true)
+      items.push({ id: "vscode", name: "VS Code" });
+    if (availableEditors?.windsurf ?? true)
+      items.push({ id: "windsurf", name: "Windsurf" });
+    if (availableEditors?.finder)
+      items.push({ id: "finder", name: "Finder" });
+    if (availableEditors?.iterm)
+      items.push({ id: "iterm", name: "iTerm" });
+    if (availableEditors?.terminal)
+      items.push({ id: "terminal", name: "Terminal" });
+    if (availableEditors?.ghostty)
+      items.push({ id: "ghostty", name: "Ghostty" });
+    if (availableEditors?.alacritty)
+      items.push({ id: "alacritty", name: "Alacritty" });
+    if (availableEditors?.xcode)
+      items.push({ id: "xcode", name: "Xcode" });
+    return items;
+  }, [availableEditors]);
+
+  useEffect(() => {
+    if (!editors.find((e) => e.id === selectedEditor) && editors[0]) {
+      setSelectedEditor(editors[0].id);
+    }
+  }, [editors, selectedEditor]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {

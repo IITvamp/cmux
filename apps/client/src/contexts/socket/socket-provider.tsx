@@ -1,4 +1,8 @@
-import type { ClientToServerEvents, ServerToClientEvents } from "@cmux/shared";
+import type {
+  ClientToServerEvents,
+  ServerToClientEvents,
+  AvailableEditors,
+} from "@cmux/shared";
 import React, { useEffect, useMemo } from "react";
 import { io, Socket } from "socket.io-client";
 import { SocketContext } from "./socket-context";
@@ -6,6 +10,7 @@ import { SocketContext } from "./socket-context";
 export interface SocketContextType {
   socket: Socket<ServerToClientEvents, ClientToServerEvents> | null;
   isConnected: boolean;
+  availableEditors: AvailableEditors | null;
 }
 
 interface SocketProviderProps {
@@ -21,6 +26,9 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
     SocketContextType["socket"] | null
   >(null);
   const [isConnected, setIsConnected] = React.useState(false);
+  const [availableEditors, setAvailableEditors] = React.useState<
+    AvailableEditors | null
+  >(null);
 
   useEffect(() => {
     const newSocket = io(url, {
@@ -38,6 +46,10 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
       setIsConnected(false);
     });
 
+    newSocket.on("available-editors", (data) => {
+      setAvailableEditors(data);
+    });
+
     return () => {
       newSocket.disconnect();
     };
@@ -47,8 +59,9 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
     () => ({
       socket,
       isConnected,
+      availableEditors,
     }),
-    [socket, isConnected]
+    [socket, isConnected, availableEditors]
   );
 
   return (
