@@ -1,7 +1,7 @@
 import type { AgentConfig } from "../../agentConfig.js";
 import { GEMINI_API_KEY } from "../../apiKeys.js";
 import { checkGeminiRequirements } from "./check-requirements.js";
-// Lazy-load Node-only completion detector to avoid bundling fs in browser
+import { startGeminiCompletionDetector } from "./completion-detector.js";
 import { getGeminiEnvironment } from "./environment.js";
 
 export const GEMINI_FLASH_CONFIG: AgentConfig = {
@@ -23,10 +23,8 @@ export const GEMINI_FLASH_CONFIG: AgentConfig = {
   environment: getGeminiEnvironment,
   apiKeys: [GEMINI_API_KEY],
   checkRequirements: checkGeminiRequirements,
-  completionDetector: async (taskRunId, onComplete) => {
-    const mod = await import("./completion-detector.js");
-    mod.startGeminiCompletionDetector(taskRunId, onComplete);
-  },
+  completionDetector: (taskRunId, onComplete) =>
+    startGeminiCompletionDetector(taskRunId, onComplete),
 };
 
 export const GEMINI_PRO_CONFIG: AgentConfig = {
@@ -48,8 +46,6 @@ export const GEMINI_PRO_CONFIG: AgentConfig = {
   environment: getGeminiEnvironment,
   apiKeys: [GEMINI_API_KEY],
   checkRequirements: checkGeminiRequirements,
-  completionDetector: async (taskRunId, onComplete) => {
-    const mod = await import("./completion-detector.js");
-    mod.startGeminiCompletionDetector(taskRunId, onComplete);
-  },
+  completionDetector: (taskRunId, onComplete) =>
+    startGeminiCompletionDetector(taskRunId, onComplete),
 };

@@ -3,6 +3,7 @@ import { OPENAI_API_KEY } from "../../apiKeys.js";
 import { checkOpenAIRequirements } from "./check-requirements.js";
 // Lazy-load Node-only completion detector to avoid bundling fs in browser
 import { getOpenAIEnvironment } from "./environment.js";
+import { startCodexCompletionDetector } from "./completion-detector.js";
 
 export const CODEX_GPT_5_CONFIG: AgentConfig = {
   name: "codex/gpt-5",
@@ -20,10 +21,8 @@ export const CODEX_GPT_5_CONFIG: AgentConfig = {
   environment: getOpenAIEnvironment,
   checkRequirements: checkOpenAIRequirements,
   apiKeys: [OPENAI_API_KEY],
-  completionDetector: async (taskRunId, onComplete) => {
-    const mod = await import("./completion-detector.js");
-    mod.startCodexCompletionDetector(taskRunId, onComplete);
-  },
+  completionDetector: (taskRunId, onComplete) =>
+    startCodexCompletionDetector(taskRunId, onComplete),
 };
 
 export const CODEX_GPT_5_HIGH_REASONING_CONFIG: AgentConfig = {
@@ -44,10 +43,8 @@ export const CODEX_GPT_5_HIGH_REASONING_CONFIG: AgentConfig = {
   environment: getOpenAIEnvironment,
   checkRequirements: checkOpenAIRequirements,
   apiKeys: [OPENAI_API_KEY],
-  completionDetector: async (taskRunId, onComplete) => {
-    const mod = await import("./completion-detector.js");
-    mod.startCodexCompletionDetector(taskRunId, onComplete);
-  },
+  completionDetector: (taskRunId, onComplete) =>
+    startCodexCompletionDetector(taskRunId, onComplete),
 };
 
 export const CODEX_O3_CONFIG: AgentConfig = {
@@ -66,10 +63,8 @@ export const CODEX_O3_CONFIG: AgentConfig = {
   environment: getOpenAIEnvironment,
   checkRequirements: checkOpenAIRequirements,
   apiKeys: [OPENAI_API_KEY],
-  completionDetector: async (taskRunId, onComplete) => {
-    const mod = await import("./completion-detector.js");
-    mod.startCodexCompletionDetector(taskRunId, onComplete);
-  },
+  completionDetector: (taskRunId, onComplete) =>
+    startCodexCompletionDetector(taskRunId, onComplete),
 };
 
 export const CODEX_O4_MINI_CONFIG: AgentConfig = {
@@ -88,10 +83,8 @@ export const CODEX_O4_MINI_CONFIG: AgentConfig = {
   environment: getOpenAIEnvironment,
   checkRequirements: checkOpenAIRequirements,
   apiKeys: [OPENAI_API_KEY],
-  completionDetector: async (taskRunId, onComplete) => {
-    const mod = await import("./completion-detector.js");
-    mod.startCodexCompletionDetector(taskRunId, onComplete);
-  },
+  completionDetector: (taskRunId, onComplete) =>
+    startCodexCompletionDetector(taskRunId, onComplete),
 };
 
 export const CODEX_GPT_4_1_CONFIG: AgentConfig = {
@@ -110,8 +103,6 @@ export const CODEX_GPT_4_1_CONFIG: AgentConfig = {
   environment: getOpenAIEnvironment,
   checkRequirements: checkOpenAIRequirements,
   apiKeys: [OPENAI_API_KEY],
-  completionDetector: async (taskRunId, onComplete) => {
-    const mod = await import("./completion-detector.js");
-    mod.startCodexCompletionDetector(taskRunId, onComplete);
-  },
+  completionDetector: (taskRunId, onComplete) =>
+    startCodexCompletionDetector(taskRunId, onComplete),
 };

@@ -5,7 +5,8 @@ import {
   OPENROUTER_API_KEY,
 } from "../../apiKeys.js";
 import { checkOpencodeRequirements } from "./check-requirements.js";
-// Lazy-load Node-only completion detector to avoid bundling fs in browser
+import { startOpenCodeCompletionDetector } from "./completion-detector.js";
+
 import {
   getOpencodeEnvironment,
   getOpencodeEnvironmentSkipAuth,
@@ -24,10 +25,8 @@ export const OPENCODE_GROK_CODE_CONFIG: AgentConfig = {
   environment: getOpencodeEnvironmentSkipAuth,
   checkRequirements: checkOpencodeRequirements,
   apiKeys: [],
-  completionDetector: async (taskRunId, onComplete) => {
-    const mod = await import("./completion-detector.js");
-    mod.startOpenCodeCompletionDetector(taskRunId, onComplete);
-  },
+  completionDetector: async (taskRunId, onComplete) =>
+    startOpenCodeCompletionDetector(taskRunId, onComplete),
 };
 
 export const OPENCODE_SONNET_CONFIG: AgentConfig = {
@@ -43,10 +42,8 @@ export const OPENCODE_SONNET_CONFIG: AgentConfig = {
   environment: getOpencodeEnvironment,
   checkRequirements: checkOpencodeRequirements,
   apiKeys: [ANTHROPIC_API_KEY],
-  completionDetector: async (taskRunId, onComplete) => {
-    const mod = await import("./completion-detector.js");
-    mod.startOpenCodeCompletionDetector(taskRunId, onComplete);
-  },
+  completionDetector: async (taskRunId, onComplete) =>
+    startOpenCodeCompletionDetector(taskRunId, onComplete),
 };
 
 export const OPENCODE_OPUS_CONFIG: AgentConfig = {
@@ -62,10 +59,8 @@ export const OPENCODE_OPUS_CONFIG: AgentConfig = {
   environment: getOpencodeEnvironment,
   checkRequirements: checkOpencodeRequirements,
   apiKeys: [ANTHROPIC_API_KEY],
-  completionDetector: async (taskRunId, onComplete) => {
-    const mod = await import("./completion-detector.js");
-    mod.startOpenCodeCompletionDetector(taskRunId, onComplete);
-  },
+  completionDetector: async (taskRunId, onComplete) =>
+    startOpenCodeCompletionDetector(taskRunId, onComplete),
 };
 
 export const OPENCODE_KIMI_K2_CONFIG: AgentConfig = {
@@ -81,10 +76,8 @@ export const OPENCODE_KIMI_K2_CONFIG: AgentConfig = {
   environment: getOpencodeEnvironment,
   checkRequirements: checkOpencodeRequirements,
   apiKeys: [OPENROUTER_API_KEY],
-  completionDetector: async (taskRunId, onComplete) => {
-    const mod = await import("./completion-detector.js");
-    mod.startOpenCodeCompletionDetector(taskRunId, onComplete);
-  },
+  completionDetector: async (taskRunId, onComplete) =>
+    startOpenCodeCompletionDetector(taskRunId, onComplete),
 };
 
 export const OPENCODE_QWEN3_CODER_CONFIG: AgentConfig = {
@@ -100,10 +93,8 @@ export const OPENCODE_QWEN3_CODER_CONFIG: AgentConfig = {
   environment: getOpencodeEnvironment,
   checkRequirements: checkOpencodeRequirements,
   apiKeys: [ANTHROPIC_API_KEY],
-  completionDetector: async (taskRunId, onComplete) => {
-    const mod = await import("./completion-detector.js");
-    mod.startOpenCodeCompletionDetector(taskRunId, onComplete);
-  },
+  completionDetector: async (taskRunId, onComplete) =>
+    startOpenCodeCompletionDetector(taskRunId, onComplete),
 };
 
 export const OPENCODE_GLM_Z1_32B_FREE_CONFIG: AgentConfig = {
@@ -119,10 +110,8 @@ export const OPENCODE_GLM_Z1_32B_FREE_CONFIG: AgentConfig = {
   environment: getOpencodeEnvironment,
   checkRequirements: checkOpencodeRequirements,
   apiKeys: [OPENROUTER_API_KEY],
-  completionDetector: async (taskRunId, onComplete) => {
-    const mod = await import("./completion-detector.js");
-    mod.startOpenCodeCompletionDetector(taskRunId, onComplete);
-  },
+  completionDetector: async (taskRunId, onComplete) =>
+    startOpenCodeCompletionDetector(taskRunId, onComplete),
 };
 
 export const OPENCODE_O3_PRO_CONFIG: AgentConfig = {
@@ -138,10 +127,8 @@ export const OPENCODE_O3_PRO_CONFIG: AgentConfig = {
   environment: getOpencodeEnvironment,
   checkRequirements: checkOpencodeRequirements,
   apiKeys: [OPENAI_API_KEY],
-  completionDetector: async (taskRunId, onComplete) => {
-    const mod = await import("./completion-detector.js");
-    mod.startOpenCodeCompletionDetector(taskRunId, onComplete);
-  },
+  completionDetector: async (taskRunId, onComplete) =>
+    startOpenCodeCompletionDetector(taskRunId, onComplete),
 };
 
 export const OPENCODE_GPT_5_CONFIG: AgentConfig = {
@@ -157,10 +144,8 @@ export const OPENCODE_GPT_5_CONFIG: AgentConfig = {
   environment: getOpencodeEnvironment,
   checkRequirements: checkOpencodeRequirements,
   apiKeys: [OPENAI_API_KEY],
-  completionDetector: async (taskRunId, onComplete) => {
-    const mod = await import("./completion-detector.js");
-    mod.startOpenCodeCompletionDetector(taskRunId, onComplete);
-  },
+  completionDetector: async (taskRunId, onComplete) =>
+    startOpenCodeCompletionDetector(taskRunId, onComplete),
 };
 
 export const OPENCODE_GPT_5_MINI_CONFIG: AgentConfig = {
@@ -176,10 +161,8 @@ export const OPENCODE_GPT_5_MINI_CONFIG: AgentConfig = {
   environment: getOpencodeEnvironment,
   checkRequirements: checkOpencodeRequirements,
   apiKeys: [OPENAI_API_KEY],
-  completionDetector: async (taskRunId, onComplete) => {
-    const mod = await import("./completion-detector.js");
-    mod.startOpenCodeCompletionDetector(taskRunId, onComplete);
-  },
+  completionDetector: async (taskRunId, onComplete) =>
+    startOpenCodeCompletionDetector(taskRunId, onComplete),
 };
 
 export const OPENCODE_GPT_5_NANO_CONFIG: AgentConfig = {
@@ -195,10 +178,8 @@ export const OPENCODE_GPT_5_NANO_CONFIG: AgentConfig = {
   environment: getOpencodeEnvironment,
   checkRequirements: checkOpencodeRequirements,
   apiKeys: [OPENAI_API_KEY],
-  completionDetector: async (taskRunId, onComplete) => {
-    const mod = await import("./completion-detector.js");
-    mod.startOpenCodeCompletionDetector(taskRunId, onComplete);
-  },
+  completionDetector: async (taskRunId, onComplete) =>
+    startOpenCodeCompletionDetector(taskRunId, onComplete),
 };
 
 export const OPENCODE_GPT_OSS_120B_CONFIG: AgentConfig = {
@@ -214,10 +195,8 @@ export const OPENCODE_GPT_OSS_120B_CONFIG: AgentConfig = {
   environment: getOpencodeEnvironment,
   checkRequirements: checkOpencodeRequirements,
   apiKeys: [OPENROUTER_API_KEY],
-  completionDetector: async (taskRunId, onComplete) => {
-    const mod = await import("./completion-detector.js");
-    mod.startOpenCodeCompletionDetector(taskRunId, onComplete);
-  },
+  completionDetector: async (taskRunId, onComplete) =>
+    startOpenCodeCompletionDetector(taskRunId, onComplete),
 };
 
 export const OPENCODE_GPT_OSS_20B_CONFIG: AgentConfig = {
@@ -233,10 +212,8 @@ export const OPENCODE_GPT_OSS_20B_CONFIG: AgentConfig = {
   environment: getOpencodeEnvironment,
   checkRequirements: checkOpencodeRequirements,
   apiKeys: [OPENROUTER_API_KEY],
-  completionDetector: async (taskRunId, onComplete) => {
-    const mod = await import("./completion-detector.js");
-    mod.startOpenCodeCompletionDetector(taskRunId, onComplete);
-  },
+  completionDetector: async (taskRunId, onComplete) =>
+    startOpenCodeCompletionDetector(taskRunId, onComplete),
 };
 
 export const OPENCODE_OPUS_4_1_20250805_CONFIG: AgentConfig = {
@@ -252,8 +229,6 @@ export const OPENCODE_OPUS_4_1_20250805_CONFIG: AgentConfig = {
   environment: getOpencodeEnvironment,
   checkRequirements: checkOpencodeRequirements,
   apiKeys: [ANTHROPIC_API_KEY],
-  completionDetector: async (taskRunId, onComplete) => {
-    const mod = await import("./completion-detector.js");
-    mod.startOpenCodeCompletionDetector(taskRunId, onComplete);
-  },
+  completionDetector: async (taskRunId, onComplete) =>
+    startOpenCodeCompletionDetector(taskRunId, onComplete),
 };
