@@ -1,5 +1,5 @@
-import { useSocket } from "@/contexts/socket/use-socket";
 import { editorIcons } from "@/components/ui/dropdown-types";
+import { useSocket } from "@/contexts/socket/use-socket";
 import { Menu } from "@base-ui-components/react/menu";
 import clsx from "clsx";
 import { Check, ChevronDown } from "lucide-react";
@@ -166,45 +166,43 @@ export function OpenEditorSplitButton({
   const leftDisabled = !selected || !selected.enabled;
   const SelectedIcon = selected ? editorIcons[selected.id] : null;
 
+  const openEditor = useCallback(
+    (editor: EditorType) => {
+      const item = menuItems.find((m) => m.id === editor);
+      if (!item) return;
+      const loadingToast = toast.loading(`Opening ${item.name}...`);
+      handleOpenInEditor(editor)
+        .then(() => {
+          toast.success(`Opened ${item.name}`, { id: loadingToast });
+        })
+        .catch((error: Error) => {
+          let errorMessage = "Failed to open editor";
+          if (
+            error.message?.includes("ENOENT") ||
+            error.message?.includes("not found") ||
+            error.message?.includes("command not found")
+          ) {
+            if (editor === "vscode")
+              errorMessage = "VS Code is not installed or not found in PATH";
+            else if (editor === "cursor")
+              errorMessage = "Cursor is not installed or not found in PATH";
+            else if (editor === "windsurf")
+              errorMessage = "Windsurf is not installed or not found in PATH";
+            else if (editor === "finder")
+              errorMessage = "Finder is not available or not found";
+          } else if (error.message) {
+            errorMessage = error.message;
+          }
+          toast.error(errorMessage, { id: loadingToast });
+        });
+    },
+    [handleOpenInEditor, menuItems]
+  );
+
   const openSelected = useCallback(() => {
     if (!selected) return;
-    const name = selected.name;
-    const loadingToast = toast.loading(`Opening ${name}...`);
-    handleOpenInEditor(selected.id)
-      .then(() => {
-        toast.success(`Opened ${name}`, { id: loadingToast });
-      })
-      .catch((error: Error) => {
-        let errorMessage = "Failed to open editor";
-        if (
-          error.message?.includes("ENOENT") ||
-          error.message?.includes("not found") ||
-          error.message?.includes("command not found")
-        ) {
-          if (selected.id === "vscode")
-            errorMessage = "VS Code is not installed or not found in PATH";
-          else if (selected.id === "cursor")
-            errorMessage = "Cursor is not installed or not found in PATH";
-          else if (selected.id === "windsurf")
-            errorMessage = "Windsurf is not installed or not found in PATH";
-          else if (selected.id === "finder")
-            errorMessage = "Finder is not available or not found";
-          else if (selected.id === "iterm")
-            errorMessage = "iTerm is not installed or not found";
-          else if (selected.id === "terminal")
-            errorMessage = "Terminal is not available";
-          else if (selected.id === "ghostty")
-            errorMessage = "Ghostty is not installed or not found";
-          else if (selected.id === "alacritty")
-            errorMessage = "Alacritty is not installed or not found";
-          else if (selected.id === "xcode")
-            errorMessage = "Xcode is not installed or not found";
-        } else if (error.message) {
-          errorMessage = error.message;
-        }
-        toast.error(errorMessage, { id: loadingToast });
-      });
-  }, [handleOpenInEditor, selected]);
+    openEditor(selected.id);
+  }, [openEditor, selected]);
 
   return (
     <div className="flex items-stretch">
@@ -250,8 +248,10 @@ export function OpenEditorSplitButton({
               <Menu.RadioGroup
                 value={selected?.id}
                 onValueChange={(val) => {
-                  setSelectedEditor(val as EditorType);
+                  const editor = val as EditorType;
+                  setSelectedEditor(editor);
                   setMenuOpen(false);
+                  openEditor(editor);
                 }}
               >
                 {menuItems.map((item) => {
@@ -270,7 +270,6 @@ export function OpenEditorSplitButton({
                         "data-[highlighted]:before:bg-neutral-900 dark:data-[highlighted]:before:bg-neutral-100",
                         "data-[disabled]:text-neutral-400 dark:data-[disabled]:text-neutral-600 data-[disabled]:cursor-not-allowed"
                       )}
-                      onClick={() => setMenuOpen(false)}
                     >
                       <Menu.RadioItemIndicator className="col-start-1">
                         <Check className="w-3 h-3" />
