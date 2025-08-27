@@ -63,7 +63,7 @@ export interface AgentConfig {
   waitForString?: string;
   enterKeySequence?: string; // Custom enter key sequence, defaults to "\r"
   checkRequirements?: () => Promise<string[]>; // Returns list of missing requirements
-  completionDetector?: (taskRunId: string, onComplete: () => void) => void; // Provider-specific completion detector starter. Runs inside worker; calls onComplete when done.
+  completionDetector?: (taskRunId: string) => Promise<void>;
 }
 
 export const AGENT_CONFIGS: AgentConfig[] = [

@@ -1,66 +1,53 @@
-import * as fs from "node:fs";
+import type { FSWatcher } from "node:fs";
 
-export function watchOpenCodeMarkerFile(options: {
-  taskRunId: string;
-  onComplete: () => void | Promise<void>;
-  onError?: (err: Error) => void;
-}): () => void {
-  const { watch } = fs;
-  const { promises: fsp } = fs;
-  const markerPath = `/root/lifecycle/opencode-complete-${options.taskRunId}`;
-  let watcher: import("node:fs").FSWatcher | null = null;
+export function startOpenCodeCompletionDetector(taskRunId: string): Promise<void> {
+  const markerPath = `/root/lifecycle/opencode-complete-${taskRunId}`;
+  let watcher: FSWatcher | null = null;
   let stopped = false;
 
-  const stop = () => {
-    stopped = true;
-    try {
-      watcher?.close();
-    } catch {
-      // ignore
-    }
-    watcher = null;
-  };
-
-  (async () => {
-    try {
-      await fsp.access(markerPath);
-      if (!stopped) {
-        await options.onComplete();
-        stop();
-        return;
-      }
-    } catch {
-      // ignore
-    }
-    try {
-      watcher = watch(
-        "/root/lifecycle",
-        { persistent: false },
-        async (_event, filename) => {
-          if (stopped) return;
-          if (
-            filename?.toString() === `opencode-complete-${options.taskRunId}`
-          ) {
-            try {
-              await options.onComplete();
-            } catch (e) {
-              options.onError?.(e instanceof Error ? e : new Error(String(e)));
-            }
-            stop();
+  return new Promise<void>((resolve, reject) => {
+    void (async () => {
+      try {
+        const fs = await import("node:fs");
+        const { watch, promises: fsp } = fs;
+        const stop = () => {
+          stopped = true;
+          try {
+            watcher?.close();
+          } catch {
+            // ignore
           }
+          watcher = null;
+        };
+
+        try {
+          await fsp.access(markerPath);
+          if (!stopped) {
+            stop();
+            resolve();
+            return;
+          }
+        } catch {
+          // ignore
         }
-      );
-    } catch (e) {
-      options.onError?.(e instanceof Error ? e : new Error(String(e)));
-    }
-  })();
-
-  return stop;
-}
-
-export function startOpenCodeCompletionDetector(
-  taskRunId: string,
-  onComplete: () => void
-): void {
-  watchOpenCodeMarkerFile({ taskRunId, onComplete });
+        try {
+          watcher = watch(
+            "/root/lifecycle",
+            { persistent: false },
+            (_event, filename) => {
+              if (stopped) return;
+              if (filename?.toString() === `opencode-complete-${taskRunId}`) {
+                stop();
+                resolve();
+              }
+            }
+          );
+        } catch (e) {
+          reject(e instanceof Error ? e : new Error(String(e)));
+        }
+      } catch (e) {
+        reject(e instanceof Error ? e : new Error(String(e)));
+      }
+    })();
+  });
 }

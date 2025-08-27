@@ -971,15 +971,23 @@ async function createTerminal(
 
   if (options.taskRunId && agentConfig?.completionDetector) {
     try {
-      agentConfig.completionDetector(options.taskRunId, () => {
-        emitToMainServer("worker:task-complete", {
-          workerId: WORKER_ID,
-          terminalId,
-          taskRunId: options.taskRunId!,
-          agentModel: options.agentModel,
-          elapsedMs: Date.now() - processStartTime,
+      void agentConfig
+        .completionDetector(options.taskRunId)
+        .then(() => {
+          emitToMainServer("worker:task-complete", {
+            workerId: WORKER_ID,
+            terminalId,
+            taskRunId: options.taskRunId!,
+            agentModel: options.agentModel,
+            elapsedMs: Date.now() - processStartTime,
+          });
+        })
+        .catch((e) => {
+          log(
+            "ERROR",
+            `Completion detector error for ${options.agentModel}: ${String(e)}`
+          );
         });
-      });
     } catch (e) {
       log(
         "ERROR",

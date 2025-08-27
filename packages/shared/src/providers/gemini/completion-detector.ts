@@ -1,22 +1,23 @@
-import * as fs from "node:fs";
+import type { FSWatcher } from "node:fs";
 import * as path from "node:path";
 
-export function watchGeminiTelemetryForCompletion(options: {
-  telemetryPath: string;
-  onComplete: () => void | Promise<void>;
-  onError?: (error: Error) => void;
-}): () => void {
-  const { telemetryPath, onComplete, onError } = options;
-  const { watch, createReadStream } = fs;
-  const { promises: fsp } = fs;
+export function startGeminiCompletionDetector(
+  taskRunId: string
+): Promise<void> {
+  const telemetryPath = `/tmp/gemini-telemetry-${taskRunId}.log`;
+  let fileWatcher: FSWatcher | null = null;
+  let dirWatcher: FSWatcher | null = null;
 
-  let stopped = false;
-  let lastSize = 0;
-  let fileWatcher: import("node:fs").FSWatcher | null = null;
-  let dirWatcher: import("node:fs").FSWatcher | null = null;
+  return new Promise<void>((resolve) => {
+    void (async () => {
+      const fs = await import("node:fs");
+      const { watch, createReadStream, promises: fsp } = fs;
 
-  const dir = path.dirname(telemetryPath);
-  const file = path.basename(telemetryPath);
+    let stopped = false;
+    let lastSize = 0;
+
+    const dir = path.dirname(telemetryPath);
+    const file = path.basename(telemetryPath);
 
   // Lightweight JSON object stream parser for concatenated objects
   let buf = "";
@@ -83,106 +84,85 @@ export function watchGeminiTelemetryForCompletion(options: {
     return eventName === "gemini_cli.next_speaker_check" && result === "user";
   };
 
-  const readNew = async (initial = false) => {
-    try {
-      const st = await fsp.stat(telemetryPath);
-      const start = initial ? 0 : lastSize;
-      if (st.size <= start) {
-        lastSize = st.size;
-        return;
-      }
-      const end = st.size - 1;
-      await new Promise<void>((resolve) => {
-        const rs = createReadStream(telemetryPath, {
-          start,
-          end,
-          encoding: "utf-8",
-        });
-        rs.on("data", (chunk: string | Buffer) => {
-          const text =
-            typeof chunk === "string" ? chunk : chunk.toString("utf-8");
-          feed(text, async (obj) => {
-            try {
-              if (!stopped && isCompletionEvent(obj)) {
-                stopped = true;
-                try {
-                  fileWatcher?.close();
-                } catch {
-                  // ignore
-                }
-                try {
-                  dirWatcher?.close();
-                } catch {
-                  // ignore
-                }
-                await onComplete();
-              }
-            } catch (e) {
-              onError?.(e instanceof Error ? e : new Error(String(e)));
-            }
-          });
-        });
-        rs.on("end", () => resolve());
-        rs.on("error", () => resolve());
-      });
-      lastSize = st.size;
-    } catch {
-      // until file exists
-    }
-  };
-
-  const attachFileWatcher = async () => {
-    try {
-      const st = await fsp.stat(telemetryPath);
-      lastSize = st.size;
-      await readNew(true);
-      fileWatcher = watch(
-        telemetryPath,
-        { persistent: false, encoding: "utf8" },
-        (eventType: string) => {
-          if (!stopped && eventType === "change") {
-            void readNew(false);
-          }
+    const readNew = async (initial = false) => {
+      try {
+        const st = await fsp.stat(telemetryPath);
+        const start = initial ? 0 : lastSize;
+        if (st.size <= start) {
+          lastSize = st.size;
+          return;
         }
-      );
-    } catch {
-      // not created yet
-    }
-  };
-
-  dirWatcher = watch(
-    dir,
-    { persistent: false, encoding: "utf8" },
-    (_eventType: string, filename: string | null) => {
-      const name = filename;
-      if (!stopped && name === file) {
-        void attachFileWatcher();
+        const end = st.size - 1;
+        await new Promise<void>((r) => {
+          const rs = createReadStream(telemetryPath, {
+            start,
+            end,
+            encoding: "utf-8",
+          });
+          rs.on("data", (chunk: string | Buffer) => {
+            const text =
+              typeof chunk === "string" ? chunk : chunk.toString("utf-8");
+            feed(text, (obj) => {
+              try {
+                if (!stopped && isCompletionEvent(obj)) {
+                  stopped = true;
+                  try {
+                    fileWatcher?.close();
+                  } catch {
+                    // ignore
+                  }
+                  try {
+                    dirWatcher?.close();
+                  } catch {
+                    // ignore
+                  }
+                  resolve();
+                }
+              } catch {
+                // ignore
+              }
+            });
+          });
+          rs.on("end", () => r());
+          rs.on("error", () => r());
+        });
+        lastSize = st.size;
+      } catch {
+        // until file exists
       }
-    }
-  );
+    };
 
-  void attachFileWatcher();
+    const attachFileWatcher = async () => {
+      try {
+        const st = await fsp.stat(telemetryPath);
+        lastSize = st.size;
+        await readNew(true);
+        fileWatcher = watch(
+          telemetryPath,
+          { persistent: false, encoding: "utf8" },
+          (eventType: string) => {
+            if (!stopped && eventType === "change") {
+              void readNew(false);
+            }
+          }
+        );
+      } catch {
+        // not created yet
+      }
+    };
 
-  return () => {
-    stopped = true;
-    try {
-      fileWatcher?.close();
-    } catch {
-      // ignore
-    }
-    try {
-      dirWatcher?.close();
-    } catch {
-      // ignore
-    }
-  };
-}
+    dirWatcher = watch(
+      dir,
+      { persistent: false, encoding: "utf8" },
+      (_eventType: string, filename: string | null) => {
+        const name = filename;
+        if (!stopped && name === file) {
+          void attachFileWatcher();
+        }
+      }
+    );
 
-// Consolidated from completion-detection.ts
-export function startGeminiCompletionDetector(
-  taskRunId: string,
-  onComplete: () => void
-): void {
-  const telemetryPath = `/tmp/gemini-telemetry-${taskRunId}.log`;
-  watchGeminiTelemetryForCompletion({ telemetryPath, onComplete });
+      void attachFileWatcher();
+    })();
+  });
 }
