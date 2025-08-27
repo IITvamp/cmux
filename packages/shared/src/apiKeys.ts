@@ -12,21 +12,6 @@ export const OPENAI_API_KEY: AgentConfigApiKey = {
   description: "OpenAI API Key",
 };
 
-// For Qwen
-export const OPENAI_BASE_URL: AgentConfigApiKey = {
-  envVar: "OPENAI_BASE_URL",
-  displayName: "OpenAI Base URL",
-  description:
-    "Base URL for OpenAI-compatible providers (e.g., ModelScope, DashScope, OpenRouter)",
-};
-
-// For Qwen
-export const OPENAI_MODEL: AgentConfigApiKey = {
-  envVar: "OPENAI_MODEL",
-  displayName: "OpenAI Model",
-  description: "Optional override for model name via environment variable",
-};
-
 export const OPENROUTER_API_KEY: AgentConfigApiKey = {
   envVar: "OPENROUTER_API_KEY",
   displayName: "OpenRouter API Key",
@@ -49,4 +34,10 @@ export const CURSOR_API_KEY: AgentConfigApiKey = {
   envVar: "CURSOR_API_KEY",
   displayName: "Cursor API Key",
   description: "API key for Cursor agent",
+};
+
+export const MODEL_STUDIO_API_KEY: AgentConfigApiKey = {
+  envVar: "MODEL_STUDIO_API_KEY",
+  displayName: "ModelStudio API Key",
+  description: "Alibaba Cloud ModelStudio (DashScope Intl) API key for Qwen",
 };

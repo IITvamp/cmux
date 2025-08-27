@@ -73,7 +73,7 @@ async function makeQwenEnvironment(
 // Base URL and model are supplied via env (Settings):
 //  - DashScope: set OPENAI_API_KEY and (optionally) OPENAI_BASE_URL + OPENAI_MODEL
 //  - OpenRouter: set OPENROUTER_API_KEY (server maps to OPENAI_API_KEY) and optional OPENAI_MODEL
-export async function getQwenOpenAICompatibleEnvironment(
+export async function getQwenOpenRouterEnvironment(
   ctx: EnvironmentContext
 ): Promise<EnvironmentResult> {
   // Hardcode OpenRouter compatible endpoint and default Qwen model.
@@ -81,5 +81,16 @@ export async function getQwenOpenAICompatibleEnvironment(
     ctx,
     "https://openrouter.ai/api/v1",
     "qwen/qwen3-coder:free"
+  );
+}
+
+export async function getQwenModelStudioEnvironment(
+  ctx: EnvironmentContext
+): Promise<EnvironmentResult> {
+  // Hardcode DashScope Intl (ModelStudio) endpoint and qwen3-coder-plus model.
+  return makeQwenEnvironment(
+    ctx,
+    "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    "qwen3-coder-plus"
   );
 }
