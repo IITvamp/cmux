@@ -1,6 +1,11 @@
-import type { EnvironmentContext, EnvironmentResult } from "../common/environment-result.js";
+import type {
+  EnvironmentContext,
+  EnvironmentResult,
+} from "../common/environment-result.js";
 
-export async function getAmpEnvironment(ctx: EnvironmentContext): Promise<EnvironmentResult> {
+export async function getAmpEnvironment(
+  ctx: EnvironmentContext
+): Promise<EnvironmentResult> {
   // These must be lazy since configs are imported into the browser
   const { readFile } = await import("node:fs/promises");
   const { homedir } = await import("node:os");
@@ -18,10 +23,10 @@ export async function getAmpEnvironment(ctx: EnvironmentContext): Promise<Enviro
   try {
     const settingsPath = `${homedir()}/.config/amp/settings.json`;
     const settingsContent = await readFile(settingsPath, "utf-8");
-    
+
     // Validate that it's valid JSON
     JSON.parse(settingsContent);
-    
+
     files.push({
       destinationPath: "$HOME/.config/amp/settings.json",
       contentBase64: Buffer.from(settingsContent).toString("base64"),
@@ -36,7 +41,9 @@ export async function getAmpEnvironment(ctx: EnvironmentContext): Promise<Enviro
     };
     files.push({
       destinationPath: "$HOME/.config/amp/settings.json",
-      contentBase64: Buffer.from(JSON.stringify(defaultSettings, null, 2)).toString("base64"),
+      contentBase64: Buffer.from(
+        JSON.stringify(defaultSettings, null, 2)
+      ).toString("base64"),
       mode: "644",
     });
   }
@@ -45,10 +52,10 @@ export async function getAmpEnvironment(ctx: EnvironmentContext): Promise<Enviro
   try {
     const secretsPath = `${homedir()}/.local/share/amp/secrets.json`;
     const secretsContent = await readFile(secretsPath, "utf-8");
-    
+
     // Validate that it's valid JSON
     JSON.parse(secretsContent);
-    
+
     files.push({
       destinationPath: "$HOME/.local/share/amp/secrets.json",
       contentBase64: Buffer.from(secretsContent).toString("base64"),
@@ -58,11 +65,19 @@ export async function getAmpEnvironment(ctx: EnvironmentContext): Promise<Enviro
     console.warn("Failed to read amp secrets.json:", error);
   }
 
+  // The local proxy that Amp CLI should talk to
   env.AMP_URL = "http://localhost:39379";
+  // Upstream URL that the proxy should target (avoid loop with AMP_URL)
+  env.AMP_UPSTREAM_URL = "https://ampcode.com";
 
   // Use the taskRunId directly so the AMP proxy can extract it.
   // Prefix with taskRunId: to be explicit, though the proxy accepts bare IDs too.
   env.AMP_API_KEY = `taskRunId:${ctx.taskRunId}`;
+
+  // Ensure AMP proxy is started in-process by the worker using a sentinel command.
+  // This avoids a separate process and keeps event emission within the worker.
+  // Idempotent in worker via an ampProxyStarted guard.
+  startupCommands.push("__cmux_start_amp_proxy__");
 
   return { files, env, startupCommands };
 }
