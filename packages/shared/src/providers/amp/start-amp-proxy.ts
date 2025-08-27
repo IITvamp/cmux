@@ -74,7 +74,7 @@ function ampResponseIndicatesCompletion(json: unknown): boolean {
 export function startAmpProxy(options: AmpProxyOptions = {}) {
   const AMP_PROXY_PORT = 39379;
   const AMP_TARGET_HOST =
-    options.ampUrl || process.env.AMP_URL || "https://ampcode.com";
+    options.ampUrl || process.env.AMP_UPSTREAM_URL || "https://ampcode.com";
 
   const emit = options.emitToMainServer || (() => {});
   const workerId = options.workerId;

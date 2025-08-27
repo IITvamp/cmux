@@ -1,6 +1,7 @@
 import type { AgentConfig } from "../../agentConfig.js";
 import { GEMINI_API_KEY } from "../../apiKeys.js";
 import { checkGeminiRequirements } from "./check-requirements.js";
+import { startGeminiCompletionDetector } from "./completion-detector.js";
 import { getGeminiEnvironment } from "./environment.js";
 
 export const GEMINI_FLASH_CONFIG: AgentConfig = {
@@ -22,6 +23,7 @@ export const GEMINI_FLASH_CONFIG: AgentConfig = {
   environment: getGeminiEnvironment,
   apiKeys: [GEMINI_API_KEY],
   checkRequirements: checkGeminiRequirements,
+  completionDetector: startGeminiCompletionDetector,
 };
 
 export const GEMINI_PRO_CONFIG: AgentConfig = {
@@ -43,4 +45,5 @@ export const GEMINI_PRO_CONFIG: AgentConfig = {
   environment: getGeminiEnvironment,
   apiKeys: [GEMINI_API_KEY],
   checkRequirements: checkGeminiRequirements,
+  completionDetector: startGeminiCompletionDetector,
 };

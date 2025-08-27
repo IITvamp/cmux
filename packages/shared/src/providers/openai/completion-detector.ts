@@ -1,83 +1,82 @@
-import { watch, existsSync } from "node:fs";
 import type { FSWatcher } from "node:fs";
-import { promises as fs } from "node:fs";
-import * as path from "node:path";
-
-export type CodexDetectorHandle = { stop: () => void };
 
 export async function createCodexDetector(options: {
   taskRunId: string;
   startTime: number;
   workingDir?: string;
-  onComplete: (data: {
-    taskRunId: string;
-    elapsedMs: number;
-    detectionMethod: string;
-  }) => void;
-  onError?: (error: Error) => void;
-}): Promise<CodexDetectorHandle> {
+}): Promise<void> {
   const doneFilePath = "/root/lifecycle/codex-done.txt";
+  const path = await import("node:path");
   const dir = path.dirname(doneFilePath);
   let isRunning = true;
   let watcher: FSWatcher | undefined;
 
-  const stop = () => {
-    if (!isRunning) return;
-    isRunning = false;
-    if (watcher) {
+  return new Promise<void>((resolve) => {
+    void (async () => {
+      const fs = await import("node:fs");
+      const stop = () => {
+        if (!isRunning) return;
+        isRunning = false;
+        if (watcher) {
+          try {
+            watcher.close();
+          } catch {
+            // ignore
+          }
+          watcher = undefined;
+        }
+        console.log(`[Codex Detector] Stopped watching ${doneFilePath}`);
+      };
+
+      const handleCompletion = () => {
+        if (!isRunning) return;
+        const elapsedMs = Date.now() - options.startTime;
+        console.log(`[Codex Detector] Task completed after ${elapsedMs}ms`);
+        stop();
+        resolve();
+      };
+
+      console.log(`[Codex Detector] Starting for task ${options.taskRunId}`);
+      console.log(`[Codex Detector] Watching for ${doneFilePath}`);
+
+      // Ensure directory exists
       try {
-        watcher.close();
+        await fs.promises.mkdir(dir, { recursive: true });
       } catch {
         // ignore
       }
-      watcher = undefined;
-    }
-    console.log(`[Codex Detector] Stopped watching ${doneFilePath}`);
-  };
 
-  const handleCompletion = () => {
-    if (!isRunning) return;
-    const elapsedMs = Date.now() - options.startTime;
-    console.log(`[Codex Detector] Task completed after ${elapsedMs}ms`);
-    stop();
-    try {
-      options.onComplete({
-        taskRunId: options.taskRunId,
-        elapsedMs,
-        detectionMethod: "done-file",
+      // If file already present, fire immediately
+      if (fs.existsSync(doneFilePath)) {
+        console.log(
+          `[Codex Detector] Done file already exists, marking complete`
+        );
+        handleCompletion();
+        return;
+      }
+
+      // Watch for filesystem events
+      watcher = fs.watch(dir, (eventType, filename) => {
+        if (!isRunning) return;
+        console.log(
+          `[Codex Detector] Directory event: ${eventType}, file: ${filename}`
+        );
+        // Some platforms may emit undefined filename; check on any event
+        if (
+          (filename === "codex-done.txt" || !filename) &&
+          fs.existsSync(doneFilePath)
+        ) {
+          console.log(`[Codex Detector] ✅ Task complete - done file exists`);
+          handleCompletion();
+        }
       });
-    } catch (err) {
-      if (options.onError && err instanceof Error) options.onError(err);
-    }
-  };
-
-  console.log(`[Codex Detector] Starting for task ${options.taskRunId}`);
-  console.log(`[Codex Detector] Watching for ${doneFilePath}`);
-
-  // Ensure directory exists
-  try {
-    await fs.mkdir(dir, { recursive: true });
-  } catch {
-    // ignore
-  }
-
-  // If file already present, fire immediately
-  if (existsSync(doneFilePath)) {
-    console.log(`[Codex Detector] Done file already exists, marking complete`);
-    handleCompletion();
-    return { stop };
-  }
-
-  // Watch for filesystem events
-  watcher = watch(dir, (eventType, filename) => {
-    if (!isRunning) return;
-    console.log(`[Codex Detector] Directory event: ${eventType}, file: ${filename}`);
-    // Some platforms may emit undefined filename; check on any event
-    if ((filename === "codex-done.txt" || !filename) && existsSync(doneFilePath)) {
-      console.log(`[Codex Detector] ✅ Task complete - done file exists`);
-      handleCompletion();
-    }
+    })();
   });
+}
 
-  return { stop };
+export function startCodexCompletionDetector(taskRunId: string): Promise<void> {
+  return createCodexDetector({
+    taskRunId,
+    startTime: Date.now(),
+  });
 }

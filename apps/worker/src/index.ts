@@ -12,6 +12,9 @@ import {
   type WorkerRegister,
   type WorkerToServerEvents,
 } from "@cmux/shared";
+import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
+
+import { startAmpProxy } from "@cmux/shared/src/providers/amp/start-amp-proxy.ts";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import * as xtermHeadless from "@xterm/headless";
 import express from "express";
@@ -21,18 +24,16 @@ import {
   spawn,
   type ChildProcessWithoutNullStreams,
 } from "node:child_process";
-import { EventEmitter } from "node:events";
 import { promises as fs } from "node:fs";
 import { createServer } from "node:http";
 import { cpus, platform, totalmem } from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
-import { runWorkerExec } from "./execRunner.js";
 import { Server, type Namespace, type Socket } from "socket.io";
 import { checkDockerReadiness } from "./checkDockerReadiness.js";
 import { detectTerminalIdle } from "./detectTerminalIdle.js";
+import { runWorkerExec } from "./execRunner.js";
 import { FileWatcher, computeGitDiff, getFileWithDiff } from "./fileWatcher.js";
-import { startAmpProxy } from "@cmux/shared/src/providers/amp/proxy";
 import { log } from "./logger.js";
 
 const execAsync = promisify(exec);
@@ -362,59 +363,6 @@ managementIO.on("connection", (socket) => {
         }
       }
 
-      // Execute startup commands if provided
-      if (validated.startupCommands && validated.startupCommands.length > 0) {
-        log(
-          "INFO",
-          `Executing ${validated.startupCommands.length} startup commands...`,
-          undefined,
-          WORKER_ID
-        );
-
-        for (const command of validated.startupCommands) {
-          try {
-            log(
-              "INFO",
-              `Executing startup command: ${command}`,
-              undefined,
-              WORKER_ID
-            );
-            const { stdout, stderr } = await execAsync(command, {
-              env: { ...process.env, ...validated.env },
-            });
-            if (stdout) {
-              log(
-                "INFO",
-                `Startup command stdout: ${stdout}`,
-                undefined,
-                WORKER_ID
-              );
-            }
-            if (stderr) {
-              log(
-                "INFO",
-                `Startup command stderr: ${stderr}`,
-                undefined,
-                WORKER_ID
-              );
-            }
-            log(
-              "INFO",
-              `Successfully executed startup command`,
-              undefined,
-              WORKER_ID
-            );
-          } catch (error) {
-            log(
-              "ERROR",
-              `Failed to execute startup command: ${command}`,
-              error,
-              WORKER_ID
-            );
-          }
-        }
-      }
-
       log(
         "INFO",
         "Creating terminal with options",
@@ -440,7 +388,7 @@ managementIO.on("connection", (socket) => {
         command: validated.command,
         args: validated.args,
         taskRunId: validated.taskRunId,
-        agentModel: (validated as any).agentModel,
+        agentModel: validated.agentModel,
         startupCommands: validated.startupCommands,
       });
 
@@ -884,6 +832,7 @@ async function createTerminal(
     env = {},
     command,
     args = [],
+    startupCommands = [],
   } = options;
 
   const shell = command || (platform() === "win32" ? "powershell.exe" : "bash");
@@ -957,6 +906,44 @@ async function createTerminal(
       : {}),
   };
 
+  // Run optional startup commands prior to spawning the agent process
+  if (startupCommands && startupCommands.length > 0) {
+    log(
+      "INFO",
+      `Running ${startupCommands.length} startup command(s) before spawn`,
+      { startupCommands }
+    );
+    for (const cmd of startupCommands) {
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const p = spawn("bash", ["-lc", cmd], {
+            cwd,
+            env: ptyEnv,
+            stdio: ["ignore", "pipe", "pipe"],
+          });
+          let stderr = "";
+          p.stderr.on("data", (d) => {
+            stderr += d.toString();
+          });
+          p.on("exit", (code) => {
+            if (code === 0) resolve();
+            else
+              reject(
+                new Error(`Startup command failed (${code}): ${cmd}\n${stderr}`)
+              );
+          });
+          p.on("error", (e) => reject(e));
+        });
+      } catch (e) {
+        log(
+          "ERROR",
+          `Startup command failed: ${cmd}`,
+          e instanceof Error ? e : new Error(String(e))
+        );
+      }
+    }
+  }
+
   log("INFO", "Spawning process", {
     command: spawnCommand,
     args: spawnArgs,
@@ -1011,104 +998,50 @@ async function createTerminal(
   let initialStderrBuffer = "";
   const INITIAL_ERROR_CAPTURE_WINDOW_MS = 30000; // capture up to first 30s
   const stopErrorCaptureAt = Date.now() + INITIAL_ERROR_CAPTURE_WINDOW_MS;
-  let opencodeStdoutBuf = "";
-  const providerResolved = resolveProviderFromModel(options.agentModel);
-  childProcess.stdout.on("data", (data: Buffer) => {
-    const chunk = data.toString();
-    headlessTerminal.write(chunk);
-    // Parse OpenCode stdout for deterministic completion events
-    if (providerResolved === "opencode" && options.taskRunId) {
-      try {
-        opencodeStdoutBuf += chunk;
-        // Process complete lines only
-        const lines = opencodeStdoutBuf.split(/\r?\n/);
-        opencodeStdoutBuf = lines.pop() || ""; // keep last partial
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed) continue;
-          // Debug: log lines with likely markers (limited preview)
-          if (/finish|Done|done|response|summarize/i.test(trimmed)) {
-            log("DEBUG", "[OpenCode stdout] line", {
-              sample: trimmed.substring(0, 200),
-            });
-          }
 
-          let detected = false;
-          let reason = "";
-          // Try JSON first
-          if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
-            try {
-              const obj = JSON.parse(trimmed) as any;
-              const payload = obj.payload || obj.event || obj;
-              const done = payload?.Done === true || payload?.done === true;
-              const type = String(
-                payload?.Type || payload?.type || ""
-              ).toLowerCase();
-              const isResponse = type.includes("response");
-              const isSummarize = type.includes("summarize");
-              const finish =
-                payload?.finish || obj?.finish || obj?.response?.finish;
-              reason = String(finish?.reason || "").toLowerCase();
-              if (
-                (done && (isResponse || isSummarize)) ||
-                (finish && reason !== "tool_use" && reason !== "")
-              ) {
-                detected = true;
-                log("INFO", "[OpenCode stdout] Detected JSON completion", {
-                  done,
-                  type,
-                  finish,
-                });
-              }
-            } catch {
-              // fall through to regex
-            }
-          }
-          if (!detected) {
-            // Regex fallback for non-JSON lines
-            const doneRe = /"?done"?\s*:\s*true/i;
-            const typeRe = /"?type"?\s*:\s*"?([a-zA-Z_\-]+)"?/i;
-            const finishReasonRe =
-              /finish[^\n\r]*?reason\s*[:=]\s*"?([a-zA-Z_\-]+)"?/i;
-            const hasDone = doneRe.test(trimmed);
-            const typeMatch = typeRe.exec(trimmed);
-            const typeStr = (typeMatch?.[1] || "").toLowerCase();
-            const isResponse = typeStr.includes("response");
-            const isSummarize = typeStr.includes("summarize");
-            const fr = finishReasonRe.exec(trimmed);
-            reason = (fr?.[1] || reason || "").toLowerCase();
-            if (
-              (hasDone && (isResponse || isSummarize)) ||
-              (reason && reason !== "tool_use")
-            ) {
-              detected = true;
-            }
-          }
-          if (detected) {
-            log("INFO", "[OpenCode stdout] Detected completion event", {
-              reason,
-            });
-            emitToMainServer("worker:task-complete", {
-              workerId: WORKER_ID,
-              terminalId,
-              taskRunId: options.taskRunId,
-              agentModel: options.agentModel,
-              elapsedMs: Date.now() - processStartTime,
-            });
-          }
-        }
-      } catch (e) {
-        log("ERROR", "[OpenCode stdout] Error parsing output", e);
-      }
+  // Config-driven completion detector
+  const agentConfig = AGENT_CONFIGS.find((c) => c.name === options.agentModel);
+
+  // if missing need to return early
+  if (!agentConfig) {
+    log("ERROR", `Agent config not found for ${options.agentModel}`);
+    return;
+  }
+
+  if (options.taskRunId && agentConfig?.completionDetector) {
+    try {
+      void agentConfig
+        .completionDetector(options.taskRunId)
+        .then(() => {
+          emitToMainServer("worker:task-complete", {
+            workerId: WORKER_ID,
+            terminalId,
+            taskRunId: options.taskRunId!,
+            agentModel: options.agentModel,
+            elapsedMs: Date.now() - processStartTime,
+          });
+        })
+        .catch((e) => {
+          log(
+            "ERROR",
+            `Completion detector error for ${options.agentModel}: ${String(e)}`
+          );
+        });
+    } catch (e) {
+      log(
+        "ERROR",
+        `Failed to start completion detector for ${options.agentModel}: ${String(e)}`
+      );
     }
-  });
-
+  }
   childProcess.stderr.on("data", (data: Buffer) => {
     // Accumulate stderr during startup window for diagnostic error reporting
     if (Date.now() <= stopErrorCaptureAt && initialStderrBuffer.length < 8000) {
       try {
         initialStderrBuffer += data.toString();
-      } catch {}
+      } catch {
+        // ignore
+      }
     }
     headlessTerminal.write(data.toString());
   });
@@ -1166,220 +1099,38 @@ async function createTerminal(
     log("INFO", "Setting up task completion detection for terminal", {
       terminalId,
       sessionName,
-      spawnCommand,
-      originalCommand: command,
       agentModel: options.agentModel,
       taskRunId: options.taskRunId,
     });
 
-    // Track if detection completed successfully
-    let idleDetectionCompleted = false;
-
-    // Use new task completion detection if agentModel is provided
-    if (options.agentModel && options.taskRunId) {
-      // For Claude, Codex, and Gemini use project/log detection only; allow idle fallback for OpenCode
-      const useTerminalIdleFallback = !(
-        providerResolved === "claude" ||
-        providerResolved === "codex" ||
-        providerResolved === "gemini"
-      );
-
-      log(
-        "INFO",
-        `Setting up task completion detection for ${options.agentModel}`,
-        {
-          useTerminalIdleFallback,
-          taskRunId: options.taskRunId,
-          workingDir: cwd,
-        }
-      );
-
-      if (providerResolved === "gemini") {
-        const telemetryPath = `/tmp/gemini-telemetry-${options.taskRunId}.log`;
-        const { watchGeminiTelemetryForCompletion } = await getGeminiHelpers();
-        const stopWatching = watchGeminiTelemetryForCompletion({
-          telemetryPath,
-          onComplete: async () => {
-            if (!idleDetectionCompleted) {
-              idleDetectionCompleted = true;
-              const elapsedMs = Date.now() - processStartTime;
-              log("INFO", "[Gemini] Completion event detected via telemetry", {
-                telemetryPath,
-                elapsedMs,
-              });
-              emitToMainServer("worker:task-complete", {
-                workerId: WORKER_ID,
-                taskRunId: options.taskRunId!,
-                agentModel: options.agentModel,
-                elapsedMs,
-                detectionMethod: "telemetry-log",
-              });
-              stopWatching();
-            }
-          },
-          onError: (error) => {
-            log("ERROR", `[Gemini] Telemetry watcher error: ${error.message}`);
-          },
-        });
-      } else {
-        const detector = await createTaskCompletionDetector(
-          {
-            taskRunId: options.taskRunId!,
-            agentType: providerResolved!,
-            agentModel: options.agentModel,
-            workingDir: cwd,
-            maxRuntimeMs: 20 * 60 * 1000,
-            minRuntimeMs: 30000,
-          },
-          buildDetectorConfig({
-            agentType: providerResolved || undefined,
-            agentModel: options.agentModel,
-            workingDir: cwd,
-            startTime: processStartTime,
-            terminalId: useTerminalIdleFallback
-              ? sessionName || terminalId
-              : undefined,
-            onTerminalIdle: useTerminalIdleFallback
-              ? () => {
-                  if (!idleDetectionCompleted) {
-                    idleDetectionCompleted = true;
-                    const elapsedMs = Date.now() - processStartTime;
-                    log(
-                      "INFO",
-                      "Task completion detected (fallback to terminal idle)",
-                      {
-                        terminalId,
-                        taskRunId: options.taskRunId,
-                        agentModel: options.agentModel,
-                        elapsedMs,
-                      }
-                    );
-                    if (options.taskRunId) {
-                      emitToMainServer("worker:task-complete", {
-                        workerId: WORKER_ID,
-                        taskRunId: options.taskRunId,
-                        agentModel: options.agentModel,
-                        elapsedMs,
-                      });
-                    }
-                  }
-                }
-              : undefined,
-          })
-        );
-
-        // Listen for task completion from project/log detectors
-        detector.on("task-complete", (data) => {
-          if (!idleDetectionCompleted) {
-            idleDetectionCompleted = true;
-            log("INFO", "Task completion detected from project files", data);
-            const detectionMethod = "project-file";
-            emitToMainServer("worker:task-complete", {
-              workerId: WORKER_ID,
-              taskRunId: options.taskRunId,
-              agentModel: options.agentModel,
-              elapsedMs: data.elapsedMs,
-              detectionMethod,
-            });
-          }
-        });
-
-        // On timeout, do NOT mark complete; mark as failed for deterministic behavior
-        detector.on("task-timeout", (data) => {
-          if (!idleDetectionCompleted) {
-            idleDetectionCompleted = true;
-            log("WARN", "Task timeout detected", data);
-            emitToMainServer("worker:terminal-failed", {
-              workerId: WORKER_ID,
-              terminalId,
-              taskRunId: options.taskRunId,
-              errorMessage: `Detector timeout after ${data.elapsedMs}ms`,
-              elapsedMs: data.elapsedMs,
-            });
-          }
-        });
-      }
-    } else {
-      // Fallback to original terminal idle detection
+    if (!(agentConfig?.completionDetector && options.taskRunId)) {
+      // Legacy fallback to terminal idle when no agentModel available
       detectTerminalIdle({
         sessionName: sessionName || terminalId,
-        idleTimeoutMs: 15000, // 15 seconds - for longer tasks that may pause
+        idleTimeoutMs: 15000,
         onIdle: () => {
-          log("INFO", "Terminal idle detected", {
-            terminalId,
-            taskRunId: options.taskRunId,
-          });
-
-          idleDetectionCompleted = true;
           const elapsedMs = Date.now() - processStartTime;
-          // Emit idle event via management socket
-          log("DEBUG", "Attempting to emit worker:terminal-idle", {
-            terminalId,
-            taskRunId: options.taskRunId,
-            hasMainServerSocket: !!mainServerSocket,
-            mainServerSocketConnected: mainServerSocket?.connected,
-            elapsedMs,
-          });
-
           if (options.taskRunId) {
-            log("INFO", "Sending worker:terminal-idle event", {
-              workerId: WORKER_ID,
-              terminalId,
-              taskRunId: options.taskRunId,
-              elapsedMs,
-            });
             emitToMainServer("worker:terminal-idle", {
               workerId: WORKER_ID,
               terminalId,
               taskRunId: options.taskRunId,
               elapsedMs,
             });
-          } else {
-            log(
-              "WARNING",
-              "Cannot emit worker:terminal-idle - missing taskRunId",
-              {
-                terminalId,
-                taskRunId: options.taskRunId,
-              }
-            );
           }
         },
-      })
-        .then(async ({ elapsedMs }) => {
-          log(
-            "INFO",
-            `Terminal ${terminalId} completed successfully after ${elapsedMs}ms`,
-            {
-              terminalId,
-              taskRunId: options.taskRunId,
-              idleDetectionCompleted,
-            }
-          );
-        })
-        .catch((error) => {
-          const errMsg =
-            (initialStderrBuffer && initialStderrBuffer.trim()) ||
-            (error instanceof Error ? error.message : String(error));
-          log(
-            "WARNING",
-            `Terminal ${terminalId} exited early or failed idle detection`,
-            {
-              error: errMsg,
-              terminalId,
-              taskRunId: options.taskRunId,
-            }
-          );
-          // Inform main server so it can mark the task run as failed
-          emitToMainServer("worker:terminal-failed", {
-            workerId: WORKER_ID,
-            terminalId,
-            taskRunId: options.taskRunId,
-            errorMessage: errMsg,
-            elapsedMs: Date.now() - processStartTime,
-          });
-          // Don't emit idle event for early exits/failures
+      }).catch((error) => {
+        const errMsg =
+          (initialStderrBuffer && initialStderrBuffer.trim()) ||
+          (error instanceof Error ? error.message : String(error));
+        emitToMainServer("worker:terminal-failed", {
+          workerId: WORKER_ID,
+          terminalId,
+          taskRunId: options.taskRunId,
+          errorMessage: errMsg,
+          elapsedMs: Date.now() - processStartTime,
         });
+      });
     }
   }
 
@@ -1518,321 +1269,3 @@ function gracefulShutdown() {
 
 process.on("SIGTERM", gracefulShutdown);
 process.on("SIGINT", gracefulShutdown);
-
-// ==============================
-// Task Completion (DI approach)
-// ==============================
-
-type AgentType = "claude" | "codex" | "gemini" | "amp" | "opencode";
-
-interface TaskCompletionOptionsDI {
-  taskRunId: string;
-  agentType: AgentType;
-  agentModel?: string;
-  workingDir: string;
-  maxRuntimeMs?: number;
-  minRuntimeMs?: number;
-}
-
-interface DetectorDeps {
-  checkCompletion: (ctx: {
-    startTime: number;
-    options: TaskCompletionOptionsDI;
-  }) => Promise<boolean>;
-  allowTerminalIdleFallback?: boolean;
-  terminalId?: string;
-  idleTimeoutMs?: number;
-  onTerminalIdle?: () => void;
-}
-
-class TaskCompletionDetectorDI extends EventEmitter {
-  private startTime: number;
-  private isRunning = false;
-  private watchers: any[] = [];
-  constructor(
-    private options: TaskCompletionOptionsDI,
-    private deps: DetectorDeps
-  ) {
-    super();
-    this.startTime = Date.now();
-    this.options.maxRuntimeMs = this.options.maxRuntimeMs || 20 * 60 * 1000;
-    this.options.minRuntimeMs = this.options.minRuntimeMs || 30000;
-  }
-  async start(): Promise<void> {
-    if (this.isRunning) return;
-    this.isRunning = true;
-    log(
-      "INFO",
-      `TaskCompletionDetector started for ${this.options.agentType} task ${this.options.taskRunId}`
-    );
-
-    // Set up file watchers based on agent type
-    if (this.options.agentType === "claude") {
-      // Watch for Claude stop hook marker file
-      this.watchClaudeMarkerFile();
-    } else if (this.options.agentType === "codex") {
-      // Watch for Codex completion files
-      this.watchCodexCompletionFiles();
-    } else if (this.options.agentType === "opencode") {
-      // OpenCode completion is handled via stdout parsing in createTerminal
-      // But also set up file watching as well
-      this.watchOpenCodeFiles();
-    }
-  }
-
-  private async watchClaudeMarkerFile(): Promise<void> {
-    const markerPath = `/root/lifecycle/claude-complete-${this.options.taskRunId}`;
-    const { watch } = await import("node:fs");
-    const { access } = await import("node:fs/promises");
-
-    // Check if file already exists
-    try {
-      await access(markerPath);
-      this.handleCompletion();
-      return;
-    } catch {
-      // File doesn't exist yet, set up watcher
-    }
-
-    // Watch the directory for the marker file
-    const watcher = watch("/root/lifecycle", (eventType, filename) => {
-      if (filename === `claude-complete-${this.options.taskRunId}`) {
-        log("INFO", `Claude stop hook marker detected: ${markerPath}`);
-        this.handleCompletion();
-      }
-    });
-    this.watchers.push(watcher);
-  }
-
-  private async watchCodexCompletionFiles(): Promise<void> {
-    const { createCodexDetector } = await import(
-      "@cmux/shared/src/providers/openai/completion-detector.ts"
-    );
-
-    log("INFO", "[Codex] Setting up completion detector", {
-      workingDir: this.options.workingDir,
-      taskRunId: this.options.taskRunId,
-      startTime: new Date(this.startTime).toISOString(),
-    });
-
-    const detector = await createCodexDetector({
-      taskRunId: this.options.taskRunId,
-      startTime: this.startTime,
-      workingDir: this.options.workingDir,
-      onComplete: (data: any) => {
-        log("INFO", "[Codex] ✅ Completion detected", data);
-        this.handleCompletion();
-      },
-      onError: (error: any) => {
-        log("ERROR", `[Codex] Detector error: ${error.message}`);
-      },
-    });
-
-    // Store the detector so we can stop it later
-    this.watchers.push({
-      close: () => detector.stop(),
-    } as any);
-  }
-
-  private async watchOpenCodeFiles(): Promise<void> {
-    const markerPath = `/root/lifecycle/opencode-complete-${this.options.taskRunId}`;
-    const { watch } = await import("node:fs");
-    const { access } = await import("node:fs/promises");
-
-    try {
-      await access(markerPath);
-      log(
-        "INFO",
-        `[OpenCode] Completion marker already present: ${markerPath}`
-      );
-      this.handleCompletion();
-      return;
-    } catch {
-      // Not present yet; set up watcher below
-    }
-
-    const watcher = watch(
-      "/root/lifecycle",
-      { persistent: true },
-      async (_event, filename) => {
-        if (!filename) return;
-        if (filename === `opencode-complete-${this.options.taskRunId}`) {
-          log("INFO", `[OpenCode] Completion marker detected: ${markerPath}`);
-          this.handleCompletion();
-        }
-      }
-    );
-    this.watchers.push(watcher);
-  }
-
-  private handleCompletion(): void {
-    if (!this.isRunning) return;
-    this.stop();
-    this.emit("task-complete", {
-      taskRunId: this.options.taskRunId,
-      agentType: this.options.agentType,
-      elapsedMs: Date.now() - this.startTime,
-    });
-  }
-  stop(): void {
-    this.isRunning = false;
-    // Close all file watchers
-    this.watchers.forEach((w) => {
-      try {
-        w.close();
-      } catch (e) {
-        // Ignore errors when closing watchers
-      }
-    });
-    this.watchers = [];
-  }
-}
-
-async function createTaskCompletionDetector(
-  options: TaskCompletionOptionsDI,
-  deps: DetectorDeps
-): Promise<TaskCompletionDetectorDI> {
-  const detector = new TaskCompletionDetectorDI(options, deps);
-  await detector.start();
-
-  // Optional terminal idle fallback
-  // const allowFallback = deps.allowTerminalIdleFallback !== false; // default true unless explicitly false
-  // if (allowFallback && deps.terminalId && deps.onTerminalIdle) {
-  //   detectTerminalIdle({
-  //     sessionName: deps.terminalId,
-  //     idleTimeoutMs: deps.idleTimeoutMs || 15000,
-  //     onIdle: () => {
-  //       log("INFO", "Terminal idle detected (fallback)");
-  //       detector.stop();
-  //       deps.onTerminalIdle && deps.onTerminalIdle();
-  //     },
-  //   });
-  // }
-
-  return detector;
-}
-
-// ---- Provider helpers (dynamic imports kept local) ----
-const getClaudeHelpers = async () => {
-  const module = await import(
-    "@cmux/shared/src/providers/anthropic/completion-detector.ts"
-  );
-  return {
-    checkClaudeStopHookCompletion: module.checkClaudeStopHookCompletion,
-  };
-};
-// Codex helpers are now handled by the detector module
-const getGeminiHelpers = async () => {
-  const module = await import(
-    "@cmux/shared/src/providers/gemini/completion-detector.ts"
-  );
-  return {
-    watchGeminiTelemetryForCompletion: module.watchGeminiTelemetryForCompletion,
-  };
-};
-
-// ---- Provider-specific checkers composed via config ----
-function resolveProviderFromModel(model?: string): AgentType | undefined {
-  if (!model) return undefined;
-
-  // Extract provider from model name (e.g., "claude/sonnet-4" -> "claude")
-  // Special case: "amp" doesn't have a slash
-  if (model === "amp") return "amp";
-
-  // Handle cursor models (cursor is not in AgentType, so skip it)
-  if (model.startsWith("cursor/")) return undefined;
-
-  // Extract prefix before the slash
-  const prefix = model.split("/")[0] as AgentType;
-  return ["claude", "codex", "gemini", "amp", "opencode"].includes(prefix)
-    ? prefix
-    : undefined;
-}
-
-function buildDetectorConfig(params: {
-  agentType?: AgentType;
-  agentModel?: string;
-  workingDir: string;
-  startTime: number;
-  terminalId?: string;
-  onTerminalIdle?: () => void;
-}): DetectorDeps {
-  const agentType =
-    params.agentType || resolveProviderFromModel(params.agentModel)!;
-  const { workingDir } = params;
-
-  const byAgent: Record<AgentType, DetectorDeps> = {
-    claude: {
-      allowTerminalIdleFallback: false,
-      async checkCompletion({ startTime, options }) {
-        try {
-          const { checkClaudeStopHookCompletion } = await getClaudeHelpers();
-
-          // Check for stop hook marker (ONLY method - hook MUST work)
-          const done = await checkClaudeStopHookCompletion(options.taskRunId);
-          if (done) {
-            log(
-              "INFO",
-              `Claude task complete via stop hook for task: ${options.taskRunId}`
-            );
-            return true;
-          }
-
-          return false;
-        } catch (e) {
-          log("ERROR", `Claude completion error: ${e}`);
-          return false;
-        }
-      },
-    },
-    codex: {
-      allowTerminalIdleFallback: false,
-      async checkCompletion() {
-        // Codex completion is handled by the event-driven detector in watchCodexCompletionFiles
-        // This function is not used for Codex
-        return false;
-      },
-    },
-    gemini: {
-      allowTerminalIdleFallback: false,
-      async checkCompletion() {
-        // Gemini completion is handled by the event-driven watcher above.
-        // Do not poll here.
-        return false;
-      },
-    },
-    amp: {
-      // Not implemented yet; keep fallback enabled so terminal idle can be used by caller
-      allowTerminalIdleFallback: true,
-      async checkCompletion() {
-        return false;
-      },
-    },
-    opencode: {
-      allowTerminalIdleFallback: true,
-      async checkCompletion({ startTime, options }) {
-        try {
-          const module = await import(
-            "@cmux/shared/src/providers/opencode/completion-detector.ts"
-          );
-          const done = await module.checkOpencodeCompletionSince(
-            startTime,
-            options.workingDir
-          );
-          if (!done) log("DEBUG", "[Opencode] Not complete yet");
-          return done;
-        } catch (e) {
-          log("ERROR", `Opencode completion error: ${e}`);
-          return false;
-        }
-      },
-    },
-  };
-
-  const base = byAgent[agentType];
-  return {
-    ...base,
-    terminalId: params.terminalId,
-    onTerminalIdle: params.onTerminalIdle,
-  };
-}
