@@ -6,13 +6,17 @@ import { SignIn, useUser } from "@stackframe/react";
 import { useQuery } from "@tanstack/react-query";
 import { ConvexProviderWithAuth, useConvexAuth } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
-import { type ReactNode, useCallback, useMemo } from "react";
+import { type ReactNode, useCallback, useMemo, useRef } from "react";
 import { convexQueryClient } from "./convex-query-client";
 
-const authJsonStaleTime = 45 * 60 * 1000; // 45 minutes before refresh
+// refresh every 30 minutes
+const authJsonRefreshInterval = 30 * 60 * 1000;
 
 function useAuthFromStack() {
-  const user = useUser({ or: "return-null" });
+  const user = useUser();
+  // hacky userRef because when localStorage changes for non-stack auth keys (like dark/light mode) it triggers a re-render of the user object
+  const userRef = useRef(user);
+  userRef.current = user;
   const authJsonQuery = useQuery({
     queryKey: ["authJson"],
     queryFn: async () => {
@@ -20,14 +24,15 @@ function useAuthFromStack() {
       const authJson = await user.getAuthJson();
       return authJson;
     },
-    staleTime: authJsonStaleTime,
+    refetchInterval: authJsonRefreshInterval,
+    refetchIntervalInBackground: true,
   });
   const isLoading = false;
-  const isAuthenticated = !!user;
+  const isAuthenticated = useMemo(() => !!user, [user]);
   const fetchAccessToken = useCallback(
     async (_opts: { forceRefreshToken: boolean }) => {
-      const stackUser = user
-        ? user
+      const stackUser = userRef.current
+        ? userRef.current
         : await stackClientApp.getUser({ or: "return-null" });
       if (!stackUser) {
         return null;
@@ -37,7 +42,7 @@ function useAuthFromStack() {
         : await stackUser.getAuthJson();
       return authJson.accessToken ?? null;
     },
-    [user, authJsonQuery.data]
+    [authJsonQuery.data]
   );
 
   const authResult = useMemo(
