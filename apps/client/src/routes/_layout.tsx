@@ -1,16 +1,18 @@
+import { CmuxComments } from "@/components/cmux-comments";
 import { Sidebar } from "@/components/Sidebar";
+import ConvexClientProvider from "@/contexts/convex/convex-client-provider";
+import { ExpandTasksProvider } from "@/contexts/expand-tasks/ExpandTasksProvider";
 import { isFakeConvexId } from "@/lib/fakeConvexId";
 import { api } from "@cmux/convex/api";
 import { type Doc, type Id } from "@cmux/convex/dataModel";
 import { convexQuery } from "@convex-dev/react-query";
 import { useUser } from "@stackframe/react";
 import { createFileRoute, Outlet } from "@tanstack/react-router";
-import { ExpandTasksProvider } from "@/contexts/expand-tasks/ExpandTasksProvider";
 import { useQueries, useQuery } from "convex/react";
 import { Suspense, useMemo } from "react";
 
 export const Route = createFileRoute("/_layout")({
-  component: LayoutComponent,
+  component: LayoutComponentWrapper,
   loader: async ({ context }) => {
     void context.queryClient.ensureQueryData(convexQuery(api.tasks.get, {}));
   },
@@ -107,5 +109,14 @@ function LayoutComponent() {
         Add Debug Note
       </button>
     </>
+  );
+}
+
+function LayoutComponentWrapper() {
+  return (
+    <ConvexClientProvider>
+      <LayoutComponent />
+      <CmuxComments />
+    </ConvexClientProvider>
   );
 }
