@@ -23,8 +23,7 @@ export const GEMINI_FLASH_CONFIG: AgentConfig = {
   environment: getGeminiEnvironment,
   apiKeys: [GEMINI_API_KEY],
   checkRequirements: checkGeminiRequirements,
-  completionDetector: (taskRunId, onComplete) =>
-    startGeminiCompletionDetector(taskRunId, onComplete),
+  completionDetector: startGeminiCompletionDetector,
 };
 
 export const GEMINI_PRO_CONFIG: AgentConfig = {
@@ -46,6 +45,5 @@ export const GEMINI_PRO_CONFIG: AgentConfig = {
   environment: getGeminiEnvironment,
   apiKeys: [GEMINI_API_KEY],
   checkRequirements: checkGeminiRequirements,
-  completionDetector: (taskRunId, onComplete) =>
-    startGeminiCompletionDetector(taskRunId, onComplete),
+  completionDetector: startGeminiCompletionDetector,
 };

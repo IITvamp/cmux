@@ -1,6 +1,7 @@
 import type { AgentConfig } from "../../agentConfig.js";
 import { ANTHROPIC_API_KEY } from "../../apiKeys.js";
 import { checkClaudeRequirements } from "./check-requirements.js";
+import { startClaudeCompletionDetector } from "./completion-detector.js";
 // Lazy-load Node-only completion detector to avoid bundling fs in browser
 
 import { getClaudeEnvironment } from "./environment.js";
@@ -19,10 +20,7 @@ export const CLAUDE_SONNET_CONFIG: AgentConfig = {
   environment: getClaudeEnvironment,
   checkRequirements: checkClaudeRequirements,
   apiKeys: [ANTHROPIC_API_KEY],
-  completionDetector: async (taskRunId, onComplete) => {
-    const mod = await import("./completion-detector.js");
-    mod.startClaudeCompletionDetector(taskRunId, onComplete);
-  },
+  completionDetector: startClaudeCompletionDetector,
 };
 
 export const CLAUDE_OPUS_4_CONFIG: AgentConfig = {
@@ -39,10 +37,7 @@ export const CLAUDE_OPUS_4_CONFIG: AgentConfig = {
   environment: getClaudeEnvironment,
   checkRequirements: checkClaudeRequirements,
   apiKeys: [ANTHROPIC_API_KEY],
-  completionDetector: async (taskRunId, onComplete) => {
-    const mod = await import("./completion-detector.js");
-    mod.startClaudeCompletionDetector(taskRunId, onComplete);
-  },
+  completionDetector: startClaudeCompletionDetector,
 };
 
 export const CLAUDE_OPUS_4_1_CONFIG: AgentConfig = {
@@ -59,8 +54,5 @@ export const CLAUDE_OPUS_4_1_CONFIG: AgentConfig = {
   environment: getClaudeEnvironment,
   checkRequirements: checkClaudeRequirements,
   apiKeys: [ANTHROPIC_API_KEY],
-  completionDetector: async (taskRunId, onComplete) => {
-    const mod = await import("./completion-detector.js");
-    mod.startClaudeCompletionDetector(taskRunId, onComplete);
-  },
+  completionDetector: startClaudeCompletionDetector,
 };
