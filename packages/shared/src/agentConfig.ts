@@ -19,7 +19,7 @@ import {
   GEMINI_FLASH_CONFIG,
   GEMINI_PRO_CONFIG,
 } from "./providers/gemini/configs.js";
-import { QWEN_OPENROUTER_CODER_PLUS_CONFIG } from "./providers/qwen/configs.js";
+import { QWEN_OPENROUTER_CODER_FREE_CONFIG } from "./providers/qwen/configs.js";
 import {
   CODEX_GPT_4_1_CONFIG,
   CODEX_GPT_5_CONFIG,
@@ -52,6 +52,9 @@ export type AgentConfigApiKey = {
   envVar: string;
   displayName: string;
   description?: string;
+  // Optionally inject this key value under a different environment variable
+  // name when launching the agent process.
+  mapToEnvVar?: string;
 };
 export type AgentConfigApiKeys = Array<AgentConfigApiKey>;
 
@@ -78,7 +81,7 @@ export const AGENT_CONFIGS: AgentConfig[] = [
   CODEX_GPT_4_1_CONFIG,
   GEMINI_FLASH_CONFIG,
   GEMINI_PRO_CONFIG,
-  QWEN_OPENROUTER_CODER_PLUS_CONFIG,
+  QWEN_OPENROUTER_CODER_FREE_CONFIG,
 
   AMP_CONFIG,
   AMP_GPT_5_CONFIG,

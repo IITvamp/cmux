@@ -3,11 +3,9 @@ import type {
   EnvironmentResult,
 } from "../common/environment-result.js";
 
-// Prepare Qwen CLI environment to avoid interactive auth prompts.
-// We mirror the Gemini setup by ensuring ~/.qwen/settings.json exists and
-// selects the OpenAI-compatible auth flow. The actual OPENAI_API_KEY is
-// injected by the spawner via envVars from Convex.
-// Internal helper to build environment with a provider default base URL.
+// Prepare Qwen CLI environment for OpenAI-compatible API key mode.
+// We previously supported the Qwen OAuth device flow, but cmux now uses
+// API keys via DashScope or OpenRouter configured in Settings.
 async function makeQwenEnvironment(
   _ctx: EnvironmentContext,
   defaultBaseUrl: string | null,
@@ -71,10 +69,14 @@ async function makeQwenEnvironment(
   return { files, env, startupCommands };
 }
 
-// OpenRouter: models like "qwen/qwen3-coder:free"
-export async function getQwenOpenRouterEnvironment(
+// OpenAI-compatible mode without provider defaults.
+// Base URL and model are supplied via env (Settings):
+//  - DashScope: set OPENAI_API_KEY and (optionally) OPENAI_BASE_URL + OPENAI_MODEL
+//  - OpenRouter: set OPENROUTER_API_KEY (server maps to OPENAI_API_KEY) and optional OPENAI_MODEL
+export async function getQwenOpenAICompatibleEnvironment(
   ctx: EnvironmentContext
 ): Promise<EnvironmentResult> {
+  // Hardcode OpenRouter compatible endpoint and default Qwen model.
   return makeQwenEnvironment(
     ctx,
     "https://openrouter.ai/api/v1",

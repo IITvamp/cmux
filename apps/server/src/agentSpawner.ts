@@ -221,7 +221,8 @@ export async function spawnAgent(
       for (const keyConfig of agent.apiKeys) {
         const key = apiKeys[keyConfig.envVar];
         if (key && key.trim().length > 0) {
-          envVars[keyConfig.envVar] = key;
+          const injectName = keyConfig.mapToEnvVar || keyConfig.envVar;
+          envVars[injectName] = key;
         }
       }
     }
