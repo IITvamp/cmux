@@ -1,4 +1,4 @@
-import { promises as fs } from "node:fs";
+import * as fs from "node:fs";
 
 export interface JsonlReadOptions {
   trim?: boolean;
@@ -17,7 +17,7 @@ export async function readJsonl(
   filePath: string,
   options: JsonlReadOptions = { trim: true, skipEmpty: true }
 ): Promise<string[]> {
-  const content = await fs.readFile(filePath, "utf-8");
+  const content = await fs.promises.readFile(filePath, "utf-8");
   const raw = content.split("\n");
   const out: string[] = [];
   for (const line of raw) {
@@ -66,4 +66,3 @@ export async function tailJsonlObjects<T>(filePath: string, n: number): Promise<
   }
   return out;
 }
-

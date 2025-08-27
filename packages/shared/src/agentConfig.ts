@@ -63,6 +63,7 @@ export interface AgentConfig {
   waitForString?: string;
   enterKeySequence?: string; // Custom enter key sequence, defaults to "\r"
   checkRequirements?: () => Promise<string[]>; // Returns list of missing requirements
+  completionDetector?: (taskRunId: string, onComplete: () => void) => void;
 }
 
 export const AGENT_CONFIGS: AgentConfig[] = [

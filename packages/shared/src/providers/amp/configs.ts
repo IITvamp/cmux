@@ -17,6 +17,7 @@ export const AMP_CONFIG: AgentConfig = {
   environment: getAmpEnvironment,
   apiKeys: [AMP_API_KEY],
   checkRequirements: checkAmpRequirements,
+  completionDetector: (_taskRunId: string, _onComplete: () => void) => {},
 };
 
 export const AMP_GPT_5_CONFIG: AgentConfig = {
@@ -34,4 +35,5 @@ export const AMP_GPT_5_CONFIG: AgentConfig = {
   environment: getAmpEnvironment,
   apiKeys: [AMP_API_KEY],
   checkRequirements: checkAmpRequirements,
+  completionDetector: (_taskRunId: string, _onComplete: () => void) => {},
 };

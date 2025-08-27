@@ -1,4 +1,4 @@
-import { promises as fs } from "node:fs";
+import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { getLastJsonlObject } from "../../utils/jsonl.js";
@@ -28,12 +28,12 @@ async function getMostRecentJsonlFile(
   projectDir: string
 ): Promise<string | null> {
   try {
-    await fs.access(projectDir);
+    await fs.promises.access(projectDir);
   } catch {
     return null;
   }
   try {
-    const files = await fs.readdir(projectDir);
+    const files = await fs.promises.readdir(projectDir);
     const jsonlFiles = files
       .filter((f) => f.endsWith(".jsonl"))
       .sort((a, b) => b.localeCompare(a));
@@ -271,4 +271,13 @@ export function watchGeminiTelemetryForCompletion(options: {
       dirWatcher?.close();
     } catch {}
   };
+}
+
+// Consolidated from completion-detection.ts
+export function startGeminiCompletionDetector(
+  taskRunId: string,
+  onComplete: () => void
+): void {
+  const telemetryPath = `/tmp/gemini-telemetry-${taskRunId}.log`;
+  watchGeminiTelemetryForCompletion({ telemetryPath, onComplete });
 }
