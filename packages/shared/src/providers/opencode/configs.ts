@@ -5,7 +5,10 @@ import {
   OPENROUTER_API_KEY,
 } from "../../apiKeys.js";
 import { checkOpencodeRequirements } from "./check-requirements.js";
-import { getOpencodeEnvironment } from "./environment.js";
+import {
+  getOpencodeEnvironment,
+  getOpencodeEnvironmentSkipAuth,
+} from "./environment.js";
 
 export const OPENCODE_GROK_CODE_CONFIG: AgentConfig = {
   name: "opencode/grok-code",
@@ -17,7 +20,7 @@ export const OPENCODE_GROK_CODE_CONFIG: AgentConfig = {
     "--model",
     "opencode/grok-code",
   ],
-  environment: getOpencodeEnvironment,
+  environment: getOpencodeEnvironmentSkipAuth,
   checkRequirements: checkOpencodeRequirements,
   apiKeys: [],
 };
