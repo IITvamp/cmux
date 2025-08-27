@@ -4,15 +4,15 @@ import { ClientIcon } from "@/components/client-icon";
 import CmuxLogo from "@/components/logo/cmux-logo";
 import {
   Check,
+  Cloud,
   Copy,
   GitBranch,
   Github,
+  GitPullRequest,
   Star,
   Terminal,
   Users,
   Zap,
-  GitPullRequest,
-  Cloud,
 } from "lucide-react";
 import Image from "next/image";
 import { useState } from "react";
@@ -27,12 +27,11 @@ export default function LandingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground overflow-y-auto">
+    <div className="min-h-dvh bg-background text-foreground overflow-y-auto">
       {/* Announcement bar */}
       <div className="w-full bg-blue-300 px-3 py-1 text-center font-medium text-black">
         <span>
-          cmux is
-          {" "}
+          cmux is{" "}
           <a
             href="https://github.com/manaflow-ai/cmux"
             target="_blank"
@@ -42,8 +41,7 @@ export default function LandingPage() {
             open source on GitHub
           </a>
           .
-        </span>
-        {" "}
+        </span>{" "}
         <span className="whitespace-nowrap ml-2">
           <a
             href="#requirements"
@@ -56,7 +54,7 @@ export default function LandingPage() {
 
       {/* Header */}
       <header className="mb-6 bg-neutral-950/80 backdrop-blur top-0 z-40 border-b border-neutral-900">
-        <div className="container max-w-5xl mx-auto px-3 sm:px-5 py-2.5">
+        <div className="container max-w-5xl mx-auto px-2 sm:px-3 py-2.5">
           <div className="grid w-full grid-cols-[auto_1fr] grid-rows-1 items-center gap-2">
             <a
               aria-label="Go to homepage"
@@ -69,17 +67,38 @@ export default function LandingPage() {
               <nav aria-label="Main" className="hidden md:flex items-center">
                 <ul className="flex flex-wrap items-center gap-x-2">
                   <li>
-                    <a className="font-semibold text-white hover:text-blue-400 transition" href="#about">About</a>
+                    <a
+                      className="font-semibold text-white hover:text-blue-400 transition"
+                      href="#about"
+                    >
+                      About
+                    </a>
                   </li>
-                  <li className="text-neutral-700 px-1" role="presentation">|</li>
+                  <li className="text-neutral-700 px-1" role="presentation">
+                    |
+                  </li>
                   <li>
-                    <a className="font-semibold text-white hover:text-blue-400 transition" href="#features">Features</a>
+                    <a
+                      className="font-semibold text-white hover:text-blue-400 transition"
+                      href="#features"
+                    >
+                      Features
+                    </a>
                   </li>
-                  <li className="text-neutral-700 px-1" role="presentation">|</li>
+                  <li className="text-neutral-700 px-1" role="presentation">
+                    |
+                  </li>
                   <li>
-                    <a className="font-semibold text-white hover:text-blue-400 transition" href="#requirements">Requirements</a>
+                    <a
+                      className="font-semibold text-white hover:text-blue-400 transition"
+                      href="#requirements"
+                    >
+                      Requirements
+                    </a>
                   </li>
-                  <li className="text-neutral-700 px-1" role="presentation">|</li>
+                  <li className="text-neutral-700 px-1" role="presentation">
+                    |
+                  </li>
                   <li>
                     <a
                       href="https://cal.com/team/manaflow/meeting"
@@ -97,8 +116,8 @@ export default function LandingPage() {
         </div>
       </header>
 
-      <section className="pt-10 pb-8 px-4 sm:px-6 lg:px-12">
-        <div className="container max-w-5xl mx-auto">
+      <section className="pt-10 pb-8">
+        <div className="container max-w-5xl mx-auto px-3 sm:px-5">
           <div className="grid grid-cols-[4px_1fr] gap-6">
             <div className="bg-blue-500 rounded-sm" aria-hidden="true"></div>
             <div>
@@ -107,12 +126,35 @@ export default function LandingPage() {
               </h1>
 
               <p className="text-lg text-neutral-300 mb-4 leading-relaxed">
-                cmux spawns Claude Code, Codex, Gemini CLI, Amp, Opencode, and other coding agent CLIs in parallel across multiple tasks. 
-                For each run, cmux spawns an isolated VS Code instance via Docker with the git diff UI and terminal.
+                cmux spawns Claude Code, Codex, Gemini CLI, Amp, Opencode, and
+                other coding agent CLIs in parallel across multiple tasks. For
+                each run, cmux spawns an isolated VS Code instance via Docker
+                with the git diff UI and terminal.
               </p>
               <p className="text-lg text-neutral-300 leading-relaxed">
-                Learn more about the <a href="#about" className="text-sky-400 hover:text-sky-300 underline decoration-dotted underline-offset-4"> vision</a>, <a href="#features" className="text-sky-400 hover:text-sky-300 underline decoration-dotted underline-offset-4">how it works</a>, or
-                see the <a href="#roadmap" className="text-sky-400 hover:text-sky-300 underline decoration-dotted underline-offset-4">roadmap</a>.
+                Learn more about the{" "}
+                <a
+                  href="#about"
+                  className="text-sky-400 hover:text-sky-300 underline decoration-dotted underline-offset-4"
+                >
+                  {" "}
+                  vision
+                </a>
+                ,{" "}
+                <a
+                  href="#features"
+                  className="text-sky-400 hover:text-sky-300 underline decoration-dotted underline-offset-4"
+                >
+                  how it works
+                </a>
+                , or see the{" "}
+                <a
+                  href="#roadmap"
+                  className="text-sky-400 hover:text-sky-300 underline decoration-dotted underline-offset-4"
+                >
+                  roadmap
+                </a>
+                .
               </p>
 
               <div className="mt-10 flex flex-col sm:flex-row items-center gap-4">
@@ -175,7 +217,7 @@ export default function LandingPage() {
             </div>
           </div>
           {/* First demo image combined with hero */}
-          <div className="mt-16 mb-8 relative overflow-hidden rounded-lg max-w-4xl mx-auto">
+          <div className="mt-16 mb-8 relative overflow-hidden rounded-lg">
             <Image
               src="/cmux-demo-2.png"
               alt="cmux dashboard showing parallel AI agent execution"
@@ -196,38 +238,64 @@ export default function LandingPage() {
           <h2 className="text-2xl font-semibold text-center mb-8">
             Rethinking the developer interface
           </h2>
-         
+
           <div className="space-y-8 text-neutral-400 mb-12">
             <div className="space-y-2">
               <p>
-                <span className="text-white font-semibold">The interface is the bottleneck.</span>{" "}
-                We've spent years making AI agents better at coding, but almost no time making it easier to verify their work. The result? Developers spend 80% of their time reviewing and 20% prompting.
+                <span className="text-white font-semibold">
+                  The interface is the bottleneck.
+                </span>{" "}
+                We've spent years making AI agents better at coding, but almost
+                no time making it easier to verify their work. The result?
+                Developers spend 80% of their time reviewing and 20% prompting.
               </p>
               <blockquote className="border-l-2 border-neutral-800 pl-4 text-neutral-300">
                 <p>
-                  Running multiple agents at once sounds powerful until it turns into chaos: 3-4 terminals, each on a different task, and you're asking, “Which one is on auth? Did the database refactor finish?” You end up bouncing between windows, running git diff, and piecing together what changed where.
+                  Running multiple agents at once sounds powerful until it turns
+                  into chaos: 3-4 terminals, each on a different task, and
+                  you're asking, “Which one is on auth? Did the database
+                  refactor finish?” You end up bouncing between windows, running
+                  git diff, and piecing together what changed where.
                 </p>
               </blockquote>
             </div>
             <div className="space-y-2">
               <p>
-                <span className="text-white font-semibold">Isolation enables scale.</span>{" "}
-                When each agent runs in its own container with its own VS Code instance, you eliminate the confusion of shared state. Every diff is clean. Every terminal output is separate. Every verification is independent.
+                <span className="text-white font-semibold">
+                  Isolation enables scale.
+                </span>{" "}
+                When each agent runs in its own container with its own VS Code
+                instance, you eliminate the confusion of shared state. Every
+                diff is clean. Every terminal output is separate. Every
+                verification is independent.
               </p>
               <blockquote className="border-l-2 border-neutral-800 pl-4 text-neutral-300">
                 <p>
-                  The issue isn't that agents aren't good — they're getting scary good. It's that our tools were designed for a different era. VS Code was built for writing code, not reviewing five parallel streams of AI-generated changes. Terminals expect sequential commands, not a fleet of autonomous workers.
+                  The issue isn't that agents aren't good — they're getting
+                  scary good. It's that our tools were designed for a different
+                  era. VS Code was built for writing code, not reviewing five
+                  parallel streams of AI-generated changes. Terminals expect
+                  sequential commands, not a fleet of autonomous workers.
                 </p>
               </blockquote>
             </div>
             <div className="space-y-2">
               <p>
-                <span className="text-white font-semibold">Verification is non-negotiable.</span>{" "}
-                Code diffs are just the start. We need to see the running application, the test results, the performance metrics—all in real-time, for every agent, without switching contexts.
+                <span className="text-white font-semibold">
+                  Verification is non-negotiable.
+                </span>{" "}
+                Code diffs are just the start. We need to see the running
+                application, the test results, the performance metrics—all in
+                real-time, for every agent, without switching contexts.
               </p>
               <blockquote className="border-l-2 border-neutral-800 pl-4 text-neutral-300">
                 <p>
-                  cmux solves this by giving each agent its own world: separate Docker container, separate VS Code, separate git state. VS Code opens with the git diff already showing. Every change is isolated to its task, so you can see exactly what each agent did — immediately — without losing context. That's what makes running 10+ agents actually workable.
+                  cmux solves this by giving each agent its own world: separate
+                  Docker container, separate VS Code, separate git state. VS
+                  Code opens with the git diff already showing. Every change is
+                  isolated to its task, so you can see exactly what each agent
+                  did — immediately — without losing context. That's what makes
+                  running 10+ agents actually workable.
                 </p>
               </blockquote>
             </div>
@@ -257,8 +325,8 @@ export default function LandingPage() {
                   Separate VS Code IDE instances
                 </h3>
                 <p className="text-sm text-neutral-400">
-                  Each agent runs in its own VS Code instance.
-                  You can open them in your IDE of choice, locally or remotely.
+                  Each agent runs in its own VS Code instance. You can open them
+                  in your IDE of choice, locally or remotely.
                 </p>
               </div>
 
@@ -272,8 +340,9 @@ export default function LandingPage() {
                   Multiple agent support
                 </h3>
                 <p className="text-sm text-neutral-400">
-                  Claude Code, Codex, Gemini CLI, Amp, Opencode, and other coding agent CLIs.
-                  Particularly useful to run agents together and find the best one for the task.
+                  Claude Code, Codex, Gemini CLI, Amp, Opencode, and other
+                  coding agent CLIs. Particularly useful to run agents together
+                  and find the best one for the task.
                 </p>
               </div>
 
@@ -296,7 +365,7 @@ export default function LandingPage() {
             <div className="space-y-6">
               <div>
                 <h3 className="font-semibold mb-2 flex items-center gap-2">
-                <ClientIcon
+                  <ClientIcon
                     icon={Cloud}
                     className="h-4 w-4 text-neutral-500"
                     aria-hidden="true"
@@ -304,7 +373,7 @@ export default function LandingPage() {
                   Sandbox environment preview
                 </h3>
                 <p className="text-sm text-neutral-400">
-                  Spin up isolated sandboxes to preview your changes safely. 
+                  Spin up isolated sandboxes to preview your changes safely.
                   cmux uses fast cloud sandboxes or Docker locally.
                 </p>
               </div>
@@ -319,7 +388,8 @@ export default function LandingPage() {
                   Code review page
                 </h3>
                 <p className="text-sm text-neutral-400">
-                  Central place to review changes across agents. View diffs for draft PRs and committed work without leaving the dashboard.
+                  Central place to review changes across agents. View diffs for
+                  draft PRs and committed work without leaving the dashboard.
                 </p>
               </div>
 
@@ -358,7 +428,9 @@ export default function LandingPage() {
 
       <section id="roadmap" className="pt-8 pb-8 px-4 sm:px-6 lg:px-12">
         <div className="container max-w-5xl mx-auto">
-          <h2 className="text-2xl font-semibold mb-8 text-center">The roadmap</h2>
+          <h2 className="text-2xl font-semibold mb-8 text-center">
+            The roadmap
+          </h2>
           <div className="space-y-6">
             <div className="text-neutral-400">
               <p className="mb-6">

@@ -203,4 +203,25 @@ describe("RepositoryManager - Integration Tests", () => {
     // Clean up
     await execAsync(`git worktree remove "${worktreePath}" --force`, { cwd: testRepoPath }).catch(() => {});
   });
+
+  it("should be idempotent when creating the same worktree twice", async () => {
+    const worktreePath = path.join(testDir, "worktree-idempotent");
+    const branchName = "feature-idempotent";
+
+    // First creation
+    await repoManager.createWorktree(testRepoPath, worktreePath, branchName, "main");
+
+    // Second creation should not throw and should be treated as success
+    await repoManager.createWorktree(testRepoPath, worktreePath, branchName, "main");
+
+    // Verify worktree exists and is on correct branch
+    const exists = await fs.access(worktreePath).then(() => true).catch(() => false);
+    expect(exists).toBe(true);
+
+    const { stdout } = await execAsync("git branch --show-current", { cwd: worktreePath });
+    expect(stdout.trim()).toBe(branchName);
+
+    // Clean up
+    await execAsync(`git worktree remove "${worktreePath}" --force`, { cwd: testRepoPath }).catch(() => {});
+  });
 });

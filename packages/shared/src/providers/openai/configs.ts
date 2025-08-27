@@ -1,7 +1,9 @@
 import type { AgentConfig } from "../../agentConfig.js";
 import { OPENAI_API_KEY } from "../../apiKeys.js";
 import { checkOpenAIRequirements } from "./check-requirements.js";
+// Lazy-load Node-only completion detector to avoid bundling fs in browser
 import { getOpenAIEnvironment } from "./environment.js";
+import { startCodexCompletionDetector } from "./completion-detector.js";
 
 export const CODEX_GPT_5_CONFIG: AgentConfig = {
   name: "codex/gpt-5",
@@ -14,13 +16,33 @@ export const CODEX_GPT_5_CONFIG: AgentConfig = {
     "danger-full-access",
     "--ask-for-approval",
     "never",
-    "-c",
-    'notify=["sh","-lc","touch /root/lifecycle/codex-done.txt /root/lifecycle/done.txt"]',
     "$PROMPT",
   ],
   environment: getOpenAIEnvironment,
   checkRequirements: checkOpenAIRequirements,
   apiKeys: [OPENAI_API_KEY],
+  completionDetector: startCodexCompletionDetector,
+};
+
+export const CODEX_GPT_5_HIGH_REASONING_CONFIG: AgentConfig = {
+  name: "codex/gpt-5-high",
+  command: "bunx",
+  args: [
+    "@openai/codex",
+    "--model",
+    "gpt-5",
+    "--sandbox",
+    "danger-full-access",
+    "--ask-for-approval",
+    "never",
+    "-c",
+    'model_reasoning_effort="high"',
+    "$PROMPT",
+  ],
+  environment: getOpenAIEnvironment,
+  checkRequirements: checkOpenAIRequirements,
+  apiKeys: [OPENAI_API_KEY],
+  completionDetector: startCodexCompletionDetector,
 };
 
 export const CODEX_O3_CONFIG: AgentConfig = {
@@ -34,13 +56,12 @@ export const CODEX_O3_CONFIG: AgentConfig = {
     "danger-full-access",
     "--ask-for-approval",
     "never",
-    "-c",
-    'notify=["sh","-lc","touch /root/lifecycle/codex-done.txt /root/lifecycle/done.txt"]',
     "$PROMPT",
   ],
   environment: getOpenAIEnvironment,
   checkRequirements: checkOpenAIRequirements,
   apiKeys: [OPENAI_API_KEY],
+  completionDetector: startCodexCompletionDetector,
 };
 
 export const CODEX_O4_MINI_CONFIG: AgentConfig = {
@@ -54,13 +75,12 @@ export const CODEX_O4_MINI_CONFIG: AgentConfig = {
     "danger-full-access",
     "--ask-for-approval",
     "never",
-    "-c",
-    'notify=["sh","-lc","touch /root/lifecycle/codex-done.txt /root/lifecycle/done.txt"]',
     "$PROMPT",
   ],
   environment: getOpenAIEnvironment,
   checkRequirements: checkOpenAIRequirements,
   apiKeys: [OPENAI_API_KEY],
+  completionDetector: startCodexCompletionDetector,
 };
 
 export const CODEX_GPT_4_1_CONFIG: AgentConfig = {
@@ -74,11 +94,10 @@ export const CODEX_GPT_4_1_CONFIG: AgentConfig = {
     "danger-full-access",
     "--ask-for-approval",
     "never",
-    "-c",
-    'notify=["sh","-lc","touch /root/lifecycle/codex-done.txt /root/lifecycle/done.txt"]',
     "$PROMPT",
   ],
   environment: getOpenAIEnvironment,
   checkRequirements: checkOpenAIRequirements,
   apiKeys: [OPENAI_API_KEY],
+  completionDetector: startCodexCompletionDetector,
 };

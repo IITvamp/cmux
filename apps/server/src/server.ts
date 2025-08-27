@@ -25,6 +25,7 @@ import * as path from "node:path";
 import { promisify } from "node:util";
 import { Server } from "socket.io";
 import { spawnAllAgents } from "./agentSpawner.js";
+import { stopContainersForRuns } from "./archiveTask.js";
 import { execWithEnv } from "./execWithEnv.js";
 import { GitDiffManager } from "./gitDiff.js";
 import { createProxyApp, setupWebSocketProxy } from "./proxyApp.js";
@@ -294,7 +295,7 @@ export async function startServer({
           return;
         }
 
-        const githubToken = await getGitHubTokenFromKeychain(convex);
+        const githubToken = await getGitHubTokenFromKeychain();
         if (!githubToken) {
           callback({ success: false, error: "GitHub token is not configured" });
           return;
@@ -453,7 +454,7 @@ export async function startServer({
         const task = await convex.query(api.tasks.getById, { id: run.taskId });
         if (!task) return callback({ success: false, error: "Task not found" });
 
-        const githubToken = await getGitHubTokenFromKeychain(convex);
+        const githubToken = await getGitHubTokenFromKeychain();
         if (!githubToken)
           return callback({
             success: false,
@@ -498,8 +499,18 @@ export async function startServer({
           // Try to mark ready
           try {
             await markPrReady(githubToken, owner, repo, prNumber);
+            serverLogger.info(`[MergePR] Successfully marked PR #${prNumber} as ready for review`);
           } catch (e: unknown) {
             const msg = e instanceof Error ? e.message : String(e);
+            
+            // Check if it's a 404 error
+            if (msg.includes("not found") || msg.includes("404")) {
+              return callback({
+                success: false,
+                error: `Pull request #${prNumber} not found. It may have been deleted.`,
+              });
+            }
+            
             return callback({
               success: false,
               error: `PR is draft and could not be made ready: ${msg}`,
@@ -621,23 +632,25 @@ export async function startServer({
           newContent = "";
         }
         try {
-          // Use git CLI to read baseRef version of the file when available; fallback to HEAD
-          // Resolve base similar to full diff
+          // Use git CLI to read baseRef version of the file. Prefer default branch (origin/<default>),
+          // then upstream, and finally HEAD as a last resort.
           let baseRef = "HEAD";
           try {
-            const { stdout } = await execAsync(
-              "git rev-parse --abbrev-ref --symbolic-full-name @{u}",
-              { cwd: worktreePath }
-            );
-            if (stdout.trim()) baseRef = "@{upstream}";
+            const repoMgr = RepositoryManager.getInstance();
+            const defaultBranch = await repoMgr.getDefaultBranch(worktreePath);
+            if (defaultBranch) baseRef = `origin/${defaultBranch}`;
           } catch {
+            // ignore and try upstream next
+          }
+          if (baseRef === "HEAD") {
             try {
-              const repoMgr = RepositoryManager.getInstance();
-              const defaultBranch =
-                await repoMgr.getDefaultBranch(worktreePath);
-              if (defaultBranch) baseRef = `origin/${defaultBranch}`;
+              const { stdout } = await execAsync(
+                "git rev-parse --abbrev-ref --symbolic-full-name @{u}",
+                { cwd: worktreePath }
+              );
+              if (stdout.trim()) baseRef = "@{upstream}";
             } catch {
-              baseRef = "HEAD";
+              // stick with HEAD
             }
           }
           const { stdout } = await execAsync(
@@ -1171,7 +1184,7 @@ Please address the issue mentioned in the comment above.`;
           await ensureRunWorktreeAndBranch(taskRunId as Id<"taskRuns">);
 
         // Get GitHub token from keychain/Convex
-        const githubToken = await getGitHubTokenFromKeychain(convex);
+        const githubToken = await getGitHubTokenFromKeychain();
         if (!githubToken) {
           callback({ success: false, error: "GitHub token is not configured" });
           return;
@@ -1396,7 +1409,7 @@ Please address the issue mentioned in the comment above.`;
         const { run, task, worktreePath, branchName, baseBranch } =
           await ensureRunWorktreeAndBranch(taskRunId);
 
-        const githubToken = await getGitHubTokenFromKeychain(convex);
+        const githubToken = await getGitHubTokenFromKeychain();
         if (!githubToken) {
           callback({ success: false, error: "GitHub token is not configured" });
           return;
@@ -1448,10 +1461,22 @@ Please address the issue mentioned in the comment above.`;
         }
 
         // PR resolution via helpers
+        serverLogger.info(`[OpenPR] Fetching PR by head branch...`, {
+          owner,
+          repo,
+          branchName,
+          tokenPrefix: githubToken ? githubToken.substring(0, 10) : "NO_TOKEN"
+        });
         const initialBasic =
           owner && repo
             ? await fetchPrByHead(githubToken, owner, repo, owner, branchName)
             : null;
+        serverLogger.info(`[OpenPR] fetchPrByHead result:`, {
+          found: !!initialBasic,
+          number: initialBasic?.number,
+          draft: initialBasic?.draft,
+          state: initialBasic?.state
+        });
 
         let finalUrl: string | undefined;
         let finalNumber: number | undefined;
@@ -1500,15 +1525,41 @@ Please address the issue mentioned in the comment above.`;
           }
         } else if (initialBasic.draft) {
           try {
-            await markPrReady(githubToken, owner!, repo!, initialBasic.number);
-          } catch (e: unknown) {
-            const msg = e instanceof Error ? e.message : String(e);
-            serverLogger.error(`[OpenPR] markPrReady failed: ${msg}`);
-            callback({
-              success: false,
-              error: `Failed to mark PR ready: ${msg}`,
+            serverLogger.info(`[OpenPR] Attempting to mark PR #${initialBasic.number} as ready...`, {
+              owner: owner!,
+              repo: repo!,
+              number: initialBasic.number,
+              tokenPrefix: githubToken ? githubToken.substring(0, 10) : "NO_TOKEN"
             });
-            return;
+            await markPrReady(githubToken, owner!, repo!, initialBasic.number);
+            serverLogger.info(`[OpenPR] Successfully marked PR #${initialBasic.number} as ready for review`);
+          } catch (e: unknown) {
+            const errorMessage = e instanceof Error ? e.message : String(e);
+            serverLogger.error(`[OpenPR] Failed to mark PR #${initialBasic.number} as ready: ${errorMessage}`);
+            
+            // If the PR wasn't found or there's a permission issue, fail the operation
+            if (errorMessage.includes("not found") || errorMessage.includes("404")) {
+              callback({
+                success: false,
+                error: `Pull request #${initialBasic.number} not found. It may have been deleted or you may not have access.`,
+              });
+              return;
+            } else if (errorMessage.includes("Permission denied") || errorMessage.includes("403")) {
+              callback({
+                success: false,
+                error: `Permission denied. Please check that your GitHub token has the required permissions.`,
+              });
+              return;
+            } else if (errorMessage.includes("Authentication failed") || errorMessage.includes("401")) {
+              callback({
+                success: false,
+                error: `Authentication failed. Please check that your GitHub token is valid.`,
+              });
+              return;
+            }
+            
+            // For other errors, log but continue (e.g., if PR is already ready)
+            serverLogger.warn(`[OpenPR] Continuing despite error: ${errorMessage}`);
           }
           const latest = await fetchPrByHead(
             githubToken,
@@ -1657,91 +1708,8 @@ Please address the issue mentioned in the comment above.`;
       try {
         const { taskId } = ArchiveTaskSchema.parse(data);
 
-        // Get all task runs for this task
-        const taskRuns = await convex.query(api.taskRuns.getByTask, {
-          taskId,
-        });
-
-        serverLogger.info(
-          `Archiving task ${taskId} with ${taskRuns.length} runs`
-        );
-
-        // Stop/pause all containers in parallel
-        const stopPromises = taskRuns
-          .filter((run) => run.vscode && run.vscode.containerName)
-          .map(async (run) => {
-            const { provider, containerName } = run.vscode!;
-            if (!containerName) {
-              return {
-                success: false,
-                containerName: "unknown",
-                provider,
-                error: "No container name",
-              };
-            }
-            serverLogger.info(
-              `Stopping ${provider} container: ${containerName}`
-            );
-
-            try {
-              if (provider === "morph") {
-                // Extract instance ID from containerName (e.g., "morphvm_wdgnko75")
-                const instanceId = containerName;
-
-                // Import MorphCloudClient dynamically to avoid dependency issues
-                const { MorphCloudClient } = await import("morphcloud");
-                const morphClient = new MorphCloudClient();
-
-                const instance = await morphClient.instances.get({
-                  instanceId,
-                });
-                await instance.pause();
-                serverLogger.info(
-                  `Successfully paused Morph instance: ${instanceId}`
-                );
-                return { success: true, containerName, provider };
-              } else if (provider === "docker") {
-                // Stop Docker container
-                try {
-                  await execAsync(`docker stop ${containerName}`, {
-                    timeout: 10000, // 10 second timeout
-                  });
-                  serverLogger.info(
-                    `Successfully stopped Docker container: ${containerName}`
-                  );
-                  return { success: true, containerName, provider };
-                } catch (dockerError) {
-                  // Check if container is already stopped
-                  const { stdout: psOutput } = await execAsync(
-                    `docker ps -a --filter "name=${containerName}" --format "{{.Status}}"`
-                  );
-                  if (psOutput.toLowerCase().includes("exited")) {
-                    serverLogger.info(
-                      `Docker container already stopped: ${containerName}`
-                    );
-                    return { success: true, containerName, provider };
-                  } else {
-                    throw dockerError;
-                  }
-                }
-              }
-              return {
-                success: false,
-                containerName,
-                provider,
-                error: "Unknown provider",
-              };
-            } catch (error) {
-              serverLogger.error(
-                `Failed to stop ${provider} container ${containerName}:`,
-                error
-              );
-              return { success: false, containerName, provider, error };
-            }
-          });
-
-        // Wait for all stop operations to complete
-        const results = await Promise.all(stopPromises);
+        // Stop/pause all containers via helper (handles querying + logging)
+        const results = await stopContainersForRuns(taskId);
 
         // Log summary
         const successful = results.filter((r) => r.success).length;

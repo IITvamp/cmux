@@ -40,7 +40,7 @@ function TaskRunComponent() {
 
   const shortId = getShortId(taskRunId);
 
-  let iframeUrl = USE_PROXY_URL
+  const iframeUrl = USE_PROXY_URL
     ? `http://${shortId}.39378.localhost:9776/?folder=/root/workspace`
     : taskRun?.data?.vscode?.workspaceUrl || "about:blank";
 

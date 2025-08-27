@@ -12,11 +12,16 @@
   "engines": {
     "vscode": "^1.101.2"
   },
+  "extensionKind": ["workspace"],
   "categories": [
     "Other"
   ],
   "activationEvents": [
-    "onStartupFinished"
+    "*",
+    "onStartupFinished",
+    "onCommand:cmux.helloWorld",
+    "onCommand:cmux.run",
+    "onCommand:cmux.showOutput"
   ],
   "main": "./out/extension.cjs",
   "contributes": {
@@ -28,6 +33,14 @@
       {
         "command": "cmux.run",
         "title": "cmux: Run"
+      },
+      {
+        "command": "cmux.showOutput",
+        "title": "cmux: Show Output"
+      },
+      {
+        "command": "cmux.git.openAllChangesAgainstBase",
+        "title": "cmux: Open All Changes vs Base"
       }
     ]
   },

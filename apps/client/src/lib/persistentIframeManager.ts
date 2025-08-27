@@ -32,7 +32,7 @@ class PersistentIframeManager {
   private container: HTMLDivElement | null = null;
   private resizeObserver: ResizeObserver;
   private activeIframeKey: string | null = null;
-  private debugMode = true; // Set to true to enable logging
+  private debugMode = false;
 
   constructor() {
     // Create resize observer for syncing positions
@@ -40,8 +40,9 @@ class PersistentIframeManager {
       for (const entry of entries) {
         const key = entry.target.getAttribute("data-iframe-target");
         if (key) {
-          if (this.debugMode)
+          if (this.debugMode) {
             console.log(`[ResizeObserver] Syncing position for ${key}`);
+          }
           this.syncIframePosition(key);
         }
       }

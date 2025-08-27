@@ -1,4 +1,5 @@
 import type { ClientToServerEvents, ServerToClientEvents } from "@cmux/shared";
+import { execSync } from "node:child_process";
 import * as http from "http";
 import { Server } from "socket.io";
 import { io, Socket } from "socket.io-client";
@@ -6,6 +7,7 @@ import * as vscode from "vscode";
 
 // Create output channel for cmux logs
 const outputChannel = vscode.window.createOutputChannel("cmux");
+const debugShowOutput = process.env.CMUX_DEBUG_SHOW_OUTPUT === "1";
 
 // Log immediately when module loads
 console.log("[cmux] Extension module loaded");
@@ -19,6 +21,10 @@ let workerSocket: Socket<ServerToClientEvents, ClientToServerEvents> | null =
 // Track active terminals
 const activeTerminals = new Map<string, vscode.Terminal>();
 let isSetupComplete = false;
+
+// Track file watcher and debounce timer
+let fileWatcher: vscode.FileSystemWatcher | null = null;
+let refreshDebounceTimer: NodeJS.Timeout | null = null;
 
 function log(message: string, ...args: any[]) {
   const timestamp = new Date().toISOString();
@@ -38,7 +44,64 @@ function log(message: string, ...args: any[]) {
   }
 }
 
-async function openMultiDiffEditor() {
+async function resolveDefaultBaseRef(repositoryPath: string): Promise<string> {
+  try {
+    const out = execSync(
+      "git symbolic-ref --quiet refs/remotes/origin/HEAD || git remote show origin | sed -n 's/\tHEAD branch: //p'",
+      { cwd: repositoryPath, encoding: "utf8" }
+    );
+    const ref = out.trim();
+    if (ref.startsWith("refs/remotes/origin/")) {
+      return ref; // e.g. refs/remotes/origin/main
+    }
+    if (ref) {
+      return `origin/${ref}`;
+    }
+  } catch {
+    // ignore and fall back
+  }
+  return "origin/main";
+}
+
+function tryExecGit(repoPath: string, cmd: string): string | null {
+  try {
+    const out = execSync(cmd, { cwd: repoPath, encoding: "utf8" });
+    return out.trim();
+  } catch {
+    return null;
+  }
+}
+
+async function resolveMergeBase(
+  repositoryPath: string,
+  defaultBaseRef: string
+): Promise<string | null> {
+  const hasBase = tryExecGit(
+    repositoryPath,
+    `git rev-parse --verify --quiet "${defaultBaseRef}^{}"`
+  );
+  if (!hasBase) {
+    // Best-effort fetch to get remote refs; ignore failures
+    tryExecGit(repositoryPath, "git fetch --quiet origin --prune");
+  }
+  const mergeBase = tryExecGit(
+    repositoryPath,
+    `git merge-base HEAD "${defaultBaseRef}"`
+  );
+  return mergeBase && /^[0-9a-f]{7,40}$/i.test(mergeBase) ? mergeBase : null;
+}
+
+// Track the current multi-diff editor URI
+let currentMultiDiffUri: string | null = null;
+
+async function openMultiDiffEditor(
+  baseRef?: string,
+  useMergeBase: boolean = true
+) {
+  log("=== openMultiDiffEditor called ===");
+  log("baseRef:", baseRef);
+  log("useMergeBase:", useMergeBase);
+
   // Get the Git extension
   const gitExtension = vscode.extensions.getExtension("vscode.git");
   if (!gitExtension) {
@@ -56,13 +119,115 @@ async function openMultiDiffEditor() {
     return;
   }
 
-  // The resource group IDs are: 'index', 'workingTree', 'untracked', 'merge'
-  // You can open the working tree changes view even if empty
-  await vscode.commands.executeCommand("_workbench.openScmMultiDiffEditor", {
-    title: `Git: Changes`,
-    repositoryUri: vscode.Uri.file(repository.rootUri.fsPath),
-    resourceGroupId: "workingTree",
-  });
+  const repoPath = repository.rootUri.fsPath;
+  log("Repository path:", repoPath);
+
+  const resolvedDefaultBase =
+    baseRef || (await resolveDefaultBaseRef(repoPath));
+  log("Resolved default base:", resolvedDefaultBase);
+
+  const resolvedMergeBase = useMergeBase
+    ? await resolveMergeBase(repoPath, resolvedDefaultBase)
+    : null;
+  log("Resolved merge base:", resolvedMergeBase);
+
+  const effectiveBase = resolvedMergeBase || resolvedDefaultBase;
+  log("Effective base:", effectiveBase);
+
+  // Get all changed files between base and current working tree
+  try {
+    // Get ALL changes - use git diff to compare base with working tree
+    const cmd = `git diff --name-only ${effectiveBase}`;
+    log("Running git diff command:", cmd);
+    const diffOutput = execSync(cmd, { cwd: repoPath, encoding: "utf8" });
+    log("Git diff output:", diffOutput);
+
+    const files = diffOutput
+      .trim()
+      .split("\n")
+      .filter((f) => f);
+    log("Changed files:", files);
+
+    // Always create resources - even if empty, still open the view
+    const resources =
+      files.length > 0
+        ? files.map((file) => {
+            const fileUri = vscode.Uri.file(`${repoPath}/${file}`);
+            const baseUri = api.toGitUri(fileUri, effectiveBase);
+
+            // Match the exact structure used by VS Code's git extension
+            return {
+              originalUri: baseUri,
+              modifiedUri: fileUri,
+            };
+          })
+        : [];
+
+    log(
+      "Resources for multi-diff:",
+      resources.map((r) => ({
+        originalUri: r.originalUri.toString(),
+        modifiedUri: r.modifiedUri.toString(),
+      }))
+    );
+
+    // Extract base branch name for title (e.g., "main" from "origin/main" or "refs/remotes/origin/main")
+    const baseBranchName = resolvedDefaultBase
+      .replace(/^refs\/remotes\//, "")
+      .replace(/^origin\//, "");
+
+    const title = `All Changes vs ${baseBranchName}`;
+
+    // Create a consistent multiDiffSourceUri that will reuse the same editor
+    // Using a fixed scheme and path ensures VS Code reuses the existing tab
+    const multiDiffSourceUri = vscode.Uri.from({
+      scheme: "cmux-all-changes",
+      path: `${repoPath}/all-changes-vs-base`,
+    });
+
+    // Check if we have an existing multi-diff editor open
+    const multiDiffUriString = multiDiffSourceUri.toString();
+    const tabs = vscode.window.tabGroups.all.flatMap((g) => g.tabs);
+    const existingTab = tabs.find(
+      (tab) => tab.label && tab.label.includes("All Changes vs")
+    );
+
+    if (existingTab) {
+      // Try to activate the existing tab first to preserve position
+      // This helps maintain scroll position and user context
+      const tabGroup = vscode.window.tabGroups.all.find((g) =>
+        g.tabs.includes(existingTab)
+      );
+      if (tabGroup) {
+        // Make sure the tab is active before updating
+        await vscode.commands.executeCommand(
+          "workbench.action.focusActiveEditorGroup"
+        );
+      }
+    }
+
+    // Store the current URI
+    currentMultiDiffUri = multiDiffUriString;
+
+    // Execute the command - VS Code will try to update the existing view if possible
+    // The multiDiffSourceUri acts as the key - same URI should update the same editor
+    await vscode.commands.executeCommand("_workbench.openMultiDiffEditor", {
+      multiDiffSourceUri,
+      title,
+      resources,
+    });
+
+    log("Multi-diff editor opened successfully");
+    if (files.length > 0) {
+      vscode.window.showInformationMessage(
+        `Showing ${files.length} file(s) changed vs ${baseBranchName}`
+      );
+    }
+  } catch (error: any) {
+    log("Error opening diff:", error);
+    log("Error stack:", error.stack);
+    vscode.window.showErrorMessage(`Failed to open changes: ${error.message}`);
+  }
 }
 
 async function setupDefaultTerminal() {
@@ -212,148 +377,6 @@ function startSocketServer() {
         });
       });
 
-      // Execute command
-      socket.on("vscode:execute-command", async (data, callback) => {
-        try {
-          const { command, args = [] } = data;
-          log(`Executing command: ${command}`, args);
-          const result = await vscode.commands.executeCommand(command, ...args);
-          callback({ success: true, result });
-        } catch (error: any) {
-          log(`Command execution failed:`, error);
-          callback({ success: false, error: error.message });
-        }
-      });
-
-      // Auto-commit and push functionality
-      socket.on("vscode:auto-commit-push", async (data, callback) => {
-        try {
-          const { branchName, commitMessage, agentName } = data;
-          log(`Starting auto-commit and push for agent: ${agentName}`);
-
-          // Get the Git extension
-          const gitExtension = vscode.extensions.getExtension("vscode.git");
-          if (!gitExtension) {
-            callback({ success: false, error: "Git extension not found" });
-            return;
-          }
-
-          const git = gitExtension.exports;
-          const api = git.getAPI(1);
-          const repository = api.repositories[0];
-          
-          if (!repository) {
-            callback({ success: false, error: "No Git repository found" });
-            return;
-          }
-
-          // Stage all changes
-          await repository.add([]);
-          log(`Staged all changes`);
-
-          // Create and switch to new branch
-          await repository.createBranch(branchName, true);
-          log(`Created and switched to branch: ${branchName}`);
-
-          // Commit changes
-          await repository.commit(commitMessage);
-          log(`Committed changes with message: ${commitMessage}`);
-          
-          // Check current branch and remotes
-          const currentBranch = repository.state.HEAD?.name;
-          const remotes = repository.state.remotes;
-          log(`Current branch: ${currentBranch}, Remotes: ${JSON.stringify(remotes?.map((r: any) => r.name))}`);
-          
-          // Set upstream branch configuration if possible
-          try {
-            const branch = repository.state.refs.find((ref: any) => ref.name === `refs/heads/${branchName}`);
-            if (branch && repository.setBranchUpstream) {
-              await repository.setBranchUpstream(branchName, `refs/remotes/origin/${branchName}`);
-              log(`Set upstream for branch ${branchName}`);
-            }
-          } catch (error: any) {
-            log(`Could not set upstream: ${error.message}`);
-          }
-
-          // Push branch to origin
-          try {
-            // First try: Push with no arguments (uses current branch)
-            await repository.push();
-            log(`Pushed branch ${branchName} to origin using default push`);
-          } catch (error1: any) {
-            log(`Default push failed: ${error1.message}, trying with refspec`);
-            
-            try {
-              // Second try: Push with full refspec
-              await repository.push("origin", `refs/heads/${branchName}:refs/heads/${branchName}`, true);
-              log(`Pushed branch ${branchName} to origin using full refspec`);
-            } catch (error2: any) {
-              log(`Full refspec push failed: ${error2.message}, trying simple refspec`);
-              
-              try {
-                // Third try: Push with simple refspec
-                await repository.push("origin", `${branchName}:${branchName}`, true);
-                log(`Pushed branch ${branchName} to origin using simple refspec`);
-              } catch (error3: any) {
-                log(`Simple refspec push failed: ${error3.message}`);
-                throw new Error(`All push attempts failed. Last error: ${error3.message}`);
-              }
-            }
-          }
-
-          // Refresh the git diff view to show the new branch
-          await vscode.commands.executeCommand("workbench.view.scm");
-          await openMultiDiffEditor();
-          log(`Refreshed git diff view for branch ${branchName}`);
-
-          callback({ 
-            success: true, 
-            message: `Successfully committed and pushed to branch ${branchName}` 
-          });
-        } catch (error: any) {
-          log(`Auto-commit and push failed:`, error);
-          callback({ success: false, error: error.message });
-        }
-      });
-
-      // Execute shell command
-      socket.on("vscode:exec-command", async (data, callback) => {
-        try {
-          const { command, args = [], cwd = "/root/workspace", env = {} } = data;
-          log(`Executing shell command: ${command} ${args.join(' ')}`);
-          
-          // Use Node.js child_process to execute the command
-          const { exec } = require('child_process');
-          const fullCommand = `${command} ${args.map((arg: string) => `"${arg.replace(/"/g, '\\"')}"`).join(' ')}`;
-          
-          // Merge provided env with process env
-          const execEnv = { ...process.env, ...env };
-          
-          exec(fullCommand, { cwd, env: execEnv, shell: '/bin/bash' }, (error: any, stdout: string, stderr: string) => {
-            if (error) {
-              log(`Command execution failed: ${error.message}`);
-              log(`stderr: ${stderr}`);
-              callback({ success: false, error: error.message });
-              return;
-            }
-            
-            log(`Command executed successfully`);
-            log(`stdout: ${stdout}`);
-            if (stderr) {
-              log(`stderr: ${stderr}`);
-            }
-            
-            callback({ 
-              success: true, 
-              result: { stdout, stderr }
-            });
-          });
-        } catch (error: any) {
-          log(`Command execution error:`, error);
-          callback({ success: false, error: error.message });
-        }
-      });
-
       // Terminal operations
       socket.on("vscode:create-terminal", (data, callback) => {
         try {
@@ -404,8 +427,13 @@ export function activate(context: vscode.ExtensionContext) {
 
   log("[cmux] Extension activated, output channel ready");
 
-  // Ensure output panel is hidden on activation
-  vscode.commands.executeCommand("workbench.action.closePanel");
+  // In dev runs, optionally show output for visibility
+  if (debugShowOutput) {
+    outputChannel.show(true);
+  } else {
+    // Otherwise keep the panel closed for a cleaner UX
+    vscode.commands.executeCommand("workbench.action.closePanel");
+  }
 
   log("cmux is being activated");
 
@@ -434,13 +462,73 @@ export function activate(context: vscode.ExtensionContext) {
     }
   });
 
+  // Open all changes vs default base (origin/HEAD or origin/main)
+  const openAllChangesVsBase = vscode.commands.registerCommand(
+    "cmux.git.openAllChangesAgainstBase",
+    async () => {
+      await openMultiDiffEditor(undefined, true);
+
+      // Set up file watcher for auto-refresh if not already set up
+      if (!fileWatcher && vscode.workspace.workspaceFolders) {
+        const gitExtension = vscode.extensions.getExtension("vscode.git");
+        if (gitExtension) {
+          const git = gitExtension.exports;
+          const api = git.getAPI(1);
+          const repository = api.repositories[0];
+
+          if (repository) {
+            const repoPath = repository.rootUri.fsPath;
+            log("Setting up file watcher for auto-refresh");
+
+            // Watch all files in the repository
+            const pattern = new vscode.RelativePattern(repoPath, "**/*");
+            fileWatcher = vscode.workspace.createFileSystemWatcher(pattern);
+
+            // Debounced refresh function
+            const refreshDiffView = () => {
+              // Clear existing timer
+              if (refreshDebounceTimer) {
+                clearTimeout(refreshDebounceTimer);
+              }
+
+              // Set new timer to refresh after 500ms of no changes
+              refreshDebounceTimer = setTimeout(async () => {
+                log("Auto-refreshing diff view due to file changes");
+                await openMultiDiffEditor(undefined, true);
+              }, 500);
+            };
+
+            // Watch for file changes
+            fileWatcher.onDidChange(refreshDiffView);
+            fileWatcher.onDidCreate(refreshDiffView);
+            fileWatcher.onDidDelete(refreshDiffView);
+
+            // Clean up watcher on disposal
+            context.subscriptions.push(fileWatcher);
+          }
+        }
+      }
+    }
+  );
+
   context.subscriptions.push(disposable);
   context.subscriptions.push(run);
+  context.subscriptions.push(openAllChangesVsBase);
 }
 
 export function deactivate() {
   log("cmux extension is now deactivated!");
   isSetupComplete = false;
+
+  // Clean up file watcher and timer
+  if (fileWatcher) {
+    fileWatcher.dispose();
+    fileWatcher = null;
+  }
+  if (refreshDebounceTimer) {
+    clearTimeout(refreshDebounceTimer);
+    refreshDebounceTimer = null;
+  }
 
   // Clean up worker socket
   if (workerSocket) {

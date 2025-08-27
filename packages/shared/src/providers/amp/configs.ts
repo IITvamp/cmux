@@ -34,4 +34,5 @@ export const AMP_GPT_5_CONFIG: AgentConfig = {
   environment: getAmpEnvironment,
   apiKeys: [AMP_API_KEY],
   checkRequirements: checkAmpRequirements,
+  // No completion detector for AMP because it is handled by the proxy, which starts from environment
 };

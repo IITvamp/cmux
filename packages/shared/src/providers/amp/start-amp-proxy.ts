@@ -7,8 +7,6 @@ export type AmpProxyOptions = {
   emitToMainServer?: (event: string, payload: unknown) => void;
 };
 
-export type AmpProxyHandle = void;
-
 async function getRealAmpApiKey(): Promise<string | null> {
   try {
     const home = process.env.HOME || "/root";
@@ -45,39 +43,12 @@ function ampResponseIndicatesCompletion(json: unknown): boolean {
   if (json == null || typeof json !== "object") return false;
   const root = json as Record<string, unknown>;
 
-  let messages: unknown = undefined;
-
-  // Try obj.params.thread.messages
+  // Only support requestBody.params.thread.messages (Amp's uploadThread shape)
   const params = root["params"];
-  if (params && typeof params === "object") {
-    const threadFromParams = (params as Record<string, unknown>)["thread"];
-    if (threadFromParams && typeof threadFromParams === "object") {
-      const msgs = (threadFromParams as Record<string, unknown>)["messages"];
-      if (Array.isArray(msgs)) {
-        messages = msgs;
-      }
-    }
-  }
-
-  // Try obj.thread.messages
-  if (!messages) {
-    const thread = root["thread"];
-    if (thread && typeof thread === "object") {
-      const msgs = (thread as Record<string, unknown>)["messages"];
-      if (Array.isArray(msgs)) {
-        messages = msgs;
-      }
-    }
-  }
-
-  // Try obj.messages
-  if (!messages) {
-    const msgs = root["messages"];
-    if (Array.isArray(msgs)) {
-      messages = msgs;
-    }
-  }
-
+  if (!params || typeof params !== "object") return false;
+  const thread = (params as Record<string, unknown>)["thread"];
+  if (!thread || typeof thread !== "object") return false;
+  const messages = (thread as Record<string, unknown>)["messages"];
   if (!Array.isArray(messages)) return false;
 
   for (const item of messages) {
@@ -85,19 +56,25 @@ function ampResponseIndicatesCompletion(json: unknown): boolean {
     const state = (item as Record<string, unknown>)["state"];
     if (!state || typeof state !== "object") continue;
     const typeVal = (state as Record<string, unknown>)["type"];
-    if (typeof typeVal === "string") {
+    const stopReasonVal =
+      (state as Record<string, unknown>)["stopReason"] ??
+      (state as Record<string, unknown>)["stop_reason"];
+    if (typeof typeVal === "string" && typeof stopReasonVal === "string") {
       const t = typeVal.toLowerCase();
-      if (t === "completed" || t === "complete") return true;
+      const sr = stopReasonVal.toLowerCase();
+      if (t === "complete" && sr === "end_turn") {
+        return true;
+      }
     }
   }
 
   return false;
 }
 
-export function startAmpProxy(options: AmpProxyOptions = {}): AmpProxyHandle {
+export function startAmpProxy(options: AmpProxyOptions = {}) {
   const AMP_PROXY_PORT = 39379;
   const AMP_TARGET_HOST =
-    options.ampUrl || process.env.AMP_URL || "https://ampcode.com";
+    options.ampUrl || process.env.AMP_UPSTREAM_URL || "https://ampcode.com";
 
   const emit = options.emitToMainServer || (() => {});
   const workerId = options.workerId;
@@ -175,32 +152,8 @@ export function startAmpProxy(options: AmpProxyOptions = {}): AmpProxyHandle {
         const responseHeaders = new Headers(proxyResponse.headers);
         responseHeaders.delete("content-encoding");
         responseHeaders.delete("content-length");
-        const responseContentType = responseHeaders.get("content-type") || "";
+        const completed = ampResponseIndicatesCompletion(loggedRequestBody);
 
-        let responseBodyForClient: Uint8Array | string = "";
-        let loggedResponseBody: unknown = undefined;
-
-        const isBinary =
-          /(^image\/.+|^video\/.+|^audio\/.+|application\/(octet-stream|pdf|zip))/i.test(
-            responseContentType
-          );
-        if (isBinary) {
-          const ab = await proxyResponse.arrayBuffer();
-          responseBodyForClient = new Uint8Array(ab);
-          loggedResponseBody = `[Binary data: ${ab.byteLength} bytes]`;
-        } else {
-          const text = await proxyResponse.text();
-          responseBodyForClient = text;
-          try {
-            loggedResponseBody = JSON.parse(text);
-          } catch {
-            loggedResponseBody = text;
-          }
-        }
-
-        const completed =
-          ampResponseIndicatesCompletion(loggedRequestBody) ||
-          ampResponseIndicatesCompletion(loggedResponseBody);
         if (completed && taskRunId) {
           const elapsedMs = Date.now() - start;
           emit("worker:task-complete", {
@@ -214,10 +167,32 @@ export function startAmpProxy(options: AmpProxyOptions = {}): AmpProxyHandle {
         res.statusCode = proxyResponse.status;
         res.statusMessage = proxyResponse.statusText;
         responseHeaders.forEach((v, k) => res.setHeader(k, v));
+
+        const responseContentType =
+          proxyResponse.headers.get("content-type") || "";
+
+        let responseBodyForClient: string | Uint8Array | null = null;
+        try {
+          if (
+            typeof responseContentType === "string" &&
+            (responseContentType.includes("application/json") ||
+              responseContentType.startsWith("text/"))
+          ) {
+            responseBodyForClient = await proxyResponse.text();
+          } else {
+            const ab = await proxyResponse.arrayBuffer();
+            responseBodyForClient = new Uint8Array(ab);
+          }
+        } catch {
+          responseBodyForClient = null;
+        }
+
         if (typeof responseBodyForClient === "string") {
           res.end(responseBodyForClient);
-        } else {
+        } else if (responseBodyForClient) {
           res.end(Buffer.from(responseBodyForClient));
+        } else {
+          res.end();
         }
       });
     });

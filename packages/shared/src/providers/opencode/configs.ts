@@ -5,7 +5,28 @@ import {
   OPENROUTER_API_KEY,
 } from "../../apiKeys.js";
 import { checkOpencodeRequirements } from "./check-requirements.js";
-import { getOpencodeEnvironment } from "./environment.js";
+import { startOpenCodeCompletionDetector } from "./completion-detector.js";
+
+import {
+  getOpencodeEnvironment,
+  getOpencodeEnvironmentSkipAuth,
+} from "./environment.js";
+
+export const OPENCODE_GROK_CODE_CONFIG: AgentConfig = {
+  name: "opencode/grok-code",
+  command: "bunx",
+  args: [
+    "opencode-ai@latest",
+    "--prompt",
+    "$PROMPT",
+    "--model",
+    "opencode/grok-code",
+  ],
+  environment: getOpencodeEnvironmentSkipAuth,
+  checkRequirements: checkOpencodeRequirements,
+  apiKeys: [],
+  completionDetector: startOpenCodeCompletionDetector,
+};
 
 export const OPENCODE_SONNET_CONFIG: AgentConfig = {
   name: "opencode/sonnet-4",
@@ -20,6 +41,7 @@ export const OPENCODE_SONNET_CONFIG: AgentConfig = {
   environment: getOpencodeEnvironment,
   checkRequirements: checkOpencodeRequirements,
   apiKeys: [ANTHROPIC_API_KEY],
+  completionDetector: startOpenCodeCompletionDetector,
 };
 
 export const OPENCODE_OPUS_CONFIG: AgentConfig = {
@@ -35,6 +57,7 @@ export const OPENCODE_OPUS_CONFIG: AgentConfig = {
   environment: getOpencodeEnvironment,
   checkRequirements: checkOpencodeRequirements,
   apiKeys: [ANTHROPIC_API_KEY],
+  completionDetector: startOpenCodeCompletionDetector,
 };
 
 export const OPENCODE_KIMI_K2_CONFIG: AgentConfig = {
@@ -50,6 +73,7 @@ export const OPENCODE_KIMI_K2_CONFIG: AgentConfig = {
   environment: getOpencodeEnvironment,
   checkRequirements: checkOpencodeRequirements,
   apiKeys: [OPENROUTER_API_KEY],
+  completionDetector: startOpenCodeCompletionDetector,
 };
 
 export const OPENCODE_QWEN3_CODER_CONFIG: AgentConfig = {
@@ -65,6 +89,7 @@ export const OPENCODE_QWEN3_CODER_CONFIG: AgentConfig = {
   environment: getOpencodeEnvironment,
   checkRequirements: checkOpencodeRequirements,
   apiKeys: [ANTHROPIC_API_KEY],
+  completionDetector: startOpenCodeCompletionDetector,
 };
 
 export const OPENCODE_GLM_Z1_32B_FREE_CONFIG: AgentConfig = {
@@ -80,6 +105,7 @@ export const OPENCODE_GLM_Z1_32B_FREE_CONFIG: AgentConfig = {
   environment: getOpencodeEnvironment,
   checkRequirements: checkOpencodeRequirements,
   apiKeys: [OPENROUTER_API_KEY],
+  completionDetector: startOpenCodeCompletionDetector,
 };
 
 export const OPENCODE_O3_PRO_CONFIG: AgentConfig = {
@@ -95,6 +121,7 @@ export const OPENCODE_O3_PRO_CONFIG: AgentConfig = {
   environment: getOpencodeEnvironment,
   checkRequirements: checkOpencodeRequirements,
   apiKeys: [OPENAI_API_KEY],
+  completionDetector: startOpenCodeCompletionDetector,
 };
 
 export const OPENCODE_GPT_5_CONFIG: AgentConfig = {
@@ -110,6 +137,7 @@ export const OPENCODE_GPT_5_CONFIG: AgentConfig = {
   environment: getOpencodeEnvironment,
   checkRequirements: checkOpencodeRequirements,
   apiKeys: [OPENAI_API_KEY],
+  completionDetector: startOpenCodeCompletionDetector,
 };
 
 export const OPENCODE_GPT_5_MINI_CONFIG: AgentConfig = {
@@ -125,6 +153,7 @@ export const OPENCODE_GPT_5_MINI_CONFIG: AgentConfig = {
   environment: getOpencodeEnvironment,
   checkRequirements: checkOpencodeRequirements,
   apiKeys: [OPENAI_API_KEY],
+  completionDetector: startOpenCodeCompletionDetector,
 };
 
 export const OPENCODE_GPT_5_NANO_CONFIG: AgentConfig = {
@@ -140,6 +169,39 @@ export const OPENCODE_GPT_5_NANO_CONFIG: AgentConfig = {
   environment: getOpencodeEnvironment,
   checkRequirements: checkOpencodeRequirements,
   apiKeys: [OPENAI_API_KEY],
+  completionDetector: startOpenCodeCompletionDetector,
+};
+
+export const OPENCODE_GPT_OSS_120B_CONFIG: AgentConfig = {
+  name: "opencode/gpt-oss-120b",
+  command: "bunx",
+  args: [
+    "opencode-ai@latest",
+    "--prompt",
+    "$PROMPT",
+    "--model",
+    "openrouter/openai/gpt-oss-120b",
+  ],
+  environment: getOpencodeEnvironment,
+  checkRequirements: checkOpencodeRequirements,
+  apiKeys: [OPENROUTER_API_KEY],
+  completionDetector: startOpenCodeCompletionDetector,
+};
+
+export const OPENCODE_GPT_OSS_20B_CONFIG: AgentConfig = {
+  name: "opencode/gpt-oss-20b",
+  command: "bunx",
+  args: [
+    "opencode-ai@latest",
+    "--prompt",
+    "$PROMPT",
+    "--model",
+    "openrouter/openai/gpt-oss-20b",
+  ],
+  environment: getOpencodeEnvironment,
+  checkRequirements: checkOpencodeRequirements,
+  apiKeys: [OPENROUTER_API_KEY],
+  completionDetector: startOpenCodeCompletionDetector,
 };
 
 export const OPENCODE_OPUS_4_1_20250805_CONFIG: AgentConfig = {
@@ -155,4 +217,5 @@ export const OPENCODE_OPUS_4_1_20250805_CONFIG: AgentConfig = {
   environment: getOpencodeEnvironment,
   checkRequirements: checkOpencodeRequirements,
   apiKeys: [ANTHROPIC_API_KEY],
+  completionDetector: startOpenCodeCompletionDetector,
 };

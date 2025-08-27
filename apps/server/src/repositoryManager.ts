@@ -26,6 +26,8 @@ interface GitConfig {
 interface GitCommandOptions {
   cwd: string;
   encoding?: "utf8" | "ascii" | "base64" | "hex" | "binary" | "latin1";
+  // When true, suppress logging for expected failures (e.g., existence checks)
+  suppressErrorLogging?: boolean;
 }
 
 interface QueuedOperation {
@@ -134,12 +136,14 @@ export class RepositoryManager {
             stderr: result.stderr.toString(),
           };
         } catch (error) {
-          // Log the command that failed for debugging
-          serverLogger.error(`Git command failed: ${command}`);
-          if (error instanceof Error) {
-            serverLogger.error(`Error: ${error.message}`);
-            if ("stderr" in error && error.stderr) {
-              serverLogger.error(`Stderr: ${error.stderr}`);
+          // Log only if not suppressed (some failures are expected)
+          if (!options?.suppressErrorLogging) {
+            serverLogger.error(`Git command failed: ${command}`);
+            if (error instanceof Error) {
+              serverLogger.error(`Error: ${error.message}`);
+              if ("stderr" in error && (error as any).stderr) {
+                serverLogger.error(`Stderr: ${(error as any).stderr}`);
+              }
             }
           }
           throw error;
@@ -162,12 +166,16 @@ export class RepositoryManager {
           stderr: result.stderr?.toString?.() || "",
         };
       } catch (error) {
-        // Log and fall through to shell execution for debugging context
-        serverLogger.error(`Git command failed: ${gitPath} ${args.join(" ")}`);
-        if (error instanceof Error) {
-          serverLogger.error(`Error: ${error.message}`);
-          if ((error as any).stderr) {
-            serverLogger.error(`Stderr: ${(error as any).stderr}`);
+        // Log and fall through to shell execution unless suppressed
+        if (!options?.suppressErrorLogging) {
+          serverLogger.error(
+            `Git command failed: ${gitPath} ${args.join(" ")}`
+          );
+          if (error instanceof Error) {
+            serverLogger.error(`Error: ${error.message}`);
+            if ((error as any).stderr) {
+              serverLogger.error(`Stderr: ${(error as any).stderr}`);
+            }
           }
         }
       }
@@ -184,12 +192,14 @@ export class RepositoryManager {
         stderr: result.stderr.toString(),
       };
     } catch (error) {
-      // Log the command that failed for debugging
-      serverLogger.error(`Git command failed: ${command}`);
-      if (error instanceof Error) {
-        serverLogger.error(`Error: ${error.message}`);
-        if ("stderr" in error && error.stderr) {
-          serverLogger.error(`Stderr: ${error.stderr}`);
+      // Log only if not suppressed
+      if (!options?.suppressErrorLogging) {
+        serverLogger.error(`Git command failed: ${command}`);
+        if (error instanceof Error) {
+          serverLogger.error(`Error: ${error.message}`);
+          if ("stderr" in error && (error as any).stderr) {
+            serverLogger.error(`Stderr: ${(error as any).stderr}`);
+          }
         }
       }
       throw error;
@@ -283,6 +293,8 @@ export class RepositoryManager {
     } else {
       // Configure git pull strategy for existing repos
       await this.configureGitPullStrategy(originPath);
+      // Ensure a usable remote named 'origin' exists and points to repoUrl
+      await this.ensureRemoteOrigin(originPath, repoUrl);
     }
 
     // If no branch specified, detect the default branch
@@ -295,6 +307,47 @@ export class RepositoryManager {
     // Only fetch if a specific branch was requested or if we detected a branch
     if (targetBranch) {
       await this.handleFetchOperation(repoUrl, originPath, targetBranch);
+    }
+  }
+
+  private async ensureRemoteOrigin(
+    repoPath: string,
+    repoUrl: string
+  ): Promise<void> {
+    try {
+      // Check if 'origin' remote exists
+      const { stdout } = await this.executeGitCommand(
+        `git remote get-url origin`,
+        { cwd: repoPath }
+      );
+      const currentUrl = stdout.trim();
+      if (!currentUrl) {
+        // Add 'origin' if missing
+        await this.executeGitCommand(`git remote add origin "${repoUrl}"`, {
+          cwd: repoPath,
+        });
+      } else if (currentUrl !== repoUrl) {
+        // Keep remote up to date with expected URL
+        await this.executeGitCommand(`git remote set-url origin "${repoUrl}"`, {
+          cwd: repoPath,
+        });
+      }
+    } catch (e) {
+      // If 'origin' does not exist, add it
+      await this.executeGitCommand(`git remote add origin "${repoUrl}"`, {
+        cwd: repoPath,
+      });
+    }
+
+    // Best-effort: set remote HEAD so default branch detection works
+    try {
+      await this.executeGitCommand(`git remote set-head origin -a`, {
+        cwd: repoPath,
+      });
+    } catch (err) {
+      serverLogger.warn(
+        `Failed to set remote HEAD for origin at ${repoPath}: ${String(err)}`
+      );
     }
   }
 
@@ -455,7 +508,7 @@ export class RepositoryManager {
         try {
           await this.executeGitCommand(
             `git rev-parse --verify origin/${branch}`,
-            { cwd: repoPath, encoding: "utf8" }
+            { cwd: repoPath, encoding: "utf8", suppressErrorLogging: true }
           );
           return branch;
         } catch {
@@ -628,38 +681,84 @@ export class RepositoryManager {
     worktreePath: string,
     branchName: string,
     baseBranch: string = "main"
-  ): Promise<void> {
-    // Wait for any existing worktree operation on this repo to complete
-    const existingLock = this.worktreeLocks.get(originPath);
+  ): Promise<string> {
+    // In-process lock keyed by repo+branch to avoid concurrent add for same branch
+    const inProcessLockKey = `${originPath}::${branchName}`;
+    const existingLock = this.worktreeLocks.get(inProcessLockKey);
     if (existingLock) {
       serverLogger.info(
-        `Waiting for existing worktree operation on ${originPath}...`
+        `Waiting for existing worktree operation on ${originPath} (${branchName})...`
       );
       await existingLock;
     }
 
-    // Create a new lock for this operation
-    let releaseLock: () => void;
+    let releaseInProcessLock: () => void;
     const lockPromise = new Promise<void>((resolve) => {
-      releaseLock = () => {
-        this.worktreeLocks.delete(originPath);
+      releaseInProcessLock = () => {
+        this.worktreeLocks.delete(inProcessLockKey);
         resolve();
       };
     });
-    this.worktreeLocks.set(originPath, lockPromise);
+    this.worktreeLocks.set(inProcessLockKey, lockPromise);
 
     serverLogger.info(`Creating worktree with branch ${branchName}...`);
     try {
+      // If the branch is already attached to a worktree, reuse that path to avoid duplicates
+      const preexistingPath = await this.findWorktreeUsingBranch(
+        originPath,
+        branchName
+      );
+      if (preexistingPath) {
+        if (preexistingPath !== worktreePath) {
+          serverLogger.info(
+            `Branch ${branchName} is attached to ${preexistingPath}; moving to ${worktreePath}`
+          );
+          try {
+            await this.removeWorktree(originPath, preexistingPath);
+          } catch (e) {
+            serverLogger.warn(
+              `Failed to remove old worktree ${preexistingPath} for ${branchName}:`,
+              e
+            );
+          }
+          try {
+            await fs.rm(preexistingPath, { recursive: true, force: true });
+          } catch {
+            // ignore
+          }
+        } else {
+          serverLogger.info(
+            `Branch ${branchName} already attached to worktree at ${preexistingPath}; reusing`
+          );
+          // Best-effort ensure branch tracking + hooks
+          await this.ensureWorktreeConfigured(preexistingPath, branchName);
+          return preexistingPath;
+        }
+      }
       // First check if the branch is already used by another worktree
       const existingWorktreePath = await this.findWorktreeUsingBranch(
         originPath,
         branchName
       );
       if (existingWorktreePath && existingWorktreePath !== worktreePath) {
+        // Another process may have just created it while we were waiting on lock
+        // Align with requested path by removing the other worktree and creating ours
         serverLogger.info(
-          `Branch ${branchName} is already used by worktree at ${existingWorktreePath}, removing old worktree...`
+          `Branch ${branchName} attached at ${existingWorktreePath}; replacing with ${worktreePath}`
         );
-        await this.removeWorktree(originPath, existingWorktreePath);
+        try {
+          await this.removeWorktree(originPath, existingWorktreePath);
+        } catch (e) {
+          serverLogger.warn(
+            `Failed to remove concurrent worktree ${existingWorktreePath}:`,
+            e
+          );
+        }
+        try {
+          await fs.rm(existingWorktreePath, { recursive: true, force: true });
+        } catch {
+          // Do not block the other worktree from being created
+        }
       }
 
       // Check if the branch already exists
@@ -667,7 +766,7 @@ export class RepositoryManager {
       try {
         await this.executeGitCommand(
           `git rev-parse --verify refs/heads/${branchName}`,
-          { cwd: originPath }
+          { cwd: originPath, suppressErrorLogging: true }
         );
         branchExists = true;
       } catch {
@@ -675,14 +774,26 @@ export class RepositoryManager {
       }
 
       if (branchExists) {
-        // Branch exists, create worktree without -b flag
-        serverLogger.info(
-          `Branch ${branchName} already exists, creating worktree without new branch`
+        // Branch exists. If the intended worktree path already exists/registered,
+        // treat this as a no-op and proceed to configure.
+        const alreadyRegistered = await this.worktreeExists(
+          originPath,
+          worktreePath
         );
-        await this.executeGitCommand(
-          `git worktree add "${worktreePath}" ${branchName}`,
-          { cwd: originPath }
-        );
+        if (alreadyRegistered) {
+          serverLogger.info(
+            `Worktree for ${branchName} already exists at ${worktreePath}; skipping add`
+          );
+        } else {
+          // Create worktree without -b flag
+          serverLogger.info(
+            `Branch ${branchName} already exists, creating worktree without new branch`
+          );
+          await this.executeGitCommand(
+            `git worktree add "${worktreePath}" ${branchName}`,
+            { cwd: originPath }
+          );
+        }
       } else {
         // Branch doesn't exist, create it with the worktree
         await this.executeGitCommand(
@@ -698,9 +809,33 @@ export class RepositoryManager {
 
       // Set up git hooks in the worktree
       await this.setupGitHooks(worktreePath);
+      return worktreePath;
     } catch (error) {
-      if (error instanceof Error && error.message.includes("already exists")) {
-        throw new Error(`Worktree already exists at ${worktreePath}`);
+      // If another process just created the worktree, treat as success.
+      if (error instanceof Error) {
+        const msg = error.message.toLowerCase();
+        const alreadyExists =
+          msg.includes("already exists") ||
+          msg.includes("is already checked out") ||
+          (msg.includes("worktree add") && msg.includes("file exists"));
+        if (alreadyExists) {
+          // Re-verify actual worktree location for this branch and reuse it
+          const actualPath =
+            (await this.findWorktreeUsingBranch(originPath, branchName)) ||
+            worktreePath;
+          serverLogger.info(
+            `Worktree already present at ${actualPath}; ensuring configuration`
+          );
+          try {
+            await this.ensureWorktreeConfigured(actualPath, branchName);
+          } catch (e) {
+            serverLogger.warn(
+              `Post-existence configuration failed for ${actualPath}:`,
+              e
+            );
+          }
+          return actualPath;
+        }
       }
       // Provide a clearer error message when the base branch does not exist
       if (error instanceof Error) {
@@ -718,8 +853,7 @@ export class RepositoryManager {
       }
       throw error;
     } finally {
-      // Always release the lock
-      releaseLock!();
+      releaseInProcessLock!();
     }
   }
 
@@ -736,8 +870,28 @@ export class RepositoryManager {
         `git config branch.${branchName}.merge refs/heads/${branchName}`,
         { cwd: worktreePath }
       );
+      
+      // Configure VS Code git extension to show diffs from main branch
+      await this.executeGitCommand(
+        `git config vscode.gitSCM.defaultViewMode tree`,
+        { cwd: worktreePath }
+      );
+      await this.executeGitCommand(
+        `git config vscode.gitSCM.showChangesSinceLastPublish true`,
+        { cwd: worktreePath }
+      );
+      // Set main as the base branch for comparisons
+      await this.executeGitCommand(
+        `git config diff.base main`,
+        { cwd: worktreePath }
+      );
+      await this.executeGitCommand(
+        `git config merge.base main`,
+        { cwd: worktreePath }
+      );
+      
       serverLogger.info(
-        `Configured branch ${branchName} to track origin/${branchName} when pushed`
+        `Configured branch ${branchName} to track origin/${branchName} when pushed and show diffs from main`
       );
     } catch (error) {
       serverLogger.warn(
@@ -750,6 +904,15 @@ export class RepositoryManager {
   // Method to update configuration at runtime
   updateConfig(config: Partial<GitConfig>): void {
     this.config = { ...this.config, ...config };
+  }
+
+  // Public helper to ensure a worktree has proper branch tracking and hooks
+  async ensureWorktreeConfigured(
+    worktreePath: string,
+    branchName: string
+  ): Promise<void> {
+    await this.configureWorktreeBranch(worktreePath, branchName);
+    await this.setupGitHooks(worktreePath);
   }
 
   private async setupGitHooks(repoPath: string): Promise<void> {

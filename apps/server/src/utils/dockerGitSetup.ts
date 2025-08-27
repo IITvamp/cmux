@@ -10,7 +10,7 @@ export async function setupGitCredentialsForDocker(
   convex?: ConvexHttpClient
 ): Promise<string | null> {
   try {
-    const githubToken = await getGitHubTokenFromKeychain(convex);
+    const githubToken = await getGitHubTokenFromKeychain();
     if (!githubToken) {
       return null;
     }
