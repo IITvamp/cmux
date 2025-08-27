@@ -832,6 +832,7 @@ async function createTerminal(
     env = {},
     command,
     args = [],
+    startupCommands = [],
   } = options;
 
   const shell = command || (platform() === "win32" ? "powershell.exe" : "bash");
@@ -904,6 +905,44 @@ async function createTerminal(
       ? { GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND }
       : {}),
   };
+
+  // Run optional startup commands prior to spawning the agent process
+  if (startupCommands && startupCommands.length > 0) {
+    log(
+      "INFO",
+      `Running ${startupCommands.length} startup command(s) before spawn`,
+      { startupCommands }
+    );
+    for (const cmd of startupCommands) {
+      try {
+        await new Promise<void>((resolve, reject) => {
+          const p = spawn("bash", ["-lc", cmd], {
+            cwd,
+            env: ptyEnv,
+            stdio: ["ignore", "pipe", "pipe"],
+          });
+          let stderr = "";
+          p.stderr.on("data", (d) => {
+            stderr += d.toString();
+          });
+          p.on("exit", (code) => {
+            if (code === 0) resolve();
+            else
+              reject(
+                new Error(`Startup command failed (${code}): ${cmd}\n${stderr}`)
+              );
+          });
+          p.on("error", (e) => reject(e));
+        });
+      } catch (e) {
+        log(
+          "ERROR",
+          `Startup command failed: ${cmd}`,
+          e instanceof Error ? e : new Error(String(e))
+        );
+      }
+    }
+  }
 
   log("INFO", "Spawning process", {
     command: spawnCommand,
