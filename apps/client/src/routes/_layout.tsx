@@ -69,7 +69,24 @@ function LayoutComponent() {
   return (
     <>
       <ExpandTasksProvider>
-        <div className="flex flex-row grow bg-white dark:bg-black">
+        <div 
+          className="flex flex-row grow relative overflow-hidden"
+          style={{
+            background: `linear-gradient(124deg, 
+              #ff0000, #ff7f00, #ffff00, #00ff00, 
+              #00ffff, #0000ff, #4b0082, #9400d3, 
+              #ff00ff, #ff0080, #ff0000, #ff7f00)`,
+            backgroundSize: '400% 400%',
+            animation: 'rainbow 15s ease infinite'
+          }}
+        >
+          <style>{`
+            @keyframes rainbow {
+              0% { background-position: 0% 50%; }
+              50% { background-position: 100% 50%; }
+              100% { background-position: 0% 50%; }
+            }
+          `}</style>
           <Sidebar tasks={tasks} tasksWithRuns={tasksWithRuns} />
 
           {/* <div className="flex flex-col grow overflow-hidden bg-white dark:bg-neutral-950"> */}
