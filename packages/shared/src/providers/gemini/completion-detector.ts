@@ -49,13 +49,12 @@ async function getMostRecentJsonlFile(
 async function getLastMessage(
   filePath: string
 ): Promise<GeminiMessageLike | null> {
-  const obj = await getLastJsonlObject<any>(filePath);
+  const obj = await getLastJsonlObject<GeminiMessageLike>(filePath);
   if (!obj) return null;
   const role = obj.role;
-  let content = obj.content as string | undefined;
-  if (!content && typeof (obj as any).text === "string")
-    content = (obj as any).text;
-  return { ...obj, role, content } as GeminiMessageLike;
+  let content = obj.content;
+  if (!content && typeof obj.text === "string") content = obj.text;
+  return { ...obj, role, content };
 }
 
 /**
@@ -113,9 +112,8 @@ export function watchGeminiTelemetryForCompletion(options: {
   onError?: (error: Error) => void;
 }): () => void {
   const { telemetryPath, onComplete, onError } = options;
-  const { watch, createReadStream } = require("node:fs");
-  const { promises: fsp } = require("node:fs");
-  const path = require("node:path");
+  const { watch, createReadStream } = fs;
+  const { promises: fsp } = fs;
 
   let stopped = false;
   let lastSize = 0;
@@ -161,7 +159,9 @@ export function watchGeminiTelemetryForCompletion(options: {
           try {
             const obj = JSON.parse(buf);
             onObject(obj);
-          } catch {}
+          } catch {
+            // ignore
+          }
           buf = "";
         }
         continue;
@@ -175,14 +175,16 @@ export function watchGeminiTelemetryForCompletion(options: {
     const anyEvent = event as Record<string, unknown>;
     const attrs =
       (anyEvent.attributes as Record<string, unknown>) ||
-      (anyEvent.resource && (anyEvent.resource as any).attributes) ||
-      (anyEvent.body && (anyEvent.body as any).attributes);
+      (anyEvent.resource &&
+        (anyEvent.resource as Record<string, unknown>).attributes) ||
+      (anyEvent.body && (anyEvent.body as Record<string, unknown>).attributes);
     if (!attrs || typeof attrs !== "object") return false;
     const eventName =
-      (attrs as any)["event.name"] ||
-      (attrs as any).event?.name ||
-      (attrs as any)["event_name"];
-    const result = (attrs as any)["result"];
+      (attrs as Record<string, unknown>)["event.name"] ||
+      (attrs as Record<string, unknown>)["event_name"];
+    const result = (attrs as Record<string, unknown>).result as
+      | string
+      | undefined;
     return eventName === "gemini_cli.next_speaker_check" && result === "user";
   };
 
@@ -210,10 +212,14 @@ export function watchGeminiTelemetryForCompletion(options: {
                 stopped = true;
                 try {
                   fileWatcher?.close();
-                } catch {}
+                } catch {
+                  // ignore
+                }
                 try {
                   dirWatcher?.close();
-                } catch {}
+                } catch {
+                  // ignore
+                }
                 await onComplete();
               }
             } catch (e) {
@@ -266,10 +272,14 @@ export function watchGeminiTelemetryForCompletion(options: {
     stopped = true;
     try {
       fileWatcher?.close();
-    } catch {}
+    } catch {
+      // ignore
+    }
     try {
       dirWatcher?.close();
-    } catch {}
+    } catch {
+      // ignore
+    }
   };
 }
 

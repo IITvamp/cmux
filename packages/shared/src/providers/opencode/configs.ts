@@ -137,8 +137,7 @@ export const OPENCODE_GPT_5_CONFIG: AgentConfig = {
   environment: getOpencodeEnvironment,
   checkRequirements: checkOpencodeRequirements,
   apiKeys: [OPENAI_API_KEY],
-  completionDetector: async (taskRunId, onComplete) =>
-    startOpenCodeCompletionDetector(taskRunId, onComplete),
+  completionDetector: startOpenCodeCompletionDetector,
 };
 
 export const OPENCODE_GPT_5_MINI_CONFIG: AgentConfig = {
@@ -154,8 +153,7 @@ export const OPENCODE_GPT_5_MINI_CONFIG: AgentConfig = {
   environment: getOpencodeEnvironment,
   checkRequirements: checkOpencodeRequirements,
   apiKeys: [OPENAI_API_KEY],
-  completionDetector: async (taskRunId, onComplete) =>
-    startOpenCodeCompletionDetector(taskRunId, onComplete),
+  completionDetector: startOpenCodeCompletionDetector,
 };
 
 export const OPENCODE_GPT_5_NANO_CONFIG: AgentConfig = {
@@ -171,8 +169,7 @@ export const OPENCODE_GPT_5_NANO_CONFIG: AgentConfig = {
   environment: getOpencodeEnvironment,
   checkRequirements: checkOpencodeRequirements,
   apiKeys: [OPENAI_API_KEY],
-  completionDetector: async (taskRunId, onComplete) =>
-    startOpenCodeCompletionDetector(taskRunId, onComplete),
+  completionDetector: startOpenCodeCompletionDetector,
 };
 
 export const OPENCODE_GPT_OSS_120B_CONFIG: AgentConfig = {
@@ -188,8 +185,7 @@ export const OPENCODE_GPT_OSS_120B_CONFIG: AgentConfig = {
   environment: getOpencodeEnvironment,
   checkRequirements: checkOpencodeRequirements,
   apiKeys: [OPENROUTER_API_KEY],
-  completionDetector: async (taskRunId, onComplete) =>
-    startOpenCodeCompletionDetector(taskRunId, onComplete),
+  completionDetector: startOpenCodeCompletionDetector,
 };
 
 export const OPENCODE_GPT_OSS_20B_CONFIG: AgentConfig = {
@@ -205,8 +201,7 @@ export const OPENCODE_GPT_OSS_20B_CONFIG: AgentConfig = {
   environment: getOpencodeEnvironment,
   checkRequirements: checkOpencodeRequirements,
   apiKeys: [OPENROUTER_API_KEY],
-  completionDetector: async (taskRunId, onComplete) =>
-    startOpenCodeCompletionDetector(taskRunId, onComplete),
+  completionDetector: startOpenCodeCompletionDetector,
 };
 
 export const OPENCODE_OPUS_4_1_20250805_CONFIG: AgentConfig = {
@@ -222,6 +217,5 @@ export const OPENCODE_OPUS_4_1_20250805_CONFIG: AgentConfig = {
   environment: getOpencodeEnvironment,
   checkRequirements: checkOpencodeRequirements,
   apiKeys: [ANTHROPIC_API_KEY],
-  completionDetector: async (taskRunId, onComplete) =>
-    startOpenCodeCompletionDetector(taskRunId, onComplete),
+  completionDetector: startOpenCodeCompletionDetector,
 };

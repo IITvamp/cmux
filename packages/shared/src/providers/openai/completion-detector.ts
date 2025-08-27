@@ -2,8 +2,6 @@ import * as fs from "node:fs";
 import type { FSWatcher } from "node:fs";
 import * as path from "node:path";
 
-export type CodexDetectorHandle = { stop: () => void };
-
 export async function createCodexDetector(options: {
   taskRunId: string;
   startTime: number;
@@ -14,7 +12,7 @@ export async function createCodexDetector(options: {
     detectionMethod: string;
   }) => void;
   onError?: (error: Error) => void;
-}): Promise<CodexDetectorHandle> {
+}): Promise<void> {
   const doneFilePath = "/root/lifecycle/codex-done.txt";
   const dir = path.dirname(doneFilePath);
   let isRunning = true;
@@ -64,50 +62,26 @@ export async function createCodexDetector(options: {
   if (fs.existsSync(doneFilePath)) {
     console.log(`[Codex Detector] Done file already exists, marking complete`);
     handleCompletion();
-    return { stop };
+    return;
   }
 
   // Watch for filesystem events
   watcher = fs.watch(dir, (eventType, filename) => {
     if (!isRunning) return;
-    console.log(`[Codex Detector] Directory event: ${eventType}, file: ${filename}`);
+    console.log(
+      `[Codex Detector] Directory event: ${eventType}, file: ${filename}`
+    );
     // Some platforms may emit undefined filename; check on any event
-    if ((filename === "codex-done.txt" || !filename) && fs.existsSync(doneFilePath)) {
+    if (
+      (filename === "codex-done.txt" || !filename) &&
+      fs.existsSync(doneFilePath)
+    ) {
       console.log(`[Codex Detector] ✅ Task complete - done file exists`);
       handleCompletion();
     }
   });
 
-  return { stop };
-}
-
-// Consolidated from completion-detection.ts
-export type StopFn = () => void;
-
-export async function watchCodexDoneFile(options: {
-  taskRunId: string;
-  startTime: number;
-  workingDir?: string;
-  onComplete: (data: { elapsedMs: number }) => void;
-  onError?: (error: Error) => void;
-}): Promise<StopFn> {
-  let handle: CodexDetectorHandle | null = null;
-  try {
-    handle = await createCodexDetector({
-      taskRunId: options.taskRunId,
-      startTime: options.startTime,
-      workingDir: options.workingDir,
-      onComplete: (data) => options.onComplete({ elapsedMs: data.elapsedMs }),
-      onError: options.onError,
-    });
-  } catch (e) {
-    options.onError?.(e instanceof Error ? e : new Error(String(e)));
-  }
-  return () => {
-    try {
-      handle?.stop();
-    } catch {}
-  };
+  return;
 }
 
 export function startCodexCompletionDetector(
@@ -115,20 +89,10 @@ export function startCodexCompletionDetector(
   onComplete: () => void
 ): void {
   (async () => {
-    try {
-      const handle: CodexDetectorHandle = await createCodexDetector({
-        taskRunId,
-        startTime: Date.now(),
-        onComplete: () => onComplete(),
-      });
-      // Ensure the detector stops itself when complete via its own callback
-      // but do not expose a handle to the caller per project design.
-      // For safety, stop after 30m if not complete.
-      setTimeout(() => {
-        try {
-          handle.stop();
-        } catch {}
-      }, 30 * 60 * 1000);
-    } catch {}
+    await createCodexDetector({
+      taskRunId,
+      startTime: Date.now(),
+      onComplete: () => onComplete(),
+    });
   })();
 }
