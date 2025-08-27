@@ -30,7 +30,7 @@ export function OpenWithDropdown({
   className,
   iconClassName = "w-3.5 h-3.5",
 }: OpenWithDropdownProps) {
-  const { socket } = useSocket();
+  const { socket, availableEditors } = useSocket();
 
   useEffect(() => {
     if (!socket) return;
@@ -55,13 +55,33 @@ export function OpenWithDropdown({
           resolve();
         } else if (
           socket &&
-          ["cursor", "vscode", "windsurf", "finder"].includes(editor) &&
+          [
+            "cursor",
+            "vscode",
+            "windsurf",
+            "finder",
+            "iterm",
+            "terminal",
+            "ghostty",
+            "alacritty",
+            "xcode",
+          ].includes(editor) &&
           worktreePath
         ) {
           socket.emit(
             "open-in-editor",
             {
-              editor: editor as "cursor" | "vscode" | "windsurf" | "finder",
+              editor:
+                editor as
+                  | "cursor"
+                  | "vscode"
+                  | "windsurf"
+                  | "finder"
+                  | "iterm"
+                  | "terminal"
+                  | "ghostty"
+                  | "alacritty"
+                  | "xcode",
               path: worktreePath,
             },
             (response) => {
@@ -102,11 +122,48 @@ export function OpenWithDropdown({
     {
       id: "vscode" as const,
       name: "VS Code (local)",
-      enabled: !!worktreePath,
+      enabled: !!worktreePath && (availableEditors?.vscode ?? true),
     },
-    { id: "cursor" as const, name: "Cursor", enabled: !!worktreePath },
-    { id: "windsurf" as const, name: "Windsurf", enabled: !!worktreePath },
-    { id: "finder" as const, name: "Finder", enabled: !!worktreePath },
+    {
+      id: "cursor" as const,
+      name: "Cursor",
+      enabled: !!worktreePath && (availableEditors?.cursor ?? true),
+    },
+    {
+      id: "windsurf" as const,
+      name: "Windsurf",
+      enabled: !!worktreePath && (availableEditors?.windsurf ?? true),
+    },
+    {
+      id: "finder" as const,
+      name: "Finder",
+      enabled: !!worktreePath && (availableEditors?.finder ?? true),
+    },
+    {
+      id: "iterm" as const,
+      name: "iTerm",
+      enabled: !!worktreePath && (availableEditors?.iterm ?? false),
+    },
+    {
+      id: "terminal" as const,
+      name: "Terminal",
+      enabled: !!worktreePath && (availableEditors?.terminal ?? false),
+    },
+    {
+      id: "ghostty" as const,
+      name: "Ghostty",
+      enabled: !!worktreePath && (availableEditors?.ghostty ?? false),
+    },
+    {
+      id: "alacritty" as const,
+      name: "Alacritty",
+      enabled: !!worktreePath && (availableEditors?.alacritty ?? false),
+    },
+    {
+      id: "xcode" as const,
+      name: "Xcode",
+      enabled: !!worktreePath && (availableEditors?.xcode ?? false),
+    },
   ];
 
   return (

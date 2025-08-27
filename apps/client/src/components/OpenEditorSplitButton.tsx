@@ -7,7 +7,16 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { MenuArrow } from "./ui/menu";
 
-type EditorType = "cursor" | "vscode" | "windsurf" | "finder";
+type EditorType =
+  | "cursor"
+  | "vscode"
+  | "windsurf"
+  | "finder"
+  | "iterm"
+  | "terminal"
+  | "ghostty"
+  | "alacritty"
+  | "xcode";
 
 interface OpenEditorSplitButtonProps {
   worktreePath?: string | null;
@@ -20,7 +29,7 @@ export function OpenEditorSplitButton({
   classNameLeft,
   classNameRight,
 }: OpenEditorSplitButtonProps) {
-  const { socket } = useSocket();
+  const { socket, availableEditors } = useSocket();
   const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
@@ -36,12 +45,53 @@ export function OpenEditorSplitButton({
 
   const menuItems = useMemo(
     () => [
-      { id: "vscode" as const, name: "VS Code", enabled: !!worktreePath },
-      { id: "cursor" as const, name: "Cursor", enabled: !!worktreePath },
-      { id: "windsurf" as const, name: "Windsurf", enabled: !!worktreePath },
-      { id: "finder" as const, name: "Finder", enabled: !!worktreePath },
+      {
+        id: "vscode" as const,
+        name: "VS Code",
+        enabled: !!worktreePath && (availableEditors?.vscode ?? true),
+      },
+      {
+        id: "cursor" as const,
+        name: "Cursor",
+        enabled: !!worktreePath && (availableEditors?.cursor ?? true),
+      },
+      {
+        id: "windsurf" as const,
+        name: "Windsurf",
+        enabled: !!worktreePath && (availableEditors?.windsurf ?? true),
+      },
+      {
+        id: "finder" as const,
+        name: "Finder",
+        enabled: !!worktreePath && (availableEditors?.finder ?? true),
+      },
+      {
+        id: "iterm" as const,
+        name: "iTerm",
+        enabled: !!worktreePath && (availableEditors?.iterm ?? false),
+      },
+      {
+        id: "terminal" as const,
+        name: "Terminal",
+        enabled: !!worktreePath && (availableEditors?.terminal ?? false),
+      },
+      {
+        id: "ghostty" as const,
+        name: "Ghostty",
+        enabled: !!worktreePath && (availableEditors?.ghostty ?? false),
+      },
+      {
+        id: "alacritty" as const,
+        name: "Alacritty",
+        enabled: !!worktreePath && (availableEditors?.alacritty ?? false),
+      },
+      {
+        id: "xcode" as const,
+        name: "Xcode",
+        enabled: !!worktreePath && (availableEditors?.xcode ?? false),
+      },
     ],
-    [worktreePath]
+    [worktreePath, availableEditors]
   );
 
   const [selectedEditor, setSelectedEditor] = useState<EditorType | null>(
@@ -63,6 +113,16 @@ export function OpenEditorSplitButton({
   );
 
   useEffect(() => {
+    if (
+      selectedEditor &&
+      !menuItems.find((m) => m.id === selectedEditor) &&
+      menuItems[0]
+    ) {
+      setSelectedEditor(menuItems[0].id);
+    }
+  }, [menuItems, selectedEditor]);
+
+  useEffect(() => {
     if (selectedEditor) {
       window.localStorage.setItem("cmux:lastEditor", selectedEditor);
     }
@@ -73,7 +133,17 @@ export function OpenEditorSplitButton({
       return new Promise((resolve, reject) => {
         if (
           socket &&
-          ["cursor", "vscode", "windsurf", "finder"].includes(editor) &&
+          [
+            "cursor",
+            "vscode",
+            "windsurf",
+            "finder",
+            "iterm",
+            "terminal",
+            "ghostty",
+            "alacritty",
+            "xcode",
+          ].includes(editor) &&
           worktreePath
         ) {
           socket.emit(
@@ -119,6 +189,16 @@ export function OpenEditorSplitButton({
             errorMessage = "Windsurf is not installed or not found in PATH";
           else if (selected.id === "finder")
             errorMessage = "Finder is not available or not found";
+          else if (selected.id === "iterm")
+            errorMessage = "iTerm is not installed or not found";
+          else if (selected.id === "terminal")
+            errorMessage = "Terminal is not available";
+          else if (selected.id === "ghostty")
+            errorMessage = "Ghostty is not installed or not found";
+          else if (selected.id === "alacritty")
+            errorMessage = "Alacritty is not installed or not found";
+          else if (selected.id === "xcode")
+            errorMessage = "Xcode is not installed or not found";
         } else if (error.message) {
           errorMessage = error.message;
         }

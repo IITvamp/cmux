@@ -14,6 +14,7 @@ import {
   type InterServerEvents,
   type ServerToClientEvents,
   type SocketData,
+  type AvailableEditors,
 } from "@cmux/shared";
 import fuzzysort from "fuzzysort";
 import { minimatch } from "minimatch";
@@ -159,6 +160,42 @@ export async function startServer({
       );
       socket.emit("default-repo", defaultRepoData);
     }
+
+    (async () => {
+      const commandExists = async (cmd: string) => {
+        try {
+          await execAsync(`command -v ${cmd}`);
+          return true;
+        } catch {
+          return false;
+        }
+      };
+
+      const appExists = async (app: string) => {
+        if (process.platform !== "darwin") return false;
+        try {
+          await execAsync(`open -Ra "${app}"`);
+          return true;
+        } catch {
+          return false;
+        }
+      };
+
+      const availability: AvailableEditors = {
+        vscode: await commandExists("code"),
+        cursor: await commandExists("cursor"),
+        windsurf: await commandExists("windsurf"),
+        finder: process.platform === "darwin",
+        iterm: await appExists("iTerm"),
+        terminal: await appExists("Terminal"),
+        ghostty:
+          (await commandExists("ghostty")) || (await appExists("Ghostty")),
+        alacritty: await commandExists("alacritty"),
+        xcode: await appExists("Xcode"),
+      };
+
+      socket.emit("available-editors", availability);
+    })();
 
     socket.on("start-task", async (data, callback) => {
       const taskData = StartTaskSchema.parse(data);
@@ -737,6 +774,21 @@ export async function startServer({
             command = ["open", path];
             break;
           }
+          case "iterm":
+            command = ["open", "-a", "iTerm", path];
+            break;
+          case "terminal":
+            command = ["open", "-a", "Terminal", path];
+            break;
+          case "ghostty":
+            command = ["open", "-a", "Ghostty", path];
+            break;
+          case "alacritty":
+            command = ["alacritty", "--working-directory", path];
+            break;
+          case "xcode":
+            command = ["open", "-a", "Xcode", path];
+            break;
           default:
             throw new Error(`Unknown editor: ${editor}`);
         }
