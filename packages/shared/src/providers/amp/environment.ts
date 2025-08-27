@@ -74,10 +74,5 @@ export async function getAmpEnvironment(
   // Prefix with taskRunId: to be explicit, though the proxy accepts bare IDs too.
   env.AMP_API_KEY = `taskRunId:${ctx.taskRunId}`;
 
-  // Ensure AMP proxy is started in-process by the worker using a sentinel command.
-  // This avoids a separate process and keeps event emission within the worker.
-  // Idempotent in worker via an ampProxyStarted guard.
-  startupCommands.push("__cmux_start_amp_proxy__");
-
   return { files, env, startupCommands };
 }

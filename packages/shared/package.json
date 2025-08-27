@@ -13,13 +13,9 @@
       "import": "./src/index.ts",
       "types": "./src/index.ts"
     },
-    "./src/providers/amp/completion-detector": {
-      "import": "./src/providers/amp/completion-detector.ts",
-      "types": "./src/providers/amp/completion-detector.ts"
-    },
-    "./src/providers/amp/completion-detector.ts": {
-      "import": "./src/providers/amp/completion-detector.ts",
-      "types": "./src/providers/amp/completion-detector.ts"
+    "./src/providers/amp/start-amp-proxy.ts": {
+      "import": "./src/providers/amp/start-amp-proxy.ts",
+      "types": "./src/providers/amp/start-amp-proxy.ts"
     },
     "./model-usage": {
       "import": "./src/model-usage.ts",
@@ -48,40 +44,6 @@
     "./utils/typed-zid": {
       "import": "./src/utils/typed-zid.ts",
       "types": "./src/utils/typed-zid.ts"
-    },
-    "./src/providers/anthropic/completion-detector": {
-      "import": "./src/providers/anthropic/completion-detector.ts",
-      "types": "./src/providers/anthropic/completion-detector.ts"
-    },
-    "./src/providers/anthropic/completion-detector.ts": {
-      "import": "./src/providers/anthropic/completion-detector.ts",
-      "types": "./src/providers/anthropic/completion-detector.ts"
-    },
-    "./src/providers/openai/completion-detector": {
-      "import": "./src/providers/openai/completion-detector.ts",
-      "types": "./src/providers/openai/completion-detector.ts"
-    },
-    "./src/providers/openai/completion-detector.ts": {
-      "import": "./src/providers/openai/completion-detector.ts",
-      "types": "./src/providers/openai/completion-detector.ts"
-    }
-    ,
-    "./src/providers/gemini/completion-detector": {
-      "import": "./src/providers/gemini/completion-detector.ts",
-      "types": "./src/providers/gemini/completion-detector.ts"
-    },
-    "./src/providers/gemini/completion-detector.ts": {
-      "import": "./src/providers/gemini/completion-detector.ts",
-      "types": "./src/providers/gemini/completion-detector.ts"
-    }
-    ,
-    "./src/providers/opencode/completion-detector": {
-      "import": "./src/providers/opencode/completion-detector.ts",
-      "types": "./src/providers/opencode/completion-detector.ts"
-    },
-    "./src/providers/opencode/completion-detector.ts": {
-      "import": "./src/providers/opencode/completion-detector.ts",
-      "types": "./src/providers/opencode/completion-detector.ts"
     }
   },
   "dependencies": {

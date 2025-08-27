@@ -13,7 +13,8 @@ import {
   type WorkerToServerEvents,
 } from "@cmux/shared";
 import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
-import { startAmpProxy } from "@cmux/shared/src/providers/amp/completion-detector";
+
+import { startAmpProxy } from "@cmux/shared/src/providers/amp/start-amp-proxy.ts";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import * as xtermHeadless from "@xterm/headless";
 import express from "express";
@@ -159,9 +160,6 @@ interface PendingEvent {
   timestamp: number;
 }
 const pendingEvents: PendingEvent[] = [];
-
-// Track AMP proxy startup status to avoid races
-let ampProxyStarted = false;
 
 /**
  * Emit an event to the main server, queuing it if not connected
@@ -358,88 +356,6 @@ managementIO.on("connection", (socket) => {
             log(
               "ERROR",
               `Failed to write auth file ${file.destinationPath}:`,
-              error,
-              WORKER_ID
-            );
-          }
-        }
-      }
-
-      // Execute startup commands if provided
-      if (validated.startupCommands && validated.startupCommands.length > 0) {
-        log(
-          "INFO",
-          `Executing ${validated.startupCommands.length} startup commands...`,
-          undefined,
-          WORKER_ID
-        );
-
-        for (const command of validated.startupCommands) {
-          // Intercept internal sentinel to start AMP proxy in-process
-          if (command.trim() === "__cmux_start_amp_proxy__") {
-            if (!ampProxyStarted) {
-              try {
-                startAmpProxy({
-                  ampUrl: process.env.AMP_UPSTREAM_URL,
-                  workerId: WORKER_ID,
-                  emitToMainServer,
-                });
-                ampProxyStarted = true;
-                log(
-                  "INFO",
-                  "Started AMP proxy (in-process)",
-                  undefined,
-                  WORKER_ID
-                );
-              } catch (e) {
-                log("ERROR", "Failed to start AMP proxy", e, WORKER_ID);
-              }
-            } else {
-              log(
-                "INFO",
-                "AMP proxy already running; skipping start",
-                undefined,
-                WORKER_ID
-              );
-            }
-            continue; // Skip shell exec for sentinel
-          }
-          try {
-            log(
-              "INFO",
-              `Executing startup command: ${command}`,
-              undefined,
-              WORKER_ID
-            );
-            const { stdout, stderr } = await execAsync(command, {
-              env: { ...process.env, ...validated.env },
-            });
-            if (stdout) {
-              log(
-                "INFO",
-                `Startup command stdout: ${stdout}`,
-                undefined,
-                WORKER_ID
-              );
-            }
-            if (stderr) {
-              log(
-                "INFO",
-                `Startup command stderr: ${stderr}`,
-                undefined,
-                WORKER_ID
-              );
-            }
-            log(
-              "INFO",
-              `Successfully executed startup command`,
-              undefined,
-              WORKER_ID
-            );
-          } catch (error) {
-            log(
-              "ERROR",
-              `Failed to execute startup command: ${command}`,
               error,
               WORKER_ID
             );
@@ -1046,6 +962,13 @@ async function createTerminal(
 
   // Config-driven completion detector
   const agentConfig = AGENT_CONFIGS.find((c) => c.name === options.agentModel);
+
+  // if missing need to return early
+  if (!agentConfig) {
+    log("ERROR", `Agent config not found for ${options.agentModel}`);
+    return;
+  }
+
   if (options.taskRunId && agentConfig?.completionDetector) {
     try {
       agentConfig.completionDetector(options.taskRunId, () => {
@@ -1209,7 +1132,12 @@ httpServer.listen(WORKER_PORT, () => {
   );
 });
 
-// AMP proxy is now started via startupCommands sentinel per Amp tasks
+// Start AMP proxy via shared provider module
+startAmpProxy({
+  ampUrl: process.env.AMP_URL,
+  workerId: WORKER_ID,
+  emitToMainServer: emitToMainServer,
+});
 
 // Periodic maintenance for pending events
 setInterval(() => {
