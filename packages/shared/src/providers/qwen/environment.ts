@@ -1,66 +1,83 @@
-import type { EnvironmentContext, EnvironmentResult } from "../common/environment-result.js";
+import type {
+  EnvironmentContext,
+  EnvironmentResult,
+} from "../common/environment-result.js";
 
-export async function getQwenEnvironment(_ctx: EnvironmentContext): Promise<EnvironmentResult> {
-  const { readdir, readFile, stat } = await import("node:fs/promises");
+// Prepare Qwen CLI environment to avoid interactive auth prompts.
+// We mirror the Gemini setup by ensuring ~/.qwen/settings.json exists and
+// selects the OpenAI-compatible auth flow. The actual OPENAI_API_KEY is
+// injected by the spawner via envVars from Convex.
+// Internal helper to build environment with a provider default base URL.
+async function makeQwenEnvironment(
+  _ctx: EnvironmentContext,
+  defaultBaseUrl: string | null,
+  defaultModel: string | null
+): Promise<EnvironmentResult> {
+  const { readFile } = await import("node:fs/promises");
   const { homedir } = await import("node:os");
-  const { join, relative } = await import("node:path");
+  const { join } = await import("node:path");
   const { Buffer } = await import("node:buffer");
 
   const files: EnvironmentResult["files"] = [];
   const env: Record<string, string> = {};
   const startupCommands: string[] = [];
 
-  // Ensure ~/.qwen exists in the container
+  // Ensure .qwen directory exists
   startupCommands.push("mkdir -p ~/.qwen");
 
+  // Merge/update ~/.qwen/settings.json with selectedAuthType = "openai"
   const qwenDir = join(homedir(), ".qwen");
+  const settingsPath = join(qwenDir, "settings.json");
 
-  async function copyAllUnder(dir: string, destBase: string) {
+  type QwenSettings = {
+    selectedAuthType?: string;
+    useExternalAuth?: boolean;
+    [key: string]: unknown;
+  };
+
+  let settings: QwenSettings = {};
+  try {
+    const content = await readFile(settingsPath, "utf-8");
     try {
-      const entries = await readdir(dir, { withFileTypes: true });
-      for (const entry of entries) {
-        const srcPath = join(dir, entry.name);
-        const rel = relative(qwenDir, srcPath);
-        const destPath = `${destBase}/${rel}`;
-        if (entry.isDirectory()) {
-          // Create directory in destination at runtime
-          startupCommands.push(`mkdir -p ${destBase}/${rel}`);
-          await copyAllUnder(srcPath, destBase);
-        } else if (entry.isFile()) {
-          try {
-            const content = await readFile(srcPath);
-            files.push({
-              destinationPath: destPath,
-              contentBase64: content.toString("base64"),
-              mode: "600",
-            });
-          } catch (e) {
-            console.warn("Failed to read", srcPath, e);
-          }
-        }
+      const parsed = JSON.parse(content) as unknown;
+      if (parsed && typeof parsed === "object") {
+        settings = parsed as QwenSettings;
       }
-    } catch (e) {
-      // If .qwen is missing, that's fine; user may rely on OPENAI_API_KEY
+    } catch {
+      // Ignore invalid JSON and recreate with defaults
     }
+  } catch {
+    // File might not exist; we'll create it
   }
 
-  // Recursively copy all files from host ~/.qwen to container ~/.qwen
-  await copyAllUnder(qwenDir, "$HOME/.qwen");
-
-  // Also copy a top-level .env if present (either ~/.qwen/.env or ~/.env)
-  const envCandidates = [join(qwenDir, ".env"), join(homedir(), ".env")];
-  for (const p of envCandidates) {
-    try {
-      const s = await stat(p);
-      if (s.isFile()) {
-        const content = await readFile(p);
-        const dest = p.endsWith("/.env") ? "$HOME/.qwen/.env" : "$HOME/.env";
-        files.push({ destinationPath: dest, contentBase64: content.toString("base64"), mode: "600" });
-        break;
-      }
-    } catch {}
+  // Force OpenAI-compatible auth so the CLI doesn't ask interactively
+  settings.selectedAuthType = "openai";
+  // Ensure we don't try an external OAuth flow in ephemeral sandboxes
+  if (settings.useExternalAuth === undefined) {
+    settings.useExternalAuth = false;
   }
+
+  const mergedContent = JSON.stringify(settings, null, 2) + "\n";
+  files.push({
+    destinationPath: "$HOME/.qwen/settings.json",
+    contentBase64: Buffer.from(mergedContent).toString("base64"),
+    mode: "644",
+  });
+
+  // Set sensible default base URL for the OpenAI-compatible API if none provided via settings
+  if (defaultBaseUrl) env.OPENAI_BASE_URL = defaultBaseUrl;
+  if (defaultModel) env.OPENAI_MODEL = defaultModel;
 
   return { files, env, startupCommands };
 }
 
+// OpenRouter: models like "qwen/qwen3-coder:free"
+export async function getQwenOpenRouterEnvironment(
+  ctx: EnvironmentContext
+): Promise<EnvironmentResult> {
+  return makeQwenEnvironment(
+    ctx,
+    "https://openrouter.ai/api/v1",
+    "qwen/qwen3-coder:free"
+  );
+}

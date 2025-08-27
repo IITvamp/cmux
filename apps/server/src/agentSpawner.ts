@@ -248,12 +248,6 @@ export async function spawnAgent(
     serverLogger.info(`  Processed args: ${processedArgs.join(" ")}`);
     serverLogger.info(`  Agent command: ${agentCommand}`);
     serverLogger.info(`  Tmux session name: ${tmuxSessionName}`);
-    serverLogger.info(
-      `  Environment vars to pass:`,
-      Object.keys(envVars).filter(
-        (k) => k.startsWith("ANTHROPIC_") || k.startsWith("GEMINI_")
-      )
-    );
 
     let vscodeInstance: VSCodeInstance;
     let worktreePath: string;
