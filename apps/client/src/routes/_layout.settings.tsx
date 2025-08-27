@@ -522,6 +522,22 @@ function SettingsComponent() {
                               return {
                                 url: "https://openrouter.ai/keys",
                               };
+                            case "GEMINI_API_KEY":
+                              return {
+                                url: "https://console.cloud.google.com/apis/credentials",
+                              };
+                            case "MODEL_STUDIO_API_KEY":
+                              return {
+                                url: "https://modelstudio.console.alibabacloud.com/?tab=playground#/api-key",
+                              };
+                            case "AMP_API_KEY":
+                              return {
+                                url: "https://ampcode.com/settings",
+                              };
+                            case "CURSOR_API_KEY":
+                              return {
+                                url: "https://cursor.com/dashboard?tab=integrations",
+                              };
                             default:
                               return null;
                           }
