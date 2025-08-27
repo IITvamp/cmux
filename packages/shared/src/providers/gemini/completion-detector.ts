@@ -1,111 +1,6 @@
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
-import { getLastJsonlObject } from "../../utils/jsonl.js";
 
-/**
- * Gemini session/message types (best-effort)
- * The Gemini CLI may log JSONL transcripts under a provider-specific location.
- * We mirror the Claude detector pattern and look for JSONL in a per-project folder.
- */
-interface GeminiMessageLike {
-  role?: string; // "user" | "assistant" | "model" | unknown
-  content?: string;
-  timestamp?: string;
-  // Additional fields ignored
-  [key: string]: unknown;
-}
-
-// Compute a project path we expect Gemini CLI to use for transcripts.
-// This mirrors the Claude convention, using an encoded working dir.
-export function getGeminiProjectPath(workingDir: string): string {
-  const homeDir = os.homedir();
-  const encoded = workingDir.replace(/\//g, "-");
-  return path.join(homeDir, ".gemini", "projects", encoded);
-}
-
-async function getMostRecentJsonlFile(
-  projectDir: string
-): Promise<string | null> {
-  try {
-    await fs.promises.access(projectDir);
-  } catch {
-    return null;
-  }
-  try {
-    const files = await fs.promises.readdir(projectDir);
-    const jsonlFiles = files
-      .filter((f) => f.endsWith(".jsonl"))
-      .sort((a, b) => b.localeCompare(a));
-    if (!jsonlFiles.length) return null;
-    const first = jsonlFiles[0];
-    if (!first) return null;
-    return path.join(projectDir, first);
-  } catch {
-    return null;
-  }
-}
-
-async function getLastMessage(
-  filePath: string
-): Promise<GeminiMessageLike | null> {
-  const obj = await getLastJsonlObject<GeminiMessageLike>(filePath);
-  if (!obj) return null;
-  const role = obj.role;
-  let content = obj.content;
-  if (!content && typeof obj.text === "string") content = obj.text;
-  return { ...obj, role, content };
-}
-
-/**
- * Heuristic completion detection for Gemini CLI transcripts.
- * Considered complete when:
- * - The most recent message is from the assistant/model, and
- * - The session has been idle for at least `minIdleTimeMs`, and
- * - Optionally, the last message includes a completion phrase.
- */
-export async function checkGeminiProjectFileCompletion(
-  projectPath?: string,
-  workingDir?: string,
-  minIdleTimeMs: number = 10000
-): Promise<boolean> {
-  const projectDir =
-    projectPath || (workingDir ? getGeminiProjectPath(workingDir) : null);
-  if (!projectDir)
-    throw new Error("Either projectPath or workingDir must be provided");
-
-  const jsonl = await getMostRecentJsonlFile(projectDir);
-  if (!jsonl) return false;
-
-  const last = await getLastMessage(jsonl);
-  if (!last) return false;
-
-  const role = (last.role || "").toLowerCase();
-  const isAssistant = role === "assistant" || role === "model";
-  if (!isAssistant) return false;
-
-  // Idle check if timestamp available
-  if (last.timestamp) {
-    const ts = Date.parse(last.timestamp);
-    if (!Number.isNaN(ts)) {
-      const idle = Date.now() - ts;
-      if (idle < minIdleTimeMs) return false;
-    }
-  }
-
-  return true;
-}
-
-export default {
-  getGeminiProjectPath,
-  checkGeminiProjectFileCompletion,
-};
-
-/**
- * Event-driven watcher for Gemini completion via telemetry file.
- * Uses fs.watch + createReadStream to stream appended bytes and detect
- * the completion event immediately
- */
 export function watchGeminiTelemetryForCompletion(options: {
   telemetryPath: string;
   onComplete: () => void | Promise<void>;
@@ -243,10 +138,10 @@ export function watchGeminiTelemetryForCompletion(options: {
       await readNew(true);
       fileWatcher = watch(
         telemetryPath,
-        { persistent: false },
-        async (eventType: string) => {
+        { persistent: false, encoding: "utf8" },
+        (eventType: string) => {
           if (!stopped && eventType === "change") {
-            await readNew(false);
+            void readNew(false);
           }
         }
       );
@@ -257,11 +152,11 @@ export function watchGeminiTelemetryForCompletion(options: {
 
   dirWatcher = watch(
     dir,
-    { persistent: false },
-    async (_eventType: string, filename: string | Buffer) => {
-      const name = filename?.toString();
+    { persistent: false, encoding: "utf8" },
+    (_eventType: string, filename: string | null) => {
+      const name = filename;
       if (!stopped && name === file) {
-        await attachFileWatcher();
+        void attachFileWatcher();
       }
     }
   );
