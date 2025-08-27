@@ -15,11 +15,11 @@ export const OPENCODE_GROK_CODE_CONFIG: AgentConfig = {
     "--prompt",
     "$PROMPT",
     "--model",
-    "openrouter/x-ai/grok-code-fast-1",
+    "opencode/grok-code",
   ],
   environment: getOpencodeEnvironment,
   checkRequirements: checkOpencodeRequirements,
-  apiKeys: [OPENROUTER_API_KEY],
+  apiKeys: [],
 };
 
 export const OPENCODE_SONNET_CONFIG: AgentConfig = {
