@@ -1,5 +1,6 @@
 import { TaskTree, type TaskWithRuns } from "@/components/TaskTree";
 import { TaskTreeSkeleton } from "@/components/TaskTreeSkeleton";
+import { TimeDisplay } from "@/components/TimeDisplay";
 import { useExpandTasks } from "@/contexts/expand-tasks/ExpandTasksContext";
 import { isElectron } from "@/lib/electron";
 import { type Doc } from "@cmux/convex/dataModel";
@@ -190,6 +191,9 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
       </nav>
 
       <div className="pb-2 shrink-0 flex flex-col">
+        <div className="px-4 py-2 border-t border-neutral-200 dark:border-neutral-800">
+          <TimeDisplay />
+        </div>
         <a
           href="https://github.com/manaflow-ai/cmux/issues/new"
           target="_blank"
