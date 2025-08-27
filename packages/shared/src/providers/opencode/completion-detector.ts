@@ -1,6 +1,8 @@
 import type { FSWatcher } from "node:fs";
 
-export function startOpenCodeCompletionDetector(taskRunId: string): Promise<void> {
+export function startOpenCodeCompletionDetector(
+  taskRunId: string
+): Promise<void> {
   const markerPath = `/root/lifecycle/opencode-complete-${taskRunId}`;
   let watcher: FSWatcher | null = null;
   let stopped = false;
