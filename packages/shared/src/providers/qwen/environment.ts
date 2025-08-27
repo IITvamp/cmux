@@ -22,6 +22,10 @@ async function makeQwenEnvironment(
 
   // Ensure .qwen directory exists
   startupCommands.push("mkdir -p ~/.qwen");
+  
+  // Clean up any old Qwen telemetry files from previous runs
+  // The actual telemetry path will be set by the agent spawner with the task ID
+  startupCommands.push("rm -f /tmp/qwen-telemetry-*.log 2>/dev/null || true");
 
   // Merge/update ~/.qwen/settings.json with selectedAuthType = "openai"
   const qwenDir = join(homedir(), ".qwen");
