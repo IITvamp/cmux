@@ -258,7 +258,23 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    /* Keep text color from theme */
+    @apply text-foreground;
+    /* Fallback background color from theme */
+    background-color: var(--background);
+    /* Rainbow gradient background */
+    background-image: linear-gradient(
+      135deg,
+      #ff0040,
+      #ff7a00,
+      #ffd400,
+      #09ff00,
+      #00d5ff,
+      #6a00ff,
+      #ff00c8
+    );
+    background-size: 400% 400%;
+    animation: cmux-rainbow-shift 30s ease infinite;
   }
 }
 
@@ -450,6 +466,19 @@ code, pre, .font-mono {
 
 .animate-pulse-subtle {
   animation: pulse-subtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Subtle animated rainbow gradient for the app background */
+@keyframes cmux-rainbow-shift {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
 }
 
 .margin-view-overlays {
