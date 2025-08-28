@@ -377,6 +377,9 @@ importers:
       '@daytonaio/sdk':
         specifier: ^0.22.1
         version: 0.22.1
+      '@stackframe/js':
+        specifier: ^2.8.35
+        version: 2.8.35(@types/react-dom@19.1.7(@types/react@19.1.11))(@types/react@19.1.11)(buffer@6.0.3)(react-dom@19.1.0(react@19.1.0))(react-hook-form@7.62.0(react@19.1.0))(react@19.1.0)
       '@xterm/addon-serialize':
         specifier: ^0.13.0
         version: 0.13.0(@xterm/xterm@5.5.0)
@@ -4680,6 +4683,7 @@ packages:
 
   '@simplewebauthn/types@11.0.0':
     resolution: {integrity: sha512-b2o0wC5u2rWts31dTgBkAtSNKGX0cvL6h8QedNsKmj8O4QoLFQFR3DBVBUlpyVEhYKA+mXGUaXbcOc4JdQ3HzA==}
+    deprecated: Package no longer supported. Contact Support at https://www.npmjs.com/support for more info.
 
   '@sindresorhus/is@4.6.0':
     resolution: {integrity: sha512-t09vSN3MdfsyCHoFcTRCH/iUtG7OJ0CsjzB8cjAmKc/va/kIgeDI/TxsigdncE/4be734m0cvIYwNaV4i2XqAw==}
@@ -4910,6 +4914,9 @@ packages:
   '@stackframe/js@2.8.32':
     resolution: {integrity: sha512-2rX/EKuFR7Z2cCfoxgHpOPmEyfRIFirq1gvTWmxYioRCvF6Ae2ynMvtTO19DRFzBZoK9OTXshj3fDieVbN4wig==}
 
+  '@stackframe/js@2.8.35':
+    resolution: {integrity: sha512-oK8kISYtzBFzsq5HnBofTb5FAOCP5tEDhQ3fBgbhNfvxjB9sqs8tm6RPn88CxdiwX3kenRlaJfpRP63eIOG0qA==}
+
   '@stackframe/react@2.8.32':
     resolution: {integrity: sha512-cI/0r8ZxTzG4DefkvMm85FnGttz0pmzuUrTm4v/lPTlPAP1vXb3jgzBORzBcylT+QMHoVVQFXgWRNqNILOcfww==}
     peerDependencies:
@@ -4921,6 +4928,24 @@ packages:
 
   '@stackframe/stack-shared@2.8.32':
     resolution: {integrity: sha512-P2pJCKkL9Ee+sNgG5AZ4FBCgVtLWwJQR6ATmu2qv6bfUam6EbCrltKjOFrvcB6+5ONP5wbBW6DFqHwLvfXkGvg==}
+    peerDependencies:
+      '@types/react': '>=18.2 || >=19.0.0-rc.0'
+      '@types/react-dom': '>=18.2 || >=19.0.0-rc.0'
+      react: '>=18.2 || >=19.0.0-rc.0'
+      react-dom: '>=18.2 || >=19.0.0-rc.0'
+      yup: ^1.4.0
+    peerDependenciesMeta:
+      '@types/react':
+        optional: true
+      '@types/react-dom':
+        optional: true
+      react:
+        optional: true
+      yup:
+        optional: true
+
+  '@stackframe/stack-shared@2.8.35':
+    resolution: {integrity: sha512-iQhLVV21vckRYWX9QJT2jJ1VFhJlKVAuVZnbI4uf4M2PpE1W4UCulIQIGSHrCsP6wjCZqCqHsie8kIjg1bqNXA==}
     peerDependencies:
       '@types/react': '>=18.2 || >=19.0.0-rc.0'
       '@types/react-dom': '>=18.2 || >=19.0.0-rc.0'
@@ -16144,6 +16169,30 @@ snapshots:
       - react-dom
       - react-hook-form
 
+  '@stackframe/js@2.8.35(@types/react-dom@19.1.7(@types/react@19.1.11))(@types/react@19.1.11)(buffer@6.0.3)(react-dom@19.1.0(react@19.1.0))(react-hook-form@7.62.0(react@19.1.0))(react@19.1.0)':
+    dependencies:
+      '@hookform/resolvers': 3.10.0(react-hook-form@7.62.0(react@19.1.0))
+      '@oslojs/otp': 1.1.0
+      '@simplewebauthn/browser': 11.0.0
+      '@stackframe/stack-shared': 2.8.35(@types/react-dom@19.1.7(@types/react@19.1.11))(@types/react@19.1.11)(buffer@6.0.3)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(yup@1.7.0)
+      '@tanstack/react-table': 8.21.3(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      color: 4.2.3
+      cookie: 0.6.0
+      jose: 5.10.0
+      js-cookie: 3.0.5
+      oauth4webapi: 2.17.0
+      qrcode: 1.5.4
+      rimraf: 5.0.10
+      tsx: 4.20.4
+      yup: 1.7.0
+    transitivePeerDependencies:
+      - '@types/react'
+      - '@types/react-dom'
+      - buffer
+      - react
+      - react-dom
+      - react-hook-form
+
   '@stackframe/react@2.8.32(@types/react-dom@19.1.7(@types/react@19.1.11))(@types/react@19.1.11)(buffer@6.0.3)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(tailwindcss@4.1.12)':
     dependencies:
       '@hookform/resolvers': 3.10.0(react-hook-form@7.62.0(react@19.1.0))
@@ -16176,6 +16225,29 @@ snapshots:
       - tailwindcss
 
   '@stackframe/stack-shared@2.8.32(@types/react-dom@19.1.7(@types/react@19.1.11))(@types/react@19.1.11)(buffer@6.0.3)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(yup@1.7.0)':
+    dependencies:
+      '@opentelemetry/api': 1.9.0
+      '@simplewebauthn/browser': 11.0.0
+      async-mutex: 0.5.0
+      bcryptjs: 3.0.2
+      crc: 4.3.2(buffer@6.0.3)
+      elliptic: 6.6.1
+      esbuild-wasm: 0.20.2
+      ip-regex: 5.0.0
+      jose: 5.10.0
+      oauth4webapi: 2.17.0
+      react-dom: 19.1.0(react@19.1.0)
+      semver: 7.7.2
+      uuid: 9.0.1
+    optionalDependencies:
+      '@types/react': 19.1.11
+      '@types/react-dom': 19.1.7(@types/react@19.1.11)
+      react: 19.1.0
+      yup: 1.7.0
+    transitivePeerDependencies:
+      - buffer
+
+  '@stackframe/stack-shared@2.8.35(@types/react-dom@19.1.7(@types/react@19.1.11))(@types/react@19.1.11)(buffer@6.0.3)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(yup@1.7.0)':
     dependencies:
       '@opentelemetry/api': 1.9.0
       '@simplewebauthn/browser': 11.0.0

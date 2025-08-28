@@ -1,14 +1,14 @@
 import type {
+  AvailableEditors,
   ClientToServerEvents,
   ServerToClientEvents,
-  AvailableEditors,
 } from "@cmux/shared";
-import React, { useEffect, useMemo } from "react";
-import { io, Socket } from "socket.io-client";
-import { SocketContext } from "./socket-context";
 import { useUser } from "@stackframe/react";
 import { useQuery } from "@tanstack/react-query";
+import React, { useEffect, useMemo } from "react";
+import { io, Socket } from "socket.io-client";
 import { authJsonQueryOptions } from "../convex/authJsonQueryOptions";
+import { SocketContext } from "./socket-context";
 
 export interface SocketContextType {
   socket: Socket<ServerToClientEvents, ClientToServerEvents> | null;
@@ -32,14 +32,16 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
     SocketContextType["socket"] | null
   >(null);
   const [isConnected, setIsConnected] = React.useState(false);
-  const [availableEditors, setAvailableEditors] = React.useState<
-    AvailableEditors | null
-  >(null);
+  const [availableEditors, setAvailableEditors] =
+    React.useState<AvailableEditors | null>(null);
 
   useEffect(() => {
+    if (!authToken) {
+      return;
+    }
     const newSocket = io(url, {
       transports: ["websocket"],
-      query: authToken ? { auth: authToken } : undefined,
+      query: { auth: authToken },
     });
     setSocket(newSocket);
 

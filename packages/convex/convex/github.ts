@@ -1,7 +1,7 @@
 import { v } from "convex/values";
+import { getTeamId } from "../_shared/team";
 import { internalMutation } from "./_generated/server";
 import { authMutation, authQuery } from "./users/utils";
-import { getTeamId } from "../_shared/team";
 
 export const getReposByOrg = authQuery({
   args: { teamIdOrSlug: v.string() },
@@ -90,7 +90,7 @@ export const insertRepo = internalMutation({
   },
   handler: async (ctx, args) => {
     const teamId = await getTeamId(ctx, args.teamIdOrSlug);
-    const { teamIdOrSlug, ...rest } = args;
+    const { ...rest } = args;
     return await ctx.db.insert("repos", { ...rest, teamId });
   },
 });
@@ -156,7 +156,7 @@ export const insertBranch = internalMutation({
   },
   handler: async (ctx, args) => {
     const teamId = await getTeamId(ctx, args.teamIdOrSlug);
-    const { teamIdOrSlug, ...rest } = args;
+    const { ...rest } = args;
     return await ctx.db.insert("branches", { ...rest, teamId });
   },
 });
@@ -274,9 +274,7 @@ export const replaceAllRepos = authMutation({
 
     // Insert all new repos
     const insertedIds = await Promise.all(
-      repos.map((repo) =>
-        ctx.db.insert("repos", { ...repo, userId, teamId })
-      )
+      repos.map((repo) => ctx.db.insert("repos", { ...repo, userId, teamId }))
     );
     return insertedIds;
   },

@@ -49,7 +49,9 @@ export function ProviderStatusPills() {
 
   const dockerNotReady = !status.dockerStatus?.isRunning;
   const gitNotReady = !status.gitStatus?.isAvailable;
-  const dockerImageNotReady = status.dockerStatus?.workerImage && !status.dockerStatus.workerImage.isAvailable;
+  const dockerImageNotReady =
+    status.dockerStatus?.workerImage &&
+    !status.dockerStatus.workerImage.isAvailable;
   const dockerImagePulling = status.dockerStatus?.workerImage?.isPulling;
   const githubNotConfigured = !status.githubStatus?.hasToken;
 
@@ -58,7 +60,13 @@ export function ProviderStatusPills() {
   const availableProviders = totalProviders - unavailableProviders.length;
 
   // If everything is ready, don't show anything
-  if (unavailableProviders.length === 0 && !dockerNotReady && !gitNotReady && !dockerImageNotReady && !githubNotConfigured) {
+  if (
+    unavailableProviders.length === 0 &&
+    !dockerNotReady &&
+    !gitNotReady &&
+    !dockerImageNotReady &&
+    !githubNotConfigured
+  ) {
     return null;
   }
 
@@ -82,12 +90,12 @@ export function ProviderStatusPills() {
                     params: { teamSlugOrId },
                   })
                 }
-                                  className={clsx(
-                    "flex items-center gap-2 px-3 py-1.5 rounded-lg",
-                    "bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-600",
-                    "text-neutral-800 dark:text-neutral-200",
-                    "text-xs font-medium cursor-default select-none"
-                  )}
+                className={clsx(
+                  "flex items-center gap-2 px-3 py-1.5 rounded-lg",
+                  "bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-600",
+                  "text-neutral-800 dark:text-neutral-200",
+                  "text-xs font-medium cursor-default select-none"
+                )}
               >
                 <div className="w-2 h-2 rounded-full bg-red-500"></div>
                 <span>Setup required</span>
@@ -110,13 +118,21 @@ export function ProviderStatusPills() {
               <div className="text-xs space-y-1">
                 {dockerNotReady && <p>• Docker needs to be running</p>}
                 {dockerImageNotReady && !dockerImagePulling && (
-                  <p>• Docker image {status.dockerStatus?.workerImage?.name} not available</p>
+                  <p>
+                    • Docker image {status.dockerStatus?.workerImage?.name} not
+                    available
+                  </p>
                 )}
                 {dockerImagePulling && (
-                  <p>• Docker image {status.dockerStatus?.workerImage?.name} is pulling...</p>
+                  <p>
+                    • Docker image {status.dockerStatus?.workerImage?.name} is
+                    pulling...
+                  </p>
                 )}
                 {gitNotReady && <p>• Git installation required</p>}
-                {githubNotConfigured && <p>• GitHub PAT token configuration needed</p>}
+                {githubNotConfigured && (
+                  <p>• GitHub PAT token configuration needed</p>
+                )}
                 {unavailableProviders.length > 0 && (
                   <p>
                     • {unavailableProviders.length} AI provider
@@ -249,9 +265,12 @@ export function ProviderStatusPills() {
                 </button>
               </TooltipTrigger>
               <TooltipContent>
-                <p className="font-medium">Optional: Configure GitHub Personal Access Token</p>
+                <p className="font-medium">
+                  Optional: Configure GitHub Personal Access Token
+                </p>
                 <p className="text-xs opacity-90">
-                  Configure your GitHub Personal Access Token to enable automatic PR creation and repository management
+                  Configure your GitHub Personal Access Token to enable
+                  automatic PR creation and repository management
                 </p>
               </TooltipContent>
             </Tooltip>

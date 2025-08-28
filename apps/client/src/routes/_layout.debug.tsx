@@ -1,4 +1,5 @@
 import { FloatingPane } from "@/components/floating-pane";
+import { useSocket } from "@/contexts/socket/use-socket";
 import { stackClientApp } from "@/stack";
 import { createFileRoute } from "@tanstack/react-router";
 
@@ -7,6 +8,7 @@ export const Route = createFileRoute("/_layout/debug")({
 });
 
 function DebugComponent() {
+  const { socket } = useSocket();
   return (
     <FloatingPane>
       <div className="p-4">
@@ -27,6 +29,18 @@ function DebugComponent() {
           }}
         >
           Get user
+        </button>
+
+        <br />
+
+        <button
+          onClick={() => {
+            socket?.emit("github-fetch-repos", (data) => {
+              console.log(data);
+            });
+          }}
+        >
+          refetch github
         </button>
       </div>
     </FloatingPane>
