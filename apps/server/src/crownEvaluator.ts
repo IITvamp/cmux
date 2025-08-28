@@ -23,15 +23,11 @@ export async function createPullRequestForWinner(
   githubToken?: string | null
 ): Promise<void> {
   try {
-    // Check workspace settings toggle (default: disabled)
-    const ws = await convex.query(api.workspaceSettings.get);
-    const autoPrEnabled = !!ws?.autoPrEnabled;
-    if (!autoPrEnabled) {
-      serverLogger.info(
-        `[CrownEvaluator] Auto-PR disabled in settings; skipping.`
-      );
-      return;
-    }
+    // Crown evaluator is always disabled
+    serverLogger.info(
+      `[CrownEvaluator] Crown evaluator is disabled; skipping PR creation.`
+    );
+    return;
     serverLogger.info(
       `[CrownEvaluator] Creating pull request for winner ${taskRunId}`
     );
@@ -292,15 +288,11 @@ Completed: ${new Date().toISOString()}`;
 export async function evaluateCrownWithClaudeCode(
   taskId: Id<"tasks">
 ): Promise<void> {
+  // Crown evaluator is always disabled
   serverLogger.info(
-    `[CrownEvaluator] =================================================`
+    `[CrownEvaluator] Crown evaluator is disabled; skipping evaluation.`
   );
-  serverLogger.info(
-    `[CrownEvaluator] STARTING CROWN EVALUATION FOR TASK ${taskId}`
-  );
-  serverLogger.info(
-    `[CrownEvaluator] =================================================`
-  );
+  return;
 
   try {
     const githubToken = await getGitHubTokenFromKeychain();

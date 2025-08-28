@@ -168,7 +168,7 @@ const convexSchema = defineSchema({
   }).index("by_envVar", ["envVar"]),
   workspaceSettings: defineTable({
     worktreePath: v.optional(v.string()), // Custom path for git worktrees
-    autoPrEnabled: v.optional(v.boolean()), // Auto-create PR for crown winner (default: false)
+    autoPrEnabled: v.optional(v.boolean()), // DEPRECATED: Crown evaluator is always disabled
     createdAt: v.number(),
     updatedAt: v.number(),
   }),

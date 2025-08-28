@@ -122,21 +122,22 @@ export async function handleTaskCompletion({
         // Small delay to ensure git diff is fully persisted in Convex
         setTimeout(async () => {
           try {
-            // Check if evaluation is already in progress
-            const task = await convex.query(api.tasks.getById, {
-              id: taskRunData.taskId,
-            });
-            if (task?.crownEvaluationError === "in_progress") {
-              serverLogger.info(
-                `[AgentSpawner] Crown evaluation already in progress for task ${taskRunData.taskId}`
-              );
-              return;
-            }
-
-            await evaluateCrownWithClaudeCode(taskRunData.taskId);
+            // Crown evaluator is always disabled
             serverLogger.info(
-              `[AgentSpawner] Crown evaluation completed successfully`
+              `[AgentSpawner] Crown evaluator disabled - skipping evaluation for task ${taskRunData.taskId}`
             );
+            
+            // The following code is commented out since crown evaluator is disabled
+            // const task = await convex.query(api.tasks.getById, {
+            //   id: taskRunData.taskId,
+            // });
+            // if (task?.crownEvaluationError === "in_progress") {
+            //   serverLogger.info(
+            //     `[AgentSpawner] Crown evaluation already in progress for task ${taskRunData.taskId}`
+            //   );
+            //   return;
+            // }
+            // await evaluateCrownWithClaudeCode(taskRunData.taskId);
 
             // Check if this task run won
             const updatedTaskRun = await convex.query(api.taskRuns.get, {
@@ -167,15 +168,13 @@ export async function handleTaskCompletion({
         });
 
         if (taskRuns.length === 1) {
+          // Crown evaluator is always disabled
           serverLogger.info(
-            `[AgentSpawner] Single agent scenario - checking auto-PR settings`
+            `[AgentSpawner] Single agent scenario - crown evaluator disabled, skipping PR`
           );
 
-          // Check if auto-PR is enabled
-          const ws = await convex.query(api.workspaceSettings.get);
-          const autoPrEnabled = ws?.autoPrEnabled ?? false;
-
-          if (autoPrEnabled && winnerId) {
+          if (false && winnerId) {
+            // This code is unreachable since crown evaluator is always disabled
             serverLogger.info(
               `[AgentSpawner] Triggering auto-PR for single agent completion`
             );
