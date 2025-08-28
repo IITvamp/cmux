@@ -32,6 +32,7 @@ export default defineConfig({
   },
   renderer: {
     root: '.',
+    //for electron
     base: './',
     build: {
       rollupOptions: {
