@@ -168,12 +168,11 @@ export async function handleTaskCompletion({
 
         if (taskRuns.length === 1) {
           serverLogger.info(
-            `[AgentSpawner] Single agent scenario - checking auto-PR settings`
+            `[AgentSpawner] Single agent scenario - crown evaluator disabled`
           );
 
-          // Check if auto-PR is enabled
-          const ws = await convex.query(api.workspaceSettings.get);
-          const autoPrEnabled = ws?.autoPrEnabled ?? false;
+          // Crown evaluator is disabled, skip auto-PR
+          const autoPrEnabled = false;
 
           if (autoPrEnabled && winnerId) {
             serverLogger.info(
