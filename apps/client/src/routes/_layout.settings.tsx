@@ -29,9 +29,6 @@ function SettingsComponent() {
   const [isSaving, setIsSaving] = useState(false);
   const [worktreePath, setWorktreePath] = useState<string>("");
   const [originalWorktreePath, setOriginalWorktreePath] = useState<string>("");
-  const [autoPrEnabled, setAutoPrEnabled] = useState<boolean>(false);
-  const [originalAutoPrEnabled, setOriginalAutoPrEnabled] =
-    useState<boolean>(false);
   const [isSaveButtonVisible, setIsSaveButtonVisible] = useState(true);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const saveButtonRef = useRef<HTMLDivElement>(null);
@@ -93,12 +90,6 @@ function SettingsComponent() {
     if (workspaceSettings !== undefined) {
       setWorktreePath(workspaceSettings?.worktreePath || "");
       setOriginalWorktreePath(workspaceSettings?.worktreePath || "");
-      const enabled = (
-        workspaceSettings as unknown as { autoPrEnabled?: boolean }
-      )?.autoPrEnabled;
-      const effective = enabled === undefined ? false : Boolean(enabled);
-      setAutoPrEnabled(effective);
-      setOriginalAutoPrEnabled(effective);
     }
   }, [workspaceSettings]);
 
@@ -223,12 +214,9 @@ function SettingsComponent() {
       JSON.stringify(containerSettingsData) !==
         JSON.stringify(originalContainerSettingsData);
 
-    // Auto PR toggle changes
-    const autoPrChanged = autoPrEnabled !== originalAutoPrEnabled;
 
     return (
       worktreePathChanged ||
-      autoPrChanged ||
       apiKeysChanged ||
       containerSettingsChanged
     );
@@ -241,17 +229,12 @@ function SettingsComponent() {
       let savedCount = 0;
       let deletedCount = 0;
 
-      // Save worktree path / auto PR if changed
-      if (
-        worktreePath !== originalWorktreePath ||
-        autoPrEnabled !== originalAutoPrEnabled
-      ) {
+      // Save worktree path if changed
+      if (worktreePath !== originalWorktreePath) {
         await convex.mutation(api.workspaceSettings.update, {
           worktreePath: worktreePath || undefined,
-          autoPrEnabled,
         });
         setOriginalWorktreePath(worktreePath);
-        setOriginalAutoPrEnabled(autoPrEnabled);
       }
 
       // Save container settings if changed
@@ -377,34 +360,6 @@ function SettingsComponent() {
               </div>
             </div>
 
-            {/* Crown Evaluator */}
-            <div className="bg-white dark:bg-neutral-950 rounded-lg border border-neutral-200 dark:border-neutral-800">
-              <div className="px-4 py-3 border-b border-neutral-200 dark:border-neutral-800">
-                <h2 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
-                  Crown Evaluator
-                </h2>
-              </div>
-              <div className="p-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-neutral-900 dark:text-neutral-100">
-                      Auto pull request for crown winner
-                    </label>
-                    <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">
-                      When enabled, cmux automatically creates a pull request
-                      for the winning model’s code diff.
-                    </p>
-                  </div>
-                  <Switch
-                    aria-label="Auto pull request for crown winner"
-                    size="sm"
-                    color="primary"
-                    isSelected={autoPrEnabled}
-                    onValueChange={setAutoPrEnabled}
-                  />
-                </div>
-              </div>
-            </div>
 
             {/* Worktree Path */}
             <div className="bg-white dark:bg-neutral-950 rounded-lg border border-neutral-200 dark:border-neutral-800">
