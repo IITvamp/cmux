@@ -3,9 +3,8 @@ import type { Doc } from "./_generated/dataModel";
 import {
   internalMutation,
   internalQuery,
-  mutation,
-  query,
 } from "./_generated/server";
+import { authMutation, authQuery } from "./auth/functions";
 
 // Create a new task run
 export const create = mutation({
