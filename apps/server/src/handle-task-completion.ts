@@ -161,51 +161,7 @@ export async function handleTaskCompletion({
           `[AgentSpawner] Task completed with winner: ${winnerId}`
         );
 
-        // For single agent scenario, trigger auto-PR if enabled
-        const taskRuns = await convex.query(api.taskRuns.getByTask, {
-          taskId: taskRunData.taskId,
-        });
-
-        if (taskRuns.length === 1) {
-          serverLogger.info(
-            `[AgentSpawner] Single agent scenario - checking auto-PR settings`
-          );
-
-          // Check if auto-PR is enabled
-          const ws = await convex.query(api.workspaceSettings.get);
-          const autoPrEnabled = ws?.autoPrEnabled ?? false;
-
-          if (autoPrEnabled && winnerId) {
-            serverLogger.info(
-              `[AgentSpawner] Triggering auto-PR for single agent completion`
-            );
-
-            const githubToken = await getGitHubTokenFromKeychain();
-
-            // Small delay to ensure git diff is persisted
-            setTimeout(async () => {
-              try {
-                await createPullRequestForWinner(
-                  winnerId,
-                  taskRunData.taskId,
-                  githubToken || undefined
-                );
-                serverLogger.info(
-                  `[AgentSpawner] Auto-PR completed for single agent`
-                );
-              } catch (error) {
-                serverLogger.error(
-                  `[AgentSpawner] Auto-PR failed for single agent:`,
-                  error
-                );
-              }
-            }, 3000);
-          } else {
-            serverLogger.info(
-              `[AgentSpawner] Auto-PR disabled or not applicable for single agent`
-            );
-          }
-        }
+        // Auto-PR disabled globally; skipping PR creation for single agent scenarios
       } else {
         serverLogger.info(
           `[AgentSpawner] No crown evaluation needed (winnerId: ${winnerId})`
