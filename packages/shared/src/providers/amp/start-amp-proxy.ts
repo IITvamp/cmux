@@ -40,29 +40,61 @@ function extractTaskRunId(headers: Headers): string | null {
 }
 
 function ampResponseIndicatesCompletion(json: unknown): boolean {
-  if (json == null || typeof json !== "object") return false;
-  const root = json as Record<string, unknown>;
+  // Type guards and helpers
+  const isRecord = (v: unknown): v is Record<string, unknown> =>
+    typeof v === "object" && v !== null;
+  const getAtPath = (obj: unknown, path: string[]): unknown => {
+    let cur: unknown = obj;
+    for (const key of path) {
+      if (!isRecord(cur)) return undefined;
+      cur = cur[key];
+    }
+    return cur;
+  };
 
-  // Only support requestBody.params.thread.messages (Amp's uploadThread shape)
-  const params = root["params"];
-  if (!params || typeof params !== "object") return false;
-  const thread = (params as Record<string, unknown>)["thread"];
-  if (!thread || typeof thread !== "object") return false;
-  const messages = (thread as Record<string, unknown>)["messages"];
-  if (!Array.isArray(messages)) return false;
+  // Accept a JSON string or object
+  let root: unknown = json;
+  if (typeof root === "string") {
+    try {
+      root = JSON.parse(root);
+    } catch {
+      return false;
+    }
+  }
 
-  for (const item of messages) {
-    if (!item || typeof item !== "object") continue;
-    const state = (item as Record<string, unknown>)["state"];
-    if (!state || typeof state !== "object") continue;
-    const typeVal = (state as Record<string, unknown>)["type"];
-    const stopReasonVal =
-      (state as Record<string, unknown>)["stopReason"] ??
-      (state as Record<string, unknown>)["stop_reason"];
-    if (typeof typeVal === "string" && typeof stopReasonVal === "string") {
-      const t = typeVal.toLowerCase();
-      const sr = stopReasonVal.toLowerCase();
-      if (t === "complete" && sr === "end_turn") {
+  if (!isRecord(root)) return false;
+
+  // Some callers may wrap body as { requestBody: <actual> }
+  const body: unknown =
+    "requestBody" in root
+      ? (root as Record<string, unknown>)["requestBody"]
+      : root;
+
+  // Helper to safely extract messages array from common shapes
+  const extractMessages = (obj: unknown): unknown[] | null => {
+    for (const path of [
+      ["params", "thread", "messages"],
+      ["thread", "messages"],
+      ["messages"],
+    ]) {
+      const val = getAtPath(obj, path);
+      if (Array.isArray(val)) return val as unknown[];
+    }
+    return null;
+  };
+
+  const messages = extractMessages(body);
+
+  if (messages && messages.length > 0) {
+    // Scan from latest to earliest, ignoring items without state
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+      const item = messages[i];
+      if (!isRecord(item)) continue;
+      const state = item["state"];
+      if (!isRecord(state)) continue;
+      const type = state["type"];
+      const stopReason = state["stopReason"];
+      if (type === "complete" && stopReason === "end_turn") {
         return true;
       }
     }
