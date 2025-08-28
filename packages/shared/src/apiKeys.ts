@@ -38,6 +38,6 @@ export const CURSOR_API_KEY: AgentConfigApiKey = {
 
 export const MODEL_STUDIO_API_KEY: AgentConfigApiKey = {
   envVar: "MODEL_STUDIO_API_KEY",
-  displayName: "ModelStudio API Key",
+  displayName: "Alibaba Cloud ModelStudio API Key",
   description: "Alibaba Cloud ModelStudio (DashScope Intl) API key for Qwen",
 };
