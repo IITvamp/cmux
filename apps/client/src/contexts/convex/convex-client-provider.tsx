@@ -39,12 +39,8 @@ function BootReadyMarker({
 
 function makeBootReadyHandler(setter: (v: boolean) => void) {
   return async () => {
-    console.time("convexQueryClient.convexClient.query [boot]");
-    const teamMemberships = await convexQueryClient.convexClient.query(
-      api.teams.listTeamMemberships
-    );
-    console.timeEnd("convexQueryClient.convexClient.query [boot]");
-    console.log("teamMemberships", teamMemberships);
+    await convexQueryClient.convexClient.query(api.teams.listTeamMemberships);
+
     setter(true);
   };
 }

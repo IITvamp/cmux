@@ -5,35 +5,30 @@ import { ExpandTasksProvider } from "@/contexts/expand-tasks/ExpandTasksProvider
 import { isFakeConvexId } from "@/lib/fakeConvexId";
 import { api } from "@cmux/convex/api";
 import { type Id } from "@cmux/convex/dataModel";
-// import { convexQuery } from "@convex-dev/react-query";
+import { convexQuery } from "@convex-dev/react-query";
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { useQueries, useQuery } from "convex/react";
 import { Suspense, useMemo } from "react";
 
 export const Route = createFileRoute("/_layout/$teamSlugOrId")({
   component: LayoutComponentWrapper,
-  // Prefetch omitted to avoid route param coupling in typecheck
-  loader: async ({ params }) => {
-    console.time("convexQueryClient.convexClient.query [loader]");
+  beforeLoad: async ({ params }) => {
     const teamMemberships = await convexQueryClient.convexClient.query(
       api.teams.listTeamMemberships
     );
-    console.timeEnd("convexQueryClient.convexClient.query [loader]");
-    console.log("teamMemberships", teamMemberships);
-
-    // ensure the teamSlugOrId is in the teamMemberships
     const teamMembership = teamMemberships.find(
       (m) => m.team.slug === params.teamSlugOrId
     );
     if (!teamMembership) {
       throw redirect({ to: "/team-picker" });
     }
-
-    // console.log("user", user);
-    // console.log("params", params);
-    return {
-      teamSlugOrId: params.teamSlugOrId,
-    };
+  },
+  loader: async ({ params }) => {
+    console.time("convexQueryClient.queryClient.ensureQueryData");
+    void convexQueryClient.queryClient.ensureQueryData(
+      convexQuery(api.tasks.get, { teamIdOrSlug: params.teamSlugOrId })
+    );
+    console.timeEnd("convexQueryClient.queryClient.ensureQueryData");
   },
 });
 

@@ -10,7 +10,7 @@ import { stackClientApp } from "@/stack";
 import { api } from "@cmux/convex/api";
 import { Skeleton } from "@heroui/react";
 import { useStackApp, useUser, type Team } from "@stackframe/react";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery as useConvexQuery, useMutation } from "convex/react";
 
 export const Route = createFileRoute("/_layout/team-picker")({
@@ -35,15 +35,6 @@ function TeamPicker() {
       if (typeof val === "string" && val.trim().length > 0) return val;
     }
     return undefined;
-  };
-
-  const handleSelect = async (team: Team, slug: string | null | undefined) => {
-    const teamSlugOrId = slug ?? getClientSlug(team.clientMetadata) ?? team.id;
-    await user?.setSelectedTeam(team);
-    await navigate({
-      to: "/$teamSlugOrId/dashboard",
-      params: { teamSlugOrId },
-    });
   };
 
   const handleCreateTeam = async () => {
@@ -154,7 +145,6 @@ function TeamPicker() {
                     <TeamItem
                       key={team.id}
                       team={team}
-                      onSelect={handleSelect}
                       getClientSlug={getClientSlug}
                     />
                   ))}
@@ -180,21 +170,21 @@ function TeamPicker() {
 
 interface TeamItemProps {
   team: Team;
-  onSelect: (team: Team, slug: string | null | undefined) => void;
   getClientSlug: (meta: unknown) => string | undefined;
 }
 
-function TeamItem({ team, onSelect, getClientSlug }: TeamItemProps) {
+function TeamItem({ team, getClientSlug }: TeamItemProps) {
   const teamInfo = useConvexQuery(api.teams.get, { teamIdOrSlug: team.id });
   const slug = teamInfo?.slug || getClientSlug(team.clientMetadata);
 
   return (
     <li>
-      <button
-        type="button"
-        onClick={() => void onSelect(team, slug)}
+      <Link
+        to="/$teamSlugOrId/dashboard"
+        params={{ teamSlugOrId: slug! }}
+        disabled={!teamInfo}
         className={
-          "group w-full text-left rounded-xl border transition-all focus:outline-none border-neutral-200 hover:border-neutral-300 dark:border-neutral-800 dark:hover:border-neutral-700 bg-white dark:bg-neutral-900/80 p-4"
+          "group flex w-full text-left rounded-xl border transition-all focus:outline-none border-neutral-200 hover:border-neutral-300 dark:border-neutral-800 dark:hover:border-neutral-700 bg-white dark:bg-neutral-900/80 disabled:border-neutral-200 dark:disabled:border-neutral-800 p-4"
         }
       >
         <div className="flex items-center gap-3">
@@ -217,7 +207,7 @@ function TeamItem({ team, onSelect, getClientSlug }: TeamItemProps) {
             </div>
           </div>
         </div>
-      </button>
+      </Link>
     </li>
   );
 }
