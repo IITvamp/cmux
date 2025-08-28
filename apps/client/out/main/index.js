@@ -12,8 +12,9 @@ const is = {
   isMacOS: process.platform === "darwin",
   isLinux: process.platform === "linux"
 });
+let mainWindow = null;
 function createWindow() {
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     show: false,
@@ -28,7 +29,7 @@ function createWindow() {
     }
   });
   mainWindow.on("ready-to-show", () => {
-    mainWindow.show();
+    mainWindow?.show();
   });
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url);
@@ -40,14 +41,49 @@ function createWindow() {
     mainWindow.loadFile(join(__dirname, "../renderer/index.html"));
   }
 }
-app.whenReady().then(() => {
-  createWindow();
-  app.on("activate", function() {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+if (process.defaultApp) {
+  if (process.argv.length >= 2) {
+    app.setAsDefaultProtocolClient("cmux", process.execPath, [process.argv[1]]);
+  }
+} else {
+  app.setAsDefaultProtocolClient("cmux");
+}
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on("second-instance", (_event, commandLine, _workingDirectory) => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+      const url = commandLine.find((arg) => arg.startsWith("cmux://"));
+      if (url) {
+        handleProtocolUrl(url);
+      }
+    }
   });
-});
+  app.on("open-url", (_event, url) => {
+    handleProtocolUrl(url);
+  });
+  app.whenReady().then(() => {
+    createWindow();
+    app.on("activate", function() {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+  });
+}
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     app.quit();
   }
 });
+function handleProtocolUrl(url) {
+  if (!mainWindow) return;
+  const urlObj = new URL(url);
+  if (urlObj.hostname === "auth-callback") {
+    const refreshToken = urlObj.searchParams.get("refresh_token");
+    if (refreshToken) {
+      mainWindow.webContents.send("auth-callback", { refreshToken });
+    }
+  }
+}
