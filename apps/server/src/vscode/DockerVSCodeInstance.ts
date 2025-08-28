@@ -2,6 +2,7 @@ import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
 import { getShortId } from "@cmux/shared";
 import Docker from "dockerode";
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import * as os from "os";
 import * as path from "path";
 import { convex } from "../utils/convexClient.js";
@@ -27,7 +28,15 @@ export interface ContainerMapping {
   workspacePath?: string;
 }
 
-const containerMappings = new Map<string, ContainerMapping>();
+export const containerMappings = new Map<string, ContainerMapping>();
+
+interface DockerEvent {
+  status?: string;
+  id: string;
+  Actor?: {
+    Attributes?: Record<string, string>;
+  };
+}
 
 export class DockerVSCodeInstance extends VSCodeInstance {
   private containerName: string;
@@ -38,7 +47,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     timestamp: number;
   } | null = null;
   private static readonly PORT_CACHE_DURATION = 2000; // 2 seconds
-  private static syncInterval: ReturnType<typeof setTimeout> | null = null;
+  private static eventsProcess: ChildProcessWithoutNullStreams | null = null;
   private static dockerInstance: Docker | null = null;
 
   // Get or create the Docker singleton
@@ -1073,97 +1082,69 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
   // Static method to start the container state sync
   static startContainerStateSync(): void {
-    // Stop any existing sync
-    if (DockerVSCodeInstance.syncInterval) {
-      clearInterval(DockerVSCodeInstance.syncInterval);
-    }
-
-    // Run sync immediately
-    DockerVSCodeInstance.syncDockerContainerStates().catch((error) => {
-      dockerLogger.error("Failed to sync container states:", error);
-    });
-
-    // Then run every minute
-    DockerVSCodeInstance.syncInterval = setInterval(() => {
-      DockerVSCodeInstance.syncDockerContainerStates().catch((error) => {
-        dockerLogger.error("Failed to sync container states:", error);
-      });
-    }, 60000); // 60 seconds
+    DockerVSCodeInstance.stopContainerStateSync();
+    DockerVSCodeInstance.syncDockerContainerStates();
   }
 
   // Static method to stop the container state sync
   static stopContainerStateSync(): void {
-    if (DockerVSCodeInstance.syncInterval) {
-      clearInterval(DockerVSCodeInstance.syncInterval);
-      DockerVSCodeInstance.syncInterval = null;
+    if (DockerVSCodeInstance.eventsProcess) {
+      DockerVSCodeInstance.eventsProcess.kill();
+      DockerVSCodeInstance.eventsProcess = null;
     }
   }
 
-  private static async syncDockerContainerStates(): Promise<void> {
-    const docker = DockerVSCodeInstance.getDocker();
+  private static syncDockerContainerStates(): void {
+    dockerLogger.info("Starting docker event stream for container state sync");
 
-    try {
-      dockerLogger.info("Syncing Docker container states with Convex...");
+    const proc = spawn("docker", ["events", "--format", "{{json .}}"]);
+    DockerVSCodeInstance.eventsProcess = proc;
 
-      // Get all running cmux containers
-      const containers = await docker.listContainers({
-        all: true,
-        filters: {
-          name: ["cmux-"],
-        },
-      });
-
-      // Get all active VSCode instances from Convex
-      const activeVSCodeInstances = await convex.query(
-        api.taskRuns.getActiveVSCodeInstances
-      );
-
-      // Get container settings
-      const containerSettings = await convex.query(
-        api.containerSettings.getEffective
-      );
-
-      // Create a set of existing container names for quick lookup
-      const existingContainerNames = new Set(
-        containers.map((c) => c.Names[0]?.replace(/^\//, "")).filter(Boolean)
-      );
-
-      // Update container mappings and Convex state
-      for (const containerInfo of containers) {
-        const containerName = containerInfo.Names[0]?.replace(/^\//, "");
-        if (!containerName) continue;
-
-        // Extract task run ID from container name
-        // Container name format: cmux-<shortId>
-        const match = containerName.match(/^cmux-(.{12})/);
-        if (!match) continue;
-
-        // Find the full taskRunId from container mappings
-        const mapping = containerMappings.get(containerName);
-        if (!mapping) {
-          continue;
+    proc.stdout.setEncoding("utf8");
+    proc.stdout.on("data", (chunk: string) => {
+      const lines = chunk.split("\n").filter((l) => l.trim().length > 0);
+      for (const line of lines) {
+        try {
+          const event = JSON.parse(line) as DockerEvent;
+          void DockerVSCodeInstance.handleDockerEvent(event);
+        } catch (error) {
+          dockerLogger.error("[docker events] Failed to parse event:", error);
         }
+      }
+    });
 
-        // Get the taskRunId from the mapping
-        // The instanceId is the same as taskRunId
-        const taskRunId = mapping.instanceId;
+    proc.stderr.on("data", (data: Buffer) => {
+      dockerLogger.error("[docker events]", data.toString());
+    });
 
-        const isRunning = containerInfo.State === "running";
-        const ports = containerInfo.Ports || [];
+    proc.on("close", (code) => {
+      dockerLogger.info(`docker events stream closed with code ${code}`);
+    });
+  }
 
-        // Extract port mappings
-        const vscodePort = ports
-          .find((p) => p.PrivatePort === 39378)
-          ?.PublicPort?.toString();
-        const workerPort = ports
-          .find((p) => p.PrivatePort === 39377)
-          ?.PublicPort?.toString();
-        const extensionPort = ports
-          .find((p) => p.PrivatePort === 39376)
-          ?.PublicPort?.toString();
+  private static async handleDockerEvent(event: DockerEvent): Promise<void> {
+    const containerName = event.Actor?.Attributes?.name;
+    const status = event.status;
+    if (!containerName || !status || !containerName.startsWith("cmux-")) {
+      return;
+    }
 
-        // Update local mapping
-        mapping.status = isRunning ? "running" : "stopped";
+    const mapping = containerMappings.get(containerName);
+    if (!mapping) {
+      return;
+    }
+
+    const docker = DockerVSCodeInstance.getDocker();
+    const taskRunId = mapping.instanceId;
+
+    if (status === "start") {
+      try {
+        const container = docker.getContainer(event.id);
+        const info = await container.inspect();
+        const ports = info.NetworkSettings.Ports;
+        const vscodePort = ports["39378/tcp"]?.[0]?.HostPort;
+        const workerPort = ports["39377/tcp"]?.[0]?.HostPort;
+        const extensionPort = ports["39376/tcp"]?.[0]?.HostPort;
         if (vscodePort && workerPort) {
           mapping.ports = {
             vscode: vscodePort,
@@ -1171,110 +1152,62 @@ export class DockerVSCodeInstance extends VSCodeInstance {
             extension: extensionPort,
           };
         }
-
-        // Update Convex state
+        mapping.status = "running";
         try {
-          if (isRunning) {
-            // Update status to running with ports if available
-            if (vscodePort && workerPort) {
-              await convex.mutation(api.taskRuns.updateVSCodePorts, {
-                id: taskRunId as Id<"taskRuns">,
-                ports: {
-                  vscode: vscodePort,
-                  worker: workerPort,
-                  extension: extensionPort,
-                },
-              });
-            }
-            await convex.mutation(api.taskRuns.updateVSCodeStatus, {
+          if (vscodePort && workerPort) {
+            await convex.mutation(api.taskRuns.updateVSCodePorts, {
               id: taskRunId as Id<"taskRuns">,
-              status: "running",
-            });
-          } else {
-            // Update status to stopped
-            await convex.mutation(api.taskRuns.updateVSCodeStatus, {
-              id: taskRunId as Id<"taskRuns">,
-              status: "stopped",
-              stoppedAt: Date.now(),
+              ports: {
+                vscode: vscodePort,
+                worker: workerPort,
+                extension: extensionPort,
+              },
             });
           }
+          await convex.mutation(api.taskRuns.updateVSCodeStatus, {
+            id: taskRunId as Id<"taskRuns">,
+            status: "running",
+          });
         } catch (error) {
           dockerLogger.error(
-            `[syncDockerContainerStates] Failed to update Convex state for container ${containerName}:`,
+            `[docker events] Failed to update Convex state for container ${containerName}:`,
             error
           );
         }
-      }
-
-      // Check for containers in our mappings that are no longer in Docker
-      for (const [containerName, mapping] of containerMappings.entries()) {
-        const exists = containers.some(
-          (c) => c.Names[0]?.replace(/^\//, "") === containerName
+      } catch (error) {
+        dockerLogger.error(
+          `[docker events] Failed to inspect container ${containerName}:`,
+          error
         );
-        if (!exists && mapping.status !== "stopped") {
-          // Container no longer exists, mark as stopped
-          mapping.status = "stopped";
-
-          try {
-            const taskRunId = mapping.instanceId; // instanceId is the taskRunId
-            await convex.mutation(api.taskRuns.updateVSCodeStatus, {
-              id: taskRunId as Id<"taskRuns">,
-              status: "stopped",
-              stoppedAt: Date.now(),
-            });
-          } catch (error) {
-            dockerLogger.error(
-              `[syncDockerContainerStates] Failed to update stopped status for ${containerName}:`,
-              error
-            );
-          }
-        }
+      }
+    } else if (status === "stop" || status === "die" || status === "destroy") {
+      mapping.status = "stopped";
+      try {
+        await convex.mutation(api.taskRuns.updateVSCodeStatus, {
+          id: taskRunId as Id<"taskRuns">,
+          status: "stopped",
+          stoppedAt: Date.now(),
+        });
+      } catch (error) {
+        dockerLogger.error(
+          `[docker events] Failed to update stopped status for ${containerName}:`,
+          error
+        );
       }
 
-      // Check for VSCode instances in Convex that don't have corresponding Docker containers
-      for (const taskRun of activeVSCodeInstances) {
-        if (!taskRun.vscode || taskRun.vscode.provider !== "docker") {
-          continue; // Skip non-docker providers
+      try {
+        const containerSettings = await convex.query(
+          api.containerSettings.getEffective
+        );
+        if (containerSettings.autoCleanupEnabled) {
+          await DockerVSCodeInstance.performContainerCleanup(containerSettings);
         }
-
-        // Derive the container name from the task run ID
-        const shortId = getShortId(taskRun._id);
-        const expectedContainerName = `cmux-${shortId}`;
-
-        // Check if this container exists in Docker
-        if (!existingContainerNames.has(expectedContainerName)) {
-          dockerLogger.info(
-            `[syncDockerContainerStates] Found orphaned VSCode instance in Convex: ${taskRun._id} (container: ${expectedContainerName})`
-          );
-
-          // Mark it as stopped in Convex
-          try {
-            await convex.mutation(api.taskRuns.updateVSCodeStatus, {
-              id: taskRun._id,
-              status: "stopped",
-              stoppedAt: Date.now(),
-            });
-            dockerLogger.info(
-              `[syncDockerContainerStates] Marked orphaned VSCode instance ${taskRun._id} as stopped`
-            );
-          } catch (error) {
-            dockerLogger.error(
-              `[syncDockerContainerStates] Failed to update orphaned VSCode instance ${taskRun._id}:`,
-              error
-            );
-          }
-        }
+      } catch (error) {
+        dockerLogger.error(
+          `[docker events] Failed to perform cleanup after ${containerName} stopped:`,
+          error
+        );
       }
-
-      // Now handle container cleanup based on settings
-      if (containerSettings.autoCleanupEnabled) {
-        await DockerVSCodeInstance.performContainerCleanup(containerSettings);
-      }
-    } catch (error) {
-      dockerLogger.error(
-        "[syncDockerContainerStates] Error syncing container states:",
-        error
-      );
     }
   }
 

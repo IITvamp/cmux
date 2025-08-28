@@ -1,5 +1,31 @@
-import { describe, expect, it } from "vitest";
-import { DockerVSCodeInstance } from "./DockerVSCodeInstance.js";
+import { describe, expect, it, vi, beforeAll, afterAll } from "vitest";
+import { spawn } from "node:child_process";
+
+vi.mock("../utils/convexClient.js", () => ({
+  convex: {
+    mutation: vi.fn().mockResolvedValue(undefined),
+    query: vi
+      .fn()
+      .mockResolvedValue({
+        autoCleanupEnabled: false,
+        maxRunningContainers: 0,
+        reviewPeriodMinutes: 0,
+      }),
+  },
+}));
+
+vi.mock("../utils/fileLogger.js", () => ({
+  dockerLogger: {
+    info: vi.fn(),
+    error: vi.fn(),
+    warn: vi.fn(),
+  },
+}));
+
+import {
+  DockerVSCodeInstance,
+  containerMappings,
+} from "./DockerVSCodeInstance.js";
 import type { Id } from "@cmux/convex/dataModel";
 
 describe("DockerVSCodeInstance", () => {
@@ -56,5 +82,68 @@ describe("DockerVSCodeInstance", () => {
     // This is what Docker sees as the container name
     const actualDockerContainerName = name.replace("docker-", "");
     expect(actualDockerContainerName).toBe("cmux-jn75ppcyksmh");
+  });
+
+  describe("docker event syncing", () => {
+    let dockerAvailable = false;
+
+    beforeAll(async () => {
+      dockerAvailable = await new Promise<boolean>((resolve) => {
+        const proc = spawn("docker", ["--version"]);
+        proc.on("exit", (code) => resolve(code === 0));
+        proc.on("error", () => resolve(false));
+      });
+      if (dockerAvailable) {
+        DockerVSCodeInstance.startContainerStateSync();
+      }
+    });
+
+    afterAll(() => {
+      if (dockerAvailable) {
+        DockerVSCodeInstance.stopContainerStateSync();
+      }
+      containerMappings.clear();
+    });
+
+    it("updates mapping status on container start and stop", async () => {
+      if (!dockerAvailable) {
+        console.warn("Docker not available, skipping test");
+        return;
+      }
+
+      containerMappings.set("cmux-test", {
+        containerName: "cmux-test",
+        instanceId: "test-instance",
+        ports: { vscode: "", worker: "" },
+        status: "starting",
+      });
+
+      // ensure listener is ready
+      await new Promise((r) => setTimeout(r, 200));
+
+      await new Promise<void>((resolve, reject) => {
+        const proc = spawn("docker", [
+          "run",
+          "-d",
+          "--rm",
+          "--name",
+          "cmux-test",
+          "busybox",
+          "sleep",
+          "2",
+        ]);
+        proc.on("exit", (code) => {
+          if (code === 0) resolve();
+          else reject(new Error("docker run failed"));
+        });
+        proc.on("error", reject);
+      });
+
+      await new Promise((r) => setTimeout(r, 500));
+      expect(containerMappings.get("cmux-test")?.status).toBe("running");
+
+      await new Promise((r) => setTimeout(r, 2500));
+      expect(containerMappings.get("cmux-test")?.status).toBe("stopped");
+    }, 15000);
   });
 });
