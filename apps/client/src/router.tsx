@@ -1,5 +1,7 @@
+import { isElectron } from "@/lib/electron";
 import { useStackApp } from "@stackframe/react";
 import {
+  createHashHistory,
   createRouter as createTanStackRouter,
   RouterProvider,
 } from "@tanstack/react-router";
@@ -17,6 +19,9 @@ function createRouter() {
         auth: undefined!,
       },
       scrollRestoration: true,
+      // When running under Electron, use hash-based history so
+      // file:// URLs don't break route matching in production builds.
+      history: isElectron ? createHashHistory() : undefined,
     }),
     queryClient
   );
