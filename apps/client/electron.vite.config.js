@@ -32,12 +32,12 @@ export default defineConfig({
   },
   renderer: {
     root: '.',
+    base: './',
     build: {
       rollupOptions: {
         input: {
           index: resolve('index.html')
         },
-        external: ['convex/server']
       }
     },
     resolve: {
