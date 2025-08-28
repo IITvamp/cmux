@@ -1,0 +1,41 @@
+name: release-electron
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build-and-publish:
+    name: Build and publish (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Avoid code signing prompts; set real signing env in repo secrets when ready.
+      CSC_IDENTITY_AUTO_DISCOVERY: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm -w install --frozen-lockfile
+
+      - name: Build and publish @cmux/client
+        working-directory: apps/client
+        run: pnpm run release
+
