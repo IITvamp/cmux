@@ -16,6 +16,7 @@ import {
   ExternalLink,
   GitBranch,
   GitMerge,
+  MessageSquare,
   Trash2,
 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
@@ -61,8 +62,53 @@ export function TaskDetailHeader({
   const { socket } = useSocket();
   const [agentMenuOpen, setAgentMenuOpen] = useState(false);
   const [isOpeningPr, setIsOpeningPr] = useState(false);
+  const [isReviewOpen, setIsReviewOpen] = useState(false);
+  const [selectedLines, setSelectedLines] = useState<Set<number>>(new Set());
+  const [comments, setComments] = useState<Record<number, string>>({});
+  const [commentInput, setCommentInput] = useState("");
+  const [reviewCode, setReviewCode] = useState(`// Sample code for review
+function exampleFunction() {
+  console.log("Hello World");
+  const x = 42;
+  return x * 2;
+}
+
+// Another function
+const add = (a, b) => a + b;`);
   const handleAgentOpenChange = useCallback((open: boolean) => {
     setAgentMenuOpen(open);
+  }, []);
+
+  const handleLineClick = useCallback((lineNumber: number) => {
+    setSelectedLines((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(lineNumber)) {
+        newSet.delete(lineNumber);
+      } else {
+        newSet.add(lineNumber);
+      }
+      return newSet;
+    });
+  }, []);
+
+  const handleAddComment = useCallback(() => {
+    if (!commentInput.trim() || selectedLines.size === 0) return;
+
+    const lineNumber = Array.from(selectedLines)[0]; // For simplicity, comment on first selected line
+    setComments((prev) => ({
+      ...prev,
+      [lineNumber]: commentInput,
+    }));
+    setCommentInput("");
+    setSelectedLines(new Set());
+  }, [commentInput, selectedLines]);
+
+  const handleDeleteComment = useCallback((lineNumber: number) => {
+    setComments((prev) => {
+      const newComments = { ...prev };
+      delete newComments[lineNumber];
+      return newComments;
+    });
   }, []);
 
   // Determine if there are any diffs to open a PR for
@@ -124,7 +170,7 @@ export function TaskDetailHeader({
             description: resp.error,
           });
         }
-      }
+      },
     );
   };
 
@@ -151,13 +197,13 @@ export function TaskDetailHeader({
             description: resp.error,
           });
         }
-      }
+      },
     );
   };
 
   const worktreePath = useMemo(
     () => selectedRun?.worktreePath || task?.worktreePath || null,
-    [selectedRun?.worktreePath, task?.worktreePath]
+    [selectedRun?.worktreePath, task?.worktreePath],
   );
 
   return (
@@ -285,21 +331,21 @@ export function TaskDetailHeader({
               <GitBranch
                 className={clsx(
                   "w-3 h-3 absolute inset-0 z-0",
-                  clipboard.copied ? "hidden" : "block group-hover:hidden"
+                  clipboard.copied ? "hidden" : "block group-hover:hidden",
                 )}
                 aria-hidden={clipboard.copied}
               />
               <Copy
                 className={clsx(
                   "w-3 h-3 absolute inset-0 z-10",
-                  clipboard.copied ? "hidden" : "hidden group-hover:block"
+                  clipboard.copied ? "hidden" : "hidden group-hover:block",
                 )}
                 aria-hidden={clipboard.copied}
               />
               <Check
                 className={clsx(
                   "w-3 h-3 text-green-400 absolute inset-0 z-50",
-                  clipboard.copied ? "block" : "hidden"
+                  clipboard.copied ? "block" : "hidden",
                 )}
                 aria-hidden={!clipboard.copied}
               />
@@ -360,7 +406,7 @@ export function TaskDetailHeader({
                                 onCheckedChange={() => {
                                   if (!task?._id) {
                                     console.error(
-                                      "[TaskDetailHeader] No task ID"
+                                      "[TaskDetailHeader] No task ID",
                                     );
                                     return;
                                   }
@@ -398,6 +444,125 @@ export function TaskDetailHeader({
             </>
           )}
         </div>
+      </div>
+
+      {/* Code Review Section */}
+      <div className="border-t border-neutral-200 dark:border-neutral-700 mt-2 pt-2">
+        <button
+          onClick={() => setIsReviewOpen(!isReviewOpen)}
+          className="flex items-center gap-2 text-sm font-medium text-neutral-700 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white"
+        >
+          <MessageSquare className="w-4 h-4" />
+          Code Review
+          <ChevronDown
+            className={clsx(
+              "w-4 h-4 transition-transform",
+              isReviewOpen && "rotate-180",
+            )}
+          />
+        </button>
+
+        {isReviewOpen && (
+          <div className="mt-3 space-y-3">
+            {/* Code Display */}
+            <div className="bg-neutral-50 dark:bg-neutral-800 rounded-lg border border-neutral-200 dark:border-neutral-700 overflow-hidden">
+              <div className="px-4 py-2 bg-neutral-100 dark:bg-neutral-700 text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                Review Code
+              </div>
+              <div className="p-4">
+                <pre className="text-sm font-mono overflow-x-auto">
+                  {reviewCode.split("\n").map((line, index) => {
+                    const lineNumber = index + 1;
+                    const isSelected = selectedLines.has(lineNumber);
+                    const hasComment = comments[lineNumber];
+                    return (
+                      <div
+                        key={lineNumber}
+                        className={clsx(
+                          "flex items-center gap-2 py-1 px-2 rounded cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-700",
+                          isSelected && "bg-blue-100 dark:bg-blue-900/30",
+                        )}
+                        onClick={() => handleLineClick(lineNumber)}
+                      >
+                        <span className="text-neutral-400 dark:text-neutral-500 select-none w-8 text-right">
+                          {lineNumber}
+                        </span>
+                        <span className="flex-1">{line || "\u00A0"}</span>
+                        {hasComment && (
+                          <MessageSquare className="w-4 h-4 text-blue-500" />
+                        )}
+                      </div>
+                    );
+                  })}
+                </pre>
+              </div>
+            </div>
+
+            {/* Comment Input */}
+            {selectedLines.size > 0 && (
+              <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+                <div className="text-sm text-blue-800 dark:text-blue-200 mb-2">
+                  Add comment to{" "}
+                  {selectedLines.size === 1
+                    ? `line ${Array.from(selectedLines)[0]}`
+                    : `${selectedLines.size} lines`}
+                </div>
+                <textarea
+                  value={commentInput}
+                  onChange={(e) => setCommentInput(e.target.value)}
+                  placeholder="Write your comment..."
+                  className="w-full p-2 border border-blue-300 dark:border-blue-600 rounded bg-white dark:bg-neutral-800 text-sm resize-none"
+                  rows={3}
+                />
+                <div className="flex justify-end gap-2 mt-2">
+                  <button
+                    onClick={() => setSelectedLines(new Set())}
+                    className="px-3 py-1 text-sm text-neutral-600 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleAddComment}
+                    disabled={!commentInput.trim()}
+                    className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Add Comment
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Comments Display */}
+            {Object.entries(comments).length > 0 && (
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium text-neutral-700 dark:text-neutral-300">
+                  Comments
+                </h4>
+                {Object.entries(comments).map(([lineNumber, comment]) => (
+                  <div
+                    key={lineNumber}
+                    className="bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg p-3"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm text-neutral-600 dark:text-neutral-400">
+                        Line {lineNumber}
+                      </span>
+                      <button
+                        onClick={() => handleDeleteComment(Number(lineNumber))}
+                        className="text-neutral-400 hover:text-red-500"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                    <p className="text-sm text-neutral-800 dark:text-neutral-200">
+                      {comment}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
