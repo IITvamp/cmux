@@ -23,12 +23,11 @@ export async function createPullRequestForWinner(
   githubToken?: string | null
 ): Promise<void> {
   try {
-    // Check workspace settings toggle (default: disabled)
-    const ws = await convex.query(api.workspaceSettings.get);
-    const autoPrEnabled = !!ws?.autoPrEnabled;
+    // Auto-PR permanently disabled
+    const autoPrEnabled = false;
     if (!autoPrEnabled) {
       serverLogger.info(
-        `[CrownEvaluator] Auto-PR disabled in settings; skipping.`
+        `[CrownEvaluator] Auto-PR disabled; skipping.`
       );
       return;
     }

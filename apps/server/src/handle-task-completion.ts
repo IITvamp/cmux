@@ -171,9 +171,8 @@ export async function handleTaskCompletion({
             `[AgentSpawner] Single agent scenario - checking auto-PR settings`
           );
 
-          // Check if auto-PR is enabled
-          const ws = await convex.query(api.workspaceSettings.get);
-          const autoPrEnabled = ws?.autoPrEnabled ?? false;
+          // Auto-PR permanently disabled
+          const autoPrEnabled = false;
 
           if (autoPrEnabled && winnerId) {
             serverLogger.info(
