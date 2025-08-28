@@ -1,12 +1,13 @@
 import { v } from "convex/values";
 import { authMutation, authQuery } from "./auth/functions";
 
-export const evaluateAndCrownWinner = mutation({
+export const evaluateAndCrownWinner = authMutation({
   args: {
     taskId: v.id("tasks"),
   },
   handler: async (ctx, args) => {
     try {
+      const { userId, teamId } = ctx;
       console.log(`[Crown] ============================================`);
       console.log(`[Crown] EVALUATE AND CROWN WINNER CALLED`);
       console.log(`[Crown] Task ID: ${args.taskId}`);
@@ -21,7 +22,8 @@ export const evaluateAndCrownWinner = mutation({
       // Get all completed runs for this task
       const taskRuns = await ctx.db
         .query("taskRuns")
-        .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+        .withIndex("by_team_user", (q) => q.eq("teamId", teamId).eq("userId", userId))
+        .filter((q) => q.eq(q.field("taskId"), args.taskId))
         .filter((q) => q.eq(q.field("status"), "completed"))
         .collect();
 
@@ -46,7 +48,8 @@ export const evaluateAndCrownWinner = mutation({
       // Check if evaluation already exists or is pending
       const existingEvaluation = await ctx.db
         .query("crownEvaluations")
-        .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+        .withIndex("by_team_user", (q) => q.eq("teamId", teamId).eq("userId", userId))
+        .filter((q) => q.eq(q.field("taskId"), args.taskId))
         .first();
       
       if (existingEvaluation) {
@@ -80,12 +83,13 @@ export const evaluateAndCrownWinner = mutation({
 
 
 
-export const setCrownWinner = mutation({
+export const setCrownWinner = authMutation({
   args: {
     taskRunId: v.id("taskRuns"),
     reason: v.string(),
   },
   handler: async (ctx, args) => {
+    const { userId, teamId } = ctx;
     console.log(`[Crown] ============================================`);
     console.log(`[Crown] SET CROWN WINNER CALLED`);
     console.log(`[Crown] Task Run ID: ${args.taskRunId}`);
@@ -100,7 +104,8 @@ export const setCrownWinner = mutation({
     // Get all runs for this task
     const taskRuns = await ctx.db
       .query("taskRuns")
-      .withIndex("by_task", (q) => q.eq("taskId", taskRun.taskId))
+      .withIndex("by_team_user", (q) => q.eq("teamId", teamId).eq("userId", userId))
+      .filter((q) => q.eq(q.field("taskId"), taskRun.taskId))
       .collect();
 
     // Update the selected run as crowned
@@ -126,6 +131,8 @@ export const setCrownWinner = mutation({
 
     // Create evaluation record
     await ctx.db.insert("crownEvaluations", {
+      userId,
+      teamId,
       taskId: taskRun.taskId,
       evaluatedAt: Date.now(),
       winnerRunId: args.taskRunId,
@@ -144,14 +151,16 @@ export const setCrownWinner = mutation({
   },
 });
 
-export const getCrownedRun = query({
+export const getCrownedRun = authQuery({
   args: {
     taskId: v.id("tasks"),
   },
   handler: async (ctx, args) => {
+    const { userId, teamId } = ctx;
     const crownedRun = await ctx.db
       .query("taskRuns")
-      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+      .withIndex("by_team_user", (q) => q.eq("teamId", teamId).eq("userId", userId))
+      .filter((q) => q.eq(q.field("taskId"), args.taskId))
       .filter((q) => q.eq(q.field("isCrowned"), true))
       .first();
 
@@ -161,14 +170,16 @@ export const getCrownedRun = query({
   },
 });
 
-export const getCrownEvaluation = query({
+export const getCrownEvaluation = authQuery({
   args: {
     taskId: v.id("tasks"),
   },
   handler: async (ctx, args) => {
+    const { userId, teamId } = ctx;
     const evaluation = await ctx.db
       .query("crownEvaluations")
-      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+      .withIndex("by_team_user", (q) => q.eq("teamId", teamId).eq("userId", userId))
+      .filter((q) => q.eq(q.field("taskId"), args.taskId))
       .first();
 
     return evaluation;
