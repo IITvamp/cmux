@@ -23,19 +23,13 @@ export async function createPullRequestForWinner(
   githubToken?: string | null
 ): Promise<void> {
   try {
-    // Check workspace settings toggle (default: disabled)
-    const ws = await convex.query(api.workspaceSettings.get);
-    const autoPrEnabled = !!ws?.autoPrEnabled;
-    if (!autoPrEnabled) {
-      serverLogger.info(
-        `[CrownEvaluator] Auto-PR disabled in settings; skipping.`
-      );
-      return;
-    }
+    // Auto PR is permanently disabled
     serverLogger.info(
-      `[CrownEvaluator] Creating pull request for winner ${taskRunId}`
+      `[CrownEvaluator] Auto-PR permanently disabled; skipping.`
     );
+    return;
 
+    /*
     // Get the task run details
     const taskRun = await convex.query(api.taskRuns.get, { id: taskRunId });
     if (!taskRun || !taskRun.vscode?.containerName) {
@@ -282,6 +276,7 @@ Completed: ${new Date().toISOString()}`;
     }
 
     serverLogger.info(`[CrownEvaluator] Pull request creation completed`);
+    */
   } catch (error) {
     serverLogger.error(`[CrownEvaluator] Error creating pull request:`, error);
   }

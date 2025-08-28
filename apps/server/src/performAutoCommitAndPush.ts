@@ -119,20 +119,13 @@ export default async function performAutoCommitAndPush(
     }
 
     if (isCrowned) {
-      // Respect workspace setting for auto-PR
-      const ws = await convex.query(api.workspaceSettings.get);
-      const autoPrEnabled =
-        (ws as unknown as { autoPrEnabled?: boolean })?.autoPrEnabled ?? false;
-      if (!autoPrEnabled) {
-        serverLogger.info(
-          `[AgentSpawner] Branch pushed (auto-PR disabled). Winner: ${agent.name} on ${branchName}`
-        );
-        return;
-      }
+      // Auto PR is permanently disabled
       serverLogger.info(
-        `[AgentSpawner] Auto-commit completed for ${agent.name} on branch ${branchName} (crowned - creating PR)`
+        `[AgentSpawner] Branch pushed (auto-PR permanently disabled). Winner: ${agent.name} on ${branchName}`
       );
+      return;
 
+      /*
       // Create PR for crowned run only
       try {
         if (!taskRun) {
@@ -231,6 +224,7 @@ ${taskRun.crownReason || "This implementation was selected as the best solution.
       } catch (error) {
         serverLogger.error(`[AgentSpawner] Error creating PR:`, error);
       }
+      */
     } else {
       serverLogger.info(
         `[AgentSpawner] Auto-commit completed for ${agent.name} on branch ${branchName} (not crowned - branch pushed)`
