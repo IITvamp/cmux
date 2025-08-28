@@ -1,6 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  env: {
+    VITE_STACK_PROJECT_ID: process.env.VITE_STACK_PROJECT_ID,
+    VITE_STACK_PUBLISHABLE_CLIENT_KEY:
+      process.env.VITE_STACK_PUBLISHABLE_CLIENT_KEY,
+    VITE_WWW_ORIGIN: process.env.VITE_WWW_ORIGIN,
+  },
   serverExternalPackages: ["morphcloud", "ssh2", "node-ssh", "cpu-features"],
   webpack: (config, { isServer }) => {
     if (isServer) {
