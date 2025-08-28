@@ -1,10 +1,14 @@
 import { v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
+import { authMutation, authQuery } from "./auth/functions";
 
-export const getReposByOrg = query({
+export const getReposByOrg = authQuery({
   args: {},
   handler: async (ctx) => {
-    const repos = await ctx.db.query("repos").collect();
+    const { teamId, userId } = ctx;
+    const repos = await ctx.db.query("repos")
+      .withIndex("by_team_user", (q) => q.eq("teamId", teamId).eq("userId", userId))
+      .collect();
 
     // Group by organization
     const reposByOrg = repos.reduce(
