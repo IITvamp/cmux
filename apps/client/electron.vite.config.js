@@ -36,8 +36,7 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve('index.html')
-        },
-        external: ['convex/server']
+        }
       }
     },
     resolve: {
