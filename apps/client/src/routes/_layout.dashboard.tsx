@@ -6,6 +6,7 @@ import { DashboardInputControls } from "@/components/dashboard/DashboardInputCon
 import { DashboardInputFooter } from "@/components/dashboard/DashboardInputFooter";
 import { DashboardStartTaskButton } from "@/components/dashboard/DashboardStartTaskButton";
 import { TaskList } from "@/components/dashboard/TaskList";
+import { CurrentTime } from "@/components/dashboard/CurrentTime";
 import { FloatingPane } from "@/components/floating-pane";
 import { ProviderStatusPills } from "@/components/provider-status-pills";
 import { useTheme } from "@/components/theme/use-theme";
@@ -488,7 +489,10 @@ function DashboardComponent() {
 
   return (
     <FloatingPane>
-      <div className="flex flex-col grow overflow-y-auto">
+      <div className="flex flex-col grow overflow-y-auto relative">
+        {/* Current Time Display */}
+        <CurrentTime />
+        
         {/* Main content area */}
         <div className="flex-1 flex justify-center px-4 pt-60 pb-4">
           <div className="w-full max-w-4xl min-w-0">
