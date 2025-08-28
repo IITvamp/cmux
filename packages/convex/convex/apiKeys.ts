@@ -1,26 +1,31 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { authMutation, authQuery } from "./auth/functions";
 
-export const getAll = query({
+export const getAll = authQuery({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db.query("apiKeys").collect();
+    const { teamId, userId } = ctx;
+    return await ctx.db.query("apiKeys")
+      .withIndex("by_team_user", (q) => q.eq("teamId", teamId).eq("userId", userId))
+      .collect();
   },
 });
 
-export const getByEnvVar = query({
+export const getByEnvVar = authQuery({
   args: {
     envVar: v.string(),
   },
   handler: async (ctx, args) => {
+    const { teamId, userId } = ctx;
     return await ctx.db
       .query("apiKeys")
-      .withIndex("by_envVar", (q) => q.eq("envVar", args.envVar))
+      .withIndex("by_team_user", (q) => q.eq("teamId", teamId).eq("userId", userId))
+      .filter((q) => q.eq(q.field("envVar"), args.envVar))
       .first();
   },
 });
 
-export const upsert = mutation({
+export const upsert = authMutation({
   args: {
     envVar: v.string(),
     value: v.string(),
@@ -28,9 +33,11 @@ export const upsert = mutation({
     description: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const { teamId, userId } = ctx;
     const existing = await ctx.db
       .query("apiKeys")
-      .withIndex("by_envVar", (q) => q.eq("envVar", args.envVar))
+      .withIndex("by_team_user", (q) => q.eq("teamId", teamId).eq("userId", userId))
+      .filter((q) => q.eq(q.field("envVar"), args.envVar))
       .first();
 
     if (existing) {
@@ -49,19 +56,23 @@ export const upsert = mutation({
         description: args.description,
         createdAt: Date.now(),
         updatedAt: Date.now(),
+        userId,
+        teamId,
       });
     }
   },
 });
 
-export const remove = mutation({
+export const remove = authMutation({
   args: {
     envVar: v.string(),
   },
   handler: async (ctx, args) => {
+    const { teamId, userId } = ctx;
     const existing = await ctx.db
       .query("apiKeys")
-      .withIndex("by_envVar", (q) => q.eq("envVar", args.envVar))
+      .withIndex("by_team_user", (q) => q.eq("teamId", teamId).eq("userId", userId))
+      .filter((q) => q.eq(q.field("envVar"), args.envVar))
       .first();
 
     if (existing) {
@@ -70,10 +81,13 @@ export const remove = mutation({
   },
 });
 
-export const getAllForAgents = query({
+export const getAllForAgents = authQuery({
   args: {},
   handler: async (ctx) => {
-    const apiKeys = await ctx.db.query("apiKeys").collect();
+    const { teamId, userId } = ctx;
+    const apiKeys = await ctx.db.query("apiKeys")
+      .withIndex("by_team_user", (q) => q.eq("teamId", teamId).eq("userId", userId))
+      .collect();
     const keyMap: Record<string, string> = {};
 
     for (const key of apiKeys) {

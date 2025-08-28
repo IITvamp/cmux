@@ -1,18 +1,17 @@
 import { v } from "convex/values";
-import { ensureAuth } from "../_shared/ensureAuth";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { mutation, query } from "./_generated/server";
+import { authMutation, authQuery } from "./auth/functions";
 
-export const get = query({
+export const get = authQuery({
   args: {
     projectFullName: v.optional(v.string()),
     archived: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    await ensureAuth(ctx);
-    let query = ctx.db.query("tasks");
-    // .withIndex("by_user", (q) => q.eq("userId", user.userId));
+    const { teamId, userId } = ctx;
+    let query = ctx.db.query("tasks")
+      .withIndex("by_team_user", (q) => q.eq("teamId", teamId).eq("userId", userId));
 
     // Default to active (non-archived) when not specified
     if (args.archived === true) {
@@ -31,7 +30,7 @@ export const get = query({
   },
 });
 
-export const create = mutation({
+export const create = authMutation({
   args: {
     text: v.string(),
     description: v.optional(v.string()),
@@ -49,6 +48,7 @@ export const create = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    const { teamId, userId } = ctx;
     const now = Date.now();
     const taskId = await ctx.db.insert("tasks", {
       text: args.text,
@@ -60,20 +60,22 @@ export const create = mutation({
       createdAt: now,
       updatedAt: now,
       images: args.images,
+      userId,
+      teamId,
     });
 
     return taskId;
   },
 });
 
-export const remove = mutation({
+export const remove = authMutation({
   args: { id: v.id("tasks") },
   handler: async (ctx, args) => {
     await ctx.db.delete(args.id);
   },
 });
 
-export const toggle = mutation({
+export const toggle = authMutation({
   args: { id: v.id("tasks") },
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.id);
@@ -84,7 +86,7 @@ export const toggle = mutation({
   },
 });
 
-export const setCompleted = mutation({
+export const setCompleted = authMutation({
   args: {
     id: v.id("tasks"),
     isCompleted: v.boolean(),
@@ -101,7 +103,7 @@ export const setCompleted = mutation({
   },
 });
 
-export const update = mutation({
+export const update = authMutation({
   args: { id: v.id("tasks"), text: v.string() },
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.id);
@@ -112,7 +114,7 @@ export const update = mutation({
   },
 });
 
-export const getById = query({
+export const getById = authQuery({
   args: { id: v.id("tasks") },
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.id);
@@ -139,17 +141,19 @@ export const getById = query({
   },
 });
 
-export const getVersions = query({
+export const getVersions = authQuery({
   args: { taskId: v.id("tasks") },
   handler: async (ctx, args) => {
+    const { teamId, userId } = ctx;
     return await ctx.db
       .query("taskVersions")
-      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+      .withIndex("by_team_user", (q) => q.eq("teamId", teamId).eq("userId", userId))
+      .filter((q) => q.eq(q.field("taskId"), args.taskId))
       .collect();
   },
 });
 
-export const archive = mutation({
+export const archive = authMutation({
   args: { id: v.id("tasks") },
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.id);
@@ -160,7 +164,7 @@ export const archive = mutation({
   },
 });
 
-export const unarchive = mutation({
+export const unarchive = authMutation({
   args: { id: v.id("tasks") },
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.id);
@@ -171,7 +175,7 @@ export const unarchive = mutation({
   },
 });
 
-export const updateCrownError = mutation({
+export const updateCrownError = authMutation({
   args: {
     id: v.id("tasks"),
     crownEvaluationError: v.optional(v.string()),
@@ -186,7 +190,7 @@ export const updateCrownError = mutation({
 });
 
 // Set or update the generated pull request description for a task
-export const setPullRequestDescription = mutation({
+export const setPullRequestDescription = authMutation({
   args: {
     id: v.id("tasks"),
     pullRequestDescription: v.optional(v.string()),
@@ -201,7 +205,7 @@ export const setPullRequestDescription = mutation({
 });
 
 // Set or update the generated pull request title for a task
-export const setPullRequestTitle = mutation({
+export const setPullRequestTitle = authMutation({
   args: {
     id: v.id("tasks"),
     pullRequestTitle: v.optional(v.string()),
@@ -215,7 +219,7 @@ export const setPullRequestTitle = mutation({
   },
 });
 
-export const createVersion = mutation({
+export const createVersion = authMutation({
   args: {
     taskId: v.id("tasks"),
     diff: v.string(),
@@ -228,9 +232,11 @@ export const createVersion = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    const { teamId, userId } = ctx;
     const existingVersions = await ctx.db
       .query("taskVersions")
-      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+      .withIndex("by_team_user", (q) => q.eq("teamId", teamId).eq("userId", userId))
+      .filter((q) => q.eq(q.field("taskId"), args.taskId))
       .collect();
 
     const version = existingVersions.length + 1;
@@ -242,6 +248,8 @@ export const createVersion = mutation({
       summary: args.summary,
       files: args.files,
       createdAt: Date.now(),
+      userId,
+      teamId,
     });
 
     await ctx.db.patch(args.taskId, { updatedAt: Date.now() });
@@ -251,12 +259,14 @@ export const createVersion = mutation({
 });
 
 // Check if all runs for a task are completed and trigger crown evaluation
-export const getTasksWithPendingCrownEvaluation = query({
+export const getTasksWithPendingCrownEvaluation = authQuery({
   args: {},
   handler: async (ctx) => {
+    const { teamId, userId } = ctx;
     // Only get tasks that are pending, not already in progress
     const tasks = await ctx.db
       .query("tasks")
+      .withIndex("by_team_user", (q) => q.eq("teamId", teamId).eq("userId", userId))
       .filter((q) =>
         q.eq(q.field("crownEvaluationError"), "pending_evaluation")
       )
@@ -279,7 +289,7 @@ export const getTasksWithPendingCrownEvaluation = query({
   },
 });
 
-export const updateMergeStatus = mutation({
+export const updateMergeStatus = authMutation({
   args: {
     id: v.id("tasks"),
     mergeStatus: v.union(
@@ -304,7 +314,7 @@ export const updateMergeStatus = mutation({
   },
 });
 
-export const checkAndEvaluateCrown = mutation({
+export const checkAndEvaluateCrown = authMutation({
   args: {
     taskId: v.id("tasks"),
   },

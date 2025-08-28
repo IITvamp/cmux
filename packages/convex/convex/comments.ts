@@ -1,7 +1,7 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { authMutation, authQuery } from "./auth/functions";
 
-export const createComment = mutation({
+export const createComment = authMutation({
   args: {
     url: v.string(),
     page: v.string(),
@@ -10,7 +10,6 @@ export const createComment = mutation({
     x: v.number(),
     y: v.number(),
     content: v.string(),
-    userId: v.string(),
     profileImageUrl: v.optional(v.string()),
     userAgent: v.string(),
     screenWidth: v.number(),
@@ -20,6 +19,8 @@ export const createComment = mutation({
   handler: async (ctx, args) => {
     const commentId = await ctx.db.insert("comments", {
       ...args,
+      userId: ctx.userId,
+      teamId: ctx.teamId,
       resolved: false,
       archived: false,
       createdAt: Date.now(),
@@ -29,7 +30,7 @@ export const createComment = mutation({
   },
 });
 
-export const listComments = query({
+export const listComments = authQuery({
   args: {
     url: v.string(),
     page: v.optional(v.string()),
@@ -37,9 +38,11 @@ export const listComments = query({
     includeArchived: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
+    const { teamId, userId } = ctx;
     const query = ctx.db
       .query("comments")
-      .withIndex("by_url", (q) => q.eq("url", args.url));
+      .withIndex("by_team_user", (q) => q.eq("teamId", teamId).eq("userId", userId))
+      .filter((q) => q.eq(q.field("url"), args.url));
 
     const comments = await query.collect();
 
@@ -56,7 +59,7 @@ export const listComments = query({
   },
 });
 
-export const resolveComment = mutation({
+export const resolveComment = authMutation({
   args: {
     commentId: v.id("comments"),
   },
@@ -68,7 +71,7 @@ export const resolveComment = mutation({
   },
 });
 
-export const archiveComment = mutation({
+export const archiveComment = authMutation({
   args: {
     commentId: v.id("comments"),
     archived: v.boolean(),
@@ -81,16 +84,17 @@ export const archiveComment = mutation({
   },
 });
 
-export const addReply = mutation({
+export const addReply = authMutation({
   args: {
     commentId: v.id("comments"),
-    userId: v.string(),
     content: v.string(),
   },
   handler: async (ctx, args) => {
+    const { teamId, userId } = ctx;
     const replyId = await ctx.db.insert("commentReplies", {
       commentId: args.commentId,
-      userId: args.userId,
+      userId,
+      teamId,
       content: args.content,
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -99,14 +103,16 @@ export const addReply = mutation({
   },
 });
 
-export const getReplies = query({
+export const getReplies = authQuery({
   args: {
     commentId: v.id("comments"),
   },
   handler: async (ctx, args) => {
+    const { teamId, userId } = ctx;
     const replies = await ctx.db
       .query("commentReplies")
-      .withIndex("by_comment", (q) => q.eq("commentId", args.commentId))
+      .withIndex("by_team_user", (q) => q.eq("teamId", teamId).eq("userId", userId))
+      .filter((q) => q.eq(q.field("commentId"), args.commentId))
       .collect();
     return replies;
   },
