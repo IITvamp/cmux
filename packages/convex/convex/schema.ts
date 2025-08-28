@@ -3,17 +3,30 @@ import { v } from "convex/values";
 
 const convexSchema = defineSchema({
   teams: defineTable({
-    // Canonical UUID for the team (preferred identifier)
+    // Canonical UUID for the team (Stack team id)
     uuid: v.string(),
-    // Human-friendly slug used in URLs
-    slug: v.string(),
-    // Optional display name
+    // Human-friendly slug used in URLs (internal)
+    slug: v.optional(v.string()),
+    // Display name from Stack (display_name)
+    displayName: v.optional(v.string()),
+    // Optional alternate/internal name
     name: v.optional(v.string()),
+    // Profile image URL (Stack may send null; omit when null)
+    profileImageUrl: v.optional(v.string()),
+    // Client metadata blobs from Stack
+    clientMetadata: v.optional(v.any()),
+    clientReadOnlyMetadata: v.optional(v.any()),
+    // Server metadata from Stack
+    serverMetadata: v.optional(v.any()),
+    // Timestamp from Stack (created_at_millis)
+    createdAtMillis: v.optional(v.number()),
+    // Local bookkeeping
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_uuid", ["uuid"]) // For fast resolution by UUID
     .index("by_slug", ["slug"]), // For resolving slug -> uuid
+  // Stack team membership records
   teamMemberships: defineTable({
     teamId: v.string(), // canonical team UUID
     userId: v.string(),
@@ -26,6 +39,62 @@ const convexSchema = defineSchema({
     .index("by_team_user", ["teamId", "userId"]) // check membership quickly
     .index("by_user", ["userId"]) // list teams for a user
     .index("by_team", ["teamId"]),
+  // Stack team permission assignments
+  teamPermissions: defineTable({
+    teamId: v.string(),
+    userId: v.string(),
+    permissionId: v.string(), // e.g., "$update_team" or "team_member"
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_team_user", ["teamId", "userId"]) // list permissions for a user in team
+    .index("by_user", ["userId"]) // all permissions for a user
+    .index("by_team", ["teamId"]) // all permissions in a team
+    .index("by_team_user_perm", ["teamId", "userId", "permissionId"]),
+  // Stack user directory
+  users: defineTable({
+    // Canonical UUID for the user (Stack user id)
+    uuid: v.string(),
+    // Basic identity
+    primaryEmail: v.optional(v.string()), // nulls omitted
+    primaryEmailVerified: v.optional(v.boolean()),
+    primaryEmailAuthEnabled: v.optional(v.boolean()),
+    displayName: v.optional(v.string()),
+    profileImageUrl: v.optional(v.string()),
+    // Team selection
+    selectedTeamId: v.optional(v.string()),
+    selectedTeamDisplayName: v.optional(v.string()),
+    selectedTeamProfileImageUrl: v.optional(v.string()),
+    // Security flags
+    hasPassword: v.optional(v.boolean()),
+    otpAuthEnabled: v.optional(v.boolean()),
+    passkeyAuthEnabled: v.optional(v.boolean()),
+    // Timestamps from Stack
+    signedUpAtMillis: v.optional(v.number()),
+    lastActiveAtMillis: v.optional(v.number()),
+    // Metadata blobs
+    clientMetadata: v.optional(v.any()),
+    clientReadOnlyMetadata: v.optional(v.any()),
+    serverMetadata: v.optional(v.any()),
+    // OAuth providers observed in webhook payloads
+    oauthProviders: v.optional(
+      v.array(
+        v.object({
+          id: v.string(),
+          accountId: v.string(),
+          email: v.optional(v.string()),
+        })
+      )
+    ),
+    // Anonymous flag
+    isAnonymous: v.optional(v.boolean()),
+    // Local bookkeeping
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_uuid", ["uuid"]) // For fast lookup by Stack user id
+    .index("by_email", ["primaryEmail"]) 
+    .index("by_selected_team", ["selectedTeamId"]),
   tasks: defineTable({
     text: v.string(),
     isCompleted: v.boolean(),

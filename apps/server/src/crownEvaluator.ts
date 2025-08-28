@@ -2,7 +2,7 @@ import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
 import { spawn } from "node:child_process";
 import { z } from "zod";
-import { convex } from "./utils/convexClient.js";
+import { getConvex } from "./utils/convexClient.js";
 import { DEFAULT_TEAM_ID } from "@cmux/shared";
 import { serverLogger } from "./utils/fileLogger.js";
 import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
@@ -25,7 +25,7 @@ export async function createPullRequestForWinner(
 ): Promise<void> {
   try {
     // Check workspace settings toggle (default: disabled)
-    const ws = await convex.query(api.workspaceSettings.get, {
+    const ws = await getConvex().query(api.workspaceSettings.get, {
       teamIdOrSlug: DEFAULT_TEAM_ID,
     });
     const autoPrEnabled = !!ws?.autoPrEnabled;
@@ -40,7 +40,7 @@ export async function createPullRequestForWinner(
     );
 
     // Get the task run details
-    const taskRun = await convex.query(api.taskRuns.get, {
+    const taskRun = await getConvex().query(api.taskRuns.get, {
       teamIdOrSlug: DEFAULT_TEAM_ID,
       id: taskRunId,
     });
@@ -52,7 +52,7 @@ export async function createPullRequestForWinner(
     }
 
     // Get the task details
-    const task = await convex.query(api.tasks.getById, {
+    const task = await getConvex().query(api.tasks.getById, {
       teamIdOrSlug: DEFAULT_TEAM_ID,
       id: taskId,
     });
@@ -90,7 +90,7 @@ export async function createPullRequestForWinner(
     // Persist PR title if not already set or differs
     if (!task.pullRequestTitle || task.pullRequestTitle !== prTitle) {
       try {
-        await convex.mutation(api.tasks.setPullRequestTitle, {
+        await getConvex().mutation(api.tasks.setPullRequestTitle, {
           teamIdOrSlug: DEFAULT_TEAM_ID,
           id: taskId,
           pullRequestTitle: prTitle,
@@ -110,7 +110,7 @@ export async function createPullRequestForWinner(
 
     // Persist PR description on the task in Convex
     try {
-      await convex.mutation(api.tasks.setPullRequestDescription, {
+      await getConvex().mutation(api.tasks.setPullRequestDescription, {
         teamIdOrSlug: DEFAULT_TEAM_ID,
         id: taskId,
         pullRequestDescription: prBody,
@@ -317,7 +317,7 @@ export async function evaluateCrownWithClaudeCode(
     const githubToken = await getGitHubTokenFromKeychain();
 
     // Get task and runs
-    const task = await convex.query(api.tasks.getById, {
+    const task = await getConvex().query(api.tasks.getById, {
       teamIdOrSlug: DEFAULT_TEAM_ID,
       id: taskId,
     });
@@ -325,7 +325,7 @@ export async function evaluateCrownWithClaudeCode(
       throw new Error("Task not found");
     }
 
-    const taskRuns = await convex.query(api.taskRuns.getByTask, {
+    const taskRuns = await getConvex().query(api.taskRuns.getByTask, {
       teamIdOrSlug: DEFAULT_TEAM_ID,
       taskId,
     });
@@ -339,7 +339,7 @@ export async function evaluateCrownWithClaudeCode(
     }
 
     // Double-check if evaluation already exists
-    const existingEvaluation = await convex.query(api.crown.getCrownEvaluation, {
+    const existingEvaluation = await getConvex().query(api.crown.getCrownEvaluation, {
       teamIdOrSlug: DEFAULT_TEAM_ID,
       taskId: taskId,
     });
@@ -349,7 +349,7 @@ export async function evaluateCrownWithClaudeCode(
         `[CrownEvaluator] Crown evaluation already exists for task ${taskId}, skipping`
       );
       // Clear the pending status
-      await convex.mutation(api.tasks.updateCrownError, {
+      await getConvex().mutation(api.tasks.updateCrownError, {
         teamIdOrSlug: DEFAULT_TEAM_ID,
         id: taskId,
         crownEvaluationError: undefined,
@@ -562,7 +562,7 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
     });
 
     // Update status to in_progress
-    await convex.mutation(api.tasks.updateCrownError, {
+    await getConvex().mutation(api.tasks.updateCrownError, {
       teamIdOrSlug: DEFAULT_TEAM_ID,
       id: taskId,
       crownEvaluationError: "in_progress",
@@ -710,13 +710,13 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
       );
 
       const fallbackWinner = candidateData[0];
-      await convex.mutation(api.crown.setCrownWinner, {
+      await getConvex().mutation(api.crown.setCrownWinner, {
         teamIdOrSlug: DEFAULT_TEAM_ID,
         taskRunId: fallbackWinner.runId,
         reason: "Selected as fallback winner (crown evaluation failed to run)",
       });
 
-      await convex.mutation(api.tasks.updateCrownError, {
+      await getConvex().mutation(api.tasks.updateCrownError, {
         teamIdOrSlug: DEFAULT_TEAM_ID,
         id: taskId,
         crownEvaluationError: undefined,
@@ -751,14 +751,14 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
       );
 
       const fallbackWinner = candidateData[0];
-      await convex.mutation(api.crown.setCrownWinner, {
+      await getConvex().mutation(api.crown.setCrownWinner, {
         teamIdOrSlug: DEFAULT_TEAM_ID,
         taskRunId: fallbackWinner.runId,
         reason:
           "Selected as fallback winner (crown evaluation exited with error)",
       });
 
-      await convex.mutation(api.tasks.updateCrownError, {
+      await getConvex().mutation(api.tasks.updateCrownError, {
         teamIdOrSlug: DEFAULT_TEAM_ID,
         id: taskId,
         crownEvaluationError: undefined,
@@ -823,14 +823,14 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
 
           // Fallback: Pick the first completed run as winner
           const fallbackWinner = candidateData[0];
-          await convex.mutation(api.crown.setCrownWinner, {
+          await getConvex().mutation(api.crown.setCrownWinner, {
             teamIdOrSlug: DEFAULT_TEAM_ID,
             taskRunId: fallbackWinner.runId,
             reason:
               "Selected as fallback winner (no valid response from evaluator)",
           });
 
-          await convex.mutation(api.tasks.updateCrownError, {
+          await getConvex().mutation(api.tasks.updateCrownError, {
             teamIdOrSlug: DEFAULT_TEAM_ID,
             id: taskId,
             crownEvaluationError: undefined,
@@ -862,13 +862,13 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
 
         // Fallback: Pick the first completed run as winner
         const fallbackWinner = candidateData[0];
-        await convex.mutation(api.crown.setCrownWinner, {
+        await getConvex().mutation(api.crown.setCrownWinner, {
           teamIdOrSlug: DEFAULT_TEAM_ID,
           taskRunId: fallbackWinner.runId,
           reason: "Selected as fallback winner (invalid JSON from evaluator)",
         });
 
-        await convex.mutation(api.tasks.updateCrownError, {
+        await getConvex().mutation(api.tasks.updateCrownError, {
           teamIdOrSlug: DEFAULT_TEAM_ID,
           id: taskId,
           crownEvaluationError: undefined,
@@ -894,14 +894,14 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
 
       // Fallback: Pick the first completed run as winner
       const fallbackWinner = candidateData[0];
-      await convex.mutation(api.crown.setCrownWinner, {
+      await getConvex().mutation(api.crown.setCrownWinner, {
         teamIdOrSlug: DEFAULT_TEAM_ID,
         taskRunId: fallbackWinner.runId,
         reason:
           "Selected as fallback winner (invalid winner index from evaluator)",
       });
 
-      await convex.mutation(api.tasks.updateCrownError, {
+      await getConvex().mutation(api.tasks.updateCrownError, {
         teamIdOrSlug: DEFAULT_TEAM_ID,
         id: taskId,
         crownEvaluationError: undefined,
@@ -925,14 +925,14 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
     serverLogger.info(`[CrownEvaluator] Reason: ${jsonResponse.reason}`);
 
     // Update the database
-    await convex.mutation(api.crown.setCrownWinner, {
+    await getConvex().mutation(api.crown.setCrownWinner, {
         teamIdOrSlug: DEFAULT_TEAM_ID,
       taskRunId: winner.runId,
       reason: jsonResponse.reason,
     });
 
     // Clear any error
-    await convex.mutation(api.tasks.updateCrownError, {
+    await getConvex().mutation(api.tasks.updateCrownError, {
         teamIdOrSlug: DEFAULT_TEAM_ID,
       id: taskId,
       crownEvaluationError: undefined,
@@ -952,7 +952,7 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
     serverLogger.error(`[CrownEvaluator] Error during evaluation:`, error);
 
     // Update task with error status
-    await convex.mutation(api.tasks.updateCrownError, {
+    await getConvex().mutation(api.tasks.updateCrownError, {
       teamIdOrSlug: DEFAULT_TEAM_ID,
       id: taskId,
       crownEvaluationError: `Failed: ${error instanceof Error ? error.message : String(error)}`,

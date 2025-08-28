@@ -1,4 +1,7 @@
-import { DashboardInput, type EditorApi } from "@/components/dashboard/DashboardInput";
+import {
+  DashboardInput,
+  type EditorApi,
+} from "@/components/dashboard/DashboardInput";
 import { DashboardInputControls } from "@/components/dashboard/DashboardInputControls";
 import { DashboardInputFooter } from "@/components/dashboard/DashboardInputFooter";
 import { DashboardStartTaskButton } from "@/components/dashboard/DashboardStartTaskButton";
@@ -163,10 +166,17 @@ function DashboardComponent() {
         };
 
         // Add the new task at the beginning (since we order by desc)
-        const listArgs: { teamIdOrSlug: string; projectFullName?: string; archived?: boolean } = {
+        const listArgs: {
+          teamIdOrSlug: string;
+          projectFullName?: string;
+          archived?: boolean;
+        } = {
           teamIdOrSlug: teamSlugOrId,
         };
-        localStore.setQuery(api.tasks.get, listArgs, [optimisticTask, ...currentTasks]);
+        localStore.setQuery(api.tasks.get, listArgs, [
+          optimisticTask,
+          ...currentTasks,
+        ]);
       }
     }
   );
@@ -304,6 +314,7 @@ function DashboardComponent() {
     effectiveSelectedBranch,
     handleTaskDescriptionChange,
     createTask,
+    teamSlugOrId,
     addTaskToExpand,
     selectedAgents,
     isCloudMode,

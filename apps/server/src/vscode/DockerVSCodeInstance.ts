@@ -5,7 +5,7 @@ import Docker from "dockerode";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import * as os from "os";
 import * as path from "path";
-import { convex } from "../utils/convexClient.js";
+import { getConvex } from "../utils/convexClient.js";
 import { cleanupGitCredentials } from "../utils/dockerGitSetup.js";
 import { dockerLogger } from "../utils/fileLogger.js";
 import { getGitHubTokenFromKeychain } from "../utils/getGitHubToken.js";
@@ -450,7 +450,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
     // Update VSCode ports in Convex
     try {
-      await convex.mutation(api.taskRuns.updateVSCodePorts, {
+      await getConvex().mutation(api.taskRuns.updateVSCodePorts, {
         teamIdOrSlug: DEFAULT_TEAM_ID,
         id: this.taskRunId as Id<"taskRuns">,
         ports: {
@@ -578,7 +578,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
           // Update VSCode status in Convex
           try {
-            await convex.mutation(api.taskRuns.updateVSCodeStatus, {
+            await getConvex().mutation(api.taskRuns.updateVSCodeStatus, {
               teamIdOrSlug: DEFAULT_TEAM_ID,
               id: this.taskRunId as Id<"taskRuns">,
               status: "stopped",
@@ -628,7 +628,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
     // Update VSCode status in Convex
     try {
-      await convex.mutation(api.taskRuns.updateVSCodeStatus, {
+      await getConvex().mutation(api.taskRuns.updateVSCodeStatus, {
         teamIdOrSlug: DEFAULT_TEAM_ID,
         id: this.taskRunId as Id<"taskRuns">,
         status: "stopped",
@@ -1158,7 +1158,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         mapping.status = "running";
         try {
           if (vscodePort && workerPort) {
-            await convex.mutation(api.taskRuns.updateVSCodePorts, {
+            await getConvex().mutation(api.taskRuns.updateVSCodePorts, {
               teamIdOrSlug: DEFAULT_TEAM_ID,
               id: taskRunId as Id<"taskRuns">,
               ports: {
@@ -1168,7 +1168,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
               },
             });
           }
-          await convex.mutation(api.taskRuns.updateVSCodeStatus, {
+          await getConvex().mutation(api.taskRuns.updateVSCodeStatus, {
             teamIdOrSlug: DEFAULT_TEAM_ID,
             id: taskRunId as Id<"taskRuns">,
             status: "running",
@@ -1188,7 +1188,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     } else if (status === "stop" || status === "die" || status === "destroy") {
       mapping.status = "stopped";
       try {
-        await convex.mutation(api.taskRuns.updateVSCodeStatus, {
+        await getConvex().mutation(api.taskRuns.updateVSCodeStatus, {
           teamIdOrSlug: DEFAULT_TEAM_ID,
           id: taskRunId as Id<"taskRuns">,
           status: "stopped",
@@ -1202,7 +1202,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       }
 
       try {
-        const containerSettings = await convex.query(
+        const containerSettings = await getConvex().query(
           api.containerSettings.getEffective,
           { teamIdOrSlug: DEFAULT_TEAM_ID }
         );
@@ -1229,7 +1229,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       );
 
       // 1. Check for containers that have exceeded their TTL
-      const containersToStop = await convex.query(
+      const containersToStop = await getConvex().query(
         api.taskRuns.getContainersToStop,
         { teamIdOrSlug: DEFAULT_TEAM_ID }
       );
@@ -1247,7 +1247,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       }
 
       // 2. Enforce max running containers limit with smart prioritization
-      const containerPriority = await convex.query(
+      const containerPriority = await getConvex().query(
         api.taskRuns.getRunningContainersByCleanupPriority,
         { teamIdOrSlug: DEFAULT_TEAM_ID }
       );

@@ -1,7 +1,7 @@
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { serverLogger } from "./utils/fileLogger.js";
-import { convex } from "./utils/convexClient.js";
+import { getConvex } from "./utils/convexClient.js";
 import { api } from "@cmux/convex/api";
 import type { FunctionReturnType } from "convex/server";
 import type { Id } from "@cmux/convex/dataModel";
@@ -52,7 +52,7 @@ export async function stopContainersForRuns(
     ref: typeof api.taskRuns.getByTask,
     args: { teamIdOrSlug: string; taskId: Id<"tasks"> }
   ) => Promise<FunctionReturnType<typeof api.taskRuns.getByTask>> = (ref, args) =>
-    convex.query(ref, args)
+    getConvex().query(ref, args)
 ): Promise<StopResult[]> {
   const tree = await query(api.taskRuns.getByTask, {
     teamIdOrSlug: DEFAULT_TEAM_ID,

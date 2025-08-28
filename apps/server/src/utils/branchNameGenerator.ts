@@ -4,7 +4,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { api } from "@cmux/convex/api";
 import { generateObject, type LanguageModel } from "ai";
 import { z } from "zod";
-import { convex } from "../utils/convexClient.js";
+import { getConvex } from "../utils/convexClient.js";
 import { DEFAULT_TEAM_ID } from "@cmux/shared";
 import { serverLogger } from "./fileLogger.js";
 
@@ -186,7 +186,7 @@ export async function generateBranchBaseName(
   taskDescription: string
 ): Promise<string> {
   // Fetch API keys from Convex
-  const apiKeys = await convex.query(api.apiKeys.getAllForAgents, {
+  const apiKeys = await getConvex().query(api.apiKeys.getAllForAgents, {
     teamIdOrSlug: DEFAULT_TEAM_ID,
   });
 
@@ -202,7 +202,7 @@ export async function generateBranchBaseName(
 export async function getPRTitleFromTaskDescription(
   taskDescription: string
 ): Promise<string> {
-  const apiKeys = await convex.query(api.apiKeys.getAllForAgents, {
+  const apiKeys = await getConvex().query(api.apiKeys.getAllForAgents, {
     teamIdOrSlug: DEFAULT_TEAM_ID,
   });
   const prTitle = await generatePRTitle(taskDescription, apiKeys);

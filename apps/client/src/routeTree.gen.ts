@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as LayoutRouteImport } from './routes/_layout'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as HandlerSplatRouteImport } from './routes/handler.$'
+import { Route as LayoutTeamPickerRouteImport } from './routes/_layout.team-picker'
 import { Route as LayoutProfileRouteImport } from './routes/_layout.profile'
 import { Route as LayoutDebugRouteImport } from './routes/_layout.debug'
 import { Route as LayoutTeamSlugOrIdRouteImport } from './routes/_layout.$teamSlugOrId'
@@ -34,6 +35,11 @@ const HandlerSplatRoute = HandlerSplatRouteImport.update({
   id: '/handler/$',
   path: '/handler/$',
   getParentRoute: () => rootRouteImport,
+} as any)
+const LayoutTeamPickerRoute = LayoutTeamPickerRouteImport.update({
+  id: '/team-picker',
+  path: '/team-picker',
+  getParentRoute: () => LayoutRoute,
 } as any)
 const LayoutProfileRoute = LayoutProfileRouteImport.update({
   id: '/profile',
@@ -86,6 +92,7 @@ export interface FileRoutesByFullPath {
   '/$teamSlugOrId': typeof LayoutTeamSlugOrIdRouteWithChildren
   '/debug': typeof LayoutDebugRoute
   '/profile': typeof LayoutProfileRoute
+  '/team-picker': typeof LayoutTeamPickerRoute
   '/handler/$': typeof HandlerSplatRoute
   '/$teamSlugOrId/dashboard': typeof LayoutTeamSlugOrIdDashboardRoute
   '/$teamSlugOrId/settings': typeof LayoutTeamSlugOrIdSettingsRoute
@@ -98,6 +105,7 @@ export interface FileRoutesByTo {
   '/$teamSlugOrId': typeof LayoutTeamSlugOrIdRouteWithChildren
   '/debug': typeof LayoutDebugRoute
   '/profile': typeof LayoutProfileRoute
+  '/team-picker': typeof LayoutTeamPickerRoute
   '/handler/$': typeof HandlerSplatRoute
   '/$teamSlugOrId/dashboard': typeof LayoutTeamSlugOrIdDashboardRoute
   '/$teamSlugOrId/settings': typeof LayoutTeamSlugOrIdSettingsRoute
@@ -111,6 +119,7 @@ export interface FileRoutesById {
   '/_layout/$teamSlugOrId': typeof LayoutTeamSlugOrIdRouteWithChildren
   '/_layout/debug': typeof LayoutDebugRoute
   '/_layout/profile': typeof LayoutProfileRoute
+  '/_layout/team-picker': typeof LayoutTeamPickerRoute
   '/handler/$': typeof HandlerSplatRoute
   '/_layout/$teamSlugOrId/dashboard': typeof LayoutTeamSlugOrIdDashboardRoute
   '/_layout/$teamSlugOrId/settings': typeof LayoutTeamSlugOrIdSettingsRoute
@@ -125,6 +134,7 @@ export interface FileRouteTypes {
     | '/$teamSlugOrId'
     | '/debug'
     | '/profile'
+    | '/team-picker'
     | '/handler/$'
     | '/$teamSlugOrId/dashboard'
     | '/$teamSlugOrId/settings'
@@ -137,6 +147,7 @@ export interface FileRouteTypes {
     | '/$teamSlugOrId'
     | '/debug'
     | '/profile'
+    | '/team-picker'
     | '/handler/$'
     | '/$teamSlugOrId/dashboard'
     | '/$teamSlugOrId/settings'
@@ -149,6 +160,7 @@ export interface FileRouteTypes {
     | '/_layout/$teamSlugOrId'
     | '/_layout/debug'
     | '/_layout/profile'
+    | '/_layout/team-picker'
     | '/handler/$'
     | '/_layout/$teamSlugOrId/dashboard'
     | '/_layout/$teamSlugOrId/settings'
@@ -185,6 +197,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/handler/$'
       preLoaderRoute: typeof HandlerSplatRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_layout/team-picker': {
+      id: '/_layout/team-picker'
+      path: '/team-picker'
+      fullPath: '/team-picker'
+      preLoaderRoute: typeof LayoutTeamPickerRouteImport
+      parentRoute: typeof LayoutRoute
     }
     '/_layout/profile': {
       id: '/_layout/profile'
@@ -283,12 +302,14 @@ interface LayoutRouteChildren {
   LayoutTeamSlugOrIdRoute: typeof LayoutTeamSlugOrIdRouteWithChildren
   LayoutDebugRoute: typeof LayoutDebugRoute
   LayoutProfileRoute: typeof LayoutProfileRoute
+  LayoutTeamPickerRoute: typeof LayoutTeamPickerRoute
 }
 
 const LayoutRouteChildren: LayoutRouteChildren = {
   LayoutTeamSlugOrIdRoute: LayoutTeamSlugOrIdRouteWithChildren,
   LayoutDebugRoute: LayoutDebugRoute,
   LayoutProfileRoute: LayoutProfileRoute,
+  LayoutTeamPickerRoute: LayoutTeamPickerRoute,
 }
 
 const LayoutRouteWithChildren =

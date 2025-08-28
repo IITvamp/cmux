@@ -4,6 +4,7 @@ import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { createRootRouteWithContext, Outlet } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { useEffect, useState } from "react";
+import { SocketProvider } from "@/contexts/socket/socket-provider";
 import { Toaster } from "sonner";
 
 export const Route = createRootRouteWithContext<{
@@ -46,10 +47,10 @@ function DevTools() {
 
 function RootComponent() {
   return (
-    <>
+    <SocketProvider>
       <Outlet />
       <DevTools />
       <ToasterWithTheme />
-    </>
+    </SocketProvider>
   );
 }

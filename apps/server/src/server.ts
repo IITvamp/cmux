@@ -33,7 +33,8 @@ import { GitDiffManager } from "./gitDiff.js";
 import { createProxyApp, setupWebSocketProxy } from "./proxyApp.js";
 import { RepositoryManager } from "./repositoryManager.js";
 import { getPRTitleFromTaskDescription } from "./utils/branchNameGenerator.js";
-import { convex } from "./utils/convexClient.js";
+import { getConvex } from "./utils/convexClient.js";
+import { runWithAuthToken } from "./utils/requestContext.js";
 import { ensureRunWorktreeAndBranch } from "./utils/ensureRunWorktree.js";
 import { dockerLogger, serverLogger } from "./utils/fileLogger.js";
 import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
@@ -145,9 +146,24 @@ export async function startServer({
     allowEIO3: true, // Allow different Socket.IO versions
   });
 
+  // Attach auth context from socket.io connection query param ?auth=JWT
+  io.use((socket, next) => {
+    const q = socket.handshake.query?.auth;
+    const token = Array.isArray(q) ? q[0] : typeof q === "string" ? q : undefined;
+    runWithAuthToken(token, () => next());
+  });
+
   setupWebSocketProxy(httpServer);
 
+  let hasRefreshedGithub = false;
+
   io.on("connection", (socket) => {
+    // Ensure every packet runs within the auth context associated with this socket
+    const q = socket.handshake.query?.auth;
+    const token = Array.isArray(q) ? q[0] : typeof q === "string" ? q : undefined;
+    socket.use((_, next) => {
+      runWithAuthToken(token, () => next());
+    });
     serverLogger.info("Client connected:", socket.id);
 
     // Send default repo info to newly connected client if available
@@ -162,6 +178,26 @@ export async function startServer({
         defaultRepoData
       );
       socket.emit("default-repo", defaultRepoData);
+    }
+
+    // Kick off initial GitHub data refresh only after an authenticated connection
+    const qAuth = socket.handshake.query?.auth;
+    const initialToken = Array.isArray(qAuth)
+      ? qAuth[0]
+      : typeof qAuth === "string"
+        ? qAuth
+        : undefined;
+    if (!hasRefreshedGithub && initialToken) {
+      hasRefreshedGithub = true;
+      runWithAuthToken(initialToken, () => {
+        refreshGitHubData().catch((error) => {
+          serverLogger.error("Background refresh failed:", error);
+        });
+      });
+    } else if (!initialToken) {
+      serverLogger.info(
+        "Skipping initial GitHub refresh: no auth token on connect"
+      );
     }
 
     (async () => {
@@ -212,7 +248,7 @@ export async function startServer({
             taskData.taskDescription
           );
           // Persist to Convex immediately
-          await convex.mutation(api.tasks.setPullRequestTitle, {
+          await getConvex().mutation(api.tasks.setPullRequestTitle, {
             teamIdOrSlug: DEFAULT_TEAM_ID,
             id: taskId,
             pullRequestTitle: generatedTitle,
@@ -323,7 +359,7 @@ export async function startServer({
         const { taskRunId } = GitHubCreateDraftPrSchema.parse(data);
 
         // Load run and task (no worktree setup to keep it light)
-        const run = await convex.query(api.taskRuns.get, {
+        const run = await getConvex().query(api.taskRuns.get, {
           teamIdOrSlug: DEFAULT_TEAM_ID,
           id: taskRunId as Id<"taskRuns">,
         });
@@ -331,7 +367,7 @@ export async function startServer({
           callback({ success: false, error: "Task run not found" });
           return;
         }
-        const task = await convex.query(api.tasks.getById, {
+        const task = await getConvex().query(api.tasks.getById, {
           teamIdOrSlug: DEFAULT_TEAM_ID,
           id: run.taskId,
         });
@@ -394,7 +430,7 @@ export async function startServer({
         }
 
         if (!prBasic) {
-          await convex.mutation(api.taskRuns.updatePullRequestState, {
+          await getConvex().mutation(api.taskRuns.updatePullRequestState, {
             teamIdOrSlug: DEFAULT_TEAM_ID,
             id: run._id,
             state: "none",
@@ -403,7 +439,7 @@ export async function startServer({
             url: undefined,
           });
           // Update task merge status to none
-          await convex.mutation(api.tasks.updateMergeStatus, {
+          await getConvex().mutation(api.tasks.updateMergeStatus, {
             teamIdOrSlug: DEFAULT_TEAM_ID,
             id: task._id,
             mergeStatus: "none",
@@ -433,7 +469,7 @@ export async function startServer({
                   ? "closed"
                   : "unknown";
 
-        await convex.mutation(api.taskRuns.updatePullRequestState, {
+        await getConvex().mutation(api.taskRuns.updatePullRequestState, {
           teamIdOrSlug: DEFAULT_TEAM_ID,
           id: run._id,
           state,
@@ -464,7 +500,7 @@ export async function startServer({
             break;
         }
         if (taskMergeStatus !== "none") {
-          await convex.mutation(api.tasks.updateMergeStatus, {
+          await getConvex().mutation(api.tasks.updateMergeStatus, {
             teamIdOrSlug: DEFAULT_TEAM_ID,
             id: task._id,
             mergeStatus: taskMergeStatus,
@@ -495,13 +531,13 @@ export async function startServer({
           method: "squash" | "rebase" | "merge";
         };
 
-        const run = await convex.query(api.taskRuns.get, {
+        const run = await getConvex().query(api.taskRuns.get, {
           teamIdOrSlug: DEFAULT_TEAM_ID,
           id: taskRunId as Id<"taskRuns">,
         });
         if (!run)
           return callback({ success: false, error: "Task run not found" });
-        const task = await convex.query(api.tasks.getById, {
+        const task = await getConvex().query(api.tasks.getById, {
           teamIdOrSlug: DEFAULT_TEAM_ID,
           id: run.taskId,
         });
@@ -601,7 +637,7 @@ export async function startServer({
             commitMessage
           );
           // Update Convex: merged
-          await convex.mutation(api.taskRuns.updatePullRequestState, {
+          await getConvex().mutation(api.taskRuns.updatePullRequestState, {
             teamIdOrSlug: DEFAULT_TEAM_ID,
             id: run._id,
             state: "merged",
@@ -610,7 +646,7 @@ export async function startServer({
             url: detail.html_url,
           });
           // Update task merge status to merged
-          await convex.mutation(api.tasks.updateMergeStatus, {
+          await getConvex().mutation(api.tasks.updateMergeStatus, {
             teamIdOrSlug: DEFAULT_TEAM_ID,
             id: task._id,
             mergeStatus: "pr_merged",
@@ -665,13 +701,13 @@ export async function startServer({
             head: branchName,
           });
 
-          await convex.mutation(api.taskRuns.updatePullRequestState, {
+          await getConvex().mutation(api.taskRuns.updatePullRequestState, {
             teamIdOrSlug: DEFAULT_TEAM_ID,
             id: run._id,
             state: "merged",
           });
 
-          await convex.mutation(api.tasks.updateMergeStatus, {
+          await getConvex().mutation(api.tasks.updateMergeStatus, {
             teamIdOrSlug: DEFAULT_TEAM_ID,
             id: task._id,
             mergeStatus: "pr_merged",
@@ -1131,28 +1167,34 @@ export async function startServer({
 
     socket.on("github-fetch-repos", async (callback) => {
       try {
+        if (!initialToken) {
+          callback({ success: false, repos: {}, error: "Not authenticated" });
+          return;
+        }
         // First, try to get existing repos from Convex
-        const existingRepos = await convex.query(api.github.getAllRepos, {
+        const existingRepos = await getConvex().query(api.github.getAllRepos, {
           teamIdOrSlug: DEFAULT_TEAM_ID,
         });
 
         if (existingRepos.length > 0) {
           // If we have repos, return them and refresh in the background
-          const reposByOrg = await convex.query(api.github.getReposByOrg, {
+          const reposByOrg = await getConvex().query(api.github.getReposByOrg, {
             teamIdOrSlug: DEFAULT_TEAM_ID,
           });
           callback({ success: true, repos: reposByOrg });
 
           // Refresh in the background to add any new repos
-          refreshGitHubData().catch((error) => {
-            serverLogger.error("Background refresh failed:", error);
-          });
+          runWithAuthToken(initialToken, () =>
+            refreshGitHubData().catch((error) => {
+              serverLogger.error("Background refresh failed:", error);
+            })
+          );
           return;
         }
 
         // If no repos exist, do a full fetch
-        await refreshGitHubData();
-        const reposByOrg = await convex.query(api.github.getReposByOrg, {
+        await runWithAuthToken(initialToken, () => refreshGitHubData());
+        const reposByOrg = await getConvex().query(api.github.getReposByOrg, {
           teamIdOrSlug: DEFAULT_TEAM_ID,
         });
         callback({ success: true, repos: reposByOrg });
@@ -1196,7 +1238,7 @@ Context:
 Please address the issue mentioned in the comment above.`;
 
         // Create a new task in Convex
-        const taskId = await convex.mutation(api.tasks.create, {
+        const taskId = await getConvex().mutation(api.tasks.create, {
           teamIdOrSlug: DEFAULT_TEAM_ID,
           text: formattedPrompt,
           projectFullName: "manaflow-ai/cmux",
@@ -1246,7 +1288,7 @@ Please address the issue mentioned in the comment above.`;
 
         // Create a comment reply with link to the task
         try {
-          await convex.mutation(api.comments.addReply, {
+          await getConvex().mutation(api.comments.addReply, {
             teamIdOrSlug: DEFAULT_TEAM_ID,
             commentId: commentId,
             content: `[View run here](http://localhost:5173/task/${taskId})`,
@@ -1282,7 +1324,7 @@ Please address the issue mentioned in the comment above.`;
         const { repo } = GitHubFetchBranchesSchema.parse(data);
 
         // Check if we already have branches for this repo
-        const existingBranches = await convex.query(api.github.getBranches, {
+        const existingBranches = await getConvex().query(api.github.getBranches, {
           teamIdOrSlug: DEFAULT_TEAM_ID,
           repo,
         });
@@ -1517,14 +1559,14 @@ Please address the issue mentioned in the comment above.`;
         }
 
         if (prUrl) {
-          await convex.mutation(api.taskRuns.updatePullRequestUrl, {
+          await getConvex().mutation(api.taskRuns.updatePullRequestUrl, {
             teamIdOrSlug: DEFAULT_TEAM_ID,
             id: run._id,
             pullRequestUrl: prUrl,
             isDraft: true,
           });
           // Update task merge status to draft PR
-          await convex.mutation(api.tasks.updateMergeStatus, {
+          await getConvex().mutation(api.tasks.updateMergeStatus, {
             teamIdOrSlug: DEFAULT_TEAM_ID,
             id: task._id,
             mergeStatus: "pr_draft",
@@ -1776,7 +1818,7 @@ Please address the issue mentioned in the comment above.`;
           }
         }
 
-        await convex.mutation(api.taskRuns.updatePullRequestState, {
+        await getConvex().mutation(api.taskRuns.updatePullRequestState, {
           teamIdOrSlug: DEFAULT_TEAM_ID,
           id: run._id,
           state: finalUrl
@@ -1812,7 +1854,7 @@ Please address the issue mentioned in the comment above.`;
             break;
         }
         if (taskMergeStatus !== "none") {
-          await convex.mutation(api.tasks.updateMergeStatus, {
+          await getConvex().mutation(api.tasks.updateMergeStatus, {
             teamIdOrSlug: DEFAULT_TEAM_ID,
             id: task._id,
             mergeStatus: taskMergeStatus,
@@ -1901,14 +1943,14 @@ Please address the issue mentioned in the comment above.`;
         serverLogger.info(
           `Storing default repository: ${defaultRepo.remoteName}`
         );
-        await convex.mutation(api.github.upsertRepo, {
-          teamIdOrSlug: DEFAULT_TEAM_ID,
-          fullName: defaultRepo.remoteName,
-          org: defaultRepo.remoteName.split("/")[0] || "",
-          name: defaultRepo.remoteName.split("/")[1] || "",
-          gitRemote: defaultRepo.remoteUrl || "",
-          provider: "github", // Default to github, could be enhanced to detect provider
-        });
+          await getConvex().mutation(api.github.upsertRepo, {
+            teamIdOrSlug: DEFAULT_TEAM_ID,
+            fullName: defaultRepo.remoteName,
+            org: defaultRepo.remoteName.split("/")[0] || "",
+            name: defaultRepo.remoteName.split("/")[1] || "",
+            gitRemote: defaultRepo.remoteUrl || "",
+            provider: "github", // Default to github, could be enhanced to detect provider
+          });
 
         // Also emit to all connected clients
         const defaultRepoData = {
@@ -1932,10 +1974,7 @@ Please address the issue mentioned in the comment above.`;
       );
     }
 
-    // Refresh GitHub data on server start
-    refreshGitHubData().catch((error) => {
-      serverLogger.error("Error refreshing GitHub data on startup:", error);
-    });
+    // Startup refresh moved to first authenticated socket connection
   });
   let isCleaningUp = false;
   let isCleanedUp = false;

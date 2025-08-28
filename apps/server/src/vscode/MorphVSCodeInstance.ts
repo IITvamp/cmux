@@ -2,7 +2,7 @@ import { api } from "@cmux/convex/api";
 import type { Doc } from "@cmux/convex/dataModel";
 import { type Instance, MorphCloudClient } from "morphcloud";
 import z from "zod";
-import { convex } from "../utils/convexClient.js";
+import { getConvex } from "../utils/convexClient.js";
 import { DEFAULT_TEAM_ID } from "@cmux/shared";
 import { dockerLogger } from "../utils/fileLogger.js";
 import { workerExec } from "../utils/workerExec.js";
@@ -212,7 +212,7 @@ export class MorphVSCodeInstance extends VSCodeInstance {
     console.log("[MorphVSCodeInstance] Networking:", devcontainerNetwork);
 
     // Persist networking information to Convex
-    await convex.mutation(api.taskRuns.updateNetworking, {
+    await getConvex().mutation(api.taskRuns.updateNetworking, {
       teamIdOrSlug: DEFAULT_TEAM_ID,
       id: this.taskRunId,
       networking: devcontainerNetwork,

@@ -1,6 +1,6 @@
 import { v } from "convex/values";
-import { authMutation, authQuery } from "./users/utils";
 import { getTeamId } from "../_shared/team";
+import { authMutation, authQuery } from "./users/utils";
 
 export const getAll = authQuery({
   args: { teamIdOrSlug: v.string() },

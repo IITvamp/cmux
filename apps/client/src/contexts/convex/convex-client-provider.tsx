@@ -1,48 +1,99 @@
 "use client";
 
 import CmuxLogo from "@/components/logo/cmux-logo";
-import { stackClientApp } from "@/stack";
 import { SignIn, useUser } from "@stackframe/react";
 import { useQuery } from "@tanstack/react-query";
-import { ConvexProviderWithAuth, useConvexAuth } from "convex/react";
+import { ConvexProviderWithAuth } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
-import { type ReactNode, useCallback, useMemo, useRef } from "react";
+import {
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import {
+  authJsonQueryOptions,
+  defaultAuthJsonRefreshInterval,
+  type AuthJson,
+} from "./authJsonQueryOptions";
 import { convexQueryClient } from "./convex-query-client";
 
 // refresh every 30 minutes
-const authJsonRefreshInterval = 30 * 60 * 1000;
+const authJsonRefreshInterval = defaultAuthJsonRefreshInterval;
+
+function BootReadyMarker({
+  children,
+  onReady,
+}: {
+  children: ReactNode;
+  onReady: () => void;
+}) {
+  useEffect(() => {
+    onReady();
+  }, [onReady]);
+  return <>{children}</>;
+}
+
+function makeBootReadyHandler(setter: (v: boolean) => void) {
+  return () => setter(true);
+}
 
 function useAuthFromStack() {
-  const user = useUser();
-  // hacky userRef because when localStorage changes for non-stack auth keys (like dark/light mode) it triggers a re-render of the user object
+  // Prefer a stable null-or-user value to avoid suspense or transient values.
+  const user = useUser({ or: "return-null" });
+
+  // Keep refs for values we may want to read without recreating callbacks.
   const userRef = useRef(user);
   userRef.current = user;
+
+  // Suspense the initial auth JSON when a user exists to avoid double flashes.
+  const enableAuthQuery = !!user;
   const authJsonQuery = useQuery({
-    queryKey: ["authJson"],
-    queryFn: async () => {
-      if (!user) return null;
-      const authJson = await user.getAuthJson();
-      return authJson;
-    },
-    refetchInterval: authJsonRefreshInterval,
-    refetchIntervalInBackground: true,
+    ...authJsonQueryOptions(user, authJsonRefreshInterval),
+    enabled: enableAuthQuery,
+    staleTime: 5 * 60 * 1000,
   });
+  // Manually suspend until the first authJson resolves when a user exists.
+  const suspenderRef = useRef<{ p: Promise<void>; resolve: () => void } | null>(
+    null
+  );
+  if (enableAuthQuery && typeof authJsonQuery.data === "undefined") {
+    if (!suspenderRef.current) {
+      let resolve!: () => void;
+      const p = new Promise<void>((r) => {
+        resolve = r;
+      });
+      suspenderRef.current = { p, resolve };
+    }
+    throw suspenderRef.current.p;
+  }
+  useEffect(() => {
+    if (suspenderRef.current && typeof authJsonQuery.data !== "undefined") {
+      suspenderRef.current.resolve();
+      suspenderRef.current = null;
+    }
+  }, [authJsonQuery.data]);
+  const authJsonRef = useRef<AuthJson | undefined>(authJsonQuery.data);
+  useEffect(() => {
+    authJsonRef.current = authJsonQuery.data;
+  }, [authJsonQuery.data]);
+
   const isLoading = false;
   const isAuthenticated = useMemo(() => !!user, [user]);
+
+  // Important: keep this function identity stable unless auth context truly changes.
   const fetchAccessToken = useCallback(
     async (_opts: { forceRefreshToken: boolean }) => {
-      const stackUser = userRef.current
-        ? userRef.current
-        : await stackClientApp.getUser({ or: "return-null" });
-      if (!stackUser) {
-        return null;
+      const cached = authJsonRef.current;
+      if (cached && typeof cached === "object" && "accessToken" in cached) {
+        return cached?.accessToken ?? null;
       }
-      const authJson = authJsonQuery.data
-        ? authJsonQuery.data
-        : await stackUser.getAuthJson();
-      return authJson.accessToken ?? null;
+      return null;
     },
-    [authJsonQuery.data]
+    []
   );
 
   const authResult = useMemo(
@@ -53,38 +104,40 @@ function useAuthFromStack() {
     }),
     [isAuthenticated, isLoading, fetchAccessToken]
   );
+  // console.log("authResult", authResult);
   return authResult;
 }
 
 function AuthenticatedOrLoading({ children }: { children: ReactNode }) {
-  const { isAuthenticated, isLoading } = useConvexAuth();
-
+  // Only gate on Stack user presence to avoid auth-loading flicker.
+  const user = useUser({ or: "return-null" });
+  const showSignIn = !user;
+  useEffect(() => {
+    console.log(
+      "[AuthOverlay] gate",
+      JSON.stringify({
+        showSignIn,
+        path: typeof window !== "undefined" ? window.location.pathname : "",
+      })
+    );
+  }, [showSignIn]);
   return (
     <>
       <AnimatePresence mode="wait">
-        {isLoading ? (
-          <motion.div
-            key="loading"
-            className="absolute inset-0 w-screen h-dvh flex items-center justify-center bg-white dark:bg-black z-[99999999]"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-          >
-            <CmuxLogo showWordmark={false} height={50} />
-          </motion.div>
-        ) : !isAuthenticated ? (
+        {showSignIn ? (
           <motion.div
             key="signin"
             className="absolute inset-0 w-screen h-dvh flex items-center justify-center bg-white dark:bg-black z-[99999999]"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
           >
             <SignIn />
           </motion.div>
         ) : null}
       </AnimatePresence>
-      {isAuthenticated && children}
+      {children}
     </>
   );
 }
@@ -94,12 +147,36 @@ export default function ConvexClientProvider({
 }: {
   children: ReactNode;
 }) {
+  const [bootReady, setBootReady] = useState(false);
+  const onBootReady = useMemo(() => makeBootReadyHandler(setBootReady), []);
+
   return (
-    <ConvexProviderWithAuth
-      client={convexQueryClient.convexClient}
-      useAuth={useAuthFromStack}
-    >
-      <AuthenticatedOrLoading>{children}</AuthenticatedOrLoading>
-    </ConvexProviderWithAuth>
+    <>
+      <AnimatePresence mode="sync" initial={false}>
+        {!bootReady ? (
+          <motion.div
+            key="boot-loader"
+            className="absolute inset-0 w-screen h-dvh flex items-center justify-center bg-white dark:bg-black z-[99999999]"
+            initial={{ opacity: 1 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.22, ease: "easeOut" }}
+          >
+            <CmuxLogo showWordmark={false} height={50} />
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
+
+      <Suspense fallback={null}>
+        <BootReadyMarker onReady={onBootReady}>
+          <ConvexProviderWithAuth
+            client={convexQueryClient.convexClient}
+            useAuth={useAuthFromStack}
+          >
+            <AuthenticatedOrLoading>{children}</AuthenticatedOrLoading>
+          </ConvexProviderWithAuth>
+        </BootReadyMarker>
+      </Suspense>
+    </>
   );
 }

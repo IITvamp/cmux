@@ -1,5 +1,4 @@
 import { ThemeProvider } from "@/components/theme/theme-provider";
-import { SocketProvider } from "@/contexts/socket/socket-provider";
 import { HeroUIProvider } from "@heroui/react";
 import { StackProvider, StackTheme } from "@stackframe/react";
 import {
@@ -72,7 +71,7 @@ export function Providers({ children }: ProvidersProps) {
         <StackTheme>
           <StackProvider app={stackClientApp}>
             <AntdConfigProvider theme={antdTheme}>
-              <SocketProvider>{children}</SocketProvider>
+              {children}
             </AntdConfigProvider>
           </StackProvider>
         </StackTheme>

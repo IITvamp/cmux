@@ -19,7 +19,7 @@ import {
   generateUniqueBranchNames,
   generateUniqueBranchNamesFromTitle,
 } from "./utils/branchNameGenerator.js";
-import { convex } from "./utils/convexClient.js";
+import { getConvex } from "./utils/convexClient.js";
 import { serverLogger } from "./utils/fileLogger.js";
 import { workerExec } from "./utils/workerExec.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
@@ -65,7 +65,7 @@ export async function spawnAgent(
     );
 
     // Create a task run for this specific agent
-    const taskRunId = await convex.mutation(api.taskRuns.create, {
+    const taskRunId = await getConvex().mutation(api.taskRuns.create, {
       teamIdOrSlug: DEFAULT_TEAM_ID,
       taskId: taskId,
       prompt: `${options.taskDescription} (${agent.name})`,
@@ -74,7 +74,7 @@ export async function spawnAgent(
     });
 
     // Fetch the task to get image storage IDs
-    const task = await convex.query(api.tasks.getById, {
+    const task = await getConvex().query(api.tasks.getById, {
       teamIdOrSlug: DEFAULT_TEAM_ID,
       id: taskId,
     });
@@ -88,7 +88,7 @@ export async function spawnAgent(
 
     // If task has images with storage IDs, download them
     if (task && task.images && task.images.length > 0) {
-      const imageUrlsResult = await convex.query(api.storage.getUrls, {
+      const imageUrlsResult = await getConvex().query(api.storage.getUrls, {
         teamIdOrSlug: DEFAULT_TEAM_ID,
         storageIds: task.images.map((image) => image.storageId),
       });
@@ -218,7 +218,7 @@ export async function spawnAgent(
     }
 
     // Fetch API keys from Convex
-    const apiKeys = await convex.query(api.apiKeys.getAllForAgents, {
+    const apiKeys = await getConvex().query(api.apiKeys.getAllForAgents, {
       teamIdOrSlug: DEFAULT_TEAM_ID,
     });
 
@@ -312,7 +312,7 @@ export async function spawnAgent(
     }
 
     // Update the task run with the worktree path
-    await convex.mutation(api.taskRuns.updateWorktreePath, {
+    await getConvex().mutation(api.taskRuns.updateWorktreePath, {
       teamIdOrSlug: DEFAULT_TEAM_ID,
       id: taskRunId,
       worktreePath: worktreePath,
@@ -506,7 +506,7 @@ export async function spawnAgent(
 
         // Append error to log for context
         if (data.errorMessage) {
-          await convex.mutation(api.taskRuns.appendLogPublic, {
+          await getConvex().mutation(api.taskRuns.appendLogPublic, {
             teamIdOrSlug: DEFAULT_TEAM_ID,
             id: taskRunId,
             content: `\n\n=== ERROR ===\n${data.errorMessage}\n=== END ERROR ===\n`,
@@ -514,7 +514,7 @@ export async function spawnAgent(
         }
 
         // Mark the run as failed with error message
-        await convex.mutation(api.taskRuns.fail, {
+        await getConvex().mutation(api.taskRuns.fail, {
           teamIdOrSlug: DEFAULT_TEAM_ID,
           id: taskRunId,
           errorMessage: data.errorMessage || "Terminal failed",
@@ -551,7 +551,7 @@ export async function spawnAgent(
     }
 
     // Update VSCode instance information in Convex
-    await convex.mutation(api.taskRuns.updateVSCodeInstance, {
+    await getConvex().mutation(api.taskRuns.updateVSCodeInstance, {
       teamIdOrSlug: DEFAULT_TEAM_ID,
       id: taskRunId,
       vscode: {

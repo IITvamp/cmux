@@ -6,6 +6,9 @@ import type {
 import React, { useEffect, useMemo } from "react";
 import { io, Socket } from "socket.io-client";
 import { SocketContext } from "./socket-context";
+import { useUser } from "@stackframe/react";
+import { useQuery } from "@tanstack/react-query";
+import { authJsonQueryOptions } from "../convex/authJsonQueryOptions";
 
 export interface SocketContextType {
   socket: Socket<ServerToClientEvents, ClientToServerEvents> | null;
@@ -22,6 +25,9 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
   children,
   url = "http://localhost:9776",
 }) => {
+  const user = useUser({ or: "return-null" });
+  const authJsonQuery = useQuery(authJsonQueryOptions(user));
+  const authToken = authJsonQuery.data?.accessToken;
   const [socket, setSocket] = React.useState<
     SocketContextType["socket"] | null
   >(null);
@@ -33,6 +39,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
   useEffect(() => {
     const newSocket = io(url, {
       transports: ["websocket"],
+      query: authToken ? { auth: authToken } : undefined,
     });
     setSocket(newSocket);
 
@@ -53,7 +60,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
     return () => {
       newSocket.disconnect();
     };
-  }, [url]);
+  }, [url, authToken]);
 
   const contextValue: SocketContextType = useMemo(
     () => ({
