@@ -37,6 +37,8 @@ interface TaskDetailHeaderProps {
   isLoading?: boolean;
 }
 
+const ENABLE_MERGE_BUTTON = false;
+
 export function TaskDetailHeader({
   task,
   taskRuns,
@@ -186,7 +188,7 @@ export function TaskDetailHeader({
         <div className="col-start-3 row-start-1 row-span-2 self-center flex items-center gap-2 shrink-0">
           {prIsMerged ? (
             <div
-              className="flex items-center gap-1.5 px-3 py-1 bg-[#8250df] text-white rounded font-medium text-xs select-none whitespace-nowrap border border-[#6e40cc] dark:bg-[#8250df] dark:border-[#6e40cc]"
+              className="flex items-center gap-1.5 px-3 py-1 bg-[#8250df] text-white rounded font-medium text-xs select-none whitespace-nowrap border border-[#6e40cc] dark:bg-[#8250df] dark:border-[#6e40cc] cursor-not-allowed"
               title="Pull request has been merged"
             >
               <GitMerge className="w-3.5 h-3.5" />
@@ -198,8 +200,8 @@ export function TaskDetailHeader({
                 prIsOpen
                   ? handleMerge
                   : async () => {
-                    handleOpenPR();
-                  }
+                      handleOpenPR();
+                    }
               }
               isOpen={prIsOpen}
               disabled={
@@ -210,20 +212,18 @@ export function TaskDetailHeader({
               }
             />
           )}
-          {!prIsOpen && (
+          {!prIsOpen && !prIsMerged && ENABLE_MERGE_BUTTON && (
             <button
               onClick={handleMergeBranch}
               className="flex items-center gap-1.5 px-3 py-1 bg-[#8250df] text-white rounded hover:bg-[#8250df]/90 dark:bg-[#8250df] dark:hover:bg-[#8250df]/90 border border-[#6e40cc] dark:border-[#6e40cc] font-medium text-xs select-none disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-              disabled={
-                isOpeningPr || isCreatingPr || isMerging || !hasChanges
-              }
+              disabled={isOpeningPr || isCreatingPr || isMerging || !hasChanges}
             >
               <GitMerge className="w-3.5 h-3.5" />
               Merge
             </button>
           )}
           {selectedRun?.pullRequestUrl &&
-            selectedRun.pullRequestUrl !== "pending" ? (
+          selectedRun.pullRequestUrl !== "pending" ? (
             <a
               href={selectedRun.pullRequestUrl}
               target="_blank"
@@ -337,7 +337,9 @@ export function TaskDetailHeader({
                     onOpenChange={handleAgentOpenChange}
                   >
                     <Dropdown.Trigger className="flex items-center gap-1 text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white transition-colors text-xs select-none truncate min-w-0 max-w-full">
-                      <span className="truncate">{selectedRun?.agentName || "Unknown agent"}</span>
+                      <span className="truncate">
+                        {selectedRun?.agentName || "Unknown agent"}
+                      </span>
                       <ChevronDown className="w-3 h-3 shrink-0" />
                     </Dropdown.Trigger>
 
