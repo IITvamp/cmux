@@ -25,8 +25,8 @@ export async function createPullRequestForWinner(
   try {
     // Check workspace settings toggle (default: disabled)
     const ws = await convex.query(api.workspaceSettings.get);
-    const autoPrEnabled = !!ws?.autoPrEnabled;
-    if (!autoPrEnabled) {
+    const autoPrEnabled = false; // Crown evaluator disabled
+if (!autoPrEnabled) {
       serverLogger.info(
         `[CrownEvaluator] Auto-PR disabled in settings; skipping.`
       );
