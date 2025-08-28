@@ -1,7 +1,16 @@
-import { contextBridge } from "electron";
+import { contextBridge, ipcRenderer } from "electron";
 import { electronAPI } from "@electron-toolkit/preload";
 
-const api = {};
+const api = {
+  onOAuthCallback: (
+    callback: (data: { refreshToken: string; state?: string }) => void,
+  ) => {
+    ipcRenderer.on("oauth-callback", (_, data) => callback(data));
+  },
+  removeOAuthCallbackListener: () => {
+    ipcRenderer.removeAllListeners("oauth-callback");
+  },
+};
 
 if (process.contextIsolated) {
   try {

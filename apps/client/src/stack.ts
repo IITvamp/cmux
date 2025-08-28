@@ -14,4 +14,10 @@ export const stackClientApp = new StackClientApp({
       };
     },
   },
+  urls: {
+    signIn: "/app-login",
+    afterSignIn: "/",
+    afterSignOut: "/",
+    afterEmailVerification: "/",
+  },
 });
