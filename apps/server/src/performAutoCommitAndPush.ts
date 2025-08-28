@@ -121,9 +121,8 @@ export default async function performAutoCommitAndPush(
     if (isCrowned) {
       // Respect workspace setting for auto-PR
       const ws = await convex.query(api.workspaceSettings.get);
-      const autoPrEnabled =
-        (ws as unknown as { autoPrEnabled?: boolean })?.autoPrEnabled ?? false;
-      if (!autoPrEnabled) {
+      // Crown evaluator is disabled - always skip auto PR creation
+      if (true) {
         serverLogger.info(
           `[AgentSpawner] Branch pushed (auto-PR disabled). Winner: ${agent.name} on ${branchName}`
         );

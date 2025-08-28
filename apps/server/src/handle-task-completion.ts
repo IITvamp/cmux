@@ -173,9 +173,8 @@ export async function handleTaskCompletion({
 
           // Check if auto-PR is enabled
           const ws = await convex.query(api.workspaceSettings.get);
-          const autoPrEnabled = ws?.autoPrEnabled ?? false;
-
-          if (autoPrEnabled && winnerId) {
+          // Crown evaluator is disabled - never create auto PRs
+      if (false) {
             serverLogger.info(
               `[AgentSpawner] Triggering auto-PR for single agent completion`
             );
