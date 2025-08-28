@@ -2,6 +2,8 @@ import { is } from "@electron-toolkit/utils";
 import { app, BrowserWindow, shell } from "electron";
 import { join } from "node:path";
 
+const PROTOCOL = "cmux";
+
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
     width: 1200,
@@ -35,11 +37,41 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
+  // Register custom protocol handler
+  if (process.defaultApp) {
+    if (process.argv.length >= 2) {
+      app.setAsDefaultProtocolClient(PROTOCOL, process.execPath, [
+        join(process.argv[1]),
+      ]);
+    }
+  } else {
+    app.setAsDefaultProtocolClient(PROTOCOL);
+  }
+
   createWindow();
 
   app.on("activate", function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+});
+
+// Handle custom protocol URLs
+app.on("open-url", (event, url) => {
+  event.preventDefault();
+
+  if (url.startsWith(`${PROTOCOL}://`)) {
+    const urlObj = new URL(url);
+    if (urlObj.pathname === "/auth/callback") {
+      const refreshToken = urlObj.searchParams.get("refreshToken");
+      if (refreshToken) {
+        // Send the refresh token to the renderer process
+        const mainWindow = BrowserWindow.getAllWindows()[0];
+        if (mainWindow) {
+          mainWindow.webContents.send("auth-callback", { refreshToken });
+        }
+      }
+    }
+  }
 });
 
 app.on("window-all-closed", () => {

@@ -1,3 +1,4 @@
+import { AuthCallbackHandler } from "@/components/AuthCallbackHandler";
 import { ThemeProvider } from "@/components/theme/theme-provider";
 import { SocketProvider } from "@/contexts/socket/socket-provider";
 import { HeroUIProvider } from "@heroui/react";
@@ -71,6 +72,7 @@ export function Providers({ children }: ProvidersProps) {
       <HeroUIProvider>
         <StackTheme>
           <StackProvider app={stackClientApp}>
+            <AuthCallbackHandler />
             <AntdConfigProvider theme={antdTheme}>
               <SocketProvider>{children}</SocketProvider>
             </AntdConfigProvider>
