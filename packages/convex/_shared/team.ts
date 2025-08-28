@@ -55,3 +55,22 @@ export async function getTeamId(
   }
   return teamIdOrSlug;
 }
+
+// Resolve a teamIdOrSlug to a team UUID without enforcing membership.
+// Use this when the caller already scopes by userId and does not need
+// team membership guarantees (e.g., per-user comments).
+export async function resolveTeamIdLoose(
+  ctx: AnyCtx,
+  teamIdOrSlug: string,
+): Promise<string> {
+  if (isUuid(teamIdOrSlug)) return teamIdOrSlug;
+
+  const team = await ctx.db
+    .query("teams")
+    .filter((q) => q.eq(q.field("slug"), teamIdOrSlug))
+    .first();
+  if (team) return team.uuid;
+
+  // Back-compat: allow legacy string teamIds (e.g., "default").
+  return teamIdOrSlug;
+}

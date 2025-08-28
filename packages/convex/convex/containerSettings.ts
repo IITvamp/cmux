@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { authMutation, authQuery } from "./users/utils";
-import { getTeamId } from "../_shared/team";
+import { resolveTeamIdLoose } from "../_shared/team";
 
 // Default settings
 const DEFAULT_SETTINGS = {
@@ -16,7 +16,7 @@ export const get = authQuery({
   args: { teamIdOrSlug: v.string() },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
-    const teamId = await getTeamId(ctx, args.teamIdOrSlug);
+    const teamId = await resolveTeamIdLoose(ctx, args.teamIdOrSlug);
     const settings = await ctx.db
       .query("containerSettings")
       .withIndex("by_team_user", (q) =>
@@ -51,7 +51,7 @@ export const update = authMutation({
   },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
-    const teamId = await getTeamId(ctx, args.teamIdOrSlug);
+    const teamId = await resolveTeamIdLoose(ctx, args.teamIdOrSlug);
     const existing = await ctx.db
       .query("containerSettings")
       .withIndex("by_team_user", (q) =>
@@ -84,7 +84,7 @@ export const getEffective = authQuery({
   args: { teamIdOrSlug: v.string() },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
-    const teamId = await getTeamId(ctx, args.teamIdOrSlug);
+    const teamId = await resolveTeamIdLoose(ctx, args.teamIdOrSlug);
     const settings = await ctx.db
       .query("containerSettings")
       .withIndex("by_team_user", (q) =>

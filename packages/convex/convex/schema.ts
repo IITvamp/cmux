@@ -30,9 +30,7 @@ const convexSchema = defineSchema({
   teamMemberships: defineTable({
     teamId: v.string(), // canonical team UUID
     userId: v.string(),
-    role: v.optional(
-      v.union(v.literal("owner"), v.literal("member"))
-    ),
+    role: v.optional(v.union(v.literal("owner"), v.literal("member"))),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -93,7 +91,7 @@ const convexSchema = defineSchema({
     updatedAt: v.number(),
   })
     .index("by_uuid", ["uuid"]) // For fast lookup by Stack user id
-    .index("by_email", ["primaryEmail"]) 
+    .index("by_email", ["primaryEmail"])
     .index("by_selected_team", ["selectedTeamId"]),
   tasks: defineTable({
     text: v.string(),

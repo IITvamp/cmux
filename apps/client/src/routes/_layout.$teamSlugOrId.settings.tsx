@@ -28,12 +28,18 @@ function SettingsComponent() {
   >({});
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [isSaving, setIsSaving] = useState(false);
+  const [teamSlug, setTeamSlug] = useState<string>("");
+  const [originalTeamSlug, setOriginalTeamSlug] = useState<string>("");
+  const [teamName, setTeamName] = useState<string>("");
+  const [originalTeamName, setOriginalTeamName] = useState<string>("");
+  const [teamNameError, setTeamNameError] = useState<string>("");
+  const [teamSlugError, setTeamSlugError] = useState<string>("");
   const [worktreePath, setWorktreePath] = useState<string>("");
   const [originalWorktreePath, setOriginalWorktreePath] = useState<string>("");
   const [autoPrEnabled, setAutoPrEnabled] = useState<boolean>(false);
   const [originalAutoPrEnabled, setOriginalAutoPrEnabled] =
     useState<boolean>(false);
-  const [isSaveButtonVisible, setIsSaveButtonVisible] = useState(true);
+  // const [isSaveButtonVisible, setIsSaveButtonVisible] = useState(true);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const saveButtonRef = useRef<HTMLDivElement>(null);
   const usedListRefs = useRef<Record<string, HTMLSpanElement | null>>({});
@@ -70,6 +76,11 @@ function SettingsComponent() {
     convexQuery(api.apiKeys.getAll, { teamIdOrSlug: teamSlugOrId })
   );
 
+  // Query team info (slug)
+  const { data: teamInfo } = useQuery(
+    convexQuery(api.teams.get, { teamIdOrSlug: teamSlugOrId })
+  );
+
   // Query workspace settings
   const { data: workspaceSettings } = useQuery(
     convexQuery(api.workspaceSettings.get, { teamIdOrSlug: teamSlugOrId })
@@ -87,6 +98,39 @@ function SettingsComponent() {
     }
   }, [existingKeys]);
 
+  // Initialize team slug when data loads
+  useEffect(() => {
+    if (teamInfo) {
+      const s = teamInfo.slug || "";
+      setTeamSlug(s);
+      setOriginalTeamSlug(s);
+      setTeamSlugError("");
+      const n = (teamInfo as unknown as { name?: string; displayName?: string }).name ||
+        (teamInfo as unknown as { name?: string; displayName?: string }).displayName ||
+        "";
+      setTeamName(n);
+      setOriginalTeamName(n);
+      setTeamNameError("");
+    }
+  }, [teamInfo]);
+
+  // Client-side validators
+  const validateName = (val: string): string => {
+    const t = val.trim();
+    if (t.length === 0) return "Name is required";
+    if (t.length > 32) return "Name must be at most 32 characters";
+    return "";
+  };
+
+  const validateSlug = (val: string): string => {
+    const t = val.trim();
+    if (t.length === 0) return "Slug is required";
+    if (t.length < 3 || t.length > 48) return "Slug must be 3–48 characters";
+    if (!/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$/.test(t))
+      return "Use lowercase letters, numbers, and hyphens; start/end with letter or number";
+    return "";
+  };
+
   // Initialize worktree path when data loads
   useEffect(() => {
     if (workspaceSettings !== undefined) {
@@ -102,38 +146,7 @@ function SettingsComponent() {
   }, [workspaceSettings]);
 
   // Track save button visibility
-  useEffect(() => {
-    const scrollContainer = scrollContainerRef.current;
-    const saveButton = saveButtonRef.current;
-
-    if (!scrollContainer || !saveButton) return;
-
-    const checkSaveButtonVisibility = () => {
-      const containerRect = scrollContainer.getBoundingClientRect();
-      const buttonRect = saveButton.getBoundingClientRect();
-
-      // Check if button is visible within the container
-      const isVisible =
-        buttonRect.top < containerRect.bottom &&
-        buttonRect.bottom > containerRect.top;
-
-      setIsSaveButtonVisible(isVisible);
-    };
-
-    // Check initial visibility
-    checkSaveButtonVisibility();
-
-    // Add scroll listener
-    scrollContainer.addEventListener("scroll", checkSaveButtonVisibility);
-
-    // Also check on resize
-    window.addEventListener("resize", checkSaveButtonVisibility);
-
-    return () => {
-      scrollContainer.removeEventListener("scroll", checkSaveButtonVisibility);
-      window.removeEventListener("resize", checkSaveButtonVisibility);
-    };
-  }, []);
+  // Footer-based save button; no visibility tracking needed
 
   // Recompute overflow detection for "Used for agents" lines
   useEffect(() => {
@@ -326,6 +339,52 @@ function SettingsComponent() {
     }
   };
 
+  const saveTeamSlug = async () => {
+    const newSlug = teamSlug.trim();
+    if (!newSlug) {
+      toast.error("Slug cannot be empty");
+      return;
+    }
+    setIsSaving(true);
+    try {
+      await convex.mutation(api.teams.setSlug, {
+        teamIdOrSlug: teamSlugOrId,
+        slug: newSlug,
+      });
+      setOriginalTeamSlug(newSlug);
+      toast.success("Team slug updated");
+      // Navigate to the new URL with the updated slug
+      window.location.href = `/${newSlug}/settings`;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error(msg || "Failed to update slug");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const saveTeamName = async () => {
+    const newName = teamName.trim();
+    if (!newName) {
+      toast.error("Name cannot be empty");
+      return;
+    }
+    setIsSaving(true);
+    try {
+      await convex.mutation(api.teams.setName, {
+        teamIdOrSlug: teamSlugOrId,
+        name: newName,
+      });
+      setOriginalTeamName(newName);
+      toast.success("Team name updated");
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast.error(msg || "Failed to update name");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <FloatingPane header={<TitleBar title="Settings" />}>
       <div
@@ -345,6 +404,161 @@ function SettingsComponent() {
 
           {/* Settings Sections */}
           <div className="space-y-4">
+            {/* Team name */}
+            <div className="bg-white dark:bg-neutral-950 rounded-lg border border-neutral-200 dark:border-neutral-800">
+              <div className="px-4 py-3 border-b border-neutral-200 dark:border-neutral-800">
+                <h2 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">Team Name</h2>
+              </div>
+              <div className="p-4">
+                <div>
+                  <label 
+                    htmlFor="teamName"
+                    className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2"
+                  >
+                    Display Name
+                  </label>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-3">
+                    How your team is displayed across cmux.
+                  </p>
+                  <input
+                    type="text"
+                    id="teamName"
+                    value={teamName}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setTeamName(v);
+                      setTeamNameError(validateName(v));
+                    }}
+                    placeholder="Your Team"
+                    aria-invalid={teamNameError ? true : undefined}
+                    aria-describedby={teamNameError ? "team-name-error" : undefined}
+                    className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:border-transparent bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 ${
+                      teamNameError
+                        ? "border-red-500 focus:ring-red-500"
+                        : "border-neutral-300 dark:border-neutral-700 focus:ring-blue-500"
+                    }`}
+                  />
+                  {teamNameError && (
+                    <p id="team-name-error" className="mt-2 text-xs text-red-600 dark:text-red-500">
+                      {teamNameError}
+                    </p>
+                  )}
+                </div>
+                
+
+                {/* URL Preview removed
+                <div className="pt-2">
+                  <label className="block text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">Preview</label>
+                  <div className="rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 overflow-hidden">
+                    <div className="flex items-center gap-3 px-3 sm:px-4 h-9 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50/70 dark:bg-neutral-900/70">
+                      window controls
+                      <div className="flex items-center gap-1.5">
+                        <span className="h-2.5 w-2.5 rounded-full bg-[#ff5f56]" aria-hidden />
+                        <span className="h-2.5 w-2.5 rounded-full bg-[#ffbd2e]" aria-hidden />
+                        <span className="h-2.5 w-2.5 rounded-full bg-[#27c93f]" aria-hidden />
+                      </div>
+                      <div className="flex-1 flex items-center justify-center">
+                        <div className="flex items-center gap-2 min-w-0 max-w-full px-3 h-7 rounded-full border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-xs sm:text-sm text-neutral-700 dark:text-neutral-300 shadow-[inset_0_1px_0_rgba(255,255,255,0.5)] dark:shadow-none">
+                          <svg className="h-3.5 w-3.5 text-green-600 dark:text-green-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                            <path d="M10 13a5 5 0 0 1 7 7l-7-7z"></path>
+                            <path d="M14.5 12.5a5 5 0 1 0-7 7"></path>
+                          </svg>
+                          <span className="truncate">
+                            {`https://cmux.dev/${(teamSlug || "your-team").replace(/^\/+/, "")}/dashboard`}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="w-6" aria-hidden />
+                    </div>
+                    <div className="p-3 text-xs text-neutral-500 dark:text-neutral-400">
+                      This is how your workspace URL appears once the slug is saved.
+                    </div>
+                  </div>
+                </div>
+                */}
+              </div>
+              <div className="px-4 py-3 border-t border-neutral-200 dark:border-neutral-800 flex items-center justify-end">
+                <button
+                  className="px-3 py-1.5 text-sm rounded-md bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900 disabled:opacity-50"
+                  disabled={
+                    isSaving ||
+                    teamName.trim() === originalTeamName.trim() ||
+                    Boolean(teamNameError) ||
+                    validateName(teamName) !== ""
+                  }
+                  onClick={() => void saveTeamName()}
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+
+            {/* Team URL */}
+            <div className="bg-white dark:bg-neutral-950 rounded-lg border border-neutral-200 dark:border-neutral-800">
+              <div className="px-4 py-3 border-b border-neutral-200 dark:border-neutral-800">
+                <h2 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">Team URL</h2>
+              </div>
+              <div className="p-4">
+                <div>
+                  <label 
+                    htmlFor="teamSlug"
+                    className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2"
+                  >
+                    URL Slug
+                  </label>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-3">
+                    Set the slug used in links, e.g. /your-team/dashboard. Lowercase letters, numbers, and hyphens. 3–48 characters.
+                  </p>
+                  <div
+                    className={`inline-flex items-center w-full rounded-lg bg-white dark:bg-neutral-900 border ${
+                      teamSlugError ? "border-red-500" : "border-neutral-300 dark:border-neutral-700"
+                    }`}
+                  >
+                    <span
+                      aria-hidden
+                      className="px-3 py-2 text-sm text-neutral-500 dark:text-neutral-400 select-none bg-neutral-50 dark:bg-neutral-800/50 border-r border-neutral-200 dark:border-neutral-700 rounded-l-lg"
+                    >
+                      cmux.dev/
+                    </span>
+                    <input
+                      id="teamSlug"
+                      aria-label="Team slug"
+                      type="text"
+                      value={teamSlug}
+                      onChange={(e) => {
+                        const v = e.target.value.toLowerCase();
+                        setTeamSlug(v);
+                        setTeamSlugError(validateSlug(v));
+                      }}
+                      placeholder="your-team"
+                      aria-invalid={teamSlugError ? true : undefined}
+                      aria-describedby={teamSlugError ? "team-slug-error" : undefined}
+                      className="flex-1 bg-transparent border-0 outline-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 rounded-r-lg"
+                    />
+                  </div>
+                  {teamSlugError && (
+                    <p id="team-slug-error" className="mt-2 text-xs text-red-600 dark:text-red-500">
+                      {teamSlugError}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="px-4 py-3 border-t border-neutral-200 dark:border-neutral-800 flex items-center justify-end">
+                <button
+                  className="px-3 py-1.5 text-sm rounded-md bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900 disabled:opacity-50"
+                  disabled={
+                    isSaving ||
+                    teamSlug.trim() === originalTeamSlug.trim() ||
+                    Boolean(teamSlugError) ||
+                    validateSlug(teamSlug) !== ""
+                  }
+                  onClick={() => void saveTeamSlug()}
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+
             {/* Appearance */}
             <div className="bg-white dark:bg-neutral-950 rounded-lg border border-neutral-200 dark:border-neutral-800">
               <div className="px-4 py-3 border-b border-neutral-200 dark:border-neutral-800">
@@ -792,47 +1006,27 @@ function SettingsComponent() {
               </div>
             </div>
 
-            {/* Save Button */}
-            <div ref={saveButtonRef} className="flex justify-end pt-2">
-              <button
-                onClick={saveApiKeys}
-                disabled={!hasChanges() || isSaving}
-                className={`px-4 py-2 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-900 transition-all ${
-                  !hasChanges() || isSaving
-                    ? "bg-neutral-200 dark:bg-neutral-800 text-neutral-400 dark:text-neutral-500 cursor-not-allowed opacity-50"
-                    : "bg-blue-600 dark:bg-blue-500 text-white"
-                }`}
-              >
-                {isSaving ? "Saving..." : "Save Changes"}
-              </button>
-            </div>
           </div>
         </div>
+      </div>
 
-        {/* Floating unsaved changes notification */}
-        <div
-          className={`fixed bottom-6 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 ease-in-out ${
-            hasChanges() && !isSaveButtonVisible
-              ? "opacity-100 translate-y-0 pointer-events-auto"
-              : "opacity-0 translate-y-4 pointer-events-none"
-          }`}
-        >
-          <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded-lg shadow-lg px-4 py-3 flex items-center gap-3">
-            <span className="text-sm text-neutral-700 dark:text-neutral-300">
-              You have unsaved changes
-            </span>
-            <button
-              onClick={saveApiKeys}
-              disabled={isSaving}
-              className={`px-3 py-1.5 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-900 transition-all ${
-                isSaving
-                  ? "bg-neutral-200 dark:bg-neutral-800 text-neutral-400 dark:text-neutral-500 cursor-not-allowed opacity-50"
-                  : "bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-600"
-              }`}
-            >
-              {isSaving ? "Saving..." : "Save Changes"}
-            </button>
-          </div>
+      {/* Footer Save bar */}
+      <div
+        ref={saveButtonRef}
+        className="border-t border-neutral-200 dark:border-neutral-800 bg-white/80 dark:bg-neutral-900/80 backdrop-blur supports-[backdrop-filter]:bg-white/60 supports-[backdrop-filter]:dark:bg-neutral-900/60"
+      >
+        <div className="max-w-3xl mx-auto px-6 py-3 flex items-center justify-end gap-3">
+          <button
+            onClick={saveApiKeys}
+            disabled={!hasChanges() || isSaving}
+            className={`px-4 py-2 text-sm font-medium rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-neutral-900 transition-all ${
+              !hasChanges() || isSaving
+                ? "bg-neutral-200 dark:bg-neutral-800 text-neutral-400 dark:text-neutral-500 cursor-not-allowed opacity-50"
+                : "bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-600"
+            }`}
+          >
+            {isSaving ? "Saving..." : "Save Changes"}
+          </button>
         </div>
       </div>
     </FloatingPane>

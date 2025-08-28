@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { authMutation, authQuery } from "./users/utils";
-import { getTeamId } from "../_shared/team";
+import { resolveTeamIdLoose } from "../_shared/team";
 
 export const get = authQuery({
   args: {
@@ -12,7 +12,7 @@ export const get = authQuery({
   },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
-    const teamId = await getTeamId(ctx, args.teamIdOrSlug);
+    const teamId = await resolveTeamIdLoose(ctx, args.teamIdOrSlug);
     let q = ctx.db
       .query("tasks")
       .withIndex("by_team_user", (idx) =>
@@ -57,7 +57,7 @@ export const create = authMutation({
   },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
-    const teamId = await getTeamId(ctx, args.teamIdOrSlug);
+    const teamId = await resolveTeamIdLoose(ctx, args.teamIdOrSlug);
     const now = Date.now();
     const taskId = await ctx.db.insert("tasks", {
       text: args.text,
@@ -81,7 +81,7 @@ export const remove = authMutation({
   args: { teamIdOrSlug: v.string(), id: v.id("tasks") },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
-    const teamId = await getTeamId(ctx, args.teamIdOrSlug);
+    const teamId = await resolveTeamIdLoose(ctx, args.teamIdOrSlug);
     const doc = await ctx.db.get(args.id);
     if (!doc || doc.teamId !== teamId || doc.userId !== userId) {
       throw new Error("Task not found or unauthorized");
@@ -94,7 +94,7 @@ export const toggle = authMutation({
   args: { teamIdOrSlug: v.string(), id: v.id("tasks") },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
-    const teamId = await getTeamId(ctx, args.teamIdOrSlug);
+    const teamId = await resolveTeamIdLoose(ctx, args.teamIdOrSlug);
     const task = await ctx.db.get(args.id);
     if (task === null || task.teamId !== teamId || task.userId !== userId) {
       throw new Error("Task not found or unauthorized");
@@ -111,7 +111,7 @@ export const setCompleted = authMutation({
   },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
-    const teamId = await getTeamId(ctx, args.teamIdOrSlug);
+    const teamId = await resolveTeamIdLoose(ctx, args.teamIdOrSlug);
     const task = await ctx.db.get(args.id);
     if (task === null || task.teamId !== teamId || task.userId !== userId) {
       throw new Error("Task not found");
@@ -127,7 +127,7 @@ export const update = authMutation({
   args: { teamIdOrSlug: v.string(), id: v.id("tasks"), text: v.string() },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
-    const teamId = await getTeamId(ctx, args.teamIdOrSlug);
+    const teamId = await resolveTeamIdLoose(ctx, args.teamIdOrSlug);
     const task = await ctx.db.get(args.id);
     if (task === null || task.teamId !== teamId || task.userId !== userId) {
       throw new Error("Task not found or unauthorized");
@@ -140,7 +140,7 @@ export const getById = authQuery({
   args: { teamIdOrSlug: v.string(), id: v.id("tasks") },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
-    const teamId = await getTeamId(ctx, args.teamIdOrSlug);
+    const teamId = await resolveTeamIdLoose(ctx, args.teamIdOrSlug);
     const task = await ctx.db.get(args.id);
     if (!task || task.teamId !== teamId || task.userId !== userId) return null;
 
@@ -168,7 +168,7 @@ export const getVersions = authQuery({
   args: { teamIdOrSlug: v.string(), taskId: v.id("tasks") },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
-    const teamId = await getTeamId(ctx, args.teamIdOrSlug);
+    const teamId = await resolveTeamIdLoose(ctx, args.teamIdOrSlug);
     return await ctx.db
       .query("taskVersions")
       .withIndex("by_team_user", (q) =>
@@ -183,7 +183,7 @@ export const archive = authMutation({
   args: { teamIdOrSlug: v.string(), id: v.id("tasks") },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
-    const teamId = await getTeamId(ctx, args.teamIdOrSlug);
+    const teamId = await resolveTeamIdLoose(ctx, args.teamIdOrSlug);
     const task = await ctx.db.get(args.id);
     if (task === null || task.teamId !== teamId || task.userId !== userId) {
       throw new Error("Task not found or unauthorized");
@@ -196,7 +196,7 @@ export const unarchive = authMutation({
   args: { teamIdOrSlug: v.string(), id: v.id("tasks") },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
-    const teamId = await getTeamId(ctx, args.teamIdOrSlug);
+    const teamId = await resolveTeamIdLoose(ctx, args.teamIdOrSlug);
     const task = await ctx.db.get(args.id);
     if (task === null || task.teamId !== teamId || task.userId !== userId) {
       throw new Error("Task not found or unauthorized");
@@ -218,7 +218,7 @@ export const updateCrownError = authMutation({
       teamIdOrSlug: string;
       crownEvaluationError?: string;
     };
-    const teamId = await getTeamId(ctx, teamIdOrSlug);
+    const teamId = await resolveTeamIdLoose(ctx, teamIdOrSlug);
     const task = await ctx.db.get(id);
     if (!task || task.teamId !== teamId || task.userId !== userId) {
       throw new Error("Task not found or unauthorized");
@@ -244,7 +244,7 @@ export const setPullRequestDescription = authMutation({
       id: Id<"tasks">;
       pullRequestDescription?: string;
     };
-    const teamId = await getTeamId(ctx, teamIdOrSlug);
+    const teamId = await resolveTeamIdLoose(ctx, teamIdOrSlug);
     const task = await ctx.db.get(id);
     if (!task || task.teamId !== teamId || task.userId !== userId) {
       throw new Error("Task not found or unauthorized");
@@ -270,7 +270,7 @@ export const setPullRequestTitle = authMutation({
       id: Id<"tasks">;
       pullRequestTitle?: string;
     };
-    const teamId = await getTeamId(ctx, teamIdOrSlug);
+    const teamId = await resolveTeamIdLoose(ctx, teamIdOrSlug);
     const task = await ctx.db.get(id);
     if (!task || task.teamId !== teamId || task.userId !== userId) {
       throw new Error("Task not found or unauthorized");
@@ -297,7 +297,7 @@ export const createVersion = authMutation({
   },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
-    const teamId = await getTeamId(ctx, args.teamIdOrSlug);
+    const teamId = await resolveTeamIdLoose(ctx, args.teamIdOrSlug);
     const existingVersions = await ctx.db
       .query("taskVersions")
       .withIndex("by_team_user", (q) =>
@@ -330,7 +330,7 @@ export const getTasksWithPendingCrownEvaluation = authQuery({
   args: { teamIdOrSlug: v.string() },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
-    const teamId = await getTeamId(ctx, args.teamIdOrSlug);
+    const teamId = await resolveTeamIdLoose(ctx, args.teamIdOrSlug);
     // Only get tasks that are pending, not already in progress
     const tasks = await ctx.db
       .query("tasks")
@@ -376,7 +376,7 @@ export const updateMergeStatus = authMutation({
   },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
-    const teamId = await getTeamId(ctx, args.teamIdOrSlug);
+    const teamId = await resolveTeamIdLoose(ctx, args.teamIdOrSlug);
     const task = await ctx.db.get(args.id);
     if (task === null || task.teamId !== teamId || task.userId !== userId) {
       throw new Error("Task not found");
@@ -395,7 +395,7 @@ export const checkAndEvaluateCrown = authMutation({
   },
   handler: async (ctx, args): Promise<Id<"taskRuns"> | "pending" | null> => {
     const userId = ctx.identity.subject;
-    const teamId = await getTeamId(ctx, args.teamIdOrSlug);
+    const teamId = await resolveTeamIdLoose(ctx, args.teamIdOrSlug);
     // Get all runs for this task
     const taskRuns = await ctx.db
       .query("taskRuns")

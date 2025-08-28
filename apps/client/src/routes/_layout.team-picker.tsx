@@ -7,10 +7,11 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { stackClientApp } from "@/stack";
+import { api } from "@cmux/convex/api";
+import { Skeleton } from "@heroui/react";
 import { useStackApp, useUser, type Team } from "@stackframe/react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { api } from "@cmux/convex/api";
-import { useMutation } from "convex/react";
+import { useQuery as useConvexQuery, useMutation } from "convex/react";
 
 export const Route = createFileRoute("/_layout/team-picker")({
   component: TeamPicker,
@@ -36,10 +37,13 @@ function TeamPicker() {
     return undefined;
   };
 
-  const handleSelect = async (team: Team) => {
-    const teamSlugOrId = getClientSlug(team.clientMetadata) ?? team.id;
+  const handleSelect = async (team: Team, slug: string | null | undefined) => {
+    const teamSlugOrId = slug ?? getClientSlug(team.clientMetadata) ?? team.id;
     await user?.setSelectedTeam(team);
-    await navigate({ to: "/$teamSlugOrId/dashboard", params: { teamSlugOrId } });
+    await navigate({
+      to: "/$teamSlugOrId/dashboard",
+      params: { teamSlugOrId },
+    });
   };
 
   const handleCreateTeam = async () => {
@@ -55,7 +59,9 @@ function TeamPicker() {
     if (!displayName || !displayName.trim()) return;
 
     try {
-      const newTeam = await user.createTeam({ displayName: displayName.trim() });
+      const newTeam = await user.createTeam({
+        displayName: displayName.trim(),
+      });
 
       // Ensure Convex mirrors the new team and membership immediately (webhooks may lag)
       await upsertTeamPublic({
@@ -87,11 +93,11 @@ function TeamPicker() {
       // Navigate into the new team's dashboard
       const teamSlugOrId =
         (newTeam.clientMetadata &&
-          typeof newTeam.clientMetadata === "object" &&
-          newTeam.clientMetadata !== null &&
-          (newTeam.clientMetadata as Record<string, unknown>).slug &&
-          typeof (newTeam.clientMetadata as Record<string, unknown>).slug ===
-            "string"
+        typeof newTeam.clientMetadata === "object" &&
+        newTeam.clientMetadata !== null &&
+        (newTeam.clientMetadata as Record<string, unknown>).slug &&
+        typeof (newTeam.clientMetadata as Record<string, unknown>).slug ===
+          "string"
           ? ((newTeam.clientMetadata as Record<string, unknown>).slug as string)
           : undefined) ?? newTeam.id;
 
@@ -101,7 +107,10 @@ function TeamPicker() {
         params: { teamSlugOrId },
       });
     } catch (err) {
-      console.error("Failed to create team via Stack, redirecting to settings", err);
+      console.error(
+        "Failed to create team via Stack, redirecting to settings",
+        err
+      );
       await stackClientApp.redirectToAccountSettings?.().catch(() => {
         const url = app.urls.accountSettings;
         void navigate({ to: url });
@@ -116,7 +125,9 @@ function TeamPicker() {
       <div className="mx-auto w-full max-w-3xl">
         <Card className="border-neutral-200 dark:border-neutral-800 bg-white/70 dark:bg-neutral-900/70 backdrop-blur">
           <CardHeader>
-            <CardTitle className="text-neutral-900 dark:text-neutral-50">Choose a team</CardTitle>
+            <CardTitle className="text-neutral-900 dark:text-neutral-50">
+              Choose a team
+            </CardTitle>
             <CardDescription className="text-neutral-600 dark:text-neutral-400">
               Pick a team to continue. You can switch teams anytime.
             </CardDescription>
@@ -140,39 +151,21 @@ function TeamPicker() {
               <div className="flex flex-col gap-6">
                 <ul className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {teams.map((team) => (
-                    <li key={team.id}>
-                      <button
-                        type="button"
-                        onClick={() => void handleSelect(team)}
-                        className={
-                          "group w-full text-left rounded-xl border transition-all focus:outline-none border-neutral-200 hover:border-neutral-300 dark:border-neutral-800 dark:hover:border-neutral-700 bg-white dark:bg-neutral-900/80 p-4"
-                        }
-                      >
-                        <div className="flex items-center gap-3">
-                          <div
-                            className={
-                              "flex h-10 w-10 items-center justify-center rounded-full bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 ring-1 ring-inset ring-neutral-200 dark:ring-neutral-700"
-                            }
-                            aria-hidden
-                          >
-                            {team.displayName?.charAt(0) ?? "T"}
-                          </div>
-                          <div className="flex-1 overflow-hidden">
-                            <div className="truncate text-neutral-900 dark:text-neutral-50 font-medium">
-                              {team.displayName}
-                            </div>
-                            <div className="truncate text-sm text-neutral-500 dark:text-neutral-400">
-                              {getClientSlug(team.clientMetadata) ?? team.id}
-                            </div>
-                          </div>
-                        </div>
-                      </button>
-                    </li>
+                    <TeamItem
+                      key={team.id}
+                      team={team}
+                      onSelect={handleSelect}
+                      getClientSlug={getClientSlug}
+                    />
                   ))}
                 </ul>
 
                 <div className="flex items-center justify-end pt-2">
-                  <Button variant="ghost" onClick={handleCreateTeam} className="text-neutral-700 dark:text-neutral-300">
+                  <Button
+                    variant="ghost"
+                    onClick={handleCreateTeam}
+                    className="text-neutral-700 dark:text-neutral-300"
+                  >
                     Create new team
                   </Button>
                 </div>
@@ -182,5 +175,49 @@ function TeamPicker() {
         </Card>
       </div>
     </div>
+  );
+}
+
+interface TeamItemProps {
+  team: Team;
+  onSelect: (team: Team, slug: string | null | undefined) => void;
+  getClientSlug: (meta: unknown) => string | undefined;
+}
+
+function TeamItem({ team, onSelect, getClientSlug }: TeamItemProps) {
+  const teamInfo = useConvexQuery(api.teams.get, { teamIdOrSlug: team.id });
+  const slug = teamInfo?.slug || getClientSlug(team.clientMetadata);
+
+  return (
+    <li>
+      <button
+        type="button"
+        onClick={() => void onSelect(team, slug)}
+        className={
+          "group w-full text-left rounded-xl border transition-all focus:outline-none border-neutral-200 hover:border-neutral-300 dark:border-neutral-800 dark:hover:border-neutral-700 bg-white dark:bg-neutral-900/80 p-4"
+        }
+      >
+        <div className="flex items-center gap-3">
+          <div
+            className={
+              "flex h-10 w-10 items-center justify-center rounded-full bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 ring-1 ring-inset ring-neutral-200 dark:ring-neutral-700"
+            }
+            aria-hidden
+          >
+            {team.displayName?.charAt(0) ?? "T"}
+          </div>
+          <div className="flex-1 overflow-hidden">
+            <div className="truncate text-neutral-900 dark:text-neutral-50 font-medium">
+              {team.displayName}
+            </div>
+            <div className="truncate text-sm text-neutral-500 dark:text-neutral-400">
+              <Skeleton isLoaded={!!teamInfo} className="rounded">
+                {slug || "Loading..."}
+              </Skeleton>
+            </div>
+          </div>
+        </div>
+      </button>
+    </li>
   );
 }

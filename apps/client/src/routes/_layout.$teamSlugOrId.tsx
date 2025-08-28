@@ -1,29 +1,44 @@
 import { CmuxComments } from "@/components/cmux-comments";
 import { Sidebar } from "@/components/Sidebar";
+import { convexQueryClient } from "@/contexts/convex/convex-query-client";
 import { ExpandTasksProvider } from "@/contexts/expand-tasks/ExpandTasksProvider";
 import { isFakeConvexId } from "@/lib/fakeConvexId";
 import { api } from "@cmux/convex/api";
-import { type Doc, type Id } from "@cmux/convex/dataModel";
+import { type Id } from "@cmux/convex/dataModel";
 // import { convexQuery } from "@convex-dev/react-query";
-import { useUser } from "@stackframe/react";
-import { createFileRoute, Navigate, Outlet } from "@tanstack/react-router";
+import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { useQueries, useQuery } from "convex/react";
 import { Suspense, useMemo } from "react";
 
 export const Route = createFileRoute("/_layout/$teamSlugOrId")({
   component: LayoutComponentWrapper,
   // Prefetch omitted to avoid route param coupling in typecheck
+  loader: async ({ params }) => {
+    console.time("convexQueryClient.convexClient.query [loader]");
+    const teamMemberships = await convexQueryClient.convexClient.query(
+      api.teams.listTeamMemberships
+    );
+    console.timeEnd("convexQueryClient.convexClient.query [loader]");
+    console.log("teamMemberships", teamMemberships);
+
+    // ensure the teamSlugOrId is in the teamMemberships
+    const teamMembership = teamMemberships.find(
+      (m) => m.team.slug === params.teamSlugOrId
+    );
+    if (!teamMembership) {
+      throw redirect({ to: "/team-picker" });
+    }
+
+    // console.log("user", user);
+    // console.log("params", params);
+    return {
+      teamSlugOrId: params.teamSlugOrId,
+    };
+  },
 });
 
 function LayoutComponent() {
-  const user = useUser({ or: "return-null" });
-  const teamSlugOrId =
-    typeof window !== "undefined"
-      ? window.location.pathname.split("/")[1] || "default"
-      : "default";
-  // Read teams via Stack hook at top-level (not inside effects)
-  const teams = user?.useTeams() ?? [];
-  // Hooks below must be called unconditionally
+  const { teamSlugOrId } = Route.useParams();
   const tasks = useQuery(api.tasks.get, { teamIdOrSlug: teamSlugOrId });
 
   // Sort tasks by creation date (newest first) and take the latest 5
@@ -51,7 +66,12 @@ function LayoutComponent() {
           Id<"tasks">,
           {
             query: typeof api.taskRuns.getByTask;
-            args: ((d: { params: { teamSlugOrId: string } }) => { teamIdOrSlug: string; taskId: Id<"tasks"> }) | { teamIdOrSlug: string; taskId: Id<"tasks"> };
+            args:
+              | ((d: { params: { teamSlugOrId: string } }) => {
+                  teamIdOrSlug: string;
+                  taskId: Id<"tasks">;
+                })
+              | { teamIdOrSlug: string; taskId: Id<"tasks"> };
           }
         >
       );
@@ -65,34 +85,13 @@ function LayoutComponent() {
   // Map tasks with their respective runs
   const tasksWithRuns = useMemo(
     () =>
-      recentTasks.map((task: Doc<"tasks">) => ({
+      recentTasks.map((task) => ({
         ...task,
         runs: taskRunResults[task._id] || [],
       })),
     [recentTasks, taskRunResults]
   );
 
-  // Perform redirects after hooks are called to keep order consistent
-  if (user) {
-    if (teams.length === 0) {
-      return <Navigate to="/team-picker" />;
-    }
-    if (teams.length === 1 && teamSlugOrId !== teams[0]!.id) {
-      const cm = teams[0]!.clientMetadata as unknown;
-      const slug =
-        cm && typeof cm === "object" && cm !== null && "slug" in (cm as Record<string, unknown>) &&
-        typeof (cm as Record<string, unknown>).slug === "string"
-          ? ((cm as Record<string, unknown>).slug as string)
-          : teams[0]!.id;
-      return <Navigate to="/$teamSlugOrId/dashboard" params={{ teamSlugOrId: slug }} />;
-    }
-    if (
-      teams.length > 1 &&
-      (teamSlugOrId === "default" || !teams.some((t) => t.id === teamSlugOrId))
-    ) {
-      return <Navigate to="/team-picker" />;
-    }
-  }
   return (
     <>
       <ExpandTasksProvider>

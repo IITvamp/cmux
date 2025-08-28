@@ -2,6 +2,7 @@
 
 import { getRandomKitty } from "@/components/kitties";
 import CmuxLogoMark from "@/components/logo/cmux-logo-mark";
+import { api } from "@cmux/convex/api";
 import { SignIn, useUser } from "@stackframe/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { ConvexProviderWithAuth } from "convex/react";
@@ -28,16 +29,24 @@ function BootReadyMarker({
   onReady,
 }: {
   children: ReactNode;
-  onReady: () => void;
+  onReady: () => Promise<void>;
 }) {
   useEffect(() => {
-    onReady();
+    void onReady();
   }, [onReady]);
   return <>{children}</>;
 }
 
 function makeBootReadyHandler(setter: (v: boolean) => void) {
-  return () => setter(true);
+  return async () => {
+    console.time("convexQueryClient.convexClient.query [boot]");
+    const teamMemberships = await convexQueryClient.convexClient.query(
+      api.teams.listTeamMemberships
+    );
+    console.timeEnd("convexQueryClient.convexClient.query [boot]");
+    console.log("teamMemberships", teamMemberships);
+    setter(true);
+  };
 }
 
 function useAuthFromStack() {
@@ -74,15 +83,6 @@ function AuthenticatedOrLoading({ children }: { children: ReactNode }) {
   // Only gate on Stack user presence to avoid auth-loading flicker.
   const user = useUser({ or: "return-null" });
   const showSignIn = !user;
-  useEffect(() => {
-    console.log(
-      "[AuthOverlay] gate",
-      JSON.stringify({
-        showSignIn,
-        path: typeof window !== "undefined" ? window.location.pathname : "",
-      })
-    );
-  }, [showSignIn]);
   return (
     <>
       <AnimatePresence mode="wait">
@@ -104,11 +104,7 @@ function AuthenticatedOrLoading({ children }: { children: ReactNode }) {
   );
 }
 
-export default function ConvexClientProvider({
-  children,
-}: {
-  children: ReactNode;
-}) {
+export function ConvexClientProvider({ children }: { children: ReactNode }) {
   const [bootReady, setBootReady] = useState(false);
   const onBootReady = useMemo(() => makeBootReadyHandler(setBootReady), []);
 
