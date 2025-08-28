@@ -1,18 +1,19 @@
 import { v } from "convex/values";
-import { ensureAuth } from "../_shared/ensureAuth";
+import { authMutation, authQuery } from "./auth";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { mutation, query } from "./_generated/server";
 
-export const get = query({
+export const get = authQuery({
   args: {
     projectFullName: v.optional(v.string()),
     archived: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    await ensureAuth(ctx);
-    let query = ctx.db.query("tasks");
-    // .withIndex("by_user", (q) => q.eq("userId", user.userId));
+    let query = ctx.db
+      .query("tasks")
+      .withIndex("by_team_and_user", (q) => 
+        q.eq("teamId", ctx.teamId).eq("userId", ctx.userId)
+      );
 
     // Default to active (non-archived) when not specified
     if (args.archived === true) {
@@ -31,7 +32,7 @@ export const get = query({
   },
 });
 
-export const create = mutation({
+export const create = authMutation({
   args: {
     text: v.string(),
     description: v.optional(v.string()),
@@ -60,39 +61,45 @@ export const create = mutation({
       createdAt: now,
       updatedAt: now,
       images: args.images,
+      userId: ctx.userId,
+      teamId: ctx.teamId,
     });
 
     return taskId;
   },
 });
 
-export const remove = mutation({
+export const remove = authMutation({
   args: { id: v.id("tasks") },
   handler: async (ctx, args) => {
+    const task = await ctx.db.get(args.id);
+    if (!task || task.teamId !== ctx.teamId) {
+      throw new Error("Task not found or access denied");
+    }
     await ctx.db.delete(args.id);
   },
 });
 
-export const toggle = mutation({
+export const toggle = authMutation({
   args: { id: v.id("tasks") },
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.id);
-    if (task === null) {
-      throw new Error("Task not found");
+    if (task === null || task.teamId !== ctx.teamId) {
+      throw new Error("Task not found or access denied");
     }
     await ctx.db.patch(args.id, { isCompleted: !task.isCompleted });
   },
 });
 
-export const setCompleted = mutation({
+export const setCompleted = authMutation({
   args: {
     id: v.id("tasks"),
     isCompleted: v.boolean(),
   },
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.id);
-    if (task === null) {
-      throw new Error("Task not found");
+    if (task === null || task.teamId !== ctx.teamId) {
+      throw new Error("Task not found or access denied");
     }
     await ctx.db.patch(args.id, {
       isCompleted: args.isCompleted,
@@ -101,22 +108,22 @@ export const setCompleted = mutation({
   },
 });
 
-export const update = mutation({
+export const update = authMutation({
   args: { id: v.id("tasks"), text: v.string() },
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.id);
-    if (task === null) {
-      throw new Error("Task not found");
+    if (task === null || task.teamId !== ctx.teamId) {
+      throw new Error("Task not found or access denied");
     }
     await ctx.db.patch(args.id, { text: args.text, updatedAt: Date.now() });
   },
 });
 
-export const getById = query({
+export const getById = authQuery({
   args: { id: v.id("tasks") },
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.id);
-    if (!task) return null;
+    if (!task || task.teamId !== ctx.teamId) return null;
 
     // If task has images, get their URLs
     if (task.images && task.images.length > 0) {
@@ -139,44 +146,57 @@ export const getById = query({
   },
 });
 
-export const getVersions = query({
+export const getVersions = authQuery({
   args: { taskId: v.id("tasks") },
   handler: async (ctx, args) => {
+    // Verify task belongs to this team
+    const task = await ctx.db.get(args.taskId);
+    if (!task || task.teamId !== ctx.teamId) {
+      return [];
+    }
+    
     return await ctx.db
       .query("taskVersions")
-      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+      .withIndex("by_team_and_user", (q) => 
+        q.eq("teamId", ctx.teamId).eq("userId", ctx.userId)
+      )
+      .filter((q) => q.eq(q.field("taskId"), args.taskId))
       .collect();
   },
 });
 
-export const archive = mutation({
+export const archive = authMutation({
   args: { id: v.id("tasks") },
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.id);
-    if (task === null) {
-      throw new Error("Task not found");
+    if (task === null || task.teamId !== ctx.teamId) {
+      throw new Error("Task not found or access denied");
     }
     await ctx.db.patch(args.id, { isArchived: true, updatedAt: Date.now() });
   },
 });
 
-export const unarchive = mutation({
+export const unarchive = authMutation({
   args: { id: v.id("tasks") },
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.id);
-    if (task === null) {
-      throw new Error("Task not found");
+    if (task === null || task.teamId !== ctx.teamId) {
+      throw new Error("Task not found or access denied");
     }
     await ctx.db.patch(args.id, { isArchived: false, updatedAt: Date.now() });
   },
 });
 
-export const updateCrownError = mutation({
+export const updateCrownError = authMutation({
   args: {
     id: v.id("tasks"),
     crownEvaluationError: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const task = await ctx.db.get(args.id);
+    if (!task || task.teamId !== ctx.teamId) {
+      throw new Error("Task not found or access denied");
+    }
     const { id, ...updates } = args;
     await ctx.db.patch(id, {
       ...updates,
@@ -186,12 +206,16 @@ export const updateCrownError = mutation({
 });
 
 // Set or update the generated pull request description for a task
-export const setPullRequestDescription = mutation({
+export const setPullRequestDescription = authMutation({
   args: {
     id: v.id("tasks"),
     pullRequestDescription: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const task = await ctx.db.get(args.id);
+    if (!task || task.teamId !== ctx.teamId) {
+      throw new Error("Task not found or access denied");
+    }
     const { id, pullRequestDescription } = args;
     await ctx.db.patch(id, {
       pullRequestDescription,
@@ -201,12 +225,16 @@ export const setPullRequestDescription = mutation({
 });
 
 // Set or update the generated pull request title for a task
-export const setPullRequestTitle = mutation({
+export const setPullRequestTitle = authMutation({
   args: {
     id: v.id("tasks"),
     pullRequestTitle: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const task = await ctx.db.get(args.id);
+    if (!task || task.teamId !== ctx.teamId) {
+      throw new Error("Task not found or access denied");
+    }
     const { id, pullRequestTitle } = args;
     await ctx.db.patch(id, {
       pullRequestTitle,
@@ -215,7 +243,7 @@ export const setPullRequestTitle = mutation({
   },
 });
 
-export const createVersion = mutation({
+export const createVersion = authMutation({
   args: {
     taskId: v.id("tasks"),
     diff: v.string(),
@@ -228,9 +256,18 @@ export const createVersion = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    // Verify task belongs to this team
+    const task = await ctx.db.get(args.taskId);
+    if (!task || task.teamId !== ctx.teamId) {
+      throw new Error("Task not found or access denied");
+    }
+
     const existingVersions = await ctx.db
       .query("taskVersions")
-      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+      .withIndex("by_team_and_user", (q) => 
+        q.eq("teamId", ctx.teamId).eq("userId", ctx.userId)
+      )
+      .filter((q) => q.eq(q.field("taskId"), args.taskId))
       .collect();
 
     const version = existingVersions.length + 1;
@@ -242,6 +279,8 @@ export const createVersion = mutation({
       summary: args.summary,
       files: args.files,
       createdAt: Date.now(),
+      userId: ctx.userId,
+      teamId: ctx.teamId,
     });
 
     await ctx.db.patch(args.taskId, { updatedAt: Date.now() });
@@ -251,12 +290,15 @@ export const createVersion = mutation({
 });
 
 // Check if all runs for a task are completed and trigger crown evaluation
-export const getTasksWithPendingCrownEvaluation = query({
+export const getTasksWithPendingCrownEvaluation = authQuery({
   args: {},
   handler: async (ctx) => {
     // Only get tasks that are pending, not already in progress
     const tasks = await ctx.db
       .query("tasks")
+      .withIndex("by_team_and_user", (q) => 
+        q.eq("teamId", ctx.teamId).eq("userId", ctx.userId)
+      )
       .filter((q) =>
         q.eq(q.field("crownEvaluationError"), "pending_evaluation")
       )
@@ -279,7 +321,7 @@ export const getTasksWithPendingCrownEvaluation = query({
   },
 });
 
-export const updateMergeStatus = mutation({
+export const updateMergeStatus = authMutation({
   args: {
     id: v.id("tasks"),
     mergeStatus: v.union(
@@ -294,8 +336,8 @@ export const updateMergeStatus = mutation({
   },
   handler: async (ctx, args) => {
     const task = await ctx.db.get(args.id);
-    if (task === null) {
-      throw new Error("Task not found");
+    if (task === null || task.teamId !== ctx.teamId) {
+      throw new Error("Task not found or access denied");
     }
     await ctx.db.patch(args.id, {
       mergeStatus: args.mergeStatus,
@@ -304,15 +346,24 @@ export const updateMergeStatus = mutation({
   },
 });
 
-export const checkAndEvaluateCrown = mutation({
+export const checkAndEvaluateCrown = authMutation({
   args: {
     taskId: v.id("tasks"),
   },
   handler: async (ctx, args): Promise<Id<"taskRuns"> | "pending" | null> => {
+    // Verify task belongs to this team
+    const task = await ctx.db.get(args.taskId);
+    if (!task || task.teamId !== ctx.teamId) {
+      throw new Error("Task not found or access denied");
+    }
+
     // Get all runs for this task
     const taskRuns = await ctx.db
       .query("taskRuns")
-      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+      .withIndex("by_team_and_user", (q) => 
+        q.eq("teamId", ctx.teamId).eq("userId", ctx.userId)
+      )
+      .filter((q) => q.eq(q.field("taskId"), args.taskId))
       .collect();
 
     console.log(`[CheckCrown] Task ${args.taskId} has ${taskRuns.length} runs`);
@@ -377,10 +428,9 @@ export const checkAndEvaluateCrown = mutation({
     }
 
     // Check if crown evaluation is already pending or in progress
-    const task = await ctx.db.get(args.taskId);
     if (
-      task?.crownEvaluationError === "pending_evaluation" ||
-      task?.crownEvaluationError === "in_progress"
+      task.crownEvaluationError === "pending_evaluation" ||
+      task.crownEvaluationError === "in_progress"
     ) {
       console.log(
         `[CheckCrown] Crown evaluation already ${task.crownEvaluationError} for task ${args.taskId}`

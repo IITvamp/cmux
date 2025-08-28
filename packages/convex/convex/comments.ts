@@ -1,7 +1,7 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { authMutation, authQuery } from "./auth";
 
-export const createComment = mutation({
+export const createComment = authMutation({
   args: {
     url: v.string(),
     page: v.string(),
@@ -20,6 +20,8 @@ export const createComment = mutation({
   handler: async (ctx, args) => {
     const commentId = await ctx.db.insert("comments", {
       ...args,
+      userId: ctx.userId,
+      teamId: ctx.teamId,
       resolved: false,
       archived: false,
       createdAt: Date.now(),
@@ -29,7 +31,7 @@ export const createComment = mutation({
   },
 });
 
-export const listComments = query({
+export const listComments = authQuery({
   args: {
     url: v.string(),
     page: v.optional(v.string()),
@@ -39,7 +41,8 @@ export const listComments = query({
   handler: async (ctx, args) => {
     const query = ctx.db
       .query("comments")
-      .withIndex("by_url", (q) => q.eq("url", args.url));
+      .withIndex("by_url", (q) => q.eq("url", args.url))
+      .filter((q) => q.eq(q.field("teamId"), ctx.teamId));
 
     const comments = await query.collect();
 
@@ -56,11 +59,16 @@ export const listComments = query({
   },
 });
 
-export const resolveComment = mutation({
+export const resolveComment = authMutation({
   args: {
     commentId: v.id("comments"),
   },
   handler: async (ctx, args) => {
+    const comment = await ctx.db.get(args.commentId);
+    if (!comment || comment.teamId !== ctx.teamId) {
+      throw new Error("Comment not found or access denied");
+    }
+
     await ctx.db.patch(args.commentId, {
       resolved: true,
       updatedAt: Date.now(),
@@ -68,12 +76,17 @@ export const resolveComment = mutation({
   },
 });
 
-export const archiveComment = mutation({
+export const archiveComment = authMutation({
   args: {
     commentId: v.id("comments"),
     archived: v.boolean(),
   },
   handler: async (ctx, args) => {
+    const comment = await ctx.db.get(args.commentId);
+    if (!comment || comment.teamId !== ctx.teamId) {
+      throw new Error("Comment not found or access denied");
+    }
+
     await ctx.db.patch(args.commentId, {
       archived: args.archived,
       updatedAt: Date.now(),
@@ -81,16 +94,23 @@ export const archiveComment = mutation({
   },
 });
 
-export const addReply = mutation({
+export const addReply = authMutation({
   args: {
     commentId: v.id("comments"),
     userId: v.string(),
     content: v.string(),
   },
   handler: async (ctx, args) => {
+    // First verify the comment belongs to the user's team
+    const comment = await ctx.db.get(args.commentId);
+    if (!comment || comment.teamId !== ctx.teamId) {
+      throw new Error("Comment not found or access denied");
+    }
+
     const replyId = await ctx.db.insert("commentReplies", {
       commentId: args.commentId,
-      userId: args.userId,
+      userId: ctx.userId,
+      teamId: ctx.teamId,
       content: args.content,
       createdAt: Date.now(),
       updatedAt: Date.now(),
@@ -99,14 +119,21 @@ export const addReply = mutation({
   },
 });
 
-export const getReplies = query({
+export const getReplies = authQuery({
   args: {
     commentId: v.id("comments"),
   },
   handler: async (ctx, args) => {
+    // First verify the comment belongs to the user's team
+    const comment = await ctx.db.get(args.commentId);
+    if (!comment || comment.teamId !== ctx.teamId) {
+      return [];
+    }
+
     const replies = await ctx.db
       .query("commentReplies")
       .withIndex("by_comment", (q) => q.eq("commentId", args.commentId))
+      .filter((q) => q.eq(q.field("teamId"), ctx.teamId))
       .collect();
     return replies;
   },

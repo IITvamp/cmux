@@ -1,7 +1,7 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { authMutation, authQuery } from "./auth";
 
-export const evaluateAndCrownWinner = mutation({
+export const evaluateAndCrownWinner = authMutation({
   args: {
     taskId: v.id("tasks"),
   },
@@ -13,16 +13,19 @@ export const evaluateAndCrownWinner = mutation({
       console.log(`[Crown] ============================================`);
       
       const task = await ctx.db.get(args.taskId);
-      if (!task) {
-        console.error(`[Crown] Task ${args.taskId} not found`);
-        throw new Error("Task not found");
+      if (!task || task.teamId !== ctx.teamId) {
+        console.error(`[Crown] Task ${args.taskId} not found or access denied`);
+        throw new Error("Task not found or access denied");
       }
 
       // Get all completed runs for this task
       const taskRuns = await ctx.db
         .query("taskRuns")
         .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
-        .filter((q) => q.eq(q.field("status"), "completed"))
+        .filter((q) => q.and(
+          q.eq(q.field("status"), "completed"),
+          q.eq(q.field("teamId"), ctx.teamId)
+        ))
         .collect();
 
       console.log(`[Crown] Found ${taskRuns.length} completed runs for task ${args.taskId}`);
@@ -47,6 +50,7 @@ export const evaluateAndCrownWinner = mutation({
       const existingEvaluation = await ctx.db
         .query("crownEvaluations")
         .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+        .filter((q) => q.eq(q.field("teamId"), ctx.teamId))
         .first();
       
       if (existingEvaluation) {
@@ -80,7 +84,7 @@ export const evaluateAndCrownWinner = mutation({
 
 
 
-export const setCrownWinner = mutation({
+export const setCrownWinner = authMutation({
   args: {
     taskRunId: v.id("taskRuns"),
     reason: v.string(),
@@ -93,14 +97,15 @@ export const setCrownWinner = mutation({
     console.log(`[Crown] ============================================`);
     
     const taskRun = await ctx.db.get(args.taskRunId);
-    if (!taskRun) {
-      throw new Error("Task run not found");
+    if (!taskRun || taskRun.teamId !== ctx.teamId) {
+      throw new Error("Task run not found or access denied");
     }
 
     // Get all runs for this task
     const taskRuns = await ctx.db
       .query("taskRuns")
       .withIndex("by_task", (q) => q.eq("taskId", taskRun.taskId))
+      .filter((q) => q.eq(q.field("teamId"), ctx.teamId))
       .collect();
 
     // Update the selected run as crowned
@@ -132,6 +137,8 @@ export const setCrownWinner = mutation({
       candidateRunIds: taskRuns.map((r) => r._id),
       evaluationPrompt: "Evaluated by Claude Code",
       evaluationResponse: args.reason,
+      userId: ctx.userId,
+      teamId: ctx.teamId,
       createdAt: Date.now(),
     });
 
@@ -144,15 +151,24 @@ export const setCrownWinner = mutation({
   },
 });
 
-export const getCrownedRun = query({
+export const getCrownedRun = authQuery({
   args: {
     taskId: v.id("tasks"),
   },
   handler: async (ctx, args) => {
+    // First verify the task belongs to the user's team
+    const task = await ctx.db.get(args.taskId);
+    if (!task || task.teamId !== ctx.teamId) {
+      return null;
+    }
+
     const crownedRun = await ctx.db
       .query("taskRuns")
       .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
-      .filter((q) => q.eq(q.field("isCrowned"), true))
+      .filter((q) => q.and(
+        q.eq(q.field("isCrowned"), true),
+        q.eq(q.field("teamId"), ctx.teamId)
+      ))
       .first();
 
     console.log(`[Crown] getCrownedRun for task ${args.taskId}: ${crownedRun ? `found ${crownedRun._id}` : 'not found'}`);
@@ -161,14 +177,21 @@ export const getCrownedRun = query({
   },
 });
 
-export const getCrownEvaluation = query({
+export const getCrownEvaluation = authQuery({
   args: {
     taskId: v.id("tasks"),
   },
   handler: async (ctx, args) => {
+    // First verify the task belongs to the user's team
+    const task = await ctx.db.get(args.taskId);
+    if (!task || task.teamId !== ctx.teamId) {
+      return null;
+    }
+
     const evaluation = await ctx.db
       .query("crownEvaluations")
       .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+      .filter((q) => q.eq(q.field("teamId"), ctx.teamId))
       .first();
 
     return evaluation;

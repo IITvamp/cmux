@@ -14,7 +14,8 @@ const convexSchema = defineSchema({
     worktreePath: v.optional(v.string()),
     createdAt: v.optional(v.number()),
     updatedAt: v.optional(v.number()),
-    userId: v.optional(v.string()), // Link to user who created the task
+    userId: v.string(), // Link to user who created the task
+    teamId: v.string(), // Team this task belongs to
     crownEvaluationError: v.optional(v.string()), // Error message if crown evaluation failed
     mergeStatus: v.optional(
       v.union(
@@ -38,7 +39,8 @@ const convexSchema = defineSchema({
     ),
   })
     .index("by_created", ["createdAt"])
-    .index("by_user", ["userId", "createdAt"]),
+    .index("by_user", ["userId", "createdAt"])
+    .index("by_team_and_user", ["teamId", "userId", "createdAt"]),
 
   taskRuns: defineTable({
     taskId: v.id("tasks"),
@@ -60,7 +62,8 @@ const convexSchema = defineSchema({
     completedAt: v.optional(v.number()),
     exitCode: v.optional(v.number()),
     errorMessage: v.optional(v.string()), // Error message when run fails early
-    userId: v.optional(v.string()), // Link to user who created the run
+    userId: v.string(), // Link to user who created the run
+    teamId: v.string(), // Team this run belongs to
     isCrowned: v.optional(v.boolean()), // Whether this run won the crown evaluation
     crownReason: v.optional(v.string()), // LLM's reasoning for why this run was crowned
     pullRequestUrl: v.optional(v.string()), // URL of the PR
@@ -127,37 +130,53 @@ const convexSchema = defineSchema({
     .index("by_status", ["status"])
     .index("by_vscode_status", ["vscode.status"])
     .index("by_vscode_container_name", ["vscode.containerName"])
-    .index("by_user", ["userId", "createdAt"]),
+    .index("by_user", ["userId", "createdAt"])
+    .index("by_team_and_user", ["teamId", "userId", "createdAt"]),
   taskVersions: defineTable({
     taskId: v.id("tasks"),
     version: v.number(),
     diff: v.string(),
     summary: v.string(),
     createdAt: v.number(),
+    userId: v.string(), // User who created this version
+    teamId: v.string(), // Team this version belongs to
     files: v.array(
       v.object({
         path: v.string(),
         changes: v.string(),
       })
     ),
-  }).index("by_task", ["taskId", "version"]),
+  })
+    .index("by_task", ["taskId", "version"])
+    .index("by_team_and_user", ["teamId", "userId"]),
   repos: defineTable({
     fullName: v.string(),
     org: v.string(),
     name: v.string(),
     gitRemote: v.string(),
     provider: v.optional(v.string()), // e.g. "github", "gitlab", etc.
+    userId: v.string(), // User who added this repo
+    teamId: v.string(), // Team this repo belongs to
   })
     .index("by_org", ["org"])
-    .index("by_gitRemote", ["gitRemote"]),
+    .index("by_gitRemote", ["gitRemote"])
+    .index("by_team_and_user", ["teamId", "userId"]),
   branches: defineTable({
     repo: v.string(),
     name: v.string(),
-  }).index("by_repo", ["repo"]),
+    userId: v.string(), // User who created this branch
+    teamId: v.string(), // Team this branch belongs to
+  })
+    .index("by_repo", ["repo"])
+    .index("by_team_and_user", ["teamId", "userId"]),
   taskRunLogChunks: defineTable({
     taskRunId: v.id("taskRuns"),
     content: v.string(), // Log content chunk
-  }).index("by_taskRun", ["taskRunId"]),
+    userId: v.string(), // User who owns this log chunk
+    teamId: v.string(), // Team this log chunk belongs to
+  })
+    .index("by_taskRun", ["taskRunId"])
+    .index("by_team_and_user", ["teamId", "userId"]),
   apiKeys: defineTable({
     envVar: v.string(), // e.g. "GEMINI_API_KEY"
     value: v.string(), // The actual API key value (encrypted in a real app)
@@ -165,13 +184,19 @@ const convexSchema = defineSchema({
     description: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_envVar", ["envVar"]),
+    userId: v.string(), // User who created this API key
+    teamId: v.string(), // Team this API key belongs to
+  })
+    .index("by_envVar", ["envVar"])
+    .index("by_team_and_user", ["teamId", "userId"]),
   workspaceSettings: defineTable({
     worktreePath: v.optional(v.string()), // Custom path for git worktrees
     autoPrEnabled: v.optional(v.boolean()), // Auto-create PR for crown winner (default: false)
     createdAt: v.number(),
     updatedAt: v.number(),
-  }),
+    userId: v.string(), // User who created these settings
+    teamId: v.string(), // Team these settings belong to
+  }).index("by_team_and_user", ["teamId", "userId"]),
   crownEvaluations: defineTable({
     taskId: v.id("tasks"),
     evaluatedAt: v.number(),
@@ -180,9 +205,12 @@ const convexSchema = defineSchema({
     evaluationPrompt: v.string(),
     evaluationResponse: v.string(),
     createdAt: v.number(),
+    userId: v.string(), // User who created this evaluation
+    teamId: v.string(), // Team this evaluation belongs to
   })
     .index("by_task", ["taskId"])
-    .index("by_winner", ["winnerRunId"]),
+    .index("by_winner", ["winnerRunId"])
+    .index("by_team_and_user", ["teamId", "userId"]),
   containerSettings: defineTable({
     maxRunningContainers: v.optional(v.number()), // Max containers to keep running (default: 5)
     reviewPeriodMinutes: v.optional(v.number()), // Minutes to keep container after task completion (default: 60)
@@ -191,7 +219,9 @@ const convexSchema = defineSchema({
     minContainersToKeep: v.optional(v.number()), // Minimum containers to always keep alive (default: 0)
     createdAt: v.number(),
     updatedAt: v.number(),
-  }),
+    userId: v.string(), // User who created these settings
+    teamId: v.string(), // Team these settings belong to
+  }).index("by_team_and_user", ["teamId", "userId"]),
 
   comments: defineTable({
     url: v.string(), // Full URL of the website where comment was created
@@ -204,6 +234,7 @@ const convexSchema = defineSchema({
     resolved: v.optional(v.boolean()), // Whether comment is resolved
     archived: v.optional(v.boolean()), // Whether comment is archived
     userId: v.string(), // User who created the comment
+    teamId: v.string(), // Team this comment belongs to
     profileImageUrl: v.optional(v.string()), // User's profile image URL
     userAgent: v.string(), // Browser user agent
     screenWidth: v.number(), // Screen width when comment was created
@@ -215,17 +246,20 @@ const convexSchema = defineSchema({
     .index("by_url", ["url", "createdAt"])
     .index("by_page", ["page", "createdAt"])
     .index("by_user", ["userId", "createdAt"])
-    .index("by_resolved", ["resolved", "createdAt"]),
+    .index("by_resolved", ["resolved", "createdAt"])
+    .index("by_team_and_user", ["teamId", "userId", "createdAt"]),
 
   commentReplies: defineTable({
     commentId: v.id("comments"),
     userId: v.string(),
+    teamId: v.string(), // Team this reply belongs to
     content: v.string(),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_comment", ["commentId", "createdAt"])
-    .index("by_user", ["userId", "createdAt"]),
+    .index("by_user", ["userId", "createdAt"])
+    .index("by_team_and_user", ["teamId", "userId", "createdAt"]),
 });
 
 export default convexSchema;

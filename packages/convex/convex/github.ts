@@ -1,10 +1,14 @@
 import { v } from "convex/values";
-import { internalMutation, mutation, query } from "./_generated/server";
+import { internalMutation } from "./_generated/server";
+import { authMutation, authQuery } from "./auth";
 
-export const getReposByOrg = query({
+export const getReposByOrg = authQuery({
   args: {},
   handler: async (ctx) => {
-    const repos = await ctx.db.query("repos").collect();
+    const repos = await ctx.db
+      .query("repos")
+      .withIndex("by_team_and_user", (q) => q.eq("teamId", ctx.teamId).eq("userId", ctx.userId))
+      .collect();
 
     // Group by organization
     const reposByOrg = repos.reduce(
@@ -22,31 +26,40 @@ export const getReposByOrg = query({
   },
 });
 
-export const getBranches = query({
+export const getBranches = authQuery({
   args: { repo: v.string() },
   handler: async (ctx, { repo }) => {
     const branches = await ctx.db
       .query("branches")
-      .filter((q) => q.eq(q.field("repo"), repo))
+      .filter((q) => q.and(
+        q.eq(q.field("repo"), repo),
+        q.eq(q.field("teamId"), ctx.teamId)
+      ))
       .collect();
     return branches.map((b) => b.name);
   },
 });
 
 // Queries
-export const getAllRepos = query({
+export const getAllRepos = authQuery({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db.query("repos").collect();
+    return await ctx.db
+      .query("repos")
+      .withIndex("by_team_and_user", (q) => q.eq("teamId", ctx.teamId).eq("userId", ctx.userId))
+      .collect();
   },
 });
 
-export const getBranchesByRepo = query({
+export const getBranchesByRepo = authQuery({
   args: { repo: v.string() },
   handler: async (ctx, { repo }) => {
     return await ctx.db
       .query("branches")
-      .filter((q) => q.eq(q.field("repo"), repo))
+      .filter((q) => q.and(
+        q.eq(q.field("repo"), repo),
+        q.eq(q.field("teamId"), ctx.teamId)
+      ))
       .collect();
   },
 });
@@ -65,7 +78,7 @@ export const insertRepo = internalMutation({
   },
 });
 
-export const upsertRepo = mutation({
+export const upsertRepo = authMutation({
   args: {
     fullName: v.string(),
     org: v.string(),
@@ -74,10 +87,13 @@ export const upsertRepo = mutation({
     provider: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    // Check if repo already exists
+    // Check if repo already exists for this team
     const existing = await ctx.db
       .query("repos")
-      .filter((q) => q.eq(q.field("gitRemote"), args.gitRemote))
+      .filter((q) => q.and(
+        q.eq(q.field("gitRemote"), args.gitRemote),
+        q.eq(q.field("teamId"), ctx.teamId)
+      ))
       .first();
 
     if (existing) {
@@ -88,6 +104,8 @@ export const upsertRepo = mutation({
       return await ctx.db.insert("repos", {
         ...args,
         provider: args.provider || "github",
+        userId: ctx.userId,
+        teamId: ctx.teamId,
       });
     }
   },
@@ -118,7 +136,7 @@ export const deleteBranch = internalMutation({
 });
 
 // Bulk mutations
-export const bulkInsertRepos = mutation({
+export const bulkInsertRepos = authMutation({
   args: {
     repos: v.array(
       v.object({
@@ -131,8 +149,11 @@ export const bulkInsertRepos = mutation({
     ),
   },
   handler: async (ctx, { repos }) => {
-    // Get existing repos to check for duplicates
-    const existingRepos = await ctx.db.query("repos").collect();
+    // Get existing repos to check for duplicates within the team
+    const existingRepos = await ctx.db
+      .query("repos")
+      .withIndex("by_team_and_user", (q) => q.eq("teamId", ctx.teamId).eq("userId", ctx.userId))
+      .collect();
     const existingRepoNames = new Set(existingRepos.map((r) => r.fullName));
 
     // Only insert repos that don't already exist
@@ -141,22 +162,29 @@ export const bulkInsertRepos = mutation({
     );
 
     const insertedIds = await Promise.all(
-      newRepos.map((repo) => ctx.db.insert("repos", repo))
+      newRepos.map((repo) => ctx.db.insert("repos", {
+        ...repo,
+        userId: ctx.userId,
+        teamId: ctx.teamId,
+      }))
     );
     return insertedIds;
   },
 });
 
-export const bulkInsertBranches = mutation({
+export const bulkInsertBranches = authMutation({
   args: {
     repo: v.string(),
     branches: v.array(v.string()),
   },
   handler: async (ctx, { repo, branches }) => {
-    // Get existing branches for this repo
+    // Get existing branches for this repo within the team
     const existingBranches = await ctx.db
       .query("branches")
-      .filter((q) => q.eq(q.field("repo"), repo))
+      .filter((q) => q.and(
+        q.eq(q.field("repo"), repo),
+        q.eq(q.field("teamId"), ctx.teamId)
+      ))
       .collect();
     const existingBranchNames = new Set(existingBranches.map((b) => b.name));
 
@@ -166,14 +194,19 @@ export const bulkInsertBranches = mutation({
     );
 
     const insertedIds = await Promise.all(
-      newBranches.map((name) => ctx.db.insert("branches", { repo, name }))
+      newBranches.map((name) => ctx.db.insert("branches", {
+        repo,
+        name,
+        userId: ctx.userId,
+        teamId: ctx.teamId,
+      }))
     );
     return insertedIds;
   },
 });
 
 // Full replacement mutations (use with caution)
-export const replaceAllRepos = mutation({
+export const replaceAllRepos = authMutation({
   args: {
     repos: v.array(
       v.object({
@@ -186,13 +219,20 @@ export const replaceAllRepos = mutation({
     ),
   },
   handler: async (ctx, { repos }) => {
-    // Delete all existing repos
-    const existingRepos = await ctx.db.query("repos").collect();
+    // Delete all existing repos for this team
+    const existingRepos = await ctx.db
+      .query("repos")
+      .withIndex("by_team_and_user", (q) => q.eq("teamId", ctx.teamId).eq("userId", ctx.userId))
+      .collect();
     await Promise.all(existingRepos.map((repo) => ctx.db.delete(repo._id)));
 
     // Insert all new repos
     const insertedIds = await Promise.all(
-      repos.map((repo) => ctx.db.insert("repos", repo))
+      repos.map((repo) => ctx.db.insert("repos", {
+        ...repo,
+        userId: ctx.userId,
+        teamId: ctx.teamId,
+      }))
     );
     return insertedIds;
   },

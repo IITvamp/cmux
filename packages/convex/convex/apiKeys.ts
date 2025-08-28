@@ -1,14 +1,17 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { authMutation, authQuery } from "./auth";
 
-export const getAll = query({
+export const getAll = authQuery({
   args: {},
   handler: async (ctx) => {
-    return await ctx.db.query("apiKeys").collect();
+    return await ctx.db
+      .query("apiKeys")
+      .withIndex("by_team_and_user", (q) => q.eq("teamId", ctx.teamId).eq("userId", ctx.userId))
+      .collect();
   },
 });
 
-export const getByEnvVar = query({
+export const getByEnvVar = authQuery({
   args: {
     envVar: v.string(),
   },
@@ -16,11 +19,12 @@ export const getByEnvVar = query({
     return await ctx.db
       .query("apiKeys")
       .withIndex("by_envVar", (q) => q.eq("envVar", args.envVar))
+      .filter((q) => q.eq(q.field("teamId"), ctx.teamId))
       .first();
   },
 });
 
-export const upsert = mutation({
+export const upsert = authMutation({
   args: {
     envVar: v.string(),
     value: v.string(),
@@ -31,6 +35,7 @@ export const upsert = mutation({
     const existing = await ctx.db
       .query("apiKeys")
       .withIndex("by_envVar", (q) => q.eq("envVar", args.envVar))
+      .filter((q) => q.eq(q.field("teamId"), ctx.teamId))
       .first();
 
     if (existing) {
@@ -47,6 +52,8 @@ export const upsert = mutation({
         value: args.value,
         displayName: args.displayName,
         description: args.description,
+        userId: ctx.userId,
+        teamId: ctx.teamId,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       });
@@ -54,7 +61,7 @@ export const upsert = mutation({
   },
 });
 
-export const remove = mutation({
+export const remove = authMutation({
   args: {
     envVar: v.string(),
   },
@@ -62,6 +69,7 @@ export const remove = mutation({
     const existing = await ctx.db
       .query("apiKeys")
       .withIndex("by_envVar", (q) => q.eq("envVar", args.envVar))
+      .filter((q) => q.eq(q.field("teamId"), ctx.teamId))
       .first();
 
     if (existing) {
@@ -70,10 +78,13 @@ export const remove = mutation({
   },
 });
 
-export const getAllForAgents = query({
+export const getAllForAgents = authQuery({
   args: {},
   handler: async (ctx) => {
-    const apiKeys = await ctx.db.query("apiKeys").collect();
+    const apiKeys = await ctx.db
+      .query("apiKeys")
+      .withIndex("by_team_and_user", (q) => q.eq("teamId", ctx.teamId).eq("userId", ctx.userId))
+      .collect();
     const keyMap: Record<string, string> = {};
 
     for (const key of apiKeys) {
