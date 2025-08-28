@@ -1,21 +1,31 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server.js";
+import { authMutation as mutation, authQuery as query } from "../_shared/auth";
+import { ensureAuth } from "../_shared/ensureAuth";
 
 export const get = query({
-  args: {},
-  handler: async (ctx) => {
-    const settings = await ctx.db.query("workspaceSettings").first();
+  args: { teamId: v.string() },
+  handler: async (ctx, { teamId }) => {
+    await ensureAuth(ctx);
+    const settings = await ctx.db
+      .query("workspaceSettings")
+      .withIndex("by_team_user", (q) => q.eq("teamId", teamId))
+      .first();
     return settings;
   },
 });
 
 export const update = mutation({
   args: {
+    teamId: v.string(),
     worktreePath: v.optional(v.string()),
     autoPrEnabled: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    const existing = await ctx.db.query("workspaceSettings").first();
+    const { userId } = await ensureAuth(ctx);
+    const existing = await ctx.db
+      .query("workspaceSettings")
+      .withIndex("by_team_user", (q) => q.eq("teamId", args.teamId))
+      .first();
     const now = Date.now();
 
     if (existing) {
@@ -30,6 +40,8 @@ export const update = mutation({
         autoPrEnabled: args.autoPrEnabled,
         createdAt: now,
         updatedAt: now,
+        userId,
+        teamId: args.teamId,
       });
     }
   },

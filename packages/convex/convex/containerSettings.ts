@@ -1,5 +1,6 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { authMutation as mutation, authQuery as query } from "../_shared/auth";
+import { ensureAuth } from "../_shared/ensureAuth";
 
 // Default settings
 const DEFAULT_SETTINGS = {
@@ -12,8 +13,13 @@ const DEFAULT_SETTINGS = {
 
 // Get container settings
 export const get = query({
-  handler: async (ctx) => {
-    const settings = await ctx.db.query("containerSettings").first();
+  args: { teamId: v.string() },
+  handler: async (ctx, args) => {
+    await ensureAuth(ctx);
+    const settings = await ctx.db
+      .query("containerSettings")
+      .withIndex("by_team_user", (q) => q.eq("teamId", args.teamId))
+      .first();
     if (!settings) {
       // Return defaults if no settings exist
       return {
@@ -33,6 +39,7 @@ export const get = query({
 // Update container settings
 export const update = mutation({
   args: {
+    teamId: v.string(),
     maxRunningContainers: v.optional(v.number()),
     reviewPeriodMinutes: v.optional(v.number()),
     autoCleanupEnabled: v.optional(v.boolean()),
@@ -40,7 +47,11 @@ export const update = mutation({
     minContainersToKeep: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
-    const existing = await ctx.db.query("containerSettings").first();
+    const { userId } = await ensureAuth(ctx);
+    const existing = await ctx.db
+      .query("containerSettings")
+      .withIndex("by_team_user", (q) => q.eq("teamId", args.teamId))
+      .first();
     const now = Date.now();
 
     if (existing) {
@@ -53,6 +64,7 @@ export const update = mutation({
         ...args,
         createdAt: now,
         updatedAt: now,
+        userId,
       });
     }
   },
@@ -60,8 +72,13 @@ export const update = mutation({
 
 // Get effective settings with defaults
 export const getEffective = query({
-  handler: async (ctx) => {
-    const settings = await ctx.db.query("containerSettings").first();
+  args: { teamId: v.string() },
+  handler: async (ctx, args) => {
+    await ensureAuth(ctx);
+    const settings = await ctx.db
+      .query("containerSettings")
+      .withIndex("by_team_user", (q) => q.eq("teamId", args.teamId))
+      .first();
     return {
       maxRunningContainers: settings?.maxRunningContainers ?? DEFAULT_SETTINGS.maxRunningContainers,
       reviewPeriodMinutes: settings?.reviewPeriodMinutes ?? DEFAULT_SETTINGS.reviewPeriodMinutes,

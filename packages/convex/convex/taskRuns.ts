@@ -1,22 +1,21 @@
 import { v } from "convex/values";
 import type { Doc } from "./_generated/dataModel";
-import {
-  internalMutation,
-  internalQuery,
-  mutation,
-  query,
-} from "./_generated/server";
+import { internalMutation, internalQuery } from "./_generated/server";
+import { authMutation as mutation, authQuery as query } from "../_shared/auth";
+import { ensureAuth } from "../_shared/ensureAuth";
 
 // Create a new task run
 export const create = mutation({
   args: {
     taskId: v.id("tasks"),
+    teamId: v.string(),
     parentRunId: v.optional(v.id("taskRuns")),
     prompt: v.string(),
     agentName: v.optional(v.string()),
     newBranch: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const { userId } = await ensureAuth(ctx);
     const now = Date.now();
     const taskRunId = await ctx.db.insert("taskRuns", {
       taskId: args.taskId,
@@ -28,6 +27,8 @@ export const create = mutation({
       log: "",
       createdAt: now,
       updatedAt: now,
+      userId,
+      teamId: args.teamId,
     });
     return taskRunId;
   },
@@ -35,11 +36,13 @@ export const create = mutation({
 
 // Get all task runs for a task, organized in tree structure
 export const getByTask = query({
-  args: { taskId: v.id("tasks") },
+  args: { taskId: v.id("tasks"), teamId: v.string() },
   handler: async (ctx, args) => {
+    await ensureAuth(ctx);
     const runs = await ctx.db
       .query("taskRuns")
-      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+      .withIndex("by_team_user", (q) => q.eq("teamId", args.teamId))
+      .filter((q) => q.eq(q.field("taskId"), args.taskId))
       .collect();
 
     // Build tree structure

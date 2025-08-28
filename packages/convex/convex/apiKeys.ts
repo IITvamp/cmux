@@ -1,21 +1,29 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { authMutation as mutation, authQuery as query } from "../_shared/auth";
+import { ensureAuth } from "../_shared/ensureAuth";
 
 export const getAll = query({
-  args: {},
-  handler: async (ctx) => {
-    return await ctx.db.query("apiKeys").collect();
+  args: { teamId: v.string() },
+  handler: async (ctx, args) => {
+    await ensureAuth(ctx);
+    return await ctx.db
+      .query("apiKeys")
+      .withIndex("by_team_user", (q) => q.eq("teamId", args.teamId))
+      .collect();
   },
 });
 
 export const getByEnvVar = query({
   args: {
     envVar: v.string(),
+    teamId: v.string(),
   },
   handler: async (ctx, args) => {
+    await ensureAuth(ctx);
     return await ctx.db
       .query("apiKeys")
-      .withIndex("by_envVar", (q) => q.eq("envVar", args.envVar))
+      .withIndex("by_team_user", (q) => q.eq("teamId", args.teamId))
+      .filter((q) => q.eq(q.field("envVar"), args.envVar))
       .first();
   },
 });
@@ -26,11 +34,14 @@ export const upsert = mutation({
     value: v.string(),
     displayName: v.string(),
     description: v.optional(v.string()),
+    teamId: v.string(),
   },
   handler: async (ctx, args) => {
+    const { userId } = await ensureAuth(ctx);
     const existing = await ctx.db
       .query("apiKeys")
-      .withIndex("by_envVar", (q) => q.eq("envVar", args.envVar))
+      .withIndex("by_team_user", (q) => q.eq("teamId", args.teamId))
+      .filter((q) => q.eq(q.field("envVar"), args.envVar))
       .first();
 
     if (existing) {
@@ -49,6 +60,8 @@ export const upsert = mutation({
         description: args.description,
         createdAt: Date.now(),
         updatedAt: Date.now(),
+        userId,
+        teamId: args.teamId,
       });
     }
   },
@@ -57,11 +70,14 @@ export const upsert = mutation({
 export const remove = mutation({
   args: {
     envVar: v.string(),
+    teamId: v.string(),
   },
   handler: async (ctx, args) => {
+    await ensureAuth(ctx);
     const existing = await ctx.db
       .query("apiKeys")
-      .withIndex("by_envVar", (q) => q.eq("envVar", args.envVar))
+      .withIndex("by_team_user", (q) => q.eq("teamId", args.teamId))
+      .filter((q) => q.eq(q.field("envVar"), args.envVar))
       .first();
 
     if (existing) {
@@ -71,9 +87,13 @@ export const remove = mutation({
 });
 
 export const getAllForAgents = query({
-  args: {},
-  handler: async (ctx) => {
-    const apiKeys = await ctx.db.query("apiKeys").collect();
+  args: { teamId: v.string() },
+  handler: async (ctx, args) => {
+    await ensureAuth(ctx);
+    const apiKeys = await ctx.db
+      .query("apiKeys")
+      .withIndex("by_team_user", (q) => q.eq("teamId", args.teamId))
+      .collect();
     const keyMap: Record<string, string> = {};
 
     for (const key of apiKeys) {

@@ -2,37 +2,38 @@ import { v } from "convex/values";
 import { ensureAuth } from "../_shared/ensureAuth";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { mutation, query } from "./_generated/server";
+import { authMutation as mutation, authQuery as query } from "../_shared/auth";
 
 export const get = query({
   args: {
+    teamId: v.string(),
     projectFullName: v.optional(v.string()),
     archived: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     await ensureAuth(ctx);
-    let query = ctx.db.query("tasks");
-    // .withIndex("by_user", (q) => q.eq("userId", user.userId));
+    let q = ctx.db
+      .query("tasks")
+      .withIndex("by_team_user", (qi) => qi.eq("teamId", args.teamId));
 
     // Default to active (non-archived) when not specified
     if (args.archived === true) {
-      query = query.filter((q) => q.eq(q.field("isArchived"), true));
+      q = q.filter((qq) => qq.eq(qq.field("isArchived"), true));
     } else {
-      query = query.filter((q) => q.neq(q.field("isArchived"), true));
+      q = q.filter((qq) => qq.neq(qq.field("isArchived"), true));
     }
 
     if (args.projectFullName) {
-      query = query.filter((q) =>
-        q.eq(q.field("projectFullName"), args.projectFullName)
-      );
+      q = q.filter((qq) => qq.eq(qq.field("projectFullName"), args.projectFullName));
     }
 
-    return await query.order("desc").collect();
+    return await q.order("desc").collect();
   },
 });
 
 export const create = mutation({
   args: {
+    teamId: v.string(),
     text: v.string(),
     description: v.optional(v.string()),
     projectFullName: v.optional(v.string()),
@@ -49,6 +50,7 @@ export const create = mutation({
     ),
   },
   handler: async (ctx, args) => {
+    const { userId } = await ensureAuth(ctx);
     const now = Date.now();
     const taskId = await ctx.db.insert("tasks", {
       text: args.text,
@@ -60,6 +62,8 @@ export const create = mutation({
       createdAt: now,
       updatedAt: now,
       images: args.images,
+      userId,
+      teamId: args.teamId,
     });
 
     return taskId;
@@ -67,15 +71,17 @@ export const create = mutation({
 });
 
 export const remove = mutation({
-  args: { id: v.id("tasks") },
+  args: { id: v.id("tasks"), teamId: v.string() },
   handler: async (ctx, args) => {
+    await ensureAuth(ctx);
     await ctx.db.delete(args.id);
   },
 });
 
 export const toggle = mutation({
-  args: { id: v.id("tasks") },
+  args: { id: v.id("tasks"), teamId: v.string() },
   handler: async (ctx, args) => {
+    await ensureAuth(ctx);
     const task = await ctx.db.get(args.id);
     if (task === null) {
       throw new Error("Task not found");
@@ -88,8 +94,10 @@ export const setCompleted = mutation({
   args: {
     id: v.id("tasks"),
     isCompleted: v.boolean(),
+    teamId: v.string(),
   },
   handler: async (ctx, args) => {
+    await ensureAuth(ctx);
     const task = await ctx.db.get(args.id);
     if (task === null) {
       throw new Error("Task not found");
@@ -102,8 +110,9 @@ export const setCompleted = mutation({
 });
 
 export const update = mutation({
-  args: { id: v.id("tasks"), text: v.string() },
+  args: { id: v.id("tasks"), text: v.string(), teamId: v.string() },
   handler: async (ctx, args) => {
+    await ensureAuth(ctx);
     const task = await ctx.db.get(args.id);
     if (task === null) {
       throw new Error("Task not found");
@@ -113,8 +122,9 @@ export const update = mutation({
 });
 
 export const getById = query({
-  args: { id: v.id("tasks") },
+  args: { id: v.id("tasks"), teamId: v.string() },
   handler: async (ctx, args) => {
+    await ensureAuth(ctx);
     const task = await ctx.db.get(args.id);
     if (!task) return null;
 
@@ -140,18 +150,21 @@ export const getById = query({
 });
 
 export const getVersions = query({
-  args: { taskId: v.id("tasks") },
+  args: { taskId: v.id("tasks"), teamId: v.string() },
   handler: async (ctx, args) => {
+    await ensureAuth(ctx);
     return await ctx.db
       .query("taskVersions")
-      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+      .withIndex("by_team_user", (q) => q.eq("teamId", args.teamId))
+      .filter((q) => q.eq(q.field("taskId"), args.taskId))
       .collect();
   },
 });
 
 export const archive = mutation({
-  args: { id: v.id("tasks") },
+  args: { id: v.id("tasks"), teamId: v.string() },
   handler: async (ctx, args) => {
+    await ensureAuth(ctx);
     const task = await ctx.db.get(args.id);
     if (task === null) {
       throw new Error("Task not found");
@@ -161,8 +174,9 @@ export const archive = mutation({
 });
 
 export const unarchive = mutation({
-  args: { id: v.id("tasks") },
+  args: { id: v.id("tasks"), teamId: v.string() },
   handler: async (ctx, args) => {
+    await ensureAuth(ctx);
     const task = await ctx.db.get(args.id);
     if (task === null) {
       throw new Error("Task not found");
@@ -175,8 +189,10 @@ export const updateCrownError = mutation({
   args: {
     id: v.id("tasks"),
     crownEvaluationError: v.optional(v.string()),
+    teamId: v.string(),
   },
   handler: async (ctx, args) => {
+    await ensureAuth(ctx);
     const { id, ...updates } = args;
     await ctx.db.patch(id, {
       ...updates,
@@ -190,8 +206,10 @@ export const setPullRequestDescription = mutation({
   args: {
     id: v.id("tasks"),
     pullRequestDescription: v.optional(v.string()),
+    teamId: v.string(),
   },
   handler: async (ctx, args) => {
+    await ensureAuth(ctx);
     const { id, pullRequestDescription } = args;
     await ctx.db.patch(id, {
       pullRequestDescription,
@@ -205,8 +223,10 @@ export const setPullRequestTitle = mutation({
   args: {
     id: v.id("tasks"),
     pullRequestTitle: v.optional(v.string()),
+    teamId: v.string(),
   },
   handler: async (ctx, args) => {
+    await ensureAuth(ctx);
     const { id, pullRequestTitle } = args;
     await ctx.db.patch(id, {
       pullRequestTitle,
@@ -226,15 +246,19 @@ export const createVersion = mutation({
         changes: v.string(),
       })
     ),
+    teamId: v.string(),
   },
   handler: async (ctx, args) => {
+    await ensureAuth(ctx);
     const existingVersions = await ctx.db
       .query("taskVersions")
-      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+      .withIndex("by_team_user", (q) => q.eq("teamId", args.teamId))
+      .filter((q) => q.eq(q.field("taskId"), args.taskId))
       .collect();
 
     const version = existingVersions.length + 1;
 
+    const { userId } = await ensureAuth(ctx);
     const versionId = await ctx.db.insert("taskVersions", {
       taskId: args.taskId,
       version,
@@ -242,6 +266,8 @@ export const createVersion = mutation({
       summary: args.summary,
       files: args.files,
       createdAt: Date.now(),
+      userId,
+      teamId: args.teamId,
     });
 
     await ctx.db.patch(args.taskId, { updatedAt: Date.now() });
@@ -252,11 +278,13 @@ export const createVersion = mutation({
 
 // Check if all runs for a task are completed and trigger crown evaluation
 export const getTasksWithPendingCrownEvaluation = query({
-  args: {},
-  handler: async (ctx) => {
+  args: { teamId: v.string() },
+  handler: async (ctx, args) => {
+    await ensureAuth(ctx);
     // Only get tasks that are pending, not already in progress
     const tasks = await ctx.db
       .query("tasks")
+      .withIndex("by_team_user", (q) => q.eq("teamId", args.teamId))
       .filter((q) =>
         q.eq(q.field("crownEvaluationError"), "pending_evaluation")
       )
@@ -267,7 +295,8 @@ export const getTasksWithPendingCrownEvaluation = query({
     for (const task of tasks) {
       const existingEvaluation = await ctx.db
         .query("crownEvaluations")
-        .withIndex("by_task", (q) => q.eq("taskId", task._id))
+        .withIndex("by_team_user", (q) => q.eq("teamId", args.teamId))
+        .filter((q) => q.eq(q.field("taskId"), task._id))
         .first();
 
       if (!existingEvaluation) {
@@ -291,8 +320,10 @@ export const updateMergeStatus = mutation({
       v.literal("pr_merged"),
       v.literal("pr_closed")
     ),
+    teamId: v.string(),
   },
   handler: async (ctx, args) => {
+    await ensureAuth(ctx);
     const task = await ctx.db.get(args.id);
     if (task === null) {
       throw new Error("Task not found");
@@ -307,12 +338,15 @@ export const updateMergeStatus = mutation({
 export const checkAndEvaluateCrown = mutation({
   args: {
     taskId: v.id("tasks"),
+    teamId: v.string(),
   },
   handler: async (ctx, args): Promise<Id<"taskRuns"> | "pending" | null> => {
+    await ensureAuth(ctx);
     // Get all runs for this task
     const taskRuns = await ctx.db
       .query("taskRuns")
-      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+      .withIndex("by_team_user", (q) => q.eq("teamId", args.teamId))
+      .filter((q) => q.eq(q.field("taskId"), args.taskId))
       .collect();
 
     console.log(`[CheckCrown] Task ${args.taskId} has ${taskRuns.length} runs`);
@@ -366,7 +400,8 @@ export const checkAndEvaluateCrown = mutation({
     // Check if we've already evaluated crown for this task
     const existingEvaluation = await ctx.db
       .query("crownEvaluations")
-      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+      .withIndex("by_team_user", (q) => q.eq("teamId", args.teamId))
+      .filter((q) => q.eq(q.field("taskId"), args.taskId))
       .first();
 
     if (existingEvaluation) {
@@ -409,6 +444,7 @@ export const checkAndEvaluateCrown = mutation({
       );
       winnerId = await ctx.runMutation(api.crown.evaluateAndCrownWinner, {
         taskId: args.taskId,
+        teamId: args.teamId,
       });
       console.log(
         `[CheckCrown] Crown evaluation completed, winner: ${winnerId}`
