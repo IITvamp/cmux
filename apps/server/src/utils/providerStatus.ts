@@ -1,18 +1,13 @@
-import { 
-  AGENT_CONFIGS, 
-  checkDockerStatus, 
+import {
+  AGENT_CONFIGS,
+  checkDockerStatus,
   checkGitStatus,
   type DockerStatus,
   type GitStatus,
   type GitHubStatus,
-  type ProviderStatus as SharedProviderStatus
+  type ProviderStatus as SharedProviderStatus,
 } from "@cmux/shared";
 import { getGitHubTokenFromKeychain } from "./getGitHubToken.js";
-import { api } from "@cmux/convex/api";
-import { ConvexHttpClient } from "convex/browser";
-
-const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL || "";
-const convex = convexUrl ? new ConvexHttpClient(convexUrl) : null;
 
 async function checkGitHubStatus(): Promise<GitHubStatus> {
   try {

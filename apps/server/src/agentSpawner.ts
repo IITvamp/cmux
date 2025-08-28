@@ -221,7 +221,8 @@ export async function spawnAgent(
       for (const keyConfig of agent.apiKeys) {
         const key = apiKeys[keyConfig.envVar];
         if (key && key.trim().length > 0) {
-          envVars[keyConfig.envVar] = key;
+          const injectName = keyConfig.mapToEnvVar || keyConfig.envVar;
+          envVars[injectName] = key;
         }
       }
     }
@@ -248,12 +249,6 @@ export async function spawnAgent(
     serverLogger.info(`  Processed args: ${processedArgs.join(" ")}`);
     serverLogger.info(`  Agent command: ${agentCommand}`);
     serverLogger.info(`  Tmux session name: ${tmuxSessionName}`);
-    serverLogger.info(
-      `  Environment vars to pass:`,
-      Object.keys(envVars).filter(
-        (k) => k.startsWith("ANTHROPIC_") || k.startsWith("GEMINI_")
-      )
-    );
 
     let vscodeInstance: VSCodeInstance;
     let worktreePath: string;
