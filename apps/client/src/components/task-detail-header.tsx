@@ -16,6 +16,7 @@ import {
   ExternalLink,
   GitBranch,
   GitMerge,
+  MessageSquare,
   Trash2,
 } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
@@ -35,6 +36,8 @@ interface TaskDetailHeaderProps {
   onExpandAll?: () => void;
   onCollapseAll?: () => void;
   isLoading?: boolean;
+  isCodeReviewMode?: boolean;
+  onToggleCodeReviewMode?: () => void;
 }
 
 const ENABLE_MERGE_BUTTON = false;
@@ -53,6 +56,8 @@ export function TaskDetailHeader({
   onExpandAll,
   onCollapseAll,
   isLoading,
+  isCodeReviewMode,
+  onToggleCodeReviewMode,
 }: TaskDetailHeaderProps) {
   const navigate = useNavigate();
   const clipboard = useClipboard({ timeout: 2000 });
@@ -245,6 +250,22 @@ export function TaskDetailHeader({
           )}
 
           <OpenEditorSplitButton worktreePath={worktreePath} />
+
+          {onToggleCodeReviewMode && (
+            <button
+              onClick={onToggleCodeReviewMode}
+              className={clsx(
+                "flex items-center gap-1.5 px-3 py-1 rounded font-medium text-xs select-none whitespace-nowrap transition-colors",
+                isCodeReviewMode
+                  ? "bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-300 dark:border-blue-700 hover:bg-blue-200 dark:hover:bg-blue-900/40"
+                  : "bg-neutral-200 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 border border-neutral-300 dark:border-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-700"
+              )}
+              title={isCodeReviewMode ? "Exit code review mode" : "Enter code review mode"}
+            >
+              <MessageSquare className="w-3.5 h-3.5" />
+              {isCodeReviewMode ? "Review Mode" : "Start Review"}
+            </button>
+          )}
 
           <button className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-white select-none hidden">
             <ExternalLink className="w-3.5 h-3.5" />

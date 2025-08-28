@@ -1,5 +1,6 @@
 import { FloatingPane } from "@/components/floating-pane";
 import { GitDiffViewer } from "@/components/git-diff-viewer";
+import { CodeReviewViewer } from "@/components/code-review-viewer";
 import { TaskDetailHeader } from "@/components/task-detail-header";
 import { type MergeMethod } from "@/components/ui/merge-button";
 import { useSocket } from "@/contexts/socket/use-socket";
@@ -55,6 +56,7 @@ function TaskDetailPage() {
   const { runId } = Route.useSearch();
 
   const [isCreatingPr, setIsCreatingPr] = useState(false);
+  const [isCodeReviewMode, setIsCodeReviewMode] = useState(false);
   // Removed periodic diff refresh; diffs are loaded on demand and on run change
   const [diffControls, setDiffControls] = useState<{
     expandAll: () => void;
@@ -286,6 +288,8 @@ function TaskDetailPage() {
             onExpandAll={diffControls?.expandAll}
             onCollapseAll={diffControls?.collapseAll}
             isLoading={diffsQuery.isPending}
+            isCodeReviewMode={isCodeReviewMode}
+            onToggleCodeReviewMode={() => setIsCodeReviewMode(!isCodeReviewMode)}
           />
           {task?.text && (
             <div className="mb-2 px-3.5">
@@ -298,19 +302,33 @@ function TaskDetailPage() {
             </div>
           )}
           <div className="bg-white dark:bg-neutral-950 grow flex flex-col">
-            <GitDiffViewer
-              diffs={
-                (selectedRun?._id
-                  ? stableDiffsByRun[selectedRun._id]
-                  : undefined) ||
-                diffsQuery.data ||
-                []
-              }
-              isLoading={!diffsQuery.data && !!selectedRun}
-              taskRunId={selectedRun?._id}
-              key={selectedRun?._id}
-              onControlsChange={(c) => setDiffControls(c)}
-            />
+            {isCodeReviewMode ? (
+              <CodeReviewViewer
+                diffs={
+                  (selectedRun?._id
+                    ? stableDiffsByRun[selectedRun._id]
+                    : undefined) ||
+                  diffsQuery.data ||
+                  []
+                }
+                isLoading={!diffsQuery.data && !!selectedRun}
+                onControlsChange={(c) => setDiffControls(c)}
+              />
+            ) : (
+              <GitDiffViewer
+                diffs={
+                  (selectedRun?._id
+                    ? stableDiffsByRun[selectedRun._id]
+                    : undefined) ||
+                  diffsQuery.data ||
+                  []
+                }
+                isLoading={!diffsQuery.data && !!selectedRun}
+                taskRunId={selectedRun?._id}
+                key={selectedRun?._id}
+                onControlsChange={(c) => setDiffControls(c)}
+              />
+            )}
           </div>
         </div>
       </div>
