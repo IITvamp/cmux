@@ -77,6 +77,31 @@ function getStatusIcon(status: ReplaceDiffEntry["status"]) {
   }
 }
 
+const kitties = [
+  // kitty1
+  `\
+   /\\_/\\     
+  ( =.= )    💤
+   (> <)>☕   
+_____|_____
+|  LAPTOP   |
+|  ======== |
+| if(tired) |
+| sleep();  |
+|___________|
+ ||    ||`,
+  // kitty2
+  `\
+/\\_/\\
+(='.'=)
+(")_(")`,
+  // bunny
+  `\
+(\\  /)
+( ^.^ )
+c(")(")`,
+];
+
 export function GitDiffViewer({
   diffs,
   isLoading,
@@ -93,6 +118,11 @@ export function GitDiffViewer({
     }
     return theme as "dark" | "light";
   });
+
+  const kitty = useMemo(() => {
+    return kitties[Math.floor(Math.random() * kitties.length)];
+    // return kitties[2];
+  }, []);
 
   useEffect(() => {
     if (theme === "system") {
@@ -294,8 +324,13 @@ export function GitDiffViewer({
         {/* End-of-diff message */}
         <div className="px-3 py-6 text-center">
           <span className="text-xs text-neutral-500 dark:text-neutral-400 select-none">
-            You’ve reached the end of the diff — nice work ✨
+            You’ve reached the end of the diff!
           </span>
+          <div className="grid place-content-center">
+            <pre className="text-[8px] text-left text-neutral-500 dark:text-neutral-400 select-none mt-2 pb-20 font-mono">
+              {kitty}
+            </pre>
+          </div>
         </div>
       </div>
     </div>
