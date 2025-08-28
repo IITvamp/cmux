@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { authMutation, authQuery } from "./auth/functions";
 
 export const evaluateAndCrownWinner = mutation({
   args: {
