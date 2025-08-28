@@ -1,6 +1,7 @@
 import { is } from "@electron-toolkit/utils";
-import { app, BrowserWindow, shell } from "electron";
+import { app, BrowserWindow, shell, dialog } from "electron";
 import { join } from "node:path";
+import { autoUpdater } from "electron-updater";
 
 function createWindow(): void {
   const mainWindow = new BrowserWindow({
@@ -32,6 +33,41 @@ function createWindow(): void {
   } else {
     mainWindow.loadFile(join(__dirname, "../renderer/index.html"));
   }
+}
+
+// Auto-updater configuration
+if (!is.dev) {
+  autoUpdater.checkForUpdatesAndNotify();
+
+  autoUpdater.on("update-available", () => {
+    dialog.showMessageBox({
+      type: "info",
+      title: "Update Available",
+      message:
+        "A new version is available. It will be downloaded in the background.",
+      buttons: ["OK"],
+    });
+  });
+
+  autoUpdater.on("update-downloaded", () => {
+    dialog
+      .showMessageBox({
+        type: "info",
+        title: "Update Ready",
+        message:
+          "Update downloaded. The application will restart to apply the update.",
+        buttons: ["Restart Now", "Later"],
+      })
+      .then((result) => {
+        if (result.response === 0) {
+          autoUpdater.quitAndInstall();
+        }
+      });
+  });
+
+  autoUpdater.on("error", (error) => {
+    console.error("Auto-updater error:", error);
+  });
 }
 
 app.whenReady().then(() => {
