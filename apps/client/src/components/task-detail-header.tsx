@@ -28,6 +28,7 @@ interface TaskDetailHeaderProps {
   isCreatingPr: boolean;
   setIsCreatingPr: (v: boolean) => void;
   onMerge: (method: MergeMethod) => Promise<void>;
+  onMergeBranch?: () => Promise<void>;
   totalAdditions?: number;
   totalDeletions?: number;
   hasAnyDiffs?: boolean;
@@ -43,6 +44,7 @@ export function TaskDetailHeader({
   isCreatingPr,
   setIsCreatingPr,
   onMerge,
+  onMergeBranch,
   totalAdditions,
   totalDeletions,
   hasAnyDiffs,
@@ -86,6 +88,16 @@ export function TaskDetailHeader({
     setIsMerging(true);
     try {
       await onMerge(method);
+    } finally {
+      setIsMerging(false);
+    }
+  };
+
+  const handleMergeBranch = async () => {
+    if (!onMergeBranch) return;
+    setIsMerging(true);
+    try {
+      await onMergeBranch();
     } finally {
       setIsMerging(false);
     }
@@ -197,6 +209,18 @@ export function TaskDetailHeader({
                 (!prIsOpen && !hasChanges)
               }
             />
+          )}
+          {!prIsOpen && (
+            <button
+              onClick={handleMergeBranch}
+              className="flex items-center gap-1.5 px-3 py-1 bg-[#8250df] text-white rounded hover:bg-[#8250df]/90 dark:bg-[#8250df] dark:hover:bg-[#8250df]/90 border border-[#6e40cc] dark:border-[#6e40cc] font-medium text-xs select-none disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+              disabled={
+                isOpeningPr || isCreatingPr || isMerging || !hasChanges
+              }
+            >
+              <GitMerge className="w-3.5 h-3.5" />
+              Merge
+            </button>
           )}
           {selectedRun?.pullRequestUrl &&
             selectedRun.pullRequestUrl !== "pending" ? (
