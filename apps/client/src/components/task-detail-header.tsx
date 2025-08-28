@@ -35,6 +35,9 @@ interface TaskDetailHeaderProps {
   onExpandAll?: () => void;
   onCollapseAll?: () => void;
   isLoading?: boolean;
+  // Local-only code review UI
+  isReviewMode?: boolean;
+  onToggleReviewMode?: () => void;
 }
 
 const ENABLE_MERGE_BUTTON = false;
@@ -53,6 +56,8 @@ export function TaskDetailHeader({
   onExpandAll,
   onCollapseAll,
   isLoading,
+  isReviewMode,
+  onToggleReviewMode,
 }: TaskDetailHeaderProps) {
   const navigate = useNavigate();
   const clipboard = useClipboard({ timeout: 2000 });
@@ -186,6 +191,33 @@ export function TaskDetailHeader({
 
         {/* Actions on right, vertically centered across rows */}
         <div className="col-start-3 row-start-1 row-span-2 self-center flex items-center gap-2 shrink-0">
+          {/* Local review mode toggle (frontend-only) */}
+          <button
+            onClick={onToggleReviewMode}
+            className={clsx(
+              "flex items-center gap-1.5 px-3 py-1 rounded font-medium text-xs select-none whitespace-nowrap border",
+              isReviewMode
+                ? "bg-[#1f883d] text-white border-[#1a7f37] hover:bg-[#187436]"
+                : "bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white border-neutral-300 dark:border-neutral-700 hover:bg-neutral-300 dark:hover:bg-neutral-700"
+            )}
+            title={
+              isReviewMode
+                ? "Finish review (local, no backend)"
+                : "Start review (local, no backend)"
+            }
+            disabled={isLoading}
+          >
+            {/* Simple dot to echo GitHub review affordance */}
+            <span
+              className={clsx(
+                "inline-block w-2 h-2 rounded-full",
+                isReviewMode
+                  ? "bg-white/90"
+                  : "bg-neutral-500 dark:bg-neutral-400"
+              )}
+            />
+            {isReviewMode ? "Finish review" : "Start review"}
+          </button>
           {prIsMerged ? (
             <div
               className="flex items-center gap-1.5 px-3 py-1 bg-[#8250df] text-white rounded font-medium text-xs select-none whitespace-nowrap border border-[#6e40cc] dark:bg-[#8250df] dark:border-[#6e40cc] cursor-not-allowed"

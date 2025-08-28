@@ -55,6 +55,7 @@ function TaskDetailPage() {
   const { runId } = Route.useSearch();
 
   const [isCreatingPr, setIsCreatingPr] = useState(false);
+  const [isReviewMode, setIsReviewMode] = useState(false);
   // Removed periodic diff refresh; diffs are loaded on demand and on run change
   const [diffControls, setDiffControls] = useState<{
     expandAll: () => void;
@@ -286,6 +287,8 @@ function TaskDetailPage() {
             onExpandAll={diffControls?.expandAll}
             onCollapseAll={diffControls?.collapseAll}
             isLoading={diffsQuery.isPending}
+            isReviewMode={isReviewMode}
+            onToggleReviewMode={() => setIsReviewMode((v) => !v)}
           />
           {task?.text && (
             <div className="mb-2 px-3.5">
@@ -310,6 +313,7 @@ function TaskDetailPage() {
               taskRunId={selectedRun?._id}
               key={selectedRun?._id}
               onControlsChange={(c) => setDiffControls(c)}
+              reviewMode={isReviewMode}
             />
           </div>
         </div>

@@ -33,6 +33,7 @@ interface GitDiffViewerProps {
     totalAdditions: number;
     totalDeletions: number;
   }) => void;
+  reviewMode?: boolean;
 }
 
 type FileGroup = {
@@ -107,6 +108,7 @@ export function GitDiffViewer({
   isLoading,
   taskRunId,
   onControlsChange,
+  reviewMode,
 }: GitDiffViewerProps) {
   const { theme } = useTheme();
   // Resolve the actual theme (handle "system" theme)
@@ -304,6 +306,24 @@ export function GitDiffViewer({
 
   return (
     <div key={taskRunId ?? "_"} className="grow bg-white dark:bg-neutral-900">
+      {/* Lightweight styles for inline review decorations */}
+      <style>
+        {`
+        .monaco-editor .cmux-comment-line { 
+          background-color: rgba(30, 144, 255, 0.14);
+        }
+        .monaco-editor.vs-dark .cmux-comment-line,
+        .vs-dark .monaco-editor .cmux-comment-line { 
+          background-color: rgba(59, 130, 246, 0.22);
+        }
+        .monaco-editor .cmux-comment-glyph { 
+          width: 4px !important;
+          background-color: #1f883d;
+          border-radius: 2px;
+          margin-left: 2px;
+        }
+        `}
+      </style>
       {/* Diff sections */}
       <div className="">
         {fileGroups.map((file) => (
@@ -319,6 +339,7 @@ export function GitDiffViewer({
                 editorRefs.current[`${taskRunId ?? "_"}:${file.filePath}`] = ed;
             }}
             runId={taskRunId}
+            reviewMode={!!reviewMode}
           />
         ))}
         {/* End-of-diff message */}
@@ -345,6 +366,7 @@ interface FileDiffRowProps {
   calculateEditorHeight: (oldContent: string, newContent: string) => number;
   setEditorRef: (ed: editor.IStandaloneDiffEditor) => void;
   runId?: string;
+  reviewMode: boolean;
 }
 
 function FileDiffRow({
@@ -355,11 +377,26 @@ function FileDiffRow({
   calculateEditorHeight,
   setEditorRef,
   runId,
+  reviewMode,
 }: FileDiffRowProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const rafIdRef = useRef<number | null>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const revealedRef = useRef<boolean>(false);
+  const diffEditorRef = useRef<editor.IStandaloneDiffEditor | null>(null);
+  const [pendingComment, setPendingComment] = useState<
+    | {
+        startLine: number;
+        endLine: number;
+        topPx: number;
+      }
+    | null
+  >(null);
+  const [commentDraft, setCommentDraft] = useState("");
+  const [comments, setComments] = useState<
+    { id: string; startLine: number; endLine: number; text: string }[]
+  >([]);
+  const decorationsRef = useRef<string[]>([]);
 
   // Set an initial height before paint to reduce flicker
   useLayoutEffect(() => {
@@ -374,6 +411,70 @@ function FileDiffRow({
   useEffect(() => {
     // noop
   }, [isExpanded, file.filePath]);
+
+  // Review mode: watch selection and scrolling to position pending comment UI
+  useEffect(() => {
+    const diff = diffEditorRef.current;
+    if (!diff || !reviewMode) {
+      setPendingComment(null);
+      return;
+    }
+    const mod = diff.getModifiedEditor();
+    const disposables: { dispose: () => void }[] = [];
+
+    const updateFromSelection = () => {
+      const sel = mod.getSelection();
+      if (!sel) return;
+      const start = Math.min(sel.startLineNumber, sel.endLineNumber);
+      const end = Math.max(sel.startLineNumber, sel.endLineNumber);
+      const top = mod.getTopForLineNumber(start) - mod.getScrollTop();
+      setPendingComment({ startLine: start, endLine: end, topPx: Math.max(0, top) });
+    };
+
+    disposables.push(mod.onDidChangeCursorSelection(updateFromSelection));
+    disposables.push(
+      mod.onDidScrollChange(() => {
+        setPendingComment((cur) => {
+          if (!cur) return null;
+          const top = mod.getTopForLineNumber(cur.startLine) - mod.getScrollTop();
+          return { ...cur, topPx: Math.max(0, top) };
+        });
+      })
+    );
+
+    // Initialize position if there's an existing selection
+    updateFromSelection();
+    return () => {
+      disposables.forEach((d) => d.dispose());
+    };
+  }, [reviewMode]);
+
+  // Keep line decorations in sync with current comments
+  useEffect(() => {
+    const diff = diffEditorRef.current;
+    const ed = diff?.getModifiedEditor();
+    const model = ed?.getModel();
+    if (!diff || !ed || !model) return;
+    try {
+      const ranges = comments.map((x) => ({
+        range: {
+          startLineNumber: x.startLine,
+          startColumn: 1,
+          endLineNumber: x.endLine,
+          endColumn: 1,
+        },
+        options: {
+          isWholeLine: true,
+          className: "cmux-comment-line",
+          linesDecorationsClassName: "cmux-comment-glyph",
+        },
+      }));
+      const ids = ed.deltaDecorations(decorationsRef.current, ranges);
+      decorationsRef.current = ids;
+    } catch {
+      // ignore
+    }
+  }, [comments, theme]);
 
   return (
     <div className="bg-white dark:bg-neutral-900">
@@ -417,7 +518,7 @@ function FileDiffRow({
               File was deleted
             </div>
           ) : (
-            <div ref={containerRef}>
+            <div ref={containerRef} className="relative">
               <DiffEditor
                 key={`${runId ?? "_"}:${theme ?? "_"}:${file.filePath}`}
                 original={file.oldContent}
@@ -426,6 +527,7 @@ function FileDiffRow({
                 theme={theme === "dark" ? "vs-dark" : "vs"}
                 onMount={(editor, monaco) => {
                   setEditorRef(editor);
+                  diffEditorRef.current = editor;
                   // Start hidden to avoid intermediate flashes
                   if (containerRef.current) {
                     containerRef.current.style.visibility = "hidden";
@@ -561,6 +663,7 @@ function FileDiffRow({
                       resizeObserverRef.current.disconnect();
                       resizeObserverRef.current = null;
                     }
+                    diffEditorRef.current = null;
                     // Dispose models we created to avoid leaks and reuse
                     try {
                       const model = editor.getModel();
@@ -606,7 +709,7 @@ function FileDiffRow({
                   renderMarginRevertIcon: false,
                   lineDecorationsWidth: 12,
                   lineNumbersMinChars: 4,
-                  glyphMargin: false,
+                  glyphMargin: reviewMode,
                   folding: false,
                   contextmenu: false,
                   renderWhitespace: "selection",
@@ -622,6 +725,164 @@ function FileDiffRow({
                   },
                 }}
               />
+              {/* Inline comment toolbar when selecting lines in review mode */}
+              {reviewMode && pendingComment && (
+                <div
+                  className="absolute z-20"
+                  style={{ top: pendingComment.topPx + 2, right: 8 }}
+                >
+                  <div className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 shadow-sm rounded-md p-2 w-[320px]">
+                    <div className="text-xs text-neutral-500 dark:text-neutral-400 mb-1 select-none">
+                      Comment on line{pendingComment.startLine === pendingComment.endLine ? "" : "s"}
+                      {" "}
+                      <span className="font-mono text-neutral-700 dark:text-neutral-300">
+                        {pendingComment.startLine}
+                        {pendingComment.endLine !== pendingComment.startLine && `–${pendingComment.endLine}`}
+                      </span>
+                    </div>
+                    <textarea
+                      value={commentDraft}
+                      onChange={(e) => setCommentDraft(e.target.value)}
+                      placeholder="Leave a comment"
+                      className="w-full h-20 text-sm bg-neutral-50 dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 rounded px-2 py-1 text-neutral-900 dark:text-neutral-100 outline-none resize-none"
+                    />
+                    <div className="mt-2 flex items-center justify-end gap-2">
+                      <button
+                        className="px-2 py-1 text-xs rounded border border-neutral-300 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                        onClick={() => {
+                          setPendingComment(null);
+                          setCommentDraft("");
+                        }}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        className="px-2 py-1 text-xs rounded bg-[#1f883d] text-white border border-[#1a7f37] hover:bg-[#187436] disabled:opacity-60"
+                        onClick={() => {
+                          if (!diffEditorRef.current || !pendingComment) return;
+                          const newComment = {
+                            id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                            startLine: pendingComment.startLine,
+                            endLine: pendingComment.endLine,
+                            text: commentDraft.trim(),
+                          };
+                          if (!newComment.text) return;
+                          setComments((prev) => [...prev, newComment]);
+                          // Add decoration for commented lines
+                          try {
+                            const monacoEditor = diffEditorRef.current.getModifiedEditor();
+                            const model = monacoEditor.getModel();
+                            if (model) {
+                              const decorations = monacoEditor.deltaDecorations(
+                                [],
+                                [
+                                  {
+                                    range: {
+                                      startLineNumber: newComment.startLine,
+                                      startColumn: 1,
+                                      endLineNumber: newComment.endLine,
+                                      endColumn: 1,
+                                    },
+                                    options: {
+                                      isWholeLine: true,
+                                      className: "cmux-comment-line",
+                                      linesDecorationsClassName: "cmux-comment-glyph",
+                                    },
+                                  },
+                                ]
+                              );
+                              decorationsRef.current = [
+                                ...decorationsRef.current,
+                                ...decorations,
+                              ];
+                            }
+                          } catch {
+                            // ignore
+                          }
+                          setPendingComment(null);
+                          setCommentDraft("");
+                        }}
+                        disabled={!commentDraft.trim()}
+                      >
+                        Add comment
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Existing comments list for this file */}
+              {comments.length > 0 && (
+                <div className="px-3 py-3 border-t border-neutral-200 dark:border-neutral-800 bg-neutral-50/60 dark:bg-neutral-900/50">
+                  <div className="space-y-3">
+                    {comments.map((c) => (
+                      <div key={c.id} className="border border-neutral-200 dark:border-neutral-800 rounded-md overflow-hidden">
+                        <div className="px-3 py-2 bg-white dark:bg-neutral-900 flex items-center justify-between">
+                          <div className="text-xs text-neutral-500 dark:text-neutral-400 select-none">
+                            Lines {c.startLine}
+                            {c.endLine !== c.startLine ? `–${c.endLine}` : ""}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              className="text-xs px-2 py-0.5 rounded border border-neutral-300 dark:border-neutral-700 text-neutral-700 dark:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                              onClick={() => {
+                                const ed = diffEditorRef.current?.getModifiedEditor();
+                                if (ed) {
+                                  ed.revealLineInCenter(c.startLine, 0);
+                                }
+                              }}
+                            >
+                              Jump to
+                            </button>
+                            <button
+                              className="text-xs px-2 py-0.5 rounded border border-neutral-300 dark:border-neutral-700 text-red-700 dark:text-red-400 hover:bg-red-50/70 dark:hover:bg-red-900/20"
+                              onClick={() => {
+                                const nextList = comments.filter((x) => x.id !== c.id);
+                                setComments(nextList);
+                                // Note: For simplicity, we don't track per-comment decoration ID; we clear and re-render all decorations.
+                                try {
+                                  const ed = diffEditorRef.current?.getModifiedEditor();
+                                  const model = ed?.getModel();
+                                  if (ed && model) {
+                                    if (decorationsRef.current.length) {
+                                      ed.deltaDecorations(decorationsRef.current, []);
+                                      decorationsRef.current = [];
+                                    }
+                                    const remaining = nextList.map((x) => ({
+                                      range: {
+                                        startLineNumber: x.startLine,
+                                        startColumn: 1,
+                                        endLineNumber: x.endLine,
+                                        endColumn: 1,
+                                      },
+                                      options: {
+                                        isWholeLine: true,
+                                        className: "cmux-comment-line",
+                                        linesDecorationsClassName: "cmux-comment-glyph",
+                                      },
+                                    }));
+                                    if (remaining.length) {
+                                      const ids = ed.deltaDecorations([], remaining);
+                                      decorationsRef.current = ids;
+                                    }
+                                  }
+                                } catch {
+                                  // ignore
+                                }
+                              }}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                        <div className="px-3 py-2 bg-neutral-50 dark:bg-neutral-950 text-sm text-neutral-800 dark:text-neutral-200 whitespace-pre-wrap">
+                          {c.text}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -636,6 +897,7 @@ const MemoFileDiffRow = memo(FileDiffRow, (prev, next) => {
   return (
     prev.isExpanded === next.isExpanded &&
     prev.theme === next.theme &&
+    prev.reviewMode === next.reviewMode &&
     a.filePath === b.filePath &&
     a.status === b.status &&
     a.additions === b.additions &&
