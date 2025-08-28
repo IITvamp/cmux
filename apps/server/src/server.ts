@@ -4,6 +4,7 @@ import {
   ArchiveTaskSchema,
   GitFullDiffRequestSchema,
   GitHubCreateDraftPrSchema,
+  GitHubMergeBranchSchema,
   GitHubFetchBranchesSchema,
   ListFilesRequestSchema,
   OpenInEditorSchema,
@@ -36,6 +37,7 @@ import { convex } from "./utils/convexClient.js";
 import { ensureRunWorktreeAndBranch } from "./utils/ensureRunWorktree.js";
 import { dockerLogger, serverLogger } from "./utils/fileLogger.js";
 import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
+import { getOctokit } from "./utils/octokit.js";
 import {
   createReadyPr,
   fetchPrByHead,
@@ -609,6 +611,64 @@ export async function startServer({
         }
       } catch (error) {
         serverLogger.error("Error merging PR:", error);
+        callback({
+          success: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    });
+
+    // Merge branch directly without PR
+    socket.on("github-merge-branch", async (data, callback) => {
+      try {
+        const { taskRunId } = GitHubMergeBranchSchema.parse(data);
+
+        const { run, task, branchName, baseBranch } =
+          await ensureRunWorktreeAndBranch(taskRunId as Id<"taskRuns">);
+
+        const githubToken = await getGitHubTokenFromKeychain();
+        if (!githubToken) {
+          return callback({
+            success: false,
+            error: "GitHub token is not configured",
+          });
+        }
+
+        const repoFullName = task.projectFullName || "";
+        const [owner, repo] = repoFullName.split("/");
+        if (!owner || !repo) {
+          return callback({ success: false, error: "Unknown repo for task" });
+        }
+
+        try {
+          const octokit = getOctokit(githubToken);
+          const { data: mergeRes } = await octokit.rest.repos.merge({
+            owner,
+            repo,
+            base: baseBranch,
+            head: branchName,
+          });
+
+          await convex.mutation(api.taskRuns.updatePullRequestState, {
+            id: run._id,
+            state: "merged",
+          });
+
+          await convex.mutation(api.tasks.updateMergeStatus, {
+            id: task._id,
+            mergeStatus: "pr_merged",
+          });
+
+          callback({ success: true, merged: true, commitSha: mergeRes.sha });
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : String(e);
+          callback({
+            success: false,
+            error: `Failed to merge branch: ${msg}`,
+          });
+        }
+      } catch (error) {
+        serverLogger.error("Error merging branch:", error);
         callback({
           success: false,
           error: error instanceof Error ? error.message : "Unknown error",

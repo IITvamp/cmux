@@ -44,53 +44,54 @@ export function OpenEditorSplitButton({
   }, [socket]);
 
   const menuItems = useMemo(
-    () => [
-      {
-        id: "vscode" as const,
-        name: "VS Code",
-        enabled: !!worktreePath && (availableEditors?.vscode ?? true),
-      },
-      {
-        id: "cursor" as const,
-        name: "Cursor",
-        enabled: !!worktreePath && (availableEditors?.cursor ?? true),
-      },
-      {
-        id: "windsurf" as const,
-        name: "Windsurf",
-        enabled: !!worktreePath && (availableEditors?.windsurf ?? true),
-      },
-      {
-        id: "finder" as const,
-        name: "Finder",
-        enabled: !!worktreePath && (availableEditors?.finder ?? true),
-      },
-      {
-        id: "iterm" as const,
-        name: "iTerm",
-        enabled: !!worktreePath && (availableEditors?.iterm ?? false),
-      },
-      {
-        id: "terminal" as const,
-        name: "Terminal",
-        enabled: !!worktreePath && (availableEditors?.terminal ?? false),
-      },
-      {
-        id: "ghostty" as const,
-        name: "Ghostty",
-        enabled: !!worktreePath && (availableEditors?.ghostty ?? false),
-      },
-      {
-        id: "alacritty" as const,
-        name: "Alacritty",
-        enabled: !!worktreePath && (availableEditors?.alacritty ?? false),
-      },
-      {
-        id: "xcode" as const,
-        name: "Xcode",
-        enabled: !!worktreePath && (availableEditors?.xcode ?? false),
-      },
-    ],
+    () =>
+      [
+        {
+          id: "vscode" as const,
+          name: "VS Code",
+          enabled: !!worktreePath && (availableEditors?.vscode ?? true),
+        },
+        {
+          id: "cursor" as const,
+          name: "Cursor",
+          enabled: !!worktreePath && (availableEditors?.cursor ?? true),
+        },
+        {
+          id: "windsurf" as const,
+          name: "Windsurf",
+          enabled: !!worktreePath && (availableEditors?.windsurf ?? true),
+        },
+        {
+          id: "finder" as const,
+          name: "Finder",
+          enabled: !!worktreePath && (availableEditors?.finder ?? true),
+        },
+        {
+          id: "iterm" as const,
+          name: "iTerm",
+          enabled: !!worktreePath && (availableEditors?.iterm ?? false),
+        },
+        {
+          id: "terminal" as const,
+          name: "Terminal",
+          enabled: !!worktreePath && (availableEditors?.terminal ?? false),
+        },
+        {
+          id: "ghostty" as const,
+          name: "Ghostty",
+          enabled: !!worktreePath && (availableEditors?.ghostty ?? false),
+        },
+        {
+          id: "alacritty" as const,
+          name: "Alacritty",
+          enabled: !!worktreePath && (availableEditors?.alacritty ?? false),
+        },
+        {
+          id: "xcode" as const,
+          name: "Xcode",
+          enabled: !!worktreePath && (availableEditors?.xcode ?? false),
+        },
+      ].filter((item) => item.enabled),
     [worktreePath, availableEditors]
   );
 
@@ -163,7 +164,7 @@ export function OpenEditorSplitButton({
   );
 
   const selected = menuItems.find((m) => m.id === selectedEditor) || null;
-  const leftDisabled = !selected || !selected.enabled;
+  const leftDisabled = !selected;
   const SelectedIcon = selected ? editorIcons[selected.id] : null;
 
   const openEditor = useCallback(
@@ -260,15 +261,13 @@ export function OpenEditorSplitButton({
                     <Menu.RadioItem
                       key={item.id}
                       value={item.id}
-                      disabled={!item.enabled}
                       className={clsx(
                         "grid cursor-default grid-cols-[0.75rem_1rem_1fr] items-center gap-2 py-2 pr-8 pl-2.5 text-sm leading-4 outline-none select-none",
                         "data-[highlighted]:relative data-[highlighted]:z-0",
                         "data-[highlighted]:text-neutral-50 dark:data-[highlighted]:text-neutral-900",
                         "data-[highlighted]:before:absolute data-[highlighted]:before:inset-x-1 data-[highlighted]:before:inset-y-0",
                         "data-[highlighted]:before:z-[-1] data-[highlighted]:before:rounded-sm",
-                        "data-[highlighted]:before:bg-neutral-900 dark:data-[highlighted]:before:bg-neutral-100",
-                        "data-[disabled]:text-neutral-400 dark:data-[disabled]:text-neutral-600 data-[disabled]:cursor-not-allowed"
+                        "data-[highlighted]:before:bg-neutral-900 dark:data-[highlighted]:before:bg-neutral-100"
                       )}
                     >
                       <Menu.RadioItemIndicator className="col-start-1">

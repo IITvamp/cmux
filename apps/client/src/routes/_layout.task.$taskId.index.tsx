@@ -236,6 +236,33 @@ function TaskDetailPage() {
     });
   };
 
+  const handleMergeBranch = async (): Promise<void> => {
+    if (!socket || !selectedRun?._id) return;
+    setIsMerging(true);
+    const toastId = toast.loading("Merging branch...");
+    await new Promise<void>((resolve) => {
+      socket.emit(
+        "github-merge-branch",
+        { taskRunId: selectedRun._id },
+        (resp: { success: boolean; commitSha?: string; error?: string }) => {
+          setIsMerging(false);
+          if (resp.success) {
+            toast.success("Branch merged", {
+              id: toastId,
+              description: resp.commitSha,
+            });
+          } else {
+            toast.error("Failed to merge branch", {
+              id: toastId,
+              description: resp.error,
+            });
+          }
+          resolve();
+        }
+      );
+    });
+  };
+
   const hasAnyDiffs = !!(
     (selectedRun?._id ? stableDiffsByRun[selectedRun._id] : diffsQuery.data) ||
     []
@@ -252,6 +279,7 @@ function TaskDetailPage() {
             isCreatingPr={isCreatingPr}
             setIsCreatingPr={setIsCreatingPr}
             onMerge={handleMerge}
+            onMergeBranch={handleMergeBranch}
             totalAdditions={diffControls?.totalAdditions}
             totalDeletions={diffControls?.totalDeletions}
             hasAnyDiffs={hasAnyDiffs}

@@ -268,6 +268,11 @@ export const GitHubMergePrSchema = z.object({
   method: z.enum(["squash", "rebase", "merge"]),
 });
 
+// Merge branch directly
+export const GitHubMergeBranchSchema = z.object({
+  taskRunId: typedZid("taskRuns"),
+});
+
 // Archive task schema
 export const ArchiveTaskSchema = z.object({
   taskId: typedZid("tasks"),
@@ -382,6 +387,7 @@ export type GitHubCreateDraftPr = z.infer<typeof GitHubCreateDraftPrSchema>;
 export type GitHubOpenPr = z.infer<typeof GitHubOpenPrSchema>;
 export type GitHubSyncPrState = z.infer<typeof GitHubSyncPrStateSchema>;
 export type GitHubMergePr = z.infer<typeof GitHubMergePrSchema>;
+export type GitHubMergeBranch = z.infer<typeof GitHubMergeBranchSchema>;
 export type ArchiveTask = z.infer<typeof ArchiveTaskSchema>;
 export type SpawnFromComment = z.infer<typeof SpawnFromCommentSchema>;
 export type ProviderStatus = z.infer<typeof ProviderStatusSchema>;
@@ -480,6 +486,16 @@ export interface ClientToServerEvents {
       merged?: boolean;
       state?: string;
       url?: string;
+      error?: string;
+    }) => void
+  ) => void;
+  // Merge branch directly
+  "github-merge-branch": (
+    data: GitHubMergeBranch,
+    callback: (response: {
+      success: boolean;
+      merged?: boolean;
+      commitSha?: string;
       error?: string;
     }) => void
   ) => void;

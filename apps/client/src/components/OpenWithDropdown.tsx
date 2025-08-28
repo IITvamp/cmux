@@ -164,7 +164,7 @@ export function OpenWithDropdown({
       name: "Xcode",
       enabled: !!worktreePath && (availableEditors?.xcode ?? false),
     },
-  ];
+  ].filter((item) => item.enabled);
 
   return (
     <Dropdown.Root>
@@ -195,7 +195,6 @@ export function OpenWithDropdown({
               return (
                 <Dropdown.Item
                   key={item.id}
-                  disabled={!item.enabled}
                   onClick={() => {
                     const loadingToast = toast.loading(
                       `Opening ${item.name}...`
