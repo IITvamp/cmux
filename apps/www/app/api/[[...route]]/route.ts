@@ -73,6 +73,21 @@ app.get("/user", async (c) => {
   });
 });
 
+// Returns the refresh token for the currently authenticated Stack user
+app.get("/auth/refresh-token", async (c) => {
+  const user = await stackServerApp.getUser({ tokenStore: c.req.raw });
+  if (!user) {
+    return c.json({ error: "Unauthorized" }, 401);
+  }
+  // We only rely on the type shape we need to avoid any
+  type AuthJson = { accessToken?: string; refreshToken?: string };
+  const authJson = (await user.getAuthJson()) as unknown as AuthJson;
+  if (!authJson.refreshToken) {
+    return c.json({ error: "No refresh token available" }, 400);
+  }
+  return c.json({ refreshToken: authJson.refreshToken });
+});
+
 // Routes - Next.js passes the full /api/* path
 app.route("/", healthRouter);
 app.route("/", usersRouter);
