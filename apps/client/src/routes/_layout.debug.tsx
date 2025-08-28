@@ -35,9 +35,17 @@ function DebugComponent() {
 
         <button
           onClick={() => {
-            socket?.emit("github-fetch-repos", (data) => {
-              console.log(data);
-            });
+            const teamSlugOrId =
+              typeof window !== "undefined"
+                ? window.location.pathname.split("/")[1] || "default"
+                : "default";
+            socket?.emit(
+              "github-fetch-repos",
+              { teamIdOrSlug: teamSlugOrId },
+              (data) => {
+                console.log(data);
+              }
+            );
           }}
         >
           refetch github

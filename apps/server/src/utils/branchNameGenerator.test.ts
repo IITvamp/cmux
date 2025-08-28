@@ -324,7 +324,10 @@ describe("branchNameGenerator", () => {
       const mockResponse = createMockGenerateObjectResult(mockObject);
       vi.mocked(generateObject).mockResolvedValueOnce(mockResponse as GenerateObjectResult<PRGeneration>);
 
-      const baseName = await generateBranchBaseName("Add new feature to the app");
+      const baseName = await generateBranchBaseName(
+        "Add new feature to the app",
+        "default"
+      );
       expect(baseName).toBe("cmux/add-feature");
     });
 
@@ -332,7 +335,10 @@ describe("branchNameGenerator", () => {
       const mockConvex = await import("../utils/convexClient.js");
       vi.mocked((mockConvex as any).__mockClient.query).mockResolvedValueOnce({});
 
-      const baseName = await generateBranchBaseName("Test task description here");
+      const baseName = await generateBranchBaseName(
+        "Test task description here",
+        "default"
+      );
       expect(baseName).toBe("cmux/test-task-description-here");
     });
   });
@@ -342,7 +348,11 @@ describe("branchNameGenerator", () => {
       const mockConvex = await import("../utils/convexClient.js");
       vi.mocked((mockConvex as any).__mockClient.query).mockResolvedValueOnce({});
 
-      const branchName = await generateNewBranchName("Fix bug", "abc12");
+      const branchName = await generateNewBranchName(
+        "Fix bug",
+        "default",
+        "abc12"
+      );
       expect(branchName).toBe("cmux/fix-bug-abc12");
     });
 
@@ -350,7 +360,7 @@ describe("branchNameGenerator", () => {
       const mockConvex = await import("../utils/convexClient.js");
       vi.mocked((mockConvex as any).__mockClient.query).mockResolvedValueOnce({});
 
-      const branchName = await generateNewBranchName("Fix bug");
+      const branchName = await generateNewBranchName("Fix bug", "default");
       expect(branchName).toMatch(/^cmux\/fix-bug-[a-z0-9]{5}$/);
     });
   });
@@ -360,7 +370,11 @@ describe("branchNameGenerator", () => {
       const mockConvex = await import("../utils/convexClient.js");
       vi.mocked((mockConvex as any).__mockClient.query).mockResolvedValueOnce({});
 
-      const branches = await generateUniqueBranchNames("Add feature", 3);
+      const branches = await generateUniqueBranchNames(
+        "Add feature",
+        3,
+        "default"
+      );
       
       expect(branches).toHaveLength(3);
       expect(new Set(branches).size).toBe(3);
@@ -385,7 +399,10 @@ describe("branchNameGenerator", () => {
       const mockResponse = createMockGenerateObjectResult(mockObject);
       vi.mocked(generateObject).mockResolvedValueOnce(mockResponse as GenerateObjectResult<PRGeneration>);
 
-      const title = await getPRTitleFromTaskDescription("Fix the authentication bug");
+      const title = await getPRTitleFromTaskDescription(
+        "Fix the authentication bug",
+        "default"
+      );
       expect(title).toBe("Fix authentication bug");
     });
 
@@ -393,7 +410,10 @@ describe("branchNameGenerator", () => {
       const mockConvex = await import("../utils/convexClient.js");
       vi.mocked((mockConvex as any).__mockClient.query).mockResolvedValueOnce({});
 
-      const title = await getPRTitleFromTaskDescription("This is a long task description that should be truncated");
+      const title = await getPRTitleFromTaskDescription(
+        "This is a long task description that should be truncated",
+        "default"
+      );
       expect(title).toBe("This is a long task");
     });
   });

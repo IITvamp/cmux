@@ -3,7 +3,6 @@ import type { Id } from "@cmux/convex/dataModel";
 import { spawn } from "node:child_process";
 import { z } from "zod";
 import { getConvex } from "./utils/convexClient.js";
-import { DEFAULT_TEAM_ID } from "@cmux/shared";
 import { serverLogger } from "./utils/fileLogger.js";
 import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
 import { workerExec } from "./utils/workerExec.js";
@@ -21,12 +20,13 @@ type CrownEvaluationResponse = z.infer<typeof CrownEvaluationResponseSchema>;
 export async function createPullRequestForWinner(
   taskRunId: Id<"taskRuns">,
   taskId: Id<"tasks">,
-  githubToken?: string | null
+  githubToken: string | null | undefined,
+  teamIdOrSlug: string
 ): Promise<void> {
   try {
     // Check workspace settings toggle (default: disabled)
     const ws = await getConvex().query(api.workspaceSettings.get, {
-      teamIdOrSlug: DEFAULT_TEAM_ID,
+      teamIdOrSlug,
     });
     const autoPrEnabled = !!ws?.autoPrEnabled;
     if (!autoPrEnabled) {
@@ -41,7 +41,7 @@ export async function createPullRequestForWinner(
 
     // Get the task run details
     const taskRun = await getConvex().query(api.taskRuns.get, {
-      teamIdOrSlug: DEFAULT_TEAM_ID,
+      teamIdOrSlug,
       id: taskRunId,
     });
     if (!taskRun || !taskRun.vscode?.containerName) {
@@ -53,7 +53,7 @@ export async function createPullRequestForWinner(
 
     // Get the task details
     const task = await getConvex().query(api.tasks.getById, {
-      teamIdOrSlug: DEFAULT_TEAM_ID,
+      teamIdOrSlug,
       id: taskId,
     });
     if (!task) {
@@ -91,7 +91,7 @@ export async function createPullRequestForWinner(
     if (!task.pullRequestTitle || task.pullRequestTitle !== prTitle) {
       try {
         await getConvex().mutation(api.tasks.setPullRequestTitle, {
-          teamIdOrSlug: DEFAULT_TEAM_ID,
+          teamIdOrSlug,
           id: taskId,
           pullRequestTitle: prTitle,
         });
@@ -111,7 +111,7 @@ export async function createPullRequestForWinner(
     // Persist PR description on the task in Convex
     try {
       await getConvex().mutation(api.tasks.setPullRequestDescription, {
-        teamIdOrSlug: DEFAULT_TEAM_ID,
+        teamIdOrSlug,
         id: taskId,
         pullRequestDescription: prBody,
       });
@@ -301,7 +301,8 @@ Completed: ${new Date().toISOString()}`;
 // Removed VSCode extension fallback; using worker:exec exclusively
 
 export async function evaluateCrownWithClaudeCode(
-  taskId: Id<"tasks">
+  taskId: Id<"tasks">,
+  teamIdOrSlug: string
 ): Promise<void> {
   serverLogger.info(
     `[CrownEvaluator] =================================================`
@@ -318,7 +319,7 @@ export async function evaluateCrownWithClaudeCode(
 
     // Get task and runs
     const task = await getConvex().query(api.tasks.getById, {
-      teamIdOrSlug: DEFAULT_TEAM_ID,
+      teamIdOrSlug,
       id: taskId,
     });
     if (!task) {
@@ -326,7 +327,7 @@ export async function evaluateCrownWithClaudeCode(
     }
 
     const taskRuns = await getConvex().query(api.taskRuns.getByTask, {
-      teamIdOrSlug: DEFAULT_TEAM_ID,
+      teamIdOrSlug,
       taskId,
     });
     const completedRuns = taskRuns.filter((run) => run.status === "completed");
@@ -340,7 +341,7 @@ export async function evaluateCrownWithClaudeCode(
 
     // Double-check if evaluation already exists
     const existingEvaluation = await getConvex().query(api.crown.getCrownEvaluation, {
-      teamIdOrSlug: DEFAULT_TEAM_ID,
+      teamIdOrSlug,
       taskId: taskId,
     });
 
@@ -350,7 +351,7 @@ export async function evaluateCrownWithClaudeCode(
       );
       // Clear the pending status
       await getConvex().mutation(api.tasks.updateCrownError, {
-        teamIdOrSlug: DEFAULT_TEAM_ID,
+        teamIdOrSlug,
         id: taskId,
         crownEvaluationError: undefined,
       });
@@ -563,7 +564,7 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
 
     // Update status to in_progress
     await getConvex().mutation(api.tasks.updateCrownError, {
-      teamIdOrSlug: DEFAULT_TEAM_ID,
+      teamIdOrSlug,
       id: taskId,
       crownEvaluationError: "in_progress",
     });
@@ -711,13 +712,13 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
 
       const fallbackWinner = candidateData[0];
       await getConvex().mutation(api.crown.setCrownWinner, {
-        teamIdOrSlug: DEFAULT_TEAM_ID,
+        teamIdOrSlug,
         taskRunId: fallbackWinner.runId,
         reason: "Selected as fallback winner (crown evaluation failed to run)",
       });
 
       await getConvex().mutation(api.tasks.updateCrownError, {
-        teamIdOrSlug: DEFAULT_TEAM_ID,
+        teamIdOrSlug,
         id: taskId,
         crownEvaluationError: undefined,
       });
@@ -728,7 +729,8 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
       await createPullRequestForWinner(
         fallbackWinner.runId,
         taskId,
-        githubToken || undefined
+        githubToken || undefined,
+        teamIdOrSlug
       );
       return;
     }
@@ -752,14 +754,14 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
 
       const fallbackWinner = candidateData[0];
       await getConvex().mutation(api.crown.setCrownWinner, {
-        teamIdOrSlug: DEFAULT_TEAM_ID,
+        teamIdOrSlug,
         taskRunId: fallbackWinner.runId,
         reason:
           "Selected as fallback winner (crown evaluation exited with error)",
       });
 
       await getConvex().mutation(api.tasks.updateCrownError, {
-        teamIdOrSlug: DEFAULT_TEAM_ID,
+        teamIdOrSlug,
         id: taskId,
         crownEvaluationError: undefined,
       });
@@ -770,7 +772,8 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
       await createPullRequestForWinner(
         fallbackWinner.runId,
         taskId,
-        githubToken || undefined
+        githubToken || undefined,
+        teamIdOrSlug
       );
       return;
     }
@@ -824,14 +827,14 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
           // Fallback: Pick the first completed run as winner
           const fallbackWinner = candidateData[0];
           await getConvex().mutation(api.crown.setCrownWinner, {
-            teamIdOrSlug: DEFAULT_TEAM_ID,
+            teamIdOrSlug,
             taskRunId: fallbackWinner.runId,
             reason:
               "Selected as fallback winner (no valid response from evaluator)",
           });
 
           await getConvex().mutation(api.tasks.updateCrownError, {
-            teamIdOrSlug: DEFAULT_TEAM_ID,
+            teamIdOrSlug,
             id: taskId,
             crownEvaluationError: undefined,
           });
@@ -842,7 +845,8 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
           await createPullRequestForWinner(
             fallbackWinner.runId,
             taskId,
-            githubToken || undefined
+            githubToken || undefined,
+            teamIdOrSlug
           );
           return;
         }
@@ -863,13 +867,13 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
         // Fallback: Pick the first completed run as winner
         const fallbackWinner = candidateData[0];
         await getConvex().mutation(api.crown.setCrownWinner, {
-          teamIdOrSlug: DEFAULT_TEAM_ID,
+          teamIdOrSlug,
           taskRunId: fallbackWinner.runId,
           reason: "Selected as fallback winner (invalid JSON from evaluator)",
         });
 
         await getConvex().mutation(api.tasks.updateCrownError, {
-          teamIdOrSlug: DEFAULT_TEAM_ID,
+          teamIdOrSlug,
           id: taskId,
           crownEvaluationError: undefined,
         });
@@ -880,7 +884,8 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
         await createPullRequestForWinner(
           fallbackWinner.runId,
           taskId,
-          githubToken || undefined
+          githubToken || undefined,
+          teamIdOrSlug
         );
         return;
       }
@@ -895,14 +900,14 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
       // Fallback: Pick the first completed run as winner
       const fallbackWinner = candidateData[0];
       await getConvex().mutation(api.crown.setCrownWinner, {
-        teamIdOrSlug: DEFAULT_TEAM_ID,
+        teamIdOrSlug,
         taskRunId: fallbackWinner.runId,
         reason:
           "Selected as fallback winner (invalid winner index from evaluator)",
       });
 
       await getConvex().mutation(api.tasks.updateCrownError, {
-        teamIdOrSlug: DEFAULT_TEAM_ID,
+        teamIdOrSlug,
         id: taskId,
         crownEvaluationError: undefined,
       });
@@ -913,7 +918,8 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
       await createPullRequestForWinner(
         fallbackWinner.runId,
         taskId,
-        githubToken || undefined
+        githubToken || undefined,
+        teamIdOrSlug
       );
       return;
     }
@@ -926,14 +932,14 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
 
     // Update the database
     await getConvex().mutation(api.crown.setCrownWinner, {
-        teamIdOrSlug: DEFAULT_TEAM_ID,
+      teamIdOrSlug,
       taskRunId: winner.runId,
       reason: jsonResponse.reason,
     });
 
     // Clear any error
     await getConvex().mutation(api.tasks.updateCrownError, {
-        teamIdOrSlug: DEFAULT_TEAM_ID,
+      teamIdOrSlug,
       id: taskId,
       crownEvaluationError: undefined,
     });
@@ -946,14 +952,15 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
     await createPullRequestForWinner(
       winner.runId,
       taskId,
-      githubToken || undefined
+      githubToken || undefined,
+      teamIdOrSlug
     );
   } catch (error) {
     serverLogger.error(`[CrownEvaluator] Error during evaluation:`, error);
 
     // Update task with error status
     await getConvex().mutation(api.tasks.updateCrownError, {
-      teamIdOrSlug: DEFAULT_TEAM_ID,
+      teamIdOrSlug,
       id: taskId,
       crownEvaluationError: `Failed: ${error instanceof Error ? error.message : String(error)}`,
     });

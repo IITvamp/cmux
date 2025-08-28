@@ -4,7 +4,6 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { api } from "@cmux/convex/api";
 import { generateText, type LanguageModel } from "ai";
 import { getConvex } from "../utils/convexClient.js";
-import { DEFAULT_TEAM_ID } from "@cmux/shared";
 import { serverLogger } from "./fileLogger.js";
 
 function getModelAndProvider(apiKeys: Record<string, string>): { model: LanguageModel; providerName: string } | null {
@@ -23,9 +22,12 @@ function getModelAndProvider(apiKeys: Record<string, string>): { model: Language
   return null;
 }
 
-export async function generateCommitMessageFromDiff(diff: string): Promise<string | null> {
+export async function generateCommitMessageFromDiff(
+  diff: string,
+  teamIdOrSlug: string
+): Promise<string | null> {
   const apiKeys = await getConvex().query(api.apiKeys.getAllForAgents, {
-    teamIdOrSlug: DEFAULT_TEAM_ID,
+    teamIdOrSlug,
   });
   const config = getModelAndProvider(apiKeys);
   if (!config) {

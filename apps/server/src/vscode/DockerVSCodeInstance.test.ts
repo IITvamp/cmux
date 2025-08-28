@@ -37,6 +37,7 @@ describe("DockerVSCodeInstance", () => {
     const instance = new DockerVSCodeInstance({
       taskRunId,
       taskId,
+      teamIdOrSlug: "default",
     });
 
     // Verify getName() returns the prefixed name
@@ -56,7 +57,7 @@ describe("DockerVSCodeInstance", () => {
     const taskId = "task123456789012345678901234" as Id<"tasks">;
 
     for (const { taskRunId, expected } of testCases) {
-      const instance = new DockerVSCodeInstance({ taskRunId, taskId });
+      const instance = new DockerVSCodeInstance({ taskRunId, taskId, teamIdOrSlug: "default" });
       expect(instance.getName()).toBe(expected);
     }
   });
@@ -66,10 +67,11 @@ describe("DockerVSCodeInstance", () => {
     const taskRunId = "jn75ppcyksmh1234567890123456" as Id<"taskRuns">;
     const taskId = "task123456789012345678901234" as Id<"tasks">;
     
-    const instance = new DockerVSCodeInstance({
-      taskRunId,
-      taskId,
-    });
+      const instance = new DockerVSCodeInstance({
+        taskRunId,
+        taskId,
+        teamIdOrSlug: "default",
+      });
 
     const name = instance.getName();
     
@@ -114,6 +116,7 @@ describe("DockerVSCodeInstance", () => {
       containerMappings.set("cmux-test", {
         containerName: "cmux-test",
         instanceId: "test-instance",
+        teamIdOrSlug: "default",
         ports: { vscode: "", worker: "" },
         status: "starting",
       });

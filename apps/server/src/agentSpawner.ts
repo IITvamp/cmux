@@ -12,7 +12,6 @@ import type {
   WorkerTerminalIdle,
 } from "@cmux/shared/worker-schemas";
 import { handleTaskCompletion } from "./handle-task-completion.js";
-import { DEFAULT_TEAM_ID } from "@cmux/shared";
 import { sanitizeTmuxSessionName } from "./sanitizeTmuxSessionName.js";
 import {
   generateNewBranchName,
@@ -52,12 +51,13 @@ export async function spawnAgent(
     }>;
     theme?: "dark" | "light" | "system";
     newBranch?: string; // Optional pre-generated branch name
-  }
+  },
+  teamIdOrSlug: string
 ): Promise<AgentSpawnResult> {
   try {
     const newBranch =
       options.newBranch ||
-      (await generateNewBranchName(options.taskDescription));
+      (await generateNewBranchName(options.taskDescription, teamIdOrSlug));
     serverLogger.info(
       `[AgentSpawner] New Branch: ${newBranch}, Base Branch: ${
         options.branch ?? "(auto)"
@@ -66,7 +66,7 @@ export async function spawnAgent(
 
     // Create a task run for this specific agent
     const taskRunId = await getConvex().mutation(api.taskRuns.create, {
-      teamIdOrSlug: DEFAULT_TEAM_ID,
+      teamIdOrSlug,
       taskId: taskId,
       prompt: `${options.taskDescription} (${agent.name})`,
       agentName: agent.name,
@@ -75,7 +75,7 @@ export async function spawnAgent(
 
     // Fetch the task to get image storage IDs
     const task = await getConvex().query(api.tasks.getById, {
-      teamIdOrSlug: DEFAULT_TEAM_ID,
+      teamIdOrSlug,
       id: taskId,
     });
 
@@ -89,7 +89,7 @@ export async function spawnAgent(
     // If task has images with storage IDs, download them
     if (task && task.images && task.images.length > 0) {
       const imageUrlsResult = await getConvex().query(api.storage.getUrls, {
-        teamIdOrSlug: DEFAULT_TEAM_ID,
+        teamIdOrSlug,
         storageIds: task.images.map((image) => image.storageId),
       });
       const downloadedImages = await Promise.all(
@@ -219,7 +219,7 @@ export async function spawnAgent(
 
     // Fetch API keys from Convex
     const apiKeys = await getConvex().query(api.apiKeys.getAllForAgents, {
-      teamIdOrSlug: DEFAULT_TEAM_ID,
+      teamIdOrSlug,
     });
 
     // Add required API keys from Convex
@@ -268,15 +268,19 @@ export async function spawnAgent(
         taskRunId,
         taskId,
         theme: options.theme,
+        teamIdOrSlug,
       });
 
       worktreePath = "/root/workspace";
     } else {
       // For Docker, set up worktree as before
-      const worktreeInfo = await getWorktreePath({
-        repoUrl: options.repoUrl,
-        branch: newBranch,
-      });
+      const worktreeInfo = await getWorktreePath(
+        {
+          repoUrl: options.repoUrl,
+          branch: newBranch,
+        },
+        teamIdOrSlug
+      );
 
       // Setup workspace
       const workspaceResult = await setupProjectWorkspace({
@@ -308,12 +312,13 @@ export async function spawnAgent(
         taskRunId,
         taskId,
         theme: options.theme,
+        teamIdOrSlug,
       });
     }
 
     // Update the task run with the worktree path
     await getConvex().mutation(api.taskRuns.updateWorktreePath, {
-      teamIdOrSlug: DEFAULT_TEAM_ID,
+      teamIdOrSlug,
       id: taskRunId,
       worktreePath: worktreePath,
     });
@@ -388,6 +393,7 @@ export async function spawnAgent(
           exitCode: data.exitCode ?? 0,
           worktreePath,
           vscodeInstance,
+          teamIdOrSlug,
         });
       }
     });
@@ -440,6 +446,7 @@ export async function spawnAgent(
           exitCode: 0,
           worktreePath,
           vscodeInstance,
+          teamIdOrSlug,
         });
       } else {
         serverLogger.warn(
@@ -481,6 +488,7 @@ export async function spawnAgent(
           exitCode: 0,
           worktreePath,
           vscodeInstance,
+          teamIdOrSlug,
         });
       } else {
         serverLogger.warn(
@@ -507,7 +515,7 @@ export async function spawnAgent(
         // Append error to log for context
         if (data.errorMessage) {
           await getConvex().mutation(api.taskRuns.appendLogPublic, {
-            teamIdOrSlug: DEFAULT_TEAM_ID,
+            teamIdOrSlug,
             id: taskRunId,
             content: `\n\n=== ERROR ===\n${data.errorMessage}\n=== END ERROR ===\n`,
           });
@@ -515,7 +523,7 @@ export async function spawnAgent(
 
         // Mark the run as failed with error message
         await getConvex().mutation(api.taskRuns.fail, {
-          teamIdOrSlug: DEFAULT_TEAM_ID,
+          teamIdOrSlug,
           id: taskRunId,
           errorMessage: data.errorMessage || "Terminal failed",
           // WorkerTerminalFailed does not include exitCode in schema; default to 1
@@ -552,7 +560,7 @@ export async function spawnAgent(
 
     // Update VSCode instance information in Convex
     await getConvex().mutation(api.taskRuns.updateVSCodeInstance, {
-      teamIdOrSlug: DEFAULT_TEAM_ID,
+      teamIdOrSlug,
       id: taskRunId,
       vscode: {
         provider: vscodeInfo.provider,
@@ -881,7 +889,8 @@ export async function spawnAllAgents(
       altText: string;
     }>;
     theme?: "dark" | "light" | "system";
-  }
+  },
+  teamIdOrSlug: string
 ): Promise<AgentSpawnResult[]> {
   // If selectedAgents is provided, filter AGENT_CONFIGS to only include selected agents
   const agentsToSpawn = options.selectedAgents
@@ -895,7 +904,8 @@ export async function spawnAllAgents(
     ? generateUniqueBranchNamesFromTitle(options.prTitle!, agentsToSpawn.length)
     : await generateUniqueBranchNames(
         options.taskDescription,
-        agentsToSpawn.length
+        agentsToSpawn.length,
+        teamIdOrSlug
       );
 
   serverLogger.info(
@@ -905,10 +915,15 @@ export async function spawnAllAgents(
   // Spawn all agents in parallel with their pre-generated branch names
   const results = await Promise.all(
     agentsToSpawn.map((agent, index) =>
-      spawnAgent(agent, taskId, {
-        ...options,
-        newBranch: branchNames[index],
-      })
+      spawnAgent(
+        agent,
+        taskId,
+        {
+          ...options,
+          newBranch: branchNames[index],
+        },
+        teamIdOrSlug
+      )
     )
   );
 

@@ -4,7 +4,6 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { RepositoryManager } from "../repositoryManager.js";
 import { getConvex } from "../utils/convexClient.js";
-import { DEFAULT_TEAM_ID } from "@cmux/shared";
 import { serverLogger } from "../utils/fileLogger.js";
 import { getWorktreePath, setupProjectWorkspace } from "../workspace.js";
 
@@ -24,7 +23,8 @@ function sanitizeBranchName(name: string): string {
 const pendingEnsures = new Map<string, Promise<EnsureWorktreeResult>>();
 
 export async function ensureRunWorktreeAndBranch(
-  taskRunId: Id<"taskRuns">
+  taskRunId: Id<"taskRuns">,
+  teamIdOrSlug: string
 ): Promise<EnsureWorktreeResult> {
   const key = String(taskRunId);
   const existing = pendingEnsures.get(key);
@@ -32,13 +32,13 @@ export async function ensureRunWorktreeAndBranch(
 
   const p = (async (): Promise<EnsureWorktreeResult> => {
     const run = await getConvex().query(api.taskRuns.get, {
-      teamIdOrSlug: DEFAULT_TEAM_ID,
+      teamIdOrSlug,
       id: taskRunId,
     });
     if (!run) throw new Error("Task run not found");
 
     const task = await getConvex().query(api.tasks.getById, {
-      teamIdOrSlug: DEFAULT_TEAM_ID,
+      teamIdOrSlug,
       id: run.taskId,
     });
     if (!task) throw new Error("Task not found");
@@ -74,10 +74,13 @@ export async function ensureRunWorktreeAndBranch(
         throw new Error("Missing projectFullName to set up worktree");
       }
       const repoUrl = `https://github.com/${task.projectFullName}.git`;
-      const worktreeInfo = await getWorktreePath({
-        repoUrl,
-        branch: branchName,
-      });
+      const worktreeInfo = await getWorktreePath(
+        {
+          repoUrl,
+          branch: branchName,
+        },
+        teamIdOrSlug
+      );
 
       const res = await setupProjectWorkspace({
         repoUrl,
@@ -89,7 +92,7 @@ export async function ensureRunWorktreeAndBranch(
       }
       worktreePath = res.worktreePath;
       await getConvex().mutation(api.taskRuns.updateWorktreePath, {
-        teamIdOrSlug: DEFAULT_TEAM_ID,
+        teamIdOrSlug,
         id: run._id,
         worktreePath,
       });

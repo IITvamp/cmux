@@ -5,7 +5,6 @@ import httpProxy from "http-proxy";
 import { Buffer } from "node:buffer";
 import path from "node:path";
 import { getConvex } from "./utils/convexClient.js";
-import { DEFAULT_TEAM_ID } from "@cmux/shared";
 import { serverLogger } from "./utils/fileLogger.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
@@ -273,10 +272,18 @@ export function createProxyApp({
 
       // Container not running or doesn't exist in Docker
       // Check if it should exist by querying Convex
-      const taskRun = await getConvex().query(api.taskRuns.getByContainerName, {
-        teamIdOrSlug: DEFAULT_TEAM_ID,
-        containerName: fullContainerName,
-      });
+      const teamParam = (req.query?.team as string) || "";
+      let taskRun = null;
+      if (teamParam) {
+        try {
+          taskRun = await getConvex().query(api.taskRuns.getByContainerName, {
+            teamIdOrSlug: teamParam,
+            containerName: fullContainerName,
+          });
+        } catch (e) {
+          serverLogger.error("Convex lookup failed in proxyApp:", e);
+        }
+      }
 
       if (!taskRun || !taskRun.vscode) {
         return res.status(404).send("Container not found");
@@ -292,6 +299,7 @@ export function createProxyApp({
             taskRunId: taskRun._id,
             taskId: taskRun.taskId,
             workspacePath: taskRun.worktreePath,
+            teamIdOrSlug: teamParam || "default",
           });
 
           // Start the container

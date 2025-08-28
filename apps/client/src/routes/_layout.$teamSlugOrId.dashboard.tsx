@@ -126,15 +126,19 @@ function DashboardComponent() {
       if (!socket) return;
 
       setIsLoadingBranches(true);
-      socket.emit("github-fetch-branches", { repo }, (response) => {
-        setIsLoadingBranches(false);
-        if (response.success) {
-          // Refetch from Convex to get updated data
-          branchesQuery.refetch();
-        } else if (response.error) {
-          console.error("Error fetching branches:", response.error);
+      socket.emit(
+        "github-fetch-branches",
+        { teamIdOrSlug: teamSlugOrId, repo },
+        (response) => {
+          setIsLoadingBranches(false);
+          if (response.success) {
+            // Refetch from Convex to get updated data
+            branchesQuery.refetch();
+          } else if (response.error) {
+            console.error("Error fetching branches:", response.error);
+          }
         }
-      });
+      );
     },
     [socket, branchesQuery]
   );

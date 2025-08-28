@@ -4,7 +4,6 @@ import os from "os";
 import path from "path";
 import { RepositoryManager } from "./repositoryManager.js";
 import { getConvex } from "./utils/convexClient.js";
-import { DEFAULT_TEAM_ID } from "@cmux/shared";
 import { serverLogger } from "./utils/fileLogger.js";
 
 interface WorkspaceResult {
@@ -47,13 +46,16 @@ function extractRepoName(repoUrl: string): string {
   return parts[parts.length - 1] || "unknown-repo";
 }
 
-export async function getWorktreePath(args: {
-  repoUrl: string;
-  branch: string;
-}): Promise<WorktreeInfo> {
+export async function getWorktreePath(
+  args: {
+    repoUrl: string;
+    branch: string;
+  },
+  teamIdOrSlug: string
+): Promise<WorktreeInfo> {
   // Check for custom worktree path setting
   const settings = await getConvex().query(api.workspaceSettings.get, {
-    teamIdOrSlug: DEFAULT_TEAM_ID,
+    teamIdOrSlug,
   });
 
   let projectsPath: string;
@@ -89,7 +91,10 @@ export async function getWorktreePath(args: {
   };
 }
 
-export async function getProjectPaths(repoUrl: string): Promise<{
+export async function getProjectPaths(
+  repoUrl: string,
+  teamIdOrSlug: string
+): Promise<{
   appDataPath: string;
   projectsPath: string;
   projectPath: string;
@@ -98,7 +103,7 @@ export async function getProjectPaths(repoUrl: string): Promise<{
   repoName: string;
 }> {
   const settings = await getConvex().query(api.workspaceSettings.get, {
-    teamIdOrSlug: DEFAULT_TEAM_ID,
+    teamIdOrSlug,
   });
 
   let projectsPath: string;

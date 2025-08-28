@@ -39,9 +39,13 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
     if (!authToken) {
       return;
     }
+    const teamSlugOrId =
+      typeof window !== "undefined"
+        ? window.location.pathname.split("/")[1]
+        : undefined;
     const newSocket = io(url, {
       transports: ["websocket"],
-      query: { auth: authToken },
+      query: { auth: authToken, team: teamSlugOrId },
     });
     setSocket(newSocket);
 

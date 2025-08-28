@@ -8,7 +8,6 @@ import {
 } from "./crownEvaluator.js";
 import performAutoCommitAndPush from "./performAutoCommitAndPush.js";
 import { getConvex } from "./utils/convexClient.js";
-import { DEFAULT_TEAM_ID } from "@cmux/shared";
 import { serverLogger } from "./utils/fileLogger.js";
 import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
 import type { VSCodeInstance } from "./vscode/VSCodeInstance.js";
@@ -20,17 +19,19 @@ export async function handleTaskCompletion({
   exitCode = 0,
   worktreePath,
   vscodeInstance,
+  teamIdOrSlug,
 }: {
   taskRunId: Id<"taskRuns">;
   agent: AgentConfig;
   exitCode: number;
   worktreePath: string;
   vscodeInstance: VSCodeInstance;
+  teamIdOrSlug: string;
 }) {
   try {
     // Mark task as complete
     await getConvex().mutation(api.taskRuns.complete, {
-      teamIdOrSlug: DEFAULT_TEAM_ID,
+      teamIdOrSlug,
       id: taskRunId,
       exitCode,
     });
@@ -61,7 +62,7 @@ export async function handleTaskCompletion({
     // Append git diff to the log; diffs are fetched on-demand now
     if (gitDiff && gitDiff.length > 0) {
       await getConvex().mutation(api.taskRuns.appendLogPublic, {
-        teamIdOrSlug: DEFAULT_TEAM_ID,
+        teamIdOrSlug,
         id: taskRunId,
         content: `\n\n=== GIT DIFF ===\n${gitDiff}\n=== END GIT DIFF ===\n`,
       });
@@ -83,7 +84,7 @@ export async function handleTaskCompletion({
 
     // Check if all runs are complete and evaluate crown
     const taskRunData = await getConvex().query(api.taskRuns.get, {
-      teamIdOrSlug: DEFAULT_TEAM_ID,
+      teamIdOrSlug,
       id: taskRunId,
     });
 
@@ -97,7 +98,7 @@ export async function handleTaskCompletion({
       );
 
       const winnerId = await getConvex().mutation(api.tasks.checkAndEvaluateCrown, {
-        teamIdOrSlug: DEFAULT_TEAM_ID,
+        teamIdOrSlug,
         taskId: taskRunData.taskId,
       });
 
@@ -129,7 +130,7 @@ export async function handleTaskCompletion({
           try {
             // Check if evaluation is already in progress
             const task = await getConvex().query(api.tasks.getById, {
-              teamIdOrSlug: DEFAULT_TEAM_ID,
+              teamIdOrSlug,
               id: taskRunData.taskId,
             });
             if (task?.crownEvaluationError === "in_progress") {
@@ -139,14 +140,14 @@ export async function handleTaskCompletion({
               return;
             }
 
-            await evaluateCrownWithClaudeCode(taskRunData.taskId);
+            await evaluateCrownWithClaudeCode(taskRunData.taskId, teamIdOrSlug);
             serverLogger.info(
               `[AgentSpawner] Crown evaluation completed successfully`
             );
 
             // Check if this task run won
             const updatedTaskRun = await getConvex().query(api.taskRuns.get, {
-              teamIdOrSlug: DEFAULT_TEAM_ID,
+              teamIdOrSlug,
               id: taskRunId,
             });
 
@@ -170,7 +171,7 @@ export async function handleTaskCompletion({
 
         // For single agent scenario, trigger auto-PR if enabled
         const taskRuns = await getConvex().query(api.taskRuns.getByTask, {
-          teamIdOrSlug: DEFAULT_TEAM_ID,
+          teamIdOrSlug,
           taskId: taskRunData.taskId,
         });
 
@@ -181,7 +182,7 @@ export async function handleTaskCompletion({
 
           // Check if auto-PR is enabled
           const ws = await getConvex().query(api.workspaceSettings.get, {
-            teamIdOrSlug: DEFAULT_TEAM_ID,
+            teamIdOrSlug,
           });
           const autoPrEnabled = ws?.autoPrEnabled ?? false;
 
@@ -195,11 +196,12 @@ export async function handleTaskCompletion({
             // Small delay to ensure git diff is persisted
             setTimeout(async () => {
               try {
-                await createPullRequestForWinner(
-                  winnerId,
-                  taskRunData.taskId,
-                  githubToken || undefined
-                );
+            await createPullRequestForWinner(
+              winnerId,
+              taskRunData.taskId,
+              githubToken || undefined,
+              teamIdOrSlug
+            );
                 serverLogger.info(
                   `[AgentSpawner] Auto-PR completed for single agent`
                 );
@@ -226,7 +228,7 @@ export async function handleTaskCompletion({
     // Enable auto-commit after task completion
     if (taskRunData) {
     const task = await getConvex().query(api.tasks.getById, {
-      teamIdOrSlug: DEFAULT_TEAM_ID,
+      teamIdOrSlug,
       id: taskRunData.taskId,
     });
 
@@ -240,7 +242,8 @@ export async function handleTaskCompletion({
             vscodeInstance,
             agent,
             taskRunId,
-            task.text
+            task.text,
+            teamIdOrSlug
           );
           serverLogger.info(
             `[AgentSpawner] Auto-commit completed successfully for ${agent.name}`
@@ -257,7 +260,7 @@ export async function handleTaskCompletion({
     // Schedule container stop based on settings
     const containerSettings = await getConvex().query(
       api.containerSettings.getEffective,
-      { teamIdOrSlug: DEFAULT_TEAM_ID }
+      { teamIdOrSlug }
     );
 
     if (containerSettings.autoCleanupEnabled) {
@@ -276,7 +279,7 @@ export async function handleTaskCompletion({
         const scheduledStopAt = Date.now() + reviewPeriodMs;
 
         await getConvex().mutation(api.taskRuns.updateScheduledStop, {
-          teamIdOrSlug: DEFAULT_TEAM_ID,
+          teamIdOrSlug,
           id: taskRunId,
           scheduledStopAt,
         });

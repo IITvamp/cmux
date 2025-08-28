@@ -5,7 +5,6 @@ import { api } from "@cmux/convex/api";
 import { generateObject, type LanguageModel } from "ai";
 import { z } from "zod";
 import { getConvex } from "../utils/convexClient.js";
-import { DEFAULT_TEAM_ID } from "@cmux/shared";
 import { serverLogger } from "./fileLogger.js";
 
 /**
@@ -183,11 +182,12 @@ export async function generatePRTitle(
  * @returns The base branch name without ID
  */
 export async function generateBranchBaseName(
-  taskDescription: string
+  taskDescription: string,
+  teamIdOrSlug: string
 ): Promise<string> {
   // Fetch API keys from Convex
   const apiKeys = await getConvex().query(api.apiKeys.getAllForAgents, {
-    teamIdOrSlug: DEFAULT_TEAM_ID,
+    teamIdOrSlug,
   });
 
   const result = await generatePRInfo(taskDescription, apiKeys);
@@ -200,10 +200,11 @@ export async function generateBranchBaseName(
  * Falls back to a simple 5-word prefix of the task description.
  */
 export async function getPRTitleFromTaskDescription(
-  taskDescription: string
+  taskDescription: string,
+  teamIdOrSlug: string
 ): Promise<string> {
   const apiKeys = await getConvex().query(api.apiKeys.getAllForAgents, {
-    teamIdOrSlug: DEFAULT_TEAM_ID,
+    teamIdOrSlug,
   });
   const prTitle = await generatePRTitle(taskDescription, apiKeys);
   return (
@@ -241,9 +242,10 @@ export { prGenerationSchema, type PRGeneration };
  */
 export async function generateNewBranchName(
   taskDescription: string,
+  teamIdOrSlug: string,
   uniqueId?: string
 ): Promise<string> {
-  const baseName = await generateBranchBaseName(taskDescription);
+  const baseName = await generateBranchBaseName(taskDescription, teamIdOrSlug);
   const id = uniqueId || generateRandomId();
   return `${baseName}-${id}`;
 }
@@ -256,9 +258,10 @@ export async function generateNewBranchName(
  */
 export async function generateUniqueBranchNames(
   taskDescription: string,
-  count: number
+  count: number,
+  teamIdOrSlug: string
 ): Promise<string[]> {
-  const baseName = await generateBranchBaseName(taskDescription);
+  const baseName = await generateBranchBaseName(taskDescription, teamIdOrSlug);
 
   // Generate unique IDs
   const ids = new Set<string>();

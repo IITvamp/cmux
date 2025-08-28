@@ -3,7 +3,6 @@ import { api } from "@cmux/convex/api";
 import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
 import { spawnAgent } from "../agentSpawner.js";
 import { getConvex } from "../utils/convexClient.js";
-import { DEFAULT_TEAM_ID } from "@cmux/shared";
 import { VSCodeInstance } from "../vscode/VSCodeInstance.js";
 
 async function main() {
@@ -44,7 +43,7 @@ async function main() {
   // Create a task in Convex first
   console.log("\nCreating task in Convex...");
   const taskId = await getConvex().mutation(api.tasks.create, {
-    teamIdOrSlug: DEFAULT_TEAM_ID,
+    teamIdOrSlug: "default",
     projectFullName: "lawrencecchen/cmux",
     text: testOptions.taskDescription,
   });
@@ -53,7 +52,12 @@ async function main() {
   console.log("\n--- Starting agent spawn ---\n");
 
   try {
-    const result = await spawnAgent(agentConfig, taskId, testOptions);
+    const result = await spawnAgent(
+      agentConfig,
+      taskId,
+      testOptions,
+      "default"
+    );
 
     console.log("\n--- Agent spawn result ---");
     console.log(JSON.stringify(result, null, 2));
