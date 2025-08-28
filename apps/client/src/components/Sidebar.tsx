@@ -123,6 +123,11 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
 
   const resetWidth = useCallback(() => setWidth(DEFAULT_WIDTH), []);
 
+  const teamSlugOrId =
+    typeof window !== "undefined"
+      ? window.location.pathname.split("/")[1] || "default"
+      : "default";
+
   return (
     <div
       ref={containerRef}
@@ -140,7 +145,8 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
       >
         {isElectron && <div className="w-[68px]"></div>}
         <Link
-          to="/dashboard"
+          to="/$teamSlugOrId/dashboard"
+          params={{ teamSlugOrId }}
           className="flex items-center gap-2 select-none cursor-pointer"
           style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
         >
@@ -149,7 +155,8 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
         </Link>
         <div className="grow"></div>
         <Link
-          to="/dashboard"
+          to="/$teamSlugOrId/dashboard"
+          params={{ teamSlugOrId }}
           className="w-[25px] h-[25px] border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-900 rounded-lg flex items-center justify-center transition-colors cursor-default"
           title="New task"
           style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
@@ -212,7 +219,8 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
           Feedback
         </a>
         <Link
-          to="/settings"
+          to="/$teamSlugOrId/settings"
+          params={{ teamSlugOrId }}
           className="flex items-center px-7 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors select-none cursor-default"
         >
           <svg

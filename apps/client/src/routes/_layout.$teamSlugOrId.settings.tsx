@@ -10,11 +10,12 @@ import { API_KEY_MODELS_BY_ENV } from "@cmux/shared/model-usage";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useConvex } from "convex/react";
+import { convexQuery } from "@convex-dev/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Switch } from "@heroui/react";
 
-export const Route = createFileRoute("/_layout/settings")({
+export const Route = createFileRoute("/_layout/$teamSlugOrId/settings")({
   component: SettingsComponent,
 });
 
@@ -61,20 +62,18 @@ function SettingsComponent() {
   const apiKeyModelsByEnv = API_KEY_MODELS_BY_ENV;
 
   // Query existing API keys
-  const { data: existingKeys } = useQuery({
-    queryKey: ["apiKeys"],
-    queryFn: async () => {
-      return await convex.query(api.apiKeys.getAll);
-    },
-  });
+  const teamSlugOrId =
+    typeof window !== "undefined"
+      ? window.location.pathname.split("/")[1] || "default"
+      : "default";
+  const { data: existingKeys } = useQuery(
+    convexQuery(api.apiKeys.getAll, { teamIdOrSlug: teamSlugOrId })
+  );
 
   // Query workspace settings
-  const { data: workspaceSettings } = useQuery({
-    queryKey: ["workspaceSettings"],
-    queryFn: async () => {
-      return await convex.query(api.workspaceSettings.get);
-    },
-  });
+  const { data: workspaceSettings } = useQuery(
+    convexQuery(api.workspaceSettings.get, { teamIdOrSlug: teamSlugOrId })
+  );
 
   // Initialize form values when data loads
   useEffect(() => {
@@ -176,7 +175,10 @@ function SettingsComponent() {
       displayName: string;
       description?: string;
     }) => {
-      return await convex.mutation(api.apiKeys.upsert, data);
+      return await convex.mutation(api.apiKeys.upsert, {
+        teamIdOrSlug: teamSlugOrId,
+        ...data,
+      });
     },
   });
 
@@ -247,6 +249,7 @@ function SettingsComponent() {
         autoPrEnabled !== originalAutoPrEnabled
       ) {
         await convex.mutation(api.workspaceSettings.update, {
+          teamIdOrSlug: teamSlugOrId,
           worktreePath: worktreePath || undefined,
           autoPrEnabled,
         });
@@ -261,10 +264,10 @@ function SettingsComponent() {
         JSON.stringify(containerSettingsData) !==
           JSON.stringify(originalContainerSettingsData)
       ) {
-        await convex.mutation(
-          api.containerSettings.update,
-          containerSettingsData
-        );
+        await convex.mutation(api.containerSettings.update, {
+          teamIdOrSlug: teamSlugOrId,
+          ...containerSettingsData,
+        });
         setOriginalContainerSettingsData(containerSettingsData);
       }
 
@@ -287,6 +290,7 @@ function SettingsComponent() {
           } else if (originalValue) {
             // Delete the key if it was cleared
             await convex.mutation(api.apiKeys.remove, {
+              teamIdOrSlug: teamSlugOrId,
               envVar: key.envVar,
             });
             deletedCount++;

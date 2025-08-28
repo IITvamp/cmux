@@ -2,6 +2,7 @@ import { api } from "@cmux/convex/api";
 import { ghApi } from "../ghApi.js";
 import { convex } from "./convexClient.js";
 import { serverLogger } from "./fileLogger.js";
+import { DEFAULT_TEAM_ID } from "@cmux/shared";
 
 export async function refreshGitHubData() {
   try {
@@ -59,6 +60,7 @@ export async function refreshGitHubData() {
       serverLogger.info(`Refreshing repository data with ${reposToInsert.length} repos...`);
       // The mutation now handles deduplication
       await convex.mutation(api.github.bulkInsertRepos, {
+        teamIdOrSlug: DEFAULT_TEAM_ID,
         repos: reposToInsert,
       });
       serverLogger.info("Repository data refreshed successfully");
@@ -83,6 +85,7 @@ export async function refreshBranchesForRepo(repo: string) {
     
     if (branches.length > 0) {
       await convex.mutation(api.github.bulkInsertBranches, {
+        teamIdOrSlug: DEFAULT_TEAM_ID,
         repo,
         branches,
       });

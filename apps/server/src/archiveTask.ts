@@ -6,6 +6,7 @@ import { api } from "@cmux/convex/api";
 import type { FunctionReturnType } from "convex/server";
 import type { Id } from "@cmux/convex/dataModel";
 import { MorphCloudClient } from "morphcloud";
+import { DEFAULT_TEAM_ID } from "@cmux/shared";
 
 const execAsync = promisify(exec);
 
@@ -49,11 +50,14 @@ export async function stopContainersForRuns(
   taskId: Id<"tasks">,
   query: (
     ref: typeof api.taskRuns.getByTask,
-    args: { taskId: Id<"tasks"> }
+    args: { teamIdOrSlug: string; taskId: Id<"tasks"> }
   ) => Promise<FunctionReturnType<typeof api.taskRuns.getByTask>> = (ref, args) =>
     convex.query(ref, args)
 ): Promise<StopResult[]> {
-  const tree = await query(api.taskRuns.getByTask, { taskId });
+  const tree = await query(api.taskRuns.getByTask, {
+    teamIdOrSlug: DEFAULT_TEAM_ID,
+    taskId,
+  });
   return stopContainersForRunsFromTree(tree, String(taskId));
 }
 

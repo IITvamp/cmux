@@ -4,6 +4,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { api } from "@cmux/convex/api";
 import { generateText, type LanguageModel } from "ai";
 import { convex } from "../utils/convexClient.js";
+import { DEFAULT_TEAM_ID } from "@cmux/shared";
 import { serverLogger } from "./fileLogger.js";
 
 function getModelAndProvider(apiKeys: Record<string, string>): { model: LanguageModel; providerName: string } | null {
@@ -23,7 +24,9 @@ function getModelAndProvider(apiKeys: Record<string, string>): { model: Language
 }
 
 export async function generateCommitMessageFromDiff(diff: string): Promise<string | null> {
-  const apiKeys = await convex.query(api.apiKeys.getAllForAgents);
+  const apiKeys = await convex.query(api.apiKeys.getAllForAgents, {
+    teamIdOrSlug: DEFAULT_TEAM_ID,
+  });
   const config = getModelAndProvider(apiKeys);
   if (!config) {
     serverLogger.warn("[CommitMsg] No API keys available, skipping AI generation");
@@ -81,4 +84,3 @@ export async function generateCommitMessageFromDiff(diff: string): Promise<strin
     return null;
   }
 }
-

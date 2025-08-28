@@ -4,6 +4,7 @@ import type { Id } from "@cmux/convex/dataModel";
 import type { SpawnFromComment } from "@cmux/shared";
 import clsx from "clsx";
 import { useMutation, useQuery } from "convex/react";
+// Read team slug from path to avoid route type coupling
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -167,7 +168,14 @@ function renderMarkdownLinks(text: string): React.ReactNode {
 
 // Component to display comment replies
 function CommentReplies({ commentId }: { commentId: Id<"comments"> }) {
-  const replies = useQuery(api.comments.getReplies, { commentId });
+  const teamSlugOrId =
+    typeof window !== "undefined"
+      ? window.location.pathname.split("/")[1] || "default"
+      : "default";
+  const replies = useQuery(api.comments.getReplies, {
+    teamIdOrSlug: teamSlugOrId,
+    commentId,
+  });
 
   if (!replies || replies.length === 0) {
     return null;
@@ -449,6 +457,10 @@ function CommentMarker({ comment, onClick }: CommentMarkerProps) {
 
 export function CmuxComments() {
   const { socket } = useSocket();
+  const teamSlugOrId =
+    typeof window !== "undefined"
+      ? window.location.pathname.split("/")[1] || "default"
+      : "default";
   const [isOpen, setIsOpen] = useState(false);
   const [isCommenting, setIsCommenting] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -481,6 +493,7 @@ export function CmuxComments() {
   const commentInputRef = useRef<HTMLTextAreaElement>(null);
 
   const comments = useQuery(api.comments.listComments, {
+    teamIdOrSlug: teamSlugOrId,
     url: window.location.origin,
     page: window.location.pathname,
     includeArchived: showArchived,
@@ -656,9 +669,9 @@ export function CmuxComments() {
 
     // Create the comment in Convex
     const commentId = await createComment({
+      teamIdOrSlug: teamSlugOrId,
       ...pendingCommentData,
       content: commentDraft,
-      userId,
       // profileImageUrl: user.profileImageUrl || undefined,
       profileImageUrl,
     });
@@ -962,6 +975,7 @@ export function CmuxComments() {
                   <button
                     onClick={() =>
                       archiveComment({
+                        teamIdOrSlug: teamSlugOrId,
                         commentId: comment._id as Id<"comments">,
                         archived: !comment.archived,
                       })

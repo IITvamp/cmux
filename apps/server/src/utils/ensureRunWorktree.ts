@@ -4,6 +4,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { RepositoryManager } from "../repositoryManager.js";
 import { convex } from "../utils/convexClient.js";
+import { DEFAULT_TEAM_ID } from "@cmux/shared";
 import { serverLogger } from "../utils/fileLogger.js";
 import { getWorktreePath, setupProjectWorkspace } from "../workspace.js";
 
@@ -30,10 +31,16 @@ export async function ensureRunWorktreeAndBranch(
   if (existing) return existing;
 
   const p = (async (): Promise<EnsureWorktreeResult> => {
-    const run = await convex.query(api.taskRuns.get, { id: taskRunId });
+    const run = await convex.query(api.taskRuns.get, {
+      teamIdOrSlug: DEFAULT_TEAM_ID,
+      id: taskRunId,
+    });
     if (!run) throw new Error("Task run not found");
 
-    const task = await convex.query(api.tasks.getById, { id: run.taskId });
+    const task = await convex.query(api.tasks.getById, {
+      teamIdOrSlug: DEFAULT_TEAM_ID,
+      id: run.taskId,
+    });
     if (!task) throw new Error("Task not found");
 
     // Determine base branch: prefer explicit task.baseBranch; otherwise detect later
@@ -82,6 +89,7 @@ export async function ensureRunWorktreeAndBranch(
       }
       worktreePath = res.worktreePath;
       await convex.mutation(api.taskRuns.updateWorktreePath, {
+        teamIdOrSlug: DEFAULT_TEAM_ID,
         id: run._id,
         worktreePath,
       });

@@ -56,6 +56,10 @@ export function TaskDetailHeader({
 }: TaskDetailHeaderProps) {
   const navigate = useNavigate();
   const clipboard = useClipboard({ timeout: 2000 });
+  const teamSlugOrId =
+    typeof window !== "undefined"
+      ? window.location.pathname.split("/")[1] || "default"
+      : "default";
   const prIsOpen = selectedRun?.pullRequestState === "open";
   const prIsMerged = selectedRun?.pullRequestState === "merged";
   const { socket } = useSocket();
@@ -366,8 +370,8 @@ export function TaskDetailHeader({
                                   }
                                   if (!isSelected) {
                                     navigate({
-                                      to: "/task/$taskId",
-                                      params: { taskId: task?._id },
+                                      to: "/$teamSlugOrId/task/$taskId",
+                                      params: { teamSlugOrId, taskId: task?._id },
                                       search: { runId: run._id },
                                     });
                                   }

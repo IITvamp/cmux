@@ -4,8 +4,15 @@ import { memo, useState } from "react";
 import { TaskItem } from "./TaskItem";
 
 export const TaskList = memo(function TaskList() {
-  const allTasks = useQuery(api.tasks.get, {});
-  const archivedTasks = useQuery(api.tasks.get, { archived: true });
+  const teamSlugOrId =
+    typeof window !== "undefined"
+      ? window.location.pathname.split("/")[1] || "default"
+      : "default";
+  const allTasks = useQuery(api.tasks.get, { teamIdOrSlug: teamSlugOrId });
+  const archivedTasks = useQuery(api.tasks.get, {
+    teamIdOrSlug: teamSlugOrId,
+    archived: true,
+  });
   const [tab, setTab] = useState<"all" | "archived">("all");
   const tasks = tab === "archived" ? archivedTasks : allTasks;
 

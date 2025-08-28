@@ -8,6 +8,7 @@ import { isFakeConvexId } from "@/lib/fakeConvexId";
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
 import { useQuery } from "convex/react";
+// Read team slug from path to avoid route type coupling
 import { AlertCircle, Crown, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -16,22 +17,26 @@ interface CrownStatusProps {
 }
 
 export function CrownStatus({ taskId }: CrownStatusProps) {
+  const teamSlugOrId =
+    typeof window !== "undefined"
+      ? window.location.pathname.split("/")[1] || "default"
+      : "default";
   // Get task runs
   const taskRuns = useQuery(
     api.taskRuns.getByTask,
-    isFakeConvexId(taskId) ? "skip" : { taskId }
+    isFakeConvexId(taskId) ? "skip" : { teamIdOrSlug: teamSlugOrId, taskId }
   );
 
   // Get task with error status
   const task = useQuery(
     api.tasks.getById,
-    isFakeConvexId(taskId) ? "skip" : { id: taskId }
+    isFakeConvexId(taskId) ? "skip" : { teamIdOrSlug: teamSlugOrId, id: taskId }
   );
 
   // Get crown evaluation
   const crownedRun = useQuery(
     api.crown.getCrownedRun,
-    isFakeConvexId(taskId) ? "skip" : { taskId }
+    isFakeConvexId(taskId) ? "skip" : { teamIdOrSlug: teamSlugOrId, taskId }
   );
 
   // BAD STATE

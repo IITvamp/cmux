@@ -63,6 +63,10 @@ function TaskTreeInner({
   level = 0,
   defaultExpanded = false,
 }: TaskTreeProps) {
+  const teamSlugOrId =
+    typeof window !== "undefined"
+      ? window.location.pathname.split("/")[1] || "default"
+      : "default";
   // Get the current route to determine if this task is selected
   const location = useLocation();
   const isTaskSelected = useMemo(
@@ -103,8 +107,8 @@ function TaskTreeInner({
       <ContextMenu.Root>
         <ContextMenu.Trigger>
           <Link
-            to="/task/$taskId"
-            params={{ taskId: task._id }}
+            to="/$teamSlugOrId/task/$taskId"
+            params={{ teamSlugOrId, taskId: task._id }}
             search={{ runId: undefined }}
             className={clsx(
               "flex items-center px-0.5 pt-[2.5px] pb-[3px] text-sm rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default",
@@ -272,6 +276,10 @@ interface TaskRunTreeProps {
 function TaskRunTreeInner({ run, level, taskId, branch }: TaskRunTreeProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const hasChildren = run.children.length > 0;
+  const teamSlugOrId =
+    typeof window !== "undefined"
+      ? window.location.pathname.split("/")[1] || "default"
+      : "default";
 
   // Memoize the display text to avoid recalculating on every render
   const displayText = useMemo(() => getRunDisplayText(run), [run]);
@@ -323,8 +331,8 @@ function TaskRunTreeInner({ run, level, taskId, branch }: TaskRunTreeProps) {
         </div>
       )}
       <Link
-        to="/task/$taskId/run/$taskRunId"
-        params={{ taskId, taskRunId: run._id }}
+        to="/$teamSlugOrId/task/$taskId/run/$taskRunId"
+        params={{ teamSlugOrId, taskId, taskRunId: run._id }}
         className={clsx(
           "group flex items-center px-2 pr-10 py-1 text-xs rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default",
           "[&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800"

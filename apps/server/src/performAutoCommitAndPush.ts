@@ -4,6 +4,7 @@ import type { AgentConfig } from "@cmux/shared";
 import { buildAutoCommitPushCommand } from "./utils/autoCommitPushCommand";
 import { generateCommitMessageFromDiff } from "./utils/commitMessageGenerator";
 import { convex } from "./utils/convexClient";
+import { DEFAULT_TEAM_ID } from "@cmux/shared";
 import { serverLogger } from "./utils/fileLogger";
 import { workerExec } from "./utils/workerExec";
 import { VSCodeInstance } from "./vscode/VSCodeInstance";
@@ -24,6 +25,7 @@ export default async function performAutoCommitAndPush(
 
     // Check if this run is crowned
     const taskRun = await convex.query(api.taskRuns.get, {
+      teamIdOrSlug: DEFAULT_TEAM_ID,
       id: taskRunId,
     });
     const isCrowned = taskRun?.isCrowned || false;
@@ -120,7 +122,9 @@ export default async function performAutoCommitAndPush(
 
     if (isCrowned) {
       // Respect workspace setting for auto-PR
-      const ws = await convex.query(api.workspaceSettings.get);
+      const ws = await convex.query(api.workspaceSettings.get, {
+        teamIdOrSlug: DEFAULT_TEAM_ID,
+      });
       const autoPrEnabled =
         (ws as unknown as { autoPrEnabled?: boolean })?.autoPrEnabled ?? false;
       if (!autoPrEnabled) {
@@ -142,6 +146,7 @@ export default async function performAutoCommitAndPush(
           return;
         }
         const task = await convex.query(api.tasks.getById, {
+          teamIdOrSlug: DEFAULT_TEAM_ID,
           id: taskRun.taskId,
         });
         if (task) {
@@ -150,6 +155,7 @@ export default async function performAutoCommitAndPush(
           if (!task.pullRequestTitle || task.pullRequestTitle !== prTitle) {
             try {
               await convex.mutation(api.tasks.setPullRequestTitle, {
+                teamIdOrSlug: DEFAULT_TEAM_ID,
                 id: task._id,
                 pullRequestTitle: prTitle,
               });
@@ -176,6 +182,7 @@ ${taskRun.crownReason || "This implementation was selected as the best solution.
           // Persist PR description on the task in Convex
           try {
             await convex.mutation(api.tasks.setPullRequestDescription, {
+              teamIdOrSlug: DEFAULT_TEAM_ID,
               id: task._id,
               pullRequestDescription: prBody,
             });
@@ -220,6 +227,7 @@ ${taskRun.crownReason || "This implementation was selected as the best solution.
               `[AgentSpawner] Pull request created: ${prUrlMatch[0]}`
             );
             await convex.mutation(api.taskRuns.updatePullRequestUrl, {
+              teamIdOrSlug: DEFAULT_TEAM_ID,
               id: taskRunId as Id<"taskRuns">,
               pullRequestUrl: prUrlMatch[0],
               isDraft: false,

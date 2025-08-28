@@ -17,6 +17,11 @@ export function ProviderStatusPills() {
   const [status, setStatus] = useState<ProviderStatusResponse | null>(null);
   const [isVisible, setIsVisible] = useState(false);
 
+  const teamSlugOrId =
+    typeof window !== "undefined"
+      ? window.location.pathname.split("/")[1] || "default"
+      : "default";
+
   const checkProviderStatus = useCallback(() => {
     if (!socket) return;
 
@@ -71,7 +76,12 @@ export function ProviderStatusPills() {
           <Tooltip>
             <TooltipTrigger asChild>
               <button
-                onClick={() => navigate({ to: "/settings" })}
+                onClick={() =>
+                  navigate({
+                    to: "/$teamSlugOrId/settings",
+                    params: { teamSlugOrId },
+                  })
+                }
                                   className={clsx(
                     "flex items-center gap-2 px-3 py-1.5 rounded-lg",
                     "bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-600",
@@ -125,7 +135,12 @@ export function ProviderStatusPills() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
-                  onClick={() => navigate({ to: "/settings" })}
+                  onClick={() =>
+                    navigate({
+                      to: "/$teamSlugOrId/settings",
+                      params: { teamSlugOrId },
+                    })
+                  }
                   className={clsx(
                     "flex items-center gap-1.5 px-2.5 py-1 rounded-lg",
                     "bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-600",
@@ -150,7 +165,12 @@ export function ProviderStatusPills() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
-                  onClick={() => navigate({ to: "/settings" })}
+                  onClick={() =>
+                    navigate({
+                      to: "/$teamSlugOrId/settings",
+                      params: { teamSlugOrId },
+                    })
+                  }
                   className={clsx(
                     "flex items-center gap-1.5 px-2.5 py-1 rounded-lg",
                     "bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-600",
@@ -175,7 +195,12 @@ export function ProviderStatusPills() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
-                  onClick={() => navigate({ to: "/settings" })}
+                  onClick={() =>
+                    navigate({
+                      to: "/$teamSlugOrId/settings",
+                      params: { teamSlugOrId },
+                    })
+                  }
                   className={clsx(
                     "flex items-center gap-1.5 px-2.5 py-1 rounded-lg",
                     "bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-600",
@@ -206,7 +231,12 @@ export function ProviderStatusPills() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
-                  onClick={() => navigate({ to: "/settings" })}
+                  onClick={() =>
+                    navigate({
+                      to: "/$teamSlugOrId/settings",
+                      params: { teamSlugOrId },
+                    })
+                  }
                   className={clsx(
                     "flex items-center gap-1.5 px-2.5 py-1 rounded-lg",
                     "bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-600",

@@ -2,6 +2,7 @@ import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
 import { isFakeConvexId } from "@/lib/fakeConvexId";
 import { useQuery } from "convex/react";
+// Read team slug from path to avoid route type coupling
 import { Trophy } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 
@@ -10,13 +11,17 @@ interface CrownEvaluationProps {
 }
 
 export function CrownEvaluation({ taskId }: CrownEvaluationProps) {
+  const teamSlugOrId =
+    typeof window !== "undefined"
+      ? window.location.pathname.split("/")[1] || "default"
+      : "default";
   const evaluation = useQuery(
-    api.crown.getCrownEvaluation, 
-    isFakeConvexId(taskId) ? "skip" : { taskId }
+    api.crown.getCrownEvaluation,
+    isFakeConvexId(taskId) ? "skip" : { teamIdOrSlug: teamSlugOrId, taskId }
   );
   const crownedRun = useQuery(
-    api.crown.getCrownedRun, 
-    isFakeConvexId(taskId) ? "skip" : { taskId }
+    api.crown.getCrownedRun,
+    isFakeConvexId(taskId) ? "skip" : { teamIdOrSlug: teamSlugOrId, taskId }
   );
 
   if (!evaluation || !crownedRun) {

@@ -18,7 +18,7 @@ const paramsSchema = z.object({
   taskId: typedZid("tasks"),
 });
 
-export const Route = createFileRoute("/_layout/task/$taskId/")({
+export const Route = createFileRoute("/_layout/$teamSlugOrId/task/$taskId/")({
   component: TaskDetailPage,
   params: {
     parse: paramsSchema.parse,
@@ -38,11 +38,19 @@ export const Route = createFileRoute("/_layout/task/$taskId/")({
     await Promise.all([
       opts.context.queryClient.ensureQueryData(
         convexQuery(api.taskRuns.getByTask, {
+          teamIdOrSlug:
+            typeof window !== "undefined"
+              ? window.location.pathname.split("/")[1] || "default"
+              : "default",
           taskId: opts.params.taskId,
         })
       ),
       opts.context.queryClient.ensureQueryData(
         convexQuery(api.tasks.getById, {
+          teamIdOrSlug:
+            typeof window !== "undefined"
+              ? window.location.pathname.split("/")[1] || "default"
+              : "default",
           id: opts.params.taskId,
         })
       ),
@@ -66,12 +74,12 @@ function TaskDetailPage() {
   const router = useRouter();
   const queryClient = router.options.context?.queryClient;
 
-  const task = useQuery(api.tasks.getById, {
-    id: taskId,
-  });
-  const taskRuns = useQuery(api.taskRuns.getByTask, {
-    taskId: taskId,
-  });
+  const teamSlugOrId =
+    typeof window !== "undefined"
+      ? window.location.pathname.split("/")[1] || "default"
+      : "default";
+  const task = useQuery(api.tasks.getById, { teamIdOrSlug: teamSlugOrId, id: taskId });
+  const taskRuns = useQuery(api.taskRuns.getByTask, { teamIdOrSlug: teamSlugOrId, taskId });
 
   // Find the crowned run (if any)
   const crownedRun = taskRuns?.find((run) => run.isCrowned);

@@ -4,6 +4,7 @@ import os from "os";
 import path from "path";
 import { RepositoryManager } from "./repositoryManager.js";
 import { convex } from "./utils/convexClient.js";
+import { DEFAULT_TEAM_ID } from "@cmux/shared";
 import { serverLogger } from "./utils/fileLogger.js";
 
 interface WorkspaceResult {
@@ -51,7 +52,9 @@ export async function getWorktreePath(args: {
   branch: string;
 }): Promise<WorktreeInfo> {
   // Check for custom worktree path setting
-  const settings = await convex.query(api.workspaceSettings.get);
+  const settings = await convex.query(api.workspaceSettings.get, {
+    teamIdOrSlug: DEFAULT_TEAM_ID,
+  });
 
   let projectsPath: string;
 
@@ -94,7 +97,9 @@ export async function getProjectPaths(repoUrl: string): Promise<{
   worktreesPath: string;
   repoName: string;
 }> {
-  const settings = await convex.query(api.workspaceSettings.get);
+  const settings = await convex.query(api.workspaceSettings.get, {
+    teamIdOrSlug: DEFAULT_TEAM_ID,
+  });
 
   let projectsPath: string;
   if (settings?.worktreePath) {

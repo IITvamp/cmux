@@ -1,7 +1,4 @@
-import {
-  DashboardInput,
-  type EditorApi,
-} from "@/components/dashboard/DashboardInput";
+import { DashboardInput, type EditorApi } from "@/components/dashboard/DashboardInput";
 import { DashboardInputControls } from "@/components/dashboard/DashboardInputControls";
 import { DashboardInputFooter } from "@/components/dashboard/DashboardInputFooter";
 import { DashboardStartTaskButton } from "@/components/dashboard/DashboardStartTaskButton";
@@ -22,11 +19,12 @@ import { useMutation } from "convex/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-export const Route = createFileRoute("/_layout/dashboard")({
+export const Route = createFileRoute("/_layout/$teamSlugOrId/dashboard")({
   component: DashboardComponent,
 });
 
 function DashboardComponent() {
+  // team slug read from path
   // Authentication is handled by the parent layout
   const { socket } = useSocket();
   const { theme } = useTheme();
@@ -82,7 +80,13 @@ function DashboardComponent() {
   }, []);
 
   // Fetch repos from Convex
-  const reposByOrgQuery = useQuery(convexQuery(api.github.getReposByOrg, {}));
+  const teamSlugOrId =
+    typeof window !== "undefined"
+      ? window.location.pathname.split("/")[1] || "default"
+      : "default";
+  const reposByOrgQuery = useQuery(
+    convexQuery(api.github.getReposByOrg, { teamIdOrSlug: teamSlugOrId })
+  );
   const reposByOrg = useMemo(
     () => reposByOrgQuery.data || {},
     [reposByOrgQuery.data]
@@ -90,7 +94,10 @@ function DashboardComponent() {
 
   // Fetch branches for selected repo from Convex
   const branchesQuery = useQuery({
-    ...convexQuery(api.github.getBranches, { repo: selectedProject[0] || "" }),
+    ...convexQuery(api.github.getBranches, {
+      teamIdOrSlug: teamSlugOrId,
+      repo: selectedProject[0] || "",
+    }),
     enabled: !!selectedProject[0],
   });
   const branches = useMemo(
@@ -132,7 +139,9 @@ function DashboardComponent() {
   // Mutation to create tasks with optimistic update
   const createTask = useMutation(api.tasks.create).withOptimisticUpdate(
     (localStore, args) => {
-      const currentTasks = localStore.getQuery(api.tasks.get, {});
+      const currentTasks = localStore.getQuery(api.tasks.get, {
+        teamIdOrSlug: teamSlugOrId,
+      });
 
       if (currentTasks !== undefined) {
         const now = Date.now();
@@ -149,13 +158,15 @@ function DashboardComponent() {
           createdAt: now,
           updatedAt: now,
           images: args.images,
+          userId: "optimistic",
+          teamId: teamSlugOrId,
         };
 
         // Add the new task at the beginning (since we order by desc)
-        localStore.setQuery(api.tasks.get, {}, [
-          optimisticTask,
-          ...currentTasks,
-        ]);
+        const listArgs: { teamIdOrSlug: string; projectFullName?: string; archived?: boolean } = {
+          teamIdOrSlug: teamSlugOrId,
+        };
+        localStore.setQuery(api.tasks.get, listArgs, [optimisticTask, ...currentTasks]);
       }
     }
   );
@@ -217,7 +228,9 @@ function DashboardComponent() {
             }
             const byteArray = new Uint8Array(byteNumbers);
             const blob = new Blob([byteArray], { type: "image/png" });
-            const uploadUrl = await generateUploadUrl();
+            const uploadUrl = await generateUploadUrl({
+              teamIdOrSlug: teamSlugOrId,
+            });
             const result = await fetch(uploadUrl, {
               method: "POST",
               headers: { "Content-Type": blob.type },
@@ -244,6 +257,7 @@ function DashboardComponent() {
 
       // Create task in Convex with storage IDs
       const taskId = await createTask({
+        teamIdOrSlug: teamSlugOrId,
         text: content?.text || taskDescription, // Use content.text which includes image references
         projectFullName,
         baseBranch: branch,

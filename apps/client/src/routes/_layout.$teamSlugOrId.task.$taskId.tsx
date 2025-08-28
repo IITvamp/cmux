@@ -13,17 +13,25 @@ import {
 import clsx from "clsx";
 import { Suspense, useEffect } from "react";
 
-export const Route = createFileRoute("/_layout/task/$taskId")({
+export const Route = createFileRoute("/_layout/$teamSlugOrId/task/$taskId")({
   component: TaskDetailPage,
   loader: async (opts) => {
     await Promise.all([
       opts.context.queryClient.ensureQueryData(
         convexQuery(api.taskRuns.getByTask, {
+          teamIdOrSlug:
+            typeof window !== "undefined"
+              ? window.location.pathname.split("/")[1] || "default"
+              : "default",
           taskId: opts.params.taskId as Id<"tasks">,
         })
       ),
       opts.context.queryClient.ensureQueryData(
         convexQuery(api.tasks.getById, {
+          teamIdOrSlug:
+            typeof window !== "undefined"
+              ? window.location.pathname.split("/")[1] || "default"
+              : "default",
           id: opts.params.taskId as Id<"tasks">,
         })
       ),
@@ -39,13 +47,19 @@ type GetByTaskResultItem = (typeof api.taskRuns.getByTask._returnType)[number];
 
 function TaskDetailPage() {
   const { taskId } = Route.useParams();
+  const teamSlugOrId =
+    typeof window !== "undefined"
+      ? window.location.pathname.split("/")[1] || "default"
+      : "default";
   const { data: task } = useSuspenseQuery(
     convexQuery(api.tasks.getById, {
+      teamIdOrSlug: teamSlugOrId,
       id: taskId as Id<"tasks">,
     })
   );
   const { data: taskRuns } = useSuspenseQuery(
     convexQuery(api.taskRuns.getByTask, {
+      teamIdOrSlug: teamSlugOrId,
       taskId: taskId as Id<"tasks">,
     })
   );
@@ -108,8 +122,8 @@ function TaskDetailPage() {
 
         if (flatRuns[runIndex]) {
           navigate({
-            to: "/task/$taskId/run/$taskRunId",
-            params: { taskId, taskRunId: flatRuns[runIndex]._id },
+            to: "/$teamSlugOrId/task/$taskId/run/$taskRunId",
+            params: { teamSlugOrId, taskId, taskRunId: flatRuns[runIndex]._id },
           });
         }
       }
@@ -174,8 +188,8 @@ function TaskDetailPage() {
             {flatRuns.map((run, index) => (
               <Link
                 key={run._id}
-                to="/task/$taskId/run/$taskRunId"
-                params={{ taskId, taskRunId: run._id }}
+                to="/$teamSlugOrId/task/$taskId/run/$taskRunId"
+                params={{ teamSlugOrId, taskId, taskRunId: run._id }}
                 className={clsx(
                   "px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors select-none",
                   activeRunId === run._id

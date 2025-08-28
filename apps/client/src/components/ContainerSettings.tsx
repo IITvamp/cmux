@@ -15,7 +15,13 @@ interface ContainerSettingsProps {
 }
 
 export function ContainerSettings({ onDataChange }: ContainerSettingsProps) {
-  const settings = useQuery(api.containerSettings.get);
+  const teamSlugOrId =
+    typeof window !== "undefined"
+      ? window.location.pathname.split("/")[1] || "default"
+      : "default";
+  const settings = useQuery(api.containerSettings.get, {
+    teamIdOrSlug: teamSlugOrId,
+  });
   const isInitialized = useRef(false);
 
   const [formData, setFormData] = useState({

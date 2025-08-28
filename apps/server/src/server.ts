@@ -56,6 +56,7 @@ import { waitForConvex } from "./utils/waitForConvex.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getProjectPaths } from "./workspace.js";
+import { DEFAULT_TEAM_ID } from "@cmux/shared";
 
 const execAsync = promisify(exec);
 
@@ -212,6 +213,7 @@ export async function startServer({
           );
           // Persist to Convex immediately
           await convex.mutation(api.tasks.setPullRequestTitle, {
+            teamIdOrSlug: DEFAULT_TEAM_ID,
             id: taskId,
             pullRequestTitle: generatedTitle,
           });
@@ -322,13 +324,17 @@ export async function startServer({
 
         // Load run and task (no worktree setup to keep it light)
         const run = await convex.query(api.taskRuns.get, {
+          teamIdOrSlug: DEFAULT_TEAM_ID,
           id: taskRunId as Id<"taskRuns">,
         });
         if (!run) {
           callback({ success: false, error: "Task run not found" });
           return;
         }
-        const task = await convex.query(api.tasks.getById, { id: run.taskId });
+        const task = await convex.query(api.tasks.getById, {
+          teamIdOrSlug: DEFAULT_TEAM_ID,
+          id: run.taskId,
+        });
         if (!task) {
           callback({ success: false, error: "Task not found" });
           return;
@@ -389,6 +395,7 @@ export async function startServer({
 
         if (!prBasic) {
           await convex.mutation(api.taskRuns.updatePullRequestState, {
+            teamIdOrSlug: DEFAULT_TEAM_ID,
             id: run._id,
             state: "none",
             isDraft: undefined,
@@ -397,6 +404,7 @@ export async function startServer({
           });
           // Update task merge status to none
           await convex.mutation(api.tasks.updateMergeStatus, {
+            teamIdOrSlug: DEFAULT_TEAM_ID,
             id: task._id,
             mergeStatus: "none",
           });
@@ -426,6 +434,7 @@ export async function startServer({
                   : "unknown";
 
         await convex.mutation(api.taskRuns.updatePullRequestState, {
+          teamIdOrSlug: DEFAULT_TEAM_ID,
           id: run._id,
           state,
           isDraft,
@@ -456,6 +465,7 @@ export async function startServer({
         }
         if (taskMergeStatus !== "none") {
           await convex.mutation(api.tasks.updateMergeStatus, {
+            teamIdOrSlug: DEFAULT_TEAM_ID,
             id: task._id,
             mergeStatus: taskMergeStatus,
           });
@@ -486,11 +496,15 @@ export async function startServer({
         };
 
         const run = await convex.query(api.taskRuns.get, {
+          teamIdOrSlug: DEFAULT_TEAM_ID,
           id: taskRunId as Id<"taskRuns">,
         });
         if (!run)
           return callback({ success: false, error: "Task run not found" });
-        const task = await convex.query(api.tasks.getById, { id: run.taskId });
+        const task = await convex.query(api.tasks.getById, {
+          teamIdOrSlug: DEFAULT_TEAM_ID,
+          id: run.taskId,
+        });
         if (!task) return callback({ success: false, error: "Task not found" });
 
         const githubToken = await getGitHubTokenFromKeychain();
@@ -588,6 +602,7 @@ export async function startServer({
           );
           // Update Convex: merged
           await convex.mutation(api.taskRuns.updatePullRequestState, {
+            teamIdOrSlug: DEFAULT_TEAM_ID,
             id: run._id,
             state: "merged",
             isDraft: false,
@@ -596,6 +611,7 @@ export async function startServer({
           });
           // Update task merge status to merged
           await convex.mutation(api.tasks.updateMergeStatus, {
+            teamIdOrSlug: DEFAULT_TEAM_ID,
             id: task._id,
             mergeStatus: "pr_merged",
           });
@@ -650,11 +666,13 @@ export async function startServer({
           });
 
           await convex.mutation(api.taskRuns.updatePullRequestState, {
+            teamIdOrSlug: DEFAULT_TEAM_ID,
             id: run._id,
             state: "merged",
           });
 
           await convex.mutation(api.tasks.updateMergeStatus, {
+            teamIdOrSlug: DEFAULT_TEAM_ID,
             id: task._id,
             mergeStatus: "pr_merged",
           });
@@ -1114,11 +1132,15 @@ export async function startServer({
     socket.on("github-fetch-repos", async (callback) => {
       try {
         // First, try to get existing repos from Convex
-        const existingRepos = await convex.query(api.github.getAllRepos, {});
+        const existingRepos = await convex.query(api.github.getAllRepos, {
+          teamIdOrSlug: DEFAULT_TEAM_ID,
+        });
 
         if (existingRepos.length > 0) {
           // If we have repos, return them and refresh in the background
-          const reposByOrg = await convex.query(api.github.getReposByOrg, {});
+          const reposByOrg = await convex.query(api.github.getReposByOrg, {
+            teamIdOrSlug: DEFAULT_TEAM_ID,
+          });
           callback({ success: true, repos: reposByOrg });
 
           // Refresh in the background to add any new repos
@@ -1130,7 +1152,9 @@ export async function startServer({
 
         // If no repos exist, do a full fetch
         await refreshGitHubData();
-        const reposByOrg = await convex.query(api.github.getReposByOrg, {});
+        const reposByOrg = await convex.query(api.github.getReposByOrg, {
+          teamIdOrSlug: DEFAULT_TEAM_ID,
+        });
         callback({ success: true, repos: reposByOrg });
       } catch (error) {
         serverLogger.error("Error fetching repos:", error);
@@ -1173,6 +1197,7 @@ Please address the issue mentioned in the comment above.`;
 
         // Create a new task in Convex
         const taskId = await convex.mutation(api.tasks.create, {
+          teamIdOrSlug: DEFAULT_TEAM_ID,
           text: formattedPrompt,
           projectFullName: "manaflow-ai/cmux",
         });
@@ -1222,8 +1247,8 @@ Please address the issue mentioned in the comment above.`;
         // Create a comment reply with link to the task
         try {
           await convex.mutation(api.comments.addReply, {
+            teamIdOrSlug: DEFAULT_TEAM_ID,
             commentId: commentId,
-            userId: "cmux",
             content: `[View run here](http://localhost:5173/task/${taskId})`,
           });
           serverLogger.info("Created comment reply with task link:", {
@@ -1258,6 +1283,7 @@ Please address the issue mentioned in the comment above.`;
 
         // Check if we already have branches for this repo
         const existingBranches = await convex.query(api.github.getBranches, {
+          teamIdOrSlug: DEFAULT_TEAM_ID,
           repo,
         });
 
@@ -1492,12 +1518,14 @@ Please address the issue mentioned in the comment above.`;
 
         if (prUrl) {
           await convex.mutation(api.taskRuns.updatePullRequestUrl, {
+            teamIdOrSlug: DEFAULT_TEAM_ID,
             id: run._id,
             pullRequestUrl: prUrl,
             isDraft: true,
           });
           // Update task merge status to draft PR
           await convex.mutation(api.tasks.updateMergeStatus, {
+            teamIdOrSlug: DEFAULT_TEAM_ID,
             id: task._id,
             mergeStatus: "pr_draft",
           });
@@ -1749,6 +1777,7 @@ Please address the issue mentioned in the comment above.`;
         }
 
         await convex.mutation(api.taskRuns.updatePullRequestState, {
+          teamIdOrSlug: DEFAULT_TEAM_ID,
           id: run._id,
           state: finalUrl
             ? stateMap(finalState, finalIsDraft, merged)
@@ -1784,6 +1813,7 @@ Please address the issue mentioned in the comment above.`;
         }
         if (taskMergeStatus !== "none") {
           await convex.mutation(api.tasks.updateMergeStatus, {
+            teamIdOrSlug: DEFAULT_TEAM_ID,
             id: task._id,
             mergeStatus: taskMergeStatus,
           });
@@ -1872,6 +1902,7 @@ Please address the issue mentioned in the comment above.`;
           `Storing default repository: ${defaultRepo.remoteName}`
         );
         await convex.mutation(api.github.upsertRepo, {
+          teamIdOrSlug: DEFAULT_TEAM_ID,
           fullName: defaultRepo.remoteName,
           org: defaultRepo.remoteName.split("/")[0] || "",
           name: defaultRepo.remoteName.split("/")[1] || "",

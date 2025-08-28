@@ -6,6 +6,7 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal as XTerm } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { useQuery } from "convex/react";
+// Read team slug from path to avoid route type coupling
 import { useEffect, useRef } from "react";
 
 export interface RestoredTerminalViewProps {
@@ -13,12 +14,17 @@ export interface RestoredTerminalViewProps {
 }
 
 export function RestoredTerminalView({ runId }: RestoredTerminalViewProps) {
+  const teamSlugOrId =
+    typeof window !== "undefined"
+      ? window.location.pathname.split("/")[1] || "default"
+      : "default";
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
 
   // Fetch log chunks from Convex
   const logChunks = useQuery(api.taskRunLogChunks.getChunks, {
+    teamIdOrSlug: teamSlugOrId,
     taskRunId: runId,
   });
 

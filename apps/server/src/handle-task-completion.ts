@@ -8,6 +8,7 @@ import {
 } from "./crownEvaluator.js";
 import performAutoCommitAndPush from "./performAutoCommitAndPush.js";
 import { convex } from "./utils/convexClient.js";
+import { DEFAULT_TEAM_ID } from "@cmux/shared";
 import { serverLogger } from "./utils/fileLogger.js";
 import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
 import type { VSCodeInstance } from "./vscode/VSCodeInstance.js";
@@ -29,6 +30,7 @@ export async function handleTaskCompletion({
   try {
     // Mark task as complete
     await convex.mutation(api.taskRuns.complete, {
+      teamIdOrSlug: DEFAULT_TEAM_ID,
       id: taskRunId,
       exitCode,
     });
@@ -59,6 +61,7 @@ export async function handleTaskCompletion({
     // Append git diff to the log; diffs are fetched on-demand now
     if (gitDiff && gitDiff.length > 0) {
       await convex.mutation(api.taskRuns.appendLogPublic, {
+        teamIdOrSlug: DEFAULT_TEAM_ID,
         id: taskRunId,
         content: `\n\n=== GIT DIFF ===\n${gitDiff}\n=== END GIT DIFF ===\n`,
       });
@@ -80,6 +83,7 @@ export async function handleTaskCompletion({
 
     // Check if all runs are complete and evaluate crown
     const taskRunData = await convex.query(api.taskRuns.get, {
+      teamIdOrSlug: DEFAULT_TEAM_ID,
       id: taskRunId,
     });
 
@@ -93,6 +97,7 @@ export async function handleTaskCompletion({
       );
 
       const winnerId = await convex.mutation(api.tasks.checkAndEvaluateCrown, {
+        teamIdOrSlug: DEFAULT_TEAM_ID,
         taskId: taskRunData.taskId,
       });
 
@@ -124,6 +129,7 @@ export async function handleTaskCompletion({
           try {
             // Check if evaluation is already in progress
             const task = await convex.query(api.tasks.getById, {
+              teamIdOrSlug: DEFAULT_TEAM_ID,
               id: taskRunData.taskId,
             });
             if (task?.crownEvaluationError === "in_progress") {
@@ -140,6 +146,7 @@ export async function handleTaskCompletion({
 
             // Check if this task run won
             const updatedTaskRun = await convex.query(api.taskRuns.get, {
+              teamIdOrSlug: DEFAULT_TEAM_ID,
               id: taskRunId,
             });
 
@@ -163,6 +170,7 @@ export async function handleTaskCompletion({
 
         // For single agent scenario, trigger auto-PR if enabled
         const taskRuns = await convex.query(api.taskRuns.getByTask, {
+          teamIdOrSlug: DEFAULT_TEAM_ID,
           taskId: taskRunData.taskId,
         });
 
@@ -172,7 +180,9 @@ export async function handleTaskCompletion({
           );
 
           // Check if auto-PR is enabled
-          const ws = await convex.query(api.workspaceSettings.get);
+          const ws = await convex.query(api.workspaceSettings.get, {
+            teamIdOrSlug: DEFAULT_TEAM_ID,
+          });
           const autoPrEnabled = ws?.autoPrEnabled ?? false;
 
           if (autoPrEnabled && winnerId) {
@@ -215,9 +225,10 @@ export async function handleTaskCompletion({
 
     // Enable auto-commit after task completion
     if (taskRunData) {
-      const task = await convex.query(api.tasks.getById, {
-        id: taskRunData.taskId,
-      });
+    const task = await convex.query(api.tasks.getById, {
+      teamIdOrSlug: DEFAULT_TEAM_ID,
+      id: taskRunData.taskId,
+    });
 
       if (task) {
         serverLogger.info(
@@ -245,7 +256,8 @@ export async function handleTaskCompletion({
 
     // Schedule container stop based on settings
     const containerSettings = await convex.query(
-      api.containerSettings.getEffective
+      api.containerSettings.getEffective,
+      { teamIdOrSlug: DEFAULT_TEAM_ID }
     );
 
     if (containerSettings.autoCleanupEnabled) {
@@ -264,6 +276,7 @@ export async function handleTaskCompletion({
         const scheduledStopAt = Date.now() + reviewPeriodMs;
 
         await convex.mutation(api.taskRuns.updateScheduledStop, {
+          teamIdOrSlug: DEFAULT_TEAM_ID,
           id: taskRunId,
           scheduledStopAt,
         });

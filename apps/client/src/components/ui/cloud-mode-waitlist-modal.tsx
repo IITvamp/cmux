@@ -23,6 +23,10 @@ export function CloudModeWaitlistModal({
   const [success, setSuccess] = useState(false);
   const user = useUser({ or: "return-null" });
   const navigate = useNavigate();
+  const teamSlugOrId =
+    typeof window !== "undefined"
+      ? window.location.pathname.split("/")[1] || "default"
+      : "default";
 
   useEffect(() => {
     if (user) {
@@ -30,17 +34,21 @@ export function CloudModeWaitlistModal({
     }
     if (visible) {
       navigate({
-        to: "/dashboard",
-        search: { after_auth_return_to: "/dashboard?waitlist=true" },
+        to: "/$teamSlugOrId/dashboard",
+        params: { teamSlugOrId },
+        search: {
+          after_auth_return_to: `/${teamSlugOrId}/dashboard?waitlist=true`,
+        },
         replace: true,
       });
     } else {
       navigate({
-        to: "/dashboard",
+        to: "/$teamSlugOrId/dashboard",
+        params: { teamSlugOrId },
         replace: true,
       });
     }
-  }, [visible]);
+  }, [visible, teamSlugOrId, navigate]);
 
   const handleSubmit = async (values: { email: string }) => {
     setLoading(true);
@@ -58,7 +66,8 @@ export function CloudModeWaitlistModal({
       }
 
       navigate({
-        to: "/dashboard",
+        to: "/$teamSlugOrId/dashboard",
+        params: { teamSlugOrId },
         replace: true,
       });
 

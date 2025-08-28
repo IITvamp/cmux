@@ -12,13 +12,14 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as LayoutRouteImport } from './routes/_layout'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as HandlerSplatRouteImport } from './routes/handler.$'
-import { Route as LayoutSettingsRouteImport } from './routes/_layout.settings'
 import { Route as LayoutProfileRouteImport } from './routes/_layout.profile'
 import { Route as LayoutDebugRouteImport } from './routes/_layout.debug'
-import { Route as LayoutDashboardRouteImport } from './routes/_layout.dashboard'
-import { Route as LayoutTaskTaskIdRouteImport } from './routes/_layout.task.$taskId'
-import { Route as LayoutTaskTaskIdIndexRouteImport } from './routes/_layout.task.$taskId.index'
-import { Route as LayoutTaskTaskIdRunTaskRunIdRouteImport } from './routes/_layout.task.$taskId.run.$taskRunId'
+import { Route as LayoutTeamSlugOrIdRouteImport } from './routes/_layout.$teamSlugOrId'
+import { Route as LayoutTeamSlugOrIdSettingsRouteImport } from './routes/_layout.$teamSlugOrId.settings'
+import { Route as LayoutTeamSlugOrIdDashboardRouteImport } from './routes/_layout.$teamSlugOrId.dashboard'
+import { Route as LayoutTeamSlugOrIdTaskTaskIdRouteImport } from './routes/_layout.$teamSlugOrId.task.$taskId'
+import { Route as LayoutTeamSlugOrIdTaskTaskIdIndexRouteImport } from './routes/_layout.$teamSlugOrId.task.$taskId.index'
+import { Route as LayoutTeamSlugOrIdTaskTaskIdRunTaskRunIdRouteImport } from './routes/_layout.$teamSlugOrId.task.$taskId.run.$taskRunId'
 
 const LayoutRoute = LayoutRouteImport.update({
   id: '/_layout',
@@ -34,11 +35,6 @@ const HandlerSplatRoute = HandlerSplatRouteImport.update({
   path: '/handler/$',
   getParentRoute: () => rootRouteImport,
 } as any)
-const LayoutSettingsRoute = LayoutSettingsRouteImport.update({
-  id: '/settings',
-  path: '/settings',
-  getParentRoute: () => LayoutRoute,
-} as any)
 const LayoutProfileRoute = LayoutProfileRouteImport.update({
   id: '/profile',
   path: '/profile',
@@ -49,96 +45,116 @@ const LayoutDebugRoute = LayoutDebugRouteImport.update({
   path: '/debug',
   getParentRoute: () => LayoutRoute,
 } as any)
-const LayoutDashboardRoute = LayoutDashboardRouteImport.update({
-  id: '/dashboard',
-  path: '/dashboard',
+const LayoutTeamSlugOrIdRoute = LayoutTeamSlugOrIdRouteImport.update({
+  id: '/$teamSlugOrId',
+  path: '/$teamSlugOrId',
   getParentRoute: () => LayoutRoute,
 } as any)
-const LayoutTaskTaskIdRoute = LayoutTaskTaskIdRouteImport.update({
-  id: '/task/$taskId',
-  path: '/task/$taskId',
-  getParentRoute: () => LayoutRoute,
-} as any)
-const LayoutTaskTaskIdIndexRoute = LayoutTaskTaskIdIndexRouteImport.update({
-  id: '/',
-  path: '/',
-  getParentRoute: () => LayoutTaskTaskIdRoute,
-} as any)
-const LayoutTaskTaskIdRunTaskRunIdRoute =
-  LayoutTaskTaskIdRunTaskRunIdRouteImport.update({
+const LayoutTeamSlugOrIdSettingsRoute =
+  LayoutTeamSlugOrIdSettingsRouteImport.update({
+    id: '/settings',
+    path: '/settings',
+    getParentRoute: () => LayoutTeamSlugOrIdRoute,
+  } as any)
+const LayoutTeamSlugOrIdDashboardRoute =
+  LayoutTeamSlugOrIdDashboardRouteImport.update({
+    id: '/dashboard',
+    path: '/dashboard',
+    getParentRoute: () => LayoutTeamSlugOrIdRoute,
+  } as any)
+const LayoutTeamSlugOrIdTaskTaskIdRoute =
+  LayoutTeamSlugOrIdTaskTaskIdRouteImport.update({
+    id: '/task/$taskId',
+    path: '/task/$taskId',
+    getParentRoute: () => LayoutTeamSlugOrIdRoute,
+  } as any)
+const LayoutTeamSlugOrIdTaskTaskIdIndexRoute =
+  LayoutTeamSlugOrIdTaskTaskIdIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => LayoutTeamSlugOrIdTaskTaskIdRoute,
+  } as any)
+const LayoutTeamSlugOrIdTaskTaskIdRunTaskRunIdRoute =
+  LayoutTeamSlugOrIdTaskTaskIdRunTaskRunIdRouteImport.update({
     id: '/run/$taskRunId',
     path: '/run/$taskRunId',
-    getParentRoute: () => LayoutTaskTaskIdRoute,
+    getParentRoute: () => LayoutTeamSlugOrIdTaskTaskIdRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/dashboard': typeof LayoutDashboardRoute
+  '/$teamSlugOrId': typeof LayoutTeamSlugOrIdRouteWithChildren
   '/debug': typeof LayoutDebugRoute
   '/profile': typeof LayoutProfileRoute
-  '/settings': typeof LayoutSettingsRoute
   '/handler/$': typeof HandlerSplatRoute
-  '/task/$taskId': typeof LayoutTaskTaskIdRouteWithChildren
-  '/task/$taskId/': typeof LayoutTaskTaskIdIndexRoute
-  '/task/$taskId/run/$taskRunId': typeof LayoutTaskTaskIdRunTaskRunIdRoute
+  '/$teamSlugOrId/dashboard': typeof LayoutTeamSlugOrIdDashboardRoute
+  '/$teamSlugOrId/settings': typeof LayoutTeamSlugOrIdSettingsRoute
+  '/$teamSlugOrId/task/$taskId': typeof LayoutTeamSlugOrIdTaskTaskIdRouteWithChildren
+  '/$teamSlugOrId/task/$taskId/': typeof LayoutTeamSlugOrIdTaskTaskIdIndexRoute
+  '/$teamSlugOrId/task/$taskId/run/$taskRunId': typeof LayoutTeamSlugOrIdTaskTaskIdRunTaskRunIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/dashboard': typeof LayoutDashboardRoute
+  '/$teamSlugOrId': typeof LayoutTeamSlugOrIdRouteWithChildren
   '/debug': typeof LayoutDebugRoute
   '/profile': typeof LayoutProfileRoute
-  '/settings': typeof LayoutSettingsRoute
   '/handler/$': typeof HandlerSplatRoute
-  '/task/$taskId': typeof LayoutTaskTaskIdIndexRoute
-  '/task/$taskId/run/$taskRunId': typeof LayoutTaskTaskIdRunTaskRunIdRoute
+  '/$teamSlugOrId/dashboard': typeof LayoutTeamSlugOrIdDashboardRoute
+  '/$teamSlugOrId/settings': typeof LayoutTeamSlugOrIdSettingsRoute
+  '/$teamSlugOrId/task/$taskId': typeof LayoutTeamSlugOrIdTaskTaskIdIndexRoute
+  '/$teamSlugOrId/task/$taskId/run/$taskRunId': typeof LayoutTeamSlugOrIdTaskTaskIdRunTaskRunIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_layout': typeof LayoutRouteWithChildren
-  '/_layout/dashboard': typeof LayoutDashboardRoute
+  '/_layout/$teamSlugOrId': typeof LayoutTeamSlugOrIdRouteWithChildren
   '/_layout/debug': typeof LayoutDebugRoute
   '/_layout/profile': typeof LayoutProfileRoute
-  '/_layout/settings': typeof LayoutSettingsRoute
   '/handler/$': typeof HandlerSplatRoute
-  '/_layout/task/$taskId': typeof LayoutTaskTaskIdRouteWithChildren
-  '/_layout/task/$taskId/': typeof LayoutTaskTaskIdIndexRoute
-  '/_layout/task/$taskId/run/$taskRunId': typeof LayoutTaskTaskIdRunTaskRunIdRoute
+  '/_layout/$teamSlugOrId/dashboard': typeof LayoutTeamSlugOrIdDashboardRoute
+  '/_layout/$teamSlugOrId/settings': typeof LayoutTeamSlugOrIdSettingsRoute
+  '/_layout/$teamSlugOrId/task/$taskId': typeof LayoutTeamSlugOrIdTaskTaskIdRouteWithChildren
+  '/_layout/$teamSlugOrId/task/$taskId/': typeof LayoutTeamSlugOrIdTaskTaskIdIndexRoute
+  '/_layout/$teamSlugOrId/task/$taskId/run/$taskRunId': typeof LayoutTeamSlugOrIdTaskTaskIdRunTaskRunIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
-    | '/dashboard'
+    | '/$teamSlugOrId'
     | '/debug'
     | '/profile'
-    | '/settings'
     | '/handler/$'
-    | '/task/$taskId'
-    | '/task/$taskId/'
-    | '/task/$taskId/run/$taskRunId'
+    | '/$teamSlugOrId/dashboard'
+    | '/$teamSlugOrId/settings'
+    | '/$teamSlugOrId/task/$taskId'
+    | '/$teamSlugOrId/task/$taskId/'
+    | '/$teamSlugOrId/task/$taskId/run/$taskRunId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
-    | '/dashboard'
+    | '/$teamSlugOrId'
     | '/debug'
     | '/profile'
-    | '/settings'
     | '/handler/$'
-    | '/task/$taskId'
-    | '/task/$taskId/run/$taskRunId'
+    | '/$teamSlugOrId/dashboard'
+    | '/$teamSlugOrId/settings'
+    | '/$teamSlugOrId/task/$taskId'
+    | '/$teamSlugOrId/task/$taskId/run/$taskRunId'
   id:
     | '__root__'
     | '/'
     | '/_layout'
-    | '/_layout/dashboard'
+    | '/_layout/$teamSlugOrId'
     | '/_layout/debug'
     | '/_layout/profile'
-    | '/_layout/settings'
     | '/handler/$'
-    | '/_layout/task/$taskId'
-    | '/_layout/task/$taskId/'
-    | '/_layout/task/$taskId/run/$taskRunId'
+    | '/_layout/$teamSlugOrId/dashboard'
+    | '/_layout/$teamSlugOrId/settings'
+    | '/_layout/$teamSlugOrId/task/$taskId'
+    | '/_layout/$teamSlugOrId/task/$taskId/'
+    | '/_layout/$teamSlugOrId/task/$taskId/run/$taskRunId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -170,13 +186,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof HandlerSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/_layout/settings': {
-      id: '/_layout/settings'
-      path: '/settings'
-      fullPath: '/settings'
-      preLoaderRoute: typeof LayoutSettingsRouteImport
-      parentRoute: typeof LayoutRoute
-    }
     '/_layout/profile': {
       id: '/_layout/profile'
       path: '/profile'
@@ -191,64 +200,95 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutDebugRouteImport
       parentRoute: typeof LayoutRoute
     }
-    '/_layout/dashboard': {
-      id: '/_layout/dashboard'
+    '/_layout/$teamSlugOrId': {
+      id: '/_layout/$teamSlugOrId'
+      path: '/$teamSlugOrId'
+      fullPath: '/$teamSlugOrId'
+      preLoaderRoute: typeof LayoutTeamSlugOrIdRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/$teamSlugOrId/settings': {
+      id: '/_layout/$teamSlugOrId/settings'
+      path: '/settings'
+      fullPath: '/$teamSlugOrId/settings'
+      preLoaderRoute: typeof LayoutTeamSlugOrIdSettingsRouteImport
+      parentRoute: typeof LayoutTeamSlugOrIdRoute
+    }
+    '/_layout/$teamSlugOrId/dashboard': {
+      id: '/_layout/$teamSlugOrId/dashboard'
       path: '/dashboard'
-      fullPath: '/dashboard'
-      preLoaderRoute: typeof LayoutDashboardRouteImport
-      parentRoute: typeof LayoutRoute
+      fullPath: '/$teamSlugOrId/dashboard'
+      preLoaderRoute: typeof LayoutTeamSlugOrIdDashboardRouteImport
+      parentRoute: typeof LayoutTeamSlugOrIdRoute
     }
-    '/_layout/task/$taskId': {
-      id: '/_layout/task/$taskId'
+    '/_layout/$teamSlugOrId/task/$taskId': {
+      id: '/_layout/$teamSlugOrId/task/$taskId'
       path: '/task/$taskId'
-      fullPath: '/task/$taskId'
-      preLoaderRoute: typeof LayoutTaskTaskIdRouteImport
-      parentRoute: typeof LayoutRoute
+      fullPath: '/$teamSlugOrId/task/$taskId'
+      preLoaderRoute: typeof LayoutTeamSlugOrIdTaskTaskIdRouteImport
+      parentRoute: typeof LayoutTeamSlugOrIdRoute
     }
-    '/_layout/task/$taskId/': {
-      id: '/_layout/task/$taskId/'
+    '/_layout/$teamSlugOrId/task/$taskId/': {
+      id: '/_layout/$teamSlugOrId/task/$taskId/'
       path: '/'
-      fullPath: '/task/$taskId/'
-      preLoaderRoute: typeof LayoutTaskTaskIdIndexRouteImport
-      parentRoute: typeof LayoutTaskTaskIdRoute
+      fullPath: '/$teamSlugOrId/task/$taskId/'
+      preLoaderRoute: typeof LayoutTeamSlugOrIdTaskTaskIdIndexRouteImport
+      parentRoute: typeof LayoutTeamSlugOrIdTaskTaskIdRoute
     }
-    '/_layout/task/$taskId/run/$taskRunId': {
-      id: '/_layout/task/$taskId/run/$taskRunId'
+    '/_layout/$teamSlugOrId/task/$taskId/run/$taskRunId': {
+      id: '/_layout/$teamSlugOrId/task/$taskId/run/$taskRunId'
       path: '/run/$taskRunId'
-      fullPath: '/task/$taskId/run/$taskRunId'
-      preLoaderRoute: typeof LayoutTaskTaskIdRunTaskRunIdRouteImport
-      parentRoute: typeof LayoutTaskTaskIdRoute
+      fullPath: '/$teamSlugOrId/task/$taskId/run/$taskRunId'
+      preLoaderRoute: typeof LayoutTeamSlugOrIdTaskTaskIdRunTaskRunIdRouteImport
+      parentRoute: typeof LayoutTeamSlugOrIdTaskTaskIdRoute
     }
   }
 }
 
-interface LayoutTaskTaskIdRouteChildren {
-  LayoutTaskTaskIdIndexRoute: typeof LayoutTaskTaskIdIndexRoute
-  LayoutTaskTaskIdRunTaskRunIdRoute: typeof LayoutTaskTaskIdRunTaskRunIdRoute
+interface LayoutTeamSlugOrIdTaskTaskIdRouteChildren {
+  LayoutTeamSlugOrIdTaskTaskIdIndexRoute: typeof LayoutTeamSlugOrIdTaskTaskIdIndexRoute
+  LayoutTeamSlugOrIdTaskTaskIdRunTaskRunIdRoute: typeof LayoutTeamSlugOrIdTaskTaskIdRunTaskRunIdRoute
 }
 
-const LayoutTaskTaskIdRouteChildren: LayoutTaskTaskIdRouteChildren = {
-  LayoutTaskTaskIdIndexRoute: LayoutTaskTaskIdIndexRoute,
-  LayoutTaskTaskIdRunTaskRunIdRoute: LayoutTaskTaskIdRunTaskRunIdRoute,
+const LayoutTeamSlugOrIdTaskTaskIdRouteChildren: LayoutTeamSlugOrIdTaskTaskIdRouteChildren =
+  {
+    LayoutTeamSlugOrIdTaskTaskIdIndexRoute:
+      LayoutTeamSlugOrIdTaskTaskIdIndexRoute,
+    LayoutTeamSlugOrIdTaskTaskIdRunTaskRunIdRoute:
+      LayoutTeamSlugOrIdTaskTaskIdRunTaskRunIdRoute,
+  }
+
+const LayoutTeamSlugOrIdTaskTaskIdRouteWithChildren =
+  LayoutTeamSlugOrIdTaskTaskIdRoute._addFileChildren(
+    LayoutTeamSlugOrIdTaskTaskIdRouteChildren,
+  )
+
+interface LayoutTeamSlugOrIdRouteChildren {
+  LayoutTeamSlugOrIdDashboardRoute: typeof LayoutTeamSlugOrIdDashboardRoute
+  LayoutTeamSlugOrIdSettingsRoute: typeof LayoutTeamSlugOrIdSettingsRoute
+  LayoutTeamSlugOrIdTaskTaskIdRoute: typeof LayoutTeamSlugOrIdTaskTaskIdRouteWithChildren
 }
 
-const LayoutTaskTaskIdRouteWithChildren =
-  LayoutTaskTaskIdRoute._addFileChildren(LayoutTaskTaskIdRouteChildren)
+const LayoutTeamSlugOrIdRouteChildren: LayoutTeamSlugOrIdRouteChildren = {
+  LayoutTeamSlugOrIdDashboardRoute: LayoutTeamSlugOrIdDashboardRoute,
+  LayoutTeamSlugOrIdSettingsRoute: LayoutTeamSlugOrIdSettingsRoute,
+  LayoutTeamSlugOrIdTaskTaskIdRoute:
+    LayoutTeamSlugOrIdTaskTaskIdRouteWithChildren,
+}
+
+const LayoutTeamSlugOrIdRouteWithChildren =
+  LayoutTeamSlugOrIdRoute._addFileChildren(LayoutTeamSlugOrIdRouteChildren)
 
 interface LayoutRouteChildren {
-  LayoutDashboardRoute: typeof LayoutDashboardRoute
+  LayoutTeamSlugOrIdRoute: typeof LayoutTeamSlugOrIdRouteWithChildren
   LayoutDebugRoute: typeof LayoutDebugRoute
   LayoutProfileRoute: typeof LayoutProfileRoute
-  LayoutSettingsRoute: typeof LayoutSettingsRoute
-  LayoutTaskTaskIdRoute: typeof LayoutTaskTaskIdRouteWithChildren
 }
 
 const LayoutRouteChildren: LayoutRouteChildren = {
-  LayoutDashboardRoute: LayoutDashboardRoute,
+  LayoutTeamSlugOrIdRoute: LayoutTeamSlugOrIdRouteWithChildren,
   LayoutDebugRoute: LayoutDebugRoute,
   LayoutProfileRoute: LayoutProfileRoute,
-  LayoutSettingsRoute: LayoutSettingsRoute,
-  LayoutTaskTaskIdRoute: LayoutTaskTaskIdRouteWithChildren,
 }
 
 const LayoutRouteWithChildren =
