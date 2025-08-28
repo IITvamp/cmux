@@ -1,8 +1,9 @@
 "use client";
 
-import CmuxLogo from "@/components/logo/cmux-logo";
+import { getRandomKitty } from "@/components/kitties";
+import CmuxLogoMark from "@/components/logo/cmux-logo-mark";
 import { SignIn, useUser } from "@stackframe/react";
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { ConvexProviderWithAuth } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
@@ -10,14 +11,12 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from "react";
 import {
   authJsonQueryOptions,
   defaultAuthJsonRefreshInterval,
-  type AuthJson,
 } from "./authJsonQueryOptions";
 import { convexQueryClient } from "./convex-query-client";
 
@@ -42,58 +41,22 @@ function makeBootReadyHandler(setter: (v: boolean) => void) {
 }
 
 function useAuthFromStack() {
-  // Prefer a stable null-or-user value to avoid suspense or transient values.
-  const user = useUser({ or: "return-null" });
-
-  // Keep refs for values we may want to read without recreating callbacks.
-  const userRef = useRef(user);
-  userRef.current = user;
-
-  // Suspense the initial auth JSON when a user exists to avoid double flashes.
-  const enableAuthQuery = !!user;
-  const authJsonQuery = useQuery({
+  const user = useUser();
+  const authJsonQuery = useSuspenseQuery({
     ...authJsonQueryOptions(user, authJsonRefreshInterval),
-    enabled: enableAuthQuery,
-    staleTime: 5 * 60 * 1000,
   });
-  // Manually suspend until the first authJson resolves when a user exists.
-  const suspenderRef = useRef<{ p: Promise<void>; resolve: () => void } | null>(
-    null
-  );
-  if (enableAuthQuery && typeof authJsonQuery.data === "undefined") {
-    if (!suspenderRef.current) {
-      let resolve!: () => void;
-      const p = new Promise<void>((r) => {
-        resolve = r;
-      });
-      suspenderRef.current = { p, resolve };
-    }
-    throw suspenderRef.current.p;
-  }
-  useEffect(() => {
-    if (suspenderRef.current && typeof authJsonQuery.data !== "undefined") {
-      suspenderRef.current.resolve();
-      suspenderRef.current = null;
-    }
-  }, [authJsonQuery.data]);
-  const authJsonRef = useRef<AuthJson | undefined>(authJsonQuery.data);
-  useEffect(() => {
-    authJsonRef.current = authJsonQuery.data;
-  }, [authJsonQuery.data]);
-
   const isLoading = false;
   const isAuthenticated = useMemo(() => !!user, [user]);
-
   // Important: keep this function identity stable unless auth context truly changes.
   const fetchAccessToken = useCallback(
     async (_opts: { forceRefreshToken: boolean }) => {
-      const cached = authJsonRef.current;
+      const cached = authJsonQuery.data;
       if (cached && typeof cached === "object" && "accessToken" in cached) {
         return cached?.accessToken ?? null;
       }
       return null;
     },
-    []
+    [authJsonQuery.data]
   );
 
   const authResult = useMemo(
@@ -104,7 +67,6 @@ function useAuthFromStack() {
     }),
     [isAuthenticated, isLoading, fetchAccessToken]
   );
-  // console.log("authResult", authResult);
   return authResult;
 }
 
@@ -137,7 +99,7 @@ function AuthenticatedOrLoading({ children }: { children: ReactNode }) {
           </motion.div>
         ) : null}
       </AnimatePresence>
-      {children}
+      {user && children}
     </>
   );
 }
@@ -156,13 +118,16 @@ export default function ConvexClientProvider({
         {!bootReady ? (
           <motion.div
             key="boot-loader"
-            className="absolute inset-0 w-screen h-dvh flex items-center justify-center bg-white dark:bg-black z-[99999999]"
+            className="absolute inset-0 w-screen h-dvh flex flex-col items-center justify-center bg-white dark:bg-black z-[99999999]"
             initial={{ opacity: 1 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.22, ease: "easeOut" }}
           >
-            <CmuxLogo showWordmark={false} height={50} />
+            <CmuxLogoMark height={40} />
+            <pre className="text-xs font-mono text-neutral-200 dark:text-neutral-800 absolute bottom-0 left-0 pl-4 pb-4">
+              {getRandomKitty()}
+            </pre>
           </motion.div>
         ) : null}
       </AnimatePresence>
