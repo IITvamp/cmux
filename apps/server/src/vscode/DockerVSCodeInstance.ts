@@ -18,7 +18,7 @@ import {
 // Global port mapping storage
 export interface ContainerMapping {
   containerName: string;
-  instanceId: string;
+  instanceId: Id<"taskRuns">;
   teamSlugOrId: string;
   ports: {
     vscode: string;
@@ -454,7 +454,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     try {
       await getConvex().mutation(api.taskRuns.updateVSCodePorts, {
         teamSlugOrId: this.teamSlugOrId,
-        id: this.taskRunId as Id<"taskRuns">,
+        id: this.taskRunId,
         ports: {
           vscode: vscodePort,
           worker: workerPort,
@@ -582,7 +582,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
           try {
             await getConvex().mutation(api.taskRuns.updateVSCodeStatus, {
               teamSlugOrId: this.teamSlugOrId,
-              id: this.taskRunId as Id<"taskRuns">,
+              id: this.taskRunId,
               status: "stopped",
               stoppedAt: Date.now(),
             });
@@ -632,7 +632,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     try {
       await getConvex().mutation(api.taskRuns.updateVSCodeStatus, {
         teamSlugOrId: this.teamSlugOrId,
-        id: this.taskRunId as Id<"taskRuns">,
+        id: this.taskRunId,
         status: "stopped",
         stoppedAt: Date.now(),
       });
@@ -1162,7 +1162,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
           if (vscodePort && workerPort) {
             await getConvex().mutation(api.taskRuns.updateVSCodePorts, {
               teamSlugOrId: mapping.teamSlugOrId,
-              id: taskRunId as Id<"taskRuns">,
+              id: taskRunId,
               ports: {
                 vscode: vscodePort,
                 worker: workerPort,
@@ -1172,7 +1172,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
           }
           await getConvex().mutation(api.taskRuns.updateVSCodeStatus, {
             teamSlugOrId: mapping.teamSlugOrId,
-            id: taskRunId as Id<"taskRuns">,
+            id: taskRunId,
             status: "running",
           });
         } catch (error) {
@@ -1192,7 +1192,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       try {
         await getConvex().mutation(api.taskRuns.updateVSCodeStatus, {
           teamSlugOrId: mapping.teamSlugOrId,
-          id: taskRunId as Id<"taskRuns">,
+          id: taskRunId,
           status: "stopped",
           stoppedAt: Date.now(),
         });

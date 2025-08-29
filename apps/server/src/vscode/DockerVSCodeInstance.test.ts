@@ -1,5 +1,10 @@
+import type { Id } from "@cmux/convex/dataModel";
 import { spawn } from "node:child_process";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import {
+  DockerVSCodeInstance,
+  containerMappings,
+} from "./DockerVSCodeInstance.js";
 
 vi.mock("../utils/convexClient.js", () => ({
   convex: {
@@ -19,12 +24,6 @@ vi.mock("../utils/fileLogger.js", () => ({
     warn: vi.fn(),
   },
 }));
-
-import type { Id } from "@cmux/convex/dataModel";
-import {
-  DockerVSCodeInstance,
-  containerMappings,
-} from "./DockerVSCodeInstance.js";
 
 describe("DockerVSCodeInstance", () => {
   it("should prefix container names with 'docker-'", () => {
@@ -126,7 +125,7 @@ describe("DockerVSCodeInstance", () => {
 
       containerMappings.set("cmux-test", {
         containerName: "cmux-test",
-        instanceId: "test-instance",
+        instanceId: "test-instance" as Id<"taskRuns">,
         teamSlugOrId: "default",
         ports: { vscode: "", worker: "" },
         status: "starting",

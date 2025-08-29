@@ -1,5 +1,4 @@
 import { api } from "@cmux/convex/api";
-import type { Id } from "@cmux/convex/dataModel";
 import {
   ArchiveTaskSchema,
   GitFullDiffRequestSchema,
@@ -388,7 +387,7 @@ export async function startServer({
         // Load run and task (no worktree setup to keep it light)
         const run = await getConvex().query(api.taskRuns.get, {
           teamSlugOrId: safeTeam,
-          id: taskRunId as Id<"taskRuns">,
+          id: taskRunId,
         });
         if (!run) {
           callback({ success: false, error: "Task run not found" });
@@ -553,30 +552,29 @@ export async function startServer({
     // Merge PR for a run
     socket.on("github-merge-pr", async (data, callback) => {
       try {
-        const { taskRunId, method } = data as {
-          taskRunId: string;
-          method: "squash" | "rebase" | "merge";
-        };
+        const { taskRunId, method } = data;
 
         const run = await getConvex().query(api.taskRuns.get, {
           teamSlugOrId: safeTeam,
-          id: taskRunId as Id<"taskRuns">,
+          id: taskRunId,
         });
-        if (!run)
+        if (!run) {
           return callback({ success: false, error: "Task run not found" });
+        }
         const task = await getConvex().query(api.tasks.getById, {
           teamSlugOrId: safeTeam,
           id: run.taskId,
         });
-        if (!task) return callback({ success: false, error: "Task not found" });
-
+        if (!task) {
+          return callback({ success: false, error: "Task not found" });
+        }
         const githubToken = await getGitHubTokenFromKeychain();
-        if (!githubToken)
+        if (!githubToken) {
           return callback({
             success: false,
             error: "GitHub token is not configured",
           });
-
+        }
         let [owner, repo] = (task.projectFullName || "").split("/");
         let prNumber: number | null = run.pullRequestNumber || null;
         if ((!owner || !repo || !prNumber) && run.pullRequestUrl) {
@@ -585,10 +583,9 @@ export async function startServer({
           repo = repo || parsed.repo || repo;
           prNumber = prNumber || parsed.number || null;
         }
-
-        if (!owner || !repo)
+        if (!owner || !repo) {
           return callback({ success: false, error: "Unknown repo for task" });
-
+        }
         // If PR number still unknown, try to locate via branch
         if (!prNumber && run.newBranch) {
           const found = await fetchPrByHead(
@@ -603,11 +600,12 @@ export async function startServer({
           }
         }
 
-        if (!prNumber)
+        if (!prNumber) {
           return callback({
             success: false,
             error: "Pull request not found for this run",
           });
+        }
 
         // Ensure PR is open and not draft
         const detail = await fetchPrDetail(githubToken, owner, repo, prNumber);
@@ -705,10 +703,7 @@ export async function startServer({
         const { taskRunId } = GitHubMergeBranchSchema.parse(data);
 
         const { run, task, branchName, baseBranch } =
-          await ensureRunWorktreeAndBranch(
-            taskRunId as Id<"taskRuns">,
-            safeTeam
-          );
+          await ensureRunWorktreeAndBranch(taskRunId, safeTeam);
 
         const githubToken = await getGitHubTokenFromKeychain();
         if (!githubToken) {
@@ -795,15 +790,9 @@ export async function startServer({
     // Provide file contents on demand to avoid large Convex docs
     socket.on("git-diff-file-contents", async (data, callback) => {
       try {
-        const { taskRunId, filePath } = data as {
-          taskRunId: string;
-          filePath: string;
-        };
+        const { taskRunId, filePath } = data;
         // Ensure the worktree exists for this run
-        const ensured = await ensureRunWorktreeAndBranch(
-          taskRunId as Id<"taskRuns">,
-          safeTeam
-        );
+        const ensured = await ensureRunWorktreeAndBranch(taskRunId, safeTeam);
         const worktreePath = ensured.worktreePath as string;
         let oldContent = "";
         let newContent = "";
@@ -861,12 +850,9 @@ export async function startServer({
     // Get diffs on demand to avoid storing in Convex
     socket.on("get-run-diffs", async (data, callback) => {
       try {
-        const { taskRunId } = data as { taskRunId: string };
+        const { taskRunId } = data;
         // Ensure the worktree exists and is on the correct branch
-        const ensured = await ensureRunWorktreeAndBranch(
-          taskRunId as Id<"taskRuns">,
-          safeTeam
-        );
+        const ensured = await ensureRunWorktreeAndBranch(taskRunId, safeTeam);
         const worktreePath = ensured.worktreePath as string;
         const { computeEntriesNodeGit } = await import(
           "./diffs/parseGitDiff.js"
@@ -1408,10 +1394,7 @@ Please address the issue mentioned in the comment above.`;
 
         // Ensure worktree exists and we are on the correct branch
         const { run, task, worktreePath, branchName, baseBranch } =
-          await ensureRunWorktreeAndBranch(
-            taskRunId as Id<"taskRuns">,
-            safeTeam
-          );
+          await ensureRunWorktreeAndBranch(taskRunId, safeTeam);
 
         // Get GitHub token from keychain/Convex
         const githubToken = await getGitHubTokenFromKeychain();
@@ -1639,10 +1622,7 @@ Please address the issue mentioned in the comment above.`;
         const { taskRunId } = GitHubCreateDraftPrSchema.parse(data);
 
         const { run, task, worktreePath, branchName, baseBranch } =
-          await ensureRunWorktreeAndBranch(
-            taskRunId as Id<"taskRuns">,
-            safeTeam
-          );
+          await ensureRunWorktreeAndBranch(taskRunId, safeTeam);
 
         const githubToken = await getGitHubTokenFromKeychain();
         if (!githubToken) {

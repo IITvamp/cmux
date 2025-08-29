@@ -1,6 +1,6 @@
 import { api } from "@cmux/convex/api";
-import { type Id } from "@cmux/convex/dataModel";
 import { getShortId } from "@cmux/shared";
+import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { convexQuery } from "@convex-dev/react-query";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
@@ -15,11 +15,15 @@ export const Route = createFileRoute(
   "/_layout/$teamSlugOrId/task/$taskId/run/$taskRunId"
 )({
   component: TaskRunComponent,
+  parseParams: (params) => ({
+    ...params,
+    taskRunId: typedZid("taskRuns").parse(params.taskRunId),
+  }),
   loader: async (opts) => {
     const result = await opts.context.queryClient.ensureQueryData(
       convexQuery(api.taskRuns.get, {
         teamSlugOrId: opts.params.teamSlugOrId,
-        id: opts.params.taskRunId as Id<"taskRuns">,
+        id: opts.params.taskRunId,
       })
     );
     if (result) {
@@ -38,7 +42,7 @@ function TaskRunComponent() {
   const taskRun = useSuspenseQuery(
     convexQuery(api.taskRuns.get, {
       teamSlugOrId,
-      id: taskRunId as Id<"taskRuns">,
+      id: taskRunId,
     })
   );
 

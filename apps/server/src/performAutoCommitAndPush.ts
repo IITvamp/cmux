@@ -234,7 +234,7 @@ ${taskRun.crownReason || "This implementation was selected as the best solution.
             );
             await getConvex().mutation(api.taskRuns.updatePullRequestUrl, {
               teamSlugOrId,
-              id: taskRunId as Id<"taskRuns">,
+              id: taskRunId,
               pullRequestUrl: prUrlMatch[0],
               isDraft: false,
             });

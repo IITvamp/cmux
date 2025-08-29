@@ -101,7 +101,7 @@ const ArchiveIcon = ({ className }: { className?: string }) => (
 );
 
 interface Comment {
-  _id: string;
+  _id: Id<"comments">;
   url: string;
   page: string;
   pageTitle: string;
@@ -451,7 +451,7 @@ function CommentMarker({ comment, onClick, teamSlugOrId }: CommentMarkerProps) {
             </div>
             {/* Always show replies in anchored comment */}
             <CommentReplies
-              commentId={comment._id as Id<"comments">}
+              commentId={comment._id}
               teamSlugOrId={teamSlugOrId}
             />
           </div>
@@ -971,7 +971,7 @@ export function CmuxComments({ teamSlugOrId }: { teamSlugOrId: string }) {
                     {/* Always show replies */}
                     <div className="transform -translate-x-[40px]">
                       <CommentReplies
-                        commentId={comment._id as Id<"comments">}
+                        commentId={comment._id}
                         teamSlugOrId={teamSlugOrId}
                       />
                     </div>
@@ -980,7 +980,7 @@ export function CmuxComments({ teamSlugOrId }: { teamSlugOrId: string }) {
                     onClick={() =>
                       archiveComment({
                         teamSlugOrId,
-                        commentId: comment._id as Id<"comments">,
+                        commentId: comment._id,
                         archived: !comment.archived,
                       })
                     }

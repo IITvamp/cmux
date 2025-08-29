@@ -134,7 +134,7 @@ function TaskDetailPage() {
   // Live update diffs when files change for this worktree; mutate TanStack cache directly
   useEffect(() => {
     if (!socket || !selectedRun?._id || !selectedRun?.worktreePath) return;
-    const runId = selectedRun._id as Id<"taskRuns">;
+    const runId = selectedRun._id;
     const workspacePath = selectedRun.worktreePath as string;
     const onChanged = (data: { workspacePath: string; filePath: string }) => {
       if (data.workspacePath !== workspacePath) return;

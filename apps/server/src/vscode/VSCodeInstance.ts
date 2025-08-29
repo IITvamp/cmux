@@ -24,10 +24,10 @@ export interface VSCodeInstanceInfo {
 
 export abstract class VSCodeInstance extends EventEmitter {
   // Static registry of all VSCode instances
-  protected static instances = new Map<string, VSCodeInstance>();
+  protected static instances = new Map<Id<"taskRuns">, VSCodeInstance>();
 
   protected config: VSCodeInstanceConfig;
-  protected instanceId: string;
+  protected instanceId: Id<"taskRuns">;
   protected taskRunId: Id<"taskRuns">;
   protected taskId: Id<"tasks">;
   protected workerSocket: Socket<
@@ -55,7 +55,7 @@ export abstract class VSCodeInstance extends EventEmitter {
     return VSCodeInstance.instances;
   }
 
-  static getInstance(instanceId: string): VSCodeInstance | undefined {
+  static getInstance(instanceId: Id<"taskRuns">): VSCodeInstance | undefined {
     return VSCodeInstance.instances.get(instanceId);
   }
 
@@ -218,11 +218,11 @@ export abstract class VSCodeInstance extends EventEmitter {
     }
   }
 
-  getInstanceId(): string {
+  getInstanceId(): Id<"taskRuns"> {
     return this.instanceId;
   }
 
-  getTaskRunId(): string {
+  getTaskRunId(): Id<"taskRuns"> {
     return this.taskRunId;
   }
 

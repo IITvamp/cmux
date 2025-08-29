@@ -1,5 +1,5 @@
 import { api } from "@cmux/convex/api";
-import { type Id } from "@cmux/convex/dataModel";
+import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { convexQuery } from "@convex-dev/react-query";
 import { useClipboard } from "@mantine/hooks";
 import { useSuspenseQuery } from "@tanstack/react-query";
@@ -15,18 +15,22 @@ import { Suspense, useEffect } from "react";
 
 export const Route = createFileRoute("/_layout/$teamSlugOrId/task/$taskId")({
   component: TaskDetailPage,
+  parseParams: (params) => ({
+    ...params,
+    taskId: typedZid("tasks").parse(params.taskId),
+  }),
   loader: async (opts) => {
     await Promise.all([
       opts.context.queryClient.ensureQueryData(
         convexQuery(api.taskRuns.getByTask, {
           teamSlugOrId: opts.params.teamSlugOrId,
-          taskId: opts.params.taskId as Id<"tasks">,
+          taskId: opts.params.taskId,
         })
       ),
       opts.context.queryClient.ensureQueryData(
         convexQuery(api.tasks.getById, {
           teamSlugOrId: opts.params.teamSlugOrId,
-          id: opts.params.taskId as Id<"tasks">,
+          id: opts.params.taskId,
         })
       ),
     ]);
@@ -44,13 +48,13 @@ function TaskDetailPage() {
   const { data: task } = useSuspenseQuery(
     convexQuery(api.tasks.getById, {
       teamSlugOrId,
-      id: taskId as Id<"tasks">,
+      id: taskId,
     })
   );
   const { data: taskRuns } = useSuspenseQuery(
     convexQuery(api.taskRuns.getByTask, {
       teamSlugOrId,
-      taskId: taskId as Id<"tasks">,
+      taskId,
     })
   );
   const clipboard = useClipboard({ timeout: 2000 });
@@ -121,7 +125,7 @@ function TaskDetailPage() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [flatRuns, taskId, navigate]);
+  }, [flatRuns, taskId, navigate, teamSlugOrId]);
 
   if (!task || !taskRuns) {
     return <div className="p-8">Loading...</div>;
