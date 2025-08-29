@@ -3,10 +3,5 @@ import { ElectronAPI } from "@electron-toolkit/preload";
 declare global {
   interface Window {
     electron: ElectronAPI;
-    api: {
-      cookies: {
-        set: (cookie: { name: string; value: string }) => Promise<true>;
-      };
-    };
   }
 }

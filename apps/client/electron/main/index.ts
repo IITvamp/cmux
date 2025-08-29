@@ -7,34 +7,9 @@ import { pathToFileURL } from "node:url";
 const PARTITION = "persist:cmux";
 const APP_HOST = "cmux.local";
 
-let mainWindow: BrowserWindow | null = null;
 let rendererLoaded = false;
 let pendingProtocolUrl: string | null = null;
-
-type LogLevel = "info" | "warn" | "error" | "debug";
-function sendMainLog(level: LogLevel, ...args: unknown[]): void {
-  try {
-    mainWindow?.webContents.send("main-log", { level, args });
-  } catch {
-    // ignore
-  }
-}
-function mainLog(level: LogLevel, ...args: unknown[]): void {
-  if (level === "error") {
-    // eslint-disable-next-line no-console
-    console.error(...args);
-  } else if (level === "warn") {
-    // eslint-disable-next-line no-console
-    console.warn(...args);
-  } else if (level === "debug") {
-    // eslint-disable-next-line no-console
-    console.debug(...args);
-  } else {
-    // eslint-disable-next-line no-console
-    console.log(...args);
-  }
-  sendMainLog(level, ...args);
-}
+let mainWindow: BrowserWindow | null = null;
 
 function handleOrQueueProtocolUrl(url: string): void {
   if (mainWindow && rendererLoaded) {
@@ -89,7 +64,6 @@ function createWindow(): void {
 }
 
 app.on("open-url", (_event, url) => {
-  mainLog("info", "Received open-url", url);
   handleOrQueueProtocolUrl(url);
 });
 
@@ -134,7 +108,6 @@ function handleProtocolUrl(url: string): void {
   const urlObj = new URL(url);
 
   if (urlObj.hostname === "auth-callback") {
-    mainLog("info", "Handling auth-callback", url);
     // Check for the full URL parameter
     const stackRefresh = urlObj.searchParams.get(`stack_refresh`);
     const stackAccess = urlObj.searchParams.get("stack_access");
@@ -144,30 +117,17 @@ function handleProtocolUrl(url: string): void {
       // running against an http(s) dev server.
       const currentUrl = mainWindow.webContents.getURL();
 
-      mainLog("info", "Attempting to set cookies on", currentUrl);
-      mainWindow.webContents.session.cookies
-        .set({
-          url: currentUrl,
-          name: `stack-refresh-8a877114-b905-47c5-8b64-3a2d90679577`,
-          value: stackRefresh,
-        })
-        .then(() =>
-          mainLog(
-            "info",
-            "Set cookie",
-            `stack-refresh-8a877114-b905-47c5-8b64-3a2d90679577`
-          )
-        )
-        .catch((e) => mainLog("error", "Failed to set refresh cookie", e));
+      mainWindow.webContents.session.cookies.set({
+        url: currentUrl,
+        name: `stack-refresh-8a877114-b905-47c5-8b64-3a2d90679577`,
+        value: stackRefresh,
+      });
 
-      mainWindow.webContents.session.cookies
-        .set({
-          url: currentUrl,
-          name: "stack-access",
-          value: stackAccess,
-        })
-        .then(() => mainLog("info", "Set cookie", "stack-access"))
-        .catch((e) => mainLog("error", "Failed to set access cookie", e));
+      mainWindow.webContents.session.cookies.set({
+        url: currentUrl,
+        name: "stack-access",
+        value: stackAccess,
+      });
     }
   }
 }

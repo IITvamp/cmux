@@ -15,27 +15,9 @@ const is = {
 });
 const PARTITION = "persist:cmux";
 const APP_HOST = "cmux.local";
-let mainWindow = null;
 let rendererLoaded = false;
 let pendingProtocolUrl = null;
-function sendMainLog(level, ...args) {
-  try {
-    mainWindow?.webContents.send("main-log", { level, args });
-  } catch {
-  }
-}
-function mainLog(level, ...args) {
-  if (level === "error") {
-    console.error(...args);
-  } else if (level === "warn") {
-    console.warn(...args);
-  } else if (level === "debug") {
-    console.debug(...args);
-  } else {
-    console.log(...args);
-  }
-  sendMainLog(level, ...args);
-}
+let mainWindow = null;
 function handleOrQueueProtocolUrl(url) {
   if (mainWindow && rendererLoaded) {
     handleProtocolUrl(url);
@@ -80,7 +62,6 @@ function createWindow() {
   }
 }
 app.on("open-url", (_event, url) => {
-  mainLog("info", "Received open-url", url);
   handleOrQueueProtocolUrl(url);
 });
 app.whenReady().then(() => {
@@ -115,28 +96,20 @@ function handleProtocolUrl(url) {
   }
   const urlObj = new URL(url);
   if (urlObj.hostname === "auth-callback") {
-    mainLog("info", "Handling auth-callback", url);
     const stackRefresh = urlObj.searchParams.get(`stack_refresh`);
     const stackAccess = urlObj.searchParams.get("stack_access");
     if (stackRefresh && stackAccess) {
       const currentUrl = mainWindow.webContents.getURL();
-      mainLog("info", "Attempting to set cookies on", currentUrl);
       mainWindow.webContents.session.cookies.set({
         url: currentUrl,
         name: `stack-refresh-8a877114-b905-47c5-8b64-3a2d90679577`,
         value: stackRefresh
-      }).then(
-        () => mainLog(
-          "info",
-          "Set cookie",
-          `stack-refresh-8a877114-b905-47c5-8b64-3a2d90679577`
-        )
-      ).catch((e) => mainLog("error", "Failed to set refresh cookie", e));
+      });
       mainWindow.webContents.session.cookies.set({
         url: currentUrl,
         name: "stack-access",
         value: stackAccess
-      }).then(() => mainLog("info", "Set cookie", "stack-access")).catch((e) => mainLog("error", "Failed to set access cookie", e));
+      });
     }
   }
 }
