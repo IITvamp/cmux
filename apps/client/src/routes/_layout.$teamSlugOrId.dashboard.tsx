@@ -28,8 +28,6 @@ export const Route = createFileRoute("/_layout/$teamSlugOrId/dashboard")({
 
 function DashboardComponent() {
   const { teamSlugOrId } = Route.useParams();
-  // team slug read from path
-  // Authentication is handled by the parent layout
   const { socket } = useSocket();
   const { theme } = useTheme();
   const { addTaskToExpand } = useExpandTasks();
@@ -137,7 +135,7 @@ function DashboardComponent() {
         }
       );
     },
-    [socket, branchesQuery]
+    [socket, teamSlugOrId, branchesQuery]
   );
 
   // Mutation to create tasks with optimistic update

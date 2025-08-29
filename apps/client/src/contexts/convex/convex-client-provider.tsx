@@ -2,10 +2,9 @@
 
 import { getRandomKitty } from "@/components/kitties";
 import CmuxLogoMark from "@/components/logo/cmux-logo-mark";
-import { api } from "@cmux/convex/api";
 import { SignIn, useUser } from "@stackframe/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
-import { ConvexProviderWithAuth } from "convex/react";
+import { Authenticated, ConvexProviderWithAuth } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Suspense,
@@ -15,40 +14,20 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import {
-  authJsonQueryOptions,
-  defaultAuthJsonRefreshInterval,
-} from "./authJsonQueryOptions";
+import { authJsonQueryOptions } from "./authJsonQueryOptions";
 import { convexQueryClient } from "./convex-query-client";
 
-// refresh every 30 minutes
-const authJsonRefreshInterval = defaultAuthJsonRefreshInterval;
-
-function BootReadyMarker({
-  children,
-  onReady,
-}: {
-  children: ReactNode;
-  onReady: () => Promise<void>;
-}) {
+function OnReadyComponent({ onReady }: { onReady: () => void }) {
   useEffect(() => {
-    void onReady();
+    onReady();
   }, [onReady]);
-  return <>{children}</>;
-}
-
-function makeBootReadyHandler(setter: (v: boolean) => void) {
-  return async () => {
-    await convexQueryClient.convexClient.query(api.teams.listTeamMemberships);
-
-    setter(true);
-  };
+  return null;
 }
 
 function useAuthFromStack() {
   const user = useUser();
   const authJsonQuery = useSuspenseQuery({
-    ...authJsonQueryOptions(user, authJsonRefreshInterval),
+    ...authJsonQueryOptions(user),
   });
   const isLoading = false;
   const isAuthenticated = useMemo(() => !!user, [user]);
@@ -75,8 +54,13 @@ function useAuthFromStack() {
   return authResult;
 }
 
-function AuthenticatedOrLoading({ children }: { children: ReactNode }) {
-  // Only gate on Stack user presence to avoid auth-loading flicker.
+function AuthenticatedOrSignIn({
+  children,
+  onReady,
+}: {
+  children: ReactNode;
+  onReady: () => void;
+}) {
   const user = useUser({ or: "return-null" });
   const showSignIn = !user;
   return (
@@ -95,14 +79,20 @@ function AuthenticatedOrLoading({ children }: { children: ReactNode }) {
           </motion.div>
         ) : null}
       </AnimatePresence>
-      {user && children}
+
+      <Authenticated>
+        <OnReadyComponent onReady={onReady} />
+        {children}
+      </Authenticated>
     </>
   );
 }
 
 export function ConvexClientProvider({ children }: { children: ReactNode }) {
   const [bootReady, setBootReady] = useState(false);
-  const onBootReady = useMemo(() => makeBootReadyHandler(setBootReady), []);
+  const onBootReady = useCallback(() => {
+    setBootReady(true);
+  }, []);
 
   return (
     <>
@@ -125,14 +115,14 @@ export function ConvexClientProvider({ children }: { children: ReactNode }) {
       </AnimatePresence>
 
       <Suspense fallback={null}>
-        <BootReadyMarker onReady={onBootReady}>
-          <ConvexProviderWithAuth
-            client={convexQueryClient.convexClient}
-            useAuth={useAuthFromStack}
-          >
-            <AuthenticatedOrLoading>{children}</AuthenticatedOrLoading>
-          </ConvexProviderWithAuth>
-        </BootReadyMarker>
+        <ConvexProviderWithAuth
+          client={convexQueryClient.convexClient}
+          useAuth={useAuthFromStack}
+        >
+          <AuthenticatedOrSignIn onReady={onBootReady}>
+            {children}
+          </AuthenticatedOrSignIn>
+        </ConvexProviderWithAuth>
       </Suspense>
     </>
   );

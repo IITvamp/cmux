@@ -1,4 +1,5 @@
 import { queryOptions } from "@tanstack/react-query";
+import { convexQueryClient } from "./convex-query-client";
 
 export type AuthJson = { accessToken: string | null } | null;
 
@@ -18,6 +19,11 @@ export function authJsonQueryOptions(
     queryFn: async () => {
       if (!user) return null;
       const authJson = await user.getAuthJson();
+      if (authJson.accessToken) {
+        convexQueryClient.convexClient.setAuth(
+          async () => authJson.accessToken
+        );
+      }
       return authJson ?? null;
     },
     refetchInterval: refreshMs,

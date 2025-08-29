@@ -248,18 +248,34 @@ const convexSchema = defineSchema({
     provider: v.optional(v.string()), // e.g. "github", "gitlab", etc.
     userId: v.string(),
     teamId: v.string(),
+    // Provider metadata (GitHub App)
+    providerRepoId: v.optional(v.number()),
+    ownerLogin: v.optional(v.string()),
+    ownerType: v.optional(v.union(v.literal("User"), v.literal("Organization"))),
+    visibility: v.optional(v.union(v.literal("public"), v.literal("private"))),
+    defaultBranch: v.optional(v.string()),
+    connectionId: v.optional(v.id("providerConnections")),
+    lastSyncedAt: v.optional(v.number()),
   })
     .index("by_org", ["org"])
     .index("by_gitRemote", ["gitRemote"])
-    .index("by_team_user", ["teamId", "userId"]),
+    .index("by_team_user", ["teamId", "userId"]) // legacy user scoping
+    .index("by_team", ["teamId"]) // team-scoped listing
+    .index("by_providerRepoId", ["teamId", "providerRepoId"]) // provider id lookup
+    .index("by_connection", ["connectionId"]),
   branches: defineTable({
-    repo: v.string(),
+    repo: v.string(), // legacy string repo name (fullName)
+    repoId: v.optional(v.id("repos")), // canonical link to repos table
     name: v.string(),
     userId: v.string(),
     teamId: v.string(),
+    lastCommitSha: v.optional(v.string()),
+    lastActivityAt: v.optional(v.number()),
   })
     .index("by_repo", ["repo"])
-    .index("by_team_user", ["teamId", "userId"]),
+    .index("by_repoId", ["repoId"]) // new canonical lookup
+    .index("by_team_user", ["teamId", "userId"]) // legacy user scoping
+    .index("by_team", ["teamId"]),
   taskRunLogChunks: defineTable({
     taskRunId: v.id("taskRuns"),
     content: v.string(), // Log content chunk
@@ -351,6 +367,32 @@ const convexSchema = defineSchema({
     .index("by_comment", ["commentId", "createdAt"])
     .index("by_user", ["userId", "createdAt"])
     .index("by_team_user", ["teamId", "userId"]),
+
+  // GitHub App installation connections (team-scoped, but teamId may be set later)
+  providerConnections: defineTable({
+    teamId: v.optional(v.string()), // Canonical team UUID; may be set post-install
+    connectedByUserId: v.optional(v.string()), // Stack user who linked the install (when known)
+    type: v.literal("github_app"),
+    installationId: v.number(),
+    accountLogin: v.string(), // org or user login
+    accountId: v.number(),
+    accountType: v.union(v.literal("User"), v.literal("Organization")),
+    isActive: v.optional(v.boolean()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_installationId", ["installationId"]) // resolve installation -> connection
+    .index("by_team", ["teamId"]) // list connections for team
+    .index("by_team_type", ["teamId", "type"]),
+
+  // Webhook deliveries for idempotency and auditing
+  webhookDeliveries: defineTable({
+    provider: v.string(), // e.g. "github"
+    deliveryId: v.string(), // X-GitHub-Delivery
+    installationId: v.optional(v.number()),
+    payloadHash: v.string(), // sha256 of payload body
+    receivedAt: v.number(),
+  }).index("by_deliveryId", ["deliveryId"]),
 });
 
 export default convexSchema;
