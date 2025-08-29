@@ -1,3 +1,4 @@
+import { is } from "@electron-toolkit/utils";
 import { app, BrowserWindow, net, protocol, shell } from "electron";
 import path, { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -87,9 +88,16 @@ function createWindow(): void {
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url);
-    mainWindow?.loadFile(join(__dirname, "../renderer/index.html"));
     return { action: "deny" };
   });
+
+  if (is.dev && process.env["ELECTRON_RENDERER_URL"]) {
+    mainWindow.loadURL(process.env["ELECTRON_RENDERER_URL"]);
+  } else {
+    // In production, serve the renderer over our custom protocol so
+    // cookies and other web storage work (file:// does not support cookies).
+    mainWindow.loadURL("cmux://local/index.html");
+  }
 }
 
 app.on("open-url", (_event, url) => {
@@ -98,6 +106,7 @@ app.on("open-url", (_event, url) => {
 });
 
 app.whenReady().then(() => {
+  createWindow();
   // When packaged, electron-vite outputs the renderer to out/renderer
   // which is bundled inside app.asar (referenced by app.getAppPath()).
   const baseDir = path.join(app.getAppPath(), "out", "renderer");
@@ -119,7 +128,6 @@ app.whenReady().then(() => {
     return net.fetch(pathToFileURL(fsPath).toString());
   });
 
-  createWindow();
   app.on("activate", function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
@@ -157,6 +165,7 @@ function handleProtocolUrl(url: string): void {
           url: currentUrl,
           name: `stack-refresh-8a877114-b905-47c5-8b64-3a2d90679577`,
           value: stackRefresh,
+          path: "/",
         })
         .then(() =>
           mainLog(
@@ -172,6 +181,7 @@ function handleProtocolUrl(url: string): void {
           url: currentUrl,
           name: "stack-access",
           value: stackAccess,
+          path: "/",
         })
         .then(() => mainLog("info", "Set cookie", "stack-access"))
         .catch((e) => mainLog("error", "Failed to set access cookie", e));

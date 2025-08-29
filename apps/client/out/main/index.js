@@ -5,9 +5,9 @@ import __cjs_mod__ from "node:module";
 const __filename = import.meta.filename;
 const __dirname = import.meta.dirname;
 const require2 = __cjs_mod__.createRequire(import.meta.url);
-({
+const is = {
   dev: !app.isPackaged
-});
+};
 ({
   isWindows: process.platform === "win32",
   isMacOS: process.platform === "darwin",
@@ -81,15 +81,20 @@ function createWindow() {
   });
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url);
-    mainWindow?.loadFile(join(__dirname, "../renderer/index.html"));
     return { action: "deny" };
   });
+  if (is.dev && process.env["ELECTRON_RENDERER_URL"]) {
+    mainWindow.loadURL(process.env["ELECTRON_RENDERER_URL"]);
+  } else {
+    mainWindow.loadURL("cmux://local/index.html");
+  }
 }
 app.on("open-url", (_event, url) => {
   mainLog("info", "Received open-url", url);
   handleOrQueueProtocolUrl(url);
 });
 app.whenReady().then(() => {
+  createWindow();
   const baseDir = path.join(app.getAppPath(), "out", "renderer");
   protocol.handle("cmux", async (req) => {
     const { host, pathname } = new URL(req.url);
@@ -102,7 +107,6 @@ app.whenReady().then(() => {
     }
     return net.fetch(pathToFileURL(fsPath).toString());
   });
-  createWindow();
   app.on("activate", function() {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
@@ -124,25 +128,12 @@ function handleProtocolUrl(url) {
     const stackAccess = urlObj.searchParams.get("stack_access");
     if (stackRefresh && stackAccess) {
       const currentUrl = mainWindow.webContents.getURL();
-      const u = new URL(currentUrl);
-      let cookieUrl;
-      if (u.protocol === "http:" || u.protocol === "https:") {
-        cookieUrl = `${u.protocol}//${u.host}/`;
-      } else {
-        cookieUrl = "cmux://local/";
-      }
-      mainLog(
-        "info",
-        "Attempting to set cookies on",
-        cookieUrl,
-        "(from",
-        currentUrl,
-        ")"
-      );
+      mainLog("info", "Attempting to set cookies on", currentUrl);
       mainWindow.webContents.session.cookies.set({
-        url: cookieUrl,
+        url: currentUrl,
         name: `stack-refresh-8a877114-b905-47c5-8b64-3a2d90679577`,
-        value: stackRefresh
+        value: stackRefresh,
+        path: "/"
       }).then(
         () => mainLog(
           "info",
@@ -151,11 +142,12 @@ function handleProtocolUrl(url) {
         )
       ).catch((e) => mainLog("error", "Failed to set refresh cookie", e));
       mainWindow.webContents.session.cookies.set({
-        url: cookieUrl,
+        url: currentUrl,
         name: "stack-access",
-        value: stackAccess
+        value: stackAccess,
+        path: "/"
       }).then(() => mainLog("info", "Set cookie", "stack-access")).catch((e) => mainLog("error", "Failed to set access cookie", e));
-      mainWindow.webContents.session.cookies.get({ url: cookieUrl }).then((cookies) => mainLog("debug", "Cookies for", cookieUrl, cookies)).catch((e) => mainLog("error", "Failed to read cookies", e));
+      mainWindow.webContents.session.cookies.get({ url: currentUrl }).then((cookies) => mainLog("debug", "Cookies for", currentUrl, cookies)).catch((e) => mainLog("error", "Failed to read cookies", e));
       mainWindow.webContents.send("auth-callback", {
         stackRefresh,
         stackAccess
