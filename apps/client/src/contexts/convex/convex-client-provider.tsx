@@ -100,7 +100,7 @@ function AuthenticatedOrLoading({ children }: { children: ReactNode }) {
                   Sign in with browser
                 </button>
                 <p className="text-xs text-neutral-500 dark:text-neutral-500 text-center">
-                  After signing in, you’ll be returned automatically.
+                  After signing in, you'll be returned automatically.
                 </p>
               </div>
             ) : (
