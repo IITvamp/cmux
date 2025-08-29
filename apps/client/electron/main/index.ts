@@ -1,8 +1,6 @@
 import { is } from "@electron-toolkit/utils";
 import { app, BrowserWindow, shell } from "electron";
 import { join } from "node:path";
-import { env } from "node:process";
-import { appendFileSync } from "node:fs";
 
 let mainWindow: BrowserWindow | null = null;
 let rendererLoaded = false;
@@ -117,33 +115,21 @@ function handleProtocolUrl(url: string): void {
 
     if (stackRefresh && stackAccess) {
       // Write cookies against the current renderer URL. Swallow errors to avoid crashing on invalid URL schemes.
-      void mainWindow.webContents.session.cookies
+      mainWindow.webContents.session.cookies
         .set({
           url: mainWindow.webContents.getURL(),
-          name: `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`,
+          name: `stack-refresh-${process.env.NEXT_PUBLIC_STACK_PROJECT_ID}`,
           value: stackRefresh,
         })
         .catch(() => {});
 
-      void mainWindow.webContents.session.cookies
+      mainWindow.webContents.session.cookies
         .set({
           url: mainWindow.webContents.getURL(),
           name: "stack-access",
           value: stackAccess,
         })
         .catch(() => {});
-
-      const logFilePath = join(__dirname, "auth-callback.log");
-
-      const logData = {
-        timestamp: new Date().toISOString(),
-        logFilePath: logFilePath,
-        stackRefresh,
-        stackAccess,
-        url,
-      };
-
-      appendFileSync(logFilePath, JSON.stringify(logData, null, 2) + "\n\n");
 
       mainWindow.webContents.send("auth-callback", {
         stackRefresh,
