@@ -21,10 +21,10 @@ function validateSlug(slug: string): void {
 }
 
 export const get = authQuery({
-  args: { teamIdOrSlug: v.string() },
-  handler: async (ctx, { teamIdOrSlug }) => {
+  args: { teamSlugOrId: v.string() },
+  handler: async (ctx, { teamSlugOrId }) => {
     // Loose resolution to avoid blocking reads when membership rows lag
-    const teamId = await resolveTeamIdLoose(ctx, teamIdOrSlug);
+    const teamId = await resolveTeamIdLoose(ctx, teamSlugOrId);
     const team = await ctx.db
       .query("teams")
       .withIndex("by_uuid", (q) => q.eq("uuid", teamId))
@@ -62,9 +62,9 @@ export const listTeamMemberships = authQuery({
 });
 
 export const setSlug = authMutation({
-  args: { teamIdOrSlug: v.string(), slug: v.string() },
-  handler: async (ctx, { teamIdOrSlug, slug }) => {
-    const teamId = await getTeamId(ctx, teamIdOrSlug);
+  args: { teamSlugOrId: v.string(), slug: v.string() },
+  handler: async (ctx, { teamSlugOrId, slug }) => {
+    const teamId = await getTeamId(ctx, teamSlugOrId);
     const normalized = normalizeSlug(slug);
     validateSlug(normalized);
 
@@ -98,9 +98,9 @@ export const setSlug = authMutation({
 });
 
 export const setName = authMutation({
-  args: { teamIdOrSlug: v.string(), name: v.string() },
-  handler: async (ctx, { teamIdOrSlug, name }) => {
-    const teamId = await getTeamId(ctx, teamIdOrSlug);
+  args: { teamSlugOrId: v.string(), name: v.string() },
+  handler: async (ctx, { teamSlugOrId, name }) => {
+    const teamId = await getTeamId(ctx, teamSlugOrId);
     const trimmed = name.trim();
     if (trimmed.length < 1 || trimmed.length > 32) {
       throw new Error("Name must be 1–32 characters long");

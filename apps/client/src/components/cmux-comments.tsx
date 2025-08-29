@@ -168,9 +168,15 @@ function renderMarkdownLinks(text: string): React.ReactNode {
 }
 
 // Component to display comment replies
-function CommentReplies({ commentId, teamSlugOrId }: { commentId: Id<"comments">; teamSlugOrId: string }) {
+function CommentReplies({
+  commentId,
+  teamSlugOrId,
+}: {
+  commentId: Id<"comments">;
+  teamSlugOrId: string;
+}) {
   const replies = useQuery(api.comments.getReplies, {
-    teamIdOrSlug: teamSlugOrId,
+    teamSlugOrId,
     commentId,
   });
 
@@ -444,7 +450,10 @@ function CommentMarker({ comment, onClick, teamSlugOrId }: CommentMarkerProps) {
               </button>
             </div>
             {/* Always show replies in anchored comment */}
-            <CommentReplies commentId={comment._id as Id<"comments">} teamSlugOrId={teamSlugOrId} />
+            <CommentReplies
+              commentId={comment._id as Id<"comments">}
+              teamSlugOrId={teamSlugOrId}
+            />
           </div>
         </div>
       )}
@@ -486,7 +495,7 @@ export function CmuxComments({ teamSlugOrId }: { teamSlugOrId: string }) {
   const commentInputRef = useRef<HTMLTextAreaElement>(null);
 
   const comments = useQuery(api.comments.listComments, {
-    teamIdOrSlug: teamSlugOrId,
+    teamSlugOrId,
     url: window.location.origin,
     page: window.location.pathname,
     includeArchived: showArchived,
@@ -662,7 +671,7 @@ export function CmuxComments({ teamSlugOrId }: { teamSlugOrId: string }) {
 
     // Create the comment in Convex
     const commentId = await createComment({
-      teamIdOrSlug: teamSlugOrId,
+      teamSlugOrId,
       ...pendingCommentData,
       content: commentDraft,
       // profileImageUrl: user.profileImageUrl || undefined,
@@ -970,7 +979,7 @@ export function CmuxComments({ teamSlugOrId }: { teamSlugOrId: string }) {
                   <button
                     onClick={() =>
                       archiveComment({
-                        teamIdOrSlug: teamSlugOrId,
+                        teamSlugOrId,
                         commentId: comment._id as Id<"comments">,
                         archived: !comment.archived,
                       })

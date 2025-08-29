@@ -206,11 +206,11 @@ export const VSCodeErrorSchema = z.object({
 
 // GitHub events
 export const GitHubFetchReposSchema = z.object({
-  teamIdOrSlug: z.string(),
+  teamSlugOrId: z.string(),
 });
 
 export const GitHubFetchBranchesSchema = z.object({
-  teamIdOrSlug: z.string(),
+  teamSlugOrId: z.string(),
   repo: z.string(),
 });
 

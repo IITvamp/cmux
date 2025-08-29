@@ -3,10 +3,10 @@ import { resolveTeamIdLoose } from "../_shared/team";
 import { authMutation, authQuery } from "./users/utils";
 
 export const getAll = authQuery({
-  args: { teamIdOrSlug: v.string() },
+  args: { teamSlugOrId: v.string() },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
-    const teamId = await resolveTeamIdLoose(ctx, args.teamIdOrSlug);
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
     return await ctx.db
       .query("apiKeys")
       .withIndex("by_team_user", (q) =>
@@ -18,12 +18,12 @@ export const getAll = authQuery({
 
 export const getByEnvVar = authQuery({
   args: {
-    teamIdOrSlug: v.string(),
+    teamSlugOrId: v.string(),
     envVar: v.string(),
   },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
-    const teamId = await resolveTeamIdLoose(ctx, args.teamIdOrSlug);
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
     return await ctx.db
       .query("apiKeys")
       .withIndex("by_team_user", (q) =>
@@ -36,7 +36,7 @@ export const getByEnvVar = authQuery({
 
 export const upsert = authMutation({
   args: {
-    teamIdOrSlug: v.string(),
+    teamSlugOrId: v.string(),
     envVar: v.string(),
     value: v.string(),
     displayName: v.string(),
@@ -44,7 +44,7 @@ export const upsert = authMutation({
   },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
-    const teamId = await resolveTeamIdLoose(ctx, args.teamIdOrSlug);
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
     const existing = await ctx.db
       .query("apiKeys")
       .withIndex("by_team_user", (q) =>
@@ -78,12 +78,12 @@ export const upsert = authMutation({
 
 export const remove = authMutation({
   args: {
-    teamIdOrSlug: v.string(),
+    teamSlugOrId: v.string(),
     envVar: v.string(),
   },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
-    const teamId = await resolveTeamIdLoose(ctx, args.teamIdOrSlug);
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
     const existing = await ctx.db
       .query("apiKeys")
       .withIndex("by_team_user", (q) =>
@@ -99,10 +99,10 @@ export const remove = authMutation({
 });
 
 export const getAllForAgents = authQuery({
-  args: { teamIdOrSlug: v.string() },
+  args: { teamSlugOrId: v.string() },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
-    const teamId = await resolveTeamIdLoose(ctx, args.teamIdOrSlug);
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
     const apiKeys = await ctx.db
       .query("apiKeys")
       .withIndex("by_team_user", (q) =>

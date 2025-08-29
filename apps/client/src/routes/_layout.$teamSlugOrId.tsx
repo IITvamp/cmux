@@ -26,7 +26,7 @@ export const Route = createFileRoute("/_layout/$teamSlugOrId")({
   loader: async ({ params }) => {
     console.time("convexQueryClient.queryClient.ensureQueryData");
     void convexQueryClient.queryClient.ensureQueryData(
-      convexQuery(api.tasks.get, { teamIdOrSlug: params.teamSlugOrId })
+      convexQuery(api.tasks.get, { teamSlugOrId: params.teamSlugOrId })
     );
     console.timeEnd("convexQueryClient.queryClient.ensureQueryData");
   },
@@ -34,7 +34,7 @@ export const Route = createFileRoute("/_layout/$teamSlugOrId")({
 
 function LayoutComponent() {
   const { teamSlugOrId } = Route.useParams();
-  const tasks = useQuery(api.tasks.get, { teamIdOrSlug: teamSlugOrId });
+  const tasks = useQuery(api.tasks.get, { teamSlugOrId });
 
   // Sort tasks by creation date (newest first) and take the latest 5
   const recentTasks = useMemo(() => {
@@ -54,7 +54,7 @@ function LayoutComponent() {
           ...acc,
           [task._id]: {
             query: api.taskRuns.getByTask,
-            args: { teamIdOrSlug: teamSlugOrId, taskId: task._id },
+            args: { teamSlugOrId, taskId: task._id },
           },
         }),
         {} as Record<
@@ -63,10 +63,10 @@ function LayoutComponent() {
             query: typeof api.taskRuns.getByTask;
             args:
               | ((d: { params: { teamSlugOrId: string } }) => {
-                  teamIdOrSlug: string;
+                  teamSlugOrId: string;
                   taskId: Id<"tasks">;
                 })
-              | { teamIdOrSlug: string; taskId: Id<"tasks"> };
+              | { teamSlugOrId: string; taskId: Id<"tasks"> };
           }
         >
       );
@@ -91,7 +91,11 @@ function LayoutComponent() {
     <>
       <ExpandTasksProvider>
         <div className="flex flex-row grow bg-white dark:bg-black">
-          <Sidebar tasks={tasks} tasksWithRuns={tasksWithRuns} teamSlugOrId={teamSlugOrId} />
+          <Sidebar
+            tasks={tasks}
+            tasksWithRuns={tasksWithRuns}
+            teamSlugOrId={teamSlugOrId}
+          />
 
           {/* <div className="flex flex-col grow overflow-hidden bg-white dark:bg-neutral-950"> */}
           <Suspense fallback={<div>Loading...</div>}>

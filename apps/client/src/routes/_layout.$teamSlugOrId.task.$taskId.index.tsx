@@ -38,13 +38,13 @@ export const Route = createFileRoute("/_layout/$teamSlugOrId/task/$taskId/")({
     await Promise.all([
       opts.context.queryClient.ensureQueryData(
         convexQuery(api.taskRuns.getByTask, {
-          teamIdOrSlug: opts.params.teamSlugOrId,
+          teamSlugOrId: opts.params.teamSlugOrId,
           taskId: opts.params.taskId,
         })
       ),
       opts.context.queryClient.ensureQueryData(
         convexQuery(api.tasks.getById, {
-          teamIdOrSlug: opts.params.teamSlugOrId,
+          teamSlugOrId: opts.params.teamSlugOrId,
           id: opts.params.taskId,
         })
       ),
@@ -68,8 +68,14 @@ function TaskDetailPage() {
   const router = useRouter();
   const queryClient = router.options.context?.queryClient;
 
-  const task = useQuery(api.tasks.getById, { teamIdOrSlug: teamSlugOrId, id: taskId });
-  const taskRuns = useQuery(api.taskRuns.getByTask, { teamIdOrSlug: teamSlugOrId, taskId });
+  const task = useQuery(api.tasks.getById, {
+    teamSlugOrId,
+    id: taskId,
+  });
+  const taskRuns = useQuery(api.taskRuns.getByTask, {
+    teamSlugOrId,
+    taskId,
+  });
 
   // Find the crowned run (if any)
   const crownedRun = taskRuns?.find((run) => run.isCrowned);

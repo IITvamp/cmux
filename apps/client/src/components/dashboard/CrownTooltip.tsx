@@ -21,19 +21,19 @@ export function CrownStatus({ taskId, teamSlugOrId }: CrownStatusProps) {
   // Get task runs
   const taskRuns = useQuery(
     api.taskRuns.getByTask,
-    isFakeConvexId(taskId) ? "skip" : { teamIdOrSlug: teamSlugOrId, taskId }
+    isFakeConvexId(taskId) ? "skip" : { teamSlugOrId, taskId }
   );
 
   // Get task with error status
   const task = useQuery(
     api.tasks.getById,
-    isFakeConvexId(taskId) ? "skip" : { teamIdOrSlug: teamSlugOrId, id: taskId }
+    isFakeConvexId(taskId) ? "skip" : { teamSlugOrId, id: taskId }
   );
 
   // Get crown evaluation
   const crownedRun = useQuery(
     api.crown.getCrownedRun,
-    isFakeConvexId(taskId) ? "skip" : { teamIdOrSlug: teamSlugOrId, taskId }
+    isFakeConvexId(taskId) ? "skip" : { teamSlugOrId, taskId }
   );
 
   // BAD STATE

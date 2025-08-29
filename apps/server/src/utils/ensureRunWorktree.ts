@@ -24,7 +24,7 @@ const pendingEnsures = new Map<string, Promise<EnsureWorktreeResult>>();
 
 export async function ensureRunWorktreeAndBranch(
   taskRunId: Id<"taskRuns">,
-  teamIdOrSlug: string
+  teamSlugOrId: string
 ): Promise<EnsureWorktreeResult> {
   const key = String(taskRunId);
   const existing = pendingEnsures.get(key);
@@ -32,13 +32,13 @@ export async function ensureRunWorktreeAndBranch(
 
   const p = (async (): Promise<EnsureWorktreeResult> => {
     const run = await getConvex().query(api.taskRuns.get, {
-      teamIdOrSlug,
+      teamSlugOrId,
       id: taskRunId,
     });
     if (!run) throw new Error("Task run not found");
 
     const task = await getConvex().query(api.tasks.getById, {
-      teamIdOrSlug,
+      teamSlugOrId,
       id: run.taskId,
     });
     if (!task) throw new Error("Task not found");
@@ -79,7 +79,7 @@ export async function ensureRunWorktreeAndBranch(
           repoUrl,
           branch: branchName,
         },
-        teamIdOrSlug
+        teamSlugOrId
       );
 
       const res = await setupProjectWorkspace({
@@ -92,7 +92,7 @@ export async function ensureRunWorktreeAndBranch(
       }
       worktreePath = res.worktreePath;
       await getConvex().mutation(api.taskRuns.updateWorktreePath, {
-        teamIdOrSlug,
+        teamSlugOrId,
         id: run._id,
         worktreePath,
       });

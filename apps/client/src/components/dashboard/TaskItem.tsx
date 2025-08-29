@@ -23,7 +23,10 @@ interface TaskItemProps {
   teamSlugOrId: string;
 }
 
-export const TaskItem = memo(function TaskItem({ task, teamSlugOrId }: TaskItemProps) {
+export const TaskItem = memo(function TaskItem({
+  task,
+  teamSlugOrId,
+}: TaskItemProps) {
   const navigate = useNavigate();
   const clipboard = useClipboard({ timeout: 2000 });
   const { archiveWithUndo, unarchive } = useArchiveTask(teamSlugOrId);
@@ -31,9 +34,7 @@ export const TaskItem = memo(function TaskItem({ task, teamSlugOrId }: TaskItemP
   // Query for task runs to find VSCode instances
   const taskRunsQuery = useConvexQuery(
     api.taskRuns.getByTask,
-    isFakeConvexId(task._id)
-      ? "skip"
-      : { teamIdOrSlug: teamSlugOrId, taskId: task._id }
+    isFakeConvexId(task._id) ? "skip" : { teamSlugOrId, taskId: task._id }
   );
 
   // Mutation for toggling keep-alive status
@@ -114,7 +115,7 @@ export const TaskItem = memo(function TaskItem({ task, teamSlugOrId }: TaskItemP
       e.stopPropagation();
       if (runWithVSCode) {
         await toggleKeepAlive({
-          teamIdOrSlug: teamSlugOrId,
+          teamSlugOrId,
           id: runWithVSCode._id,
           keepAlive: !runWithVSCode.vscode?.keepAlive,
         });

@@ -17,7 +17,7 @@ export default async function performAutoCommitAndPush(
   agent: AgentConfig,
   taskRunId: Id<"taskRuns">,
   taskDescription: string,
-  teamIdOrSlug: string
+  teamSlugOrId: string
 ): Promise<void> {
   try {
     serverLogger.info(`[AgentSpawner] Starting auto-commit for ${agent.name}`);
@@ -25,7 +25,7 @@ export default async function performAutoCommitAndPush(
 
     // Check if this run is crowned
     const taskRun = await getConvex().query(api.taskRuns.get, {
-      teamIdOrSlug,
+      teamSlugOrId,
       id: taskRunId,
     });
     const isCrowned = taskRun?.isCrowned || false;
@@ -63,7 +63,10 @@ export default async function performAutoCommitAndPush(
         `[AgentSpawner] Collected relevant diff (${diffOut.length} chars)`
       );
 
-      const aiCommit = await generateCommitMessageFromDiff(diffOut, teamIdOrSlug);
+      const aiCommit = await generateCommitMessageFromDiff(
+        diffOut,
+        teamSlugOrId
+      );
       if (aiCommit && aiCommit.trim()) {
         commitMessage = aiCommit.trim();
       } else {
@@ -116,14 +119,17 @@ export default async function performAutoCommitAndPush(
         throw new Error(errMsg);
       }
     } catch (err) {
-      serverLogger.error(`[AgentSpawner] Error executing auto-commit script`, err);
+      serverLogger.error(
+        `[AgentSpawner] Error executing auto-commit script`,
+        err
+      );
       throw err instanceof Error ? err : new Error(String(err));
     }
 
     if (isCrowned) {
       // Respect workspace setting for auto-PR
       const ws = await getConvex().query(api.workspaceSettings.get, {
-        teamIdOrSlug,
+        teamSlugOrId,
       });
       const autoPrEnabled =
         (ws as unknown as { autoPrEnabled?: boolean })?.autoPrEnabled ?? false;
@@ -146,7 +152,7 @@ export default async function performAutoCommitAndPush(
           return;
         }
         const task = await getConvex().query(api.tasks.getById, {
-          teamIdOrSlug,
+          teamSlugOrId,
           id: taskRun.taskId,
         });
         if (task) {
@@ -155,7 +161,7 @@ export default async function performAutoCommitAndPush(
           if (!task.pullRequestTitle || task.pullRequestTitle !== prTitle) {
             try {
               await getConvex().mutation(api.tasks.setPullRequestTitle, {
-                teamIdOrSlug,
+                teamSlugOrId,
                 id: task._id,
                 pullRequestTitle: prTitle,
               });
@@ -182,7 +188,7 @@ ${taskRun.crownReason || "This implementation was selected as the best solution.
           // Persist PR description on the task in Convex
           try {
             await getConvex().mutation(api.tasks.setPullRequestDescription, {
-              teamIdOrSlug,
+              teamSlugOrId,
               id: task._id,
               pullRequestDescription: prBody,
             });
@@ -227,7 +233,7 @@ ${taskRun.crownReason || "This implementation was selected as the best solution.
               `[AgentSpawner] Pull request created: ${prUrlMatch[0]}`
             );
             await getConvex().mutation(api.taskRuns.updatePullRequestUrl, {
-              teamIdOrSlug,
+              teamSlugOrId,
               id: taskRunId as Id<"taskRuns">,
               pullRequestUrl: prUrlMatch[0],
               isDraft: false,
@@ -246,5 +252,5 @@ ${taskRun.crownReason || "This implementation was selected as the best solution.
     }
   } catch (error) {
     serverLogger.error(`[AgentSpawner] Error in auto-commit and push:`, error);
-    }
+  }
 }

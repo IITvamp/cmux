@@ -19,7 +19,7 @@ import {
 export interface ContainerMapping {
   containerName: string;
   instanceId: string;
-  teamIdOrSlug: string;
+  teamSlugOrId: string;
   ports: {
     vscode: string;
     worker: string;
@@ -217,7 +217,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     containerMappings.set(this.containerName, {
       containerName: this.containerName,
       instanceId: this.instanceId,
-      teamIdOrSlug: this.teamIdOrSlug,
+      teamSlugOrId: this.teamSlugOrId,
       ports: { vscode: "", worker: "" },
       status: "starting",
       workspacePath: this.config.workspacePath,
@@ -453,7 +453,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     // Update VSCode ports in Convex
     try {
       await getConvex().mutation(api.taskRuns.updateVSCodePorts, {
-        teamIdOrSlug: this.teamIdOrSlug,
+        teamSlugOrId: this.teamSlugOrId,
         id: this.taskRunId as Id<"taskRuns">,
         ports: {
           vscode: vscodePort,
@@ -581,7 +581,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
           // Update VSCode status in Convex
           try {
             await getConvex().mutation(api.taskRuns.updateVSCodeStatus, {
-              teamIdOrSlug: this.teamIdOrSlug,
+              teamSlugOrId: this.teamSlugOrId,
               id: this.taskRunId as Id<"taskRuns">,
               status: "stopped",
               stoppedAt: Date.now(),
@@ -631,7 +631,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     // Update VSCode status in Convex
     try {
       await getConvex().mutation(api.taskRuns.updateVSCodeStatus, {
-        teamIdOrSlug: this.teamIdOrSlug,
+        teamSlugOrId: this.teamSlugOrId,
         id: this.taskRunId as Id<"taskRuns">,
         status: "stopped",
         stoppedAt: Date.now(),
@@ -1161,7 +1161,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         try {
           if (vscodePort && workerPort) {
             await getConvex().mutation(api.taskRuns.updateVSCodePorts, {
-              teamIdOrSlug: mapping.teamIdOrSlug,
+              teamSlugOrId: mapping.teamSlugOrId,
               id: taskRunId as Id<"taskRuns">,
               ports: {
                 vscode: vscodePort,
@@ -1171,7 +1171,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
             });
           }
           await getConvex().mutation(api.taskRuns.updateVSCodeStatus, {
-            teamIdOrSlug: mapping.teamIdOrSlug,
+            teamSlugOrId: mapping.teamSlugOrId,
             id: taskRunId as Id<"taskRuns">,
             status: "running",
           });
@@ -1191,7 +1191,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       mapping.status = "stopped";
       try {
         await getConvex().mutation(api.taskRuns.updateVSCodeStatus, {
-          teamIdOrSlug: mapping.teamIdOrSlug,
+          teamSlugOrId: mapping.teamSlugOrId,
           id: taskRunId as Id<"taskRuns">,
           status: "stopped",
           stoppedAt: Date.now(),
@@ -1206,12 +1206,12 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       try {
         const containerSettings = await getConvex().query(
           api.containerSettings.getEffective,
-          { teamIdOrSlug: mapping.teamIdOrSlug }
+          { teamSlugOrId: mapping.teamSlugOrId }
         );
         if (containerSettings.autoCleanupEnabled) {
           await DockerVSCodeInstance.performContainerCleanup(
             containerSettings,
-            mapping.teamIdOrSlug
+            mapping.teamSlugOrId
           );
         }
       } catch (error) {
@@ -1223,11 +1223,14 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     }
   }
 
-  private static async performContainerCleanup(settings: {
-    maxRunningContainers: number;
-    reviewPeriodMinutes: number;
-    autoCleanupEnabled: boolean;
-  }, teamIdOrSlug: string): Promise<void> {
+  private static async performContainerCleanup(
+    settings: {
+      maxRunningContainers: number;
+      reviewPeriodMinutes: number;
+      autoCleanupEnabled: boolean;
+    },
+    teamSlugOrId: string
+  ): Promise<void> {
     try {
       dockerLogger.info(
         "[performContainerCleanup] Starting container cleanup..."
@@ -1236,7 +1239,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       // 1. Check for containers that have exceeded their TTL
       const containersToStop = await getConvex().query(
         api.taskRuns.getContainersToStop,
-        { teamIdOrSlug }
+        { teamSlugOrId }
       );
 
       for (const taskRun of containersToStop) {
@@ -1254,7 +1257,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       // 2. Enforce max running containers limit with smart prioritization
       const containerPriority = await getConvex().query(
         api.taskRuns.getRunningContainersByCleanupPriority,
-        { teamIdOrSlug }
+        { teamSlugOrId }
       );
 
       if (containerPriority.total > settings.maxRunningContainers) {

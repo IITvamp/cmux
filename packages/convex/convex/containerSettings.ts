@@ -1,6 +1,6 @@
 import { v } from "convex/values";
-import { authMutation, authQuery } from "./users/utils";
 import { resolveTeamIdLoose } from "../_shared/team";
+import { authMutation, authQuery } from "./users/utils";
 
 // Default settings
 const DEFAULT_SETTINGS = {
@@ -13,10 +13,10 @@ const DEFAULT_SETTINGS = {
 
 // Get container settings
 export const get = authQuery({
-  args: { teamIdOrSlug: v.string() },
+  args: { teamSlugOrId: v.string() },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
-    const teamId = await resolveTeamIdLoose(ctx, args.teamIdOrSlug);
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
     const settings = await ctx.db
       .query("containerSettings")
       .withIndex("by_team_user", (q) =>
@@ -42,7 +42,7 @@ export const get = authQuery({
 // Update container settings
 export const update = authMutation({
   args: {
-    teamIdOrSlug: v.string(),
+    teamSlugOrId: v.string(),
     maxRunningContainers: v.optional(v.number()),
     reviewPeriodMinutes: v.optional(v.number()),
     autoCleanupEnabled: v.optional(v.boolean()),
@@ -51,7 +51,7 @@ export const update = authMutation({
   },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
-    const teamId = await resolveTeamIdLoose(ctx, args.teamIdOrSlug);
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
     const existing = await ctx.db
       .query("containerSettings")
       .withIndex("by_team_user", (q) =>
@@ -81,10 +81,10 @@ export const update = authMutation({
 
 // Get effective settings with defaults
 export const getEffective = authQuery({
-  args: { teamIdOrSlug: v.string() },
+  args: { teamSlugOrId: v.string() },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
-    const teamId = await resolveTeamIdLoose(ctx, args.teamIdOrSlug);
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
     const settings = await ctx.db
       .query("containerSettings")
       .withIndex("by_team_user", (q) =>
@@ -92,11 +92,17 @@ export const getEffective = authQuery({
       )
       .first();
     return {
-      maxRunningContainers: settings?.maxRunningContainers ?? DEFAULT_SETTINGS.maxRunningContainers,
-      reviewPeriodMinutes: settings?.reviewPeriodMinutes ?? DEFAULT_SETTINGS.reviewPeriodMinutes,
-      autoCleanupEnabled: settings?.autoCleanupEnabled ?? DEFAULT_SETTINGS.autoCleanupEnabled,
-      stopImmediatelyOnCompletion: settings?.stopImmediatelyOnCompletion ?? DEFAULT_SETTINGS.stopImmediatelyOnCompletion,
-      minContainersToKeep: settings?.minContainersToKeep ?? DEFAULT_SETTINGS.minContainersToKeep,
+      maxRunningContainers:
+        settings?.maxRunningContainers ?? DEFAULT_SETTINGS.maxRunningContainers,
+      reviewPeriodMinutes:
+        settings?.reviewPeriodMinutes ?? DEFAULT_SETTINGS.reviewPeriodMinutes,
+      autoCleanupEnabled:
+        settings?.autoCleanupEnabled ?? DEFAULT_SETTINGS.autoCleanupEnabled,
+      stopImmediatelyOnCompletion:
+        settings?.stopImmediatelyOnCompletion ??
+        DEFAULT_SETTINGS.stopImmediatelyOnCompletion,
+      minContainersToKeep:
+        settings?.minContainersToKeep ?? DEFAULT_SETTINGS.minContainersToKeep,
     };
   },
 });

@@ -212,7 +212,7 @@ export class MorphVSCodeInstance extends VSCodeInstance {
 
     // Persist networking information to Convex
     await getConvex().mutation(api.taskRuns.updateNetworking, {
-      teamIdOrSlug: this.teamIdOrSlug,
+      teamSlugOrId: this.teamSlugOrId,
       id: this.taskRunId,
       networking: devcontainerNetwork,
     });

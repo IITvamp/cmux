@@ -4,19 +4,19 @@ import {
   ArchiveTaskSchema,
   GitFullDiffRequestSchema,
   GitHubCreateDraftPrSchema,
-  GitHubMergeBranchSchema,
   GitHubFetchBranchesSchema,
   GitHubFetchReposSchema,
+  GitHubMergeBranchSchema,
   ListFilesRequestSchema,
   OpenInEditorSchema,
   SpawnFromCommentSchema,
   StartTaskSchema,
+  type AvailableEditors,
   type ClientToServerEvents,
   type FileInfo,
   type InterServerEvents,
   type ServerToClientEvents,
   type SocketData,
-  type AvailableEditors,
 } from "@cmux/shared";
 import fuzzysort from "fuzzysort";
 import { minimatch } from "minimatch";
@@ -35,11 +35,9 @@ import { createProxyApp, setupWebSocketProxy } from "./proxyApp.js";
 import { RepositoryManager } from "./repositoryManager.js";
 import { getPRTitleFromTaskDescription } from "./utils/branchNameGenerator.js";
 import { getConvex } from "./utils/convexClient.js";
-import { runWithAuthToken } from "./utils/requestContext.js";
 import { ensureRunWorktreeAndBranch } from "./utils/ensureRunWorktree.js";
 import { dockerLogger, serverLogger } from "./utils/fileLogger.js";
 import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
-import { getOctokit } from "./utils/octokit.js";
 import {
   createReadyPr,
   fetchPrByHead,
@@ -49,11 +47,13 @@ import {
   parseRepoFromUrl,
   reopenPr,
 } from "./utils/githubPr.js";
+import { getOctokit } from "./utils/octokit.js";
 import { checkAllProvidersStatus } from "./utils/providerStatus.js";
 import {
   refreshBranchesForRepo,
   refreshGitHubData,
 } from "./utils/refreshGitHubData.js";
+import { runWithAuthToken } from "./utils/requestContext.js";
 import { waitForConvex } from "./utils/waitForConvex.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
@@ -150,7 +150,11 @@ export async function startServer({
   // Attach auth context from socket.io connection query param ?auth=JWT
   io.use((socket, next) => {
     const q = socket.handshake.query?.auth;
-    const token = Array.isArray(q) ? q[0] : typeof q === "string" ? q : undefined;
+    const token = Array.isArray(q)
+      ? q[0]
+      : typeof q === "string"
+        ? q
+        : undefined;
     runWithAuthToken(token, () => next());
   });
 
@@ -161,7 +165,11 @@ export async function startServer({
   io.on("connection", (socket) => {
     // Ensure every packet runs within the auth context associated with this socket
     const q = socket.handshake.query?.auth;
-    const token = Array.isArray(q) ? q[0] : typeof q === "string" ? q : undefined;
+    const token = Array.isArray(q)
+      ? q[0]
+      : typeof q === "string"
+        ? q
+        : undefined;
     socket.use((_, next) => {
       runWithAuthToken(token, () => next());
     });
@@ -204,7 +212,7 @@ export async function startServer({
           );
           return;
         }
-        refreshGitHubData({ teamIdOrSlug: initialTeam }).catch((error) => {
+        refreshGitHubData({ teamSlugOrId: initialTeam }).catch((error) => {
           serverLogger.error("Background refresh failed:", error);
         });
       });
@@ -264,7 +272,7 @@ export async function startServer({
           );
           // Persist to Convex immediately
           await getConvex().mutation(api.tasks.setPullRequestTitle, {
-            teamIdOrSlug: safeTeam,
+            teamSlugOrId: safeTeam,
             id: taskId,
             pullRequestTitle: generatedTitle,
           });
@@ -379,7 +387,7 @@ export async function startServer({
 
         // Load run and task (no worktree setup to keep it light)
         const run = await getConvex().query(api.taskRuns.get, {
-          teamIdOrSlug: safeTeam,
+          teamSlugOrId: safeTeam,
           id: taskRunId as Id<"taskRuns">,
         });
         if (!run) {
@@ -387,7 +395,7 @@ export async function startServer({
           return;
         }
         const task = await getConvex().query(api.tasks.getById, {
-          teamIdOrSlug: safeTeam,
+          teamSlugOrId: safeTeam,
           id: run.taskId,
         });
         if (!task) {
@@ -450,7 +458,7 @@ export async function startServer({
 
         if (!prBasic) {
           await getConvex().mutation(api.taskRuns.updatePullRequestState, {
-            teamIdOrSlug: safeTeam,
+            teamSlugOrId: safeTeam,
             id: run._id,
             state: "none",
             isDraft: undefined,
@@ -459,7 +467,7 @@ export async function startServer({
           });
           // Update task merge status to none
           await getConvex().mutation(api.tasks.updateMergeStatus, {
-            teamIdOrSlug: safeTeam,
+            teamSlugOrId: safeTeam,
             id: task._id,
             mergeStatus: "none",
           });
@@ -489,7 +497,7 @@ export async function startServer({
                   : "unknown";
 
         await getConvex().mutation(api.taskRuns.updatePullRequestState, {
-          teamIdOrSlug: safeTeam,
+          teamSlugOrId: safeTeam,
           id: run._id,
           state,
           isDraft,
@@ -520,7 +528,7 @@ export async function startServer({
         }
         if (taskMergeStatus !== "none") {
           await getConvex().mutation(api.tasks.updateMergeStatus, {
-            teamIdOrSlug: safeTeam,
+            teamSlugOrId: safeTeam,
             id: task._id,
             mergeStatus: taskMergeStatus,
           });
@@ -551,13 +559,13 @@ export async function startServer({
         };
 
         const run = await getConvex().query(api.taskRuns.get, {
-          teamIdOrSlug: safeTeam,
+          teamSlugOrId: safeTeam,
           id: taskRunId as Id<"taskRuns">,
         });
         if (!run)
           return callback({ success: false, error: "Task run not found" });
         const task = await getConvex().query(api.tasks.getById, {
-          teamIdOrSlug: safeTeam,
+          teamSlugOrId: safeTeam,
           id: run.taskId,
         });
         if (!task) return callback({ success: false, error: "Task not found" });
@@ -607,10 +615,12 @@ export async function startServer({
           // Try to mark ready
           try {
             await markPrReady(githubToken, owner, repo, prNumber);
-            serverLogger.info(`[MergePR] Successfully marked PR #${prNumber} as ready for review`);
+            serverLogger.info(
+              `[MergePR] Successfully marked PR #${prNumber} as ready for review`
+            );
           } catch (e: unknown) {
             const msg = e instanceof Error ? e.message : String(e);
-            
+
             // Check if it's a 404 error
             if (msg.includes("not found") || msg.includes("404")) {
               return callback({
@@ -618,7 +628,7 @@ export async function startServer({
                 error: `Pull request #${prNumber} not found. It may have been deleted.`,
               });
             }
-            
+
             return callback({
               success: false,
               error: `PR is draft and could not be made ready: ${msg}`,
@@ -657,7 +667,7 @@ export async function startServer({
           );
           // Update Convex: merged
           await getConvex().mutation(api.taskRuns.updatePullRequestState, {
-            teamIdOrSlug: safeTeam,
+            teamSlugOrId: safeTeam,
             id: run._id,
             state: "merged",
             isDraft: false,
@@ -666,7 +676,7 @@ export async function startServer({
           });
           // Update task merge status to merged
           await getConvex().mutation(api.tasks.updateMergeStatus, {
-            teamIdOrSlug: safeTeam,
+            teamSlugOrId: safeTeam,
             id: task._id,
             mergeStatus: "pr_merged",
           });
@@ -724,13 +734,13 @@ export async function startServer({
           });
 
           await getConvex().mutation(api.taskRuns.updatePullRequestState, {
-            teamIdOrSlug: safeTeam,
+            teamSlugOrId: safeTeam,
             id: run._id,
             state: "merged",
           });
 
           await getConvex().mutation(api.tasks.updateMergeStatus, {
-            teamIdOrSlug: safeTeam,
+            teamSlugOrId: safeTeam,
             id: task._id,
             mergeStatus: "pr_merged",
           });
@@ -1191,26 +1201,26 @@ export async function startServer({
 
     socket.on("github-fetch-repos", async (data, callback) => {
       try {
-        const { teamIdOrSlug } = GitHubFetchReposSchema.parse(data);
+        const { teamSlugOrId } = GitHubFetchReposSchema.parse(data);
         if (!initialToken) {
           callback({ success: false, repos: {}, error: "Not authenticated" });
           return;
         }
         // First, try to get existing repos from Convex
         const existingRepos = await getConvex().query(api.github.getAllRepos, {
-          teamIdOrSlug,
+          teamSlugOrId,
         });
 
         if (existingRepos.length > 0) {
           // If we have repos, return them and refresh in the background
           const reposByOrg = await getConvex().query(api.github.getReposByOrg, {
-            teamIdOrSlug,
+            teamSlugOrId,
           });
           callback({ success: true, repos: reposByOrg });
 
           // Refresh in the background to add any new repos
           runWithAuthToken(initialToken, () =>
-            refreshGitHubData({ teamIdOrSlug }).catch((error) => {
+            refreshGitHubData({ teamSlugOrId }).catch((error) => {
               serverLogger.error("Background refresh failed:", error);
             })
           );
@@ -1219,10 +1229,10 @@ export async function startServer({
 
         // If no repos exist, do a full fetch
         await runWithAuthToken(initialToken, () =>
-          refreshGitHubData({ teamIdOrSlug })
+          refreshGitHubData({ teamSlugOrId })
         );
         const reposByOrg = await getConvex().query(api.github.getReposByOrg, {
-          teamIdOrSlug,
+          teamSlugOrId,
         });
         callback({ success: true, repos: reposByOrg });
       } catch (error) {
@@ -1266,7 +1276,7 @@ Please address the issue mentioned in the comment above.`;
 
         // Create a new task in Convex
         const taskId = await getConvex().mutation(api.tasks.create, {
-          teamIdOrSlug: safeTeam,
+          teamSlugOrId: safeTeam,
           text: formattedPrompt,
           projectFullName: "manaflow-ai/cmux",
         });
@@ -1283,7 +1293,10 @@ Please address the issue mentioned in the comment above.`;
             isCloudMode: true,
             theme: "dark",
             // Use provided selectedAgents or default to claude/sonnet-4 and codex/gpt-5
-            selectedAgents: selectedAgents || ["claude/sonnet-4", "codex/gpt-5"],
+            selectedAgents: selectedAgents || [
+              "claude/sonnet-4",
+              "codex/gpt-5",
+            ],
           },
           safeTeam
         );
@@ -1320,7 +1333,7 @@ Please address the issue mentioned in the comment above.`;
         // Create a comment reply with link to the task
         try {
           await getConvex().mutation(api.comments.addReply, {
-            teamIdOrSlug: safeTeam,
+            teamSlugOrId: safeTeam,
             commentId: commentId,
             content: `[View run here](http://localhost:5173/task/${taskId})`,
           });
@@ -1352,27 +1365,30 @@ Please address the issue mentioned in the comment above.`;
 
     socket.on("github-fetch-branches", async (data, callback) => {
       try {
-        const { teamIdOrSlug, repo } = GitHubFetchBranchesSchema.parse(data);
+        const { teamSlugOrId, repo } = GitHubFetchBranchesSchema.parse(data);
 
         // Check if we already have branches for this repo
-        const existingBranches = await getConvex().query(api.github.getBranches, {
-          teamIdOrSlug,
-          repo,
-        });
+        const existingBranches = await getConvex().query(
+          api.github.getBranches,
+          {
+            teamSlugOrId,
+            repo,
+          }
+        );
 
         if (existingBranches.length > 0) {
           // Return existing branches and refresh in background
           callback({ success: true, branches: existingBranches });
 
           // Refresh in the background
-          refreshBranchesForRepo(repo, teamIdOrSlug).catch((error) => {
+          refreshBranchesForRepo(repo, teamSlugOrId).catch((error) => {
             serverLogger.error("Background branch refresh failed:", error);
           });
           return;
         }
 
         // If no branches exist, fetch them
-        const branches = await refreshBranchesForRepo(repo, teamIdOrSlug);
+        const branches = await refreshBranchesForRepo(repo, teamSlugOrId);
         callback({ success: true, branches });
       } catch (error) {
         serverLogger.error("Error fetching branches:", error);
@@ -1594,14 +1610,14 @@ Please address the issue mentioned in the comment above.`;
 
         if (prUrl) {
           await getConvex().mutation(api.taskRuns.updatePullRequestUrl, {
-            teamIdOrSlug: safeTeam,
+            teamSlugOrId: safeTeam,
             id: run._id,
             pullRequestUrl: prUrl,
             isDraft: true,
           });
           // Update task merge status to draft PR
           await getConvex().mutation(api.tasks.updateMergeStatus, {
-            teamIdOrSlug: safeTeam,
+            teamSlugOrId: safeTeam,
             id: task._id,
             mergeStatus: "pr_draft",
           });
@@ -1623,7 +1639,10 @@ Please address the issue mentioned in the comment above.`;
         const { taskRunId } = GitHubCreateDraftPrSchema.parse(data);
 
         const { run, task, worktreePath, branchName, baseBranch } =
-          await ensureRunWorktreeAndBranch(taskRunId as Id<"taskRuns">, safeTeam);
+          await ensureRunWorktreeAndBranch(
+            taskRunId as Id<"taskRuns">,
+            safeTeam
+          );
 
         const githubToken = await getGitHubTokenFromKeychain();
         if (!githubToken) {
@@ -1681,7 +1700,7 @@ Please address the issue mentioned in the comment above.`;
           owner,
           repo,
           branchName,
-          tokenPrefix: githubToken ? githubToken.substring(0, 10) : "NO_TOKEN"
+          tokenPrefix: githubToken ? githubToken.substring(0, 10) : "NO_TOKEN",
         });
         const initialBasic =
           owner && repo
@@ -1691,7 +1710,7 @@ Please address the issue mentioned in the comment above.`;
           found: !!initialBasic,
           number: initialBasic?.number,
           draft: initialBasic?.draft,
-          state: initialBasic?.state
+          state: initialBasic?.state,
         });
 
         let finalUrl: string | undefined;
@@ -1741,41 +1760,61 @@ Please address the issue mentioned in the comment above.`;
           }
         } else if (initialBasic.draft) {
           try {
-            serverLogger.info(`[OpenPR] Attempting to mark PR #${initialBasic.number} as ready...`, {
-              owner: owner!,
-              repo: repo!,
-              number: initialBasic.number,
-              tokenPrefix: githubToken ? githubToken.substring(0, 10) : "NO_TOKEN"
-            });
+            serverLogger.info(
+              `[OpenPR] Attempting to mark PR #${initialBasic.number} as ready...`,
+              {
+                owner: owner!,
+                repo: repo!,
+                number: initialBasic.number,
+                tokenPrefix: githubToken
+                  ? githubToken.substring(0, 10)
+                  : "NO_TOKEN",
+              }
+            );
             await markPrReady(githubToken, owner!, repo!, initialBasic.number);
-            serverLogger.info(`[OpenPR] Successfully marked PR #${initialBasic.number} as ready for review`);
+            serverLogger.info(
+              `[OpenPR] Successfully marked PR #${initialBasic.number} as ready for review`
+            );
           } catch (e: unknown) {
             const errorMessage = e instanceof Error ? e.message : String(e);
-            serverLogger.error(`[OpenPR] Failed to mark PR #${initialBasic.number} as ready: ${errorMessage}`);
-            
+            serverLogger.error(
+              `[OpenPR] Failed to mark PR #${initialBasic.number} as ready: ${errorMessage}`
+            );
+
             // If the PR wasn't found or there's a permission issue, fail the operation
-            if (errorMessage.includes("not found") || errorMessage.includes("404")) {
+            if (
+              errorMessage.includes("not found") ||
+              errorMessage.includes("404")
+            ) {
               callback({
                 success: false,
                 error: `Pull request #${initialBasic.number} not found. It may have been deleted or you may not have access.`,
               });
               return;
-            } else if (errorMessage.includes("Permission denied") || errorMessage.includes("403")) {
+            } else if (
+              errorMessage.includes("Permission denied") ||
+              errorMessage.includes("403")
+            ) {
               callback({
                 success: false,
                 error: `Permission denied. Please check that your GitHub token has the required permissions.`,
               });
               return;
-            } else if (errorMessage.includes("Authentication failed") || errorMessage.includes("401")) {
+            } else if (
+              errorMessage.includes("Authentication failed") ||
+              errorMessage.includes("401")
+            ) {
               callback({
                 success: false,
                 error: `Authentication failed. Please check that your GitHub token is valid.`,
               });
               return;
             }
-            
+
             // For other errors, log but continue (e.g., if PR is already ready)
-            serverLogger.warn(`[OpenPR] Continuing despite error: ${errorMessage}`);
+            serverLogger.warn(
+              `[OpenPR] Continuing despite error: ${errorMessage}`
+            );
           }
           const latest = await fetchPrByHead(
             githubToken,
@@ -1853,7 +1892,7 @@ Please address the issue mentioned in the comment above.`;
         }
 
         await getConvex().mutation(api.taskRuns.updatePullRequestState, {
-          teamIdOrSlug: safeTeam,
+          teamSlugOrId: safeTeam,
           id: run._id,
           state: finalUrl
             ? stateMap(finalState, finalIsDraft, merged)
@@ -1889,7 +1928,7 @@ Please address the issue mentioned in the comment above.`;
         }
         if (taskMergeStatus !== "none") {
           await getConvex().mutation(api.tasks.updateMergeStatus, {
-            teamIdOrSlug: safeTeam,
+            teamSlugOrId: safeTeam,
             id: task._id,
             mergeStatus: taskMergeStatus,
           });
@@ -1977,14 +2016,14 @@ Please address the issue mentioned in the comment above.`;
         serverLogger.info(
           `Storing default repository: ${defaultRepo.remoteName}`
         );
-          await getConvex().mutation(api.github.upsertRepo, {
-            teamIdOrSlug: "default",
-            fullName: defaultRepo.remoteName,
-            org: defaultRepo.remoteName.split("/")[0] || "",
-            name: defaultRepo.remoteName.split("/")[1] || "",
-            gitRemote: defaultRepo.remoteUrl || "",
-            provider: "github", // Default to github, could be enhanced to detect provider
-          });
+        await getConvex().mutation(api.github.upsertRepo, {
+          teamSlugOrId: "default",
+          fullName: defaultRepo.remoteName,
+          org: defaultRepo.remoteName.split("/")[0] || "",
+          name: defaultRepo.remoteName.split("/")[1] || "",
+          gitRemote: defaultRepo.remoteUrl || "",
+          provider: "github", // Default to github, could be enhanced to detect provider
+        });
 
         // Also emit to all connected clients
         const defaultRepoData = {

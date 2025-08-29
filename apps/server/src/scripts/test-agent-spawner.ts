@@ -43,7 +43,7 @@ async function main() {
   // Create a task in Convex first
   console.log("\nCreating task in Convex...");
   const taskId = await getConvex().mutation(api.tasks.create, {
-    teamIdOrSlug: "default",
+    teamSlugOrId: "default",
     projectFullName: "lawrencecchen/cmux",
     text: testOptions.taskDescription,
   });

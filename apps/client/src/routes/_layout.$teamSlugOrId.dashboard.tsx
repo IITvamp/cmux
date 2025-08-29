@@ -85,7 +85,7 @@ function DashboardComponent() {
 
   // Fetch repos from Convex
   const reposByOrgQuery = useQuery(
-    convexQuery(api.github.getReposByOrg, { teamIdOrSlug: teamSlugOrId })
+    convexQuery(api.github.getReposByOrg, { teamSlugOrId })
   );
   const reposByOrg = useMemo(
     () => reposByOrgQuery.data || {},
@@ -95,7 +95,7 @@ function DashboardComponent() {
   // Fetch branches for selected repo from Convex
   const branchesQuery = useQuery({
     ...convexQuery(api.github.getBranches, {
-      teamIdOrSlug: teamSlugOrId,
+      teamSlugOrId,
       repo: selectedProject[0] || "",
     }),
     enabled: !!selectedProject[0],
@@ -125,7 +125,7 @@ function DashboardComponent() {
       setIsLoadingBranches(true);
       socket.emit(
         "github-fetch-branches",
-        { teamIdOrSlug: teamSlugOrId, repo },
+        { teamSlugOrId, repo },
         (response) => {
           setIsLoadingBranches(false);
           if (response.success) {
@@ -144,7 +144,7 @@ function DashboardComponent() {
   const createTask = useMutation(api.tasks.create).withOptimisticUpdate(
     (localStore, args) => {
       const currentTasks = localStore.getQuery(api.tasks.get, {
-        teamIdOrSlug: teamSlugOrId,
+        teamSlugOrId,
       });
 
       if (currentTasks !== undefined) {
@@ -168,11 +168,11 @@ function DashboardComponent() {
 
         // Add the new task at the beginning (since we order by desc)
         const listArgs: {
-          teamIdOrSlug: string;
+          teamSlugOrId: string;
           projectFullName?: string;
           archived?: boolean;
         } = {
-          teamIdOrSlug: teamSlugOrId,
+          teamSlugOrId,
         };
         localStore.setQuery(api.tasks.get, listArgs, [
           optimisticTask,
@@ -240,7 +240,7 @@ function DashboardComponent() {
             const byteArray = new Uint8Array(byteNumbers);
             const blob = new Blob([byteArray], { type: "image/png" });
             const uploadUrl = await generateUploadUrl({
-              teamIdOrSlug: teamSlugOrId,
+              teamSlugOrId,
             });
             const result = await fetch(uploadUrl, {
               method: "POST",
@@ -268,7 +268,7 @@ function DashboardComponent() {
 
       // Create task in Convex with storage IDs
       const taskId = await createTask({
-        teamIdOrSlug: teamSlugOrId,
+        teamSlugOrId,
         text: content?.text || taskDescription, // Use content.text which includes image references
         projectFullName,
         baseBranch: branch,

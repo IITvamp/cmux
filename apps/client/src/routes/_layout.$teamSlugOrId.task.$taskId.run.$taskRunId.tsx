@@ -11,12 +11,14 @@ import { preloadTaskRunIframes } from "../lib/preloadTaskRunIframes";
 // Configuration: Set to true to use the proxy URL, false to use direct localhost URL
 const USE_PROXY_URL = false;
 
-export const Route = createFileRoute("/_layout/$teamSlugOrId/task/$taskId/run/$taskRunId")({
+export const Route = createFileRoute(
+  "/_layout/$teamSlugOrId/task/$taskId/run/$taskRunId"
+)({
   component: TaskRunComponent,
   loader: async (opts) => {
     const result = await opts.context.queryClient.ensureQueryData(
       convexQuery(api.taskRuns.get, {
-        teamIdOrSlug: opts.params.teamSlugOrId,
+        teamSlugOrId: opts.params.teamSlugOrId,
         id: opts.params.taskRunId as Id<"taskRuns">,
       })
     );
@@ -35,7 +37,7 @@ function TaskRunComponent() {
   const { taskRunId, teamSlugOrId } = Route.useParams();
   const taskRun = useSuspenseQuery(
     convexQuery(api.taskRuns.get, {
-      teamIdOrSlug: teamSlugOrId,
+      teamSlugOrId,
       id: taskRunId as Id<"taskRuns">,
     })
   );

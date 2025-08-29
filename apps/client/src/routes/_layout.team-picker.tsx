@@ -174,7 +174,7 @@ interface TeamItemProps {
 }
 
 function TeamItem({ team, getClientSlug }: TeamItemProps) {
-  const teamInfo = useConvexQuery(api.teams.get, { teamIdOrSlug: team.id });
+  const teamInfo = useConvexQuery(api.teams.get, { teamSlugOrId: team.id });
   const slug = teamInfo?.slug || getClientSlug(team.clientMetadata);
 
   return (

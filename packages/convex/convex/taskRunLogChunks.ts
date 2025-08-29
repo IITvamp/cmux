@@ -1,16 +1,16 @@
 import { v } from "convex/values";
-import { authMutation, authQuery } from "./users/utils";
 import { getTeamId } from "../_shared/team";
+import { authMutation, authQuery } from "./users/utils";
 
 export const appendChunk = authMutation({
   args: {
-    teamIdOrSlug: v.string(),
+    teamSlugOrId: v.string(),
     taskRunId: v.id("taskRuns"),
     content: v.string(),
   },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
-    const teamId = await getTeamId(ctx, args.teamIdOrSlug);
+    const teamId = await getTeamId(ctx, args.teamSlugOrId);
     await ctx.db.insert("taskRunLogChunks", {
       taskRunId: args.taskRunId,
       content: args.content,
@@ -22,13 +22,13 @@ export const appendChunk = authMutation({
 
 export const appendChunkPublic = authMutation({
   args: {
-    teamIdOrSlug: v.string(),
+    teamSlugOrId: v.string(),
     taskRunId: v.id("taskRuns"),
     content: v.string(),
   },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
-    const teamId = await getTeamId(ctx, args.teamIdOrSlug);
+    const teamId = await getTeamId(ctx, args.teamSlugOrId);
     await ctx.db.insert("taskRunLogChunks", {
       taskRunId: args.taskRunId,
       content: args.content,
@@ -40,12 +40,12 @@ export const appendChunkPublic = authMutation({
 
 export const getChunks = authQuery({
   args: {
-    teamIdOrSlug: v.string(),
+    teamSlugOrId: v.string(),
     taskRunId: v.id("taskRuns"),
   },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
-    const teamId = await getTeamId(ctx, args.teamIdOrSlug);
+    const teamId = await getTeamId(ctx, args.teamSlugOrId);
     const chunks = await ctx.db
       .query("taskRunLogChunks")
       .withIndex("by_team_user", (q) =>
@@ -53,7 +53,7 @@ export const getChunks = authQuery({
       )
       .filter((q) => q.eq(q.field("taskRunId"), args.taskRunId))
       .collect();
-    
+
     return chunks;
   },
 });

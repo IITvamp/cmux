@@ -4,10 +4,10 @@ import { internalMutation } from "./_generated/server";
 import { authMutation, authQuery } from "./users/utils";
 
 export const getReposByOrg = authQuery({
-  args: { teamIdOrSlug: v.string() },
+  args: { teamSlugOrId: v.string() },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
-    const teamId = await getTeamId(ctx, args.teamIdOrSlug);
+    const teamId = await getTeamId(ctx, args.teamSlugOrId);
     const repos = await ctx.db
       .query("repos")
       .withIndex("by_team_user", (q) =>
@@ -32,10 +32,10 @@ export const getReposByOrg = authQuery({
 });
 
 export const getBranches = authQuery({
-  args: { teamIdOrSlug: v.string(), repo: v.string() },
-  handler: async (ctx, { teamIdOrSlug, repo }) => {
+  args: { teamSlugOrId: v.string(), repo: v.string() },
+  handler: async (ctx, { teamSlugOrId, repo }) => {
     const userId = ctx.identity.subject;
-    const teamId = await getTeamId(ctx, teamIdOrSlug);
+    const teamId = await getTeamId(ctx, teamSlugOrId);
     const branches = await ctx.db
       .query("branches")
       .withIndex("by_team_user", (q) =>
@@ -49,10 +49,10 @@ export const getBranches = authQuery({
 
 // Queries
 export const getAllRepos = authQuery({
-  args: { teamIdOrSlug: v.string() },
-  handler: async (ctx, { teamIdOrSlug }) => {
+  args: { teamSlugOrId: v.string() },
+  handler: async (ctx, { teamSlugOrId }) => {
     const userId = ctx.identity.subject;
-    const teamId = await getTeamId(ctx, teamIdOrSlug);
+    const teamId = await getTeamId(ctx, teamSlugOrId);
     return await ctx.db
       .query("repos")
       .withIndex("by_team_user", (q) =>
@@ -63,10 +63,10 @@ export const getAllRepos = authQuery({
 });
 
 export const getBranchesByRepo = authQuery({
-  args: { teamIdOrSlug: v.string(), repo: v.string() },
-  handler: async (ctx, { teamIdOrSlug, repo }) => {
+  args: { teamSlugOrId: v.string(), repo: v.string() },
+  handler: async (ctx, { teamSlugOrId, repo }) => {
     const userId = ctx.identity.subject;
-    const teamId = await getTeamId(ctx, teamIdOrSlug);
+    const teamId = await getTeamId(ctx, teamSlugOrId);
     return await ctx.db
       .query("branches")
       .withIndex("by_team_user", (q) =>
@@ -86,10 +86,10 @@ export const insertRepo = internalMutation({
     gitRemote: v.string(),
     provider: v.optional(v.string()),
     userId: v.string(),
-    teamIdOrSlug: v.string(),
+    teamSlugOrId: v.string(),
   },
   handler: async (ctx, args) => {
-    const teamId = await getTeamId(ctx, args.teamIdOrSlug);
+    const teamId = await getTeamId(ctx, args.teamSlugOrId);
     const { ...rest } = args;
     return await ctx.db.insert("repos", { ...rest, teamId });
   },
@@ -97,7 +97,7 @@ export const insertRepo = internalMutation({
 
 export const upsertRepo = authMutation({
   args: {
-    teamIdOrSlug: v.string(),
+    teamSlugOrId: v.string(),
     fullName: v.string(),
     org: v.string(),
     name: v.string(),
@@ -106,7 +106,7 @@ export const upsertRepo = authMutation({
   },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
-    const teamId = await getTeamId(ctx, args.teamIdOrSlug);
+    const teamId = await getTeamId(ctx, args.teamSlugOrId);
     // Check if repo already exists
     const existing = await ctx.db
       .query("repos")
@@ -152,10 +152,10 @@ export const insertBranch = internalMutation({
     repo: v.string(),
     name: v.string(),
     userId: v.string(),
-    teamIdOrSlug: v.string(),
+    teamSlugOrId: v.string(),
   },
   handler: async (ctx, args) => {
-    const teamId = await getTeamId(ctx, args.teamIdOrSlug);
+    const teamId = await getTeamId(ctx, args.teamSlugOrId);
     const { ...rest } = args;
     return await ctx.db.insert("branches", { ...rest, teamId });
   },
@@ -171,7 +171,7 @@ export const deleteBranch = internalMutation({
 // Bulk mutations
 export const bulkInsertRepos = authMutation({
   args: {
-    teamIdOrSlug: v.string(),
+    teamSlugOrId: v.string(),
     repos: v.array(
       v.object({
         fullName: v.string(),
@@ -182,9 +182,9 @@ export const bulkInsertRepos = authMutation({
       })
     ),
   },
-  handler: async (ctx, { teamIdOrSlug, repos }) => {
+  handler: async (ctx, { teamSlugOrId, repos }) => {
     const userId = ctx.identity.subject;
-    const teamId = await getTeamId(ctx, teamIdOrSlug);
+    const teamId = await getTeamId(ctx, teamSlugOrId);
     // Get existing repos to check for duplicates
     const existingRepos = await ctx.db
       .query("repos")
@@ -215,13 +215,13 @@ export const bulkInsertRepos = authMutation({
 
 export const bulkInsertBranches = authMutation({
   args: {
-    teamIdOrSlug: v.string(),
+    teamSlugOrId: v.string(),
     repo: v.string(),
     branches: v.array(v.string()),
   },
-  handler: async (ctx, { teamIdOrSlug, repo, branches }) => {
+  handler: async (ctx, { teamSlugOrId, repo, branches }) => {
     const userId = ctx.identity.subject;
-    const teamId = await getTeamId(ctx, teamIdOrSlug);
+    const teamId = await getTeamId(ctx, teamSlugOrId);
     // Get existing branches for this repo
     const existingBranches = await ctx.db
       .query("branches")
@@ -249,7 +249,7 @@ export const bulkInsertBranches = authMutation({
 // Full replacement mutations (use with caution)
 export const replaceAllRepos = authMutation({
   args: {
-    teamIdOrSlug: v.string(),
+    teamSlugOrId: v.string(),
     repos: v.array(
       v.object({
         fullName: v.string(),
@@ -260,9 +260,9 @@ export const replaceAllRepos = authMutation({
       })
     ),
   },
-  handler: async (ctx, { teamIdOrSlug, repos }) => {
+  handler: async (ctx, { teamSlugOrId, repos }) => {
     const userId = ctx.identity.subject;
-    const teamId = await getTeamId(ctx, teamIdOrSlug);
+    const teamId = await getTeamId(ctx, teamSlugOrId);
     // Delete all existing repos
     const existingRepos = await ctx.db
       .query("repos")

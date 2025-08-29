@@ -9,17 +9,17 @@ export function isUuid(value: string): boolean {
 
 type AnyCtx = QueryCtx | MutationCtx;
 
-// Resolve a teamIdOrSlug to a canonical team UUID string.
+// Resolve a teamSlugOrId to a canonical team UUID string.
 // Falls back to the input if no team is found (for backwards compatibility).
 export async function getTeamId(
   ctx: AnyCtx,
-  teamIdOrSlug: string
+  teamSlugOrId: string
 ): Promise<string> {
-  if (isUuid(teamIdOrSlug)) return teamIdOrSlug;
+  if (isUuid(teamSlugOrId)) return teamSlugOrId;
 
   const team = await ctx.db
     .query("teams")
-    .filter((q) => q.eq(q.field("slug"), teamIdOrSlug))
+    .filter((q) => q.eq(q.field("slug"), teamSlugOrId))
     .first();
 
   const identity = await ctx.auth.getUserIdentity();
@@ -46,31 +46,31 @@ export async function getTeamId(
     const membership = await ctx.db
       .query("teamMemberships")
       .withIndex("by_team_user", (q) =>
-        q.eq("teamId", teamIdOrSlug).eq("userId", userId)
+        q.eq("teamId", teamSlugOrId).eq("userId", userId)
       )
       .first();
     if (!membership) {
       throw new Error("Forbidden: Not a member of this team");
     }
   }
-  return teamIdOrSlug;
+  return teamSlugOrId;
 }
 
-// Resolve a teamIdOrSlug to a team UUID without enforcing membership.
+// Resolve a teamSlugOrId to a team UUID without enforcing membership.
 // Use this when the caller already scopes by userId and does not need
 // team membership guarantees (e.g., per-user comments).
 export async function resolveTeamIdLoose(
   ctx: AnyCtx,
-  teamIdOrSlug: string,
+  teamSlugOrId: string
 ): Promise<string> {
-  if (isUuid(teamIdOrSlug)) return teamIdOrSlug;
+  if (isUuid(teamSlugOrId)) return teamSlugOrId;
 
   const team = await ctx.db
     .query("teams")
-    .filter((q) => q.eq(q.field("slug"), teamIdOrSlug))
+    .filter((q) => q.eq(q.field("slug"), teamSlugOrId))
     .first();
   if (team) return team.uuid;
 
   // Back-compat: allow legacy string teamIds (e.g., "default").
-  return teamIdOrSlug;
+  return teamSlugOrId;
 }

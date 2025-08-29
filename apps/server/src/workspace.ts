@@ -51,11 +51,11 @@ export async function getWorktreePath(
     repoUrl: string;
     branch: string;
   },
-  teamIdOrSlug: string
+  teamSlugOrId: string
 ): Promise<WorktreeInfo> {
   // Check for custom worktree path setting
   const settings = await getConvex().query(api.workspaceSettings.get, {
-    teamIdOrSlug,
+    teamSlugOrId,
   });
 
   let projectsPath: string;
@@ -93,7 +93,7 @@ export async function getWorktreePath(
 
 export async function getProjectPaths(
   repoUrl: string,
-  teamIdOrSlug: string
+  teamSlugOrId: string
 ): Promise<{
   appDataPath: string;
   projectsPath: string;
@@ -103,7 +103,7 @@ export async function getProjectPaths(
   repoName: string;
 }> {
   const settings = await getConvex().query(api.workspaceSettings.get, {
-    teamIdOrSlug,
+    teamSlugOrId,
   });
 
   let projectsPath: string;

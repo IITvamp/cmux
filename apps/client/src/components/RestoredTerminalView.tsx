@@ -14,14 +14,17 @@ export interface RestoredTerminalViewProps {
   teamSlugOrId: string;
 }
 
-export function RestoredTerminalView({ runId, teamSlugOrId }: RestoredTerminalViewProps) {
+export function RestoredTerminalView({
+  runId,
+  teamSlugOrId,
+}: RestoredTerminalViewProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
 
   // Fetch log chunks from Convex
   const logChunks = useQuery(api.taskRunLogChunks.getChunks, {
-    teamIdOrSlug: teamSlugOrId,
+    teamSlugOrId,
     taskRunId: runId,
   });
 

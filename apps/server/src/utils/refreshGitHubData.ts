@@ -4,9 +4,9 @@ import { getConvex } from "./convexClient.js";
 import { serverLogger } from "./fileLogger.js";
 
 export async function refreshGitHubData({
-  teamIdOrSlug,
+  teamSlugOrId,
 }: {
-  teamIdOrSlug: string;
+  teamSlugOrId: string;
 }) {
   try {
     serverLogger.info("Starting GitHub data refresh...");
@@ -67,7 +67,7 @@ export async function refreshGitHubData({
       );
       // The mutation now handles deduplication
       await getConvex().mutation(api.github.bulkInsertRepos, {
-        teamIdOrSlug,
+        teamSlugOrId,
         repos: reposToInsert,
       });
       serverLogger.info("Repository data refreshed successfully");
@@ -87,14 +87,14 @@ export async function refreshGitHubData({
 // Optional: Add a function to refresh branches for specific repos
 export async function refreshBranchesForRepo(
   repo: string,
-  teamIdOrSlug: string
+  teamSlugOrId: string
 ) {
   try {
     const branches = await ghApi.getRepoBranches(repo);
 
     if (branches.length > 0) {
       await getConvex().mutation(api.github.bulkInsertBranches, {
-        teamIdOrSlug,
+        teamSlugOrId,
         repo,
         branches,
       });

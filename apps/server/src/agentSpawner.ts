@@ -52,12 +52,12 @@ export async function spawnAgent(
     theme?: "dark" | "light" | "system";
     newBranch?: string; // Optional pre-generated branch name
   },
-  teamIdOrSlug: string
+  teamSlugOrId: string
 ): Promise<AgentSpawnResult> {
   try {
     const newBranch =
       options.newBranch ||
-      (await generateNewBranchName(options.taskDescription, teamIdOrSlug));
+      (await generateNewBranchName(options.taskDescription, teamSlugOrId));
     serverLogger.info(
       `[AgentSpawner] New Branch: ${newBranch}, Base Branch: ${
         options.branch ?? "(auto)"
@@ -66,7 +66,7 @@ export async function spawnAgent(
 
     // Create a task run for this specific agent
     const taskRunId = await getConvex().mutation(api.taskRuns.create, {
-      teamIdOrSlug,
+      teamSlugOrId,
       taskId: taskId,
       prompt: `${options.taskDescription} (${agent.name})`,
       agentName: agent.name,
@@ -75,7 +75,7 @@ export async function spawnAgent(
 
     // Fetch the task to get image storage IDs
     const task = await getConvex().query(api.tasks.getById, {
-      teamIdOrSlug,
+      teamSlugOrId,
       id: taskId,
     });
 
@@ -89,7 +89,7 @@ export async function spawnAgent(
     // If task has images with storage IDs, download them
     if (task && task.images && task.images.length > 0) {
       const imageUrlsResult = await getConvex().query(api.storage.getUrls, {
-        teamIdOrSlug,
+        teamSlugOrId,
         storageIds: task.images.map((image) => image.storageId),
       });
       const downloadedImages = await Promise.all(
@@ -219,7 +219,7 @@ export async function spawnAgent(
 
     // Fetch API keys from Convex
     const apiKeys = await getConvex().query(api.apiKeys.getAllForAgents, {
-      teamIdOrSlug,
+      teamSlugOrId,
     });
 
     // Add required API keys from Convex
@@ -268,7 +268,7 @@ export async function spawnAgent(
         taskRunId,
         taskId,
         theme: options.theme,
-        teamIdOrSlug,
+        teamSlugOrId,
       });
 
       worktreePath = "/root/workspace";
@@ -279,7 +279,7 @@ export async function spawnAgent(
           repoUrl: options.repoUrl,
           branch: newBranch,
         },
-        teamIdOrSlug
+        teamSlugOrId
       );
 
       // Setup workspace
@@ -312,13 +312,13 @@ export async function spawnAgent(
         taskRunId,
         taskId,
         theme: options.theme,
-        teamIdOrSlug,
+        teamSlugOrId,
       });
     }
 
     // Update the task run with the worktree path
     await getConvex().mutation(api.taskRuns.updateWorktreePath, {
-      teamIdOrSlug,
+      teamSlugOrId,
       id: taskRunId,
       worktreePath: worktreePath,
     });
@@ -393,7 +393,7 @@ export async function spawnAgent(
           exitCode: data.exitCode ?? 0,
           worktreePath,
           vscodeInstance,
-          teamIdOrSlug,
+          teamSlugOrId,
         });
       }
     });
@@ -446,7 +446,7 @@ export async function spawnAgent(
           exitCode: 0,
           worktreePath,
           vscodeInstance,
-          teamIdOrSlug,
+          teamSlugOrId,
         });
       } else {
         serverLogger.warn(
@@ -488,7 +488,7 @@ export async function spawnAgent(
           exitCode: 0,
           worktreePath,
           vscodeInstance,
-          teamIdOrSlug,
+          teamSlugOrId,
         });
       } else {
         serverLogger.warn(
@@ -515,7 +515,7 @@ export async function spawnAgent(
         // Append error to log for context
         if (data.errorMessage) {
           await getConvex().mutation(api.taskRuns.appendLogPublic, {
-            teamIdOrSlug,
+            teamSlugOrId,
             id: taskRunId,
             content: `\n\n=== ERROR ===\n${data.errorMessage}\n=== END ERROR ===\n`,
           });
@@ -523,7 +523,7 @@ export async function spawnAgent(
 
         // Mark the run as failed with error message
         await getConvex().mutation(api.taskRuns.fail, {
-          teamIdOrSlug,
+          teamSlugOrId,
           id: taskRunId,
           errorMessage: data.errorMessage || "Terminal failed",
           // WorkerTerminalFailed does not include exitCode in schema; default to 1
@@ -560,7 +560,7 @@ export async function spawnAgent(
 
     // Update VSCode instance information in Convex
     await getConvex().mutation(api.taskRuns.updateVSCodeInstance, {
-      teamIdOrSlug,
+      teamSlugOrId,
       id: taskRunId,
       vscode: {
         provider: vscodeInfo.provider,
@@ -890,7 +890,7 @@ export async function spawnAllAgents(
     }>;
     theme?: "dark" | "light" | "system";
   },
-  teamIdOrSlug: string
+  teamSlugOrId: string
 ): Promise<AgentSpawnResult[]> {
   // If selectedAgents is provided, filter AGENT_CONFIGS to only include selected agents
   const agentsToSpawn = options.selectedAgents
@@ -905,7 +905,7 @@ export async function spawnAllAgents(
     : await generateUniqueBranchNames(
         options.taskDescription,
         agentsToSpawn.length,
-        teamIdOrSlug
+        teamSlugOrId
       );
 
   serverLogger.info(
@@ -922,7 +922,7 @@ export async function spawnAllAgents(
           ...options,
           newBranch: branchNames[index],
         },
-        teamIdOrSlug
+        teamSlugOrId
       )
     )
   );

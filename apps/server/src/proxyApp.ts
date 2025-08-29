@@ -277,7 +277,7 @@ export function createProxyApp({
       if (teamParam) {
         try {
           taskRun = await getConvex().query(api.taskRuns.getByContainerName, {
-            teamIdOrSlug: teamParam,
+            teamSlugOrId: teamParam,
             containerName: fullContainerName,
           });
         } catch (e) {
@@ -299,7 +299,7 @@ export function createProxyApp({
             taskRunId: taskRun._id,
             taskId: taskRun.taskId,
             workspacePath: taskRun.worktreePath,
-            teamIdOrSlug: teamParam || "default",
+            teamSlugOrId: teamParam || "default",
           });
 
           // Start the container

@@ -11,7 +11,7 @@ export interface VSCodeInstanceConfig {
   taskRunId: Id<"taskRuns">;
   taskId: Id<"tasks">;
   theme?: "dark" | "light" | "system";
-  teamIdOrSlug: string;
+  teamSlugOrId: string;
 }
 
 export interface VSCodeInstanceInfo {
@@ -35,14 +35,14 @@ export abstract class VSCodeInstance extends EventEmitter {
     ServerToWorkerEvents
   > | null = null;
   protected workerConnected: boolean = false;
-  protected teamIdOrSlug: string;
+  protected teamSlugOrId: string;
 
   constructor(config: VSCodeInstanceConfig) {
     super();
     this.config = config;
     this.taskRunId = config.taskRunId;
     this.taskId = config.taskId;
-    this.teamIdOrSlug = config.teamIdOrSlug;
+    this.teamSlugOrId = config.teamSlugOrId;
     // Use taskRunId as instanceId for backward compatibility
     this.instanceId = config.taskRunId;
 

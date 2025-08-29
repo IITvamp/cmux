@@ -7,13 +7,13 @@ import { api } from "@cmux/convex/api";
 import type { Doc } from "@cmux/convex/dataModel";
 import { AGENT_CONFIGS, type AgentConfig } from "@cmux/shared/agentConfig";
 import { API_KEY_MODELS_BY_ENV } from "@cmux/shared/model-usage";
+import { convexQuery } from "@convex-dev/react-query";
+import { Switch } from "@heroui/react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useConvex } from "convex/react";
-import { convexQuery } from "@convex-dev/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Switch } from "@heroui/react";
 
 export const Route = createFileRoute("/_layout/$teamSlugOrId/settings")({
   component: SettingsComponent,
@@ -44,8 +44,12 @@ function SettingsComponent() {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const saveButtonRef = useRef<HTMLDivElement>(null);
   const usedListRefs = useRef<Record<string, HTMLSpanElement | null>>({});
-  const [expandedUsedList, setExpandedUsedList] = useState<Record<string, boolean>>({});
-  const [overflowUsedList, setOverflowUsedList] = useState<Record<string, boolean>>({});
+  const [expandedUsedList, setExpandedUsedList] = useState<
+    Record<string, boolean>
+  >({});
+  const [overflowUsedList, setOverflowUsedList] = useState<
+    Record<string, boolean>
+  >({});
   const [containerSettingsData, setContainerSettingsData] = useState<{
     maxRunningContainers: number;
     reviewPeriodMinutes: number;
@@ -70,17 +74,17 @@ function SettingsComponent() {
 
   // Query existing API keys
   const { data: existingKeys } = useQuery(
-    convexQuery(api.apiKeys.getAll, { teamIdOrSlug: teamSlugOrId })
+    convexQuery(api.apiKeys.getAll, { teamSlugOrId })
   );
 
   // Query team info (slug)
   const { data: teamInfo } = useQuery(
-    convexQuery(api.teams.get, { teamIdOrSlug: teamSlugOrId })
+    convexQuery(api.teams.get, { teamSlugOrId })
   );
 
   // Query workspace settings
   const { data: workspaceSettings } = useQuery(
-    convexQuery(api.workspaceSettings.get, { teamIdOrSlug: teamSlugOrId })
+    convexQuery(api.workspaceSettings.get, { teamSlugOrId })
   );
 
   // Initialize form values when data loads
@@ -102,8 +106,10 @@ function SettingsComponent() {
       setTeamSlug(s);
       setOriginalTeamSlug(s);
       setTeamSlugError("");
-      const n = (teamInfo as unknown as { name?: string; displayName?: string }).name ||
-        (teamInfo as unknown as { name?: string; displayName?: string }).displayName ||
+      const n =
+        (teamInfo as unknown as { name?: string; displayName?: string }).name ||
+        (teamInfo as unknown as { name?: string; displayName?: string })
+          .displayName ||
         "";
       setTeamName(n);
       setOriginalTeamName(n);
@@ -186,7 +192,7 @@ function SettingsComponent() {
       description?: string;
     }) => {
       return await convex.mutation(api.apiKeys.upsert, {
-        teamIdOrSlug: teamSlugOrId,
+        teamSlugOrId,
         ...data,
       });
     },
@@ -259,7 +265,7 @@ function SettingsComponent() {
         autoPrEnabled !== originalAutoPrEnabled
       ) {
         await convex.mutation(api.workspaceSettings.update, {
-          teamIdOrSlug: teamSlugOrId,
+          teamSlugOrId,
           worktreePath: worktreePath || undefined,
           autoPrEnabled,
         });
@@ -275,12 +281,11 @@ function SettingsComponent() {
           JSON.stringify(originalContainerSettingsData)
       ) {
         await convex.mutation(api.containerSettings.update, {
-          teamIdOrSlug: teamSlugOrId,
+          teamSlugOrId,
           ...containerSettingsData,
         });
         setOriginalContainerSettingsData(containerSettingsData);
       }
-
 
       for (const key of apiKeys) {
         const value = apiKeyValues[key.envVar] || "";
@@ -300,7 +305,7 @@ function SettingsComponent() {
           } else if (originalValue) {
             // Delete the key if it was cleared
             await convex.mutation(api.apiKeys.remove, {
-              teamIdOrSlug: teamSlugOrId,
+              teamSlugOrId,
               envVar: key.envVar,
             });
             deletedCount++;
@@ -345,7 +350,7 @@ function SettingsComponent() {
     setIsSaving(true);
     try {
       await convex.mutation(api.teams.setSlug, {
-        teamIdOrSlug: teamSlugOrId,
+        teamSlugOrId,
         slug: newSlug,
       });
       setOriginalTeamSlug(newSlug);
@@ -369,7 +374,7 @@ function SettingsComponent() {
     setIsSaving(true);
     try {
       await convex.mutation(api.teams.setName, {
-        teamIdOrSlug: teamSlugOrId,
+        teamSlugOrId,
         name: newName,
       });
       setOriginalTeamName(newName);
@@ -404,11 +409,13 @@ function SettingsComponent() {
             {/* Team name */}
             <div className="bg-white dark:bg-neutral-950 rounded-lg border border-neutral-200 dark:border-neutral-800">
               <div className="px-4 py-3 border-b border-neutral-200 dark:border-neutral-800">
-                <h2 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">Team Name</h2>
+                <h2 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                  Team Name
+                </h2>
               </div>
               <div className="p-4">
                 <div>
-                  <label 
+                  <label
                     htmlFor="teamName"
                     className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2"
                   >
@@ -428,7 +435,9 @@ function SettingsComponent() {
                     }}
                     placeholder="Your Team"
                     aria-invalid={teamNameError ? true : undefined}
-                    aria-describedby={teamNameError ? "team-name-error" : undefined}
+                    aria-describedby={
+                      teamNameError ? "team-name-error" : undefined
+                    }
                     className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:border-transparent bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 ${
                       teamNameError
                         ? "border-red-500 focus:ring-red-500"
@@ -436,12 +445,14 @@ function SettingsComponent() {
                     }`}
                   />
                   {teamNameError && (
-                    <p id="team-name-error" className="mt-2 text-xs text-red-600 dark:text-red-500">
+                    <p
+                      id="team-name-error"
+                      className="mt-2 text-xs text-red-600 dark:text-red-500"
+                    >
                       {teamNameError}
                     </p>
                   )}
                 </div>
-                
 
                 {/* URL Preview removed
                 <div className="pt-2">
@@ -493,22 +504,27 @@ function SettingsComponent() {
             {/* Team URL */}
             <div className="bg-white dark:bg-neutral-950 rounded-lg border border-neutral-200 dark:border-neutral-800">
               <div className="px-4 py-3 border-b border-neutral-200 dark:border-neutral-800">
-                <h2 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">Team URL</h2>
+                <h2 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                  Team URL
+                </h2>
               </div>
               <div className="p-4">
                 <div>
-                  <label 
+                  <label
                     htmlFor="teamSlug"
                     className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2"
                   >
                     URL Slug
                   </label>
                   <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-3">
-                    Set the slug used in links, e.g. /your-team/dashboard. Lowercase letters, numbers, and hyphens. 3–48 characters.
+                    Set the slug used in links, e.g. /your-team/dashboard.
+                    Lowercase letters, numbers, and hyphens. 3–48 characters.
                   </p>
                   <div
                     className={`inline-flex items-center w-full rounded-lg bg-white dark:bg-neutral-900 border ${
-                      teamSlugError ? "border-red-500" : "border-neutral-300 dark:border-neutral-700"
+                      teamSlugError
+                        ? "border-red-500"
+                        : "border-neutral-300 dark:border-neutral-700"
                     }`}
                   >
                     <span
@@ -529,12 +545,17 @@ function SettingsComponent() {
                       }}
                       placeholder="your-team"
                       aria-invalid={teamSlugError ? true : undefined}
-                      aria-describedby={teamSlugError ? "team-slug-error" : undefined}
+                      aria-describedby={
+                        teamSlugError ? "team-slug-error" : undefined
+                      }
                       className="flex-1 bg-transparent border-0 outline-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-inset px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 rounded-r-lg"
                     />
                   </div>
                   {teamSlugError && (
-                    <p id="team-slug-error" className="mt-2 text-xs text-red-600 dark:text-red-500">
+                    <p
+                      id="team-slug-error"
+                      className="mt-2 text-xs text-red-600 dark:text-red-500"
+                    >
                       {teamSlugError}
                     </p>
                   )}
@@ -709,9 +730,9 @@ function SettingsComponent() {
                           <p>You can authenticate providers in two ways:</p>
                           <ul className="list-disc ml-4 space-y-0.5">
                             <li>
-                              Start a coding CLI (Claude Code, Codex CLI,
-                              Gemini CLI, Amp, Opencode) and complete its
-                              sign-in; cmux reuses that authentication.
+                              Start a coding CLI (Claude Code, Codex CLI, Gemini
+                              CLI, Amp, Opencode) and complete its sign-in; cmux
+                              reuses that authentication.
                             </li>
                             <li>
                               Or enter API keys here and cmux will use them
@@ -782,7 +803,8 @@ function SettingsComponent() {
                                         <span className="inline-flex items-center gap-1 min-w-0 align-middle w-full">
                                           <span
                                             ref={(el) => {
-                                              usedListRefs.current[key.envVar] = el;
+                                              usedListRefs.current[key.envVar] =
+                                                el;
                                             }}
                                             className={`font-medium min-w-0 ${
                                               expandedUsedList[key.envVar]
@@ -799,7 +821,8 @@ function SettingsComponent() {
                                                 e.preventDefault();
                                                 setExpandedUsedList((prev) => ({
                                                   ...prev,
-                                                  [key.envVar]: !prev[key.envVar],
+                                                  [key.envVar]:
+                                                    !prev[key.envVar],
                                                 }));
                                               }}
                                               className="flex-none text-[10px] text-blue-600 hover:underline dark:text-blue-400"
@@ -975,7 +998,12 @@ function SettingsComponent() {
                       Receive updates about your workspace via email
                     </p>
                   </div>
-                  <Switch aria-label="Email Notifications" size="sm" isSelected isDisabled />
+                  <Switch
+                    aria-label="Email Notifications"
+                    size="sm"
+                    isSelected
+                    isDisabled
+                  />
                 </div>
 
                 <div className="flex items-center justify-between">
@@ -987,7 +1015,12 @@ function SettingsComponent() {
                       Get notified about important updates on desktop
                     </p>
                   </div>
-                  <Switch aria-label="Desktop Notifications" size="sm" isSelected={false} isDisabled />
+                  <Switch
+                    aria-label="Desktop Notifications"
+                    size="sm"
+                    isSelected={false}
+                    isDisabled
+                  />
                 </div>
 
                 <div className="flex items-center justify-between">
@@ -999,11 +1032,15 @@ function SettingsComponent() {
                       Summary of your workspace activity
                     </p>
                   </div>
-                  <Switch aria-label="Weekly Digest" size="sm" isSelected isDisabled />
+                  <Switch
+                    aria-label="Weekly Digest"
+                    size="sm"
+                    isSelected
+                    isDisabled
+                  />
                 </div>
               </div>
             </div>
-
           </div>
         </div>
       </div>

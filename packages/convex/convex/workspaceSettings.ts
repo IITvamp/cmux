@@ -1,12 +1,12 @@
 import { v } from "convex/values";
-import { authMutation, authQuery } from "./users/utils";
 import { resolveTeamIdLoose } from "../_shared/team";
+import { authMutation, authQuery } from "./users/utils";
 
 export const get = authQuery({
-  args: { teamIdOrSlug: v.string() },
+  args: { teamSlugOrId: v.string() },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
-    const teamId = await resolveTeamIdLoose(ctx, args.teamIdOrSlug);
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
     const settings = await ctx.db
       .query("workspaceSettings")
       .withIndex("by_team_user", (q) =>
@@ -19,13 +19,13 @@ export const get = authQuery({
 
 export const update = authMutation({
   args: {
-    teamIdOrSlug: v.string(),
+    teamSlugOrId: v.string(),
     worktreePath: v.optional(v.string()),
     autoPrEnabled: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
-    const teamId = await resolveTeamIdLoose(ctx, args.teamIdOrSlug);
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
     const existing = await ctx.db
       .query("workspaceSettings")
       .withIndex("by_team_user", (q) =>

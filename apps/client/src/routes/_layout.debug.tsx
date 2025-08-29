@@ -39,13 +39,9 @@ function DebugComponent() {
               typeof window !== "undefined"
                 ? window.location.pathname.split("/")[1] || "default"
                 : "default";
-            socket?.emit(
-              "github-fetch-repos",
-              { teamIdOrSlug: teamSlugOrId },
-              (data) => {
-                console.log(data);
-              }
-            );
+            socket?.emit("github-fetch-repos", { teamSlugOrId }, (data) => {
+              console.log(data);
+            });
           }}
         >
           refetch github
