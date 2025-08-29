@@ -1,7 +1,7 @@
 "use client";
 
 import CmuxLogo from "@/components/logo/cmux-logo";
-import { stackClientApp } from "@/stack";
+import { stackClientApp } from "@/lib/stack";
 import { SignIn, useUser } from "@stackframe/react";
 import { useQuery } from "@tanstack/react-query";
 import { ConvexProviderWithAuth, useConvexAuth } from "convex/react";
@@ -86,7 +86,7 @@ function AuthenticatedOrLoading({ children }: { children: ReactNode }) {
               <div className="flex flex-col items-center gap-4 p-6 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900">
                 <div className="text-center">
                   <p className="text-neutral-900 dark:text-neutral-100 font-medium">Sign in required</p>
-                  <p className="text-sm text-neutral-600 dark:text-neutral-400">We’ll open your browser to continue.</p>
+                  <p className="text-sm text-neutral-600 dark:text-neutral-400">We'll open your browser to continue.</p>
                 </div>
                   <button
                     onClick={() => {
@@ -96,7 +96,7 @@ function AuthenticatedOrLoading({ children }: { children: ReactNode }) {
                       window.open(url, "_blank", "noopener,noreferrer");
                     }}
                     className="px-4 py-2 rounded-md bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900 hover:opacity-90"
-                  >
+                  >   
                     Sign in with browser
                   </button>
                 <p className="text-xs text-neutral-500 dark:text-neutral-500 text-center">
