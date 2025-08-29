@@ -4,12 +4,8 @@ import { toast } from "sonner";
 import { useMutation } from "convex/react";
 import { useSocket } from "@/contexts/socket/use-socket";
 
-export function useArchiveTask() {
+export function useArchiveTask(teamSlugOrId: string) {
   const { socket } = useSocket();
-  const teamSlugOrId =
-    typeof window !== "undefined"
-      ? window.location.pathname.split("/")[1] || "default"
-      : "default";
   
   type TasksGetArgs = {
     teamIdOrSlug: string;

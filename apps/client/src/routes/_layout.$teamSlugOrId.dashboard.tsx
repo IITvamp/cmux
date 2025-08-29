@@ -27,6 +27,7 @@ export const Route = createFileRoute("/_layout/$teamSlugOrId/dashboard")({
 });
 
 function DashboardComponent() {
+  const { teamSlugOrId } = Route.useParams();
   // team slug read from path
   // Authentication is handled by the parent layout
   const { socket } = useSocket();
@@ -83,10 +84,6 @@ function DashboardComponent() {
   }, []);
 
   // Fetch repos from Convex
-  const teamSlugOrId =
-    typeof window !== "undefined"
-      ? window.location.pathname.split("/")[1] || "default"
-      : "default";
   const reposByOrgQuery = useQuery(
     convexQuery(api.github.getReposByOrg, { teamIdOrSlug: teamSlugOrId })
   );
@@ -527,7 +524,7 @@ function DashboardComponent() {
               )}
             >
               {/* Provider Status Pills */}
-              <ProviderStatusPills />
+              <ProviderStatusPills teamSlugOrId={teamSlugOrId} />
 
               {/* Editor Input */}
               <DashboardInput
@@ -557,6 +554,7 @@ function DashboardComponent() {
                   isLoadingBranches={
                     isLoadingBranches || branchesQuery.isLoading
                   }
+                  teamSlugOrId={teamSlugOrId}
                 />
                 <DashboardStartTaskButton
                   canSubmit={canSubmit}
@@ -566,7 +564,7 @@ function DashboardComponent() {
             </div>
 
             {/* Task List */}
-            <TaskList />
+            <TaskList teamSlugOrId={teamSlugOrId} />
           </div>
         </div>
       </div>

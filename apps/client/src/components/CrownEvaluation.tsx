@@ -8,13 +8,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 
 interface CrownEvaluationProps {
   taskId: Id<"tasks">;
+  teamSlugOrId: string;
 }
 
-export function CrownEvaluation({ taskId }: CrownEvaluationProps) {
-  const teamSlugOrId =
-    typeof window !== "undefined"
-      ? window.location.pathname.split("/")[1] || "default"
-      : "default";
+export function CrownEvaluation({ taskId, teamSlugOrId }: CrownEvaluationProps) {
   const evaluation = useQuery(
     api.crown.getCrownEvaluation,
     isFakeConvexId(taskId) ? "skip" : { teamIdOrSlug: teamSlugOrId, taskId }

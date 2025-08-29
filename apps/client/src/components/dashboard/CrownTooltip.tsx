@@ -14,13 +14,10 @@ import { useEffect, useState } from "react";
 
 interface CrownStatusProps {
   taskId: Id<"tasks">;
+  teamSlugOrId: string;
 }
 
-export function CrownStatus({ taskId }: CrownStatusProps) {
-  const teamSlugOrId =
-    typeof window !== "undefined"
-      ? window.location.pathname.split("/")[1] || "default"
-      : "default";
+export function CrownStatus({ taskId, teamSlugOrId }: CrownStatusProps) {
   // Get task runs
   const taskRuns = useQuery(
     api.taskRuns.getByTask,

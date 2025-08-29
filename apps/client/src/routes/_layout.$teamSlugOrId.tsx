@@ -91,7 +91,7 @@ function LayoutComponent() {
     <>
       <ExpandTasksProvider>
         <div className="flex flex-row grow bg-white dark:bg-black">
-          <Sidebar tasks={tasks} tasksWithRuns={tasksWithRuns} />
+          <Sidebar tasks={tasks} tasksWithRuns={tasksWithRuns} teamSlugOrId={teamSlugOrId} />
 
           {/* <div className="flex flex-col grow overflow-hidden bg-white dark:bg-neutral-950"> */}
           <Suspense fallback={<div>Loading...</div>}>
@@ -136,10 +136,11 @@ function LayoutComponent() {
 // ConvexClientProvider is already applied in the top-level `/_layout` route.
 // Avoid nesting providers here to prevent auth/loading thrash.
 function LayoutComponentWrapper() {
+  const { teamSlugOrId } = Route.useParams();
   return (
     <>
       <LayoutComponent />
-      <CmuxComments />
+      <CmuxComments teamSlugOrId={teamSlugOrId} />
     </>
   );
 }

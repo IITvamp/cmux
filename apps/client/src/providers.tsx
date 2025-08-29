@@ -7,7 +7,7 @@ import {
   theme,
   type ThemeConfig,
 } from "antd";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, Suspense, useEffect, useMemo, useState } from "react";
 import { ConvexClientProvider } from "./contexts/convex/convex-client-provider";
 import { SocketProvider } from "./contexts/socket/socket-provider";
 import { queryClient } from "./query-client";
@@ -71,21 +71,23 @@ export function Providers({ children }: ProvidersProps) {
 
   return (
     <StackTheme>
-      <StackProvider app={stackClientApp}>
-        <QueryClientProvider client={queryClient}>
-          <ConvexClientProvider>
-            <SocketProvider>
-              <ThemeProvider>
-                <HeroUIProvider>
-                  <AntdConfigProvider theme={antdTheme}>
-                    {children}
-                  </AntdConfigProvider>
-                </HeroUIProvider>
-              </ThemeProvider>
-            </SocketProvider>
-          </ConvexClientProvider>
-        </QueryClientProvider>
-      </StackProvider>
+      <Suspense fallback={<div>Loading stack...</div>}>
+        <StackProvider app={stackClientApp}>
+          <QueryClientProvider client={queryClient}>
+            <ConvexClientProvider>
+              <SocketProvider>
+                <ThemeProvider>
+                  <HeroUIProvider>
+                    <AntdConfigProvider theme={antdTheme}>
+                      {children}
+                    </AntdConfigProvider>
+                  </HeroUIProvider>
+                </ThemeProvider>
+              </SocketProvider>
+            </ConvexClientProvider>
+          </QueryClientProvider>
+        </StackProvider>
+      </Suspense>
     </StackTheme>
   );
 }

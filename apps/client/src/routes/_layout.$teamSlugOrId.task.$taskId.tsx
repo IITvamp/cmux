@@ -19,19 +19,13 @@ export const Route = createFileRoute("/_layout/$teamSlugOrId/task/$taskId")({
     await Promise.all([
       opts.context.queryClient.ensureQueryData(
         convexQuery(api.taskRuns.getByTask, {
-          teamIdOrSlug:
-            typeof window !== "undefined"
-              ? window.location.pathname.split("/")[1] || "default"
-              : "default",
+          teamIdOrSlug: opts.params.teamSlugOrId,
           taskId: opts.params.taskId as Id<"tasks">,
         })
       ),
       opts.context.queryClient.ensureQueryData(
         convexQuery(api.tasks.getById, {
-          teamIdOrSlug:
-            typeof window !== "undefined"
-              ? window.location.pathname.split("/")[1] || "default"
-              : "default",
+          teamIdOrSlug: opts.params.teamSlugOrId,
           id: opts.params.taskId as Id<"tasks">,
         })
       ),
@@ -46,11 +40,7 @@ const WITH_TABS = false;
 type GetByTaskResultItem = (typeof api.taskRuns.getByTask._returnType)[number];
 
 function TaskDetailPage() {
-  const { taskId } = Route.useParams();
-  const teamSlugOrId =
-    typeof window !== "undefined"
-      ? window.location.pathname.split("/")[1] || "default"
-      : "default";
+  const { taskId, teamSlugOrId } = Route.useParams();
   const { data: task } = useSuspenseQuery(
     convexQuery(api.tasks.getById, {
       teamIdOrSlug: teamSlugOrId,

@@ -35,6 +35,7 @@ interface TaskDetailHeaderProps {
   onExpandAll?: () => void;
   onCollapseAll?: () => void;
   isLoading?: boolean;
+  teamSlugOrId: string;
 }
 
 const ENABLE_MERGE_BUTTON = false;
@@ -53,13 +54,10 @@ export function TaskDetailHeader({
   onExpandAll,
   onCollapseAll,
   isLoading,
+  teamSlugOrId,
 }: TaskDetailHeaderProps) {
   const navigate = useNavigate();
   const clipboard = useClipboard({ timeout: 2000 });
-  const teamSlugOrId =
-    typeof window !== "undefined"
-      ? window.location.pathname.split("/")[1] || "default"
-      : "default";
   const prIsOpen = selectedRun?.pullRequestState === "open";
   const prIsMerged = selectedRun?.pullRequestState === "merged";
   const { socket } = useSocket();

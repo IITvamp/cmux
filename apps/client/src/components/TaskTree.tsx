@@ -39,6 +39,7 @@ interface TaskTreeProps {
   level?: number;
   // When true, expand the task node on initial mount
   defaultExpanded?: boolean;
+  teamSlugOrId: string;
 }
 
 // Extract the display text logic to avoid re-creating it on every render
@@ -62,11 +63,8 @@ function TaskTreeInner({
   task,
   level = 0,
   defaultExpanded = false,
+  teamSlugOrId,
 }: TaskTreeProps) {
-  const teamSlugOrId =
-    typeof window !== "undefined"
-      ? window.location.pathname.split("/")[1] || "default"
-      : "default";
   // Get the current route to determine if this task is selected
   const location = useLocation();
   const isTaskSelected = useMemo(
@@ -86,7 +84,7 @@ function TaskTreeInner({
     setIsExpanded((prev) => !prev);
   }, []);
 
-  const { archiveWithUndo, unarchive } = useArchiveTask();
+  const { archiveWithUndo, unarchive } = useArchiveTask(teamSlugOrId);
 
   const handleCopyDescription = useCallback(() => {
     if (navigator?.clipboard?.writeText) {
@@ -258,6 +256,7 @@ function TaskTreeInner({
               level={level + 1}
               taskId={task._id}
               branch={task.baseBranch}
+              teamSlugOrId={teamSlugOrId}
             />
           ))}
         </div>
@@ -271,15 +270,12 @@ interface TaskRunTreeProps {
   level: number;
   taskId: Id<"tasks">;
   branch?: string;
+  teamSlugOrId: string;
 }
 
-function TaskRunTreeInner({ run, level, taskId, branch }: TaskRunTreeProps) {
+function TaskRunTreeInner({ run, level, taskId, branch, teamSlugOrId }: TaskRunTreeProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const hasChildren = run.children.length > 0;
-  const teamSlugOrId =
-    typeof window !== "undefined"
-      ? window.location.pathname.split("/")[1] || "default"
-      : "default";
 
   // Memoize the display text to avoid recalculating on every render
   const displayText = useMemo(() => getRunDisplayText(run), [run]);
@@ -398,6 +394,7 @@ function TaskRunTreeInner({ run, level, taskId, branch }: TaskRunTreeProps) {
               level={level + 1}
               taskId={taskId}
               branch={branch}
+              teamSlugOrId={teamSlugOrId}
             />
           ))}
         </div>

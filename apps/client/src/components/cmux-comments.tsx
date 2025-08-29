@@ -124,6 +124,7 @@ interface Comment {
 interface CommentMarkerProps {
   comment: Comment;
   onClick: () => void;
+  teamSlugOrId: string;
 }
 
 // Helper function to render markdown links
@@ -167,11 +168,7 @@ function renderMarkdownLinks(text: string): React.ReactNode {
 }
 
 // Component to display comment replies
-function CommentReplies({ commentId }: { commentId: Id<"comments"> }) {
-  const teamSlugOrId =
-    typeof window !== "undefined"
-      ? window.location.pathname.split("/")[1] || "default"
-      : "default";
+function CommentReplies({ commentId, teamSlugOrId }: { commentId: Id<"comments">; teamSlugOrId: string }) {
   const replies = useQuery(api.comments.getReplies, {
     teamIdOrSlug: teamSlugOrId,
     commentId,
@@ -202,7 +199,7 @@ function CommentReplies({ commentId }: { commentId: Id<"comments"> }) {
   );
 }
 
-function CommentMarker({ comment, onClick }: CommentMarkerProps) {
+function CommentMarker({ comment, onClick, teamSlugOrId }: CommentMarkerProps) {
   const [position, setPosition] = useState<{ x: number; y: number } | null>(
     null
   );
@@ -447,7 +444,7 @@ function CommentMarker({ comment, onClick }: CommentMarkerProps) {
               </button>
             </div>
             {/* Always show replies in anchored comment */}
-            <CommentReplies commentId={comment._id as Id<"comments">} />
+            <CommentReplies commentId={comment._id as Id<"comments">} teamSlugOrId={teamSlugOrId} />
           </div>
         </div>
       )}
@@ -455,12 +452,8 @@ function CommentMarker({ comment, onClick }: CommentMarkerProps) {
   );
 }
 
-export function CmuxComments() {
+export function CmuxComments({ teamSlugOrId }: { teamSlugOrId: string }) {
   const { socket } = useSocket();
-  const teamSlugOrId =
-    typeof window !== "undefined"
-      ? window.location.pathname.split("/")[1] || "default"
-      : "default";
   const [isOpen, setIsOpen] = useState(false);
   const [isCommenting, setIsCommenting] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -739,6 +732,7 @@ export function CmuxComments() {
               setIsOpen(true);
               setForceShow(true);
             }}
+            teamSlugOrId={teamSlugOrId}
           />
         ))}
 
@@ -969,6 +963,7 @@ export function CmuxComments() {
                     <div className="transform -translate-x-[40px]">
                       <CommentReplies
                         commentId={comment._id as Id<"comments">}
+                        teamSlugOrId={teamSlugOrId}
                       />
                     </div>
                   </div>

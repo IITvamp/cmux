@@ -11,16 +11,11 @@ import clsx from "clsx";
 import { RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
-export function ProviderStatusPills() {
+export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) {
   const { socket } = useSocket();
   const navigate = useNavigate();
   const [status, setStatus] = useState<ProviderStatusResponse | null>(null);
   const [isVisible, setIsVisible] = useState(false);
-
-  const teamSlugOrId =
-    typeof window !== "undefined"
-      ? window.location.pathname.split("/")[1] || "default"
-      : "default";
 
   const checkProviderStatus = useCallback(() => {
     if (!socket) return;

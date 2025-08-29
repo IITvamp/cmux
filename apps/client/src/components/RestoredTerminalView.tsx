@@ -11,13 +11,10 @@ import { useEffect, useRef } from "react";
 
 export interface RestoredTerminalViewProps {
   runId: Id<"taskRuns">;
+  teamSlugOrId: string;
 }
 
-export function RestoredTerminalView({ runId }: RestoredTerminalViewProps) {
-  const teamSlugOrId =
-    typeof window !== "undefined"
-      ? window.location.pathname.split("/")[1] || "default"
-      : "default";
+export function RestoredTerminalView({ runId, teamSlugOrId }: RestoredTerminalViewProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<XTerm | null>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);

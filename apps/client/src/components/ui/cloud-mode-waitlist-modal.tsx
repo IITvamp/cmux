@@ -11,22 +11,20 @@ interface CloudModeWaitlistModalProps {
   visible: boolean;
   onClose: () => void;
   defaultEmail?: string;
+  teamSlugOrId: string;
 }
 
 export function CloudModeWaitlistModal({
   visible,
   onClose,
   defaultEmail,
+  teamSlugOrId,
 }: CloudModeWaitlistModalProps) {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const user = useUser({ or: "return-null" });
   const navigate = useNavigate();
-  const teamSlugOrId =
-    typeof window !== "undefined"
-      ? window.location.pathname.split("/")[1] || "default"
-      : "default";
 
   useEffect(() => {
     if (user) {

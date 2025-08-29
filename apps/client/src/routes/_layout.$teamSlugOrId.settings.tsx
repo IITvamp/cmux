@@ -20,6 +20,7 @@ export const Route = createFileRoute("/_layout/$teamSlugOrId/settings")({
 });
 
 function SettingsComponent() {
+  const { teamSlugOrId } = Route.useParams();
   const { theme, setTheme } = useTheme();
   const convex = useConvex();
   const [apiKeyValues, setApiKeyValues] = useState<Record<string, string>>({});
@@ -68,10 +69,6 @@ function SettingsComponent() {
   const apiKeyModelsByEnv = API_KEY_MODELS_BY_ENV;
 
   // Query existing API keys
-  const teamSlugOrId =
-    typeof window !== "undefined"
-      ? window.location.pathname.split("/")[1] || "default"
-      : "default";
   const { data: existingKeys } = useQuery(
     convexQuery(api.apiKeys.getAll, { teamIdOrSlug: teamSlugOrId })
   );
@@ -955,6 +952,7 @@ function SettingsComponent() {
               </div>
               <div className="p-4">
                 <ContainerSettings
+                  teamSlugOrId={teamSlugOrId}
                   onDataChange={handleContainerSettingsChange}
                 />
               </div>

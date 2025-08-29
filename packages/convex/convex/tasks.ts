@@ -1,8 +1,8 @@
 import { v } from "convex/values";
+import { resolveTeamIdLoose } from "../_shared/team";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { authMutation, authQuery } from "./users/utils";
-import { resolveTeamIdLoose } from "../_shared/team";
 
 export const get = authQuery({
   args: {
@@ -213,11 +213,7 @@ export const updateCrownError = authMutation({
   },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
-    const { id, teamIdOrSlug, ...updates } = args as {
-      id: Id<"tasks">;
-      teamIdOrSlug: string;
-      crownEvaluationError?: string;
-    };
+    const { id, teamIdOrSlug, ...updates } = args;
     const teamId = await resolveTeamIdLoose(ctx, teamIdOrSlug);
     const task = await ctx.db.get(id);
     if (!task || task.teamId !== teamId || task.userId !== userId) {
@@ -239,11 +235,7 @@ export const setPullRequestDescription = authMutation({
   },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
-    const { id, teamIdOrSlug, pullRequestDescription } = args as {
-      teamIdOrSlug: string;
-      id: Id<"tasks">;
-      pullRequestDescription?: string;
-    };
+    const { id, teamIdOrSlug, pullRequestDescription } = args;
     const teamId = await resolveTeamIdLoose(ctx, teamIdOrSlug);
     const task = await ctx.db.get(id);
     if (!task || task.teamId !== teamId || task.userId !== userId) {
@@ -265,11 +257,7 @@ export const setPullRequestTitle = authMutation({
   },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
-    const { id, teamIdOrSlug, pullRequestTitle } = args as {
-      teamIdOrSlug: string;
-      id: Id<"tasks">;
-      pullRequestTitle?: string;
-    };
+    const { id, teamIdOrSlug, pullRequestTitle } = args;
     const teamId = await resolveTeamIdLoose(ctx, teamIdOrSlug);
     const task = await ctx.db.get(id);
     if (!task || task.teamId !== teamId || task.userId !== userId) {
@@ -337,7 +325,9 @@ export const getTasksWithPendingCrownEvaluation = authQuery({
       .withIndex("by_team_user", (q) =>
         q.eq("teamId", teamId).eq("userId", userId)
       )
-      .filter((q) => q.eq(q.field("crownEvaluationError"), "pending_evaluation"))
+      .filter((q) =>
+        q.eq(q.field("crownEvaluationError"), "pending_evaluation")
+      )
       .collect();
 
     // Double-check that no evaluation exists for these tasks

@@ -20,16 +20,13 @@ import { memo, useCallback, useMemo } from "react";
 
 interface TaskItemProps {
   task: Doc<"tasks">;
+  teamSlugOrId: string;
 }
 
-export const TaskItem = memo(function TaskItem({ task }: TaskItemProps) {
+export const TaskItem = memo(function TaskItem({ task, teamSlugOrId }: TaskItemProps) {
   const navigate = useNavigate();
   const clipboard = useClipboard({ timeout: 2000 });
-  const { archiveWithUndo, unarchive } = useArchiveTask();
-  const teamSlugOrId =
-    typeof window !== "undefined"
-      ? window.location.pathname.split("/")[1] || "default"
-      : "default";
+  const { archiveWithUndo, unarchive } = useArchiveTask(teamSlugOrId);
 
   // Query for task runs to find VSCode instances
   const taskRunsQuery = useConvexQuery(

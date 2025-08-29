@@ -12,13 +12,10 @@ interface ContainerSettingsProps {
     stopImmediatelyOnCompletion: boolean;
     minContainersToKeep: number;
   }) => void;
+  teamSlugOrId: string;
 }
 
-export function ContainerSettings({ onDataChange }: ContainerSettingsProps) {
-  const teamSlugOrId =
-    typeof window !== "undefined"
-      ? window.location.pathname.split("/")[1] || "default"
-      : "default";
+export function ContainerSettings({ onDataChange, teamSlugOrId }: ContainerSettingsProps) {
   const settings = useQuery(api.containerSettings.get, {
     teamIdOrSlug: teamSlugOrId,
   });

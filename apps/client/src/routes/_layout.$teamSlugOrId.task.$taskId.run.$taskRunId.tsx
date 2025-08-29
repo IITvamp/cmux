@@ -16,10 +16,7 @@ export const Route = createFileRoute("/_layout/$teamSlugOrId/task/$taskId/run/$t
   loader: async (opts) => {
     const result = await opts.context.queryClient.ensureQueryData(
       convexQuery(api.taskRuns.get, {
-        teamIdOrSlug:
-          typeof window !== "undefined"
-            ? window.location.pathname.split("/")[1] || "default"
-            : "default",
+        teamIdOrSlug: opts.params.teamSlugOrId,
         id: opts.params.taskRunId as Id<"taskRuns">,
       })
     );
@@ -35,11 +32,7 @@ export const Route = createFileRoute("/_layout/$teamSlugOrId/task/$taskId/run/$t
 });
 
 function TaskRunComponent() {
-  const { taskRunId } = Route.useParams();
-  const teamSlugOrId =
-    typeof window !== "undefined"
-      ? window.location.pathname.split("/")[1] || "default"
-      : "default";
+  const { taskRunId, teamSlugOrId } = Route.useParams();
   const taskRun = useSuspenseQuery(
     convexQuery(api.taskRuns.get, {
       teamIdOrSlug: teamSlugOrId,

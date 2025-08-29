@@ -38,19 +38,13 @@ export const Route = createFileRoute("/_layout/$teamSlugOrId/task/$taskId/")({
     await Promise.all([
       opts.context.queryClient.ensureQueryData(
         convexQuery(api.taskRuns.getByTask, {
-          teamIdOrSlug:
-            typeof window !== "undefined"
-              ? window.location.pathname.split("/")[1] || "default"
-              : "default",
+          teamIdOrSlug: opts.params.teamSlugOrId,
           taskId: opts.params.taskId,
         })
       ),
       opts.context.queryClient.ensureQueryData(
         convexQuery(api.tasks.getById, {
-          teamIdOrSlug:
-            typeof window !== "undefined"
-              ? window.location.pathname.split("/")[1] || "default"
-              : "default",
+          teamIdOrSlug: opts.params.teamSlugOrId,
           id: opts.params.taskId,
         })
       ),
@@ -59,7 +53,7 @@ export const Route = createFileRoute("/_layout/$teamSlugOrId/task/$taskId/")({
 });
 
 function TaskDetailPage() {
-  const { taskId } = Route.useParams();
+  const { taskId, teamSlugOrId } = Route.useParams();
   const { runId } = Route.useSearch();
 
   const [isCreatingPr, setIsCreatingPr] = useState(false);
@@ -74,10 +68,6 @@ function TaskDetailPage() {
   const router = useRouter();
   const queryClient = router.options.context?.queryClient;
 
-  const teamSlugOrId =
-    typeof window !== "undefined"
-      ? window.location.pathname.split("/")[1] || "default"
-      : "default";
   const task = useQuery(api.tasks.getById, { teamIdOrSlug: teamSlugOrId, id: taskId });
   const taskRuns = useQuery(api.taskRuns.getByTask, { teamIdOrSlug: teamSlugOrId, taskId });
 
@@ -294,6 +284,7 @@ function TaskDetailPage() {
             onExpandAll={diffControls?.expandAll}
             onCollapseAll={diffControls?.collapseAll}
             isLoading={diffsQuery.isPending}
+            teamSlugOrId={teamSlugOrId}
           />
           {task?.text && (
             <div className="mb-2 px-3.5">

@@ -17,9 +17,10 @@ import CmuxLogo from "./logo/cmux-logo";
 interface SidebarProps {
   tasks: Doc<"tasks">[] | undefined;
   tasksWithRuns: TaskWithRuns[];
+  teamSlugOrId: string;
 }
 
-export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
+export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
   const DEFAULT_WIDTH = 256;
   const MIN_WIDTH = 200;
   const MAX_WIDTH = 600;
@@ -123,10 +124,6 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
 
   const resetWidth = useCallback(() => setWidth(DEFAULT_WIDTH), []);
 
-  const teamSlugOrId =
-    typeof window !== "undefined"
-      ? window.location.pathname.split("/")[1] || "default"
-      : "default";
 
   return (
     <div
@@ -184,6 +181,7 @@ export function Sidebar({ tasks, tasksWithRuns }: SidebarProps) {
                     key={task._id}
                     task={task}
                     defaultExpanded={expandTaskIds?.includes(task._id) ?? false}
+                    teamSlugOrId={teamSlugOrId}
                   />
                 ))
               ) : (
