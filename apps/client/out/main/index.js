@@ -1,4 +1,4 @@
-import { app, protocol, net, BrowserWindow, shell } from "electron";
+import { app, session, net, BrowserWindow, shell } from "electron";
 import path, { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import __cjs_mod__ from "node:module";
@@ -13,19 +13,8 @@ const is = {
   isMacOS: process.platform === "darwin",
   isLinux: process.platform === "linux"
 });
-protocol.registerSchemesAsPrivileged([
-  {
-    scheme: "cmux",
-    privileges: {
-      standard: true,
-      secure: true,
-      allowServiceWorkers: true,
-      supportFetchAPI: true,
-      corsEnabled: true,
-      bypassCSP: true
-    }
-  }
-]);
+const PARTITION = "persist:cmux";
+const APP_HOST = "cmux.local";
 let mainWindow = null;
 let rendererLoaded = false;
 let pendingProtocolUrl = null;
@@ -66,7 +55,8 @@ function createWindow() {
       preload: join(__dirname, "../preload/index.cjs"),
       sandbox: false,
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      partition: PARTITION
     }
   });
   mainWindow.on("ready-to-show", () => {
@@ -86,7 +76,7 @@ function createWindow() {
   if (is.dev && process.env["ELECTRON_RENDERER_URL"]) {
     mainWindow.loadURL(process.env["ELECTRON_RENDERER_URL"]);
   } else {
-    mainWindow.loadURL("cmux://local/index.html");
+    mainWindow.loadURL(`https://${APP_HOST}/index.html`);
   }
 }
 app.on("open-url", (_event, url) => {
@@ -94,16 +84,18 @@ app.on("open-url", (_event, url) => {
   handleOrQueueProtocolUrl(url);
 });
 app.whenReady().then(() => {
-  createWindow();
   const baseDir = path.join(app.getAppPath(), "out", "renderer");
-  protocol.handle("cmux", async (req) => {
-    const { host, pathname } = new URL(req.url);
-    if (host && host !== "local")
-      return new Response("not found", { status: 404 });
-    const fsPath = path.normalize(path.join(baseDir, pathname));
+  const ses = session.fromPartition(PARTITION);
+  ses.protocol.handle("https", async (req) => {
+    const u = new URL(req.url);
+    if (u.hostname !== APP_HOST) return net.fetch(req);
+    const pathname = u.pathname === "/" ? "/index.html" : u.pathname;
+    const fsPath = path.normalize(
+      path.join(baseDir, decodeURIComponent(pathname))
+    );
     const rel = path.relative(baseDir, fsPath);
     if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) {
-      return new Response("bad path", { status: 400 });
+      return new Response("Not found", { status: 404 });
     }
     return net.fetch(pathToFileURL(fsPath).toString());
   });
@@ -132,8 +124,7 @@ function handleProtocolUrl(url) {
       mainWindow.webContents.session.cookies.set({
         url: currentUrl,
         name: `stack-refresh-8a877114-b905-47c5-8b64-3a2d90679577`,
-        value: stackRefresh,
-        path: "/"
+        value: stackRefresh
       }).then(
         () => mainLog(
           "info",
@@ -144,14 +135,8 @@ function handleProtocolUrl(url) {
       mainWindow.webContents.session.cookies.set({
         url: currentUrl,
         name: "stack-access",
-        value: stackAccess,
-        path: "/"
+        value: stackAccess
       }).then(() => mainLog("info", "Set cookie", "stack-access")).catch((e) => mainLog("error", "Failed to set access cookie", e));
-      mainWindow.webContents.session.cookies.get({ url: currentUrl }).then((cookies) => mainLog("debug", "Cookies for", currentUrl, cookies)).catch((e) => mainLog("error", "Failed to read cookies", e));
-      mainWindow.webContents.send("auth-callback", {
-        stackRefresh,
-        stackAccess
-      });
     }
   }
 }

@@ -1,7 +1,12 @@
 import { contextBridge, ipcRenderer } from "electron";
 import { electronAPI } from "@electron-toolkit/preload";
 
-const api = {};
+const api = {
+  cookies: {
+    set: (cookie: { name: string; value: string }) =>
+      ipcRenderer.invoke("cookies:set", cookie) as Promise<true>,
+  },
+};
 
 // Mirror main-process logs into the renderer DevTools console
 try {

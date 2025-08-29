@@ -88,17 +88,17 @@ function AuthenticatedOrLoading({ children }: { children: ReactNode }) {
                   <p className="text-neutral-900 dark:text-neutral-100 font-medium">Sign in required</p>
                   <p className="text-sm text-neutral-600 dark:text-neutral-400">We’ll open your browser to continue.</p>
                 </div>
-                <button
-                  onClick={() => {
-                    const origin = env.VITE_WWW_ORIGIN || "http://localhost:9779";
-                    const url = `${origin}/handler/sign-in/`;
-                    // Open in external browser via Electron handler
-                    window.open(url, "_blank", "noopener,noreferrer");
-                  }}
-                  className="px-4 py-2 rounded-md bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900 hover:opacity-90"
-                >
-                  Sign in with browser
-                </button>
+                  <button
+                    onClick={() => {
+                      const origin = env.VITE_WWW_ORIGIN || "http://localhost:9779";
+                      const url = `${origin}/handler/sign-in/`;
+                      // Open in external browser via Electron handler
+                      window.open(url, "_blank", "noopener,noreferrer");
+                    }}
+                    className="px-4 py-2 rounded-md bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900 hover:opacity-90"
+                  >
+                    Sign in with browser
+                  </button>
                 <p className="text-xs text-neutral-500 dark:text-neutral-500 text-center">
                   After signing in, you'll be returned automatically.
                 </p>
