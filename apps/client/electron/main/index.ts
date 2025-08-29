@@ -5,6 +5,16 @@ import { env } from "node:process";
 import { appendFileSync } from "node:fs";
 
 let mainWindow: BrowserWindow | null = null;
+let rendererLoaded = false;
+let pendingProtocolUrl: string | null = null;
+
+function handleOrQueueProtocolUrl(url: string): void {
+  if (mainWindow && rendererLoaded) {
+    handleProtocolUrl(url);
+  } else {
+    pendingProtocolUrl = url;
+  }
+}
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -24,6 +34,15 @@ function createWindow(): void {
 
   mainWindow.on("ready-to-show", () => {
     mainWindow?.show();
+  });
+
+  // Once the renderer is loaded, process any queued deep-link
+  mainWindow.webContents.on("did-finish-load", () => {
+    rendererLoaded = true;
+    if (pendingProtocolUrl) {
+      handleProtocolUrl(pendingProtocolUrl);
+      pendingProtocolUrl = null;
+    }
   });
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -58,13 +77,13 @@ if (!gotTheLock) {
 
       const url = commandLine.find((arg) => arg.startsWith("cmux://"));
       if (url) {
-        handleProtocolUrl(url);
+        handleOrQueueProtocolUrl(url);
       }
     }
   });
 
   app.on("open-url", (_event, url) => {
-    handleProtocolUrl(url);
+    handleOrQueueProtocolUrl(url);
   });
 
   app.whenReady().then(() => {
@@ -83,7 +102,11 @@ app.on("window-all-closed", () => {
 });
 
 function handleProtocolUrl(url: string): void {
-  if (!mainWindow) return;
+  if (!mainWindow) {
+    // Should not happen due to queuing, but guard anyway
+    pendingProtocolUrl = url;
+    return;
+  }
 
   const urlObj = new URL(url);
 
@@ -93,17 +116,22 @@ function handleProtocolUrl(url: string): void {
     const stackAccess = urlObj.searchParams.get("stack_access");
 
     if (stackRefresh && stackAccess) {
-      mainWindow.webContents.session.cookies.set({
-        url: mainWindow.webContents.getURL(),
-        name: `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`,
-        value: stackRefresh,
-      });
+      // Write cookies against the current renderer URL. Swallow errors to avoid crashing on invalid URL schemes.
+      void mainWindow.webContents.session.cookies
+        .set({
+          url: mainWindow.webContents.getURL(),
+          name: `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`,
+          value: stackRefresh,
+        })
+        .catch(() => {});
 
-      mainWindow.webContents.session.cookies.set({
-        url: mainWindow.webContents.getURL(),
-        name: "stack-access",
-        value: stackAccess,
-      });
+      void mainWindow.webContents.session.cookies
+        .set({
+          url: mainWindow.webContents.getURL(),
+          name: "stack-access",
+          value: stackAccess,
+        })
+        .catch(() => {});
 
       const logFilePath = join(__dirname, "auth-callback.log");
 

@@ -1,15 +1,7 @@
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge } from "electron";
 import { electronAPI } from "@electron-toolkit/preload";
 
-const api = {
-  onAuthCallback: (callback: (data: { refreshToken: string }) => void) => {
-    ipcRenderer.on("auth-callback", (_event, data) => callback(data));
-  },
-  removeAuthCallbackListener: () => {
-    ipcRenderer.removeAllListeners("auth-callback");
-  },
-};
-
+const api = {};
 if (process.contextIsolated) {
   try {
     contextBridge.exposeInMainWorld("electron", electronAPI);
