@@ -9,15 +9,9 @@ import {
 } from "antd";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { stackClientApp } from "./stack";
-import { useElectronAuthCallback } from "./hooks/useElectronAuthCallback";
 
 interface ProvidersProps {
   children: ReactNode;
-}
-
-function ElectronAuthHandler() {
-  useElectronAuthCallback();
-  return null;
 }
 
 export function Providers({ children }: ProvidersProps) {
@@ -77,7 +71,6 @@ export function Providers({ children }: ProvidersProps) {
       <HeroUIProvider>
         <StackTheme>
           <StackProvider app={stackClientApp}>
-            <ElectronAuthHandler />
             <AntdConfigProvider theme={antdTheme}>
               <SocketProvider>{children}</SocketProvider>
             </AntdConfigProvider>

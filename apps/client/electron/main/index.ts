@@ -1,6 +1,8 @@
 import { is } from "@electron-toolkit/utils";
-import { app, BrowserWindow, shell, protocol } from "electron";
+import { app, BrowserWindow, shell } from "electron";
 import { join } from "node:path";
+import { env } from "node:process";
+import { appendFileSync } from "node:fs";
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -53,7 +55,7 @@ if (!gotTheLock) {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.focus();
-      
+
       const url = commandLine.find((arg) => arg.startsWith("cmux://"));
       if (url) {
         handleProtocolUrl(url);
@@ -82,14 +84,43 @@ app.on("window-all-closed", () => {
 
 function handleProtocolUrl(url: string): void {
   if (!mainWindow) return;
-  
+
   const urlObj = new URL(url);
-  
+
   if (urlObj.hostname === "auth-callback") {
-    const refreshToken = urlObj.searchParams.get("refresh_token");
-    
-    if (refreshToken) {
-      mainWindow.webContents.send("auth-callback", { refreshToken });
+    // Check for the full URL parameter
+    const stackRefresh = urlObj.searchParams.get(`stack_refresh`);
+    const stackAccess = urlObj.searchParams.get("stack_access");
+
+    if (stackRefresh && stackAccess) {
+      mainWindow.webContents.session.cookies.set({
+        url: mainWindow.webContents.getURL(),
+        name: `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`,
+        value: stackRefresh,
+      });
+
+      mainWindow.webContents.session.cookies.set({
+        url: mainWindow.webContents.getURL(),
+        name: "stack-access",
+        value: stackAccess,
+      });
+
+      const logFilePath = join(__dirname, "auth-callback.log");
+
+      const logData = {
+        timestamp: new Date().toISOString(),
+        logFilePath: logFilePath,
+        stackRefresh,
+        stackAccess,
+        url,
+      };
+
+      appendFileSync(logFilePath, JSON.stringify(logData, null, 2) + "\n\n");
+
+      mainWindow.webContents.send("auth-callback", {
+        stackRefresh,
+        stackAccess,
+      });
     }
   }
 }

@@ -1,5 +1,7 @@
 import { app, BrowserWindow, shell } from "electron";
 import { join } from "node:path";
+import { env } from "node:process";
+import { appendFileSync } from "node:fs";
 import __cjs_mod__ from "node:module";
 const __filename = import.meta.filename;
 const __dirname = import.meta.dirname;
@@ -81,9 +83,32 @@ function handleProtocolUrl(url) {
   if (!mainWindow) return;
   const urlObj = new URL(url);
   if (urlObj.hostname === "auth-callback") {
-    const refreshToken = urlObj.searchParams.get("refresh_token");
-    if (refreshToken) {
-      mainWindow.webContents.send("auth-callback", { refreshToken });
+    const stackRefresh = urlObj.searchParams.get(`stack_refresh`);
+    const stackAccess = urlObj.searchParams.get("stack_access");
+    if (stackRefresh && stackAccess) {
+      mainWindow.webContents.session.cookies.set({
+        url: mainWindow.webContents.getURL(),
+        name: `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`,
+        value: stackRefresh
+      });
+      mainWindow.webContents.session.cookies.set({
+        url: mainWindow.webContents.getURL(),
+        name: "stack-access",
+        value: stackAccess
+      });
+      const logFilePath = join(__dirname, "auth-callback.log");
+      const logData = {
+        timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+        logFilePath,
+        stackRefresh,
+        stackAccess,
+        url
+      };
+      appendFileSync(logFilePath, JSON.stringify(logData, null, 2) + "\n\n");
+      mainWindow.webContents.send("auth-callback", {
+        stackRefresh,
+        stackAccess
+      });
     }
   }
 }
