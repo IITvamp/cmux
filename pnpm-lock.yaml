@@ -684,6 +684,10 @@ importers:
       zod:
         specifier: ^4.1.4
         version: 4.1.4
+    devDependencies:
+      '@octokit/webhooks-types':
+        specifier: ^7.6.1
+        version: 7.6.1
 
   packages/shared:
     dependencies:

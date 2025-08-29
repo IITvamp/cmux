@@ -20,18 +20,18 @@ export const stackClientApp = new StackClientApp({
 
 void stackClientApp.getUser().then(async (user) => {
   if (!user) {
+    signalConvexAuthReady(false);
     return;
   }
   const authJson = await user.getAuthJson();
   if (!authJson.accessToken) {
+    signalConvexAuthReady(false);
     return;
   }
   convexQueryClient.convexClient.setAuth(
     async () => authJson.accessToken,
     (isAuthenticated) => {
-      if (isAuthenticated) {
-        signalConvexAuthReady();
-      }
+      signalConvexAuthReady(isAuthenticated);
     }
   );
 });

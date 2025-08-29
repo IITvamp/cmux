@@ -79,7 +79,6 @@ function AuthenticatedOrSignIn({
           </motion.div>
         ) : null}
       </AnimatePresence>
-
       <Authenticated>
         <OnReadyComponent onReady={onReady} />
         {children}

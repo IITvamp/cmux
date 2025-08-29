@@ -31,5 +31,8 @@
     "svix": "^1.75.0",
     "typescript": "^5.8.3",
     "zod": "^4.1.4"
+  },
+  "devDependencies": {
+    "@octokit/webhooks-types": "^7.6.1"
   }
 }
