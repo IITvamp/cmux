@@ -1,19 +1,10 @@
 "use client";
 
-import { useEffect } from "react";
 import { JetBrains_Mono } from "next/font/google";
 
 const jetbrains = JetBrains_Mono({ subsets: ["latin"], preload: true });
 
 export function OpenCmuxClient({ href }: { href: string }) {
-  useEffect(() => {
-    try {
-      window.location.href = href;
-    } catch {
-      // Ignore — rely on the visible fallback UI.
-    }
-  }, [href]);
-
   return (
     <div className={`min-h-dvh flex items-center justify-center p-6 bg-neutral-50 dark:bg-black ${jetbrains.className}`}>
       <div className="w-full max-w-md text-center rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 p-8 shadow-sm">
