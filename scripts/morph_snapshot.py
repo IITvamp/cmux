@@ -188,7 +188,7 @@ class MorphDockerfileExecutor:
 
     def handle_copy(self, content: str) -> None:
         import glob
-
+        
         tokens = shlex.split(content)
         if not tokens:
             return
@@ -305,6 +305,18 @@ class MorphDockerfileExecutor:
                     )
 
                 self._upload_with_retry(src, remote, recursive=recursive)
+                # Preserve executable bit for uploaded files (non-recursive)
+                try:
+                    if not recursive:
+                        st_mode = os.stat(src).st_mode
+                        if (st_mode & 0o111) != 0:
+                            # Make remote executable if local was executable
+                            self.snapshot = self.snapshot.exec(
+                                f"chmod +x {shlex.quote(remote)}"
+                            )
+                except FileNotFoundError:
+                    # If the local file disappeared between glob and stat, skip
+                    pass
 
     def handle_add(self, content: str) -> None:
         self.handle_copy(content)
@@ -440,6 +452,20 @@ class MorphDockerfileExecutor:
         if not final_argv:
             return
 
+        # If the entrypoint points at /startup.sh, copy it to a stable path and use that
+        # This avoids issues with self-deletion inside the script and missing exec bit
+        if final_argv and final_argv[0] == "/startup.sh":
+            # Ensure the script exists and is executable at a stable path
+            stable_path = "/usr/local/bin/cmux-startup.sh"
+            self.snapshot = self.snapshot.exec(
+                "sh -lc 'if [ -f /startup.sh ]; then cp /startup.sh "
+                + shlex.quote(stable_path)
+                + "; chmod +x "
+                + shlex.quote(stable_path)
+                + "; fi'"
+            )
+            final_argv[0] = stable_path
+
         # Create wrapper script to avoid fragile quoting in systemd unit
         wrapper_path = "/usr/local/bin/cmux-entrypoint.sh"
         # Build bash array with proper quoting
@@ -469,13 +495,16 @@ class MorphDockerfileExecutor:
         unit_text = """
 [Unit]
 Description=Cmux Entrypoint Autostart
-After=network.target
-Wants=network.target
+After=network-online.target
+Wants=network-online.target
 
 [Service]
 Type=simple
 EnvironmentFile=-/etc/environment
 ExecStart=/usr/local/bin/cmux-entrypoint.sh
+ExecStartPre=/bin/mkdir -p /var/log/cmux
+StandardOutput=append:/var/log/cmux/cmux.service.log
+StandardError=append:/var/log/cmux/cmux.service.log
 Restart=no
 User={USER}
 
