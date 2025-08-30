@@ -4,7 +4,7 @@ import {
   healthRouter,
   usersRouter,
 } from "@/lib/routes/index";
-import { stackServerApp } from "@/app/stack";
+import { stackServerApp } from "@/lib/utils/stack";
 import { swaggerUI } from "@hono/swagger-ui";
 import { OpenAPIHono } from "@hono/zod-openapi";
 import { cors } from "hono/cors";
