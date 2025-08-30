@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect } from "react";
-import CmuxLogo from "@/app/components/CmuxLogo";
 import { JetBrains_Mono } from "next/font/google";
 
 const jetbrains = JetBrains_Mono({ subsets: ["latin"], preload: true });
