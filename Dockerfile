@@ -37,10 +37,10 @@ RUN curl -fsSL https://bun.sh/install | bash && \
     bun --version && \
     bunx --version
 
-# Install openvscode-server
+# Install openvscode-server (with retries and IPv4 fallback)
 RUN if [ -z "${CODE_RELEASE}" ]; then \
     CODE_RELEASE=$(curl -sX GET "https://api.github.com/repos/gitpod-io/openvscode-server/releases/latest" \
-      | awk '/tag_name/{print $4;exit}' FS='[""]' \
+      | awk '/tag_name/{print $4;exit}' FS='["\"]' \
       | sed 's|^openvscode-server-v||'); \
   fi && \
   echo "CODE_RELEASE=${CODE_RELEASE}" && \
@@ -51,12 +51,13 @@ RUN if [ -z "${CODE_RELEASE}" ]; then \
     ARCH="arm64"; \
   fi && \
   mkdir -p /app/openvscode-server && \
-  curl -fsSL -o \
-    /tmp/openvscode-server.tar.gz \
-    "https://github.com/gitpod-io/openvscode-server/releases/download/openvscode-server-v${CODE_RELEASE}/openvscode-server-v${CODE_RELEASE}-linux-${ARCH}.tar.gz" && \
-  tar xf \
-    /tmp/openvscode-server.tar.gz -C \
-    /app/openvscode-server/ --strip-components=1 && \
+  url="https://github.com/gitpod-io/openvscode-server/releases/download/openvscode-server-v${CODE_RELEASE}/openvscode-server-v${CODE_RELEASE}-linux-${ARCH}.tar.gz" && \
+  echo "Downloading: $url" && \
+  ( \
+    curl -fSL --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/openvscode-server.tar.gz "$url" \
+    || curl -fSL4 --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/openvscode-server.tar.gz "$url" \
+  ) && \
+  tar xf /tmp/openvscode-server.tar.gz -C /app/openvscode-server/ --strip-components=1 && \
   rm -rf /tmp/openvscode-server.tar.gz
 
 # Copy package files for monorepo dependency installation
@@ -93,6 +94,7 @@ COPY apps/worker/wait-for-docker.sh ./apps/worker/
 COPY packages/vscode-extension/src ./packages/vscode-extension/src
 COPY packages/vscode-extension/tsconfig.json ./packages/vscode-extension/
 COPY packages/vscode-extension/.vscodeignore ./packages/vscode-extension/
+COPY packages/vscode-extension/LICENSE.md ./packages/vscode-extension/
 
 # Build worker with bundling, using the installed node_modules
 RUN cd /cmux && \
