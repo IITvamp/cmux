@@ -374,9 +374,9 @@ const convexSchema = defineSchema({
     connectedByUserId: v.optional(v.string()), // Stack user who linked the install (when known)
     type: v.literal("github_app"),
     installationId: v.number(),
-    accountLogin: v.string(), // org or user login
-    accountId: v.number(),
-    accountType: v.union(v.literal("User"), v.literal("Organization")),
+    accountLogin: v.optional(v.string()), // org or user login
+    accountId: v.optional(v.number()),
+    accountType: v.optional(v.union(v.literal("User"), v.literal("Organization"))),
     isActive: v.optional(v.boolean()),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -393,6 +393,17 @@ const convexSchema = defineSchema({
     payloadHash: v.string(), // sha256 of payload body
     receivedAt: v.number(),
   }).index("by_deliveryId", ["deliveryId"]),
+
+  // Short-lived, single-use install state tokens for mapping installation -> team
+  installStates: defineTable({
+    nonce: v.string(),
+    teamId: v.string(),
+    userId: v.string(),
+    iat: v.number(),
+    exp: v.number(),
+    status: v.union(v.literal("pending"), v.literal("used"), v.literal("expired")),
+    createdAt: v.number(),
+  }).index("by_nonce", ["nonce"]),
 });
 
 export default convexSchema;

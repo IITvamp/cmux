@@ -1,11 +1,11 @@
 import { Webhook } from "svix";
 import { env } from "../_shared/convex-env";
-import { httpAction } from "./_generated/server";
-import { internal } from "./_generated/api";
 import {
   StackWebhookPayloadSchema,
   type StackWebhookPayload,
 } from "../_shared/stack-webhook-schema";
+import { internal } from "./_generated/api";
+import { httpAction } from "./_generated/server";
 
 function undefIfNull<T>(value: T | null | undefined): T | undefined {
   return value === null || value === undefined ? undefined : value;
@@ -52,8 +52,12 @@ export const stackWebhook = httpAction(async (ctx, req) => {
         primaryEmailAuthEnabled: u.primary_email_auth_enabled,
         displayName: undefIfNull(u.display_name || undefined),
         selectedTeamId: undefIfNull(u.selected_team_id || undefined),
-        selectedTeamDisplayName: undefIfNull(u.selected_team?.display_name || undefined),
-        selectedTeamProfileImageUrl: undefIfNull(u.selected_team?.profile_image_url || undefined),
+        selectedTeamDisplayName: undefIfNull(
+          u.selected_team?.display_name || undefined
+        ),
+        selectedTeamProfileImageUrl: undefIfNull(
+          u.selected_team?.profile_image_url || undefined
+        ),
         profileImageUrl: undefIfNull(u.profile_image_url || undefined),
         signedUpAtMillis: u.signed_up_at_millis,
         lastActiveAtMillis: u.last_active_at_millis,

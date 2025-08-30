@@ -14,6 +14,7 @@ import type * as containerSettings from "../containerSettings.js";
 import type * as crown from "../crown.js";
 import type * as github from "../github.js";
 import type * as github_app from "../github_app.js";
+import type * as github_setup from "../github_setup.js";
 import type * as github_webhook from "../github_webhook.js";
 import type * as http from "../http.js";
 import type * as stack from "../stack.js";
@@ -47,6 +48,7 @@ declare const fullApi: ApiFromModules<{
   crown: typeof crown;
   github: typeof github;
   github_app: typeof github_app;
+  github_setup: typeof github_setup;
   github_webhook: typeof github_webhook;
   http: typeof http;
   stack: typeof stack;

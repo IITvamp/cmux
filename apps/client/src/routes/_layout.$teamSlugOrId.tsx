@@ -24,11 +24,9 @@ export const Route = createFileRoute("/_layout/$teamSlugOrId")({
     }
   },
   loader: async ({ params }) => {
-    console.time("convexQueryClient.queryClient.ensureQueryData");
     void convexQueryClient.queryClient.ensureQueryData(
       convexQuery(api.tasks.get, { teamSlugOrId: params.teamSlugOrId })
     );
-    console.timeEnd("convexQueryClient.queryClient.ensureQueryData");
   },
 });
 

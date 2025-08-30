@@ -195,6 +195,26 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
       </nav>
 
       <div className="pb-2 shrink-0 flex flex-col">
+        <Link
+          to="/$teamSlugOrId/environments"
+          params={{ teamSlugOrId }}
+          className="flex items-center px-7 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors select-none cursor-default"
+        >
+          <svg
+            className="w-4 h-4 mr-3 text-neutral-500"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M3 7h18M3 12h18M3 17h18"
+            />
+          </svg>
+          Environments
+        </Link>
         <a
           href="https://github.com/manaflow-ai/cmux/issues/new"
           target="_blank"

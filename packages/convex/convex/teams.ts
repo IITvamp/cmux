@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { getTeamId, resolveTeamIdLoose } from "../_shared/team";
 import { authMutation, authQuery } from "./users/utils";
+import { internalQuery } from "./_generated/server";
 
 function normalizeSlug(input: string): string {
   const s = input.trim().toLowerCase();
@@ -121,5 +122,18 @@ export const setName = authMutation({
       });
     }
     return { name: trimmed };
+  },
+});
+
+// Internal helper to fetch a team by UUID (used by HTTP handlers for redirects)
+export const getByUuidInternal = internalQuery({
+  args: { uuid: v.string() },
+  handler: async (ctx, { uuid }) => {
+    const team = await ctx.db
+      .query("teams")
+      .withIndex("by_uuid", (q) => q.eq("uuid", uuid))
+      .first();
+    if (!team) return null;
+    return { uuid: team.uuid, slug: team.slug ?? null } as const;
   },
 });

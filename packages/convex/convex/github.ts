@@ -77,6 +77,82 @@ export const getBranchesByRepo = authQuery({
   },
 });
 
+// Provider connections for the current team (GitHub App installations mapped to this team)
+export const listProviderConnections = authQuery({
+  args: { teamSlugOrId: v.string() },
+  handler: async (ctx, { teamSlugOrId }) => {
+    const teamId = await getTeamId(ctx, teamSlugOrId);
+    const rows = await ctx.db
+      .query("providerConnections")
+      .withIndex("by_team", (q) => q.eq("teamId", teamId))
+      .collect();
+    return rows.map((r) => ({
+      installationId: r.installationId,
+      accountLogin: r.accountLogin,
+      accountType: r.accountType,
+      type: r.type,
+      isActive: r.isActive ?? true,
+    }));
+  },
+});
+
+// Unassigned provider connections (no teamId yet)
+export const listUnassignedProviderConnections = authQuery({
+  args: {},
+  handler: async (ctx) => {
+    // For now, return all active, unassigned connections.
+    // In the future, restrict by current user's ownership or admin role.
+    const all = await ctx.db.query("providerConnections").collect();
+    const rows = all.filter((r) => !r.teamId && (r.isActive ?? true));
+    return rows.map((r) => ({
+      installationId: r.installationId,
+      accountLogin: r.accountLogin,
+      accountType: r.accountType,
+      isActive: r.isActive ?? true,
+    }));
+  },
+});
+
+// Assign a provider connection (installation) to the given team
+export const assignProviderConnectionToTeam = authMutation({
+  args: { teamSlugOrId: v.string(), installationId: v.number() },
+  handler: async (ctx, { teamSlugOrId, installationId }) => {
+    const teamId = await getTeamId(ctx, teamSlugOrId);
+    const now = Date.now();
+    const row = await ctx.db
+      .query("providerConnections")
+      .withIndex("by_installationId", (q) => q.eq("installationId", installationId))
+      .first();
+    if (!row) throw new Error("Installation not found");
+    await ctx.db.patch(row._id, {
+      teamId,
+      connectedByUserId: ctx.identity.subject,
+      updatedAt: now,
+      isActive: true,
+    });
+    return { ok: true as const };
+  },
+});
+
+// Remove a provider connection from the team (deactivate and detach)
+export const removeProviderConnection = authMutation({
+  args: { teamSlugOrId: v.string(), installationId: v.number() },
+  handler: async (ctx, { teamSlugOrId, installationId }) => {
+    const teamId = await getTeamId(ctx, teamSlugOrId);
+    const row = await ctx.db
+      .query("providerConnections")
+      .withIndex("by_installationId", (q) => q.eq("installationId", installationId))
+      .first();
+    if (!row || row.teamId !== teamId) throw new Error("Not found");
+    await ctx.db.patch(row._id, {
+      teamId: undefined,
+      isActive: false,
+      updatedAt: Date.now(),
+    });
+    return { ok: true as const };
+  },
+});
+
 // Internal mutations
 export const insertRepo = internalMutation({
   args: {
@@ -107,6 +183,7 @@ export const upsertRepo = authMutation({
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
     const teamId = await getTeamId(ctx, args.teamSlugOrId);
+    const now = Date.now();
     // Check if repo already exists
     const existing = await ctx.db
       .query("repos")
@@ -124,6 +201,7 @@ export const upsertRepo = authMutation({
         name: args.name,
         gitRemote: args.gitRemote,
         provider: args.provider,
+        lastSyncedAt: now,
       });
     } else {
       // Insert new repo
@@ -135,6 +213,7 @@ export const upsertRepo = authMutation({
         provider: args.provider || "github",
         userId,
         teamId,
+        lastSyncedAt: now,
       });
     }
   },
@@ -199,6 +278,7 @@ export const bulkInsertRepos = authMutation({
       (repo) => !existingRepoNames.has(repo.fullName)
     );
 
+    const now = Date.now();
     const insertedIds = await Promise.all(
       newRepos.map((repo) =>
         ctx.db.insert("repos", {
@@ -206,6 +286,7 @@ export const bulkInsertRepos = authMutation({
           provider: repo.provider || "github",
           userId,
           teamId,
+          lastSyncedAt: now,
         })
       )
     );
@@ -273,8 +354,11 @@ export const replaceAllRepos = authMutation({
     await Promise.all(existingRepos.map((repo) => ctx.db.delete(repo._id)));
 
     // Insert all new repos
+    const now = Date.now();
     const insertedIds = await Promise.all(
-      repos.map((repo) => ctx.db.insert("repos", { ...repo, userId, teamId }))
+      repos.map((repo) =>
+        ctx.db.insert("repos", { ...repo, userId, teamId, lastSyncedAt: now })
+      )
     );
     return insertedIds;
   },
