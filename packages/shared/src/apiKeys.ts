@@ -41,3 +41,9 @@ export const MODEL_STUDIO_API_KEY: AgentConfigApiKey = {
   displayName: "Alibaba Cloud ModelStudio API Key",
   description: "Alibaba Cloud ModelStudio (DashScope Intl) API key for Qwen",
 };
+
+export const AUGMENT_API_KEY: AgentConfigApiKey = {
+  envVar: "AUGMENT_API_KEY",
+  displayName: "Augment API Key",
+  description: "API key for Augment Code agent",
+};

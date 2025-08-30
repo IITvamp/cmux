@@ -1,5 +1,14 @@
 This project is called cmux. cmux is a web app that spawns Claude Code, Codex CLI, Gemini CLI, Amp, Opencode, and other coding agent CLIs in parallel across multiple tasks. For each run, cmux spawns an isolated openvscode instance via Docker or a configurable sandbox provider. The openvscode instance by default opens the git diff UI and a terminal with the running dev server (configurable via devcontainer.json).
 
+# Agents
+
+## Installation Instructions
+
+### Augment Code Agent
+- Install globally: `npm install -g @augmentcode/auggie`
+- Login locally first: Run `auggie login` on your local machine
+- Auth files are copied automatically from `~/.augment/auth.json` and `~/.augment/config.json`
+
 # Config
 
 Use pnpm to install dependencies and run the project.
