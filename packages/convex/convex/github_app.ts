@@ -237,3 +237,16 @@ export const consumeInstallState = internalMutation({
     return { ok: true as const };
   },
 });
+
+// Internal helper: fetch provider connection by installation id
+export const getProviderConnectionByInstallationId = internalQuery({
+  args: { installationId: v.number() },
+  handler: async (ctx, { installationId }) => {
+    return await ctx.db
+      .query("providerConnections")
+      .withIndex("by_installationId", (q) =>
+        q.eq("installationId", installationId)
+      )
+      .first();
+  },
+});

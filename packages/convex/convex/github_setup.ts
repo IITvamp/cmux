@@ -55,19 +55,39 @@ function base64urlFromBytes(buf: ArrayBuffer | Uint8Array): string {
 }
 
 export const githubSetup = httpAction(async (ctx, req) => {
-  if (!env.INSTALL_STATE_SECRET) {
-    return new Response("setup not configured", { status: 501 });
-  }
-
   const url = new URL(req.url);
   const installationIdStr = url.searchParams.get("installation_id");
   const state = url.searchParams.get("state");
-  if (!installationIdStr || !state) {
+
+  if (!installationIdStr) {
     return new Response("missing params", { status: 400 });
   }
   const installationId = Number(installationIdStr);
   if (!Number.isFinite(installationId)) {
     return new Response("invalid installation_id", { status: 400 });
+  }
+
+  // If state is missing (e.g. user used "Configure" from GitHub settings),
+  // try to resolve the target team from an existing connection and redirect.
+  if (!state) {
+    const existing = await ctx.runQuery(
+      internal.github_app.getProviderConnectionByInstallationId,
+      { installationId }
+    );
+    if (existing && existing.teamId) {
+      const team = await ctx.runQuery(internal.teams.getByUuidInternal, {
+        uuid: existing.teamId,
+      });
+      const teamPath = team?.slug ?? existing.teamId;
+      const target = `http://localhost:5173/${encodeURIComponent(teamPath)}/environments`;
+      return Response.redirect(target, 302);
+    }
+    // Fallback: send user to team picker if we can't resolve a team
+    return Response.redirect("http://localhost:5173/team-picker", 302);
+  }
+
+  if (!env.INSTALL_STATE_SECRET) {
+    return new Response("setup not configured", { status: 501 });
   }
 
   // Parse token: v1.<payload>.<sig>

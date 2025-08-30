@@ -5,10 +5,10 @@ import { GitLabIcon } from "@/components/icons/gitlab";
 import { TitleBar } from "@/components/TitleBar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api, api as convexApi } from "@cmux/convex/api";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useMutation, useQuery } from "convex/react";
-import { Check, ChevronDown, Minus, Plus } from "lucide-react";
+import { Check, ChevronDown, Minus, Plus, Trash2 } from "lucide-react";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import type { Selection } from "react-aria-components";
 
@@ -30,6 +30,7 @@ function ConnectionIcon({ type }: { type?: string }) {
 // no ProviderIcon inline; use icon components
 
 function EnvironmentsPage() {
+  const router = useRouter();
   const { teamSlugOrId } = Route.useParams();
   const reposByOrg = useQuery(api.github.getReposByOrg, { teamSlugOrId });
   const connections = useQuery(api.github.listProviderConnections, {
@@ -50,6 +51,86 @@ function EnvironmentsPage() {
   const [pendingFocusIndex, setPendingFocusIndex] = useState<number | null>(
     null
   );
+
+  // Helper to open a centered popup window for GitHub flows
+  const watchPopupClosed = (
+    win: Window | null,
+    onClose: () => void
+  ): void => {
+    if (!win) return;
+    const timer = window.setInterval(() => {
+      try {
+        if (win.closed) {
+          window.clearInterval(timer);
+          onClose();
+        }
+      } catch (_e) {
+        // Cross-origin or race; if we can't access, assume still open
+      }
+    }, 600);
+  };
+
+  const handlePopupClosedRefetch = (): void => {
+    // Invalidate React Query cache (convex-query integrated)
+    const qc = router.options.context?.queryClient;
+    if (qc) {
+      qc.invalidateQueries();
+    }
+    // Focus back to app
+    window.focus?.();
+  };
+
+  const openCenteredPopup = (
+    url: string,
+    opts?: { name?: string; width?: number; height?: number },
+    onClose?: () => void
+  ): Window | null => {
+    const name = opts?.name ?? "cmux-popup";
+    const width = Math.floor(opts?.width ?? 980);
+    const height = Math.floor(opts?.height ?? 780);
+    // Account for outer window chrome for better centering
+    const dualScreenLeft = window.screenLeft ?? window.screenX ?? 0;
+    const dualScreenTop = window.screenTop ?? window.screenY ?? 0;
+    const outerWidth = window.outerWidth || window.innerWidth || width;
+    const outerHeight = window.outerHeight || window.innerHeight || height;
+    const left = Math.max(0, dualScreenLeft + (outerWidth - width) / 2);
+    const top = Math.max(0, dualScreenTop + (outerHeight - height) / 2);
+    const features = [
+      `width=${width}`,
+      `height=${height}`,
+      `left=${Math.floor(left)}`,
+      `top=${Math.floor(top)}`,
+      "resizable=yes",
+      "scrollbars=yes",
+      "toolbar=no",
+      "location=no",
+      "status=no",
+      "menubar=no",
+    ].join(",");
+
+    const win = window.open("about:blank", name, features);
+    if (win) {
+      try {
+        // Ensure no access to opener for safety
+        (win as Window & { opener: null | Window }) .opener = null;
+      } catch (_e) {
+        // ignore
+      }
+      try {
+        win.location.href = url;
+      } catch (_e) {
+        // Fallback: if blocked, try plain open
+        window.open(url, "_blank");
+      }
+      win.focus?.();
+      if (onClose) watchPopupClosed(win, onClose);
+      return win;
+    } else {
+      // Popup blocked, fallback
+      window.open(url, "_blank");
+      return null;
+    }
+  };
 
   const parseEnvBlock = (
     text: string
@@ -206,7 +287,7 @@ function EnvironmentsPage() {
   return (
     <FloatingPane header={<TitleBar title="Environments" />}>
       <div className="flex flex-col grow overflow-auto select-none relative">
-        <div className="p-6 max-w-3xl mx-auto space-y-6">
+        <div className="p-6 max-w-3xl w-full mx-auto space-y-6">
           {/* Header */}
           <div>
             <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
@@ -247,7 +328,7 @@ function EnvironmentsPage() {
                       const { state } = await mintState({ teamSlugOrId });
                       const sep = installNewUrl.includes("?") ? "&" : "?";
                       const url = `${installNewUrl}${sep}state=${encodeURIComponent(state)}`;
-                      window.open(url, "_blank");
+                      openCenteredPopup(url, { name: "github-install" }, handlePopupClosedRefetch);
                     } catch (e) {
                       console.error("Failed to mint install state:", e);
                       alert("Failed to start installation. Please try again.");
@@ -297,20 +378,19 @@ function EnvironmentsPage() {
                       <div className="text-sm text-left text-neutral-800 dark:text-neutral-200 flex items-center gap-2 min-w-0 flex-1">
                         <ConnectionIcon type={c.type} />
                         <span className="truncate">{name}</span>
-                        <span className="ml-2 shrink-0 text-[10px] text-neutral-500 dark:text-neutral-500 align-middle">
-                          {c.accountType === "Organization"
-                            ? "Org"
-                            : c.accountType === "User"
-                              ? "User"
-                              : "Pending"}
-                        </span>
                       </div>
                       <div className="flex items-center gap-3">
                         {cfgUrl ? (
                           <a
                             href={cfgUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              openCenteredPopup(
+                                cfgUrl,
+                                { name: "github-config" },
+                                handlePopupClosedRefetch
+                              );
+                            }}
                             className="text-xs underline text-neutral-700 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-neutral-100"
                           >
                             Add repos
@@ -318,7 +398,8 @@ function EnvironmentsPage() {
                         ) : null}
                         <button
                           type="button"
-                          className="text-xs text-red-600 dark:text-red-400 hover:underline"
+                          aria-label="Remove connection"
+                          className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300"
                           onClick={async () => {
                             try {
                               await removeConnection({
@@ -332,7 +413,7 @@ function EnvironmentsPage() {
                             }
                           }}
                         >
-                          Remove
+                          <Trash2 className="w-4 h-4" />
                         </button>
                       </div>
                     </div>
@@ -346,14 +427,27 @@ function EnvironmentsPage() {
                   <>
                     {" "}
                     You can{" "}
-                    <a
-                      className="underline"
-                      href={installNewUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      type="button"
+                      className="underline text-neutral-700 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-neutral-100"
+                      onClick={async () => {
+                        try {
+                          const { state } = await mintState({ teamSlugOrId });
+                          const sep = installNewUrl.includes("?") ? "&" : "?";
+                          const url = `${installNewUrl}${sep}state=${encodeURIComponent(state)}`;
+                          openCenteredPopup(
+                            url,
+                            { name: "github-install" },
+                            handlePopupClosedRefetch
+                          );
+                        } catch (e) {
+                          console.error("Failed to mint install state:", e);
+                          alert("Failed to start installation. Please try again.");
+                        }
+                      }}
                     >
                       add a GitHub organization
-                    </a>
+                    </button>
                     .
                   </>
                 ) : null}
@@ -489,8 +583,14 @@ function EnvironmentsPage() {
               {configureUrl ? (
                 <a
                   href={configureUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    openCenteredPopup(
+                      configureUrl,
+                      { name: "github-config" },
+                      handlePopupClosedRefetch
+                    );
+                  }}
                   className="underline hover:text-neutral-700 dark:hover:text-neutral-300"
                 >
                   Configure repository access
