@@ -175,6 +175,8 @@ COPY --from=builder /usr/local/bin/bunx /usr/local/bin/bunx
 # Verify bun works in runtime
 RUN bun --version && bunx --version
 RUN bun add -g @openai/codex@0.25.0 @anthropic-ai/claude-code@1.0.83 @google/gemini-cli@0.1.21 opencode-ai@0.5.28 codebuff @devcontainers/cli @sourcegraph/amp
+## Install Augment Code CLI (Auggie) globally per upstream instructions
+RUN npm install -g @augmentcode/auggie@latest && auggie --help >/dev/null 2>&1 || true
 
 # Install cursor cli
 RUN curl https://cursor.com/install -fsS | bash

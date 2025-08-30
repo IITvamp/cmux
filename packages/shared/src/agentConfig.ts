@@ -45,6 +45,10 @@ import {
   QWEN_MODEL_STUDIO_CODER_PLUS_CONFIG,
   QWEN_OPENROUTER_CODER_FREE_CONFIG,
 } from "./providers/qwen/configs.js";
+import {
+  AUGMENT_GPT_5_CONFIG,
+  AUGMENT_SONNET_4_CONFIG,
+} from "./providers/augment/configs.js";
 
 export { checkDockerStatus } from "./providers/common/check-docker.js";
 export { checkGitStatus } from "./providers/common/check-git.js";
@@ -105,4 +109,6 @@ export const AGENT_CONFIGS: AgentConfig[] = [
   CURSOR_GPT_5_CONFIG,
   CURSOR_SONNET_4_CONFIG,
   CURSOR_SONNET_4_THINKING_CONFIG,
+  AUGMENT_GPT_5_CONFIG,
+  AUGMENT_SONNET_4_CONFIG,
 ];
