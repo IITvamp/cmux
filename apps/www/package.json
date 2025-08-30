@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "dotenv -e ../../.env -- vitest run"
   },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^8.1.0",
@@ -21,6 +22,8 @@
     "convex": "^1.26.0-alpha.6",
     "hono": "^4.9.1",
     "jose": "^6.0.13",
+    "octokit": "^3.2.2",
+    "@octokit/auth-app": "^6.1.4",
     "morphcloud": "^0.0.18",
     "next": "15.4.6",
     "react": "19.1.0",
@@ -35,11 +38,14 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "dotenv": "^16.4.5",
     "dotenv-cli": "^10.0.0",
     "eslint": "^9.33.0",
     "eslint-config-next": "15.5.0",
     "tailwindcss": "^4",
     "typescript": "^5.4.0",
-    "typescript-eslint": "^8.38.0"
+    "typescript-eslint": "^8.38.0",
+    "vitest": "^3.2.4",
+    "vite-tsconfig-paths": "^5.1.4"
   }
 }

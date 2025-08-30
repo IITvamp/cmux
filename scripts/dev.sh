@@ -6,7 +6,12 @@ export CONVEX_PORT=9777
 
 if [ -f .env ]; then
     echo "Loading .env file"
-    export $(grep -v '^#' .env | xargs)
+    # Support quoted/multiline values (e.g., PEM keys) safely
+    # by sourcing the file with export-all mode.
+    set -a
+    # shellcheck disable=SC1091
+    . .env
+    set +a
     echo "Loaded .env file"
 fi
 
