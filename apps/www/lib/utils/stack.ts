@@ -1,9 +1,13 @@
-import { StackServerApp } from "@stackframe/js";
-import { env } from "./www-env";
+import { env } from "@/lib/utils/www-env";
+import { StackServerApp } from "@stackframe/stack";
 
 export const stackServerApp = new StackServerApp({
-  projectId: env.VITE_STACK_PROJECT_ID,
-  publishableClientKey: env.VITE_STACK_PUBLISHABLE_CLIENT_KEY,
+  projectId: env.NEXT_PUBLIC_STACK_PROJECT_ID,
+  publishableClientKey: env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY,
   secretServerKey: env.STACK_SECRET_SERVER_KEY,
-  tokenStore: "memory",
+  tokenStore: "nextjs-cookie",
+  urls: {
+    afterSignIn: "/handler/after-sign-in",
+    afterSignUp: "/handler/after-sign-in",
+  },
 });

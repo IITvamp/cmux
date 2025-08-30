@@ -8,7 +8,7 @@ import {
   type ThemeConfig,
 } from "antd";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { stackClientApp } from "./stack";
+import { stackClientApp } from "./lib/stack";
 
 interface ProvidersProps {
   children: ReactNode;

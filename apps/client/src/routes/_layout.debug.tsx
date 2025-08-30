@@ -1,5 +1,5 @@
 import { FloatingPane } from "@/components/floating-pane";
-import { stackClientApp } from "@/stack";
+import { stackClientApp } from "@/lib/stack";
 import { createFileRoute } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/_layout/debug")({
