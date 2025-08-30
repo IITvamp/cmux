@@ -13,6 +13,7 @@ const is = {
   isMacOS: process.platform === "darwin",
   isLinux: process.platform === "linux"
 });
+const PARTITION = "persist:cmux";
 const APP_HOST = "cmux.local";
 let rendererLoaded = false;
 let pendingProtocolUrl = null;
@@ -36,8 +37,8 @@ function createWindow() {
       preload: join(__dirname, "../preload/index.cjs"),
       sandbox: false,
       contextIsolation: true,
-      nodeIntegration: false
-      // partition: PARTITION,
+      nodeIntegration: false,
+      partition: PARTITION
     }
   });
   mainWindow.on("ready-to-show", () => {
@@ -65,7 +66,7 @@ app.on("open-url", (_event, url) => {
 });
 app.whenReady().then(() => {
   const baseDir = path.join(app.getAppPath(), "out", "renderer");
-  const ses = session.defaultSession;
+  const ses = session.fromPartition(PARTITION);
   ses.protocol.handle("https", async (req) => {
     const u = new URL(req.url);
     if (u.hostname !== APP_HOST) return net.fetch(req);
