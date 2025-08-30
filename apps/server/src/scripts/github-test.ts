@@ -1,8 +1,8 @@
 import { api } from "@cmux/convex/api";
+import { createAppAuth } from "@octokit/auth-app";
 import { StackAdminApp } from "@stackframe/js";
 import { ConvexHttpClient } from "convex/browser";
 import { Octokit } from "octokit";
-import { createAppAuth } from "@octokit/auth-app";
 
 const stackAdminApp = new StackAdminApp({
   tokenStore: "memory",
@@ -56,40 +56,40 @@ await Promise.all(
   result
     .filter((c) => c.isActive)
     .map(async (connection) => {
-    if (!connection.installationId) {
-      throw new Error("Missing installationId for connection");
-    }
+      if (!connection.installationId) {
+        throw new Error("Missing installationId for connection");
+      }
 
-    // Create an Octokit client authenticated as the app installation
-    const octokit = new Octokit({
-      authStrategy: createAppAuth,
-      auth: {
-        appId,
-        privateKey,
-        installationId: connection.installationId,
-      },
-    });
+      // Create an Octokit client authenticated as the app installation
+      const octokit = new Octokit({
+        authStrategy: createAppAuth,
+        auth: {
+          appId,
+          privateKey,
+          installationId: connection.installationId,
+        },
+      });
 
-    // List repositories accessible to this installation (includes private)
-    try {
-      const { data } = await octokit.request(
-        "GET /installation/repositories",
-        { per_page: 100 }
-      );
+      // List repositories accessible to this installation (includes private)
+      try {
+        const { data } = await octokit.request(
+          "GET /installation/repositories",
+          { per_page: 100 }
+        );
 
-      const repos = data.repositories.map((r) => ({
-        name: r.name,
-        full_name: r.full_name,
-        private: r.private,
-      }));
+        const repos = data.repositories.map((r) => ({
+          name: r.name,
+          full_name: r.full_name,
+          private: r.private,
+        }));
 
-      console.log(repos);
-    } catch (err) {
-      const e = err as { status?: number; message?: string };
-      console.error(
-        `Failed to list repos for installation ${connection.installationId} (${connection.accountLogin ?? "unknown"})`,
-        e
-      );
-    }
-  })
+        console.log(repos);
+      } catch (err) {
+        const e = err as { status?: number; message?: string };
+        console.error(
+          `Failed to list repos for installation ${connection.installationId} (${connection.accountLogin ?? "unknown"})`,
+          e
+        );
+      }
+    })
 );
