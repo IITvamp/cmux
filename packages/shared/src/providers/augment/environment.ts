@@ -1,6 +1,11 @@
-import type { EnvironmentContext, EnvironmentResult } from "../common/environment-result.js";
+import type {
+  EnvironmentContext,
+  EnvironmentResult,
+} from "../common/environment-result.js";
 
-export async function getAugmentEnvironment(_ctx: EnvironmentContext): Promise<EnvironmentResult> {
+export async function getAugmentEnvironment(
+  _ctx: EnvironmentContext
+): Promise<EnvironmentResult> {
   // These must be lazy since configs are imported into the browser
   const { readFile } = await import("node:fs/promises");
   const { homedir } = await import("node:os");
@@ -13,19 +18,24 @@ export async function getAugmentEnvironment(_ctx: EnvironmentContext): Promise<E
   // Ensure directories exist
   startupCommands.unshift("mkdir -p ~/.augment");
   startupCommands.push("mkdir -p /root/lifecycle/augment");
-  
+
   // Clean up any previous Augment completion markers
-  startupCommands.push("rm -f /root/lifecycle/augment-complete-* 2>/dev/null || true");
-  
+  startupCommands.push(
+    "rm -f /root/lifecycle/augment-complete-* 2>/dev/null || true"
+  );
+
   // Try to copy Augment auth files from the host machine
   try {
     // Try to read existing Augment auth files from the host's home directory
     // Augment stores auth in ~/.augment/auth.json typically
-    const authContent = await readFile(`${homedir()}/.augment/auth.json`, "utf-8");
-    
+    const authContent = await readFile(
+      `${homedir()}/.augment/auth.json`,
+      "utf-8"
+    );
+
     // Validate that it's valid JSON
     JSON.parse(authContent);
-    
+
     files.push({
       destinationPath: "$HOME/.augment/auth.json",
       contentBase64: Buffer.from(authContent).toString("base64"),
@@ -34,14 +44,17 @@ export async function getAugmentEnvironment(_ctx: EnvironmentContext): Promise<E
   } catch {
     console.warn("No Augment auth.json found in host ~/.augment/");
   }
-  
+
   // Also try to copy any config files
   try {
-    const configContent = await readFile(`${homedir()}/.augment/config.json`, "utf-8");
-    
+    const configContent = await readFile(
+      `${homedir()}/.augment/config.json`,
+      "utf-8"
+    );
+
     // Validate that it's valid JSON
     JSON.parse(configContent);
-    
+
     files.push({
       destinationPath: "$HOME/.augment/config.json",
       contentBase64: Buffer.from(configContent).toString("base64"),
@@ -50,7 +63,7 @@ export async function getAugmentEnvironment(_ctx: EnvironmentContext): Promise<E
   } catch {
     // Config file is optional
   }
-  
+
   // Create the stop hook script in /root/lifecycle (outside git repo)
   const stopHookScript = `#!/bin/bash
 # Augment Code stop hook for cmux task completion detection
@@ -86,13 +99,14 @@ exit 0`;
     contentBase64: Buffer.from(stopHookScript).toString("base64"),
     mode: "755",
   });
-  
+
   // Log the files for debugging
-  startupCommands.push("echo '[CMUX] Created Augment hook files in /root/lifecycle:' && ls -la /root/lifecycle/augment/");
-  startupCommands.push("echo '[CMUX] Augment config in ~/.augment:' && ls -la /root/.augment/");
-  
-  // Install auggie globally if not already installed
-  startupCommands.push("npm list -g @augmentcode/auggie >/dev/null 2>&1 || npm install -g @augmentcode/auggie");
+  startupCommands.push(
+    "echo '[CMUX] Created Augment hook files in /root/lifecycle:' && ls -la /root/lifecycle/augment/"
+  );
+  startupCommands.push(
+    "echo '[CMUX] Augment config in ~/.augment:' && ls -la /root/.augment/"
+  );
 
   return { files, env, startupCommands };
 }
