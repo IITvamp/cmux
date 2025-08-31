@@ -3,7 +3,15 @@ import { FloatingPane } from "@/components/floating-pane";
 import { GitHubIcon } from "@/components/icons/github";
 import { GitLabIcon } from "@/components/icons/gitlab";
 import { TitleBar } from "@/components/TitleBar";
-import { Dropdown } from "@/components/ui/dropdown";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import * as Popover from "@radix-ui/react-popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Tooltip,
@@ -43,6 +51,8 @@ function EnvironmentsPage() {
   const [selectedConnectionLogin, setSelectedConnectionLogin] = useState<
     string | null
   >(null);
+  const [connectionDropdownOpen, setConnectionDropdownOpen] = useState(false);
+  const [connectionSearch, setConnectionSearch] = useState("");
   const [search, setSearch] = useState("");
   const [envName, setEnvName] = useState("");
   const [envVars, setEnvVars] = useState<
@@ -175,6 +185,15 @@ function EnvironmentsPage() {
     [connections]
   );
 
+  const filteredConnections = useMemo(() => {
+    if (!connectionSearch.trim()) return activeConnections;
+    const searchLower = connectionSearch.toLowerCase();
+    return activeConnections.filter((c) => {
+      const name = c.accountLogin || `installation-${c.installationId}`;
+      return name.toLowerCase().includes(searchLower);
+    });
+  }, [activeConnections, connectionSearch]);
+
   const currentOrg = useMemo(() => {
     if (selectedConnectionLogin) return selectedConnectionLogin;
     if (activeConnections.length > 0)
@@ -289,9 +308,9 @@ function EnvironmentsPage() {
             <label className="block text-sm font-medium text-neutral-800 dark:text-neutral-200">
               Connections
             </label>
-            <Dropdown.Root>
-              <Dropdown.Trigger className="w-full">
-                <div className="w-full rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 h-9 flex items-center justify-between text-sm text-neutral-800 dark:text-neutral-200">
+            <Popover.Root open={connectionDropdownOpen} onOpenChange={setConnectionDropdownOpen}>
+              <Popover.Trigger asChild>
+                <button className="w-full rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 h-9 flex items-center justify-between text-sm text-neutral-800 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-colors">
                   <div className="flex items-center gap-2 min-w-0">
                     {currentOrg ? (
                       <>
@@ -305,119 +324,140 @@ function EnvironmentsPage() {
                     )}
                   </div>
                   <ChevronDown className="w-4 h-4 text-neutral-500" />
-                </div>
-              </Dropdown.Trigger>
-              <Dropdown.Portal>
-                <Dropdown.Positioner>
-                  <Dropdown.Popup className="min-w-[240px]">
-                    <Dropdown.Arrow />
-                    {connections === undefined ? (
-                      <div className="px-3 py-2 text-sm text-neutral-500">
-                        Loading...
-                      </div>
-                    ) : activeConnections.length > 0 ? (
-                      <div className="py-1">
-                        {activeConnections.map((c) => {
-                          const name =
-                            c.accountLogin ||
-                            `installation-${c.installationId}`;
-                          const cfgUrl =
-                            c.accountLogin && c.accountType
-                              ? c.accountType === "Organization"
-                                ? `https://github.com/organizations/${c.accountLogin}/settings/installations/${c.installationId}`
-                                : `https://github.com/settings/installations/${c.installationId}`
-                              : null;
-                          const isSelected = currentOrg === c.accountLogin;
-                          return (
-                            <Dropdown.Item
-                              key={`${c.accountLogin}:${c.installationId}`}
-                              onClick={() =>
-                                setSelectedConnectionLogin(
-                                  c.accountLogin ?? null
-                                )
-                              }
-                              className="flex items-center justify-between gap-2 text-sm"
-                            >
-                              <div className="flex items-center gap-2 min-w-0">
-                                <ConnectionIcon type={c.type} />
-                                <span className="truncate">{name}</span>
-                                {isSelected && (
-                                  <span className="ml-1 text-[10px] text-neutral-500">
-                                    (selected)
-                                  </span>
-                                )}
-                              </div>
-                              {cfgUrl ? (
-                                <Tooltip>
-                                  <TooltipTrigger asChild>
-                                    <button
-                                      type="button"
-                                      className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-900"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        e.preventDefault();
-                                        openCenteredPopup(
-                                          cfgUrl,
-                                          { name: "github-config" },
-                                          handlePopupClosedRefetch
-                                        );
-                                      }}
-                                    >
-                                      <Settings className="w-4 h-4 text-neutral-600 dark:text-neutral-300" />
-                                    </button>
-                                  </TooltipTrigger>
-                                  <TooltipContent>Add Repos</TooltipContent>
-                                </Tooltip>
-                              ) : null}
-                            </Dropdown.Item>
-                          );
-                        })}
-                        {installNewUrl ? (
-                          <div className="mt-1 border-t border-neutral-200 dark:border-neutral-800" />
-                        ) : null}
-                        {installNewUrl ? (
-                          <Dropdown.Item
-                            onClick={async () => {
-                              try {
-                                const { state } = await mintState({
-                                  teamSlugOrId,
-                                });
-                                const sep = installNewUrl!.includes("?")
-                                  ? "&"
-                                  : "?";
-                                const url = `${installNewUrl}${sep}state=${encodeURIComponent(state)}`;
-                                openCenteredPopup(
-                                  url,
-                                  { name: "github-install" },
-                                  handlePopupClosedRefetch
-                                );
-                              } catch (e) {
-                                console.error(
-                                  "Failed to mint install state:",
-                                  e
-                                );
-                                alert(
-                                  "Failed to start installation. Please try again."
-                                );
-                              }
-                            }}
-                          >
-                            <div className="flex items-center gap-2">
-                              <ConnectionIcon type="github" />
-                              <span>Add GitHub Account</span>
+                </button>
+              </Popover.Trigger>
+              <Popover.Portal>
+                <Popover.Content
+                  className="w-[320px] rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 shadow-md outline-none z-[10001]"
+                  align="start"
+                  sideOffset={4}
+                >
+                  <Command shouldFilter={false}>
+                    <CommandInput 
+                      placeholder="Search connections..." 
+                      value={connectionSearch}
+                      onValueChange={setConnectionSearch}
+                    />
+                    <CommandList>
+                      {connections === undefined ? (
+                        <div className="px-3 py-2 text-sm text-neutral-500">
+                          Loading...
+                        </div>
+                      ) : activeConnections.length > 0 ? (
+                        <>
+                          {filteredConnections.length > 0 ? (
+                            <CommandGroup>
+                              {filteredConnections.map((c) => {
+                              const name =
+                                c.accountLogin ||
+                                `installation-${c.installationId}`;
+                              const cfgUrl =
+                                c.accountLogin && c.accountType
+                                  ? c.accountType === "Organization"
+                                    ? `https://github.com/organizations/${c.accountLogin}/settings/installations/${c.installationId}`
+                                    : `https://github.com/settings/installations/${c.installationId}`
+                                  : null;
+                              const isSelected = currentOrg === c.accountLogin;
+                              return (
+                                <CommandItem
+                                  key={`${c.accountLogin}:${c.installationId}`}
+                                  value={name}
+                                  onSelect={() => {
+                                    setSelectedConnectionLogin(
+                                      c.accountLogin ?? null
+                                    );
+                                    setConnectionDropdownOpen(false);
+                                  }}
+                                  className="flex items-center justify-between gap-2"
+                                >
+                                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                                    <ConnectionIcon type={c.type} />
+                                    <span className="truncate">{name}</span>
+                                    {isSelected && (
+                                      <Check className="ml-auto h-4 w-4 text-neutral-600 dark:text-neutral-300" />
+                                    )}
+                                  </div>
+                                  {cfgUrl ? (
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <button
+                                          type="button"
+                                          className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 relative z-[10010]"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            e.preventDefault();
+                                            openCenteredPopup(
+                                              cfgUrl,
+                                              { name: "github-config" },
+                                              handlePopupClosedRefetch
+                                            );
+                                          }}
+                                        >
+                                          <Settings className="w-3 h-3 text-neutral-600 dark:text-neutral-300" />
+                                        </button>
+                                      </TooltipTrigger>
+                                      <TooltipContent className="z-[10020]">Add Repos</TooltipContent>
+                                    </Tooltip>
+                                  ) : null}
+                                </CommandItem>
+                              );
+                            })}
+                            </CommandGroup>
+                          ) : connectionSearch.trim() ? (
+                            <div className="px-3 py-2 text-sm text-neutral-500">
+                              No connections match your search
                             </div>
-                          </Dropdown.Item>
-                        ) : null}
-                      </div>
-                    ) : (
-                      <div className="px-3 py-2 text-sm text-neutral-500">
-                        No connections
-                      </div>
-                    )}
-                  </Dropdown.Popup>
-                </Dropdown.Positioner>
-              </Dropdown.Portal>
-            </Dropdown.Root>
+                          ) : null}
+                          {installNewUrl ? (
+                            <>
+                              <div className="mx-1 my-1 h-px bg-neutral-200 dark:bg-neutral-800" />
+                              <CommandGroup forceMount>
+                                <CommandItem
+                                  value="add-github-account"
+                                  forceMount
+                                  onSelect={async () => {
+                                    try {
+                                      const { state } = await mintState({
+                                        teamSlugOrId,
+                                      });
+                                      const sep = installNewUrl!.includes("?")
+                                        ? "&"
+                                        : "?";
+                                      const url = `${installNewUrl}${sep}state=${encodeURIComponent(state)}`;
+                                      openCenteredPopup(
+                                        url,
+                                        { name: "github-install" },
+                                        handlePopupClosedRefetch
+                                      );
+                                      setConnectionDropdownOpen(false);
+                                    } catch (e) {
+                                      console.error(
+                                        "Failed to mint install state:",
+                                        e
+                                      );
+                                      alert(
+                                        "Failed to start installation. Please try again."
+                                      );
+                                    }
+                                  }}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <ConnectionIcon type="github" />
+                                    <span>Add GitHub Account</span>
+                                  </div>
+                                </CommandItem>
+                              </CommandGroup>
+                            </>
+                          ) : null}
+                        </>
+                      ) : (
+                        <CommandEmpty>No connections found</CommandEmpty>
+                      )}
+                    </CommandList>
+                  </Command>
+                </Popover.Content>
+              </Popover.Portal>
+            </Popover.Root>
           </div>
 
           <div className="space-y-2">
