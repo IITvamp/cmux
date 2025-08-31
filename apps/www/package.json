@@ -1,6 +1,7 @@
 {
   "name": "@cmux/www",
   "version": "0.1.0",
+  "type": "module",
   "private": true,
   "scripts": {
     "dev": "dotenv -e ../../.env -- next dev --port 9779",
@@ -8,24 +9,27 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "dotenv -e ../../.env -- vitest run"
+    "test": "dotenv -e ../../.env -- vitest run",
+    "generate-openapi-client": "bun run scripts/watch-openapi.ts",
+    "generate-openapi-client:watch": "bun run --watch scripts/watch-openapi.ts"
   },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^8.1.0",
     "@cmux/convex": "workspace:*",
     "@cmux/shared": "workspace:*",
+    "@cmux/www-openapi-client": "workspace:*",
     "@hono/node-server": "^1.18.1",
     "@hono/swagger-ui": "^0.5.2",
     "@hono/zod-openapi": "^1.1.0",
+    "@octokit/auth-app": "^6.1.4",
     "@stackframe/js": "^2.8.28",
     "@t3-oss/env-core": "^0.13.8",
     "convex": "^1.26.0-alpha.6",
     "hono": "^4.9.1",
     "jose": "^6.0.13",
-    "octokit": "^3.2.2",
-    "@octokit/auth-app": "^6.1.4",
     "morphcloud": "^0.0.18",
     "next": "15.4.6",
+    "octokit": "^3.2.2",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "socket.io-client": "^4.8.1",
@@ -34,6 +38,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@hey-api/openapi-ts": "^0.82.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -45,7 +50,7 @@
     "tailwindcss": "^4",
     "typescript": "^5.4.0",
     "typescript-eslint": "^8.38.0",
-    "vitest": "^3.2.4",
-    "vite-tsconfig-paths": "^5.1.4"
+    "vite-tsconfig-paths": "^5.1.4",
+    "vitest": "^3.2.4"
   }
 }

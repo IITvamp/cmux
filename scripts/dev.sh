@@ -102,6 +102,7 @@ cleanup() {
     [ -n "$CONVEX_DEV_PID" ] && kill $CONVEX_DEV_PID 2>/dev/null
     [ -n "$DOCKER_COMPOSE_PID" ] && kill $DOCKER_COMPOSE_PID 2>/dev/null
     [ -n "$SERVER_GLOBAL_PID" ] && kill $SERVER_GLOBAL_PID 2>/dev/null
+    [ -n "$OPENAPI_CLIENT_PID" ] && kill $OPENAPI_CLIENT_PID 2>/dev/null
     # Give processes time to cleanup
     sleep 1
     # Force kill any remaining processes
@@ -111,6 +112,7 @@ cleanup() {
     [ -n "$CONVEX_DEV_PID" ] && kill -9 $CONVEX_DEV_PID 2>/dev/null
     [ -n "$DOCKER_COMPOSE_PID" ] && kill -9 $DOCKER_COMPOSE_PID 2>/dev/null
     [ -n "$SERVER_GLOBAL_PID" ] && kill -9 $SERVER_GLOBAL_PID 2>/dev/null
+    [ -n "$OPENAPI_CLIENT_PID" ] && kill -9 $OPENAPI_CLIENT_PID 2>/dev/null
     exit
 }
 
@@ -212,6 +214,12 @@ echo -e "${GREEN}Starting www app on port 9779...${NC}"
 (cd "$APP_DIR/apps/www" && exec bash -c 'trap "kill -9 0" EXIT; bun run dev 2>&1 | tee "$LOG_DIR/www.log" | prefix_output "WWW" "$GREEN"') &
 WWW_PID=$!
 check_process $WWW_PID "WWW App"
+
+# Start the openapi client generator
+echo -e "${GREEN}Starting openapi client generator...${NC}"
+(cd "$APP_DIR/apps/www" && exec bash -c 'trap "kill -9 0" EXIT; bun run generate-openapi-client:watch 2>&1 | tee "$LOG_DIR/openapi-client.log" | prefix_output "OPENAPI-CLIENT" "$MAGENTA"') &
+OPENAPI_CLIENT_PID=$!
+check_process $OPENAPI_CLIENT_PID "OpenAPI Client Generator"
 
 echo -e "${GREEN}Terminal app is running!${NC}"
 echo -e "${BLUE}Frontend: http://localhost:5173${NC}"

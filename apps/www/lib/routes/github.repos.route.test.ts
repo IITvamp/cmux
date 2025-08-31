@@ -1,6 +1,7 @@
+import { app } from "@/lib/hono-app";
+import { getApiIntegrationsGithubRepos } from "@cmux/www-openapi-client";
 import { StackAdminApp } from "@stackframe/js";
 import { describe, expect, it } from "vitest";
-import { githubReposRouter } from "./github.repos.route";
 
 const PROJECT_ID = process.env.VITE_STACK_PROJECT_ID;
 const PUBLISHABLE_KEY = process.env.VITE_STACK_PUBLISHABLE_CLIENT_KEY;
@@ -32,12 +33,16 @@ async function getStackTokens(): Promise<Tokens> {
   return { accessToken: at, refreshToken: tokens.refreshToken ?? undefined };
 }
 
-describe("githubReposRouter", () => {
+describe("githubReposRouter via SDK", () => {
   it("rejects unauthenticated requests", async () => {
-    const res = await githubReposRouter.request(
-      "/integrations/github/repos?team=lawrence"
-    );
-    expect(res.status).toBe(401);
+    const res = await getApiIntegrationsGithubRepos({
+      // Route runs in-memory using the Hono app
+      fetch: async (input, init) => {
+        return app.request(input, init);
+      },
+      query: { team: "lawrence" },
+    });
+    expect(res.response.status).toBe(401);
   });
 
   it("returns repos for authenticated user", async () => {
@@ -46,20 +51,21 @@ describe("githubReposRouter", () => {
       return;
     }
     const tokens = await getStackTokens();
-    const res = await githubReposRouter.request(
-      "/integrations/github/repos?team=lawrence",
-      { headers: { "x-stack-auth": JSON.stringify(tokens) } }
-    );
+    const res = await getApiIntegrationsGithubRepos({
+      fetch: async (input, init) => {
+        const url =
+          typeof input === "string" || input instanceof URL
+            ? input.toString()
+            : input.url;
+        return app.request(url, init);
+      },
+      query: { team: "lawrence" },
+      headers: { "x-stack-auth": JSON.stringify(tokens) },
+    });
     // Accept 200 (OK), 401 (if token rejected), or 501 (GitHub app not configured)
-    expect([200, 401, 501]).toContain(res.status);
-    if (res.status === 200) {
-      const body = (await res.json()) as unknown as {
-        connections: Array<{
-          installationId: number;
-          accountLogin?: string;
-          repos: Array<{ name: string; full_name: string; private: boolean }>;
-        }>;
-      };
+    expect([200, 401, 501]).toContain(res.response.status);
+    if (res.response.status === 200 && res.data) {
+      const body = res.data;
       expect(Array.isArray(body.connections)).toBe(true);
       if (body.connections.length > 0) {
         const c0 = body.connections[0]!;
