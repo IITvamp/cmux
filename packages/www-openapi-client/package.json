@@ -23,8 +23,8 @@
       "types": "./src/client/client.gen.ts"
     },
     "./react-query": {
-      "import": "./src/client/@tanstack/react-query.ts",
-      "types": "./src/client/@tanstack/react-query.ts"
+      "import": "./src/client/@tanstack/react-query.gen.ts",
+      "types": "./src/client/@tanstack/react-query.gen.ts"
     }
   },
   "devDependencies": {
