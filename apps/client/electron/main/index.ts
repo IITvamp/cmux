@@ -99,6 +99,20 @@ app.on("window-all-closed", () => {
   }
 });
 
+function decodeJwtExp(token: string): number | null {
+  const parts = token.split(".");
+  if (parts.length < 2) return null;
+
+  try {
+    const payload = JSON.parse(
+      Buffer.from(parts[1], "base64url").toString("utf8")
+    );
+    return payload.exp;
+  } catch {
+    return null;
+  }
+}
+
 function handleProtocolUrl(url: string): void {
   if (!mainWindow) {
     // Should not happen due to queuing, but guard anyway
@@ -117,17 +131,24 @@ function handleProtocolUrl(url: string): void {
       // Determine a cookieable URL. Prefer our custom cmux:// origin when not
       // running against an http(s) dev server.
       const currentUrl = mainWindow.webContents.getURL();
+      const nowSec = Math.floor(Date.now() / 1000);
+
+      const refreshExp =
+        decodeJwtExp(stackRefresh) ?? nowSec + 90 * 24 * 60 * 60;
+      const accessExp = decodeJwtExp(stackAccess) ?? nowSec + 30 * 60;
 
       mainWindow.webContents.session.cookies.set({
         url: currentUrl,
-        name: `stack-refresh-8a877114-b905-47c5-8b64-3a2d90679577`,
+        name: `stack-refresh-${process.env.NEXT_PUBLIC_STACK_PROJECT_ID}`,
         value: stackRefresh,
+        expirationDate: refreshExp,
       });
 
       mainWindow.webContents.session.cookies.set({
         url: currentUrl,
         name: "stack-access",
         value: stackAccess,
+        expirationDate: accessExp,
       });
     }
   }
