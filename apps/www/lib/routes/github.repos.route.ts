@@ -5,6 +5,7 @@ import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { createAppAuth } from "@octokit/auth-app";
 import { Octokit } from "octokit";
 import { getConvex } from "../utils/get-convex";
+import { githubPrivateKey } from "../utils/githubPrivateKey";
 
 export const githubReposRouter = new OpenAPIHono();
 
@@ -23,20 +24,16 @@ const Repo = z
     name: z.string(),
     full_name: z.string(),
     private: z.boolean(),
-    // ISO timestamp strings from GitHub API
-    updated_at: z.string().optional(),
-    pushed_at: z.string().optional(),
+    updated_at: z.string().nullable().optional(),
+    pushed_at: z.string().nullable().optional(),
   })
   .openapi("GithubRepo");
 
-const Connection = z
+const ReposResponse = z
   .object({
-    installationId: z.number(),
-    accountLogin: z.string().optional(),
-    accountType: z.enum(["User", "Organization"]).optional(),
     repos: z.array(Repo),
   })
-  .openapi("GithubConnectionRepos");
+  .openapi("GithubReposResponse");
 
 githubReposRouter.openapi(
   createRoute({
@@ -50,7 +47,7 @@ githubReposRouter.openapi(
         description: "OK",
         content: {
           "application/json": {
-            schema: z.object({ connections: z.array(Connection) }),
+            schema: ReposResponse,
           },
         },
       },
@@ -62,7 +59,6 @@ githubReposRouter.openapi(
   async (c) => {
     const accessToken = await getAccessTokenFromRequest(c.req.raw);
     if (!accessToken) return c.text("Unauthorized", 401);
-    const privateKey = env.GITHUB_APP_PRIVATE_KEY.replace(/\\n/g, "\n");
 
     const { team, installationId } = c.req.valid("query");
 
@@ -72,57 +68,52 @@ githubReposRouter.openapi(
       teamSlugOrId: team,
     });
 
-    // Narrow to a single active connection
-    const active = connections.filter((co) => co.isActive);
-    const target = installationId
-      ? active.find((c0) => c0.installationId === installationId)
-      : active[0];
+    // Determine which installations to query
+    const target = connections.find(
+      (co) => co.isActive && co.installationId === installationId
+    );
 
     if (!target) {
-      return c.json({ connections: [] });
+      return c.json({ repos: [] });
     }
 
+    const allRepos: Array<z.infer<typeof Repo>> = [];
     const octokit = new Octokit({
       authStrategy: createAppAuth,
       auth: {
         appId: env.GITHUB_APP_ID,
-        privateKey,
+        privateKey: githubPrivateKey,
         installationId: target.installationId,
       },
     });
-
     try {
       const { data } = await octokit.request("GET /installation/repositories", {
         per_page: 100,
       });
-      const repos = data.repositories.map((r) => ({
-        name: r.name,
-        full_name: r.full_name,
-        private: !!r.private,
-        updated_at: r.updated_at,
-        pushed_at: r.pushed_at,
-      }));
-      return c.json({
-        connections: [
-          {
-            installationId: target.installationId,
-            accountLogin: target.accountLogin,
-            accountType: target.accountType,
-            repos,
-          },
-        ],
-      });
-    } catch {
-      return c.json({
-        connections: [
-          {
-            installationId: target.installationId,
-            accountLogin: target.accountLogin,
-            accountType: target.accountType,
-            repos: [],
-          },
-        ],
-      });
+
+      allRepos.push(
+        ...data.repositories.map((r) => ({
+          name: r.name,
+          full_name: r.full_name,
+          private: !!r.private,
+          updated_at: r.updated_at,
+          pushed_at: r.pushed_at,
+        }))
+      );
+    } catch (err) {
+      console.error(
+        `GitHub repositories fetch failed for installation ${target.installationId}:`,
+        err instanceof Error ? err.message : err
+      );
     }
+
+    // Dedupe by full_name
+    const seen = new Set<string>();
+    const deduped = allRepos.filter((r) => {
+      if (seen.has(r.full_name)) return false;
+      seen.add(r.full_name);
+      return true;
+    });
+    return c.json({ repos: deduped });
   }
 );

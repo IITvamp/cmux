@@ -17,7 +17,6 @@ import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
 import { Check, ChevronDown, Minus, Plus, Settings } from "lucide-react";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import type { Selection } from "react-aria-components";
 
 export const Route = createFileRoute("/_layout/$teamSlugOrId/environments")({
   component: EnvironmentsPage,
@@ -34,15 +33,12 @@ function ConnectionIcon({ type }: { type?: string }) {
   );
 }
 
-// no ProviderIcon inline; use icon components
-
 function EnvironmentsPage() {
   const router = useRouter();
   const { teamSlugOrId } = Route.useParams();
   const connections = useQuery(api.github.listProviderConnections, {
     teamSlugOrId,
   });
-  // Mint signed state for GitHub install
   const mintState = useMutation(convexApi.github_app.mintInstallState);
   const [selectedConnectionLogin, setSelectedConnectionLogin] = useState<
     string | null
@@ -58,7 +54,6 @@ function EnvironmentsPage() {
     null
   );
 
-  // Helper to open a centered popup window for GitHub flows
   const watchPopupClosed = (win: Window | null, onClose: () => void): void => {
     if (!win) return;
     const timer = window.setInterval(() => {
@@ -68,18 +63,16 @@ function EnvironmentsPage() {
           onClose();
         }
       } catch (_e) {
-        // Cross-origin or race; if we can't access, assume still open
+        void 0;
       }
     }, 600);
   };
 
   const handlePopupClosedRefetch = (): void => {
-    // Invalidate React Query cache (convex-query integrated)
     const qc = router.options.context?.queryClient;
     if (qc) {
       qc.invalidateQueries();
     }
-    // Focus back to app
     window.focus?.();
   };
 
@@ -91,7 +84,6 @@ function EnvironmentsPage() {
     const name = opts?.name ?? "cmux-popup";
     const width = Math.floor(opts?.width ?? 980);
     const height = Math.floor(opts?.height ?? 780);
-    // Account for outer window chrome for better centering
     const dualScreenLeft = window.screenLeft ?? window.screenX ?? 0;
     const dualScreenTop = window.screenTop ?? window.screenY ?? 0;
     const outerWidth = window.outerWidth || window.innerWidth || width;
@@ -114,22 +106,19 @@ function EnvironmentsPage() {
     const win = window.open("about:blank", name, features);
     if (win) {
       try {
-        // Ensure no access to opener for safety
         (win as Window & { opener: null | Window }).opener = null;
       } catch (_e) {
-        // ignore
+        void 0;
       }
       try {
         win.location.href = url;
       } catch (_e) {
-        // Fallback: if blocked, try plain open
         window.open(url, "_blank");
       }
       win.focus?.();
       if (onClose) watchPopupClosed(win, onClose);
       return win;
     } else {
-      // Popup blocked, fallback
       window.open(url, "_blank");
       return null;
     }
@@ -145,7 +134,6 @@ function EnvironmentsPage() {
       if (line.length === 0) continue;
       if (line.startsWith("#") || line.startsWith("//")) continue;
 
-      // Remove optional leading export or set
       const noPrefix = line.replace(/^export\s+/, "").replace(/^set\s+/, "");
 
       let key = "";
@@ -159,7 +147,6 @@ function EnvironmentsPage() {
         key = noPrefix.slice(0, idx).trim();
         value = noPrefix.slice(idx + 1).trim();
       } else {
-        // Fallback: split on first whitespace
         const m = noPrefix.match(/^(\S+)\s+(.*)$/);
         if (m) {
           key = m[1] || "";
@@ -170,7 +157,6 @@ function EnvironmentsPage() {
         }
       }
 
-      // Strip surrounding quotes if present
       if (
         (value.startsWith('"') && value.endsWith('"')) ||
         (value.startsWith("'") && value.endsWith("'"))
@@ -178,7 +164,6 @@ function EnvironmentsPage() {
         value = value.slice(1, -1);
       }
 
-      // Skip invalid keys
       if (!key || /\s/.test(key)) continue;
       parsed.push({ name: key, value });
     }
@@ -197,24 +182,11 @@ function EnvironmentsPage() {
     return null;
   }, [selectedConnectionLogin, activeConnections]);
 
-  type RepoLite = {
-    fullName: string;
-    name: string;
-    provider?: string;
-    connectionId?: unknown;
-    lastSyncedAt?: unknown;
-    fullNameLower: string;
-    nameLower: string;
-  };
-  // Determine selected installation id (default to first active)
   const selectedInstallationId = useMemo(() => {
     const match = activeConnections.find((c) => c.accountLogin === currentOrg);
     return match?.installationId ?? activeConnections[0]?.installationId;
   }, [activeConnections, currentOrg]);
 
-  console.log("selectedInstallationId", selectedInstallationId);
-
-  // Fetch repos via OpenAPI client (server queries GitHub directly)
   const githubReposQuery = useRQ({
     ...getApiIntegrationsGithubReposOptions({
       query: {
@@ -225,54 +197,26 @@ function EnvironmentsPage() {
     enabled: !!selectedInstallationId,
   });
 
-  type ApiRepo = {
-    name: string;
-    full_name: string;
-    private: boolean;
-    updated_at?: string;
-    pushed_at?: string;
-  };
-
-  const allRepos = useMemo<RepoLite[]>(() => {
-    const payload = githubReposQuery.data;
-    if (!payload?.connections) return [];
-    const repos: RepoLite[] = [];
-    for (const conn of payload.connections) {
-      for (const r of (conn.repos || []) as ApiRepo[]) {
-        const full = r.full_name;
-        const name = r.name;
-        if (!full || !name) continue;
-        repos.push({
-          fullName: full,
-          name,
-          provider: "github",
-          connectionId: conn.installationId,
-          lastSyncedAt: r.pushed_at || r.updated_at || undefined,
-          fullNameLower: full.toLowerCase(),
-          nameLower: name.toLowerCase(),
-        });
-      }
-    }
-    return repos;
-  }, [githubReposQuery.data]);
-
   const deferredSearch = useDeferredValue(search);
   const filteredRepos = useMemo(() => {
     const q = deferredSearch.trim().toLowerCase();
-    const withTs = allRepos.map((r) => ({
+    const repos = githubReposQuery.data?.repos ?? [];
+    const withTs = repos.map((r) => ({
       ...r,
-      _ts: r.lastSyncedAt ? new Date(r.lastSyncedAt as string).getTime() : 0,
+      _ts: Date.parse(r.pushed_at ?? r.updated_at ?? "") || 0,
     }));
     let list = withTs.sort((a, b) => b._ts - a._ts);
     if (q) {
       list = list.filter(
-        (r) => r.fullNameLower.includes(q) || r.nameLower.includes(q)
+        (r) =>
+          r.full_name.toLowerCase().includes(q) ||
+          r.name.toLowerCase().includes(q)
       );
     }
     return list.slice(0, 5);
-  }, [allRepos, deferredSearch]);
+  }, [githubReposQuery.data, deferredSearch]);
 
-  const [selectedRepos, setSelectedRepos] = useState<Selection>(new Set());
+  const [selectedRepos, setSelectedRepos] = useState(new Set<string>());
   const [step, setStep] = useState<1 | 2>(1);
 
   const configureUrl = useMemo(() => {
@@ -295,13 +239,12 @@ function EnvironmentsPage() {
     if (pendingFocusIndex !== null) {
       const el = keyInputRefs.current[pendingFocusIndex];
       if (el) {
-        // Delay to ensure DOM is updated
         setTimeout(() => {
           el.focus();
           try {
             el.scrollIntoView({ block: "nearest" });
           } catch (_e) {
-            // pass
+            void 0;
           }
         }, 0);
         setPendingFocusIndex(null);
@@ -332,7 +275,6 @@ function EnvironmentsPage() {
     <FloatingPane header={<TitleBar title="Environments" />}>
       <div className="flex flex-col grow overflow-auto select-none relative">
         <div className="p-6 max-w-3xl w-full mx-auto space-y-6">
-          {/* Header */}
           <div>
             <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
               Environments
@@ -343,7 +285,6 @@ function EnvironmentsPage() {
             </p>
           </div>
 
-          {/* Step 1: Select repositories - Connections dropdown */}
           <div className="space-y-2">
             <label className="block text-sm font-medium text-neutral-800 dark:text-neutral-200">
               Connections
@@ -479,7 +420,6 @@ function EnvironmentsPage() {
             </Dropdown.Root>
           </div>
 
-          {/* Step 1: Recent repositories (always top 5, filter by search) */}
           <div className="space-y-2">
             <label className="block text-sm font-medium text-neutral-800 dark:text-neutral-200">
               Repositories
@@ -513,28 +453,25 @@ function EnvironmentsPage() {
               ) : filteredRepos.length > 0 ? (
                 <div className="divide-y divide-neutral-200 dark:divide-neutral-900">
                   {filteredRepos.map((r) => {
-                    const isSelected = (selectedRepos as Set<string>).has(
-                      r.fullName
-                    );
-                    const when = r.lastSyncedAt
-                      ? formatTimeAgo(r.lastSyncedAt as string)
-                      : "";
+                    const isSelected = selectedRepos.has(r.full_name);
+                    const last = r.pushed_at ?? r.updated_at ?? null;
+                    const when = last ? formatTimeAgo(last) : "";
                     return (
                       <div
-                        key={r.fullName}
+                        key={r.full_name}
                         role="option"
                         aria-selected={isSelected}
                         className="px-3 h-9 flex items-center justify-between bg-white dark:bg-neutral-950 cursor-default select-none"
                         onClick={() => {
                           setSelectedRepos((prev) => {
-                            const next = new Set(prev as Set<string>);
-                            if (next.has(r.fullName)) next.delete(r.fullName);
-                            else next.add(r.fullName);
-                            return next as unknown as Selection;
+                            const next = new Set(prev);
+                            if (next.has(r.full_name)) next.delete(r.full_name);
+                            else next.add(r.full_name);
+                            return next;
                           });
                         }}
                       >
-                        <div className="font-medium flex items-center gap-2 min-w-0 flex-1">
+                        <div className="text-sm flex items-center gap-2 min-w-0 flex-1">
                           <div
                             className={`mr-1 h-4 w-4 rounded-sm border grid place-items-center shrink-0 ${
                               isSelected
@@ -549,7 +486,7 @@ function EnvironmentsPage() {
                             />
                           </div>
                           <GitHubIcon className="h-4 w-4 shrink-0 text-neutral-700 dark:text-neutral-200" />
-                          <span className="truncate">{r.fullName}</span>
+                          <span className="truncate">{r.full_name}</span>
                         </div>
                         <div className="ml-3 flex items-center gap-2">
                           {when && (
@@ -617,7 +554,6 @@ function EnvironmentsPage() {
               with a VM through a VS Code UI. We’ll capture your changes as a
               reusable base snapshot.
             </p>
-            {/* Step 2: Name and environment variables */}
             {step === 2 ? (
               <>
                 <div className="space-y-2 mb-2">
@@ -632,8 +568,6 @@ function EnvironmentsPage() {
                     className="w-full rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-700"
                   />
                 </div>
-
-                {/* Environment variables */}
                 <div className="bg-white dark:bg-neutral-950 rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
                   <div
                     role="button"
@@ -702,7 +636,6 @@ function EnvironmentsPage() {
                         }
                       }}
                     >
-                      {/* Labels */}
                       <div
                         className="grid gap-3 text-xs text-neutral-500 dark:text-neutral-500 pb-1 items-center"
                         style={{

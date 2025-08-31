@@ -94,14 +94,11 @@ export type GithubRepo = {
     name: string;
     full_name: string;
     private: boolean;
-    updated_at?: string;
-    pushed_at?: string;
+    updated_at?: string | null;
+    pushed_at?: string | null;
 };
 
-export type GithubConnectionRepos = {
-    installationId: number;
-    accountLogin?: string;
-    accountType?: 'User' | 'Organization';
+export type GithubReposResponse = {
     repos: Array<GithubRepo>;
 };
 
@@ -537,9 +534,7 @@ export type GetApiIntegrationsGithubReposResponses = {
     /**
      * OK
      */
-    200: {
-        connections: Array<GithubConnectionRepos>;
-    };
+    200: GithubReposResponse;
 };
 
 export type GetApiIntegrationsGithubReposResponse = GetApiIntegrationsGithubReposResponses[keyof GetApiIntegrationsGithubReposResponses];

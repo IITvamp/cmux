@@ -1,3 +1,4 @@
+import { githubPrivateKey } from "@/lib/utils/githubPrivateKey";
 import { env } from "@/lib/utils/www-env";
 import { api } from "@cmux/convex/api";
 import { createAppAuth } from "@octokit/auth-app";
@@ -42,16 +43,7 @@ console.log(result);
 
 // For each provider connection (GitHub App installation), use an installation token
 // so private repos are included. Do NOT use the user's OAuth token here.
-const appId = process.env.GITHUB_APP_ID;
-const privateKeyRaw = process.env.GITHUB_APP_PRIVATE_KEY;
-
-if (!appId || !privateKeyRaw) {
-  throw new Error(
-    "Missing GITHUB_APP_ID or GITHUB_APP_PRIVATE_KEY in environment."
-  );
-}
-
-const privateKey = privateKeyRaw.replace(/\\n/g, "\n");
+const appId = env.GITHUB_APP_ID;
 
 await Promise.all(
   result
@@ -66,7 +58,7 @@ await Promise.all(
         authStrategy: createAppAuth,
         auth: {
           appId,
-          privateKey,
+          privateKey: githubPrivateKey,
           installationId: connection.installationId,
         },
       });

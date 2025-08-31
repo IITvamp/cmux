@@ -52,13 +52,13 @@ describe("githubReposRouter via SDK", () => {
     // Accept 200 (OK), 401 (if token rejected), or 501 (GitHub app not configured)
     expect([200, 401, 501]).toContain(res.response.status);
     if (res.response.status === 200 && res.data) {
-      const body = res.data;
-      expect(Array.isArray(body.connections)).toBe(true);
-      if (body.connections.length > 0) {
-        const c0 = body.connections[0]!;
-        expect(typeof c0.installationId).toBe("number");
-        expect(Array.isArray(c0.repos)).toBe(true);
-      }
+      // Expect the new flat shape
+      const body = res.data as unknown as {
+        repos: Array<{ name: string; full_name: string; private: boolean }>;
+      };
+      expect(Array.isArray(body.repos)).toBe(true);
+      // Fail fast if repos are empty — this indicates a regression
+      expect(body.repos.length).toBeGreaterThan(0);
     }
   });
 
@@ -87,11 +87,11 @@ describe("githubReposRouter via SDK", () => {
     });
     expect([200, 401, 501]).toContain(res.response.status);
     if (res.response.status === 200 && res.data) {
-      // When installationId is provided, server should return at most one connection
-      expect(res.data.connections.length).toBeLessThanOrEqual(1);
-      if (res.data.connections[0]) {
-        expect(res.data.connections[0]!.installationId).toBe(installationId);
-      }
+      const body = res.data as unknown as {
+        repos: Array<{ name: string; full_name: string; private: boolean }>;
+      };
+      expect(Array.isArray(body.repos)).toBe(true);
+      expect(body.repos.length).toBeGreaterThan(0);
     }
   });
 });
