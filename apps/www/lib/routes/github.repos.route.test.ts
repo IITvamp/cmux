@@ -1,4 +1,4 @@
-import { honoTestFetch } from "@/lib/utils/hono-test-fetch";
+import { testApiClient } from "@/lib/test-utils/openapi-client";
 import { getApiIntegrationsGithubRepos } from "@cmux/www-openapi-client";
 import { StackAdminApp } from "@stackframe/js";
 import { describe, expect, it } from "vitest";
@@ -36,8 +36,7 @@ async function getStackTokens(): Promise<Tokens> {
 describe("githubReposRouter via SDK", () => {
   it("rejects unauthenticated requests", async () => {
     const res = await getApiIntegrationsGithubRepos({
-      fetch: honoTestFetch,
-      baseUrl: "http://localhost",
+      client: testApiClient,
       query: { team: "lawrence" },
     });
     expect(res.response.status).toBe(401);
@@ -50,8 +49,7 @@ describe("githubReposRouter via SDK", () => {
     }
     const tokens = await getStackTokens();
     const res = await getApiIntegrationsGithubRepos({
-      fetch: honoTestFetch,
-      baseUrl: "http://localhost",
+      client: testApiClient,
       query: { team: "lawrence" },
       headers: { "x-stack-auth": JSON.stringify(tokens) },
     });

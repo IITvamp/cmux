@@ -15,8 +15,8 @@
       "types": "./src/client/index.ts"
     },
     "./client": {
-      "import": "./src/client/index.ts",
-      "types": "./src/client/index.ts"
+      "import": "./src/client/client/index.ts",
+      "types": "./src/client/client/index.ts"
     }
   },
   "devDependencies": {

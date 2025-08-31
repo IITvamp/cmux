@@ -34,7 +34,11 @@ await createClient({
     path: outputPath,
     tsConfigPath,
   },
-  plugins: ["@hey-api/typescript", "@tanstack/react-query"],
+  plugins: [
+    "@hey-api/client-fetch",
+    "@hey-api/typescript",
+    "@tanstack/react-query",
+  ],
 });
 console.timeEnd("generate client");
 

@@ -38,6 +38,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@hey-api/client-fetch": "^0.13.1",
     "@hey-api/openapi-ts": "^0.82.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
