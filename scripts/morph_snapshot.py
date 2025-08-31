@@ -12,10 +12,16 @@ snapshot ID.
 from __future__ import annotations
 
 import argparse
+import atexit
 import os
 import shlex
+import signal
+import sys
+import time
 import typing as t
 from dataclasses import dataclass
+from urllib import request as urllib_request
+from urllib.error import HTTPError, URLError
 
 import dotenv
 from morphcloud.api import MorphCloudClient, Snapshot
@@ -23,6 +29,40 @@ from morphcloud.api import MorphCloudClient, Snapshot
 dotenv.load_dotenv()
 
 client = MorphCloudClient()
+
+# Track live instance for cleanup on exit
+current_instance: t.Optional[object] = None
+
+
+def _cleanup_instance() -> None:
+    global current_instance
+    inst = current_instance
+    if not inst:
+        return
+    try:
+        print(f"Stopping instance {getattr(inst, 'id', '<unknown>')}...")
+        inst.stop()
+        print("Instance stopped")
+    except Exception as e:
+        print(f"Failed to stop instance: {e}")
+    finally:
+        current_instance = None
+
+
+def _signal_handler(signum, _frame) -> None:
+    print(f"Received signal {signum}; cleaning up...")
+    _cleanup_instance()
+    # Exit immediately after cleanup
+    try:
+        sys.exit(1)
+    except SystemExit:
+        raise
+
+
+# Ensure cleanup happens on normal exit and on signals
+atexit.register(_cleanup_instance)
+signal.signal(signal.SIGINT, _signal_handler)
+signal.signal(signal.SIGTERM, _signal_handler)
 
 
 @dataclass
@@ -188,7 +228,7 @@ class MorphDockerfileExecutor:
 
     def handle_copy(self, content: str) -> None:
         import glob
-        
+
         tokens = shlex.split(content)
         if not tokens:
             return
@@ -479,11 +519,12 @@ class MorphDockerfileExecutor:
         )
         # Write wrapper content robustly via base64 to avoid shell expansion issues
         import base64
+
         wrapper_b64 = base64.b64encode(wrapper.encode("utf-8")).decode("ascii")
         self.snapshot = self.snapshot.exec(
             "sh -lc 'dir=$(dirname "
             + shlex.quote(wrapper_path)
-            + "); mkdir -p \"$dir\"; printf %s "
+            + '); mkdir -p "$dir"; printf %s '
             + shlex.quote(wrapper_b64)
             + " | base64 -d > "
             + shlex.quote(wrapper_path)
@@ -596,30 +637,118 @@ def build_snapshot(
 def main() -> None:
     ap = argparse.ArgumentParser(description="Build Morph snapshot from Dockerfile")
     ap.add_argument("dockerfile", nargs="?", default="Dockerfile")
+    ap.add_argument(
+        "--resnapshot",
+        action="store_true",
+        help="After starting the instance, wait for Enter and snapshot again",
+    )
     args = ap.parse_args()
 
-    snapshot = build_snapshot(args.dockerfile)
-    print(f"Snapshot ID: {snapshot.id}")
+    try:
+        snapshot = build_snapshot(args.dockerfile)
+        print(f"Snapshot ID: {snapshot.id}")
 
-    # then we want to start an instance from the snapshot
-    instance = client.instances.start(
-        snapshot_id=snapshot.id,
-        ttl_seconds=3600,
-        ttl_action="pause",
-    )
-    print(f"Instance ID: {instance.id}")
-    # expose the ports
-    expose_ports = [39376, 39377, 39378]
-    for port in expose_ports:
-        instance.expose_http_service(port=port, name=f"port-{port}")
-    instance.wait_until_ready()
-    print(instance.networking.http_services)
-    # print the instance's public IP
+        # then we want to start an instance from the snapshot
+        instance = client.instances.start(
+            snapshot_id=snapshot.id,
+            ttl_seconds=3600,
+            ttl_action="pause",
+        )
+        # track for cleanup
+        global current_instance
+        current_instance = instance
 
-    # next, wait for any keypress and then snapshot again
-    input("Press Enter to snapshot again...")
-    final_snapshot = instance.snapshot()
-    print(f"Snapshot ID: {final_snapshot.id}")
+        print(f"Instance ID: {instance.id}")
+        # expose the ports
+        expose_ports = [39376, 39377, 39378]
+        for port in expose_ports:
+            instance.expose_http_service(port=port, name=f"port-{port}")
+        instance.wait_until_ready()
+        print(instance.networking.http_services)
+        # print the instance's public IP
+
+        # Quick diagnostics before checking the VS Code port
+        try:
+            print("\n--- Instance diagnostics ---")
+            # Ensure the service is started on first boot; some environments don't auto-start enabled units
+            start_res = instance.exec("systemctl start cmux.service || true")
+            if getattr(start_res, "stdout", None):
+                print(start_res.stdout)
+            if getattr(start_res, "stderr", None):
+                sys.stderr.write(str(start_res.stderr))
+
+            diag_cmds = [
+                "systemctl is-enabled cmux.service || true",
+                "systemctl is-active cmux.service || true",
+                "systemctl status cmux.service --no-pager -l | tail -n 80 || true",
+                "ps aux | rg -n 'openvscode-server|node /builtins/build/index.js' -N || true",
+                "ss -lntp | rg -n ':39378' -N || true",
+                "tail -n 80 /var/log/cmux/cmux.service.log || true",
+                "tail -n 80 /var/log/cmux/server.log || true",
+            ]
+            for cmd in diag_cmds:
+                print(f"\n$ {cmd}")
+                res = instance.exec(cmd)
+                if getattr(res, "stdout", None):
+                    print(res.stdout)
+                if getattr(res, "stderr", None):
+                    sys.stderr.write(str(res.stderr))
+        except Exception as e:
+            print(f"Diagnostics failed: {e}")
+
+        # check if port 39378 returns a 200
+        try:
+            services = getattr(instance.networking, "http_services", [])
+
+            def _get(obj: object, key: str) -> t.Any:
+                if isinstance(obj, dict):
+                    return obj.get(key)
+                return getattr(obj, key, None)
+
+            vscode_service = None
+            for svc in services or []:
+                port = _get(svc, "port")
+                name = _get(svc, "name")
+                if port == 39378 or name == "port-39378":
+                    vscode_service = svc
+                    break
+
+            url = _get(vscode_service, "url") if vscode_service is not None else None
+            if not url:
+                print("No exposed HTTP service found for port 39378")
+            else:
+                ok = False
+                # retry for up to ~60s
+                for _ in range(30):
+                    try:
+                        with urllib_request.urlopen(url, timeout=5) as resp:
+                            code = getattr(resp, "status", getattr(resp, "code", None))
+                            if code == 200:
+                                print(f"Port 39378 check: HTTP {code}")
+                                ok = True
+                                break
+                            else:
+                                print(
+                                    f"Port 39378 not ready yet, HTTP {code}; retrying..."
+                                )
+                    except (HTTPError, URLError) as e:
+                        print(f"Port 39378 not ready yet ({e}); retrying...")
+                    time.sleep(2)
+                if not ok:
+                    print("Port 39378 did not return HTTP 200 within timeout")
+        except Exception as e:
+            print(f"Error checking port 39378: {e}")
+
+        # print the vscode url
+        print(f"VSCode URL: {url}/?folder=/root/workspace")
+
+        if args.resnapshot:
+            # next, wait for any keypress and then snapshot again
+            input("Press Enter to snapshot again...")
+            final_snapshot = instance.snapshot()
+            print(f"Snapshot ID: {final_snapshot.id}")
+    finally:
+        _cleanup_instance()
 
 
 if __name__ == "__main__":
