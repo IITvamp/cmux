@@ -1,4 +1,4 @@
-import { app } from "@/lib/hono-app";
+import { honoTestFetch } from "@/lib/utils/hono-test-fetch";
 import { getApiIntegrationsGithubRepos } from "@cmux/www-openapi-client";
 import { StackAdminApp } from "@stackframe/js";
 import { describe, expect, it } from "vitest";
@@ -36,11 +36,7 @@ async function getStackTokens(): Promise<Tokens> {
 describe("githubReposRouter via SDK", () => {
   it("rejects unauthenticated requests", async () => {
     const res = await getApiIntegrationsGithubRepos({
-      // Route runs in-memory using the Hono app
-      fetch: async (input, init) => {
-        return app.request(input, init);
-      },
-      // Node's Request requires absolute URLs; provide a dummy base.
+      fetch: honoTestFetch,
       baseUrl: "http://localhost",
       query: { team: "lawrence" },
     });
@@ -54,13 +50,7 @@ describe("githubReposRouter via SDK", () => {
     }
     const tokens = await getStackTokens();
     const res = await getApiIntegrationsGithubRepos({
-      fetch: async (input, init) => {
-        const url =
-          typeof input === "string" || input instanceof URL
-            ? input.toString()
-            : input.url;
-        return app.request(url, init);
-      },
+      fetch: honoTestFetch,
       baseUrl: "http://localhost",
       query: { team: "lawrence" },
       headers: { "x-stack-auth": JSON.stringify(tokens) },
