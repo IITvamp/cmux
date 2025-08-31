@@ -416,7 +416,7 @@ function EnvironmentsPage() {
                           ) : null}
                           {installNewUrl ? (
                             <>
-                              <div className="mx-1 my-1 h-px bg-neutral-200 dark:bg-neutral-800" />
+                              <div className="mx-1 h-px bg-neutral-200 dark:bg-neutral-800" />
                               <CommandGroup forceMount>
                                 <CommandItem
                                   value="add-github-account"
