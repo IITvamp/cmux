@@ -121,7 +121,7 @@ export const TaskItem = memo(function TaskItem({
         });
       }
     },
-    [runWithVSCode, toggleKeepAlive]
+    [runWithVSCode, teamSlugOrId, toggleKeepAlive]
   );
 
   const handleArchive = useCallback(
