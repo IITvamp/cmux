@@ -1,11 +1,7 @@
 #!/usr/bin/env python3
 """
 This script parses a Dockerfile and applies its instructions to a Morph
-snapshot using the MorphCloud Python API. It uses snapshot.setup/exec for
-commands and snapshot.upload for file transfers. After provisioning Docker
-with BuildKit and docker compose, it appends "::1       localhost" to
-/etc/hosts to ensure loopback resolution. Finally it prints the resulting
-snapshot ID.
+snapshot using the MorphCloud Python API.
 """
 
 from __future__ import annotations
