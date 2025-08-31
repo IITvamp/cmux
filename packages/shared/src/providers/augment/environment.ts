@@ -18,7 +18,7 @@ export async function getAugmentEnvironment(
   // Ensure directories exist
   startupCommands.unshift("mkdir -p ~/.augment");
   startupCommands.push("mkdir -p /root/lifecycle/augment");
-
+  g;
   // Clean up any previous Augment completion markers
   startupCommands.push(
     "rm -f /root/lifecycle/augment-complete-* 2>/dev/null || true"
