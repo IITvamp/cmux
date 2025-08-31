@@ -40,6 +40,8 @@ describe("githubReposRouter via SDK", () => {
       fetch: async (input, init) => {
         return app.request(input, init);
       },
+      // Node's Request requires absolute URLs; provide a dummy base.
+      baseUrl: "http://localhost",
       query: { team: "lawrence" },
     });
     expect(res.response.status).toBe(401);
@@ -59,6 +61,7 @@ describe("githubReposRouter via SDK", () => {
             : input.url;
         return app.request(url, init);
       },
+      baseUrl: "http://localhost",
       query: { team: "lawrence" },
       headers: { "x-stack-auth": JSON.stringify(tokens) },
     });
