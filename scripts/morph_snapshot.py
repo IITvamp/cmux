@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
-"""Reimplement morph-snapshot.ts in Python using the morphcloud SDK.
-
+"""
 This script parses a Dockerfile and applies its instructions to a Morph
 snapshot using the MorphCloud Python API. It uses snapshot.setup/exec for
 commands and snapshot.upload for file transfers. After provisioning Docker
