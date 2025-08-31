@@ -20,6 +20,9 @@ const Repo = z
     name: z.string(),
     full_name: z.string(),
     private: z.boolean(),
+    // ISO timestamp strings from GitHub API
+    updated_at: z.string().optional(),
+    pushed_at: z.string().optional(),
   })
   .openapi("GithubRepo");
 
@@ -102,12 +105,16 @@ githubReposRouter.openapi(
                   name: string;
                   full_name: string;
                   private: boolean;
+                  updated_at?: string;
+                  pushed_at?: string;
                 }>;
               }
             ).repositories.map((r) => ({
               name: r.name,
               full_name: r.full_name,
               private: !!r.private,
+              updated_at: r.updated_at,
+              pushed_at: r.pushed_at,
             }));
             return {
               installationId: co.installationId,

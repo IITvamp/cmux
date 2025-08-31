@@ -17,6 +17,14 @@
     "./client": {
       "import": "./src/client/client/index.ts",
       "types": "./src/client/client/index.ts"
+    },
+    "./client.gen": {
+      "import": "./src/client/client.gen.ts",
+      "types": "./src/client/client.gen.ts"
+    },
+    "./react-query": {
+      "import": "./src/client/@tanstack/react-query.ts",
+      "types": "./src/client/@tanstack/react-query.ts"
     }
   },
   "devDependencies": {

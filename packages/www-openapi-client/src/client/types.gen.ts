@@ -94,6 +94,8 @@ export type GithubRepo = {
     name: string;
     full_name: string;
     private: boolean;
+    updated_at?: string;
+    pushed_at?: string;
 };
 
 export type GithubConnectionRepos = {

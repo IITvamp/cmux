@@ -5,10 +5,13 @@ import { GitLabIcon } from "@/components/icons/gitlab";
 import { TitleBar } from "@/components/TitleBar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api, api as convexApi } from "@cmux/convex/api";
+import { getApiIntegrationsGithubReposOptions } from "@cmux/www-openapi-client/react-query";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { useQuery as useRQ } from "@tanstack/react-query";
 import { useMutation, useQuery } from "convex/react";
-import { Check, ChevronDown, Minus, Plus, Trash2 } from "lucide-react";
+import { Check, ChevronDown, Minus, Plus, Settings } from "lucide-react";
+import { Dropdown } from "@/components/ui/dropdown";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import type { Selection } from "react-aria-components";
 
@@ -32,15 +35,12 @@ function ConnectionIcon({ type }: { type?: string }) {
 function EnvironmentsPage() {
   const router = useRouter();
   const { teamSlugOrId } = Route.useParams();
-  const reposByOrg = useQuery(api.github.getReposByOrg, { teamSlugOrId });
   const connections = useQuery(api.github.listProviderConnections, {
     teamSlugOrId,
   });
   // Mint signed state for GitHub install
   const mintState = useMutation(convexApi.github_app.mintInstallState);
-  const removeConnection = useMutation(api.github.removeProviderConnection);
-
-  const [selectedOrg, setSelectedOrg] = useState<string | null>(null);
+  const [selectedConnectionLogin, setSelectedConnectionLogin] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [envName, setEnvName] = useState("");
   const [envVars, setEnvVars] = useState<
@@ -188,12 +188,11 @@ function EnvironmentsPage() {
   );
 
   const currentOrg = useMemo(() => {
-    if (selectedOrg) return selectedOrg;
+    if (selectedConnectionLogin) return selectedConnectionLogin;
     if (activeConnections.length > 0)
       return activeConnections[0]?.accountLogin ?? null;
-    const keys = reposByOrg ? Object.keys(reposByOrg) : [];
-    return keys.length > 0 ? keys[0]! : null;
-  }, [selectedOrg, activeConnections, reposByOrg]);
+    return null;
+  }, [selectedConnectionLogin, activeConnections]);
 
   type RepoLite = {
     fullName: string;
@@ -204,51 +203,60 @@ function EnvironmentsPage() {
     fullNameLower: string;
     nameLower: string;
   };
+  // Fetch repos via OpenAPI client (server queries GitHub directly)
+  const githubReposQuery = useRQ(
+    getApiIntegrationsGithubReposOptions({ query: { team: teamSlugOrId } })
+  );
+
+  type ApiRepo = {
+    name: string;
+    full_name: string;
+    private: boolean;
+    updated_at?: string;
+    pushed_at?: string;
+  };
+
   const allRepos = useMemo<RepoLite[]>(() => {
-    if (!reposByOrg) return [];
-    const groups = Object.values(reposByOrg) as Array<
-      Array<{
-        fullName: string;
-        name: string;
-        provider?: string;
-        connectionId?: unknown;
-        lastSyncedAt?: unknown;
-      }>
-    >;
-    return groups
-      .flat()
-      .filter(
-        (r) => typeof r.fullName === "string" && typeof r.name === "string"
-      )
-      .map((r) => ({
-        fullName: r.fullName,
-        name: r.name,
-        provider: r.provider,
-        connectionId: r.connectionId,
-        lastSyncedAt: r.lastSyncedAt,
-        fullNameLower: r.fullName.toLowerCase(),
-        nameLower: r.name.toLowerCase(),
-      }));
-  }, [reposByOrg]);
+    const payload = githubReposQuery.data;
+    if (!payload?.connections) return [];
+    const repos: RepoLite[] = [];
+    for (const conn of payload.connections) {
+      for (const r of (conn.repos || []) as ApiRepo[]) {
+        const full = r.full_name;
+        const name = r.name;
+        if (!full || !name) continue;
+        repos.push({
+          fullName: full,
+          name,
+          provider: "github",
+          connectionId: conn.installationId,
+          lastSyncedAt: r.pushed_at || r.updated_at || undefined,
+          fullNameLower: full.toLowerCase(),
+          nameLower: name.toLowerCase(),
+        });
+      }
+    }
+    return repos;
+  }, [githubReposQuery.data]);
 
   const deferredSearch = useDeferredValue(search);
   const filteredRepos = useMemo(() => {
     const q = deferredSearch.trim().toLowerCase();
-    const list = allRepos;
-    if (!q) return list;
-    return list.filter(
-      (r) => r.fullNameLower.includes(q) || r.nameLower.includes(q)
-    );
+    const withTs = allRepos.map((r) => ({
+      ...r,
+      _ts: r.lastSyncedAt ? new Date(r.lastSyncedAt as string).getTime() : 0,
+    }));
+    let list = withTs.sort((a, b) => b._ts - a._ts);
+    if (q) {
+      list = list.filter(
+        (r) => r.fullNameLower.includes(q) || r.nameLower.includes(q)
+      );
+    }
+    return list.slice(0, 5);
   }, [allRepos, deferredSearch]);
 
   const [selectedRepos, setSelectedRepos] = useState<Selection>(new Set());
-  const parentRef = useRef<HTMLDivElement | null>(null);
-  const rowVirtualizer = useVirtualizer({
-    count: filteredRepos.length,
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => 36,
-    overscan: 12,
-  });
+  const [step, setStep] = useState<1 | 2>(1);
 
   const configureUrl = useMemo(() => {
     if (!connections || !currentOrg) return null;
@@ -284,6 +292,25 @@ function EnvironmentsPage() {
     }
   }, [pendingFocusIndex, envVars]);
 
+  function formatTimeAgo(input?: string | number): string {
+    if (!input) return "";
+    const ts = typeof input === "number" ? input : Date.parse(input);
+    if (Number.isNaN(ts)) return "";
+    const diff = Date.now() - ts;
+    const sec = Math.floor(diff / 1000);
+    if (sec < 60) return "just now";
+    const min = Math.floor(sec / 60);
+    if (min < 60) return `${min}m ago`;
+    const hr = Math.floor(min / 60);
+    if (hr < 24) return `${hr}h ago`;
+    const day = Math.floor(hr / 24);
+    if (day < 30) return `${day}d ago`;
+    const mo = Math.floor(day / 30);
+    if (mo < 12) return `${mo}mo ago`;
+    const yr = Math.floor(mo / 12);
+    return `${yr}y ago`;
+  }
+
   return (
     <FloatingPane header={<TitleBar title="Environments" />}>
       <div className="flex flex-col grow overflow-auto select-none relative">
@@ -294,168 +321,123 @@ function EnvironmentsPage() {
               Environments
             </h1>
             <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-              Configure an environment by selecting a GitHub organization and
-              repository.
+              Create an environment by selecting repositories and optionally providing a base snapshot with environment variables.
             </p>
           </div>
 
-          {/* Environment name */}
+          {/* Step 1: Select repositories - Connections dropdown */}
           <div className="space-y-2">
             <label className="block text-sm font-medium text-neutral-800 dark:text-neutral-200">
-              Environment name
+              Connections
             </label>
-            <input
-              type="text"
-              value={envName}
-              onChange={(e) => setEnvName(e.target.value)}
-              placeholder="e.g. Production, Staging, Sandbox"
-              className="w-full rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-700"
-            />
-          </div>
-
-          {/* Connections list */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="block text-sm font-medium text-neutral-800 dark:text-neutral-200">
-                Connections
-              </label>
-              {installNewUrl ? (
-                <button
-                  type="button"
-                  className="text-xs underline text-neutral-700 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-neutral-100"
-                  onClick={async () => {
-                    try {
-                      const { state } = await mintState({ teamSlugOrId });
-                      const sep = installNewUrl.includes("?") ? "&" : "?";
-                      const url = `${installNewUrl}${sep}state=${encodeURIComponent(state)}`;
-                      openCenteredPopup(url, { name: "github-install" }, handlePopupClosedRefetch);
-                    } catch (e) {
-                      console.error("Failed to mint install state:", e);
-                      alert("Failed to start installation. Please try again.");
-                    }
-                  }}
-                >
-                  Add organization
-                </button>
-              ) : null}
-            </div>
-
-            {connections === undefined ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {[0, 1, 2, 3].map((i) => (
-                  <div
-                    key={i}
-                    className="rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 h-9 flex items-center justify-between"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Skeleton className="h-4 w-4 rounded-full" />
-                      <Skeleton className="h-4 w-32 rounded-full" />
-                      <Skeleton className="h-3 w-14 rounded-full" />
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <Skeleton className="h-3 w-16 rounded-full" />
-                      <Skeleton className="h-3 w-12 rounded-full" />
-                    </div>
+            <Dropdown.Root>
+              <Dropdown.Trigger className="w-full">
+                <div className="w-full rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 h-9 flex items-center justify-between text-sm text-neutral-800 dark:text-neutral-200">
+                  <div className="flex items-center gap-2 min-w-0">
+                    {currentOrg ? (
+                      <>
+                        <ConnectionIcon type="github" />
+                        <span className="truncate">{currentOrg}</span>
+                      </>
+                    ) : (
+                      <span className="truncate text-neutral-500">Select connection</span>
+                    )}
                   </div>
-                ))}
-              </div>
-            ) : activeConnections.length > 0 ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {activeConnections.map((c) => {
-                  const name =
-                    c.accountLogin || `installation-${c.installationId}`;
-                  const cfgUrl =
-                    c.accountLogin && c.accountType
-                      ? c.accountType === "Organization"
-                        ? `https://github.com/organizations/${c.accountLogin}/settings/installations/${c.installationId}`
-                        : `https://github.com/settings/installations/${c.installationId}`
-                      : null;
-                  return (
-                    <div
-                      key={`${c.accountLogin}:${c.installationId}`}
-                      className={`rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 h-9 flex items-center justify-between`}
-                    >
-                      <div className="text-sm text-left text-neutral-800 dark:text-neutral-200 flex items-center gap-2 min-w-0 flex-1">
-                        <ConnectionIcon type={c.type} />
-                        <span className="truncate">{name}</span>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        {cfgUrl ? (
-                          <a
-                            href={cfgUrl}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              openCenteredPopup(
-                                cfgUrl,
-                                { name: "github-config" },
-                                handlePopupClosedRefetch
-                              );
-                            }}
-                            className="text-xs underline text-neutral-700 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-neutral-100"
-                          >
-                            Add repos
-                          </a>
-                        ) : null}
-                        <button
-                          type="button"
-                          aria-label="Remove connection"
-                          className="text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300"
-                          onClick={async () => {
-                            try {
-                              await removeConnection({
-                                teamSlugOrId,
-                                installationId: c.installationId,
-                              });
-                              setSelectedOrg(null);
-                            } catch (e) {
-                              console.error("Failed to remove connection:", e);
-                              alert("Failed to remove connection");
-                            }
-                          }}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="text-sm text-neutral-500 dark:text-neutral-400">
-                No provider connections found for this team.
-                {installNewUrl ? (
-                  <>
-                    {" "}
-                    You can{" "}
-                    <button
-                      type="button"
-                      className="underline text-neutral-700 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-neutral-100"
-                      onClick={async () => {
-                        try {
-                          const { state } = await mintState({ teamSlugOrId });
-                          const sep = installNewUrl.includes("?") ? "&" : "?";
-                          const url = `${installNewUrl}${sep}state=${encodeURIComponent(state)}`;
-                          openCenteredPopup(
-                            url,
-                            { name: "github-install" },
-                            handlePopupClosedRefetch
+                  <ChevronDown className="w-4 h-4 text-neutral-500" />
+                </div>
+              </Dropdown.Trigger>
+              <Dropdown.Portal>
+                <Dropdown.Positioner>
+                  <Dropdown.Popup className="min-w-[240px]">
+                    <Dropdown.Arrow />
+                    {connections === undefined ? (
+                      <div className="px-3 py-2 text-sm text-neutral-500">Loading...</div>
+                    ) : activeConnections.length > 0 ? (
+                      <div className="py-1">
+                        {activeConnections.map((c) => {
+                          const name = c.accountLogin || `installation-${c.installationId}`;
+                          const cfgUrl = c.accountLogin && c.accountType
+                            ? c.accountType === "Organization"
+                              ? `https://github.com/organizations/${c.accountLogin}/settings/installations/${c.installationId}`
+                              : `https://github.com/settings/installations/${c.installationId}`
+                            : null;
+                          const isSelected = currentOrg === c.accountLogin;
+                          return (
+                            <Dropdown.Item
+                              key={`${c.accountLogin}:${c.installationId}`}
+                              onClick={() => setSelectedConnectionLogin(c.accountLogin ?? null)}
+                              className="flex items-center justify-between gap-2 text-sm"
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <ConnectionIcon type={c.type} />
+                                <span className="truncate">{name}</span>
+                                {isSelected && (
+                                  <span className="ml-1 text-[10px] text-neutral-500">(selected)</span>
+                                )}
+                              </div>
+                              {cfgUrl ? (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <button
+                                      type="button"
+                                      className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-900"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        e.preventDefault();
+                                        openCenteredPopup(
+                                          cfgUrl,
+                                          { name: "github-config" },
+                                          handlePopupClosedRefetch
+                                        );
+                                      }}
+                                    >
+                                      <Settings className="w-4 h-4 text-neutral-600 dark:text-neutral-300" />
+                                    </button>
+                                  </TooltipTrigger>
+                                  <TooltipContent>Add Repos</TooltipContent>
+                                </Tooltip>
+                              ) : null}
+                            </Dropdown.Item>
                           );
-                        } catch (e) {
-                          console.error("Failed to mint install state:", e);
-                          alert("Failed to start installation. Please try again.");
-                        }
-                      }}
-                    >
-                      add a GitHub organization
-                    </button>
-                    .
-                  </>
-                ) : null}
-              </div>
-            )}
+                        })}
+                        {installNewUrl ? (
+                          <div className="mt-1 border-t border-neutral-200 dark:border-neutral-800" />
+                        ) : null}
+                        {installNewUrl ? (
+                          <Dropdown.Item
+                            onClick={async () => {
+                              try {
+                                const { state } = await mintState({ teamSlugOrId });
+                                const sep = installNewUrl!.includes("?") ? "&" : "?";
+                                const url = `${installNewUrl}${sep}state=${encodeURIComponent(state)}`;
+                                openCenteredPopup(
+                                  url,
+                                  { name: "github-install" },
+                                  handlePopupClosedRefetch
+                                );
+                              } catch (e) {
+                                console.error("Failed to mint install state:", e);
+                                alert("Failed to start installation. Please try again.");
+                              }
+                            }}
+                          >
+                            <div className="flex items-center gap-2">
+                              <ConnectionIcon type="github" />
+                              <span>Add GitHub Account</span>
+                            </div>
+                          </Dropdown.Item>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <div className="px-3 py-2 text-sm text-neutral-500">No connections</div>
+                    )}
+                  </Dropdown.Popup>
+                </Dropdown.Positioner>
+              </Dropdown.Portal>
+            </Dropdown.Root>
           </div>
 
-          {/* Repo search */}
+          {/* Step 1: Recent repositories (always top 5, filter by search) */}
           <div className="space-y-2">
             <label className="block text-sm font-medium text-neutral-800 dark:text-neutral-200">
               Repositories
@@ -464,15 +446,14 @@ function EnvironmentsPage() {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search repositories"
+              placeholder="Search recent repositories"
               className="w-full rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-700"
             />
 
-            {/* Repo list as checkmark ListBox */}
             <div className="mt-2 rounded-md border border-neutral-200 dark:border-neutral-800 overflow-hidden">
-              {reposByOrg === undefined ? (
+              {githubReposQuery.isPending ? (
                 <div className="divide-y divide-neutral-200 dark:divide-neutral-900">
-                  {[...Array(8)].map((_, i) => (
+                  {[...Array(5)].map((_, i) => (
                     <div
                       key={i}
                       className="px-3 h-9 flex items-center justify-between bg-white dark:bg-neutral-950"
@@ -482,103 +463,67 @@ function EnvironmentsPage() {
                         <Skeleton className="h-4 w-56 rounded" />
                       </div>
                       <div className="flex items-center gap-2">
-                        <Skeleton className="h-4 w-8 rounded-full" />
-                        <Skeleton className="h-3 w-28 rounded-full" />
+                        <Skeleton className="h-3 w-16 rounded-full" />
                       </div>
                     </div>
                   ))}
                 </div>
               ) : filteredRepos.length > 0 ? (
-                <div
-                  ref={parentRef}
-                  role="listbox"
-                  aria-multiselectable="true"
-                  className="max-h-[40vh] overflow-auto relative outline-none"
-                >
-                  <div
-                    className="relative w-full"
-                    style={{ height: rowVirtualizer.getTotalSize() }}
-                  >
-                    {rowVirtualizer.getVirtualItems().map((vi) => {
-                      const r = filteredRepos[vi.index]!;
-                      const isSelected = (selectedRepos as Set<string>).has(
-                        r.fullName
-                      );
-                      return (
-                        <div
-                          key={r.fullName}
-                          role="option"
-                          aria-selected={isSelected}
-                          className={
-                            "absolute top-0 left-0 right-0 group px-3 h-9 flex items-center justify-between text-sm text-neutral-800 dark:text-neutral-200 bg-white dark:bg-neutral-950 hover:bg-neutral-50 dark:hover:bg-neutral-900"
-                          }
-                          style={{ transform: `translateY(${vi.start}px)` }}
-                          onClick={() => {
-                            setSelectedRepos((prev) => {
-                              const next = new Set(prev as Set<string>);
-                              if (next.has(r.fullName)) next.delete(r.fullName);
-                              else next.add(r.fullName);
-                              return next as unknown as Selection;
-                            });
-                          }}
-                        >
-                          <div className="font-medium flex items-center gap-2 min-w-0 flex-1">
-                            <div
-                              className={`mr-1 h-4 w-4 rounded-sm border grid place-items-center shrink-0 ${
-                                isSelected
-                                  ? "border-neutral-700 bg-neutral-800"
-                                  : "border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950"
+                <div className="divide-y divide-neutral-200 dark:divide-neutral-900">
+                  {filteredRepos.map((r) => {
+                    const isSelected = (selectedRepos as Set<string>).has(r.fullName);
+                    const when = r.lastSyncedAt ? formatTimeAgo(r.lastSyncedAt as string) : "";
+                    return (
+                      <div
+                        key={r.fullName}
+                        role="option"
+                        aria-selected={isSelected}
+                        className="px-3 h-9 flex items-center justify-between bg-white dark:bg-neutral-950 cursor-default select-none"
+                        onClick={() => {
+                          setSelectedRepos((prev) => {
+                            const next = new Set(prev as Set<string>);
+                            if (next.has(r.fullName)) next.delete(r.fullName);
+                            else next.add(r.fullName);
+                            return next as unknown as Selection;
+                          });
+                        }}
+                      >
+                        <div className="font-medium flex items-center gap-2 min-w-0 flex-1">
+                          <div
+                            className={`mr-1 h-4 w-4 rounded-sm border grid place-items-center shrink-0 ${
+                              isSelected
+                                ? "border-neutral-700 bg-neutral-800"
+                                : "border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950"
+                            }`}
+                          >
+                            <Check
+                              className={`w-3 h-3 text-white transition-opacity ${
+                                isSelected ? "opacity-100" : "opacity-0"
                               }`}
-                            >
-                              <Check
-                                className={`w-3 h-3 text-white transition-opacity ${
-                                  isSelected ? "opacity-100" : "opacity-0"
-                                }`}
-                              />
-                            </div>
-                            {r.provider === "gitlab" ? (
-                              <GitLabIcon className="h-4 w-4 shrink-0 text-neutral-600 dark:text-neutral-300" />
-                            ) : (
-                              <GitHubIcon className="h-4 w-4 shrink-0 text-neutral-700 dark:text-neutral-200" />
-                            )}
-                            <span className="truncate">{r.fullName}</span>
+                            />
                           </div>
-                          <div className="ml-3 flex items-center gap-2">
-                            {r.connectionId ? (
-                              <span className="inline-flex items-center rounded-full bg-neutral-100 dark:bg-neutral-900 text-neutral-700 dark:text-neutral-300 px-2 py-0.5 text-[10px]">
-                                App
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center rounded-full bg-neutral-100 dark:bg-neutral-900 text-neutral-500 dark:text-neutral-400 px-2 py-0.5 text-[10px]">
-                                Local
-                              </span>
-                            )}
-                            {r.lastSyncedAt ? (
-                              <span className="text-[10px] text-neutral-500 dark:text-neutral-500">
-                                {new Date(
-                                  r.lastSyncedAt as number
-                                ).toLocaleString()}
-                              </span>
-                            ) : null}
-                          </div>
+                          <GitHubIcon className="h-4 w-4 shrink-0 text-neutral-700 dark:text-neutral-200" />
+                          <span className="truncate">{r.fullName}</span>
                         </div>
-                      );
-                    })}
-                  </div>
+                        <div className="ml-3 flex items-center gap-2">
+                          {when && (
+                            <span className="text-[10px] text-neutral-500 dark:text-neutral-500">{when}</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="px-3 py-6 text-sm text-neutral-500 dark:text-neutral-400 bg-white dark:bg-neutral-950">
-                  {search
-                    ? "No repositories match your search."
-                    : "No repositories in this organization."}
+                  {search ? "No recent repositories match your search." : "No recent repositories available."}
                 </div>
               )}
             </div>
 
             <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-500">
-              This list only includes repositories that you have access to in
-              GitHub and can use with cmux.
-              <br />
+              Only the 5 most recently updated repositories are shown.
+              {" "}
               Missing a repo?{" "}
               {configureUrl ? (
                 <a
@@ -600,8 +545,45 @@ function EnvironmentsPage() {
               )}
               .
             </p>
-            {/* Environment variables */}
-            <div className="bg-white dark:bg-neutral-950 rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                disabled={(selectedRepos as Set<string>).size === 0}
+                onClick={() => setStep(2)}
+                className="inline-flex items-center rounded-md bg-neutral-900 text-white disabled:bg-neutral-300 dark:disabled:bg-neutral-700 disabled:cursor-not-allowed px-3 py-2 text-sm hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
+              >
+                Select repositories
+              </button>
+              <button
+                type="button"
+                onClick={() => setStep(2)}
+                className="inline-flex items-center rounded-md border border-neutral-200 dark:border-neutral-800 px-3 py-2 text-sm text-neutral-800 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-900"
+              >
+                Configure manually
+              </button>
+            </div>
+            <p className="text-xs text-neutral-500 dark:text-neutral-500">
+              Prefer to start from scratch? Configure everything by interacting with a VM through a VS Code UI. We’ll capture your changes as a reusable base snapshot.
+            </p>
+            {/* Step 2: Name and environment variables */}
+            {step === 2 ? (
+              <>
+                <div className="space-y-2 mb-2">
+                  <label className="block text-sm font-medium text-neutral-800 dark:text-neutral-200">
+                    Environment name
+                  </label>
+                  <input
+                    type="text"
+                    value={envName}
+                    onChange={(e) => setEnvName(e.target.value)}
+                    placeholder="e.g. Production, Staging, Sandbox"
+                    className="w-full rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-700"
+                  />
+                </div>
+
+                {/* Environment variables */}
+                <div className="bg-white dark:bg-neutral-950 rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
               <div
                 role="button"
                 aria-expanded={envPanelOpen}
@@ -758,7 +740,9 @@ function EnvironmentsPage() {
                   </p>
                 </div>
               ) : null}
-            </div>
+                </div>
+              </>
+            ) : null}
           </div>
         </div>
       </div>

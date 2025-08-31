@@ -1,3 +1,4 @@
+import { client } from "@cmux/www-openapi-client/client.gen";
 import { StackClientApp } from "@stackframe/react";
 import { useNavigate as useTanstackNavigate } from "@tanstack/react-router";
 import { env } from "./client-env";
@@ -34,4 +35,28 @@ void stackClientApp.getUser().then(async (user) => {
       signalConvexAuthReady(isAuthenticated);
     }
   );
+});
+
+client.setConfig({
+  baseUrl: "http://localhost:9779",
+  fetch: async (request) => {
+    console.time("stackClientApp.getUser");
+    const user = await stackClientApp.getUser();
+    console.timeEnd("stackClientApp.getUser");
+    if (!user) {
+      throw new Error("User not found");
+    }
+    console.time("user.getAuthHeaders");
+    const authHeaders = await user.getAuthHeaders();
+    console.timeEnd("user.getAuthHeaders");
+    const headers =
+      request instanceof Request ? request.headers : new Headers();
+    const response = await fetch(request, {
+      headers: {
+        ...headers,
+        ...authHeaders,
+      },
+    });
+    return response;
+  },
 });
