@@ -3,15 +3,19 @@ import { FloatingPane } from "@/components/floating-pane";
 import { GitHubIcon } from "@/components/icons/github";
 import { GitLabIcon } from "@/components/icons/gitlab";
 import { TitleBar } from "@/components/TitleBar";
+import { Dropdown } from "@/components/ui/dropdown";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { api, api as convexApi } from "@cmux/convex/api";
 import { getApiIntegrationsGithubReposOptions } from "@cmux/www-openapi-client/react-query";
-import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useQuery as useRQ } from "@tanstack/react-query";
+import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
 import { Check, ChevronDown, Minus, Plus, Settings } from "lucide-react";
-import { Dropdown } from "@/components/ui/dropdown";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import type { Selection } from "react-aria-components";
 
@@ -40,7 +44,9 @@ function EnvironmentsPage() {
   });
   // Mint signed state for GitHub install
   const mintState = useMutation(convexApi.github_app.mintInstallState);
-  const [selectedConnectionLogin, setSelectedConnectionLogin] = useState<string | null>(null);
+  const [selectedConnectionLogin, setSelectedConnectionLogin] = useState<
+    string | null
+  >(null);
   const [search, setSearch] = useState("");
   const [envName, setEnvName] = useState("");
   const [envVars, setEnvVars] = useState<
@@ -53,10 +59,7 @@ function EnvironmentsPage() {
   );
 
   // Helper to open a centered popup window for GitHub flows
-  const watchPopupClosed = (
-    win: Window | null,
-    onClose: () => void
-  ): void => {
+  const watchPopupClosed = (win: Window | null, onClose: () => void): void => {
     if (!win) return;
     const timer = window.setInterval(() => {
       try {
@@ -112,7 +115,7 @@ function EnvironmentsPage() {
     if (win) {
       try {
         // Ensure no access to opener for safety
-        (win as Window & { opener: null | Window }) .opener = null;
+        (win as Window & { opener: null | Window }).opener = null;
       } catch (_e) {
         // ignore
       }
@@ -203,10 +206,24 @@ function EnvironmentsPage() {
     fullNameLower: string;
     nameLower: string;
   };
+  // Determine selected installation id (default to first active)
+  const selectedInstallationId = useMemo(() => {
+    const match = activeConnections.find((c) => c.accountLogin === currentOrg);
+    return match?.installationId ?? activeConnections[0]?.installationId;
+  }, [activeConnections, currentOrg]);
+
+  console.log("selectedInstallationId", selectedInstallationId);
+
   // Fetch repos via OpenAPI client (server queries GitHub directly)
-  const githubReposQuery = useRQ(
-    getApiIntegrationsGithubReposOptions({ query: { team: teamSlugOrId } })
-  );
+  const githubReposQuery = useRQ({
+    ...getApiIntegrationsGithubReposOptions({
+      query: {
+        team: teamSlugOrId,
+        installationId: selectedInstallationId,
+      },
+    }),
+    enabled: !!selectedInstallationId,
+  });
 
   type ApiRepo = {
     name: string;
@@ -321,7 +338,8 @@ function EnvironmentsPage() {
               Environments
             </h1>
             <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-              Create an environment by selecting repositories and optionally providing a base snapshot with environment variables.
+              Create an environment by selecting repositories and optionally
+              providing a base snapshot with environment variables.
             </p>
           </div>
 
@@ -340,7 +358,9 @@ function EnvironmentsPage() {
                         <span className="truncate">{currentOrg}</span>
                       </>
                     ) : (
-                      <span className="truncate text-neutral-500">Select connection</span>
+                      <span className="truncate text-neutral-500">
+                        Select connection
+                      </span>
                     )}
                   </div>
                   <ChevronDown className="w-4 h-4 text-neutral-500" />
@@ -351,28 +371,39 @@ function EnvironmentsPage() {
                   <Dropdown.Popup className="min-w-[240px]">
                     <Dropdown.Arrow />
                     {connections === undefined ? (
-                      <div className="px-3 py-2 text-sm text-neutral-500">Loading...</div>
+                      <div className="px-3 py-2 text-sm text-neutral-500">
+                        Loading...
+                      </div>
                     ) : activeConnections.length > 0 ? (
                       <div className="py-1">
                         {activeConnections.map((c) => {
-                          const name = c.accountLogin || `installation-${c.installationId}`;
-                          const cfgUrl = c.accountLogin && c.accountType
-                            ? c.accountType === "Organization"
-                              ? `https://github.com/organizations/${c.accountLogin}/settings/installations/${c.installationId}`
-                              : `https://github.com/settings/installations/${c.installationId}`
-                            : null;
+                          const name =
+                            c.accountLogin ||
+                            `installation-${c.installationId}`;
+                          const cfgUrl =
+                            c.accountLogin && c.accountType
+                              ? c.accountType === "Organization"
+                                ? `https://github.com/organizations/${c.accountLogin}/settings/installations/${c.installationId}`
+                                : `https://github.com/settings/installations/${c.installationId}`
+                              : null;
                           const isSelected = currentOrg === c.accountLogin;
                           return (
                             <Dropdown.Item
                               key={`${c.accountLogin}:${c.installationId}`}
-                              onClick={() => setSelectedConnectionLogin(c.accountLogin ?? null)}
+                              onClick={() =>
+                                setSelectedConnectionLogin(
+                                  c.accountLogin ?? null
+                                )
+                              }
                               className="flex items-center justify-between gap-2 text-sm"
                             >
                               <div className="flex items-center gap-2 min-w-0">
                                 <ConnectionIcon type={c.type} />
                                 <span className="truncate">{name}</span>
                                 {isSelected && (
-                                  <span className="ml-1 text-[10px] text-neutral-500">(selected)</span>
+                                  <span className="ml-1 text-[10px] text-neutral-500">
+                                    (selected)
+                                  </span>
                                 )}
                               </div>
                               {cfgUrl ? (
@@ -407,8 +438,12 @@ function EnvironmentsPage() {
                           <Dropdown.Item
                             onClick={async () => {
                               try {
-                                const { state } = await mintState({ teamSlugOrId });
-                                const sep = installNewUrl!.includes("?") ? "&" : "?";
+                                const { state } = await mintState({
+                                  teamSlugOrId,
+                                });
+                                const sep = installNewUrl!.includes("?")
+                                  ? "&"
+                                  : "?";
                                 const url = `${installNewUrl}${sep}state=${encodeURIComponent(state)}`;
                                 openCenteredPopup(
                                   url,
@@ -416,8 +451,13 @@ function EnvironmentsPage() {
                                   handlePopupClosedRefetch
                                 );
                               } catch (e) {
-                                console.error("Failed to mint install state:", e);
-                                alert("Failed to start installation. Please try again.");
+                                console.error(
+                                  "Failed to mint install state:",
+                                  e
+                                );
+                                alert(
+                                  "Failed to start installation. Please try again."
+                                );
                               }
                             }}
                           >
@@ -429,7 +469,9 @@ function EnvironmentsPage() {
                         ) : null}
                       </div>
                     ) : (
-                      <div className="px-3 py-2 text-sm text-neutral-500">No connections</div>
+                      <div className="px-3 py-2 text-sm text-neutral-500">
+                        No connections
+                      </div>
                     )}
                   </Dropdown.Popup>
                 </Dropdown.Positioner>
@@ -471,8 +513,12 @@ function EnvironmentsPage() {
               ) : filteredRepos.length > 0 ? (
                 <div className="divide-y divide-neutral-200 dark:divide-neutral-900">
                   {filteredRepos.map((r) => {
-                    const isSelected = (selectedRepos as Set<string>).has(r.fullName);
-                    const when = r.lastSyncedAt ? formatTimeAgo(r.lastSyncedAt as string) : "";
+                    const isSelected = (selectedRepos as Set<string>).has(
+                      r.fullName
+                    );
+                    const when = r.lastSyncedAt
+                      ? formatTimeAgo(r.lastSyncedAt as string)
+                      : "";
                     return (
                       <div
                         key={r.fullName}
@@ -507,7 +553,9 @@ function EnvironmentsPage() {
                         </div>
                         <div className="ml-3 flex items-center gap-2">
                           {when && (
-                            <span className="text-[10px] text-neutral-500 dark:text-neutral-500">{when}</span>
+                            <span className="text-[10px] text-neutral-500 dark:text-neutral-500">
+                              {when}
+                            </span>
                           )}
                         </div>
                       </div>
@@ -516,15 +564,16 @@ function EnvironmentsPage() {
                 </div>
               ) : (
                 <div className="px-3 py-6 text-sm text-neutral-500 dark:text-neutral-400 bg-white dark:bg-neutral-950">
-                  {search ? "No recent repositories match your search." : "No recent repositories available."}
+                  {search
+                    ? "No recent repositories match your search."
+                    : "No recent repositories available."}
                 </div>
               )}
             </div>
 
             <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-500">
-              Only the 5 most recently updated repositories are shown.
-              {" "}
-              Missing a repo?{" "}
+              Only the 5 most recently updated repositories are shown. Missing a
+              repo?{" "}
               {configureUrl ? (
                 <a
                   href={configureUrl}
@@ -564,7 +613,9 @@ function EnvironmentsPage() {
               </button>
             </div>
             <p className="text-xs text-neutral-500 dark:text-neutral-500">
-              Prefer to start from scratch? Configure everything by interacting with a VM through a VS Code UI. We’ll capture your changes as a reusable base snapshot.
+              Prefer to start from scratch? Configure everything by interacting
+              with a VM through a VS Code UI. We’ll capture your changes as a
+              reusable base snapshot.
             </p>
             {/* Step 2: Name and environment variables */}
             {step === 2 ? (
@@ -584,162 +635,177 @@ function EnvironmentsPage() {
 
                 {/* Environment variables */}
                 <div className="bg-white dark:bg-neutral-950 rounded-lg border border-neutral-200 dark:border-neutral-800 overflow-hidden">
-              <div
-                role="button"
-                aria-expanded={envPanelOpen}
-                onClick={() => setEnvPanelOpen((v) => !v)}
-                className="px-4 py-3 flex items-center gap-2 cursor-pointer select-none border-b border-neutral-200 dark:border-neutral-800"
-              >
-                <ChevronDown
-                  className={`w-4 h-4 text-neutral-600 dark:text-neutral-300 transition-transform ${
-                    envPanelOpen ? "rotate-0" : "-rotate-90"
-                  }`}
-                />
-                <h2 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
-                  Environment Variables
-                </h2>
-              </div>
-
-              {envPanelOpen ? (
-                <div
-                  className="p-4 space-y-2"
-                  onPasteCapture={(e) => {
-                    const text = e.clipboardData?.getData("text") ?? "";
-                    if (text && (/\n/.test(text) || /(=|:)\s*\S/.test(text))) {
-                      e.preventDefault();
-                      const items = parseEnvBlock(text);
-                      if (items.length > 0) {
-                        setEnvVars((prev) => {
-                          const map = new Map(
-                            prev
-                              .filter(
-                                (r) =>
-                                  r.name.trim().length > 0 ||
-                                  r.value.trim().length > 0
-                              )
-                              .map((r) => [r.name, r] as const)
-                          );
-                          for (const it of items) {
-                            if (!it.name) continue;
-                            const existing = map.get(it.name);
-                            if (existing) {
-                              map.set(it.name, {
-                                ...existing,
-                                value: it.value,
-                              });
-                            } else {
-                              map.set(it.name, {
-                                name: it.name,
-                                value: it.value,
-                                isSecret: true,
-                              });
-                            }
-                          }
-                          const next = Array.from(map.values());
-                          next.push({ name: "", value: "", isSecret: true });
-                          setPendingFocusIndex(next.length - 1);
-                          return next;
-                        });
-                      }
-                    }
-                  }}
-                >
-                  {/* Labels */}
                   <div
-                    className="grid gap-3 text-xs text-neutral-500 dark:text-neutral-500 pb-1 items-center"
-                    style={{
-                      gridTemplateColumns:
-                        "minmax(0, 1fr) minmax(0, 1.4fr) 44px",
-                    }}
+                    role="button"
+                    aria-expanded={envPanelOpen}
+                    onClick={() => setEnvPanelOpen((v) => !v)}
+                    className="px-4 py-3 flex items-center gap-2 cursor-pointer select-none border-b border-neutral-200 dark:border-neutral-800"
                   >
-                    <span>Key</span>
-                    <span>Value</span>
-                    <span className="w-[44px]" />
+                    <ChevronDown
+                      className={`w-4 h-4 text-neutral-600 dark:text-neutral-300 transition-transform ${
+                        envPanelOpen ? "rotate-0" : "-rotate-90"
+                      }`}
+                    />
+                    <h2 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                      Environment Variables
+                    </h2>
                   </div>
 
-                  <div className="space-y-2">
-                    {envVars.map((row, idx) => (
+                  {envPanelOpen ? (
+                    <div
+                      className="p-4 space-y-2"
+                      onPasteCapture={(e) => {
+                        const text = e.clipboardData?.getData("text") ?? "";
+                        if (
+                          text &&
+                          (/\n/.test(text) || /(=|:)\s*\S/.test(text))
+                        ) {
+                          e.preventDefault();
+                          const items = parseEnvBlock(text);
+                          if (items.length > 0) {
+                            setEnvVars((prev) => {
+                              const map = new Map(
+                                prev
+                                  .filter(
+                                    (r) =>
+                                      r.name.trim().length > 0 ||
+                                      r.value.trim().length > 0
+                                  )
+                                  .map((r) => [r.name, r] as const)
+                              );
+                              for (const it of items) {
+                                if (!it.name) continue;
+                                const existing = map.get(it.name);
+                                if (existing) {
+                                  map.set(it.name, {
+                                    ...existing,
+                                    value: it.value,
+                                  });
+                                } else {
+                                  map.set(it.name, {
+                                    name: it.name,
+                                    value: it.value,
+                                    isSecret: true,
+                                  });
+                                }
+                              }
+                              const next = Array.from(map.values());
+                              next.push({
+                                name: "",
+                                value: "",
+                                isSecret: true,
+                              });
+                              setPendingFocusIndex(next.length - 1);
+                              return next;
+                            });
+                          }
+                        }
+                      }}
+                    >
+                      {/* Labels */}
                       <div
-                        key={idx}
-                        className="grid gap-3 items-center"
+                        className="grid gap-3 text-xs text-neutral-500 dark:text-neutral-500 pb-1 items-center"
                         style={{
                           gridTemplateColumns:
                             "minmax(0, 1fr) minmax(0, 1.4fr) 44px",
                         }}
                       >
-                        <input
-                          type="text"
-                          value={row.name}
-                          ref={(el) => {
-                            keyInputRefs.current[idx] = el;
-                          }}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            setEnvVars((prev) => {
-                              const next = [...prev];
-                              next[idx] = { ...next[idx]!, name: v };
-                              return next;
-                            });
-                          }}
-                          placeholder="EXAMPLE_NAME"
-                          className="w-full min-w-0 rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-700"
-                        />
-                        <input
-                          type="text"
-                          value={row.value}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            setEnvVars((prev) => {
-                              const next = [...prev];
-                              next[idx] = { ...next[idx]!, value: v };
-                              return next;
-                            });
-                          }}
-                          placeholder="I9JU23NF394R6HH"
-                          className="w-full min-w-0 rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-700"
-                        />
-                        <div className="flex items-center justify-end w-[44px]">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setEnvVars((prev) => {
-                                const next = prev.filter((_, i) => i !== idx);
-                                return next.length > 0
-                                  ? next
-                                  : [{ name: "", value: "", isSecret: true }];
-                              });
-                            }}
-                            className="h-10 w-[44px] rounded-md border border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 grid place-items-center hover:bg-neutral-50 dark:hover:bg-neutral-900"
-                            aria-label="Remove variable"
-                          >
-                            <Minus className="w-4 h-4" />
-                          </button>
-                        </div>
+                        <span>Key</span>
+                        <span>Value</span>
+                        <span className="w-[44px]" />
                       </div>
-                    ))}
-                  </div>
 
-                  <div className="pt-2">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setEnvVars((prev) => [
-                          ...prev,
-                          { name: "", value: "", isSecret: true },
-                        ])
-                      }
-                      className="inline-flex items-center gap-2 rounded-md border border-neutral-200 dark:border-neutral-800 px-3 py-2 text-sm text-neutral-800 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-900"
-                    >
-                      <Plus className="w-4 h-4" /> Add More
-                    </button>
-                  </div>
+                      <div className="space-y-2">
+                        {envVars.map((row, idx) => (
+                          <div
+                            key={idx}
+                            className="grid gap-3 items-center"
+                            style={{
+                              gridTemplateColumns:
+                                "minmax(0, 1fr) minmax(0, 1.4fr) 44px",
+                            }}
+                          >
+                            <input
+                              type="text"
+                              value={row.name}
+                              ref={(el) => {
+                                keyInputRefs.current[idx] = el;
+                              }}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setEnvVars((prev) => {
+                                  const next = [...prev];
+                                  next[idx] = { ...next[idx]!, name: v };
+                                  return next;
+                                });
+                              }}
+                              placeholder="EXAMPLE_NAME"
+                              className="w-full min-w-0 rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-700"
+                            />
+                            <input
+                              type="text"
+                              value={row.value}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setEnvVars((prev) => {
+                                  const next = [...prev];
+                                  next[idx] = { ...next[idx]!, value: v };
+                                  return next;
+                                });
+                              }}
+                              placeholder="I9JU23NF394R6HH"
+                              className="w-full min-w-0 rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-700"
+                            />
+                            <div className="flex items-center justify-end w-[44px]">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEnvVars((prev) => {
+                                    const next = prev.filter(
+                                      (_, i) => i !== idx
+                                    );
+                                    return next.length > 0
+                                      ? next
+                                      : [
+                                          {
+                                            name: "",
+                                            value: "",
+                                            isSecret: true,
+                                          },
+                                        ];
+                                  });
+                                }}
+                                className="h-10 w-[44px] rounded-md border border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 grid place-items-center hover:bg-neutral-50 dark:hover:bg-neutral-900"
+                                aria-label="Remove variable"
+                              >
+                                <Minus className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
 
-                  <p className="text-xs text-neutral-500 dark:text-neutral-500 pt-2">
-                    Tip: Paste an .env above to populate the form. Values are
-                    encrypted at rest.
-                  </p>
-                </div>
-              ) : null}
+                      <div className="pt-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setEnvVars((prev) => [
+                              ...prev,
+                              { name: "", value: "", isSecret: true },
+                            ])
+                          }
+                          className="inline-flex items-center gap-2 rounded-md border border-neutral-200 dark:border-neutral-800 px-3 py-2 text-sm text-neutral-800 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-900"
+                        >
+                          <Plus className="w-4 h-4" /> Add More
+                        </button>
+                      </div>
+
+                      <p className="text-xs text-neutral-500 dark:text-neutral-500 pt-2">
+                        Tip: Paste an .env above to populate the form. Values
+                        are encrypted at rest.
+                      </p>
+                    </div>
+                  ) : null}
                 </div>
               </>
             ) : null}

@@ -510,6 +510,10 @@ export type GetApiIntegrationsGithubReposData = {
          * Team slug or UUID
          */
         team: string;
+        /**
+         * GitHub App installation ID to query
+         */
+        installationId?: number | null;
     };
     url: '/api/integrations/github/repos';
 };

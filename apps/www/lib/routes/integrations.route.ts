@@ -1,7 +1,7 @@
-import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
-import { stackServerApp } from "@/lib/utils/stack";
-import { ConvexHttpClient } from "convex/browser";
+import { getAccessTokenFromRequest } from "@/lib/utils/auth";
 import { api } from "@cmux/convex/api";
+import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import { getConvex } from "../utils/get-convex";
 
 const CLIENT_BASE = process.env.CLIENT_URL || "http://localhost:5173";
 const CONVEX_URL = process.env.VITE_CONVEX_URL || "http://127.0.0.1:9777";
@@ -38,14 +38,11 @@ integrationsRouter.openapi(
     const { installation_id, state } = c.req.valid("query");
 
     // Require a logged-in user so we can securely set team mapping
-    const user = await stackServerApp.getUser({ tokenStore: c.req.raw });
-    if (!user) return c.text("Unauthorized", 401);
-    const { accessToken } = await user.getAuthJson();
+    const accessToken = await getAccessTokenFromRequest(c.req.raw);
     if (!accessToken) return c.text("Unauthorized", 401);
 
     // Assign installation to the provided teamSlugOrId (state) using Convex auth
-    const convex = new ConvexHttpClient(CONVEX_URL);
-    convex.setAuth(accessToken);
+    const convex = getConvex({ accessToken });
     try {
       await convex.mutation(api.github.assignProviderConnectionToTeam, {
         teamSlugOrId: state,
@@ -70,18 +67,19 @@ integrationsRouter.openapi(
     tags: ["Integrations"],
     summary: "GitHub App Setup URL handler (alias)",
     request: { query: SetupQuery },
-    responses: { 302: { description: "Redirect to client" }, 401: { description: "Unauthorized" }, 400: { description: "Bad request" } },
+    responses: {
+      302: { description: "Redirect to client" },
+      401: { description: "Unauthorized" },
+      400: { description: "Bad request" },
+    },
   }),
   async (c) => {
     const { installation_id, state } = c.req.valid("query");
 
-    const user = await stackServerApp.getUser({ tokenStore: c.req.raw });
-    if (!user) return c.text("Unauthorized", 401);
-    const { accessToken } = await user.getAuthJson();
+    const accessToken = await getAccessTokenFromRequest(c.req.raw);
     if (!accessToken) return c.text("Unauthorized", 401);
 
-    const convex = new ConvexHttpClient(CONVEX_URL);
-    convex.setAuth(accessToken);
+    const convex = getConvex({ accessToken });
     try {
       await convex.mutation(api.github.assignProviderConnectionToTeam, {
         teamSlugOrId: state,

@@ -1,17 +1,20 @@
-import { stackServerApp } from "@/lib/utils/stack";
+import { getAccessTokenFromRequest } from "@/lib/utils/auth";
+import { env } from "@/lib/utils/www-env";
 import { api } from "@cmux/convex/api";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { createAppAuth } from "@octokit/auth-app";
-import { ConvexHttpClient } from "convex/browser";
 import { Octokit } from "octokit";
-
-const CONVEX_URL = process.env.VITE_CONVEX_URL || "http://127.0.0.1:9777";
+import { getConvex } from "../utils/get-convex";
 
 export const githubReposRouter = new OpenAPIHono();
 
 const Query = z
   .object({
     team: z.string().min(1).openapi({ description: "Team slug or UUID" }),
+    installationId: z.coerce
+      .number()
+      .optional()
+      .openapi({ description: "GitHub App installation ID to query" }),
   })
   .openapi("GithubReposQuery");
 
@@ -57,82 +60,69 @@ githubReposRouter.openapi(
     },
   }),
   async (c) => {
-    // Require Stack auth
-    const user = await stackServerApp.getUser({ tokenStore: c.req.raw });
-    if (!user) return c.text("Unauthorized", 401);
-    const { accessToken } = await user.getAuthJson();
+    const accessToken = await getAccessTokenFromRequest(c.req.raw);
     if (!accessToken) return c.text("Unauthorized", 401);
+    const privateKey = env.GITHUB_APP_PRIVATE_KEY.replace(/\\n/g, "\n");
 
-    // Validate env for GitHub App
-    const appId = process.env.GITHUB_APP_ID;
-    const privateKeyRaw = process.env.GITHUB_APP_PRIVATE_KEY;
-    if (!appId || !privateKeyRaw) {
-      return c.text("GitHub App not configured", 501);
-    }
-    const privateKey = privateKeyRaw.replace(/\\n/g, "\n");
-
-    const { team } = c.req.valid("query");
+    const { team, installationId } = c.req.valid("query");
 
     // Fetch provider connections for this team using Convex (enforces membership)
-    const convex = new ConvexHttpClient(CONVEX_URL);
-    convex.setAuth(accessToken);
+    const convex = getConvex({ accessToken });
     const connections = await convex.query(api.github.listProviderConnections, {
       teamSlugOrId: team,
     });
 
-    // Query repos for each active installation
-    const results = await Promise.all(
-      connections
-        .filter((co) => co.isActive)
-        .map(async (co) => {
-          const octokit = new Octokit({
-            authStrategy: createAppAuth,
-            auth: {
-              appId,
-              privateKey,
-              installationId: co.installationId,
-            },
-          });
+    // Narrow to a single active connection
+    const active = connections.filter((co) => co.isActive);
+    const target = installationId
+      ? active.find((c0) => c0.installationId === installationId)
+      : active[0];
 
-          try {
-            const { data } = await octokit.request(
-              "GET /installation/repositories",
-              { per_page: 100 }
-            );
-            const repos = (
-              data as unknown as {
-                repositories: Array<{
-                  name: string;
-                  full_name: string;
-                  private: boolean;
-                  updated_at?: string;
-                  pushed_at?: string;
-                }>;
-              }
-            ).repositories.map((r) => ({
-              name: r.name,
-              full_name: r.full_name,
-              private: !!r.private,
-              updated_at: r.updated_at,
-              pushed_at: r.pushed_at,
-            }));
-            return {
-              installationId: co.installationId,
-              accountLogin: co.accountLogin,
-              accountType: co.accountType,
-              repos,
-            };
-          } catch {
-            return {
-              installationId: co.installationId,
-              accountLogin: co.accountLogin,
-              accountType: co.accountType,
-              repos: [],
-            };
-          }
-        })
-    );
+    if (!target) {
+      return c.json({ connections: [] });
+    }
 
-    return c.json({ connections: results });
+    const octokit = new Octokit({
+      authStrategy: createAppAuth,
+      auth: {
+        appId: env.GITHUB_APP_ID,
+        privateKey,
+        installationId: target.installationId,
+      },
+    });
+
+    try {
+      const { data } = await octokit.request("GET /installation/repositories", {
+        per_page: 100,
+      });
+      const repos = data.repositories.map((r) => ({
+        name: r.name,
+        full_name: r.full_name,
+        private: !!r.private,
+        updated_at: r.updated_at,
+        pushed_at: r.pushed_at,
+      }));
+      return c.json({
+        connections: [
+          {
+            installationId: target.installationId,
+            accountLogin: target.accountLogin,
+            accountType: target.accountType,
+            repos,
+          },
+        ],
+      });
+    } catch {
+      return c.json({
+        connections: [
+          {
+            installationId: target.installationId,
+            accountLogin: target.accountLogin,
+            accountType: target.accountType,
+            repos: [],
+          },
+        ],
+      });
+    }
   }
 );

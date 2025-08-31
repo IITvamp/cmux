@@ -4,13 +4,19 @@ import { z } from "zod";
 export const env = createEnv({
   clientPrefix: "NEXT_PUBLIC_",
   server: {
-    STACK_SECRET_SERVER_KEY: z.string().default(""),
-    GITHUB_APP_ID: z.string().optional(),
-    GITHUB_APP_PRIVATE_KEY: z.string().optional(),
+    // Stack server-side env
+    VITE_STACK_PROJECT_ID: z.string().min(1),
+    VITE_STACK_PUBLISHABLE_CLIENT_KEY: z.string().min(1),
+    STACK_SECRET_SERVER_KEY: z.string().min(1),
+    STACK_SUPER_SECRET_ADMIN_KEY: z.string().min(1),
+    // GitHub App
+    GITHUB_APP_ID: z.string().min(1),
+    GITHUB_APP_PRIVATE_KEY: z.string().min(1),
   },
   client: {
-    NEXT_PUBLIC_STACK_PROJECT_ID: z.string().default(""),
-    NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: z.string().default(""),
+    NEXT_PUBLIC_CONVEX_URL: z.string().min(1),
+    NEXT_PUBLIC_STACK_PROJECT_ID: z.string().min(1),
+    NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: z.string().min(1),
   },
   runtimeEnv: process.env,
   emptyStringAsUndefined: true,
