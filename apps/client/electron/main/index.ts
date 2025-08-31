@@ -17,9 +17,9 @@ let rendererLoaded = false;
 let pendingProtocolUrl: string | null = null;
 let mainWindow: BrowserWindow | null = null;
 
-function handleOrQueueProtocolUrl(url: string): void {
+async function handleOrQueueProtocolUrl(url: string) {
   if (mainWindow && rendererLoaded) {
-    void handleProtocolUrl(url);
+    await handleProtocolUrl(url);
   } else {
     pendingProtocolUrl = url;
   }
