@@ -16,6 +16,12 @@ const Query = z
       .number()
       .optional()
       .openapi({ description: "GitHub App installation ID to query" }),
+    page: z.coerce
+      .number()
+      .min(1)
+      .default(1)
+      .optional()
+      .openapi({ description: "1-based page index (default 1)" }),
   })
   .openapi("GithubReposQuery");
 
@@ -60,7 +66,7 @@ githubReposRouter.openapi(
     const accessToken = await getAccessTokenFromRequest(c.req.raw);
     if (!accessToken) return c.text("Unauthorized", 401);
 
-    const { team, installationId } = c.req.valid("query");
+    const { team, installationId, page = 1 } = c.req.valid("query");
 
     // Fetch provider connections for this team using Convex (enforces membership)
     const convex = getConvex({ accessToken });
@@ -87,12 +93,25 @@ githubReposRouter.openapi(
       },
     });
     try {
-      const { data } = await octokit.request("GET /installation/repositories", {
-        per_page: 100,
+      // Use Search API to get most recently updated repos within the owner
+      if (!target.accountLogin) {
+        throw new Error(
+          `No account login for installation ${target.installationId}`
+        );
+      }
+      const ownerQualifier =
+        target.accountType === "Organization"
+          ? `org:${target.accountLogin}`
+          : `user:${target.accountLogin}`;
+      const search = await octokit.request("GET /search/repositories", {
+        q: ownerQualifier,
+        sort: "updated",
+        order: "desc",
+        per_page: 5,
+        page,
       });
-
       allRepos.push(
-        ...data.repositories.map((r) => ({
+        ...search.data.items.map((r) => ({
           name: r.name,
           full_name: r.full_name,
           private: !!r.private,
@@ -106,14 +125,6 @@ githubReposRouter.openapi(
         err instanceof Error ? err.message : err
       );
     }
-
-    // Dedupe by full_name
-    const seen = new Set<string>();
-    const deduped = allRepos.filter((r) => {
-      if (seen.has(r.full_name)) return false;
-      seen.add(r.full_name);
-      return true;
-    });
-    return c.json({ repos: deduped });
+    return c.json({ repos: allRepos });
   }
 );

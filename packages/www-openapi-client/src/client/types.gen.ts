@@ -511,6 +511,10 @@ export type GetApiIntegrationsGithubReposData = {
          * GitHub App installation ID to query
          */
         installationId?: number | null;
+        /**
+         * 1-based page index (default 1)
+         */
+        page?: number;
     };
     url: '/api/integrations/github/repos';
 };

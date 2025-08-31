@@ -232,7 +232,7 @@ function EnvironmentsPage() {
           r.name.toLowerCase().includes(q)
       );
     }
-    return list.slice(0, 5);
+    return list;
   }, [githubReposQuery.data, deferredSearch]);
 
   const [selectedRepos, setSelectedRepos] = useState(new Set<string>());
@@ -595,9 +595,8 @@ function EnvironmentsPage() {
               </button>
             </div>
             <p className="text-xs text-neutral-500 dark:text-neutral-500">
-              Prefer to start from scratch? Configure everything by interacting
-              with a VM through a VS Code UI. We’ll capture your changes as a
-              reusable base snapshot.
+              You can also manually configure an environment from a bare VM.
+              We’ll capture your changes as a reusable base snapshot.
             </p>
             {step === 2 ? (
               <>

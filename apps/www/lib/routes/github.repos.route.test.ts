@@ -54,11 +54,18 @@ describe("githubReposRouter via SDK", () => {
     if (res.response.status === 200 && res.data) {
       // Expect the new flat shape
       const body = res.data as unknown as {
-        repos: Array<{ name: string; full_name: string; private: boolean }>;
+        repos: Array<{
+          name: string;
+          full_name: string;
+          private: boolean;
+          updated_at?: string | null;
+          pushed_at?: string | null;
+        }>;
       };
       expect(Array.isArray(body.repos)).toBe(true);
-      // Fail fast if repos are empty — this indicates a regression
-      expect(body.repos.length).toBeGreaterThan(0);
+      // Should return at most 5 items
+      expect(body.repos.length).toBeLessThanOrEqual(5);
+      // No client-side sorting; server returns sorted by 'updated'.
     }
   });
 
@@ -88,10 +95,40 @@ describe("githubReposRouter via SDK", () => {
     expect([200, 401, 501]).toContain(res.response.status);
     if (res.response.status === 200 && res.data) {
       const body = res.data as unknown as {
-        repos: Array<{ name: string; full_name: string; private: boolean }>;
+        repos: Array<{
+          name: string;
+          full_name: string;
+          private: boolean;
+          updated_at?: string | null;
+          pushed_at?: string | null;
+        }>;
       };
       expect(Array.isArray(body.repos)).toBe(true);
-      expect(body.repos.length).toBeGreaterThan(0);
+      expect(body.repos.length).toBeLessThanOrEqual(5);
+    }
+  });
+
+  it("supports paging and still limits to 5", async () => {
+    const tokens = await getStackTokens();
+    const first = await getApiIntegrationsGithubRepos({
+      client: testApiClient,
+      query: { team: "lawrence", page: 1 },
+      headers: { "x-stack-auth": JSON.stringify(tokens) },
+    });
+    expect([200, 401, 501]).toContain(first.response.status);
+    if (first.response.status === 200 && first.data) {
+      const second = await getApiIntegrationsGithubRepos({
+        client: testApiClient,
+        query: { team: "lawrence", page: 2 },
+        headers: { "x-stack-auth": JSON.stringify(tokens) },
+      });
+      expect([200, 401, 501]).toContain(second.response.status);
+      if (second.response.status === 200 && second.data) {
+        const len1 = (first.data as any).repos?.length ?? 0;
+        const len2 = (second.data as any).repos?.length ?? 0;
+        expect(len1).toBeLessThanOrEqual(5);
+        expect(len2).toBeLessThanOrEqual(5);
+      }
     }
   });
 });

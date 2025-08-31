@@ -2,7 +2,7 @@
 
 import { type Options, getApiHealth, getApiUsers, postApiUsers, deleteApiUsersById, getApiUsersById, patchApiUsersById, getApiBooks, postApiBooks, getApiBooksById, postApiBooksByIdBorrow, postApiBooksByIdReturn, postApiDevServerStart, getApiIntegrationsGithubSetup, getApiGithubSetup, getApiIntegrationsGithubRepos } from '../sdk.gen.js';
 import { queryOptions, infiniteQueryOptions, type InfiniteData, type DefaultError, type UseMutationOptions } from '@tanstack/react-query';
-import type { GetApiHealthData, GetApiUsersData, GetApiUsersResponse, PostApiUsersData, PostApiUsersError, PostApiUsersResponse, DeleteApiUsersByIdData, DeleteApiUsersByIdError, DeleteApiUsersByIdResponse, GetApiUsersByIdData, PatchApiUsersByIdData, PatchApiUsersByIdError, PatchApiUsersByIdResponse, GetApiBooksData, PostApiBooksData, PostApiBooksError, PostApiBooksResponse, GetApiBooksByIdData, PostApiBooksByIdBorrowData, PostApiBooksByIdBorrowError, PostApiBooksByIdBorrowResponse, PostApiBooksByIdReturnData, PostApiBooksByIdReturnError, PostApiBooksByIdReturnResponse, PostApiDevServerStartData, PostApiDevServerStartError, PostApiDevServerStartResponse, GetApiIntegrationsGithubSetupData, GetApiGithubSetupData, GetApiIntegrationsGithubReposData } from '../types.gen.js';
+import type { GetApiHealthData, GetApiUsersData, GetApiUsersResponse, PostApiUsersData, PostApiUsersError, PostApiUsersResponse, DeleteApiUsersByIdData, DeleteApiUsersByIdError, DeleteApiUsersByIdResponse, GetApiUsersByIdData, PatchApiUsersByIdData, PatchApiUsersByIdError, PatchApiUsersByIdResponse, GetApiBooksData, PostApiBooksData, PostApiBooksError, PostApiBooksResponse, GetApiBooksByIdData, PostApiBooksByIdBorrowData, PostApiBooksByIdBorrowError, PostApiBooksByIdBorrowResponse, PostApiBooksByIdReturnData, PostApiBooksByIdReturnError, PostApiBooksByIdReturnResponse, PostApiDevServerStartData, PostApiDevServerStartError, PostApiDevServerStartResponse, GetApiIntegrationsGithubSetupData, GetApiGithubSetupData, GetApiIntegrationsGithubReposData, GetApiIntegrationsGithubReposResponse } from '../types.gen.js';
 import { client as _heyApiClient } from '../client.gen.js';
 
 export type QueryKey<TOptions extends Options> = [
@@ -377,5 +377,34 @@ export const getApiIntegrationsGithubReposOptions = (options: Options<GetApiInte
             return data;
         },
         queryKey: getApiIntegrationsGithubReposQueryKey(options)
+    });
+};
+
+export const getApiIntegrationsGithubReposInfiniteQueryKey = (options: Options<GetApiIntegrationsGithubReposData>): QueryKey<Options<GetApiIntegrationsGithubReposData>> => createQueryKey('getApiIntegrationsGithubRepos', options, true);
+
+/**
+ * List repos per GitHub App installation for a team
+ */
+export const getApiIntegrationsGithubReposInfiniteOptions = (options: Options<GetApiIntegrationsGithubReposData>) => {
+    return infiniteQueryOptions<GetApiIntegrationsGithubReposResponse, DefaultError, InfiniteData<GetApiIntegrationsGithubReposResponse>, QueryKey<Options<GetApiIntegrationsGithubReposData>>, number | Pick<QueryKey<Options<GetApiIntegrationsGithubReposData>>[0], 'body' | 'headers' | 'path' | 'query'>>(
+    // @ts-ignore
+    {
+        queryFn: async ({ pageParam, queryKey, signal }) => {
+            // @ts-ignore
+            const page: Pick<QueryKey<Options<GetApiIntegrationsGithubReposData>>[0], 'body' | 'headers' | 'path' | 'query'> = typeof pageParam === 'object' ? pageParam : {
+                query: {
+                    page: pageParam
+                }
+            };
+            const params = createInfiniteParams(queryKey, page);
+            const { data } = await getApiIntegrationsGithubRepos({
+                ...options,
+                ...params,
+                signal,
+                throwOnError: true
+            });
+            return data;
+        },
+        queryKey: getApiIntegrationsGithubReposInfiniteQueryKey(options)
     });
 };
