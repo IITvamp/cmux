@@ -2,6 +2,12 @@ import { is } from "@electron-toolkit/utils";
 import { app, BrowserWindow, net, session, shell } from "electron";
 import path, { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import {
+  createRemoteJWKSet,
+  decodeJwt,
+  jwtVerify,
+  type JWTPayload,
+} from "jose";
 
 // Use a cookieable HTTPS origin intercepted locally instead of a custom scheme.
 const PARTITION = "persist:cmux";
@@ -13,7 +19,7 @@ let mainWindow: BrowserWindow | null = null;
 
 function handleOrQueueProtocolUrl(url: string): void {
   if (mainWindow && rendererLoaded) {
-    handleProtocolUrl(url);
+    void handleProtocolUrl(url);
   } else {
     pendingProtocolUrl = url;
   }
@@ -44,7 +50,7 @@ function createWindow(): void {
   mainWindow.webContents.on("did-finish-load", () => {
     rendererLoaded = true;
     if (pendingProtocolUrl) {
-      handleProtocolUrl(pendingProtocolUrl);
+      void handleProtocolUrl(pendingProtocolUrl);
       pendingProtocolUrl = null;
     }
   });
@@ -99,45 +105,37 @@ app.on("window-all-closed", () => {
   }
 });
 
-export function decodeJwtExp(token: string): number | null {
-  const parts = token.split(".");
-  if (parts.length !== 3) return null;
+// Simple in-memory cache of RemoteJWKSet by issuer
+const jwksCache = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
 
+function jwksForIssuer(issuer: string) {
+  const base = issuer.endsWith("/") ? issuer : issuer + "/";
+  // Stack Auth exposes JWKS at <issuer>/.well-known/jwks.json
+  const url = new URL(".well-known/jwks.json", base);
+  let jwks = jwksCache.get(url.toString());
+  if (!jwks) {
+    jwks = createRemoteJWKSet(url);
+    jwksCache.set(url.toString(), jwks);
+  }
+  return jwks;
+}
+
+async function verifyJwtAndGetPayload(
+  token: string
+): Promise<JWTPayload | null> {
   try {
-    const json = base64urlDecode(parts[1]);
-    const payload: unknown = JSON.parse(json);
-
-    if (payload && typeof payload === "object") {
-      const exp = (payload as Record<string, unknown>)["exp"];
-      if (typeof exp === "number" && Number.isFinite(exp)) return exp;
-      // Accept numeric-like strings defensively; spec says number, but some providers stringify.
-      if (typeof exp === "string" && exp.trim() !== "") {
-        const n = Number(exp);
-        return Number.isFinite(n) ? n : null;
-      }
-    }
-    return null;
+    const decoded = decodeJwt(token);
+    const iss = decoded.iss;
+    if (!iss) return null;
+    const JWKS = jwksForIssuer(iss);
+    const { payload } = await jwtVerify(token, JWKS, { issuer: iss });
+    return payload;
   } catch {
     return null;
   }
 }
 
-// Decodes a base64url string to UTF-8, works in Node and browsers.
-function base64urlDecode(input: string): string {
-  let s = input.replace(/-/g, "+").replace(/_/g, "/");
-  const pad = s.length % 4;
-  if (pad) s += "=".repeat(4 - pad);
-
-  if (typeof Buffer !== "undefined") {
-    return Buffer.from(s, "base64").toString("utf8");
-  }
-
-  const binary = atob(s);
-  const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
-  return new TextDecoder().decode(bytes);
-}
-
-function handleProtocolUrl(url: string): void {
+async function handleProtocolUrl(url: string): Promise<void> {
   if (!mainWindow) {
     // Should not happen due to queuing, but guard anyway
     pendingProtocolUrl = url;
@@ -156,22 +154,37 @@ function handleProtocolUrl(url: string): void {
       // running against an http(s) dev server.
       const currentUrl = mainWindow.webContents.getURL();
 
-      const refreshExp = decodeJwtExp(stackRefresh);
-      const accessExp = decodeJwtExp(stackAccess);
+      const [refreshPayload, accessPayload] = await Promise.all([
+        verifyJwtAndGetPayload(stackRefresh),
+        verifyJwtAndGetPayload(stackAccess),
+      ]);
 
-      mainWindow.webContents.session.cookies.set({
-        url: currentUrl,
-        name: `stack-refresh-8a877114-b905-47c5-8b64-3a2d90679577`,
-        value: stackRefresh,
-        expirationDate: refreshExp ?? undefined,
-      });
+      if (refreshPayload && accessPayload) {
+        const refreshExp =
+          typeof refreshPayload.exp === "number" &&
+          Number.isFinite(refreshPayload.exp)
+            ? refreshPayload.exp
+            : undefined;
+        const accessExp =
+          typeof accessPayload.exp === "number" &&
+          Number.isFinite(accessPayload.exp)
+            ? accessPayload.exp
+            : undefined;
 
-      mainWindow.webContents.session.cookies.set({
-        url: currentUrl,
-        name: "stack-access",
-        value: stackAccess,
-        expirationDate: accessExp ?? undefined,
-      });
+        mainWindow.webContents.session.cookies.set({
+          url: currentUrl,
+          name: `stack-refresh-8a877114-b905-47c5-8b64-3a2d90679577`,
+          value: stackRefresh,
+          expirationDate: refreshExp,
+        });
+
+        mainWindow.webContents.session.cookies.set({
+          url: currentUrl,
+          name: "stack-access",
+          value: stackAccess,
+          expirationDate: accessExp,
+        });
+      }
     }
   }
 }
