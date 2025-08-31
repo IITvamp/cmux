@@ -4,6 +4,7 @@ import { useNavigate as useTanstackNavigate } from "@tanstack/react-router";
 import { env } from "../client-env";
 import { signalConvexAuthReady } from "../contexts/convex/convex-auth-ready";
 import { convexQueryClient } from "../contexts/convex/convex-query-client";
+import { cachedGetUser } from "./cachedGetUser";
 
 export const stackClientApp = new StackClientApp({
   projectId: env.VITE_STACK_PROJECT_ID,
@@ -19,7 +20,7 @@ export const stackClientApp = new StackClientApp({
   },
 });
 
-void stackClientApp.getUser().then(async (user) => {
+cachedGetUser(stackClientApp).then(async (user) => {
   if (!user) {
     signalConvexAuthReady(false);
     return;
@@ -40,15 +41,11 @@ void stackClientApp.getUser().then(async (user) => {
 client.setConfig({
   baseUrl: "http://localhost:9779",
   fetch: async (request) => {
-    console.time("stackClientApp.getUser");
-    const user = await stackClientApp.getUser();
-    console.timeEnd("stackClientApp.getUser");
+    const user = await cachedGetUser(stackClientApp);
     if (!user) {
       throw new Error("User not found");
     }
-    console.time("user.getAuthHeaders");
     const authHeaders = await user.getAuthHeaders();
-    console.timeEnd("user.getAuthHeaders");
     const headers =
       request instanceof Request ? request.headers : new Headers();
     const response = await fetch(request, {
