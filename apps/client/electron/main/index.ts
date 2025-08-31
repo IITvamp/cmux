@@ -99,18 +99,42 @@ app.on("window-all-closed", () => {
   }
 });
 
-function decodeJwtExp(token: string): number | null {
+export function decodeJwtExp(token: string): number | null {
   const parts = token.split(".");
-  if (parts.length < 2) return null;
+  if (parts.length !== 3) return null;
 
   try {
-    const payload = JSON.parse(
-      Buffer.from(parts[1], "base64url").toString("utf8")
-    );
-    return payload.exp;
+    const json = base64urlDecode(parts[1]);
+    const payload: unknown = JSON.parse(json);
+
+    if (payload && typeof payload === "object") {
+      const exp = (payload as Record<string, unknown>)["exp"];
+      if (typeof exp === "number" && Number.isFinite(exp)) return exp;
+      // Accept numeric-like strings defensively; spec says number, but some providers stringify.
+      if (typeof exp === "string" && exp.trim() !== "") {
+        const n = Number(exp);
+        return Number.isFinite(n) ? n : null;
+      }
+    }
+    return null;
   } catch {
     return null;
   }
+}
+
+// Decodes a base64url string to UTF-8, works in Node and browsers.
+function base64urlDecode(input: string): string {
+  let s = input.replace(/-/g, "+").replace(/_/g, "/");
+  const pad = s.length % 4;
+  if (pad) s += "=".repeat(4 - pad);
+
+  if (typeof Buffer !== "undefined") {
+    return Buffer.from(s, "base64").toString("utf8");
+  }
+
+  const binary = atob(s);
+  const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
 }
 
 function handleProtocolUrl(url: string): void {
@@ -131,24 +155,22 @@ function handleProtocolUrl(url: string): void {
       // Determine a cookieable URL. Prefer our custom cmux:// origin when not
       // running against an http(s) dev server.
       const currentUrl = mainWindow.webContents.getURL();
-      const nowSec = Math.floor(Date.now() / 1000);
 
-      const refreshExp =
-        decodeJwtExp(stackRefresh) ?? nowSec + 90 * 24 * 60 * 60;
-      const accessExp = decodeJwtExp(stackAccess) ?? nowSec + 30 * 60;
+      const refreshExp = decodeJwtExp(stackRefresh);
+      const accessExp = decodeJwtExp(stackAccess);
 
       mainWindow.webContents.session.cookies.set({
         url: currentUrl,
-        name: `stack-refresh-${process.env.NEXT_PUBLIC_STACK_PROJECT_ID}`,
+        name: `stack-refresh-8a877114-b905-47c5-8b64-3a2d90679577`,
         value: stackRefresh,
-        expirationDate: refreshExp,
+        expirationDate: refreshExp ?? undefined,
       });
 
       mainWindow.webContents.session.cookies.set({
         url: currentUrl,
         name: "stack-access",
         value: stackAccess,
-        expirationDate: accessExp,
+        expirationDate: accessExp ?? undefined,
       });
     }
   }
