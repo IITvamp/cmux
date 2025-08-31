@@ -512,6 +512,10 @@ export type GetApiIntegrationsGithubReposData = {
          */
         installationId?: number | null;
         /**
+         * Optional search term to filter repos by name
+         */
+        search?: string;
+        /**
          * 1-based page index (default 1)
          */
         page?: number;

@@ -17,13 +17,22 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { api, api as convexApi } from "@cmux/convex/api";
 import { getApiIntegrationsGithubReposOptions } from "@cmux/www-openapi-client/react-query";
 import * as Popover from "@radix-ui/react-popover";
 import { useQuery as useRQ } from "@tanstack/react-query";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
-import { Check, ChevronDown, Minus, Plus, Settings } from "lucide-react";
+import {
+  Check,
+  ChevronDown,
+  Loader2,
+  Minus,
+  Plus,
+  Settings,
+  X,
+} from "lucide-react";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
 export const Route = createFileRoute("/_layout/$teamSlugOrId/environments")({
@@ -206,15 +215,19 @@ function EnvironmentsPage() {
     return match?.installationId ?? activeConnections[0]?.installationId;
   }, [activeConnections, currentOrg]);
 
+  const debouncedSearch = useDebouncedValue(search, 300);
   const githubReposQuery = useRQ({
     ...getApiIntegrationsGithubReposOptions({
       query: {
         team: teamSlugOrId,
         installationId: selectedInstallationId,
+        search: debouncedSearch.trim() || undefined,
       },
     }),
     enabled: !!selectedInstallationId,
   });
+
+  // Server query key includes `search`, so no manual refetch here
 
   const deferredSearch = useDeferredValue(search);
   const filteredRepos = useMemo(() => {
@@ -234,6 +247,14 @@ function EnvironmentsPage() {
     }
     return list;
   }, [githubReposQuery.data, deferredSearch]);
+
+  const isSearchStale = search.trim() !== debouncedSearch.trim();
+  const showReposLoading =
+    !!selectedInstallationId &&
+    (githubReposQuery.isPending ||
+      isSearchStale ||
+      (githubReposQuery.isFetching && filteredRepos.length === 0));
+  const showSpinner = isSearchStale || githubReposQuery.isFetching;
 
   const [selectedRepos, setSelectedRepos] = useState(new Set<string>());
   const [step, setStep] = useState<1 | 2>(1);
@@ -470,16 +491,22 @@ function EnvironmentsPage() {
             <label className="block text-sm font-medium text-neutral-800 dark:text-neutral-200">
               Repositories
             </label>
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search recent repositories"
-              className="w-full rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-700"
-            />
+            <div className="relative">
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search recent repositories"
+                aria-busy={showSpinner}
+                className="w-full rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 pr-8 py-2 text-sm text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-700"
+              />
+              {showSpinner ? (
+                <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-400 animate-spin" />
+              ) : null}
+            </div>
 
             <div className="mt-2 rounded-md border border-neutral-200 dark:border-neutral-800 overflow-hidden">
-              {githubReposQuery.isPending ? (
+              {showReposLoading ? (
                 <div className="divide-y divide-neutral-200 dark:divide-neutral-900">
                   {[...Array(5)].map((_, i) => (
                     <div
@@ -546,36 +573,135 @@ function EnvironmentsPage() {
                   })}
                 </div>
               ) : (
-                <div className="px-3 py-6 text-sm text-neutral-500 dark:text-neutral-400 bg-white dark:bg-neutral-950">
-                  {search
-                    ? "No recent repositories match your search."
-                    : "No recent repositories available."}
+                <div className="px-3 py-10 h-[180px] text-sm text-neutral-500 dark:text-neutral-400 bg-white dark:bg-neutral-950 flex flex-col items-center justify-center text-center gap-2">
+                  {search ? (
+                    <>
+                      <div>No recent repositories match your search.</div>
+                      {configureUrl ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            openCenteredPopup(
+                              configureUrl,
+                              { name: "github-config" },
+                              handlePopupClosedRefetch
+                            );
+                          }}
+                          className="inline-flex items-center gap-1 text-neutral-800 dark:text-neutral-200 hover:underline"
+                        >
+                          <GitHubIcon className="h-4 w-4 text-neutral-700 dark:text-neutral-300" />
+                          <span>Reconfigure GitHub access</span>
+                        </button>
+                      ) : installNewUrl ? (
+                        <a
+                          href={installNewUrl}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            openCenteredPopup(
+                              installNewUrl,
+                              { name: "github-install" },
+                              handlePopupClosedRefetch
+                            );
+                          }}
+                          className="inline-flex items-center gap-1 text-neutral-800 dark:text-neutral-200 hover:underline"
+                        >
+                          <GitHubIcon className="h-4 w-4 text-neutral-700 dark:text-neutral-300" />
+                          <span>Install GitHub App</span>
+                        </a>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setConnectionDropdownOpen(true);
+                        }}
+                        className="inline-flex items-center gap-1 text-neutral-800 dark:text-neutral-200 hover:underline"
+                      >
+                        <ChevronDown className="h-4 w-4 text-neutral-700 dark:text-neutral-300" />
+                        <span>Switch organization</span>
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <div>No recent repositories available.</div>
+                      {configureUrl ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            openCenteredPopup(
+                              configureUrl,
+                              { name: "github-config" },
+                              handlePopupClosedRefetch
+                            );
+                          }}
+                          className="inline-flex items-center gap-1 text-neutral-800 dark:text-neutral-200 hover:underline"
+                        >
+                          <GitHubIcon className="h-4 w-4 text-neutral-700 dark:text-neutral-300" />
+                          <span>Reconfigure GitHub access</span>
+                        </button>
+                      ) : installNewUrl ? (
+                        <a
+                          href={installNewUrl}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            openCenteredPopup(
+                              installNewUrl,
+                              { name: "github-install" },
+                              handlePopupClosedRefetch
+                            );
+                          }}
+                          className="inline-flex items-center gap-1 text-neutral-800 dark:text-neutral-200 hover:underline"
+                        >
+                          <GitHubIcon className="h-4 w-4 text-neutral-700 dark:text-neutral-300" />
+                          <span>Install GitHub App</span>
+                        </a>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          setConnectionDropdownOpen(true);
+                        }}
+                        className="inline-flex items-center gap-1 text-neutral-800 dark:text-neutral-200 hover:underline"
+                      >
+                        <ChevronDown className="h-4 w-4 text-neutral-700 dark:text-neutral-300" />
+                        <span>Switch organization</span>
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
 
-            <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-500">
-              Missing a repo?{" "}
-              {configureUrl ? (
-                <a
-                  href={configureUrl}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    openCenteredPopup(
-                      configureUrl,
-                      { name: "github-config" },
-                      handlePopupClosedRefetch
-                    );
-                  }}
-                  className="underline hover:text-neutral-700 dark:hover:text-neutral-300"
-                >
-                  Configure repository access
-                </a>
-              ) : (
-                <span>Configure repository access</span>
-              )}
-              .
-            </p>
+            {selectedRepos.size > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {Array.from(selectedRepos).map((fullName) => (
+                  <span
+                    key={fullName}
+                    className="inline-flex items-center gap-1 rounded-full border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 text-neutral-800 dark:text-neutral-200 px-2 py-1 text-xs"
+                  >
+                    <button
+                      type="button"
+                      aria-label={`Remove ${fullName}`}
+                      onClick={() =>
+                        setSelectedRepos((prev) => {
+                          const next = new Set(prev);
+                          next.delete(fullName);
+                          return next;
+                        })
+                      }
+                      className="-ml-1 inline-flex h-4 w-4 items-center justify-center rounded-full hover:bg-neutral-100 dark:hover:bg-neutral-900"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                    <GitHubIcon className="h-3 w-3 shrink-0 text-neutral-700 dark:text-neutral-300" />
+                    {fullName}
+                  </span>
+                ))}
+              </div>
+            ) : null}
 
             <div className="flex items-center gap-3 pt-2">
               <button

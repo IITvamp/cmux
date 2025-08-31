@@ -16,6 +16,12 @@ const Query = z
       .number()
       .optional()
       .openapi({ description: "GitHub App installation ID to query" }),
+    search: z
+      .string()
+      .trim()
+      .min(1)
+      .optional()
+      .openapi({ description: "Optional search term to filter repos by name" }),
     page: z.coerce
       .number()
       .min(1)
@@ -66,7 +72,7 @@ githubReposRouter.openapi(
     const accessToken = await getAccessTokenFromRequest(c.req.raw);
     if (!accessToken) return c.text("Unauthorized", 401);
 
-    const { team, installationId, page = 1 } = c.req.valid("query");
+    const { team, installationId, search, page = 1 } = c.req.valid("query");
 
     // Fetch provider connections for this team using Convex (enforces membership)
     const convex = getConvex({ accessToken });
@@ -103,15 +109,18 @@ githubReposRouter.openapi(
         target.accountType === "Organization"
           ? `org:${target.accountLogin}`
           : `user:${target.accountLogin}`;
-      const search = await octokit.request("GET /search/repositories", {
-        q: ownerQualifier,
+      const q = [ownerQualifier, search ? `${search} in:name` : null]
+        .filter(Boolean)
+        .join(" ");
+      const searchRes = await octokit.request("GET /search/repositories", {
+        q,
         sort: "updated",
         order: "desc",
         per_page: 5,
         page,
       });
       allRepos.push(
-        ...search.data.items.map((r) => ({
+        ...searchRes.data.items.map((r) => ({
           name: r.name,
           full_name: r.full_name,
           private: !!r.private,
