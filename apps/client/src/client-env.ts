@@ -13,6 +13,7 @@ export const env = createEnv({
     VITE_STACK_PROJECT_ID: z.string().min(1),
     VITE_STACK_PUBLISHABLE_CLIENT_KEY: z.string().min(1),
     VITE_GITHUB_APP_SLUG: z.string().optional(),
+    VITE_WWW_ORIGIN: z.string().default("http://localhost:9779"),
   },
 
   /**

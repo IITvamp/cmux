@@ -1,9 +1,9 @@
 import { client } from "@cmux/www-openapi-client/client.gen";
 import { StackClientApp } from "@stackframe/react";
 import { useNavigate as useTanstackNavigate } from "@tanstack/react-router";
-import { env } from "./client-env";
-import { signalConvexAuthReady } from "./contexts/convex/convex-auth-ready";
-import { convexQueryClient } from "./contexts/convex/convex-query-client";
+import { env } from "../client-env";
+import { signalConvexAuthReady } from "../contexts/convex/convex-auth-ready";
+import { convexQueryClient } from "../contexts/convex/convex-query-client";
 
 export const stackClientApp = new StackClientApp({
   projectId: env.VITE_STACK_PROJECT_ID,

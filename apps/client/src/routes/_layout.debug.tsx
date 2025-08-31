@@ -1,6 +1,6 @@
 import { FloatingPane } from "@/components/floating-pane";
 import { useSocket } from "@/contexts/socket/use-socket";
-import { stackClientApp } from "@/stack";
+import { stackClientApp } from "@/lib/stack";
 import { useUser } from "@stackframe/react";
 import { createFileRoute } from "@tanstack/react-router";
 

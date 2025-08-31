@@ -1,5 +1,6 @@
-import { app, BrowserWindow, shell } from "electron";
-import { join } from "node:path";
+import { app, session, net, BrowserWindow, shell } from "electron";
+import path, { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import __cjs_mod__ from "node:module";
 const __filename = import.meta.filename;
 const __dirname = import.meta.dirname;
@@ -12,8 +13,20 @@ const is = {
   isMacOS: process.platform === "darwin",
   isLinux: process.platform === "linux"
 });
+const PARTITION = "persist:cmux";
+const APP_HOST = "cmux.local";
+let rendererLoaded = false;
+let pendingProtocolUrl = null;
+let mainWindow = null;
+function handleOrQueueProtocolUrl(url) {
+  if (mainWindow && rendererLoaded) {
+    handleProtocolUrl(url);
+  } else {
+    pendingProtocolUrl = url;
+  }
+}
 function createWindow() {
-  const mainWindow = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     show: false,
@@ -24,11 +37,19 @@ function createWindow() {
       preload: join(__dirname, "../preload/index.cjs"),
       sandbox: false,
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      partition: PARTITION
     }
   });
   mainWindow.on("ready-to-show", () => {
-    mainWindow.show();
+    mainWindow?.show();
+  });
+  mainWindow.webContents.on("did-finish-load", () => {
+    rendererLoaded = true;
+    if (pendingProtocolUrl) {
+      handleProtocolUrl(pendingProtocolUrl);
+      pendingProtocolUrl = null;
+    }
   });
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url);
@@ -37,11 +58,28 @@ function createWindow() {
   if (is.dev && process.env["ELECTRON_RENDERER_URL"]) {
     mainWindow.loadURL(process.env["ELECTRON_RENDERER_URL"]);
   } else {
-    mainWindow.loadFile(join(__dirname, "../renderer/index.html"));
+    mainWindow.loadURL(`https://${APP_HOST}/index.html`);
   }
 }
+app.on("open-url", (_event, url) => {
+  handleOrQueueProtocolUrl(url);
+});
 app.whenReady().then(() => {
-  createWindow();
+  const baseDir = path.join(app.getAppPath(), "out", "renderer");
+  const ses = session.fromPartition(PARTITION);
+  ses.protocol.handle("https", async (req) => {
+    const u = new URL(req.url);
+    if (u.hostname !== APP_HOST) return net.fetch(req);
+    const pathname = u.pathname === "/" ? "/index.html" : u.pathname;
+    const fsPath = path.normalize(
+      path.join(baseDir, decodeURIComponent(pathname))
+    );
+    const rel = path.relative(baseDir, fsPath);
+    if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) {
+      return new Response("Not found", { status: 404 });
+    }
+    return net.fetch(pathToFileURL(fsPath).toString());
+  });
   app.on("activate", function() {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
@@ -51,3 +89,27 @@ app.on("window-all-closed", () => {
     app.quit();
   }
 });
+function handleProtocolUrl(url) {
+  if (!mainWindow) {
+    pendingProtocolUrl = url;
+    return;
+  }
+  const urlObj = new URL(url);
+  if (urlObj.hostname === "auth-callback") {
+    const stackRefresh = urlObj.searchParams.get(`stack_refresh`);
+    const stackAccess = urlObj.searchParams.get("stack_access");
+    if (stackRefresh && stackAccess) {
+      const currentUrl = mainWindow.webContents.getURL();
+      mainWindow.webContents.session.cookies.set({
+        url: currentUrl,
+        name: `stack-refresh-8a877114-b905-47c5-8b64-3a2d90679577`,
+        value: stackRefresh
+      });
+      mainWindow.webContents.session.cookies.set({
+        url: currentUrl,
+        name: "stack-access",
+        value: stackAccess
+      });
+    }
+  }
+}

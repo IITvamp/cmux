@@ -6,7 +6,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { stackClientApp } from "@/stack";
+import { stackClientApp } from "@/lib/stack";
 import { api } from "@cmux/convex/api";
 import { Skeleton } from "@heroui/react";
 import { useStackApp, useUser, type Team } from "@stackframe/react";

@@ -8,8 +8,8 @@ import {
   type ThemeConfig,
 } from "antd";
 import { type ReactNode, Suspense, useEffect, useMemo, useState } from "react";
+import { stackClientApp } from "./lib/stack";
 import { queryClient } from "./query-client";
-import { stackClientApp } from "./stack";
 
 interface ProvidersProps {
   children: ReactNode;
