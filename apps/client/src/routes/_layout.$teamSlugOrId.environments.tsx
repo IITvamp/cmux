@@ -11,7 +11,6 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import * as Popover from "@radix-ui/react-popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Tooltip,
@@ -20,6 +19,7 @@ import {
 } from "@/components/ui/tooltip";
 import { api, api as convexApi } from "@cmux/convex/api";
 import { getApiIntegrationsGithubReposOptions } from "@cmux/www-openapi-client/react-query";
+import * as Popover from "@radix-ui/react-popover";
 import { useQuery as useRQ } from "@tanstack/react-query";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
@@ -308,7 +308,10 @@ function EnvironmentsPage() {
             <label className="block text-sm font-medium text-neutral-800 dark:text-neutral-200">
               Connections
             </label>
-            <Popover.Root open={connectionDropdownOpen} onOpenChange={setConnectionDropdownOpen}>
+            <Popover.Root
+              open={connectionDropdownOpen}
+              onOpenChange={setConnectionDropdownOpen}
+            >
               <Popover.Trigger asChild>
                 <button className="w-full rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 h-9 flex items-center justify-between text-sm text-neutral-800 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-colors">
                   <div className="flex items-center gap-2 min-w-0">
@@ -333,8 +336,8 @@ function EnvironmentsPage() {
                   sideOffset={4}
                 >
                   <Command shouldFilter={false}>
-                    <CommandInput 
-                      placeholder="Search connections..." 
+                    <CommandInput
+                      placeholder="Search connections..."
                       value={connectionSearch}
                       onValueChange={setConnectionSearch}
                     />
@@ -348,60 +351,63 @@ function EnvironmentsPage() {
                           {filteredConnections.length > 0 ? (
                             <CommandGroup>
                               {filteredConnections.map((c) => {
-                              const name =
-                                c.accountLogin ||
-                                `installation-${c.installationId}`;
-                              const cfgUrl =
-                                c.accountLogin && c.accountType
-                                  ? c.accountType === "Organization"
-                                    ? `https://github.com/organizations/${c.accountLogin}/settings/installations/${c.installationId}`
-                                    : `https://github.com/settings/installations/${c.installationId}`
-                                  : null;
-                              const isSelected = currentOrg === c.accountLogin;
-                              return (
-                                <CommandItem
-                                  key={`${c.accountLogin}:${c.installationId}`}
-                                  value={name}
-                                  onSelect={() => {
-                                    setSelectedConnectionLogin(
-                                      c.accountLogin ?? null
-                                    );
-                                    setConnectionDropdownOpen(false);
-                                  }}
-                                  className="flex items-center justify-between gap-2"
-                                >
-                                  <div className="flex items-center gap-2 min-w-0 flex-1">
-                                    <ConnectionIcon type={c.type} />
-                                    <span className="truncate">{name}</span>
-                                    {isSelected && (
-                                      <Check className="ml-auto h-4 w-4 text-neutral-600 dark:text-neutral-300" />
-                                    )}
-                                  </div>
-                                  {cfgUrl ? (
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <button
-                                          type="button"
-                                          className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 relative z-[10010]"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            e.preventDefault();
-                                            openCenteredPopup(
-                                              cfgUrl,
-                                              { name: "github-config" },
-                                              handlePopupClosedRefetch
-                                            );
-                                          }}
-                                        >
-                                          <Settings className="w-3 h-3 text-neutral-600 dark:text-neutral-300" />
-                                        </button>
-                                      </TooltipTrigger>
-                                      <TooltipContent className="z-[10020]">Add Repos</TooltipContent>
-                                    </Tooltip>
-                                  ) : null}
-                                </CommandItem>
-                              );
-                            })}
+                                const name =
+                                  c.accountLogin ||
+                                  `installation-${c.installationId}`;
+                                const cfgUrl =
+                                  c.accountLogin && c.accountType
+                                    ? c.accountType === "Organization"
+                                      ? `https://github.com/organizations/${c.accountLogin}/settings/installations/${c.installationId}`
+                                      : `https://github.com/settings/installations/${c.installationId}`
+                                    : null;
+                                const isSelected =
+                                  currentOrg === c.accountLogin;
+                                return (
+                                  <CommandItem
+                                    key={`${c.accountLogin}:${c.installationId}`}
+                                    value={name}
+                                    onSelect={() => {
+                                      setSelectedConnectionLogin(
+                                        c.accountLogin ?? null
+                                      );
+                                      setConnectionDropdownOpen(false);
+                                    }}
+                                    className="flex items-center justify-between gap-2"
+                                  >
+                                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                                      <ConnectionIcon type={c.type} />
+                                      <span className="truncate">{name}</span>
+                                      {isSelected && (
+                                        <Check className="ml-auto h-4 w-4 text-neutral-600 dark:text-neutral-300" />
+                                      )}
+                                    </div>
+                                    {cfgUrl ? (
+                                      <Tooltip>
+                                        <TooltipTrigger asChild>
+                                          <button
+                                            type="button"
+                                            className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 relative z-[10010]"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              e.preventDefault();
+                                              openCenteredPopup(
+                                                cfgUrl,
+                                                { name: "github-config" },
+                                                handlePopupClosedRefetch
+                                              );
+                                            }}
+                                          >
+                                            <Settings className="w-3 h-3 text-neutral-600 dark:text-neutral-300" />
+                                          </button>
+                                        </TooltipTrigger>
+                                        <TooltipContent className="z-[10020]">
+                                          Add Repos
+                                        </TooltipContent>
+                                      </Tooltip>
+                                    ) : null}
+                                  </CommandItem>
+                                );
+                              })}
                             </CommandGroup>
                           ) : connectionSearch.trim() ? (
                             <div className="px-3 py-2 text-sm text-neutral-500">
@@ -549,8 +555,7 @@ function EnvironmentsPage() {
             </div>
 
             <p className="mt-2 text-xs text-neutral-500 dark:text-neutral-500">
-              Only the 5 most recently updated repositories are shown. Missing a
-              repo?{" "}
+              Missing a repo?{" "}
               {configureUrl ? (
                 <a
                   href={configureUrl}
