@@ -34,6 +34,7 @@ import {
   useNavigate,
   useRouter,
 } from "@tanstack/react-router";
+import clsx from "clsx";
 import { useMutation, useQuery } from "convex/react";
 import {
   ArrowLeft,
@@ -59,14 +60,12 @@ export const Route = createFileRoute("/_layout/$teamSlugOrId/environments")({
     const connectionLogin = z.string().optional().parse(search.connectionLogin);
     const repoSearch = z.string().optional().parse(search.repoSearch);
     const sessionId = z.string().optional().parse(search.sessionId);
-    const vscodeUrl = z.string().optional().parse(search.vscodeUrl);
     return {
       step,
       selectedRepos,
       connectionLogin,
       repoSearch,
       sessionId,
-      vscodeUrl,
     };
   },
 });
@@ -718,6 +717,7 @@ function EnvironmentConfiguration({
   vscodeUrl?: string;
   isProvisioning: boolean;
 }) {
+  const [iframeLoaded, setIframeLoaded] = useState(false);
   const [envName, setEnvName] = useState("");
   const [envVars, setEnvVars] = useState<
     Array<{ name: string; value: string; isSecret: boolean }>
@@ -790,6 +790,11 @@ function EnvironmentConfiguration({
       }
     }
   }, [pendingFocusIndex, envVars]);
+
+  // Reset iframe loading state when URL changes
+  useEffect(() => {
+    setIframeLoaded(false);
+  }, [vscodeUrl]);
 
   const handleCreateEnvironment = () => {
     // Snapshot current environment state (instance already provisioned)
@@ -1073,12 +1078,32 @@ function EnvironmentConfiguration({
           </div>
         </div>
       ) : vscodeUrl ? (
-        <iframe
-          src={vscodeUrl}
-          className="w-full h-full border-0"
-          title="VSCode Environment"
-          allow="clipboard-read; clipboard-write"
-        />
+        <div className="relative h-full">
+          <div
+            aria-hidden={iframeLoaded}
+            className={clsx(
+              "absolute inset-0 z-10 flex items-center justify-center backdrop-blur-sm transition-opacity duration-300",
+              "bg-white/60 dark:bg-neutral-950/60",
+              iframeLoaded
+                ? "opacity-0 pointer-events-none"
+                : "opacity-100 pointer-events-auto"
+            )}
+          >
+            <div className="text-center">
+              <Loader2 className="w-6 h-6 mx-auto mb-3 animate-spin text-neutral-500 dark:text-neutral-400" />
+              <p className="text-sm text-neutral-700 dark:text-neutral-300">
+                Loading VS Code...
+              </p>
+            </div>
+          </div>
+          <iframe
+            src={vscodeUrl}
+            className="w-full h-full border-0"
+            title="VSCode Environment"
+            allow="clipboard-read; clipboard-write"
+            onLoad={() => setIframeLoaded(true)}
+          />
+        </div>
       ) : (
         <div className="flex items-center justify-center h-full">
           <div className="text-center">
@@ -1096,7 +1121,7 @@ function EnvironmentConfiguration({
     <ResizableColumns
       storageKey="envConfigWidth"
       defaultLeftWidth={360}
-      minLeft={240}
+      minLeft={220}
       maxLeft={700}
       left={leftPane}
       right={rightPane}
@@ -1112,12 +1137,18 @@ function EnvironmentsPage() {
   const urlConnectionLogin = searchParams.connectionLogin;
   const urlRepoSearch = searchParams.repoSearch ?? "";
   const urlSessionId = searchParams.sessionId;
-  const urlVscodeUrl = searchParams.vscodeUrl;
   const navigate = useNavigate();
   const { teamSlugOrId } = Route.useParams();
   const provisionInstanceMutation = useRQMutation(
     postApiMorphProvisionInstanceMutation()
   );
+
+  // Derive VSCode URL from sessionId (always port-39378)
+  const derivedVscodeUrl = useMemo(() => {
+    if (!urlSessionId) return undefined;
+    const hostId = urlSessionId.replace(/_/g, "-");
+    return `https://port-39378-${hostId}.http.cloud.morph.so/?folder=/root/workspace`;
+  }, [urlSessionId]);
 
   const goToStep = (
     newStep: "select" | "configure",
@@ -1132,7 +1163,6 @@ function EnvironmentsPage() {
         ...prev,
         // Explicitly persist session fields to satisfy type
         sessionId: prev.sessionId,
-        vscodeUrl: prev.vscodeUrl,
         step: newStep,
         selectedRepos: selectedRepos ?? prev.selectedRepos,
         connectionLogin:
@@ -1148,7 +1178,7 @@ function EnvironmentsPage() {
     goToStep("configure", repos);
 
     // Reuse existing session if present
-    if (urlSessionId && urlVscodeUrl) return;
+    if (urlSessionId) return;
 
     // Provision a new Morph instance and persist it in the URL
     provisionInstanceMutation.mutate(
@@ -1170,7 +1200,6 @@ function EnvironmentsPage() {
               connectionLogin: prev.connectionLogin,
               repoSearch: prev.repoSearch,
               sessionId: data.instanceId,
-              vscodeUrl: data.vscodeUrl,
             }),
             replace: true,
           });
@@ -1202,7 +1231,6 @@ function EnvironmentsPage() {
         connectionLogin: connectionLogin ?? undefined,
         repoSearch: repoSearch || undefined,
         sessionId: prev.sessionId,
-        vscodeUrl: prev.vscodeUrl,
       }),
       replace: true,
     });
@@ -1227,9 +1255,9 @@ function EnvironmentsPage() {
             selectedRepos={urlSelectedRepos}
             onBack={handleBack}
             sessionId={urlSessionId}
-            vscodeUrl={urlVscodeUrl}
+            vscodeUrl={derivedVscodeUrl}
             isProvisioning={
-              provisionInstanceMutation.isPending && !urlVscodeUrl
+              provisionInstanceMutation.isPending && !urlSessionId
             }
           />
         )}
