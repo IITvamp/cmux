@@ -23,7 +23,7 @@
     }
   },
   "dependencies": {
-    "@stackframe/js": "^2.8.32",
+    "@stackframe/js": "^2.8.36",
     "@t3-oss/env-core": "^0.13.8",
     "convex": "1.26.0-alpha.6",
     "convex-helpers": "^0.1.104",
