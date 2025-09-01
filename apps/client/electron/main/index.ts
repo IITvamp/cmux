@@ -194,14 +194,6 @@ async function setupAutoUpdates() {
       } catch {
         // ignore
       }
-      const tenMinutes = 10 * 60 * 1000;
-      setInterval(() => {
-        try {
-          linuxAutoUpdater.checkForUpdates();
-        } catch {
-          // ignore
-        }
-      }, tenMinutes);
     } catch (e) {
       console.error("Failed to initialize linux auto-updater", e);
     }
