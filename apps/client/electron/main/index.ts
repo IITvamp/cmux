@@ -3,6 +3,12 @@ import { app, BrowserWindow, dialog, net, session, shell } from "electron";
 import path, { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { autoUpdater as updater } from "electron-updater";
+import {
+  createRemoteJWKSet,
+  decodeJwt,
+  jwtVerify,
+  type JWTPayload,
+} from "jose";
 
 // Use a cookieable HTTPS origin intercepted locally instead of a custom scheme.
 const PARTITION = "persist:cmux";
@@ -12,9 +18,9 @@ let rendererLoaded = false;
 let pendingProtocolUrl: string | null = null;
 let mainWindow: BrowserWindow | null = null;
 
-function handleOrQueueProtocolUrl(url: string): void {
+async function handleOrQueueProtocolUrl(url: string) {
   if (mainWindow && rendererLoaded) {
-    handleProtocolUrl(url);
+    await handleProtocolUrl(url);
   } else {
     pendingProtocolUrl = url;
   }
@@ -45,7 +51,7 @@ function createWindow(): void {
   mainWindow.webContents.on("did-finish-load", () => {
     rendererLoaded = true;
     if (pendingProtocolUrl) {
-      handleProtocolUrl(pendingProtocolUrl);
+      void handleProtocolUrl(pendingProtocolUrl);
       pendingProtocolUrl = null;
     }
   });
@@ -103,7 +109,37 @@ app.on("window-all-closed", () => {
   }
 });
 
-function handleProtocolUrl(url: string): void {
+// Simple in-memory cache of RemoteJWKSet by issuer
+const jwksCache = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
+
+function jwksForIssuer(issuer: string) {
+  const base = issuer.endsWith("/") ? issuer : issuer + "/";
+  // Stack Auth exposes JWKS at <issuer>/.well-known/jwks.json
+  const url = new URL(".well-known/jwks.json", base);
+  let jwks = jwksCache.get(url.toString());
+  if (!jwks) {
+    jwks = createRemoteJWKSet(url);
+    jwksCache.set(url.toString(), jwks);
+  }
+  return jwks;
+}
+
+async function verifyJwtAndGetPayload(
+  token: string
+): Promise<JWTPayload | null> {
+  try {
+    const decoded = decodeJwt(token);
+    const iss = decoded.iss;
+    if (!iss) return null;
+    const JWKS = jwksForIssuer(iss);
+    const { payload } = await jwtVerify(token, JWKS, { issuer: iss });
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
+async function handleProtocolUrl(url: string): Promise<void> {
   if (!mainWindow) {
     // Should not happen due to queuing, but guard anyway
     pendingProtocolUrl = url;
@@ -122,11 +158,29 @@ function handleProtocolUrl(url: string): void {
       // running against an http(s) dev server.
       const currentUrl = mainWindow.webContents.getURL();
 
-      mainWindow.webContents.session.cookies.set({
-        url: currentUrl,
-        name: `stack-refresh-8a877114-b905-47c5-8b64-3a2d90679577`,
-        value: stackRefresh,
-      });
+      const [refreshPayload, accessPayload] = await Promise.all([
+        verifyJwtAndGetPayload(stackRefresh),
+        verifyJwtAndGetPayload(stackAccess),
+      ]);
+
+      if (refreshPayload && accessPayload) {
+        const refreshExp =
+          typeof refreshPayload.exp === "number" &&
+          Number.isFinite(refreshPayload.exp)
+            ? refreshPayload.exp
+            : undefined;
+        const accessExp =
+          typeof accessPayload.exp === "number" &&
+          Number.isFinite(accessPayload.exp)
+            ? accessPayload.exp
+            : undefined;
+
+        mainWindow.webContents.session.cookies.set({
+          url: currentUrl,
+          name: `stack-refresh-8a877114-b905-47c5-8b64-3a2d90679577`,
+          value: stackRefresh,
+          expirationDate: refreshExp,
+        });
 
       mainWindow.webContents.session.cookies.set({
         url: currentUrl,

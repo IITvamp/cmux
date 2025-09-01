@@ -89,6 +89,36 @@ app.on("window-all-closed", () => {
     app.quit();
   }
 });
+function decodeJwtExp(token) {
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  try {
+    const json = base64urlDecode(parts[1]);
+    const payload = JSON.parse(json);
+    if (payload && typeof payload === "object") {
+      const exp = payload["exp"];
+      if (typeof exp === "number" && Number.isFinite(exp)) return exp;
+      if (typeof exp === "string" && exp.trim() !== "") {
+        const n = Number(exp);
+        return Number.isFinite(n) ? n : null;
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+function base64urlDecode(input) {
+  let s = input.replace(/-/g, "+").replace(/_/g, "/");
+  const pad = s.length % 4;
+  if (pad) s += "=".repeat(4 - pad);
+  if (typeof Buffer !== "undefined") {
+    return Buffer.from(s, "base64").toString("utf8");
+  }
+  const binary = atob(s);
+  const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
 function handleProtocolUrl(url) {
   if (!mainWindow) {
     pendingProtocolUrl = url;
@@ -100,16 +130,23 @@ function handleProtocolUrl(url) {
     const stackAccess = urlObj.searchParams.get("stack_access");
     if (stackRefresh && stackAccess) {
       const currentUrl = mainWindow.webContents.getURL();
+      const refreshExp = decodeJwtExp(stackRefresh);
+      const accessExp = decodeJwtExp(stackAccess);
       mainWindow.webContents.session.cookies.set({
         url: currentUrl,
         name: `stack-refresh-8a877114-b905-47c5-8b64-3a2d90679577`,
-        value: stackRefresh
+        value: stackRefresh,
+        expirationDate: refreshExp ?? void 0
       });
       mainWindow.webContents.session.cookies.set({
         url: currentUrl,
         name: "stack-access",
-        value: stackAccess
+        value: stackAccess,
+        expirationDate: accessExp ?? void 0
       });
     }
   }
 }
+export {
+  decodeJwtExp
+};
