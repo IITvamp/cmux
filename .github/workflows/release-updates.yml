@@ -32,9 +32,15 @@ jobs:
       - uses: pnpm/action-setup@v4
         with:
           version: ${{ env.PNPM_VERSION }}
+      - name: Load VITE client envs from repo .env
+        if: ${{ hashFiles('.env') != '' }}
+        shell: bash
+        run: |
+          grep -E '^(VITE_CONVEX_URL|VITE_STACK_PROJECT_ID|VITE_STACK_PUBLISHABLE_CLIENT_KEY)=' .env >> $GITHUB_ENV || true
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Build & publish mac x64 to GitHub Releases
+      - name: Build & publish mac x64 (signed) to GitHub Releases
+        if: ${{ secrets.MAC_CERT_BASE64 != '' && secrets.MAC_CERT_PASSWORD != '' && secrets.APPLE_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
         env:
           GH_TOKEN: ${{ github.token }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
@@ -48,6 +54,15 @@ jobs:
         run: |
           pnpm exec electron-vite build -c electron.vite.config.js
           pnpm exec electron-builder --config electron-builder.json --mac --x64 --publish always
+      - name: Build & publish mac x64 (unsigned) to GitHub Releases
+        if: ${{ !(secrets.MAC_CERT_BASE64 != '' && secrets.MAC_CERT_PASSWORD != '' && secrets.APPLE_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' && secrets.APPLE_TEAM_ID != '') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        working-directory: apps/client
+        run: |
+          pnpm exec electron-vite build -c electron.vite.config.js
+          pnpm exec electron-builder --config electron-builder.json --mac --x64 --publish always -c.mac.identity=null
 
   mac-arm64:
     name: macOS arm64
@@ -65,9 +80,15 @@ jobs:
       - uses: pnpm/action-setup@v4
         with:
           version: ${{ env.PNPM_VERSION }}
+      - name: Load VITE client envs from repo .env
+        if: ${{ hashFiles('.env') != '' }}
+        shell: bash
+        run: |
+          grep -E '^(VITE_CONVEX_URL|VITE_STACK_PROJECT_ID|VITE_STACK_PUBLISHABLE_CLIENT_KEY)=' .env >> $GITHUB_ENV || true
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Build & publish mac arm64 to GitHub Releases
+      - name: Build & publish mac arm64 (signed) to GitHub Releases
+        if: ${{ secrets.MAC_CERT_BASE64 != '' && secrets.MAC_CERT_PASSWORD != '' && secrets.APPLE_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
         env:
           GH_TOKEN: ${{ github.token }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
@@ -81,6 +102,15 @@ jobs:
         run: |
           pnpm exec electron-vite build -c electron.vite.config.js
           pnpm exec electron-builder --config electron-builder.json --mac --arm64 --publish always
+      - name: Build & publish mac arm64 (unsigned) to GitHub Releases
+        if: ${{ !(secrets.MAC_CERT_BASE64 != '' && secrets.MAC_CERT_PASSWORD != '' && secrets.APPLE_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' && secrets.APPLE_TEAM_ID != '') }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        working-directory: apps/client
+        run: |
+          pnpm exec electron-vite build -c electron.vite.config.js
+          pnpm exec electron-builder --config electron-builder.json --mac --arm64 --publish always -c.mac.identity=null
 
   windows-x64:
     name: Windows x64
@@ -98,6 +128,11 @@ jobs:
       - uses: pnpm/action-setup@v4
         with:
           version: ${{ env.PNPM_VERSION }}
+      - name: Load VITE client envs from repo .env
+        if: ${{ hashFiles('.env') != '' }}
+        shell: bash
+        run: |
+          grep -E '^(VITE_CONVEX_URL|VITE_STACK_PROJECT_ID|VITE_STACK_PUBLISHABLE_CLIENT_KEY)=' .env >> $GITHUB_ENV || true
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build & publish Windows x64 to GitHub Releases
@@ -121,6 +156,11 @@ jobs:
       - uses: pnpm/action-setup@v4
         with:
           version: ${{ env.PNPM_VERSION }}
+      - name: Load VITE client envs from repo .env
+        if: ${{ hashFiles('.env') != '' }}
+        shell: bash
+        run: |
+          grep -E '^(VITE_CONVEX_URL|VITE_STACK_PROJECT_ID|VITE_STACK_PUBLISHABLE_CLIENT_KEY)=' .env >> $GITHUB_ENV || true
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build & publish Linux AppImage x64 to GitHub Releases
@@ -144,6 +184,11 @@ jobs:
       - uses: pnpm/action-setup@v4
         with:
           version: ${{ env.PNPM_VERSION }}
+      - name: Load VITE client envs from repo .env
+        if: ${{ hashFiles('.env') != '' }}
+        shell: bash
+        run: |
+          grep -E '^(VITE_CONVEX_URL|VITE_STACK_PROJECT_ID|VITE_STACK_PUBLISHABLE_CLIENT_KEY)=' .env >> $GITHUB_ENV || true
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build & publish Linux AppImage arm64 to GitHub Releases
