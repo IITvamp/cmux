@@ -6,6 +6,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import * as os from "os";
 import * as path from "path";
 import { getConvex } from "../utils/convexClient.js";
+import { getAuthToken, runWithAuthToken } from "../utils/requestContext.js";
 import { cleanupGitCredentials } from "../utils/dockerGitSetup.js";
 import { dockerLogger } from "../utils/fileLogger.js";
 import { getGitHubTokenFromKeychain } from "../utils/getGitHubToken.js";
@@ -20,6 +21,7 @@ export interface ContainerMapping {
   containerName: string;
   instanceId: Id<"taskRuns">;
   teamSlugOrId: string;
+  authToken?: string;
   ports: {
     vscode: string;
     worker: string;
@@ -43,6 +45,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
   private containerName: string;
   private imageName: string;
   private container: Docker.Container | null = null;
+  private authToken: string | undefined;
   private portCache: {
     ports: { [key: string]: string } | null;
     timestamp: number;
@@ -213,11 +216,15 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     // Check if image exists and pull if missing
     await this.ensureImageExists(docker);
 
+    // Capture current auth token for this instance and mapping
+    this.authToken = getAuthToken();
+
     // Set initial mapping status
     containerMappings.set(this.containerName, {
       containerName: this.containerName,
       instanceId: this.instanceId,
       teamSlugOrId: this.teamSlugOrId,
+      authToken: this.authToken,
       ports: { vscode: "", worker: "" },
       status: "starting",
       workspacePath: this.config.workspacePath,
@@ -580,12 +587,14 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
           // Update VSCode status in Convex
           try {
-            await getConvex().mutation(api.taskRuns.updateVSCodeStatus, {
-              teamSlugOrId: this.teamSlugOrId,
-              id: this.taskRunId,
-              status: "stopped",
-              stoppedAt: Date.now(),
-            });
+            await runWithAuthToken(this.authToken, async () =>
+              getConvex().mutation(api.taskRuns.updateVSCodeStatus, {
+                teamSlugOrId: this.teamSlugOrId,
+                id: this.taskRunId,
+                status: "stopped",
+                stoppedAt: Date.now(),
+              })
+            );
           } catch (error) {
             dockerLogger.error(
               "Failed to update VSCode status in Convex:",
@@ -630,12 +639,14 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
     // Update VSCode status in Convex
     try {
-      await getConvex().mutation(api.taskRuns.updateVSCodeStatus, {
-        teamSlugOrId: this.teamSlugOrId,
-        id: this.taskRunId,
-        status: "stopped",
-        stoppedAt: Date.now(),
-      });
+      await runWithAuthToken(this.authToken, async () =>
+        getConvex().mutation(api.taskRuns.updateVSCodeStatus, {
+          teamSlugOrId: this.teamSlugOrId,
+          id: this.taskRunId,
+          status: "stopped",
+          stoppedAt: Date.now(),
+        })
+      );
     } catch (error) {
       console.error("Failed to update VSCode status in Convex:", error);
     }
@@ -1159,21 +1170,29 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         }
         mapping.status = "running";
         try {
-          if (vscodePort && workerPort) {
-            await getConvex().mutation(api.taskRuns.updateVSCodePorts, {
+          if (!mapping.authToken) {
+            dockerLogger.warn(
+              `[docker events] No auth token for container ${containerName}; deferring Convex updates`
+            );
+            return;
+          }
+          await runWithAuthToken(mapping.authToken, async () => {
+            if (vscodePort && workerPort) {
+              await getConvex().mutation(api.taskRuns.updateVSCodePorts, {
+                teamSlugOrId: mapping.teamSlugOrId,
+                id: taskRunId,
+                ports: {
+                  vscode: vscodePort,
+                  worker: workerPort,
+                  extension: extensionPort,
+                },
+              });
+            }
+            await getConvex().mutation(api.taskRuns.updateVSCodeStatus, {
               teamSlugOrId: mapping.teamSlugOrId,
               id: taskRunId,
-              ports: {
-                vscode: vscodePort,
-                worker: workerPort,
-                extension: extensionPort,
-              },
+              status: "running",
             });
-          }
-          await getConvex().mutation(api.taskRuns.updateVSCodeStatus, {
-            teamSlugOrId: mapping.teamSlugOrId,
-            id: taskRunId,
-            status: "running",
           });
         } catch (error) {
           dockerLogger.error(
@@ -1190,12 +1209,20 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     } else if (status === "stop" || status === "die" || status === "destroy") {
       mapping.status = "stopped";
       try {
-        await getConvex().mutation(api.taskRuns.updateVSCodeStatus, {
-          teamSlugOrId: mapping.teamSlugOrId,
-          id: taskRunId,
-          status: "stopped",
-          stoppedAt: Date.now(),
-        });
+        if (!mapping.authToken) {
+          dockerLogger.warn(
+            `[docker events] No auth token for container ${containerName}; skipping stopped status update`
+          );
+        } else {
+          await runWithAuthToken(mapping.authToken, async () =>
+            getConvex().mutation(api.taskRuns.updateVSCodeStatus, {
+              teamSlugOrId: mapping.teamSlugOrId,
+              id: taskRunId,
+              status: "stopped",
+              stoppedAt: Date.now(),
+            })
+          );
+        }
       } catch (error) {
         dockerLogger.error(
           `[docker events] Failed to update stopped status for ${containerName}:`,
@@ -1204,15 +1231,23 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       }
 
       try {
-        const containerSettings = await getConvex().query(
-          api.containerSettings.getEffective,
-          { teamSlugOrId: mapping.teamSlugOrId }
-        );
-        if (containerSettings.autoCleanupEnabled) {
-          await DockerVSCodeInstance.performContainerCleanup(
-            containerSettings,
-            mapping.teamSlugOrId
+        if (!mapping.authToken) {
+          dockerLogger.warn(
+            `[docker events] No auth token for container ${containerName}; skipping cleanup checks`
           );
+        } else {
+          await runWithAuthToken(mapping.authToken, async () => {
+            const containerSettings = await getConvex().query(
+              api.containerSettings.getEffective,
+              { teamSlugOrId: mapping.teamSlugOrId }
+            );
+            if (containerSettings.autoCleanupEnabled) {
+              await DockerVSCodeInstance.performContainerCleanup(
+                containerSettings,
+                mapping.teamSlugOrId
+              );
+            }
+          });
         }
       } catch (error) {
         dockerLogger.error(

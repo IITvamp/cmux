@@ -19,6 +19,7 @@ import {
   generateUniqueBranchNamesFromTitle,
 } from "./utils/branchNameGenerator.js";
 import { getConvex } from "./utils/convexClient.js";
+import { getAuthToken, runWithAuthToken } from "./utils/requestContext.js";
 import { serverLogger } from "./utils/fileLogger.js";
 import { workerExec } from "./utils/workerExec.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
@@ -55,6 +56,9 @@ export async function spawnAgent(
   teamSlugOrId: string
 ): Promise<AgentSpawnResult> {
   try {
+    // Capture the current auth token from AsyncLocalStorage so we can
+    // re-enter the auth context inside async event handlers later.
+    const capturedAuthToken = getAuthToken();
     const newBranch =
       options.newBranch ||
       (await generateNewBranchName(options.taskDescription, teamSlugOrId));
@@ -387,14 +391,16 @@ export async function spawnAgent(
         );
         await new Promise((resolve) => setTimeout(resolve, 3000));
 
-        await handleTaskCompletion({
-          taskRunId,
-          agent,
-          exitCode: data.exitCode ?? 0,
-          worktreePath,
-          vscodeInstance,
-          teamSlugOrId,
-        });
+        await runWithAuthToken(capturedAuthToken, async () =>
+          handleTaskCompletion({
+            taskRunId,
+            agent,
+            exitCode: data.exitCode ?? 0,
+            worktreePath,
+            vscodeInstance,
+            teamSlugOrId,
+          })
+        );
       }
     });
 
@@ -440,14 +446,16 @@ export async function spawnAgent(
         );
         await new Promise((resolve) => setTimeout(resolve, 3000));
 
-        await handleTaskCompletion({
-          taskRunId,
-          agent,
-          exitCode: 0,
-          worktreePath,
-          vscodeInstance,
-          teamSlugOrId,
-        });
+        await runWithAuthToken(capturedAuthToken, async () =>
+          handleTaskCompletion({
+            taskRunId,
+            agent,
+            exitCode: 0,
+            worktreePath,
+            vscodeInstance,
+            teamSlugOrId,
+          })
+        );
       } else {
         serverLogger.warn(
           `[AgentSpawner] Task ID did not match, ignoring task complete event`
@@ -482,14 +490,16 @@ export async function spawnAgent(
           `[AgentSpawner] Task ID matched! Marking task as complete for ${agent.name}`
         );
         vscodeInstance.stopFileWatch();
-        await handleTaskCompletion({
-          taskRunId,
-          agent,
-          exitCode: 0,
-          worktreePath,
-          vscodeInstance,
-          teamSlugOrId,
-        });
+        await runWithAuthToken(capturedAuthToken, async () =>
+          handleTaskCompletion({
+            taskRunId,
+            agent,
+            exitCode: 0,
+            worktreePath,
+            vscodeInstance,
+            teamSlugOrId,
+          })
+        );
       } else {
         serverLogger.warn(
           `[AgentSpawner] Task ID did not match, ignoring idle event`
@@ -514,21 +524,25 @@ export async function spawnAgent(
 
         // Append error to log for context
         if (data.errorMessage) {
-          await getConvex().mutation(api.taskRuns.appendLogPublic, {
-            teamSlugOrId,
-            id: taskRunId,
-            content: `\n\n=== ERROR ===\n${data.errorMessage}\n=== END ERROR ===\n`,
-          });
+          await runWithAuthToken(capturedAuthToken, async () =>
+            getConvex().mutation(api.taskRuns.appendLogPublic, {
+              teamSlugOrId,
+              id: taskRunId,
+              content: `\n\n=== ERROR ===\n${data.errorMessage}\n=== END ERROR ===\n`,
+            })
+          );
         }
 
         // Mark the run as failed with error message
-        await getConvex().mutation(api.taskRuns.fail, {
-          teamSlugOrId,
-          id: taskRunId,
-          errorMessage: data.errorMessage || "Terminal failed",
-          // WorkerTerminalFailed does not include exitCode in schema; default to 1
-          exitCode: 1,
-        });
+        await runWithAuthToken(capturedAuthToken, async () =>
+          getConvex().mutation(api.taskRuns.fail, {
+            teamSlugOrId,
+            id: taskRunId,
+            errorMessage: data.errorMessage || "Terminal failed",
+            // WorkerTerminalFailed does not include exitCode in schema; default to 1
+            exitCode: 1,
+          })
+        );
 
         serverLogger.info(
           `[AgentSpawner] Marked taskRun ${taskRunId} as failed`

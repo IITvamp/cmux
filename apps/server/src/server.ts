@@ -160,6 +160,7 @@ export async function startServer({
   setupWebSocketProxy(httpServer);
 
   let hasRefreshedGithub = false;
+  let dockerEventsStarted = false;
 
   io.on("connection", (socket) => {
     // Ensure every packet runs within the auth context associated with this socket
@@ -223,6 +224,16 @@ export async function startServer({
           serverLogger.error("Background refresh failed:", error);
         });
       });
+      // Start Docker container state sync after first authenticated connection
+      if (!dockerEventsStarted) {
+        dockerEventsStarted = true;
+        runWithAuthToken(initialToken, () => {
+          serverLogger.info(
+            "Starting Docker container state sync after authenticated connect"
+          );
+          DockerVSCodeInstance.startContainerStateSync();
+        });
+      }
     } else if (!initialToken) {
       serverLogger.info(
         "Skipping initial GitHub refresh: no auth token on connect"
@@ -1990,9 +2001,8 @@ Please address the issue mentioned in the comment above.`;
     serverLogger.info(`Terminal server listening on port ${port}`);
     serverLogger.info(`Visit http://localhost:${port} to see the app`);
 
-    // Start the Docker container state sync
+    // Wait for Convex, but defer Docker event sync until first authenticated client
     await waitForConvex();
-    DockerVSCodeInstance.startContainerStateSync();
 
     // Crown evaluation is now triggered immediately after all tasks complete
     // in agentSpawner.ts handleTaskCompletion() function

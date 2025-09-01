@@ -20,4 +20,3 @@ export function getAuthToken(): string | undefined {
 export function getRequestContext(): RequestContext | undefined {
   return storage.getStore();
 }
-
