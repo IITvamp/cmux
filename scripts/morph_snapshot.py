@@ -740,6 +740,7 @@ def main() -> None:
         if args.resnapshot:
             # next, wait for any keypress and then snapshot again
             input("Press Enter to snapshot again...")
+            print("Snapshotting...")
             final_snapshot = instance.snapshot()
             print(f"Snapshot ID: {final_snapshot.id}")
     finally:
