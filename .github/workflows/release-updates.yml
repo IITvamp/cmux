@@ -39,23 +39,7 @@ jobs:
           version: ${{ env.PNPM_VERSION }}
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Build & publish mac x64 (signed) to GitHub Releases
-        if: ${{ secrets.MAC_CERT_BASE64 != '' && secrets.MAC_CERT_PASSWORD != '' && secrets.APPLE_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-          # macOS code signing + notarization
-          CSC_LINK: base64:${{ secrets.MAC_CERT_BASE64 }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        working-directory: apps/client
-        run: |
-          pnpm exec electron-vite build -c electron.vite.config.js
-          pnpm exec electron-builder --config electron-builder.json --mac --x64 --publish always
       - name: Build & publish mac x64 (unsigned) to GitHub Releases
-        if: ${{ !(secrets.MAC_CERT_BASE64 != '' && secrets.MAC_CERT_PASSWORD != '' && secrets.APPLE_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' && secrets.APPLE_TEAM_ID != '') }}
         env:
           GH_TOKEN: ${{ github.token }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
@@ -63,6 +47,24 @@ jobs:
         run: |
           pnpm exec electron-vite build -c electron.vite.config.js
           pnpm exec electron-builder --config electron-builder.json --mac --x64 --publish always -c.mac.identity=null
+      # ------------------------------------------------------------------
+      # To enable signed + notarized mac builds, replace the unsigned step
+      # above with the following and provide the required repo secrets.
+      #
+      # - name: Build & publish mac x64 (signed) to GitHub Releases
+      #   env:
+      #     GH_TOKEN: ${{ github.token }}
+      #     CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      #     # macOS code signing + notarization
+      #     CSC_LINK: base64:${{ secrets.MAC_CERT_BASE64 }}
+      #     CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+      #     APPLE_ID: ${{ secrets.APPLE_ID }}
+      #     APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      #     APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      #   working-directory: apps/client
+      #   run: |
+      #     pnpm exec electron-vite build -c electron.vite.config.js
+      #     pnpm exec electron-builder --config electron-builder.json --mac --x64 --publish always
 
   mac-arm64:
     name: macOS arm64
@@ -82,23 +84,7 @@ jobs:
           version: ${{ env.PNPM_VERSION }}
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Build & publish mac arm64 (signed) to GitHub Releases
-        if: ${{ secrets.MAC_CERT_BASE64 != '' && secrets.MAC_CERT_PASSWORD != '' && secrets.APPLE_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' && secrets.APPLE_TEAM_ID != '' }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-          # macOS code signing + notarization
-          CSC_LINK: base64:${{ secrets.MAC_CERT_BASE64 }}
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        working-directory: apps/client
-        run: |
-          pnpm exec electron-vite build -c electron.vite.config.js
-          pnpm exec electron-builder --config electron-builder.json --mac --arm64 --publish always
       - name: Build & publish mac arm64 (unsigned) to GitHub Releases
-        if: ${{ !(secrets.MAC_CERT_BASE64 != '' && secrets.MAC_CERT_PASSWORD != '' && secrets.APPLE_ID != '' && secrets.APPLE_APP_SPECIFIC_PASSWORD != '' && secrets.APPLE_TEAM_ID != '') }}
         env:
           GH_TOKEN: ${{ github.token }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
@@ -106,6 +92,24 @@ jobs:
         run: |
           pnpm exec electron-vite build -c electron.vite.config.js
           pnpm exec electron-builder --config electron-builder.json --mac --arm64 --publish always -c.mac.identity=null
+      # ------------------------------------------------------------------
+      # To enable signed + notarized mac builds for arm64, replace the unsigned
+      # step above with the following and provide the required repo secrets.
+      #
+      # - name: Build & publish mac arm64 (signed) to GitHub Releases
+      #   env:
+      #     GH_TOKEN: ${{ github.token }}
+      #     CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      #     # macOS code signing + notarization
+      #     CSC_LINK: base64:${{ secrets.MAC_CERT_BASE64 }}
+      #     CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+      #     APPLE_ID: ${{ secrets.APPLE_ID }}
+      #     APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      #     APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      #   working-directory: apps/client
+      #   run: |
+      #     pnpm exec electron-vite build -c electron.vite.config.js
+      #     pnpm exec electron-builder --config electron-builder.json --mac --arm64 --publish always
 
   windows-x64:
     name: Windows x64
@@ -128,6 +132,12 @@ jobs:
       - name: Build & publish Windows x64 to GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
+          # Windows code signing (optional). Uncomment and provide secrets
+          # to enable signed installers and reduce SmartScreen warnings.
+          # WIN_CSC_LINK: base64:${{ secrets.WIN_CERT_BASE64 }}
+          # WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CERT_PASSWORD }}
+          # CSC_LINK: base64:${{ secrets.WIN_CERT_BASE64 }}
+          # CSC_KEY_PASSWORD: ${{ secrets.WIN_CERT_PASSWORD }}
         working-directory: apps/client
         run: |
           pnpm exec electron-vite build -c electron.vite.config.js
