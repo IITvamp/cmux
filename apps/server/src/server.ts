@@ -169,6 +169,14 @@ export async function startServer({
       : typeof q === "string"
         ? q
         : undefined;
+
+    // authenticate the token
+    if (!token) {
+      // disconnect the socket
+      socket.disconnect();
+      return;
+    }
+
     socket.use((_, next) => {
       runWithAuthToken(token, () => next());
     });
