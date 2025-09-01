@@ -79,6 +79,8 @@ morphRouter.openapi(
       const url = `${vscodeUrl}/?folder=/root/workspace`;
       console.log(`VSCode Workspace URL: ${url}`);
 
+      await instance.setWakeOn(true, true);
+
       return c.json({
         vscodeUrl: url,
         instanceId: instance.id,
