@@ -26,6 +26,7 @@ dist-ssr
 .tanstack
 
 .env
+.env.production
 
 # Binary files
 cmux-cli
