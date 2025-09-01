@@ -14,7 +14,6 @@ permissions:
 
 env:
   NODE_VERSION: '24'
-  PNPM_VERSION: '9'
   # Frontend build-time envs (exposed in bundle). Store values as GitHub Secrets.
   VITE_CONVEX_URL: ${{ secrets.VITE_CONVEX_URL }}
   VITE_STACK_PROJECT_ID: ${{ secrets.VITE_STACK_PROJECT_ID }}
@@ -35,8 +34,6 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
       - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build & publish mac x64 (unsigned) to GitHub Releases
@@ -80,8 +77,6 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
       - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build & publish mac arm64 (unsigned) to GitHub Releases
@@ -125,8 +120,6 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
       - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build & publish Windows x64 to GitHub Releases
@@ -154,8 +147,6 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
       - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build & publish Linux AppImage x64 to GitHub Releases
@@ -177,8 +168,6 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
       - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Build & publish Linux AppImage arm64 to GitHub Releases
