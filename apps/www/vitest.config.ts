@@ -11,4 +11,5 @@ export default defineConfig({
   test: {
     environment: "node",
   },
+  envPrefix: "NEXT_PUBLIC_",
 });

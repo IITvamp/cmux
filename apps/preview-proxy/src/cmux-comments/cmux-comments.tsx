@@ -1,7 +1,11 @@
+import {
+  ConvexProvider,
+  ConvexReactClient,
+  useMutation,
+  useQuery,
+} from "convex/react";
 import React, { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
-import { ConvexProvider, ConvexReactClient } from "convex/react";
-import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../../packages/convex/convex/_generated/api";
 // Removed unused lucide-react import since we're using inline SVGs
 
@@ -418,32 +422,88 @@ const TAILWIND_STYLES = `
 
 // Lucide icon components with embedded SVG
 const SendIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="20"
+    height="20"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="m22 2-7 20-4-9-9-4Z" />
+    <path d="M22 2 11 13" />
   </svg>
 );
 
 const PlusIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M5 12h14"/><path d="m12 5 0 14"/>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="20"
+    height="20"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M5 12h14" />
+    <path d="m12 5 0 14" />
   </svg>
 );
 
 const ImageIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="20"
+    height="20"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+    <circle cx="9" cy="9" r="2" />
+    <path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" />
   </svg>
 );
 
 const TypeIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <polyline points="4 7 4 4 20 4 20 7"/><line x1="9" x2="15" y1="20" y2="20"/><line x1="12" x2="12" y1="4" y2="20"/>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="20"
+    height="20"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <polyline points="4 7 4 4 20 4 20 7" />
+    <line x1="9" x2="15" y1="20" y2="20" />
+    <line x1="12" x2="12" y1="4" y2="20" />
   </svg>
 );
 
 const MessageIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/>
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    width="20"
+    height="20"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+  >
+    <path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" />
   </svg>
 );
 
@@ -473,21 +533,23 @@ interface CommentMarkerProps {
 }
 
 function CommentMarker({ comment, onClick }: CommentMarkerProps) {
-  const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
+  const [position, setPosition] = useState<{ x: number; y: number } | null>(
+    null
+  );
 
   useEffect(() => {
     const updatePosition = () => {
       try {
         let el: HTMLElement | null = null;
-        
+
         // Check if it's an XPath (starts with /) or old CSS selector
-        if (comment.nodeId.startsWith('/')) {
+        if (comment.nodeId.startsWith("/")) {
           // It's an XPath
           const result = document.evaluate(
-            comment.nodeId, 
-            document, 
-            null, 
-            XPathResult.FIRST_ORDERED_NODE_TYPE, 
+            comment.nodeId,
+            document,
+            null,
+            XPathResult.FIRST_ORDERED_NODE_TYPE,
             null
           );
           el = result.singleNodeValue as HTMLElement;
@@ -497,15 +559,17 @@ function CommentMarker({ comment, onClick }: CommentMarkerProps) {
             el = document.querySelector(comment.nodeId) as HTMLElement;
           } catch (_e) {
             // Try escaping for old Tailwind classes
-            const escapedSelector = comment.nodeId.replace(/([:])/g, '\\$1');
+            const escapedSelector = comment.nodeId.replace(/([:])/g, "\\$1");
             try {
               el = document.querySelector(escapedSelector) as HTMLElement;
             } catch (_e2) {
-              console.warn(`Could not find element with CSS selector: ${comment.nodeId}`);
+              console.warn(
+                `Could not find element with CSS selector: ${comment.nodeId}`
+              );
             }
           }
         }
-        
+
         if (el) {
           const rect = el.getBoundingClientRect();
           const x = rect.left + rect.width * comment.x;
@@ -515,7 +579,12 @@ function CommentMarker({ comment, onClick }: CommentMarkerProps) {
           setPosition(null);
         }
       } catch (e) {
-        console.error("Failed to find element for comment:", e, "NodeId:", comment.nodeId);
+        console.error(
+          "Failed to find element for comment:",
+          e,
+          "NodeId:",
+          comment.nodeId
+        );
         setPosition(null);
       }
     };
@@ -524,20 +593,20 @@ function CommentMarker({ comment, onClick }: CommentMarkerProps) {
     updatePosition();
 
     // Update position on scroll and resize
-    window.addEventListener('scroll', updatePosition, true);
-    window.addEventListener('resize', updatePosition);
-    
+    window.addEventListener("scroll", updatePosition, true);
+    window.addEventListener("resize", updatePosition);
+
     // Update position when DOM changes
     const observer = new MutationObserver(updatePosition);
-    observer.observe(document.body, { 
-      childList: true, 
+    observer.observe(document.body, {
+      childList: true,
       subtree: true,
-      attributes: true 
+      attributes: true,
     });
 
     return () => {
-      window.removeEventListener('scroll', updatePosition, true);
-      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener("scroll", updatePosition, true);
+      window.removeEventListener("resize", updatePosition);
       observer.disconnect();
     };
   }, [comment.nodeId, comment.x, comment.y]);
@@ -562,10 +631,16 @@ function CmuxCommentsWidget() {
   const [isOpen, setIsOpen] = useState(false);
   const [isCommenting, setIsCommenting] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
-  const [position, setPosition] = useState({ x: window.innerWidth - 400, y: window.innerHeight - 500 });
+  const [position, setPosition] = useState({
+    x: window.innerWidth - 400,
+    y: window.innerHeight - 500,
+  });
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [commentDraft, setCommentDraft] = useState("");
-  const [commentInputPos, setCommentInputPos] = useState<{ x: number; y: number } | null>(null);
+  const [commentInputPos, setCommentInputPos] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   const [pendingCommentData, setPendingCommentData] = useState<{
     url: string;
     page: string;
@@ -593,13 +668,13 @@ function CmuxCommentsWidget() {
   // Handle cursor tracking when commenting
   useEffect(() => {
     if (!isCommenting) return;
-    
+
     const handleMouseMove = (e: MouseEvent) => {
       setCursorPos({ x: e.clientX, y: e.clientY });
     };
-    
-    document.addEventListener('mousemove', handleMouseMove);
-    return () => document.removeEventListener('mousemove', handleMouseMove);
+
+    document.addEventListener("mousemove", handleMouseMove);
+    return () => document.removeEventListener("mousemove", handleMouseMove);
   }, [isCommenting]);
 
   // Handle keyboard shortcut
@@ -630,49 +705,51 @@ function CmuxCommentsWidget() {
     const handleClick = async (e: MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      
+
       const element = e.target as HTMLElement;
-      
+
       // Don't create comments on the widget itself or comment input
       if (element.closest("#cmux-comments-root")) return;
-      
+
       const rect = element.getBoundingClientRect();
       const x = (e.clientX - rect.left) / rect.width;
       const y = (e.clientY - rect.top) / rect.height;
-      
+
       // Generate XPath for the element
       const getXPath = (el: Element): string => {
         if (el.id) {
           return `//*[@id="${el.id}"]`;
         }
-        
+
         const paths: string[] = [];
         let current: Element | null = el;
-        
+
         while (current && current.nodeType === Node.ELEMENT_NODE) {
           let index = 0;
           let sibling = current.previousSibling;
-          
+
           while (sibling) {
-            if (sibling.nodeType === Node.ELEMENT_NODE && 
-                sibling.nodeName === current.nodeName) {
+            if (
+              sibling.nodeType === Node.ELEMENT_NODE &&
+              sibling.nodeName === current.nodeName
+            ) {
               index++;
             }
             sibling = sibling.previousSibling;
           }
-          
+
           const tagName = current.nodeName.toLowerCase();
-          const pathIndex = index > 0 ? `[${index + 1}]` : '';
+          const pathIndex = index > 0 ? `[${index + 1}]` : "";
           paths.unshift(`${tagName}${pathIndex}`);
-          
+
           current = current.parentElement;
         }
-        
-        return '/' + paths.join('/');
+
+        return "/" + paths.join("/");
       };
 
       const nodeId = getXPath(element);
-      
+
       // Store the comment data
       const commentData = {
         url: window.location.origin,
@@ -687,11 +764,11 @@ function CmuxCommentsWidget() {
         screenHeight: window.innerHeight,
         devicePixelRatio: window.devicePixelRatio,
       };
-      
+
       setPendingCommentData(commentData);
       setCommentInputPos({ x: e.clientX, y: e.clientY });
       setIsCommenting(false);
-      
+
       // Focus the input after it renders
       setTimeout(() => {
         commentInputRef.current?.focus();
@@ -750,7 +827,7 @@ function CmuxCommentsWidget() {
     setPendingCommentData(null);
     setCommentInputPos(null);
   };
-  
+
   const handleCancelComment = () => {
     setCommentDraft("");
     setPendingCommentData(null);
@@ -811,7 +888,7 @@ function CmuxCommentsWidget() {
                   </div>
                 )}
               </div>
-              
+
               {/* Input area */}
               <div className="flex-1">
                 <textarea
@@ -831,7 +908,7 @@ function CmuxCommentsWidget() {
                     }
                   }}
                 />
-                
+
                 {/* Bottom toolbar */}
                 <div className="flex items-center justify-between mt-3">
                   <div className="flex items-center gap-1">
@@ -846,14 +923,14 @@ function CmuxCommentsWidget() {
                       <TypeIcon />
                     </button>
                   </div>
-                  
+
                   {/* Send button */}
                   <button
                     onClick={handleSubmitComment}
                     disabled={!commentDraft.trim()}
                     className={`icon-button w-9 h-9 rounded-lg transition-all ${
-                      commentDraft.trim() 
-                        ? "bg-blue-500 text-white hover:bg-blue-600" 
+                      commentDraft.trim()
+                        ? "bg-blue-500 text-white hover:bg-blue-600"
                         : "bg-neutral-800 text-neutral-500 cursor-not-allowed"
                     }`}
                   >
@@ -870,7 +947,9 @@ function CmuxCommentsWidget() {
       <div
         ref={widgetRef}
         className={`fixed z-[9999] rounded-2xl shadow-2xl transition-all duration-300 backdrop-blur ${
-          isOpen ? "opacity-100 scale-100" : "opacity-0 scale-95 pointer-events-none"
+          isOpen
+            ? "opacity-100 scale-100"
+            : "opacity-0 scale-95 pointer-events-none"
         }`}
         style={{
           left: `${position.x}px`,
@@ -882,7 +961,10 @@ function CmuxCommentsWidget() {
         onMouseDown={handleMouseDown}
       >
         {/* Header */}
-        <div className="widget-header flex items-center justify-between p-4 cursor-move select-none border-b" style={{ borderColor: "rgba(255, 255, 255, 0.1)" }}>
+        <div
+          className="widget-header flex items-center justify-between p-4 cursor-move select-none border-b"
+          style={{ borderColor: "rgba(255, 255, 255, 0.1)" }}
+        >
           <h3 className="text-base font-medium text-white">Comments</h3>
           <button
             onClick={() => setIsOpen(false)}
@@ -914,7 +996,9 @@ function CmuxCommentsWidget() {
                     </div>
                   )}
                   <div className="flex-1">
-                    <p className="text-sm text-white break-words">{comment.content}</p>
+                    <p className="text-sm text-white break-words">
+                      {comment.content}
+                    </p>
                     <p className="text-xs text-neutral-500 mt-1">
                       {new Date(comment.createdAt).toLocaleString()}
                     </p>
@@ -965,10 +1049,16 @@ export function initCmuxComments(convexUrl?: string) {
   shadowRoot.appendChild(reactContainer);
 
   // Get Convex URL from environment or parameter
-  const CONVEX_URL = convexUrl || process.env.NEXT_PUBLIC_CONVEX_URL || process.env.VITE_CONVEX_URL || "";
-  
+  const CONVEX_URL =
+    convexUrl ||
+    process.env.NEXT_PUBLIC_CONVEX_URL ||
+    process.env.NEXT_PUBLIC_CONVEX_URL ||
+    "";
+
   if (!CONVEX_URL) {
-    console.error("Convex URL not provided. Please set NEXT_PUBLIC_CONVEX_URL or pass it to initCmuxComments()");
+    console.error(
+      "Convex URL not provided. Please set NEXT_PUBLIC_CONVEX_URL or pass it to initCmuxComments()"
+    );
     return;
   }
 
@@ -996,7 +1086,9 @@ if (typeof window !== "undefined") {
   if (script?.dataset.autoInit === "true") {
     const convexUrl = script.dataset.convexUrl;
     if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", () => initCmuxComments(convexUrl));
+      document.addEventListener("DOMContentLoaded", () =>
+        initCmuxComments(convexUrl)
+      );
     } else {
       initCmuxComments(convexUrl);
     }

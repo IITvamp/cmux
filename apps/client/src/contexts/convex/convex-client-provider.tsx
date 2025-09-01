@@ -88,7 +88,7 @@ function AuthenticatedOrSignIn({
                 </div>
                 <button
                   onClick={() => {
-                    const origin = env.VITE_WWW_ORIGIN;
+                    const origin = env.NEXT_PUBLIC_WWW_ORIGIN;
                     const url = `${origin}/handler/sign-in/`;
                     // Open in external browser via Electron handler
                     window.open(url, "_blank", "noopener,noreferrer");

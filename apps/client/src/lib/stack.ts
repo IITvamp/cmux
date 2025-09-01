@@ -7,8 +7,8 @@ import { convexQueryClient } from "../contexts/convex/convex-query-client";
 import { cachedGetUser } from "./cachedGetUser";
 
 export const stackClientApp = new StackClientApp({
-  projectId: env.VITE_STACK_PROJECT_ID,
-  publishableClientKey: env.VITE_STACK_PUBLISHABLE_CLIENT_KEY,
+  projectId: env.NEXT_PUBLIC_STACK_PROJECT_ID,
+  publishableClientKey: env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY,
   tokenStore: "cookie",
   redirectMethod: {
     useNavigate() {

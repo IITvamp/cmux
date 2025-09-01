@@ -6,8 +6,8 @@ import { StackAdminApp } from "@stackframe/js";
 import { describe, expect, it } from "vitest";
 import { getConvex } from "../utils/get-convex";
 
-const PROJECT_ID = env.VITE_STACK_PROJECT_ID;
-const PUBLISHABLE_KEY = env.VITE_STACK_PUBLISHABLE_CLIENT_KEY;
+const PROJECT_ID = env.NEXT_PUBLIC_STACK_PROJECT_ID;
+const PUBLISHABLE_KEY = env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY;
 const SERVER_SECRET = env.STACK_SECRET_SERVER_KEY;
 const ADMIN_KEY = env.STACK_SUPER_SECRET_ADMIN_KEY;
 

@@ -5,8 +5,6 @@ export const env = createEnv({
   clientPrefix: "NEXT_PUBLIC_",
   server: {
     // Stack server-side env
-    VITE_STACK_PROJECT_ID: z.string().min(1),
-    VITE_STACK_PUBLISHABLE_CLIENT_KEY: z.string().min(1),
     STACK_SECRET_SERVER_KEY: z.string().min(1),
     STACK_SUPER_SECRET_ADMIN_KEY: z.string().min(1),
     // GitHub App
@@ -17,9 +15,9 @@ export const env = createEnv({
     CONVEX_DEPLOY_KEY: z.string().min(1),
   },
   client: {
-    NEXT_PUBLIC_CONVEX_URL: z.string().min(1),
     NEXT_PUBLIC_STACK_PROJECT_ID: z.string().min(1),
     NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: z.string().min(1),
+    NEXT_PUBLIC_CONVEX_URL: z.string().min(1),
   },
   runtimeEnv: process.env,
   emptyStringAsUndefined: true,

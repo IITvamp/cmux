@@ -25,6 +25,7 @@ export default defineConfig({
     ),
     global: "globalThis",
   },
+  envPrefix: "NEXT_PUBLIC_",
   // TODO: make this safe
   server: {
     allowedHosts: true,

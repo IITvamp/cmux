@@ -4,8 +4,8 @@ import { ConvexHttpClient } from "convex/browser";
 
 const stackAdminApp = new StackAdminApp({
   tokenStore: "memory",
-  projectId: process.env.VITE_STACK_PROJECT_ID,
-  publishableClientKey: process.env.VITE_STACK_PUBLISHABLE_CLIENT_KEY,
+  projectId: process.env.NEXT_PUBLIC_STACK_PROJECT_ID,
+  publishableClientKey: process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY,
   secretServerKey: process.env.STACK_SECRET_SERVER_KEY,
   superSecretAdminKey: process.env.STACK_SUPER_SECRET_ADMIN_KEY,
 });

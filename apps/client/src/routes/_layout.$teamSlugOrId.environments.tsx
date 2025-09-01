@@ -268,8 +268,8 @@ function RepositoryPicker({
     return `https://github.com/settings/installations/${match.installationId}`;
   }, [connections, currentOrg]);
 
-  const installNewUrl = env.VITE_GITHUB_APP_SLUG
-    ? `https://github.com/apps/${env.VITE_GITHUB_APP_SLUG}/installations/new`
+  const installNewUrl = env.NEXT_PUBLIC_GITHUB_APP_SLUG
+    ? `https://github.com/apps/${env.NEXT_PUBLIC_GITHUB_APP_SLUG}/installations/new`
     : null;
 
   function formatTimeAgo(input?: string | number): string {

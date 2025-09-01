@@ -27,7 +27,7 @@ const result = await Bun.build({
   define: {
     "process.env.NODE_ENV": JSON.stringify("production"),
     "process.env.NEXT_PUBLIC_CONVEX_URL": JSON.stringify(""),
-    "process.env.VITE_CONVEX_URL": JSON.stringify(""),
+    "process.env.NEXT_PUBLIC_CONVEX_URL": JSON.stringify(""),
   },
   external: [],
 });
@@ -38,7 +38,7 @@ if (result.success) {
   console.log("✅ Build successful!");
   console.log(`📦 Output: ${outdir}/cmux-comments.js`);
   console.log(`⏱️ Build time: ${(end - start).toFixed(2)}ms`);
-  
+
   // Create an example HTML file showing how to use the widget
   const exampleHtml = `<!DOCTYPE html>
 <html lang="en">
@@ -86,10 +86,9 @@ if (result.success) {
   -->
 </body>
 </html>`;
-  
+
   await Bun.write(path.join(outdir, "example.html"), exampleHtml);
   console.log(`📄 Example file: ${outdir}/example.html`);
-  
 } else {
   console.error("❌ Build failed!");
   for (const log of result.logs) {
