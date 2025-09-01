@@ -182,11 +182,13 @@ async function handleProtocolUrl(url: string): Promise<void> {
           expirationDate: refreshExp,
         });
 
-      mainWindow.webContents.session.cookies.set({
-        url: currentUrl,
-        name: "stack-access",
-        value: stackAccess,
-      });
+        mainWindow.webContents.session.cookies.set({
+          url: currentUrl,
+          name: "stack-access",
+          value: stackAccess,
+          expirationDate: accessExp,
+        });
+      }
     }
   }
 }
@@ -212,7 +214,8 @@ function setupAutoUpdates(): void {
         buttons: ["Restart", "Later"],
         title: "Application Update",
         message: "Update ready to install",
-        detail: "A new version has been downloaded. Restart to apply the update.",
+        detail:
+          "A new version has been downloaded. Restart to apply the update.",
       };
       dialog.showMessageBox(dialogOpts).then((ret) => {
         if (ret.response === 0) updater.quitAndInstall();
