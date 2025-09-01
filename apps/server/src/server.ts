@@ -221,7 +221,7 @@ export async function startServer({
       );
     }
 
-    (async () => {
+    void (async () => {
       const commandExists = async (cmd: string) => {
         try {
           await execAsync(`command -v ${cmd}`);
