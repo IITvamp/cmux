@@ -22,7 +22,11 @@ import { api, api as convexApi } from "@cmux/convex/api";
 import { getApiIntegrationsGithubReposOptions } from "@cmux/www-openapi-client/react-query";
 import * as Popover from "@radix-ui/react-popover";
 import { useQuery as useRQ } from "@tanstack/react-query";
-import { createFileRoute, useNavigate, useRouter } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  useNavigate,
+  useRouter,
+} from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
 import {
   ArrowLeft,
@@ -40,22 +44,13 @@ import z from "zod";
 export const Route = createFileRoute("/_layout/$teamSlugOrId/environments")({
   component: EnvironmentsPage,
   validateSearch: (search: Record<string, unknown>) => {
-    const step = z
-      .enum(["select", "configure"]) 
-      .optional()
-      .parse(search.step);
+    const step = z.enum(["select", "configure"]).optional().parse(search.step);
     const selectedRepos = z
       .array(z.string())
       .optional()
       .parse(search.selectedRepos);
-    const connectionLogin = z
-      .string()
-      .optional()
-      .parse(search.connectionLogin);
-    const repoSearch = z
-      .string()
-      .optional()
-      .parse(search.repoSearch);
+    const connectionLogin = z.string().optional().parse(search.connectionLogin);
+    const repoSearch = z.string().optional().parse(search.repoSearch);
     return { step, selectedRepos, connectionLogin, repoSearch };
   },
 });
@@ -85,7 +80,11 @@ function RepositoryPicker({
   initialSelectedRepos?: string[];
   initialConnectionLogin?: string;
   initialRepoSearch?: string;
-  onStateChange: (connectionLogin: string | null, repoSearch: string, selectedRepos: string[]) => void;
+  onStateChange: (
+    connectionLogin: string | null,
+    repoSearch: string,
+    selectedRepos: string[]
+  ) => void;
 }) {
   const connections = useQuery(api.github.listProviderConnections, {
     teamSlugOrId,
@@ -342,8 +341,7 @@ function RepositoryPicker({
                                   ? `https://github.com/organizations/${c.accountLogin}/settings/installations/${c.installationId}`
                                   : `https://github.com/settings/installations/${c.installationId}`
                                 : null;
-                            const isSelected =
-                              currentOrg === c.accountLogin;
+                            const isSelected = currentOrg === c.accountLogin;
                             return (
                               <CommandItem
                                 key={`${c.accountLogin}:${c.installationId}`}
@@ -398,7 +396,7 @@ function RepositoryPicker({
                       ) : null}
                       {installNewUrl ? (
                         <>
-                          <div className="mx-1 h-px bg-neutral-200 dark:bg-neutral-800" />
+                          <div className="h-px bg-neutral-200 dark:bg-neutral-800" />
                           <CommandGroup forceMount>
                             <CommandItem
                               value="add-github-account"
@@ -682,8 +680,8 @@ function RepositoryPicker({
           </button>
         </div>
         <p className="text-xs text-neutral-500 dark:text-neutral-500">
-          You can also manually configure an environment from a bare VM.
-          We'll capture your changes as a reusable base snapshot.
+          You can also manually configure an environment from a bare VM. We'll
+          capture your changes as a reusable base snapshot.
         </p>
       </div>
     </>
@@ -845,10 +843,7 @@ function EnvironmentConfiguration({
               className="p-4 space-y-2"
               onPasteCapture={(e) => {
                 const text = e.clipboardData?.getData("text") ?? "";
-                if (
-                  text &&
-                  (/\n/.test(text) || /(=|:)\s*\S/.test(text))
-                ) {
+                if (text && (/\n/.test(text) || /(=|:)\s*\S/.test(text))) {
                   e.preventDefault();
                   const items = parseEnvBlock(text);
                   if (items.length > 0) {
@@ -894,8 +889,7 @@ function EnvironmentConfiguration({
               <div
                 className="grid gap-3 text-xs text-neutral-500 dark:text-neutral-500 pb-1 items-center"
                 style={{
-                  gridTemplateColumns:
-                    "minmax(0, 1fr) minmax(0, 1.4fr) 44px",
+                  gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.4fr) 44px",
                 }}
               >
                 <span>Key</span>
@@ -949,9 +943,7 @@ function EnvironmentConfiguration({
                         type="button"
                         onClick={() => {
                           setEnvVars((prev) => {
-                            const next = prev.filter(
-                              (_, i) => i !== idx
-                            );
+                            const next = prev.filter((_, i) => i !== idx);
                             return next.length > 0
                               ? next
                               : [
@@ -989,8 +981,8 @@ function EnvironmentConfiguration({
               </div>
 
               <p className="text-xs text-neutral-500 dark:text-neutral-500 pt-2">
-                Tip: Paste an .env above to populate the form. Values
-                are encrypted at rest.
+                Tip: Paste an .env above to populate the form. Values are
+                encrypted at rest.
               </p>
             </div>
           ) : null}
@@ -1032,7 +1024,10 @@ function EnvironmentsPage() {
         ...prev,
         step: newStep,
         selectedRepos: selectedRepos ?? prev.selectedRepos,
-        connectionLogin: connectionLogin !== undefined ? connectionLogin ?? undefined : prev.connectionLogin,
+        connectionLogin:
+          connectionLogin !== undefined
+            ? (connectionLogin ?? undefined)
+            : prev.connectionLogin,
         repoSearch: repoSearch !== undefined ? repoSearch : prev.repoSearch,
       }),
     });
@@ -1046,7 +1041,11 @@ function EnvironmentsPage() {
     goToStep("select");
   };
 
-  const handleStateChange = (connectionLogin: string | null, repoSearch: string, selectedRepos: string[]) => {
+  const handleStateChange = (
+    connectionLogin: string | null,
+    repoSearch: string,
+    selectedRepos: string[]
+  ) => {
     // Update URL without changing step
     navigate({
       to: "/$teamSlugOrId/environments",
