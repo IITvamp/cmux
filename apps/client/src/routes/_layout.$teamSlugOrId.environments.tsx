@@ -57,7 +57,9 @@ export const Route = createFileRoute("/_layout/$teamSlugOrId/environments")({
       .parse(search.selectedRepos);
     const connectionLogin = z.string().optional().parse(search.connectionLogin);
     const repoSearch = z.string().optional().parse(search.repoSearch);
-    return { step, selectedRepos, connectionLogin, repoSearch };
+    const sessionId = z.string().optional().parse(search.sessionId);
+    const vscodeUrl = z.string().optional().parse(search.vscodeUrl);
+    return { step, selectedRepos, connectionLogin, repoSearch, sessionId, vscodeUrl };
   },
 });
 
@@ -698,9 +700,15 @@ function RepositoryPicker({
 function EnvironmentConfiguration({
   selectedRepos,
   onBack,
+  sessionId,
+  vscodeUrl,
+  isProvisioning,
 }: {
   selectedRepos: string[];
   onBack: () => void;
+  sessionId?: string;
+  vscodeUrl?: string;
+  isProvisioning: boolean;
 }) {
   const [envName, setEnvName] = useState("");
   const [envVars, setEnvVars] = useState<
@@ -710,13 +718,6 @@ function EnvironmentConfiguration({
   const keyInputRefs = useRef<Array<HTMLInputElement | null>>([]);
   const [pendingFocusIndex, setPendingFocusIndex] = useState<number | null>(
     null
-  );
-  const [vscodeUrl, setVscodeUrl] = useState<string | null>(null);
-  const [_instanceId, setInstanceId] = useState<string | null>(null);
-  const [hasProvisioned, setHasProvisioned] = useState(false);
-
-  const provisionInstanceMutation = useRQMutation(
-    postApiMorphProvisionInstanceMutation()
   );
 
   const parseEnvBlock = (
@@ -783,40 +784,21 @@ function EnvironmentConfiguration({
   }, [pendingFocusIndex, envVars]);
 
   const handleCreateEnvironment = () => {
-    if (!hasProvisioned && !vscodeUrl) {
-      // First time clicking - provision the instance
-      provisionInstanceMutation.mutate(
-        {
-          body: {
-            ttlSeconds: 60 * 60 * 2, // 2 hours
-          },
-        },
-        {
-          onSuccess: (data) => {
-            setVscodeUrl(data.vscodeUrl);
-            setInstanceId(data.instanceId);
-            setHasProvisioned(true);
-          },
-          onError: (error) => {
-            console.error("Failed to provision Morph instance:", error);
-          },
-        }
-      );
-    } else {
-      // Instance already provisioned - create the environment
-      // TODO: Implement actual environment creation logic
-      console.log("Creating environment with:", {
-        name: envName,
-        repos: selectedRepos,
-        envVars,
-      });
-    }
+    // Snapshot current environment state (instance already provisioned)
+    // TODO: Implement actual environment snapshot/creation logic
+    console.log("Snapshot environment with:", {
+      name: envName,
+      repos: selectedRepos,
+      envVars,
+      sessionId,
+      vscodeUrl,
+    });
   };
 
   return (
     <div className="flex h-full">
       {/* Left side - Configuration form */}
-      <div className="w-1/2 border-r border-neutral-200 dark:border-neutral-800 p-6 overflow-y-auto">
+      <div className="w-1/3 border-r border-neutral-200 dark:border-neutral-800 p-6 overflow-y-auto">
         <div className="flex items-center gap-4 mb-4">
           <button
             onClick={onBack}
@@ -1035,21 +1017,22 @@ function EnvironmentConfiguration({
           </div>
 
           <div className="pt-4">
+            <p className="mb-3 text-sm text-neutral-600 dark:text-neutral-400">
+              Configure your environment by interacting with the VS Code instance on the right. You can run <code className="mx-1 rounded bg-neutral-100 dark:bg-neutral-900 px-1 py-0.5">git pull</code>, clone repositories, run commands, and install dependencies before taking a snapshot.
+            </p>
             <button
               type="button"
               onClick={handleCreateEnvironment}
-              disabled={provisionInstanceMutation.isPending}
+              disabled={isProvisioning}
               className="inline-flex items-center rounded-md bg-neutral-900 text-white disabled:bg-neutral-300 dark:disabled:bg-neutral-700 disabled:cursor-not-allowed px-4 py-2 text-sm hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
             >
-              {provisionInstanceMutation.isPending ? (
+              {isProvisioning ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Provisioning...
+                  Launching...
                 </>
-              ) : hasProvisioned ? (
-                "Create Environment"
               ) : (
-                "Provision & Continue"
+                "Snapshot"
               )}
             </button>
           </div>
@@ -1057,32 +1040,22 @@ function EnvironmentConfiguration({
       </div>
 
       {/* Right side - VSCode iframe or placeholder */}
-      <div className="w-1/2 h-full bg-neutral-50 dark:bg-neutral-950">
-        {!hasProvisioned ? (
+      <div className="w-2/3 h-full bg-neutral-50 dark:bg-neutral-950">
+        {isProvisioning ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center max-w-md px-6">
               <div className="w-16 h-16 mx-auto mb-4 rounded-lg bg-neutral-200 dark:bg-neutral-800 flex items-center justify-center">
                 <Settings className="w-8 h-8 text-neutral-500 dark:text-neutral-400" />
               </div>
               <h3 className="text-lg font-medium text-neutral-900 dark:text-neutral-100 mb-2">
-                Development Environment
+                Launching Environment
               </h3>
               <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
-                Click "Provision & Continue" to launch a development environment
-                with VSCode where you can configure and test your setup.
+                Your development environment is launching. Once ready, VS Code will appear here so you can configure and test your setup.
               </p>
               <div className="text-xs text-neutral-500 dark:text-neutral-500">
                 The environment will be available for 2 hours
               </div>
-            </div>
-          </div>
-        ) : provisionInstanceMutation.isPending ? (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-center">
-              <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4 text-neutral-600 dark:text-neutral-400" />
-              <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                Provisioning development environment...
-              </p>
             </div>
           </div>
         ) : vscodeUrl ? (
@@ -1097,15 +1070,8 @@ function EnvironmentConfiguration({
             <div className="text-center">
               <X className="w-8 h-8 mx-auto mb-4 text-red-500" />
               <p className="text-sm text-neutral-600 dark:text-neutral-400">
-                Failed to provision development environment
+                Waiting for environment URL...
               </p>
-              <button
-                type="button"
-                onClick={handleCreateEnvironment}
-                className="mt-4 text-sm text-neutral-800 dark:text-neutral-200 hover:underline"
-              >
-                Try again
-              </button>
             </div>
           </div>
         )}
@@ -1121,8 +1087,13 @@ function EnvironmentsPage() {
   const urlSelectedRepos = searchParams.selectedRepos ?? [];
   const urlConnectionLogin = searchParams.connectionLogin;
   const urlRepoSearch = searchParams.repoSearch ?? "";
+  const urlSessionId = searchParams.sessionId;
+  const urlVscodeUrl = searchParams.vscodeUrl;
   const navigate = useNavigate();
   const { teamSlugOrId } = Route.useParams();
+  const provisionInstanceMutation = useRQMutation(
+    postApiMorphProvisionInstanceMutation()
+  );
 
   const goToStep = (
     newStep: "select" | "configure",
@@ -1135,6 +1106,9 @@ function EnvironmentsPage() {
       params: { teamSlugOrId },
       search: (prev) => ({
         ...prev,
+        // Explicitly persist session fields to satisfy type
+        sessionId: prev.sessionId,
+        vscodeUrl: prev.vscodeUrl,
         step: newStep,
         selectedRepos: selectedRepos ?? prev.selectedRepos,
         connectionLogin:
@@ -1148,6 +1122,40 @@ function EnvironmentsPage() {
 
   const handleContinue = (repos: string[]) => {
     goToStep("configure", repos);
+
+    // Reuse existing session if present
+    if (urlSessionId && urlVscodeUrl) return;
+
+    // Provision a new Morph instance and persist it in the URL
+    provisionInstanceMutation.mutate(
+      {
+        body: {
+          ttlSeconds: 60 * 60 * 2, // 2 hours
+        },
+      },
+      {
+        onSuccess: (data) => {
+          navigate({
+            to: "/$teamSlugOrId/environments",
+            params: { teamSlugOrId },
+            search: (prev) => ({
+              ...prev,
+              // Ensure required keys are present
+              step: prev.step,
+              selectedRepos: prev.selectedRepos,
+              connectionLogin: prev.connectionLogin,
+              repoSearch: prev.repoSearch,
+              sessionId: data.instanceId,
+              vscodeUrl: data.vscodeUrl,
+            }),
+            replace: true,
+          });
+        },
+        onError: (error) => {
+          console.error("Failed to provision Morph instance:", error);
+        },
+      }
+    );
   };
 
   const handleBack = () => {
@@ -1163,12 +1171,15 @@ function EnvironmentsPage() {
     navigate({
       to: "/$teamSlugOrId/environments",
       params: { teamSlugOrId },
-      search: {
-        step: step,
+      search: (prev) => ({
+        ...prev,
+        step: prev.step,
         selectedRepos: selectedRepos.length > 0 ? selectedRepos : undefined,
         connectionLogin: connectionLogin ?? undefined,
         repoSearch: repoSearch || undefined,
-      },
+        sessionId: prev.sessionId,
+        vscodeUrl: prev.vscodeUrl,
+      }),
       replace: true,
     });
   };
@@ -1191,6 +1202,9 @@ function EnvironmentsPage() {
           <EnvironmentConfiguration
             selectedRepos={urlSelectedRepos}
             onBack={handleBack}
+            sessionId={urlSessionId}
+            vscodeUrl={urlVscodeUrl}
+            isProvisioning={provisionInstanceMutation.isPending && !urlVscodeUrl}
           />
         )}
       </div>
