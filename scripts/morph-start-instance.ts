@@ -1,5 +1,3 @@
-// const instance = await client.instances.start({ snapshotId: "snapshot_lsaf582l" });
-
 import type { ServerToWorkerEvents, WorkerToServerEvents } from "@cmux/shared";
 import { MorphCloudClient } from "morphcloud";
 import readline from "readline";
@@ -9,14 +7,8 @@ const client = new MorphCloudClient();
 
 console.log("Starting instance");
 const instance = await client.instances.start({
-  // snapshotId: "snapshot_yawsf9cr",
-  // snapshotId: "snapshot_kco1jqb6",
-  // snapshotId: "snapshot_3qyamh9h", // hacky one
-  // snapshotId: "snapshot_c8ahthyz", // hacky one
-  // snapshotId: "snapshot_0k4q04v3", // first good one
-  // snapshotId: "snapshot_qmmp8lbq", // the big one
-  snapshotId: "snapshot_xf8w00is", // the big one with stuff in it
-  // 2 hours
+  snapshotId: "snapshot_hzlmd4kx",
+  // 30 minutes
   ttlSeconds: 60 * 60 * 2,
   ttlAction: "pause",
   metadata: {
@@ -24,11 +16,27 @@ const instance = await client.instances.start({
   },
 });
 
+const vscodeUrl = instance.networking.httpServices.find(
+  (service) => service.port === 39378
+)?.url;
+if (!vscodeUrl) {
+  throw new Error("VSCode URL not found");
+}
+console.log(`VSCode URL: ${vscodeUrl}`);
+const url = `${vscodeUrl}/?folder=/root/workspace`;
+console.log(`VSCode Workspace URL: ${url}`);
+
 process.on("SIGINT", async () => {
   console.log("Stopping instance");
-  await instance.stop();
+  try {
+    await instance.stop();
+  } catch (error) {
+    console.error("Error stopping instance", error);
+  }
   process.exit(0);
 });
+
+await new Promise(() => void {});
 
 console.log(`Created instance: ${instance.id}`);
 
