@@ -4,8 +4,6 @@ import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { getConvex } from "../utils/get-convex";
 
 const CLIENT_BASE = process.env.CLIENT_URL || "http://localhost:5173";
-const CONVEX_URL =
-  process.env.NEXT_PUBLIC_CONVEX_URL || "http://127.0.0.1:9777";
 
 export const integrationsRouter = new OpenAPIHono();
 

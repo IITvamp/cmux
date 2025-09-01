@@ -1,18 +1,34 @@
+import { dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { FlatCompat } from "@eslint/eslintrc";
-import js from "@eslint/js";
+import tseslint from "typescript-eslint";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const compat = new FlatCompat({
-  baseDirectory: import.meta.dirname,
-  recommendedConfig: js.configs.recommended,
+  baseDirectory: __dirname,
 });
 
-const eslintConfig = [
+export default tseslint.config(
+  // Next.js rules via compat
+  ...compat.extends("next/core-web-vitals"),
+  // TypeScript ESLint recommended (no type-checking required)
+  ...tseslint.configs.recommended,
+  // Ignores
   {
-    ignores: [".next/**/*"],
+    ignores: [
+      "node_modules/**",
+      ".next/**",
+      "out/**",
+      "build/**",
+      "next-env.d.ts",
+    ],
   },
-  ...compat.config({
-    extends: ["eslint:recommended", "next"],
+  // Project rules
+  {
     rules: {
+      "@typescript-eslint/no-explicit-any": "error",
       "@typescript-eslint/no-unused-vars": [
         "error",
         {
@@ -21,16 +37,8 @@ const eslintConfig = [
           caughtErrorsIgnorePattern: "^_",
         },
       ],
-      "no-unused-vars": [
-        "error",
-        {
-          argsIgnorePattern: "^_",
-          varsIgnorePattern: "^_",
-          caughtErrorsIgnorePattern: "^_",
-        },
-      ],
+      // Disable base rule to avoid duplicate reporting
+      "no-unused-vars": "off",
     },
-  }),
-];
-
-export default eslintConfig;
+  }
+);

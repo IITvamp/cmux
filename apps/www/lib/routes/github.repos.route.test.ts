@@ -124,8 +124,17 @@ describe("githubReposRouter via SDK", () => {
       });
       expect([200, 401, 501]).toContain(second.response.status);
       if (second.response.status === 200 && second.data) {
-        const len1 = (first.data as any).repos?.length ?? 0;
-        const len2 = (second.data as any).repos?.length ?? 0;
+        type ReposBody = {
+          repos?: Array<{
+            name: string;
+            full_name: string;
+            private: boolean;
+            updated_at?: string | null;
+            pushed_at?: string | null;
+          }>;
+        };
+        const len1 = (first.data as unknown as ReposBody).repos?.length ?? 0;
+        const len2 = (second.data as unknown as ReposBody).repos?.length ?? 0;
         expect(len1).toBeLessThanOrEqual(5);
         expect(len2).toBeLessThanOrEqual(5);
       }
