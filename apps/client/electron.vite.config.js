@@ -8,9 +8,6 @@ import tsconfigPaths from "vite-tsconfig-paths"
 export default defineConfig({
   main: {
     plugins: [externalizeDepsPlugin()],
-    define: {
-      'process.env.CMUX_UPDATES_BASE_URL': JSON.stringify(process.env.CMUX_UPDATES_BASE_URL || ''),
-    },
     build: {
       rollupOptions: {
         input: {

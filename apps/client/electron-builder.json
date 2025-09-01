@@ -19,8 +19,8 @@
   "win": {
     "target": [
       {
-        "target": "squirrel",
-        "arch": ["x64", "ia32", "arm64"]
+        "target": "nsis",
+        "arch": ["x64"]
       }
     ]
   },
@@ -46,5 +46,10 @@
         "arch": ["x64", "arm64"]
       }
     ]
-  }
+  },
+  "publish": [
+    {
+      "provider": "github"
+    }
+  ]
 }
