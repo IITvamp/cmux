@@ -7,7 +7,8 @@
 
 #!/usr/bin/env python3
 
-
+import signal
+import sys
 import dotenv
 from morphcloud.api import MorphCloudClient
 
@@ -15,10 +16,45 @@ dotenv.load_dotenv()
 
 client = MorphCloudClient()
 
+instance = None
 
-instance = client.instances.start(
-    "snapshot_wdtqk4gj",
-    ttl_seconds=3600,
-)
+def cleanup_instance(signum=None, frame=None):
+    """Clean up instance on exit"""
+    global instance
+    if instance:
+        print("\nStopping instance...")
+        try:
+            instance.stop()
+            print(f"Instance {instance.id} stopped successfully")
+        except Exception as e:
+            print(f"Error stopping instance: {e}")
+    sys.exit(0)
 
-print(instance.exec("docker info").stdout)
+# Register signal handler for Ctrl+C
+signal.signal(signal.SIGINT, cleanup_instance)
+
+try:
+    instance = client.instances.start(
+        snapshot_id="snapshot_hzlmd4kx",
+        ttl_seconds=3600,
+        ttl_action="pause",
+    )
+    instance.wait_until_ready()
+
+    print("instance id:", instance.id)
+
+    expose_ports = [39376, 39377, 39378]
+    for port in expose_ports:
+        instance.expose_http_service(port=port, name=f"port-{port}")
+
+    print(instance.networking.http_services)
+
+    # listen for any keypress, then snapshot
+    input("Press Enter to snapshot...")
+    final_snapshot = instance.snapshot()
+    print(f"Snapshot ID: {final_snapshot.id}")
+except KeyboardInterrupt:
+    cleanup_instance()
+except Exception as e:
+    print(f"Error: {e}")
+    cleanup_instance()
