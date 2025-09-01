@@ -1,0 +1,152 @@
+name: Build & Publish Electron Updates (GitHub Releases)
+
+on:
+  release:
+    types: [published]
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '24'
+  PNPM_VERSION: '9'
+
+jobs:
+  mac-x64:
+    name: macOS x64
+    runs-on: macos-13
+    defaults:
+      run:
+        working-directory: ./
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build & publish mac x64 to GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          # macOS code signing + notarization
+          CSC_LINK: base64:${{ secrets.MAC_CERT_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          pnpm -F @cmux/client electron-vite build -c apps/client/electron.vite.config.js
+          pnpm -F @cmux/client exec electron-builder --config apps/client/electron-builder.json --mac --x64 --publish always
+
+  mac-arm64:
+    name: macOS arm64
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: ./
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build & publish mac arm64 to GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          # macOS code signing + notarization
+          CSC_LINK: base64:${{ secrets.MAC_CERT_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          pnpm -F @cmux/client electron-vite build -c apps/client/electron.vite.config.js
+          pnpm -F @cmux/client exec electron-builder --config apps/client/electron-builder.json --mac --arm64 --publish always
+
+  windows-x64:
+    name: Windows x64
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: ./
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build & publish Windows x64 to GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # Windows code signing (PFX)
+          WIN_CSC_LINK: base64:${{ secrets.WIN_CERT_BASE64 }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CERT_PASSWORD }}
+          CSC_LINK: base64:${{ secrets.WIN_CERT_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.WIN_CERT_PASSWORD }}
+        run: |
+          pnpm -F @cmux/client electron-vite build -c apps/client/electron.vite.config.js
+          pnpm -F @cmux/client exec electron-builder --config apps/client/electron-builder.json --win --x64 --publish always
+
+  linux-x64:
+    name: Linux x64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build & publish Linux AppImage x64 to GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pnpm -F @cmux/client electron-vite build -c apps/client/electron.vite.config.js
+          pnpm -F @cmux/client exec electron-builder --config apps/client/electron-builder.json --linux AppImage --x64 --publish always
+
+  linux-arm64:
+    name: Linux arm64
+    runs-on: ubuntu-24.04-arm64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build & publish Linux AppImage arm64 to GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pnpm -F @cmux/client electron-vite build -c apps/client/electron.vite.config.js
+          pnpm -F @cmux/client exec electron-builder --config apps/client/electron-builder.json --linux AppImage --arm64 --publish always
