@@ -4,6 +4,7 @@
   "description": "cmux client application",
   "author": "cmux",
   "type": "module",
+  "packageManager": "pnpm@10.14.0",
   "private": true,
   "main": "./out/main/index.js",
   "scripts": {
