@@ -1,0 +1,248 @@
+name: Publish Electron Updates
+
+on:
+  release:
+    types: [published]
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '24'
+  PNPM_VERSION: '9'
+  # Required secrets to be set in repo or org:
+  # - AWS_ACCESS_KEY_ID
+  # - AWS_SECRET_ACCESS_KEY
+  # - AWS_REGION
+  # - AWS_S3_BUCKET (e.g., my-bucket)
+  # - UPDATES_PREFIX (e.g., my-app-updates)
+  # - UPDATES_BASE_URL (e.g., https://my-bucket.s3.amazonaws.com/my-app-updates)
+
+jobs:
+  mac-x64:
+    name: macOS x64
+    runs-on: macos-13
+    defaults:
+      run:
+        working-directory: ./
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      - name: Build mac x64
+        env:
+          # Embed updates base URL into the main process at build time
+          CMUX_UPDATES_BASE_URL: ${{ secrets.UPDATES_BASE_URL }}
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          pnpm -F @cmux/client electron-vite build -c apps/client/electron.vite.config.js
+          pnpm -F @cmux/client exec electron-builder --config apps/client/electron-builder.json --mac --x64
+      - name: Create latest.json (mac x64)
+        env:
+          BASE_URL: ${{ secrets.UPDATES_BASE_URL }}
+          ARCH: x64
+        run: |
+          ZIP=$(find apps/client/dist-electron -name "*mac*.zip" -print -quit)
+          if [ -z "$ZIP" ]; then echo "mac x64 zip not found"; exit 1; fi
+          VERSION=$(echo "${{ github.event.release.tag_name }}" | sed 's/^v//')
+          PUBDATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          URL=${BASE_URL}/darwin/${ARCH}/$(basename "$ZIP")
+          echo '{' > latest.json
+          echo '  "url": '"$URL"',' >> latest.json
+          echo '  "name": '"$VERSION"',' >> latest.json
+          echo '  "notes": "See release notes on GitHub",' >> latest.json
+          echo '  "pub_date": '"$PUBDATE" >> latest.json
+          echo '}' >> latest.json
+      - name: Upload mac x64 zip and manifest to S3
+        env:
+          BUCKET: ${{ secrets.AWS_S3_BUCKET }}
+          PREFIX: ${{ secrets.UPDATES_PREFIX }}
+        run: |
+          aws s3 cp apps/client/dist-electron/ s3://$BUCKET/$PREFIX/darwin/x64/ \
+            --recursive --exclude "*" --include "*mac*.zip" \
+            --acl public-read --content-type application/zip
+          aws s3 cp latest.json s3://$BUCKET/$PREFIX/darwin/x64/latest.json \
+            --acl public-read --content-type application/json --cache-control 'no-cache'
+
+  mac-arm64:
+    name: macOS arm64
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: ./
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      - name: Build mac arm64
+        env:
+          CMUX_UPDATES_BASE_URL: ${{ secrets.UPDATES_BASE_URL }}
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          pnpm -F @cmux/client electron-vite build -c apps/client/electron.vite.config.js
+          pnpm -F @cmux/client exec electron-builder --config apps/client/electron-builder.json --mac --arm64
+      - name: Create latest.json (mac arm64)
+        env:
+          BASE_URL: ${{ secrets.UPDATES_BASE_URL }}
+          ARCH: arm64
+        run: |
+          ZIP=$(find apps/client/dist-electron -name "*arm64*.zip" -print -quit)
+          if [ -z "$ZIP" ]; then echo "mac arm64 zip not found"; exit 1; fi
+          VERSION=$(echo "${{ github.event.release.tag_name }}" | sed 's/^v//')
+          PUBDATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          URL=${BASE_URL}/darwin/${ARCH}/$(basename "$ZIP")
+          echo '{' > latest.json
+          echo '  "url": '"$URL"',' >> latest.json
+          echo '  "name": '"$VERSION"',' >> latest.json
+          echo '  "notes": "See release notes on GitHub",' >> latest.json
+          echo '  "pub_date": '"$PUBDATE" >> latest.json
+          echo '}' >> latest.json
+      - name: Upload mac arm64 zip and manifest to S3
+        env:
+          BUCKET: ${{ secrets.AWS_S3_BUCKET }}
+          PREFIX: ${{ secrets.UPDATES_PREFIX }}
+        run: |
+          aws s3 cp apps/client/dist-electron/ s3://$BUCKET/$PREFIX/darwin/arm64/ \
+            --recursive --exclude "*" --include "*arm64*.zip" \
+            --acl public-read --content-type application/zip
+          aws s3 cp latest.json s3://$BUCKET/$PREFIX/darwin/arm64/latest.json \
+            --acl public-read --content-type application/json --cache-control 'no-cache'
+
+  windows-x64:
+    name: Windows x64
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: ./
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      - name: Build Windows Squirrel x64
+        env:
+          CMUX_UPDATES_BASE_URL: ${{ secrets.UPDATES_BASE_URL }}
+        run: |
+          pnpm -F @cmux/client electron-vite build -c apps/client/electron.vite.config.js
+          pnpm -F @cmux/client exec electron-builder --config apps/client/electron-builder.json --win --x64
+      - name: Upload Windows RELEASES and nupkg to S3
+        env:
+          BUCKET: ${{ secrets.AWS_S3_BUCKET }}
+          PREFIX: ${{ secrets.UPDATES_PREFIX }}
+        shell: bash
+        run: |
+          # Locate the folder with RELEASES
+          REL_DIR=$(dirname $(find apps/client/dist-electron -name RELEASES -print -quit))
+          if [ -z "$REL_DIR" ]; then echo "RELEASES not found"; exit 1; fi
+          aws s3 cp "$REL_DIR/RELEASES" s3://$BUCKET/$PREFIX/win32/x64/ --acl public-read --content-type text/plain --cache-control 'no-cache'
+          aws s3 cp "$REL_DIR" s3://$BUCKET/$PREFIX/win32/x64/ --recursive --exclude "*" --include "*.nupkg" --acl public-read --content-type application/octet-stream
+
+  linux-x64:
+    name: Linux x64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      - name: Build Linux AppImage x64
+        env:
+          CMUX_UPDATES_BASE_URL: ${{ secrets.UPDATES_BASE_URL }}
+        run: |
+          pnpm -F @cmux/client electron-vite build -c apps/client/electron.vite.config.js
+          pnpm -F @cmux/client exec electron-builder --publish=never \
+            --config apps/client/electron-builder.json --linux AppImage --x64 \
+            -c.publish.provider=generic -c.publish.url="${{ secrets.UPDATES_BASE_URL }}/linux/x64"
+      - name: Upload Linux x64 artifacts to S3
+        env:
+          BUCKET: ${{ secrets.AWS_S3_BUCKET }}
+          PREFIX: ${{ secrets.UPDATES_PREFIX }}
+        run: |
+          LDIR=apps/client/dist-electron
+          aws s3 cp $LDIR s3://$BUCKET/$PREFIX/linux/x64/ --recursive \
+            --exclude "*" --include "*.AppImage" --include "latest-linux.yml" --include "*.zsync" \
+            --acl public-read
+
+  linux-arm64:
+    name: Linux arm64
+    runs-on: ubuntu-24.04-arm64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      - name: Build Linux AppImage arm64
+        env:
+          CMUX_UPDATES_BASE_URL: ${{ secrets.UPDATES_BASE_URL }}
+        run: |
+          pnpm -F @cmux/client electron-vite build -c apps/client/electron.vite.config.js
+          pnpm -F @cmux/client exec electron-builder --publish=never \
+            --config apps/client/electron-builder.json --linux AppImage --arm64 \
+            -c.publish.provider=generic -c.publish.url="${{ secrets.UPDATES_BASE_URL }}/linux/arm64"
+      - name: Upload Linux arm64 artifacts to S3
+        env:
+          BUCKET: ${{ secrets.AWS_S3_BUCKET }}
+          PREFIX: ${{ secrets.UPDATES_PREFIX }}
+        run: |
+          LDIR=apps/client/dist-electron
+          aws s3 cp $LDIR s3://$BUCKET/$PREFIX/linux/arm64/ --recursive \
+            --exclude "*" --include "*.AppImage" --include "latest-linux.yml" --include "*.zsync" \
+            --acl public-read

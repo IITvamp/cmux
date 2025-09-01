@@ -1,7 +1,16 @@
 import { is } from "@electron-toolkit/utils";
-import { app, BrowserWindow, net, session, shell } from "electron";
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  net,
+  session,
+  shell,
+  autoUpdater,
+} from "electron";
 import path, { join } from "node:path";
 import { pathToFileURL } from "node:url";
+import { autoUpdater as linuxAutoUpdater } from "electron-updater";
 
 // Use a cookieable HTTPS origin intercepted locally instead of a custom scheme.
 const PARTITION = "persist:cmux";
@@ -91,6 +100,9 @@ app.whenReady().then(() => {
   app.on("activate", function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+
+  // Configure auto updates when packaged.
+  setupAutoUpdates();
 });
 
 app.on("window-all-closed", () => {
@@ -131,4 +143,120 @@ function handleProtocolUrl(url: string): void {
       });
     }
   }
+}
+
+async function setupAutoUpdates() {
+  // Only run updates in production; Linux has no built-in support.
+  if (!app.isPackaged) return;
+
+  // Recommended on Windows for proper taskbar pinning.
+  try {
+    app.setAppUserModelId("com.cmux.app");
+  } catch {
+    // ignore
+  }
+
+  // Static storage base URL, e.g. https://my-bucket.s3.amazonaws.com/my-app-updates
+  const baseRoot = process.env.CMUX_UPDATES_BASE_URL;
+  if (!baseRoot) return;
+  const root = baseRoot.replace(/\/$/, "");
+
+  if (process.platform === "linux") {
+    // Use electron-updater (generic provider) on Linux
+    try {
+      linuxAutoUpdater.autoDownload = true;
+      linuxAutoUpdater.setFeedURL({
+        provider: "generic",
+        url: `${root}/linux/${process.arch}`,
+      });
+
+      linuxAutoUpdater.on("error", (err) => {
+        if (err) {
+          console.error("Linux AutoUpdater error:", (err as Error).message);
+        }
+      });
+      linuxAutoUpdater.on("update-downloaded", () => {
+        const dialogOpts = {
+          type: "info" as const,
+          buttons: ["Restart", "Later"],
+          title: "Application Update",
+          message: "Update ready to install",
+          detail:
+            "A new version has been downloaded. Restart to apply the update.",
+        };
+        dialog.showMessageBox(dialogOpts).then((ret) => {
+          if (ret.response === 0) linuxAutoUpdater.quitAndInstall();
+        });
+      });
+
+      try {
+        await linuxAutoUpdater.checkForUpdates();
+      } catch {
+        // ignore
+      }
+      const tenMinutes = 10 * 60 * 1000;
+      setInterval(() => {
+        try {
+          linuxAutoUpdater.checkForUpdates();
+        } catch {
+          // ignore
+        }
+      }, tenMinutes);
+    } catch (e) {
+      console.error("Failed to initialize linux auto-updater", e);
+    }
+    return;
+  }
+
+  // macOS/Windows via built-in Squirrel autoUpdater
+  const firstRun =
+    process.platform === "win32" &&
+    process.argv.includes("--squirrel-firstrun");
+  const platformPath = `${process.platform}/${process.arch}`;
+  const isMac = process.platform === "darwin";
+  // For macOS, use a simple JSON endpoint (latest.json) per Electron docs
+  const feedUrl = isMac
+    ? `${root}/${platformPath}/latest.json`
+    : `${root}/${platformPath}`;
+
+  try {
+    if (isMac) {
+      autoUpdater.setFeedURL({ url: feedUrl, serverType: "json" });
+    } else {
+      autoUpdater.setFeedURL({ url: feedUrl });
+    }
+  } catch (e) {
+    console.error("Failed to set feed URL", e);
+    return;
+  }
+
+  autoUpdater.on("error", (err: Error) => {
+    console.error("AutoUpdater error:", err.message);
+  });
+  autoUpdater.on(
+    "update-downloaded",
+    (_event, releaseNotes: string, releaseName: string) => {
+      const message = process.platform === "win32" ? releaseNotes : releaseName;
+      const dialogOpts = {
+        type: "info" as const,
+        buttons: ["Restart", "Later"],
+        title: "Application Update",
+        message,
+        detail:
+          "A new version has been downloaded. Restart to apply the update.",
+      };
+      dialog.showMessageBox(dialogOpts).then((ret) => {
+        if (ret.response === 0) autoUpdater.quitAndInstall();
+      });
+    }
+  );
+
+  const initialDelayMs = firstRun ? 10000 : 0;
+  setTimeout(() => {
+    try {
+      autoUpdater.checkForUpdates();
+    } catch {
+      // ignore
+    }
+  }, initialDelayMs);
 }
