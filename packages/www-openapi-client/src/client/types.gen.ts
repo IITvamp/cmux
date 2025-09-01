@@ -102,6 +102,15 @@ export type GithubReposResponse = {
     repos: Array<GithubRepo>;
 };
 
+export type ProvisionInstanceResponse = {
+    vscodeUrl: string;
+    instanceId: string;
+};
+
+export type ProvisionInstanceBody = {
+    ttlSeconds?: number;
+};
+
 export type GetApiHealthData = {
     body?: never;
     path?: never;
@@ -546,6 +555,33 @@ export type GetApiIntegrationsGithubReposResponses = {
 };
 
 export type GetApiIntegrationsGithubReposResponse = GetApiIntegrationsGithubReposResponses[keyof GetApiIntegrationsGithubReposResponses];
+
+export type PostApiMorphProvisionInstanceData = {
+    body?: ProvisionInstanceBody;
+    path?: never;
+    query?: never;
+    url: '/api/morph/provision-instance';
+};
+
+export type PostApiMorphProvisionInstanceErrors = {
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Failed to provision instance
+     */
+    500: unknown;
+};
+
+export type PostApiMorphProvisionInstanceResponses = {
+    /**
+     * Instance provisioned successfully
+     */
+    200: ProvisionInstanceResponse;
+};
+
+export type PostApiMorphProvisionInstanceResponse = PostApiMorphProvisionInstanceResponses[keyof PostApiMorphProvisionInstanceResponses];
 
 export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});

@@ -4,6 +4,7 @@ import {
   devServerRouter,
   healthRouter,
   usersRouter,
+  morphRouter,
 } from "@/lib/routes/index";
 import { integrationsRouter } from "@/lib/routes/integrations.route";
 import { stackServerApp } from "@/lib/utils/stack";
@@ -81,6 +82,7 @@ app.route("/", booksRouter);
 app.route("/", devServerRouter);
 app.route("/", integrationsRouter);
 app.route("/", githubReposRouter);
+app.route("/", morphRouter);
 
 // OpenAPI documentation
 app.doc("/doc", {

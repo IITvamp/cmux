@@ -12,6 +12,8 @@ export const env = createEnv({
     // GitHub App
     GITHUB_APP_ID: z.string().min(1),
     GITHUB_APP_PRIVATE_KEY: z.string().min(1),
+    // Morph
+    MORPH_API_KEY: z.string().min(1),
   },
   client: {
     NEXT_PUBLIC_CONVEX_URL: z.string().min(1),
