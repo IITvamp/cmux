@@ -33,6 +33,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          # macOS code signing + notarization
+          CSC_LINK: base64:${{ secrets.MAC_CERT_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           pnpm -F @cmux/client electron-vite build -c apps/client/electron.vite.config.js
           pnpm -F @cmux/client exec electron-builder --config apps/client/electron-builder.json --mac --x64 --publish always
@@ -57,6 +63,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          # macOS code signing + notarization
+          CSC_LINK: base64:${{ secrets.MAC_CERT_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           pnpm -F @cmux/client electron-vite build -c apps/client/electron.vite.config.js
           pnpm -F @cmux/client exec electron-builder --config apps/client/electron-builder.json --mac --arm64 --publish always
@@ -80,6 +92,11 @@ jobs:
       - name: Build & publish Windows x64 to GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
+          # Windows code signing (PFX)
+          WIN_CSC_LINK: base64:${{ secrets.WIN_CERT_BASE64 }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CERT_PASSWORD }}
+          CSC_LINK: base64:${{ secrets.WIN_CERT_BASE64 }}
+          CSC_KEY_PASSWORD: ${{ secrets.WIN_CERT_PASSWORD }}
         run: |
           pnpm -F @cmux/client electron-vite build -c apps/client/electron.vite.config.js
           pnpm -F @cmux/client exec electron-builder --config apps/client/electron-builder.json --win --x64 --publish always

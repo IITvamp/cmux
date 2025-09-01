@@ -12,8 +12,8 @@
   "mac": {
     "category": "public.app-category.developer-tools",
     "icon": "build/icon.icns",
-    "hardenedRuntime": false,
-    "gatekeeperAssess": false,
+    "hardenedRuntime": true,
+    "gatekeeperAssess": true,
     "target": ["dmg", "zip"]
   },
   "win": {
