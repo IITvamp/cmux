@@ -1,7 +1,6 @@
 import { FloatingPane } from "@/components/floating-pane";
 import { useSocket } from "@/contexts/socket/use-socket";
 import { stackClientApp } from "@/lib/stack";
-import { useUser } from "@stackframe/react";
 import { createFileRoute } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/_layout/debug")({
@@ -10,12 +9,6 @@ export const Route = createFileRoute("/_layout/debug")({
 
 function DebugComponent() {
   const { socket } = useSocket();
-  const user = useUser({ or: "throw" });
-  const githubConnectedAccount = user
-    ? user.useConnectedAccount("github")
-    : null;
-  const accessToken = githubConnectedAccount?.useAccessToken();
-  console.log(accessToken);
 
   return (
     <FloatingPane>

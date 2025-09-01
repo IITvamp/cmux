@@ -109,8 +109,6 @@ function TeamPicker() {
     }
   };
 
-  // Do not auto-redirect when there is exactly one team.
-
   return (
     <div className="min-h-dvh w-full bg-neutral-50 dark:bg-neutral-950 flex items-center justify-center p-6">
       <div className="mx-auto w-full max-w-3xl">
