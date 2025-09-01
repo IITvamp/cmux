@@ -17,6 +17,7 @@
     "@asteasolutions/zod-to-openapi": "^8.1.0",
     "@cmux/convex": "workspace:*",
     "@cmux/shared": "workspace:*",
+    "@cmux/www-openapi-client": "workspace:*",
     "@hono/node-server": "^1.18.1",
     "@hono/swagger-ui": "^0.5.2",
     "@hono/zod-openapi": "^1.1.0",

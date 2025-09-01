@@ -22,12 +22,14 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@octokit/auth-app": "^6.1.4",
     "@ai-sdk/anthropic": "^2.0.6",
     "@ai-sdk/google": "^2.0.8",
     "@ai-sdk/openai": "^2.0.19",
     "@cmux/convex": "workspace:*",
     "@cmux/shared": "workspace:*",
     "@daytonaio/sdk": "^0.22.1",
+    "@stackframe/js": "^2.8.35",
     "@xterm/addon-serialize": "^0.13.0",
     "@xterm/headless": "^5.5.0",
     "ai": "^5.0.22",
