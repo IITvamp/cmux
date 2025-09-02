@@ -1,60 +1,127 @@
-import * as TooltipPrimitive from "@radix-ui/react-tooltip";
 import * as React from "react";
-
 import { cn } from "@/lib/utils";
-import { memo } from "react";
+import { memo, isValidElement, cloneElement } from "react";
+import { Tooltip as BaseTooltip } from "@base-ui-components/react/tooltip";
+
+// Local replicas of types to avoid deep type imports
+type TooltipSide = "top" | "bottom" | "left" | "right" | "inline-end" | "inline-start";
+type TooltipAlign = "start" | "center" | "end";
+type PaddingLike = number | { top?: number; right?: number; bottom?: number; left?: number };
+type BoundaryLike = "clipping-ancestors" | Element | Element[] | { width: number; height: number; x: number; y: number };
 
 const TooltipProvider = memo(function TooltipProvider({
-  delayDuration = 0,
+  delay = 0,
   ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Provider>) {
+}: React.ComponentProps<typeof BaseTooltip.Provider>) {
   return (
-    <TooltipPrimitive.Provider
-      data-slot="tooltip-provider"
-      delayDuration={delayDuration}
-      {...props}
-    />
+    <BaseTooltip.Provider data-slot="tooltip-provider" delay={delay} {...props} />
   );
 });
 
-function Tooltip({
-  ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Root>) {
+function Tooltip({ children, ...props }: React.ComponentProps<typeof BaseTooltip.Root>) {
   return (
     <TooltipProvider>
-      <TooltipPrimitive.Root data-slot="tooltip" {...props} />
+      <BaseTooltip.Root data-slot="tooltip" {...props}>
+        {children}
+      </BaseTooltip.Root>
     </TooltipProvider>
   );
 }
 
-function TooltipTrigger({
-  ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Trigger>) {
-  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />;
+interface TooltipTriggerProps
+  extends Omit<React.ComponentProps<typeof BaseTooltip.Trigger>, "className"> {
+  className?: string;
+  asChild?: boolean;
+  children?: React.ReactNode;
+}
+
+function TooltipTrigger({ asChild, children, className, ...props }: TooltipTriggerProps) {
+  if (asChild && isValidElement(children)) {
+    return (
+      <BaseTooltip.Trigger
+        data-slot="tooltip-trigger"
+        className={className}
+        // Replace element with the child, spreading trigger props on it
+        render={(renderProps: React.HTMLAttributes<HTMLElement>) =>
+          cloneElement(children as React.ReactElement<{ className?: string }>, {
+            ...renderProps,
+            className: cn(renderProps.className, (children as React.ReactElement<{ className?: string }>).props.className),
+          })
+        }
+        {...props}
+      />
+    );
+  }
+
+  return (
+    <BaseTooltip.Trigger data-slot="tooltip-trigger" className={className} {...props}>
+      {children}
+    </BaseTooltip.Trigger>
+  );
+}
+
+interface TooltipContentProps
+  extends Omit<React.ComponentProps<typeof BaseTooltip.Popup>, "className"> {
+  className?: string;
+  side?: TooltipSide;
+  sideOffset?: number;
+  align?: TooltipAlign;
+  alignOffset?: number;
+  collisionBoundary?: BoundaryLike;
+  collisionPadding?: PaddingLike;
 }
 
 function TooltipContent({
   className,
+  side,
   sideOffset = 0,
+  align,
+  alignOffset,
+  collisionBoundary,
+  collisionPadding,
   children,
   ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Content>) {
+}: TooltipContentProps) {
   return (
-    <TooltipPrimitive.Portal>
-      <TooltipPrimitive.Content
-        data-slot="tooltip-content"
+    <BaseTooltip.Portal>
+      <BaseTooltip.Positioner
+        data-slot="tooltip-positioner"
+        side={side}
         sideOffset={sideOffset}
-        style={{ "--primary": "black" } as React.CSSProperties}
-        className={cn(
-          "bg-primary text-primary-foreground animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 w-fit origin-(--radix-tooltip-content-transform-origin) rounded-md px-3 py-1.5 text-xs text-balance pointer-events-none select-none",
-          className
-        )}
-        {...props}
+        align={align}
+        alignOffset={alignOffset}
+        collisionBoundary={collisionBoundary}
+        collisionPadding={collisionPadding}
       >
-        {children}
-        <TooltipPrimitive.Arrow className="bg-primary fill-primary z-50 size-2.5 translate-y-[calc(-50%_-_2px)] rotate-45 rounded-[2px]" />
-      </TooltipPrimitive.Content>
-    </TooltipPrimitive.Portal>
+        <BaseTooltip.Popup
+          data-slot="tooltip-content"
+          className={cn(
+            // Base styles and animations (origin uses Base UI's transform origin variable)
+            "z-50 w-fit origin-[var(--transform-origin)] rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground shadow-lg shadow-neutral-200 outline outline-1 outline-neutral-200 transition-[transform,opacity] pointer-events-none select-none",
+            // Enter/exit transitions controlled by data attributes from Base UI
+            "data-[starting-style]:opacity-0 data-[starting-style]:scale-95 data-[ending-style]:opacity-0 data-[ending-style]:scale-95",
+            // Dark mode outline/shadow adjustments
+            "dark:shadow-none dark:-outline-offset-1 dark:outline-neutral-700",
+            className
+          )}
+          {...props}
+        >
+          {children}
+          <BaseTooltip.Arrow className="pointer-events-none">
+            <div
+              className={cn(
+                // Diamond arrow similar to previous Radix arrow
+                "bg-primary rotate-45 size-2.5 rounded-[2px]",
+                // Position tweaks per side
+                "data-[side=top]:-mb-1 data-[side=bottom]:-mt-1 data-[side=left]:-mr-1 data-[side=right]:-ml-1",
+                // Outline to match popup border in light/dark
+                "outline outline-1 outline-neutral-200 dark:outline-neutral-700"
+              )}
+            />
+          </BaseTooltip.Arrow>
+        </BaseTooltip.Popup>
+      </BaseTooltip.Positioner>
+    </BaseTooltip.Portal>
   );
 }
 
