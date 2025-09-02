@@ -7,7 +7,8 @@
   "types": "./convex/_generated/server.d.ts",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "lint": "eslint . --ext .ts,.tsx --max-warnings=0"
+    "lint": "eslint . --ext .ts,.tsx --max-warnings=0",
+    "test": "vitest run"
   },
   "exports": {
     ".": {
@@ -24,9 +25,9 @@
     }
   },
   "dependencies": {
+    "@convex-dev/migrations": "^0.2.9",
     "@stackframe/js": "^2.8.36",
     "@t3-oss/env-core": "^0.13.8",
-    "@convex-dev/migrations": "^0.2.9",
     "convex": "1.26.0-alpha.6",
     "convex-helpers": "^0.1.104",
     "socket.io-client": "^4.8.1",
@@ -36,6 +37,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
-    "@octokit/webhooks-types": "^7.6.1"
+    "@octokit/webhooks-types": "^7.6.1",
+    "vitest": "3.2.4"
   }
 }

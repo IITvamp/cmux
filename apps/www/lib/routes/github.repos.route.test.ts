@@ -12,7 +12,7 @@ const SERVER_SECRET = env.STACK_SECRET_SERVER_KEY;
 const ADMIN_KEY = env.STACK_SUPER_SECRET_ADMIN_KEY;
 
 // Hardcoded user id used in local dev for testing
-const TEST_USER_ID = "477b6de8-075a-45ea-9c59-f65a65cb124d";
+const TEST_USER_ID = "487b5ddc-0da0-4f12-8834-f452863a83f5";
 
 type Tokens = { accessToken: string; refreshToken?: string };
 
@@ -37,7 +37,7 @@ describe("githubReposRouter via SDK", () => {
   it("rejects unauthenticated requests", async () => {
     const res = await getApiIntegrationsGithubRepos({
       client: testApiClient,
-      query: { team: "lawrence" },
+      query: { team: "manaflow" },
     });
     expect(res.response.status).toBe(401);
   });
@@ -46,7 +46,7 @@ describe("githubReposRouter via SDK", () => {
     const tokens = await getStackTokens();
     const res = await getApiIntegrationsGithubRepos({
       client: testApiClient,
-      query: { team: "lawrence" },
+      query: { team: "manaflow" },
       headers: { "x-stack-auth": JSON.stringify(tokens) },
     });
     // Accept 200 (OK), 401 (if token rejected), or 501 (GitHub app not configured)
@@ -76,8 +76,9 @@ describe("githubReposRouter via SDK", () => {
     let installationId: number | undefined;
     try {
       const conns = await convex.query(api.github.listProviderConnections, {
-        teamSlugOrId: "lawrence",
+        teamSlugOrId: "manaflow",
       });
+      console.log("conns", conns);
       installationId = conns.find((c) => c.isActive !== false)?.installationId;
     } catch {
       // If convex is unreachable in this test env, skip
@@ -89,7 +90,7 @@ describe("githubReposRouter via SDK", () => {
 
     const res = await getApiIntegrationsGithubRepos({
       client: testApiClient,
-      query: { team: "lawrence", installationId },
+      query: { team: "manaflow", installationId },
       headers: { "x-stack-auth": JSON.stringify(tokens) },
     });
     expect([200, 401, 501]).toContain(res.response.status);
@@ -112,14 +113,14 @@ describe("githubReposRouter via SDK", () => {
     const tokens = await getStackTokens();
     const first = await getApiIntegrationsGithubRepos({
       client: testApiClient,
-      query: { team: "lawrence", page: 1 },
+      query: { team: "manaflow", page: 1 },
       headers: { "x-stack-auth": JSON.stringify(tokens) },
     });
     expect([200, 401, 501]).toContain(first.response.status);
     if (first.response.status === 200 && first.data) {
       const second = await getApiIntegrationsGithubRepos({
         client: testApiClient,
-        query: { team: "lawrence", page: 2 },
+        query: { team: "manaflow", page: 2 },
         headers: { "x-stack-auth": JSON.stringify(tokens) },
       });
       expect([200, 401, 501]).toContain(second.response.status);
