@@ -46,7 +46,14 @@ import {
   Settings,
   X,
 } from "lucide-react";
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import z from "zod";
 
 export const Route = createFileRoute("/_layout/$teamSlugOrId/environments")({
@@ -135,13 +142,29 @@ function RepositoryPicker({
     }, 600);
   };
 
-  const handlePopupClosedRefetch = (): void => {
+  const handlePopupClosedRefetch = useCallback((): void => {
     const qc = router.options.context?.queryClient;
     if (qc) {
       qc.invalidateQueries();
     }
     window.focus?.();
-  };
+  }, [router]);
+
+  // Listen for postMessage from the popup to refresh immediately
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      const data = e.data as unknown;
+      if (
+        data &&
+        typeof data === "object" &&
+        (data as { type?: string }).type === "cmux/github-install-complete"
+      ) {
+        handlePopupClosedRefetch();
+      }
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [handlePopupClosedRefetch]);
 
   const openCenteredPopup = (
     url: string,
@@ -1237,7 +1260,23 @@ function EnvironmentsPage() {
   };
 
   return (
-    <FloatingPane header={<TitleBar title="Environments" />}>
+    <FloatingPane
+      header={
+        <TitleBar
+          title="Environments"
+          actions={
+            <a
+              href="https://cal.com/team/manaflow/meeting"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center rounded-md bg-neutral-900 text-white px-2 py-1 text-xs hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
+            >
+              Meeting
+            </a>
+          }
+        />
+      }
+    >
       <div className="flex flex-col grow select-none relative h-full overflow-hidden">
         {step === "select" ? (
           <div className="p-6 max-w-3xl w-full mx-auto overflow-auto">

@@ -70,7 +70,7 @@ export function usePersistentIframe({
         .then(() => onLoad?.())
         .catch((error) => onError?.(error));
     }
-  }, [key, url, preload, allow, sandbox]); // Remove callbacks from deps
+  }, [key, url, preload, allow, sandbox, onLoad, onError]);
 
   // Mount/unmount effect
   useEffect(() => {
@@ -124,7 +124,7 @@ export function usePersistentIframe({
         cleanupRef.current = null;
       }
     };
-  }, [key, url, className, style, allow, sandbox]); // Add className, style, allow and sandbox to deps
+  }, [key, url, className, style, allow, sandbox, onLoad, onError, preload]);
 
   const handlePreload = useCallback(() => {
     return persistentIframeManager.preloadIframe(key, url, { allow, sandbox });

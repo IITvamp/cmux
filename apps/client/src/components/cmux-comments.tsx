@@ -2,6 +2,7 @@ import { useSocket } from "@/contexts/socket/use-socket";
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
 import type { SpawnFromComment } from "@cmux/shared";
+import { useUser } from "@stackframe/react";
 import clsx from "clsx";
 import { useMutation, useQuery } from "convex/react";
 // Read team slug from path to avoid route type coupling
@@ -660,10 +661,9 @@ export function CmuxComments({ teamSlugOrId }: { teamSlugOrId: string }) {
     };
   }, [isDragging, dragStart]);
 
-  // const _user = useUser();
-  const userId = "a133a69b-cc28-4bef-8409-cb3a9ae7b208";
-  const profileImageUrl =
-    "https://avatars.githubusercontent.com/u/54008264?v=4";
+  const user = useUser({ or: "redirect" });
+  const userId = user.id;
+  const profileImageUrl = user.profileImageUrl || "https://cmux.dev/rick.png";
 
   const handleSubmitComment = async () => {
     if (!pendingCommentData || !commentDraft.trim()) return;
@@ -677,6 +677,7 @@ export function CmuxComments({ teamSlugOrId }: { teamSlugOrId: string }) {
       // profileImageUrl: user.profileImageUrl || undefined,
       profileImageUrl,
     });
+    console.log("Comment created:", commentId);
 
     // Spawn agents via socket.io to address the comment
     if (socket) {

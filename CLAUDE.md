@@ -7,7 +7,8 @@ Use pnpm to install dependencies and run the project.
 
 - `--force-docker-build`: Rebuild worker image even if cached.
 - `--show-compose-logs`: Also stream Docker Compose logs to the console (they are always written to `logs/docker-compose.log`). Docker build logs are always shown.
-  After finishing a task, run `bun run typecheck` in root to typecheck everything. You should always cd to root and run this command; do not manually run tsc any other way.
+
+After finishing a task, run `bun run check` in root to typecheck and lint everything. You should always cd to root and run this command; do not manually run tsc or eslint any other way.
 
 # Backend
 

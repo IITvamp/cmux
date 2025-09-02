@@ -24,7 +24,8 @@ export class MorphVSCodeInstance extends VSCodeInstance {
     super(config);
     this.morphClient = new MorphCloudClient();
     // this.morphSnapshotId = config.morphSnapshotId || "snapshot_xf8w00is";
-    this.morphSnapshotId = config.morphSnapshotId || "snapshot_hwmk73mg";
+    // this.morphSnapshotId = config.morphSnapshotId || "snapshot_hwmk73mg";
+    this.morphSnapshotId = config.morphSnapshotId || "snapshot_mr26f6pw";
   }
 
   async start(): Promise<VSCodeInstanceInfo> {
@@ -36,8 +37,11 @@ export class MorphVSCodeInstance extends VSCodeInstance {
     this.instance = await this.morphClient.instances.start({
       snapshotId: this.morphSnapshotId,
       // 30 minutes
-      ttlSeconds: 60 * 30,
-      ttlAction: "pause",
+      // ttlSeconds: 60 * 30,
+      // ttlAction: "pause",
+      // 20 minutes
+      ttlSeconds: 20 * 60,
+      ttlAction: "stop",
       metadata: {
         app: "cmux-dev-local  ",
       },
