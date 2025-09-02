@@ -46,7 +46,14 @@ import {
   Settings,
   X,
 } from "lucide-react";
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import z from "zod";
 
 export const Route = createFileRoute("/_layout/$teamSlugOrId/environments")({
@@ -135,13 +142,29 @@ function RepositoryPicker({
     }, 600);
   };
 
-  const handlePopupClosedRefetch = (): void => {
+  const handlePopupClosedRefetch = useCallback((): void => {
     const qc = router.options.context?.queryClient;
     if (qc) {
       qc.invalidateQueries();
     }
     window.focus?.();
-  };
+  }, [router]);
+
+  // Listen for postMessage from the popup to refresh immediately
+  useEffect(() => {
+    const onMessage = (e: MessageEvent) => {
+      const data = e.data as unknown;
+      if (
+        data &&
+        typeof data === "object" &&
+        (data as { type?: string }).type === "cmux/github-install-complete"
+      ) {
+        handlePopupClosedRefetch();
+      }
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [handlePopupClosedRefetch]);
 
   const openCenteredPopup = (
     url: string,

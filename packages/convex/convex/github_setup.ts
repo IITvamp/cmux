@@ -58,6 +58,7 @@ export const githubSetup = httpAction(async (ctx, req) => {
   const url = new URL(req.url);
   const installationIdStr = url.searchParams.get("installation_id");
   const state = url.searchParams.get("state");
+  const base = env.BASE_APP_URL.replace(/\/$/, "");
 
   if (!installationIdStr) {
     return new Response("missing params", { status: 400 });
@@ -79,11 +80,11 @@ export const githubSetup = httpAction(async (ctx, req) => {
         teamId: existing.teamId,
       });
       const teamPath = team?.slug ?? existing.teamId;
-      const target = `http://localhost:5173/${encodeURIComponent(teamPath)}/environments`;
+      const target = `${base}/${encodeURIComponent(teamPath)}/connect-complete`;
       return Response.redirect(target, 302);
     }
     // Fallback: send user to team picker if we can't resolve a team
-    return Response.redirect("http://localhost:5173/team-picker", 302);
+    return Response.redirect(`${base}/team-picker`, 302);
   }
 
   if (!env.INSTALL_STATE_SECRET) {
@@ -188,6 +189,6 @@ export const githubSetup = httpAction(async (ctx, req) => {
     teamId: payload.teamId,
   });
   const teamPath = team?.slug ?? payload.teamId;
-  const target = `http://localhost:5173/${encodeURIComponent(teamPath)}/environments`;
+  const target = `${base}/${encodeURIComponent(teamPath)}/connect-complete`;
   return Response.redirect(target, 302);
 });

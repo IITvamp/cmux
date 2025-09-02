@@ -6,7 +6,6 @@ import {
   usersRouter,
   morphRouter,
 } from "@/lib/routes/index";
-import { integrationsRouter } from "@/lib/routes/integrations.route";
 import { vscodeSettingsRouter } from "@/lib/routes/vscode-settings.route";
 import { stackServerApp } from "@/lib/utils/stack";
 import { swaggerUI } from "@hono/swagger-ui";
@@ -81,7 +80,6 @@ app.route("/", healthRouter);
 app.route("/", usersRouter);
 app.route("/", booksRouter);
 app.route("/", devServerRouter);
-app.route("/", integrationsRouter);
 app.route("/", githubReposRouter);
 app.route("/", morphRouter);
 app.route("/", vscodeSettingsRouter);
