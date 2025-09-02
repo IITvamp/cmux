@@ -37,5 +37,3 @@ jobs:
       - name: Package tests (cmux)
         run: bun run test
         working-directory: packages/cmux
-      - name: Run Convex tests (Vitest)
-        run: pnpm -F @cmux/convex test

@@ -214,6 +214,9 @@ async function runTests() {
     console.log("⚠️  No packages with test scripts found.");
     return;
   }
+  // Log which workspaces will run tests
+  const workspaceNames = pkgs.map((p) => p.name).join(", ");
+  console.log(`🧵 Workspaces to test (${pkgs.length}): ${workspaceNames}`);
 
   const allPerTests: PerTestTiming[] = [];
 
@@ -246,6 +249,8 @@ async function runTests() {
           // Normal run (no JSON reporter), preserves raw console logs
           args = ["run", "test"];
         }
+        // Log when each workspace starts running
+        console.log(`▶️  ${name}: starting tests`);
         const child = spawn(cmd, args, {
           cwd: dir,
           shell: true,
@@ -263,6 +268,9 @@ async function runTests() {
               // ignore parse errors; fall back to package-level timing only
             }
           }
+          console.log(
+            `${code === 0 ? "✅" : "❌"} ${name}: finished in ${(durationMs / 1000).toFixed(2)}s`
+          );
           resolve({
             name,
             dir,
@@ -274,6 +282,7 @@ async function runTests() {
         });
         child.on("error", (err) => {
           const durationMs = performance.now() - start;
+          console.log(`❌ ${name}: errored after ${(durationMs / 1000).toFixed(2)}s`);
           resolve({
             name,
             dir,
