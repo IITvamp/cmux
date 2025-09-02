@@ -120,6 +120,26 @@ mkdir -p /var/log/cmux /root/lifecycle
 echo "[Startup] Environment variables:" > /var/log/cmux/startup.log
 env >> /var/log/cmux/startup.log
 
+# Install user extensions from list if provided (no env vars required)
+if [ -f "/root/lifecycle/extensions.txt" ]; then
+    echo "[Startup] Installing user extensions from /root/lifecycle/extensions.txt" >> /var/log/cmux/startup.log
+    while IFS= read -r ext || [ -n "$ext" ]; do
+        # Skip comments and empty lines
+        if [ -z "$(echo "$ext" | xargs)" ]; then
+            continue
+        fi
+        case "$ext" in
+            \#*) continue ;;
+        esac
+        echo "[Startup] Installing extension: $ext" >> /var/log/cmux/startup.log
+        /app/openvscode-server/bin/openvscode-server --install-extension "$ext" >> /var/log/cmux/startup.log 2>&1 || {
+            echo "[Startup] Warning: failed to install $ext (continuing)" >> /var/log/cmux/startup.log
+        }
+    done < "/root/lifecycle/extensions.txt"
+else
+    echo "[Startup] No extensions list provided at /root/lifecycle/extensions.txt" >> /var/log/cmux/startup.log
+fi
+
 # Configure VS Code theme based on environment variable
 if [ -n "$VSCODE_THEME" ]; then
     echo "[Startup] Configuring VS Code theme: $VSCODE_THEME" >> /var/log/cmux/startup.log
@@ -136,10 +156,17 @@ if [ -n "$VSCODE_THEME" ]; then
     # Update VS Code settings files with theme and git configuration
     SETTINGS_JSON='{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "workbench.colorTheme": "'$COLOR_THEME'", "git.openDiffOnClick": true, "scm.defaultViewMode": "tree", "git.showPushSuccessNotification": true, "git.autorefresh": true, "git.branchCompareWith": "main"}'
     
-    # Update all VS Code settings locations
-    echo "$SETTINGS_JSON" > /root/.openvscode-server/data/User/settings.json
-    echo "$SETTINGS_JSON" > /root/.openvscode-server/data/User/profiles/default-profile/settings.json
-    echo "$SETTINGS_JSON" > /root/.openvscode-server/data/Machine/settings.json
+    # Update VS Code settings if writable; skip if mounted read-only
+    for target in \
+        "/root/.openvscode-server/data/User/settings.json" \
+        "/root/.openvscode-server/data/User/profiles/default-profile/settings.json" \
+        "/root/.openvscode-server/data/Machine/settings.json"; do
+        if [ -e "$target" ] && [ ! -w "$target" ]; then
+            echo "[Startup] Skipping settings update (read-only mount): $target" >> /var/log/cmux/startup.log
+            continue
+        fi
+        echo "$SETTINGS_JSON" > "$target"
+    done
     
     echo "[Startup] VS Code theme configured to: $COLOR_THEME" >> /var/log/cmux/startup.log
 else
@@ -147,10 +174,17 @@ else
     echo "[Startup] Configuring VS Code git settings" >> /var/log/cmux/startup.log
     SETTINGS_JSON='{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "git.openDiffOnClick": true, "scm.defaultViewMode": "tree", "git.showPushSuccessNotification": true, "git.autorefresh": true, "git.branchCompareWith": "main"}'
     
-    # Update all VS Code settings locations
-    echo "$SETTINGS_JSON" > /root/.openvscode-server/data/User/settings.json
-    echo "$SETTINGS_JSON" > /root/.openvscode-server/data/User/profiles/default-profile/settings.json
-    echo "$SETTINGS_JSON" > /root/.openvscode-server/data/Machine/settings.json
+    # Update VS Code settings if writable; skip if mounted read-only
+    for target in \
+        "/root/.openvscode-server/data/User/settings.json" \
+        "/root/.openvscode-server/data/User/profiles/default-profile/settings.json" \
+        "/root/.openvscode-server/data/Machine/settings.json"; do
+        if [ -e "$target" ] && [ ! -w "$target" ]; then
+            echo "[Startup] Skipping settings update (read-only mount): $target" >> /var/log/cmux/startup.log
+            continue
+        fi
+        echo "$SETTINGS_JSON" > "$target"
+    done
     
     echo "[Startup] VS Code git settings configured" >> /var/log/cmux/startup.log
 fi

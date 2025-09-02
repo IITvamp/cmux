@@ -11,6 +11,10 @@ import { cleanupGitCredentials } from "../utils/dockerGitSetup.js";
 import { dockerLogger } from "../utils/fileLogger.js";
 import { getGitHubTokenFromKeychain } from "../utils/getGitHubToken.js";
 import {
+  findInstalledVSCodeExtensionIds,
+  findVSCodeUserConfig,
+} from "../utils/vscodeUserConfig.js";
+import {
   VSCodeInstance,
   type VSCodeInstanceConfig,
   type VSCodeInstanceInfo,
@@ -299,6 +303,64 @@ export class DockerVSCodeInstance extends VSCodeInstance {
           `${originPath}:${originPath}:rw`, // Read-write mount for git operations
         ];
 
+        // Mount VS Code user settings/keybindings/snippets if available
+        try {
+          const userCfg = findVSCodeUserConfig();
+          if (userCfg.settingsJson) {
+            binds.push(
+              `${userCfg.settingsJson}:/root/.openvscode-server/data/User/settings.json:ro`,
+              `${userCfg.settingsJson}:/root/.openvscode-server/data/User/profiles/default-profile/settings.json:ro`
+            );
+            dockerLogger.info(
+              `  VS Code settings mount: ${userCfg.settingsJson}`
+            );
+          }
+          if (userCfg.keybindingsJson) {
+            binds.push(
+              `${userCfg.keybindingsJson}:/root/.openvscode-server/data/User/keybindings.json:ro`
+            );
+            dockerLogger.info(
+              `  VS Code keybindings mount: ${userCfg.keybindingsJson}`
+            );
+          }
+          if (userCfg.snippetsDir) {
+            binds.push(
+              `${userCfg.snippetsDir}:/root/.openvscode-server/data/User/snippets:ro`
+            );
+            dockerLogger.info(
+              `  VS Code snippets mount: ${userCfg.snippetsDir}`
+            );
+          }
+        } catch (err) {
+          dockerLogger.warn(
+            `  VS Code user config detection failed (non-fatal): ${(err as Error).message}`
+          );
+        }
+
+        // Prepare extension list file (IDs) mounted for startup installer
+        try {
+          const { extensionIds } = findInstalledVSCodeExtensionIds();
+          if (extensionIds.length > 0) {
+            const fs = await import("fs");
+            const tmpDir = path.join(os.tmpdir(), "cmux-vscode-extensions");
+            await fs.promises.mkdir(tmpDir, { recursive: true });
+            const extListPath = path.join(tmpDir, `extensions-${this.instanceId}.txt`);
+            await fs.promises.writeFile(
+              extListPath,
+              extensionIds.join("\n") + "\n",
+              "utf8"
+            );
+            binds.push(`${extListPath}:/root/lifecycle/extensions.txt:ro`);
+            dockerLogger.info(
+              `  VS Code extensions list prepared: ${extensionIds.length} entries`
+            );
+          }
+        } catch (err) {
+          dockerLogger.warn(
+            `  VS Code extensions list preparation failed (non-fatal): ${(err as Error).message}`
+          );
+        }
+
         // Mount SSH directory for git authentication
         const sshDir = path.join(homeDir, ".ssh");
         try {
@@ -351,6 +413,64 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         const gitConfigPath = path.join(homeDir, ".gitconfig");
 
         const binds = [`${this.config.workspacePath}:/root/workspace`];
+
+        // Mount VS Code user settings/keybindings/snippets if available
+        try {
+          const userCfg = findVSCodeUserConfig();
+          if (userCfg.settingsJson) {
+            binds.push(
+              `${userCfg.settingsJson}:/root/.openvscode-server/data/User/settings.json:ro`,
+              `${userCfg.settingsJson}:/root/.openvscode-server/data/User/profiles/default-profile/settings.json:ro`
+            );
+            dockerLogger.info(
+              `  VS Code settings mount: ${userCfg.settingsJson}`
+            );
+          }
+          if (userCfg.keybindingsJson) {
+            binds.push(
+              `${userCfg.keybindingsJson}:/root/.openvscode-server/data/User/keybindings.json:ro`
+            );
+            dockerLogger.info(
+              `  VS Code keybindings mount: ${userCfg.keybindingsJson}`
+            );
+          }
+          if (userCfg.snippetsDir) {
+            binds.push(
+              `${userCfg.snippetsDir}:/root/.openvscode-server/data/User/snippets:ro`
+            );
+            dockerLogger.info(
+              `  VS Code snippets mount: ${userCfg.snippetsDir}`
+            );
+          }
+        } catch (err) {
+          dockerLogger.warn(
+            `  VS Code user config detection failed (non-fatal): ${(err as Error).message}`
+          );
+        }
+
+        // Prepare extension list file (IDs) mounted for startup installer
+        try {
+          const { extensionIds } = findInstalledVSCodeExtensionIds();
+          if (extensionIds.length > 0) {
+            const fs = await import("fs");
+            const tmpDir = path.join(os.tmpdir(), "cmux-vscode-extensions");
+            await fs.promises.mkdir(tmpDir, { recursive: true });
+            const extListPath = path.join(tmpDir, `extensions-${this.instanceId}.txt`);
+            await fs.promises.writeFile(
+              extListPath,
+              extensionIds.join("\n") + "\n",
+              "utf8"
+            );
+            binds.push(`${extListPath}:/root/lifecycle/extensions.txt:ro`);
+            dockerLogger.info(
+              `  VS Code extensions list prepared: ${extensionIds.length} entries`
+            );
+          }
+        } catch (err) {
+          dockerLogger.warn(
+            `  VS Code extensions list preparation failed (non-fatal): ${(err as Error).message}`
+          );
+        }
 
         // Mount SSH directory for git authentication
         const sshDir = path.join(homeDir, ".ssh");
@@ -676,6 +796,20 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       );
       await fs.promises.unlink(tempGitConfigPath);
       dockerLogger.info(`Cleaned up temporary git config file`);
+    } catch {
+      // File might not exist, which is fine
+    }
+
+    // Clean up temporary extensions list file
+    try {
+      const fs = await import("fs");
+      const extListPath = path.join(
+        os.tmpdir(),
+        "cmux-vscode-extensions",
+        `extensions-${this.instanceId}.txt`
+      );
+      await fs.promises.unlink(extListPath);
+      dockerLogger.info(`Cleaned up temporary VS Code extensions list file`);
     } catch {
       // File might not exist, which is fine
     }
