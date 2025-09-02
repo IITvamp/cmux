@@ -21,7 +21,7 @@ export const Route = createFileRoute("/_layout/$teamSlugOrId/settings")({
 
 function SettingsComponent() {
   const { teamSlugOrId } = Route.useParams();
-  const { theme, setTheme } = useTheme();
+  const { resolvedTheme, setTheme } = useTheme();
   const convex = useConvex();
   const [apiKeyValues, setApiKeyValues] = useState<Record<string, string>>({});
   const [originalApiKeyValues, setOriginalApiKeyValues] = useState<
@@ -592,19 +592,19 @@ function SettingsComponent() {
                   <div className="grid grid-cols-3 gap-2">
                     <button
                       onClick={() => setTheme("light")}
-                      className={`p-2 border-2 ${theme === "light" ? "border-blue-500 bg-neutral-50 dark:bg-neutral-800" : "border-neutral-200 dark:border-neutral-700"} rounded-lg text-sm font-medium text-neutral-700 dark:text-neutral-300 transition-colors`}
+                      className={`p-2 border-2 ${resolvedTheme === "light" ? "border-blue-500 bg-neutral-50 dark:bg-neutral-800" : "border-neutral-200 dark:border-neutral-700"} rounded-lg text-sm font-medium text-neutral-700 dark:text-neutral-300 transition-colors`}
                     >
                       Light
                     </button>
                     <button
                       onClick={() => setTheme("dark")}
-                      className={`p-2 border-2 ${theme === "dark" ? "border-blue-500 bg-neutral-50 dark:bg-neutral-800" : "border-neutral-200 dark:border-neutral-700"} rounded-lg text-sm font-medium text-neutral-700 dark:text-neutral-300 transition-colors`}
+                      className={`p-2 border-2 ${resolvedTheme === "dark" ? "border-blue-500 bg-neutral-50 dark:bg-neutral-800" : "border-neutral-200 dark:border-neutral-700"} rounded-lg text-sm font-medium text-neutral-700 dark:text-neutral-300 transition-colors`}
                     >
                       Dark
                     </button>
                     <button
                       onClick={() => setTheme("system")}
-                      className={`p-2 border-2 ${theme === "system" ? "border-blue-500 bg-neutral-50 dark:bg-neutral-800" : "border-neutral-200 dark:border-neutral-700"} rounded-lg text-sm font-medium text-neutral-700 dark:text-neutral-300 transition-colors`}
+                      className={`p-2 border-2 ${resolvedTheme === "system" ? "border-blue-500 bg-neutral-50 dark:bg-neutral-800" : "border-neutral-200 dark:border-neutral-700"} rounded-lg text-sm font-medium text-neutral-700 dark:text-neutral-300 transition-colors`}
                     >
                       System
                     </button>
