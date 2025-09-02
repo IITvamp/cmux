@@ -28,7 +28,7 @@ async function upsertUserCore(ctx: MutationCtx, args: UpsertUserArgs) {
   const now = Date.now();
   const existing = await ctx.db
     .query("users")
-    .withIndex("by_uuid", (q) => q.eq("uuid", args.id))
+    .withIndex("by_userId", (q) => q.eq("userId", args.id))
     .first();
   if (existing) {
     await ctx.db.patch(existing._id, {
@@ -54,7 +54,7 @@ async function upsertUserCore(ctx: MutationCtx, args: UpsertUserArgs) {
     });
   } else {
     await ctx.db.insert("users", {
-      uuid: args.id,
+      userId: args.id,
       primaryEmail: args.primaryEmail,
       primaryEmailVerified: args.primaryEmailVerified,
       primaryEmailAuthEnabled: args.primaryEmailAuthEnabled,
@@ -120,7 +120,7 @@ export const deleteUser = internalMutation({
 async function deleteUserCore(ctx: MutationCtx, id: string) {
   const existing = await ctx.db
     .query("users")
-    .withIndex("by_uuid", (q) => q.eq("uuid", id))
+    .withIndex("by_userId", (q) => q.eq("userId", id))
     .first();
   if (existing) await ctx.db.delete(existing._id);
 
@@ -185,7 +185,7 @@ async function upsertTeamCore(ctx: MutationCtx, args: UpsertTeamArgs) {
   const now = Date.now();
   const existing = await ctx.db
     .query("teams")
-    .withIndex("by_uuid", (q) => q.eq("uuid", args.id))
+    .withIndex("by_teamId", (q) => q.eq("teamId", args.id))
     .first();
   const patch = {
     displayName: args.displayName,
@@ -200,7 +200,7 @@ async function upsertTeamCore(ctx: MutationCtx, args: UpsertTeamArgs) {
     await ctx.db.patch(existing._id, patch);
   } else {
     await ctx.db.insert("teams", {
-      uuid: args.id,
+      teamId: args.id,
       ...patch,
       createdAt: now,
     });
@@ -228,7 +228,7 @@ export const deleteTeam = internalMutation({
 async function deleteTeamCore(ctx: MutationCtx, id: string) {
   const existing = await ctx.db
     .query("teams")
-    .withIndex("by_uuid", (q) => q.eq("uuid", id))
+    .withIndex("by_teamId", (q) => q.eq("teamId", id))
     .first();
   if (existing) await ctx.db.delete(existing._id);
 

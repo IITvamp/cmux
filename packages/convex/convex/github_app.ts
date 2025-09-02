@@ -171,11 +171,11 @@ export const mintInstallState = authMutation({
       const membership = await ctx.db
         .query("teamMemberships")
         .withIndex("by_team_user", (q) =>
-          q.eq("teamId", team.uuid).eq("userId", userId)
+          q.eq("teamId", team.teamId).eq("userId", userId)
         )
         .first();
       if (!membership) throw new Error("Forbidden");
-      return team.uuid;
+      return team.teamId;
     })();
 
     // Generate random nonce
