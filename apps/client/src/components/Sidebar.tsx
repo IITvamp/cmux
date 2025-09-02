@@ -4,7 +4,7 @@ import { useExpandTasks } from "@/contexts/expand-tasks/ExpandTasksContext";
 import { isElectron } from "@/lib/electron";
 import { type Doc } from "@cmux/convex/dataModel";
 import { Link } from "@tanstack/react-router";
-import { Plus } from "lucide-react";
+import { Plus, Calendar } from "lucide-react";
 import {
   type CSSProperties,
   useCallback,
@@ -51,7 +51,7 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
       const clientX = e.clientX;
       const newWidth = Math.min(
         Math.max(clientX - containerLeft, MIN_WIDTH),
-        MAX_WIDTH
+        MAX_WIDTH,
       );
       setWidth(newWidth);
     });
@@ -112,7 +112,7 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
       window.addEventListener("mousemove", onMouseMove);
       window.addEventListener("mouseup", stopResizing);
     },
-    [onMouseMove, stopResizing]
+    [onMouseMove, stopResizing],
   );
 
   useEffect(() => {
@@ -123,7 +123,6 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
   }, [onMouseMove, stopResizing]);
 
   const resetWidth = useCallback(() => setWidth(DEFAULT_WIDTH), []);
-
 
   return (
     <div
@@ -195,10 +194,28 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
       </nav>
 
       <div className="pb-2 shrink-0 flex flex-col">
+        <a
+          href="https://cal.com/team/manaflow/meeting"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center px-7 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors select-none cursor-pointer"
+        >
+          <Calendar
+            className="w-4 h-4 mr-3 text-neutral-500"
+            aria-hidden="true"
+          />
+          Book Meeting
+        </a>
         <Link
           to="/$teamSlugOrId/environments"
           params={{ teamSlugOrId }}
-          search={{ step: undefined, selectedRepos: undefined, connectionLogin: undefined, repoSearch: undefined, sessionId: undefined }}
+          search={{
+            step: undefined,
+            selectedRepos: undefined,
+            connectionLogin: undefined,
+            repoSearch: undefined,
+            sessionId: undefined,
+          }}
           className="flex items-center px-7 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors select-none cursor-default"
         >
           <svg
