@@ -174,12 +174,13 @@ interface TeamItemProps {
 function TeamItem({ team, getClientSlug }: TeamItemProps) {
   const teamInfo = useConvexQuery(api.teams.get, { teamSlugOrId: team.id });
   const slug = teamInfo?.slug || getClientSlug(team.clientMetadata);
+  const teamSlugOrId = slug ?? team.id;
 
   return (
     <li>
       <Link
         to="/$teamSlugOrId/dashboard"
-        params={{ teamSlugOrId: slug! }}
+        params={{ teamSlugOrId }}
         disabled={!teamInfo}
         className={
           "group flex w-full text-left rounded-xl border transition-all focus:outline-none border-neutral-200 hover:border-neutral-300 dark:border-neutral-800 dark:hover:border-neutral-700 bg-white dark:bg-neutral-900/80 disabled:border-neutral-200 dark:disabled:border-neutral-800 p-4"
@@ -194,13 +195,13 @@ function TeamItem({ team, getClientSlug }: TeamItemProps) {
           >
             {team.displayName?.charAt(0) ?? "T"}
           </div>
-          <div className="flex-1 overflow-hidden">
+          <div className="flex-1 overflow-hidden min-w-0">
             <div className="truncate text-neutral-900 dark:text-neutral-50 font-medium">
               {team.displayName}
             </div>
-            <div className="truncate text-sm text-neutral-500 dark:text-neutral-400">
-              <Skeleton isLoaded={!!teamInfo} className="rounded">
-                {slug || "Loading..."}
+            <div className="text-sm text-neutral-500 dark:text-neutral-400">
+              <Skeleton isLoaded={!!teamInfo} className="rounded truncate w-full">
+                {slug || team.id}
               </Skeleton>
             </div>
           </div>

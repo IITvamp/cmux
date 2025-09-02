@@ -28,11 +28,21 @@ import {
   KEY_DOWN_COMMAND,
   INSERT_LINE_BREAK_COMMAND,
 } from "lexical";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { EditorStatePlugin } from "./EditorStatePlugin";
 import { ImageNode } from "./ImageNode";
 import { ImagePlugin } from "./ImagePlugin";
 import { MentionPlugin } from "./MentionPlugin";
+
+// Minimal shape of a serialized Lexical node we care about
+interface SerializedNodeLike {
+  type?: string;
+  src?: string;
+  imageId?: string;
+  children?: Array<SerializedNodeLike>;
+  // Preserve unknown properties when transforming
+  [key: string]: unknown;
+}
 
 const theme = {
   ltr: "ltr",
@@ -202,7 +212,7 @@ function LocalStoragePersistencePlugin({
   };
 
   // Extract images and replace with IDs
-  const extractImages = async (
+  const extractImages = useCallback(async (
     state: SerializedEditorState
   ): Promise<{
     cleanState: SerializedEditorState;
@@ -212,11 +222,13 @@ function LocalStoragePersistencePlugin({
     const imageMap: Array<{ id: string; src: string }> = [];
     const activeImageIds = new Set<string>();
 
-    const processNode = (node: any): any => {
+    const processNode = (node: SerializedNodeLike): SerializedNodeLike => {
       if (node.type === "image" && node.src) {
         // If it's a base64 image, store it in IndexedDB
-        if (node.src.startsWith("data:")) {
-          const imageId = node.imageId || generateImageId(node.src);
+        if (typeof node.src === 'string' && node.src.startsWith("data:")) {
+          const imageId =
+            (typeof node.imageId === 'string' && node.imageId) ||
+            generateImageId(node.src);
           imageMap.push({ id: imageId, src: node.src });
           activeImageIds.add(imageId);
 
@@ -228,7 +240,7 @@ function LocalStoragePersistencePlugin({
         }
       }
 
-      if (node.children && Array.isArray(node.children)) {
+      if (Array.isArray(node.children)) {
         return {
           ...node,
           children: node.children.map(processNode),
@@ -238,38 +250,49 @@ function LocalStoragePersistencePlugin({
       return node;
     };
 
-    const cleanState = {
+    const cleanRoot = processNode(
+      state.root as unknown as SerializedNodeLike
+    ) as unknown as SerializedEditorState['root'];
+    const cleanState: SerializedEditorState = {
       ...state,
-      root: processNode(state.root),
+      root: cleanRoot,
     };
 
     return { cleanState, imageMap, activeImageIds };
-  };
+  }, []);
 
   // Restore images from IDs
-  const restoreImages = async (
+  const restoreImages = useCallback(async (
     state: SerializedEditorState
   ): Promise<SerializedEditorState> => {
     const imageIds: string[] = [];
 
     // Collect all image IDs
-    const collectImageIds = (node: any): void => {
-      if (node.type === "image" && node.imageId && !node.src) {
+    const collectImageIds = (node: SerializedNodeLike): void => {
+      if (
+        node.type === "image" &&
+        typeof node.imageId === 'string' &&
+        !node.src
+      ) {
         imageIds.push(node.imageId);
       }
-      if (node.children && Array.isArray(node.children)) {
+      if (Array.isArray(node.children)) {
         node.children.forEach(collectImageIds);
       }
     };
 
-    collectImageIds(state.root);
+    collectImageIds(state.root as unknown as SerializedNodeLike);
 
     // Fetch all images from IndexedDB
     const imageMap = await editorStorage.getImages(imageIds);
 
     // Restore images in the state
-    const processNode = (node: any): any => {
-      if (node.type === "image" && node.imageId && !node.src) {
+    const processNode = (node: SerializedNodeLike): SerializedNodeLike => {
+      if (
+        node.type === "image" &&
+        typeof node.imageId === 'string' &&
+        !node.src
+      ) {
         const src = imageMap.get(node.imageId);
         if (src) {
           return {
@@ -279,7 +302,7 @@ function LocalStoragePersistencePlugin({
         }
       }
 
-      if (node.children && Array.isArray(node.children)) {
+      if (Array.isArray(node.children)) {
         return {
           ...node,
           children: node.children.map(processNode),
@@ -289,11 +312,14 @@ function LocalStoragePersistencePlugin({
       return node;
     };
 
+    const restoredRoot = processNode(
+      state.root as unknown as SerializedNodeLike
+    ) as unknown as SerializedEditorState['root'];
     return {
       ...state,
-      root: processNode(state.root),
+      root: restoredRoot,
     };
-  };
+  }, []);
 
   // Load initial state from localStorage + IndexedDB
   useEffect(() => {
@@ -320,7 +346,7 @@ function LocalStoragePersistencePlugin({
     };
 
     loadState();
-  }, [editor, persistenceKey]);
+  }, [editor, persistenceKey, restoreImages]);
 
   // Save state to localStorage + IndexedDB on changes
   useEffect(() => {
@@ -409,7 +435,7 @@ function LocalStoragePersistencePlugin({
         clearTimeout(debounceTimer.current);
       }
     };
-  }, [editor, persistenceKey]);
+  }, [editor, persistenceKey, extractImages]);
 
   // Clear localStorage and IndexedDB when content is cleared (e.g., after submit)
   useEffect(() => {

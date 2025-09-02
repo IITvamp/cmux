@@ -9,6 +9,7 @@
   "scripts": {
     "clean": "bash scripts/clean.sh",
     "clean:node_modules": "bash scripts/clean.sh",
+    "check": "bun run scripts/check.ts",
     "lint": "bun run scripts/lint.ts",
     "typecheck": "run-p typecheck:*",
     "typecheck:client": "cd apps/client && bun run typecheck",

@@ -1,7 +1,13 @@
 import { v } from "convex/values";
 import { authMutation, authQuery } from "./users/utils";
 
+const IS_LIVE_CONVEX_DEPLOYMENT = true;
+
 function fixUrl(url: string) {
+  if (IS_LIVE_CONVEX_DEPLOYMENT) {
+    return url;
+  }
+  // only local convex deployments live on port 9777
   const urlObj = new URL(url);
   urlObj.port = "9777";
   return urlObj.toString();

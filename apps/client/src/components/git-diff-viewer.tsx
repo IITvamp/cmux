@@ -85,34 +85,10 @@ export function GitDiffViewer({
   onControlsChange,
 }: GitDiffViewerProps) {
   const { theme } = useTheme();
-  // Resolve the actual theme (handle "system" theme)
-  const [resolvedTheme, setResolvedTheme] = useState<"dark" | "light">(() => {
-    if (theme === "system") {
-      return window.matchMedia("(prefers-color-scheme: dark)").matches
-        ? "dark"
-        : "light";
-    }
-    return theme as "dark" | "light";
-  });
 
   const kitty = useMemo(() => {
     return kitties[Math.floor(Math.random() * kitties.length)];
-    // return kitties[2];
   }, []);
-
-  useEffect(() => {
-    if (theme === "system") {
-      const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-      const handleChange = () => {
-        setResolvedTheme(mediaQuery.matches ? "dark" : "light");
-      };
-      setResolvedTheme(mediaQuery.matches ? "dark" : "light");
-      mediaQuery.addEventListener("change", handleChange);
-      return () => mediaQuery.removeEventListener("change", handleChange);
-    } else {
-      setResolvedTheme(theme as "dark" | "light");
-    }
-  }, [theme]);
 
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
   const editorRefs = useRef<Record<string, editor.IStandaloneDiffEditor>>({});
@@ -288,7 +264,7 @@ export function GitDiffViewer({
             file={file}
             isExpanded={expandedFiles.has(file.filePath)}
             onToggle={() => toggleFile(file.filePath)}
-            theme={resolvedTheme}
+            theme={theme}
             calculateEditorHeight={calculateEditorHeight}
             setEditorRef={(ed) => {
               if (ed)
