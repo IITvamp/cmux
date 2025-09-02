@@ -117,6 +117,13 @@ function EnvironmentsListPage() {
             <Link
               to="/$teamSlugOrId/environments/new"
               params={{ teamSlugOrId }}
+              search={{
+                step: undefined,
+                selectedRepos: undefined,
+                connectionLogin: undefined,
+                repoSearch: undefined,
+                sessionId: undefined,
+              }}
               className="inline-flex items-center gap-2 rounded-md bg-neutral-900 text-white px-4 py-2 text-sm hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
             >
               <Plus className="w-4 h-4" />

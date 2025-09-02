@@ -17,9 +17,11 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-export const Route = createFileRoute("/_layout/$teamSlugOrId/environments/new")({
-  component: EnvironmentsPage,
-});
+export const Route = createFileRoute("/_layout/$teamSlugOrId/environments/new")(
+  {
+    component: EnvironmentsPage,
+  }
+);
 
 // Environment Configuration Component
 function EnvironmentConfiguration({
@@ -390,9 +392,6 @@ function EnvironmentConfiguration({
               Your development environment is launching. Once ready, VS Code
               will appear here so you can configure and test your setup.
             </p>
-            <div className="text-xs text-neutral-500 dark:text-neutral-500">
-              The environment will be available for 2 hours
-            </div>
           </div>
         </div>
       ) : vscodeUrl ? (
@@ -555,7 +554,7 @@ function EnvironmentsPage() {
   };
 
   return (
-    <FloatingPane header={<TitleBar title="Environments" /> }>
+    <FloatingPane header={<TitleBar title="Environments" />}>
       <div className="flex flex-col grow select-none relative h-full overflow-hidden">
         {step === "select" ? (
           <div className="p-6 max-w-3xl w-full mx-auto overflow-auto">
