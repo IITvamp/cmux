@@ -25,6 +25,7 @@
   "dependencies": {
     "@stackframe/js": "^2.8.36",
     "@t3-oss/env-core": "^0.13.8",
+    "@convex-dev/migrations": "^0.2.9",
     "convex": "1.26.0-alpha.6",
     "convex-helpers": "^0.1.104",
     "socket.io-client": "^4.8.1",

@@ -25,7 +25,7 @@ export async function getTeamId(
   const identity = await ctx.auth.getUserIdentity();
   const userId = identity?.subject;
   if (team) {
-    const teamId = team.uuid;
+    const teamId = team.teamId;
     if (userId) {
       const membership = await ctx.db
         .query("teamMemberships")
@@ -37,7 +37,7 @@ export async function getTeamId(
         throw new Error("Forbidden: Not a member of this team");
       }
     }
-    return team.uuid;
+    return team.teamId;
   }
 
   // Back-compat: allow legacy string teamIds (e.g., "default").
@@ -69,7 +69,7 @@ export async function resolveTeamIdLoose(
     .query("teams")
     .filter((q) => q.eq(q.field("slug"), teamSlugOrId))
     .first();
-  if (team) return team.uuid;
+  if (team) return team.teamId;
 
   // Back-compat: allow legacy string teamIds (e.g., "default").
   return teamSlugOrId;
