@@ -1260,7 +1260,23 @@ function EnvironmentsPage() {
   };
 
   return (
-    <FloatingPane header={<TitleBar title="Environments" />}>
+    <FloatingPane
+      header={
+        <TitleBar
+          title="Environments"
+          actions={
+            <a
+              href="https://cal.com/team/manaflow/meeting"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center rounded-md bg-neutral-900 text-white px-2 py-1 text-xs hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
+            >
+              Meeting
+            </a>
+          }
+        />
+      }
+    >
       <div className="flex flex-col grow select-none relative h-full overflow-hidden">
         {step === "select" ? (
           <div className="p-6 max-w-3xl w-full mx-auto overflow-auto">
