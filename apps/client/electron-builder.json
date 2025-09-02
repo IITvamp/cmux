@@ -11,6 +11,12 @@
   "asar": true,
   "npmRebuild": false,
   "nodeGypRebuild": false,
+  "extraResources": [
+    {
+      "from": "assets/cmux-logos/Icon-App-Name.iconset",
+      "to": "cmux-logos/Icon-App-Name.iconset"
+    }
+  ],
   "mac": {
     "category": "public.app-category.developer-tools",
     "icon": "build/icon.icns",

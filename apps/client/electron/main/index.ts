@@ -1,5 +1,13 @@
 import { is } from "@electron-toolkit/utils";
-import { app, BrowserWindow, net, session, shell } from "electron";
+import {
+  app,
+  BrowserWindow,
+  nativeImage,
+  net,
+  session,
+  shell,
+  type BrowserWindowConstructorOptions,
+} from "electron";
 import path, { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -17,6 +25,12 @@ let rendererLoaded = false;
 let pendingProtocolUrl: string | null = null;
 let mainWindow: BrowserWindow | null = null;
 
+function resolveResourcePath(rel: string) {
+  // Prod: packaged resources directory; Dev: look under client/assets
+  if (app.isPackaged) return path.join(process.resourcesPath, rel);
+  return path.join(app.getAppPath(), "assets", rel);
+}
+
 async function handleOrQueueProtocolUrl(url: string) {
   if (mainWindow && rendererLoaded) {
     await handleProtocolUrl(url);
@@ -26,7 +40,7 @@ async function handleOrQueueProtocolUrl(url: string) {
 }
 
 function createWindow(): void {
-  mainWindow = new BrowserWindow({
+  const windowOptions: BrowserWindowConstructorOptions = {
     width: 1200,
     height: 800,
     show: false,
@@ -40,7 +54,17 @@ function createWindow(): void {
       nodeIntegration: false,
       partition: PARTITION,
     },
-  });
+  };
+
+  // Use only the icon from cmux-logos iconset.
+  const iconPng = resolveResourcePath(
+    "cmux-logos/Icon-App-Name.iconset/icon_512x512.png"
+  );
+  if (process.platform !== "darwin") {
+    windowOptions.icon = iconPng;
+  }
+
+  mainWindow = new BrowserWindow(windowOptions);
 
   mainWindow.on("ready-to-show", () => {
     mainWindow?.show();
@@ -77,6 +101,15 @@ app.whenReady().then(() => {
   // When packaged, electron-vite outputs the renderer to out/renderer
   // which is bundled inside app.asar (referenced by app.getAppPath()).
   const baseDir = path.join(app.getAppPath(), "out", "renderer");
+
+  // Set Dock icon from iconset on macOS.
+  if (process.platform === "darwin") {
+    const iconPng = resolveResourcePath(
+      "cmux-logos/Icon-App-Name.iconset/icon_512x512.png"
+    );
+    const img = nativeImage.createFromPath(iconPng);
+    if (!img.isEmpty()) app.dock?.setIcon(img);
+  }
 
   const ses = session.fromPartition(PARTITION);
   // Intercept HTTPS for our private host and serve local files; pass-through others.
