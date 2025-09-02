@@ -9,6 +9,7 @@
 
 import signal
 import sys
+
 import dotenv
 from morphcloud.api import MorphCloudClient
 
@@ -17,6 +18,7 @@ dotenv.load_dotenv()
 client = MorphCloudClient()
 
 instance = None
+
 
 def cleanup_instance(signum=None, frame=None):
     """Clean up instance on exit"""
@@ -30,12 +32,13 @@ def cleanup_instance(signum=None, frame=None):
             print(f"Error stopping instance: {e}")
     sys.exit(0)
 
+
 # Register signal handler for Ctrl+C
 signal.signal(signal.SIGINT, cleanup_instance)
 
 try:
     instance = client.instances.start(
-        snapshot_id="snapshot_hzlmd4kx",
+        snapshot_id="snapshot_hwmk73mg",
         ttl_seconds=3600,
         ttl_action="pause",
     )

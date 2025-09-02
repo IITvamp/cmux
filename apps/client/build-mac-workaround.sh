@@ -1,4 +1,7 @@
 #!/bin/bash
+export NEXT_PUBLIC_CONVEX_URL="http://localhost:9777" 
+export NEXT_PUBLIC_STACK_PROJECT_ID="8a877114-b905-47c5-8b64-3a2d90679577" 
+export NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY="pck_8761mjjmyqc84e1e8ga3rn0k1nkggmggwa3pyzzgntv70"
 
 # Build the Electron app first
 echo "Building Electron app..."
