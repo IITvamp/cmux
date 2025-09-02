@@ -1,5 +1,6 @@
+import { cachedGetUser } from "@/lib/cachedGetUser";
+import { stackClientApp } from "@/lib/stack";
 import { queryOptions } from "@tanstack/react-query";
-import { convexQueryClient } from "./convex-query-client";
 
 export type AuthJson = { accessToken: string | null } | null;
 
@@ -10,23 +11,16 @@ export interface StackUserLike {
 // Refresh every 30 minutes by default
 export const defaultAuthJsonRefreshInterval = 30 * 60 * 1000;
 
-export function authJsonQueryOptions(
-  user: StackUserLike | null | undefined,
-  refreshMs: number = defaultAuthJsonRefreshInterval
-) {
+export function authJsonQueryOptions() {
   return queryOptions<AuthJson>({
     queryKey: ["authJson"],
     queryFn: async () => {
+      const user = await cachedGetUser(stackClientApp);
       if (!user) return null;
       const authJson = await user.getAuthJson();
-      if (authJson.accessToken) {
-        convexQueryClient.convexClient.setAuth(
-          async () => authJson.accessToken
-        );
-      }
       return authJson ?? null;
     },
-    refetchInterval: refreshMs,
+    refetchInterval: defaultAuthJsonRefreshInterval,
     refetchIntervalInBackground: true,
   });
 }
