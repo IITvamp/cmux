@@ -1,19 +1,13 @@
 import { v } from "convex/values";
 import { authMutation, authQuery } from "./users/utils";
 
-function fixUrl(url: string) {
-  const urlObj = new URL(url);
-  urlObj.port = "9777";
-  return urlObj.toString();
-}
-
 // Generate an upload URL for the client to upload files
 export const generateUploadUrl = authMutation({
   args: { teamSlugOrId: v.string() },
   handler: async (ctx) => {
     // You can add authentication/authorization here
     const url = await ctx.storage.generateUploadUrl();
-    return fixUrl(url);
+    return url;
   },
 });
 
@@ -25,7 +19,7 @@ export const getUrl = authQuery({
     if (!url) {
       throw new Error(`Failed to get URL for storage ID: ${args.storageId}`);
     }
-    return fixUrl(url);
+    return url;
   },
 });
 
@@ -41,7 +35,7 @@ export const getUrls = authQuery({
         }
         return {
           storageId: id,
-          url: fixUrl(url),
+          url,
         };
       })
     );
