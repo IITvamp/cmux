@@ -464,50 +464,6 @@ export type PostApiDevServerStartResponses = {
 
 export type PostApiDevServerStartResponse = PostApiDevServerStartResponses[keyof PostApiDevServerStartResponses];
 
-export type GetApiIntegrationsGithubSetupData = {
-    body?: never;
-    path?: never;
-    query: {
-        installation_id?: number | null;
-        state: string;
-        setup_action?: string;
-    };
-    url: '/api/integrations/github/setup';
-};
-
-export type GetApiIntegrationsGithubSetupErrors = {
-    /**
-     * Bad request
-     */
-    400: unknown;
-    /**
-     * Unauthorized
-     */
-    401: unknown;
-};
-
-export type GetApiGithubSetupData = {
-    body?: never;
-    path?: never;
-    query: {
-        installation_id?: number | null;
-        state: string;
-        setup_action?: string;
-    };
-    url: '/api/github_setup';
-};
-
-export type GetApiGithubSetupErrors = {
-    /**
-     * Bad request
-     */
-    400: unknown;
-    /**
-     * Unauthorized
-     */
-    401: unknown;
-};
-
 export type GetApiIntegrationsGithubReposData = {
     body?: never;
     path?: never;
