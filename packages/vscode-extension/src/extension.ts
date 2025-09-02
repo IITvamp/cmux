@@ -26,18 +26,27 @@ let isSetupComplete = false;
 let fileWatcher: vscode.FileSystemWatcher | null = null;
 let refreshDebounceTimer: NodeJS.Timeout | null = null;
 
-function log(message: string, ...args: any[]) {
+function log(message: string, ...args: unknown[]) {
+  const safeStringify = (value: unknown): string => {
+    if (value instanceof Error) {
+      return `${value.name}: ${value.message}`;
+    }
+    if (typeof value === "object" && value !== null) {
+      try {
+        return JSON.stringify(value, null, 2);
+      } catch {
+        return String(value);
+      }
+    }
+    return String(value);
+  };
   const timestamp = new Date().toISOString();
   const formattedMessage = `[${timestamp}] ${message}`;
   if (args.length > 0) {
     outputChannel.appendLine(
       formattedMessage +
         " " +
-        args
-          .map((arg) =>
-            typeof arg === "object" ? JSON.stringify(arg, null, 2) : String(arg)
-          )
-          .join(" ")
+        args.map((arg) => safeStringify(arg)).join(" ")
     );
   } else {
     outputChannel.appendLine(formattedMessage);
@@ -92,7 +101,7 @@ async function resolveMergeBase(
 }
 
 // Track the current multi-diff editor URI
-let currentMultiDiffUri: string | null = null;
+let _currentMultiDiffUri: string | null = null;
 
 async function openMultiDiffEditor(
   baseRef?: string,
@@ -207,7 +216,7 @@ async function openMultiDiffEditor(
     }
 
     // Store the current URI
-    currentMultiDiffUri = multiDiffUriString;
+    _currentMultiDiffUri = multiDiffUriString;
 
     // Execute the command - VS Code will try to update the existing view if possible
     // The multiDiffSourceUri acts as the key - same URI should update the same editor
@@ -223,10 +232,14 @@ async function openMultiDiffEditor(
         `Showing ${files.length} file(s) changed vs ${baseBranchName}`
       );
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     log("Error opening diff:", error);
-    log("Error stack:", error.stack);
-    vscode.window.showErrorMessage(`Failed to open changes: ${error.message}`);
+    if (error instanceof Error) {
+      log("Error stack:", error.stack);
+      vscode.window.showErrorMessage(`Failed to open changes: ${error.message}`);
+    } else {
+      vscode.window.showErrorMessage("Failed to open changes");
+    }
   }
 }
 
@@ -390,8 +403,12 @@ function startSocketServer() {
             terminal.sendText(command);
           }
           callback({ success: true });
-        } catch (error: any) {
-          callback({ success: false, error: error.message });
+        } catch (error: unknown) {
+          if (error instanceof Error) {
+            callback({ success: false, error: error.message });
+          } else {
+            callback({ success: false, error: "Unknown error" });
+          }
         }
       });
 
@@ -414,7 +431,7 @@ export function activate(context: vscode.ExtensionContext) {
   log("[cmux] activate() called");
 
   // Register command to show output
-  let showOutputCommand = vscode.commands.registerCommand(
+  const showOutputCommand = vscode.commands.registerCommand(
     "cmux.showOutput",
     () => {
       outputChannel.show();
@@ -443,7 +460,7 @@ export function activate(context: vscode.ExtensionContext) {
   // Connect to worker immediately and set up handlers
   connectToWorker();
 
-  let disposable = vscode.commands.registerCommand(
+  const disposable = vscode.commands.registerCommand(
     "cmux.helloWorld",
     async () => {
       log("Hello World from cmux!");
@@ -451,7 +468,7 @@ export function activate(context: vscode.ExtensionContext) {
     }
   );
 
-  let run = vscode.commands.registerCommand("cmux.run", async () => {
+  const run = vscode.commands.registerCommand("cmux.run", async () => {
     // Force setup default terminal
     if (workerSocket && workerSocket.connected) {
       log("Manually setting up default terminal...");
