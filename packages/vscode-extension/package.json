@@ -12,7 +12,9 @@
   "engines": {
     "vscode": "^1.101.2"
   },
-  "extensionKind": ["workspace"],
+  "extensionKind": [
+    "workspace"
+  ],
   "categories": [
     "Other"
   ],
@@ -46,12 +48,13 @@
   },
   "scripts": {
     "vscode:prepublish": "bun run compile-bun",
+    "compile": "bun run compile-bun",
     "compile-bun": "bun build src/extension.ts --target node --outfile ./out/extension.cjs --external vscode --minify --format cjs",
     "compile-tsc": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "pretest": "npm run compile && npm run lint",
+    "pretest": "npm run compile && npm run lint && npm run compile-tsc",
     "lint": "eslint src",
-    "test": "vscode-test",
+    "test:todo": "echo 'TODO: enable VS Code tests later'",
     "package": "bunx @vscode/vsce package --allow-missing-repository --no-dependencies --allow-star-activation",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },

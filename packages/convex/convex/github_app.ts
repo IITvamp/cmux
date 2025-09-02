@@ -1,45 +1,9 @@
 import { v } from "convex/values";
 import { env } from "../_shared/convex-env";
+import { base64urlFromBytes } from "../_shared/encoding";
+import { hmacSha256 } from "../_shared/crypto";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authMutation } from "./users/utils";
-
-function base64urlFromBytes(buf: ArrayBuffer | Uint8Array): string {
-  const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
-  const abc =
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-  let out = "";
-  let i = 0;
-  for (; i + 2 < bytes.length; i += 3) {
-    const x = (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2];
-    out += abc[(x >> 18) & 63];
-    out += abc[(x >> 12) & 63];
-    out += abc[(x >> 6) & 63];
-    out += abc[x & 63];
-  }
-  if (i + 1 === bytes.length) {
-    const x = bytes[i] << 16;
-    out += abc[(x >> 18) & 63];
-    out += abc[(x >> 12) & 63];
-  } else if (i < bytes.length) {
-    const x = (bytes[i] << 16) | (bytes[i + 1] << 8);
-    out += abc[(x >> 18) & 63];
-    out += abc[(x >> 12) & 63];
-    out += abc[(x >> 6) & 63];
-  }
-  return out;
-}
-
-async function hmacSha256(secret: string, payload: string): Promise<ArrayBuffer> {
-  const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw",
-    enc.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  return await crypto.subtle.sign("HMAC", key, enc.encode(payload));
-}
 
 export const recordWebhookDelivery = internalMutation({
   args: {

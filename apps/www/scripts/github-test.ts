@@ -36,7 +36,7 @@ const client = new ConvexHttpClient(url);
 client.setAuth(stackAuthToken);
 
 const result = await client.query(api.github.listProviderConnections, {
-  teamSlugOrId: "lawrence",
+  teamSlugOrId: "manaflow",
 });
 
 console.log(result);
