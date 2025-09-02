@@ -6,7 +6,12 @@ export CONVEX_PORT=9777
 
 if [ -f .env ]; then
     echo "Loading .env file"
-    export $(grep -v '^#' .env | xargs)
+    # Support quoted/multiline values (e.g., PEM keys) safely
+    # by sourcing the file with export-all mode.
+    set -a
+    # shellcheck disable=SC1091
+    . .env
+    set +a
     echo "Loaded .env file"
 fi
 
@@ -97,6 +102,7 @@ cleanup() {
     [ -n "$CONVEX_DEV_PID" ] && kill $CONVEX_DEV_PID 2>/dev/null
     [ -n "$DOCKER_COMPOSE_PID" ] && kill $DOCKER_COMPOSE_PID 2>/dev/null
     [ -n "$SERVER_GLOBAL_PID" ] && kill $SERVER_GLOBAL_PID 2>/dev/null
+    [ -n "$OPENAPI_CLIENT_PID" ] && kill $OPENAPI_CLIENT_PID 2>/dev/null
     # Give processes time to cleanup
     sleep 1
     # Force kill any remaining processes
@@ -106,6 +112,7 @@ cleanup() {
     [ -n "$CONVEX_DEV_PID" ] && kill -9 $CONVEX_DEV_PID 2>/dev/null
     [ -n "$DOCKER_COMPOSE_PID" ] && kill -9 $DOCKER_COMPOSE_PID 2>/dev/null
     [ -n "$SERVER_GLOBAL_PID" ] && kill -9 $SERVER_GLOBAL_PID 2>/dev/null
+    [ -n "$OPENAPI_CLIENT_PID" ] && kill -9 $OPENAPI_CLIENT_PID 2>/dev/null
     exit
 }
 
@@ -185,7 +192,7 @@ fi
 
 # We need to start convex dev even if we're skipping convex
 # Start convex dev (works the same in both environments)
-(cd "$APP_DIR/packages/convex" && exec bash -c 'trap "kill -9 0" EXIT; source ~/.nvm/nvm.sh 2>/dev/null || true; bunx convex dev --env-file .env.convex 2>&1 | tee "$LOG_DIR/convex-dev.log" | prefix_output "CONVEX-DEV" "$BLUE"') &
+(cd "$APP_DIR/packages/convex" && exec bash -c 'trap "kill -9 0" EXIT; source ~/.nvm/nvm.sh 2>/dev/null || true; bunx convex dev 2>&1 | tee "$LOG_DIR/convex-dev.log" | prefix_output "CONVEX-DEV" "$BLUE"') &
 CONVEX_DEV_PID=$!
 check_process $CONVEX_DEV_PID "Convex Dev"
 CONVEX_PID=$CONVEX_DEV_PID
@@ -198,7 +205,7 @@ check_process $SERVER_PID "Backend Server"
 
 # Start the frontend
 echo -e "${GREEN}Starting frontend on port 5173...${NC}"
-(cd "$APP_DIR/apps/client" && exec bash -c 'trap "kill -9 0" EXIT; VITE_CONVEX_URL=http://localhost:$CONVEX_PORT bun run dev --host 0.0.0.0 2>&1 | tee "$LOG_DIR/client.log" | prefix_output "CLIENT" "$CYAN"') &
+(cd "$APP_DIR/apps/client" && exec bash -c 'trap "kill -9 0" EXIT; bun run dev --host 0.0.0.0 2>&1 | tee "$LOG_DIR/client.log" | prefix_output "CLIENT" "$CYAN"') &
 CLIENT_PID=$!
 check_process $CLIENT_PID "Frontend Client"
 
@@ -207,6 +214,12 @@ echo -e "${GREEN}Starting www app on port 9779...${NC}"
 (cd "$APP_DIR/apps/www" && exec bash -c 'trap "kill -9 0" EXIT; bun run dev 2>&1 | tee "$LOG_DIR/www.log" | prefix_output "WWW" "$GREEN"') &
 WWW_PID=$!
 check_process $WWW_PID "WWW App"
+
+# Start the openapi client generator
+echo -e "${GREEN}Starting openapi client generator...${NC}"
+(cd "$APP_DIR/apps/www" && exec bash -c 'trap "kill -9 0" EXIT; bun run generate-openapi-client:watch 2>&1 | tee "$LOG_DIR/openapi-client.log" | prefix_output "OPENAPI-CLIENT" "$MAGENTA"') &
+OPENAPI_CLIENT_PID=$!
+check_process $OPENAPI_CLIENT_PID "OpenAPI Client Generator"
 
 echo -e "${GREEN}Terminal app is running!${NC}"
 echo -e "${BLUE}Frontend: http://localhost:5173${NC}"

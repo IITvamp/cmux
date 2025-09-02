@@ -9,12 +9,14 @@
     "package.json"
   ],
   "asar": true,
+  "npmRebuild": false,
+  "nodeGypRebuild": false,
   "mac": {
     "category": "public.app-category.developer-tools",
     "icon": "build/icon.icns",
     "hardenedRuntime": false,
     "gatekeeperAssess": false,
-    "target": "dmg"
+    "target": ["dmg", "zip"]
   },
   "dmg": {
     "contents": [

@@ -1,9 +1,9 @@
-import { resolve } from 'path'
-import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
-import react from '@vitejs/plugin-react'
-import { tanstackRouter } from "@tanstack/router-plugin/vite"
-import tailwindcss from "@tailwindcss/vite"
-import tsconfigPaths from "vite-tsconfig-paths"
+import tailwindcss from "@tailwindcss/vite";
+import { tanstackRouter } from "@tanstack/router-plugin/vite";
+import react from "@vitejs/plugin-react";
+import { defineConfig, externalizeDepsPlugin } from "electron-vite";
+import { resolve } from "path";
+import tsconfigPaths from "vite-tsconfig-paths";
 
 export default defineConfig({
   main: {
@@ -11,39 +11,41 @@ export default defineConfig({
     build: {
       rollupOptions: {
         input: {
-          index: resolve('electron/main/index.ts')
-        }
-      }
-    }
+          index: resolve("electron/main/index.ts"),
+        },
+      },
+    },
+    envPrefix: "NEXT_PUBLIC_",
   },
   preload: {
     plugins: [externalizeDepsPlugin()],
     build: {
       rollupOptions: {
         input: {
-          index: resolve('electron/preload/index.ts')
+          index: resolve("electron/preload/index.ts"),
         },
         output: {
-          format: 'cjs',
-          entryFileNames: '[name].cjs'
-        }
-      }
-    }
+          format: "cjs",
+          entryFileNames: "[name].cjs",
+        },
+      },
+    },
+    envPrefix: "NEXT_PUBLIC_",
   },
   renderer: {
-    root: '.',
-    base: './',
+    root: ".",
+    base: "./",
     build: {
       rollupOptions: {
         input: {
-          index: resolve('index.html')
+          index: resolve("index.html"),
         },
-      }
+      },
     },
     resolve: {
       alias: {
-        '@': resolve('src')
-      }
+        "@": resolve("src"),
+      },
     },
     plugins: [
       tsconfigPaths(),
@@ -52,7 +54,8 @@ export default defineConfig({
         autoCodeSplitting: true,
       }),
       react(),
-      tailwindcss()
-    ]
-  }
-})
+      tailwindcss(),
+    ],
+    envPrefix: "NEXT_PUBLIC_",
+  },
+});

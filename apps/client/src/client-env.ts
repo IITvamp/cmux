@@ -7,12 +7,13 @@ export const env = createEnv({
    * The prefix that client-side variables must have. This is enforced both at
    * a type-level and at runtime.
    */
-  clientPrefix: "VITE_",
+  clientPrefix: "NEXT_PUBLIC_",
   client: {
-    VITE_CONVEX_URL: z.string().min(1),
-    VITE_STACK_PROJECT_ID: z.string().min(1),
-    VITE_STACK_PUBLISHABLE_CLIENT_KEY: z.string().min(1),
-    VITE_WWW_ORIGIN: z.string().default("http://localhost:9779"),
+    NEXT_PUBLIC_CONVEX_URL: z.string().min(1),
+    NEXT_PUBLIC_STACK_PROJECT_ID: z.string().min(1),
+    NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: z.string().min(1),
+    NEXT_PUBLIC_GITHUB_APP_SLUG: z.string().optional(),
+    NEXT_PUBLIC_WWW_ORIGIN: z.string().default("http://localhost:9779"),
   },
 
   /**
