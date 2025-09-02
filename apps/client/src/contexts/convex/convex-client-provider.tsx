@@ -27,7 +27,7 @@ function OnReadyComponent({ onReady }: { onReady: () => void }) {
 }
 
 function useAuthFromStack() {
-  const user = useUser({ or: "redirect" });
+  const user = useUser();
   const authJsonQuery = useSuspenseQuery({
     ...authJsonQueryOptions(),
   });
@@ -63,7 +63,7 @@ function AuthenticatedOrSignIn({
   children: ReactNode;
   onReady: () => void;
 }) {
-  const user = useUser({ or: "redirect" });
+  const user = useUser({ or: "return-null" });
   const showSignIn = !user;
   return (
     <>
