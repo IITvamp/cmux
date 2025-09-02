@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { performance } from "node:perf_hooks";
 
 type Result = {
@@ -120,21 +120,34 @@ function parseVitestPerTests(output: string, pkgName: string): PerTestTiming[] {
   const perTests: PerTestTiming[] = [];
 
   // Shape 1: Jest-like JSON with testResults -> assertionResults
-  if (isRecord(obj) && Array.isArray((obj as Record<string, unknown>)["testResults"])) {
+  if (
+    isRecord(obj) &&
+    Array.isArray((obj as Record<string, unknown>)["testResults"])
+  ) {
     const arr = (obj as Record<string, unknown>)["testResults"] as unknown[];
     for (const fileRes of arr) {
       if (!isRecord(fileRes)) continue;
-      const filePath = asString(fileRes["name"]) || asString(fileRes["file"]) || "";
+      const filePath =
+        asString(fileRes["name"]) || asString(fileRes["file"]) || "";
       const assertions = fileRes["assertionResults"];
       if (Array.isArray(assertions)) {
         for (const a of assertions) {
           if (!isRecord(a)) continue;
-          const title = asString(a["title"]) || asString(a["name"]) || asString(a["fullName"]) || "";
+          const title =
+            asString(a["title"]) ||
+            asString(a["name"]) ||
+            asString(a["fullName"]) ||
+            "";
           const fullName = asString(a["fullName"]) || title;
           const duration = asNumber(a["duration"]) ?? 0;
-          const statusRaw = asString(a["status"]) || asString(a["state"]) || "unknown";
+          const statusRaw =
+            asString(a["status"]) || asString(a["state"]) || "unknown";
           const status: TestStatus =
-            statusRaw === "passed" || statusRaw === "failed" || statusRaw === "skipped" || statusRaw === "todo" || statusRaw === "only"
+            statusRaw === "passed" ||
+            statusRaw === "failed" ||
+            statusRaw === "skipped" ||
+            statusRaw === "todo" ||
+            statusRaw === "only"
               ? statusRaw
               : "unknown";
           if (title && duration >= 0) {
@@ -153,7 +166,11 @@ function parseVitestPerTests(output: string, pkgName: string): PerTestTiming[] {
   }
 
   // Shape 2: Vitest-style flattened tests array with name/title + duration
-  if (perTests.length === 0 && isRecord(obj) && Array.isArray((obj as Record<string, unknown>)["tests"])) {
+  if (
+    perTests.length === 0 &&
+    isRecord(obj) &&
+    Array.isArray((obj as Record<string, unknown>)["tests"])
+  ) {
     const tests = (obj as Record<string, unknown>)["tests"] as unknown[];
     for (const t of tests) {
       if (!isRecord(t)) continue;
@@ -161,13 +178,25 @@ function parseVitestPerTests(output: string, pkgName: string): PerTestTiming[] {
       const fullName = asString(t["fullName"]) || title;
       const duration = asNumber(t["duration"]) ?? 0;
       const filePath = asString(t["file"]) || asString(t["filepath"]) || "";
-      const statusRaw = asString(t["status"]) || asString(t["state"]) || "unknown";
+      const statusRaw =
+        asString(t["status"]) || asString(t["state"]) || "unknown";
       const status: TestStatus =
-        statusRaw === "passed" || statusRaw === "failed" || statusRaw === "skipped" || statusRaw === "todo" || statusRaw === "only"
+        statusRaw === "passed" ||
+        statusRaw === "failed" ||
+        statusRaw === "skipped" ||
+        statusRaw === "todo" ||
+        statusRaw === "only"
           ? statusRaw
           : "unknown";
       if (title && duration >= 0) {
-        perTests.push({ packageName: pkgName, filePath, title, fullName, durationMs: duration, status });
+        perTests.push({
+          packageName: pkgName,
+          filePath,
+          title,
+          fullName,
+          durationMs: duration,
+          status,
+        });
       }
     }
   }
@@ -177,7 +206,9 @@ function parseVitestPerTests(output: string, pkgName: string): PerTestTiming[] {
 
 async function runTests() {
   const showTimings = process.argv.includes("--timings");
-  console.log(`🧪 Running tests across workspaces in parallel${showTimings ? " (with per-test timings)" : ""}...\n`);
+  console.log(
+    `🧪 Running tests across workspaces in parallel${showTimings ? " (with per-test timings)" : ""}...\n`
+  );
   const pkgs = findPackagesWithTests();
   if (pkgs.length === 0) {
     console.log("⚠️  No packages with test scripts found.");
@@ -186,59 +217,75 @@ async function runTests() {
 
   const allPerTests: PerTestTiming[] = [];
 
-  const tasks = pkgs.map(({ name, dir, isVitest, usesDotenv, dotenvEnvPath, testScript }) => {
-    return new Promise<Result>((resolve) => {
-      let combined = "";
-      const start = performance.now();
-      let cmd = "pnpm";
-      let args: string[];
-      const useJson = showTimings && isVitest;
-      if (useJson) {
-        // Prefer pnpm exec to avoid the extra `--` being forwarded to vitest
-        if (usesDotenv) {
-          // Replicate `dotenv -e <path> -- vitest run` with JSON reporter
-          args = [
-            "exec",
-            "dotenv",
-            ...(dotenvEnvPath ? ["-e", dotenvEnvPath] : []),
-            "--",
-            "vitest",
-            "run",
-            "--reporter=json",
-            "--silent",
-          ];
-        } else {
-          args = ["exec", "vitest", "run", "--reporter=json", "--silent"];
-        }
-      } else {
-        // Normal run (no JSON reporter), preserves raw console logs
-        args = ["run", "test"];
-      }
-      const child = spawn(cmd, args, {
-        cwd: dir,
-        shell: true,
-        env: process.env,
-      });
-      child.stdout?.on("data", (d) => (combined += d.toString()));
-      child.stderr?.on("data", (d) => (combined += d.toString()));
-      child.on("close", (code) => {
-        const durationMs = performance.now() - start;
+  const tasks = pkgs.map(
+    ({ name, dir, isVitest, usesDotenv, dotenvEnvPath }) => {
+      return new Promise<Result>((resolve) => {
+        let combined = "";
+        const start = performance.now();
+        const cmd = "pnpm";
+        let args: string[];
+        const useJson = showTimings && isVitest;
         if (useJson) {
-          try {
-            const per = parseVitestPerTests(combined, name);
-            allPerTests.push(...per);
-          } catch {
-            // ignore parse errors; fall back to package-level timing only
+          // Prefer pnpm exec to avoid the extra `--` being forwarded to vitest
+          if (usesDotenv) {
+            // Replicate `dotenv -e <path> -- vitest run` with JSON reporter
+            args = [
+              "exec",
+              "dotenv",
+              ...(dotenvEnvPath ? ["-e", dotenvEnvPath] : []),
+              "--",
+              "vitest",
+              "run",
+              "--reporter=json",
+              "--silent",
+            ];
+          } else {
+            args = ["exec", "vitest", "run", "--reporter=json", "--silent"];
           }
+        } else {
+          // Normal run (no JSON reporter), preserves raw console logs
+          args = ["run", "test"];
         }
-        resolve({ name, dir, success: code === 0, output: combined, durationMs, usedJsonReporter: useJson });
+        const child = spawn(cmd, args, {
+          cwd: dir,
+          shell: true,
+          env: process.env,
+        });
+        child.stdout?.on("data", (d) => (combined += d.toString()));
+        child.stderr?.on("data", (d) => (combined += d.toString()));
+        child.on("close", (code) => {
+          const durationMs = performance.now() - start;
+          if (useJson) {
+            try {
+              const per = parseVitestPerTests(combined, name);
+              allPerTests.push(...per);
+            } catch {
+              // ignore parse errors; fall back to package-level timing only
+            }
+          }
+          resolve({
+            name,
+            dir,
+            success: code === 0,
+            output: combined,
+            durationMs,
+            usedJsonReporter: useJson,
+          });
+        });
+        child.on("error", (err) => {
+          const durationMs = performance.now() - start;
+          resolve({
+            name,
+            dir,
+            success: false,
+            output: String(err),
+            durationMs,
+            usedJsonReporter: useJson,
+          });
+        });
       });
-      child.on("error", (err) => {
-        const durationMs = performance.now() - start;
-        resolve({ name, dir, success: false, output: String(err), durationMs, usedJsonReporter: useJson });
-      });
-    });
-  });
+    }
+  );
 
   const results = await Promise.all(tasks);
 
@@ -259,7 +306,11 @@ async function runTests() {
         // If we ran vitest with --silent for JSON, re-run to print raw logs.
         try {
           const retry = await new Promise<string>((resolve) => {
-            const child = spawn("pnpm", ["run", "test"], { cwd: r.dir, shell: true, env: process.env });
+            const child = spawn("pnpm", ["run", "test"], {
+              cwd: r.dir,
+              shell: true,
+              env: process.env,
+            });
             let buf = "";
             child.stdout?.on("data", (d) => (buf += d.toString()));
             child.stderr?.on("data", (d) => (buf += d.toString()));
@@ -268,17 +319,32 @@ async function runTests() {
           });
           const lines = retry.trim().split("\n");
           const last = lines.slice(-200).join("\n");
-          console.log(`   Output (tail):\n${last.split("\n").map((l) => `     ${l}`).join("\n")}`);
+          console.log(
+            `   Output (tail):\n${last
+              .split("\n")
+              .map((l) => `     ${l}`)
+              .join("\n")}`
+          );
         } catch {
           const lines = r.output.trim().split("\n");
           const last = lines.slice(-200).join("\n");
-          console.log(`   Output (tail):\n${last.split("\n").map((l) => `     ${l}`).join("\n")}`);
+          console.log(
+            `   Output (tail):\n${last
+              .split("\n")
+              .map((l) => `     ${l}`)
+              .join("\n")}`
+          );
         }
       } else {
         // Already have raw logs in r.output
         const lines = r.output.trim().split("\n");
         const last = lines.slice(-200).join("\n");
-        console.log(`   Output (tail):\n${last.split("\n").map((l) => `     ${l}`).join("\n")}`);
+        console.log(
+          `   Output (tail):\n${last
+            .split("\n")
+            .map((l) => `     ${l}`)
+            .join("\n")}`
+        );
       }
     }
   }
@@ -291,7 +357,9 @@ async function runTests() {
       const secs = (t.durationMs / 1000).toFixed(3);
       // Keep line concise: package, file (basename), test title, time, status
       const fileName = t.filePath ? t.filePath.split("/").slice(-1)[0] : "";
-      console.log(` • ${t.packageName}${fileName ? `/${fileName}` : ""} :: ${t.title} — ${secs}s ${t.status}`);
+      console.log(
+        ` • ${t.packageName}${fileName ? `/${fileName}` : ""} :: ${t.title} — ${secs}s ${t.status}`
+      );
     }
   }
 
