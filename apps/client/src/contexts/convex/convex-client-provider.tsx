@@ -29,7 +29,7 @@ function OnReadyComponent({ onReady }: { onReady: () => void }) {
 function useAuthFromStack() {
   const user = useUser();
   const authJsonQuery = useSuspenseQuery({
-    ...authJsonQueryOptions(user),
+    ...authJsonQueryOptions(),
   });
   const isLoading = false;
   const isAuthenticated = useMemo(() => !!user, [user]);
@@ -37,8 +37,8 @@ function useAuthFromStack() {
   const fetchAccessToken = useCallback(
     async (_opts: { forceRefreshToken: boolean }) => {
       const cached = authJsonQuery.data;
-      if (cached && typeof cached === "object" && "accessToken" in cached) {
-        return cached?.accessToken ?? null;
+      if (cached?.accessToken) {
+        return cached.accessToken;
       }
       return null;
     },
@@ -140,7 +140,6 @@ export function ConvexClientProvider({ children }: { children: ReactNode }) {
           </motion.div>
         ) : null}
       </AnimatePresence>
-
       <Suspense fallback={null}>
         <ConvexProviderWithAuth
           client={convexQueryClient.convexClient}

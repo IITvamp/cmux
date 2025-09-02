@@ -15,9 +15,9 @@ permissions:
 env:
   NODE_VERSION: '24'
   # Frontend build-time envs (exposed in bundle). Store values as GitHub Secrets.
-  VITE_CONVEX_URL: ${{ secrets.VITE_CONVEX_URL }}
-  VITE_STACK_PROJECT_ID: ${{ secrets.VITE_STACK_PROJECT_ID }}
-  VITE_STACK_PUBLISHABLE_CLIENT_KEY: ${{ secrets.VITE_STACK_PUBLISHABLE_CLIENT_KEY }}
+  NEXT_PUBLIC_CONVEX_URL: ${{ secrets.NEXT_PUBLIC_CONVEX_URL }}
+  NEXT_PUBLIC_STACK_PROJECT_ID: ${{ secrets.NEXT_PUBLIC_STACK_PROJECT_ID }}
+  NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: ${{ secrets.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY }}
 
 jobs:
   mac-x64:
@@ -44,7 +44,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         working-directory: apps/client
-        run: pnpm exec electron-vite build -c electron.vite.config.js && pnpm exec electron-builder --config electron-builder.json --mac --x64 --publish always --config.mac.identity=null --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
+        run: pnpm exec electron-vite build -c electron.vite.config.js && pnpm exec electron-builder --config electron-builder.json --mac dmg --x64 --publish always --config.mac.identity=null --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
       # ------------------------------------------------------------------
       # To enable signed + notarized mac builds, replace the unsigned step
       # above with the following and provide the required repo secrets.
@@ -88,7 +88,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         working-directory: apps/client
-        run: pnpm exec electron-vite build -c electron.vite.config.js && pnpm exec electron-builder --config electron-builder.json --mac --arm64 --publish always --config.mac.identity=null --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
+        run: pnpm exec electron-vite build -c electron.vite.config.js && pnpm exec electron-builder --config electron-builder.json --mac dmg --arm64 --publish always --config.mac.identity=null --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
       # ------------------------------------------------------------------
       # To enable signed + notarized mac builds for arm64, replace the unsigned
       # step above with the following and provide the required repo secrets.
