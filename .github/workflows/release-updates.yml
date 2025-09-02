@@ -45,7 +45,8 @@ jobs:
         working-directory: apps/client
         run: |
           pnpm exec electron-vite build -c electron.vite.config.js
-          pnpm exec electron-builder --config electron-builder.json --mac --x64 --publish always -c.mac.identity=null
+          pnpm exec electron-builder --config electron-builder.json --mac --x64 --publish always -c.mac.identity=null \
+            -c.publish.provider=github -c.publish.owner="${{ github.repository_owner }}" -c.publish.repo="${{ github.event.repository.name }}"
       # ------------------------------------------------------------------
       # To enable signed + notarized mac builds, replace the unsigned step
       # above with the following and provide the required repo secrets.
@@ -90,7 +91,8 @@ jobs:
         working-directory: apps/client
         run: |
           pnpm exec electron-vite build -c electron.vite.config.js
-          pnpm exec electron-builder --config electron-builder.json --mac --arm64 --publish always -c.mac.identity=null
+          pnpm exec electron-builder --config electron-builder.json --mac --arm64 --publish always -c.mac.identity=null \
+            -c.publish.provider=github -c.publish.owner="${{ github.repository_owner }}" -c.publish.repo="${{ github.event.repository.name }}"
       # ------------------------------------------------------------------
       # To enable signed + notarized mac builds for arm64, replace the unsigned
       # step above with the following and provide the required repo secrets.
@@ -140,7 +142,8 @@ jobs:
         working-directory: apps/client
         run: |
           pnpm exec electron-vite build -c electron.vite.config.js
-          pnpm exec electron-builder --config electron-builder.json --win --x64 --publish always
+          pnpm exec electron-builder --config electron-builder.json --win --x64 --publish always \
+            -c.publish.provider=github -c.publish.owner="${{ github.repository_owner }}" -c.publish.repo="${{ github.event.repository.name }}"
 
   linux-x64:
     name: Linux x64
@@ -163,7 +166,8 @@ jobs:
         working-directory: apps/client
         run: |
           pnpm exec electron-vite build -c electron.vite.config.js
-          pnpm exec electron-builder --config electron-builder.json --linux AppImage --x64 --publish always
+          pnpm exec electron-builder --config electron-builder.json --linux AppImage --x64 --publish always \
+            -c.publish.provider=github -c.publish.owner="${{ github.repository_owner }}" -c.publish.repo="${{ github.event.repository.name }}"
 
   linux-arm64:
     name: Linux arm64
@@ -186,4 +190,5 @@ jobs:
         working-directory: apps/client
         run: |
           pnpm exec electron-vite build -c electron.vite.config.js
-          pnpm exec electron-builder --config electron-builder.json --linux AppImage --arm64 --publish always
+          pnpm exec electron-builder --config electron-builder.json --linux AppImage --arm64 --publish always \
+            -c.publish.provider=github -c.publish.owner="${{ github.repository_owner }}" -c.publish.repo="${{ github.event.repository.name }}"
