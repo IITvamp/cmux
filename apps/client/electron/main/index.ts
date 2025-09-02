@@ -58,7 +58,7 @@ function createWindow(): void {
 
   // Use only the icon from cmux-logos iconset.
   const iconPng = resolveResourcePath(
-    "cmux-logos/Icon-App-Name.iconset/icon_512x512.png"
+    "cmux-logos/cmux.iconset/icon_512x512.png"
   );
   if (process.platform !== "darwin") {
     windowOptions.icon = iconPng;
@@ -105,7 +105,7 @@ app.whenReady().then(() => {
   // Set Dock icon from iconset on macOS.
   if (process.platform === "darwin") {
     const iconPng = resolveResourcePath(
-      "cmux-logos/Icon-App-Name.iconset/icon_512x512.png"
+      "cmux-logos/cmux.iconset/icon_512x512.png"
     );
     const img = nativeImage.createFromPath(iconPng);
     if (!img.isEmpty()) app.dock?.setIcon(img);

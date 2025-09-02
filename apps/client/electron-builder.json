@@ -13,8 +13,8 @@
   "nodeGypRebuild": false,
   "extraResources": [
     {
-      "from": "assets/cmux-logos/Icon-App-Name.iconset",
-      "to": "cmux-logos/Icon-App-Name.iconset"
+      "from": "assets/cmux-logos/cmux.iconset",
+      "to": "cmux-logos/cmux.iconset"
     }
   ],
   "mac": {

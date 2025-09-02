@@ -62,12 +62,12 @@ echo "Updating app metadata..."
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 1.0.0" "$APP_DIR/Contents/Info.plist"
 
 # Ensure our app icon is bundled and used by macOS
-ICONSET_SRC="$(pwd)/assets/cmux-logos/Icon-App-Name.iconset"
+ICONSET_SRC="$(pwd)/assets/cmux-logos/cmux.iconset"
 BUILD_ICON_ICNS="$(pwd)/build/icon.icns"
 if [ -d "$ICONSET_SRC" ]; then
   echo "Copying iconset into Resources..."
   mkdir -p "$RESOURCES_DIR/cmux-logos"
-  rsync -a "$ICONSET_SRC/" "$RESOURCES_DIR/cmux-logos/Icon-App-Name.iconset/"
+  rsync -a "$ICONSET_SRC/" "$RESOURCES_DIR/cmux-logos/cmux.iconset/"
   if [ ! -f "$BUILD_ICON_ICNS" ] && command -v iconutil >/dev/null 2>&1; then
     echo "Generating build/icon.icns from iconset..."
     iconutil -c icns "$ICONSET_SRC" -o "$BUILD_ICON_ICNS"
