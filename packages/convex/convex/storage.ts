@@ -1,13 +1,25 @@
 import { v } from "convex/values";
 import { authMutation, authQuery } from "./users/utils";
 
+const IS_LIVE_CONVEX_DEPLOYMENT = true;
+
+function fixUrl(url: string) {
+  if (IS_LIVE_CONVEX_DEPLOYMENT) {
+    return url;
+  }
+  // only local convex deployments live on port 9777
+  const urlObj = new URL(url);
+  urlObj.port = "9777";
+  return urlObj.toString();
+}
+
 // Generate an upload URL for the client to upload files
 export const generateUploadUrl = authMutation({
   args: { teamSlugOrId: v.string() },
   handler: async (ctx) => {
     // You can add authentication/authorization here
     const url = await ctx.storage.generateUploadUrl();
-    return url;
+    return fixUrl(url);
   },
 });
 
@@ -19,7 +31,7 @@ export const getUrl = authQuery({
     if (!url) {
       throw new Error(`Failed to get URL for storage ID: ${args.storageId}`);
     }
-    return url;
+    return fixUrl(url);
   },
 });
 
@@ -35,7 +47,7 @@ export const getUrls = authQuery({
         }
         return {
           storageId: id,
-          url,
+          url: fixUrl(url),
         };
       })
     );
