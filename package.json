@@ -10,6 +10,7 @@
     "clean": "bash scripts/clean.sh",
     "clean:node_modules": "bash scripts/clean.sh",
     "lint": "bun run scripts/lint.ts",
+    "test": "bun run scripts/test.ts",
     "typecheck": "run-p typecheck:*",
     "typecheck:client": "cd apps/client && bun run typecheck",
     "typecheck:scripts": "cd scripts && bun run typecheck",

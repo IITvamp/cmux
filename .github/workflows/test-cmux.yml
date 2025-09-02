@@ -38,3 +38,6 @@ jobs:
       - name: Run env leak test
         run: bun run test
         working-directory: packages/cmux
+
+      - name: Run Convex tests (Vitest)
+        run: pnpm -F @cmux/convex test
