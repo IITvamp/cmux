@@ -28,11 +28,11 @@ export const get = authQuery({
     const teamId = await resolveTeamIdLoose(ctx, teamSlugOrId);
     const team = await ctx.db
       .query("teams")
-      .withIndex("by_uuid", (q) => q.eq("uuid", teamId))
+      .withIndex("by_teamId", (q) => q.eq("teamId", teamId))
       .first();
     if (!team) return null;
     return {
-      uuid: team.uuid,
+      uuid: team.teamId,
       slug: team.slug ?? null,
       displayName: team.displayName ?? null,
       name: team.name ?? null,
@@ -47,14 +47,14 @@ export const listTeamMemberships = authQuery({
       .query("teamMemberships")
       .withIndex("by_user", (q) => q.eq("userId", ctx.identity.subject))
       .collect();
-    const teams = await Promise.all(
-      memberships.map((m) =>
-        ctx.db
-          .query("teams")
-          .withIndex("by_uuid", (q) => q.eq("uuid", m.teamId))
-          .first()
-      )
-    );
+  const teams = await Promise.all(
+    memberships.map((m) =>
+      ctx.db
+        .query("teams")
+        .withIndex("by_teamId", (q) => q.eq("teamId", m.teamId))
+        .first()
+    )
+  );
     return memberships.map((m, i) => ({
       ...m,
       team: teams[i]!,
@@ -74,20 +74,20 @@ export const setSlug = authMutation({
       .query("teams")
       .withIndex("by_slug", (q) => q.eq("slug", normalized))
       .first();
-    if (existingWithSlug && existingWithSlug.uuid !== teamId) {
+    if (existingWithSlug && existingWithSlug.teamId !== teamId) {
       throw new Error("Slug is already taken");
     }
 
     const now = Date.now();
     const team = await ctx.db
       .query("teams")
-      .withIndex("by_uuid", (q) => q.eq("uuid", teamId))
+      .withIndex("by_teamId", (q) => q.eq("teamId", teamId))
       .first();
     if (team) {
       await ctx.db.patch(team._id, { slug: normalized, updatedAt: now });
     } else {
       await ctx.db.insert("teams", {
-        uuid: teamId,
+        teamId,
         slug: normalized,
         createdAt: now,
         updatedAt: now,
@@ -109,13 +109,13 @@ export const setName = authMutation({
     const now = Date.now();
     const team = await ctx.db
       .query("teams")
-      .withIndex("by_uuid", (q) => q.eq("uuid", teamId))
+      .withIndex("by_teamId", (q) => q.eq("teamId", teamId))
       .first();
     if (team) {
       await ctx.db.patch(team._id, { name: trimmed, updatedAt: now });
     } else {
       await ctx.db.insert("teams", {
-        uuid: teamId,
+        teamId,
         name: trimmed,
         createdAt: now,
         updatedAt: now,
@@ -125,15 +125,15 @@ export const setName = authMutation({
   },
 });
 
-// Internal helper to fetch a team by UUID (used by HTTP handlers for redirects)
-export const getByUuidInternal = internalQuery({
-  args: { uuid: v.string() },
-  handler: async (ctx, { uuid }) => {
+// Internal helper to fetch a team by ID (used by HTTP handlers for redirects)
+export const getByTeamIdInternal = internalQuery({
+  args: { teamId: v.string() },
+  handler: async (ctx, { teamId }) => {
     const team = await ctx.db
       .query("teams")
-      .withIndex("by_uuid", (q) => q.eq("uuid", uuid))
+      .withIndex("by_teamId", (q) => q.eq("teamId", teamId))
       .first();
     if (!team) return null;
-    return { uuid: team.uuid, slug: team.slug ?? null } as const;
+    return { uuid: team.teamId, slug: team.slug ?? null } as const;
   },
 });

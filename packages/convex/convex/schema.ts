@@ -3,8 +3,7 @@ import { v } from "convex/values";
 
 const convexSchema = defineSchema({
   teams: defineTable({
-    // Canonical UUID for the team (Stack team id)
-    uuid: v.string(),
+    teamId: v.string(),
     // Human-friendly slug used in URLs (internal)
     slug: v.optional(v.string()),
     // Display name from Stack (display_name)
@@ -24,8 +23,8 @@ const convexSchema = defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_uuid", ["uuid"]) // For fast resolution by UUID
-    .index("by_slug", ["slug"]), // For resolving slug -> uuid
+    .index("by_teamId", ["teamId"]) // For fast resolution by teamId
+    .index("by_slug", ["slug"]), // For resolving slug -> teamId
   // Stack team membership records
   teamMemberships: defineTable({
     teamId: v.string(), // canonical team UUID
@@ -51,8 +50,7 @@ const convexSchema = defineSchema({
     .index("by_team_user_perm", ["teamId", "userId", "permissionId"]),
   // Stack user directory
   users: defineTable({
-    // Canonical UUID for the user (Stack user id)
-    uuid: v.string(),
+    userId: v.string(),
     // Basic identity
     primaryEmail: v.optional(v.string()), // nulls omitted
     primaryEmailVerified: v.optional(v.boolean()),
@@ -90,7 +88,7 @@ const convexSchema = defineSchema({
     createdAt: v.number(),
     updatedAt: v.number(),
   })
-    .index("by_uuid", ["uuid"]) // For fast lookup by Stack user id
+    .index("by_userId", ["userId"]) // For fast lookup by Stack user id
     .index("by_email", ["primaryEmail"])
     .index("by_selected_team", ["selectedTeamId"]),
   tasks: defineTable({
@@ -251,7 +249,9 @@ const convexSchema = defineSchema({
     // Provider metadata (GitHub App)
     providerRepoId: v.optional(v.number()),
     ownerLogin: v.optional(v.string()),
-    ownerType: v.optional(v.union(v.literal("User"), v.literal("Organization"))),
+    ownerType: v.optional(
+      v.union(v.literal("User"), v.literal("Organization"))
+    ),
     visibility: v.optional(v.union(v.literal("public"), v.literal("private"))),
     defaultBranch: v.optional(v.string()),
     connectionId: v.optional(v.id("providerConnections")),
@@ -376,7 +376,9 @@ const convexSchema = defineSchema({
     installationId: v.number(),
     accountLogin: v.optional(v.string()), // org or user login
     accountId: v.optional(v.number()),
-    accountType: v.optional(v.union(v.literal("User"), v.literal("Organization"))),
+    accountType: v.optional(
+      v.union(v.literal("User"), v.literal("Organization"))
+    ),
     isActive: v.optional(v.boolean()),
     createdAt: v.number(),
     updatedAt: v.number(),
@@ -401,7 +403,11 @@ const convexSchema = defineSchema({
     userId: v.string(),
     iat: v.number(),
     exp: v.number(),
-    status: v.union(v.literal("pending"), v.literal("used"), v.literal("expired")),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("used"),
+      v.literal("expired")
+    ),
     createdAt: v.number(),
   }).index("by_nonce", ["nonce"]),
 });

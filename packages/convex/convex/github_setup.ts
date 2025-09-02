@@ -75,8 +75,8 @@ export const githubSetup = httpAction(async (ctx, req) => {
       { installationId }
     );
     if (existing && existing.teamId) {
-      const team = await ctx.runQuery(internal.teams.getByUuidInternal, {
-        uuid: existing.teamId,
+      const team = await ctx.runQuery(internal.teams.getByTeamIdInternal, {
+        teamId: existing.teamId,
       });
       const teamPath = team?.slug ?? existing.teamId;
       const target = `http://localhost:5173/${encodeURIComponent(teamPath)}/environments`;
@@ -184,8 +184,8 @@ export const githubSetup = httpAction(async (ctx, req) => {
   );
 
   // Resolve slug for nicer redirect when available
-  const team = await ctx.runQuery(internal.teams.getByUuidInternal, {
-    uuid: payload.teamId,
+  const team = await ctx.runQuery(internal.teams.getByTeamIdInternal, {
+    teamId: payload.teamId,
   });
   const teamPath = team?.slug ?? payload.teamId;
   const target = `http://localhost:5173/${encodeURIComponent(teamPath)}/environments`;
