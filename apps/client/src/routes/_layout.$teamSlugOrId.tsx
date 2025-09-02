@@ -13,11 +13,12 @@ import { Suspense, useMemo } from "react";
 export const Route = createFileRoute("/_layout/$teamSlugOrId")({
   component: LayoutComponentWrapper,
   beforeLoad: async ({ params }) => {
+    const { teamSlugOrId } = params;
     const teamMemberships = await convexQueryClient.convexClient.query(
       api.teams.listTeamMemberships
     );
     const teamMembership = teamMemberships.find(
-      (m) => m.team.slug === params.teamSlugOrId
+      (m) => m.team.slug === teamSlugOrId || m.team.teamId === teamSlugOrId
     );
     if (!teamMembership) {
       throw redirect({ to: "/team-picker" });

@@ -9,7 +9,6 @@ import { useTheme } from "./theme/use-theme";
 export function AntdProvider({ children }: { children: React.ReactNode }) {
   const { theme } = useTheme();
   const isDarkMode = theme === "dark";
-  console.log({ theme, isDarkMode });
   const themeConfig: ThemeConfig = useMemo(() => {
     return {
       algorithm: isDarkMode

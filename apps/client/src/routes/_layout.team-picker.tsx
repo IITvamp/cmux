@@ -195,13 +195,13 @@ function TeamItem({ team, getClientSlug }: TeamItemProps) {
           >
             {team.displayName?.charAt(0) ?? "T"}
           </div>
-          <div className="flex-1 overflow-hidden">
+          <div className="flex-1 overflow-hidden min-w-0">
             <div className="truncate text-neutral-900 dark:text-neutral-50 font-medium">
               {team.displayName}
             </div>
-            <div className="truncate text-sm text-neutral-500 dark:text-neutral-400">
-              <Skeleton isLoaded={!!teamInfo} className="rounded">
-                {slug || "Loading..."}
+            <div className="text-sm text-neutral-500 dark:text-neutral-400">
+              <Skeleton isLoaded={!!teamInfo} className="rounded truncate w-full">
+                {slug || team.id}
               </Skeleton>
             </div>
           </div>
