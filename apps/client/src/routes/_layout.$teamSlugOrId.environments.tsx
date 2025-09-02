@@ -105,7 +105,7 @@ function RepositoryPicker({
   onStateChange: (
     connectionLogin: string | null,
     repoSearch: string,
-    selectedRepos: string[]
+    selectedRepos: string[],
   ) => void;
 }) {
   const connections = useQuery(api.github.listProviderConnections, {
@@ -120,7 +120,7 @@ function RepositoryPicker({
   const [connectionSearch, setConnectionSearch] = useState("");
   const [search, setSearch] = useState(initialRepoSearch);
   const [selectedRepos, setSelectedRepos] = useState(
-    new Set<string>(initialSelectedRepos)
+    new Set<string>(initialSelectedRepos),
   );
 
   // Notify parent of state changes
@@ -169,7 +169,7 @@ function RepositoryPicker({
   const openCenteredPopup = (
     url: string,
     opts?: { name?: string; width?: number; height?: number },
-    onClose?: () => void
+    onClose?: () => void,
   ): Window | null => {
     const name = opts?.name ?? "cmux-popup";
     const width = Math.floor(opts?.width ?? 980);
@@ -216,7 +216,7 @@ function RepositoryPicker({
 
   const activeConnections = useMemo(
     () => (connections || []).filter((c) => c.isActive !== false),
-    [connections]
+    [connections],
   );
 
   const filteredConnections = useMemo(() => {
@@ -265,7 +265,7 @@ function RepositoryPicker({
       list = list.filter(
         (r) =>
           r.full_name.toLowerCase().includes(q) ||
-          r.name.toLowerCase().includes(q)
+          r.name.toLowerCase().includes(q),
       );
     }
     return list;
@@ -282,7 +282,7 @@ function RepositoryPicker({
   const configureUrl = useMemo(() => {
     if (!connections || !currentOrg) return null;
     const match = connections.find(
-      (c) => c.accountLogin === currentOrg && c.isActive
+      (c) => c.accountLogin === currentOrg && c.isActive,
     );
     if (!match) return null;
     if (match.accountType === "Organization") {
@@ -386,7 +386,7 @@ function RepositoryPicker({
                                 value={name}
                                 onSelect={() => {
                                   setSelectedConnectionLogin(
-                                    c.accountLogin ?? null
+                                    c.accountLogin ?? null,
                                   );
                                   setConnectionDropdownOpen(false);
                                 }}
@@ -411,7 +411,7 @@ function RepositoryPicker({
                                           openCenteredPopup(
                                             cfgUrl,
                                             { name: "github-config" },
-                                            handlePopupClosedRefetch
+                                            handlePopupClosedRefetch,
                                           );
                                         }}
                                       >
@@ -451,16 +451,16 @@ function RepositoryPicker({
                                   openCenteredPopup(
                                     url,
                                     { name: "github-install" },
-                                    handlePopupClosedRefetch
+                                    handlePopupClosedRefetch,
                                   );
                                   setConnectionDropdownOpen(false);
                                 } catch (e) {
                                   console.error(
                                     "Failed to mint install state:",
-                                    e
+                                    e,
                                   );
                                   alert(
-                                    "Failed to start installation. Please try again."
+                                    "Failed to start installation. Please try again.",
                                   );
                                 }
                               }}
@@ -582,7 +582,7 @@ function RepositoryPicker({
                         openCenteredPopup(
                           configureUrl,
                           { name: "github-config" },
-                          handlePopupClosedRefetch
+                          handlePopupClosedRefetch,
                         );
                       }}
                       className="inline-flex items-center gap-1 text-neutral-800 dark:text-neutral-200 hover:underline"
@@ -598,7 +598,7 @@ function RepositoryPicker({
                         openCenteredPopup(
                           installNewUrl,
                           { name: "github-install" },
-                          handlePopupClosedRefetch
+                          handlePopupClosedRefetch,
                         );
                       }}
                       className="inline-flex items-center gap-1 text-neutral-800 dark:text-neutral-200 hover:underline"
@@ -630,7 +630,7 @@ function RepositoryPicker({
                         openCenteredPopup(
                           configureUrl,
                           { name: "github-config" },
-                          handlePopupClosedRefetch
+                          handlePopupClosedRefetch,
                         );
                       }}
                       className="inline-flex items-center gap-1 text-neutral-800 dark:text-neutral-200 hover:underline"
@@ -646,7 +646,7 @@ function RepositoryPicker({
                         openCenteredPopup(
                           installNewUrl,
                           { name: "github-install" },
-                          handlePopupClosedRefetch
+                          handlePopupClosedRefetch,
                         );
                       }}
                       className="inline-flex items-center gap-1 text-neutral-800 dark:text-neutral-200 hover:underline"
@@ -748,11 +748,11 @@ function EnvironmentConfiguration({
   const [envPanelOpen, setEnvPanelOpen] = useState(true);
   const keyInputRefs = useRef<Array<HTMLInputElement | null>>([]);
   const [pendingFocusIndex, setPendingFocusIndex] = useState<number | null>(
-    null
+    null,
   );
 
   const parseEnvBlock = (
-    text: string
+    text: string,
   ): Array<{ name: string; value: string }> => {
     const lines = text.split(/\r?\n/);
     const parsed: Array<{ name: string; value: string }> = [];
@@ -915,9 +915,9 @@ function EnvironmentConfiguration({
                           .filter(
                             (r) =>
                               r.name.trim().length > 0 ||
-                              r.value.trim().length > 0
+                              r.value.trim().length > 0,
                           )
-                          .map((r) => [r.name, r] as const)
+                          .map((r) => [r.name, r] as const),
                       );
                       for (const it of items) {
                         if (!it.name) continue;
@@ -1109,7 +1109,7 @@ function EnvironmentConfiguration({
               "bg-white/60 dark:bg-neutral-950/60",
               iframeLoaded
                 ? "opacity-0 pointer-events-none"
-                : "opacity-100 pointer-events-auto"
+                : "opacity-100 pointer-events-auto",
             )}
           >
             <div className="text-center">
@@ -1163,7 +1163,7 @@ function EnvironmentsPage() {
   const navigate = useNavigate();
   const { teamSlugOrId } = Route.useParams();
   const provisionInstanceMutation = useRQMutation(
-    postApiMorphProvisionInstanceMutation()
+    postApiMorphProvisionInstanceMutation(),
   );
 
   // Derive VSCode URL from sessionId (always port-39378)
@@ -1177,7 +1177,7 @@ function EnvironmentsPage() {
     newStep: "select" | "configure",
     selectedRepos?: string[],
     connectionLogin?: string | null,
-    repoSearch?: string
+    repoSearch?: string,
   ): void => {
     navigate({
       to: "/$teamSlugOrId/environments",
@@ -1230,7 +1230,7 @@ function EnvironmentsPage() {
         onError: (error) => {
           console.error("Failed to provision Morph instance:", error);
         },
-      }
+      },
     );
   };
 
@@ -1241,7 +1241,7 @@ function EnvironmentsPage() {
   const handleStateChange = (
     connectionLogin: string | null,
     repoSearch: string,
-    selectedRepos: string[]
+    selectedRepos: string[],
   ) => {
     // Update URL without changing step
     navigate({
@@ -1260,7 +1260,23 @@ function EnvironmentsPage() {
   };
 
   return (
-    <FloatingPane header={<TitleBar title="Environments" />}>
+    <FloatingPane
+      header={
+        <TitleBar
+          title="Environments"
+          rightContent={
+            <a
+              href="https://cal.com/team/manaflow/meeting"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center rounded-md bg-neutral-900 text-white px-3 py-1 text-xs hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
+            >
+              Meeting
+            </a>
+          }
+        />
+      }
+    >
       <div className="flex flex-col grow select-none relative h-full overflow-hidden">
         {step === "select" ? (
           <div className="p-6 max-w-3xl w-full mx-auto overflow-auto">
