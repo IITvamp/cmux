@@ -1,4 +1,4 @@
-name: Test Cmux Package
+name: Checks
 
 on:
   push:
@@ -6,12 +6,8 @@ on:
   pull_request:
 
 jobs:
-  test:
+  verify:
     runs-on: ubuntu-24.04
-    strategy:
-      matrix:
-        node-version: [24]
-
     steps:
       - uses: actions/checkout@v4
 
@@ -23,21 +19,23 @@ jobs:
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
 
-      - name: Use Node.js ${{ matrix.node-version }}
+      - name: Use Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node-version }}
-          cache: "pnpm"
+          node-version: 24
+          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install
 
-      - name: Run typecheck
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
         run: bun run typecheck
 
-      - name: Run env leak test
+      - name: Package tests (cmux)
         run: bun run test
         working-directory: packages/cmux
-
       - name: Run Convex tests (Vitest)
         run: pnpm -F @cmux/convex test
