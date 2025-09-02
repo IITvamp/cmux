@@ -1,16 +1,9 @@
 import type { InstallationEvent, WebhookEvent } from "@octokit/webhooks-types";
 import { env } from "../_shared/convex-env";
+import { bytesToHex } from "../_shared/encoding";
+import { hmacSha256, safeEqualHex, sha256Hex } from "../_shared/crypto";
 import { internal } from "./_generated/api";
 import { httpAction } from "./_generated/server";
-
-function safeEqualHex(a: string, b: string): boolean {
-  if (a.length !== b.length) return false;
-  let res = 0;
-  for (let i = 0; i < a.length; i++) {
-    res |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  }
-  return res === 0;
-}
 
 async function verifySignature(
   secret: string,
@@ -19,28 +12,9 @@ async function verifySignature(
 ): Promise<boolean> {
   if (!signatureHeader || !signatureHeader.startsWith("sha256=")) return false;
   const expectedHex = signatureHeader.slice("sha256=".length).toLowerCase();
-  const enc = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw",
-    enc.encode(secret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  const sigBuf = await crypto.subtle.sign("HMAC", key, enc.encode(payload));
-  const computedHex = Array.from(new Uint8Array(sigBuf))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("")
-    .toLowerCase();
+  const sigBuf = await hmacSha256(secret, payload);
+  const computedHex = bytesToHex(sigBuf).toLowerCase();
   return safeEqualHex(computedHex, expectedHex);
-}
-
-async function sha256Hex(input: string): Promise<string> {
-  const enc = new TextEncoder();
-  const digest = await crypto.subtle.digest("SHA-256", enc.encode(input));
-  return Array.from(new Uint8Array(digest))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
 }
 
 export const githubWebhook = httpAction(async (_ctx, req) => {
