@@ -10,7 +10,7 @@ import {
   type VSCodeInstanceConfig,
   type VSCodeInstanceInfo,
 } from "./VSCodeInstance.js";
-import { api } from "@cmux/convex/api";
+import { readLocalVSCodeData } from "../utils/localVSCode.js";
 
 interface MorphVSCodeInstanceConfig extends VSCodeInstanceConfig {
   morphSnapshotId?: string;
@@ -71,6 +71,30 @@ export class MorphVSCodeInstance extends VSCodeInstance {
       dockerLogger.info(
         `Successfully connected to worker for Morph instance ${this.instance.id}`
       );
+
+      // Sync local VS Code settings to Convex (if present)
+      try {
+        const local = readLocalVSCodeData();
+        if (local) {
+          await getConvex().mutation(api.vscodeSettings.upsert, {
+            teamSlugOrId: this.teamSlugOrId,
+            settings: local.settings,
+            keybindings: local.keybindings,
+            snippets: local.snippets,
+            extensions: local.extensions,
+          });
+          dockerLogger.info("Synchronized local VS Code settings to Convex");
+        } else {
+          dockerLogger.info(
+            "No local VS Code settings directory detected; skipping sync"
+          );
+        }
+      } catch (e) {
+        dockerLogger.warn(
+          "Failed to sync local VS Code settings to Convex",
+          e
+        );
+      }
 
       // Apply VS Code settings from Convex
       await this.applyVSCodeSettingsFromConvex();

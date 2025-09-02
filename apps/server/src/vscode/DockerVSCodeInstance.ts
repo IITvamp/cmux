@@ -15,7 +15,7 @@ import {
   type VSCodeInstanceConfig,
   type VSCodeInstanceInfo,
 } from "./VSCodeInstance.js";
-import { api } from "@cmux/convex/api";
+import { readLocalVSCodeData } from "../utils/localVSCode.js";
 
 // Global port mapping storage
 export interface ContainerMapping {
@@ -523,6 +523,32 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       dockerLogger.info(
         `Successfully connected to worker for container ${this.containerName}`
       );
+
+      // Sync local VS Code settings to Convex (if present)
+      try {
+        const local = readLocalVSCodeData();
+        if (local) {
+          await runWithAuthToken(this.authToken, async () =>
+            getConvex().mutation(api.vscodeSettings.upsert, {
+              teamSlugOrId: this.teamSlugOrId,
+              settings: local.settings,
+              keybindings: local.keybindings,
+              snippets: local.snippets,
+              extensions: local.extensions,
+            })
+          );
+          dockerLogger.info("Synchronized local VS Code settings to Convex");
+        } else {
+          dockerLogger.info(
+            "No local VS Code settings directory detected; skipping sync"
+          );
+        }
+      } catch (e) {
+        dockerLogger.warn(
+          "Failed to sync local VS Code settings to Convex",
+          e
+        );
+      }
 
       // Configure git in the worker
       await this.configureGitInWorker();
