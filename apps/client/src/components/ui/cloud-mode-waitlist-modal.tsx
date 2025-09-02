@@ -46,7 +46,7 @@ export function CloudModeWaitlistModal({
         replace: true,
       });
     }
-  }, [visible, teamSlugOrId, navigate]);
+  }, [visible, teamSlugOrId, navigate, user]);
 
   const handleSubmit = async (values: { email: string }) => {
     setLoading(true);

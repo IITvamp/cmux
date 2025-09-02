@@ -28,7 +28,7 @@ import {
   KEY_DOWN_COMMAND,
   INSERT_LINE_BREAK_COMMAND,
 } from "lexical";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { EditorStatePlugin } from "./EditorStatePlugin";
 import { ImageNode } from "./ImageNode";
 import { ImagePlugin } from "./ImagePlugin";
@@ -212,7 +212,7 @@ function LocalStoragePersistencePlugin({
   };
 
   // Extract images and replace with IDs
-  const extractImages = async (
+  const extractImages = useCallback(async (
     state: SerializedEditorState
   ): Promise<{
     cleanState: SerializedEditorState;
@@ -259,10 +259,10 @@ function LocalStoragePersistencePlugin({
     };
 
     return { cleanState, imageMap, activeImageIds };
-  };
+  }, []);
 
   // Restore images from IDs
-  const restoreImages = async (
+  const restoreImages = useCallback(async (
     state: SerializedEditorState
   ): Promise<SerializedEditorState> => {
     const imageIds: string[] = [];
@@ -319,7 +319,7 @@ function LocalStoragePersistencePlugin({
       ...state,
       root: restoredRoot,
     };
-  };
+  }, []);
 
   // Load initial state from localStorage + IndexedDB
   useEffect(() => {
@@ -346,7 +346,7 @@ function LocalStoragePersistencePlugin({
     };
 
     loadState();
-  }, [editor, persistenceKey]);
+  }, [editor, persistenceKey, restoreImages]);
 
   // Save state to localStorage + IndexedDB on changes
   useEffect(() => {
@@ -435,7 +435,7 @@ function LocalStoragePersistencePlugin({
         clearTimeout(debounceTimer.current);
       }
     };
-  }, [editor, persistenceKey]);
+  }, [editor, persistenceKey, extractImages]);
 
   // Clear localStorage and IndexedDB when content is cleared (e.g., after submit)
   useEffect(() => {

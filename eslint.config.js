@@ -35,6 +35,7 @@ export default tseslint.config([
       },
     },
     rules: {
+      'react-hooks/exhaustive-deps': 'error',
       '@typescript-eslint/no-unused-vars': [
         'error',
         {
