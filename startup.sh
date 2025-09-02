@@ -120,39 +120,135 @@ mkdir -p /var/log/cmux /root/lifecycle
 echo "[Startup] Environment variables:" > /var/log/cmux/startup.log
 env >> /var/log/cmux/startup.log
 
-# Configure VS Code theme based on environment variable
-if [ -n "$VSCODE_THEME" ]; then
-    echo "[Startup] Configuring VS Code theme: $VSCODE_THEME" >> /var/log/cmux/startup.log
-    
-    # Determine the color theme based on the setting
-    COLOR_THEME="Default Light Modern"
-    if [ "$VSCODE_THEME" = "dark" ]; then
-        COLOR_THEME="Default Dark Modern"
-    elif [ "$VSCODE_THEME" = "system" ]; then
-        # Default to dark for system (could be enhanced to detect system preference)
-        COLOR_THEME="Default Dark Modern"
+apply_settings_json() {
+    local settings_json="$1"
+    if [ -n "$settings_json" ]; then
+        echo "$settings_json" > /root/.openvscode-server/data/User/settings.json
+        echo "$settings_json" > /root/.openvscode-server/data/User/profiles/default-profile/settings.json
+        echo "$settings_json" > /root/.openvscode-server/data/Machine/settings.json
+        echo "[Startup] Applied VS Code settings.json" >> /var/log/cmux/startup.log
     fi
-    
-    # Update VS Code settings files with theme and git configuration
-    SETTINGS_JSON='{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "workbench.colorTheme": "'$COLOR_THEME'", "git.openDiffOnClick": true, "scm.defaultViewMode": "tree", "git.showPushSuccessNotification": true, "git.autorefresh": true, "git.branchCompareWith": "main"}'
-    
-    # Update all VS Code settings locations
-    echo "$SETTINGS_JSON" > /root/.openvscode-server/data/User/settings.json
-    echo "$SETTINGS_JSON" > /root/.openvscode-server/data/User/profiles/default-profile/settings.json
-    echo "$SETTINGS_JSON" > /root/.openvscode-server/data/Machine/settings.json
-    
-    echo "[Startup] VS Code theme configured to: $COLOR_THEME" >> /var/log/cmux/startup.log
+}
+
+apply_keybindings_json() {
+    local keybindings_json="$1"
+    if [ -n "$keybindings_json" ]; then
+        echo "$keybindings_json" > /root/.openvscode-server/data/User/keybindings.json
+        echo "[Startup] Applied VS Code keybindings.json" >> /var/log/cmux/startup.log
+    fi
+}
+
+install_extensions_list() {
+    local extensions_csv="$1"
+    if [ -z "$extensions_csv" ]; then
+        return 0
+    fi
+    echo "[Startup] Installing VS Code extensions from list" >> /var/log/cmux/startup.log
+    IFS=',' read -ra EXTS <<< "$extensions_csv"
+    for ext in "${EXTS[@]}"; do
+        ext_trimmed="$(echo "$ext" | xargs)"
+        if [ -z "$ext_trimmed" ]; then
+            continue
+        fi
+        echo "[Startup] Installing extension: $ext_trimmed" >> /var/log/cmux/startup.log
+        /app/openvscode-server/bin/openvscode-server --install-extension "$ext_trimmed" >> /var/log/cmux/vscode-ext-install.log 2>&1 || {
+            echo "[Startup] Warning: Failed to install $ext_trimmed (ignored)" >> /var/log/cmux/startup.log
+        }
+    done
+}
+
+apply_profile_base64() {
+    local profile_b64="$1"
+    if [ -z "$profile_b64" ]; then
+        return 0
+    fi
+    mkdir -p /tmp/cmux
+    local profile_json_path="/tmp/cmux/profile.json"
+    echo "$profile_b64" | base64 -d > "$profile_json_path" || {
+        echo "[Startup] Warning: Failed to decode VSCODE_PROFILE_BASE64" >> /var/log/cmux/startup.log
+        return 0
+    }
+    echo "[Startup] Decoded VS Code profile to $profile_json_path" >> /var/log/cmux/startup.log
+
+    # Extract settings if present
+    local extracted_settings
+    extracted_settings=$(jq -c '(.settings // .user?.settings) // {}' "$profile_json_path" 2>/dev/null || echo "{}")
+    if [ "$extracted_settings" != "{}" ]; then
+        apply_settings_json "$extracted_settings"
+    fi
+
+    # Extract keybindings if present
+    local extracted_keybindings
+    extracted_keybindings=$(jq -c '(.keybindings // .user?.keybindings) // []' "$profile_json_path" 2>/dev/null || echo "[]")
+    if [ "$extracted_keybindings" != "[]" ]; then
+        echo "$extracted_keybindings" > /root/.openvscode-server/data/User/keybindings.json
+        echo "[Startup] Applied keybindings from profile" >> /var/log/cmux/startup.log
+    fi
+
+    # Extract snippets: support object map or array
+    local snippets_dir="/root/.openvscode-server/data/User/snippets"
+    mkdir -p "$snippets_dir"
+    # When snippets are an object mapping filename->json
+    jq -c '(.snippets // .user?.snippets) // {}' "$profile_json_path" 2>/dev/null | while read -r obj; do
+        if [ "$obj" != "{}" ]; then
+            # Iterate keys
+            echo "$obj" | jq -r 'keys[]' | while read -r name; do
+                content=$(echo "$obj" | jq -c --arg n "$name" '.[$n]')
+                if [ -n "$content" ]; then
+                    echo "$content" > "$snippets_dir/$name"
+                    echo "[Startup] Wrote snippet: $name" >> /var/log/cmux/startup.log
+                fi
+            done
+        fi
+    done
+
+    # Extract extensions: support array of strings or objects with id
+    local ext_csv
+    ext_csv=$(jq -r '(.extensions // .user?.extensions) // [] | map((.id // .)|tostring) | join(",")' "$profile_json_path" 2>/dev/null || echo "")
+    if [ -n "$ext_csv" ]; then
+        install_extensions_list "$ext_csv"
+    fi
+}
+
+# 1) Apply settings from explicit profile (if provided)
+apply_profile_base64 "$VSCODE_PROFILE_BASE64"
+
+# 2) Apply explicit settings JSON (if provided), else fallback to theme/defaults
+if [ -n "$VSCODE_SETTINGS_JSON" ]; then
+    echo "[Startup] Applying VSCODE_SETTINGS_JSON" >> /var/log/cmux/startup.log
+    apply_settings_json "$VSCODE_SETTINGS_JSON"
 else
-    # Even if no theme is specified, configure git settings
-    echo "[Startup] Configuring VS Code git settings" >> /var/log/cmux/startup.log
-    SETTINGS_JSON='{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "git.openDiffOnClick": true, "scm.defaultViewMode": "tree", "git.showPushSuccessNotification": true, "git.autorefresh": true, "git.branchCompareWith": "main"}'
-    
-    # Update all VS Code settings locations
-    echo "$SETTINGS_JSON" > /root/.openvscode-server/data/User/settings.json
-    echo "$SETTINGS_JSON" > /root/.openvscode-server/data/User/profiles/default-profile/settings.json
-    echo "$SETTINGS_JSON" > /root/.openvscode-server/data/Machine/settings.json
-    
-    echo "[Startup] VS Code git settings configured" >> /var/log/cmux/startup.log
+    # Configure VS Code theme based on environment variable
+    if [ -n "$VSCODE_THEME" ]; then
+        echo "[Startup] Configuring VS Code theme: $VSCODE_THEME" >> /var/log/cmux/startup.log
+        # Determine the color theme based on the setting
+        COLOR_THEME="Default Light Modern"
+        if [ "$VSCODE_THEME" = "dark" ]; then
+            COLOR_THEME="Default Dark Modern"
+        elif [ "$VSCODE_THEME" = "system" ]; then
+            # Default to dark for system (could be enhanced to detect system preference)
+            COLOR_THEME="Default Dark Modern"
+        fi
+        SETTINGS_JSON='{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "workbench.colorTheme": "'$COLOR_THEME'", "git.openDiffOnClick": true, "scm.defaultViewMode": "tree", "git.showPushSuccessNotification": true, "git.autorefresh": true, "git.branchCompareWith": "main"}'
+        apply_settings_json "$SETTINGS_JSON"
+        echo "[Startup] VS Code theme configured to: $COLOR_THEME" >> /var/log/cmux/startup.log
+    else
+        echo "[Startup] Applying default VS Code settings" >> /var/log/cmux/startup.log
+        SETTINGS_JSON='{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "git.openDiffOnClick": true, "scm.defaultViewMode": "tree", "git.showPushSuccessNotification": true, "git.autorefresh": true, "git.branchCompareWith": "main"}'
+        apply_settings_json "$SETTINGS_JSON"
+        echo "[Startup] VS Code git settings configured" >> /var/log/cmux/startup.log
+    fi
+fi
+
+# 3) Apply explicit keybindings if provided
+if [ -n "$VSCODE_KEYBINDINGS_JSON" ]; then
+    echo "[Startup] Applying VSCODE_KEYBINDINGS_JSON" >> /var/log/cmux/startup.log
+    apply_keybindings_json "$VSCODE_KEYBINDINGS_JSON"
+fi
+
+# 4) Install extensions from explicit list if provided
+if [ -n "$VSCODE_EXTENSIONS" ]; then
+    install_extensions_list "$VSCODE_EXTENSIONS"
 fi
 
 # Start OpenVSCode server on port 39378 without authentication

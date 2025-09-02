@@ -250,6 +250,26 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       envVars.push(`VSCODE_THEME=${this.config.theme}`);
     }
 
+    // Optional VSCode settings/extensions sync via env passthrough
+    if (process.env.CMUX_VSCODE_SETTINGS_JSON) {
+      envVars.push(
+        `VSCODE_SETTINGS_JSON=${process.env.CMUX_VSCODE_SETTINGS_JSON}`
+      );
+    }
+    if (process.env.CMUX_VSCODE_KEYBINDINGS_JSON) {
+      envVars.push(
+        `VSCODE_KEYBINDINGS_JSON=${process.env.CMUX_VSCODE_KEYBINDINGS_JSON}`
+      );
+    }
+    if (process.env.CMUX_VSCODE_EXTENSIONS) {
+      envVars.push(`VSCODE_EXTENSIONS=${process.env.CMUX_VSCODE_EXTENSIONS}`);
+    }
+    if (process.env.CMUX_VSCODE_PROFILE_BASE64) {
+      envVars.push(
+        `VSCODE_PROFILE_BASE64=${process.env.CMUX_VSCODE_PROFILE_BASE64}`
+      );
+    }
+
     // Create container configuration
     const createOptions: Docker.ContainerCreateOptions = {
       name: this.containerName,
