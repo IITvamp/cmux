@@ -111,6 +111,23 @@ export type ProvisionInstanceBody = {
     ttlSeconds?: number;
 };
 
+export type CreateEnvironmentResponse = {
+    environmentId: string;
+};
+
+export type CreateEnvironmentBody = {
+    /**
+     * Team slug or UUID
+     */
+    team: string;
+    name: string;
+    morphSnapshotId: string;
+    /**
+     * .env file contents
+     */
+    envFile: string;
+};
+
 export type GetApiHealthData = {
     body?: never;
     path?: never;
@@ -538,6 +555,33 @@ export type PostApiMorphProvisionInstanceResponses = {
 };
 
 export type PostApiMorphProvisionInstanceResponse = PostApiMorphProvisionInstanceResponses[keyof PostApiMorphProvisionInstanceResponses];
+
+export type PostApiEnvironmentsData = {
+    body?: CreateEnvironmentBody;
+    path?: never;
+    query?: never;
+    url: '/api/environments';
+};
+
+export type PostApiEnvironmentsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Failed to create environment
+     */
+    500: unknown;
+};
+
+export type PostApiEnvironmentsResponses = {
+    /**
+     * Environment created
+     */
+    200: CreateEnvironmentResponse;
+};
+
+export type PostApiEnvironmentsResponse = PostApiEnvironmentsResponses[keyof PostApiEnvironmentsResponses];
 
 export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});

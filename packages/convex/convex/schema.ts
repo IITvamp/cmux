@@ -410,6 +410,20 @@ const convexSchema = defineSchema({
     ),
     createdAt: v.number(),
   }).index("by_nonce", ["nonce"]),
+
+  // Team-shared environments metadata. Environment variable contents are
+  // stored securely in Stack Auth Data Vault and referenced via dataVaultKey.
+  environments: defineTable({
+    name: v.string(),
+    morphSnapshotId: v.string(),
+    dataVaultKey: v.string(), // Key used to fetch .env from Stack Data Vault
+    teamId: v.string(),
+    createdByUserId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_team", ["teamId", "createdAt"]) // list by team, newest first via sort
+    .index("by_team_name", ["teamId", "name"]), // optional: find by name in team
 });
 
 export default convexSchema;

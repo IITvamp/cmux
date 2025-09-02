@@ -5,6 +5,7 @@ import {
   healthRouter,
   usersRouter,
   morphRouter,
+  environmentsRouter,
 } from "@/lib/routes/index";
 import { stackServerApp } from "@/lib/utils/stack";
 import { swaggerUI } from "@hono/swagger-ui";
@@ -81,6 +82,7 @@ app.route("/", booksRouter);
 app.route("/", devServerRouter);
 app.route("/", githubReposRouter);
 app.route("/", morphRouter);
+app.route("/", environmentsRouter);
 
 // OpenAPI documentation
 app.doc("/doc", {
