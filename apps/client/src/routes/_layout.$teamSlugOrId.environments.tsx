@@ -3,16 +3,9 @@ import { GitHubIcon } from "@/components/icons/github";
 import { RepositoryPicker } from "@/components/RepositoryPicker";
 import { ResizableColumns } from "@/components/ResizableColumns";
 import { TitleBar } from "@/components/TitleBar";
-import {
-  postApiMorphProvisionInstanceMutation,
-} from "@cmux/www-openapi-client/react-query";
-import {
-  useMutation as useRQMutation,
-} from "@tanstack/react-query";
-import {
-  createFileRoute,
-  useNavigate,
-} from "@tanstack/react-router";
+import { postApiMorphProvisionInstanceMutation } from "@cmux/www-openapi-client/react-query";
+import { useMutation as useRQMutation } from "@tanstack/react-query";
+import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
 import {
   ArrowLeft,
@@ -23,12 +16,7 @@ import {
   Settings,
   X,
 } from "lucide-react";
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import z from "zod";
 
 export const Route = createFileRoute("/_layout/$teamSlugOrId/environments")({

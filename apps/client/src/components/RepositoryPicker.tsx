@@ -17,22 +17,12 @@ import {
 } from "@/components/ui/tooltip";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { api } from "@cmux/convex/api";
-import {
-  getApiIntegrationsGithubReposOptions,
-} from "@cmux/www-openapi-client/react-query";
+import { getApiIntegrationsGithubReposOptions } from "@cmux/www-openapi-client/react-query";
 import * as Popover from "@radix-ui/react-popover";
-import {
-  useQuery as useRQ,
-} from "@tanstack/react-query";
+import { useQuery as useRQ } from "@tanstack/react-query";
 import { useRouter } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
-import {
-  Check,
-  ChevronDown,
-  Loader2,
-  Settings,
-  X,
-} from "lucide-react";
+import { Check, ChevronDown, Loader2, Settings, X } from "lucide-react";
 import {
   useCallback,
   useDeferredValue,
@@ -129,7 +119,13 @@ export function RepositoryPicker({
   useEffect(() => {
     onStateChange?.(selectedConnectionLogin, search, Array.from(selectedRepos));
     onSelectionChange?.(Array.from(selectedRepos));
-  }, [selectedConnectionLogin, search, selectedRepos, onStateChange, onSelectionChange]);
+  }, [
+    selectedConnectionLogin,
+    search,
+    selectedRepos,
+    onStateChange,
+    onSelectionChange,
+  ]);
 
   const watchPopupClosed = (win: Window | null, onClose: () => void): void => {
     if (!win) return;
@@ -711,8 +707,8 @@ export function RepositoryPicker({
             </div>
             {showManualConfigOption && (
               <p className="text-xs text-neutral-500 dark:text-neutral-500">
-                You can also manually configure an environment from a bare VM. We'll
-                capture your changes as a reusable base snapshot.
+                You can also manually configure an environment from a bare VM.
+                We'll capture your changes as a reusable base snapshot.
               </p>
             )}
           </>
