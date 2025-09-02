@@ -37,8 +37,11 @@ export class MorphVSCodeInstance extends VSCodeInstance {
     this.instance = await this.morphClient.instances.start({
       snapshotId: this.morphSnapshotId,
       // 30 minutes
-      ttlSeconds: 60 * 30,
-      ttlAction: "pause",
+      // ttlSeconds: 60 * 30,
+      // ttlAction: "pause",
+      // 20 minutes
+      ttlSeconds: 20 * 60,
+      ttlAction: "stop",
       metadata: {
         app: "cmux-dev-local  ",
       },
