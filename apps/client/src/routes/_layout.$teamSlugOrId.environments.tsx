@@ -1083,7 +1083,7 @@ function EnvironmentConfiguration({
             aria-hidden={iframeLoaded}
             className={clsx(
               "absolute inset-0 z-10 flex items-center justify-center backdrop-blur-sm transition-opacity duration-300",
-              "bg-white/60 dark:bg-neutral-950/60",
+              "bg-white/60 dark:bg-neutral-950",
               iframeLoaded
                 ? "opacity-0 pointer-events-none"
                 : "opacity-100 pointer-events-auto"
