@@ -11,9 +11,10 @@ Use pnpm to install dependencies and run the project.
 
 # Backend
 
-This project uses Convex.
+This project uses Convex and Hono.
 Schemas are defined in packages/convex/convex/schema.ts.
-Do not use Convex actions. Instead, use the socket.io server with custom events.
+Hono is defined in apps/www/lib/hono-app.ts as well as apps/www/lib/routes/\*
+The Hono app generates a client in @cmux/www-openapi-client. This is automatically re-generated when the dev-server is running. If you change the Hono app (and the dev server isn't running), you should run `(cd apps/www && bun run generate-openapi-client)` to re-generate the client. Note that the generator is in www and not www-openapi-client.
 
 # Frontend
 

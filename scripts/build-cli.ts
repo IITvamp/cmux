@@ -58,12 +58,12 @@ if (
   log("convex-local-backend already exists.");
 }
 
-// Build the client with the correct VITE_CONVEX_URL
+// Build the client with the correct NEXT_PUBLIC_CONVEX_URL
 log("Building convex cli bundle...");
 await $`bun build ./packages/cmux/node_modules/convex/dist/cli.bundle.cjs --outdir ./packages/cmux/src/convex/convex-bundle/convex-cli-dist --target bun --minify`;
 
 log("Building client app...");
-await $`cd ./apps/client && VITE_CONVEX_URL=http://localhost:9777 bun run build`;
+await $`cd ./apps/client && NEXT_PUBLIC_CONVEX_URL=http://localhost:9777 bun run build`;
 
 // refresh bundled static assets without blowing away tracked files
 await $`rm -rf ./packages/cmux/public/dist`;

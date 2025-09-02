@@ -27,6 +27,7 @@ out
 .tanstack
 
 .env
+.env.production
 
 # Binary files
 cmux-cli

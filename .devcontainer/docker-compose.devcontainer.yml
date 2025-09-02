@@ -10,7 +10,7 @@ services:
     environment:
       - CONVEX_SELF_HOSTED_ADMIN_KEY=cmux-dev|017aebe6643f7feb3fe831fbb93a348653c63e5711d2427d1a34b670e3151b0165d86a5ff9
       - CONVEX_PORT=9777
-      - VITE_CONVEX_URL=http://localhost:9777
+      - NEXT_PUBLIC_CONVEX_URL=http://localhost:9777
     ports:
       - "5173:5173"
       - "9776:9776"

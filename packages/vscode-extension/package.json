@@ -50,7 +50,7 @@
     "compile-tsc": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
-    "lint": "eslint src --ext ts",
+    "lint": "eslint src",
     "test": "vscode-test",
     "package": "bunx @vscode/vsce package --allow-missing-repository --no-dependencies --allow-star-activation",
     "typecheck": "tsc --noEmit -p tsconfig.json"
@@ -60,12 +60,10 @@
     "@types/mocha": "^10.0.6",
     "@types/node": "^24.3.0",
     "@types/vscode": "^1.73.0",
-    "@typescript-eslint/eslint-plugin": "^6.15.0",
-    "@typescript-eslint/parser": "^6.15.0",
     "@vscode/test-cli": "^0.0.4",
     "@vscode/test-electron": "^2.3.8",
     "@vscode/vsce": "^3.2.1",
-    "eslint": "^8.56.0",
+    "eslint": "^9.31.0",
     "typescript": "^5.8.3"
   },
   "dependencies": {

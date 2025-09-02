@@ -14,7 +14,6 @@ permissions:
 
 env:
   NODE_VERSION: '24'
-  PNPM_VERSION: '9'
   # Frontend build-time envs (exposed in bundle). Store values as GitHub Secrets.
   VITE_CONVEX_URL: ${{ secrets.VITE_CONVEX_URL }}
   VITE_STACK_PROJECT_ID: ${{ secrets.VITE_STACK_PROJECT_ID }}
@@ -35,18 +34,17 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
       - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Ensure pnpm lock visible to electron-builder
+        shell: bash
+        run: cp pnpm-lock.yaml apps/client/pnpm-lock.yaml
       - name: Build & publish mac x64 (unsigned) to GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         working-directory: apps/client
-        run: |
-          pnpm exec electron-vite build -c electron.vite.config.js
-          pnpm exec electron-builder --config electron-builder.json --mac --x64 --publish always -c.mac.identity=null
+        run: pnpm exec electron-vite build -c electron.vite.config.js && pnpm exec electron-builder --config electron-builder.json --mac --x64 --publish always --config.mac.identity=null --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
       # ------------------------------------------------------------------
       # To enable signed + notarized mac builds, replace the unsigned step
       # above with the following and provide the required repo secrets.
@@ -80,18 +78,17 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
       - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Ensure pnpm lock visible to electron-builder
+        shell: bash
+        run: cp pnpm-lock.yaml apps/client/pnpm-lock.yaml
       - name: Build & publish mac arm64 (unsigned) to GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         working-directory: apps/client
-        run: |
-          pnpm exec electron-vite build -c electron.vite.config.js
-          pnpm exec electron-builder --config electron-builder.json --mac --arm64 --publish always -c.mac.identity=null
+        run: pnpm exec electron-vite build -c electron.vite.config.js && pnpm exec electron-builder --config electron-builder.json --mac --arm64 --publish always --config.mac.identity=null --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
       # ------------------------------------------------------------------
       # To enable signed + notarized mac builds for arm64, replace the unsigned
       # step above with the following and provide the required repo secrets.
@@ -125,10 +122,11 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
       - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Ensure pnpm lock visible to electron-builder
+        shell: bash
+        run: cp pnpm-lock.yaml apps/client/pnpm-lock.yaml
       - name: Build & publish Windows x64 to GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
@@ -139,9 +137,7 @@ jobs:
           # CSC_LINK: base64:${{ secrets.WIN_CERT_BASE64 }}
           # CSC_KEY_PASSWORD: ${{ secrets.WIN_CERT_PASSWORD }}
         working-directory: apps/client
-        run: |
-          pnpm exec electron-vite build -c electron.vite.config.js
-          pnpm exec electron-builder --config electron-builder.json --win --x64 --publish always
+        run: pnpm exec electron-vite build -c electron.vite.config.js && pnpm exec electron-builder --config electron-builder.json --win --x64 --publish always --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
 
   linux-x64:
     name: Linux x64
@@ -154,37 +150,14 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
       - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Ensure pnpm lock visible to electron-builder
+        shell: bash
+        run: cp pnpm-lock.yaml apps/client/pnpm-lock.yaml
       - name: Build & publish Linux AppImage x64 to GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
         working-directory: apps/client
-        run: |
-          pnpm exec electron-vite build -c electron.vite.config.js
-          pnpm exec electron-builder --config electron-builder.json --linux AppImage --x64 --publish always
-
-  linux-arm64:
-    name: Linux arm64
-    runs-on: ubuntu-24.04-arm64
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.release.tag_name }}
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-      - uses: pnpm/action-setup@v4
-        with:
-          version: ${{ env.PNPM_VERSION }}
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Build & publish Linux AppImage arm64 to GitHub Releases
-        env:
-          GH_TOKEN: ${{ github.token }}
-        working-directory: apps/client
-        run: |
-          pnpm exec electron-vite build -c electron.vite.config.js
-          pnpm exec electron-builder --config electron-builder.json --linux AppImage --arm64 --publish always
+        run: pnpm exec electron-vite build -c electron.vite.config.js && pnpm exec electron-builder --config electron-builder.json --linux AppImage --x64 --publish always --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
+        

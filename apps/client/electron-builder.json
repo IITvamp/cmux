@@ -9,20 +9,14 @@
     "package.json"
   ],
   "asar": true,
+  "npmRebuild": false,
+  "nodeGypRebuild": false,
   "mac": {
     "category": "public.app-category.developer-tools",
     "icon": "build/icon.icns",
-    "hardenedRuntime": true,
-    "gatekeeperAssess": true,
+    "hardenedRuntime": false,
+    "gatekeeperAssess": false,
     "target": ["dmg", "zip"]
-  },
-  "win": {
-    "target": [
-      {
-        "target": "nsis",
-        "arch": ["x64"]
-      }
-    ]
   },
   "dmg": {
     "contents": [
@@ -37,19 +31,5 @@
         "path": "/Applications"
       }
     ]
-  },
-  "linux": {
-    "category": "Utility",
-    "target": [
-      {
-        "target": "AppImage",
-        "arch": ["x64", "arm64"]
-      }
-    ]
-  },
-  "publish": [
-    {
-      "provider": "github"
-    }
-  ]
+  }
 }
