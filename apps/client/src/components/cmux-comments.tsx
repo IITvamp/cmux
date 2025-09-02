@@ -661,7 +661,7 @@ export function CmuxComments({ teamSlugOrId }: { teamSlugOrId: string }) {
     };
   }, [isDragging, dragStart]);
 
-  const user = useUser({ or: "throw" });
+  const user = useUser({ or: "redirect" });
   const userId = user.id;
   const profileImageUrl = user.profileImageUrl || "https://cmux.dev/rick.png";
 
