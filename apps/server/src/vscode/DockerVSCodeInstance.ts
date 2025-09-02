@@ -15,6 +15,7 @@ import {
   type VSCodeInstanceConfig,
   type VSCodeInstanceInfo,
 } from "./VSCodeInstance.js";
+import { api } from "@cmux/convex/api";
 
 // Global port mapping storage
 export interface ContainerMapping {
@@ -525,6 +526,9 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
       // Configure git in the worker
       await this.configureGitInWorker();
+
+      // Apply VS Code settings (settings, keybindings, snippets, extensions)
+      await this.applyVSCodeSettingsFromConvex();
     } catch (error) {
       dockerLogger.error(
         `Failed to connect to worker for container ${this.containerName}:`,
@@ -552,6 +556,40 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       taskRunId: this.taskRunId,
       provider: "docker",
     };
+  }
+
+  private async applyVSCodeSettingsFromConvex(): Promise<void> {
+    try {
+      const doc = await getConvex().query(api.vscodeSettings.get, {
+        teamSlugOrId: this.teamSlugOrId,
+      });
+      if (!doc) return;
+      if (!this.workerConnected || !this.workerSocket) return;
+
+      await new Promise<void>((resolve) => {
+        this.workerSocket!.emit(
+          "worker:apply-vscode-settings",
+          {
+            settings: doc.settings,
+            keybindings: doc.keybindings,
+            snippets: doc.snippets,
+            extensions: doc.extensions,
+          },
+          (_res: { ok: true } | { ok: false; error: string }) => {
+            if ("ok" in _res && _res.ok) {
+              dockerLogger.info("Applied VS Code settings from Convex");
+            } else {
+              dockerLogger.warn(
+                `Failed to apply VS Code settings: ${"error" in _res ? _res.error : "unknown"}`
+              );
+            }
+            resolve();
+          }
+        );
+      });
+    } catch (e) {
+      dockerLogger.warn("Error applying VS Code settings from Convex", e);
+    }
   }
 
   private setupContainerEventMonitoring() {

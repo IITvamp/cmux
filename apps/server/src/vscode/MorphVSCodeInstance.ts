@@ -10,6 +10,7 @@ import {
   type VSCodeInstanceConfig,
   type VSCodeInstanceInfo,
 } from "./VSCodeInstance.js";
+import { api } from "@cmux/convex/api";
 
 interface MorphVSCodeInstanceConfig extends VSCodeInstanceConfig {
   morphSnapshotId?: string;
@@ -70,6 +71,9 @@ export class MorphVSCodeInstance extends VSCodeInstance {
       dockerLogger.info(
         `Successfully connected to worker for Morph instance ${this.instance.id}`
       );
+
+      // Apply VS Code settings from Convex
+      await this.applyVSCodeSettingsFromConvex();
     } catch (error) {
       dockerLogger.error(
         `Failed to connect to worker for Morph instance ${this.instance.id}:`,
@@ -85,6 +89,33 @@ export class MorphVSCodeInstance extends VSCodeInstance {
       taskRunId: this.taskRunId,
       provider: "morph",
     };
+  }
+
+  private async applyVSCodeSettingsFromConvex(): Promise<void> {
+    try {
+      const doc = await getConvex().query(api.vscodeSettings.get, {
+        teamSlugOrId: this.teamSlugOrId,
+      });
+      if (!doc) return;
+      if (!this.isWorkerConnected()) return;
+      const socket = this.getWorkerSocket();
+      await new Promise<void>((resolve) => {
+        socket.emit(
+          "worker:apply-vscode-settings",
+          {
+            settings: doc.settings,
+            keybindings: doc.keybindings,
+            snippets: doc.snippets,
+            extensions: doc.extensions,
+          },
+          (_res: { ok: true } | { ok: false; error: string }) => {
+            resolve();
+          }
+        );
+      });
+    } catch (e) {
+      dockerLogger.warn("[MorphVSCodeInstance] Failed to apply VS Code settings", e);
+    }
   }
 
   async stop(): Promise<void> {

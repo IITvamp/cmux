@@ -27,6 +27,7 @@ import type * as tasks from "../tasks.js";
 import type * as teams from "../teams.js";
 import type * as users_utils from "../users/utils.js";
 import type * as workspaceSettings from "../workspaceSettings.js";
+import type * as vscodeSettings from "../vscodeSettings.js";
 
 import type {
   ApiFromModules,
@@ -62,7 +63,8 @@ declare const fullApi: ApiFromModules<{
   teams: typeof teams;
   "users/utils": typeof users_utils;
   workspaceSettings: typeof workspaceSettings;
-}>;
+  vscodeSettings: typeof vscodeSettings;
+}>; 
 declare const fullApiWithMounts: typeof fullApi;
 
 export declare const api: FilterApi<
