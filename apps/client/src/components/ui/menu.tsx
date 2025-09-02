@@ -2,8 +2,7 @@ import { Menu } from "@base-ui-components/react/menu";
 import clsx from "clsx";
 import { ArrowSvg } from "./shared/arrow-svg";
 
-export interface MenuArrowProps
-  extends React.ComponentPropsWithoutRef<typeof Menu.Arrow> {}
+export type MenuArrowProps = React.ComponentPropsWithoutRef<typeof Menu.Arrow>;
 
 export const MenuArrow: React.FC<MenuArrowProps> = ({
   className,

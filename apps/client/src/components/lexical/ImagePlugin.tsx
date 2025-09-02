@@ -3,6 +3,12 @@ import { $insertNodes } from "lexical";
 import { useEffect, useRef, useState } from "react";
 import { $createImageNode, ImageNode } from "./ImageNode";
 
+declare global {
+  interface Window {
+    __lexicalImageFileSelect?: () => void;
+  }
+}
+
 export function ImagePlugin() {
   const [editor] = useLexicalComposerContext();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -212,10 +218,10 @@ export function ImagePlugin() {
       handleFileSelect();
     };
     
-    (window as any).__lexicalImageFileSelect = handleGlobalFileSelect;
+    window.__lexicalImageFileSelect = handleGlobalFileSelect;
     
     return () => {
-      delete (window as any).__lexicalImageFileSelect;
+      delete window.__lexicalImageFileSelect;
     };
   }, []);
 
