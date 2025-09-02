@@ -14,15 +14,30 @@ export async function getTeamId(
   ctx: AnyCtx,
   teamSlugOrId: string
 ): Promise<string> {
-  if (isUuid(teamSlugOrId)) return teamSlugOrId;
+  const identity = await ctx.auth.getUserIdentity();
+  const userId = identity?.subject;
+
+  if (isUuid(teamSlugOrId)) {
+    if (userId) {
+      const membership = await ctx.db
+        .query("teamMemberships")
+        .withIndex("by_team_user", (q) =>
+          q.eq("teamId", teamSlugOrId).eq("userId", userId)
+        )
+        .first();
+      if (!membership) {
+        throw new Error("Forbidden: Not a member of this team");
+      }
+    }
+    return teamSlugOrId;
+  }
 
   const team = await ctx.db
     .query("teams")
     .filter((q) => q.eq(q.field("slug"), teamSlugOrId))
     .first();
 
-  const identity = await ctx.auth.getUserIdentity();
-  const userId = identity?.subject;
+  // identity already fetched above
   if (team) {
     const teamId = team.teamId;
     if (userId) {
