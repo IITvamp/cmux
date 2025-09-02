@@ -5,6 +5,7 @@ import { convexQuery } from "@convex-dev/react-query";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import clsx from "clsx";
+import { useCallback } from "react";
 import { usePersistentIframe } from "../hooks/usePersistentIframe";
 import { preloadTaskRunIframes } from "../lib/preloadTaskRunIframes";
 
@@ -52,6 +53,17 @@ function TaskRunComponent() {
     ? `http://${shortId}.39378.localhost:9776/?folder=/root/workspace`
     : taskRun?.data?.vscode?.workspaceUrl || "about:blank";
 
+  const onLoad = useCallback(() => {
+    console.log(`Iframe loaded for task run ${taskRunId}`);
+  }, [taskRunId]);
+
+  const onError = useCallback(
+    (error: Error) => {
+      console.error(`Failed to load iframe for task run ${taskRunId}:`, error);
+    },
+    [taskRunId]
+  );
+
   const { containerRef } = usePersistentIframe({
     key: `task-run-${taskRunId}`,
     url: iframeUrl,
@@ -60,12 +72,8 @@ function TaskRunComponent() {
       "clipboard-read; clipboard-write; usb; serial; hid; cross-origin-isolated; autoplay; camera; microphone; geolocation; payment; fullscreen",
     sandbox:
       "allow-forms allow-modals allow-orientation-lock allow-pointer-lock allow-popups allow-popups-to-escape-sandbox allow-presentation allow-same-origin allow-scripts allow-top-navigation",
-    onLoad: () => {
-      console.log(`Iframe loaded for task run ${taskRunId}`);
-    },
-    onError: (error) => {
-      console.error(`Failed to load iframe for task run ${taskRunId}:`, error);
-    },
+    onLoad,
+    onError,
   });
 
   return (

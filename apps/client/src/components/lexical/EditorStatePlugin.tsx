@@ -1,5 +1,14 @@
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
-import { $getRoot, $createParagraphNode, $getSelection, $createTextNode, ParagraphNode } from "lexical";
+import {
+  $getRoot,
+  $createParagraphNode,
+  $getSelection,
+  $createTextNode,
+  ParagraphNode,
+  type LexicalNode,
+  ElementNode,
+  TextNode,
+} from "lexical";
 import { useEffect } from "react";
 import { $isImageNode } from "./ImageNode";
 
@@ -33,17 +42,17 @@ export function EditorStatePlugin({ onEditorReady }: { onEditorReady?: (api: Edi
     if (onEditorReady) {
       const api = {
         getContent: (): ExtractedContent => {
-          let content: ExtractedContent = {
+          const content: ExtractedContent = {
             text: "",
             images: []
           };
 
           editor.getEditorState().read(() => {
             const root = $getRoot();
-            let textParts: string[] = [];
+            const textParts: string[] = [];
             
             // Walk through all nodes to build text with image references
-            const walkNode = (node: any) => {
+            const walkNode = (node: LexicalNode): void => {
               if ($isImageNode(node)) {
                 const fileName = node.getFileName();
                 const altText = node.getAltText();
@@ -61,9 +70,9 @@ export function EditorStatePlugin({ onEditorReady }: { onEditorReady?: (api: Edi
                 } else {
                   textParts.push(`[Image: ${altText}]`);
                 }
-              } else if (node.getType() === 'text') {
+              } else if (node instanceof TextNode) {
                 textParts.push(node.getTextContent());
-              } else if (node.getChildren) {
+              } else if (node instanceof ElementNode) {
                 const children = node.getChildren();
                 children.forEach(walkNode);
                 // Add newline after paragraphs

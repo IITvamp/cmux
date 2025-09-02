@@ -9,7 +9,15 @@ import { fileURLToPath } from 'node:url'
 const tsconfigRootDir = fileURLToPath(new URL('.', import.meta.url))
 
 export default tseslint.config([
-  globalIgnores(['dist']),
+  // Ignore build artifacts across the monorepo
+  globalIgnores([
+    'dist',
+    '**/dist',
+    '**/out',
+    '**/dist-electron',
+    '**/.next',
+    '**/build',
+  ]),
   {
     files: ['**/*.{ts,tsx}'],
     extends: [
@@ -27,6 +35,7 @@ export default tseslint.config([
       },
     },
     rules: {
+      'react-hooks/exhaustive-deps': 'error',
       '@typescript-eslint/no-unused-vars': [
         'error',
         {
