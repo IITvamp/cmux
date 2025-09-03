@@ -180,7 +180,7 @@ export function TaskTimeline({
       case "run_started":
         icon = (
           <div className="size-4 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-            <Play className="size-2.5 text-blue-600 dark:text-blue-400" />
+            <Play className="size-[9px] text-blue-600 dark:text-blue-400" />
           </div>
         );
         content = (
@@ -316,7 +316,7 @@ export function TaskTimeline({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       {/* Prompt Message */}
       {task?.text && (
         <div className="mb-6">
@@ -348,12 +348,8 @@ export function TaskTimeline({
       )}
 
       <div>
-        <h3 className="text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-4">
-          Activity
-        </h3>
-
         {/* Timeline Events */}
-        <div className="space-y-4">
+        <div className="space-y-4 pl-5">
           {events.map((event, index) => (
             <div key={event.id} className="relative flex gap-3">
               <ActivityEvent event={event} />
@@ -365,7 +361,7 @@ export function TaskTimeline({
         </div>
       </div>
       {/* Comment Box */}
-      <div className="border-t border-neutral-200 dark:border-neutral-800 pt-6 mt-8">
+      <div className="pt-6">
         <form onSubmit={handleCommentSubmit}>
           <div className="relative">
             <TextareaAutosize
