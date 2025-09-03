@@ -188,16 +188,8 @@ app.whenReady().then(() => {
     return net.fetch(pathToFileURL(fsPath).toString());
   });
 
-  // // Register deep-link protocol (packaged and, best-effort, dev).
-  // registerDeepLinkProtocol();
-
   // Create the initial window.
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
-
-  // // Handle a deep link if the app was launched via protocol while closed
-  // // (Windows/Linux: initial argv; macOS uses open-url).
-  // const initialLink = extractDeepLinkFromArgv(process.argv);
-  // if (initialLink) handleOrQueueProtocolUrl(initialLink);
 
   app.on("activate", function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -259,52 +251,55 @@ async function handleProtocolUrl(url: string): Promise<void> {
       urlObj.searchParams.get("stack_access") ?? ""
     );
 
-    if (stackRefresh && stackAccess) {
-      // Verify tokens with Stack JWKS and extract exp for cookie expiry.
-      const [refreshPayload, accessPayload] = await Promise.all([
-        verifyJwtAndGetPayload(stackRefresh),
-        verifyJwtAndGetPayload(stackAccess),
-      ]);
-
-      if (refreshPayload?.exp === null || accessPayload?.exp === null) {
-        mainWarn("Aborting cookie set due to invalid tokens");
-        return;
-      }
-
-      // Determine a cookieable URL. Prefer our custom cmux:// origin when not
-      // running against an http(s) dev server.
-      const currentUrl = new URL(mainWindow.webContents.getURL());
-      currentUrl.hash = "";
-      const realUrl = currentUrl.toString() + "/";
-
-      await Promise.all([
-        mainWindow.webContents.session.cookies.remove(
-          realUrl,
-          `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`
-        ),
-        mainWindow.webContents.session.cookies.remove(realUrl, `stack-access`),
-      ]);
-
-      await Promise.all([
-        mainWindow.webContents.session.cookies.set({
-          url: realUrl,
-          name: `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`,
-          value: stackRefresh,
-          expirationDate: refreshPayload?.exp,
-          sameSite: "no_restriction",
-          secure: true,
-        }),
-        mainWindow.webContents.session.cookies.set({
-          url: realUrl,
-          name: "stack-access",
-          value: stackAccess,
-          expirationDate: accessPayload?.exp,
-          sameSite: "no_restriction",
-          secure: true,
-        }),
-      ]);
-
-      mainWindow.webContents.reload();
+    if (!stackRefresh || !stackAccess) {
+      mainWarn("Aborting cookie set due to missing tokens");
+      return;
     }
+
+    // Verify tokens with Stack JWKS and extract exp for cookie expiry.
+    const [refreshPayload, accessPayload] = await Promise.all([
+      verifyJwtAndGetPayload(stackRefresh),
+      verifyJwtAndGetPayload(stackAccess),
+    ]);
+
+    if (refreshPayload?.exp === null || accessPayload?.exp === null) {
+      mainWarn("Aborting cookie set due to invalid tokens");
+      return;
+    }
+
+    // Determine a cookieable URL. Prefer our custom cmux:// origin when not
+    // running against an http(s) dev server.
+    const currentUrl = new URL(mainWindow.webContents.getURL());
+    currentUrl.hash = "";
+    const realUrl = currentUrl.toString() + "/";
+
+    await Promise.all([
+      mainWindow.webContents.session.cookies.remove(
+        realUrl,
+        `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`
+      ),
+      mainWindow.webContents.session.cookies.remove(realUrl, `stack-access`),
+    ]);
+
+    await Promise.all([
+      mainWindow.webContents.session.cookies.set({
+        url: realUrl,
+        name: `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`,
+        value: stackRefresh,
+        expirationDate: refreshPayload?.exp,
+        sameSite: "no_restriction",
+        secure: true,
+      }),
+      mainWindow.webContents.session.cookies.set({
+        url: realUrl,
+        name: "stack-access",
+        value: stackAccess,
+        expirationDate: accessPayload?.exp,
+        sameSite: "no_restriction",
+        secure: true,
+      }),
+    ]);
+
+    mainWindow.webContents.reload();
   }
 }
