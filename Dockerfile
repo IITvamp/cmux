@@ -301,3 +301,48 @@ WORKDIR /
 
 ENTRYPOINT ["/startup.sh"]
 CMD []
+
+# ---------------------------
+# Minimal envctl/envd image
+# Build with: docker build --target envcli -t cmux-env:local .
+# ---------------------------
+FROM node:24-slim AS envcli-build
+
+WORKDIR /app
+
+# Enable pnpm via corepack
+RUN corepack enable && corepack prepare pnpm@10.14.0 --activate
+
+# Only copy files needed to build @cmux/envctl and @cmux/envd
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY packages/envctl/package.json packages/envctl/tsconfig.json packages/envctl/tsconfig.build.json ./packages/envctl/
+COPY packages/envd/package.json packages/envd/tsconfig.json packages/envd/tsconfig.build.json ./packages/envd/
+COPY packages/envctl/src ./packages/envctl/src
+COPY packages/envd/src ./packages/envd/src
+
+# Install and build only the two packages
+RUN --mount=type=cache,id=pnpm-envcli,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile --ignore-scripts --filter @cmux/envctl --filter @cmux/envd && \
+    pnpm -F @cmux/envctl -F @cmux/envd build
+
+FROM node:24-slim AS envcli
+WORKDIR /usr/local/lib/cmux
+
+# Copy runtime artifacts
+COPY --from=envcli-build /app/packages/envctl/dist ./envctl/dist
+COPY --from=envcli-build /app/packages/envctl/package.json ./envctl/package.json
+COPY --from=envcli-build /app/packages/envd/dist ./envd/dist
+COPY --from=envcli-build /app/packages/envd/package.json ./envd/package.json
+
+# Provide simple sh wrappers on PATH
+RUN set -eux; \
+    printf '#!/bin/sh\nexec node /usr/local/lib/cmux/envctl/dist/index.js "$@"\n' > /usr/local/bin/envctl && \
+    printf '#!/bin/sh\nexec node /usr/local/lib/cmux/envd/dist/index.js "$@"\n' > /usr/local/bin/envd && \
+    chmod +x /usr/local/bin/envctl /usr/local/bin/envd
+
+# Default workdir and shell
+WORKDIR /
+SHELL ["/bin/sh", "-lc"]
+
+# Keep runtime as the default final stage when building without --target
+FROM runtime AS final
