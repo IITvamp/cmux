@@ -1,5 +1,6 @@
 import { type Doc, type Id } from "@cmux/convex/dataModel";
 import { useUser } from "@stackframe/react";
+import { Link, useParams } from "@tanstack/react-router";
 import { formatDistanceToNow } from "date-fns";
 import {
   AlertCircle,
@@ -56,6 +57,7 @@ export function TaskTimeline({
 }: TaskTimelineProps) {
   const [comment, setComment] = useState("");
   const user = useUser();
+  const params = useParams({ from: "/_layout/$teamSlugOrId/task/$taskId" });
 
   const events = useMemo(() => {
     const timelineEvents: TimelineEvent[] = [];
@@ -183,7 +185,28 @@ export function TaskTimeline({
             <Play className="size-[9px] text-blue-600 dark:text-blue-400" />
           </div>
         );
-        content = (
+        content = event.runId ? (
+          <Link
+            to="/$teamSlugOrId/task/$taskId/run/$runId/vscode"
+            params={{
+              teamSlugOrId: params.teamSlugOrId,
+              taskId: params.taskId,
+              runId: event.runId,
+            }}
+            className="hover:underline inline"
+          >
+            <span className="font-medium text-neutral-900 dark:text-neutral-100">
+              {agentName}
+            </span>
+            <span className="text-neutral-600 dark:text-neutral-400">
+              {" "}
+              started working
+            </span>
+            <span className="text-neutral-500 dark:text-neutral-500 ml-1">
+              {formatDistanceToNow(event.timestamp, { addSuffix: true })}
+            </span>
+          </Link>
+        ) : (
           <>
             <span className="font-medium text-neutral-900 dark:text-neutral-100">
               {agentName}
@@ -210,15 +233,39 @@ export function TaskTimeline({
         );
         content = (
           <>
-            <span className="font-medium text-neutral-900 dark:text-neutral-100">
-              {agentName}
-            </span>
-            <span className="text-neutral-600 dark:text-neutral-400">
-              {event.isCrowned ? " completed and won the crown" : " completed"}
-            </span>
-            <span className="text-neutral-500 dark:text-neutral-500 ml-1">
-              {formatDistanceToNow(event.timestamp, { addSuffix: true })}
-            </span>
+            {event.runId ? (
+              <Link
+                to="/$teamSlugOrId/task/$taskId/run/$runId/vscode"
+                params={{
+                  teamSlugOrId: params.teamSlugOrId,
+                  taskId: params.taskId,
+                  runId: event.runId,
+                }}
+                className="hover:underline inline"
+              >
+                <span className="font-medium text-neutral-900 dark:text-neutral-100">
+                  {agentName}
+                </span>
+                <span className="text-neutral-600 dark:text-neutral-400">
+                  {event.isCrowned ? " completed and won the crown" : " completed"}
+                </span>
+                <span className="text-neutral-500 dark:text-neutral-500 ml-1">
+                  {formatDistanceToNow(event.timestamp, { addSuffix: true })}
+                </span>
+              </Link>
+            ) : (
+              <>
+                <span className="font-medium text-neutral-900 dark:text-neutral-100">
+                  {agentName}
+                </span>
+                <span className="text-neutral-600 dark:text-neutral-400">
+                  {event.isCrowned ? " completed and won the crown" : " completed"}
+                </span>
+                <span className="text-neutral-500 dark:text-neutral-500 ml-1">
+                  {formatDistanceToNow(event.timestamp, { addSuffix: true })}
+                </span>
+              </>
+            )}
             {event.summary && (
               <div className="mt-2 text-sm text-neutral-600 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-900 rounded-md p-3">
                 {event.summary}
@@ -241,16 +288,41 @@ export function TaskTimeline({
         );
         content = (
           <>
-            <span className="font-medium text-neutral-900 dark:text-neutral-100">
-              {agentName}
-            </span>
-            <span className="text-neutral-600 dark:text-neutral-400">
-              {" "}
-              failed
-            </span>
-            <span className="text-neutral-500 dark:text-neutral-500 ml-1">
-              {formatDistanceToNow(event.timestamp, { addSuffix: true })}
-            </span>
+            {event.runId ? (
+              <Link
+                to="/$teamSlugOrId/task/$taskId/run/$runId/vscode"
+                params={{
+                  teamSlugOrId: params.teamSlugOrId,
+                  taskId: params.taskId,
+                  runId: event.runId,
+                }}
+                className="hover:underline inline"
+              >
+                <span className="font-medium text-neutral-900 dark:text-neutral-100">
+                  {agentName}
+                </span>
+                <span className="text-neutral-600 dark:text-neutral-400">
+                  {" "}
+                  failed
+                </span>
+                <span className="text-neutral-500 dark:text-neutral-500 ml-1">
+                  {formatDistanceToNow(event.timestamp, { addSuffix: true })}
+                </span>
+              </Link>
+            ) : (
+              <>
+                <span className="font-medium text-neutral-900 dark:text-neutral-100">
+                  {agentName}
+                </span>
+                <span className="text-neutral-600 dark:text-neutral-400">
+                  {" "}
+                  failed
+                </span>
+                <span className="text-neutral-500 dark:text-neutral-500 ml-1">
+                  {formatDistanceToNow(event.timestamp, { addSuffix: true })}
+                </span>
+              </>
+            )}
             {event.exitCode !== undefined && event.exitCode !== 0 && (
               <div className="mt-1 text-xs text-red-600 dark:text-red-400">
                 Exit code: {event.exitCode}
@@ -267,16 +339,41 @@ export function TaskTimeline({
         );
         content = (
           <>
-            <span className="font-medium text-neutral-900 dark:text-neutral-100">
-              Crown evaluation
-            </span>
-            <span className="text-neutral-600 dark:text-neutral-400">
-              {" "}
-              completed
-            </span>
-            <span className="text-neutral-500 dark:text-neutral-500 ml-1">
-              {formatDistanceToNow(event.timestamp, { addSuffix: true })}
-            </span>
+            {event.runId ? (
+              <Link
+                to="/$teamSlugOrId/task/$taskId/run/$runId/vscode"
+                params={{
+                  teamSlugOrId: params.teamSlugOrId,
+                  taskId: params.taskId,
+                  runId: event.runId,
+                }}
+                className="hover:underline inline"
+              >
+                <span className="font-medium text-neutral-900 dark:text-neutral-100">
+                  Crown evaluation
+                </span>
+                <span className="text-neutral-600 dark:text-neutral-400">
+                  {" "}
+                  completed
+                </span>
+                <span className="text-neutral-500 dark:text-neutral-500 ml-1">
+                  {formatDistanceToNow(event.timestamp, { addSuffix: true })}
+                </span>
+              </Link>
+            ) : (
+              <>
+                <span className="font-medium text-neutral-900 dark:text-neutral-100">
+                  Crown evaluation
+                </span>
+                <span className="text-neutral-600 dark:text-neutral-400">
+                  {" "}
+                  completed
+                </span>
+                <span className="text-neutral-500 dark:text-neutral-500 ml-1">
+                  {formatDistanceToNow(event.timestamp, { addSuffix: true })}
+                </span>
+              </>
+            )}
             {event.crownReason && (
               <div className="mt-2 text-[13px] text-purple-700 dark:text-purple-400 bg-purple-50 dark:bg-purple-900/20 rounded-md p-3">
                 {event.crownReason}
