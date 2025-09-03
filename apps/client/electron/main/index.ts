@@ -14,6 +14,8 @@ import {
   jwtVerify,
   type JWTPayload,
 } from "jose";
+
+import fs from "node:fs";
 import path, { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import util from "node:util";
@@ -50,7 +52,7 @@ function formatArgs(args: unknown[]): string {
   const ts = new Date().toISOString();
   const body = args
     .map((a) =>
-      typeof a === "string" ? a : util.inspect(a, { depth: 3, colors: false })
+      typeof a === "string" ? a : util.inspect(a, { depth: 3, colors: false }),
     )
     .join(" ");
   return `[${ts}] ${body}`;
@@ -113,13 +115,28 @@ function createWindow(): void {
 
   // Use only the icon from cmux-logos iconset.
   const iconPng = resolveResourcePath(
-    "cmux-logos/cmux.iconset/icon_512x512.png"
+    "cmux-logos/cmux.iconset/icon_512x512.png",
   );
-  if (process.platform !== "darwin") {
+
+  if (process.platform === "darwin") {
+    // For macOS, prefer the .icns file if available, otherwise use PNG
+    const iconIcnsPath = resolveResourcePath("Cmux.icns");
+    if (fs.existsSync(iconIcnsPath)) {
+      windowOptions.icon = iconIcnsPath;
+    } else {
+      windowOptions.icon = iconPng;
+    }
+  } else {
     windowOptions.icon = iconPng;
   }
 
   mainWindow = new BrowserWindow(windowOptions);
+
+  // Set Dock icon immediately for macOS
+  if (process.platform === "darwin") {
+    const img = nativeImage.createFromPath(iconPng);
+    if (!img.isEmpty()) app.dock?.setIcon(img);
+  }
 
   mainWindow.on("ready-to-show", () => {
     mainLog("Window ready-to-show");
@@ -167,15 +184,6 @@ app.whenReady().then(() => {
   // which is bundled inside app.asar (referenced by app.getAppPath()).
   const baseDir = path.join(app.getAppPath(), "out", "renderer");
 
-  // Set Dock icon from iconset on macOS.
-  if (process.platform === "darwin") {
-    const iconPng = resolveResourcePath(
-      "cmux-logos/cmux.iconset/icon_512x512.png"
-    );
-    const img = nativeImage.createFromPath(iconPng);
-    if (!img.isEmpty()) app.dock?.setIcon(img);
-  }
-
   const ses = session.fromPartition(PARTITION);
   // Intercept HTTPS for our private host and serve local files; pass-through others.
   ses.protocol.handle("https", async (req) => {
@@ -184,7 +192,7 @@ app.whenReady().then(() => {
     if (u.hostname !== APP_HOST) return net.fetch(req);
     const pathname = u.pathname === "/" ? "/index.html" : u.pathname;
     const fsPath = path.normalize(
-      path.join(baseDir, decodeURIComponent(pathname))
+      path.join(baseDir, decodeURIComponent(pathname)),
     );
     const rel = path.relative(baseDir, fsPath);
     if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) {
@@ -225,7 +233,7 @@ function jwksForIssuer(issuer: string) {
 }
 
 async function verifyJwtAndGetPayload(
-  token: string
+  token: string,
 ): Promise<JWTPayload | null> {
   try {
     const decoded = decodeJwt(token);
@@ -282,7 +290,7 @@ async function handleProtocolUrl(url: string): Promise<void> {
     await Promise.all([
       mainWindow.webContents.session.cookies.remove(
         realUrl,
-        `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`
+        `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`,
       ),
       mainWindow.webContents.session.cookies.remove(realUrl, `stack-access`),
     ]);
