@@ -55,16 +55,25 @@ export const update = authMutation({
       .first();
     const now = Date.now();
 
+    // Only persist allowed fields; exclude teamSlugOrId
+    const updates = {
+      maxRunningContainers: args.maxRunningContainers,
+      reviewPeriodMinutes: args.reviewPeriodMinutes,
+      autoCleanupEnabled: args.autoCleanupEnabled,
+      stopImmediatelyOnCompletion: args.stopImmediatelyOnCompletion,
+      minContainersToKeep: args.minContainersToKeep,
+    } as const;
+
     if (existing) {
       await ctx.db.patch(existing._id, {
-        ...args,
+        ...updates,
         userId,
         teamId,
         updatedAt: now,
       });
     } else {
       await ctx.db.insert("containerSettings", {
-        ...args,
+        ...updates,
         userId, // keep modifier for auditing
         teamId,
         createdAt: now,

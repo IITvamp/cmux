@@ -166,8 +166,17 @@ export const insertRepo = internalMutation({
   },
   handler: async (ctx, args) => {
     const teamId = await getTeamId(ctx, args.teamSlugOrId);
-    const { ...rest } = args;
-    return await ctx.db.insert("repos", { ...rest, teamId });
+    // Persist only repo fields + derived teamId; exclude teamSlugOrId
+    const { fullName, org, name, gitRemote, provider, userId } = args;
+    return await ctx.db.insert("repos", {
+      fullName,
+      org,
+      name,
+      gitRemote,
+      provider,
+      userId,
+      teamId,
+    });
   },
 });
 
@@ -235,8 +244,8 @@ export const insertBranch = internalMutation({
   },
   handler: async (ctx, args) => {
     const teamId = await getTeamId(ctx, args.teamSlugOrId);
-    const { ...rest } = args;
-    return await ctx.db.insert("branches", { ...rest, teamId });
+    const { repo, name, userId } = args;
+    return await ctx.db.insert("branches", { repo, name, userId, teamId });
   },
 });
 
