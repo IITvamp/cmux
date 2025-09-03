@@ -2,7 +2,8 @@
   "appId": "com.cmux.app",
   "productName": "Cmux",
   "directories": {
-    "output": "dist-electron"
+    "output": "dist-electron",
+    "buildResources": "build"
   },
   "files": [
     "out/**/*",
@@ -25,7 +26,10 @@
     "entitlements": "build/entitlements.mac.plist",
     "entitlementsInherit": "build/entitlements.mac.plist",
     "gatekeeperAssess": false,
-    "target": ["dmg", "zip"]
+    "target": ["dmg", "zip"],
+    "extendInfo": {
+      "CFBundleIconFile": "icon"
+    }
   },
   "win": {
     "icon": "build/icon.ico"
@@ -35,6 +39,7 @@
     "category": "Development"
   },
   "dmg": {
+    "icon": "build/icon.icns",
     "contents": [
       {
         "x": 130,
