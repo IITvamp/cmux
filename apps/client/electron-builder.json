@@ -24,6 +24,10 @@
     "gatekeeperAssess": false,
     "target": ["dmg", "zip"]
   },
+  "win": {
+    "icon": "build/icon.ico",
+    "target": ["nsis", "zip"]
+  },
   "dmg": {
     "contents": [
       {
