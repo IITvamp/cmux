@@ -368,7 +368,7 @@ export function TaskTimeline({
               value={comment}
               onChange={(e) => setComment(e.target.value)}
               placeholder="Leave a comment..."
-              className="w-full px-3 py-2 pr-20 text-sm border border-neutral-300 dark:border-neutral-700 rounded-lg bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 placeholder-neutral-500 dark:placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-transparent resize-none"
+              className="w-full px-3 py-2 pr-20 text-sm border border-neutral-300 dark:border-neutral-700 rounded-lg bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 placeholder-neutral-500 dark:placeholder-neutral-400 focus:outline-none resize-none"
               minRows={3}
               maxRows={10}
             />
