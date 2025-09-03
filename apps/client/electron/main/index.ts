@@ -8,16 +8,16 @@ import {
   shell,
   type BrowserWindowConstructorOptions,
 } from "electron";
-import path, { join } from "node:path";
-import { pathToFileURL } from "node:url";
-import util from "node:util";
-import { env } from "./electron-main-env";
 import {
   createRemoteJWKSet,
   decodeJwt,
   jwtVerify,
   type JWTPayload,
 } from "jose";
+import path, { join } from "node:path";
+import { pathToFileURL } from "node:url";
+import util from "node:util";
+import { env } from "./electron-main-env";
 
 // Use a cookieable HTTPS origin intercepted locally instead of a custom scheme.
 const PARTITION = "persist:cmux";
@@ -58,21 +58,21 @@ function formatArgs(args: unknown[]): string {
 
 export function mainLog(...args: unknown[]) {
   const line = formatArgs(args);
-  // eslint-disable-next-line no-console
+
   console.log("[MAIN]", line);
   emitToRenderer("log", `[MAIN] ${line}`);
 }
 
 export function mainWarn(...args: unknown[]) {
   const line = formatArgs(args);
-  // eslint-disable-next-line no-console
+
   console.warn("[MAIN]", line);
   emitToRenderer("warn", `[MAIN] ${line}`);
 }
 
 export function mainError(...args: unknown[]) {
   const line = formatArgs(args);
-  // eslint-disable-next-line no-console
+
   console.error("[MAIN]", line);
   emitToRenderer("error", `[MAIN] ${line}`);
 }
@@ -243,18 +243,17 @@ async function handleProtocolUrl(url: string): Promise<void> {
   const urlObj = new URL(url);
 
   if (urlObj.hostname === "auth-callback") {
-    // Check for the full URL parameter
-    const stackRefresh = encodeURIComponent(
-      urlObj.searchParams.get("stack_refresh") ?? ""
-    );
-    const stackAccess = encodeURIComponent(
-      urlObj.searchParams.get("stack_access") ?? ""
-    );
+    const rawStackRefresh = urlObj.searchParams.get("stack_refresh");
+    const rawStackAccess = urlObj.searchParams.get("stack_access");
 
-    if (!stackRefresh || !stackAccess) {
+    if (!rawStackRefresh || !rawStackAccess) {
       mainWarn("Aborting cookie set due to missing tokens");
       return;
     }
+
+    // Check for the full URL parameter
+    const stackRefresh = encodeURIComponent(rawStackRefresh);
+    const stackAccess = encodeURIComponent(rawStackAccess);
 
     // Verify tokens with Stack JWKS and extract exp for cookie expiry.
     const [refreshPayload, accessPayload] = await Promise.all([
