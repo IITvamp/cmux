@@ -25,7 +25,8 @@ export class MorphVSCodeInstance extends VSCodeInstance {
     this.morphClient = new MorphCloudClient();
     // this.morphSnapshotId = config.morphSnapshotId || "snapshot_xf8w00is";
     // this.morphSnapshotId = config.morphSnapshotId || "snapshot_hwmk73mg";
-    this.morphSnapshotId = config.morphSnapshotId || "snapshot_mr26f6pw";
+    // this.morphSnapshotId = config.morphSnapshotId || "snapshot_mr26f6pw";
+    this.morphSnapshotId = config.morphSnapshotId || "snapshot_g9klz9c4";
   }
 
   async start(): Promise<VSCodeInstanceInfo> {
@@ -148,7 +149,7 @@ export class MorphVSCodeInstance extends VSCodeInstance {
     const devcontainerJson = await workerExec({
       workerSocket: this.getWorkerSocket(),
       command: "cat",
-      args: ["/root/workspace/.devcontainer/devcontainer.json"],
+      args: ["/root/workspace/cmux/.devcontainer/devcontainer.json"],
       cwd: "/root",
       env: {},
     });
