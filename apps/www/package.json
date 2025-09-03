@@ -23,7 +23,7 @@
     "@hono/zod-openapi": "^1.1.0",
     "@octokit/auth-app": "^6.1.4",
     "@stackframe/js": "^2.8.36",
-    "@stackframe/stack": "^2.8.28",
+    "@stackframe/stack": "^2.8.36",
     "@t3-oss/env-core": "^0.13.8",
     "convex": "^1.26.0-alpha.6",
     "class-variance-authority": "^0.7.1",

@@ -39,6 +39,9 @@ export const create = authMutation({
     dataVaultKey: v.string(),
     selectedRepos: v.optional(v.array(v.string())),
     description: v.optional(v.string()),
+    maintenanceScript: v.optional(v.string()),
+    devScript: v.optional(v.string()),
+    exposedPorts: v.optional(v.array(v.number())),
   },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
@@ -52,6 +55,9 @@ export const create = authMutation({
       dataVaultKey: args.dataVaultKey,
       selectedRepos: args.selectedRepos,
       description: args.description,
+      maintenanceScript: args.maintenanceScript,
+      devScript: args.devScript,
+      exposedPorts: args.exposedPorts,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });

@@ -2,9 +2,11 @@ import { getAccessTokenFromRequest } from "@/lib/utils/auth";
 import { getConvex } from "@/lib/utils/get-convex";
 import { stackServerAppJs } from "@/lib/utils/stack";
 import { env } from "@/lib/utils/www-env";
+import { verifyTeamAccess } from "@/lib/utils/team-verification";
 import { api } from "@cmux/convex/api";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { randomBytes } from "node:crypto";
+import { MorphCloudClient } from "morphcloud";
 
 export const environmentsRouter = new OpenAPIHono();
 
@@ -16,6 +18,9 @@ const CreateEnvironmentBody = z
     envVarsContent: z.string(), // The entire .env file content
     selectedRepos: z.array(z.string()).optional(),
     description: z.string().optional(),
+    maintenanceScript: z.string().optional(),
+    devScript: z.string().optional(),
+    exposedPorts: z.array(z.number()).optional(),
   })
   .openapi("CreateEnvironmentBody");
 
@@ -34,6 +39,9 @@ const GetEnvironmentResponse = z
     dataVaultKey: z.string(),
     selectedRepos: z.array(z.string()).optional(),
     description: z.string().optional(),
+    maintenanceScript: z.string().optional(),
+    devScript: z.string().optional(),
+    exposedPorts: z.array(z.number()).optional(),
     createdAt: z.number(),
     updatedAt: z.number(),
   })
@@ -87,24 +95,40 @@ environmentsRouter.openapi(
     const body = c.req.valid("json");
 
     try {
-      // Create Morph snapshot
-      // Note: Morph doesn't have a direct snapshot API in their SDK yet
-      // For now, we'll use the instanceId as the snapshot ID
-      console.log(
-        "Creating Morph snapshot from instance:",
-        body.morphInstanceId
-      );
-      const snapshot = { id: body.morphInstanceId };
+      // Verify team access
+      const team = await verifyTeamAccess({
+        req: c.req.raw,
+        teamSlugOrId: body.teamSlugOrId,
+      });
+
+      // Create Morph snapshot from instance
+      const client = new MorphCloudClient({ apiKey: env.MORPH_API_KEY });
+      const instance = await client.instances.get({
+        instanceId: body.morphInstanceId,
+      });
+
+      // Ensure instance belongs to this team (when metadata exists)
+      const meta = (instance as unknown as { metadata?: { teamId?: string } })
+        .metadata;
+      const instanceTeamId = meta?.teamId;
+      if (instanceTeamId && instanceTeamId !== team.uuid) {
+        return c.text(
+          "Forbidden: Instance does not belong to this team",
+          403
+        );
+      }
+
+      const snapshot = await instance.snapshot();
 
       // Generate a unique key for this environment's data vault entry
       const dataVaultKey = `env_${randomBytes(16).toString("hex")}`;
 
       // Store environment variables in StackAuth DataBook
-      const store =
-        await stackServerAppJs.getDataVaultStore("cmux-snapshot-envs");
-      await store.setValue(dataVaultKey, body.envVarsContent, {
-        secret: env.STACK_DATA_VAULT_SECRET,
-      });
+      // const store =
+      //   await stackServerAppJs.getDataVaultStore("cmux-snapshot-envs");
+      // await store.setValue(dataVaultKey, body.envVarsContent, {
+      //   secret: env.STACK_DATA_VAULT_SECRET,
+      // });
 
       // Create environment record in Convex
       const convexClient = getConvex({ accessToken });
@@ -117,6 +141,9 @@ environmentsRouter.openapi(
           dataVaultKey,
           selectedRepos: body.selectedRepos,
           description: body.description,
+          maintenanceScript: body.maintenanceScript,
+          devScript: body.devScript,
+          exposedPorts: body.exposedPorts,
         }
       );
 
@@ -169,7 +196,22 @@ environmentsRouter.openapi(
         teamSlugOrId,
       });
 
-      return c.json(environments);
+      // Map Convex documents to API response shape
+      const result = environments.map((env) => ({
+        id: (env as unknown as { _id: string })._id,
+        name: env.name,
+        morphSnapshotId: env.morphSnapshotId,
+        dataVaultKey: env.dataVaultKey,
+        selectedRepos: env.selectedRepos,
+        description: env.description,
+        maintenanceScript: env.maintenanceScript,
+        devScript: env.devScript,
+        exposedPorts: env.exposedPorts,
+        createdAt: env.createdAt,
+        updatedAt: env.updatedAt,
+      }));
+
+      return c.json(result);
     } catch (error) {
       console.error("Failed to list environments:", error);
       return c.text("Failed to list environments", 500);
@@ -224,8 +266,22 @@ environmentsRouter.openapi(
       if (!environment) {
         return c.text("Environment not found", 404);
       }
+      // Map Convex document to API response shape
+      const mapped = {
+        id: (environment as unknown as { _id: string })._id,
+        name: environment.name,
+        morphSnapshotId: environment.morphSnapshotId,
+        dataVaultKey: environment.dataVaultKey,
+        selectedRepos: environment.selectedRepos,
+        description: environment.description,
+        maintenanceScript: environment.maintenanceScript,
+        devScript: environment.devScript,
+        exposedPorts: environment.exposedPorts,
+        createdAt: environment.createdAt,
+        updatedAt: environment.updatedAt,
+      };
 
-      return c.json(environment);
+      return c.json(mapped);
     } catch (error) {
       console.error("Failed to get environment:", error);
       return c.text("Failed to get environment", 500);

@@ -785,7 +785,7 @@ function SettingsComponent() {
                         return (
                           <div
                             key={key.envVar}
-                            className="border border-neutral-200 dark:border-neutral-800 rounded-lg p-3 space-y-2 md:space-y-0 md:flex md:items-start md:gap-4"
+                            className="border border-neutral-200 dark:border-neutral-800 rounded-lg p-3 space-y-2"
                           >
                             <div className="flex-1 min-w-0">
                               <div className="flex items-start justify-between">
@@ -804,8 +804,9 @@ function SettingsComponent() {
                                           <span className="inline-flex items-center gap-1 min-w-0 align-middle w-full">
                                             <span
                                               ref={(el) => {
-                                                usedListRefs.current[key.envVar] =
-                                                  el;
+                                                usedListRefs.current[
+                                                  key.envVar
+                                                ] = el;
                                               }}
                                               className={`font-medium min-w-0 ${
                                                 expandedUsedList[key.envVar]
@@ -820,11 +821,13 @@ function SettingsComponent() {
                                                 href="#"
                                                 onClick={(e) => {
                                                   e.preventDefault();
-                                                  setExpandedUsedList((prev) => ({
-                                                    ...prev,
-                                                    [key.envVar]:
-                                                      !prev[key.envVar],
-                                                  }));
+                                                  setExpandedUsedList(
+                                                    (prev) => ({
+                                                      ...prev,
+                                                      [key.envVar]:
+                                                        !prev[key.envVar],
+                                                    })
+                                                  );
                                                 }}
                                                 className="flex-none text-[10px] text-blue-600 hover:underline dark:text-blue-400"
                                               >
@@ -844,7 +847,7 @@ function SettingsComponent() {
                                     href={providerInfo.url}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 flex items-center gap-1"
+                                    className="text-xs text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 flex items-center gap-1 whitespace-nowrap"
                                   >
                                     Get key
                                     <svg
