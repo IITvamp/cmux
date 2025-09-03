@@ -174,14 +174,7 @@ function createWindow(): void {
     show: false,
     autoHideMenuBar: true,
     titleBarStyle: "hiddenInset",
-    // Keep the native traffic lights but make the overlay area thin
-    // so we can render a very slim draggable bar like Safari/Cursor.
-    titleBarOverlay: {
-      height: 28,
-      color: "#00000000",
-    },
-    // Center the traffic lights within the 28px overlay
-    trafficLightPosition: { x: 12, y: 7 },
+    trafficLightPosition: { x: 12, y: 10 },
     webPreferences: {
       preload: join(__dirname, "../preload/index.cjs"),
       sandbox: false,
