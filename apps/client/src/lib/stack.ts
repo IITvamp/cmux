@@ -1,4 +1,4 @@
-import { client } from "@cmux/www-openapi-client/client.gen";
+import { client as wwwOpenAPIClient } from "@cmux/www-openapi-client/client.gen";
 import { StackClientApp } from "@stackframe/react";
 import { useNavigate as useTanstackNavigate } from "@tanstack/react-router";
 import { env } from "../client-env";
@@ -38,21 +38,25 @@ cachedGetUser(stackClientApp).then(async (user) => {
   );
 });
 
-client.setConfig({
-  baseUrl: "http://localhost:9779",
+wwwOpenAPIClient.setConfig({
+  baseUrl: env.NEXT_PUBLIC_WWW_ORIGIN,
   fetch: async (request) => {
     const user = await cachedGetUser(stackClientApp);
     if (!user) {
       throw new Error("User not found");
     }
     const authHeaders = await user.getAuthHeaders();
-    const headers =
-      request instanceof Request ? request.headers : new Headers();
+    const mergedHeaders = new Headers();
+    for (const [key, value] of Object.entries(authHeaders)) {
+      mergedHeaders.set(key, value);
+    }
+    for (const [key, value] of request instanceof Request
+      ? request.headers.entries()
+      : []) {
+      mergedHeaders.set(key, value);
+    }
     const response = await fetch(request, {
-      headers: {
-        ...headers,
-        ...authHeaders,
-      },
+      headers: mergedHeaders,
     });
     return response;
   },
