@@ -7,11 +7,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { stackClientApp } from "@/lib/stack";
+import { isElectron } from "@/lib/electron";
 import { api } from "@cmux/convex/api";
 import { Skeleton } from "@heroui/react";
 import { useStackApp, useUser, type Team } from "@stackframe/react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery as useConvexQuery, useMutation } from "convex/react";
+import type React from "react";
 
 export const Route = createFileRoute("/_layout/team-picker")({
   component: TeamPicker,
@@ -111,6 +113,12 @@ function TeamPicker() {
 
   return (
     <div className="min-h-dvh w-full bg-neutral-50 dark:bg-neutral-950 flex items-center justify-center p-6">
+      {isElectron ? (
+        <div
+          className="fixed top-0 left-0 right-0 h-[24px]"
+          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+        />
+      ) : null}
       <div className="mx-auto w-full max-w-3xl">
         <Card className="border-neutral-200 dark:border-neutral-800 bg-white/70 dark:bg-neutral-900/70 backdrop-blur">
           <CardHeader>

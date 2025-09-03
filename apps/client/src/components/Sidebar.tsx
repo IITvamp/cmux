@@ -22,7 +22,7 @@ interface SidebarProps {
 
 export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
   const DEFAULT_WIDTH = 256;
-  const MIN_WIDTH = 200;
+  const MIN_WIDTH = 240;
   const MAX_WIDTH = 600;
 
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -137,7 +137,7 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
       }}
     >
       <div
-        className="h-[38px] flex items-center pl-3 pr-1.5 shrink-0"
+        className="h-[38px] flex items-center pr-1.5 shrink-0"
         style={{ WebkitAppRegion: "drag" } as CSSProperties}
       >
         {isElectron && <div className="w-[88px]"></div>}
