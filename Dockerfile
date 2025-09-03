@@ -134,11 +134,11 @@ RUN /app/openvscode-server/bin/openvscode-server --install-extension /tmp/cmux-v
 
 # Create VS Code user settings
 RUN mkdir -p /root/.openvscode-server/data/User && \
-    echo '{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true}' > /root/.openvscode-server/data/User/settings.json && \
+    echo '{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "terminal.integrated.defaultProfile.linux": "bash", "terminal.integrated.profiles.linux": {"bash": {"path": "/bin/bash", "args": ["-l"]}}}' > /root/.openvscode-server/data/User/settings.json && \
     mkdir -p /root/.openvscode-server/data/User/profiles/default-profile && \
-    echo '{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true}' > /root/.openvscode-server/data/User/profiles/default-profile/settings.json && \
+    echo '{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "terminal.integrated.defaultProfile.linux": "bash", "terminal.integrated.profiles.linux": {"bash": {"path": "/bin/bash", "args": ["-l"]}}}' > /root/.openvscode-server/data/User/profiles/default-profile/settings.json && \
     mkdir -p /root/.openvscode-server/data/Machine && \
-    echo '{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true}' > /root/.openvscode-server/data/Machine/settings.json
+    echo '{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "terminal.integrated.defaultProfile.linux": "bash", "terminal.integrated.profiles.linux": {"bash": {"path": "/bin/bash", "args": ["-l"]}}}' > /root/.openvscode-server/data/Machine/settings.json
 
 # Stage 2: Runtime stage
 FROM ubuntu:24.04 AS runtime
@@ -263,6 +263,9 @@ COPY configs/tmux.conf /etc/tmux.conf
 COPY configs/envctl.sh /etc/profile.d/envctl.sh
 RUN bash -lc 'echo "# Source envctl hook for interactive non-login shells" >> /etc/bash.bashrc && \
     echo "if [ -f /etc/profile.d/envctl.sh ]; then . /etc/profile.d/envctl.sh; fi" >> /etc/bash.bashrc'
+RUN mkdir -p /etc/zsh && \
+    bash -lc 'echo "# Source envctl hook for interactive zsh shells" >> /etc/zsh/zshrc && \
+    echo "if [ -f /etc/profile.d/envctl.sh ]; then . /etc/profile.d/envctl.sh; fi" >> /etc/zsh/zshrc'
 
 
 # Find and install claude-code.vsix from Bun cache using ripgrep
