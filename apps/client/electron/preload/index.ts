@@ -17,7 +17,7 @@ if (process.contextIsolated) {
       ) => {
         const level = payload?.level ?? "log";
         const msg = payload?.message ?? "";
-        const fn = (console as any)[level] ?? console.log;
+        const fn = console[level] ?? console.log;
         try {
           fn(msg);
         } catch {
@@ -39,7 +39,7 @@ if (process.contextIsolated) {
     (_event, payload: { level: "log" | "warn" | "error"; message: string }) => {
       const level = payload?.level ?? "log";
       const msg = payload?.message ?? "";
-      const fn = (console as any)[level] ?? console.log;
+      const fn = console[level] ?? console.log;
       try {
         fn(msg);
       } catch {

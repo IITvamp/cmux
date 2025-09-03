@@ -12,6 +12,12 @@ import path, { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import util from "node:util";
 import { env } from "./electron-main-env";
+import {
+  createRemoteJWKSet,
+  decodeJwt,
+  jwtVerify,
+  type JWTPayload,
+} from "jose";
 
 // Use a cookieable HTTPS origin intercepted locally instead of a custom scheme.
 const PARTITION = "persist:cmux";
@@ -204,6 +210,36 @@ app.on("window-all-closed", () => {
   }
 });
 
+// Simple in-memory cache of RemoteJWKSet by issuer
+const jwksCache = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
+
+function jwksForIssuer(issuer: string) {
+  const base = issuer.endsWith("/") ? issuer : issuer + "/";
+  // Stack Auth exposes JWKS at <issuer>/.well-known/jwks.json
+  const url = new URL(".well-known/jwks.json", base);
+  let jwks = jwksCache.get(url.toString());
+  if (!jwks) {
+    jwks = createRemoteJWKSet(url);
+    jwksCache.set(url.toString(), jwks);
+  }
+  return jwks;
+}
+
+async function verifyJwtAndGetPayload(
+  token: string
+): Promise<JWTPayload | null> {
+  try {
+    const decoded = decodeJwt(token);
+    const iss = decoded.iss;
+    if (!iss) return null;
+    const JWKS = jwksForIssuer(iss);
+    const { payload } = await jwtVerify(token, JWKS, { issuer: iss });
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
 async function handleProtocolUrl(url: string): Promise<void> {
   if (!mainWindow) {
     // Should not happen due to queuing, but guard anyway
@@ -224,6 +260,17 @@ async function handleProtocolUrl(url: string): Promise<void> {
     );
 
     if (stackRefresh && stackAccess) {
+      // Verify tokens with Stack JWKS and extract exp for cookie expiry.
+      const [refreshPayload, accessPayload] = await Promise.all([
+        verifyJwtAndGetPayload(stackRefresh),
+        verifyJwtAndGetPayload(stackAccess),
+      ]);
+
+      if (refreshPayload?.exp === null || accessPayload?.exp === null) {
+        mainWarn("Aborting cookie set due to invalid tokens");
+        return;
+      }
+
       // Determine a cookieable URL. Prefer our custom cmux:// origin when not
       // running against an http(s) dev server.
       const currentUrl = new URL(mainWindow.webContents.getURL());
@@ -243,7 +290,7 @@ async function handleProtocolUrl(url: string): Promise<void> {
           url: realUrl,
           name: `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`,
           value: stackRefresh,
-          expirationDate: 2000000000,
+          expirationDate: refreshPayload?.exp,
           sameSite: "no_restriction",
           secure: true,
         }),
@@ -251,7 +298,7 @@ async function handleProtocolUrl(url: string): Promise<void> {
           url: realUrl,
           name: "stack-access",
           value: stackAccess,
-          expirationDate: 2000000000,
+          expirationDate: accessPayload?.exp,
           sameSite: "no_restriction",
           secure: true,
         }),
