@@ -1,34 +1,41 @@
-import { getAccessTokenFromRequest } from "@/lib/utils/auth";
 import { env } from "@/lib/utils/www-env";
+import { verifyTeamAccess } from "@/lib/utils/team-verification";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { MorphCloudClient } from "morphcloud";
+import { getAccessTokenFromRequest } from "../utils/auth";
+import { decodeJwt } from "jose";
 
 export const morphRouter = new OpenAPIHono();
 
-const ProvisionInstanceBody = z
+const SetupInstanceBody = z
   .object({
+    teamSlugOrId: z.string(),
+    instanceId: z.string().optional(), // Existing instance ID to reuse
+    selectedRepos: z.array(z.string()).optional(), // Repositories to clone
     ttlSeconds: z.number().default(60 * 60 * 2), // 2 hours default
   })
-  .openapi("ProvisionInstanceBody");
+  .openapi("SetupInstanceBody");
 
-const ProvisionInstanceResponse = z
+const SetupInstanceResponse = z
   .object({
-    vscodeUrl: z.string(),
     instanceId: z.string(),
+    vscodeUrl: z.string(),
+    clonedRepos: z.array(z.string()),
+    removedRepos: z.array(z.string()),
   })
-  .openapi("ProvisionInstanceResponse");
+  .openapi("SetupInstanceResponse");
 
 morphRouter.openapi(
   createRoute({
     method: "post" as const,
-    path: "/morph/provision-instance",
+    path: "/morph/setup-instance",
     tags: ["Morph"],
-    summary: "Provision a Morph instance for environment configuration",
+    summary: "Setup a Morph instance with optional repository cloning",
     request: {
       body: {
         content: {
           "application/json": {
-            schema: ProvisionInstanceBody,
+            schema: SetupInstanceBody,
           },
         },
       },
@@ -37,37 +44,74 @@ morphRouter.openapi(
       200: {
         content: {
           "application/json": {
-            schema: ProvisionInstanceResponse,
+            schema: SetupInstanceResponse,
           },
         },
-        description: "Instance provisioned successfully",
+        description: "Instance setup successfully",
       },
       401: { description: "Unauthorized" },
-      500: { description: "Failed to provision instance" },
+      500: { description: "Failed to setup instance" },
     },
   }),
   async (c) => {
     // Require authentication
     const accessToken = await getAccessTokenFromRequest(c.req.raw);
     if (!accessToken) return c.text("Unauthorized", 401);
+    let userId: string | null = null;
+    try {
+      const jwt = decodeJwt(accessToken);
+      const sub = jwt.sub;
+      if (typeof sub === "string" && sub.length > 0) {
+        userId = sub;
+      }
+    } catch (_e) {
+      // ignored; userId remains null
+    }
+    if (!userId) return c.text("Unauthorized", 401);
 
-    const { ttlSeconds } = c.req.valid("json");
+    const { teamSlugOrId, instanceId: existingInstanceId, selectedRepos, ttlSeconds } = c.req.valid("json");
+
+    // Verify team access and get the team
+    const team = await verifyTeamAccess({ req: c.req.raw, teamSlugOrId });
 
     try {
       const client = new MorphCloudClient({
         apiKey: env.MORPH_API_KEY,
       });
 
-      console.log("Starting Morph instance");
-      const instance = await client.instances.start({
-        snapshotId: "snapshot_hzlmd4kx",
-        ttlSeconds,
-        ttlAction: "pause",
-        metadata: {
-          app: "cmux-dev",
-        },
-      });
+      let instance;
+      let instanceId = existingInstanceId;
 
+      // If no instanceId provided, create a new instance
+      if (!instanceId) {
+        console.log("Creating new Morph instance");
+        instance = await client.instances.start({
+          snapshotId: "snapshot_hzlmd4kx",
+          ttlSeconds,
+          ttlAction: "pause",
+          metadata: {
+            app: "cmux-dev",
+            userId,
+            teamId: team.uuid,
+          },
+        });
+        instanceId = instance.id;
+        await instance.setWakeOn(true, true);
+      } else {
+        // Get existing instance
+        console.log(`Using existing Morph instance: ${instanceId}`);
+        instance = await client.instances.get({ instanceId });
+
+        // Security: ensure the instance belongs to the requested team
+        const meta = (instance as unknown as { metadata?: { teamId?: string } })
+          .metadata;
+        const instanceTeamId = meta?.teamId;
+        if (!instanceTeamId || instanceTeamId !== team.uuid) {
+          return c.text("Forbidden: Instance does not belong to this team", 403);
+        }
+      }
+
+      // Get VSCode URL
       const vscodeUrl = instance.networking.httpServices.find(
         (service) => service.port === 39378
       )?.url;
@@ -77,17 +121,111 @@ morphRouter.openapi(
       }
 
       const url = `${vscodeUrl}/?folder=/root/workspace`;
+
+      // Handle repository management if repos are specified
+      const removedRepos: string[] = [];
+      const clonedRepos: string[] = [];
+
+      if (selectedRepos && selectedRepos.length > 0) {
+        // Validate repo format and check for duplicates
+        const repoNames = new Map<string, string>(); // Map of repo name to full path
+        for (const repo of selectedRepos) {
+          // Validate format: should be owner/repo
+          if (!repo.includes('/') || repo.split('/').length !== 2) {
+            return c.text(`Invalid repository format: ${repo}. Expected format: owner/repo`, 400);
+          }
+          
+          const repoName = repo.split("/").pop();
+          if (!repoName) {
+            return c.text(`Invalid repository: ${repo}`, 400);
+          }
+          
+          // Check for duplicate repo names
+          if (repoNames.has(repoName)) {
+            return c.text(
+              `Duplicate repository name detected: '${repoName}' from both '${repoNames.get(repoName)}' and '${repo}'. ` +
+              `Repositories with the same name cannot be cloned to the same workspace.`,
+              400
+            );
+          }
+          repoNames.set(repoName, repo);
+        }
+
+        // First, get list of existing repos with their remote URLs
+        const listReposCmd = await instance.exec(
+          "for dir in /root/workspace/*/; do " +
+          "if [ -d \"$dir/.git\" ]; then " +
+          "basename \"$dir\"; " +
+          "cd \"$dir\" && git remote get-url origin 2>/dev/null || echo 'no-remote'; " +
+          "fi; done"
+        );
+        
+        const lines = listReposCmd.stdout.split("\n").filter(Boolean);
+        const existingRepos = new Map<string, string>(); // Map of repo name to remote URL
+        
+        for (let i = 0; i < lines.length; i += 2) {
+          const repoName = lines[i]?.trim();
+          const remoteUrl = lines[i + 1]?.trim();
+          if (repoName && remoteUrl && remoteUrl !== 'no-remote') {
+            existingRepos.set(repoName, remoteUrl);
+          } else if (repoName) {
+            existingRepos.set(repoName, '');
+          }
+        }
+
+        // Determine which repos to remove
+        for (const [existingName, existingUrl] of existingRepos) {
+          const selectedRepo = repoNames.get(existingName);
+          
+          if (!selectedRepo) {
+            // Repo not in selected list, remove it
+            console.log(`Removing repository: ${existingName}`);
+            await instance.exec(`rm -rf /root/workspace/${existingName}`);
+            removedRepos.push(existingName);
+          } else if (existingUrl && !existingUrl.includes(selectedRepo)) {
+            // Repo exists but points to different remote, remove and re-clone
+            console.log(`Repository ${existingName} points to different remote, removing for re-clone`);
+            await instance.exec(`rm -rf /root/workspace/${existingName}`);
+            removedRepos.push(existingName);
+            existingRepos.delete(existingName); // Mark for re-cloning
+          }
+        }
+
+        // Clone new repos
+        for (const [repoName, repo] of repoNames) {
+          if (!existingRepos.has(repoName)) {
+            console.log(`Cloning repository: ${repo}`);
+            
+            // Ensure workspace directory exists
+            await instance.exec("mkdir -p /root/workspace");
+            
+            const cloneCmd = await instance.exec(
+              `cd /root/workspace && git clone https://github.com/${repo}.git ${repoName}`
+            );
+
+            if (cloneCmd.exit_code === 0) {
+              clonedRepos.push(repo);
+            } else {
+              console.error(`Failed to clone ${repo}: ${cloneCmd.stderr}`);
+              // Continue with other repos instead of failing entire request
+            }
+          } else {
+            console.log(`Repository ${repo} already exists with correct remote, skipping clone`);
+          }
+        }
+      }
+
       console.log(`VSCode Workspace URL: ${url}`);
 
-      await instance.setWakeOn(true, true);
-
       return c.json({
+        instanceId,
         vscodeUrl: url,
-        instanceId: instance.id,
+        clonedRepos,
+        removedRepos,
       });
     } catch (error) {
-      console.error("Failed to provision Morph instance:", error);
-      return c.text("Failed to provision instance", 500);
+      console.error("Failed to setup Morph instance:", error);
+      return c.text("Failed to setup instance", 500);
     }
   }
 );

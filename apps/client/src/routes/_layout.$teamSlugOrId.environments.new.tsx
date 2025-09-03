@@ -2,10 +2,12 @@ import { FloatingPane } from "@/components/floating-pane";
 import { RepositoryPicker } from "@/components/RepositoryPicker";
 import { TitleBar } from "@/components/TitleBar";
 import { EnvironmentConfiguration } from "@/components/EnvironmentConfiguration";
-import { postApiMorphProvisionInstanceMutation } from "@cmux/www-openapi-client/react-query";
+import { 
+  postApiMorphSetupInstanceMutation
+} from "@cmux/www-openapi-client/react-query";
 import { useMutation as useRQMutation } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useMemo } from "react";
+import { useMemo, useEffect } from "react";
 export const Route = createFileRoute("/_layout/$teamSlugOrId/environments/new")({
   component: EnvironmentsPage,
 });
@@ -17,19 +19,49 @@ function EnvironmentsPage() {
   const urlSelectedRepos = searchParams.selectedRepos ?? [];
   const urlConnectionLogin = searchParams.connectionLogin;
   const urlRepoSearch = searchParams.repoSearch ?? "";
-  const urlSessionId = searchParams.sessionId;
+  const urlInstanceId = searchParams.instanceId;
   const navigate = useNavigate();
   const { teamSlugOrId } = Route.useParams();
-  const provisionInstanceMutation = useRQMutation(
-    postApiMorphProvisionInstanceMutation()
+  const setupInstanceMutation = useRQMutation(
+    postApiMorphSetupInstanceMutation()
   );
 
-  // Derive VSCode URL from sessionId (always port-39378)
+  // Derive VSCode URL from instanceId or setup response
   const derivedVscodeUrl = useMemo(() => {
-    if (!urlSessionId) return undefined;
-    const hostId = urlSessionId.replace(/_/g, "-");
+    // Use URL from setup mutation if available
+    if (setupInstanceMutation.data?.vscodeUrl) {
+      return setupInstanceMutation.data.vscodeUrl;
+    }
+    // Otherwise derive from instanceId
+    if (!urlInstanceId) return undefined;
+    const hostId = urlInstanceId.replace(/_/g, "-");
     return `https://port-39378-${hostId}.http.cloud.morph.so/?folder=/root/workspace`;
-  }, [urlSessionId]);
+  }, [urlInstanceId, setupInstanceMutation.data]);
+
+  // Handle repo changes when user goes back and selects different repos
+  useEffect(() => {
+    if (step === "configure" && urlInstanceId && urlSelectedRepos.length > 0) {
+      // Check if we need to update repos (only if not currently setting up)
+      if (!setupInstanceMutation.isPending) {
+        const lastClonedRepos = setupInstanceMutation.data?.clonedRepos || [];
+        const needsUpdate = urlSelectedRepos.some((repo: string) => !lastClonedRepos.includes(repo)) ||
+                           lastClonedRepos.some((repo: string) => !urlSelectedRepos.includes(repo));
+        
+        // Only re-setup if repos have actually changed
+        if (needsUpdate && lastClonedRepos.length > 0) {
+          setupInstanceMutation.mutate({
+            body: {
+              teamSlugOrId,
+              instanceId: urlInstanceId,
+              selectedRepos: urlSelectedRepos,
+              ttlSeconds: 60 * 60 * 2,
+            },
+          });
+        }
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, urlInstanceId, urlSelectedRepos]);
 
   const goToStep = (
     newStep: "select" | "configure",
@@ -42,8 +74,8 @@ function EnvironmentsPage() {
       params: { teamSlugOrId },
       search: (prev) => ({
         ...prev,
-        // Explicitly persist session fields to satisfy type
-        sessionId: prev.sessionId,
+        // Explicitly persist instance fields to satisfy type
+        instanceId: prev.instanceId,
         step: newStep,
         selectedRepos: selectedRepos ?? prev.selectedRepos,
         connectionLogin:
@@ -58,35 +90,39 @@ function EnvironmentsPage() {
   const handleContinue = (repos: string[]) => {
     goToStep("configure", repos);
 
-    // Reuse existing session if present
-    if (urlSessionId) return;
-
-    // Provision a new Morph instance and persist it in the URL
-    provisionInstanceMutation.mutate(
+    // Setup instance with repos (creates new instance if needed)
+    setupInstanceMutation.mutate(
       {
         body: {
+          teamSlugOrId,
+          instanceId: urlInstanceId,
+          selectedRepos: repos,
           ttlSeconds: 60 * 60 * 2, // 2 hours
         },
       },
       {
         onSuccess: (data) => {
-          navigate({
-            to: "/$teamSlugOrId/environments/new",
-            params: { teamSlugOrId },
-            search: (prev) => ({
-              ...prev,
-              // Ensure required keys are present
-              step: prev.step,
-              selectedRepos: prev.selectedRepos,
-              connectionLogin: prev.connectionLogin,
-              repoSearch: prev.repoSearch,
-              sessionId: data.instanceId,
-            }),
-            replace: true,
-          });
+          // Update URL with the instanceId if it's new
+          if (!urlInstanceId && data.instanceId) {
+            navigate({
+              to: "/$teamSlugOrId/environments/new",
+              params: { teamSlugOrId },
+              search: (prev) => ({
+                ...prev,
+                step: prev.step,
+                selectedRepos: prev.selectedRepos,
+                connectionLogin: prev.connectionLogin,
+                repoSearch: prev.repoSearch,
+                instanceId: data.instanceId,
+              }),
+              replace: true,
+            });
+          }
+          console.log("Cloned repos:", data.clonedRepos);
+          console.log("Removed repos:", data.removedRepos);
         },
         onError: (error) => {
-          console.error("Failed to provision Morph instance:", error);
+          console.error("Failed to setup instance:", error);
         },
       }
     );
@@ -111,7 +147,7 @@ function EnvironmentsPage() {
         selectedRepos: selectedRepos.length > 0 ? selectedRepos : undefined,
         connectionLogin: connectionLogin ?? undefined,
         repoSearch: repoSearch || undefined,
-        sessionId: prev.sessionId,
+        instanceId: prev.instanceId,
       }),
       replace: true,
     });
@@ -138,11 +174,9 @@ function EnvironmentsPage() {
           <EnvironmentConfiguration
             selectedRepos={urlSelectedRepos}
             onBack={handleBack}
-            sessionId={urlSessionId}
+            instanceId={urlInstanceId}
             vscodeUrl={derivedVscodeUrl}
-            isProvisioning={
-              provisionInstanceMutation.isPending && !urlSessionId
-            }
+            isProvisioning={setupInstanceMutation.isPending}
           />
         )}
       </div>

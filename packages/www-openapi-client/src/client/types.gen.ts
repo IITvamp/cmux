@@ -102,12 +102,17 @@ export type GithubReposResponse = {
     repos: Array<GithubRepo>;
 };
 
-export type ProvisionInstanceResponse = {
-    vscodeUrl: string;
+export type SetupInstanceResponse = {
     instanceId: string;
+    vscodeUrl: string;
+    clonedRepos: Array<string>;
+    removedRepos: Array<string>;
 };
 
-export type ProvisionInstanceBody = {
+export type SetupInstanceBody = {
+    teamSlugOrId: string;
+    instanceId?: string;
+    selectedRepos?: Array<string>;
     ttlSeconds?: number;
 };
 
@@ -543,32 +548,32 @@ export type GetApiIntegrationsGithubReposResponses = {
 
 export type GetApiIntegrationsGithubReposResponse = GetApiIntegrationsGithubReposResponses[keyof GetApiIntegrationsGithubReposResponses];
 
-export type PostApiMorphProvisionInstanceData = {
-    body?: ProvisionInstanceBody;
+export type PostApiMorphSetupInstanceData = {
+    body?: SetupInstanceBody;
     path?: never;
     query?: never;
-    url: '/api/morph/provision-instance';
+    url: '/api/morph/setup-instance';
 };
 
-export type PostApiMorphProvisionInstanceErrors = {
+export type PostApiMorphSetupInstanceErrors = {
     /**
      * Unauthorized
      */
     401: unknown;
     /**
-     * Failed to provision instance
+     * Failed to setup instance
      */
     500: unknown;
 };
 
-export type PostApiMorphProvisionInstanceResponses = {
+export type PostApiMorphSetupInstanceResponses = {
     /**
-     * Instance provisioned successfully
+     * Instance setup successfully
      */
-    200: ProvisionInstanceResponse;
+    200: SetupInstanceResponse;
 };
 
-export type PostApiMorphProvisionInstanceResponse = PostApiMorphProvisionInstanceResponses[keyof PostApiMorphProvisionInstanceResponses];
+export type PostApiMorphSetupInstanceResponse = PostApiMorphSetupInstanceResponses[keyof PostApiMorphSetupInstanceResponses];
 
 export type GetApiEnvironmentsData = {
     body?: never;

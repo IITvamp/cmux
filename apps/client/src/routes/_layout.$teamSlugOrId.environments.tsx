@@ -11,13 +11,13 @@ export const Route = createFileRoute("/_layout/$teamSlugOrId/environments")({
       .parse(search.selectedRepos);
     const connectionLogin = z.string().optional().parse(search.connectionLogin);
     const repoSearch = z.string().optional().parse(search.repoSearch);
-    const sessionId = z.string().optional().parse(search.sessionId);
+    const instanceId = z.string().optional().parse(search.instanceId);
     return {
       step,
       selectedRepos,
       connectionLogin,
       repoSearch,
-      sessionId,
+      instanceId,
     };
   },
 });
@@ -25,4 +25,3 @@ export const Route = createFileRoute("/_layout/$teamSlugOrId/environments")({
 function EnvironmentsLayout() {
   return <Outlet />;
 }
-

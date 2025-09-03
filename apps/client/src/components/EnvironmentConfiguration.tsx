@@ -100,13 +100,13 @@ function parseEnvBlock(text: string): ParsedEnv[] {
 export function EnvironmentConfiguration({
   selectedRepos,
   onBack,
-  sessionId,
+  instanceId,
   vscodeUrl,
   isProvisioning,
 }: {
   selectedRepos: string[];
   onBack: () => void;
-  sessionId?: string;
+  instanceId?: string;
   vscodeUrl?: string;
   isProvisioning: boolean;
 }) {
@@ -155,7 +155,7 @@ export function EnvironmentConfiguration({
       maintenanceScript,
       devScript,
       exposedPorts,
-      sessionId,
+      instanceId,
       vscodeUrl,
     });
   };
