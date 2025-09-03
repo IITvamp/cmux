@@ -1,5 +1,6 @@
 import { GitHubIcon } from "@/components/icons/github";
 import { ResizableColumns } from "@/components/ResizableColumns";
+import { Accordion, AccordionItem } from "@heroui/react";
 import clsx from "clsx";
 import { ArrowLeft, Loader2, Minus, Plus, Settings, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -114,6 +115,8 @@ export function EnvironmentConfiguration({
   const [envVars, setEnvVars] = useState<EnvVar[]>([
     { name: "", value: "", isSecret: true },
   ]);
+  const [checkoutScript, setCheckoutScript] = useState("");
+  const [maintenanceScript, setMaintenanceScript] = useState("");
   const keyInputRefs = useRef<Array<HTMLInputElement | null>>([]);
   const [pendingFocusIndex, setPendingFocusIndex] = useState<number | null>(
     null
@@ -148,6 +151,8 @@ export function EnvironmentConfiguration({
       name: envName,
       repos: selectedRepos,
       envVars,
+      checkoutScript,
+      maintenanceScript,
       sessionId,
       vscodeUrl,
     });
@@ -205,147 +210,206 @@ export function EnvironmentConfiguration({
           </div>
         ) : null}
 
-        <div className="space-y-2">
-          <label className="block text-sm font-medium text-neutral-800 dark:text-neutral-200">
-            Environment variables
-          </label>
-          <div
-            className="space-y-2"
-            onPasteCapture={(e) => {
-              const text = e.clipboardData?.getData("text") ?? "";
-              if (text && (/\n/.test(text) || /(=|:)\s*\S/.test(text))) {
-                e.preventDefault();
-                const items = parseEnvBlock(text);
-                if (items.length > 0) {
-                  setEnvVars((prev) => {
-                    const map = new Map(
-                      prev
-                        .filter(
-                          (r) =>
-                            r.name.trim().length > 0 ||
-                            r.value.trim().length > 0
-                        )
-                        .map((r) => [r.name, r] as const)
-                    );
-                    for (const it of items) {
-                      if (!it.name) continue;
-                      const existing = map.get(it.name);
-                      if (existing) {
-                        map.set(it.name, {
-                          ...existing,
-                          value: it.value,
-                        });
-                      } else {
-                        map.set(it.name, {
-                          name: it.name,
-                          value: it.value,
-                          isSecret: true,
-                        });
-                      }
-                    }
-                    const next = Array.from(map.values());
-                    next.push({ name: "", value: "", isSecret: true });
-                    setPendingFocusIndex(next.length - 1);
-                    return next;
-                  });
-                }
-              }
-            }}
+        <Accordion
+          selectionMode="multiple"
+          className="px-0"
+          defaultExpandedKeys={[
+            "env-vars",
+            "checkout-script",
+            "maintenance-script",
+          ]}
+          itemClasses={{
+            trigger: "text-sm cursor-pointer py-3",
+            content: "pt-0",
+            title: "text-sm font-medium",
+          }}
+        >
+          <AccordionItem
+            key="env-vars"
+            aria-label="Environment variables"
+            title="Environment variables"
           >
             <div
-              className="grid gap-3 text-xs text-neutral-500 dark:text-neutral-500 pb-1 items-center"
-              style={{
-                gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.4fr) 44px",
+              className="pb-2"
+              onPasteCapture={(e) => {
+                const text = e.clipboardData?.getData("text") ?? "";
+                if (text && (/\n/.test(text) || /(=|:)\s*\S/.test(text))) {
+                  e.preventDefault();
+                  const items = parseEnvBlock(text);
+                  if (items.length > 0) {
+                    setEnvVars((prev) => {
+                      const map = new Map(
+                        prev
+                          .filter(
+                            (r) =>
+                              r.name.trim().length > 0 ||
+                              r.value.trim().length > 0
+                          )
+                          .map((r) => [r.name, r] as const)
+                      );
+                      for (const it of items) {
+                        if (!it.name) continue;
+                        const existing = map.get(it.name);
+                        if (existing) {
+                          map.set(it.name, {
+                            ...existing,
+                            value: it.value,
+                          });
+                        } else {
+                          map.set(it.name, {
+                            name: it.name,
+                            value: it.value,
+                            isSecret: true,
+                          });
+                        }
+                      }
+                      const next = Array.from(map.values());
+                      next.push({ name: "", value: "", isSecret: true });
+                      setPendingFocusIndex(next.length - 1);
+                      return next;
+                    });
+                  }
+                }
               }}
             >
-              <span>Key</span>
-              <span>Value</span>
-              <span className="w-[44px]" />
-            </div>
+              <div
+                className="grid gap-3 text-xs text-neutral-500 dark:text-neutral-500 items-center pb-1"
+                style={{
+                  gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.4fr) 44px",
+                }}
+              >
+                <span>Key</span>
+                <span>Value</span>
+                <span className="w-[44px]" />
+              </div>
 
-            <div className="space-y-2">
-              {envVars.map((row, idx) => (
-                <div
-                  key={idx}
-                  className="grid gap-3 items-center"
-                  style={{
-                    gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1.4fr) 44px",
-                  }}
-                >
-                  <input
-                    type="text"
-                    value={row.name}
-                    ref={(el) => {
-                      keyInputRefs.current[idx] = el;
+              <div className="space-y-2">
+                {envVars.map((row, idx) => (
+                  <div
+                    key={idx}
+                    className="grid gap-3 items-center"
+                    style={{
+                      gridTemplateColumns:
+                        "minmax(0, 1fr) minmax(0, 1.4fr) 44px",
                     }}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setEnvVars((prev) => {
-                        const next = [...prev];
-                        next[idx] = { ...next[idx]!, name: v };
-                        return next;
-                      });
-                    }}
-                    placeholder="EXAMPLE_NAME"
-                    className="w-full min-w-0 self-start rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 py-2 text-sm font-mono text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-700"
-                  />
-                  <TextareaAutosize
-                    value={row.value}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setEnvVars((prev) => {
-                        const next = [...prev];
-                        next[idx] = { ...next[idx]!, value: v };
-                        return next;
-                      });
-                    }}
-                    placeholder="I9JU23NF394R6HH"
-                    minRows={1}
-                    maxRows={10}
-                    className="w-full min-w-0 rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 py-2 text-sm font-mono text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-700 resize-none"
-                  />
-                  <div className="flex items-center justify-end w-[44px]">
-                    <button
-                      type="button"
-                      onClick={() => {
+                  >
+                    <input
+                      type="text"
+                      value={row.name}
+                      ref={(el) => {
+                        keyInputRefs.current[idx] = el;
+                      }}
+                      onChange={(e) => {
+                        const v = e.target.value;
                         setEnvVars((prev) => {
-                          const next = prev.filter((_, i) => i !== idx);
-                          return next.length > 0
-                            ? next
-                            : [{ name: "", value: "", isSecret: true }];
+                          const next = [...prev];
+                          next[idx] = { ...next[idx]!, name: v };
+                          return next;
                         });
                       }}
-                      className="h-10 w-[44px] rounded-md border border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 grid place-items-center hover:bg-neutral-50 dark:hover:bg-neutral-900"
-                      aria-label="Remove variable"
-                    >
-                      <Minus className="w-4 h-4" />
-                    </button>
+                      placeholder="EXAMPLE_NAME"
+                      className="w-full min-w-0 self-start rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 py-2 text-sm font-mono text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-700"
+                    />
+                    <TextareaAutosize
+                      value={row.value}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setEnvVars((prev) => {
+                          const next = [...prev];
+                          next[idx] = { ...next[idx]!, value: v };
+                          return next;
+                        });
+                      }}
+                      placeholder="I9JU23NF394R6HH"
+                      minRows={1}
+                      maxRows={10}
+                      className="w-full min-w-0 rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 py-2 text-sm font-mono text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-700 resize-none"
+                    />
+                    <div className="flex items-center justify-end w-[44px]">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEnvVars((prev) => {
+                            const next = prev.filter((_, i) => i !== idx);
+                            return next.length > 0
+                              ? next
+                              : [{ name: "", value: "", isSecret: true }];
+                          });
+                        }}
+                        className="h-10 w-[44px] rounded-md border border-neutral-200 dark:border-neutral-800 text-neutral-700 dark:text-neutral-300 grid place-items-center hover:bg-neutral-50 dark:hover:bg-neutral-900"
+                        aria-label="Remove variable"
+                      >
+                        <Minus className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
 
-            <div className="pt-2">
-              <button
-                type="button"
-                onClick={() =>
-                  setEnvVars((prev) => [
-                    ...prev,
-                    { name: "", value: "", isSecret: true },
-                  ])
-                }
-                className="inline-flex items-center gap-2 rounded-md border border-neutral-200 dark:border-neutral-800 px-3 py-2 text-sm text-neutral-800 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-900"
-              >
-                <Plus className="w-4 h-4" /> Add More
-              </button>
-            </div>
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setEnvVars((prev) => [
+                      ...prev,
+                      { name: "", value: "", isSecret: true },
+                    ])
+                  }
+                  className="inline-flex items-center gap-2 rounded-md border border-neutral-200 dark:border-neutral-800 px-3 py-2 text-sm text-neutral-800 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-900"
+                >
+                  <Plus className="w-4 h-4" /> Add More
+                </button>
+              </div>
 
-            <p className="text-xs text-neutral-500 dark:text-neutral-500 pt-2">
-              Tip: Paste an .env above to populate the form. Values are
-              encrypted at rest.
-            </p>
-          </div>
-        </div>
+              <p className="text-xs text-neutral-500 dark:text-neutral-500 pt-2">
+                Tip: Paste an .env above to populate the form. Values are
+                encrypted at rest.
+              </p>
+            </div>
+          </AccordionItem>
+
+          <AccordionItem
+            key="checkout-script"
+            aria-label="Checkout script"
+            title="Checkout script"
+          >
+            <div className="space-y-2 pb-4">
+              <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-3">
+                Script to set up multiple git repositories. Use $branchname to
+                reference the auto-generated branch name.
+              </p>
+              <TextareaAutosize
+                value={checkoutScript}
+                onChange={(e) => setCheckoutScript(e.target.value)}
+                placeholder={`(cd /root/workspace/repo1 && git switch -c $branchname)
+(cd /root/workspace/repo2 && git switch -c $branchname)`}
+                minRows={3}
+                maxRows={15}
+                className="w-full rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 py-2 text-xs font-mono text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-700 resize-none"
+              />
+            </div>
+          </AccordionItem>
+
+          <AccordionItem
+            key="maintenance-script"
+            aria-label="Maintenance script"
+            title="Maintenance script"
+          >
+            <div className="space-y-2 pb-4">
+              <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-3">
+                Script that will be run after checking out the branch.
+              </p>
+              <TextareaAutosize
+                value={maintenanceScript}
+                onChange={(e) => setMaintenanceScript(e.target.value)}
+                placeholder="# Install dependencies, run migrations, etc."
+                minRows={3}
+                maxRows={15}
+                className="w-full rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 py-2 text-xs font-mono text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-700 resize-none"
+              />
+            </div>
+          </AccordionItem>
+        </Accordion>
 
         <div className="pt-4">
           <p className="mb-3 text-sm text-neutral-600 dark:text-neutral-400">

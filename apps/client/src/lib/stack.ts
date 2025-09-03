@@ -1,4 +1,4 @@
-import { client } from "@cmux/www-openapi-client/client.gen";
+import { client as wwwOpenAPIClient } from "@cmux/www-openapi-client/client.gen";
 import { StackClientApp } from "@stackframe/react";
 import { useNavigate as useTanstackNavigate } from "@tanstack/react-router";
 import { env } from "../client-env";
@@ -38,8 +38,8 @@ cachedGetUser(stackClientApp).then(async (user) => {
   );
 });
 
-client.setConfig({
-  baseUrl: "http://localhost:9779",
+wwwOpenAPIClient.setConfig({
+  baseUrl: env.NEXT_PUBLIC_WWW_ORIGIN,
   fetch: async (request) => {
     const user = await cachedGetUser(stackClientApp);
     if (!user) {
