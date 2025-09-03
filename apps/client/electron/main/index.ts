@@ -1,5 +1,4 @@
 import { is } from "@electron-toolkit/utils";
-import { autoUpdater } from "electron-updater";
 import {
   app,
   BrowserWindow,
@@ -10,6 +9,8 @@ import {
   shell,
   type BrowserWindowConstructorOptions,
 } from "electron";
+import electronUpdater from "electron-updater";
+const { autoUpdater } = electronUpdater;
 import {
   createRemoteJWKSet,
   decodeJwt,
@@ -79,10 +80,8 @@ export function mainError(...args: unknown[]) {
   emitToRenderer("error", `[MAIN] ${line}`);
 }
 
-// Cross‑platform auto‑updates (GitHub Releases via electron-builder)
-// - Uses electron-updater which reads app-update.yml embedded by electron-builder.
-// - Checks only in packaged builds to avoid noisy dev errors.
-// - Shows a minimal dialog when an update is downloaded.
+// Auto‑updates (enabled)
+// - Uses electron-updater reading app-update.yml from electron-builder.
 function setupAutoUpdates() {
   if (!app.isPackaged) {
     mainLog("Skipping auto-updates in development");
@@ -91,11 +90,11 @@ function setupAutoUpdates() {
 
   try {
     // Wire logs
-    autoUpdater.logger = {
+    (autoUpdater as unknown as { logger: unknown }).logger = {
       info: (...args: unknown[]) => mainLog("[updater]", ...args),
       warn: (...args: unknown[]) => mainWarn("[updater]", ...args),
       error: (...args: unknown[]) => mainError("[updater]", ...args),
-    } as unknown as typeof autoUpdater.logger; // keep typing strict without any
+    } as unknown as typeof autoUpdater.logger;
 
     autoUpdater.autoDownload = true;
     autoUpdater.autoInstallOnAppQuit = true;
@@ -105,15 +104,11 @@ function setupAutoUpdates() {
     return;
   }
 
-  autoUpdater.on("checking-for-update", () =>
-    mainLog("Checking for update…")
-  );
+  autoUpdater.on("checking-for-update", () => mainLog("Checking for update…"));
   autoUpdater.on("update-available", (info) =>
     mainLog("Update available", info?.version)
   );
-  autoUpdater.on("update-not-available", () =>
-    mainLog("No updates available")
-  );
+  autoUpdater.on("update-not-available", () => mainLog("No updates available"));
   autoUpdater.on("error", (err) => mainWarn("Updater error", err));
   autoUpdater.on("download-progress", (p) =>
     mainLog(
@@ -122,8 +117,13 @@ function setupAutoUpdates() {
     )
   );
   autoUpdater.on("update-downloaded", async () => {
+    if (!mainWindow) {
+      mainLog("No main window; skipping update prompt");
+      return;
+    }
+
     try {
-      const res = await dialog.showMessageBox(mainWindow ?? undefined, {
+      const res = await dialog.showMessageBox(mainWindow, {
         type: "info",
         buttons: ["Restart Now", "Later"],
         defaultId: 0,
@@ -144,14 +144,17 @@ function setupAutoUpdates() {
   });
 
   // Initial check and periodic re-checks
-  autoUpdater.checkForUpdatesAndNotify().catch((e) =>
-    mainWarn("checkForUpdatesAndNotify failed", e)
-  );
-  setInterval(() => {
-    autoUpdater.checkForUpdates().catch((e) =>
-      mainWarn("Periodic checkForUpdates failed", e)
-    );
-  }, 30 * 60 * 1000); // 30 minutes
+  autoUpdater
+    .checkForUpdatesAndNotify()
+    .catch((e) => mainWarn("checkForUpdatesAndNotify failed", e));
+  setInterval(
+    () => {
+      autoUpdater
+        .checkForUpdates()
+        .catch((e) => mainWarn("Periodic checkForUpdates failed", e));
+    },
+    30 * 60 * 1000
+  ); // 30 minutes
 }
 
 async function handleOrQueueProtocolUrl(url: string) {
