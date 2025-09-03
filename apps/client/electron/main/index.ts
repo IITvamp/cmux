@@ -256,8 +256,7 @@ async function handleProtocolUrl(url: string): Promise<void> {
         }),
       ]);
 
-      mainLog("set stackRefresh: ", stackRefresh);
-      mainLog("set stackAccess: ", stackAccess);
+      mainWindow.webContents.reload();
     }
   }
 }
