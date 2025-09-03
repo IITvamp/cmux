@@ -186,7 +186,7 @@ function TeamItem({ team, getClientSlug }: TeamItemProps) {
           "group flex w-full text-left rounded-xl border transition-all focus:outline-none border-neutral-200 hover:border-neutral-300 dark:border-neutral-800 dark:hover:border-neutral-700 bg-white dark:bg-neutral-900/80 disabled:border-neutral-200 dark:disabled:border-neutral-800 p-4"
         }
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <div
             className={
               "flex h-10 w-10 items-center justify-center rounded-full bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 ring-1 ring-inset ring-neutral-200 dark:ring-neutral-700"
@@ -199,9 +199,9 @@ function TeamItem({ team, getClientSlug }: TeamItemProps) {
             <div className="truncate text-neutral-900 dark:text-neutral-50 font-medium">
               {team.displayName}
             </div>
-            <div className="text-sm text-neutral-500 dark:text-neutral-400">
-              <Skeleton isLoaded={!!teamInfo} className="rounded truncate w-full">
-                {slug || team.id}
+            <div className="text-sm text-neutral-500 dark:text-neutral-400 min-w-0 overflow-hidden">
+              <Skeleton isLoaded={!!teamInfo} className="rounded">
+                <span className="block truncate">{slug || team.id}</span>
               </Skeleton>
             </div>
           </div>
