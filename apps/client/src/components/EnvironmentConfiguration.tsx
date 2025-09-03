@@ -115,7 +115,6 @@ export function EnvironmentConfiguration({
   const [envVars, setEnvVars] = useState<EnvVar[]>([
     { name: "", value: "", isSecret: true },
   ]);
-  const [checkoutScript, setCheckoutScript] = useState("");
   const [maintenanceScript, setMaintenanceScript] = useState("");
   const keyInputRefs = useRef<Array<HTMLInputElement | null>>([]);
   const [pendingFocusIndex, setPendingFocusIndex] = useState<number | null>(
@@ -151,7 +150,6 @@ export function EnvironmentConfiguration({
       name: envName,
       repos: selectedRepos,
       envVars,
-      checkoutScript,
       maintenanceScript,
       sessionId,
       vscodeUrl,
@@ -186,7 +184,7 @@ export function EnvironmentConfiguration({
             type="text"
             value={envName}
             onChange={(e) => setEnvName(e.target.value)}
-            placeholder="e.g. Production, Staging, Sandbox"
+            placeholder="e.g. project-name"
             className="w-full rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-700"
           />
         </div>
@@ -215,7 +213,7 @@ export function EnvironmentConfiguration({
           className="px-0"
           defaultExpandedKeys={[
             "env-vars",
-            "checkout-script",
+            "install-dependencies",
             "maintenance-script",
           ]}
           itemClasses={{
@@ -369,24 +367,19 @@ export function EnvironmentConfiguration({
           </AccordionItem>
 
           <AccordionItem
-            key="checkout-script"
-            aria-label="Checkout script"
-            title="Checkout script"
+            key="install-dependencies"
+            aria-label="Install dependencies"
+            title="Install dependencies"
           >
             <div className="space-y-2 pb-4">
               <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-3">
-                Script to set up multiple git repositories. Use $branchname to
-                reference the auto-generated branch name.
+                Use the VS Code terminal to install any dependencies your
+                codebase needs.
               </p>
-              <TextareaAutosize
-                value={checkoutScript}
-                onChange={(e) => setCheckoutScript(e.target.value)}
-                placeholder={`(cd /root/workspace/repo1 && git switch -c $branchname)
-(cd /root/workspace/repo2 && git switch -c $branchname)`}
-                minRows={3}
-                maxRows={15}
-                className="w-full rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 py-2 text-xs font-mono text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-700 resize-none"
-              />
+              <p className="text-xs text-neutral-500 dark:text-neutral-500">
+                Examples: docker pull postgres, docker run redis, install system
+                packages, etc.
+              </p>
             </div>
           </AccordionItem>
 
@@ -397,12 +390,18 @@ export function EnvironmentConfiguration({
           >
             <div className="space-y-2 pb-4">
               <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-3">
-                Script that will be run after checking out the branch.
+                Script that runs after git pull in case new dependencies were
+                added.
               </p>
               <TextareaAutosize
                 value={maintenanceScript}
                 onChange={(e) => setMaintenanceScript(e.target.value)}
-                placeholder="# Install dependencies, run migrations, etc."
+                placeholder={`# e.g.
+bun install
+npm install
+uv sync
+pip install -r requirements.txt
+etc.`}
                 minRows={3}
                 maxRows={15}
                 className="w-full rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 py-2 text-xs font-mono text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-700 resize-none"
@@ -411,16 +410,7 @@ export function EnvironmentConfiguration({
           </AccordionItem>
         </Accordion>
 
-        <div className="pt-4">
-          <p className="mb-3 text-sm text-neutral-600 dark:text-neutral-400">
-            Configure your environment by interacting with the VS Code instance
-            on the right. You can run{" "}
-            <code className="mx-1 rounded bg-neutral-100 dark:bg-neutral-900 px-1 py-0.5">
-              git pull
-            </code>
-            , clone repositories, run commands, and install dependencies before
-            taking a snapshot.
-          </p>
+        <div className="pt-2">
           <button
             type="button"
             onClick={handleCreateEnvironment}
