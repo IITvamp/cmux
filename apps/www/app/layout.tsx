@@ -1,8 +1,10 @@
 import { stackServerApp } from "@/lib/utils/stack";
 import { StackProvider, StackTheme } from "@stackframe/stack";
 import type { Metadata } from "next";
+import localFont from "next/font/local";
 import type { ReactNode } from "react";
 
+import clsx from "clsx";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -23,13 +25,58 @@ export const metadata: Metadata = {
   },
 };
 
+const jetBrainsMono = localFont({
+  src: [
+    {
+      path: "../public/fonts/JetBrainsMono-Regular.woff2",
+      weight: "400",
+      style: "normal",
+    },
+    {
+      path: "../public/fonts/JetBrainsMono-Regular.woff",
+      weight: "400",
+      style: "normal",
+    },
+    {
+      path: "../public/fonts/JetBrainsMono-Bold.woff2",
+      weight: "bold",
+      style: "normal",
+    },
+    {
+      path: "../public/fonts/JetBrainsMono-Bold.woff",
+      weight: "bold",
+      style: "normal",
+    },
+    {
+      path: "../public/fonts/JetBrainsMono-Italic.woff2",
+      weight: "400",
+      style: "italic",
+    },
+    {
+      path: "../public/fonts/JetBrainsMono-Italic.woff",
+      weight: "400",
+      style: "italic",
+    },
+    {
+      path: "../public/fonts/JetBrainsMono-BoldItalic.woff2",
+      weight: "bold",
+      style: "italic",
+    },
+    {
+      path: "../public/fonts/JetBrainsMono-BoldItalic.woff",
+      weight: "bold",
+      style: "italic",
+    },
+  ],
+});
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: ReactNode;
 }>) {
   return (
-    <html lang="en" className="dark">
+    <html lang="en" className={clsx("dark", jetBrainsMono.className)}>
       <body
         className="antialiased bg-background text-foreground"
         style={{
