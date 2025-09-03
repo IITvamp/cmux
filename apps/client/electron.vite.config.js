@@ -2,8 +2,10 @@ import tailwindcss from "@tailwindcss/vite";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, externalizeDepsPlugin } from "electron-vite";
-import { resolve } from "path";
+import { resolve } from "node:path";
 import tsconfigPaths from "vite-tsconfig-paths";
+
+const envDir = resolve("../../");
 
 export default defineConfig({
   main: {
@@ -16,7 +18,7 @@ export default defineConfig({
       },
     },
     // Load env vars from repo root so NEXT_PUBLIC_* from .env/.env.local apply
-    envDir: resolve("../../"),
+    envDir,
     envPrefix: "NEXT_PUBLIC_",
   },
   preload: {
@@ -32,7 +34,7 @@ export default defineConfig({
         },
       },
     },
-    envDir: resolve("../../"),
+    envDir,
     envPrefix: "NEXT_PUBLIC_",
   },
   renderer: {
@@ -59,7 +61,7 @@ export default defineConfig({
       react(),
       tailwindcss(),
     ],
-    envDir: resolve("../../"),
+    envDir,
     envPrefix: "NEXT_PUBLIC_",
   },
 });
