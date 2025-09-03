@@ -3,6 +3,7 @@ import { ResizableColumns } from "@/components/ResizableColumns";
 import { Accordion, AccordionItem } from "@heroui/react";
 import clsx from "clsx";
 import { ArrowLeft, Loader2, Minus, Plus, Settings, X } from "lucide-react";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
 import TextareaAutosize from "react-textarea-autosize";
 
@@ -11,17 +12,19 @@ import { parseEnvBlock } from "@/lib/parseEnvBlock";
 
 export function EnvironmentConfiguration({
   selectedRepos,
-  onBack,
+  teamSlugOrId,
   instanceId,
   vscodeUrl,
   isProvisioning,
 }: {
   selectedRepos: string[];
-  onBack: () => void;
+  teamSlugOrId: string;
   instanceId?: string;
   vscodeUrl?: string;
   isProvisioning: boolean;
 }) {
+  const navigate = useNavigate();
+  const search = useSearch({ from: "/_layout/$teamSlugOrId/environments/new" });
   const [iframeLoaded, setIframeLoaded] = useState(false);
   const [envName, setEnvName] = useState("");
   const [envVars, setEnvVars] = useState<EnvVar[]>([
@@ -76,7 +79,20 @@ export function EnvironmentConfiguration({
     <div className="h-full p-6 overflow-y-auto">
       <div className="flex items-center gap-4 mb-4">
         <button
-          onClick={onBack}
+          onClick={async () => {
+            await navigate({
+              to: "/$teamSlugOrId/environments/new",
+              params: { teamSlugOrId },
+              search: (prev) => ({
+                ...prev,
+                step: "select",
+                selectedRepos: selectedRepos.length > 0 ? selectedRepos : undefined,
+                instanceId: search.instanceId,
+                connectionLogin: prev.connectionLogin,
+                repoSearch: prev.repoSearch,
+              }),
+            });
+          }}
           className="inline-flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
         >
           <ArrowLeft className="w-4 h-4" />

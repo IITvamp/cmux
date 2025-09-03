@@ -1,10 +1,9 @@
 import { getAccessTokenFromRequest } from "@/lib/utils/auth";
 import { getConvex } from "@/lib/utils/get-convex";
-import { stackServerApp } from "@/lib/utils/stack";
+import { stackServerAppJs } from "@/lib/utils/stack";
 import { env } from "@/lib/utils/www-env";
 import { api } from "@cmux/convex/api";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
-// import { MorphCloudClient } from "morphcloud";
 import { randomBytes } from "node:crypto";
 
 export const environmentsRouter = new OpenAPIHono();
@@ -101,21 +100,9 @@ environmentsRouter.openapi(
       const dataVaultKey = `env_${randomBytes(16).toString("hex")}`;
 
       // Store environment variables in StackAuth DataBook
-      // @ts-expect-error - getDataVaultStore is a Stack Auth extension
-      const store = (await stackServerApp.getDataVaultStore(
-        "cmux-snapshot-envs"
-      )) as {
-        setValue?: (
-          key: string,
-          value: string,
-          options: { secret: string }
-        ) => Promise<void>;
-        getValue?: (
-          key: string,
-          options: { secret: string }
-        ) => Promise<string | null>;
-      };
-      await store.setValue!(dataVaultKey, body.envVarsContent, {
+      const store =
+        await stackServerAppJs.getDataVaultStore("cmux-snapshot-envs");
+      await store.setValue(dataVaultKey, body.envVarsContent, {
         secret: env.STACK_DATA_VAULT_SECRET,
       });
 
@@ -296,21 +283,9 @@ environmentsRouter.openapi(
       }
 
       // Retrieve environment variables from StackAuth DataBook
-      // @ts-expect-error - getDataVaultStore is a Stack Auth extension
-      const store = (await stackServerApp.getDataVaultStore(
-        "cmux-snapshot-envs"
-      )) as {
-        setValue?: (
-          key: string,
-          value: string,
-          options: { secret: string }
-        ) => Promise<void>;
-        getValue?: (
-          key: string,
-          options: { secret: string }
-        ) => Promise<string | null>;
-      };
-      const envVarsContent = await store.getValue!(environment.dataVaultKey, {
+      const store =
+        await stackServerAppJs.getDataVaultStore("cmux-snapshot-envs");
+      const envVarsContent = await store.getValue(environment.dataVaultKey, {
         secret: env.STACK_DATA_VAULT_SECRET,
       });
 

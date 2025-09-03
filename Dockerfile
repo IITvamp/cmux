@@ -69,7 +69,7 @@ COPY scripts/postinstall.cjs ./scripts/
 
 # Install dependencies with cache (non-interactive)
 # Note: vscode-extension filter uses the new package name without @
-RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store CI=1 pnpm install --frozen-lockfile=true --filter "@cmux/worker..." --filter "@cmux/shared..." --filter "cmux-vscode-extension..."
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store CI=1 pnpm install --no-frozen-lockfile --filter "@cmux/worker..." --filter "@cmux/shared..." --filter "cmux-vscode-extension..."
 
 RUN mkdir -p /builtins && \
     echo '{"name":"builtins","type":"module","version":"1.0.0"}' > /builtins/package.json
