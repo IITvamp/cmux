@@ -116,6 +116,8 @@ export function EnvironmentConfiguration({
     { name: "", value: "", isSecret: true },
   ]);
   const [maintenanceScript, setMaintenanceScript] = useState("");
+  const [devScript, setDevScript] = useState("");
+  const [exposedPorts, setExposedPorts] = useState("3000, 8080");
   const keyInputRefs = useRef<Array<HTMLInputElement | null>>([]);
   const [pendingFocusIndex, setPendingFocusIndex] = useState<number | null>(
     null
@@ -151,6 +153,8 @@ export function EnvironmentConfiguration({
       repos: selectedRepos,
       envVars,
       maintenanceScript,
+      devScript,
+      exposedPorts,
       sessionId,
       vscodeUrl,
     });
@@ -215,6 +219,7 @@ export function EnvironmentConfiguration({
             "env-vars",
             "install-dependencies",
             "maintenance-script",
+            "dev-script",
           ]}
           itemClasses={{
             trigger: "text-sm cursor-pointer py-3",
@@ -406,6 +411,51 @@ etc.`}
                 maxRows={15}
                 className="w-full rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 py-2 text-xs font-mono text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-700 resize-none"
               />
+            </div>
+          </AccordionItem>
+
+          <AccordionItem
+            key="dev-script"
+            aria-label="Dev script"
+            title="Dev script"
+          >
+            <div className="space-y-4 pb-4">
+              <div className="space-y-2">
+                <p className="text-sm text-neutral-600 dark:text-neutral-400">
+                  Script that starts the development server.
+                </p>
+                <TextareaAutosize
+                  value={devScript}
+                  onChange={(e) => setDevScript(e.target.value)}
+                  placeholder={`# e.g.
+npm run dev
+bun dev
+python manage.py runserver
+rails server
+cargo run
+etc.`}
+                  minRows={3}
+                  maxRows={15}
+                  className="w-full rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 py-2 text-xs font-mono text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-700 resize-none"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-neutral-800 dark:text-neutral-200">
+                  Exposed ports
+                </label>
+                <input
+                  type="text"
+                  value={exposedPorts}
+                  onChange={(e) => setExposedPorts(e.target.value)}
+                  placeholder="3000, 8080, 5432"
+                  className="w-full rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-700"
+                />
+                <p className="text-xs text-neutral-500 dark:text-neutral-500">
+                  Comma-separated list of ports that should be exposed from the
+                  container for preview URLs.
+                </p>
+              </div>
             </div>
           </AccordionItem>
         </Accordion>
