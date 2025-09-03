@@ -33,7 +33,7 @@
     "jose": "^6.0.13",
     "lucide-react": "^0.460.0",
     "morphcloud": "^0.0.18",
-    "next": "15.4.6",
+    "next": "15.5.2",
     "octokit": "^3.2.2",
     "react": "19.1.0",
     "react-dom": "19.1.0",
