@@ -96,6 +96,14 @@ COPY packages/vscode-extension/tsconfig.json ./packages/vscode-extension/
 COPY packages/vscode-extension/.vscodeignore ./packages/vscode-extension/
 COPY packages/vscode-extension/LICENSE.md ./packages/vscode-extension/
 
+# Copy envctl/envd sources for build
+COPY packages/envctl/tsconfig.json ./packages/envctl/
+COPY packages/envctl/tsconfig.build.json ./packages/envctl/
+COPY packages/envctl/src ./packages/envctl/src
+COPY packages/envd/tsconfig.json ./packages/envd/
+COPY packages/envd/tsconfig.build.json ./packages/envd/
+COPY packages/envd/src ./packages/envd/src
+
 # Build worker with bundling, using the installed node_modules
 RUN cd /cmux && \
     bun build ./apps/worker/src/index.ts \
@@ -107,6 +115,11 @@ RUN cd /cmux && \
     cp -r ./apps/worker/build /builtins/build && \
     cp ./apps/worker/wait-for-docker.sh /usr/local/bin/ && \
     chmod +x /usr/local/bin/wait-for-docker.sh
+
+# Build envctl/envd (TypeScript → JS)
+RUN cd /cmux && \
+    pnpm install --frozen-lockfile --filter @cmux/envctl --filter @cmux/envd && \
+    pnpm -F @cmux/envctl -F @cmux/envd build
 
 # Verify bun is still working in builder
 RUN bun --version && bunx --version
@@ -230,12 +243,26 @@ COPY --from=builder /usr/local/bin/wait-for-docker.sh /usr/local/bin/wait-for-do
 COPY --from=builder /cmux/apps/worker/scripts/collect-relevant-diff.sh /usr/local/bin/cmux-collect-relevant-diff.sh
 RUN chmod +x /usr/local/bin/cmux-collect-relevant-diff.sh
 
+# Install envctl/envd into runtime
+RUN mkdir -p /usr/local/lib/cmux
+COPY --from=builder /cmux/packages/envctl/dist /usr/local/lib/cmux/envctl/dist
+COPY --from=builder /cmux/packages/envctl/package.json /usr/local/lib/cmux/envctl/package.json
+COPY --from=builder /cmux/packages/envd/dist /usr/local/lib/cmux/envd/dist
+COPY --from=builder /cmux/packages/envd/package.json /usr/local/lib/cmux/envd/package.json
+RUN set -eux; \
+    printf '#!/bin/sh\nexec node /usr/local/lib/cmux/envctl/dist/index.js "$@"\n' > /usr/local/bin/envctl && \
+    printf '#!/bin/sh\nexec node /usr/local/lib/cmux/envd/dist/index.js "$@"\n' > /usr/local/bin/envd && \
+    chmod +x /usr/local/bin/envctl /usr/local/bin/envd
+
 # Setup pnpm and install global packages
 RUN SHELL=/bin/bash pnpm setup && \
     . /root/.bashrc
 
 # Install tmux configuration for better mouse scrolling behavior
 COPY configs/tmux.conf /etc/tmux.conf
+COPY configs/envctl.sh /etc/profile.d/envctl.sh
+RUN bash -lc 'echo "# Source envctl hook for interactive non-login shells" >> /etc/bash.bashrc && \
+    echo "if [ -f /etc/profile.d/envctl.sh ]; then . /etc/profile.d/envctl.sh; fi" >> /etc/bash.bashrc'
 
 
 # Find and install claude-code.vsix from Bun cache using ripgrep
@@ -301,48 +328,3 @@ WORKDIR /
 
 ENTRYPOINT ["/startup.sh"]
 CMD []
-
-# ---------------------------
-# Minimal envctl/envd image
-# Build with: docker build --target envcli -t cmux-env:local .
-# ---------------------------
-FROM node:24-slim AS envcli-build
-
-WORKDIR /app
-
-# Enable pnpm via corepack
-RUN corepack enable && corepack prepare pnpm@10.14.0 --activate
-
-# Only copy files needed to build @cmux/envctl and @cmux/envd
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
-COPY packages/envctl/package.json packages/envctl/tsconfig.json packages/envctl/tsconfig.build.json ./packages/envctl/
-COPY packages/envd/package.json packages/envd/tsconfig.json packages/envd/tsconfig.build.json ./packages/envd/
-COPY packages/envctl/src ./packages/envctl/src
-COPY packages/envd/src ./packages/envd/src
-
-# Install and build only the two packages
-RUN --mount=type=cache,id=pnpm-envcli,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile --ignore-scripts --filter @cmux/envctl --filter @cmux/envd && \
-    pnpm -F @cmux/envctl -F @cmux/envd build
-
-FROM node:24-slim AS envcli
-WORKDIR /usr/local/lib/cmux
-
-# Copy runtime artifacts
-COPY --from=envcli-build /app/packages/envctl/dist ./envctl/dist
-COPY --from=envcli-build /app/packages/envctl/package.json ./envctl/package.json
-COPY --from=envcli-build /app/packages/envd/dist ./envd/dist
-COPY --from=envcli-build /app/packages/envd/package.json ./envd/package.json
-
-# Provide simple sh wrappers on PATH
-RUN set -eux; \
-    printf '#!/bin/sh\nexec node /usr/local/lib/cmux/envctl/dist/index.js "$@"\n' > /usr/local/bin/envctl && \
-    printf '#!/bin/sh\nexec node /usr/local/lib/cmux/envd/dist/index.js "$@"\n' > /usr/local/bin/envd && \
-    chmod +x /usr/local/bin/envctl /usr/local/bin/envd
-
-# Default workdir and shell
-WORKDIR /
-SHELL ["/bin/sh", "-lc"]
-
-# Keep runtime as the default final stage when building without --target
-FROM runtime AS final
