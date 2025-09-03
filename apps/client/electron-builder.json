@@ -6,7 +6,8 @@
   },
   "files": [
     "out/**/*",
-    "package.json"
+    "package.json",
+    "node_modules/**/*"
   ],
   "asar": true,
   "npmRebuild": false,
@@ -20,7 +21,9 @@
   "mac": {
     "category": "public.app-category.developer-tools",
     "icon": "build/icon.icns",
-    "hardenedRuntime": false,
+    "hardenedRuntime": true,
+    "entitlements": "build/entitlements.mac.plist",
+    "entitlementsInherit": "build/entitlements.mac.plist",
     "gatekeeperAssess": false,
     "target": ["dmg", "zip"]
   },
