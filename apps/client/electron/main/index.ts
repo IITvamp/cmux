@@ -11,6 +11,7 @@ import {
 import path, { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import util from "node:util";
+import { env } from "./electron-main-env";
 
 // Use a cookieable HTTPS origin intercepted locally instead of a custom scheme.
 const PARTITION = "persist:cmux";
@@ -232,7 +233,7 @@ async function handleProtocolUrl(url: string): Promise<void> {
       await Promise.all([
         mainWindow.webContents.session.cookies.remove(
           realUrl,
-          `stack-refresh-1467bed0-8522-45ee-a8d8-055de324118c`
+          `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`
         ),
         mainWindow.webContents.session.cookies.remove(realUrl, `stack-access`),
       ]);
@@ -240,7 +241,7 @@ async function handleProtocolUrl(url: string): Promise<void> {
       await Promise.all([
         mainWindow.webContents.session.cookies.set({
           url: realUrl,
-          name: `stack-refresh-1467bed0-8522-45ee-a8d8-055de324118c`,
+          name: `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`,
           value: stackRefresh,
           expirationDate: 2000000000,
           sameSite: "no_restriction",

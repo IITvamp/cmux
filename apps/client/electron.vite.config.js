@@ -15,6 +15,8 @@ export default defineConfig({
         },
       },
     },
+    // Load env vars from repo root so NEXT_PUBLIC_* from .env/.env.local apply
+    envDir: resolve("../../"),
     envPrefix: "NEXT_PUBLIC_",
   },
   preload: {
@@ -30,6 +32,7 @@ export default defineConfig({
         },
       },
     },
+    envDir: resolve("../../"),
     envPrefix: "NEXT_PUBLIC_",
   },
   renderer: {
@@ -56,6 +59,7 @@ export default defineConfig({
       react(),
       tailwindcss(),
     ],
+    envDir: resolve("../../"),
     envPrefix: "NEXT_PUBLIC_",
   },
 });
