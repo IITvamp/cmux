@@ -39,6 +39,8 @@ jobs:
       - name: Ensure pnpm lock visible to electron-builder
         shell: bash
         run: cp pnpm-lock.yaml apps/client/pnpm-lock.yaml
+      - name: Generate app icons (build/*)
+        run: node apps/client/scripts/generate-icons.mjs
       - name: Detect mac signing secrets
         id: signing
         env:
@@ -104,6 +106,8 @@ jobs:
       - name: Ensure pnpm lock visible to electron-builder
         shell: bash
         run: cp pnpm-lock.yaml apps/client/pnpm-lock.yaml
+      - name: Generate app icons (build/*)
+        run: node apps/client/scripts/generate-icons.mjs
       - name: Detect mac signing secrets
         id: signing
         env:
@@ -169,6 +173,8 @@ jobs:
       - name: Ensure pnpm lock visible to electron-builder
         shell: bash
         run: cp pnpm-lock.yaml apps/client/pnpm-lock.yaml
+      - name: Generate app icons (build/*)
+        run: node apps/client/scripts/generate-icons.mjs
       - name: Build & publish Windows x64 to GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
@@ -197,6 +203,8 @@ jobs:
       - name: Ensure pnpm lock visible to electron-builder
         shell: bash
         run: cp pnpm-lock.yaml apps/client/pnpm-lock.yaml
+      - name: Generate app icons (build/*)
+        run: node apps/client/scripts/generate-icons.mjs
       - name: Build & publish Linux AppImage x64 to GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
