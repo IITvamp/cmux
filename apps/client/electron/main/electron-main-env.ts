@@ -7,11 +7,6 @@ export const env = createEnv({
   client: {
     NEXT_PUBLIC_STACK_PROJECT_ID: z.string().min(1),
   },
-  // Electron main is bundled by Vite (electron-vite), so use import.meta.env
-  // to read variables loaded from .env files (filtered by envPrefix).
-  runtimeEnv: import.meta.env as unknown as Record<
-    string,
-    string | number | boolean | undefined
-  >,
+  runtimeEnv: import.meta.env,
   emptyStringAsUndefined: true,
 });
