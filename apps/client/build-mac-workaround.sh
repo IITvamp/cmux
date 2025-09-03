@@ -1,5 +1,9 @@
 #!/bin/bash
-# Build the Electron app first
+# Generate app icons first
+echo "Generating app icons..."
+bash scripts/generate-icons.sh
+
+# Build the Electron app
 echo "Building Electron app..."
 npx electron-vite build -c electron.vite.config.js
 
@@ -60,25 +64,23 @@ echo "Updating app metadata..."
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion 1.0.0" "$APP_DIR/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 1.0.0" "$APP_DIR/Contents/Info.plist"
 
-# Ensure our app icon is bundled and used by macOS
-ICONSET_SRC="$(pwd)/assets/cmux-logos/cmux.iconset"
+# Ensure our app icon is properly set
 BUILD_ICON_ICNS="$(pwd)/build/icon.icns"
+if [ ! -f "$BUILD_ICON_ICNS" ]; then
+  echo "ERROR: build/icon.icns not found. Please run 'bash scripts/generate-icons.sh' first" >&2
+  exit 1
+fi
+
+echo "Installing app icon..."
+cp "$BUILD_ICON_ICNS" "$RESOURCES_DIR/icon.icns"
+/usr/libexec/PlistBuddy -c "Set :CFBundleIconFile icon" "$APP_DIR/Contents/Info.plist"
+
+# Also copy iconset for potential runtime use
+ICONSET_SRC="$(pwd)/assets/cmux-logos/cmux.iconset"
 if [ -d "$ICONSET_SRC" ]; then
   echo "Copying iconset into Resources..."
   mkdir -p "$RESOURCES_DIR/cmux-logos"
   rsync -a "$ICONSET_SRC/" "$RESOURCES_DIR/cmux-logos/cmux.iconset/"
-  if [ ! -f "$BUILD_ICON_ICNS" ] && command -v iconutil >/dev/null 2>&1; then
-    echo "Generating build/icon.icns from iconset..."
-    iconutil -c icns "$ICONSET_SRC" -o "$BUILD_ICON_ICNS"
-  fi
-fi
-
-if [ -f "$BUILD_ICON_ICNS" ]; then
-  echo "Installing app icon..."
-  cp "$BUILD_ICON_ICNS" "$RESOURCES_DIR/Cmux.icns"
-  /usr/libexec/PlistBuddy -c "Set :CFBundleIconFile Cmux" "$APP_DIR/Contents/Info.plist"
-else
-  echo "WARNING: build/icon.icns not found; app icon may remain default" >&2
 fi
 
 # Rename executable

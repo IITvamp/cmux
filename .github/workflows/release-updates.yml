@@ -13,7 +13,7 @@ permissions:
   contents: write
 
 env:
-  NODE_VERSION: '24'
+  NODE_VERSION: "24"
   # Frontend build-time envs (exposed in bundle). Store values as GitHub Secrets.
   NEXT_PUBLIC_CONVEX_URL: ${{ secrets.NEXT_PUBLIC_CONVEX_URL }}
   NEXT_PUBLIC_STACK_PROJECT_ID: ${{ secrets.NEXT_PUBLIC_STACK_PROJECT_ID }}
@@ -63,11 +63,14 @@ jobs:
           CERT_PATH="$RUNNER_TEMP/mac_signing_cert.p12"
           node -e "process.stdout.write(Buffer.from(process.env.MAC_CERT_BASE64,'base64'))" > "$CERT_PATH"
           echo "CSC_LINK=$CERT_PATH" >> "$GITHUB_ENV"
+      - name: Generate app icons
+        working-directory: apps/client
+        run: bash scripts/generate-icons.sh
       - name: Build & publish mac x64 (signed) to GitHub Releases
         if: ${{ steps.signing.outputs.has == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
           # macOS code signing + notarization (CSC_LINK set in previous step)
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -77,11 +80,15 @@ jobs:
         run: |
           pnpm exec electron-vite build -c electron.vite.config.js
           pnpm exec electron-builder --config electron-builder.json --mac --x64 --publish always --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
+      - name: Generate app icons
+        if: ${{ steps.signing.outputs.has != 'true' }}
+        working-directory: apps/client
+        run: bash scripts/generate-icons.sh
       - name: Build & publish mac x64 (unsigned) to GitHub Releases
         if: ${{ steps.signing.outputs.has != 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
         working-directory: apps/client
         run: pnpm exec electron-vite build -c electron.vite.config.js && pnpm exec electron-builder --config electron-builder.json --mac dmg --x64 --publish always --config.mac.identity=null --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
 
@@ -128,11 +135,14 @@ jobs:
           CERT_PATH="$RUNNER_TEMP/mac_signing_cert.p12"
           node -e "process.stdout.write(Buffer.from(process.env.MAC_CERT_BASE64,'base64'))" > "$CERT_PATH"
           echo "CSC_LINK=$CERT_PATH" >> "$GITHUB_ENV"
+      - name: Generate app icons
+        working-directory: apps/client
+        run: bash scripts/generate-icons.sh
       - name: Build & publish mac arm64 (signed) to GitHub Releases
         if: ${{ steps.signing.outputs.has == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
           # macOS code signing + notarization (CSC_LINK set in previous step)
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -142,11 +152,15 @@ jobs:
         run: |
           pnpm exec electron-vite build -c electron.vite.config.js
           pnpm exec electron-builder --config electron-builder.json --mac --arm64 --publish always --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
+      - name: Generate app icons
+        if: ${{ steps.signing.outputs.has != 'true' }}
+        working-directory: apps/client
+        run: bash scripts/generate-icons.sh
       - name: Build & publish mac arm64 (unsigned) to GitHub Releases
         if: ${{ steps.signing.outputs.has != 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
         working-directory: apps/client
         run: pnpm exec electron-vite build -c electron.vite.config.js && pnpm exec electron-builder --config electron-builder.json --mac dmg --arm64 --publish always --config.mac.identity=null --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
 
@@ -169,6 +183,10 @@ jobs:
       - name: Ensure pnpm lock visible to electron-builder
         shell: bash
         run: cp pnpm-lock.yaml apps/client/pnpm-lock.yaml
+      - name: Generate app icons
+        working-directory: apps/client
+        shell: bash
+        run: bash scripts/generate-icons.sh
       - name: Build & publish Windows x64 to GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
@@ -197,9 +215,11 @@ jobs:
       - name: Ensure pnpm lock visible to electron-builder
         shell: bash
         run: cp pnpm-lock.yaml apps/client/pnpm-lock.yaml
+      - name: Generate app icons
+        working-directory: apps/client
+        run: bash scripts/generate-icons.sh
       - name: Build & publish Linux AppImage x64 to GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
         working-directory: apps/client
         run: pnpm exec electron-vite build -c electron.vite.config.js && pnpm exec electron-builder --config electron-builder.json --linux AppImage --x64 --publish always --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
-        
