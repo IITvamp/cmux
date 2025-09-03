@@ -7,10 +7,7 @@ import {
 import { checkOpencodeRequirements } from "./check-requirements.js";
 import { startOpenCodeCompletionDetector } from "./completion-detector.js";
 
-import {
-  getOpencodeEnvironment,
-  getOpencodeEnvironmentSkipAuth,
-} from "./environment.js";
+import { getOpencodeEnvironment } from "./environment.js";
 
 export const OPENCODE_GROK_CODE_CONFIG: AgentConfig = {
   name: "opencode/grok-code",
@@ -20,11 +17,11 @@ export const OPENCODE_GROK_CODE_CONFIG: AgentConfig = {
     "--prompt",
     "$PROMPT",
     "--model",
-    "opencode/grok-code",
+    "openrouter/x-ai/grok-code-fast-1",
   ],
-  environment: getOpencodeEnvironmentSkipAuth,
+  environment: getOpencodeEnvironment,
   checkRequirements: checkOpencodeRequirements,
-  apiKeys: [],
+  apiKeys: [OPENROUTER_API_KEY],
   completionDetector: startOpenCodeCompletionDetector,
 };
 
