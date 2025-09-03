@@ -20,6 +20,7 @@ from urllib.error import HTTPError, URLError
 
 import dotenv
 from morphcloud.api import MorphCloudClient, Snapshot
+import hashlib
 
 dotenv.load_dotenv()
 
@@ -606,6 +607,17 @@ def ensure_docker(snapshot: Snapshot) -> Snapshot:
     return snapshot
 
 
+def _file_sha256_hex(path: str) -> str:
+    try:
+        with open(path, "rb") as f:
+            h = hashlib.sha256()
+            for chunk in iter(lambda: f.read(8192), b""):
+                h.update(chunk)
+            return h.hexdigest()
+    except FileNotFoundError:
+        return "no-file"
+
+
 def build_snapshot(
     dockerfile_path: str,
 ) -> Snapshot:
@@ -614,7 +626,9 @@ def build_snapshot(
     memory = 16384
     disk_size = 32768
     digest_prefix = "cmux"
-    digest = f"{digest_prefix}_{vcpus}_{memory}_{disk_size}"
+    # Include lockfile hash to invalidate cache when dependencies change
+    lock_hash = _file_sha256_hex("pnpm-lock.yaml")[:16]
+    digest = f"{digest_prefix}_{vcpus}_{memory}_{disk_size}_{lock_hash}"
     snapshot = client.snapshots.create(
         vcpus=vcpus,
         memory=memory,

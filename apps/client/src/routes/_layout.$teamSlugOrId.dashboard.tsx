@@ -9,6 +9,7 @@ import { TaskList } from "@/components/dashboard/TaskList";
 import { FloatingPane } from "@/components/floating-pane";
 import { ProviderStatusPills } from "@/components/provider-status-pills";
 import { useTheme } from "@/components/theme/use-theme";
+import { TitleBar } from "@/components/TitleBar";
 import { useExpandTasks } from "@/contexts/expand-tasks/ExpandTasksContext";
 import { useSocket } from "@/contexts/socket/use-socket";
 import { createFakeConvexId } from "@/lib/fakeConvexId";
@@ -511,7 +512,7 @@ function DashboardComponent() {
   );
 
   return (
-    <FloatingPane>
+    <FloatingPane header={<TitleBar title="cmux" />}>
       <div className="flex flex-col grow overflow-y-auto">
         {/* Main content area */}
         <div className="flex-1 flex justify-center px-4 pt-60 pb-4">
