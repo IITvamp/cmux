@@ -1,9 +1,9 @@
 import { getAccessTokenFromRequest } from "@/lib/utils/auth";
+import { getConvex } from "@/lib/utils/get-convex";
 import { stackServerApp } from "@/lib/utils/stack";
 import { env } from "@/lib/utils/www-env";
-import { getConvex } from "@/lib/utils/get-convex";
-import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { api } from "@cmux/convex/api";
+import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 // import { MorphCloudClient } from "morphcloud";
 import { randomBytes } from "node:crypto";
 
@@ -64,6 +64,7 @@ environmentsRouter.openapi(
             schema: CreateEnvironmentBody,
           },
         },
+        required: true,
       },
     },
     responses: {
@@ -90,7 +91,10 @@ environmentsRouter.openapi(
       // Create Morph snapshot
       // Note: Morph doesn't have a direct snapshot API in their SDK yet
       // For now, we'll use the instanceId as the snapshot ID
-      console.log("Creating Morph snapshot from instance:", body.morphInstanceId);
+      console.log(
+        "Creating Morph snapshot from instance:",
+        body.morphInstanceId
+      );
       const snapshot = { id: body.morphInstanceId };
 
       // Generate a unique key for this environment's data vault entry
@@ -98,9 +102,18 @@ environmentsRouter.openapi(
 
       // Store environment variables in StackAuth DataBook
       // @ts-expect-error - getDataVaultStore is a Stack Auth extension
-      const store = await stackServerApp.getDataVaultStore("cmux-snapshot-envs") as {
-        setValue?: (key: string, value: string, options: { secret: string }) => Promise<void>;
-        getValue?: (key: string, options: { secret: string }) => Promise<string | null>;
+      const store = (await stackServerApp.getDataVaultStore(
+        "cmux-snapshot-envs"
+      )) as {
+        setValue?: (
+          key: string,
+          value: string,
+          options: { secret: string }
+        ) => Promise<void>;
+        getValue?: (
+          key: string,
+          options: { secret: string }
+        ) => Promise<string | null>;
       };
       await store.setValue!(dataVaultKey, body.envVarsContent, {
         secret: env.STACK_DATA_VAULT_SECRET,
@@ -108,14 +121,17 @@ environmentsRouter.openapi(
 
       // Create environment record in Convex
       const convexClient = getConvex({ accessToken });
-      const environmentId = await convexClient.mutation(api.environments.create, {
-        teamSlugOrId: body.teamSlugOrId,
-        name: body.name,
-        morphSnapshotId: snapshot.id,
-        dataVaultKey,
-        selectedRepos: body.selectedRepos,
-        description: body.description,
-      });
+      const environmentId = await convexClient.mutation(
+        api.environments.create,
+        {
+          teamSlugOrId: body.teamSlugOrId,
+          name: body.name,
+          morphSnapshotId: snapshot.id,
+          dataVaultKey,
+          selectedRepos: body.selectedRepos,
+          description: body.description,
+        }
+      );
 
       return c.json({
         id: environmentId,
@@ -281,9 +297,18 @@ environmentsRouter.openapi(
 
       // Retrieve environment variables from StackAuth DataBook
       // @ts-expect-error - getDataVaultStore is a Stack Auth extension
-      const store = await stackServerApp.getDataVaultStore("cmux-snapshot-envs") as {
-        setValue?: (key: string, value: string, options: { secret: string }) => Promise<void>;
-        getValue?: (key: string, options: { secret: string }) => Promise<string | null>;
+      const store = (await stackServerApp.getDataVaultStore(
+        "cmux-snapshot-envs"
+      )) as {
+        setValue?: (
+          key: string,
+          value: string,
+          options: { secret: string }
+        ) => Promise<void>;
+        getValue?: (
+          key: string,
+          options: { secret: string }
+        ) => Promise<string | null>;
       };
       const envVarsContent = await store.getValue!(environment.dataVaultKey, {
         secret: env.STACK_DATA_VAULT_SECRET,

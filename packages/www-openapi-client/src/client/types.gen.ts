@@ -549,7 +549,7 @@ export type GetApiIntegrationsGithubReposResponses = {
 export type GetApiIntegrationsGithubReposResponse = GetApiIntegrationsGithubReposResponses[keyof GetApiIntegrationsGithubReposResponses];
 
 export type PostApiMorphSetupInstanceData = {
-    body?: SetupInstanceBody;
+    body: SetupInstanceBody;
     path?: never;
     query?: never;
     url: '/api/morph/setup-instance';
@@ -605,7 +605,7 @@ export type GetApiEnvironmentsResponses = {
 export type GetApiEnvironmentsResponse = GetApiEnvironmentsResponses[keyof GetApiEnvironmentsResponses];
 
 export type PostApiEnvironmentsData = {
-    body?: CreateEnvironmentBody;
+    body: CreateEnvironmentBody;
     path?: never;
     query?: never;
     url: '/api/environments';

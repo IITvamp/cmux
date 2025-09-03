@@ -1,16 +1,16 @@
+import { EnvironmentConfiguration } from "@/components/EnvironmentConfiguration";
 import { FloatingPane } from "@/components/floating-pane";
 import { RepositoryPicker } from "@/components/RepositoryPicker";
 import { TitleBar } from "@/components/TitleBar";
-import { EnvironmentConfiguration } from "@/components/EnvironmentConfiguration";
-import { 
-  postApiMorphSetupInstanceMutation
-} from "@cmux/www-openapi-client/react-query";
+import { postApiMorphSetupInstanceMutation } from "@cmux/www-openapi-client/react-query";
 import { useMutation as useRQMutation } from "@tanstack/react-query";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useMemo, useEffect } from "react";
-export const Route = createFileRoute("/_layout/$teamSlugOrId/environments/new")({
-  component: EnvironmentsPage,
-});
+import { useMemo } from "react";
+export const Route = createFileRoute("/_layout/$teamSlugOrId/environments/new")(
+  {
+    component: EnvironmentsPage,
+  }
+);
 
 // Main Page Component
 function EnvironmentsPage() {
@@ -26,6 +26,10 @@ function EnvironmentsPage() {
     postApiMorphSetupInstanceMutation()
   );
 
+  const setupManualInstanceMutation = useRQMutation(
+    postApiMorphSetupInstanceMutation()
+  );
+
   // Derive VSCode URL from instanceId or setup response
   const derivedVscodeUrl = useMemo(() => {
     // Use URL from setup mutation if available
@@ -37,31 +41,6 @@ function EnvironmentsPage() {
     const hostId = urlInstanceId.replace(/_/g, "-");
     return `https://port-39378-${hostId}.http.cloud.morph.so/?folder=/root/workspace`;
   }, [urlInstanceId, setupInstanceMutation.data]);
-
-  // Handle repo changes when user goes back and selects different repos
-  useEffect(() => {
-    if (step === "configure" && urlInstanceId && urlSelectedRepos.length > 0) {
-      // Check if we need to update repos (only if not currently setting up)
-      if (!setupInstanceMutation.isPending) {
-        const lastClonedRepos = setupInstanceMutation.data?.clonedRepos || [];
-        const needsUpdate = urlSelectedRepos.some((repo: string) => !lastClonedRepos.includes(repo)) ||
-                           lastClonedRepos.some((repo: string) => !urlSelectedRepos.includes(repo));
-        
-        // Only re-setup if repos have actually changed
-        if (needsUpdate && lastClonedRepos.length > 0) {
-          setupInstanceMutation.mutate({
-            body: {
-              teamSlugOrId,
-              instanceId: urlInstanceId,
-              selectedRepos: urlSelectedRepos,
-              ttlSeconds: 60 * 60 * 2,
-            },
-          });
-        }
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, urlInstanceId, urlSelectedRepos]);
 
   const goToStep = (
     newStep: "select" | "configure",
@@ -88,20 +67,29 @@ function EnvironmentsPage() {
   };
 
   const handleContinue = (repos: string[]) => {
-    goToStep("configure", repos);
+    const mutation =
+      repos.length > 0 ? setupInstanceMutation : setupManualInstanceMutation;
+
+    console.log("inputs", {
+      teamSlugOrId,
+      instanceId: urlInstanceId,
+      selectedRepos: repos,
+    });
 
     // Setup instance with repos (creates new instance if needed)
-    setupInstanceMutation.mutate(
+    mutation.mutate(
       {
         body: {
           teamSlugOrId,
           instanceId: urlInstanceId,
           selectedRepos: repos,
-          ttlSeconds: 60 * 60 * 2, // 2 hours
         },
       },
       {
         onSuccess: (data) => {
+          // Navigate to configure step after successful setup
+          goToStep("configure", repos);
+
           // Update URL with the instanceId if it's new
           if (!urlInstanceId && data.instanceId) {
             navigate({
@@ -109,8 +97,8 @@ function EnvironmentsPage() {
               params: { teamSlugOrId },
               search: (prev) => ({
                 ...prev,
-                step: prev.step,
-                selectedRepos: prev.selectedRepos,
+                step: "configure",
+                selectedRepos: repos,
                 connectionLogin: prev.connectionLogin,
                 repoSearch: prev.repoSearch,
                 instanceId: data.instanceId,
@@ -168,6 +156,8 @@ function EnvironmentsPage() {
               showHeader={true}
               showContinueButton={true}
               showManualConfigOption={true}
+              isContinueLoading={setupInstanceMutation.isPending}
+              isManualLoading={setupManualInstanceMutation.isPending}
             />
           </div>
         ) : (

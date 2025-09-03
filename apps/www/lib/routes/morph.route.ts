@@ -1,9 +1,8 @@
-import { env } from "@/lib/utils/www-env";
 import { verifyTeamAccess } from "@/lib/utils/team-verification";
+import { env } from "@/lib/utils/www-env";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { MorphCloudClient } from "morphcloud";
-import { getAccessTokenFromRequest } from "../utils/auth";
-import { decodeJwt } from "jose";
+import { stackServerAppJs } from "../utils/stack";
 
 export const morphRouter = new OpenAPIHono();
 
@@ -12,7 +11,7 @@ const SetupInstanceBody = z
     teamSlugOrId: z.string(),
     instanceId: z.string().optional(), // Existing instance ID to reuse
     selectedRepos: z.array(z.string()).optional(), // Repositories to clone
-    ttlSeconds: z.number().default(60 * 60 * 2), // 2 hours default
+    ttlSeconds: z.number().default(60 * 30), // 30 minutes default
   })
   .openapi("SetupInstanceBody");
 
@@ -38,6 +37,7 @@ morphRouter.openapi(
             schema: SetupInstanceBody,
           },
         },
+        required: true,
       },
     },
     responses: {
@@ -54,22 +54,18 @@ morphRouter.openapi(
     },
   }),
   async (c) => {
-    // Require authentication
-    const accessToken = await getAccessTokenFromRequest(c.req.raw);
-    if (!accessToken) return c.text("Unauthorized", 401);
-    let userId: string | null = null;
-    try {
-      const jwt = decodeJwt(accessToken);
-      const sub = jwt.sub;
-      if (typeof sub === "string" && sub.length > 0) {
-        userId = sub;
-      }
-    } catch (_e) {
-      // ignored; userId remains null
+    const user = await stackServerAppJs.getUser({ tokenStore: c.req.raw });
+    if (!user) {
+      return c.text("Unauthorized", 401);
     }
-    if (!userId) return c.text("Unauthorized", 401);
-
-    const { teamSlugOrId, instanceId: existingInstanceId, selectedRepos, ttlSeconds } = c.req.valid("json");
+    const { accessToken } = await user.getAuthJson();
+    if (!accessToken) return c.text("Unauthorized", 401);
+    const {
+      teamSlugOrId,
+      instanceId: existingInstanceId,
+      selectedRepos,
+      ttlSeconds,
+    } = c.req.valid("json");
 
     // Verify team access and get the team
     const team = await verifyTeamAccess({ req: c.req.raw, teamSlugOrId });
@@ -91,7 +87,7 @@ morphRouter.openapi(
           ttlAction: "pause",
           metadata: {
             app: "cmux-dev",
-            userId,
+            userId: user.id,
             teamId: team.uuid,
           },
         });
@@ -107,7 +103,10 @@ morphRouter.openapi(
           .metadata;
         const instanceTeamId = meta?.teamId;
         if (!instanceTeamId || instanceTeamId !== team.uuid) {
-          return c.text("Forbidden: Instance does not belong to this team", 403);
+          return c.text(
+            "Forbidden: Instance does not belong to this team",
+            403
+          );
         }
       }
 
@@ -131,20 +130,23 @@ morphRouter.openapi(
         const repoNames = new Map<string, string>(); // Map of repo name to full path
         for (const repo of selectedRepos) {
           // Validate format: should be owner/repo
-          if (!repo.includes('/') || repo.split('/').length !== 2) {
-            return c.text(`Invalid repository format: ${repo}. Expected format: owner/repo`, 400);
+          if (!repo.includes("/") || repo.split("/").length !== 2) {
+            return c.text(
+              `Invalid repository format: ${repo}. Expected format: owner/repo`,
+              400
+            );
           }
-          
+
           const repoName = repo.split("/").pop();
           if (!repoName) {
             return c.text(`Invalid repository: ${repo}`, 400);
           }
-          
+
           // Check for duplicate repo names
           if (repoNames.has(repoName)) {
             return c.text(
               `Duplicate repository name detected: '${repoName}' from both '${repoNames.get(repoName)}' and '${repo}'. ` +
-              `Repositories with the same name cannot be cloned to the same workspace.`,
+                `Repositories with the same name cannot be cloned to the same workspace.`,
               400
             );
           }
@@ -154,29 +156,29 @@ morphRouter.openapi(
         // First, get list of existing repos with their remote URLs
         const listReposCmd = await instance.exec(
           "for dir in /root/workspace/*/; do " +
-          "if [ -d \"$dir/.git\" ]; then " +
-          "basename \"$dir\"; " +
-          "cd \"$dir\" && git remote get-url origin 2>/dev/null || echo 'no-remote'; " +
-          "fi; done"
+            'if [ -d "$dir/.git" ]; then ' +
+            'basename "$dir"; ' +
+            "cd \"$dir\" && git remote get-url origin 2>/dev/null || echo 'no-remote'; " +
+            "fi; done"
         );
-        
+
         const lines = listReposCmd.stdout.split("\n").filter(Boolean);
         const existingRepos = new Map<string, string>(); // Map of repo name to remote URL
-        
+
         for (let i = 0; i < lines.length; i += 2) {
           const repoName = lines[i]?.trim();
           const remoteUrl = lines[i + 1]?.trim();
-          if (repoName && remoteUrl && remoteUrl !== 'no-remote') {
+          if (repoName && remoteUrl && remoteUrl !== "no-remote") {
             existingRepos.set(repoName, remoteUrl);
           } else if (repoName) {
-            existingRepos.set(repoName, '');
+            existingRepos.set(repoName, "");
           }
         }
 
         // Determine which repos to remove
         for (const [existingName, existingUrl] of existingRepos) {
           const selectedRepo = repoNames.get(existingName);
-          
+
           if (!selectedRepo) {
             // Repo not in selected list, remove it
             console.log(`Removing repository: ${existingName}`);
@@ -184,7 +186,9 @@ morphRouter.openapi(
             removedRepos.push(existingName);
           } else if (existingUrl && !existingUrl.includes(selectedRepo)) {
             // Repo exists but points to different remote, remove and re-clone
-            console.log(`Repository ${existingName} points to different remote, removing for re-clone`);
+            console.log(
+              `Repository ${existingName} points to different remote, removing for re-clone`
+            );
             await instance.exec(`rm -rf /root/workspace/${existingName}`);
             removedRepos.push(existingName);
             existingRepos.delete(existingName); // Mark for re-cloning
@@ -195,10 +199,10 @@ morphRouter.openapi(
         for (const [repoName, repo] of repoNames) {
           if (!existingRepos.has(repoName)) {
             console.log(`Cloning repository: ${repo}`);
-            
+
             // Ensure workspace directory exists
             await instance.exec("mkdir -p /root/workspace");
-            
+
             const cloneCmd = await instance.exec(
               `cd /root/workspace && git clone https://github.com/${repo}.git ${repoName}`
             );
@@ -210,7 +214,9 @@ morphRouter.openapi(
               // Continue with other repos instead of failing entire request
             }
           } else {
-            console.log(`Repository ${repo} already exists with correct remote, skipping clone`);
+            console.log(
+              `Repository ${repo} already exists with correct remote, skipping clone`
+            );
           }
         }
       }

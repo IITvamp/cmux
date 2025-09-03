@@ -2,10 +2,10 @@ import { githubReposRouter } from "@/lib/routes/github.repos.route";
 import {
   booksRouter,
   devServerRouter,
-  healthRouter,
-  usersRouter,
-  morphRouter,
   environmentsRouter,
+  healthRouter,
+  morphRouter,
+  usersRouter,
 } from "@/lib/routes/index";
 import { stackServerApp } from "@/lib/utils/stack";
 import { swaggerUI } from "@hono/swagger-ui";
@@ -50,7 +50,7 @@ app.use(
   cors({
     origin: ["http://localhost:5173", "http://localhost:9779"],
     credentials: true,
-    allowHeaders: ["x-stack-auth"],
+    allowHeaders: ["x-stack-auth", "content-type"],
   })
 );
 

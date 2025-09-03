@@ -16,6 +16,34 @@ This project uses Convex and Hono.
 Schemas are defined in packages/convex/convex/schema.ts.
 Hono is defined in apps/www/lib/hono-app.ts as well as apps/www/lib/routes/\*
 The Hono app generates a client in @cmux/www-openapi-client. This is automatically re-generated when the dev-server is running. If you change the Hono app (and the dev server isn't running), you should run `(cd apps/www && bun run generate-openapi-client)` to re-generate the client. Note that the generator is in www and not www-openapi-client.
+We MUST force validation of requests that do not have the proper `Content-Type`. Set the value of `request.body.required` to `true`. For example:
+
+```ts
+app.openapi(
+  createRoute({
+    method: "post",
+    path: "/books",
+    request: {
+      body: {
+        content: {
+          "application/json": {
+            schema: z.object({
+              title: z.string(),
+            }),
+          },
+        },
+        required: true, // <== add
+      },
+    },
+    responses: {
+      200: {
+        description: "Success message",
+      },
+    },
+  }),
+  (c) => c.json(c.req.valid("json"))
+);
+```
 
 # Frontend
 
@@ -31,7 +59,12 @@ Don't modify README.md unless explicitly asked.
 Do not write docs unless explicitly asked.
 Do not use dynamic imports unless absolutely necessary. Exceptions include when you're following existing patterns in the codebase.
 We're using Node 24, which supports global fetch.
+
+# Tests
+
 Place test files next to the file they test using a .test.ts extension.
+Do not use mocks for tests.
+Do not do early returns for tests if there are missing environment variables; we should assume all environment variables are set.
 
 ## Logs
 

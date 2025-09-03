@@ -81,6 +81,8 @@ export interface RepositoryPickerProps {
   headerTitle?: string;
   headerDescription?: string;
   className?: string;
+  isContinueLoading?: boolean;
+  isManualLoading?: boolean;
 }
 
 export function RepositoryPicker({
@@ -99,7 +101,10 @@ export function RepositoryPicker({
   headerTitle = "Select Repositories",
   headerDescription = "Choose repositories to include in your environment.",
   className = "",
+  isContinueLoading = false,
+  isManualLoading = false,
 }: RepositoryPickerProps) {
+  
   const connections = useQuery(api.github.listProviderConnections, {
     teamSlugOrId,
   });
@@ -689,18 +694,25 @@ export function RepositoryPicker({
             <div className="flex items-center gap-3 pt-2">
               <button
                 type="button"
-                disabled={selectedRepos.size === 0}
+                disabled={selectedRepos.size === 0 || isContinueLoading || isManualLoading}
                 onClick={() => onContinue?.(Array.from(selectedRepos))}
-                className="inline-flex items-center rounded-md bg-neutral-900 text-white disabled:bg-neutral-300 dark:disabled:bg-neutral-700 disabled:cursor-not-allowed px-3 py-2 text-sm hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
+                className={`inline-flex items-center gap-2 rounded-md bg-neutral-900 text-white disabled:bg-neutral-300 dark:disabled:bg-neutral-700 disabled:cursor-not-allowed px-3 py-2 text-sm hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200 transition-opacity ${
+                  isManualLoading ? "opacity-50" : "opacity-100"
+                }`}
               >
+                {isContinueLoading && <Loader2 className="h-3 w-3 animate-spin" />}
                 {continueButtonText}
               </button>
               {showManualConfigOption && (
                 <button
                   type="button"
+                  disabled={isContinueLoading || isManualLoading}
                   onClick={() => onContinue?.([])}
-                  className="inline-flex items-center rounded-md border border-neutral-200 dark:border-neutral-800 px-3 py-2 text-sm text-neutral-800 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-900"
+                  className={`inline-flex items-center gap-2 rounded-md border border-neutral-200 dark:border-neutral-800 px-3 py-2 text-sm text-neutral-800 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-900 disabled:cursor-not-allowed transition-opacity ${
+                    isContinueLoading ? "opacity-50" : "opacity-100"
+                  }`}
                 >
+                  {isManualLoading && <Loader2 className="h-3 w-3 animate-spin" />}
                   {manualConfigButtonText}
                 </button>
               )}

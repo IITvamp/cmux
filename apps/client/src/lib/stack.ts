@@ -46,13 +46,19 @@ wwwOpenAPIClient.setConfig({
       throw new Error("User not found");
     }
     const authHeaders = await user.getAuthHeaders();
-    const headers =
-      request instanceof Request ? request.headers : new Headers();
+    const mergedHeaders = new Headers();
+    for (const [key, value] of Object.entries(authHeaders)) {
+      mergedHeaders.set(key, value);
+    }
+    for (const [key, value] of request instanceof Request
+      ? request.headers.entries()
+      : []) {
+      mergedHeaders.set(key, value);
+    }
+
+    console.log("got headers", [...mergedHeaders.entries()]);
     const response = await fetch(request, {
-      headers: {
-        ...headers,
-        ...authHeaders,
-      },
+      headers: mergedHeaders,
     });
     return response;
   },

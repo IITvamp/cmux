@@ -168,13 +168,13 @@ export const getApiIntegrationsGithubRepos = <ThrowOnError extends boolean = fal
 /**
  * Setup a Morph instance with optional repository cloning
  */
-export const postApiMorphSetupInstance = <ThrowOnError extends boolean = false>(options?: Options<PostApiMorphSetupInstanceData, ThrowOnError>) => {
-    return (options?.client ?? _heyApiClient).post<PostApiMorphSetupInstanceResponses, PostApiMorphSetupInstanceErrors, ThrowOnError>({
+export const postApiMorphSetupInstance = <ThrowOnError extends boolean = false>(options: Options<PostApiMorphSetupInstanceData, ThrowOnError>) => {
+    return (options.client ?? _heyApiClient).post<PostApiMorphSetupInstanceResponses, PostApiMorphSetupInstanceErrors, ThrowOnError>({
         url: '/api/morph/setup-instance',
         ...options,
         headers: {
             'Content-Type': 'application/json',
-            ...options?.headers
+            ...options.headers
         }
     });
 };
@@ -192,13 +192,13 @@ export const getApiEnvironments = <ThrowOnError extends boolean = false>(options
 /**
  * Create a new environment with snapshot
  */
-export const postApiEnvironments = <ThrowOnError extends boolean = false>(options?: Options<PostApiEnvironmentsData, ThrowOnError>) => {
-    return (options?.client ?? _heyApiClient).post<PostApiEnvironmentsResponses, PostApiEnvironmentsErrors, ThrowOnError>({
+export const postApiEnvironments = <ThrowOnError extends boolean = false>(options: Options<PostApiEnvironmentsData, ThrowOnError>) => {
+    return (options.client ?? _heyApiClient).post<PostApiEnvironmentsResponses, PostApiEnvironmentsErrors, ThrowOnError>({
         url: '/api/environments',
         ...options,
         headers: {
             'Content-Type': 'application/json',
-            ...options?.headers
+            ...options.headers
         }
     });
 };
