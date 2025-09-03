@@ -5,8 +5,6 @@ import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { createRootRouteWithContext, Outlet } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { useEffect, useState } from "react";
-import { isElectron } from "@/lib/electron";
-import { ElectronTitlebar } from "@/components/electron/ElectronTitlebar";
 import { Toaster } from "sonner";
 
 export const Route = createRootRouteWithContext<{
@@ -49,15 +47,9 @@ function DevTools() {
 }
 
 function RootComponent() {
-  const isMac =
-    typeof navigator !== "undefined" && /Mac|Macintosh|Mac OS X/.test(navigator.userAgent);
-  const showOverlayBar = isElectron && isMac;
   return (
     <>
-      {showOverlayBar && <ElectronTitlebar />}
-      <div className={showOverlayBar ? "pt-7" : undefined}>
-        <Outlet />
-      </div>
+      <Outlet />
       <DevTools />
       <ToasterWithTheme />
     </>
