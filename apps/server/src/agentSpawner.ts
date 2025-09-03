@@ -226,28 +226,22 @@ export async function spawnAgent(
       teamSlugOrId,
     });
 
-    // Add required API keys from Convex
-    if (agent.apiKeys) {
+    // Apply API keys: prefer agent-provided hook if present; otherwise default env injection
+    if (typeof agent.applyApiKeys === "function") {
+      const applied = await agent.applyApiKeys(apiKeys);
+      if (applied.env) envVars = { ...envVars, ...applied.env };
+      if (applied.files && applied.files.length > 0) {
+        authFiles.push(...applied.files);
+      }
+      if (applied.startupCommands && applied.startupCommands.length > 0) {
+        startupCommands.push(...applied.startupCommands);
+      }
+    } else if (agent.apiKeys) {
       for (const keyConfig of agent.apiKeys) {
         const key = apiKeys[keyConfig.envVar];
         if (key && key.trim().length > 0) {
           const injectName = keyConfig.mapToEnvVar || keyConfig.envVar;
-          const isClaudeAgent = agent.name.toLowerCase().startsWith("claude/");
-          const isAnthropicKey = injectName === "ANTHROPIC_API_KEY";
-
-          if (isClaudeAgent && isAnthropicKey) {
-            // Do not expose ANTHROPIC_API_KEY as an env var to Claude Code.
-            // Use the official apiKeyHelper flow to avoid reprompting.
-            authFiles.push({
-              destinationPath: "$HOME/.claude/bin/.anthropic_key",
-              contentBase64: Buffer.from(key).toString("base64"),
-              mode: "600",
-            });
-            // Ensure helper dir exists (environment also ensures this, but safe to include here)
-            startupCommands.push("mkdir -p ~/.claude/bin");
-          } else {
-            envVars[injectName] = key;
-          }
+          envVars[injectName] = key;
         }
       }
     }
