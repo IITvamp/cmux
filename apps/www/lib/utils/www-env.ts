@@ -7,6 +7,7 @@ export const env = createEnv({
     // Stack server-side env
     STACK_SECRET_SERVER_KEY: z.string().min(1),
     STACK_SUPER_SECRET_ADMIN_KEY: z.string().min(1),
+    STACK_DATA_VAULT_SECRET: z.string().min(32), // For secure DataBook storage
     // GitHub App
     GITHUB_APP_ID: z.string().min(1),
     GITHUB_APP_PRIVATE_KEY: z.string().min(1),

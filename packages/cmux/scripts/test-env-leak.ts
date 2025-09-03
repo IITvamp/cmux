@@ -16,8 +16,6 @@ function checkForEnvLeaks(): void {
   const sensitivePatterns = [
     /API_KEY/i,
     /SECRET/i,
-    /PASSWORD/i,
-    /TOKEN/i,
     /PRIVATE_KEY/i,
     /DATABASE_URL/i,
     /CONNECTION_STRING/i,

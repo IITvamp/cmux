@@ -90,7 +90,7 @@ function ConnectComplete() {
                       selectedRepos: undefined,
                       connectionLogin: undefined,
                       repoSearch: undefined,
-                      sessionId: undefined,
+                      instanceId: undefined,
                     },
                   })
                 }
