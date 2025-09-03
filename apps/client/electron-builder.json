@@ -4,11 +4,7 @@
   "directories": {
     "output": "dist-electron"
   },
-  "files": [
-    "out/**/*",
-    "package.json",
-    "node_modules/**/*"
-  ],
+  "files": ["out/**/*", "package.json", "node_modules/**/*"],
   "asar": true,
   "npmRebuild": false,
   "nodeGypRebuild": false,
@@ -20,12 +16,18 @@
   ],
   "mac": {
     "category": "public.app-category.developer-tools",
-    "icon": "build/icon.icns",
+    "icon": "assets/cmux-logos/cmux.iconset",
     "hardenedRuntime": true,
-    "entitlements": "build/entitlements.mac.plist",
-    "entitlementsInherit": "build/entitlements.mac.plist",
     "gatekeeperAssess": false,
     "target": ["dmg", "zip"]
+  },
+  "win": {
+    "icon": "assets/cmux-logos/cmux.iconset/icon_512x512.png",
+    "target": "nsis"
+  },
+  "linux": {
+    "icon": "assets/cmux-logos/cmux.iconset/icon_512x512.png",
+    "target": "AppImage"
   },
   "dmg": {
     "contents": [
