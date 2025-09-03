@@ -4,6 +4,7 @@ import type {
   ServerToClientEvents,
 } from "@cmux/shared";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "@tanstack/react-router";
 import React, { useEffect, useMemo } from "react";
 import { io, Socket } from "socket.io-client";
 import { authJsonQueryOptions } from "../convex/authJsonQueryOptions";
@@ -26,6 +27,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
 }) => {
   const authJsonQuery = useQuery(authJsonQueryOptions());
   const authToken = authJsonQuery.data?.accessToken;
+  const location = useLocation();
   const [socket, setSocket] = React.useState<
     SocketContextType["socket"] | null
   >(null);
@@ -33,17 +35,26 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
   const [availableEditors, setAvailableEditors] =
     React.useState<AvailableEditors | null>(null);
 
+  // Derive the current teamSlugOrId from the first URL segment, ignoring the team-picker route
+  const teamSlugOrId = React.useMemo(() => {
+    const pathname = location.pathname || "";
+    const seg = pathname.split("/").filter(Boolean)[0];
+    if (!seg || seg === "team-picker") return undefined;
+    return seg;
+  }, [location.pathname]);
+
   useEffect(() => {
     if (!authToken) {
       return;
     }
-    const teamSlugOrId =
-      typeof window !== "undefined"
-        ? window.location.pathname.split("/")[1]
-        : undefined;
+    const query: Record<string, string> = { auth: authToken };
+    if (teamSlugOrId) {
+      query.team = teamSlugOrId;
+    }
+
     const newSocket = io(url, {
       transports: ["websocket"],
-      query: { auth: authToken, team: teamSlugOrId },
+      query,
     });
     setSocket(newSocket);
 
@@ -64,7 +75,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
     return () => {
       newSocket.disconnect();
     };
-  }, [url, authToken]);
+  }, [url, authToken, teamSlugOrId]);
 
   const contextValue: SocketContextType = useMemo(
     () => ({

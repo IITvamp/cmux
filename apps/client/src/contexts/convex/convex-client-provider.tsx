@@ -65,6 +65,7 @@ function AuthenticatedOrSignIn({
 }) {
   const user = useUser({ or: "return-null" });
   const showSignIn = !user;
+
   return (
     <>
       <AnimatePresence mode="wait">

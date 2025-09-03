@@ -23,10 +23,6 @@
     "typecheck:cmux": "cd packages/cmux && bun run typecheck",
     "typecheck:www-openapi-client": "cd packages/www-openapi-client && bun run typecheck",
     "typecheck:www": "cd apps/www && pnpm run typecheck",
-    "typecheck:landing": "cd apps/landing && pnpm run typecheck",
-    "landing:dev": "cd apps/landing && pnpm run dev",
-    "landing:build": "cd apps/landing && pnpm run build",
-    "landing:start": "cd apps/landing && pnpm run start",
     "generate-routes": "cd apps/client && bun run generate-routes",
     "generate-openapi-client": "cd apps/www && bun run generate-openapi-client",
     "postinstall": "node scripts/postinstall.cjs"
