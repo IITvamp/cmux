@@ -27,6 +27,13 @@
     "gatekeeperAssess": false,
     "target": ["dmg", "zip"]
   },
+  "win": {
+    "icon": "build/icon.ico"
+  },
+  "linux": {
+    "icon": "build/icon.png",
+    "category": "Development"
+  },
   "dmg": {
     "contents": [
       {
