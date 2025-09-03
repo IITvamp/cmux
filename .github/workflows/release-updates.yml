@@ -39,30 +39,20 @@ jobs:
       - name: Ensure pnpm lock visible to electron-builder
         shell: bash
         run: cp pnpm-lock.yaml apps/client/pnpm-lock.yaml
-      - name: Build & publish mac x64 (unsigned) to GitHub Releases
-        env:
-          GH_TOKEN: ${{ github.token }}
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-        working-directory: apps/client
-        run: pnpm exec electron-vite build -c electron.vite.config.js && pnpm exec electron-builder --config electron-builder.json --mac dmg --x64 --publish always --config.mac.identity=null --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
-      # ------------------------------------------------------------------
-      # To enable signed + notarized mac builds, replace the unsigned step
-      # above with the following and provide the required repo secrets.
-      #
-      # - name: Build & publish mac x64 (signed) to GitHub Releases
-      #   env:
-      #     GH_TOKEN: ${{ github.token }}
-      #     CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-      #     # macOS code signing + notarization
-      #     CSC_LINK: base64:${{ secrets.MAC_CERT_BASE64 }}
-      #     CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
-      #     APPLE_ID: ${{ secrets.APPLE_ID }}
-      #     APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-      #     APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-      #   working-directory: apps/client
-      #   run: |
-      #     pnpm exec electron-vite build -c electron.vite.config.js
-      #     pnpm exec electron-builder --config electron-builder.json --mac --x64 --publish always
+       - name: Build & publish mac x64 (signed) to GitHub Releases
+         env:
+           GH_TOKEN: ${{ github.token }}
+           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+           # macOS code signing + notarization
+           CSC_LINK: base64:${{ secrets.MAC_CERT_BASE64 }}
+           CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+           APPLE_ID: ${{ secrets.APPLE_ID }}
+           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+         working-directory: apps/client
+         run: |
+           pnpm exec electron-vite build -c electron.vite.config.js
+           pnpm exec electron-builder --config electron-builder.json --mac --x64 --publish always
 
   mac-arm64:
     name: macOS arm64
@@ -83,30 +73,20 @@ jobs:
       - name: Ensure pnpm lock visible to electron-builder
         shell: bash
         run: cp pnpm-lock.yaml apps/client/pnpm-lock.yaml
-      - name: Build & publish mac arm64 (unsigned) to GitHub Releases
-        env:
-          GH_TOKEN: ${{ github.token }}
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-        working-directory: apps/client
-        run: pnpm exec electron-vite build -c electron.vite.config.js && pnpm exec electron-builder --config electron-builder.json --mac dmg --arm64 --publish always --config.mac.identity=null --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
-      # ------------------------------------------------------------------
-      # To enable signed + notarized mac builds for arm64, replace the unsigned
-      # step above with the following and provide the required repo secrets.
-      #
-      # - name: Build & publish mac arm64 (signed) to GitHub Releases
-      #   env:
-      #     GH_TOKEN: ${{ github.token }}
-      #     CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-      #     # macOS code signing + notarization
-      #     CSC_LINK: base64:${{ secrets.MAC_CERT_BASE64 }}
-      #     CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
-      #     APPLE_ID: ${{ secrets.APPLE_ID }}
-      #     APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-      #     APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-      #   working-directory: apps/client
-      #   run: |
-      #     pnpm exec electron-vite build -c electron.vite.config.js
-      #     pnpm exec electron-builder --config electron-builder.json --mac --arm64 --publish always
+       - name: Build & publish mac arm64 (signed) to GitHub Releases
+         env:
+           GH_TOKEN: ${{ github.token }}
+           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+           # macOS code signing + notarization
+           CSC_LINK: base64:${{ secrets.MAC_CERT_BASE64 }}
+           CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+           APPLE_ID: ${{ secrets.APPLE_ID }}
+           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+         working-directory: apps/client
+         run: |
+           pnpm exec electron-vite build -c electron.vite.config.js
+           pnpm exec electron-builder --config electron-builder.json --mac --arm64 --publish always
 
   windows-x64:
     name: Windows x64
@@ -127,17 +107,16 @@ jobs:
       - name: Ensure pnpm lock visible to electron-builder
         shell: bash
         run: cp pnpm-lock.yaml apps/client/pnpm-lock.yaml
-      - name: Build & publish Windows x64 to GitHub Releases
-        env:
-          GH_TOKEN: ${{ github.token }}
-          # Windows code signing (optional). Uncomment and provide secrets
-          # to enable signed installers and reduce SmartScreen warnings.
-          # WIN_CSC_LINK: base64:${{ secrets.WIN_CERT_BASE64 }}
-          # WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CERT_PASSWORD }}
-          # CSC_LINK: base64:${{ secrets.WIN_CERT_BASE64 }}
-          # CSC_KEY_PASSWORD: ${{ secrets.WIN_CERT_PASSWORD }}
-        working-directory: apps/client
-        run: pnpm exec electron-vite build -c electron.vite.config.js && pnpm exec electron-builder --config electron-builder.json --win --x64 --publish always --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
+       - name: Build & publish Windows x64 to GitHub Releases
+         env:
+           GH_TOKEN: ${{ github.token }}
+           # Windows code signing to reduce SmartScreen warnings
+           WIN_CSC_LINK: base64:${{ secrets.WIN_CERT_BASE64 }}
+           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CERT_PASSWORD }}
+           CSC_LINK: base64:${{ secrets.WIN_CERT_BASE64 }}
+           CSC_KEY_PASSWORD: ${{ secrets.WIN_CERT_PASSWORD }}
+         working-directory: apps/client
+         run: pnpm exec electron-vite build -c electron.vite.config.js && pnpm exec electron-builder --config electron-builder.json --win --x64 --publish always --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
 
   linux-x64:
     name: Linux x64

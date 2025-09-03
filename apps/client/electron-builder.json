@@ -4,13 +4,15 @@
   "directories": {
     "output": "dist-electron"
   },
-  "files": [
-    "out/**/*",
-    "package.json"
-  ],
+  "files": ["out/**/*", "package.json"],
   "asar": true,
   "npmRebuild": false,
   "nodeGypRebuild": false,
+  "publish": {
+    "provider": "github",
+    "owner": "sst",
+    "repo": "opencode"
+  },
   "extraResources": [
     {
       "from": "assets/cmux-logos/cmux.iconset",
@@ -20,9 +22,20 @@
   "mac": {
     "category": "public.app-category.developer-tools",
     "icon": "build/icon.icns",
-    "hardenedRuntime": false,
+    "hardenedRuntime": true,
     "gatekeeperAssess": false,
-    "target": ["dmg", "zip"]
+    "entitlements": "build/entitlements.mac.plist",
+    "entitlementsInherit": "build/entitlements.mac.plist",
+    "target": [
+      {
+        "target": "dmg",
+        "arch": ["x64", "arm64"]
+      },
+      {
+        "target": "zip",
+        "arch": ["x64", "arm64"]
+      }
+    ]
   },
   "dmg": {
     "contents": [
@@ -37,5 +50,37 @@
         "path": "/Applications"
       }
     ]
+  },
+  "win": {
+    "icon": "build/icon.ico",
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64"]
+      }
+    ],
+    "certificateFile": "build/cert.p12",
+    "certificatePassword": "${WIN_CSC_KEY_PASSWORD}",
+    "verifyUpdateCodeSignature": false
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "deleteAppDataOnUninstall": false
+  },
+  "linux": {
+    "icon": "build/icon.png",
+    "target": [
+      {
+        "target": "AppImage",
+        "arch": ["x64"]
+      },
+      {
+        "target": "deb",
+        "arch": ["x64"]
+      }
+    ],
+    "category": "Development"
   }
 }

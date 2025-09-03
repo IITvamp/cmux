@@ -2,6 +2,7 @@ import { is } from "@electron-toolkit/utils";
 import {
   app,
   BrowserWindow,
+  dialog,
   nativeImage,
   net,
   session,
@@ -17,6 +18,7 @@ import {
 import path, { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import util from "node:util";
+import { autoUpdater } from "electron-updater";
 import { env } from "./electron-main-env";
 
 // Use a cookieable HTTPS origin intercepted locally instead of a custom scheme.
@@ -50,7 +52,7 @@ function formatArgs(args: unknown[]): string {
   const ts = new Date().toISOString();
   const body = args
     .map((a) =>
-      typeof a === "string" ? a : util.inspect(a, { depth: 3, colors: false })
+      typeof a === "string" ? a : util.inspect(a, { depth: 3, colors: false }),
     )
     .join(" ");
   return `[${ts}] ${body}`;
@@ -106,7 +108,7 @@ function createWindow(): void {
 
   // Use only the icon from cmux-logos iconset.
   const iconPng = resolveResourcePath(
-    "cmux-logos/cmux.iconset/icon_512x512.png"
+    "cmux-logos/cmux.iconset/icon_512x512.png",
   );
   if (process.platform !== "darwin") {
     windowOptions.icon = iconPng;
@@ -163,10 +165,75 @@ app.whenReady().then(() => {
   // Set Dock icon from iconset on macOS.
   if (process.platform === "darwin") {
     const iconPng = resolveResourcePath(
-      "cmux-logos/cmux.iconset/icon_512x512.png"
+      "cmux-logos/cmux.iconset/icon_512x512.png",
     );
     const img = nativeImage.createFromPath(iconPng);
     if (!img.isEmpty()) app.dock?.setIcon(img);
+  }
+
+  // Auto-updater setup (only in production)
+  if (!is.dev) {
+    // Configure auto-updater
+    autoUpdater.logger = {
+      info: mainLog,
+      warn: mainWarn,
+      error: mainError,
+    };
+
+    // Auto-updater event handlers
+    autoUpdater.on("checking-for-update", () => {
+      mainLog("Checking for update...");
+    });
+
+    autoUpdater.on("update-available", (info) => {
+      mainLog("Update available", { version: info.version });
+      dialog.showMessageBox(mainWindow!, {
+        type: "info",
+        title: "Update Available",
+        message: `A new version (${info.version}) is available. It will be downloaded in the background.`,
+        buttons: ["OK"],
+      });
+    });
+
+    autoUpdater.on("update-not-available", (info) => {
+      mainLog("Update not available", { version: info.version });
+    });
+
+    autoUpdater.on("error", (err) => {
+      mainError("Update error", err);
+      dialog.showErrorBox(
+        "Update Error",
+        `Failed to check for updates: ${err.message}`,
+      );
+    });
+
+    autoUpdater.on("download-progress", (progressObj) => {
+      let logMessage = `Download speed: ${progressObj.bytesPerSecond}`;
+      logMessage += ` - Downloaded ${progressObj.percent}%`;
+      logMessage += ` (${progressObj.transferred}/${progressObj.total})`;
+      mainLog("Download progress", logMessage);
+    });
+
+    autoUpdater.on("update-downloaded", (info) => {
+      mainLog("Update downloaded", { version: info.version });
+      const dialogOpts = {
+        type: "info" as const,
+        buttons: ["Restart", "Later"],
+        title: "Application Update",
+        message: `Update Downloaded`,
+        detail: `A new version (${info.version}) has been downloaded. Restart the application to apply the updates.`,
+      };
+
+      dialog.showMessageBox(mainWindow!, dialogOpts).then((returnValue) => {
+        if (returnValue.response === 0) autoUpdater.quitAndInstall();
+      });
+    });
+
+    // Check for updates (with a delay to allow app to fully start)
+    setTimeout(() => {
+      mainLog("Starting auto-updater check");
+      autoUpdater.checkForUpdatesAndNotify();
+    }, 3000);
   }
 
   const ses = session.fromPartition(PARTITION);
@@ -177,7 +244,7 @@ app.whenReady().then(() => {
     if (u.hostname !== APP_HOST) return net.fetch(req);
     const pathname = u.pathname === "/" ? "/index.html" : u.pathname;
     const fsPath = path.normalize(
-      path.join(baseDir, decodeURIComponent(pathname))
+      path.join(baseDir, decodeURIComponent(pathname)),
     );
     const rel = path.relative(baseDir, fsPath);
     if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) {
@@ -218,7 +285,7 @@ function jwksForIssuer(issuer: string) {
 }
 
 async function verifyJwtAndGetPayload(
-  token: string
+  token: string,
 ): Promise<JWTPayload | null> {
   try {
     const decoded = decodeJwt(token);
@@ -275,7 +342,7 @@ async function handleProtocolUrl(url: string): Promise<void> {
     await Promise.all([
       mainWindow.webContents.session.cookies.remove(
         realUrl,
-        `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`
+        `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`,
       ),
       mainWindow.webContents.session.cookies.remove(realUrl, `stack-access`),
     ]);
