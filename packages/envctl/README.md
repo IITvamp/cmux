@@ -77,16 +77,73 @@ Notes:
 
 ## Examples
 
-- One‑shot apply without installing a hook (bash/zsh):
+- Set one variable:
 
   ```bash
-  eval "$(bun packages/envctl/src/index.ts export bash)"
+  envctl set FOO=bar
+  envctl get FOO        # -> bar
+  envctl list           # includes FOO=bar
   ```
 
-- Load a file then refresh the current shell:
+- Unset a variable:
+
   ```bash
-  bun packages/envctl/src/index.ts load .env
-  eval "$(bun packages/envctl/src/index.ts export zsh)"
+  envctl unset FOO
+  envctl get FOO        # prints nothing
+  ```
+
+- Apply to the current shell once (bash/zsh):
+
+  ```bash
+  eval "$(envctl export bash)"
+  ```
+
+- Install the auto‑refresh hook (bash):
+
+  ```bash
+  eval "$(envctl hook bash)"
+  __envctl_refresh  # run once immediately
+  ```
+
+- Load a .env file (supports quotes and values with spaces):
+
+  ```bash
+  # From file
+  envctl load .env
+  # Or from stdin
+  cat .env | envctl load -
+  # Apply to current shell (if hook not installed)
+  eval "$(envctl export bash)"
+  ```
+
+- Set multiple variables quickly:
+
+  ```bash
+  envctl set A=1
+  envctl set B="two words"
+  # or using load with stdin
+  printf 'A=1\nB="two words"\n' | envctl load -
+  eval "$(envctl export bash)"
+  ```
+
+- Load, then verify in a fresh shell (with hook installed):
+
+  ```bash
+  envctl load .env
+  # Open a new terminal; the prompt hook applies changes automatically
+  ```
+
+- Load examples accepted by `load`:
+
+  ```dotenv
+  A=1
+  B=two words
+  C="quoted value"
+  export D=also_ok
+  ```
+  ```bash
+  envctl load .env
+  eval "$(envctl export zsh)"
   ```
 
 ## E2E in Docker (Linux, Bun)
