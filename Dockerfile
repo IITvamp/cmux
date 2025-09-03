@@ -96,6 +96,14 @@ COPY packages/vscode-extension/tsconfig.json ./packages/vscode-extension/
 COPY packages/vscode-extension/.vscodeignore ./packages/vscode-extension/
 COPY packages/vscode-extension/LICENSE.md ./packages/vscode-extension/
 
+# Copy envctl/envd sources for build
+COPY packages/envctl/tsconfig.json ./packages/envctl/
+COPY packages/envctl/tsconfig.build.json ./packages/envctl/
+COPY packages/envctl/src ./packages/envctl/src
+COPY packages/envd/tsconfig.json ./packages/envd/
+COPY packages/envd/tsconfig.build.json ./packages/envd/
+COPY packages/envd/src ./packages/envd/src
+
 # Build worker with bundling, using the installed node_modules
 RUN cd /cmux && \
     bun build ./apps/worker/src/index.ts \
@@ -107,6 +115,11 @@ RUN cd /cmux && \
     cp -r ./apps/worker/build /builtins/build && \
     cp ./apps/worker/wait-for-docker.sh /usr/local/bin/ && \
     chmod +x /usr/local/bin/wait-for-docker.sh
+
+# Build envctl/envd (TypeScript → JS)
+RUN cd /cmux && \
+    pnpm install --frozen-lockfile --filter @cmux/envctl --filter @cmux/envd && \
+    pnpm -F @cmux/envctl -F @cmux/envd build
 
 # Verify bun is still working in builder
 RUN bun --version && bunx --version
@@ -230,12 +243,26 @@ COPY --from=builder /usr/local/bin/wait-for-docker.sh /usr/local/bin/wait-for-do
 COPY --from=builder /cmux/apps/worker/scripts/collect-relevant-diff.sh /usr/local/bin/cmux-collect-relevant-diff.sh
 RUN chmod +x /usr/local/bin/cmux-collect-relevant-diff.sh
 
+# Install envctl/envd into runtime
+RUN mkdir -p /usr/local/lib/cmux
+COPY --from=builder /cmux/packages/envctl/dist /usr/local/lib/cmux/envctl/dist
+COPY --from=builder /cmux/packages/envctl/package.json /usr/local/lib/cmux/envctl/package.json
+COPY --from=builder /cmux/packages/envd/dist /usr/local/lib/cmux/envd/dist
+COPY --from=builder /cmux/packages/envd/package.json /usr/local/lib/cmux/envd/package.json
+RUN set -eux; \
+    printf '#!/bin/sh\nexec node /usr/local/lib/cmux/envctl/dist/index.js "$@"\n' > /usr/local/bin/envctl && \
+    printf '#!/bin/sh\nexec node /usr/local/lib/cmux/envd/dist/index.js "$@"\n' > /usr/local/bin/envd && \
+    chmod +x /usr/local/bin/envctl /usr/local/bin/envd
+
 # Setup pnpm and install global packages
 RUN SHELL=/bin/bash pnpm setup && \
     . /root/.bashrc
 
 # Install tmux configuration for better mouse scrolling behavior
 COPY configs/tmux.conf /etc/tmux.conf
+COPY configs/envctl.sh /etc/profile.d/envctl.sh
+RUN bash -lc 'echo "# Source envctl hook for interactive non-login shells" >> /etc/bash.bashrc && \
+    echo "if [ -f /etc/profile.d/envctl.sh ]; then . /etc/profile.d/envctl.sh; fi" >> /etc/bash.bashrc'
 
 
 # Find and install claude-code.vsix from Bun cache using ripgrep
