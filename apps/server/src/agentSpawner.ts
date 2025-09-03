@@ -226,8 +226,17 @@ export async function spawnAgent(
       teamSlugOrId,
     });
 
-    // Add required API keys from Convex
-    if (agent.apiKeys) {
+    // Apply API keys: prefer agent-provided hook if present; otherwise default env injection
+    if (typeof agent.applyApiKeys === "function") {
+      const applied = await agent.applyApiKeys(apiKeys);
+      if (applied.env) envVars = { ...envVars, ...applied.env };
+      if (applied.files && applied.files.length > 0) {
+        authFiles.push(...applied.files);
+      }
+      if (applied.startupCommands && applied.startupCommands.length > 0) {
+        startupCommands.push(...applied.startupCommands);
+      }
+    } else if (agent.apiKeys) {
       for (const keyConfig of agent.apiKeys) {
         const key = apiKeys[keyConfig.envVar];
         if (key && key.trim().length > 0) {

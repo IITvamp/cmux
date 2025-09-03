@@ -2,7 +2,6 @@ import type { AgentConfig } from "../../agentConfig.js";
 import { ANTHROPIC_API_KEY } from "../../apiKeys.js";
 import { checkClaudeRequirements } from "./check-requirements.js";
 import { startClaudeCompletionDetector } from "./completion-detector.js";
-
 import { getClaudeEnvironment } from "./environment.js";
 
 export const CLAUDE_SONNET_CONFIG: AgentConfig = {
@@ -18,7 +17,22 @@ export const CLAUDE_SONNET_CONFIG: AgentConfig = {
   ],
   environment: getClaudeEnvironment,
   checkRequirements: checkClaudeRequirements,
-  apiKeys: [ANTHROPIC_API_KEY], 
+  apiKeys: [ANTHROPIC_API_KEY],
+  applyApiKeys: async (keys) => {
+    const key = keys[ANTHROPIC_API_KEY.envVar];
+    if (!key) return {};
+    const { Buffer } = await import("node:buffer");
+    return {
+      files: [
+        {
+          destinationPath: "$HOME/.claude/bin/.anthropic_key",
+          contentBase64: Buffer.from(key).toString("base64"),
+          mode: "600",
+        },
+      ],
+      startupCommands: ["mkdir -p ~/.claude/bin"],
+    };
+  },
   completionDetector: startClaudeCompletionDetector,
 };
 
@@ -36,6 +50,21 @@ export const CLAUDE_OPUS_4_CONFIG: AgentConfig = {
   environment: getClaudeEnvironment,
   checkRequirements: checkClaudeRequirements,
   apiKeys: [ANTHROPIC_API_KEY],
+  applyApiKeys: async (keys) => {
+    const key = keys[ANTHROPIC_API_KEY.envVar];
+    if (!key) return {};
+    const { Buffer } = await import("node:buffer");
+    return {
+      files: [
+        {
+          destinationPath: "$HOME/.claude/bin/.anthropic_key",
+          contentBase64: Buffer.from(key).toString("base64"),
+          mode: "600",
+        },
+      ],
+      startupCommands: ["mkdir -p ~/.claude/bin"],
+    };
+  },
   completionDetector: startClaudeCompletionDetector,
 };
 
@@ -53,5 +82,20 @@ export const CLAUDE_OPUS_4_1_CONFIG: AgentConfig = {
   environment: getClaudeEnvironment,
   checkRequirements: checkClaudeRequirements,
   apiKeys: [ANTHROPIC_API_KEY],
+  applyApiKeys: async (keys) => {
+    const key = keys[ANTHROPIC_API_KEY.envVar];
+    if (!key) return {};
+    const { Buffer } = await import("node:buffer");
+    return {
+      files: [
+        {
+          destinationPath: "$HOME/.claude/bin/.anthropic_key",
+          contentBase64: Buffer.from(key).toString("base64"),
+          mode: "600",
+        },
+      ],
+      startupCommands: ["mkdir -p ~/.claude/bin"],
+    };
+  },
   completionDetector: startClaudeCompletionDetector,
 };

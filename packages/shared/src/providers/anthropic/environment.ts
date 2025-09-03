@@ -80,14 +80,20 @@ export async function getClaudeEnvironment(_ctx: EnvironmentContext): Promise<En
     // noop
   }
 
-  // If no credentials file was created, try to use API key as environment variable
+  // If no credentials file was created, try to use API key via helper script (avoid env var to prevent prompts)
   if (!credentialsAdded) {
     try {
       const execResult = await execAsync(
         "security find-generic-password -a $USER -w -s 'Claude Code'"
       );
       const apiKey = execResult.stdout.trim();
-      env.ANTHROPIC_API_KEY = apiKey;
+
+      // Write the key to ~/.claude/bin/.anthropic_key with strict perms
+      files.push({
+        destinationPath: `$HOME/.claude/bin/.anthropic_key`,
+        contentBase64: Buffer.from(apiKey).toString("base64"),
+        mode: "600",
+      });
     } catch {
       console.warn("No Claude API key found in keychain");
     }
@@ -95,6 +101,7 @@ export async function getClaudeEnvironment(_ctx: EnvironmentContext): Promise<En
 
   // Ensure directories exist
   startupCommands.unshift("mkdir -p ~/.claude");
+  startupCommands.push("mkdir -p ~/.claude/bin");
   startupCommands.push("mkdir -p /root/lifecycle/claude");
   
   // Clean up any previous Claude completion markers
@@ -138,19 +145,21 @@ exit 0`;
   });
   
   // Create settings.json with hooks configuration
-  const settingsConfig = {
+  const settingsConfig: Record<string, unknown> = {
+    // Configure helper to avoid env-var based prompting
+    apiKeyHelper: "/root/.claude/bin/anthropic_key_helper.sh",
     hooks: {
       Stop: [
         {
           hooks: [
             {
               type: "command",
-              command: "/root/lifecycle/claude/stop-hook.sh"
-            }
-          ]
-        }
-      ]
-    }
+              command: "/root/lifecycle/claude/stop-hook.sh",
+            },
+          ],
+        },
+      ],
+    },
   };
   
   // Add settings.json to files array as well
@@ -158,6 +167,15 @@ exit 0`;
     destinationPath: "/root/lifecycle/claude/settings.json",
     contentBase64: Buffer.from(JSON.stringify(settingsConfig, null, 2)).toString("base64"),
     mode: "644",
+  });
+  
+  // Add apiKey helper script to read key from file
+  const helperScript = `#!/bin/sh
+exec cat "$HOME/.claude/bin/.anthropic_key"`;
+  files.push({
+    destinationPath: `$HOME/.claude/bin/anthropic_key_helper.sh`,
+    contentBase64: Buffer.from(helperScript).toString("base64"),
+    mode: "700",
   });
   
   // Create symlink from ~/.claude/settings.json to /root/lifecycle/claude/settings.json
