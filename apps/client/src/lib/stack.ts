@@ -55,8 +55,6 @@ wwwOpenAPIClient.setConfig({
       : []) {
       mergedHeaders.set(key, value);
     }
-
-    console.log("got headers", [...mergedHeaders.entries()]);
     const response = await fetch(request, {
       headers: mergedHeaders,
     });

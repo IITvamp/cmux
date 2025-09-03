@@ -42,13 +42,13 @@ function EnvironmentsPage() {
     return `https://port-39378-${hostId}.http.cloud.morph.so/?folder=/root/workspace`;
   }, [urlInstanceId, setupInstanceMutation.data]);
 
-  const goToStep = (
+  const goToStep = async (
     newStep: "select" | "configure",
     selectedRepos?: string[],
     connectionLogin?: string | null,
     repoSearch?: string
-  ): void => {
-    navigate({
+  ) => {
+    await navigate({
       to: "/$teamSlugOrId/environments/new",
       params: { teamSlugOrId },
       search: (prev) => ({
@@ -70,12 +70,6 @@ function EnvironmentsPage() {
     const mutation =
       repos.length > 0 ? setupInstanceMutation : setupManualInstanceMutation;
 
-    console.log("inputs", {
-      teamSlugOrId,
-      instanceId: urlInstanceId,
-      selectedRepos: repos,
-    });
-
     // Setup instance with repos (creates new instance if needed)
     mutation.mutate(
       {
@@ -86,13 +80,13 @@ function EnvironmentsPage() {
         },
       },
       {
-        onSuccess: (data) => {
+        onSuccess: async (data) => {
           // Navigate to configure step after successful setup
-          goToStep("configure", repos);
+          await goToStep("configure", repos);
 
           // Update URL with the instanceId if it's new
           if (!urlInstanceId && data.instanceId) {
-            navigate({
+            await navigate({
               to: "/$teamSlugOrId/environments/new",
               params: { teamSlugOrId },
               search: (prev) => ({
@@ -120,13 +114,13 @@ function EnvironmentsPage() {
     goToStep("select");
   };
 
-  const handleStateChange = (
+  const handleStateChange = async (
     connectionLogin: string | null,
     repoSearch: string,
     selectedRepos: string[]
   ) => {
     // Update URL without changing step
-    navigate({
+    await navigate({
       to: "/$teamSlugOrId/environments/new",
       params: { teamSlugOrId },
       search: (prev) => ({
