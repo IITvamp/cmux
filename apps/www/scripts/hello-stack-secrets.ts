@@ -1,12 +1,11 @@
 import { env } from "@/lib/utils/www-env";
-import { StackAdminApp } from "@stackframe/js";
+import { StackServerApp } from "@stackframe/js";
 
-const stackAdminApp = new StackAdminApp({
+const stackAdminApp = new StackServerApp({
   tokenStore: "memory",
   projectId: env.NEXT_PUBLIC_STACK_PROJECT_ID,
   publishableClientKey: env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY,
   secretServerKey: env.STACK_SECRET_SERVER_KEY,
-  superSecretAdminKey: env.STACK_SUPER_SECRET_ADMIN_KEY,
 });
 const store = await stackAdminApp.getDataVaultStore("cmux-snapshot-envs");
 console.log("setting value");
