@@ -1,3 +1,7 @@
+import {
+  generateGitHubInstallationToken,
+  getInstallationForRepo,
+} from "@/lib/utils/github-app-token";
 import { verifyTeamAccess } from "@/lib/utils/team-verification";
 import { env } from "@/lib/utils/www-env";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
@@ -82,7 +86,8 @@ morphRouter.openapi(
       if (!instanceId) {
         console.log("Creating new Morph instance");
         instance = await client.instances.start({
-          snapshotId: "snapshot_hzlmd4kx",
+          // snapshotId: "snapshot_hzlmd4kx",
+          snapshotId: "snapshot_nnucpxen",
           ttlSeconds,
           ttlAction: "pause",
           metadata: {
@@ -99,8 +104,7 @@ morphRouter.openapi(
         instance = await client.instances.get({ instanceId });
 
         // Security: ensure the instance belongs to the requested team
-        const meta = (instance as unknown as { metadata?: { teamId?: string } })
-          .metadata;
+        const meta = instance.metadata;
         const instanceTeamId = meta?.teamId;
         if (!instanceTeamId || instanceTeamId !== team.uuid) {
           return c.text(
@@ -128,6 +132,7 @@ morphRouter.openapi(
       if (selectedRepos && selectedRepos.length > 0) {
         // Validate repo format and check for duplicates
         const repoNames = new Map<string, string>(); // Map of repo name to full path
+        const reposByOwner = new Map<string, string[]>(); // Map of owner -> list of full repo names
         for (const repo of selectedRepos) {
           // Validate format: should be owner/repo
           if (!repo.includes("/") || repo.split("/").length !== 2) {
@@ -137,7 +142,7 @@ morphRouter.openapi(
             );
           }
 
-          const repoName = repo.split("/").pop();
+          const [owner, repoName] = repo.split("/");
           if (!repoName) {
             return c.text(`Invalid repository: ${repo}`, 400);
           }
@@ -151,6 +156,12 @@ morphRouter.openapi(
             );
           }
           repoNames.set(repoName, repo);
+
+          // Group by owner for GitHub App installations
+          if (!reposByOwner.has(owner)) {
+            reposByOwner.set(owner, []);
+          }
+          reposByOwner.get(owner)!.push(repo);
         }
 
         // First, get list of existing repos with their remote URLs
@@ -195,28 +206,61 @@ morphRouter.openapi(
           }
         }
 
-        // Clone new repos
-        for (const [repoName, repo] of repoNames) {
-          if (!existingRepos.has(repoName)) {
-            console.log(`Cloning repository: ${repo}`);
-
-            // Ensure workspace directory exists
-            await instance.exec("mkdir -p /root/workspace");
-
-            const cloneCmd = await instance.exec(
-              `cd /root/workspace && git clone https://github.com/${repo}.git ${repoName}`
+        // For each owner group, mint a token and clone that owner's repos
+        for (const [owner, repos] of reposByOwner) {
+          // Resolve installation for this owner via any repo under it
+          const firstRepoForOwner = repos[0];
+          const installationId =
+            await getInstallationForRepo(firstRepoForOwner);
+          if (!installationId) {
+            return c.text(
+              `No GitHub App installation found for ${owner}. Please install the GitHub App for this organization/user.`,
+              400
             );
+          }
 
-            if (cloneCmd.exit_code === 0) {
-              clonedRepos.push(repo);
+          console.log(
+            `Generating GitHub App token for installation ${installationId} with repos: ${repos.join(", ")}`
+          );
+
+          const githubToken = await generateGitHubInstallationToken({
+            installationId,
+            repositories: repos,
+          });
+
+          // Set GitHub token via envctl for this batch
+          console.log("Setting GitHub token via envctl for owner", owner);
+          const setTokenCmd = await instance.exec(
+            `envctl set GITHUB_TOKEN=${githubToken}`
+          );
+          if (setTokenCmd.exit_code !== 0) {
+            console.error(`Failed to set GitHub token: ${setTokenCmd.stderr}`);
+          }
+
+          // Clone new repos for this owner
+          for (const repo of repos) {
+            const repoName = repo.split("/").pop()!;
+            if (!existingRepos.has(repoName)) {
+              console.log(`Cloning repository: ${repo}`);
+
+              // Ensure workspace directory exists
+              await instance.exec("mkdir -p /root/workspace");
+
+              const cloneCmd = await instance.exec(
+                `cd /root/workspace && git clone https://\${GITHUB_TOKEN}@github.com/${repo}.git ${repoName}`
+              );
+
+              if (cloneCmd.exit_code === 0) {
+                clonedRepos.push(repo);
+              } else {
+                console.error(`Failed to clone ${repo}: ${cloneCmd.stderr}`);
+                // Continue with other repos instead of failing entire request
+              }
             } else {
-              console.error(`Failed to clone ${repo}: ${cloneCmd.stderr}`);
-              // Continue with other repos instead of failing entire request
+              console.log(
+                `Repository ${repo} already exists with correct remote, skipping clone`
+              );
             }
-          } else {
-            console.log(
-              `Repository ${repo} already exists with correct remote, skipping clone`
-            );
           }
         }
       }
