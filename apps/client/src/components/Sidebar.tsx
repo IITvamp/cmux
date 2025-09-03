@@ -137,10 +137,10 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
       }}
     >
       <div
-        className="h-[38px] flex items-center pl-3 pr-1.5 shrink-0"
+        className="h-[48px] flex items-center pl-3 pr-1.5 shrink-0"
         style={{ WebkitAppRegion: "drag" } as CSSProperties}
       >
-        {isElectron && <div className="w-[68px]"></div>}
+        {isElectron && <div className="w-[80px]"></div>}
         <Link
           to="/$teamSlugOrId/dashboard"
           params={{ teamSlugOrId }}
