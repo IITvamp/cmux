@@ -215,8 +215,12 @@ async function handleProtocolUrl(url: string): Promise<void> {
 
   if (urlObj.hostname === "auth-callback") {
     // Check for the full URL parameter
-    const stackRefresh = urlObj.searchParams.get("stack_refresh");
-    const stackAccess = urlObj.searchParams.get("stack_access");
+    const stackRefresh = encodeURIComponent(
+      urlObj.searchParams.get("stack_refresh") ?? ""
+    );
+    const stackAccess = encodeURIComponent(
+      urlObj.searchParams.get("stack_access") ?? ""
+    );
 
     if (stackRefresh && stackAccess) {
       // Determine a cookieable URL. Prefer our custom cmux:// origin when not
@@ -225,23 +229,32 @@ async function handleProtocolUrl(url: string): Promise<void> {
       currentUrl.hash = "";
       const realUrl = currentUrl.toString() + "/";
 
-      await mainWindow.webContents.session.cookies.set({
-        url: realUrl,
-        name: `stack-refresh-${process.env.NEXT_PUBLIC_STACK_PROJECT_ID}`,
-        value: stackRefresh,
-        expirationDate: 2000000000,
-        sameSite: "no_restriction",
-        secure: true,
-      });
+      await Promise.all([
+        mainWindow.webContents.session.cookies.remove(
+          realUrl,
+          `stack-refresh-1467bed0-8522-45ee-a8d8-055de324118c`
+        ),
+        mainWindow.webContents.session.cookies.remove(realUrl, `stack-access`),
+      ]);
 
-      await mainWindow.webContents.session.cookies.set({
-        url: realUrl,
-        name: "stack-access",
-        value: stackAccess,
-        expirationDate: 2000000000,
-        sameSite: "no_restriction",
-        secure: true,
-      });
+      await Promise.all([
+        mainWindow.webContents.session.cookies.set({
+          url: realUrl,
+          name: `stack-refresh-1467bed0-8522-45ee-a8d8-055de324118c`,
+          value: stackRefresh,
+          expirationDate: 2000000000,
+          sameSite: "no_restriction",
+          secure: true,
+        }),
+        mainWindow.webContents.session.cookies.set({
+          url: realUrl,
+          name: "stack-access",
+          value: stackAccess,
+          expirationDate: 2000000000,
+          sameSite: "no_restriction",
+          secure: true,
+        }),
+      ]);
 
       mainLog("set stackRefresh: ", stackRefresh);
       mainLog("set stackAccess: ", stackAccess);
