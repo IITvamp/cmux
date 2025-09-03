@@ -128,6 +128,9 @@ export type CreateEnvironmentBody = {
     envVarsContent: string;
     selectedRepos?: Array<string>;
     description?: string;
+    maintenanceScript?: string;
+    devScript?: string;
+    exposedPorts?: Array<number>;
 };
 
 export type GetEnvironmentResponse = {
@@ -137,6 +140,9 @@ export type GetEnvironmentResponse = {
     dataVaultKey: string;
     selectedRepos?: Array<string>;
     description?: string;
+    maintenanceScript?: string;
+    devScript?: string;
+    exposedPorts?: Array<number>;
     createdAt: number;
     updatedAt: number;
 };

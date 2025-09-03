@@ -136,7 +136,7 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
       }}
     >
       <div
-        className="h-[38px] flex items-center pl-3 pr-1.5 shrink-0"
+        className="h-[38px] flex items-center pl-3 pr-1.5 pt-1.5 shrink-0"
         style={{ WebkitAppRegion: "drag" } as CSSProperties}
       >
         <Link

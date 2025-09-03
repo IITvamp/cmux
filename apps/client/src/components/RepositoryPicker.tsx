@@ -17,10 +17,16 @@ import {
 } from "@/components/ui/tooltip";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { api } from "@cmux/convex/api";
-import { getApiIntegrationsGithubReposOptions } from "@cmux/www-openapi-client/react-query";
+import {
+  getApiIntegrationsGithubReposOptions,
+  postApiMorphSetupInstanceMutation,
+} from "@cmux/www-openapi-client/react-query";
 import * as Popover from "@radix-ui/react-popover";
-import { useQuery as useRQ } from "@tanstack/react-query";
-import { useRouter } from "@tanstack/react-router";
+import {
+  useQuery as useRQ,
+  useMutation as useRQMutation,
+} from "@tanstack/react-query";
+import { useNavigate, useRouter } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
 import { Check, ChevronDown, Loader2, Settings, X } from "lucide-react";
 import {
@@ -63,16 +69,8 @@ function formatTimeAgo(input?: string | number): string {
 
 export interface RepositoryPickerProps {
   teamSlugOrId: string;
-  onContinue?: (selectedRepos: string[]) => void;
-  onSelectionChange?: (selectedRepos: string[]) => void;
-  onStateChange?: (
-    connectionLogin: string | null,
-    repoSearch: string,
-    selectedRepos: string[]
-  ) => void;
+  instanceId?: string;
   initialSelectedRepos?: string[];
-  initialConnectionLogin?: string;
-  initialRepoSearch?: string;
   showHeader?: boolean;
   showContinueButton?: boolean;
   showManualConfigOption?: boolean;
@@ -81,18 +79,12 @@ export interface RepositoryPickerProps {
   headerTitle?: string;
   headerDescription?: string;
   className?: string;
-  isContinueLoading?: boolean;
-  isManualLoading?: boolean;
 }
 
 export function RepositoryPicker({
   teamSlugOrId,
-  onContinue,
-  onSelectionChange,
+  instanceId,
   initialSelectedRepos = [],
-  initialConnectionLogin,
-  initialRepoSearch = "",
-  onStateChange,
   showHeader = true,
   showContinueButton = true,
   showManualConfigOption = true,
@@ -101,36 +93,90 @@ export function RepositoryPicker({
   headerTitle = "Select Repositories",
   headerDescription = "Choose repositories to include in your environment.",
   className = "",
-  isContinueLoading = false,
-  isManualLoading = false,
 }: RepositoryPickerProps) {
-  
   const connections = useQuery(api.github.listProviderConnections, {
     teamSlugOrId,
   });
   const mintState = useMutation(api.github_app.mintInstallState);
   const router = useRouter();
+  const navigate = useNavigate();
   const [selectedConnectionLogin, setSelectedConnectionLogin] = useState<
     string | null
-  >(initialConnectionLogin ?? null);
+  >(null);
   const [connectionDropdownOpen, setConnectionDropdownOpen] = useState(false);
   const [connectionSearch, setConnectionSearch] = useState("");
-  const [search, setSearch] = useState(initialRepoSearch);
+  const [search, setSearch] = useState("");
   const [selectedRepos, setSelectedRepos] = useState(
     new Set<string>(initialSelectedRepos)
   );
 
-  // Notify parent of state changes
-  useEffect(() => {
-    onStateChange?.(selectedConnectionLogin, search, Array.from(selectedRepos));
-    onSelectionChange?.(Array.from(selectedRepos));
-  }, [
-    selectedConnectionLogin,
-    search,
-    selectedRepos,
-    onStateChange,
-    onSelectionChange,
-  ]);
+  // Handle environment setup and navigation internally
+  const setupInstanceMutation = useRQMutation(
+    postApiMorphSetupInstanceMutation()
+  );
+  const setupManualInstanceMutation = useRQMutation(
+    postApiMorphSetupInstanceMutation()
+  );
+
+  const isContinueLoading = setupInstanceMutation.isPending;
+  const isManualLoading = setupManualInstanceMutation.isPending;
+
+  const goToConfigure = async (
+    repos: string[],
+    maybeInstanceId?: string
+  ): Promise<void> => {
+    await navigate({
+      to: "/$teamSlugOrId/environments/new",
+      params: { teamSlugOrId },
+      search: (prev) => ({
+        ...prev,
+        instanceId: prev.instanceId,
+        step: "configure",
+        selectedRepos: repos,
+        connectionLogin: prev.connectionLogin,
+        repoSearch: prev.repoSearch,
+      }),
+    });
+    if (!instanceId && maybeInstanceId) {
+      await navigate({
+        to: "/$teamSlugOrId/environments/new",
+        params: { teamSlugOrId },
+        search: (prev) => ({
+          ...prev,
+          step: "configure",
+          selectedRepos: repos,
+          instanceId: maybeInstanceId,
+          connectionLogin: prev.connectionLogin,
+          repoSearch: prev.repoSearch,
+        }),
+        replace: true,
+      });
+    }
+  };
+
+  const handleContinue = (repos: string[]): void => {
+    const mutation =
+      repos.length > 0 ? setupInstanceMutation : setupManualInstanceMutation;
+    mutation.mutate(
+      {
+        body: {
+          teamSlugOrId,
+          instanceId: instanceId ?? undefined,
+          selectedRepos: repos,
+        },
+      },
+      {
+        onSuccess: async (data) => {
+          await goToConfigure(repos, data.instanceId);
+          console.log("Cloned repos:", data.clonedRepos);
+          console.log("Removed repos:", data.removedRepos);
+        },
+        onError: (error) => {
+          console.error("Failed to setup instance:", error);
+        },
+      }
+    );
+  };
 
   const watchPopupClosed = (win: Window | null, onClose: () => void): void => {
     if (!win) return;
@@ -694,25 +740,33 @@ export function RepositoryPicker({
             <div className="flex items-center gap-3 pt-2">
               <button
                 type="button"
-                disabled={selectedRepos.size === 0 || isContinueLoading || isManualLoading}
-                onClick={() => onContinue?.(Array.from(selectedRepos))}
+                disabled={
+                  selectedRepos.size === 0 ||
+                  isContinueLoading ||
+                  isManualLoading
+                }
+                onClick={() => handleContinue(Array.from(selectedRepos))}
                 className={`inline-flex items-center gap-2 rounded-md bg-neutral-900 text-white disabled:bg-neutral-300 dark:disabled:bg-neutral-700 disabled:cursor-not-allowed px-3 py-2 text-sm hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200 transition-opacity ${
                   isManualLoading ? "opacity-50" : "opacity-100"
                 }`}
               >
-                {isContinueLoading && <Loader2 className="h-3 w-3 animate-spin" />}
+                {isContinueLoading && (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                )}
                 {continueButtonText}
               </button>
               {showManualConfigOption && (
                 <button
                   type="button"
                   disabled={isContinueLoading || isManualLoading}
-                  onClick={() => onContinue?.([])}
+                  onClick={() => handleContinue([])}
                   className={`inline-flex items-center gap-2 rounded-md border border-neutral-200 dark:border-neutral-800 px-3 py-2 text-sm text-neutral-800 dark:text-neutral-200 hover:bg-neutral-50 dark:hover:bg-neutral-900 disabled:cursor-not-allowed transition-opacity ${
                     isContinueLoading ? "opacity-50" : "opacity-100"
                   }`}
                 >
-                  {isManualLoading && <Loader2 className="h-3 w-3 animate-spin" />}
+                  {isManualLoading && (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  )}
                   {manualConfigButtonText}
                 </button>
               )}

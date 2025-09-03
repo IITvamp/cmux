@@ -396,6 +396,9 @@ const convexSchema = defineSchema({
     dataVaultKey: v.string(), // Key for StackAuth DataBook (stores encrypted env vars)
     selectedRepos: v.optional(v.array(v.string())), // List of repository full names
     description: v.optional(v.string()), // Optional description
+    maintenanceScript: v.optional(v.string()),
+    devScript: v.optional(v.string()),
+    exposedPorts: v.optional(v.array(v.number())),
     createdAt: v.number(),
     updatedAt: v.number(),
   })

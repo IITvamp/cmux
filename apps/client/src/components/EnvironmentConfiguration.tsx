@@ -1,27 +1,32 @@
 import { GitHubIcon } from "@/components/icons/github";
 import { ResizableColumns } from "@/components/ResizableColumns";
+import { parseEnvBlock } from "@/lib/parseEnvBlock";
+import { postApiEnvironmentsMutation } from "@cmux/www-openapi-client/react-query";
 import { Accordion, AccordionItem } from "@heroui/react";
+import { useMutation as useRQMutation } from "@tanstack/react-query";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import clsx from "clsx";
 import { ArrowLeft, Loader2, Minus, Plus, Settings, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import TextareaAutosize from "react-textarea-autosize";
 
 export type EnvVar = { name: string; value: string; isSecret: boolean };
-import { parseEnvBlock } from "@/lib/parseEnvBlock";
 
 export function EnvironmentConfiguration({
   selectedRepos,
-  onBack,
+  teamSlugOrId,
   instanceId,
   vscodeUrl,
   isProvisioning,
 }: {
   selectedRepos: string[];
-  onBack: () => void;
+  teamSlugOrId: string;
   instanceId?: string;
   vscodeUrl?: string;
   isProvisioning: boolean;
 }) {
+  const navigate = useNavigate();
+  const search = useSearch({ from: "/_layout/$teamSlugOrId/environments/new" });
   const [iframeLoaded, setIframeLoaded] = useState(false);
   const [envName, setEnvName] = useState("");
   const [envVars, setEnvVars] = useState<EnvVar[]>([
@@ -57,26 +62,86 @@ export function EnvironmentConfiguration({
     setIframeLoaded(false);
   }, [vscodeUrl]);
 
-  const handleCreateEnvironment = () => {
-    // Snapshot current environment state (instance already provisioned)
-    // TODO: Implement actual environment snapshot/creation logic
-    console.log("Snapshot environment with:", {
-      name: envName,
-      repos: selectedRepos,
-      envVars,
-      maintenanceScript,
-      devScript,
-      exposedPorts,
-      instanceId,
-      vscodeUrl,
-    });
+  // no-op placeholder removed; using onSnapshot instead
+
+  const createEnvironmentMutation = useRQMutation(
+    postApiEnvironmentsMutation()
+  );
+
+  const onSnapshot = async (): Promise<void> => {
+    if (!instanceId) {
+      console.error("Missing instanceId for snapshot");
+      return;
+    }
+    if (!envName.trim()) {
+      console.error("Environment name is required");
+      return;
+    }
+
+    const envVarsContent = envVars
+      .filter((r) => r.name.trim().length > 0)
+      .map((r) => `${r.name}=${r.value}`)
+      .join("\n");
+
+    const ports = exposedPorts
+      .split(",")
+      .map((p) => parseInt(p.trim(), 10))
+      .filter((n) => Number.isFinite(n) && n > 0);
+
+    createEnvironmentMutation.mutate(
+      {
+        body: {
+          teamSlugOrId,
+          name: envName.trim(),
+          morphInstanceId: instanceId,
+          envVarsContent,
+          selectedRepos,
+          maintenanceScript: maintenanceScript.trim() || undefined,
+          devScript: devScript.trim() || undefined,
+          exposedPorts: ports.length > 0 ? ports : undefined,
+          description: undefined,
+        },
+      },
+      {
+        onSuccess: async () => {
+          await navigate({
+            to: "/$teamSlugOrId/environments",
+            params: { teamSlugOrId },
+            search: {
+              step: undefined,
+              selectedRepos: undefined,
+              connectionLogin: undefined,
+              repoSearch: undefined,
+              instanceId: undefined,
+            },
+          });
+        },
+        onError: (err) => {
+          console.error("Failed to create environment:", err);
+        },
+      }
+    );
   };
 
   const leftPane = (
     <div className="h-full p-6 overflow-y-auto">
       <div className="flex items-center gap-4 mb-4">
         <button
-          onClick={onBack}
+          onClick={async () => {
+            await navigate({
+              to: "/$teamSlugOrId/environments/new",
+              params: { teamSlugOrId },
+              search: (prev) => ({
+                ...prev,
+                step: "select",
+                selectedRepos:
+                  selectedRepos.length > 0 ? selectedRepos : undefined,
+                instanceId: search.instanceId,
+                connectionLogin: prev.connectionLogin,
+                repoSearch: prev.repoSearch,
+              }),
+            });
+          }}
           className="inline-flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
         >
           <ArrowLeft className="w-4 h-4" />
@@ -375,14 +440,14 @@ etc.`}
         <div className="pt-2">
           <button
             type="button"
-            onClick={handleCreateEnvironment}
-            disabled={isProvisioning}
+            onClick={onSnapshot}
+            disabled={isProvisioning || createEnvironmentMutation.isPending}
             className="inline-flex items-center rounded-md bg-neutral-900 text-white disabled:bg-neutral-300 dark:disabled:bg-neutral-700 disabled:cursor-not-allowed px-4 py-2 text-sm hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
           >
-            {isProvisioning ? (
+            {isProvisioning || createEnvironmentMutation.isPending ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                Launching...
+                {isProvisioning ? "Launching..." : "Creating environment..."}
               </>
             ) : (
               "Snapshot environment"

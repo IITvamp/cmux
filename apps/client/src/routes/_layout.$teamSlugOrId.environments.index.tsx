@@ -1,49 +1,61 @@
+import { convexQueryClient } from "@/contexts/convex/convex-query-client";
 import { FloatingPane } from "@/components/floating-pane";
 import { TitleBar } from "@/components/TitleBar";
-// TODO: Replace with actual API query once OpenAPI client is regenerated
-// import { getApiEnvironmentsQuery } from "@cmux/www-openapi-client/react-query";
-import { useQuery } from "@tanstack/react-query";
+import { api } from "@cmux/convex/api";
+import { convexQuery } from "@convex-dev/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { formatDistanceToNow } from "date-fns";
-import { Plus, Server, Calendar, Loader2, GitBranch } from "lucide-react";
+import { Plus, Server, Calendar, GitBranch, Play, Eye } from "lucide-react";
 
 export const Route = createFileRoute("/_layout/$teamSlugOrId/environments/")({
+  loader: async ({ params }) => {
+    await convexQueryClient.queryClient.ensureQueryData(
+      convexQuery(api.environments.list, {
+        teamSlugOrId: params.teamSlugOrId,
+      })
+    );
+  },
   component: EnvironmentsListPage,
 });
 
 function EnvironmentsListPage() {
   const { teamSlugOrId } = Route.useParams();
   
-  // TODO: Replace with actual API query once OpenAPI client is regenerated
-  const { data: environments, isLoading } = useQuery({
-    queryKey: ["environments", teamSlugOrId],
-    queryFn: async () => {
-      // Temporary mock data - will be replaced with actual API call
-      return [] as Array<{
-        id: string;
-        name: string;
-        morphSnapshotId: string;
-        dataVaultKey: string;
-        selectedRepos?: string[];
-        description?: string;
-        createdAt: number;
-        updatedAt: number;
-      }>;
-    },
-  });
+  const { data: environments } = useSuspenseQuery(
+    convexQuery(api.environments.list, {
+      teamSlugOrId,
+    })
+  );
 
   return (
     <FloatingPane header={<TitleBar title="Environments" /> }>
       <div className="p-6">
-        {isLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-6 h-6 animate-spin text-neutral-500" />
-          </div>
-        ) : environments && environments?.length > 0 ? (
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
+            Your Environments
+          </h2>
+          <Link
+            to="/$teamSlugOrId/environments/new"
+            params={{ teamSlugOrId }}
+            search={{
+              step: undefined,
+              selectedRepos: undefined,
+              connectionLogin: undefined,
+              repoSearch: undefined,
+              instanceId: undefined,
+            }}
+            className="inline-flex items-center gap-2 rounded-md bg-neutral-900 text-white px-4 py-2 text-sm font-medium hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200 transition-colors"
+          >
+            <Plus className="w-4 h-4" />
+            New Environment
+          </Link>
+        </div>
+        {environments && environments.length > 0 ? (
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {environments?.map((env) => (
+            {environments.map((env) => (
               <div
-                key={env.id}
+                key={env._id}
                 className="group relative rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 p-4 hover:shadow-md transition-shadow"
               >
                 <div className="flex items-start justify-between mb-3">
@@ -95,8 +107,34 @@ function EnvironmentsListPage() {
                 </div>
 
                 <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-neutral-900">
-                  <div className="text-xs text-neutral-500 dark:text-neutral-500">
+                  <div className="text-xs text-neutral-500 dark:text-neutral-500 mb-3">
                     Snapshot ID: {env.morphSnapshotId}
+                  </div>
+                  <div className="flex gap-2">
+                    <Link
+                      to="/$teamSlugOrId/environments/$environmentId"
+                      params={{ teamSlugOrId, environmentId: env._id }}
+                      search={{
+                        step: undefined,
+                        selectedRepos: undefined,
+                        connectionLogin: undefined,
+                        repoSearch: undefined,
+                        instanceId: undefined,
+                      }}
+                      className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 py-1.5 text-sm font-medium text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-900 transition-colors"
+                    >
+                      <Eye className="w-4 h-4" />
+                      View
+                    </Link>
+                    <Link
+                      to="/$teamSlugOrId/dashboard"
+                      params={{ teamSlugOrId }}
+                      search={{ environmentId: env._id }}
+                      className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-md bg-neutral-900 text-white px-3 py-1.5 text-sm font-medium hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200 transition-colors"
+                    >
+                      <Play className="w-4 h-4" />
+                      Launch
+                    </Link>
                   </div>
                 </div>
               </div>

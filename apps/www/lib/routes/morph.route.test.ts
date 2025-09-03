@@ -146,6 +146,21 @@ describe("morphRouter - live", () => {
     // Should have at least cloned these repos; removedRepos may contain pre-existing folders
     expect(aBody.clonedRepos).toEqual(expect.arrayContaining([R1, R2]));
 
+    // Verify in-VM that R1 and R2 exist with correct remotes
+    const instA = await __TEST_INTERNAL_ONLY_MORPH_CLIENT.instances.get({
+      instanceId: createdInstanceId!,
+    });
+    const r1Check = await instA.exec(
+      `bash -lc "test -d /root/workspace/${N1}/.git && git -C /root/workspace/${N1} remote get-url origin"`
+    );
+    const r2Check = await instA.exec(
+      `bash -lc "test -d /root/workspace/${N2}/.git && git -C /root/workspace/${N2} remote get-url origin"`
+    );
+    expect(r1Check.exit_code).toBe(0);
+    expect(r2Check.exit_code).toBe(0);
+    expect(r1Check.stdout).toContain(R1);
+    expect(r2Check.stdout).toContain(R2);
+
     // Step B: add R3 (should only clone the new one, not remove R1/R2)
     const b = await postApiMorphSetupInstance({
       client: testApiClient,
@@ -184,6 +199,25 @@ describe("morphRouter - live", () => {
     };
     expect(cBody.removedRepos).toEqual(expect.arrayContaining([N2]));
     expect(cBody.removedRepos).not.toEqual(expect.arrayContaining([N1, N3]));
+
+    // Verify in-VM that R2 was removed and R1/R3 remain with correct remotes
+    const instC = await __TEST_INTERNAL_ONLY_MORPH_CLIENT.instances.get({
+      instanceId: createdInstanceId!,
+    });
+    const r2Gone = await instC.exec(
+      `bash -lc "test ! -d /root/workspace/${N2}"`
+    );
+    expect(r2Gone.exit_code).toBe(0);
+    const r1Still = await instC.exec(
+      `bash -lc "test -d /root/workspace/${N1}/.git && git -C /root/workspace/${N1} remote get-url origin"`
+    );
+    const r3Still = await instC.exec(
+      `bash -lc "test -d /root/workspace/${N3}/.git && git -C /root/workspace/${N3} remote get-url origin"`
+    );
+    expect(r1Still.exit_code).toBe(0);
+    expect(r3Still.exit_code).toBe(0);
+    expect(r1Still.stdout).toContain(R1);
+    expect(r3Still.stdout).toContain(R3);
 
     // Step D: add R2 back (should clone R2 again, not remove others)
     const d = await postApiMorphSetupInstance({
