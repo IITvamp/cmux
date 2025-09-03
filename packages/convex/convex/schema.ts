@@ -387,6 +387,22 @@ const convexSchema = defineSchema({
     .index("by_team", ["teamId"]) // list connections for team
     .index("by_team_type", ["teamId", "type"]),
 
+  // Environments for teams
+  environments: defineTable({
+    name: v.string(), // Human-friendly environment name
+    teamId: v.string(), // Team that owns this environment
+    userId: v.string(), // User who created the environment
+    morphSnapshotId: v.string(), // Morph snapshot identifier
+    dataVaultKey: v.string(), // Key for StackAuth DataBook (stores encrypted env vars)
+    selectedRepos: v.optional(v.array(v.string())), // List of repository full names
+    description: v.optional(v.string()), // Optional description
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_team", ["teamId", "createdAt"])
+    .index("by_team_user", ["teamId", "userId"])
+    .index("by_dataVaultKey", ["dataVaultKey"]),
+
   // Webhook deliveries for idempotency and auditing
   webhookDeliveries: defineTable({
     provider: v.string(), // e.g. "github"

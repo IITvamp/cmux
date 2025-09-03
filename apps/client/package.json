@@ -19,7 +19,8 @@
     "preview": "vite preview",
     "preview:electron": "electron-vite preview -c electron.vite.config.js",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "generate-routes": "tsr generate"
+    "generate-routes": "tsr generate",
+    "test": "vitest run"
   },
   "dependencies": {
     "@base-ui-components/react": "1.0.0-beta.2",
@@ -71,6 +72,7 @@
     "react": "^19.1.0",
     "react-aria-components": "^1.12.1",
     "react-dom": "^19.1.0",
+    "react-textarea-autosize": "^8.5.9",
     "socket.io-client": "^4.8.1",
     "sonner": "^2.0.6",
     "superjson": "^2.2.2",
@@ -102,6 +104,7 @@
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.34.1",
     "vite": "^7.0.0",
-    "vite-tsconfig-paths": "^5.1.4"
+    "vite-tsconfig-paths": "^5.1.4",
+    "vitest": "3.2.4"
   }
 }

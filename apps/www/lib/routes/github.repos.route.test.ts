@@ -1,37 +1,9 @@
 import { testApiClient } from "@/lib/test-utils/openapi-client";
-import { env } from "@/lib/utils/www-env";
 import { api } from "@cmux/convex/api";
 import { getApiIntegrationsGithubRepos } from "@cmux/www-openapi-client";
-import { StackAdminApp } from "@stackframe/js";
 import { describe, expect, it } from "vitest";
 import { getConvex } from "../utils/get-convex";
-
-const PROJECT_ID = env.NEXT_PUBLIC_STACK_PROJECT_ID;
-const PUBLISHABLE_KEY = env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY;
-const SERVER_SECRET = env.STACK_SECRET_SERVER_KEY;
-const ADMIN_KEY = env.STACK_SUPER_SECRET_ADMIN_KEY;
-
-// Hardcoded user id used in local dev for testing
-const TEST_USER_ID = "487b5ddc-0da0-4f12-8834-f452863a83f5";
-
-type Tokens = { accessToken: string; refreshToken?: string };
-
-async function getStackTokens(): Promise<Tokens> {
-  const admin = new StackAdminApp({
-    projectId: PROJECT_ID,
-    publishableClientKey: PUBLISHABLE_KEY,
-    secretServerKey: SERVER_SECRET,
-    superSecretAdminKey: ADMIN_KEY,
-    tokenStore: "memory",
-  });
-  const user = await admin.getUser(TEST_USER_ID);
-  if (!user) throw new Error("Test user not found");
-  const session = await user.createSession({ expiresInMillis: 5 * 60 * 1000 });
-  const tokens = await session.getTokens();
-  const at = tokens.accessToken;
-  if (!at) throw new Error("No access token");
-  return { accessToken: at, refreshToken: tokens.refreshToken ?? undefined };
-}
+import { __TEST_INTERNAL_ONLY_GET_STACK_TOKENS } from "@/lib/test-utils/__TEST_INTERNAL_ONLY_GET_STACK_TOKENS";
 
 describe("githubReposRouter via SDK", () => {
   it("rejects unauthenticated requests", async () => {
@@ -43,7 +15,7 @@ describe("githubReposRouter via SDK", () => {
   });
 
   it("returns repos for authenticated user", async () => {
-    const tokens = await getStackTokens();
+    const tokens = await __TEST_INTERNAL_ONLY_GET_STACK_TOKENS();
     const res = await getApiIntegrationsGithubRepos({
       client: testApiClient,
       query: { team: "manaflow" },
@@ -70,7 +42,7 @@ describe("githubReposRouter via SDK", () => {
   });
 
   it("can limit to a single installation when specified", async () => {
-    const tokens = await getStackTokens();
+    const tokens = await __TEST_INTERNAL_ONLY_GET_STACK_TOKENS();
     const convex = getConvex({ accessToken: tokens.accessToken });
 
     let installationId: number | undefined;
@@ -110,7 +82,7 @@ describe("githubReposRouter via SDK", () => {
   });
 
   it("supports paging and still limits to 5", async () => {
-    const tokens = await getStackTokens();
+    const tokens = await __TEST_INTERNAL_ONLY_GET_STACK_TOKENS();
     const first = await getApiIntegrationsGithubRepos({
       client: testApiClient,
       query: { team: "manaflow", page: 1 },

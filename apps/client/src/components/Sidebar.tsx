@@ -196,7 +196,7 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
         <Link
           to="/$teamSlugOrId/environments"
           params={{ teamSlugOrId }}
-          search={{ step: undefined, selectedRepos: undefined, connectionLogin: undefined, repoSearch: undefined, sessionId: undefined }}
+          search={{ step: undefined, selectedRepos: undefined, connectionLogin: undefined, repoSearch: undefined, instanceId: undefined }}
           className="flex items-center px-7 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors select-none cursor-default"
         >
           <svg

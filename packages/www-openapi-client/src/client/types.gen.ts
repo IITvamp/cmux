@@ -102,13 +102,49 @@ export type GithubReposResponse = {
     repos: Array<GithubRepo>;
 };
 
-export type ProvisionInstanceResponse = {
-    vscodeUrl: string;
+export type SetupInstanceResponse = {
     instanceId: string;
+    vscodeUrl: string;
+    clonedRepos: Array<string>;
+    removedRepos: Array<string>;
 };
 
-export type ProvisionInstanceBody = {
+export type SetupInstanceBody = {
+    teamSlugOrId: string;
+    instanceId?: string;
+    selectedRepos?: Array<string>;
     ttlSeconds?: number;
+};
+
+export type CreateEnvironmentResponse = {
+    id: string;
+    snapshotId: string;
+};
+
+export type CreateEnvironmentBody = {
+    teamSlugOrId: string;
+    name: string;
+    morphInstanceId: string;
+    envVarsContent: string;
+    selectedRepos?: Array<string>;
+    description?: string;
+};
+
+export type GetEnvironmentResponse = {
+    id: string;
+    name: string;
+    morphSnapshotId: string;
+    dataVaultKey: string;
+    selectedRepos?: Array<string>;
+    description?: string;
+    createdAt: number;
+    updatedAt: number;
+};
+
+export type ListEnvironmentsResponse = Array<GetEnvironmentResponse>;
+
+export type GetEnvironmentVarsResponse = {
+    envVarsContent: string;
 };
 
 export type GetApiHealthData = {
@@ -512,32 +548,193 @@ export type GetApiIntegrationsGithubReposResponses = {
 
 export type GetApiIntegrationsGithubReposResponse = GetApiIntegrationsGithubReposResponses[keyof GetApiIntegrationsGithubReposResponses];
 
-export type PostApiMorphProvisionInstanceData = {
-    body?: ProvisionInstanceBody;
+export type PostApiMorphSetupInstanceData = {
+    body: SetupInstanceBody;
     path?: never;
     query?: never;
-    url: '/api/morph/provision-instance';
+    url: '/api/morph/setup-instance';
 };
 
-export type PostApiMorphProvisionInstanceErrors = {
+export type PostApiMorphSetupInstanceErrors = {
     /**
      * Unauthorized
      */
     401: unknown;
     /**
-     * Failed to provision instance
+     * Failed to setup instance
      */
     500: unknown;
 };
 
-export type PostApiMorphProvisionInstanceResponses = {
+export type PostApiMorphSetupInstanceResponses = {
     /**
-     * Instance provisioned successfully
+     * Instance setup successfully
      */
-    200: ProvisionInstanceResponse;
+    200: SetupInstanceResponse;
 };
 
-export type PostApiMorphProvisionInstanceResponse = PostApiMorphProvisionInstanceResponses[keyof PostApiMorphProvisionInstanceResponses];
+export type PostApiMorphSetupInstanceResponse = PostApiMorphSetupInstanceResponses[keyof PostApiMorphSetupInstanceResponses];
+
+export type GetApiEnvironmentsData = {
+    body?: never;
+    path?: never;
+    query: {
+        teamSlugOrId: string;
+    };
+    url: '/api/environments';
+};
+
+export type GetApiEnvironmentsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Failed to list environments
+     */
+    500: unknown;
+};
+
+export type GetApiEnvironmentsResponses = {
+    /**
+     * Environments retrieved successfully
+     */
+    200: ListEnvironmentsResponse;
+};
+
+export type GetApiEnvironmentsResponse = GetApiEnvironmentsResponses[keyof GetApiEnvironmentsResponses];
+
+export type PostApiEnvironmentsData = {
+    body: CreateEnvironmentBody;
+    path?: never;
+    query?: never;
+    url: '/api/environments';
+};
+
+export type PostApiEnvironmentsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Failed to create environment
+     */
+    500: unknown;
+};
+
+export type PostApiEnvironmentsResponses = {
+    /**
+     * Environment created successfully
+     */
+    200: CreateEnvironmentResponse;
+};
+
+export type PostApiEnvironmentsResponse = PostApiEnvironmentsResponses[keyof PostApiEnvironmentsResponses];
+
+export type DeleteApiEnvironmentsByIdData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query: {
+        teamSlugOrId: string;
+    };
+    url: '/api/environments/{id}';
+};
+
+export type DeleteApiEnvironmentsByIdErrors = {
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Environment not found
+     */
+    404: unknown;
+    /**
+     * Failed to delete environment
+     */
+    500: unknown;
+};
+
+export type DeleteApiEnvironmentsByIdResponses = {
+    /**
+     * Environment deleted successfully
+     */
+    204: void;
+};
+
+export type DeleteApiEnvironmentsByIdResponse = DeleteApiEnvironmentsByIdResponses[keyof DeleteApiEnvironmentsByIdResponses];
+
+export type GetApiEnvironmentsByIdData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query: {
+        teamSlugOrId: string;
+    };
+    url: '/api/environments/{id}';
+};
+
+export type GetApiEnvironmentsByIdErrors = {
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Environment not found
+     */
+    404: unknown;
+    /**
+     * Failed to get environment
+     */
+    500: unknown;
+};
+
+export type GetApiEnvironmentsByIdResponses = {
+    /**
+     * Environment retrieved successfully
+     */
+    200: GetEnvironmentResponse;
+};
+
+export type GetApiEnvironmentsByIdResponse = GetApiEnvironmentsByIdResponses[keyof GetApiEnvironmentsByIdResponses];
+
+export type GetApiEnvironmentsByIdVarsData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query: {
+        teamSlugOrId: string;
+    };
+    url: '/api/environments/{id}/vars';
+};
+
+export type GetApiEnvironmentsByIdVarsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Environment not found
+     */
+    404: unknown;
+    /**
+     * Failed to get environment variables
+     */
+    500: unknown;
+};
+
+export type GetApiEnvironmentsByIdVarsResponses = {
+    /**
+     * Environment variables retrieved successfully
+     */
+    200: GetEnvironmentVarsResponse;
+};
+
+export type GetApiEnvironmentsByIdVarsResponse = GetApiEnvironmentsByIdVarsResponses[keyof GetApiEnvironmentsByIdVarsResponses];
 
 export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
