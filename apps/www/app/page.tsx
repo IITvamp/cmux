@@ -1,4 +1,3 @@
-/* eslint-disable @next/next/no-html-link-for-pages, react/no-unescaped-entities */
 "use client";
 
 import { ClientIcon } from "@/components/client-icon";
@@ -15,6 +14,7 @@ import {
   Zap,
 } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 import { useState } from "react";
 
 export default function LandingPage() {
@@ -56,13 +56,13 @@ export default function LandingPage() {
       <header className="mb-6 bg-neutral-950/80 backdrop-blur top-0 z-40 border-b border-neutral-900">
         <div className="container max-w-5xl mx-auto px-2 sm:px-3 py-2.5">
           <div className="grid w-full grid-cols-[auto_1fr] grid-rows-1 items-center gap-2">
-            <a
+            <Link
               aria-label="Go to homepage"
               className="col-start-1 col-end-2 inline-flex items-center"
               href="/"
             >
               <CmuxLogo height={40} label="cmux" showWordmark />
-            </a>
+            </Link>
             <div className="col-start-2 col-end-3 flex items-center justify-end gap-2 sm:gap-3">
               <nav aria-label="Main" className="hidden md:flex items-center">
                 <ul className="flex flex-wrap items-center gap-x-2">
@@ -248,7 +248,7 @@ export default function LandingPage() {
                 <span className="text-white font-semibold">
                   The interface is the bottleneck.
                 </span>{" "}
-                We've spent years making AI agents better at coding, but almost
+                We&apos;ve spent years making AI agents better at coding, but almost
                 no time making it easier to verify their work. The result?
                 Developers spend 80% of their time reviewing and 20% prompting.
               </p>
@@ -256,8 +256,8 @@ export default function LandingPage() {
                 <p>
                   Running multiple agents at once sounds powerful until it turns
                   into chaos: 3-4 terminals, each on a different task, and
-                  you're asking, “Which one is on auth? Did the database
-                  refactor finish?” You end up bouncing between windows, running
+                  you&apos;re asking, &quot;Which one is on auth? Did the database
+                  refactor finish?&quot; You end up bouncing between windows, running
                   git diff, and piecing together what changed where.
                 </p>
               </blockquote>
@@ -274,8 +274,8 @@ export default function LandingPage() {
               </p>
               <blockquote className="border-l-2 border-neutral-800 pl-4 text-neutral-300">
                 <p>
-                  The issue isn't that agents aren't good — they're getting
-                  scary good. It's that our tools were designed for a different
+                  The issue isn&apos;t that agents aren&apos;t good — they&apos;re getting
+                  scary good. It&apos;s that our tools were designed for a different
                   era. VS Code was built for writing code, not reviewing five
                   parallel streams of AI-generated changes. Terminals expect
                   sequential commands, not a fleet of autonomous workers.
@@ -297,7 +297,7 @@ export default function LandingPage() {
                   Docker container, separate VS Code, separate git state. VS
                   Code opens with the git diff already showing. Every change is
                   isolated to its task, so you can see exactly what each agent
-                  did — immediately — without losing context. That's what makes
+                  did — immediately — without losing context. That&apos;s what makes
                   running 10+ agents actually workable.
                 </p>
               </blockquote>
@@ -359,7 +359,7 @@ export default function LandingPage() {
                   Git extension UI
                 </h3>
                 <p className="text-sm text-neutral-400">
-                  On mount, VS Code opens the git extension's diff UI. Review
+                  On mount, VS Code opens the git extension&apos;s diff UI. Review
                   changes without context switching.
                 </p>
               </div>
@@ -437,7 +437,7 @@ export default function LandingPage() {
           <div className="space-y-6">
             <div className="text-neutral-400">
               <p className="mb-6">
-                We're building the missing layer between AI agents and
+                We&apos;re building the missing layer between AI agents and
                 developers. Not another agent, not another IDE—but the
                 verification interface that makes managing 10, 20, or 100
                 parallel agents as easy as managing one.
@@ -472,7 +472,7 @@ export default function LandingPage() {
                 <p className="text-sm text-neutral-400 mb-4">
                   Define verification criteria upfront. Set test coverage
                   requirements, performance benchmarks, security checks. Agents
-                  can't mark tasks complete until verification passes.
+                  can&apos;t mark tasks complete until verification passes.
                 </p>
               </div>
               <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-6">
@@ -481,7 +481,7 @@ export default function LandingPage() {
                 </h3>
                 <p className="text-sm text-neutral-400 mb-4">
                   Agents will communicate through a shared context layer. One
-                  agent's output becomes another's input. Automatic conflict
+                  agent&apos;s output becomes another&apos;s input. Automatic conflict
                   resolution when agents modify the same files.
                 </p>
               </div>
@@ -495,7 +495,7 @@ export default function LandingPage() {
                 agent will review the work of worker agents, using the same
                 interfaces you use today. It will approve simple changes,
                 escalate complex ones, and learn from your verification
-                patterns. The goal isn't to replace developers—it's to amplify
+                patterns. The goal isn&apos;t to replace developers—it&apos;s to amplify
                 them 100x by removing the verification bottleneck entirely.
               </p>
             </div>
@@ -511,7 +511,7 @@ export default function LandingPage() {
         <div className="container max-w-5xl mx-auto text-center">
           <h2 className="text-2xl font-semibold mb-4">Requirements</h2>
           <p className="text-neutral-400 mb-8">
-            cmux runs locally on your machine. You'll need:
+            cmux runs locally on your machine. You&apos;ll need:
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center text-sm">
             <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-6 py-3">
