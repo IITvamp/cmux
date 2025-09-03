@@ -10,8 +10,8 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "dotenv -e ../../.env -- vitest run",
-    "generate-openapi-client": "bun run scripts/watch-openapi.ts",
-    "generate-openapi-client:watch": "bun run --watch scripts/watch-openapi.ts"
+    "generate-openapi-client": "bun run --env-file ../../.env scripts/watch-openapi.ts",
+    "generate-openapi-client:watch": "bun run --watch --env-file ../../.env scripts/watch-openapi.ts"
   },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^8.1.0",
