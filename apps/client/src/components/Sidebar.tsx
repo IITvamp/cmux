@@ -51,7 +51,7 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
       const clientX = e.clientX;
       const newWidth = Math.min(
         Math.max(clientX - containerLeft, MIN_WIDTH),
-        MAX_WIDTH
+        MAX_WIDTH,
       );
       setWidth(newWidth);
     });
@@ -112,7 +112,7 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
       window.addEventListener("mousemove", onMouseMove);
       window.addEventListener("mouseup", stopResizing);
     },
-    [onMouseMove, stopResizing]
+    [onMouseMove, stopResizing],
   );
 
   useEffect(() => {
@@ -123,7 +123,6 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
   }, [onMouseMove, stopResizing]);
 
   const resetWidth = useCallback(() => setWidth(DEFAULT_WIDTH), []);
-
 
   return (
     <div
@@ -137,14 +136,19 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
       }}
     >
       <div
-        className="h-[38px] flex items-center pl-3 pr-1.5 shrink-0"
+        className="h-[38px] flex items-center shrink-0"
         style={{ WebkitAppRegion: "drag" } as CSSProperties}
       >
-        {isElectron && <div className="w-[68px]"></div>}
+        {isElectron && (
+          <div
+            className="w-[80px] h-full flex-shrink-0"
+            style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
+          />
+        )}
         <Link
           to="/$teamSlugOrId/dashboard"
           params={{ teamSlugOrId }}
-          className="flex items-center gap-2 select-none cursor-pointer"
+          className="flex items-center gap-2 select-none cursor-pointer pl-3 pr-1.5"
           style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
         >
           {/* <Terminals */}
@@ -198,7 +202,13 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
         <Link
           to="/$teamSlugOrId/environments"
           params={{ teamSlugOrId }}
-          search={{ step: undefined, selectedRepos: undefined, connectionLogin: undefined, repoSearch: undefined, sessionId: undefined }}
+          search={{
+            step: undefined,
+            selectedRepos: undefined,
+            connectionLogin: undefined,
+            repoSearch: undefined,
+            sessionId: undefined,
+          }}
           className="flex items-center px-7 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors select-none cursor-default"
         >
           <svg
