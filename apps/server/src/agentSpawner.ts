@@ -232,7 +232,22 @@ export async function spawnAgent(
         const key = apiKeys[keyConfig.envVar];
         if (key && key.trim().length > 0) {
           const injectName = keyConfig.mapToEnvVar || keyConfig.envVar;
-          envVars[injectName] = key;
+          const isClaudeAgent = agent.name.toLowerCase().startsWith("claude/");
+          const isAnthropicKey = injectName === "ANTHROPIC_API_KEY";
+
+          if (isClaudeAgent && isAnthropicKey) {
+            // Do not expose ANTHROPIC_API_KEY as an env var to Claude Code.
+            // Use the official apiKeyHelper flow to avoid reprompting.
+            authFiles.push({
+              destinationPath: "$HOME/.claude/bin/.anthropic_key",
+              contentBase64: Buffer.from(key).toString("base64"),
+              mode: "600",
+            });
+            // Ensure helper dir exists (environment also ensures this, but safe to include here)
+            startupCommands.push("mkdir -p ~/.claude/bin");
+          } else {
+            envVars[injectName] = key;
+          }
         }
       }
     }
