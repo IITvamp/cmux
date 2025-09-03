@@ -1285,6 +1285,21 @@ Please address the issue mentioned in the comment above.`;
           text: formattedPrompt,
           projectFullName: "manaflow-ai/cmux",
         });
+        // Create a comment reply with link to the task
+        try {
+          await getConvex().mutation(api.comments.addReply, {
+            teamSlugOrId: safeTeam,
+            commentId: commentId,
+            content: `[View run here](http://localhost:5173/${safeTeam}/task/${taskId})`,
+          });
+          serverLogger.info("Created comment reply with task link:", {
+            commentId,
+            taskId,
+          });
+        } catch (replyError) {
+          serverLogger.error("Failed to create comment reply:", replyError);
+          // Don't fail the whole operation if reply fails
+        }
 
         serverLogger.info("Created task from comment:", { taskId, content });
 
@@ -1333,22 +1348,6 @@ Please address the issue mentioned in the comment above.`;
             workspaceUrl: primaryAgent.vscodeUrl,
             provider: "morph", // Since isCloudMode is true
           });
-        }
-
-        // Create a comment reply with link to the task
-        try {
-          await getConvex().mutation(api.comments.addReply, {
-            teamSlugOrId: safeTeam,
-            commentId: commentId,
-            content: `[View run here](http://localhost:5173/task/${taskId})`,
-          });
-          serverLogger.info("Created comment reply with task link:", {
-            commentId,
-            taskId,
-          });
-        } catch (replyError) {
-          serverLogger.error("Failed to create comment reply:", replyError);
-          // Don't fail the whole operation if reply fails
         }
 
         callback({

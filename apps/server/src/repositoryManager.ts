@@ -206,6 +206,37 @@ export class RepositoryManager {
     }
   }
 
+  // Remove a stale git lock file (e.g., shallow.lock or index.lock) if it looks abandoned.
+  // This is a safety valve for cases where a previous git process crashed and left a lock behind.
+  private async removeStaleGitLock(
+    repoPath: string,
+    relLockPath: string,
+    maxAgeMs: number = 60_000,
+    force: boolean = false
+  ): Promise<boolean> {
+    try {
+      const lockPath = path.join(repoPath, ".git", relLockPath);
+      const stat = await fs.stat(lockPath).catch(() => null);
+      if (!stat) return false;
+      const age = Date.now() - stat.mtimeMs;
+      if (force || age > maxAgeMs) {
+        await fs.rm(lockPath, { force: true });
+        serverLogger.warn(
+          `Removed ${relLockPath} at ${lockPath} (age=${Math.round(age)}ms, force=${force})`
+        );
+        return true;
+      }
+      // Too new; leave it for the other process to complete
+      serverLogger.info(
+        `${relLockPath} exists but is recent (${Math.round(age)}ms); not removing`
+      );
+      return false;
+    } catch (e) {
+      serverLogger.warn(`Failed removing stale lock ${relLockPath}:`, e);
+      return false;
+    }
+  }
+
   private async getGitPath(): Promise<string> {
     if (this.resolvedGitPath) return this.resolvedGitPath;
     const candidates = [
@@ -533,6 +564,8 @@ export class RepositoryManager {
           : "";
 
     try {
+      // Clear any stale shallow.lock before invoking a pull (pull may fetch)
+      await this.removeStaleGitLock(repoPath, "shallow.lock", 15_000);
       await this.executeGitCommand(
         `git pull ${pullFlags} --depth ${this.config.fetchDepth} origin ${branch}`,
         { cwd: repoPath }
@@ -551,6 +584,7 @@ export class RepositoryManager {
         );
         try {
           // Fetch the latest state
+          await this.removeStaleGitLock(repoPath, "shallow.lock", 15_000);
           await this.executeGitCommand(
             `git fetch --depth ${this.config.fetchDepth} origin ${branch}`,
             { cwd: repoPath }
@@ -600,10 +634,26 @@ export class RepositoryManager {
     // Force-update the remote-tracking ref to tolerate non-fast-forward updates
     // (e.g., when the remote branch was force-pushed). Using a leading '+'
     // mirrors the default fetch refspec behavior: +refs/heads/*:refs/remotes/origin/*
-    await this.executeGitCommand(
-      `git fetch --depth ${this.config.fetchDepth} origin +refs/heads/${branch}:refs/remotes/origin/${branch}`,
-      { cwd: repoPath }
-    );
+    const fetchCmd = `git fetch --depth ${this.config.fetchDepth} origin +refs/heads/${branch}:refs/remotes/origin/${branch}`;
+    // First, proactively clear stale shallow.lock if present (older than 15s)
+    await this.removeStaleGitLock(repoPath, "shallow.lock", 15_000);
+    try {
+      await this.executeGitCommand(fetchCmd, { cwd: repoPath });
+    } catch (e) {
+      const msg = e instanceof Error ? `${e.message}\n${e || ""}` : String(e);
+      const lockHit =
+        msg.includes("shallow.lock") ||
+        msg.includes("could not lock shallow") ||
+        msg.includes("Another git process seems to be running");
+      if (lockHit) {
+        // Force-remove lock and retry with small backoff
+        await this.removeStaleGitLock(repoPath, "shallow.lock", 0, true);
+        await new Promise((r) => setTimeout(r, 150));
+        await this.executeGitCommand(fetchCmd, { cwd: repoPath });
+      } else {
+        throw e;
+      }
+    }
 
     // Checkout the branch from the updated remote-tracking ref
     await this.executeGitCommand(`git checkout -B ${branch} origin/${branch}`, {
@@ -870,7 +920,7 @@ export class RepositoryManager {
         `git config branch.${branchName}.merge refs/heads/${branchName}`,
         { cwd: worktreePath }
       );
-      
+
       // Configure VS Code git extension to show diffs from main branch
       await this.executeGitCommand(
         `git config vscode.gitSCM.defaultViewMode tree`,
@@ -881,15 +931,13 @@ export class RepositoryManager {
         { cwd: worktreePath }
       );
       // Set main as the base branch for comparisons
-      await this.executeGitCommand(
-        `git config diff.base main`,
-        { cwd: worktreePath }
-      );
-      await this.executeGitCommand(
-        `git config merge.base main`,
-        { cwd: worktreePath }
-      );
-      
+      await this.executeGitCommand(`git config diff.base main`, {
+        cwd: worktreePath,
+      });
+      await this.executeGitCommand(`git config merge.base main`, {
+        cwd: worktreePath,
+      });
+
       serverLogger.info(
         `Configured branch ${branchName} to track origin/${branchName} when pushed and show diffs from main`
       );

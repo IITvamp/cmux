@@ -1,5 +1,4 @@
 #!/bin/bash
-
 # Build the Electron app first
 echo "Building Electron app..."
 npx electron-vite build -c electron.vite.config.js
