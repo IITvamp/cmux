@@ -37,8 +37,10 @@ def split_json_array(text: str) -> List[str]:
 
 def render_run_block(commands: str) -> str:
     # Note: do not indent heredoc content to keep it exact
+    # Export DESTDIR and CURRENT_WORKDIR so they're available in the subshell
     return (
         "if [ \"$EXECUTE\" = \"1\" ] && [ \"$ALLOW_DANGEROUS\" = \"1\" ]; then\n"
+        "  export DESTDIR=\"$DESTDIR\" CURRENT_WORKDIR=\"$CURRENT_WORKDIR\"\n"
         "  bash -euo pipefail <<'__CMUX_RUN__'\n"
         "cd \"${DESTDIR}${CURRENT_WORKDIR}\"\n"
         f"{commands.rstrip()}\n"

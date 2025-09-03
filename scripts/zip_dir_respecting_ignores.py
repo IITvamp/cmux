@@ -185,16 +185,36 @@ def main() -> None:
         rel_paths = filter_with_specs(rel_paths, root, [dspec])
 
     # Apply allowlist includes: force-include files matching provided patterns
+    # Optimize to avoid walking the entire tree when possible.
     includes: List[str] = args.include or []
     if includes:
-        # Build a list of all files to match against (relative paths)
-        all_files = fallback_walk_all_files(root)
-        # Build a PathSpec for includes; treat entries as gitwildmatch patterns
-        include_spec = pathspec.PathSpec.from_lines("gitwildmatch", includes)
-        for rel in all_files:
-            if include_spec.match_file(str(rel).replace("\\", "/")):
-                if rel not in rel_paths:
-                    rel_paths.append(rel)
+        def has_glob_chars(s: str) -> bool:
+            return any(ch in s for ch in "*?[]")
+
+        for inc in includes:
+            # Fast-path: direct relative file path without glob characters
+            if not has_glob_chars(inc):
+                p = (root / inc).resolve()
+                try:
+                    rel = p.relative_to(root)
+                except Exception:
+                    # If outside root or invalid, skip
+                    continue
+                if p.is_file() or (p.is_symlink() and p.resolve().is_file()):
+                    if rel not in rel_paths:
+                        rel_paths.append(rel)
+                continue
+
+            # Glob path: use rglob limited to the provided pattern
+            # Note: Path.rglob supports ** and * which covers common cases
+            for match in root.rglob(inc):
+                if match.is_file() or (match.is_symlink() and match.resolve().is_file()):
+                    try:
+                        rel = match.relative_to(root)
+                    except Exception:
+                        continue
+                    if rel not in rel_paths:
+                        rel_paths.append(rel)
 
     # Exclude the output zip if it is within root
     try:
