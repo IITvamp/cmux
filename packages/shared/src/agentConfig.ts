@@ -67,6 +67,9 @@ export interface AgentConfig {
   args: string[];
   apiKeys?: AgentConfigApiKeys;
   environment?: (ctx: EnvironmentContext) => Promise<EnvironmentResult>;
+  applyApiKeys?: (
+    keys: Record<string, string>
+  ) => Promise<Partial<EnvironmentResult>> | Partial<EnvironmentResult>; // Optional hook to apply API keys into env/files/startup commands instead of default env var injection
   waitForString?: string;
   enterKeySequence?: string; // Custom enter key sequence, defaults to "\r"
   checkRequirements?: () => Promise<string[]>; // Returns list of missing requirements
