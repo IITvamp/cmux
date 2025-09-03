@@ -1,12 +1,12 @@
 import { getAccessTokenFromRequest } from "@/lib/utils/auth";
 import { getConvex } from "@/lib/utils/get-convex";
 import { stackServerAppJs } from "@/lib/utils/stack";
-import { env } from "@/lib/utils/www-env";
 import { verifyTeamAccess } from "@/lib/utils/team-verification";
+import { env } from "@/lib/utils/www-env";
 import { api } from "@cmux/convex/api";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
-import { randomBytes } from "node:crypto";
 import { MorphCloudClient } from "morphcloud";
+import { randomBytes } from "node:crypto";
 
 export const environmentsRouter = new OpenAPIHono();
 
@@ -112,10 +112,7 @@ environmentsRouter.openapi(
         .metadata;
       const instanceTeamId = meta?.teamId;
       if (instanceTeamId && instanceTeamId !== team.uuid) {
-        return c.text(
-          "Forbidden: Instance does not belong to this team",
-          403
-        );
+        return c.text("Forbidden: Instance does not belong to this team", 403);
       }
 
       const snapshot = await instance.snapshot();
@@ -124,11 +121,11 @@ environmentsRouter.openapi(
       const dataVaultKey = `env_${randomBytes(16).toString("hex")}`;
 
       // Store environment variables in StackAuth DataBook
-      // const store =
-      //   await stackServerAppJs.getDataVaultStore("cmux-snapshot-envs");
-      // await store.setValue(dataVaultKey, body.envVarsContent, {
-      //   secret: env.STACK_DATA_VAULT_SECRET,
-      // });
+      const store =
+        await stackServerAppJs.getDataVaultStore("cmux-snapshot-envs");
+      await store.setValue(dataVaultKey, body.envVarsContent, {
+        secret: env.STACK_DATA_VAULT_SECRET,
+      });
 
       // Create environment record in Convex
       const convexClient = getConvex({ accessToken });

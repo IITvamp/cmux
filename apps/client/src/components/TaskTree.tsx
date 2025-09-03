@@ -557,9 +557,7 @@ function TaskRunTreeInner({
         style={{ paddingLeft: `${24 + (level + 1) * 16}px` }}
       >
         <GitCompare className="w-3 h-3 mr-2 text-neutral-400" />
-        <span className="text-neutral-600 dark:text-neutral-400">
-          View diff
-        </span>
+        <span className="text-neutral-600 dark:text-neutral-400">Git diff</span>
       </Link>
 
       {/* Preview link for port 5173 if available */}
@@ -586,7 +584,7 @@ function TaskRunTreeInner({
               Preview (port {port5173.port})
             </span>
           </Link>
-          
+
           {/* 3-dots menu for preview */}
           <Dropdown.Root>
             <Dropdown.Trigger
@@ -607,7 +605,11 @@ function TaskRunTreeInner({
                   <Dropdown.Arrow />
                   <Dropdown.Item
                     onClick={() => {
-                      window.open(port5173.url, "_blank", "noopener,noreferrer");
+                      window.open(
+                        port5173.url,
+                        "_blank",
+                        "noopener,noreferrer"
+                      );
                     }}
                     className="flex items-center gap-2"
                   >
