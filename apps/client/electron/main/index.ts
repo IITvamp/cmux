@@ -14,6 +14,7 @@ import {
   jwtVerify,
   type JWTPayload,
 } from "jose";
+import { existsSync } from "node:fs";
 import path, { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import util from "node:util";
@@ -30,7 +31,19 @@ let mainWindow: BrowserWindow | null = null;
 function resolveResourcePath(rel: string) {
   // Prod: packaged resources directory; Dev: look under client/assets
   if (app.isPackaged) return path.join(process.resourcesPath, rel);
-  return path.join(app.getAppPath(), "assets", rel);
+  // In development, try multiple possible locations for the icon assets
+  const devPaths = [
+    path.join(app.getAppPath(), "assets", rel), // Standard location
+    path.join(app.getAppPath(), "..", "assets", rel), // One level up
+    path.join(process.cwd(), "assets", rel), // Current working directory
+  ];
+  for (const devPath of devPaths) {
+    if (existsSync(devPath)) {
+      return devPath;
+    }
+  }
+  // Fallback to first path if none exist (will fail gracefully)
+  return devPaths[0];
 }
 
 // Lightweight logger that prints to the main process stdout and mirrors
@@ -50,7 +63,7 @@ function formatArgs(args: unknown[]): string {
   const ts = new Date().toISOString();
   const body = args
     .map((a) =>
-      typeof a === "string" ? a : util.inspect(a, { depth: 3, colors: false })
+      typeof a === "string" ? a : util.inspect(a, { depth: 3, colors: false }),
     )
     .join(" ");
   return `[${ts}] ${body}`;
@@ -106,7 +119,7 @@ function createWindow(): void {
 
   // Use only the icon from cmux-logos iconset.
   const iconPng = resolveResourcePath(
-    "cmux-logos/cmux.iconset/icon_512x512.png"
+    "cmux-logos/cmux.iconset/icon_512x512.png",
   );
   if (process.platform !== "darwin") {
     windowOptions.icon = iconPng;
@@ -156,18 +169,18 @@ app.on("open-url", (_event, url) => {
 });
 
 app.whenReady().then(() => {
-  // When packaged, electron-vite outputs the renderer to out/renderer
-  // which is bundled inside app.asar (referenced by app.getAppPath()).
-  const baseDir = path.join(app.getAppPath(), "out", "renderer");
-
-  // Set Dock icon from iconset on macOS.
+  // Set Dock icon from iconset on macOS immediately when app is ready
   if (process.platform === "darwin") {
     const iconPng = resolveResourcePath(
-      "cmux-logos/cmux.iconset/icon_512x512.png"
+      "cmux-logos/cmux.iconset/icon_512x512.png",
     );
     const img = nativeImage.createFromPath(iconPng);
     if (!img.isEmpty()) app.dock?.setIcon(img);
   }
+
+  // When packaged, electron-vite outputs the renderer to out/renderer
+  // which is bundled inside app.asar (referenced by app.getAppPath()).
+  const baseDir = path.join(app.getAppPath(), "out", "renderer");
 
   const ses = session.fromPartition(PARTITION);
   // Intercept HTTPS for our private host and serve local files; pass-through others.
@@ -177,7 +190,7 @@ app.whenReady().then(() => {
     if (u.hostname !== APP_HOST) return net.fetch(req);
     const pathname = u.pathname === "/" ? "/index.html" : u.pathname;
     const fsPath = path.normalize(
-      path.join(baseDir, decodeURIComponent(pathname))
+      path.join(baseDir, decodeURIComponent(pathname)),
     );
     const rel = path.relative(baseDir, fsPath);
     if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) {
@@ -218,7 +231,7 @@ function jwksForIssuer(issuer: string) {
 }
 
 async function verifyJwtAndGetPayload(
-  token: string
+  token: string,
 ): Promise<JWTPayload | null> {
   try {
     const decoded = decodeJwt(token);
@@ -275,7 +288,7 @@ async function handleProtocolUrl(url: string): Promise<void> {
     await Promise.all([
       mainWindow.webContents.session.cookies.remove(
         realUrl,
-        `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`
+        `stack-refresh-${env.NEXT_PUBLIC_STACK_PROJECT_ID}`,
       ),
       mainWindow.webContents.session.cookies.remove(realUrl, `stack-access`),
     ]);
