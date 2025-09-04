@@ -13,6 +13,12 @@
   "asar": true,
   "npmRebuild": false,
   "nodeGypRebuild": false,
+  "protocols": [
+    {
+      "name": "cmux",
+      "schemes": ["cmux"]
+    }
+  ],
   "extraResources": [
     {
       "from": "assets/cmux-logos/cmux.iconset",

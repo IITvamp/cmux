@@ -7,7 +7,8 @@ const client = new MorphCloudClient();
 
 console.log("Starting instance");
 const instance = await client.instances.start({
-  snapshotId: "snapshot_hzlmd4kx",
+  // snapshotId: "snapshot_hzlmd4kx",
+  snapshotId: "snapshot_g9klz9c4",
   // 30 minutes
   ttlSeconds: 60 * 60 * 2,
   ttlAction: "pause",
@@ -36,7 +37,7 @@ process.on("SIGINT", async () => {
   process.exit(0);
 });
 
-await new Promise(() => void {});
+// await new Promise(() => void {});
 
 console.log(`Created instance: ${instance.id}`);
 

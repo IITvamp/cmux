@@ -5,6 +5,7 @@ import z from "zod";
 import { getConvex } from "../utils/convexClient.js";
 import { dockerLogger } from "../utils/fileLogger.js";
 import { workerExec } from "../utils/workerExec.js";
+import { retryOnOptimisticConcurrency } from "../utils/convexRetry.js";
 import {
   VSCodeInstance,
   type VSCodeInstanceConfig,
@@ -25,7 +26,9 @@ export class MorphVSCodeInstance extends VSCodeInstance {
     this.morphClient = new MorphCloudClient();
     // this.morphSnapshotId = config.morphSnapshotId || "snapshot_xf8w00is";
     // this.morphSnapshotId = config.morphSnapshotId || "snapshot_hwmk73mg";
-    this.morphSnapshotId = config.morphSnapshotId || "snapshot_mr26f6pw";
+    // this.morphSnapshotId = config.morphSnapshotId || "snapshot_mr26f6pw";
+    // this.morphSnapshotId = config.morphSnapshotId || "snapshot_g9klz9c4";
+    this.morphSnapshotId = config.morphSnapshotId || "snapshot_ghucvzgl";
   }
 
   async start(): Promise<VSCodeInstanceInfo> {
@@ -148,7 +151,7 @@ export class MorphVSCodeInstance extends VSCodeInstance {
     const devcontainerJson = await workerExec({
       workerSocket: this.getWorkerSocket(),
       command: "cat",
-      args: ["/root/workspace/.devcontainer/devcontainer.json"],
+      args: ["/root/workspace/cmux/.devcontainer/devcontainer.json"],
       cwd: "/root",
       env: {},
     });
@@ -214,12 +217,24 @@ export class MorphVSCodeInstance extends VSCodeInstance {
 
     console.log("[MorphVSCodeInstance] Networking:", devcontainerNetwork);
 
-    // Persist networking information to Convex
-    await getConvex().mutation(api.taskRuns.updateNetworking, {
-      teamSlugOrId: this.teamSlugOrId,
-      id: this.taskRunId,
-      networking: devcontainerNetwork,
-    });
+    // Persist networking information to Convex, tolerant to OCC conflicts
+    try {
+      await retryOnOptimisticConcurrency(
+        () =>
+          getConvex().mutation(api.taskRuns.updateNetworking, {
+            teamSlugOrId: this.teamSlugOrId,
+            id: this.taskRunId,
+            networking: devcontainerNetwork,
+          }),
+        { retries: 5, baseDelayMs: 80 }
+      );
+    } catch (error) {
+      console.error(
+        "[MorphVSCodeInstance] Failed to persist networking after retries",
+        error
+      );
+      // Non-fatal: continue without crashing the process
+    }
 
     console.log("[MorphVSCodeInstance] Starting devcontainer");
     const HACK_DEMO_DEVCONTAINER = true;

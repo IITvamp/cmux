@@ -4,6 +4,7 @@ import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { useMemo } from "react";
+import { ElectronWebViewOrIframe } from "@/components/electron-webview";
 import z from "zod";
 
 const paramsSchema = z.object({
@@ -55,11 +56,12 @@ function PreviewPage() {
   return (
     <FloatingPane>
       {previewUrl ? (
-        <iframe
+        <ElectronWebViewOrIframe
           src={previewUrl}
           className="w-full h-full border-0"
           title={`Preview on port ${port}`}
           sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-downloads"
+          allowPopups
         />
       ) : (
         <div className="flex items-center justify-center h-full bg-white dark:bg-neutral-950">

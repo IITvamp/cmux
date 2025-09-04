@@ -30,8 +30,17 @@ cachedGetUser(stackClientApp).then(async (user) => {
     signalConvexAuthReady(false);
     return;
   }
+  let isFirstTime = true;
   convexQueryClient.convexClient.setAuth(
-    async () => authJson.accessToken,
+    async () => {
+      // First time we get the auth token, we use the cached one. In subsequent calls, we call stack to get the latest auth token.
+      if (isFirstTime) {
+        isFirstTime = false;
+        return authJson.accessToken;
+      }
+      const newAuthJson = await user.getAuthJson();
+      return newAuthJson.accessToken;
+    },
     (isAuthenticated) => {
       signalConvexAuthReady(isAuthenticated);
     }

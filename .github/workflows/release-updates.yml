@@ -18,6 +18,7 @@ env:
   NEXT_PUBLIC_CONVEX_URL: ${{ secrets.NEXT_PUBLIC_CONVEX_URL }}
   NEXT_PUBLIC_STACK_PROJECT_ID: ${{ secrets.NEXT_PUBLIC_STACK_PROJECT_ID }}
   NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: ${{ secrets.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY }}
+  NEXT_PUBLIC_WWW_ORIGIN: ${{ secrets.NEXT_PUBLIC_WWW_ORIGIN }}
 
 jobs:
   mac-x64:
@@ -39,6 +40,9 @@ jobs:
       - name: Ensure pnpm lock visible to electron-builder
         shell: bash
         run: cp pnpm-lock.yaml apps/client/pnpm-lock.yaml
+      - name: Generate icons
+        working-directory: apps/client
+        run: pnpm exec node ./scripts/generate-icons.mjs
       - name: Detect mac signing secrets
         id: signing
         env:
@@ -104,6 +108,9 @@ jobs:
       - name: Ensure pnpm lock visible to electron-builder
         shell: bash
         run: cp pnpm-lock.yaml apps/client/pnpm-lock.yaml
+      - name: Generate icons
+        working-directory: apps/client
+        run: pnpm exec node ./scripts/generate-icons.mjs
       - name: Detect mac signing secrets
         id: signing
         env:
@@ -169,6 +176,9 @@ jobs:
       - name: Ensure pnpm lock visible to electron-builder
         shell: bash
         run: cp pnpm-lock.yaml apps/client/pnpm-lock.yaml
+      - name: Generate icons
+        working-directory: apps/client
+        run: pnpm exec node ./scripts/generate-icons.mjs
       - name: Build & publish Windows x64 to GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
@@ -197,6 +207,9 @@ jobs:
       - name: Ensure pnpm lock visible to electron-builder
         shell: bash
         run: cp pnpm-lock.yaml apps/client/pnpm-lock.yaml
+      - name: Generate icons
+        working-directory: apps/client
+        run: pnpm exec node ./scripts/generate-icons.mjs
       - name: Build & publish Linux AppImage x64 to GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
