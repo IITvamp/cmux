@@ -511,61 +511,63 @@ function DashboardComponent() {
   );
 
   return (
-    <FloatingPane>
-      <div className="flex flex-col grow overflow-y-auto">
-        {/* Main content area */}
-        <div className="flex-1 flex justify-center px-4 pt-60 pb-4">
-          <div className="w-full max-w-4xl min-w-0">
-            <div
-              className={clsx(
-                "relative bg-white dark:bg-neutral-700/50 border border-neutral-200 dark:border-neutral-500/15 rounded-2xl transition-all"
-              )}
-            >
-              {/* Provider Status Pills */}
-              <ProviderStatusPills teamSlugOrId={teamSlugOrId} />
+    <>
+      <FloatingPane>
+        <div className="flex flex-col grow overflow-y-auto">
+          {/* Main content area */}
+          <div className="flex-1 flex justify-center px-4 pt-60 pb-4">
+            <div className="w-full max-w-4xl min-w-0">
+              <div
+                className={clsx(
+                  "relative bg-white dark:bg-neutral-700/50 border border-neutral-200 dark:border-neutral-500/15 rounded-2xl transition-all"
+                )}
+              >
+                {/* Provider Status Pills */}
+                <ProviderStatusPills teamSlugOrId={teamSlugOrId} />
 
-              {/* Editor Input */}
-              <DashboardInput
-                ref={editorApiRef}
-                onTaskDescriptionChange={handleTaskDescriptionChange}
-                onSubmit={handleSubmit}
-                repoUrl={lexicalRepoUrl}
-                branch={lexicalBranch}
-                persistenceKey="dashboard-task-description"
-                maxHeight="300px"
-              />
+                {/* Editor Input */}
+                <DashboardInput
+                  ref={editorApiRef}
+                  onTaskDescriptionChange={handleTaskDescriptionChange}
+                  onSubmit={handleSubmit}
+                  repoUrl={lexicalRepoUrl}
+                  branch={lexicalBranch}
+                  persistenceKey="dashboard-task-description"
+                  maxHeight="300px"
+                />
 
-              {/* Bottom bar: controls + submit button */}
-              <DashboardInputFooter>
-                <DashboardInputControls
-                  projectOptions={projectOptions}
-                  selectedProject={selectedProject}
-                  onProjectChange={handleProjectChange}
-                  branchOptions={branchOptions}
-                  selectedBranch={effectiveSelectedBranch}
-                  onBranchChange={handleBranchChange}
-                  selectedAgents={selectedAgents}
-                  onAgentChange={handleAgentChange}
-                  isCloudMode={isCloudMode}
-                  onCloudModeToggle={handleCloudModeToggle}
-                  isLoadingProjects={reposByOrgQuery.isLoading}
-                  isLoadingBranches={
-                    isLoadingBranches || branchesQuery.isLoading
-                  }
-                  teamSlugOrId={teamSlugOrId}
-                />
-                <DashboardStartTaskButton
-                  canSubmit={canSubmit}
-                  onStartTask={handleStartTask}
-                />
-              </DashboardInputFooter>
+                {/* Bottom bar: controls + submit button */}
+                <DashboardInputFooter>
+                  <DashboardInputControls
+                    projectOptions={projectOptions}
+                    selectedProject={selectedProject}
+                    onProjectChange={handleProjectChange}
+                    branchOptions={branchOptions}
+                    selectedBranch={effectiveSelectedBranch}
+                    onBranchChange={handleBranchChange}
+                    selectedAgents={selectedAgents}
+                    onAgentChange={handleAgentChange}
+                    isCloudMode={isCloudMode}
+                    onCloudModeToggle={handleCloudModeToggle}
+                    isLoadingProjects={reposByOrgQuery.isLoading}
+                    isLoadingBranches={
+                      isLoadingBranches || branchesQuery.isLoading
+                    }
+                    teamSlugOrId={teamSlugOrId}
+                  />
+                  <DashboardStartTaskButton
+                    canSubmit={canSubmit}
+                    onStartTask={handleStartTask}
+                  />
+                </DashboardInputFooter>
+              </div>
+
+              {/* Task List */}
+              <TaskList teamSlugOrId={teamSlugOrId} />
             </div>
-
-            {/* Task List */}
-            <TaskList teamSlugOrId={teamSlugOrId} />
           </div>
         </div>
-      </div>
-    </FloatingPane>
+      </FloatingPane>
+    </>
   );
 }
