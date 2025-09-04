@@ -5,6 +5,7 @@ import z from "zod";
 import { getConvex } from "../utils/convexClient.js";
 import { dockerLogger } from "../utils/fileLogger.js";
 import { workerExec } from "../utils/workerExec.js";
+import { retryOnOptimisticConcurrency } from "../utils/convexRetry.js";
 import {
   VSCodeInstance,
   type VSCodeInstanceConfig,
@@ -216,12 +217,24 @@ export class MorphVSCodeInstance extends VSCodeInstance {
 
     console.log("[MorphVSCodeInstance] Networking:", devcontainerNetwork);
 
-    // Persist networking information to Convex
-    await getConvex().mutation(api.taskRuns.updateNetworking, {
-      teamSlugOrId: this.teamSlugOrId,
-      id: this.taskRunId,
-      networking: devcontainerNetwork,
-    });
+    // Persist networking information to Convex, tolerant to OCC conflicts
+    try {
+      await retryOnOptimisticConcurrency(
+        () =>
+          getConvex().mutation(api.taskRuns.updateNetworking, {
+            teamSlugOrId: this.teamSlugOrId,
+            id: this.taskRunId,
+            networking: devcontainerNetwork,
+          }),
+        { retries: 5, baseDelayMs: 80 }
+      );
+    } catch (error) {
+      console.error(
+        "[MorphVSCodeInstance] Failed to persist networking after retries",
+        error
+      );
+      // Non-fatal: continue without crashing the process
+    }
 
     console.log("[MorphVSCodeInstance] Starting devcontainer");
     const HACK_DEMO_DEVCONTAINER = true;
