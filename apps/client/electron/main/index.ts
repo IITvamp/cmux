@@ -180,6 +180,7 @@ function createWindow(): void {
       sandbox: false,
       contextIsolation: true,
       nodeIntegration: false,
+      webviewTag: true,
       partition: PARTITION,
     },
   };
@@ -239,6 +240,16 @@ app.on("open-url", (_event, url) => {
 });
 
 app.whenReady().then(() => {
+  // Try to register the custom protocol handler with the OS. electron-builder
+  // will add CFBundleURLTypes on macOS, but calling this is harmless and also
+  // helps on Windows/Linux when packaged.
+  try {
+    const ok = app.setAsDefaultProtocolClient("cmux");
+    mainLog("setAsDefaultProtocolClient(cmux)", { ok, packaged: app.isPackaged });
+  } catch (e) {
+    mainWarn("setAsDefaultProtocolClient failed", e);
+  }
+
   // When packaged, electron-vite outputs the renderer to out/renderer
   // which is bundled inside app.asar (referenced by app.getAppPath()).
   const baseDir = path.join(app.getAppPath(), "out", "renderer");

@@ -5,6 +5,7 @@ import { convexQuery } from "@convex-dev/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { useMemo } from "react";
+import { ElectronWebViewOrIframe } from "@/components/electron-webview";
 import z from "zod";
 
 const paramsSchema = z.object({
@@ -126,10 +127,11 @@ function RunPullRequestPage() {
                 <p className="text-sm">Pull request is being created...</p>
               </div>
             ) : hasUrl ? (
-              <iframe
+              <ElectronWebViewOrIframe
                 src={pullRequestUrl}
                 className="w-full h-full border-0"
                 title="GitHub Pull Request"
+                allowPopups
               />
             ) : (
               <div className="flex flex-col items-center justify-center h-full text-neutral-500 dark:text-neutral-400">
