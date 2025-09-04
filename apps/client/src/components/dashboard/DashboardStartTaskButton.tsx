@@ -25,7 +25,7 @@ export function DashboardStartTaskButton({
           <Button
             size="sm"
             variant="default"
-            className="!h-7"
+            className="!h-7 bg-orange-500 hover:bg-orange-600 text-white border-orange-500 dark:bg-orange-500 dark:hover:bg-orange-600"
             onClick={onStartTask}
             disabled={!canSubmit}
           >
