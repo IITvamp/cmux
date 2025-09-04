@@ -337,6 +337,146 @@ export async function evaluateCrownWithClaudeCode(
 
     const githubToken = await getGitHubTokenFromKeychain();
 
+    // Helper: generate and persist a system task comment summarizing the winner
+    const generateSystemTaskComment = async (
+      winnerRunId: Id<"taskRuns">,
+      fallbackGitDiff: string
+    ) => {
+      try {
+        // Skip if a system comment already exists for this task
+        const existing = await getConvex().query(
+          api.taskComments.latestSystemByTask,
+          { teamSlugOrId, taskId }
+        );
+        if (existing) {
+          serverLogger.info(
+            `[CrownEvaluator] System task comment already exists; skipping generation.`
+          );
+          return;
+        }
+
+        // Try to collect worker diff for the winner; fall back to provided diff
+        let effectiveDiff = fallbackGitDiff || "";
+        const instances = VSCodeInstance.getInstances();
+        let instance: VSCodeInstance | undefined;
+        for (const [, inst] of instances) {
+          if (inst.getTaskRunId() === winnerRunId) {
+            instance = inst;
+            break;
+          }
+        }
+        if (instance && instance.isWorkerConnected()) {
+          try {
+            const workerSocket = instance.getWorkerSocket();
+            const { stdout } = await workerExec({
+              workerSocket,
+              command: "/bin/bash",
+              args: ["-c", "/usr/local/bin/cmux-collect-relevant-diff.sh"],
+              cwd: "/root/workspace",
+              env: {},
+              timeout: 30000,
+            });
+            const diff = (stdout || "").trim();
+            if (diff.length > 0) effectiveDiff = diff;
+          } catch (e) {
+            serverLogger.error(
+              `[CrownEvaluator] Failed to collect diff for task comment:`,
+              e
+            );
+          }
+        }
+
+        // Pull original request text for context
+        const task = await getConvex().query(api.tasks.getById, {
+          teamSlugOrId,
+          id: taskId,
+        });
+        const originalRequest = task?.text || "";
+
+        // Summarization prompt
+        const summarizationPrompt = `You are an expert reviewer summarizing a pull request.\n\nGOAL\n- Explain succinctly what changed and why.\n- Call out areas the user should review carefully.\n- Provide a quick test plan to validate the changes.\n\nCONTEXT\n- User's original request:\n${originalRequest}\n- Relevant diffs (unified):\n${effectiveDiff || "<no code changes captured>"}\n\nINSTRUCTIONS\n- Base your summary strictly on the provided diffs and request.\n- Be specific about files and functions when possible.\n- Prefer clear bullet points over prose. Keep it under ~300 words.\n- If there are no code changes, say so explicitly and suggest next steps.\n\nOUTPUT FORMAT (Markdown)\n## PR Review Summary\n- What Changed: bullet list\n- Review Focus: bullet list (risks/edge cases)\n- Test Plan: bullet list of practical steps\n- Follow-ups: optional bullets if applicable\n`;
+
+        serverLogger.info(
+          `[CrownEvaluator] Generating PR summary comment via Claude Code...`
+        );
+
+        let commentText = "";
+        try {
+          const args = [
+            "@anthropic-ai/claude-code",
+            "--model",
+            "claude-sonnet-4-20250514",
+            "--dangerously-skip-permissions",
+          ];
+          const proc = spawn("bunx", args, {
+            env: { ...process.env },
+            stdio: ["pipe", "pipe", "pipe"],
+            shell: false,
+          });
+
+          proc.stdin.write(summarizationPrompt);
+          proc.stdin.end();
+
+          let out = "";
+          let err = "";
+          const sExit: number = await new Promise((resolve, reject) => {
+            let exited = false;
+            proc.stdout.on("data", (d) => (out += d.toString()));
+            proc.stderr.on("data", (d) => (err += d.toString()));
+            proc.on("close", (code) => {
+              exited = true;
+              resolve(code ?? 0);
+            });
+            proc.on("error", (e) => {
+              exited = true;
+              reject(e);
+            });
+            setTimeout(() => {
+              if (!exited) {
+                proc.kill("SIGKILL");
+                reject(new Error("Claude Code summarization timeout"));
+              }
+            }, 60000);
+          });
+
+          if (sExit !== 0) {
+            serverLogger.error(
+              `[CrownEvaluator] Claude Code summarization failed: ${err}`
+            );
+          }
+          commentText = out.trim();
+        } catch (e) {
+          serverLogger.error(
+            `[CrownEvaluator] Error running Claude Code summarization:`,
+            e
+          );
+        }
+
+        if (!commentText) {
+          commentText = `## PR Review Summary\n- No AI summary available.\n- Captured diffs were empty or summarization failed.\n\nPlease review recent changes manually.`;
+        }
+
+        if (commentText.length > 8000) {
+          commentText = commentText.slice(0, 8000) + "\n\n… (truncated)";
+        }
+
+        await getConvex().mutation(api.taskComments.createSystemForTask, {
+          teamSlugOrId,
+          taskId,
+          content: commentText,
+        });
+
+        serverLogger.info(
+          `[CrownEvaluator] Saved system task comment for task ${taskId}`
+        );
+      } catch (e) {
+        serverLogger.error(
+          `[CrownEvaluator] Failed to create system task comment:`,
+          e
+        );
+      }
+    };
+
     // Get task and runs
     const task = await getConvex().query(api.tasks.getById, {
       teamSlugOrId,
@@ -751,6 +891,10 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
       serverLogger.info(
         `[CrownEvaluator] Fallback winner selected: ${fallbackWinner.agentName}`
       );
+      await generateSystemTaskComment(
+        fallbackWinner.runId,
+        fallbackWinner.gitDiff
+      );
       await createPullRequestForWinner(
         fallbackWinner.runId,
         taskId,
@@ -793,6 +937,10 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
 
       serverLogger.info(
         `[CrownEvaluator] Fallback winner selected: ${fallbackWinner.agentName}`
+      );
+      await generateSystemTaskComment(
+        fallbackWinner.runId,
+        fallbackWinner.gitDiff
       );
       await createPullRequestForWinner(
         fallbackWinner.runId,
@@ -906,6 +1054,10 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
         serverLogger.info(
           `[CrownEvaluator] Fallback winner selected: ${fallbackWinner.agentName}`
         );
+        await generateSystemTaskComment(
+          fallbackWinner.runId,
+          fallbackWinner.gitDiff
+        );
         await createPullRequestForWinner(
           fallbackWinner.runId,
           taskId,
@@ -939,6 +1091,10 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
 
       serverLogger.info(
         `[CrownEvaluator] Fallback winner selected: ${fallbackWinner.agentName}`
+      );
+      await generateSystemTaskComment(
+        fallbackWinner.runId,
+        fallbackWinner.gitDiff
       );
       await createPullRequestForWinner(
         fallbackWinner.runId,
@@ -982,166 +1138,7 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
     );
 
     // After choosing a winner, generate and persist a task comment (by cmux)
-    try {
-      // Skip if a system comment already exists for this task
-      const existing = await getConvex().query(
-        api.taskComments.latestSystemByTask,
-        { teamSlugOrId, taskId }
-      );
-      if (existing) {
-        serverLogger.info(
-          `[CrownEvaluator] System task comment already exists; skipping generation.`
-        );
-        return;
-      }
-
-      // Reuse the worker-based diff collection for the winning run
-      const winnerDiff = (await (async () => {
-        try {
-          const diff = await (async () => {
-            // Local inline reuse of earlier helper (cannot reference above inner function)
-            const instances = VSCodeInstance.getInstances();
-            let instance: VSCodeInstance | undefined;
-            for (const [, inst] of instances) {
-              if (inst.getTaskRunId() === winner.runId) {
-                instance = inst;
-                break;
-              }
-            }
-            if (!instance || !instance.isWorkerConnected()) {
-              return null;
-            }
-            const workerSocket = instance.getWorkerSocket();
-            const { stdout } = await workerExec({
-              workerSocket,
-              command: "/bin/bash",
-              args: ["-c", "/usr/local/bin/cmux-collect-relevant-diff.sh"],
-              cwd: "/root/workspace",
-              env: {},
-              timeout: 30000,
-            });
-            return stdout?.trim() || null;
-          })();
-          return diff ?? "";
-        } catch (e) {
-          serverLogger.error(
-            `[CrownEvaluator] Failed to collect diff for task comment:`,
-            e
-          );
-          return "";
-        }
-      })()) || "";
-
-      // Fallback to winner.gitDiff from candidateData if worker diff missing
-      const effectiveDiff = winnerDiff || winner.gitDiff || "";
-
-      const originalRequest = task.text || "";
-
-      const summarizationPrompt = `You are an expert reviewer summarizing a pull request.
-
-GOAL
-- Explain succinctly what changed and why.
-- Call out areas the user should review carefully.
-- Provide a quick test plan to validate the changes.
-
-CONTEXT
-- User's original request:\n${originalRequest}
-- Relevant diffs (unified):\n${effectiveDiff || "<no code changes captured>"}
-
-INSTRUCTIONS
-- Base your summary strictly on the provided diffs and request.
-- Be specific about files and functions when possible.
-- Prefer clear bullet points over prose. Keep it under ~300 words.
-- If there are no code changes, say so explicitly and suggest next steps.
-
-OUTPUT FORMAT (Markdown)
-## PR Review Summary
-- What Changed: bullet list
-- Review Focus: bullet list (risks/edge cases)
-- Test Plan: bullet list of practical steps
-- Follow-ups: optional bullets if applicable
-`;
-
-      serverLogger.info(
-        `[CrownEvaluator] Generating PR summary comment via Claude Code...`
-      );
-
-      let commentText = "";
-      try {
-        const args = [
-          "@anthropic-ai/claude-code",
-          "--model",
-          "claude-sonnet-4-20250514",
-          "--dangerously-skip-permissions",
-        ];
-        const proc = spawn("bunx", args, {
-          env: { ...process.env },
-          stdio: ["pipe", "pipe", "pipe"],
-          shell: false,
-        });
-
-        proc.stdin.write(summarizationPrompt);
-        proc.stdin.end();
-
-        let out = "";
-        let err = "";
-        const exitCode: number = await new Promise((resolve, reject) => {
-          let exited = false;
-          proc.stdout.on("data", (d) => (out += d.toString()));
-          proc.stderr.on("data", (d) => (err += d.toString()));
-          proc.on("close", (code) => {
-            exited = true;
-            resolve(code ?? 0);
-          });
-          proc.on("error", (e) => {
-            exited = true;
-            reject(e);
-          });
-          setTimeout(() => {
-            if (!exited) {
-              proc.kill("SIGKILL");
-              reject(new Error("Claude Code summarization timeout"));
-            }
-          }, 60000);
-        });
-
-        if (exitCode !== 0) {
-          serverLogger.error(
-            `[CrownEvaluator] Claude Code summarization failed: ${err}`
-          );
-        }
-        commentText = out.trim();
-      } catch (e) {
-        serverLogger.error(
-          `[CrownEvaluator] Error running Claude Code summarization:`,
-          e
-        );
-      }
-
-      if (!commentText) {
-        commentText = `## PR Review Summary\n- No AI summary available.\n- Captured diffs were empty or summarization failed.\n\nPlease review recent changes manually.`;
-      }
-
-      // Trim very long responses
-      if (commentText.length > 8000) {
-        commentText = commentText.slice(0, 8000) + "\n\n… (truncated)";
-      }
-
-      await getConvex().mutation(api.taskComments.createSystemForTask, {
-        teamSlugOrId,
-        taskId,
-        content: commentText,
-      });
-
-      serverLogger.info(
-        `[CrownEvaluator] Saved system task comment for task ${taskId}`
-      );
-    } catch (e) {
-      serverLogger.error(
-        `[CrownEvaluator] Failed to create system task comment:`,
-        e
-      );
-    }
+    await generateSystemTaskComment(winner.runId, winner.gitDiff);
   } catch (error) {
     serverLogger.error(`[CrownEvaluator] Error during evaluation:`, error);
 
