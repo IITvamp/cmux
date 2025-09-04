@@ -732,7 +732,9 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
         id: taskId,
         crownEvaluationError: "in_progress",
       });
-    } catch {}
+    } catch {
+      /* empty */
+    }
 
     serverLogger.info(`[CrownEvaluator] Starting Claude Code spawn...`);
     const startTime = Date.now();
