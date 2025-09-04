@@ -87,9 +87,10 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
                 }
                 className={clsx(
                   "flex items-center gap-2 px-3 py-1.5 rounded-lg",
-                  "bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-600",
-                  "text-neutral-800 dark:text-neutral-200",
-                  "text-xs font-medium cursor-default select-none"
+                  "bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700",
+                  "text-neutral-900 dark:text-neutral-100",
+                  "text-xs font-medium cursor-default select-none",
+                  "shadow-sm hover:shadow-md transition-shadow"
                 )}
               >
                 <div className="w-2 h-2 rounded-full bg-red-500"></div>
@@ -134,7 +135,7 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
                     {unavailableProviders.length > 1 ? "s" : ""} need setup
                   </p>
                 )}
-                <p className="text-slate-500 dark:text-slate-400 mt-2 pt-1 border-t border-slate-200 dark:border-slate-700">
+                <p className="text-neutral-500 dark:text-neutral-400 mt-2 pt-1 border-t border-neutral-200 dark:border-neutral-700">
                   Click to open settings
                 </p>
               </div>
@@ -154,9 +155,10 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
                   }
                   className={clsx(
                     "flex items-center gap-1.5 px-2.5 py-1 rounded-lg",
-                    "bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-600",
-                    "text-neutral-800 dark:text-neutral-200",
-                    "text-xs font-medium cursor-default select-none"
+                    "bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700",
+                    "text-neutral-900 dark:text-neutral-100",
+                    "text-xs font-medium cursor-default select-none",
+                    "shadow-sm hover:shadow transition-shadow"
                   )}
                 >
                   <div className="w-1.5 h-1.5 rounded-full bg-orange-500"></div>
@@ -184,9 +186,10 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
                   }
                   className={clsx(
                     "flex items-center gap-1.5 px-2.5 py-1 rounded-lg",
-                    "bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-600",
-                    "text-neutral-800 dark:text-neutral-200",
-                    "text-xs font-medium cursor-default select-none"
+                    "bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700",
+                    "text-neutral-900 dark:text-neutral-100",
+                    "text-xs font-medium cursor-default select-none",
+                    "shadow-sm hover:shadow transition-shadow"
                   )}
                 >
                   <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div>
@@ -214,9 +217,10 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
                   }
                   className={clsx(
                     "flex items-center gap-1.5 px-2.5 py-1 rounded-lg",
-                    "bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-600",
-                    "text-neutral-800 dark:text-neutral-200",
-                    "text-xs font-medium cursor-default select-none"
+                    "bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700",
+                    "text-neutral-900 dark:text-neutral-100",
+                    "text-xs font-medium cursor-default select-none",
+                    "shadow-sm hover:shadow transition-shadow"
                   )}
                 >
                   {dockerImagePulling ? (
@@ -250,9 +254,10 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
                   }
                   className={clsx(
                     "flex items-center gap-1.5 px-2.5 py-1 rounded-lg",
-                    "bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-600",
-                    "text-neutral-800 dark:text-neutral-200",
-                    "text-xs font-medium cursor-default select-none"
+                    "bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700",
+                    "text-neutral-900 dark:text-neutral-100",
+                    "text-xs font-medium cursor-default select-none",
+                    "shadow-sm hover:shadow transition-shadow"
                   )}
                 >
                   <div className="w-1.5 h-1.5 rounded-full bg-amber-500"></div>
