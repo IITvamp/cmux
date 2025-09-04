@@ -723,7 +723,7 @@ export function CmuxComments({ teamSlugOrId }: { teamSlugOrId: string }) {
     const port = window.location.port;
     const isLocalhost5173 = hostname === "localhost" && port === "5173";
     const isElectronApp = hostname === "cmux.local";
-    return !isLocalhost5173 || isElectronApp || forceShow;
+    return !isLocalhost5173 || !isElectronApp || forceShow;
   };
 
   if (!shouldRender()) {
