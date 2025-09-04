@@ -180,6 +180,7 @@ function createWindow(): void {
       sandbox: false,
       contextIsolation: true,
       nodeIntegration: false,
+      webviewTag: true,
       partition: PARTITION,
     },
   };
