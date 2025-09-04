@@ -330,6 +330,19 @@ const convexSchema = defineSchema({
     teamId: v.string(),
   }).index("by_team_user", ["teamId", "userId"]),
 
+  // System and user comments attached to a task
+  taskComments: defineTable({
+    taskId: v.id("tasks"),
+    content: v.string(),
+    userId: v.string(), // "cmux" for system comments; otherwise the author user id
+    teamId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_task", ["taskId", "createdAt"]) // fetch comments for a task chronologically
+    .index("by_team_task", ["teamId", "taskId", "createdAt"]) // scoped by team
+    .index("by_team_user", ["teamId", "userId"]),
+
   comments: defineTable({
     url: v.string(), // Full URL of the website where comment was created
     page: v.string(), // Page URL/path where comment was created
