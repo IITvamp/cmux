@@ -560,6 +560,22 @@ function TaskRunTreeInner({
         <span className="text-neutral-600 dark:text-neutral-400">Git diff</span>
       </Link>
 
+      {/* Pull Request link as a separate tree item */}
+      {run.pullRequestUrl && run.pullRequestUrl !== "pending" && (
+        <Link
+          to="/$teamSlugOrId/task/$taskId/run/$runId/pr"
+          params={{ teamSlugOrId, taskId, runId: run._id }}
+          className={clsx(
+            "flex items-center px-2 py-1 text-xs rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default mt-px",
+            "[&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800"
+          )}
+          style={{ paddingLeft: `${24 + (level + 1) * 16}px` }}
+        >
+          <GitPullRequest className="w-3 h-3 mr-2 text-neutral-400" />
+          <span className="text-neutral-600 dark:text-neutral-400">Pull Request</span>
+        </Link>
+      )}
+
       {/* Preview link for port 5173 if available */}
       {port5173 && (
         <div className="relative group mt-px">
