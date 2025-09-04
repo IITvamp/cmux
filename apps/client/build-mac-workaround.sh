@@ -60,6 +60,13 @@ echo "Updating app metadata..."
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion 1.0.0" "$APP_DIR/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 1.0.0" "$APP_DIR/Contents/Info.plist"
 
+# Register cmux:// URL scheme so macOS knows to open this app for deep links
+/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" "$APP_DIR/Contents/Info.plist" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0 dict" "$APP_DIR/Contents/Info.plist" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLName string cmux" "$APP_DIR/Contents/Info.plist" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" "$APP_DIR/Contents/Info.plist" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string cmux" "$APP_DIR/Contents/Info.plist" 2>/dev/null || true
+
 # Ensure our app icon is bundled and used by macOS
 ICONSET_SRC="$(pwd)/assets/cmux-logos/cmux.iconset"
 BUILD_ICON_ICNS="$(pwd)/build/icon.icns"

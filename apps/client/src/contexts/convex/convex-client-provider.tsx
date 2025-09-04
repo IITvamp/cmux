@@ -14,8 +14,8 @@ import {
   useEffect,
   useMemo,
   useState,
-  type ReactNode,
   type CSSProperties,
+  type ReactNode,
 } from "react";
 import { authJsonQueryOptions } from "./authJsonQueryOptions";
 import { convexQueryClient } from "./convex-query-client";
@@ -108,6 +108,7 @@ function AuthenticatedOrSignIn({
                 <p className="text-xs text-neutral-500 dark:text-neutral-500 text-center">
                   After signing in, you'll be returned automatically.
                 </p>
+                <SignIn />
               </div>
             ) : (
               <SignIn />

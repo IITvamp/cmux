@@ -1,5 +1,5 @@
-import React from "react";
 import { isElectron } from "@/lib/electron";
+import React from "react";
 
 type ElectronAwareWebViewProps = {
   src: string;
