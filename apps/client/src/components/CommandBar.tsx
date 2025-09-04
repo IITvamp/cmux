@@ -1,6 +1,6 @@
 import { useTheme } from "@/components/theme/use-theme";
 import { api } from "@cmux/convex/api";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useRouter } from "@tanstack/react-router";
 import { Command } from "cmdk";
 import { useQuery, useMutation } from "convex/react";
 import { Monitor, Moon, Sun } from "lucide-react";
@@ -15,6 +15,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const navigate = useNavigate();
+  const router = useRouter();
   const { setTheme } = useTheme();
 
   const allTasks = useQuery(api.tasks.get, { teamSlugOrId });
@@ -31,6 +32,44 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
     document.addEventListener("keydown", down);
     return () => document.removeEventListener("keydown", down);
   }, []);
+
+  const handleHighlight = useCallback(
+    async (value: string) => {
+      if (value?.startsWith("task:")) {
+        const parts = value.slice(5).split(":");
+        const taskId = parts[0];
+        const action = parts[1];
+        
+        try {
+          if (!action) {
+            // Preload main task route
+            await router.preloadRoute({
+              to: "/$teamSlugOrId/task/$taskId",
+              // @ts-expect-error - taskId from string
+              params: { teamSlugOrId, taskId },
+            });
+          } else if (action === "vs") {
+            // Preload VS Code route (will need a runId when actually navigating)
+            await router.preloadRoute({
+              to: "/$teamSlugOrId/task/$taskId",
+              // @ts-expect-error - taskId from string
+              params: { teamSlugOrId, taskId },
+            });
+          } else if (action === "gitdiff") {
+            // Preload git diff route (will need a runId when actually navigating)
+            await router.preloadRoute({
+              to: "/$teamSlugOrId/task/$taskId",
+              // @ts-expect-error - taskId from string
+              params: { teamSlugOrId, taskId },
+            });
+          }
+        } catch {
+          // Silently fail preloading
+        }
+      }
+    },
+    [router, teamSlugOrId]
+  );
 
   const handleSelect = useCallback(
     async (value: string) => {
@@ -117,6 +156,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
             setSearch("");
           }
         }}
+        onValueChange={handleHighlight}
       >
         <div className="w-full max-w-2xl bg-white dark:bg-neutral-900 rounded-xl shadow-2xl border border-neutral-200 dark:border-neutral-700 overflow-hidden pointer-events-auto">
         <Command.Input
