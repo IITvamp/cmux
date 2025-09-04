@@ -26,7 +26,8 @@ export class MorphVSCodeInstance extends VSCodeInstance {
     // this.morphSnapshotId = config.morphSnapshotId || "snapshot_xf8w00is";
     // this.morphSnapshotId = config.morphSnapshotId || "snapshot_hwmk73mg";
     // this.morphSnapshotId = config.morphSnapshotId || "snapshot_mr26f6pw";
-    this.morphSnapshotId = config.morphSnapshotId || "snapshot_g9klz9c4";
+    // this.morphSnapshotId = config.morphSnapshotId || "snapshot_g9klz9c4";
+    this.morphSnapshotId = config.morphSnapshotId || "snapshot_ghucvzgl";
   }
 
   async start(): Promise<VSCodeInstanceInfo> {
