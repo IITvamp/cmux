@@ -22,6 +22,7 @@ import type * as migrations from "../migrations.js";
 import type * as stack from "../stack.js";
 import type * as stack_webhook from "../stack_webhook.js";
 import type * as storage from "../storage.js";
+import type * as taskComments from "../taskComments.js";
 import type * as taskRunLogChunks from "../taskRunLogChunks.js";
 import type * as taskRuns from "../taskRuns.js";
 import type * as tasks from "../tasks.js";
@@ -58,6 +59,7 @@ declare const fullApi: ApiFromModules<{
   stack: typeof stack;
   stack_webhook: typeof stack_webhook;
   storage: typeof storage;
+  taskComments: typeof taskComments;
   taskRunLogChunks: typeof taskRunLogChunks;
   taskRuns: typeof taskRuns;
   tasks: typeof tasks;

@@ -1,6 +1,8 @@
+import { api } from "@cmux/convex/api";
 import { type Doc, type Id } from "@cmux/convex/dataModel";
 import { useUser } from "@stackframe/react";
 import { Link, useParams } from "@tanstack/react-router";
+import { useQuery } from "convex/react";
 import { formatDistanceToNow } from "date-fns";
 import {
   AlertCircle,
@@ -14,6 +16,8 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import TextareaAutosize from "react-textarea-autosize";
+import CmuxLogoMark from "./logo/cmux-logo-mark";
+import { TaskMessage } from "./task-message";
 
 interface TimelineEvent {
   id: string;
@@ -58,6 +62,10 @@ export function TaskTimeline({
   const [comment, setComment] = useState("");
   const user = useUser();
   const params = useParams({ from: "/_layout/$teamSlugOrId/task/$taskId" });
+  const taskComments = useQuery(api.taskComments.listByTask, {
+    teamSlugOrId: params.teamSlugOrId,
+    taskId: params.taskId as Id<"tasks">,
+  });
 
   const events = useMemo(() => {
     const timelineEvents: TimelineEvent[] = [];
@@ -247,7 +255,9 @@ export function TaskTimeline({
                   {agentName}
                 </span>
                 <span className="text-neutral-600 dark:text-neutral-400">
-                  {event.isCrowned ? " completed and won the crown" : " completed"}
+                  {event.isCrowned
+                    ? " completed and won the crown"
+                    : " completed"}
                 </span>
                 <span className="text-neutral-500 dark:text-neutral-500 ml-1">
                   {formatDistanceToNow(event.timestamp, { addSuffix: true })}
@@ -259,7 +269,9 @@ export function TaskTimeline({
                   {agentName}
                 </span>
                 <span className="text-neutral-600 dark:text-neutral-400">
-                  {event.isCrowned ? " completed and won the crown" : " completed"}
+                  {event.isCrowned
+                    ? " completed and won the crown"
+                    : " completed"}
                 </span>
                 <span className="text-neutral-500 dark:text-neutral-500 ml-1">
                   {formatDistanceToNow(event.timestamp, { addSuffix: true })}
@@ -416,32 +428,15 @@ export function TaskTimeline({
     <div className="space-y-2">
       {/* Prompt Message */}
       {task?.text && (
-        <div className="mb-6">
-          <div className="bg-neutral-100 dark:bg-neutral-800 rounded-lg px-4 py-3">
-            <div className="flex items-start gap-2 mb-2">
-              <img
-                src={user?.profileImageUrl || ""}
-                alt={user?.primaryEmail || "User"}
-                className="size-5 rounded-full flex-shrink-0"
-              />
-              <div className="flex items-baseline gap-2">
-                <span className="text-[13px] font-medium text-neutral-900 dark:text-neutral-100">
-                  {user?.displayName ||
-                    user?.primaryEmail?.split("@")[0] ||
-                    "User"}
-                </span>
-                {task.createdAt && (
-                  <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                    {formatDistanceToNow(task.createdAt, { addSuffix: true })}
-                  </span>
-                )}
-              </div>
-            </div>
-            <div className="text-[15px] font-medium text-neutral-700 dark:text-neutral-300 whitespace-pre-wrap">
-              {task.text}
-            </div>
-          </div>
-        </div>
+        <TaskMessage
+          authorName={
+            user?.displayName || user?.primaryEmail?.split("@")[0] || "User"
+          }
+          authorImageUrl={user?.profileImageUrl || ""}
+          authorAlt={user?.primaryEmail || "User"}
+          timestamp={task.createdAt}
+          content={task.text}
+        />
       )}
 
       <div>
@@ -457,6 +452,36 @@ export function TaskTimeline({
           ))}
         </div>
       </div>
+      {/* Task Comments (chronological) */}
+      {taskComments && taskComments.length > 0 ? (
+        <div className="space-y-2 pt-2">
+          {taskComments.map((c) => (
+            <TaskMessage
+              key={c._id}
+              authorName={
+                c.userId === "cmux"
+                  ? "cmux"
+                  : user?.displayName ||
+                    user?.primaryEmail?.split("@")[0] ||
+                    "User"
+              }
+              avatar={
+                c.userId === "cmux" ? (
+                  <CmuxLogoMark height={20} label="cmux" />
+                ) : undefined
+              }
+              authorImageUrl={
+                c.userId === "cmux" ? undefined : user?.profileImageUrl || ""
+              }
+              authorAlt={
+                c.userId === "cmux" ? "cmux" : user?.primaryEmail || "User"
+              }
+              timestamp={c.createdAt}
+              content={c.content}
+            />
+          ))}
+        </div>
+      ) : null}
       {/* Comment Box */}
       <div className="pt-6">
         <form onSubmit={handleCommentSubmit}>
