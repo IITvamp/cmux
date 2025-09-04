@@ -7,11 +7,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { stackClientApp } from "@/lib/stack";
+import { isElectron } from "@/lib/electron";
 import { api } from "@cmux/convex/api";
 import { Skeleton } from "@heroui/react";
 import { useStackApp, useUser, type Team } from "@stackframe/react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery as useConvexQuery, useMutation } from "convex/react";
+import type React from "react";
 
 export const Route = createFileRoute("/_layout/team-picker")({
   component: TeamPicker,
@@ -111,6 +113,12 @@ function TeamPicker() {
 
   return (
     <div className="min-h-dvh w-full bg-neutral-50 dark:bg-neutral-950 flex items-center justify-center p-6">
+      {isElectron ? (
+        <div
+          className="fixed top-0 left-0 right-0 h-[24px]"
+          style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+        />
+      ) : null}
       <div className="mx-auto w-full max-w-3xl">
         <Card className="border-neutral-200 dark:border-neutral-800 bg-white/70 dark:bg-neutral-900/70 backdrop-blur">
           <CardHeader>
@@ -181,12 +189,11 @@ function TeamItem({ team, getClientSlug }: TeamItemProps) {
       <Link
         to="/$teamSlugOrId/dashboard"
         params={{ teamSlugOrId }}
-        disabled={!teamInfo}
         className={
           "group flex w-full text-left rounded-xl border transition-all focus:outline-none border-neutral-200 hover:border-neutral-300 dark:border-neutral-800 dark:hover:border-neutral-700 bg-white dark:bg-neutral-900/80 disabled:border-neutral-200 dark:disabled:border-neutral-800 p-4"
         }
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 min-w-0">
           <div
             className={
               "flex h-10 w-10 items-center justify-center rounded-full bg-neutral-100 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 ring-1 ring-inset ring-neutral-200 dark:ring-neutral-700"
@@ -199,9 +206,9 @@ function TeamItem({ team, getClientSlug }: TeamItemProps) {
             <div className="truncate text-neutral-900 dark:text-neutral-50 font-medium">
               {team.displayName}
             </div>
-            <div className="text-sm text-neutral-500 dark:text-neutral-400">
-              <Skeleton isLoaded={!!teamInfo} className="rounded truncate w-full">
-                {slug || team.id}
+            <div className="text-sm text-neutral-500 dark:text-neutral-400 min-w-0 overflow-hidden">
+              <Skeleton isLoaded={!!teamInfo} className="rounded">
+                <span className="block truncate">{slug || team.id}</span>
               </Skeleton>
             </div>
           </div>

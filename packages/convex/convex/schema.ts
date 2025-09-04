@@ -330,6 +330,19 @@ const convexSchema = defineSchema({
     teamId: v.string(),
   }).index("by_team_user", ["teamId", "userId"]),
 
+  // System and user comments attached to a task
+  taskComments: defineTable({
+    taskId: v.id("tasks"),
+    content: v.string(),
+    userId: v.string(), // "cmux" for system comments; otherwise the author user id
+    teamId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_task", ["taskId", "createdAt"]) // fetch comments for a task chronologically
+    .index("by_team_task", ["teamId", "taskId", "createdAt"]) // scoped by team
+    .index("by_team_user", ["teamId", "userId"]),
+
   comments: defineTable({
     url: v.string(), // Full URL of the website where comment was created
     page: v.string(), // Page URL/path where comment was created
@@ -386,6 +399,25 @@ const convexSchema = defineSchema({
     .index("by_installationId", ["installationId"]) // resolve installation -> connection
     .index("by_team", ["teamId"]) // list connections for team
     .index("by_team_type", ["teamId", "type"]),
+
+  // Environments for teams
+  environments: defineTable({
+    name: v.string(), // Human-friendly environment name
+    teamId: v.string(), // Team that owns this environment
+    userId: v.string(), // User who created the environment
+    morphSnapshotId: v.string(), // Morph snapshot identifier
+    dataVaultKey: v.string(), // Key for StackAuth DataBook (stores encrypted env vars)
+    selectedRepos: v.optional(v.array(v.string())), // List of repository full names
+    description: v.optional(v.string()), // Optional description
+    maintenanceScript: v.optional(v.string()),
+    devScript: v.optional(v.string()),
+    exposedPorts: v.optional(v.array(v.number())),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_team", ["teamId", "createdAt"])
+    .index("by_team_user", ["teamId", "userId"])
+    .index("by_dataVaultKey", ["dataVaultKey"]),
 
   // Webhook deliveries for idempotency and auditing
   webhookDeliveries: defineTable({

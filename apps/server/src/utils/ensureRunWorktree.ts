@@ -6,6 +6,7 @@ import { RepositoryManager } from "../repositoryManager.js";
 import { getConvex } from "../utils/convexClient.js";
 import { serverLogger } from "../utils/fileLogger.js";
 import { getWorktreePath, setupProjectWorkspace } from "../workspace.js";
+import { retryOnOptimisticConcurrency } from "../utils/convexRetry.js";
 
 export type EnsureWorktreeResult = {
   run: Doc<"taskRuns">;
@@ -87,15 +88,17 @@ export async function ensureRunWorktreeAndBranch(
         branch: baseBranch || undefined,
         worktreeInfo,
       });
-      if (!res.success || !res.worktreePath) {
-        throw new Error(res.error || "Failed to set up worktree");
-      }
-      worktreePath = res.worktreePath;
-      await getConvex().mutation(api.taskRuns.updateWorktreePath, {
-        teamSlugOrId,
-        id: run._id,
-        worktreePath,
-      });
+  if (!res.success || !res.worktreePath) {
+      throw new Error(res.error || "Failed to set up worktree");
+    }
+    worktreePath = res.worktreePath;
+      await retryOnOptimisticConcurrency(() =>
+        getConvex().mutation(api.taskRuns.updateWorktreePath, {
+          teamSlugOrId,
+          id: run._id,
+          worktreePath: worktreePath as string,
+        })
+      );
 
       // If baseBranch wasn't specified, detect it now from the origin repo
       if (!baseBranch) {

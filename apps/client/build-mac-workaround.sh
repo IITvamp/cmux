@@ -1,8 +1,4 @@
 #!/bin/bash
-export NEXT_PUBLIC_CONVEX_URL="http://localhost:9777" 
-export NEXT_PUBLIC_STACK_PROJECT_ID="8a877114-b905-47c5-8b64-3a2d90679577" 
-export NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY="pck_8761mjjmyqc84e1e8ga3rn0k1nkggmggwa3pyzzgntv70"
-
 # Build the Electron app first
 echo "Building Electron app..."
 npx electron-vite build -c electron.vite.config.js
@@ -52,7 +48,7 @@ mkdir -p "$APP_ASAR_DIR"
 cp -r out "$APP_ASAR_DIR/"
 cp package.json "$APP_ASAR_DIR/"
 
-# Copy node_modules (preserving symlinks for pnpm)
+# Copy node_modules and dereference pnpm symlinks so runtime has real files
 echo "Copying dependencies..."
 cp -r node_modules "$APP_ASAR_DIR/"
 
@@ -63,6 +59,13 @@ echo "Updating app metadata..."
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.cmux.app" "$APP_DIR/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion 1.0.0" "$APP_DIR/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 1.0.0" "$APP_DIR/Contents/Info.plist"
+
+# Register cmux:// URL scheme so macOS knows to open this app for deep links
+/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" "$APP_DIR/Contents/Info.plist" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0 dict" "$APP_DIR/Contents/Info.plist" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLName string cmux" "$APP_DIR/Contents/Info.plist" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes array" "$APP_DIR/Contents/Info.plist" 2>/dev/null || true
+/usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string cmux" "$APP_DIR/Contents/Info.plist" 2>/dev/null || true
 
 # Ensure our app icon is bundled and used by macOS
 ICONSET_SRC="$(pwd)/assets/cmux-logos/cmux.iconset"

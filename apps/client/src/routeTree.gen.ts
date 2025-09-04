@@ -20,9 +20,16 @@ import { Route as LayoutTeamSlugOrIdSettingsRouteImport } from './routes/_layout
 import { Route as LayoutTeamSlugOrIdEnvironmentsRouteImport } from './routes/_layout.$teamSlugOrId.environments'
 import { Route as LayoutTeamSlugOrIdDashboardRouteImport } from './routes/_layout.$teamSlugOrId.dashboard'
 import { Route as LayoutTeamSlugOrIdConnectCompleteRouteImport } from './routes/_layout.$teamSlugOrId.connect-complete'
+import { Route as LayoutTeamSlugOrIdEnvironmentsIndexRouteImport } from './routes/_layout.$teamSlugOrId.environments.index'
 import { Route as LayoutTeamSlugOrIdTaskTaskIdRouteImport } from './routes/_layout.$teamSlugOrId.task.$taskId'
+import { Route as LayoutTeamSlugOrIdEnvironmentsNewRouteImport } from './routes/_layout.$teamSlugOrId.environments.new'
+import { Route as LayoutTeamSlugOrIdEnvironmentsEnvironmentIdRouteImport } from './routes/_layout.$teamSlugOrId.environments.$environmentId'
 import { Route as LayoutTeamSlugOrIdTaskTaskIdIndexRouteImport } from './routes/_layout.$teamSlugOrId.task.$taskId.index'
 import { Route as LayoutTeamSlugOrIdTaskTaskIdRunTaskRunIdRouteImport } from './routes/_layout.$teamSlugOrId.task.$taskId.run.$taskRunId'
+import { Route as LayoutTeamSlugOrIdTaskTaskIdRunRunIdVscodeRouteImport } from './routes/_layout.$teamSlugOrId.task.$taskId.run.$runId.vscode'
+import { Route as LayoutTeamSlugOrIdTaskTaskIdRunRunIdPrRouteImport } from './routes/_layout.$teamSlugOrId.task.$taskId.run.$runId.pr'
+import { Route as LayoutTeamSlugOrIdTaskTaskIdRunRunIdDiffRouteImport } from './routes/_layout.$teamSlugOrId.task.$taskId.run.$runId.diff'
+import { Route as LayoutTeamSlugOrIdTaskTaskIdRunRunIdPreviewPortRouteImport } from './routes/_layout.$teamSlugOrId.task.$taskId.run.$runId.preview.$port'
 
 const LayoutRoute = LayoutRouteImport.update({
   id: '/_layout',
@@ -82,11 +89,29 @@ const LayoutTeamSlugOrIdConnectCompleteRoute =
     path: '/connect-complete',
     getParentRoute: () => LayoutTeamSlugOrIdRoute,
   } as any)
+const LayoutTeamSlugOrIdEnvironmentsIndexRoute =
+  LayoutTeamSlugOrIdEnvironmentsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => LayoutTeamSlugOrIdEnvironmentsRoute,
+  } as any)
 const LayoutTeamSlugOrIdTaskTaskIdRoute =
   LayoutTeamSlugOrIdTaskTaskIdRouteImport.update({
     id: '/task/$taskId',
     path: '/task/$taskId',
     getParentRoute: () => LayoutTeamSlugOrIdRoute,
+  } as any)
+const LayoutTeamSlugOrIdEnvironmentsNewRoute =
+  LayoutTeamSlugOrIdEnvironmentsNewRouteImport.update({
+    id: '/new',
+    path: '/new',
+    getParentRoute: () => LayoutTeamSlugOrIdEnvironmentsRoute,
+  } as any)
+const LayoutTeamSlugOrIdEnvironmentsEnvironmentIdRoute =
+  LayoutTeamSlugOrIdEnvironmentsEnvironmentIdRouteImport.update({
+    id: '/$environmentId',
+    path: '/$environmentId',
+    getParentRoute: () => LayoutTeamSlugOrIdEnvironmentsRoute,
   } as any)
 const LayoutTeamSlugOrIdTaskTaskIdIndexRoute =
   LayoutTeamSlugOrIdTaskTaskIdIndexRouteImport.update({
@@ -100,6 +125,30 @@ const LayoutTeamSlugOrIdTaskTaskIdRunTaskRunIdRoute =
     path: '/run/$taskRunId',
     getParentRoute: () => LayoutTeamSlugOrIdTaskTaskIdRoute,
   } as any)
+const LayoutTeamSlugOrIdTaskTaskIdRunRunIdVscodeRoute =
+  LayoutTeamSlugOrIdTaskTaskIdRunRunIdVscodeRouteImport.update({
+    id: '/run/$runId/vscode',
+    path: '/run/$runId/vscode',
+    getParentRoute: () => LayoutTeamSlugOrIdTaskTaskIdRoute,
+  } as any)
+const LayoutTeamSlugOrIdTaskTaskIdRunRunIdPrRoute =
+  LayoutTeamSlugOrIdTaskTaskIdRunRunIdPrRouteImport.update({
+    id: '/run/$runId/pr',
+    path: '/run/$runId/pr',
+    getParentRoute: () => LayoutTeamSlugOrIdTaskTaskIdRoute,
+  } as any)
+const LayoutTeamSlugOrIdTaskTaskIdRunRunIdDiffRoute =
+  LayoutTeamSlugOrIdTaskTaskIdRunRunIdDiffRouteImport.update({
+    id: '/run/$runId/diff',
+    path: '/run/$runId/diff',
+    getParentRoute: () => LayoutTeamSlugOrIdTaskTaskIdRoute,
+  } as any)
+const LayoutTeamSlugOrIdTaskTaskIdRunRunIdPreviewPortRoute =
+  LayoutTeamSlugOrIdTaskTaskIdRunRunIdPreviewPortRouteImport.update({
+    id: '/run/$runId/preview/$port',
+    path: '/run/$runId/preview/$port',
+    getParentRoute: () => LayoutTeamSlugOrIdTaskTaskIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -110,11 +159,18 @@ export interface FileRoutesByFullPath {
   '/handler/$': typeof HandlerSplatRoute
   '/$teamSlugOrId/connect-complete': typeof LayoutTeamSlugOrIdConnectCompleteRoute
   '/$teamSlugOrId/dashboard': typeof LayoutTeamSlugOrIdDashboardRoute
-  '/$teamSlugOrId/environments': typeof LayoutTeamSlugOrIdEnvironmentsRoute
+  '/$teamSlugOrId/environments': typeof LayoutTeamSlugOrIdEnvironmentsRouteWithChildren
   '/$teamSlugOrId/settings': typeof LayoutTeamSlugOrIdSettingsRoute
+  '/$teamSlugOrId/environments/$environmentId': typeof LayoutTeamSlugOrIdEnvironmentsEnvironmentIdRoute
+  '/$teamSlugOrId/environments/new': typeof LayoutTeamSlugOrIdEnvironmentsNewRoute
   '/$teamSlugOrId/task/$taskId': typeof LayoutTeamSlugOrIdTaskTaskIdRouteWithChildren
+  '/$teamSlugOrId/environments/': typeof LayoutTeamSlugOrIdEnvironmentsIndexRoute
   '/$teamSlugOrId/task/$taskId/': typeof LayoutTeamSlugOrIdTaskTaskIdIndexRoute
   '/$teamSlugOrId/task/$taskId/run/$taskRunId': typeof LayoutTeamSlugOrIdTaskTaskIdRunTaskRunIdRoute
+  '/$teamSlugOrId/task/$taskId/run/$runId/diff': typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdDiffRoute
+  '/$teamSlugOrId/task/$taskId/run/$runId/pr': typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdPrRoute
+  '/$teamSlugOrId/task/$taskId/run/$runId/vscode': typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdVscodeRoute
+  '/$teamSlugOrId/task/$taskId/run/$runId/preview/$port': typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdPreviewPortRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -125,10 +181,16 @@ export interface FileRoutesByTo {
   '/handler/$': typeof HandlerSplatRoute
   '/$teamSlugOrId/connect-complete': typeof LayoutTeamSlugOrIdConnectCompleteRoute
   '/$teamSlugOrId/dashboard': typeof LayoutTeamSlugOrIdDashboardRoute
-  '/$teamSlugOrId/environments': typeof LayoutTeamSlugOrIdEnvironmentsRoute
   '/$teamSlugOrId/settings': typeof LayoutTeamSlugOrIdSettingsRoute
+  '/$teamSlugOrId/environments/$environmentId': typeof LayoutTeamSlugOrIdEnvironmentsEnvironmentIdRoute
+  '/$teamSlugOrId/environments/new': typeof LayoutTeamSlugOrIdEnvironmentsNewRoute
+  '/$teamSlugOrId/environments': typeof LayoutTeamSlugOrIdEnvironmentsIndexRoute
   '/$teamSlugOrId/task/$taskId': typeof LayoutTeamSlugOrIdTaskTaskIdIndexRoute
   '/$teamSlugOrId/task/$taskId/run/$taskRunId': typeof LayoutTeamSlugOrIdTaskTaskIdRunTaskRunIdRoute
+  '/$teamSlugOrId/task/$taskId/run/$runId/diff': typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdDiffRoute
+  '/$teamSlugOrId/task/$taskId/run/$runId/pr': typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdPrRoute
+  '/$teamSlugOrId/task/$taskId/run/$runId/vscode': typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdVscodeRoute
+  '/$teamSlugOrId/task/$taskId/run/$runId/preview/$port': typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdPreviewPortRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -141,11 +203,18 @@ export interface FileRoutesById {
   '/handler/$': typeof HandlerSplatRoute
   '/_layout/$teamSlugOrId/connect-complete': typeof LayoutTeamSlugOrIdConnectCompleteRoute
   '/_layout/$teamSlugOrId/dashboard': typeof LayoutTeamSlugOrIdDashboardRoute
-  '/_layout/$teamSlugOrId/environments': typeof LayoutTeamSlugOrIdEnvironmentsRoute
+  '/_layout/$teamSlugOrId/environments': typeof LayoutTeamSlugOrIdEnvironmentsRouteWithChildren
   '/_layout/$teamSlugOrId/settings': typeof LayoutTeamSlugOrIdSettingsRoute
+  '/_layout/$teamSlugOrId/environments/$environmentId': typeof LayoutTeamSlugOrIdEnvironmentsEnvironmentIdRoute
+  '/_layout/$teamSlugOrId/environments/new': typeof LayoutTeamSlugOrIdEnvironmentsNewRoute
   '/_layout/$teamSlugOrId/task/$taskId': typeof LayoutTeamSlugOrIdTaskTaskIdRouteWithChildren
+  '/_layout/$teamSlugOrId/environments/': typeof LayoutTeamSlugOrIdEnvironmentsIndexRoute
   '/_layout/$teamSlugOrId/task/$taskId/': typeof LayoutTeamSlugOrIdTaskTaskIdIndexRoute
   '/_layout/$teamSlugOrId/task/$taskId/run/$taskRunId': typeof LayoutTeamSlugOrIdTaskTaskIdRunTaskRunIdRoute
+  '/_layout/$teamSlugOrId/task/$taskId/run/$runId/diff': typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdDiffRoute
+  '/_layout/$teamSlugOrId/task/$taskId/run/$runId/pr': typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdPrRoute
+  '/_layout/$teamSlugOrId/task/$taskId/run/$runId/vscode': typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdVscodeRoute
+  '/_layout/$teamSlugOrId/task/$taskId/run/$runId/preview/$port': typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdPreviewPortRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -160,9 +229,16 @@ export interface FileRouteTypes {
     | '/$teamSlugOrId/dashboard'
     | '/$teamSlugOrId/environments'
     | '/$teamSlugOrId/settings'
+    | '/$teamSlugOrId/environments/$environmentId'
+    | '/$teamSlugOrId/environments/new'
     | '/$teamSlugOrId/task/$taskId'
+    | '/$teamSlugOrId/environments/'
     | '/$teamSlugOrId/task/$taskId/'
     | '/$teamSlugOrId/task/$taskId/run/$taskRunId'
+    | '/$teamSlugOrId/task/$taskId/run/$runId/diff'
+    | '/$teamSlugOrId/task/$taskId/run/$runId/pr'
+    | '/$teamSlugOrId/task/$taskId/run/$runId/vscode'
+    | '/$teamSlugOrId/task/$taskId/run/$runId/preview/$port'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -173,10 +249,16 @@ export interface FileRouteTypes {
     | '/handler/$'
     | '/$teamSlugOrId/connect-complete'
     | '/$teamSlugOrId/dashboard'
-    | '/$teamSlugOrId/environments'
     | '/$teamSlugOrId/settings'
+    | '/$teamSlugOrId/environments/$environmentId'
+    | '/$teamSlugOrId/environments/new'
+    | '/$teamSlugOrId/environments'
     | '/$teamSlugOrId/task/$taskId'
     | '/$teamSlugOrId/task/$taskId/run/$taskRunId'
+    | '/$teamSlugOrId/task/$taskId/run/$runId/diff'
+    | '/$teamSlugOrId/task/$taskId/run/$runId/pr'
+    | '/$teamSlugOrId/task/$taskId/run/$runId/vscode'
+    | '/$teamSlugOrId/task/$taskId/run/$runId/preview/$port'
   id:
     | '__root__'
     | '/'
@@ -190,9 +272,16 @@ export interface FileRouteTypes {
     | '/_layout/$teamSlugOrId/dashboard'
     | '/_layout/$teamSlugOrId/environments'
     | '/_layout/$teamSlugOrId/settings'
+    | '/_layout/$teamSlugOrId/environments/$environmentId'
+    | '/_layout/$teamSlugOrId/environments/new'
     | '/_layout/$teamSlugOrId/task/$taskId'
+    | '/_layout/$teamSlugOrId/environments/'
     | '/_layout/$teamSlugOrId/task/$taskId/'
     | '/_layout/$teamSlugOrId/task/$taskId/run/$taskRunId'
+    | '/_layout/$teamSlugOrId/task/$taskId/run/$runId/diff'
+    | '/_layout/$teamSlugOrId/task/$taskId/run/$runId/pr'
+    | '/_layout/$teamSlugOrId/task/$taskId/run/$runId/vscode'
+    | '/_layout/$teamSlugOrId/task/$taskId/run/$runId/preview/$port'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -280,12 +369,33 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutTeamSlugOrIdConnectCompleteRouteImport
       parentRoute: typeof LayoutTeamSlugOrIdRoute
     }
+    '/_layout/$teamSlugOrId/environments/': {
+      id: '/_layout/$teamSlugOrId/environments/'
+      path: '/'
+      fullPath: '/$teamSlugOrId/environments/'
+      preLoaderRoute: typeof LayoutTeamSlugOrIdEnvironmentsIndexRouteImport
+      parentRoute: typeof LayoutTeamSlugOrIdEnvironmentsRoute
+    }
     '/_layout/$teamSlugOrId/task/$taskId': {
       id: '/_layout/$teamSlugOrId/task/$taskId'
       path: '/task/$taskId'
       fullPath: '/$teamSlugOrId/task/$taskId'
       preLoaderRoute: typeof LayoutTeamSlugOrIdTaskTaskIdRouteImport
       parentRoute: typeof LayoutTeamSlugOrIdRoute
+    }
+    '/_layout/$teamSlugOrId/environments/new': {
+      id: '/_layout/$teamSlugOrId/environments/new'
+      path: '/new'
+      fullPath: '/$teamSlugOrId/environments/new'
+      preLoaderRoute: typeof LayoutTeamSlugOrIdEnvironmentsNewRouteImport
+      parentRoute: typeof LayoutTeamSlugOrIdEnvironmentsRoute
+    }
+    '/_layout/$teamSlugOrId/environments/$environmentId': {
+      id: '/_layout/$teamSlugOrId/environments/$environmentId'
+      path: '/$environmentId'
+      fullPath: '/$teamSlugOrId/environments/$environmentId'
+      preLoaderRoute: typeof LayoutTeamSlugOrIdEnvironmentsEnvironmentIdRouteImport
+      parentRoute: typeof LayoutTeamSlugOrIdEnvironmentsRoute
     }
     '/_layout/$teamSlugOrId/task/$taskId/': {
       id: '/_layout/$teamSlugOrId/task/$taskId/'
@@ -301,12 +411,65 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutTeamSlugOrIdTaskTaskIdRunTaskRunIdRouteImport
       parentRoute: typeof LayoutTeamSlugOrIdTaskTaskIdRoute
     }
+    '/_layout/$teamSlugOrId/task/$taskId/run/$runId/vscode': {
+      id: '/_layout/$teamSlugOrId/task/$taskId/run/$runId/vscode'
+      path: '/run/$runId/vscode'
+      fullPath: '/$teamSlugOrId/task/$taskId/run/$runId/vscode'
+      preLoaderRoute: typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdVscodeRouteImport
+      parentRoute: typeof LayoutTeamSlugOrIdTaskTaskIdRoute
+    }
+    '/_layout/$teamSlugOrId/task/$taskId/run/$runId/pr': {
+      id: '/_layout/$teamSlugOrId/task/$taskId/run/$runId/pr'
+      path: '/run/$runId/pr'
+      fullPath: '/$teamSlugOrId/task/$taskId/run/$runId/pr'
+      preLoaderRoute: typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdPrRouteImport
+      parentRoute: typeof LayoutTeamSlugOrIdTaskTaskIdRoute
+    }
+    '/_layout/$teamSlugOrId/task/$taskId/run/$runId/diff': {
+      id: '/_layout/$teamSlugOrId/task/$taskId/run/$runId/diff'
+      path: '/run/$runId/diff'
+      fullPath: '/$teamSlugOrId/task/$taskId/run/$runId/diff'
+      preLoaderRoute: typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdDiffRouteImport
+      parentRoute: typeof LayoutTeamSlugOrIdTaskTaskIdRoute
+    }
+    '/_layout/$teamSlugOrId/task/$taskId/run/$runId/preview/$port': {
+      id: '/_layout/$teamSlugOrId/task/$taskId/run/$runId/preview/$port'
+      path: '/run/$runId/preview/$port'
+      fullPath: '/$teamSlugOrId/task/$taskId/run/$runId/preview/$port'
+      preLoaderRoute: typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdPreviewPortRouteImport
+      parentRoute: typeof LayoutTeamSlugOrIdTaskTaskIdRoute
+    }
   }
 }
+
+interface LayoutTeamSlugOrIdEnvironmentsRouteChildren {
+  LayoutTeamSlugOrIdEnvironmentsEnvironmentIdRoute: typeof LayoutTeamSlugOrIdEnvironmentsEnvironmentIdRoute
+  LayoutTeamSlugOrIdEnvironmentsNewRoute: typeof LayoutTeamSlugOrIdEnvironmentsNewRoute
+  LayoutTeamSlugOrIdEnvironmentsIndexRoute: typeof LayoutTeamSlugOrIdEnvironmentsIndexRoute
+}
+
+const LayoutTeamSlugOrIdEnvironmentsRouteChildren: LayoutTeamSlugOrIdEnvironmentsRouteChildren =
+  {
+    LayoutTeamSlugOrIdEnvironmentsEnvironmentIdRoute:
+      LayoutTeamSlugOrIdEnvironmentsEnvironmentIdRoute,
+    LayoutTeamSlugOrIdEnvironmentsNewRoute:
+      LayoutTeamSlugOrIdEnvironmentsNewRoute,
+    LayoutTeamSlugOrIdEnvironmentsIndexRoute:
+      LayoutTeamSlugOrIdEnvironmentsIndexRoute,
+  }
+
+const LayoutTeamSlugOrIdEnvironmentsRouteWithChildren =
+  LayoutTeamSlugOrIdEnvironmentsRoute._addFileChildren(
+    LayoutTeamSlugOrIdEnvironmentsRouteChildren,
+  )
 
 interface LayoutTeamSlugOrIdTaskTaskIdRouteChildren {
   LayoutTeamSlugOrIdTaskTaskIdIndexRoute: typeof LayoutTeamSlugOrIdTaskTaskIdIndexRoute
   LayoutTeamSlugOrIdTaskTaskIdRunTaskRunIdRoute: typeof LayoutTeamSlugOrIdTaskTaskIdRunTaskRunIdRoute
+  LayoutTeamSlugOrIdTaskTaskIdRunRunIdDiffRoute: typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdDiffRoute
+  LayoutTeamSlugOrIdTaskTaskIdRunRunIdPrRoute: typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdPrRoute
+  LayoutTeamSlugOrIdTaskTaskIdRunRunIdVscodeRoute: typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdVscodeRoute
+  LayoutTeamSlugOrIdTaskTaskIdRunRunIdPreviewPortRoute: typeof LayoutTeamSlugOrIdTaskTaskIdRunRunIdPreviewPortRoute
 }
 
 const LayoutTeamSlugOrIdTaskTaskIdRouteChildren: LayoutTeamSlugOrIdTaskTaskIdRouteChildren =
@@ -315,6 +478,14 @@ const LayoutTeamSlugOrIdTaskTaskIdRouteChildren: LayoutTeamSlugOrIdTaskTaskIdRou
       LayoutTeamSlugOrIdTaskTaskIdIndexRoute,
     LayoutTeamSlugOrIdTaskTaskIdRunTaskRunIdRoute:
       LayoutTeamSlugOrIdTaskTaskIdRunTaskRunIdRoute,
+    LayoutTeamSlugOrIdTaskTaskIdRunRunIdDiffRoute:
+      LayoutTeamSlugOrIdTaskTaskIdRunRunIdDiffRoute,
+    LayoutTeamSlugOrIdTaskTaskIdRunRunIdPrRoute:
+      LayoutTeamSlugOrIdTaskTaskIdRunRunIdPrRoute,
+    LayoutTeamSlugOrIdTaskTaskIdRunRunIdVscodeRoute:
+      LayoutTeamSlugOrIdTaskTaskIdRunRunIdVscodeRoute,
+    LayoutTeamSlugOrIdTaskTaskIdRunRunIdPreviewPortRoute:
+      LayoutTeamSlugOrIdTaskTaskIdRunRunIdPreviewPortRoute,
   }
 
 const LayoutTeamSlugOrIdTaskTaskIdRouteWithChildren =
@@ -325,7 +496,7 @@ const LayoutTeamSlugOrIdTaskTaskIdRouteWithChildren =
 interface LayoutTeamSlugOrIdRouteChildren {
   LayoutTeamSlugOrIdConnectCompleteRoute: typeof LayoutTeamSlugOrIdConnectCompleteRoute
   LayoutTeamSlugOrIdDashboardRoute: typeof LayoutTeamSlugOrIdDashboardRoute
-  LayoutTeamSlugOrIdEnvironmentsRoute: typeof LayoutTeamSlugOrIdEnvironmentsRoute
+  LayoutTeamSlugOrIdEnvironmentsRoute: typeof LayoutTeamSlugOrIdEnvironmentsRouteWithChildren
   LayoutTeamSlugOrIdSettingsRoute: typeof LayoutTeamSlugOrIdSettingsRoute
   LayoutTeamSlugOrIdTaskTaskIdRoute: typeof LayoutTeamSlugOrIdTaskTaskIdRouteWithChildren
 }
@@ -334,7 +505,8 @@ const LayoutTeamSlugOrIdRouteChildren: LayoutTeamSlugOrIdRouteChildren = {
   LayoutTeamSlugOrIdConnectCompleteRoute:
     LayoutTeamSlugOrIdConnectCompleteRoute,
   LayoutTeamSlugOrIdDashboardRoute: LayoutTeamSlugOrIdDashboardRoute,
-  LayoutTeamSlugOrIdEnvironmentsRoute: LayoutTeamSlugOrIdEnvironmentsRoute,
+  LayoutTeamSlugOrIdEnvironmentsRoute:
+    LayoutTeamSlugOrIdEnvironmentsRouteWithChildren,
   LayoutTeamSlugOrIdSettingsRoute: LayoutTeamSlugOrIdSettingsRoute,
   LayoutTeamSlugOrIdTaskTaskIdRoute:
     LayoutTeamSlugOrIdTaskTaskIdRouteWithChildren,

@@ -18,7 +18,8 @@ import {
   GitMerge,
   Trash2,
 } from "lucide-react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type CSSProperties } from "react";
+import { isElectron } from "@/lib/electron";
 import { toast } from "sonner";
 
 interface TaskDetailHeaderProps {
@@ -162,8 +163,15 @@ export function TaskDetailHeader({
     [selectedRun?.worktreePath, task?.worktreePath]
   );
 
+  const dragStyle = isElectron
+    ? ({ WebkitAppRegion: "drag" } as CSSProperties)
+    : undefined;
+
   return (
-    <div className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white px-3.5 sticky top-0 z-50 py-2">
+    <div
+      className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white px-3.5 sticky top-0 z-50 py-2"
+      style={dragStyle}
+    >
       <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-3 gap-y-1">
         {/* Title row */}
         <div className="col-start-1 row-start-1 flex items-center gap-2 relative min-w-0">
@@ -187,7 +195,10 @@ export function TaskDetailHeader({
         {/* Removed periodic refresh spinner */}
 
         {/* Actions on right, vertically centered across rows */}
-        <div className="col-start-3 row-start-1 row-span-2 self-center flex items-center gap-2 shrink-0">
+        <div
+          className="col-start-3 row-start-1 row-span-2 self-center flex items-center gap-2 shrink-0"
+          style={isElectron ? ({ WebkitAppRegion: "no-drag" } as CSSProperties) : undefined}
+        >
           {prIsMerged ? (
             <div
               className="flex items-center gap-1.5 px-3 py-1 bg-[#8250df] text-white rounded font-medium text-xs select-none whitespace-nowrap border border-[#6e40cc] dark:bg-[#8250df] dark:border-[#6e40cc] cursor-not-allowed"
@@ -278,7 +289,10 @@ export function TaskDetailHeader({
         </div>
 
         {/* Branch row (second line, spans first two columns) */}
-        <div className="col-start-1 row-start-2 col-span-2 flex items-center gap-2 text-xs text-neutral-400 min-w-0">
+        <div
+          className="col-start-1 row-start-2 col-span-2 flex items-center gap-2 text-xs text-neutral-400 min-w-0"
+          style={isElectron ? ({ WebkitAppRegion: "no-drag" } as CSSProperties) : undefined}
+        >
           <button
             onClick={handleCopyBranch}
             className="flex items-center gap-1 hover:text-neutral-700 dark:hover:text-white transition-colors group"
