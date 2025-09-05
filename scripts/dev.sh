@@ -34,9 +34,11 @@ echo "IS_DEVCONTAINER: $IS_DEVCONTAINER"
 # Parse command line arguments
 FORCE_DOCKER_BUILD=false
 SHOW_COMPOSE_LOGS=false
-SKIP_CONVEX="${SKIP_CONVEX:-false}"
-for arg in "$@"; do
-    case $arg in
+# Default to skipping Convex unless explicitly disabled via env/flag
+SKIP_CONVEX="${SKIP_CONVEX:-true}"
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
         --force-docker-build)
             FORCE_DOCKER_BUILD=true
             shift
@@ -46,7 +48,35 @@ for arg in "$@"; do
             shift
             ;;
         --skip-convex)
-            SKIP_CONVEX=true
+            # Support `--skip-convex true|false` and bare `--skip-convex` (defaults to true)
+            if [[ -n "${2:-}" && "${2}" != --* ]]; then
+                case "$2" in
+                    true|false)
+                        SKIP_CONVEX="$2"
+                        shift 2
+                        ;;
+                    *)
+                        echo "Invalid value for --skip-convex: $2. Use true or false." >&2
+                        exit 1
+                        ;;
+                esac
+            else
+                SKIP_CONVEX=true
+                shift
+            fi
+            ;;
+        --skip-convex=*)
+            val="${1#*=}"
+            if [[ "$val" = "true" || "$val" = "false" ]]; then
+                SKIP_CONVEX="$val"
+            else
+                echo "Invalid value for --skip-convex: $val. Use true or false." >&2
+                exit 1
+            fi
+            shift
+            ;;
+        *)
+            # Unknown flag; ignore and shift
             shift
             ;;
     esac

@@ -102,6 +102,33 @@ export type GithubReposResponse = {
     repos: Array<GithubRepo>;
 };
 
+export type GithubUserInfo = {
+    /**
+     * GitHub numeric user id
+     */
+    id: number;
+    /**
+     * GitHub login
+     */
+    login: string;
+    /**
+     * <id>+<login>@users.noreply.github.com
+     */
+    derivedNoreply: string;
+    /**
+     * Known emails
+     */
+    emails: Array<string>;
+    /**
+     * Primary email, if available
+     */
+    primaryEmail: string | null;
+    /**
+     * Whether user:email scope allowed /user/emails
+     */
+    canReadEmails: boolean;
+};
+
 export type SetupInstanceResponse = {
     instanceId: string;
     vscodeUrl: string;
@@ -151,6 +178,26 @@ export type ListEnvironmentsResponse = Array<GetEnvironmentResponse>;
 
 export type GetEnvironmentVarsResponse = {
     envVarsContent: string;
+};
+
+export type StartSandboxResponse = {
+    instanceId: string;
+    vscodeUrl: string;
+    workerUrl: string;
+    provider?: 'morph';
+};
+
+export type StartSandboxBody = {
+    teamSlugOrId: string;
+    snapshotId?: string;
+    ttlSeconds?: number;
+    metadata?: {
+        [key: string]: string;
+    };
+    repoUrl?: string;
+    branch?: string;
+    newBranch?: string;
+    depth?: number;
 };
 
 export type GetApiHealthData = {
@@ -554,6 +601,29 @@ export type GetApiIntegrationsGithubReposResponses = {
 
 export type GetApiIntegrationsGithubReposResponse = GetApiIntegrationsGithubReposResponses[keyof GetApiIntegrationsGithubReposResponses];
 
+export type GetApiIntegrationsGithubUserData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/integrations/github/user';
+};
+
+export type GetApiIntegrationsGithubUserErrors = {
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+};
+
+export type GetApiIntegrationsGithubUserResponses = {
+    /**
+     * OK
+     */
+    200: GithubUserInfo;
+};
+
+export type GetApiIntegrationsGithubUserResponse = GetApiIntegrationsGithubUserResponses[keyof GetApiIntegrationsGithubUserResponses];
+
 export type PostApiMorphSetupInstanceData = {
     body: SetupInstanceBody;
     path?: never;
@@ -741,6 +811,136 @@ export type GetApiEnvironmentsByIdVarsResponses = {
 };
 
 export type GetApiEnvironmentsByIdVarsResponse = GetApiEnvironmentsByIdVarsResponses[keyof GetApiEnvironmentsByIdVarsResponses];
+
+export type PostApiSandboxesStartData = {
+    body: StartSandboxBody;
+    path?: never;
+    query?: never;
+    url: '/api/sandboxes/start';
+};
+
+export type PostApiSandboxesStartErrors = {
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Failed to start sandbox
+     */
+    500: unknown;
+};
+
+export type PostApiSandboxesStartResponses = {
+    /**
+     * Sandbox started successfully
+     */
+    200: StartSandboxResponse;
+};
+
+export type PostApiSandboxesStartResponse = PostApiSandboxesStartResponses[keyof PostApiSandboxesStartResponses];
+
+export type PostApiSandboxesByIdStopData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/sandboxes/{id}/stop';
+};
+
+export type PostApiSandboxesByIdStopErrors = {
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Failed to stop sandbox
+     */
+    500: unknown;
+};
+
+export type PostApiSandboxesByIdStopResponses = {
+    /**
+     * Sandbox stopped
+     */
+    204: void;
+};
+
+export type PostApiSandboxesByIdStopResponse = PostApiSandboxesByIdStopResponses[keyof PostApiSandboxesByIdStopResponses];
+
+export type GetApiSandboxesByIdStatusData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/sandboxes/{id}/status';
+};
+
+export type GetApiSandboxesByIdStatusErrors = {
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Failed to get status
+     */
+    500: unknown;
+};
+
+export type GetApiSandboxesByIdStatusResponses = {
+    /**
+     * Sandbox status
+     */
+    200: {
+        running: boolean;
+        vscodeUrl?: string;
+        workerUrl?: string;
+        provider?: 'morph';
+    };
+};
+
+export type GetApiSandboxesByIdStatusResponse = GetApiSandboxesByIdStatusResponses[keyof GetApiSandboxesByIdStatusResponses];
+
+export type PostApiSandboxesByIdPublishDevcontainerData = {
+    body: {
+        teamSlugOrId: string;
+        taskRunId: string;
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/sandboxes/{id}/publish-devcontainer';
+};
+
+export type PostApiSandboxesByIdPublishDevcontainerErrors = {
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Failed to publish devcontainer networking
+     */
+    500: unknown;
+};
+
+export type PostApiSandboxesByIdPublishDevcontainerResponses = {
+    /**
+     * Exposed ports list
+     */
+    200: Array<{
+        status?: 'running';
+        port: number;
+        url: string;
+    }>;
+};
+
+export type PostApiSandboxesByIdPublishDevcontainerResponse = PostApiSandboxesByIdPublishDevcontainerResponses[keyof PostApiSandboxesByIdPublishDevcontainerResponses];
 
 export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});

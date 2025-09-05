@@ -50,6 +50,27 @@ function DebugComponent() {
 
         <br />
 
+        <button
+          onClick={async () => {
+            const user = await stackClientApp.getUser();
+            if (!user) throw new Error("No user");
+            const authHeaders = await user.getAuthHeaders();
+            const res = await fetch(
+              "http://localhost:9779/api/integrations/github/user",
+              {
+                headers: {
+                  ...authHeaders,
+                },
+                credentials: "include",
+              }
+            );
+            const data = await res.json();
+            console.log("github user info", data);
+          }}
+        >
+          get github email
+        </button>
+
         {/* <button
           onClick={async () => {
             const token = await githubConnectedAccount?.getAccessToken();
