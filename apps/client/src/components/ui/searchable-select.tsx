@@ -1,4 +1,3 @@
-import * as Popover from "@radix-ui/react-popover";
 import {
   Command,
   CommandEmpty,
@@ -7,10 +6,11 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
-import clsx from "clsx";
-import { Check, ChevronDown, Loader2, X, AlertTriangle } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import * as Popover from "@radix-ui/react-popover";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import clsx from "clsx";
+import { AlertTriangle, Check, ChevronDown, Loader2, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 export interface SelectOptionObject {
   label: string;
@@ -60,7 +60,9 @@ export function SearchableSelect({
 
   const selectedSet = useMemo(() => new Set(value), [value]);
   const selectedLabels = useMemo(() => {
-    const byValue = new Map(normOptions.map((o) => [o.value, o.label] as const));
+    const byValue = new Map(
+      normOptions.map((o) => [o.value, o.label] as const)
+    );
     return value.map((v) => byValue.get(v) ?? v);
   }, [normOptions, value]);
 
@@ -75,9 +77,7 @@ export function SearchableSelect({
 
   const displayContent = useMemo(() => {
     if (value.length === 0) {
-      return (
-        <span className="text-neutral-400 truncate">{placeholder}</span>
-      );
+      return <span className="text-neutral-400 truncate">{placeholder}</span>;
     }
     if (singleSelect) {
       return <span className="truncate">{selectedLabels[0]}</span>;
@@ -90,13 +90,15 @@ export function SearchableSelect({
         {shown.map((l, idx) => (
           <span
             key={`${l}-${idx}`}
-            className="inline-flex items-center gap-1 rounded-full border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 text-neutral-800 dark:text-neutral-200 px-2 py-0.5 text-xs max-w-[9rem] truncate"
+            className="inline-flex items-center gap-1 rounded-full border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 text-neutral-800 dark:text-neutral-200 px-2 py-0.5 text-[13.5px] max-w-[9rem] truncate"
           >
             {l}
           </span>
         ))}
         {cap > 0 && n > cap ? (
-          <span className="text-xs text-neutral-500 dark:text-neutral-400 whitespace-nowrap">+{n - cap}</span>
+          <span className="text-[13.5px] text-neutral-500 dark:text-neutral-400 whitespace-nowrap">
+            +{n - cap}
+          </span>
         ) : null}
       </span>
     );
@@ -115,10 +117,10 @@ export function SearchableSelect({
     count: filteredOptions.length,
     getScrollElement: () => listRef.current,
     estimateSize: () => 32,
-    overscan: 8,
+    overscan: 20,
     // Use an initial rect so the first open has a viewport size
     // even before ResizeObserver kicks in.
-    initialRect: { width: 0, height: 300 },
+    initialRect: { width: 300, height: 300 },
   });
 
   // Debug logs to investigate empty-first-open issue
@@ -133,7 +135,7 @@ export function SearchableSelect({
       // Force a recompute on open after layout.
       requestAnimationFrame(() => {
         try {
-          rowVirtualizer.scrollToIndex(0, { align: "start" });
+          rowVirtualizer.scrollToIndex(0, { align: "start", behavior: "auto" });
         } catch {
           /* noop */
         }
@@ -166,7 +168,7 @@ export function SearchableSelect({
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
-      <div className={clsx("relative inline-flex items-center")}> 
+      <div className={clsx("relative inline-flex items-center")}>
         <Popover.Trigger asChild>
           <button
             ref={triggerRef}
@@ -175,14 +177,16 @@ export function SearchableSelect({
             className={clsx(
               "inline-flex h-8 items-center rounded-md border",
               "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950",
-              "px-2.5 pr-12 text-sm text-neutral-900 dark:text-neutral-100",
+              "px-2.5 pr-6 text-sm text-neutral-900 dark:text-neutral-100",
               "focus:outline-none",
               "disabled:cursor-not-allowed disabled:opacity-60",
               "w-auto",
               className
             )}
           >
-            <span className="flex-1 min-w-0 text-left text-sm">{displayContent}</span>
+            <span className="flex-1 min-w-0 text-left text-sm">
+              {displayContent}
+            </span>
           </button>
         </Popover.Trigger>
         {value.length > 0 && !singleSelect ? (
@@ -213,16 +217,16 @@ export function SearchableSelect({
             "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950",
             "p-0 shadow-md outline-none"
           )}
-          style={{ width: 200 }}
+          style={{ width: 300 }}
         >
-          <Command loop shouldFilter={false} className="text-xs">
+          <Command loop shouldFilter={false} className="text-[13.5px]">
             {showSearch ? (
               <CommandInput
                 showIcon={false}
                 placeholder="Search..."
                 value={search}
                 onValueChange={setSearch}
-                className="text-xs py-2"
+                className="text-[13.5px] py-2"
               />
             ) : null}
             {loading ? (
@@ -230,7 +234,10 @@ export function SearchableSelect({
                 <Loader2 className="h-5 w-5 animate-spin text-neutral-400" />
               </div>
             ) : (
-              <CommandList ref={listRef} className="h-[300px] overflow-y-auto">
+              <CommandList
+                ref={listRef}
+                className="max-h-[300px] overflow-y-auto"
+              >
                 {filteredOptions.length === 0 ? (
                   <CommandEmpty>No options</CommandEmpty>
                 ) : (
@@ -250,11 +257,13 @@ export function SearchableSelect({
                                 <CommandItem
                                   key={`fallback-${opt.value}`}
                                   value={`${opt.label} ${opt.value}`}
-                                  className="flex items-center justify-between gap-2 text-xs py-1.5"
+                                  className="flex items-center justify-between gap-2 text-[13.5px] py-1.5"
                                   onSelect={() => onSelectValue(opt.value)}
                                 >
                                   <div className="flex items-center gap-2 min-w-0 flex-1">
-                                    <span className="truncate">{opt.label}</span>
+                                    <span className="truncate">
+                                      {opt.label}
+                                    </span>
                                     {opt.isUnavailable ? (
                                       <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                                     ) : null}
@@ -298,11 +307,13 @@ export function SearchableSelect({
                               >
                                 <CommandItem
                                   value={`${opt.label} ${opt.value}`}
-                                  className="flex items-center justify-between gap-2 text-xs py-1.5"
+                                  className="flex items-center justify-between gap-2 text-[13.5px] py-1.5"
                                   onSelect={() => onSelectValue(opt.value)}
                                 >
                                   <div className="flex items-center gap-2 min-w-0 flex-1">
-                                    <span className="truncate">{opt.label}</span>
+                                    <span className="truncate">
+                                      {opt.label}
+                                    </span>
                                     {opt.isUnavailable ? (
                                       <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                                     ) : null}
