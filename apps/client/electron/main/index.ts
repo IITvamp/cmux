@@ -21,6 +21,7 @@ import path, { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import util from "node:util";
 import { env } from "./electron-main-env";
+import { startSimpleEmbeddedServer } from "./simple-embedded-server";
 
 // Use a cookieable HTTPS origin intercepted locally instead of a custom scheme.
 const PARTITION = "persist:cmux";
@@ -242,8 +243,14 @@ app.on("open-url", (_event, url) => {
 });
 
 app.whenReady().then(async () => {
-  // Note: The server should be started separately, not inside the Electron app
-  // The Electron renderer will connect to the server via Socket.IO or IPC
+  // Start the simple embedded server with IPC transport
+  try {
+    mainLog("Starting simple embedded server with IPC transport...");
+    startSimpleEmbeddedServer();
+    mainLog("Simple embedded server started successfully");
+  } catch (error) {
+    mainError("Failed to start embedded server:", error);
+  }
   
   // Try to register the custom protocol handler with the OS. electron-builder
   // will add CFBundleURLTypes on macOS, but calling this is harmless and also

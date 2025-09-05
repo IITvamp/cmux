@@ -4,7 +4,9 @@
   "description": "cmux server",
   "main": "src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./socket-handlers": "./src/socket-handlers.ts",
+    "./git-diff-manager": "./src/git-diff-manager.ts"
   },
   "type": "module",
   "scripts": {

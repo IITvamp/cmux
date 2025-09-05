@@ -33,6 +33,28 @@ const cmuxAPI = {
     } else {
       ipcRenderer.removeAllListeners(`cmux:event:${event}`);
     }
+  },
+  
+  // Socket IPC methods for IPC-based socket communication
+  socket: {
+    connect: (query: Record<string, string>) => {
+      return ipcRenderer.invoke("socket:connect", query);
+    },
+    disconnect: (socketId: string) => {
+      return ipcRenderer.invoke("socket:disconnect", socketId);
+    },
+    emit: (socketId: string, eventName: string, ...args: unknown[]) => {
+      // Pass args as an array to avoid serialization issues
+      return ipcRenderer.invoke("socket:emit", socketId, eventName, args);
+    },
+    on: (socketId: string, eventName: string) => {
+      return ipcRenderer.invoke("socket:on", socketId, eventName);
+    },
+    onEvent: (socketId: string, callback: (eventName: string, ...args: unknown[]) => void) => {
+      ipcRenderer.on(`socket:event:${socketId}`, (_event, eventName, ...args) => {
+        callback(eventName, ...args);
+      });
+    },
   }
 };
 
