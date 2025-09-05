@@ -37,6 +37,8 @@ export interface SearchableSelectProps {
   disabled?: boolean;
   // Label shown in multi-select trigger as "N <countLabel>"
   countLabel?: string;
+  // Optional icon rendered at the start of the trigger (outside option labels)
+  leftIcon?: React.ReactNode;
 }
 
 function normalizeOptions(options: SelectOption[]): SelectOptionObject[] {
@@ -93,6 +95,7 @@ export function SearchableSelect({
   showSearch = true,
   disabled = false,
   countLabel = "selected",
+  leftIcon,
 }: SearchableSelectProps) {
   const normOptions = useMemo(() => normalizeOptions(options), [options]);
   const valueToOption = useMemo(
@@ -273,6 +276,11 @@ export function SearchableSelect({
             )}
           >
             <span className="flex-1 min-w-0 text-left text-[13.5px] inline-flex items-center gap-1.5">
+              {leftIcon ? (
+                <span className="shrink-0 inline-flex items-center justify-center">
+                  {leftIcon}
+                </span>
+              ) : null}
               {displayContent}
             </span>
           </button>

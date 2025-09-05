@@ -8,7 +8,7 @@ import { ModeToggleTooltip } from "@/components/ui/mode-toggle-tooltip";
 import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
 import { AgentLogo } from "@/components/icons/agent-logos";
 import clsx from "clsx";
-import { Image, Mic } from "lucide-react";
+import { GitBranch, Image, Mic } from "lucide-react";
 import { memo, useCallback, useMemo } from "react";
 
 interface DashboardInputControlsProps {
@@ -104,6 +104,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
                 className="rounded-2xl"
                 loading={isLoadingBranches}
                 showSearch
+                leftIcon={<GitBranch className="w-4 h-4 text-neutral-500 dark:text-neutral-400" />}
               />
             </div>
           </TooltipTrigger>
