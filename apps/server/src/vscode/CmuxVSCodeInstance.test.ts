@@ -2,6 +2,7 @@ import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createServer } from "node:http";
 import { CmuxVSCodeInstance } from "./CmuxVSCodeInstance.js";
+import { runWithAuth } from "../utils/requestContext.js";
 
 describe("CmuxVSCodeInstance basic lifecycle via local API stub", () => {
   let server: ReturnType<typeof createServer> | null = null;
@@ -61,34 +62,39 @@ describe("CmuxVSCodeInstance basic lifecycle via local API stub", () => {
   });
 
   it("start → status → stop works against stub API", async () => {
-    const taskRunId = typedZid("taskRuns").parse("tr1");
-    const taskId = typedZid("tasks").parse("t1");
-    const inst = new CmuxVSCodeInstance({
-      taskRunId,
-      taskId,
-      teamSlugOrId: "default",
-      agentName: "test-agent",
-    });
+    await runWithAuth(
+      "test-token",
+      JSON.stringify({ accessToken: "test-token", refreshToken: "test-refresh" }),
+      async () => {
+        const taskRunId = typedZid("taskRuns").parse("tr1");
+        const taskId = typedZid("tasks").parse("t1");
+        const inst = new CmuxVSCodeInstance({
+          taskRunId,
+          taskId,
+          teamSlugOrId: "default",
+          agentName: "test-agent",
+        });
 
-    const info = await inst.start();
-    expect(info.instanceId).toBe(taskRunId);
-    expect(info.provider).toBe("morph");
-    expect(info.url).toBe("http://127.0.0.1:39999");
-    expect(info.workspaceUrl.includes("/?folder=/root/workspace")).toBe(true);
+        const info = await inst.start();
+        expect(info.instanceId).toBe(taskRunId);
+        expect(info.provider).toBe("morph");
+        expect(info.url).toBe("http://127.0.0.1:39999");
+        expect(info.workspaceUrl.includes("/?folder=/root/workspace")).toBe(true);
 
-    const st = await inst.getStatus();
-    expect(st.running).toBe(true);
-    expect(st.info?.url).toBe("http://127.0.0.1:39999");
+        const st = await inst.getStatus();
+        expect(st.running).toBe(true);
+        expect(st.info?.url).toBe("http://127.0.0.1:39999");
 
-    await inst.stop();
+        await inst.stop();
 
-    // Verify API calls were made
-    const startCall = calls.find((c) => c.method === "POST" && c.url === "/api/sandboxes/start");
-    const stopCall = calls.find(
-      (c) => c.method === "POST" && c.url === "/api/sandboxes/sandbox_local_1/stop"
+        // Verify API calls were made
+        const startCall = calls.find((c) => c.method === "POST" && c.url === "/api/sandboxes/start");
+        const stopCall = calls.find(
+          (c) => c.method === "POST" && c.url === "/api/sandboxes/sandbox_local_1/stop"
+        );
+        expect(startCall).toBeTruthy();
+        expect(stopCall).toBeTruthy();
+      }
     );
-    expect(startCall).toBeTruthy();
-    expect(stopCall).toBeTruthy();
   });
 });
-
