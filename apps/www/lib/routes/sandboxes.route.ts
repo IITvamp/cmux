@@ -11,6 +11,7 @@ import {
   generateGitHubInstallationToken,
   getInstallationForRepo,
 } from "@/lib/utils/github-app-token";
+import { fetchGithubUserInfoForRequest } from "@/lib/utils/githubUserInfo";
 
 export const sandboxesRouter = new OpenAPIHono();
 
@@ -101,26 +102,25 @@ sandboxesRouter.openapi(
         return c.text("VSCode or worker service not found", 500);
       }
 
-      // Configure git identity from Convex users table so commits don't fail
+      // Configure git identity from Convex + GitHub user info so commits don't fail
       try {
         const accessToken = await getAccessTokenFromRequest(c.req.raw);
         if (accessToken) {
           const convex = getConvex({ accessToken });
           const who = await convex.query(api.users.getCurrentBasic, {});
+          const gh = await fetchGithubUserInfoForRequest(c.req.raw);
 
-          const name = (who?.displayName || "cmux").trim();
-          // Prefer primary email; else construct a GitHub-style noreply address
-          let email = (who?.primaryEmail || "").trim();
+          const name = (who?.displayName || gh?.login || "cmux").trim();
+          // Prefer GitHub-derived noreply to avoid exposing real email
+          let email = (gh?.derivedNoreply || "").trim();
+          if (!email) email = (who?.primaryEmail || "").trim();
+          if (!email) email = (gh?.primaryEmail || "").trim();
           if (!email) {
-            const baseUser = name
+            const baseUser = (name || "cmux")
               .toLowerCase()
               .replace(/[^a-z0-9]+/g, "-")
               .replace(/^-+|-+$/g, "") || "cmux";
-            const ghId = (who as unknown as { githubAccountId?: string | null })
-              .githubAccountId;
-            email = ghId
-              ? `${ghId}+${baseUser}@users.noreply.github.com`
-              : `${baseUser}@users.noreply.github.com`;
+            email = `${baseUser}@users.noreply.github.com`;
           }
 
           // Safe single-quote for shell (we'll wrap the whole -lc string in double quotes)

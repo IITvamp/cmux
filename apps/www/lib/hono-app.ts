@@ -1,4 +1,5 @@
 import { githubReposRouter } from "@/lib/routes/github.repos.route";
+import { githubUserRouter } from "@/lib/routes/github.user.route";
 import {
   booksRouter,
   devServerRouter,
@@ -82,6 +83,7 @@ app.route("/", usersRouter);
 app.route("/", booksRouter);
 app.route("/", devServerRouter);
 app.route("/", githubReposRouter);
+app.route("/", githubUserRouter);
 app.route("/", morphRouter);
 app.route("/", environmentsRouter);
 app.route("/", sandboxesRouter);
