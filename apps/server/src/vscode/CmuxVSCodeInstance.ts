@@ -1,12 +1,17 @@
 import { getShortId } from "@cmux/shared";
-import { getAuthHeaderJson, getAuthToken } from "../utils/requestContext.js";
+import {
+  getApiSandboxesByIdStatus,
+  postApiSandboxesByIdPublishDevcontainer,
+  postApiSandboxesByIdStop,
+  postApiSandboxesStart,
+} from "@cmux/www-openapi-client";
 import { dockerLogger } from "../utils/fileLogger.js";
+import { getWwwClient } from "../utils/wwwClient.js";
 import {
   VSCodeInstance,
   type VSCodeInstanceConfig,
   type VSCodeInstanceInfo,
 } from "./VSCodeInstance.js";
-// Note: avoid importing @cmux/www-openapi-client here to keep server bundle lean
 
 export class CmuxVSCodeInstance extends VSCodeInstance {
   private sandboxId: string | null = null;
@@ -19,8 +24,6 @@ export class CmuxVSCodeInstance extends VSCodeInstance {
 
   constructor(config: VSCodeInstanceConfig) {
     super(config);
-    // Ensure www OpenAPI client has correct baseUrl
-    // no-op
     const cfg = config as VSCodeInstanceConfig & {
       repoUrl?: string;
       branch?: string;
@@ -32,25 +35,12 @@ export class CmuxVSCodeInstance extends VSCodeInstance {
   }
 
   async start(): Promise<VSCodeInstanceInfo> {
-    const token = getAuthToken();
     dockerLogger.info(
       `[CmuxVSCodeInstance ${this.instanceId}] Requesting sandbox start via www API`
     );
-
-    const baseUrl =
-      process.env.WWW_API_BASE_URL || process.env.CMUX_WWW_API_URL || "http://localhost:9779";
-    const startRes = await fetch(`${baseUrl}/api/sandboxes/start`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token
-          ? {
-              "x-stack-auth":
-                getAuthHeaderJson() || JSON.stringify({ accessToken: token }),
-            }
-          : {}),
-      },
-      body: JSON.stringify({
+    const startRes = await postApiSandboxesStart({
+      client: getWwwClient(),
+      body: {
         teamSlugOrId: this.teamSlugOrId,
         ttlSeconds: 20 * 60,
         metadata: {
@@ -66,18 +56,13 @@ export class CmuxVSCodeInstance extends VSCodeInstance {
               depth: 1,
             }
           : {}),
-      }),
+      },
     });
-    if (!startRes.ok) {
-      const err = await startRes.text();
-      throw new Error(`Failed to start sandbox: ${err}`);
+    console.log("startRes", startRes);
+    const data = startRes.data;
+    if (!data) {
+      throw new Error("Failed to start sandbox");
     }
-    const data = (await startRes.json()) as {
-      instanceId: string;
-      vscodeUrl: string;
-      workerUrl: string;
-      provider: VSCodeInstanceInfo["provider"];
-    };
 
     this.sandboxId = data.instanceId;
     this.vscodeBaseUrl = data.vscodeUrl;
@@ -115,21 +100,11 @@ export class CmuxVSCodeInstance extends VSCodeInstance {
   async stop(): Promise<void> {
     // Disconnect socket and ask www to stop
     await this.disconnectFromWorker();
-    const token = getAuthToken();
     if (this.sandboxId) {
       try {
-        const baseUrl =
-          process.env.WWW_API_BASE_URL || process.env.CMUX_WWW_API_URL || "http://localhost:9779";
-        await fetch(`${baseUrl}/api/sandboxes/${this.sandboxId}/stop`, {
-          method: "POST",
-          headers: {
-            ...(token
-              ? {
-                  "x-stack-auth":
-                    getAuthHeaderJson() || JSON.stringify({ accessToken: token }),
-                }
-              : {}),
-          },
+        await postApiSandboxesByIdStop({
+          client: getWwwClient(),
+          path: { id: this.sandboxId },
         });
       } catch (e) {
         dockerLogger.warn(`[CmuxVSCodeInstance] stop failed`, e);
@@ -139,23 +114,14 @@ export class CmuxVSCodeInstance extends VSCodeInstance {
   }
 
   async getStatus(): Promise<{ running: boolean; info?: VSCodeInstanceInfo }> {
-    const token = getAuthToken();
     if (!this.sandboxId) return { running: false };
     try {
-      const baseUrl =
-        process.env.WWW_API_BASE_URL || process.env.CMUX_WWW_API_URL || "http://localhost:9779";
-      const res = await fetch(`${baseUrl}/api/sandboxes/${this.sandboxId}/status`, {
-        headers: {
-          ...(token
-            ? {
-                "x-stack-auth":
-                  getAuthHeaderJson() || JSON.stringify({ accessToken: token }),
-              }
-            : {}),
-        },
+      const res = await getApiSandboxesByIdStatus({
+        client: getWwwClient(),
+        path: { id: this.sandboxId },
+        responseStyle: "data",
       });
-      if (!res.ok) return { running: false };
-      const st = (await res.json()) as {
+      const st = res as unknown as {
         running: boolean;
         vscodeUrl?: string;
         workerUrl?: string;
@@ -181,26 +147,15 @@ export class CmuxVSCodeInstance extends VSCodeInstance {
 
   // Bridge for agentSpawner to publish devcontainer networking (Morph-backed)
   async setupDevcontainer(): Promise<void> {
-    const token = getAuthToken();
     if (!this.sandboxId) return;
     try {
-      const baseUrl =
-        process.env.WWW_API_BASE_URL || process.env.CMUX_WWW_API_URL || "http://localhost:9779";
-      await fetch(`${baseUrl}/api/sandboxes/${this.sandboxId}/publish-devcontainer`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token
-            ? {
-                "x-stack-auth":
-                  getAuthHeaderJson() || JSON.stringify({ accessToken: token }),
-              }
-            : {}),
-        },
-        body: JSON.stringify({
+      await postApiSandboxesByIdPublishDevcontainer({
+        client: getWwwClient(),
+        path: { id: this.sandboxId },
+        body: {
           teamSlugOrId: this.teamSlugOrId,
           taskRunId: String(this.taskRunId),
-        }),
+        },
       });
     } catch (e) {
       dockerLogger.warn(
