@@ -57,6 +57,11 @@ export async function captureGitDiffViaTerminal(
       await sendTerminalCommand(workerSocket, originalTerminalId, `echo "${captureMarker}"`);
       await new Promise(resolve => setTimeout(resolve, 500));
       
+      // First fetch the latest refs from remote to ensure up-to-date references
+      serverLogger.info(`[GitDiffCapture] Running 'git fetch origin --prune --quiet' in terminal`);
+      await sendTerminalCommand(workerSocket, originalTerminalId, "git fetch origin --prune --quiet 2>&1");
+      await new Promise(resolve => setTimeout(resolve, 3000)); // Wait for fetch to complete
+      
       // Run git add .
       serverLogger.info(`[GitDiffCapture] Running 'git add .' in terminal`);
       await sendTerminalCommand(workerSocket, originalTerminalId, "git add .");

@@ -134,6 +134,31 @@ export async function captureGitDiff(
     // IMPORTANT: Use /root/workspace as the working directory, not the local filesystem path
     const containerWorkspace = "/root/workspace";
 
+    // First, fetch the latest refs from remote to ensure we have up-to-date references
+    // This is crucial for cloud tasks that might be working with stale refs
+    serverLogger.info(
+      `[AgentSpawner] Fetching latest refs from remote to ensure up-to-date git state`
+    );
+    
+    const fetchResult = await safeSocketExec(
+      workerSocket,
+      "bash",
+      ["-c", "git fetch origin --prune --quiet 2>&1"],
+      containerWorkspace,
+      10000 // 10 second timeout for fetch
+    );
+    
+    if (fetchResult.success) {
+      serverLogger.info(
+        `[AgentSpawner] Git fetch completed successfully`
+      );
+    } else {
+      serverLogger.warn(
+        `[AgentSpawner] Git fetch failed (non-critical): ${fetchResult.stderr || "unknown error"}`
+      );
+      // Continue anyway - we can still try to diff with existing refs
+    }
+
     // First check if we're in the right directory and git repo
     const pwdResult = await new Promise<{
       success: boolean;

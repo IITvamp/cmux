@@ -14,6 +14,23 @@ export class GitDiffManager {
 
   async getFullDiff(workspacePath: string): Promise<string> {
     try {
+      // First, fetch the latest refs from remote to ensure we have up-to-date references
+      // This is crucial for cloud tasks that might be working with stale refs
+      try {
+        serverLogger.info(`[GitDiff] Fetching latest refs from remote for ${workspacePath}`);
+        const { stdout: fetchOutput, stderr: fetchError } = await execAsync(
+          "git fetch origin --prune --quiet",
+          { cwd: workspacePath }
+        );
+        if (fetchError) {
+          serverLogger.warn(`[GitDiff] Git fetch warning: ${fetchError}`);
+        }
+        serverLogger.info(`[GitDiff] Git fetch completed successfully`);
+      } catch (fetchError) {
+        // Log but don't fail - we can still try to diff with existing refs
+        serverLogger.error(`[GitDiff] Failed to fetch from remote:`, fetchError);
+      }
+
       // Determine a sensible base ref for diffing:
       // 1) Use the current branch's upstream if configured
       // 2) Otherwise, use the repository's default branch (origin/<default>)
