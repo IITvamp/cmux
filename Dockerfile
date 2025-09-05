@@ -4,7 +4,6 @@
 FROM ubuntu:24.04 AS builder
 
 ARG VERSION
-ARG CODE_RELEASE
 ARG DOCKER_VERSION=28.3.2
 ARG DOCKER_CHANNEL=stable
 
@@ -37,28 +36,26 @@ RUN curl -fsSL https://bun.sh/install | bash && \
     bun --version && \
     bunx --version
 
-# Install openvscode-server (with retries and IPv4 fallback)
-RUN if [ -z "${CODE_RELEASE}" ]; then \
-    CODE_RELEASE=$(curl -sX GET "https://api.github.com/repos/gitpod-io/openvscode-server/releases/latest" \
-      | awk '/tag_name/{print $4;exit}' FS='["\"]' \
-      | sed 's|^openvscode-server-v||'); \
-  fi && \
-  echo "CODE_RELEASE=${CODE_RELEASE}" && \
-  arch="$(dpkg --print-architecture)" && \
+# Install official VS Code Server (with retries and IPv4 fallback)
+RUN arch="$(dpkg --print-architecture)" && \
   if [ "$arch" = "amd64" ]; then \
-    ARCH="x64"; \
+    ARCH_PATH="x64"; \
+    TAR_SUFFIX="x64"; \
   elif [ "$arch" = "arm64" ]; then \
-    ARCH="arm64"; \
+    ARCH_PATH="arm64"; \
+    TAR_SUFFIX="arm64"; \
+  else \
+    echo "Unsupported architecture: $arch" && exit 1; \
   fi && \
-  mkdir -p /app/openvscode-server && \
-  url="https://github.com/gitpod-io/openvscode-server/releases/download/openvscode-server-v${CODE_RELEASE}/openvscode-server-v${CODE_RELEASE}-linux-${ARCH}.tar.gz" && \
+  mkdir -p /app/vscode-server && \
+  url="https://update.code.visualstudio.com/latest/server-linux-${ARCH_PATH}/stable" && \
   echo "Downloading: $url" && \
   ( \
-    curl -fSL --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/openvscode-server.tar.gz "$url" \
-    || curl -fSL4 --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/openvscode-server.tar.gz "$url" \
+    curl -fSL --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/vscode-server.tar.gz "$url" \
+    || curl -fSL4 --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/vscode-server.tar.gz "$url" \
   ) && \
-  tar xf /tmp/openvscode-server.tar.gz -C /app/openvscode-server/ --strip-components=1 && \
-  rm -rf /tmp/openvscode-server.tar.gz
+  tar xf /tmp/vscode-server.tar.gz -C /app/vscode-server/ --strip-components=1 && \
+  rm -rf /tmp/vscode-server.tar.gz
 
 # Copy package files for monorepo dependency installation
 WORKDIR /cmux
@@ -129,16 +126,16 @@ WORKDIR /cmux/packages/vscode-extension
 RUN bun run package && cp cmux-vscode-extension-0.0.1.vsix /tmp/cmux-vscode-extension-0.0.1.vsix
 
 # Install VS Code extensions
-RUN /app/openvscode-server/bin/openvscode-server --install-extension /tmp/cmux-vscode-extension-0.0.1.vsix && \
+RUN /app/vscode-server/bin/code-server --install-extension /tmp/cmux-vscode-extension-0.0.1.vsix --accept-server-license-terms && \
     rm /tmp/cmux-vscode-extension-0.0.1.vsix
 
 # Create VS Code user settings
-RUN mkdir -p /root/.openvscode-server/data/User && \
-    echo '{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "terminal.integrated.defaultProfile.linux": "bash", "terminal.integrated.profiles.linux": {"bash": {"path": "/bin/bash", "args": ["-l"]}}}' > /root/.openvscode-server/data/User/settings.json && \
-    mkdir -p /root/.openvscode-server/data/User/profiles/default-profile && \
-    echo '{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "terminal.integrated.defaultProfile.linux": "bash", "terminal.integrated.profiles.linux": {"bash": {"path": "/bin/bash", "args": ["-l"]}}}' > /root/.openvscode-server/data/User/profiles/default-profile/settings.json && \
-    mkdir -p /root/.openvscode-server/data/Machine && \
-    echo '{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "terminal.integrated.defaultProfile.linux": "bash", "terminal.integrated.profiles.linux": {"bash": {"path": "/bin/bash", "args": ["-l"]}}}' > /root/.openvscode-server/data/Machine/settings.json
+RUN mkdir -p /root/.vscode-server/data/User && \
+    echo '{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "terminal.integrated.defaultProfile.linux": "bash", "terminal.integrated.profiles.linux": {"bash": {"path": "/bin/bash", "args": ["-l"]}}}' > /root/.vscode-server/data/User/settings.json && \
+    mkdir -p /root/.vscode-server/data/User/profiles/default-profile && \
+    echo '{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "terminal.integrated.defaultProfile.linux": "bash", "terminal.integrated.profiles.linux": {"bash": {"path": "/bin/bash", "args": ["-l"]}}}' > /root/.vscode-server/data/User/profiles/default-profile/settings.json && \
+    mkdir -p /root/.vscode-server/data/Machine && \
+    echo '{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "terminal.integrated.defaultProfile.linux": "bash", "terminal.integrated.profiles.linux": {"bash": {"path": "/bin/bash", "args": ["-l"]}}}' > /root/.vscode-server/data/Machine/settings.json
 
 # Stage 2: Runtime stage
 FROM ubuntu:24.04 AS runtime
@@ -189,6 +186,23 @@ COPY --from=builder /usr/local/bin/bunx /usr/local/bin/bunx
 
 # Verify bun works in runtime
 RUN bun --version && bunx --version
+
+# Install VS Code CLI instead of desktop for serve-web
+RUN arch="$(dpkg --print-architecture)" && \
+    if [ "$arch" = "amd64" ]; then \
+        VSCODE_ARCH="x64"; \
+    elif [ "$arch" = "arm64" ]; then \
+        VSCODE_ARCH="arm64"; \
+    else \
+        echo "Unsupported architecture: $arch" && exit 1; \
+    fi && \
+    wget -O /tmp/vscode-cli.tar.gz "https://code.visualstudio.com/sha/download?build=stable&os=cli-alpine-${VSCODE_ARCH}" && \
+    mkdir -p /usr/local/bin && \
+    tar -xzf /tmp/vscode-cli.tar.gz -C /usr/local/bin && \
+    rm -f /tmp/vscode-cli.tar.gz && \
+    chmod +x /usr/local/bin/code && \
+    # Verify installation
+    code --version
 RUN bun add -g @openai/codex@0.25.0 @anthropic-ai/claude-code@1.0.83 @google/gemini-cli@0.1.21 opencode-ai@0.6.4 codebuff @devcontainers/cli @sourcegraph/amp
 
 # Install cursor cli
@@ -236,8 +250,8 @@ EOF
 ENV PATH="/usr/local/bin:$PATH"
 
 # Copy only the built artifacts and runtime dependencies from builder
-COPY --from=builder /app/openvscode-server /app/openvscode-server
-COPY --from=builder /root/.openvscode-server /root/.openvscode-server
+COPY --from=builder /app/vscode-server /app/vscode-server
+COPY --from=builder /root/.vscode-server /root/.vscode-server
 COPY --from=builder /builtins /builtins
 COPY --from=builder /usr/local/bin/wait-for-docker.sh /usr/local/bin/wait-for-docker.sh
 COPY --from=builder /cmux/apps/worker/scripts/collect-relevant-diff.sh /usr/local/bin/cmux-collect-relevant-diff.sh
@@ -272,7 +286,7 @@ RUN mkdir -p /etc/zsh && \
 RUN claude_vsix=$(rg --files /root/.bun/install/cache/@anthropic-ai 2>/dev/null | rg "claude-code\.vsix$" | head -1) && \
     if [ -n "$claude_vsix" ]; then \
         echo "Found claude-code.vsix at: $claude_vsix" && \
-        /app/openvscode-server/bin/openvscode-server --install-extension "$claude_vsix"; \
+        /app/vscode-server/bin/code-server --install-extension "$claude_vsix" --accept-server-license-terms; \
     else \
         echo "Warning: claude-code.vsix not found in Bun cache" && \
         exit 1; \
@@ -324,7 +338,7 @@ RUN chmod +x /startup.sh /usr/local/bin/prompt-wrapper
 # Ports
 # 39376: VS Code Extension Socket Server
 # 39377: Worker service
-# 39378: OpenVSCode server
+# 39378: VS Code server
 EXPOSE 39376 39377 39378
 
 WORKDIR /

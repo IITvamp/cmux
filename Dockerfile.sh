@@ -71,15 +71,15 @@ __CMUX_SHOW__
 fi
 
 
-# Install openvscode-server (with retries and IPv4 fallback)
+# Install VS Code Server (with retries and IPv4 fallback)
 if [ "$EXECUTE" = "1" ] && [ "$ALLOW_DANGEROUS" = "1" ]; then
   bash -euo pipefail <<'__CMUX_RUN__'
 cd "${DESTDIR}${CURRENT_WORKDIR}"
-if [ -z ${CODE_RELEASE} ]; then CODE_RELEASE=$(curl -sX GET https://api.github.com/repos/gitpod-io/openvscode-server/releases/latest | awk /tag_name/{print $4;exit} FS=["\"] | sed s|^openvscode-server-v||); fi && echo CODE_RELEASE=${CODE_RELEASE} && arch=$(dpkg --print-architecture) && if [ $arch = amd64 ]; then ARCH=x64; elif [ $arch = arm64 ]; then ARCH=arm64; fi && mkdir -p /app/openvscode-server && url=https://github.com/gitpod-io/openvscode-server/releases/download/openvscode-server-v${CODE_RELEASE}/openvscode-server-v${CODE_RELEASE}-linux-${ARCH}.tar.gz && echo Downloading: $url && ( curl -fSL --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/openvscode-server.tar.gz $url || curl -fSL4 --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/openvscode-server.tar.gz $url ) && tar xf /tmp/openvscode-server.tar.gz -C /app/openvscode-server/ --strip-components=1 && rm -rf /tmp/openvscode-server.tar.gz
+arch=$(dpkg --print-architecture) && if [ $arch = amd64 ]; then ARCH_PATH=x64; elif [ $arch = arm64 ]; then ARCH_PATH=arm64; else echo Unsupported architecture: $arch && exit 1; fi && mkdir -p /app/vscode-server && url=https://update.code.visualstudio.com/latest/server-linux-${ARCH_PATH}/stable && echo Downloading: $url && ( curl -fSL --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/vscode-server.tar.gz $url || curl -fSL4 --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/vscode-server.tar.gz $url ) && tar xf /tmp/vscode-server.tar.gz -C /app/vscode-server/ --strip-components=1 && rm -rf /tmp/vscode-server.tar.gz
 __CMUX_RUN__
 else
   cat <<'__CMUX_SHOW__'
-if [ -z ${CODE_RELEASE} ]; then CODE_RELEASE=$(curl -sX GET https://api.github.com/repos/gitpod-io/openvscode-server/releases/latest | awk /tag_name/{print $4;exit} FS=["\"] | sed s|^openvscode-server-v||); fi && echo CODE_RELEASE=${CODE_RELEASE} && arch=$(dpkg --print-architecture) && if [ $arch = amd64 ]; then ARCH=x64; elif [ $arch = arm64 ]; then ARCH=arm64; fi && mkdir -p /app/openvscode-server && url=https://github.com/gitpod-io/openvscode-server/releases/download/openvscode-server-v${CODE_RELEASE}/openvscode-server-v${CODE_RELEASE}-linux-${ARCH}.tar.gz && echo Downloading: $url && ( curl -fSL --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/openvscode-server.tar.gz $url || curl -fSL4 --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/openvscode-server.tar.gz $url ) && tar xf /tmp/openvscode-server.tar.gz -C /app/openvscode-server/ --strip-components=1 && rm -rf /tmp/openvscode-server.tar.gz
+arch=$(dpkg --print-architecture) && if [ $arch = amd64 ]; then ARCH_PATH=x64; elif [ $arch = arm64 ]; then ARCH_PATH=arm64; else echo Unsupported architecture: $arch && exit 1; fi && mkdir -p /app/vscode-server && url=https://update.code.visualstudio.com/latest/server-linux-${ARCH_PATH}/stable && echo Downloading: $url && ( curl -fSL --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/vscode-server.tar.gz $url || curl -fSL4 --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/vscode-server.tar.gz $url ) && tar xf /tmp/vscode-server.tar.gz -C /app/vscode-server/ --strip-components=1 && rm -rf /tmp/vscode-server.tar.gz
 __CMUX_SHOW__
 fi
 
@@ -281,11 +281,11 @@ fi
 if [ "$EXECUTE" = "1" ] && [ "$ALLOW_DANGEROUS" = "1" ]; then
   bash -euo pipefail <<'__CMUX_RUN__'
 cd "${DESTDIR}${CURRENT_WORKDIR}"
-/app/openvscode-server/bin/openvscode-server --install-extension /tmp/cmux-vscode-extension-0.0.1.vsix && rm /tmp/cmux-vscode-extension-0.0.1.vsix
+/app/vscode-server/bin/code-server --install-extension /tmp/cmux-vscode-extension-0.0.1.vsix --accept-server-license-terms && rm /tmp/cmux-vscode-extension-0.0.1.vsix
 __CMUX_RUN__
 else
   cat <<'__CMUX_SHOW__'
-/app/openvscode-server/bin/openvscode-server --install-extension /tmp/cmux-vscode-extension-0.0.1.vsix && rm /tmp/cmux-vscode-extension-0.0.1.vsix
+/app/vscode-server/bin/code-server --install-extension /tmp/cmux-vscode-extension-0.0.1.vsix --accept-server-license-terms && rm /tmp/cmux-vscode-extension-0.0.1.vsix
 __CMUX_SHOW__
 fi
 
@@ -294,11 +294,11 @@ fi
 if [ "$EXECUTE" = "1" ] && [ "$ALLOW_DANGEROUS" = "1" ]; then
   bash -euo pipefail <<'__CMUX_RUN__'
 cd "${DESTDIR}${CURRENT_WORKDIR}"
-mkdir -p /root/.openvscode-server/data/User && echo {"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true} > /root/.openvscode-server/data/User/settings.json && mkdir -p /root/.openvscode-server/data/User/profiles/default-profile && echo {"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true} > /root/.openvscode-server/data/User/profiles/default-profile/settings.json && mkdir -p /root/.openvscode-server/data/Machine && echo {"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true} > /root/.openvscode-server/data/Machine/settings.json
+mkdir -p /root/.vscode-server/data/User && echo {"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true} > /root/.vscode-server/data/User/settings.json && mkdir -p /root/.vscode-server/data/User/profiles/default-profile && echo {"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true} > /root/.vscode-server/data/User/profiles/default-profile/settings.json && mkdir -p /root/.vscode-server/data/Machine && echo {"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true} > /root/.vscode-server/data/Machine/settings.json
 __CMUX_RUN__
 else
   cat <<'__CMUX_SHOW__'
-mkdir -p /root/.openvscode-server/data/User && echo {"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true} > /root/.openvscode-server/data/User/settings.json && mkdir -p /root/.openvscode-server/data/User/profiles/default-profile && echo {"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true} > /root/.openvscode-server/data/User/profiles/default-profile/settings.json && mkdir -p /root/.openvscode-server/data/Machine && echo {"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true} > /root/.openvscode-server/data/Machine/settings.json
+mkdir -p /root/.vscode-server/data/User && echo {"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true} > /root/.vscode-server/data/User/settings.json && mkdir -p /root/.vscode-server/data/User/profiles/default-profile && echo {"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true} > /root/.vscode-server/data/User/profiles/default-profile/settings.json && mkdir -p /root/.vscode-server/data/Machine && echo {"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true} > /root/.vscode-server/data/Machine/settings.json
 __CMUX_SHOW__
 fi
 
@@ -496,9 +496,9 @@ fi
 do_safe export PATH=/usr/local/bin:$PATH
 
 # Copy only the built artifacts and runtime dependencies from builder
-# COPY --from=builder /app/openvscode-server /app/openvscode-server
+# COPY --from=builder /app/vscode-server /app/vscode-server
 # Skipping stage copy on host (requires image layer)
-# COPY --from=builder /root/.openvscode-server /root/.openvscode-server
+# COPY --from=builder /root/.vscode-server /root/.vscode-server
 # Skipping stage copy on host (requires image layer)
 # COPY --from=builder /builtins /builtins
 # Skipping stage copy on host (requires image layer)
@@ -589,11 +589,11 @@ fi
 if [ "$EXECUTE" = "1" ] && [ "$ALLOW_DANGEROUS" = "1" ]; then
   bash -euo pipefail <<'__CMUX_RUN__'
 cd "${DESTDIR}${CURRENT_WORKDIR}"
-claude_vsix=$(rg --files /root/.bun/install/cache/@anthropic-ai 2>/dev/null | rg claude-code\.vsix$ | head -1) && if [ -n $claude_vsix ]; then echo Found claude-code.vsix at: $claude_vsix && /app/openvscode-server/bin/openvscode-server --install-extension $claude_vsix; else echo Warning: claude-code.vsix not found in Bun cache && exit 1; fi
+claude_vsix=$(rg --files /root/.bun/install/cache/@anthropic-ai 2>/dev/null | rg claude-code\.vsix$ | head -1) && if [ -n $claude_vsix ]; then echo Found claude-code.vsix at: $claude_vsix && /app/vscode-server/bin/code-server --install-extension $claude_vsix --accept-server-license-terms; else echo Warning: claude-code.vsix not found in Bun cache && exit 1; fi
 __CMUX_RUN__
 else
   cat <<'__CMUX_SHOW__'
-claude_vsix=$(rg --files /root/.bun/install/cache/@anthropic-ai 2>/dev/null | rg claude-code\.vsix$ | head -1) && if [ -n $claude_vsix ]; then echo Found claude-code.vsix at: $claude_vsix && /app/openvscode-server/bin/openvscode-server --install-extension $claude_vsix; else echo Warning: claude-code.vsix not found in Bun cache && exit 1; fi
+claude_vsix=$(rg --files /root/.bun/install/cache/@anthropic-ai 2>/dev/null | rg claude-code\.vsix$ | head -1) && if [ -n $claude_vsix ]; then echo Found claude-code.vsix at: $claude_vsix && /app/vscode-server/bin/code-server --install-extension $claude_vsix --accept-server-license-terms; else echo Warning: claude-code.vsix not found in Bun cache && exit 1; fi
 __CMUX_SHOW__
 fi
 

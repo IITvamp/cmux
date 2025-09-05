@@ -165,9 +165,9 @@ if [ -n "$VSCODE_THEME" ]; then
     SETTINGS_JSON='{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "terminal.integrated.defaultProfile.linux": "bash", "terminal.integrated.profiles.linux": {"bash": {"path": "/bin/bash", "args": ["-l"]}}, "workbench.colorTheme": "'$COLOR_THEME'", "git.openDiffOnClick": true, "scm.defaultViewMode": "tree", "git.showPushSuccessNotification": true, "git.autorefresh": true, "git.branchCompareWith": "main"}'
     
     # Update all VS Code settings locations
-    echo "$SETTINGS_JSON" > /root/.openvscode-server/data/User/settings.json
-    echo "$SETTINGS_JSON" > /root/.openvscode-server/data/User/profiles/default-profile/settings.json
-    echo "$SETTINGS_JSON" > /root/.openvscode-server/data/Machine/settings.json
+    echo "$SETTINGS_JSON" > /root/.vscode-server/data/User/settings.json
+    echo "$SETTINGS_JSON" > /root/.vscode-server/data/User/profiles/default-profile/settings.json
+    echo "$SETTINGS_JSON" > /root/.vscode-server/data/Machine/settings.json
     
     echo "[Startup] VS Code theme configured to: $COLOR_THEME" >> /var/log/cmux/startup.log
 else
@@ -176,48 +176,49 @@ else
     SETTINGS_JSON='{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "terminal.integrated.defaultProfile.linux": "bash", "terminal.integrated.profiles.linux": {"bash": {"path": "/bin/bash", "args": ["-l"]}}, "git.openDiffOnClick": true, "scm.defaultViewMode": "tree", "git.showPushSuccessNotification": true, "git.autorefresh": true, "git.branchCompareWith": "main"}'
     
     # Update all VS Code settings locations
-    echo "$SETTINGS_JSON" > /root/.openvscode-server/data/User/settings.json
-    echo "$SETTINGS_JSON" > /root/.openvscode-server/data/User/profiles/default-profile/settings.json
-    echo "$SETTINGS_JSON" > /root/.openvscode-server/data/Machine/settings.json
+    echo "$SETTINGS_JSON" > /root/.vscode-server/data/User/settings.json
+    echo "$SETTINGS_JSON" > /root/.vscode-server/data/User/profiles/default-profile/settings.json
+    echo "$SETTINGS_JSON" > /root/.vscode-server/data/Machine/settings.json
     
     echo "[Startup] VS Code git settings configured" >> /var/log/cmux/startup.log
 fi
 
-# Start OpenVSCode server on port 39378 without authentication
-echo "[Startup] Starting OpenVSCode server..." >> /var/log/cmux/startup.log
-/app/openvscode-server/bin/openvscode-server \
+# Start VS Code serve-web on port 39378 without authentication
+echo "[Startup] Starting VS Code serve-web..." >> /var/log/cmux/startup.log
+# Reduce telemetry
+export VSCODE_TELEMETRY_LEVEL=off
+# Start VS Code with serve-web for full web UI
+code serve-web \
   --host 0.0.0.0 \
   --port 39378 \
   --without-connection-token \
-  --disable-workspace-trust \
-  --disable-telemetry \
-  --disable-updates \
-  --profile default-profile \
-  --verbose \
-  /root/workspace \
+  --accept-server-license-terms \
   > /var/log/cmux/server.log 2>&1 &
 
-echo "[Startup] OpenVSCode server started, logs available at /var/log/cmux/server.log" >> /var/log/cmux/startup.log
+echo "[Startup] VS Code web server started, logs available at /var/log/cmux/server.log" >> /var/log/cmux/startup.log
 
-# Wait for OpenVSCode server to be ready
-echo "[Startup] Waiting for OpenVSCode server to be ready..." >> /var/log/cmux/startup.log
+# Wait for VS Code web server to be ready
+echo "[Startup] Waiting for VS Code web server to be ready..." >> /var/log/cmux/startup.log
 MAX_RETRIES=30
 RETRY_DELAY=1
 retry_count=0
 
 while [ $retry_count -lt $MAX_RETRIES ]; do
-    if curl -s -f "http://localhost:39378/?folder=/root/workspace" > /dev/null 2>&1; then
-        echo "[Startup] Successfully connected to OpenVSCode server" >> /var/log/cmux/startup.log
+    # Check if VS Code serve-web is responding
+    if curl -s "http://localhost:39378" 2>/dev/null | grep -q "<!DOCTYPE html>\|Workbench"; then
+        echo "[Startup] Successfully connected to VS Code serve-web" >> /var/log/cmux/startup.log
         break
     fi
     
     retry_count=$((retry_count + 1))
-    echo "[Startup] Waiting for OpenVSCode server... (attempt $retry_count/$MAX_RETRIES)" >> /var/log/cmux/startup.log
+    echo "[Startup] Waiting for VS Code web server... (attempt $retry_count/$MAX_RETRIES)" >> /var/log/cmux/startup.log
     sleep $RETRY_DELAY
 done
 
 if [ $retry_count -eq $MAX_RETRIES ]; then
-    echo "[Startup] Warning: Failed to connect to OpenVSCode server after $MAX_RETRIES attempts" >> /var/log/cmux/startup.log
+    echo "[Startup] Warning: Failed to connect to VS Code web server after $MAX_RETRIES attempts" >> /var/log/cmux/startup.log
+    echo "[Startup] VS Code web server logs:" >> /var/log/cmux/startup.log
+    tail -20 /var/log/cmux/server.log >> /var/log/cmux/startup.log 2>&1 || true
 fi
 
 # Start the worker

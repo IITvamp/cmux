@@ -531,20 +531,9 @@ def install_global_packages(instance):
     )
 
 
-def setup_openvscode_server(instance):
-    """Install OpenVSCode server"""
-    print("\n--- Installing OpenVSCode server ---")
-
-    # Get latest release version
-    result = run_ssh_command(
-        instance,
-        'curl -sX GET "https://api.github.com/repos/gitpod-io/openvscode-server/releases/latest" | '
-        "grep \"tag_name\" | awk -F'\"' '{print $4}' | sed 's|^openvscode-server-v||'",
-        print_output=False,
-    )
-
-    code_release = result.stdout.strip()
-    print(f"Latest OpenVSCode server version: {code_release}")
+def setup_vscode_server(instance):
+    """Install official VS Code Server"""
+    print("\n--- Installing VS Code Server ---")
 
     # Detect architecture
     result = run_ssh_command(instance, "dpkg --print-architecture", print_output=False)
@@ -558,19 +547,17 @@ def setup_openvscode_server(instance):
         print(f"Unsupported architecture: {arch}")
         return
 
-    # Download and extract OpenVSCode server
+    # Download and extract VS Code Server
     run_ssh_command(
         instance,
-        f"mkdir -p /app/openvscode-server && "
-        f"curl -L -o /tmp/openvscode-server.tar.gz "
-        f'"https://github.com/gitpod-io/openvscode-server/releases/download/openvscode-server-v{code_release}/'
-        f'openvscode-server-v{code_release}-linux-{arch_name}.tar.gz" && '
-        f"tar xf /tmp/openvscode-server.tar.gz -C /app/openvscode-server/ --strip-components=1 && "
-        f"rm -rf /tmp/openvscode-server.tar.gz",
+        f"mkdir -p /app/vscode-server && "
+        f"curl -L -o /tmp/vscode-server.tar.gz https://update.code.visualstudio.com/latest/server-linux-{arch_name}/stable && "
+        f"tar xf /tmp/vscode-server.tar.gz -C /app/vscode-server/ --strip-components=1 && "
+        f"rm -rf /tmp/vscode-server.tar.gz",
         sudo=True,
     )
 
-    print("OpenVSCode server installed successfully")
+    print("VS Code Server installed successfully")
 
 
 def setup_workspace(instance, workspace_path, debug=False):
@@ -659,7 +646,7 @@ def install_vscode_extensions(instance):
     for ext in extensions:
         run_ssh_command(
             instance,
-            f"/app/openvscode-server/bin/openvscode-server --install-extension {ext}",
+            f"/app/vscode-server/bin/code-server --install-extension {ext} --accept-server-license-terms",
             sudo=True,
         )
 
@@ -674,9 +661,9 @@ def setup_vscode_settings(instance):
     settings = '{"workbench.startupEditor": "none"}'
 
     dirs = [
-        "/root/.openvscode-server/data/User",
-        "/root/.openvscode-server/data/User/profiles/default-profile",
-        "/root/.openvscode-server/data/Machine",
+        "/root/.vscode-server/data/User",
+        "/root/.vscode-server/data/User/profiles/default-profile",
+        "/root/.vscode-server/data/Machine",
     ]
 
     for dir_path in dirs:
@@ -818,8 +805,8 @@ def main():
         # Install global packages
         install_global_packages(current_instance)
 
-        # Install OpenVSCode server
-        setup_openvscode_server(current_instance)
+        # Install VS Code Server
+        setup_vscode_server(current_instance)
 
         # Setup workspace (pass debug flag)
         workspace_path = "/cmux"
@@ -837,11 +824,11 @@ def main():
         # Create startup script
         create_startup_script(current_instance)
 
-        # Create workspace directory for OpenVSCode
+        # Create workspace directory for VS Code
         run_ssh_command(current_instance, "mkdir -p /root/workspace", sudo=True)
 
         # Expose HTTP services
-        current_instance.expose_http_service("openvscode", 39378)
+        current_instance.expose_http_service("vscode", 39378)
         current_instance.expose_http_service("worker", 39377)
 
         print("\n--- Starting services ---")
@@ -859,17 +846,17 @@ def main():
         # Check if services are running
         print("\n--- Checking services ---")
 
-        # Check OpenVSCode server
+        # Check VS Code Server
         result = run_ssh_command(
             current_instance,
-            "ps aux | grep openvscode-server | grep -v grep",
+            "ps aux | grep code-server | grep -v grep",
             sudo=True,
             print_output=False,
         )
         if result.stdout:
-            print("✅ OpenVSCode server is running")
+            print("✅ VS Code Server is running")
         else:
-            print("❌ OpenVSCode server is not running")
+            print("❌ VS Code Server is not running")
             # Show logs
             run_ssh_command(
                 current_instance,
@@ -905,15 +892,15 @@ def main():
         )  # Refresh instance info
         print("\nService URLs:")
         for service in current_instance.networking.http_services:
-            if service.name == "openvscode":
-                print(f"- OpenVSCode: {service.url}/?folder=/root/workspace")
+            if service.name == "vscode":
+                print(f"- VS Code: {service.url}/?folder=/root/workspace")
                 continue
             print(f"- {service.name}: {service.url}")
 
         print("\nUseful commands:")
         print(f"- SSH to instance: morphcloud instance ssh {current_instance.id}")
         print(
-            f"- View OpenVSCode logs: morphcloud instance ssh {current_instance.id} -- sudo cat /var/log/cmux/server.log"
+            f"- View VS Code logs: morphcloud instance ssh {current_instance.id} -- sudo cat /var/log/cmux/server.log"
         )
         print(
             f"- View startup logs: morphcloud instance ssh {current_instance.id} -- sudo cat /var/log/startup.log"
