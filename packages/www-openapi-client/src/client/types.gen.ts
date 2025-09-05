@@ -167,6 +167,10 @@ export type StartSandboxBody = {
     metadata?: {
         [key: string]: string;
     };
+    repoUrl?: string;
+    branch?: string;
+    newBranch?: string;
+    depth?: number;
 };
 
 export type GetApiHealthData = {
@@ -851,6 +855,46 @@ export type GetApiSandboxesByIdStatusResponses = {
 };
 
 export type GetApiSandboxesByIdStatusResponse = GetApiSandboxesByIdStatusResponses[keyof GetApiSandboxesByIdStatusResponses];
+
+export type PostApiSandboxesByIdHydrateData = {
+    body: {
+        teamSlugOrId: string;
+        repoUrl: string;
+        branch?: string;
+        newBranch?: string;
+        depth?: number;
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/sandboxes/{id}/hydrate';
+};
+
+export type PostApiSandboxesByIdHydrateErrors = {
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Failed to hydrate sandbox
+     */
+    500: unknown;
+};
+
+export type PostApiSandboxesByIdHydrateResponses = {
+    /**
+     * Workspace hydrated
+     */
+    200: {
+        repoName: string;
+        workspacePath: string;
+        baseBranch?: string;
+        newBranch?: string;
+    };
+};
+
+export type PostApiSandboxesByIdHydrateResponse = PostApiSandboxesByIdHydrateResponses[keyof PostApiSandboxesByIdHydrateResponses];
 
 export type PostApiSandboxesByIdPublishDevcontainerData = {
     body: {

@@ -4,8 +4,13 @@ import { stackServerAppJs } from "@/lib/utils/stack";
 import { verifyTeamAccess } from "@/lib/utils/team-verification";
 import { env } from "@/lib/utils/www-env";
 import { api } from "@cmux/convex/api";
+import { DEFAULT_MORPH_SNAPSHOT_ID } from "@/lib/utils/morph-defaults";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { MorphCloudClient } from "morphcloud";
+import {
+  generateGitHubInstallationToken,
+  getInstallationForRepo,
+} from "@/lib/utils/github-app-token";
 
 export const sandboxesRouter = new OpenAPIHono();
 
@@ -15,6 +20,11 @@ const StartSandboxBody = z
     snapshotId: z.string().optional(),
     ttlSeconds: z.number().optional().default(20 * 60),
     metadata: z.record(z.string(), z.string()).optional(),
+    // Optional hydration parameters to clone a repo into the sandbox on start
+    repoUrl: z.string().optional(),
+    branch: z.string().optional(),
+    newBranch: z.string().optional(),
+    depth: z.number().optional().default(1),
   })
   .openapi("StartSandboxBody");
 
@@ -73,7 +83,7 @@ sandboxesRouter.openapi(
 
       const client = new MorphCloudClient({ apiKey: env.MORPH_API_KEY });
       const instance = await client.instances.start({
-        snapshotId: body.snapshotId || "snapshot_kco1jqb6",
+        snapshotId: body.snapshotId || DEFAULT_MORPH_SNAPSHOT_ID,
         ttlSeconds: body.ttlSeconds ?? 20 * 60,
         ttlAction: "pause",
         metadata: {
@@ -89,6 +99,130 @@ sandboxesRouter.openapi(
       if (!vscodeService || !workerService) {
         await instance.stop().catch(() => {});
         return c.text("VSCode or worker service not found", 500);
+      }
+
+      // Optional: Hydrate repo inside the sandbox
+      if (body.repoUrl) {
+        console.log(`[sandboxes.start] Hydrating repo for ${instance.id}`);
+        const match = body.repoUrl.match(/github\.com\/?([^\s/]+)\/([^\s/.]+)(?:\.git)?/i);
+        if (!match) {
+          return c.text("Unsupported repo URL; expected GitHub URL", 400);
+        }
+        const owner = match[1]!;
+        const repo = match[2]!;
+        const repoFull = `${owner}/${repo}`;
+        console.log(`[sandboxes.start] Parsed owner/repo: ${repoFull}`);
+
+        try {
+          const installationId = await getInstallationForRepo(repoFull);
+          if (!installationId) {
+            return c.text(
+              `No GitHub App installation found for ${owner}. Install the app for this org/user.`,
+              400
+            );
+          }
+          console.log(`[sandboxes.start] installationId: ${installationId}`);
+          const githubToken = await generateGitHubInstallationToken({
+            installationId,
+            repositories: [repoFull],
+          });
+          console.log(
+            `[sandboxes.start] Generated GitHub token (len=${githubToken.length})`
+          );
+
+          // Best-effort envctl for compatibility with gh and other tools
+          try {
+            const envctlRes = await instance.exec(
+              `envctl set GITHUB_TOKEN=${githubToken}`
+            );
+            console.log(
+              `[sandboxes.start] envctl set exit=${envctlRes.exit_code} stderr=${(envctlRes.stderr || "").slice(0, 200)}`
+            );
+          } catch (_e) {
+            console.log(
+              `[sandboxes.start] envctl not available; continuing without it`
+            );
+          }
+
+          // gh auth for CLI tools
+          const ghRes = await instance.exec(
+            `bash -lc "echo '${githubToken}' | gh auth login --with-token 2>&1 || true"`
+          );
+          console.log(
+            `[sandboxes.start] gh auth login exit=${ghRes.exit_code} stderr=${(ghRes.stderr || "").slice(0,200)}`
+          );
+
+          // Git credential store for HTTPS operations
+          const credRes = await instance.exec(
+            `bash -lc "git config --global credential.helper store && printf '%s\\n' 'https://x-access-token:${githubToken}@github.com' > /root/.git-credentials && (git config --global --get credential.helper || true) && (test -f /root/.git-credentials && wc -c /root/.git-credentials || true)"`
+          );
+          console.log(
+            `[sandboxes.start] git creds configured exit=${credRes.exit_code} out=${(credRes.stdout||'').replace(/:[^@]*@/g, ':***@').slice(0,200)}`
+          );
+
+          const depth = body.depth ?? 1;
+          const workspace = "/root/workspace";
+          await instance.exec(`mkdir -p ${workspace}`);
+
+          // Check remote
+          const remoteRes = await instance.exec(
+            `bash -lc "cd ${workspace} && test -d .git && git remote get-url origin || echo 'no-remote'"`
+          );
+          const remoteUrl = (remoteRes.stdout || "").trim();
+
+          if (!remoteUrl || !remoteUrl.includes(`${owner}/${repo}`)) {
+            await instance.exec(
+              `bash -lc "rm -rf ${workspace}/* ${workspace}/.[!.]* ${workspace}/..?* 2>/dev/null || true"`
+            );
+            const maskedUrl = `https://x-access-token:***@github.com/${owner}/${repo}.git`;
+            console.log(
+              `[sandboxes.start] Cloning ${maskedUrl} depth=${depth} -> ${workspace}`
+            );
+            const cloneRes = await instance.exec(
+              `bash -lc "git clone --depth ${depth} https://x-access-token:${githubToken}@github.com/${owner}/${repo}.git ${workspace}"`
+            );
+            console.log(
+              `[sandboxes.start] clone exit=${cloneRes.exit_code} stderr=${(cloneRes.stderr||'').slice(0,300)}`
+            );
+            if (cloneRes.exit_code !== 0) {
+              return c.text("Failed to clone repository", 500);
+            }
+          } else {
+            const fetchRes = await instance.exec(
+              `bash -lc "cd ${workspace} && git fetch --all --prune"`
+            );
+            console.log(
+              `[sandboxes.start] fetch exit=${fetchRes.exit_code} stderr=${(fetchRes.stderr||'').slice(0,200)}`
+            );
+          }
+
+          const baseBranch = body.branch || "main";
+          const coRes = await instance.exec(
+            `bash -lc "cd ${workspace} && (git checkout ${baseBranch} || git checkout -b ${baseBranch} origin/${baseBranch}) && git pull --ff-only || true"`
+          );
+          console.log(
+            `[sandboxes.start] checkout ${baseBranch} exit=${coRes.exit_code} stderr=${(coRes.stderr||'').slice(0,200)}`
+          );
+          if (body.newBranch) {
+            const nbRes = await instance.exec(
+              `bash -lc "cd ${workspace} && git switch -C ${body.newBranch}"`
+            );
+            console.log(
+              `[sandboxes.start] switch -C ${body.newBranch} exit=${nbRes.exit_code} stderr=${(nbRes.stderr||'').slice(0,200)}`
+            );
+          }
+
+          const lsRes = await instance.exec(
+            `bash -lc "ls -la ${workspace} | head -50"`
+          );
+          console.log(
+            `[sandboxes.start] workspace listing:\n${lsRes.stdout || ''}`
+          );
+        } catch (e) {
+          console.error(`[sandboxes.start] Hydration failed:`, e);
+          await instance.stop().catch(() => {});
+          return c.text("Failed to hydrate sandbox", 500);
+        }
       }
 
       return c.json({
@@ -193,6 +327,185 @@ sandboxesRouter.openapi(
   }
 );
 
+// Hydrate a sandbox workspace by cloning a GitHub repo into /root/workspace and preparing branches
+sandboxesRouter.openapi(
+  createRoute({
+    method: "post" as const,
+    path: "/sandboxes/{id}/hydrate",
+    tags: ["Sandboxes"],
+    summary: "Clone repo into sandbox workspace and checkout branches",
+    request: {
+      params: z.object({ id: z.string() }),
+      body: {
+        content: {
+          "application/json": {
+            schema: z.object({
+              teamSlugOrId: z.string(),
+              repoUrl: z.string(),
+              branch: z.string().optional(),
+              newBranch: z.string().optional(),
+              depth: z.number().optional().default(1),
+            }),
+          },
+        },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        content: {
+          "application/json": {
+            schema: z.object({
+              repoName: z.string(),
+              workspacePath: z.string(),
+              baseBranch: z.string().optional(),
+              newBranch: z.string().optional(),
+            }),
+          },
+        },
+        description: "Workspace hydrated",
+      },
+      401: { description: "Unauthorized" },
+      500: { description: "Failed to hydrate sandbox" },
+    },
+  }),
+  async (c) => {
+    const tokens = await getAccessTokenFromRequest(c.req.raw);
+    if (!tokens) return c.text("Unauthorized", 401);
+    const { id } = c.req.valid("param");
+    const body = c.req.valid("json");
+
+    try {
+      // Verify team access first
+      await verifyTeamAccess({ req: c.req.raw, teamSlugOrId: body.teamSlugOrId });
+
+      const client = new MorphCloudClient({ apiKey: env.MORPH_API_KEY });
+      const instance = await client.instances.get({ instanceId: id });
+
+      // Derive owner/repo from repoUrl
+      console.log(`[sandboxes.hydrate] repoUrl: ${body.repoUrl}`);
+      const match = body.repoUrl.match(/github\.com\/?([^\s/]+)\/([^\s/.]+)(?:\.git)?/i);
+      if (!match) {
+        return c.text("Unsupported repo URL; expected GitHub URL", 400);
+      }
+      const owner = match[1]!;
+      const repo = match[2]!;
+      console.log(`[sandboxes.hydrate] Parsed owner/repo: ${owner}/${repo}`);
+      const repoFull = `${owner}/${repo}`;
+      const repoName = repo;
+
+      // Mint GitHub App token for the single repo
+      const installationId = await getInstallationForRepo(repoFull);
+      if (!installationId) {
+        return c.text(
+          `No GitHub App installation found for ${owner}. Install the app for this org/user.`,
+          400
+        );
+      }
+      console.log(`[sandboxes.hydrate] Using installationId: ${installationId}`);
+      const githubToken = await generateGitHubInstallationToken({
+        installationId,
+        repositories: [repoFull],
+      });
+      console.log(
+        `[sandboxes.hydrate] Generated GitHub token (len=${githubToken.length}) for ${repoFull}`
+      );
+
+      // Best-effort: set token via envctl if available (ignore failures)
+      try {
+        const envctlRes = await instance.exec(`envctl set GITHUB_TOKEN=${githubToken}`);
+        console.log(
+          `[sandboxes.hydrate] envctl set exit=${envctlRes.exit_code} stderr=${(envctlRes.stderr || "").slice(0, 200)}`
+        );
+      } catch (_e) {
+        console.log(`[sandboxes.hydrate] envctl not available; continuing without it`);
+      }
+
+      // Configure Git credential store with the GitHub App token for future fetch/push
+      const credRes = await instance.exec(
+        `bash -lc "git config --global credential.helper store && printf '%s\\n' 'https://x-access-token:${githubToken}@github.com' > /root/.git-credentials && (git config --global --get credential.helper || true) && (test -f /root/.git-credentials && wc -c /root/.git-credentials || true)"`
+      );
+      console.log(
+        `[sandboxes.hydrate] git credential config exit=${credRes.exit_code} stdout=${(credRes.stdout || "").replace(/:[^@]*@/g, ':***@').slice(0,200)} stderr=${(credRes.stderr || "").slice(0,200)}`
+      );
+
+      const depth = body.depth ?? 1;
+      const workspace = "/root/workspace";
+
+      // Ensure workspace exists
+      await instance.exec(`mkdir -p ${workspace}`);
+
+      // Check if workspace is already a git repo with the same remote
+      const remoteRes = await instance.exec(
+        `bash -lc "cd ${workspace} && test -d .git && git remote get-url origin || echo 'no-remote'"`
+      );
+      const remoteUrl = (remoteRes.stdout || "").trim();
+
+      if (!remoteUrl || !remoteUrl.includes(`${owner}/${repo}`)) {
+        // Replace workspace with fresh clone
+        await instance.exec(
+          `bash -lc "rm -rf ${workspace}/* ${workspace}/.[!.]* ${workspace}/..?* 2>/dev/null || true"`
+        );
+        const maskedUrl = `https://x-access-token:***@github.com/${owner}/${repo}.git`;
+        const cloneCmd = `bash -lc "git clone --depth ${depth} https://x-access-token:${githubToken}@github.com/${owner}/${repo}.git ${workspace}"`;
+        console.log(`[sandboxes.hydrate] Cloning: ${maskedUrl} depth=${depth} -> ${workspace}`);
+        const cloneRes = await instance.exec(cloneCmd);
+        console.log(
+          `[sandboxes.hydrate] clone exit=${cloneRes.exit_code} stdoutLen=${(cloneRes.stdout||'').length} stderr=${(cloneRes.stderr||'').slice(0,300)}`
+        );
+        if (cloneRes.exit_code !== 0) {
+          console.error("Clone failed:", cloneRes.stderr);
+          return c.text("Failed to clone repository", 500);
+        }
+      } else {
+        // Fetch latest
+        const fetchRes = await instance.exec(
+          `bash -lc "cd ${workspace} && git fetch --all --prune"`
+        );
+        console.log(
+          `[sandboxes.hydrate] fetch exit=${fetchRes.exit_code} stderr=${(fetchRes.stderr||'').slice(0,200)}`
+        );
+      }
+
+      const baseBranch = body.branch || "main";
+      // Checkout base branch (create tracking if needed)
+      const coRes = await instance.exec(
+        `bash -lc "cd ${workspace} && (git checkout ${baseBranch} || git checkout -b ${baseBranch} origin/${baseBranch}) && git pull --ff-only || true"`
+      );
+      console.log(
+        `[sandboxes.hydrate] checkout ${baseBranch} exit=${coRes.exit_code} stderr=${(coRes.stderr||'').slice(0,200)}`
+      );
+
+      if (body.newBranch) {
+        // Create/switch to new branch
+        const nbRes = await instance.exec(
+          `bash -lc "cd ${workspace} && git switch -C ${body.newBranch}"`
+        );
+        console.log(
+          `[sandboxes.hydrate] switch -C ${body.newBranch} exit=${nbRes.exit_code} stderr=${(nbRes.stderr||'').slice(0,200)}`
+        );
+
+      }
+
+      // Sanity: list top-level
+      const lsRes = await instance.exec(`bash -lc "ls -la ${workspace} | head -50"`);
+      console.log(
+        `[sandboxes.hydrate] workspace listing:\n${lsRes.stdout || ''}`
+      );
+
+      return c.json({
+        repoName,
+        workspacePath: workspace,
+        baseBranch,
+        newBranch: body.newBranch,
+      });
+    } catch (error) {
+      console.error("Failed to hydrate sandbox:", error);
+      return c.text("Failed to hydrate sandbox", 500);
+    }
+  }
+);
+
 // Publish devcontainer forwarded ports (read devcontainer.json inside instance, expose, persist to Convex)
 sandboxesRouter.openapi(
   createRoute({
@@ -292,4 +605,3 @@ sandboxesRouter.openapi(
     }
   }
 );
-
