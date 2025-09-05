@@ -1,5 +1,5 @@
-import AntdMultiSelect from "@/components/AntdMultiSelect";
 import { ModeToggleTooltip } from "@/components/ui/mode-toggle-tooltip";
+import { SearchableDropdown } from "@/components/ui/searchable-dropdown";
 import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
 import clsx from "clsx";
 import { Image, Mic } from "lucide-react";
@@ -56,37 +56,39 @@ export const DashboardInputControls = memo(function DashboardInputControls({
   return (
     <div className="flex items-end gap-1 grow">
       <div className="flex items-end gap-1">
-        <AntdMultiSelect
+        <SearchableDropdown
           options={projectOptions}
           value={selectedProject}
           onChange={onProjectChange}
           placeholder="Select project"
           singleSelect={true}
-          className="!min-w-[300px] !max-w-[500px] !rounded-2xl"
+          minWidth="300px"
+          maxWidth="500px"
           loading={isLoadingProjects}
           maxTagCount={1}
           showSearch
         />
 
-        <AntdMultiSelect
+        <SearchableDropdown
           options={branchOptions}
           value={selectedBranch}
           onChange={onBranchChange}
           placeholder="Branch"
           singleSelect={true}
-          className="!min-w-[120px] !rounded-2xl"
+          minWidth="120px"
           loading={isLoadingBranches}
           showSearch
         />
 
-        <AntdMultiSelect
+        <SearchableDropdown
           options={agentOptions}
           value={selectedAgents}
           onChange={onAgentChange}
           placeholder="Select agents"
           singleSelect={false}
           maxTagCount={1}
-          className="!w-[220px] !max-w-[220px] !rounded-2xl"
+          minWidth="220px"
+          maxWidth="220px"
           showSearch
         />
       </div>
