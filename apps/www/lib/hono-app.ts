@@ -4,6 +4,7 @@ import {
   devServerRouter,
   environmentsRouter,
   healthRouter,
+  sandboxesRouter,
   morphRouter,
   usersRouter,
 } from "@/lib/routes/index";
@@ -83,6 +84,7 @@ app.route("/", devServerRouter);
 app.route("/", githubReposRouter);
 app.route("/", morphRouter);
 app.route("/", environmentsRouter);
+app.route("/", sandboxesRouter);
 
 // OpenAPI documentation
 app.doc("/doc", {

@@ -23,7 +23,7 @@ import { getAuthToken, runWithAuthToken } from "./utils/requestContext.js";
 import { serverLogger } from "./utils/fileLogger.js";
 import { workerExec } from "./utils/workerExec.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
-import { MorphVSCodeInstance } from "./vscode/MorphVSCodeInstance.js";
+import { CmuxVSCodeInstance } from "./vscode/CmuxVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWorktreePath, setupProjectWorkspace } from "./workspace.js";
 import { retryOnOptimisticConcurrency } from "./utils/convexRetry.js";
@@ -276,8 +276,8 @@ export async function spawnAgent(
     console.log("[AgentSpawner] [isCloudMode]", options.isCloudMode);
 
     if (options.isCloudMode) {
-      // For Morph, create the instance and we'll clone the repo via socket command
-      vscodeInstance = new MorphVSCodeInstance({
+      // For remote sandboxes (Morph-backed via www API)
+      vscodeInstance = new CmuxVSCodeInstance({
         agentName: agent.name,
         taskRunId,
         taskId,
@@ -368,7 +368,7 @@ export async function spawnAgent(
       });
       console.log("[AgentSpawner] [isCloudMode] Repo cloned!");
 
-      if (vscodeInstance instanceof MorphVSCodeInstance) {
+      if (vscodeInstance instanceof CmuxVSCodeInstance) {
         console.log("[AgentSpawner] [isCloudMode] Setting up devcontainer");
         void vscodeInstance
           .setupDevcontainer()

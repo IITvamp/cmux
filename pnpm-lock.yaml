@@ -394,6 +394,9 @@ importers:
       '@cmux/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@cmux/www-openapi-client':
+        specifier: workspace:*
+        version: link:../../packages/www-openapi-client
       '@daytonaio/sdk':
         specifier: ^0.22.1
         version: 0.22.1
@@ -451,9 +454,6 @@ importers:
       minimatch:
         specifier: ^10.0.3
         version: 10.0.3
-      morphcloud:
-        specifier: ^0.0.18
-        version: 0.0.18
       octokit:
         specifier: ^3.2.2
         version: 3.2.2
