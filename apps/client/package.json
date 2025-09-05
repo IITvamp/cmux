@@ -66,6 +66,7 @@
     "date-fns": "^4.1.0",
     "debug": "^4.4.1",
     "electron-updater": "^6.6.2",
+    "engine.io-client": "^6.6.3",
     "framer-motion": "^12.23.3",
     "fs-extra": "^11.3.1",
     "fuzzysort": "^3.1.0",

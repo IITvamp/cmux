@@ -15,6 +15,7 @@ export default defineConfig({
         input: {
           index: resolve("electron/main/index.ts"),
         },
+        external: ["@cmux/server"],
       },
     },
     // Load env vars from repo root so NEXT_PUBLIC_* from .env/.env.local apply

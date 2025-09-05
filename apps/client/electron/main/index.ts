@@ -241,7 +241,10 @@ app.on("open-url", (_event, url) => {
   handleOrQueueProtocolUrl(url);
 });
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  // Note: The server should be started separately, not inside the Electron app
+  // The Electron renderer will connect to the server via Socket.IO or IPC
+  
   // Try to register the custom protocol handler with the OS. electron-builder
   // will add CFBundleURLTypes on macOS, but calling this is harmless and also
   // helps on Windows/Linux when packaged.

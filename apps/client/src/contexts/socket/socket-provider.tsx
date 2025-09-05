@@ -1,12 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "@tanstack/react-router";
 import React, { useEffect, useMemo } from "react";
-import { io } from "socket.io-client";
 import { authJsonQueryOptions } from "../convex/authJsonQueryOptions";
 import { cachedGetUser } from "../../lib/cachedGetUser";
 import { stackClientApp } from "../../lib/stack";
 import { WebSocketContext } from "./socket-context";
 import type { SocketContextType } from "./types";
+import type {
+  ClientToServerEvents,
+  ServerToClientEvents,
+} from "@cmux/shared";
+import type { Socket } from "socket.io-client";
 
 interface SocketProviderProps {
   children: React.ReactNode;
@@ -55,10 +59,15 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
         query.auth_json = JSON.stringify(authJson);
       }
 
+      // Always use Socket.IO - the server runs separately
+      console.log("[Socket] Using Socket.IO transport", { url });
+      // Dynamic import to reduce initial bundle size
+      const { io } = await import("socket.io-client");
       const newSocket = io(url, {
         transports: ["websocket"],
         query,
       });
+      
       createdSocket = newSocket;
       if (disposed) {
         newSocket.disconnect();
@@ -77,11 +86,14 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
     });
 
     newSocket.on("connect_error", (err) => {
-      console.error("[Socket] connect_error", err?.message ?? err);
+      const errorMessage = err && typeof err === 'object' && 'message' in err 
+        ? (err as Error).message 
+        : String(err);
+      console.error("[Socket] connect_error", errorMessage);
     });
 
       newSocket.on("available-editors", (data) => {
-        setAvailableEditors(data);
+        setAvailableEditors(data as SocketContextType["availableEditors"]);
       });
     })();
 
