@@ -1,4 +1,4 @@
-import AntdMultiSelect from "@/components/AntdMultiSelect";
+import CommandMultiSelect from "@/components/CommandMultiSelect";
 import { ModeToggleTooltip } from "@/components/ui/mode-toggle-tooltip";
 import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
 import clsx from "clsx";
@@ -56,37 +56,37 @@ export const DashboardInputControls = memo(function DashboardInputControls({
   return (
     <div className="flex items-end gap-1 grow">
       <div className="flex items-end gap-1">
-        <AntdMultiSelect
+        <CommandMultiSelect
           options={projectOptions}
           value={selectedProject}
           onChange={onProjectChange}
           placeholder="Select project"
           singleSelect={true}
-          className="!min-w-[300px] !max-w-[500px] !rounded-2xl"
+          className="min-w-[300px] max-w-[500px] rounded-2xl"
           loading={isLoadingProjects}
           maxTagCount={1}
           showSearch
         />
 
-        <AntdMultiSelect
+        <CommandMultiSelect
           options={branchOptions}
           value={selectedBranch}
           onChange={onBranchChange}
           placeholder="Branch"
           singleSelect={true}
-          className="!min-w-[120px] !rounded-2xl"
+          className="min-w-[120px] rounded-2xl"
           loading={isLoadingBranches}
           showSearch
         />
 
-        <AntdMultiSelect
+        <CommandMultiSelect
           options={agentOptions}
           value={selectedAgents}
           onChange={onAgentChange}
           placeholder="Select agents"
           singleSelect={false}
           maxTagCount={1}
-          className="!w-[220px] !max-w-[220px] !rounded-2xl"
+          className="w-[220px] max-w-[220px] rounded-2xl"
           showSearch
         />
       </div>
