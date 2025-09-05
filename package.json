@@ -41,5 +41,8 @@
     "typescript": "5.8.3",
     "typescript-eslint": "^8.40.0"
   },
-  "packageManager": "pnpm@10.14.0"
+  "packageManager": "pnpm@10.14.0",
+  "dependencies": {
+    "@convex-dev/resend": "^0.1.12"
+  }
 }
