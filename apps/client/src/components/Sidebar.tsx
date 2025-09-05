@@ -195,6 +195,26 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
 
       <div className="pb-2 shrink-0 flex flex-col">
         <Link
+          to="/$teamSlugOrId/inbox"
+          params={{ teamSlugOrId }}
+          className="flex items-center px-7 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors select-none cursor-default"
+        >
+          <svg
+            className="w-4 h-4 mr-3 text-neutral-500"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M3 7l9 6 9-6M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+            />
+          </svg>
+          Inbox
+        </Link>
+        <Link
           to="/$teamSlugOrId/environments"
           params={{ teamSlugOrId }}
           search={{
