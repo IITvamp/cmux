@@ -18,6 +18,8 @@ export interface SelectOptionObject {
   isUnavailable?: boolean;
   // Optional icon element to render before the label
   icon?: React.ReactNode;
+  // Stable key for the icon, used for de-duplication in stacked view
+  iconKey?: string;
 }
 
 export type SelectOption = string | SelectOptionObject;
@@ -93,6 +95,10 @@ export function SearchableSelect({
   countLabel = "selected",
 }: SearchableSelectProps) {
   const normOptions = useMemo(() => normalizeOptions(options), [options]);
+  const valueToOption = useMemo(
+    () => new Map(normOptions.map((o) => [o.value, o])),
+    [normOptions]
+  );
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const [search, setSearch] = useState("");
@@ -136,9 +142,52 @@ export function SearchableSelect({
         </span>
       );
     }
-    // Multi-select with multiple items: show count summary
+    // Multi-select with multiple items: if icons exist, show stacked icons + count
+    const selectedWithIcons = value
+      .map((v) => {
+        const o = valueToOption.get(v);
+        if (!o || !o.icon) return null;
+        return { key: o.iconKey ?? o.value, icon: o.icon };
+      })
+      .filter(Boolean) as Array<{ key: string; icon: React.ReactNode }>;
+    // Deduplicate by icon key (e.g., vendor) while preserving order
+    const seen = new Set<string>();
+    const uniqueIcons: React.ReactNode[] = [];
+    for (const it of selectedWithIcons) {
+      if (seen.has(it.key)) continue;
+      seen.add(it.key);
+      uniqueIcons.push(it.icon);
+    }
+    if (uniqueIcons.length >= 2) {
+      const maxIcons = 5;
+      return (
+        <span className="inline-flex items-center gap-2">
+          <span className="flex space-x-[2px]">
+            {uniqueIcons.slice(0, maxIcons).map((ico, i) => (
+              <span
+                key={i}
+                className={clsx(
+                  "inline-flex h-4 w-4 items-center justify-center overflow-hidden"
+                )}
+              >
+                {ico}
+              </span>
+            ))}
+          </span>
+          <span className="truncate">{`${value.length} ${countLabel}`}</span>
+        </span>
+      );
+    }
+    // Fallback: show count only
     return <span className="truncate">{`${value.length} ${countLabel}`}</span>;
-  }, [countLabel, normOptions, placeholder, selectedLabels, value]);
+  }, [
+    countLabel,
+    normOptions,
+    placeholder,
+    selectedLabels,
+    value,
+    valueToOption,
+  ]);
 
   const filteredOptions = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -213,7 +262,7 @@ export function SearchableSelect({
             type="button"
             disabled={disabled}
             className={clsx(
-              "inline-flex h-8 items-center rounded-md border",
+              "inline-flex h-7 items-center rounded-md border",
               "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950",
               "px-2.5 pr-6 text-sm text-neutral-900 dark:text-neutral-100",
               // Focus-visible ring for accessibility
@@ -223,7 +272,7 @@ export function SearchableSelect({
               className
             )}
           >
-            <span className="flex-1 min-w-0 text-left text-sm inline-flex items-center gap-1.5">
+            <span className="flex-1 min-w-0 text-left text-[13.5px] inline-flex items-center gap-1.5">
               {displayContent}
             </span>
           </button>

@@ -43,10 +43,25 @@ export const DashboardInputControls = memo(function DashboardInputControls({
   teamSlugOrId,
 }: DashboardInputControlsProps) {
   const agentOptions = useMemo(() => {
+    const vendorKey = (name: string): string => {
+      const lower = name.toLowerCase();
+      if (lower.startsWith("codex/")) return "openai";
+      if (lower.startsWith("claude/")) return "claude";
+      if (lower.startsWith("gemini/")) return "gemini";
+      if (lower.includes("kimi")) return "kimi";
+      if (lower.includes("glm")) return "glm";
+      if (lower.includes("grok")) return "grok";
+      if (lower.includes("qwen")) return "qwen";
+      if (lower.startsWith("cursor/")) return "cursor";
+      if (lower.startsWith("amp")) return "amp";
+      if (lower.startsWith("opencode/")) return "opencode";
+      return "other";
+    };
     return AGENT_CONFIGS.map((agent) => ({
       label: agent.name,
       value: agent.name,
       icon: <AgentLogo agentName={agent.name} className="w-4 h-4" />,
+      iconKey: vendorKey(agent.name),
     }));
   }, []);
   // Determine OS for potential future UI tweaks
