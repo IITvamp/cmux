@@ -16,6 +16,8 @@ export interface SelectOptionObject {
   label: string;
   value: string;
   isUnavailable?: boolean;
+  // Optional icon element to render before the label
+  icon?: React.ReactNode;
 }
 
 export type SelectOption = string | SelectOptionObject;
@@ -55,6 +57,11 @@ function OptionItem({ opt, isSelected, onSelectValue }: OptionItemProps) {
       onSelect={() => onSelectValue(opt.value)}
     >
       <div className="flex items-center gap-2 min-w-0 flex-1">
+        {opt.icon ? (
+          <span className="shrink-0 inline-flex items-center justify-center">
+            {opt.icon}
+          </span>
+        ) : null}
         <span className="truncate">{opt.label}</span>
         {opt.isUnavailable ? (
           <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />

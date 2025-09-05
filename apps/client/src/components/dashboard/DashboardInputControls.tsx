@@ -6,6 +6,7 @@ import {
 } from "@/components/ui/tooltip";
 import { ModeToggleTooltip } from "@/components/ui/mode-toggle-tooltip";
 import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
+import { AgentLogo } from "@/components/icons/agent-logos";
 import clsx from "clsx";
 import { Image, Mic } from "lucide-react";
 import { memo, useCallback, useMemo } from "react";
@@ -41,10 +42,13 @@ export const DashboardInputControls = memo(function DashboardInputControls({
   isLoadingBranches,
   teamSlugOrId,
 }: DashboardInputControlsProps) {
-  const agentOptions = useMemo(
-    () => AGENT_CONFIGS.map((agent) => agent.name),
-    []
-  );
+  const agentOptions = useMemo(() => {
+    return AGENT_CONFIGS.map((agent) => ({
+      label: agent.name,
+      value: agent.name,
+      icon: <AgentLogo agentName={agent.name} className="w-4 h-4" />,
+    }));
+  }, []);
   // Determine OS for potential future UI tweaks
   // const isMac = navigator.userAgent.toUpperCase().indexOf("MAC") >= 0;
 
