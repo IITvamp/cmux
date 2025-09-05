@@ -11,6 +11,8 @@ import {
   generateGitHubInstallationToken,
   getInstallationForRepo,
 } from "@/lib/utils/github-app-token";
+import { fetchGithubUserInfoForRequest } from "@/lib/utils/githubUserInfo";
+import { selectGitIdentity } from "@/lib/utils/gitIdentity";
 
 export const sandboxesRouter = new OpenAPIHono();
 
@@ -99,6 +101,39 @@ sandboxesRouter.openapi(
       if (!vscodeService || !workerService) {
         await instance.stop().catch(() => {});
         return c.text("VSCode or worker service not found", 500);
+      }
+
+      // Configure git identity from Convex + GitHub user info so commits don't fail
+      try {
+        const accessToken = await getAccessTokenFromRequest(c.req.raw);
+        if (accessToken) {
+          const convex = getConvex({ accessToken });
+          const [who, gh] = await Promise.all([
+            convex.query(api.users.getCurrentBasic, {}),
+            fetchGithubUserInfoForRequest(c.req.raw),
+          ]);
+
+          const { name, email } = selectGitIdentity(who, gh);
+
+          // Safe single-quote for shell (we'll wrap the whole -lc string in double quotes)
+          const shq = (v: string) => `'${v.replace(/'/g, "\\'")}'`;
+
+          const gitCfgRes = await instance.exec(
+            `bash -lc "git config --global user.name ${shq(name)} && git config --global user.email ${shq(email)} && git config --global init.defaultBranch main && echo NAME:$(git config --global --get user.name) && echo EMAIL:$(git config --global --get user.email) || true"`
+          );
+          console.log(
+            `[sandboxes.start] git identity configured exit=${gitCfgRes.exit_code} (${name} <${email}>)`
+          );
+        } else {
+          console.log(
+            `[sandboxes.start] No access token; skipping git identity configuration`
+          );
+        }
+      } catch (e) {
+        console.log(
+          `[sandboxes.start] Failed to configure git identity; continuing...`,
+          e
+        );
       }
 
       // Optional: Hydrate repo inside the sandbox
