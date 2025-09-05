@@ -278,17 +278,38 @@ export async function startServer({
         }
       };
 
+      const [
+        vscodeExists,
+        cursorExists,
+        windsurfExists,
+        itermExists,
+        terminalExists,
+        ghosttyCommand,
+        ghosttyApp,
+        alacrittyExists,
+        xcodeExists,
+      ] = await Promise.all([
+        commandExists("code"),
+        commandExists("cursor"),
+        commandExists("windsurf"),
+        appExists("iTerm"),
+        appExists("Terminal"),
+        commandExists("ghostty"),
+        appExists("Ghostty"),
+        commandExists("alacritty"),
+        appExists("Xcode"),
+      ]);
+
       const availability: AvailableEditors = {
-        vscode: await commandExists("code"),
-        cursor: await commandExists("cursor"),
-        windsurf: await commandExists("windsurf"),
+        vscode: vscodeExists,
+        cursor: cursorExists,
+        windsurf: windsurfExists,
         finder: process.platform === "darwin",
-        iterm: await appExists("iTerm"),
-        terminal: await appExists("Terminal"),
-        ghostty:
-          (await commandExists("ghostty")) || (await appExists("Ghostty")),
-        alacritty: await commandExists("alacritty"),
-        xcode: await appExists("Xcode"),
+        iterm: itermExists,
+        terminal: terminalExists,
+        ghostty: ghosttyCommand || ghosttyApp,
+        alacritty: alacrittyExists,
+        xcode: xcodeExists,
       };
 
       socket.emit("available-editors", availability);
