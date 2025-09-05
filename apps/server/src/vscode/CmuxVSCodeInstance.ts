@@ -210,44 +210,6 @@ export class CmuxVSCodeInstance extends VSCodeInstance {
     }
   }
 
-  async hydrateRepo(params: {
-    teamSlugOrId: string;
-    repoUrl: string;
-    branch?: string;
-    newBranch?: string;
-  }): Promise<void> {
-    if (!this.sandboxId) return;
-    const baseUrl =
-      process.env.WWW_API_BASE_URL || process.env.CMUX_WWW_API_URL || "http://localhost:9779";
-    const token = getAuthToken();
-    const res = await fetch(`${baseUrl}/api/sandboxes/${this.sandboxId}/hydrate`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(token
-          ? {
-              "x-stack-auth":
-                getAuthHeaderJson() || JSON.stringify({ accessToken: token }),
-            }
-          : {}),
-      },
-      body: JSON.stringify({
-        teamSlugOrId: params.teamSlugOrId,
-        repoUrl: params.repoUrl,
-        branch: params.branch,
-        newBranch: params.newBranch,
-        depth: 1,
-      }),
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      dockerLogger.error(
-        `[CmuxVSCodeInstance] hydrateRepo failed: ${res.status} ${text}`
-      );
-      throw new Error(`Hydrate failed: ${res.status}`);
-    }
-  }
-
   getName(): string {
     return this.sandboxId || this.instanceId;
   }
