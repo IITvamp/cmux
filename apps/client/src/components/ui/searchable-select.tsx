@@ -267,6 +267,10 @@ export function SearchableSelect({
             className={clsx(
               "inline-flex h-7 items-center rounded-md border",
               "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950",
+              // Dim background when popover is open via aria-expanded
+              "aria-expanded:bg-neutral-50 dark:aria-expanded:bg-neutral-900",
+              // Smooth color change on hover/open
+              "transition-colors",
               "px-2.5 pr-6 text-sm text-neutral-900 dark:text-neutral-100",
               // Focus-visible ring for accessibility
               "outline-none focus:outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
