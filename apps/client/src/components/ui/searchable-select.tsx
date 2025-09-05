@@ -175,9 +175,9 @@ export function SearchableSelect({
             type="button"
             disabled={disabled}
             className={clsx(
-              "inline-flex h-9 items-center rounded-md border",
+              "inline-flex h-8 items-center rounded-md border",
               "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950",
-              "px-3 pr-16 text-xs text-neutral-900 dark:text-neutral-100",
+              "px-2.5 pr-12 text-xs text-neutral-900 dark:text-neutral-100",
               "focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-700",
               "disabled:cursor-not-allowed disabled:opacity-60",
               "w-[200px]",
@@ -196,15 +196,15 @@ export function SearchableSelect({
               e.stopPropagation();
               onChange([]);
             }}
-            className="absolute right-12 top-1/2 -translate-y-1/2 rounded p-1 hover:bg-neutral-100 dark:hover:bg-neutral-900"
+            className="absolute right-12 top-1/2 -translate-y-1/2 rounded p-0.5 hover:bg-neutral-100 dark:hover:bg-neutral-900"
           >
-            <X className="h-3.5 w-3.5 text-neutral-500" />
+            <X className="h-3 w-3 text-neutral-500" />
           </button>
         ) : null}
         {loading ? (
-          <Loader2 className="absolute right-7 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-neutral-400" />
+          <Loader2 className="absolute right-7 top-1/2 -translate-y-1/2 h-3.5 w-3.5 animate-spin text-neutral-400" />
         ) : null}
-        <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-500" />
+        <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-neutral-500" />
       </div>
       <Popover.Portal>
         <Popover.Content
