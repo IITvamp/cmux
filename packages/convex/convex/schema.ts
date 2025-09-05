@@ -442,6 +442,20 @@ const convexSchema = defineSchema({
     ),
     createdAt: v.number(),
   }).index("by_nonce", ["nonce"]),
+
+  // In-app user feedback submissions
+  feedback: defineTable({
+    teamId: v.string(),
+    userId: v.string(),
+    message: v.string(),
+    email: v.optional(v.string()),
+    page: v.optional(v.string()),
+    userAgent: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_team_user", ["teamId", "userId", "createdAt"]) 
+    .index("by_team", ["teamId", "createdAt"]),
 });
 
 export default convexSchema;
