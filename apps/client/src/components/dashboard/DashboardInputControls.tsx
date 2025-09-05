@@ -62,7 +62,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
           onChange={onProjectChange}
           placeholder="Select project"
           singleSelect={true}
-          className="min-w-[300px] max-w-[500px] rounded-2xl"
+          className="rounded-2xl"
           loading={isLoadingProjects}
           maxTagCount={1}
           showSearch
@@ -74,7 +74,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
           onChange={onBranchChange}
           placeholder="Branch"
           singleSelect={true}
-          className="min-w-[120px] rounded-2xl"
+          className="rounded-2xl"
           loading={isLoadingBranches}
           showSearch
         />
@@ -86,7 +86,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
           placeholder="Select agents"
           singleSelect={false}
           maxTagCount={1}
-          className="w-[220px] max-w-[220px] rounded-2xl"
+          className="rounded-2xl"
           showSearch
         />
       </div>

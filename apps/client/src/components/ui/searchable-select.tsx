@@ -55,6 +55,8 @@ export function SearchableSelect({
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const [search, setSearch] = useState("");
+  const [_recalcTick, setRecalcTick] = useState(0);
+  const [_contentWidth, setContentWidth] = useState<number | null>(null);
 
   const selectedSet = useMemo(() => new Set(value), [value]);
   const selectedLabels = useMemo(() => {
@@ -121,16 +123,15 @@ export function SearchableSelect({
 
   // Debug logs to investigate empty-first-open issue
   useEffect(() => {
-    // eslint-disable-next-line no-console
     console.log(
-      "[SearchableSelect] render",
-      { open, filtered: filteredOptions.length, virtual: rowVirtualizer.getVirtualItems().length },
-      { hasListRef: !!listRef.current, clientHeight: listRef.current?.clientHeight, scrollHeight: listRef.current?.scrollHeight }
+      `[SearchableSelect] render open=${open} filtered=${filteredOptions.length} virtual=${rowVirtualizer.getVirtualItems().length} hasListRef=${!!listRef.current} clientH=${listRef.current?.clientHeight ?? 0} scrollH=${listRef.current?.scrollHeight ?? 0} tick=${_recalcTick}`
     );
   });
 
   useEffect(() => {
     if (open) {
+      // Measure trigger width synchronously when opening to avoid width flash
+      setContentWidth(triggerRef.current?.offsetWidth ?? null);
       // Force a recompute on open after layout.
       requestAnimationFrame(() => {
         try {
@@ -138,14 +139,20 @@ export function SearchableSelect({
         } catch {
           /* noop */
         }
-        // eslint-disable-next-line no-console
-        console.log("[SearchableSelect] opened", {
-          hasListRef: !!listRef.current,
-          clientHeight: listRef.current?.clientHeight,
-        });
+        console.log(
+          `[SearchableSelect] opened hasListRef=${!!listRef.current} clientH=${listRef.current?.clientHeight ?? 0}`
+        );
+        // Nudge a re-render so getVirtualItems() reflects latest measurements
+        setRecalcTick((n) => n + 1);
       });
     }
   }, [open, rowVirtualizer]);
+
+  useEffect(() => {
+    console.log(
+      `[SearchableSelect] search change q="${search}" filtered=${filteredOptions.length}`
+    );
+  }, [search, filteredOptions.length]);
 
   const onSelectValue = (val: string): void => {
     if (singleSelect) {
@@ -170,14 +177,14 @@ export function SearchableSelect({
             className={clsx(
               "inline-flex h-9 items-center rounded-md border",
               "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950",
-              "px-3 pr-16 text-sm text-neutral-900 dark:text-neutral-100",
+              "px-3 pr-16 text-xs text-neutral-900 dark:text-neutral-100",
               "focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-700",
               "disabled:cursor-not-allowed disabled:opacity-60",
-              "min-w-[160px] w-full",
+              "w-[200px]",
               className
             )}
           >
-            <span className="flex-1 min-w-0 text-left">{displayContent}</span>
+            <span className="flex-1 min-w-0 text-left text-xs">{displayContent}</span>
           </button>
         </Popover.Trigger>
         {value.length > 0 && !singleSelect ? (
@@ -204,17 +211,19 @@ export function SearchableSelect({
           align="start"
           sideOffset={6}
           className={clsx(
-            "z-50 w-[--radix-popover-trigger-width] rounded-md border",
+            "z-50 rounded-md border",
             "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950",
             "p-0 shadow-md outline-none"
           )}
+          style={{ width: 200 }}
         >
-          <Command loop shouldFilter={false}>
+          <Command loop shouldFilter={false} className="text-xs">
             {showSearch ? (
               <CommandInput
                 placeholder="Search..."
                 value={search}
                 onValueChange={setSearch}
+                className="text-xs py-2"
               />
             ) : null}
             {loading ? (
@@ -222,57 +231,98 @@ export function SearchableSelect({
                 <Loader2 className="h-5 w-5 animate-spin text-neutral-400" />
               </div>
             ) : (
-              <CommandList ref={listRef} className="max-h-[300px] overflow-y-auto">
+              <CommandList ref={listRef} className="h-[300px] overflow-y-auto">
                 {filteredOptions.length === 0 ? (
                   <CommandEmpty>No options</CommandEmpty>
                 ) : (
                   <CommandGroup>
-                    <div
-                      style={{
-                        height: rowVirtualizer.getTotalSize(),
-                        position: "relative",
-                      }}
-                    >
-                      {rowVirtualizer.getVirtualItems().map((vr) => {
-                        const opt = filteredOptions[vr.index]!;
-                        const isSelected = selectedSet.has(opt.value);
+                    {(() => {
+                      const vItems = rowVirtualizer.getVirtualItems();
+                      if (vItems.length === 0 && filteredOptions.length > 0) {
+                        console.log(
+                          `[SearchableSelect] fallback render filtered=${filteredOptions.length}`
+                        );
+                        const fallback = filteredOptions.slice(0, 12);
                         return (
-                          <div
-                            key={opt.value}
-                            data-index={vr.index}
-                            ref={rowVirtualizer.measureElement}
-                            style={{
-                              position: "absolute",
-                              top: 0,
-                              left: 0,
-                              width: "100%",
-                              transform: `translateY(${vr.start}px)`,
-                            }}
-                          >
-                            <CommandItem
-                              value={`${opt.label} ${opt.value}`}
-                              className="flex items-center justify-between gap-2"
-                              onSelect={() => onSelectValue(opt.value)}
-                            >
-                              <div className="flex items-center gap-2 min-w-0 flex-1">
-                                <span className="truncate">{opt.label}</span>
-                                {opt.isUnavailable ? (
-                                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                                ) : null}
-                              </div>
-                              <Check
-                                className={clsx(
-                                  "h-4 w-4 shrink-0 transition-opacity",
-                                  isSelected
-                                    ? "opacity-100 text-neutral-700 dark:text-neutral-300"
-                                    : "opacity-0"
-                                )}
-                              />
-                            </CommandItem>
+                          <div>
+                            {fallback.map((opt) => {
+                              const isSelected = selectedSet.has(opt.value);
+                              return (
+                                <CommandItem
+                                  key={`fallback-${opt.value}`}
+                                  value={`${opt.label} ${opt.value}`}
+                                  className="flex items-center justify-between gap-2 text-xs py-1.5"
+                                  onSelect={() => onSelectValue(opt.value)}
+                                >
+                                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                                    <span className="truncate">{opt.label}</span>
+                                    {opt.isUnavailable ? (
+                                      <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                    ) : null}
+                                  </div>
+                                  <Check
+                                    className={clsx(
+                                      "h-4 w-4 shrink-0 transition-opacity",
+                                      isSelected
+                                        ? "opacity-100 text-neutral-700 dark:text-neutral-300"
+                                        : "opacity-0"
+                                    )}
+                                  />
+                                </CommandItem>
+                              );
+                            })}
                           </div>
                         );
-                      })}
-                    </div>
+                      }
+                      return (
+                        <div
+                          style={{
+                            height: rowVirtualizer.getTotalSize(),
+                            position: "relative",
+                          }}
+                        >
+                          {vItems.map((vr) => {
+                            const opt = filteredOptions[vr.index]!;
+                            const isSelected = selectedSet.has(opt.value);
+                            return (
+                              <div
+                                key={opt.value}
+                                data-index={vr.index}
+                                ref={rowVirtualizer.measureElement}
+                                style={{
+                                  position: "absolute",
+                                  top: 0,
+                                  left: 0,
+                                  width: "100%",
+                                  transform: `translateY(${vr.start}px)`,
+                                }}
+                              >
+                                <CommandItem
+                                  value={`${opt.label} ${opt.value}`}
+                                  className="flex items-center justify-between gap-2 text-xs py-1.5"
+                                  onSelect={() => onSelectValue(opt.value)}
+                                >
+                                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                                    <span className="truncate">{opt.label}</span>
+                                    {opt.isUnavailable ? (
+                                      <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                    ) : null}
+                                  </div>
+                                  <Check
+                                    className={clsx(
+                                      "h-4 w-4 shrink-0 transition-opacity",
+                                      isSelected
+                                        ? "opacity-100 text-neutral-700 dark:text-neutral-300"
+                                        : "opacity-0"
+                                    )}
+                                  />
+                                </CommandItem>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
                   </CommandGroup>
                 )}
               </CommandList>
