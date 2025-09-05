@@ -10,6 +10,7 @@ import {
 import clsx from "clsx";
 import { Check, ChevronDown, Loader2, X, AlertTriangle } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 
 export interface SelectOptionObject {
   label: string;
@@ -53,6 +54,7 @@ export function SearchableSelect({
   const normOptions = useMemo(() => normalizeOptions(options), [options]);
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const [search, setSearch] = useState("");
 
   const selectedSet = useMemo(() => new Set(value), [value]);
   const selectedLabels = useMemo(() => {
@@ -98,6 +100,53 @@ export function SearchableSelect({
     );
   }, [maxTagCount, placeholder, selectedLabels, singleSelect, value.length]);
 
+  const filteredOptions = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return normOptions;
+    return normOptions.filter((o) =>
+      `${o.label} ${o.value}`.toLowerCase().includes(q)
+    );
+  }, [normOptions, search]);
+
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const rowVirtualizer = useVirtualizer({
+    count: filteredOptions.length,
+    getScrollElement: () => listRef.current,
+    estimateSize: () => 32,
+    overscan: 8,
+    // Use an initial rect so the first open has a viewport size
+    // even before ResizeObserver kicks in.
+    initialRect: { width: 0, height: 300 },
+  });
+
+  // Debug logs to investigate empty-first-open issue
+  useEffect(() => {
+    // eslint-disable-next-line no-console
+    console.log(
+      "[SearchableSelect] render",
+      { open, filtered: filteredOptions.length, virtual: rowVirtualizer.getVirtualItems().length },
+      { hasListRef: !!listRef.current, clientHeight: listRef.current?.clientHeight, scrollHeight: listRef.current?.scrollHeight }
+    );
+  });
+
+  useEffect(() => {
+    if (open) {
+      // Force a recompute on open after layout.
+      requestAnimationFrame(() => {
+        try {
+          rowVirtualizer.scrollToIndex(0, { align: "start" });
+        } catch {
+          /* noop */
+        }
+        // eslint-disable-next-line no-console
+        console.log("[SearchableSelect] opened", {
+          hasListRef: !!listRef.current,
+          clientHeight: listRef.current?.clientHeight,
+        });
+      });
+    }
+  }, [open, rowVirtualizer]);
+
   const onSelectValue = (val: string): void => {
     if (singleSelect) {
       onChange([val]);
@@ -112,44 +161,44 @@ export function SearchableSelect({
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
-      <Popover.Trigger asChild>
-        <button
-          ref={triggerRef}
-          type="button"
-          disabled={disabled}
-          className={clsx(
-            "inline-flex h-9 items-center justify-between gap-2 rounded-md border",
-            "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950",
-            "px-3 text-sm text-neutral-900 dark:text-neutral-100",
-            "focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-700",
-            "disabled:cursor-not-allowed disabled:opacity-60",
-            "min-w-[160px]",
-            className
-          )}
-        >
-          <span className="flex-1 min-w-0 text-left">{displayContent}</span>
-          <div className="flex items-center gap-1">
-            {loading ? (
-              <Loader2 className="h-4 w-4 animate-spin text-neutral-400" />
-            ) : null}
-            {value.length > 0 && !singleSelect ? (
-              <button
-                type="button"
-                aria-label="Clear selection"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onChange([]);
-                }}
-                className="-mr-1 rounded p-1 hover:bg-neutral-100 dark:hover:bg-neutral-900"
-              >
-                <X className="h-3.5 w-3.5 text-neutral-500" />
-              </button>
-            ) : null}
-            <ChevronDown className="h-4 w-4 text-neutral-500" />
-          </div>
-        </button>
-      </Popover.Trigger>
+      <div className={clsx("relative inline-flex items-center")}> 
+        <Popover.Trigger asChild>
+          <button
+            ref={triggerRef}
+            type="button"
+            disabled={disabled}
+            className={clsx(
+              "inline-flex h-9 items-center rounded-md border",
+              "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950",
+              "px-3 pr-16 text-sm text-neutral-900 dark:text-neutral-100",
+              "focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-700",
+              "disabled:cursor-not-allowed disabled:opacity-60",
+              "min-w-[160px] w-full",
+              className
+            )}
+          >
+            <span className="flex-1 min-w-0 text-left">{displayContent}</span>
+          </button>
+        </Popover.Trigger>
+        {value.length > 0 && !singleSelect ? (
+          <button
+            type="button"
+            aria-label="Clear selection"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onChange([]);
+            }}
+            className="absolute right-12 top-1/2 -translate-y-1/2 rounded p-1 hover:bg-neutral-100 dark:hover:bg-neutral-900"
+          >
+            <X className="h-3.5 w-3.5 text-neutral-500" />
+          </button>
+        ) : null}
+        {loading ? (
+          <Loader2 className="absolute right-7 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-neutral-400" />
+        ) : null}
+        <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-500" />
+      </div>
       <Popover.Portal>
         <Popover.Content
           align="start"
@@ -160,46 +209,72 @@ export function SearchableSelect({
             "p-0 shadow-md outline-none"
           )}
         >
-          <Command loop>
+          <Command loop shouldFilter={false}>
             {showSearch ? (
-              <CommandInput placeholder="Search..." />
+              <CommandInput
+                placeholder="Search..."
+                value={search}
+                onValueChange={setSearch}
+              />
             ) : null}
             {loading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-5 w-5 animate-spin text-neutral-400" />
               </div>
-            ) : normOptions.length === 0 ? (
-              <CommandEmpty>No options</CommandEmpty>
             ) : (
-              <CommandList>
-                <CommandGroup>
-                  {normOptions.map((opt) => {
-                    const isSelected = selectedSet.has(opt.value);
-                    return (
-                      <CommandItem
-                        key={opt.value}
-                        value={`${opt.label} ${opt.value}`}
-                        className="flex items-center justify-between gap-2"
-                        onSelect={() => onSelectValue(opt.value)}
-                      >
-                        <div className="flex items-center gap-2 min-w-0 flex-1">
-                          <span className="truncate">{opt.label}</span>
-                          {opt.isUnavailable ? (
-                            <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                          ) : null}
-                        </div>
-                        <Check
-                          className={clsx(
-                            "h-4 w-4 shrink-0 transition-opacity",
-                            isSelected
-                              ? "opacity-100 text-neutral-700 dark:text-neutral-300"
-                              : "opacity-0"
-                          )}
-                        />
-                      </CommandItem>
-                    );
-                  })}
-                </CommandGroup>
+              <CommandList ref={listRef} className="max-h-[300px] overflow-y-auto">
+                {filteredOptions.length === 0 ? (
+                  <CommandEmpty>No options</CommandEmpty>
+                ) : (
+                  <CommandGroup>
+                    <div
+                      style={{
+                        height: rowVirtualizer.getTotalSize(),
+                        position: "relative",
+                      }}
+                    >
+                      {rowVirtualizer.getVirtualItems().map((vr) => {
+                        const opt = filteredOptions[vr.index]!;
+                        const isSelected = selectedSet.has(opt.value);
+                        return (
+                          <div
+                            key={opt.value}
+                            data-index={vr.index}
+                            ref={rowVirtualizer.measureElement}
+                            style={{
+                              position: "absolute",
+                              top: 0,
+                              left: 0,
+                              width: "100%",
+                              transform: `translateY(${vr.start}px)`,
+                            }}
+                          >
+                            <CommandItem
+                              value={`${opt.label} ${opt.value}`}
+                              className="flex items-center justify-between gap-2"
+                              onSelect={() => onSelectValue(opt.value)}
+                            >
+                              <div className="flex items-center gap-2 min-w-0 flex-1">
+                                <span className="truncate">{opt.label}</span>
+                                {opt.isUnavailable ? (
+                                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                                ) : null}
+                              </div>
+                              <Check
+                                className={clsx(
+                                  "h-4 w-4 shrink-0 transition-opacity",
+                                  isSelected
+                                    ? "opacity-100 text-neutral-700 dark:text-neutral-300"
+                                    : "opacity-0"
+                                )}
+                              />
+                            </CommandItem>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </CommandGroup>
+                )}
               </CommandList>
             )}
           </Command>
