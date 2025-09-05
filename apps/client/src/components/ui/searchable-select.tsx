@@ -9,7 +9,7 @@ import {
 import * as Popover from "@radix-ui/react-popover";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import clsx from "clsx";
-import { AlertTriangle, Check, ChevronDown, Loader2, X } from "lucide-react";
+import { AlertTriangle, Check, ChevronDown, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 export interface SelectOptionObject {
@@ -31,6 +31,8 @@ export interface SearchableSelectProps {
   maxTagCount?: number;
   showSearch?: boolean;
   disabled?: boolean;
+  // Label shown in multi-select trigger as "N <countLabel>"
+  countLabel?: string;
 }
 
 function normalizeOptions(options: SelectOption[]): SelectOptionObject[] {
@@ -78,9 +80,10 @@ export function SearchableSelect({
   singleSelect = false,
   className,
   loading = false,
-  maxTagCount,
+  maxTagCount: _maxTagCount,
   showSearch = true,
   disabled = false,
+  countLabel = "selected",
 }: SearchableSelectProps) {
   const normOptions = useMemo(() => normalizeOptions(options), [options]);
   const [open, setOpen] = useState(false);
@@ -113,27 +116,12 @@ export function SearchableSelect({
     if (singleSelect) {
       return <span className="truncate">{selectedLabels[0]}</span>;
     }
-    const n = value.length;
-    const cap = Math.max(0, maxTagCount ?? 0);
-    const shown = cap > 0 ? selectedLabels.slice(0, cap) : selectedLabels;
-    return (
-      <span className="flex items-center gap-1.5 flex-nowrap overflow-hidden">
-        {shown.map((l, idx) => (
-          <span
-            key={`${l}-${idx}`}
-            className="inline-flex items-center gap-1 rounded-full border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 text-neutral-800 dark:text-neutral-200 px-2 py-0.5 text-[13.5px] max-w-[9rem] truncate"
-          >
-            {l}
-          </span>
-        ))}
-        {cap > 0 && n > cap ? (
-          <span className="text-[13.5px] text-neutral-500 dark:text-neutral-400 whitespace-nowrap">
-            +{n - cap}
-          </span>
-        ) : null}
-      </span>
-    );
-  }, [maxTagCount, placeholder, selectedLabels, singleSelect, value.length]);
+    // Multi-select: if only one selected, show the full label; otherwise show count
+    if (value.length === 1) {
+      return <span className="truncate">{selectedLabels[0]}</span>;
+    }
+    return <span className="truncate">{`${value.length} ${countLabel}`}</span>;
+  }, [countLabel, placeholder, selectedLabels, singleSelect, value.length]);
 
   const filteredOptions = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -186,6 +174,8 @@ export function SearchableSelect({
   }, [search, filteredOptions.length]);
 
   const onSelectValue = (val: string): void => {
+    // Clear search input upon selecting a value (covers mouse and keyboard selection)
+    setSearch("");
     if (singleSelect) {
       onChange([val]);
       setOpen(false);
@@ -209,7 +199,8 @@ export function SearchableSelect({
               "inline-flex h-8 items-center rounded-md border",
               "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950",
               "px-2.5 pr-6 text-sm text-neutral-900 dark:text-neutral-100",
-              "focus:outline-none",
+              // Focus-visible ring for accessibility
+              "outline-none focus:outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
               "disabled:cursor-not-allowed disabled:opacity-60",
               "w-auto",
               className
@@ -220,20 +211,6 @@ export function SearchableSelect({
             </span>
           </button>
         </Popover.Trigger>
-        {value.length > 0 && !singleSelect ? (
-          <button
-            type="button"
-            aria-label="Clear selection"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              onChange([]);
-            }}
-            className="absolute right-12 top-1/2 -translate-y-1/2 rounded p-0.5 hover:bg-neutral-100 dark:hover:bg-neutral-900"
-          >
-            <X className="h-3 w-3 text-neutral-500" />
-          </button>
-        ) : null}
         {loading ? (
           <Loader2 className="absolute right-7 top-1/2 -translate-y-1/2 h-3.5 w-3.5 animate-spin text-neutral-400" />
         ) : null}
@@ -246,7 +223,8 @@ export function SearchableSelect({
           className={clsx(
             "z-50 rounded-md border",
             "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950",
-            "p-0 shadow-md outline-none"
+            // Fade out on close; open remains instant
+            "p-0 shadow-md outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0"
           )}
           style={{ width: 300 }}
         >
@@ -257,6 +235,12 @@ export function SearchableSelect({
                 placeholder="Search..."
                 value={search}
                 onValueChange={setSearch}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    // Clear the search box when pressing Enter
+                    setSearch("");
+                  }
+                }}
                 className="text-[13.5px] py-2"
               />
             ) : null}

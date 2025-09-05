@@ -1,4 +1,9 @@
 import SearchableSelect from "@/components/ui/searchable-select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { ModeToggleTooltip } from "@/components/ui/mode-toggle-tooltip";
 import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
 import clsx from "clsx";
@@ -68,16 +73,23 @@ export const DashboardInputControls = memo(function DashboardInputControls({
           showSearch
         />
 
-        <SearchableSelect
-          options={branchOptions}
-          value={selectedBranch}
-          onChange={onBranchChange}
-          placeholder="Branch"
-          singleSelect={true}
-          className="rounded-2xl"
-          loading={isLoadingBranches}
-          showSearch
-        />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div>
+              <SearchableSelect
+                options={branchOptions}
+                value={selectedBranch}
+                onChange={onBranchChange}
+                placeholder="Branch"
+                singleSelect={true}
+                className="rounded-2xl"
+                loading={isLoadingBranches}
+                showSearch
+              />
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>Branch that task starts from</TooltipContent>
+        </Tooltip>
 
         <SearchableSelect
           options={agentOptions}
@@ -88,6 +100,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
           maxTagCount={1}
           className="rounded-2xl"
           showSearch
+          countLabel="agents"
         />
       </div>
 
