@@ -39,6 +39,37 @@ function normalizeOptions(options: SelectOption[]): SelectOptionObject[] {
   );
 }
 
+interface OptionItemProps {
+  opt: SelectOptionObject;
+  isSelected: boolean;
+  onSelectValue: (val: string) => void;
+}
+
+function OptionItem({ opt, isSelected, onSelectValue }: OptionItemProps) {
+  return (
+    <CommandItem
+      value={`${opt.label} ${opt.value}`}
+      className="flex items-center justify-between gap-2 text-[13.5px] py-1.5 h-[32px]"
+      onSelect={() => onSelectValue(opt.value)}
+    >
+      <div className="flex items-center gap-2 min-w-0 flex-1">
+        <span className="truncate">{opt.label}</span>
+        {opt.isUnavailable ? (
+          <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+        ) : null}
+      </div>
+      <Check
+        className={clsx(
+          "h-4 w-4 shrink-0 transition-opacity",
+          isSelected
+            ? "opacity-100 text-neutral-700 dark:text-neutral-300"
+            : "opacity-0"
+        )}
+      />
+    </CommandItem>
+  );
+}
+
 export function SearchableSelect({
   options,
   value,
@@ -254,29 +285,12 @@ export function SearchableSelect({
                             {fallback.map((opt) => {
                               const isSelected = selectedSet.has(opt.value);
                               return (
-                                <CommandItem
+                                <OptionItem
                                   key={`fallback-${opt.value}`}
-                                  value={`${opt.label} ${opt.value}`}
-                                  className="flex items-center justify-between gap-2 text-[13.5px] py-1.5"
-                                  onSelect={() => onSelectValue(opt.value)}
-                                >
-                                  <div className="flex items-center gap-2 min-w-0 flex-1">
-                                    <span className="truncate">
-                                      {opt.label}
-                                    </span>
-                                    {opt.isUnavailable ? (
-                                      <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                                    ) : null}
-                                  </div>
-                                  <Check
-                                    className={clsx(
-                                      "h-4 w-4 shrink-0 transition-opacity",
-                                      isSelected
-                                        ? "opacity-100 text-neutral-700 dark:text-neutral-300"
-                                        : "opacity-0"
-                                    )}
-                                  />
-                                </CommandItem>
+                                  opt={opt}
+                                  isSelected={isSelected}
+                                  onSelectValue={onSelectValue}
+                                />
                               );
                             })}
                           </div>
@@ -305,28 +319,11 @@ export function SearchableSelect({
                                   transform: `translateY(${vr.start}px)`,
                                 }}
                               >
-                                <CommandItem
-                                  value={`${opt.label} ${opt.value}`}
-                                  className="flex items-center justify-between gap-2 text-[13.5px] py-1.5"
-                                  onSelect={() => onSelectValue(opt.value)}
-                                >
-                                  <div className="flex items-center gap-2 min-w-0 flex-1">
-                                    <span className="truncate">
-                                      {opt.label}
-                                    </span>
-                                    {opt.isUnavailable ? (
-                                      <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                                    ) : null}
-                                  </div>
-                                  <Check
-                                    className={clsx(
-                                      "h-4 w-4 shrink-0 transition-opacity",
-                                      isSelected
-                                        ? "opacity-100 text-neutral-700 dark:text-neutral-300"
-                                        : "opacity-0"
-                                    )}
-                                  />
-                                </CommandItem>
+                                <OptionItem
+                                  opt={opt}
+                                  isSelected={isSelected}
+                                  onSelectValue={onSelectValue}
+                                />
                               </div>
                             );
                           })}
