@@ -56,7 +56,7 @@ export function SearchableSelect({
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const [search, setSearch] = useState("");
   const [_recalcTick, setRecalcTick] = useState(0);
-  const [_contentWidth, setContentWidth] = useState<number | null>(null);
+  // Popover width is fixed; no need to track trigger width
 
   const selectedSet = useMemo(() => new Set(value), [value]);
   const selectedLabels = useMemo(() => {
@@ -130,8 +130,6 @@ export function SearchableSelect({
 
   useEffect(() => {
     if (open) {
-      // Measure trigger width synchronously when opening to avoid width flash
-      setContentWidth(triggerRef.current?.offsetWidth ?? null);
       // Force a recompute on open after layout.
       requestAnimationFrame(() => {
         try {
@@ -177,14 +175,14 @@ export function SearchableSelect({
             className={clsx(
               "inline-flex h-8 items-center rounded-md border",
               "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950",
-              "px-2.5 pr-12 text-xs text-neutral-900 dark:text-neutral-100",
-              "focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-700",
+              "px-2.5 pr-12 text-sm text-neutral-900 dark:text-neutral-100",
+              "focus:outline-none",
               "disabled:cursor-not-allowed disabled:opacity-60",
-              "w-[200px]",
+              "w-auto",
               className
             )}
           >
-            <span className="flex-1 min-w-0 text-left text-xs">{displayContent}</span>
+            <span className="flex-1 min-w-0 text-left text-sm">{displayContent}</span>
           </button>
         </Popover.Trigger>
         {value.length > 0 && !singleSelect ? (
@@ -209,7 +207,7 @@ export function SearchableSelect({
       <Popover.Portal>
         <Popover.Content
           align="start"
-          sideOffset={6}
+          sideOffset={2}
           className={clsx(
             "z-50 rounded-md border",
             "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950",
@@ -220,6 +218,7 @@ export function SearchableSelect({
           <Command loop shouldFilter={false} className="text-xs">
             {showSearch ? (
               <CommandInput
+                showIcon={false}
                 placeholder="Search..."
                 value={search}
                 onValueChange={setSearch}
