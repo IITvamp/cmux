@@ -120,15 +120,25 @@ export function SearchableSelect({
     if (value.length === 0) {
       return <span className="text-neutral-400 truncate">{placeholder}</span>;
     }
-    if (singleSelect) {
-      return <span className="truncate">{selectedLabels[0]}</span>;
-    }
-    // Multi-select: if only one selected, show the full label; otherwise show count
+    // If exactly one is selected (single or multi), show icon (if any) + label
     if (value.length === 1) {
-      return <span className="truncate">{selectedLabels[0]}</span>;
+      const selectedVal = value[0];
+      const selectedOpt = normOptions.find((o) => o.value === selectedVal);
+      const label = selectedLabels[0];
+      return (
+        <span className="inline-flex items-center gap-2">
+          {selectedOpt?.icon ? (
+            <span className="shrink-0 inline-flex items-center justify-center">
+              {selectedOpt.icon}
+            </span>
+          ) : null}
+          <span className="truncate">{label}</span>
+        </span>
+      );
     }
+    // Multi-select with multiple items: show count summary
     return <span className="truncate">{`${value.length} ${countLabel}`}</span>;
-  }, [countLabel, placeholder, selectedLabels, singleSelect, value.length]);
+  }, [countLabel, normOptions, placeholder, selectedLabels, value]);
 
   const filteredOptions = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -213,7 +223,7 @@ export function SearchableSelect({
               className
             )}
           >
-            <span className="flex-1 min-w-0 text-left text-sm">
+            <span className="flex-1 min-w-0 text-left text-sm inline-flex items-center gap-1.5">
               {displayContent}
             </span>
           </button>
