@@ -1,20 +1,10 @@
-import type {
-  AvailableEditors,
-  ClientToServerEvents,
-  ServerToClientEvents,
-} from "@cmux/shared";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "@tanstack/react-router";
 import React, { useEffect, useMemo } from "react";
-import { io, Socket } from "socket.io-client";
+import { io } from "socket.io-client";
 import { authJsonQueryOptions } from "../convex/authJsonQueryOptions";
-import { SocketContext } from "./socket-context";
-
-export interface SocketContextType {
-  socket: Socket<ServerToClientEvents, ClientToServerEvents> | null;
-  isConnected: boolean;
-  availableEditors: AvailableEditors | null;
-}
+import { WebSocketContext } from "./socket-context";
+import type { SocketContextType } from "./types";
 
 interface SocketProviderProps {
   children: React.ReactNode;
@@ -33,7 +23,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
   >(null);
   const [isConnected, setIsConnected] = React.useState(false);
   const [availableEditors, setAvailableEditors] =
-    React.useState<AvailableEditors | null>(null);
+    React.useState<SocketContextType["availableEditors"]>(null);
 
   // Derive the current teamSlugOrId from the first URL segment, ignoring the team-picker route
   const teamSlugOrId = React.useMemo(() => {
@@ -45,6 +35,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
 
   useEffect(() => {
     if (!authToken) {
+      console.warn("[Socket] No auth token yet; delaying connect");
       return;
     }
     const query: Record<string, string> = { auth: authToken };
@@ -59,13 +50,17 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
     setSocket(newSocket);
 
     newSocket.on("connect", () => {
-      console.log("Socket connected");
+      console.log("[Socket] connected", { url, team: teamSlugOrId });
       setIsConnected(true);
     });
 
     newSocket.on("disconnect", () => {
-      console.log("Socket disconnected");
+      console.warn("[Socket] disconnected");
       setIsConnected(false);
+    });
+
+    newSocket.on("connect_error", (err) => {
+      console.error("[Socket] connect_error", err?.message ?? err);
     });
 
     newSocket.on("available-editors", (data) => {
@@ -87,8 +82,8 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
   );
 
   return (
-    <SocketContext.Provider value={contextValue}>
+    <WebSocketContext.Provider value={contextValue}>
       {children}
-    </SocketContext.Provider>
+    </WebSocketContext.Provider>
   );
 };

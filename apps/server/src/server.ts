@@ -130,6 +130,30 @@ export async function startServer({
   // Create HTTP server with Express app
   const httpServer = createServer(proxyApp);
 
+  const allowedOriginsEnv = process.env.CMUX_ALLOWED_SOCKET_ORIGINS;
+  const defaultAllowed = new Set([
+    "http://localhost:5173",
+    "https://cmux.local",
+  ]);
+  const dynamicAllowed = new Set(
+    (allowedOriginsEnv?.split(",") ?? [])
+      .map((s) => s.trim())
+      .filter(Boolean)
+  );
+  const isOriginAllowed = (origin?: string | null) => {
+    if (!origin) return true; // Electron/file:// often has no Origin
+    try {
+      const u = new URL(origin);
+      if (defaultAllowed.has(origin) || dynamicAllowed.has(origin)) return true;
+      // Allow localhost during development regardless of port
+      if (u.hostname === "localhost" || u.hostname === "127.0.0.1") return true;
+    } catch {
+      // Non-URL origin strings: be permissive
+      return true;
+    }
+    return false;
+  };
+
   const io = new Server<
     ClientToServerEvents,
     ServerToClientEvents,
@@ -137,7 +161,11 @@ export async function startServer({
     SocketData
   >(httpServer, {
     cors: {
-      origin: "http://localhost:5173",
+      origin: (origin, callback) => {
+        if (isOriginAllowed(origin)) return callback(null, true);
+        serverLogger.warn("Blocked socket.io origin", { origin });
+        callback(new Error("Not allowed by CORS"));
+      },
       methods: ["GET", "POST"],
     },
     maxHttpBufferSize: 50 * 1024 * 1024, // 50MB to handle multiple images

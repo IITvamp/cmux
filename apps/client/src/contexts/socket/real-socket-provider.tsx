@@ -1,7 +1,5 @@
 import React from "react";
-import { isElectron } from "@/lib/electron";
 import { SocketProvider } from "./socket-provider";
-import { ElectronSocketProvider } from "./electron-socket-provider";
 
 interface RealSocketProviderProps {
   children: React.ReactNode;
@@ -10,9 +8,6 @@ interface RealSocketProviderProps {
 export const RealSocketProvider: React.FC<RealSocketProviderProps> = ({
   children,
 }) => {
-  return isElectron ? (
-    <ElectronSocketProvider>{children}</ElectronSocketProvider>
-  ) : (
-    <SocketProvider>{children}</SocketProvider>
-  );
+  // Electron currently uses the same HTTP socket client as web.
+  return <SocketProvider>{children}</SocketProvider>;
 };

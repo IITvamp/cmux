@@ -1,14 +1,11 @@
-import type {
-  ClientToServerEvents,
-  ServerToClientEvents,
-  AvailableEditors,
-} from "@cmux/shared";
+import type { ClientToServerEvents, ServerToClientEvents } from "@cmux/shared";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "@tanstack/react-router";
 import React, { useEffect, useState, useMemo } from "react";
 import type { Socket } from "socket.io-client";
 import { authJsonQueryOptions } from "../convex/authJsonQueryOptions";
-import { SocketContext } from "./socket-context";
+import { ElectronSocketContext } from "./socket-context";
+import type { SocketContextType } from "./types";
 
 type IpcRendererLike = {
   on: (
@@ -167,7 +164,7 @@ export const ElectronSocketProvider: React.FC<React.PropsWithChildren> = ({
   const location = useLocation();
   const [connected, setConnected] = useState(false);
   const [availableEditors, setAvailableEditors] =
-    useState<AvailableEditors | null>(null);
+    useState<SocketContextType["availableEditors"]>(null);
   const [socket, setSocket] = useState<
     Socket<ServerToClientEvents, ClientToServerEvents> | null
   >(null);
@@ -193,7 +190,7 @@ export const ElectronSocketProvider: React.FC<React.PropsWithChildren> = ({
     const handleConnect = () => setConnected(true);
     const handleDisconnect = () => setConnected(false);
     const handleAvailableEditors = (data: unknown) => {
-      setAvailableEditors((data ?? null) as AvailableEditors | null);
+      setAvailableEditors((data ?? null) as SocketContextType["availableEditors"]);
     };
     client.on("connect", handleConnect);
     client.on("disconnect", handleDisconnect);
@@ -268,8 +265,8 @@ export const ElectronSocketProvider: React.FC<React.PropsWithChildren> = ({
   );
 
   return (
-    <SocketContext.Provider value={contextValue}>
+    <ElectronSocketContext.Provider value={contextValue}>
       {children}
-    </SocketContext.Provider>
+    </ElectronSocketContext.Provider>
   );
 };

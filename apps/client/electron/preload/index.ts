@@ -26,6 +26,8 @@ if (process.contextIsolated) {
         }
       }
     );
+
+    // No socket port bridge required; renderer uses HTTP socket
   } catch (error) {
     console.error(error);
   }
@@ -47,4 +49,6 @@ if (process.contextIsolated) {
       }
     }
   );
+
+  // No socket port bridge required in non-isolated context
 }

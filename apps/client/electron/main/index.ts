@@ -200,6 +200,8 @@ function createWindow(): void {
     mainWindow?.show();
   });
 
+  // Socket bridge not required; renderer connects directly
+
   // Start update checks after first window exists so dialogs have a parent.
   setupAutoUpdates();
 
