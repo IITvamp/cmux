@@ -1,5 +1,7 @@
 import { OpenWithDropdown } from "@/components/OpenWithDropdown";
 import { Dropdown } from "@/components/ui/dropdown";
+import { editorIcons, type EditorType } from "@/components/ui/dropdown-types";
+import { useSocket } from "@/contexts/socket/use-socket";
 import {
   Tooltip,
   TooltipContent,
@@ -20,6 +22,7 @@ import {
   Crown,
   EllipsisVertical,
   ExternalLink,
+  GitBranch,
   GitCompare,
   GitMerge,
   GitPullRequest,
@@ -29,6 +32,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { Fragment, memo, useCallback, useMemo, useState } from "react";
+import { toast } from "sonner";
 
 interface TaskRunWithChildren extends Doc<"taskRuns"> {
   children: TaskRunWithChildren[];
@@ -286,6 +290,7 @@ function TaskRunTreeInner({
 }: TaskRunTreeProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const hasChildren = run.children.length > 0;
+  const { socket, availableEditors } = useSocket();
 
   // Memoize the display text to avoid recalculating on every render
   const displayText = useMemo(() => getRunDisplayText(run), [run]);
@@ -318,89 +323,283 @@ function TaskRunTreeInner({
     );
   }, [run.networking]);
 
+  const handleCopyBranch = useCallback(() => {
+    const toCopy = run.newBranch || branch;
+    if (!toCopy) return;
+    navigator.clipboard
+      .writeText(toCopy)
+      .then(() => {
+        toast.success(`Copied branch: ${toCopy}`);
+      })
+      .catch(() => {
+        toast.error("Failed to copy branch");
+      });
+  }, [run.newBranch, branch]);
+
+  const handleOpenInEditor = useCallback(
+    (editor: EditorType): Promise<void> => {
+      return new Promise((resolve, reject) => {
+        if (editor === "vscode-remote" && vscodeUrl) {
+          const vscodeUrlWithWorkspace = `${vscodeUrl}?folder=/root/workspace`;
+          window.open(vscodeUrlWithWorkspace, "_blank", "noopener,noreferrer");
+          resolve();
+        } else if (
+          socket &&
+          [
+            "cursor",
+            "vscode",
+            "windsurf",
+            "finder",
+            "iterm",
+            "terminal",
+            "ghostty",
+            "alacritty",
+            "xcode",
+          ].includes(editor) &&
+          run.worktreePath
+        ) {
+          socket.emit(
+            "open-in-editor",
+            {
+              editor:
+                editor as
+                  | "cursor"
+                  | "vscode"
+                  | "windsurf"
+                  | "finder"
+                  | "iterm"
+                  | "terminal"
+                  | "ghostty"
+                  | "alacritty"
+                  | "xcode",
+              path: run.worktreePath,
+            },
+            (response: { success: boolean; error?: string }) => {
+              if (response.success) {
+                resolve();
+              } else {
+                reject(new Error(response.error || "Failed to open editor"));
+              }
+            }
+          );
+        } else {
+          reject(new Error("Unable to open editor"));
+        }
+      });
+    },
+    [socket, run.worktreePath, vscodeUrl]
+  );
+
+  const openWithMenuItems = useMemo(() => {
+    const items: { id: EditorType; name: string; enabled: boolean }[] = [
+      { id: "vscode-remote", name: "VS Code (web)", enabled: !!vscodeUrl },
+      {
+        id: "vscode",
+        name: "VS Code (local)",
+        enabled: !!run.worktreePath && (availableEditors?.vscode ?? true),
+      },
+      {
+        id: "cursor",
+        name: "Cursor",
+        enabled: !!run.worktreePath && (availableEditors?.cursor ?? true),
+      },
+      {
+        id: "windsurf",
+        name: "Windsurf",
+        enabled: !!run.worktreePath && (availableEditors?.windsurf ?? true),
+      },
+      {
+        id: "finder",
+        name: "Finder",
+        enabled: !!run.worktreePath && (availableEditors?.finder ?? true),
+      },
+      {
+        id: "iterm",
+        name: "iTerm",
+        enabled: !!run.worktreePath && (availableEditors?.iterm ?? false),
+      },
+      {
+        id: "terminal",
+        name: "Terminal",
+        enabled: !!run.worktreePath && (availableEditors?.terminal ?? false),
+      },
+      {
+        id: "ghostty",
+        name: "Ghostty",
+        enabled: !!run.worktreePath && (availableEditors?.ghostty ?? false),
+      },
+      {
+        id: "alacritty",
+        name: "Alacritty",
+        enabled: !!run.worktreePath && (availableEditors?.alacritty ?? false),
+      },
+      {
+        id: "xcode",
+        name: "Xcode",
+        enabled: !!run.worktreePath && (availableEditors?.xcode ?? false),
+      },
+    ];
+    return items.filter((i) => i.enabled);
+  }, [vscodeUrl, run.worktreePath, availableEditors]);
+
   return (
     <Fragment>
-      <div className="mt-px relative group">
-        {/* Crown icon shown before status icon, with tooltip */}
-        {run.isCrowned && (
-          <div className="flex-shrink-0 absolute left-0 pt-[5.5px] pl-[26px]">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Crown className="w-3 h-3 text-yellow-500" />
-              </TooltipTrigger>
-              {run.crownReason && (
+      <ContextMenu.Root>
+        <ContextMenu.Trigger>
+          <div className="mt-px relative group">
+          {/* Crown icon shown before status icon, with tooltip */}
+          {run.isCrowned && (
+            <div className="flex-shrink-0 absolute left-0 pt-[5.5px] pl-[26px]">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Crown className="w-3 h-3 text-yellow-500" />
+                </TooltipTrigger>
+                {run.crownReason && (
+                  <TooltipContent
+                    side="right"
+                    sideOffset={6}
+                    className="max-w-sm p-3 z-[9999]"
+                  >
+                    <div className="space-y-1.5">
+                      <p className="font-medium text-sm">Evaluation Reason</p>
+                      <p className="text-xs text-muted-foreground">
+                        {run.crownReason}
+                      </p>
+                    </div>
+                  </TooltipContent>
+                )}
+              </Tooltip>
+            </div>
+          )}
+          <div
+            className={clsx(
+              "group flex items-center px-2 pr-10 py-1 text-xs rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default"
+            )}
+            style={{ paddingLeft: `${8 + level * 16}px` }}
+          >
+            <button
+              onClick={handleToggle}
+              className={clsx(
+                "w-4 h-4 mr-1.5 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded cursor-default",
+                !hasChildren && "invisible"
+              )}
+              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+            >
+              <ChevronRight
+                className={clsx(
+                  "w-3 h-3 transition-transform",
+                  isExpanded && "rotate-90"
+                )}
+              />
+            </button>
+
+            {run.status === "failed" && run.errorMessage ? (
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="mr-2 flex-shrink-0">{statusIcon}</div>
+                </TooltipTrigger>
                 <TooltipContent
                   side="right"
-                  sideOffset={6}
-                  className="max-w-sm p-3 z-[9999]"
+                  className="max-w-xs whitespace-pre-wrap break-words"
                 >
-                  <div className="space-y-1.5">
-                    <p className="font-medium text-sm">Evaluation Reason</p>
-                    <p className="text-xs text-muted-foreground">
-                      {run.crownReason}
-                    </p>
-                  </div>
+                  {run.errorMessage}
                 </TooltipContent>
-              )}
-            </Tooltip>
-          </div>
-        )}
-        <div
-          className={clsx(
-            "group flex items-center px-2 pr-10 py-1 text-xs rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default"
-          )}
-          style={{ paddingLeft: `${8 + level * 16}px` }}
-        >
-          <button
-            onClick={handleToggle}
-            className={clsx(
-              "w-4 h-4 mr-1.5 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded cursor-default",
-              !hasChildren && "invisible"
+              </Tooltip>
+            ) : (
+              <div className="mr-2 flex-shrink-0">{statusIcon}</div>
             )}
-            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-          >
-            <ChevronRight
-              className={clsx(
-                "w-3 h-3 transition-transform",
-                isExpanded && "rotate-90"
-              )}
-            />
-          </button>
 
-          {run.status === "failed" && run.errorMessage ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="mr-2 flex-shrink-0">{statusIcon}</div>
-              </TooltipTrigger>
-              <TooltipContent
-                side="right"
-                className="max-w-xs whitespace-pre-wrap break-words"
-              >
-                {run.errorMessage}
-              </TooltipContent>
-            </Tooltip>
-          ) : (
-            <div className="mr-2 flex-shrink-0">{statusIcon}</div>
-          )}
-
-          <div className="flex-1 min-w-0 flex items-center gap-1">
-            <span className="truncate text-neutral-700 dark:text-neutral-300">
-              {displayText}
-            </span>
+            <div className="flex-1 min-w-0 flex items-center gap-1">
+              <span className="truncate text-neutral-700 dark:text-neutral-300">
+                {displayText}
+              </span>
+            </div>
           </div>
-        </div>
 
-        <div className="absolute right-2 top-1/2 -translate-y-1/2">
-          <OpenWithDropdown
-            vscodeUrl={vscodeUrl}
-            worktreePath={run.worktreePath}
-            branch={run.newBranch}
-            networking={run.networking}
-            className="bg-neutral-100/80 dark:bg-neutral-700/80 hover:bg-neutral-200/80 dark:hover:bg-neutral-600/80 text-neutral-600 dark:text-neutral-400"
-            iconClassName="w-2.5 h-2.5"
-          />
-        </div>
-      </div>
+          <div className="absolute right-2 top-1/2 -translate-y-1/2">
+            <OpenWithDropdown
+              vscodeUrl={vscodeUrl}
+              worktreePath={run.worktreePath}
+              branch={run.newBranch}
+              networking={run.networking}
+              className="bg-neutral-100/80 dark:bg-neutral-700/80 hover:bg-neutral-200/80 dark:hover:bg-neutral-600/80 text-neutral-600 dark:text-neutral-400"
+              iconClassName="w-2.5 h-2.5"
+            />
+          </div>
+          </div>
+        </ContextMenu.Trigger>
+        <ContextMenu.Portal>
+          <ContextMenu.Positioner className="outline-none z-[10000]">
+            <ContextMenu.Popup className="origin-[var(--transform-origin)] rounded-md bg-white dark:bg-neutral-800 py-1 text-neutral-900 dark:text-neutral-100 shadow-lg shadow-gray-200 outline-1 outline-neutral-200 transition-[opacity] data-[ending-style]:opacity-0 dark:shadow-none dark:-outline-offset-1 dark:outline-neutral-700">
+              <ContextMenu.Item
+                className="flex items-center gap-2 cursor-default py-1.5 pr-8 pl-3 text-[13px] leading-5 outline-none select-none data-[highlighted]:relative data-[highlighted]:z-0 data-[highlighted]:text-white data-[highlighted]:before:absolute data-[highlighted]:before:inset-x-1 data-[highlighted]:before:inset-y-0 data-[highlighted]:before:z-[-1] data-[highlighted]:before:rounded-sm data-[highlighted]:before:bg-neutral-900 dark:data-[highlighted]:before:bg-neutral-700"
+                disabled={!run.newBranch && !branch}
+                onClick={handleCopyBranch}
+              >
+                <GitBranch className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-300" />
+                <span>Copy branch</span>
+              </ContextMenu.Item>
+
+              <ContextMenu.SubmenuRoot>
+                <ContextMenu.SubmenuTrigger
+                  className="flex items-center justify-between gap-2 cursor-default py-1.5 pr-3 pl-3 text-[13px] leading-5 outline-none select-none data-[highlighted]:relative data-[highlighted]:z-0 data-[highlighted]:text-white data-[highlighted]:before:absolute data-[highlighted]:before:inset-x-1 data-[highlighted]:before:inset-y-0 data-[highlighted]:before:z-[-1] data-[highlighted]:before:rounded-sm data-[highlighted]:before:bg-neutral-900 dark:data-[highlighted]:before:bg-neutral-700"
+                >
+                  <span className="flex items-center gap-2">
+                    {/* Reuse the three-dots icon style for consistency */}
+                    <EllipsisVertical className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-300" />
+                    Open with
+                  </span>
+                  <ChevronRight className="w-3 h-3 text-neutral-400" />
+                </ContextMenu.SubmenuTrigger>
+                <ContextMenu.Positioner sideOffset={6} alignOffset={-4}>
+                  <ContextMenu.Popup className="origin-[var(--transform-origin)] rounded-md bg-white dark:bg-neutral-800 py-1 text-neutral-900 dark:text-neutral-100 shadow-lg shadow-gray-200 outline-1 outline-neutral-200 transition-[opacity] data-[ending-style]:opacity-0 dark:shadow-none dark:-outline-offset-1 dark:outline-neutral-700">
+                    {openWithMenuItems.map((item) => {
+                      const Icon = editorIcons[item.id];
+                      return (
+                        <ContextMenu.Item
+                          key={item.id}
+                          onClick={() => {
+                            const loadingToast = toast.loading(
+                              `Opening ${item.name}...`
+                            );
+                            handleOpenInEditor(item.id)
+                              .then(() => {
+                                toast.success(`Opened ${item.name}`, {
+                                  id: loadingToast,
+                                });
+                              })
+                              .catch((error: unknown) => {
+                                let errorMessage = "Failed to open editor";
+                                const msg =
+                                  error instanceof Error ? error.message : "";
+                                if (
+                                  msg.includes("ENOENT") ||
+                                  msg.includes("not found") ||
+                                  msg.includes("command not found")
+                                ) {
+                                  errorMessage = `${item.name} is not installed or not found in PATH`;
+                                } else if (msg) {
+                                  errorMessage = msg;
+                                }
+                                toast.error(errorMessage, { id: loadingToast });
+                              });
+                          }}
+                          className="flex items-center gap-2 cursor-default py-1.5 pr-8 pl-3 text-[13px] leading-5 outline-none select-none data-[highlighted]:relative data-[highlighted]:z-0 data-[highlighted]:text-white data-[highlighted]:before:absolute data-[highlighted]:before:inset-x-1 data-[highlighted]:before:inset-y-0 data-[highlighted]:before:z-[-1] data-[highlighted]:before:rounded-sm data-[highlighted]:before:bg-neutral-900 dark:data-[highlighted]:before:bg-neutral-700"
+                        >
+                          {Icon && (
+                            <Icon className="w-3.5 h-3.5 text-neutral-600 dark:text-neutral-300" />
+                          )}
+                          {item.name}
+                        </ContextMenu.Item>
+                      );
+                    })}
+                  </ContextMenu.Popup>
+                </ContextMenu.Positioner>
+              </ContextMenu.SubmenuRoot>
+            </ContextMenu.Popup>
+          </ContextMenu.Positioner>
+        </ContextMenu.Portal>
+      </ContextMenu.Root>
 
       {/* VSCode link as a separate tree item */}
       {hasActiveVSCode && (
