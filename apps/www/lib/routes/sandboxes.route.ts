@@ -101,6 +101,49 @@ sandboxesRouter.openapi(
         return c.text("VSCode or worker service not found", 500);
       }
 
+      // Configure git identity from Convex users table so commits don't fail
+      try {
+        const accessToken = await getAccessTokenFromRequest(c.req.raw);
+        if (accessToken) {
+          const convex = getConvex({ accessToken });
+          const who = await convex.query(api.users.getCurrentBasic, {});
+
+          const name = (who?.displayName || "cmux").trim();
+          // Prefer primary email; else construct a GitHub-style noreply address
+          let email = (who?.primaryEmail || "").trim();
+          if (!email) {
+            const baseUser = name
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, "-")
+              .replace(/^-+|-+$/g, "") || "cmux";
+            const ghId = (who as unknown as { githubAccountId?: string | null })
+              .githubAccountId;
+            email = ghId
+              ? `${ghId}+${baseUser}@users.noreply.github.com`
+              : `${baseUser}@users.noreply.github.com`;
+          }
+
+          // Safe single-quote for shell (we'll wrap the whole -lc string in double quotes)
+          const shq = (v: string) => `'${v.replace(/'/g, "\\'")}'`;
+
+          const gitCfgRes = await instance.exec(
+            `bash -lc "git config --global user.name ${shq(name)} && git config --global user.email ${shq(email)} && git config --global init.defaultBranch main && echo NAME:$(git config --global --get user.name) && echo EMAIL:$(git config --global --get user.email) || true"`
+          );
+          console.log(
+            `[sandboxes.start] git identity configured exit=${gitCfgRes.exit_code} (${name} <${email}>)`
+          );
+        } else {
+          console.log(
+            `[sandboxes.start] No access token; skipping git identity configuration`
+          );
+        }
+      } catch (e) {
+        console.log(
+          `[sandboxes.start] Failed to configure git identity; continuing...`,
+          e
+        );
+      }
+
       // Optional: Hydrate repo inside the sandbox
       if (body.repoUrl) {
         console.log(`[sandboxes.start] Hydrating repo for ${instance.id}`);
