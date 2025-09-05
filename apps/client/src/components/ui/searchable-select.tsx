@@ -159,7 +159,6 @@ export function SearchableSelect({
             "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950",
             "p-0 shadow-md outline-none"
           )}
-          onOpenAutoFocus={(e) => e.preventDefault()}
         >
           <Command loop>
             {showSearch ? (
