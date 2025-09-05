@@ -1,4 +1,4 @@
-import AntdMultiSelect from "@/components/AntdMultiSelect";
+import CommandSelect from "@/components/ui/command-select";
 import { ModeToggleTooltip } from "@/components/ui/mode-toggle-tooltip";
 import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
 import clsx from "clsx";
@@ -56,39 +56,45 @@ export const DashboardInputControls = memo(function DashboardInputControls({
   return (
     <div className="flex items-end gap-1 grow">
       <div className="flex items-end gap-1">
-        <AntdMultiSelect
-          options={projectOptions}
-          value={selectedProject}
-          onChange={onProjectChange}
-          placeholder="Select project"
-          singleSelect={true}
-          className="!min-w-[300px] !max-w-[500px] !rounded-2xl"
-          loading={isLoadingProjects}
-          maxTagCount={1}
-          showSearch
-        />
+        <div className="min-w-[300px] max-w-[500px]">
+          <CommandSelect
+            options={projectOptions}
+            value={selectedProject}
+            onChange={onProjectChange}
+            placeholder="Select project"
+            singleSelect={true}
+            className="w-full"
+            loading={isLoadingProjects}
+            maxTagCount={1}
+            showSearch
+          />
+        </div>
 
-        <AntdMultiSelect
-          options={branchOptions}
-          value={selectedBranch}
-          onChange={onBranchChange}
-          placeholder="Branch"
-          singleSelect={true}
-          className="!min-w-[120px] !rounded-2xl"
-          loading={isLoadingBranches}
-          showSearch
-        />
+        <div className="min-w-[120px]">
+          <CommandSelect
+            options={branchOptions}
+            value={selectedBranch}
+            onChange={onBranchChange}
+            placeholder="Branch"
+            singleSelect={true}
+            className="w-full"
+            loading={isLoadingBranches}
+            showSearch
+          />
+        </div>
 
-        <AntdMultiSelect
-          options={agentOptions}
-          value={selectedAgents}
-          onChange={onAgentChange}
-          placeholder="Select agents"
-          singleSelect={false}
-          maxTagCount={1}
-          className="!w-[220px] !max-w-[220px] !rounded-2xl"
-          showSearch
-        />
+        <div className="w-[220px] max-w-[220px]">
+          <CommandSelect
+            options={agentOptions}
+            value={selectedAgents}
+            onChange={onAgentChange}
+            placeholder="Select agents"
+            singleSelect={false}
+            maxTagCount={1}
+            className="w-full"
+            showSearch
+          />
+        </div>
       </div>
 
       <div className="flex items-center justify-end gap-2.5 ml-auto mr-0 pr-1">
