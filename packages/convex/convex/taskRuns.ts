@@ -85,6 +85,51 @@ export const getByTask = authQuery({
   },
 });
 
+// Get recently completed task runs
+export const getRecentlyCompleted = authQuery({
+  args: {
+    teamSlugOrId: v.string(),
+    limit: v.optional(v.number()),
+    daysBack: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const userId = ctx.identity.subject;
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
+    const limit = args.limit ?? 50;
+    const daysBack = args.daysBack ?? 7;
+    const cutoffTime = Date.now() - daysBack * 24 * 60 * 60 * 1000;
+
+    // Fetch completed runs within the time window
+    const runs = await ctx.db
+      .query("taskRuns")
+      .withIndex("by_team_user", (q) =>
+        q.eq("teamId", teamId).eq("userId", userId)
+      )
+      .filter((q) =>
+        q.and(
+          q.eq(q.field("status"), "completed"),
+          q.gte(q.field("completedAt"), cutoffTime)
+        )
+      )
+      .collect();
+
+    // Sort by: crowned first, then by completion time (most recent first)
+    const sortedRuns = runs.sort((a, b) => {
+      // Crowned runs come first
+      if (a.isCrowned && !b.isCrowned) return -1;
+      if (!a.isCrowned && b.isCrowned) return 1;
+      
+      // Then sort by completion time (most recent first)
+      const aTime = a.completedAt ?? 0;
+      const bTime = b.completedAt ?? 0;
+      return bTime - aTime;
+    });
+
+    // Return limited results
+    return sortedRuns.slice(0, limit);
+  },
+});
+
 // Update task run status
 export const updateStatus = internalMutation({
   args: {
