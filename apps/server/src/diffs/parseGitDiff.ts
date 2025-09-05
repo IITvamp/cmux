@@ -20,6 +20,11 @@ const execAsync = promisify(exec);
 export async function computeEntriesNodeGit(opts: ParsedDiffOptions): Promise<ReplaceDiffEntry[]> {
   const { worktreePath, includeContents = true, maxBytes = 950 * 1024 } = opts;
 
+  // Ensure remote refs exist/are fresh to avoid missing diffs in shallow clones
+  await prefetchBaseRefs(worktreePath).catch(() => {
+    // best-effort; continue regardless
+  });
+
   // Resolve a primary/base ref: prefer the repo default branch (e.g., origin/main)
   const baseRef = await resolvePrimaryBaseRef(worktreePath);
   const compareBase = await resolveMergeBaseWithDeepen(worktreePath, baseRef);
@@ -156,6 +161,44 @@ export async function computeEntriesNodeGit(opts: ParsedDiffOptions): Promise<Re
   }
 
   return entries;
+}
+
+async function prefetchBaseRefs(cwd: string): Promise<void> {
+  const repoMgr = RepositoryManager.getInstance();
+  // Fetch default branch refspec
+  let defaultBranch = "main";
+  try {
+    defaultBranch = await repoMgr.getDefaultBranch(cwd);
+  } catch {
+    // ignore
+  }
+  try {
+    await repoMgr.executeGitCommand(
+      `git fetch --quiet --prune --depth 1 origin +refs/heads/${defaultBranch}:refs/remotes/origin/${defaultBranch}`,
+      { cwd, suppressErrorLogging: true }
+    );
+  } catch {
+    // ignore
+  }
+
+  // Fetch the current branch's upstream if present
+  try {
+    const { stdout } = await execAsync(
+      "git rev-parse --abbrev-ref --symbolic-full-name @{u}",
+      { cwd }
+    );
+    const upstreamRef = stdout.trim(); // e.g., origin/feature
+    const m = upstreamRef.match(/^origin\/(.+)$/);
+    const branchName = m ? m[1] : "";
+    if (branchName) {
+      await repoMgr.executeGitCommand(
+        `git fetch --quiet --depth 1 origin +refs/heads/${branchName}:refs/remotes/origin/${branchName}`,
+        { cwd, suppressErrorLogging: true }
+      );
+    }
+  } catch {
+    // ignore
+  }
 }
 
 async function resolvePrimaryBaseRef(cwd: string): Promise<string> {

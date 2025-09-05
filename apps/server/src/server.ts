@@ -869,7 +869,18 @@ export async function startServer({
           try {
             const repoMgr = RepositoryManager.getInstance();
             const defaultBranch = await repoMgr.getDefaultBranch(worktreePath);
-            if (defaultBranch) baseRef = `origin/${defaultBranch}`;
+            if (defaultBranch) {
+              baseRef = `origin/${defaultBranch}`;
+              // Ensure the remote-tracking ref exists/updated for shallow clones
+              try {
+                await repoMgr.executeGitCommand(
+                  `git fetch --quiet --depth 1 origin +refs/heads/${defaultBranch}:refs/remotes/origin/${defaultBranch}`,
+                  { cwd: worktreePath, suppressErrorLogging: true }
+                );
+              } catch {
+                // ignore
+              }
+            }
           } catch {
             // ignore and try upstream next
           }
@@ -880,6 +891,20 @@ export async function startServer({
                 { cwd: worktreePath }
               );
               if (stdout.trim()) baseRef = "@{upstream}";
+              // Also attempt to fetch the upstream branch explicitly
+              const upstream = stdout.trim();
+              const m = upstream.match(/^origin\/(.+)$/);
+              const branchName = m ? m[1] : "";
+              if (branchName) {
+                try {
+                  await RepositoryManager.getInstance().executeGitCommand(
+                    `git fetch --quiet --depth 1 origin +refs/heads/${branchName}:refs/remotes/origin/${branchName}`,
+                    { cwd: worktreePath, suppressErrorLogging: true }
+                  );
+                } catch {
+                  // ignore
+                }
+              }
             } catch {
               // stick with HEAD
             }

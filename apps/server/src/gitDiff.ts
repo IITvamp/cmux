@@ -14,6 +14,11 @@ export class GitDiffManager {
 
   async getFullDiff(workspacePath: string): Promise<string> {
     try {
+      // Proactively fetch remote base refs to ensure diffs work in shallow clones
+      await this.prefetchBaseRefs(workspacePath).catch(() => {
+        // Non-fatal: continue with best-effort diff
+      });
+
       // Determine a sensible base ref for diffing:
       // 1) Use the current branch's upstream if configured
       // 2) Otherwise, use the repository's default branch (origin/<default>)
@@ -59,6 +64,46 @@ export class GitDiffManager {
     } catch (error) {
       serverLogger.error("Error getting git diff:", error);
       throw new Error("Failed to get git diff");
+    }
+  }
+
+  private async prefetchBaseRefs(workspacePath: string): Promise<void> {
+    const repoMgr = RepositoryManager.getInstance();
+    // Try to determine default branch
+    let defaultBranch = "main";
+    try {
+      defaultBranch = await repoMgr.getDefaultBranch(workspacePath);
+    } catch {
+      // ignore
+    }
+
+    // Best-effort: fetch default branch refspec
+    try {
+      await repoMgr.executeGitCommand(
+        `git fetch --quiet --prune --depth 1 origin +refs/heads/${defaultBranch}:refs/remotes/origin/${defaultBranch}`,
+        { cwd: workspacePath, suppressErrorLogging: true }
+      );
+    } catch {
+      // ignore
+    }
+
+    // Also attempt to fetch the current branch's upstream if present
+    try {
+      const { stdout } = await execAsync(
+        "git rev-parse --abbrev-ref --symbolic-full-name @{u}",
+        { cwd: workspacePath }
+      );
+      const upstreamRef = stdout.trim(); // e.g., origin/feature
+      const m = upstreamRef.match(/^origin\/(.+)$/);
+      const branchName = m ? m[1] : "";
+      if (branchName) {
+        await repoMgr.executeGitCommand(
+          `git fetch --quiet --depth 1 origin +refs/heads/${branchName}:refs/remotes/origin/${branchName}`,
+          { cwd: workspacePath, suppressErrorLogging: true }
+        );
+      }
+    } catch {
+      // ignore
     }
   }
 
