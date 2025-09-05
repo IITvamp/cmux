@@ -22,7 +22,7 @@ interface SidebarProps {
 
 export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
   const DEFAULT_WIDTH = 256;
-  const MIN_WIDTH = 200;
+  const MIN_WIDTH = 240;
   const MAX_WIDTH = 600;
 
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -124,7 +124,6 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
 
   const resetWidth = useCallback(() => setWidth(DEFAULT_WIDTH), []);
 
-
   return (
     <div
       ref={containerRef}
@@ -137,10 +136,10 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
       }}
     >
       <div
-        className="h-[38px] flex items-center pl-3 pr-1.5 shrink-0"
+        className={`h-[38px] flex items-center pr-1.5 shrink-0 ${isElectron ? "" : "pl-3"}`}
         style={{ WebkitAppRegion: "drag" } as CSSProperties}
       >
-        {isElectron && <div className="w-[68px]"></div>}
+        {isElectron && <div className="w-[80px]"></div>}
         <Link
           to="/$teamSlugOrId/dashboard"
           params={{ teamSlugOrId }}
@@ -169,7 +168,7 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
           <div className="pl-3 py-1">
             <div className="flex items-center px-1 py-1">
               <span className="text-[10px] font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-[-0.005em] select-none">
-                Recent Tasks
+                Tasks
               </span>
             </div>
             <div className="space-y-px">
@@ -198,7 +197,13 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
         <Link
           to="/$teamSlugOrId/environments"
           params={{ teamSlugOrId }}
-          search={{ step: undefined, selectedRepos: undefined, connectionLogin: undefined, repoSearch: undefined, sessionId: undefined }}
+          search={{
+            step: undefined,
+            selectedRepos: undefined,
+            connectionLogin: undefined,
+            repoSearch: undefined,
+            instanceId: undefined,
+          }}
           className="flex items-center px-7 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors select-none cursor-default"
         >
           <svg

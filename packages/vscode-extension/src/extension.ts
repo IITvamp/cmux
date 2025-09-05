@@ -1,6 +1,6 @@
 import type { ClientToServerEvents, ServerToClientEvents } from "@cmux/shared";
-import { execSync } from "node:child_process";
 import * as http from "http";
+import { execFile, execSync } from "node:child_process";
 import { Server } from "socket.io";
 import { io, Socket } from "socket.io-client";
 import * as vscode from "vscode";
@@ -44,9 +44,7 @@ function log(message: string, ...args: unknown[]) {
   const formattedMessage = `[${timestamp}] ${message}`;
   if (args.length > 0) {
     outputChannel.appendLine(
-      formattedMessage +
-        " " +
-        args.map((arg) => safeStringify(arg)).join(" ")
+      formattedMessage + " " + args.map((arg) => safeStringify(arg)).join(" ")
     );
   } else {
     outputChannel.appendLine(formattedMessage);
@@ -70,6 +68,23 @@ async function resolveDefaultBaseRef(repositoryPath: string): Promise<string> {
     // ignore and fall back
   }
   return "origin/main";
+}
+
+async function hasTmuxSessions(): Promise<boolean> {
+  return new Promise((resolve) => {
+    try {
+      execFile("tmux", ["list-sessions"], (error, stdout) => {
+        if (error) {
+          // tmux not installed or no server/sessions
+          resolve(false);
+          return;
+        }
+        resolve(stdout.trim().length > 0);
+      });
+    } catch {
+      resolve(false);
+    }
+  });
 }
 
 function tryExecGit(repoPath: string, cmd: string): string | null {
@@ -236,7 +251,9 @@ async function openMultiDiffEditor(
     log("Error opening diff:", error);
     if (error instanceof Error) {
       log("Error stack:", error.stack);
-      vscode.window.showErrorMessage(`Failed to open changes: ${error.message}`);
+      vscode.window.showErrorMessage(
+        `Failed to open changes: ${error.message}`
+      );
     } else {
       vscode.window.showErrorMessage("Failed to open changes");
     }
@@ -249,6 +266,13 @@ async function setupDefaultTerminal() {
   // Prevent duplicate setup
   if (isSetupComplete) {
     log("Setup already complete, skipping");
+    return;
+  }
+
+  // If no tmux sessions exist, skip any UI/terminal work entirely
+  const hasSessions = await hasTmuxSessions();
+  if (!hasSessions) {
+    log("No tmux sessions found; skipping terminal setup and attach");
     return;
   }
 

@@ -11,6 +11,7 @@ import { getConvex } from "./utils/convexClient.js";
 import { serverLogger } from "./utils/fileLogger.js";
 import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
 import type { VSCodeInstance } from "./vscode/VSCodeInstance.js";
+import { retryOnOptimisticConcurrency } from "./utils/convexRetry.js";
 
 // Handler for completing the task
 export async function handleTaskCompletion({
@@ -29,12 +30,14 @@ export async function handleTaskCompletion({
   teamSlugOrId: string;
 }) {
   try {
-    // Mark task as complete
-    await getConvex().mutation(api.taskRuns.complete, {
-      teamSlugOrId,
-      id: taskRunId,
-      exitCode,
-    });
+    // Mark task as complete (retry on OCC)
+    await retryOnOptimisticConcurrency(() =>
+      getConvex().mutation(api.taskRuns.complete, {
+        teamSlugOrId,
+        id: taskRunId,
+        exitCode,
+      })
+    );
 
     // Capture git diff before marking as complete
     serverLogger.info(
@@ -61,11 +64,13 @@ export async function handleTaskCompletion({
 
     // Append git diff to the log; diffs are fetched on-demand now
     if (gitDiff && gitDiff.length > 0) {
-      await getConvex().mutation(api.taskRuns.appendLogPublic, {
-        teamSlugOrId,
-        id: taskRunId,
-        content: `\n\n=== GIT DIFF ===\n${gitDiff}\n=== END GIT DIFF ===\n`,
-      });
+      await retryOnOptimisticConcurrency(() =>
+        getConvex().mutation(api.taskRuns.appendLogPublic, {
+          teamSlugOrId,
+          id: taskRunId,
+          content: `\n\n=== GIT DIFF ===\n${gitDiff}\n=== END GIT DIFF ===\n`,
+        })
+      );
       serverLogger.info(
         `[AgentSpawner] Successfully appended ${gitDiff.length} chars of git diff to log for ${taskRunId}`
       );
@@ -281,11 +286,13 @@ export async function handleTaskCompletion({
           containerSettings.reviewPeriodMinutes * 60 * 1000;
         const scheduledStopAt = Date.now() + reviewPeriodMs;
 
-        await getConvex().mutation(api.taskRuns.updateScheduledStop, {
-          teamSlugOrId,
-          id: taskRunId,
-          scheduledStopAt,
-        });
+        await retryOnOptimisticConcurrency(() =>
+          getConvex().mutation(api.taskRuns.updateScheduledStop, {
+            teamSlugOrId,
+            id: taskRunId,
+            scheduledStopAt,
+          })
+        );
 
         serverLogger.info(
           `[AgentSpawner] Scheduled container stop for ${new Date(scheduledStopAt).toISOString()}`

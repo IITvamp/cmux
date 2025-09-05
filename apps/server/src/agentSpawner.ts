@@ -26,6 +26,7 @@ import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { MorphVSCodeInstance } from "./vscode/MorphVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWorktreePath, setupProjectWorkspace } from "./workspace.js";
+import { retryOnOptimisticConcurrency } from "./utils/convexRetry.js";
 
 export interface AgentSpawnResult {
   agentName: string;
@@ -226,8 +227,17 @@ export async function spawnAgent(
       teamSlugOrId,
     });
 
-    // Add required API keys from Convex
-    if (agent.apiKeys) {
+    // Apply API keys: prefer agent-provided hook if present; otherwise default env injection
+    if (typeof agent.applyApiKeys === "function") {
+      const applied = await agent.applyApiKeys(apiKeys);
+      if (applied.env) envVars = { ...envVars, ...applied.env };
+      if (applied.files && applied.files.length > 0) {
+        authFiles.push(...applied.files);
+      }
+      if (applied.startupCommands && applied.startupCommands.length > 0) {
+        startupCommands.push(...applied.startupCommands);
+      }
+    } else if (agent.apiKeys) {
       for (const keyConfig of agent.apiKeys) {
         const key = apiKeys[keyConfig.envVar];
         if (key && key.trim().length > 0) {
@@ -320,12 +330,14 @@ export async function spawnAgent(
       });
     }
 
-    // Update the task run with the worktree path
-    await getConvex().mutation(api.taskRuns.updateWorktreePath, {
-      teamSlugOrId,
-      id: taskRunId,
-      worktreePath: worktreePath,
-    });
+    // Update the task run with the worktree path (retry on OCC)
+    await retryOnOptimisticConcurrency(() =>
+      getConvex().mutation(api.taskRuns.updateWorktreePath, {
+        teamSlugOrId,
+        id: taskRunId,
+        worktreePath: worktreePath,
+      })
+    );
 
     // Store the VSCode instance
     // VSCodeInstance.getInstances().set(vscodeInstance.getInstanceId(), vscodeInstance);
@@ -358,7 +370,14 @@ export async function spawnAgent(
 
       if (vscodeInstance instanceof MorphVSCodeInstance) {
         console.log("[AgentSpawner] [isCloudMode] Setting up devcontainer");
-        void vscodeInstance.setupDevcontainer();
+        void vscodeInstance
+          .setupDevcontainer()
+          .catch((err) =>
+            serverLogger.error(
+              "[AgentSpawner] setupDevcontainer encountered an error",
+              err
+            )
+          );
       }
     }
 
@@ -525,23 +544,27 @@ export async function spawnAgent(
         // Append error to log for context
         if (data.errorMessage) {
           await runWithAuthToken(capturedAuthToken, async () =>
-            getConvex().mutation(api.taskRuns.appendLogPublic, {
-              teamSlugOrId,
-              id: taskRunId,
-              content: `\n\n=== ERROR ===\n${data.errorMessage}\n=== END ERROR ===\n`,
-            })
+            retryOnOptimisticConcurrency(() =>
+              getConvex().mutation(api.taskRuns.appendLogPublic, {
+                teamSlugOrId,
+                id: taskRunId,
+                content: `\n\n=== ERROR ===\n${data.errorMessage}\n=== END ERROR ===\n`,
+              })
+            )
           );
         }
 
         // Mark the run as failed with error message
         await runWithAuthToken(capturedAuthToken, async () =>
-          getConvex().mutation(api.taskRuns.fail, {
-            teamSlugOrId,
-            id: taskRunId,
-            errorMessage: data.errorMessage || "Terminal failed",
-            // WorkerTerminalFailed does not include exitCode in schema; default to 1
-            exitCode: 1,
-          })
+          retryOnOptimisticConcurrency(() =>
+            getConvex().mutation(api.taskRuns.fail, {
+              teamSlugOrId,
+              id: taskRunId,
+              errorMessage: data.errorMessage || "Terminal failed",
+              // WorkerTerminalFailed does not include exitCode in schema; default to 1
+              exitCode: 1,
+            })
+          )
         );
 
         serverLogger.info(
@@ -572,20 +595,22 @@ export async function spawnAgent(
       }
     }
 
-    // Update VSCode instance information in Convex
-    await getConvex().mutation(api.taskRuns.updateVSCodeInstance, {
-      teamSlugOrId,
-      id: taskRunId,
-      vscode: {
-        provider: vscodeInfo.provider,
-        containerName: vscodeInstance.getName(),
-        status: "running",
-        url: vscodeInfo.url,
-        workspaceUrl: vscodeInfo.workspaceUrl,
-        startedAt: Date.now(),
-        ...(ports ? { ports } : {}),
-      },
-    });
+    // Update VSCode instance information in Convex (retry on OCC)
+    await retryOnOptimisticConcurrency(() =>
+      getConvex().mutation(api.taskRuns.updateVSCodeInstance, {
+        teamSlugOrId,
+        id: taskRunId,
+        vscode: {
+          provider: vscodeInfo.provider,
+          containerName: vscodeInstance.getName(),
+          status: "running",
+          url: vscodeInfo.url,
+          workspaceUrl: vscodeInfo.workspaceUrl,
+          startedAt: Date.now(),
+          ...(ports ? { ports } : {}),
+        },
+      })
+    );
 
     // Use taskRunId as terminal ID for compatibility
     const terminalId = taskRunId;

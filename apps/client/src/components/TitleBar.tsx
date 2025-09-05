@@ -7,7 +7,7 @@ export function TitleBar({ title }: { title: string }) {
       {/* Traffic light placeholder - will be handled by macOS */}
       <div
         className="absolute left-0 w-20 h-full"
-        style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+        style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
       />
 
       {/* Title */}

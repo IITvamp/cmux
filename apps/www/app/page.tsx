@@ -1,4 +1,3 @@
-/* eslint-disable @next/next/no-html-link-for-pages, react/no-unescaped-entities */
 "use client";
 
 import { ClientIcon } from "@/components/client-icon";
@@ -15,6 +14,7 @@ import {
   Zap,
 } from "lucide-react";
 import Image from "next/image";
+import Link from "next/link";
 import { useState } from "react";
 
 export default function LandingPage() {
@@ -56,13 +56,13 @@ export default function LandingPage() {
       <header className="mb-6 bg-neutral-950/80 backdrop-blur top-0 z-40 border-b border-neutral-900">
         <div className="container max-w-5xl mx-auto px-2 sm:px-3 py-2.5">
           <div className="grid w-full grid-cols-[auto_1fr] grid-rows-1 items-center gap-2">
-            <a
+            <Link
               aria-label="Go to homepage"
               className="col-start-1 col-end-2 inline-flex items-center"
               href="/"
             >
               <CmuxLogo height={40} label="cmux" showWordmark />
-            </a>
+            </Link>
             <div className="col-start-2 col-end-3 flex items-center justify-end gap-2 sm:gap-3">
               <nav aria-label="Main" className="hidden md:flex items-center">
                 <ul className="flex flex-wrap items-center gap-x-2">
@@ -162,7 +162,7 @@ export default function LandingPage() {
                   href="https://github.com/manaflow-ai/cmux"
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 px-6 py-3 bg-white text-black hover:bg-neutral-200 rounded-lg font-medium transition-colors"
+                  className="inline-flex items-center gap-2 px-4 h-12 bg-white text-black hover:bg-neutral-200 rounded-lg font-medium transition-colors"
                 >
                   <svg
                     className="h-5 w-5"
@@ -170,11 +170,11 @@ export default function LandingPage() {
                     fill="currentColor"
                     viewBox="0 0 24 24"
                   >
-                    <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                    <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
                   </svg>
                   <span>View on GitHub</span>
                 </a>
-                <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-4 py-3 font-mono text-sm flex items-center gap-3">
+                <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-4 h-12 font-mono text-sm flex items-center gap-3">
                   <span className="text-white">$ bunx cmux</span>
                   <button
                     onClick={() => copyToClipboard("bunx cmux")}
@@ -195,7 +195,7 @@ export default function LandingPage() {
                     )}
                   </button>
                 </div>
-                <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-4 py-3 font-mono text-sm flex items-center gap-3">
+                <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-4 h-12 font-mono text-sm flex items-center gap-3">
                   <span className="text-white">$ npx cmux</span>
                   <button
                     onClick={() => copyToClipboard("npx cmux")}
@@ -248,7 +248,7 @@ export default function LandingPage() {
                 <span className="text-white font-semibold">
                   The interface is the bottleneck.
                 </span>{" "}
-                We've spent years making AI agents better at coding, but almost
+                We&apos;ve spent years making AI agents better at coding, but almost
                 no time making it easier to verify their work. The result?
                 Developers spend 80% of their time reviewing and 20% prompting.
               </p>
@@ -256,8 +256,8 @@ export default function LandingPage() {
                 <p>
                   Running multiple agents at once sounds powerful until it turns
                   into chaos: 3-4 terminals, each on a different task, and
-                  you're asking, “Which one is on auth? Did the database
-                  refactor finish?” You end up bouncing between windows, running
+                  you&apos;re asking, &quot;Which one is on auth? Did the database
+                  refactor finish?&quot; You end up bouncing between windows, running
                   git diff, and piecing together what changed where.
                 </p>
               </blockquote>
@@ -274,8 +274,8 @@ export default function LandingPage() {
               </p>
               <blockquote className="border-l-2 border-neutral-800 pl-4 text-neutral-300">
                 <p>
-                  The issue isn't that agents aren't good — they're getting
-                  scary good. It's that our tools were designed for a different
+                  The issue isn&apos;t that agents aren&apos;t good — they&apos;re getting
+                  scary good. It&apos;s that our tools were designed for a different
                   era. VS Code was built for writing code, not reviewing five
                   parallel streams of AI-generated changes. Terminals expect
                   sequential commands, not a fleet of autonomous workers.
@@ -297,7 +297,7 @@ export default function LandingPage() {
                   Docker container, separate VS Code, separate git state. VS
                   Code opens with the git diff already showing. Every change is
                   isolated to its task, so you can see exactly what each agent
-                  did — immediately — without losing context. That's what makes
+                  did — immediately — without losing context. That&apos;s what makes
                   running 10+ agents actually workable.
                 </p>
               </blockquote>
@@ -359,7 +359,7 @@ export default function LandingPage() {
                   Git extension UI
                 </h3>
                 <p className="text-sm text-neutral-400">
-                  On mount, VS Code opens the git extension's diff UI. Review
+                  On mount, VS Code opens the git extension&apos;s diff UI. Review
                   changes without context switching.
                 </p>
               </div>
@@ -437,7 +437,7 @@ export default function LandingPage() {
           <div className="space-y-6">
             <div className="text-neutral-400">
               <p className="mb-6">
-                We're building the missing layer between AI agents and
+                We&apos;re building the missing layer between AI agents and
                 developers. Not another agent, not another IDE—but the
                 verification interface that makes managing 10, 20, or 100
                 parallel agents as easy as managing one.
@@ -472,7 +472,7 @@ export default function LandingPage() {
                 <p className="text-sm text-neutral-400 mb-4">
                   Define verification criteria upfront. Set test coverage
                   requirements, performance benchmarks, security checks. Agents
-                  can't mark tasks complete until verification passes.
+                  can&apos;t mark tasks complete until verification passes.
                 </p>
               </div>
               <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg p-6">
@@ -481,7 +481,7 @@ export default function LandingPage() {
                 </h3>
                 <p className="text-sm text-neutral-400 mb-4">
                   Agents will communicate through a shared context layer. One
-                  agent's output becomes another's input. Automatic conflict
+                  agent&apos;s output becomes another&apos;s input. Automatic conflict
                   resolution when agents modify the same files.
                 </p>
               </div>
@@ -495,7 +495,7 @@ export default function LandingPage() {
                 agent will review the work of worker agents, using the same
                 interfaces you use today. It will approve simple changes,
                 escalate complex ones, and learn from your verification
-                patterns. The goal isn't to replace developers—it's to amplify
+                patterns. The goal isn&apos;t to replace developers—it&apos;s to amplify
                 them 100x by removing the verification bottleneck entirely.
               </p>
             </div>
@@ -511,7 +511,7 @@ export default function LandingPage() {
         <div className="container max-w-5xl mx-auto text-center">
           <h2 className="text-2xl font-semibold mb-4">Requirements</h2>
           <p className="text-neutral-400 mb-8">
-            cmux runs locally on your machine. You'll need:
+            cmux runs locally on your machine. You&apos;ll need:
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center text-sm">
             <div className="bg-neutral-900 border border-neutral-800 rounded-lg px-6 py-3">

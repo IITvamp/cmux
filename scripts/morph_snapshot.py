@@ -20,6 +20,7 @@ from urllib.error import HTTPError, URLError
 
 import dotenv
 from morphcloud.api import MorphCloudClient, Snapshot
+import hashlib
 
 dotenv.load_dotenv()
 
@@ -143,6 +144,28 @@ class MorphDockerfileExecutor:
         self.build_env: dict[str, str] = {}
         self.run_env: dict[str, str] = {}
 
+    def _exec_with_retry(self, command: str, *, attempts: int = 4) -> None:
+        """Run a command on the snapshot with simple retry/backoff.
+
+        This helps ride over transient SSH issues like Paramiko 'Channel closed'.
+        """
+        last_err: Exception | None = None
+        for i in range(attempts):
+            try:
+                self.snapshot = self.snapshot.exec(command)
+                return
+            except Exception as e:
+                last_err = e
+                # small linear backoff; try to poke the instance to refresh connection
+                time.sleep(1.0 + i * 0.5)
+                try:
+                    # No-op effect to keep the chain alive if needed
+                    _ = self.snapshot
+                except Exception:
+                    pass
+        if last_err is not None:
+            raise last_err
+
     def _upload_with_retry(
         self, local_path: str, remote_path: str, *, recursive: bool, attempts: int = 4
     ) -> None:
@@ -211,7 +234,7 @@ class MorphDockerfileExecutor:
             if export_prefix
             else f"cd {self.workdir} && {cleaned_cmd}"
         )
-        self.snapshot = self.snapshot.exec(command)
+        self._exec_with_retry(command)
 
     def handle_workdir(self, content: str) -> None:
         path = content.strip()
@@ -219,7 +242,7 @@ class MorphDockerfileExecutor:
         if not os.path.isabs(path):
             path = os.path.join(self.workdir, path)
         self.workdir = path
-        self.snapshot = self.snapshot.exec(f"mkdir -p {self.workdir}")
+        self._exec_with_retry(f"mkdir -p {self.workdir}")
 
     def handle_copy(self, content: str) -> None:
         import glob
@@ -299,9 +322,7 @@ class MorphDockerfileExecutor:
                     )
                 parent_dir = os.path.dirname(remote)
                 if parent_dir:
-                    self.snapshot = self.snapshot.exec(
-                        f"mkdir -p {shlex.quote(parent_dir)}"
-                    )
+                    self._exec_with_retry(f"mkdir -p {shlex.quote(parent_dir)}")
                 # Skip if source and destination resolve to the same path
                 if os.path.normpath(src) != os.path.normpath(remote):
                     # Use cp -a if supported; fallback to cp -r
@@ -335,9 +356,7 @@ class MorphDockerfileExecutor:
                     else os.path.dirname(remote)
                 )
                 if parent_dir:
-                    self.snapshot = self.snapshot.exec(
-                        f"mkdir -p {shlex.quote(parent_dir)}"
-                    )
+                    self._exec_with_retry(f"mkdir -p {shlex.quote(parent_dir)}")
 
                 self._upload_with_retry(src, remote, recursive=recursive)
                 # Preserve executable bit for uploaded files (non-recursive)
@@ -346,9 +365,7 @@ class MorphDockerfileExecutor:
                         st_mode = os.stat(src).st_mode
                         if (st_mode & 0o111) != 0:
                             # Make remote executable if local was executable
-                            self.snapshot = self.snapshot.exec(
-                                f"chmod +x {shlex.quote(remote)}"
-                            )
+                            self._exec_with_retry(f"chmod +x {shlex.quote(remote)}")
                 except FileNotFoundError:
                     # If the local file disappeared between glob and stat, skip
                     pass
@@ -606,6 +623,17 @@ def ensure_docker(snapshot: Snapshot) -> Snapshot:
     return snapshot
 
 
+def _file_sha256_hex(path: str) -> str:
+    try:
+        with open(path, "rb") as f:
+            h = hashlib.sha256()
+            for chunk in iter(lambda: f.read(8192), b""):
+                h.update(chunk)
+            return h.hexdigest()
+    except FileNotFoundError:
+        return "no-file"
+
+
 def build_snapshot(
     dockerfile_path: str,
 ) -> Snapshot:
@@ -614,7 +642,9 @@ def build_snapshot(
     memory = 16384
     disk_size = 32768
     digest_prefix = "cmux"
-    digest = f"{digest_prefix}_{vcpus}_{memory}_{disk_size}"
+    # Include lockfile hash to invalidate cache when dependencies change
+    lock_hash = _file_sha256_hex("pnpm-lock.yaml")[:16]
+    digest = f"{digest_prefix}_{vcpus}_{memory}_{disk_size}_{lock_hash}"
     snapshot = client.snapshots.create(
         vcpus=vcpus,
         memory=memory,

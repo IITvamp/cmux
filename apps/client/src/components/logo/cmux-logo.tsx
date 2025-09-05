@@ -37,11 +37,11 @@ export default function CmuxLogo({
 
   return (
     <svg
-      viewBox="60 0 840 240"
+      viewBox="60 0 680 240"
       role="img"
       aria-labelledby={label ? titleId : undefined}
       aria-hidden={label ? undefined : true}
-      preserveAspectRatio="xMidYMid meet"
+      preserveAspectRatio="xMinYMid meet"
       style={{
         display: "inline-block",
         verticalAlign: "middle",
@@ -75,10 +75,10 @@ export default function CmuxLogo({
           className="wordmark fill-neutral-900 dark:fill-white"
           x={208}
           y={162}
-          fontSize={112}
+          fontSize={108}
         >
-          {/* cmux.dev */}
-          cmux
+          cmux.dev
+          {/* cmux */}
         </text>
       )}
     </svg>

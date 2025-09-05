@@ -14,6 +14,7 @@ import {
   useEffect,
   useMemo,
   useState,
+  type CSSProperties,
   type ReactNode,
 } from "react";
 import { authJsonQueryOptions } from "./authJsonQueryOptions";
@@ -78,6 +79,12 @@ function AuthenticatedOrSignIn({
             exit={{ opacity: 0 }}
           >
             {isElectron ? (
+              <div
+                className="absolute top-0 left-0 right-0 h-[24px]"
+                style={{ WebkitAppRegion: "drag" } as CSSProperties}
+              />
+            ) : null}
+            {isElectron ? (
               <div className="flex flex-col items-center gap-4 p-6 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900">
                 <div className="text-center">
                   <p className="text-neutral-900 dark:text-neutral-100 font-medium">
@@ -101,6 +108,7 @@ function AuthenticatedOrSignIn({
                 <p className="text-xs text-neutral-500 dark:text-neutral-500 text-center">
                   After signing in, you'll be returned automatically.
                 </p>
+                <SignIn />
               </div>
             ) : (
               <SignIn />

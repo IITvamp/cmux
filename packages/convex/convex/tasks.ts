@@ -213,6 +213,30 @@ export const updateCrownError = authMutation({
   },
 });
 
+// Try to atomically begin a crown evaluation; returns true if we acquired the lock
+export const tryBeginCrownEvaluation = authMutation({
+  args: {
+    teamSlugOrId: v.string(),
+    id: v.id("tasks"),
+  },
+  handler: async (ctx, args) => {
+    const userId = ctx.identity.subject;
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
+    const task = await ctx.db.get(args.id);
+    if (!task || task.teamId !== teamId || task.userId !== userId) {
+      throw new Error("Task not found or unauthorized");
+    }
+    if (task.crownEvaluationError === "in_progress") {
+      return false;
+    }
+    await ctx.db.patch(args.id, {
+      crownEvaluationError: "in_progress",
+      updatedAt: Date.now(),
+    });
+    return true;
+  },
+});
+
 // Set or update the generated pull request description for a task
 export const setPullRequestDescription = authMutation({
   args: {
