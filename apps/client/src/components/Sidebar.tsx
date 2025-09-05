@@ -1,5 +1,6 @@
 import { TaskTree, type TaskWithRuns } from "@/components/TaskTree";
 import { TaskTreeSkeleton } from "@/components/TaskTreeSkeleton";
+import { FeedbackModal } from "@/components/ui/feedback-modal";
 import { useExpandTasks } from "@/contexts/expand-tasks/ExpandTasksContext";
 import { isElectron } from "@/lib/electron";
 import { type Doc } from "@cmux/convex/dataModel";
@@ -35,6 +36,7 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
     return Math.min(Math.max(parsed, MIN_WIDTH), MAX_WIDTH);
   });
   const [isResizing, setIsResizing] = useState(false);
+  const [feedbackModalVisible, setFeedbackModalVisible] = useState(false);
 
   const { expandTaskIds } = useExpandTasks();
 
@@ -221,11 +223,10 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
           </svg>
           Environments
         </Link>
-        <a
-          href="https://github.com/manaflow-ai/cmux/issues/new"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center px-7 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors select-none cursor-pointer"
+        <button
+          type="button"
+          onClick={() => setFeedbackModalVisible(true)}
+          className="w-full flex items-center px-7 py-2 text-sm text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors select-none cursor-pointer text-left"
         >
           <svg
             className="w-4 h-4 mr-3 text-neutral-500"
@@ -241,7 +242,7 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
             />
           </svg>
           Feedback
-        </a>
+        </button>
         <Link
           to="/$teamSlugOrId/settings"
           params={{ teamSlugOrId }}
@@ -282,6 +283,11 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
             zIndex: 10000,
           } as CSSProperties
         }
+      />
+
+      <FeedbackModal
+        visible={feedbackModalVisible}
+        onClose={() => setFeedbackModalVisible(false)}
       />
     </div>
   );
