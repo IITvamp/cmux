@@ -12,6 +12,10 @@ export interface VSCodeInstanceConfig {
   taskId: Id<"tasks">;
   theme?: "dark" | "light" | "system";
   teamSlugOrId: string;
+  // Optional: for CmuxVSCodeInstance to hydrate repo on start
+  repoUrl?: string;
+  branch?: string;
+  newBranch?: string;
 }
 
 export interface VSCodeInstanceInfo {

@@ -52,7 +52,7 @@ import {
   refreshBranchesForRepo,
   refreshGitHubData,
 } from "./utils/refreshGitHubData.js";
-import { runWithAuthToken } from "./utils/requestContext.js";
+import { runWithAuth, runWithAuthToken } from "./utils/requestContext.js";
 import { waitForConvex } from "./utils/waitForConvex.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
@@ -154,7 +154,13 @@ export async function startServer({
       : typeof q === "string"
         ? q
         : undefined;
-    runWithAuthToken(token, () => next());
+    const qJson = socket.handshake.query?.auth_json;
+    const tokenJson = Array.isArray(qJson)
+      ? qJson[0]
+      : typeof qJson === "string"
+        ? qJson
+        : undefined;
+    runWithAuth(token, tokenJson, () => next());
   });
 
   setupWebSocketProxy(httpServer);
@@ -170,6 +176,12 @@ export async function startServer({
       : typeof q === "string"
         ? q
         : undefined;
+    const qJson = socket.handshake.query?.auth_json;
+    const tokenJson = Array.isArray(qJson)
+      ? qJson[0]
+      : typeof qJson === "string"
+        ? qJson
+        : undefined;
 
     // authenticate the token
     if (!token) {
@@ -179,7 +191,7 @@ export async function startServer({
     }
 
     socket.use((_, next) => {
-      runWithAuthToken(token, () => next());
+      runWithAuth(token, tokenJson, () => next());
     });
     serverLogger.info("Client connected:", socket.id);
 
@@ -200,10 +212,16 @@ export async function startServer({
     // Kick off initial GitHub data refresh only after an authenticated connection
     const qAuth = socket.handshake.query?.auth;
     const qTeam = socket.handshake.query?.team;
+    const qAuthJson = socket.handshake.query?.auth_json;
     const initialToken = Array.isArray(qAuth)
       ? qAuth[0]
       : typeof qAuth === "string"
         ? qAuth
+        : undefined;
+    const initialAuthJson = Array.isArray(qAuthJson)
+      ? qAuthJson[0]
+      : typeof qAuthJson === "string"
+        ? qAuthJson
         : undefined;
     const initialTeam = Array.isArray(qTeam)
       ? qTeam[0]
@@ -213,7 +231,7 @@ export async function startServer({
     const safeTeam = initialTeam || "default";
     if (!hasRefreshedGithub && initialToken) {
       hasRefreshedGithub = true;
-      runWithAuthToken(initialToken, () => {
+      runWithAuth(initialToken, initialAuthJson, () => {
         if (!initialTeam) {
           serverLogger.warn(
             "No team provided on socket handshake; skipping initial GitHub refresh"
@@ -227,7 +245,7 @@ export async function startServer({
       // Start Docker container state sync after first authenticated connection
       if (!dockerEventsStarted) {
         dockerEventsStarted = true;
-        runWithAuthToken(initialToken, () => {
+        runWithAuth(initialToken, initialAuthJson, () => {
           serverLogger.info(
             "Starting Docker container state sync after authenticated connect"
           );

@@ -6,7 +6,7 @@
     "moduleResolution": "bundler",
     "verbatimModuleSyntax": false,
     "downlevelIteration": true,
-    "lib": ["ES2022"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
     "outDir": "./dist",
     "rootDir": ".",
     "strict": true,
