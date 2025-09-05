@@ -14,6 +14,7 @@ interface CommandBarProps {
 export function CommandBar({ teamSlugOrId }: CommandBarProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [openedWithShift, setOpenedWithShift] = useState(false);
   const navigate = useNavigate();
   const router = useRouter();
   const { setTheme } = useTheme();
@@ -25,6 +26,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
     const down = (e: KeyboardEvent) => {
       if (e.key === "k" && e.metaKey) {
         e.preventDefault();
+        setOpenedWithShift(e.shiftKey);
         setOpen((open) => !open);
       }
     };
@@ -73,7 +75,12 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
 
   const handleSelect = useCallback(
     async (value: string) => {
-      if (value === "theme-light") {
+      if (value === "new-task") {
+        navigate({
+          to: "/$teamSlugOrId/dashboard",
+          params: { teamSlugOrId },
+        });
+      } else if (value === "theme-light") {
         setTheme("light");
       } else if (value === "theme-dark") {
         setTheme("dark");
@@ -129,6 +136,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
       }
       setOpen(false);
       setSearch("");
+      setOpenedWithShift(false);
     },
     [navigate, teamSlugOrId, setTheme, createRun]
   );
@@ -138,10 +146,11 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
   return (
     <>
       <div 
-        className="fixed inset-0 z-50 bg-black/50" 
+        className="fixed inset-0 z-50" 
         onClick={() => {
           setOpen(false);
           setSearch("");
+          setOpenedWithShift(false);
         }}
       />
       <Command.Dialog
@@ -154,9 +163,11 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
           if (e.key === "Escape") {
             setOpen(false);
             setSearch("");
+            setOpenedWithShift(false);
           }
         }}
         onValueChange={handleHighlight}
+        defaultValue={openedWithShift ? "new-task" : undefined}
       >
         <div className="w-full max-w-2xl bg-white dark:bg-neutral-900 rounded-xl shadow-2xl border border-neutral-200 dark:border-neutral-700 overflow-hidden pointer-events-auto">
         <Command.Input
@@ -169,6 +180,22 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
           <Command.Empty className="py-6 text-center text-sm text-neutral-500 dark:text-neutral-400">
             No results found.
           </Command.Empty>
+
+          <Command.Group>
+            <div className="px-2 py-1.5 text-xs text-neutral-500 dark:text-neutral-400">
+              Actions
+            </div>
+            <Command.Item
+              value="new-task"
+              onSelect={() => handleSelect("new-task")}
+              className="flex items-center gap-2 px-3 py-2.5 mx-1 rounded-md cursor-pointer 
+                hover:bg-neutral-100 dark:hover:bg-neutral-800 
+                data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800
+                data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100"
+            >
+              <span className="text-sm">New Task</span>
+            </Command.Item>
+          </Command.Group>
 
           <Command.Group>
             <div className="px-2 py-1.5 text-xs text-neutral-500 dark:text-neutral-400">
