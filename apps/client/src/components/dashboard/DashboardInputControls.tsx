@@ -1,4 +1,4 @@
-import AntdMultiSelect from "@/components/AntdMultiSelect";
+import { ComboboxDropdown, type ComboboxOption } from "@/components/ui/combobox-dropdown";
 import { ModeToggleTooltip } from "@/components/ui/mode-toggle-tooltip";
 import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
 import clsx from "clsx";
@@ -36,8 +36,12 @@ export const DashboardInputControls = memo(function DashboardInputControls({
   isLoadingBranches,
   teamSlugOrId,
 }: DashboardInputControlsProps) {
-  const agentOptions = useMemo(
-    () => AGENT_CONFIGS.map((agent) => agent.name),
+  const agentOptions = useMemo<ComboboxOption[]>(
+    () => AGENT_CONFIGS.map((agent) => ({
+      value: agent.name,
+      label: agent.name,
+      isUnavailable: false, // You can add logic here to check availability if needed
+    })),
     []
   );
   // Determine OS for potential future UI tweaks
@@ -56,37 +60,39 @@ export const DashboardInputControls = memo(function DashboardInputControls({
   return (
     <div className="flex items-end gap-1 grow">
       <div className="flex items-end gap-1">
-        <AntdMultiSelect
+        <ComboboxDropdown
           options={projectOptions}
           value={selectedProject}
           onChange={onProjectChange}
           placeholder="Select project"
-          singleSelect={true}
-          className="!min-w-[300px] !max-w-[500px] !rounded-2xl"
+          multiple={false}
+          minWidth="300px"
+          maxWidth="500px"
           loading={isLoadingProjects}
-          maxTagCount={1}
           showSearch
         />
 
-        <AntdMultiSelect
+        <ComboboxDropdown
           options={branchOptions}
           value={selectedBranch}
           onChange={onBranchChange}
           placeholder="Branch"
-          singleSelect={true}
-          className="!min-w-[120px] !rounded-2xl"
+          multiple={false}
+          minWidth="120px"
+          maxWidth="300px"
           loading={isLoadingBranches}
           showSearch
         />
 
-        <AntdMultiSelect
+        <ComboboxDropdown
           options={agentOptions}
           value={selectedAgents}
           onChange={onAgentChange}
           placeholder="Select agents"
-          singleSelect={false}
+          multiple={true}
           maxTagCount={1}
-          className="!w-[220px] !max-w-[220px] !rounded-2xl"
+          minWidth="220px"
+          maxWidth="220px"
           showSearch
         />
       </div>
