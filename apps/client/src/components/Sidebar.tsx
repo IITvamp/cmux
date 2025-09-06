@@ -269,11 +269,12 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
         style={
           {
             // Invisible, but with a comfortable hit area
-            width: "10px",
-            marginRight: "-5px",
+            width: "14px",
+            transform: "translateX(13px)",
+            // marginRight: "-5px",
             background: "transparent",
             // background: "red",
-            zIndex: 10000,
+            zIndex: 99999999,
           } as CSSProperties
         }
       />

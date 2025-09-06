@@ -6,6 +6,7 @@ import { verifyTeamAccess } from "@/lib/utils/team-verification";
 import { env } from "@/lib/utils/www-env";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { MorphCloudClient } from "morphcloud";
+import { DEFAULT_MORPH_SNAPSHOT_ID } from "@/lib/utils/morph-defaults";
 import { stackServerAppJs } from "../utils/stack";
 
 export const morphRouter = new OpenAPIHono();
@@ -86,8 +87,7 @@ morphRouter.openapi(
       if (!instanceId) {
         console.log("Creating new Morph instance");
         instance = await client.instances.start({
-          // snapshotId: "snapshot_hzlmd4kx",
-          snapshotId: "snapshot_nnucpxen",
+          snapshotId: DEFAULT_MORPH_SNAPSHOT_ID,
           ttlSeconds,
           ttlAction: "pause",
           metadata: {
