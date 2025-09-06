@@ -41,10 +41,11 @@ export async function spawnAgent(
   agent: AgentConfig,
   taskId: Id<"tasks">,
   options: {
-    repoUrl: string;
+    repoUrl?: string;
     branch?: string;
     taskDescription: string;
     isCloudMode?: boolean;
+    environmentId?: Id<"environments"> | string;
     images?: Array<{
       src: string;
       fileName?: string;
@@ -285,6 +286,7 @@ export async function spawnAgent(
         repoUrl: options.repoUrl,
         branch: options.branch,
         newBranch,
+        environmentId: options.environmentId as Id<"environments"> | undefined,
       });
 
       worktreePath = "/root/workspace";
@@ -292,15 +294,15 @@ export async function spawnAgent(
       // For Docker, set up worktree as before
       const worktreeInfo = await getWorktreePath(
         {
-          repoUrl: options.repoUrl,
+          repoUrl: options.repoUrl!,
           branch: newBranch,
         },
         teamSlugOrId
       );
 
       // Setup workspace
-      const workspaceResult = await setupProjectWorkspace({
-        repoUrl: options.repoUrl,
+  const workspaceResult = await setupProjectWorkspace({
+        repoUrl: options.repoUrl!,
         // If not provided, setupProjectWorkspace detects default from origin
         branch: options.branch,
         worktreeInfo,
@@ -901,12 +903,13 @@ export async function spawnAgent(
 export async function spawnAllAgents(
   taskId: Id<"tasks">,
   options: {
-    repoUrl: string;
+    repoUrl?: string;
     branch?: string;
     taskDescription: string;
     prTitle?: string;
     selectedAgents?: string[];
     isCloudMode?: boolean;
+    environmentId?: Id<"environments"> | string;
     images?: Array<{
       src: string;
       fileName?: string;
