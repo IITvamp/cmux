@@ -1,10 +1,5 @@
 import { OpenWithDropdown } from "@/components/OpenWithDropdown";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useArchiveTask } from "@/hooks/useArchiveTask";
 import { isFakeConvexId } from "@/lib/fakeConvexId";
 import { ContextMenu } from "@base-ui-components/react/context-menu";
@@ -235,32 +230,30 @@ export const TaskItem = memo(function TaskItem({
       <div className="right-2 top-0 bottom-0 absolute py-2">
         <div className="flex gap-1">
           {/* Copy button */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={handleCopy}
-                  className={clsx(
-                    "p-1 rounded",
-                    "bg-neutral-100 dark:bg-neutral-700",
-                    "text-neutral-600 dark:text-neutral-400",
-                    "hover:bg-neutral-200 dark:hover:bg-neutral-600",
-                    "group-hover:opacity-100 opacity-0"
-                  )}
-                  title="Copy task description"
-                >
-                  {clipboard.copied ? (
-                    <Check className="w-3.5 h-3.5" />
-                  ) : (
-                    <Copy className="w-3.5 h-3.5" />
-                  )}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="top">
-                {clipboard.copied ? "Copied!" : "Copy description"}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={handleCopy}
+                className={clsx(
+                  "p-1 rounded",
+                  "bg-neutral-100 dark:bg-neutral-700",
+                  "text-neutral-600 dark:text-neutral-400",
+                  "hover:bg-neutral-200 dark:hover:bg-neutral-600",
+                  "group-hover:opacity-100 opacity-0"
+                )}
+                title="Copy task description"
+              >
+                {clipboard.copied ? (
+                  <Check className="w-3.5 h-3.5" />
+                ) : (
+                  <Copy className="w-3.5 h-3.5" />
+                )}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              {clipboard.copied ? "Copied!" : "Copy description"}
+            </TooltipContent>
+          </Tooltip>
 
           {/* Open with dropdown - always appears on hover */}
           <OpenWithDropdown
@@ -272,73 +265,69 @@ export const TaskItem = memo(function TaskItem({
 
           {/* Keep-alive button */}
           {runWithVSCode && hasActiveVSCode && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={handleToggleKeepAlive}
-                    className={clsx(
-                      "p-1 rounded",
-                      "bg-neutral-100 dark:bg-neutral-700",
-                      runWithVSCode.vscode?.keepAlive
-                        ? "text-blue-600 dark:text-blue-400"
-                        : "text-neutral-600 dark:text-neutral-400",
-                      "hover:bg-neutral-200 dark:hover:bg-neutral-600",
-                      "group-hover:opacity-100 opacity-0",
-                      "hidden" // TODO: show this button
-                    )}
-                  >
-                    <Pin className="w-3.5 h-3.5" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="top">
-                  {runWithVSCode.vscode?.keepAlive
-                    ? "Container will stay running"
-                    : "Keep container running"}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={handleToggleKeepAlive}
+                  className={clsx(
+                    "p-1 rounded",
+                    "bg-neutral-100 dark:bg-neutral-700",
+                    runWithVSCode.vscode?.keepAlive
+                      ? "text-blue-600 dark:text-blue-400"
+                      : "text-neutral-600 dark:text-neutral-400",
+                    "hover:bg-neutral-200 dark:hover:bg-neutral-600",
+                    "group-hover:opacity-100 opacity-0",
+                    "hidden" // TODO: show this button
+                  )}
+                >
+                  <Pin className="w-3.5 h-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                {runWithVSCode.vscode?.keepAlive
+                  ? "Container will stay running"
+                  : "Keep container running"}
+              </TooltipContent>
+            </Tooltip>
           )}
 
           {/* Archive / Unarchive button with tooltip */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                {task.isArchived ? (
-                  <button
-                    onClick={handleUnarchive}
-                    className={clsx(
-                      "p-1 rounded",
-                      "bg-neutral-100 dark:bg-neutral-700",
-                      "text-neutral-600 dark:text-neutral-400",
-                      "hover:bg-neutral-200 dark:hover:bg-neutral-600",
-                      "group-hover:opacity-100 opacity-0"
-                    )}
-                    title="Unarchive task"
-                  >
-                    <ArchiveRestore className="w-3.5 h-3.5" />
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleArchive}
-                    className={clsx(
-                      "p-1 rounded",
-                      "bg-neutral-100 dark:bg-neutral-700",
-                      "text-neutral-600 dark:text-neutral-400",
-                      "hover:bg-neutral-200 dark:hover:bg-neutral-600",
-                      "group-hover:opacity-100 opacity-0"
-                    )}
-                    title="Archive task"
-                  >
-                    <Archive className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </TooltipTrigger>
-              <TooltipContent side="top">
-                {task.isArchived ? "Unarchive task" : "Archive task"}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              {task.isArchived ? (
+                <button
+                  onClick={handleUnarchive}
+                  className={clsx(
+                    "p-1 rounded",
+                    "bg-neutral-100 dark:bg-neutral-700",
+                    "text-neutral-600 dark:text-neutral-400",
+                    "hover:bg-neutral-200 dark:hover:bg-neutral-600",
+                    "group-hover:opacity-100 opacity-0"
+                  )}
+                  title="Unarchive task"
+                >
+                  <ArchiveRestore className="w-3.5 h-3.5" />
+                </button>
+              ) : (
+                <button
+                  onClick={handleArchive}
+                  className={clsx(
+                    "p-1 rounded",
+                    "bg-neutral-100 dark:bg-neutral-700",
+                    "text-neutral-600 dark:text-neutral-400",
+                    "hover:bg-neutral-200 dark:hover:bg-neutral-600",
+                    "group-hover:opacity-100 opacity-0"
+                  )}
+                  title="Archive task"
+                >
+                  <Archive className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              {task.isArchived ? "Unarchive task" : "Archive task"}
+            </TooltipContent>
+          </Tooltip>
         </div>
       </div>
     </div>
