@@ -1,8 +1,14 @@
-import AntdMultiSelect from "@/components/AntdMultiSelect";
+import { AgentLogo } from "@/components/icons/agent-logos";
 import { ModeToggleTooltip } from "@/components/ui/mode-toggle-tooltip";
+import SearchableSelect from "@/components/ui/searchable-select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
 import clsx from "clsx";
-import { Image, Mic } from "lucide-react";
+import { GitBranch, Image, Mic } from "lucide-react";
 import { memo, useCallback, useMemo } from "react";
 
 interface DashboardInputControlsProps {
@@ -36,10 +42,28 @@ export const DashboardInputControls = memo(function DashboardInputControls({
   isLoadingBranches,
   teamSlugOrId,
 }: DashboardInputControlsProps) {
-  const agentOptions = useMemo(
-    () => AGENT_CONFIGS.map((agent) => agent.name),
-    []
-  );
+  const agentOptions = useMemo(() => {
+    const vendorKey = (name: string): string => {
+      const lower = name.toLowerCase();
+      if (lower.startsWith("codex/")) return "openai";
+      if (lower.startsWith("claude/")) return "claude";
+      if (lower.startsWith("gemini/")) return "gemini";
+      if (lower.includes("kimi")) return "kimi";
+      if (lower.includes("glm")) return "glm";
+      if (lower.includes("grok")) return "grok";
+      if (lower.includes("qwen")) return "qwen";
+      if (lower.startsWith("cursor/")) return "cursor";
+      if (lower.startsWith("amp")) return "amp";
+      if (lower.startsWith("opencode/")) return "opencode";
+      return "other";
+    };
+    return AGENT_CONFIGS.map((agent) => ({
+      label: agent.name,
+      value: agent.name,
+      icon: <AgentLogo agentName={agent.name} className="w-4 h-4" />,
+      iconKey: vendorKey(agent.name),
+    }));
+  }, []);
   // Determine OS for potential future UI tweaks
   // const isMac = navigator.userAgent.toUpperCase().indexOf("MAC") >= 0;
 
@@ -56,38 +80,49 @@ export const DashboardInputControls = memo(function DashboardInputControls({
   return (
     <div className="flex items-end gap-1 grow">
       <div className="flex items-end gap-1">
-        <AntdMultiSelect
+        <SearchableSelect
           options={projectOptions}
           value={selectedProject}
           onChange={onProjectChange}
           placeholder="Select project"
           singleSelect={true}
-          className="!min-w-[300px] !max-w-[500px] !rounded-2xl"
+          className="rounded-2xl"
           loading={isLoadingProjects}
           maxTagCount={1}
           showSearch
         />
 
-        <AntdMultiSelect
-          options={branchOptions}
-          value={selectedBranch}
-          onChange={onBranchChange}
-          placeholder="Branch"
-          singleSelect={true}
-          className="!min-w-[120px] !rounded-2xl"
-          loading={isLoadingBranches}
-          showSearch
-        />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div>
+              <SearchableSelect
+                options={branchOptions}
+                value={selectedBranch}
+                onChange={onBranchChange}
+                placeholder="Branch"
+                singleSelect={true}
+                className="rounded-2xl"
+                loading={isLoadingBranches}
+                showSearch
+                leftIcon={
+                  <GitBranch className="w-4 h-4 text-neutral-500 dark:text-neutral-400" />
+                }
+              />
+            </div>
+          </TooltipTrigger>
+          <TooltipContent>Branch this task starts from</TooltipContent>
+        </Tooltip>
 
-        <AntdMultiSelect
+        <SearchableSelect
           options={agentOptions}
           value={selectedAgents}
           onChange={onAgentChange}
           placeholder="Select agents"
           singleSelect={false}
           maxTagCount={1}
-          className="!w-[220px] !max-w-[220px] !rounded-2xl"
+          className="rounded-2xl"
           showSearch
+          countLabel="agents"
         />
       </div>
 

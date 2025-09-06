@@ -19,12 +19,23 @@ const Command = React.forwardRef<
 ));
 Command.displayName = CommandPrimitive.displayName;
 
+type CommandInputProps = React.ComponentPropsWithoutRef<
+  typeof CommandPrimitive.Input
+> & {
+  showIcon?: boolean;
+};
+
 const CommandInput = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive.Input>,
-  React.ComponentPropsWithoutRef<typeof CommandPrimitive.Input>
->(({ className, ...props }, ref) => (
-  <div className="flex items-center border-b border-neutral-200 dark:border-neutral-800 px-3" cmdk-input-wrapper="">
-    <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+  CommandInputProps
+>(({ className, showIcon = true, ...props }, ref) => (
+  <div
+    className="flex items-center border-b border-neutral-200 dark:border-neutral-800 px-3"
+    cmdk-input-wrapper=""
+  >
+    {showIcon ? (
+      <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+    ) : null}
     <CommandPrimitive.Input
       ref={ref}
       className={clsx(
