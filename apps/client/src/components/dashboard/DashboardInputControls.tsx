@@ -1,12 +1,12 @@
+import { AgentLogo } from "@/components/icons/agent-logos";
+import { ModeToggleTooltip } from "@/components/ui/mode-toggle-tooltip";
 import SearchableSelect from "@/components/ui/searchable-select";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { ModeToggleTooltip } from "@/components/ui/mode-toggle-tooltip";
 import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
-import { AgentLogo } from "@/components/icons/agent-logos";
 import clsx from "clsx";
 import { GitBranch, Image, Mic } from "lucide-react";
 import { memo, useCallback, useMemo } from "react";
@@ -104,11 +104,13 @@ export const DashboardInputControls = memo(function DashboardInputControls({
                 className="rounded-2xl"
                 loading={isLoadingBranches}
                 showSearch
-                leftIcon={<GitBranch className="w-4 h-4 text-neutral-500 dark:text-neutral-400" />}
+                leftIcon={
+                  <GitBranch className="w-4 h-4 text-neutral-500 dark:text-neutral-400" />
+                }
               />
             </div>
           </TooltipTrigger>
-          <TooltipContent>Branch that task starts from</TooltipContent>
+          <TooltipContent>Branch this task starts from</TooltipContent>
         </Tooltip>
 
         <SearchableSelect

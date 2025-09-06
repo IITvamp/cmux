@@ -6,6 +6,7 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import { Skeleton } from "@heroui/react";
 import * as Popover from "@radix-ui/react-popover";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import clsx from "clsx";
@@ -126,6 +127,9 @@ export function SearchableSelect({
   }, [open]);
 
   const displayContent = useMemo(() => {
+    if (loading) {
+      return <Skeleton className="h-4 w-18 rounded-lg" />;
+    }
     if (value.length === 0) {
       return <span className="text-neutral-400 truncate">{placeholder}</span>;
     }
@@ -185,6 +189,7 @@ export function SearchableSelect({
     return <span className="truncate">{`${value.length} ${countLabel}`}</span>;
   }, [
     countLabel,
+    loading,
     normOptions,
     placeholder,
     selectedLabels,
@@ -211,13 +216,6 @@ export function SearchableSelect({
     initialRect: { width: 300, height: 300 },
   });
 
-  // Debug logs to investigate empty-first-open issue
-  useEffect(() => {
-    console.log(
-      `[SearchableSelect] render open=${open} filtered=${filteredOptions.length} virtual=${rowVirtualizer.getVirtualItems().length} hasListRef=${!!listRef.current} clientH=${listRef.current?.clientHeight ?? 0} scrollH=${listRef.current?.scrollHeight ?? 0} tick=${_recalcTick}`
-    );
-  });
-
   useEffect(() => {
     if (open) {
       // Force a recompute on open after layout.
@@ -227,20 +225,11 @@ export function SearchableSelect({
         } catch {
           /* noop */
         }
-        console.log(
-          `[SearchableSelect] opened hasListRef=${!!listRef.current} clientH=${listRef.current?.clientHeight ?? 0}`
-        );
         // Nudge a re-render so getVirtualItems() reflects latest measurements
         setRecalcTick((n) => n + 1);
       });
     }
   }, [open, rowVirtualizer]);
-
-  useEffect(() => {
-    console.log(
-      `[SearchableSelect] search change q="${search}" filtered=${filteredOptions.length}`
-    );
-  }, [search, filteredOptions.length]);
 
   const onSelectValue = (val: string): void => {
     // Clear search input upon selecting a value (covers mouse and keyboard selection)
@@ -289,9 +278,6 @@ export function SearchableSelect({
             </span>
           </button>
         </Popover.Trigger>
-        {loading ? (
-          <Loader2 className="absolute right-7 top-1/2 -translate-y-1/2 h-3.5 w-3.5 animate-spin text-neutral-400" />
-        ) : null}
         <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-neutral-500" />
       </div>
       <Popover.Portal>
@@ -338,9 +324,6 @@ export function SearchableSelect({
                     {(() => {
                       const vItems = rowVirtualizer.getVirtualItems();
                       if (vItems.length === 0 && filteredOptions.length > 0) {
-                        console.log(
-                          `[SearchableSelect] fallback render filtered=${filteredOptions.length}`
-                        );
                         const fallback = filteredOptions.slice(0, 12);
                         return (
                           <div>

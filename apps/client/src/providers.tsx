@@ -1,4 +1,5 @@
 import { ThemeProvider } from "@/components/theme/theme-provider";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { HeroUIProvider } from "@heroui/react";
 import { StackProvider, StackTheme } from "@stackframe/react";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -18,9 +19,11 @@ export function Providers({ children }: ProvidersProps) {
         <Suspense fallback={<div>Loading stack...</div>}>
           <StackProvider app={stackClientApp}>
             <QueryClientProvider client={queryClient}>
-              <HeroUIProvider>
-                <AntdProvider>{children}</AntdProvider>
-              </HeroUIProvider>
+              <TooltipProvider delayDuration={700} skipDelayDuration={300}>
+                <HeroUIProvider>
+                  <AntdProvider>{children}</AntdProvider>
+                </HeroUIProvider>
+              </TooltipProvider>
             </QueryClientProvider>
           </StackProvider>
         </Suspense>
