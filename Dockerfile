@@ -69,7 +69,7 @@ COPY scripts/postinstall.cjs ./scripts/
 
 # Install dependencies with cache (non-interactive)
 # Note: vscode-extension filter uses the new package name without @
-RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store CI=1 pnpm install --frozen-lockfile=true --filter "@cmux/worker..." --filter "@cmux/shared..." --filter "cmux-vscode-extension..."
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store CI=1 pnpm -r install --frozen-lockfile=true
 
 RUN mkdir -p /builtins && \
     echo '{"name":"builtins","type":"module","version":"1.0.0"}' > /builtins/package.json
@@ -78,6 +78,7 @@ WORKDIR /builtins
 # Copy source files needed for build
 WORKDIR /cmux
 # Copy shared package source and config
+COPY packages/shared/package.json ./packages/shared/
 COPY packages/shared/src ./packages/shared/src
 COPY packages/shared/tsconfig.json ./packages/shared/
 
@@ -91,6 +92,7 @@ COPY apps/worker/tsconfig.json ./apps/worker/
 COPY apps/worker/wait-for-docker.sh ./apps/worker/
 
 # Copy VS Code extension source
+COPY packages/vscode-extension/package.json ./packages/vscode-extension/
 COPY packages/vscode-extension/src ./packages/vscode-extension/src
 COPY packages/vscode-extension/tsconfig.json ./packages/vscode-extension/
 COPY packages/vscode-extension/.vscodeignore ./packages/vscode-extension/
@@ -110,6 +112,12 @@ RUN cd /cmux && \
     --target node \
     --outdir ./apps/worker/build \
     --external @cmux/convex \
+    --external @cmux/shared \
+    --external @xterm/* \
+    --external express \
+    --external multer \
+    --external socket.io \
+    --external undici \
     --external node:* && \
     echo "Built worker" && \
     cp -r ./apps/worker/build /builtins/build && \
@@ -126,6 +134,7 @@ RUN bun --version && bunx --version
 
 # Build vscode extension
 WORKDIR /cmux/packages/vscode-extension
+RUN cd /cmux && pnpm install --filter "cmux-vscode-extension..."
 RUN bun run package && cp cmux-vscode-extension-0.0.1.vsix /tmp/cmux-vscode-extension-0.0.1.vsix
 
 # Install VS Code extensions
@@ -241,7 +250,7 @@ COPY --from=builder /root/.openvscode-server /root/.openvscode-server
 COPY --from=builder /builtins /builtins
 COPY --from=builder /usr/local/bin/wait-for-docker.sh /usr/local/bin/wait-for-docker.sh
 COPY --from=builder /cmux/apps/worker/scripts/collect-relevant-diff.sh /usr/local/bin/cmux-collect-relevant-diff.sh
-RUN chmod +x /usr/local/bin/cmux-collect-relevant-diff.sh
+RUN test -f /usr/local/bin/cmux-collect-relevant-diff.sh && chmod +x /usr/local/bin/cmux-collect-relevant-diff.sh || true
 
 # Install envctl/envd into runtime
 RUN mkdir -p /usr/local/lib/cmux
@@ -316,10 +325,44 @@ stdout_logfile=/var/log/dockerd.out.log
 CONFIG
 EOF
 
+# Add supervisor fallback for startup.sh (when systemd is not PID 1)
+RUN <<-'EOF'
+cat > /etc/supervisor/conf.d/cmux-startup.conf << 'CONFIG'
+[program:cmux-startup]
+command=/startup.sh
+autostart=true
+autorestart=true
+stdout_logfile=/var/log/cmux_startup.out.log
+stderr_logfile=/var/log/cmux_startup.err.log
+CONFIG
+EOF
+
 # Copy startup script and prompt wrapper
 COPY startup.sh /startup.sh
 COPY prompt-wrapper.sh /usr/local/bin/prompt-wrapper
-RUN chmod +x /startup.sh /usr/local/bin/prompt-wrapper
+RUN chmod +x /startup.sh /usr/local/bin/prompt-wrapper || true
+
+# Install systemd unit to manage startup.sh when systemd is present
+RUN <<-'EOF'
+mkdir -p /etc/systemd/system
+cat > /etc/systemd/system/cmux-startup.service << 'UNIT'
+[Unit]
+Description=CMUX Startup Service
+After=network.target docker.service
+
+[Service]
+Type=simple
+ExecStart=/startup.sh
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+# Best-effort enable at build time (may no-op in container build)
+command -v systemctl >/dev/null 2>&1 && systemctl daemon-reload || true
+command -v systemctl >/dev/null 2>&1 && systemctl enable cmux-startup.service || true
+EOF
 
 # Ports
 # 39376: VS Code Extension Socket Server

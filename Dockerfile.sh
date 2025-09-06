@@ -9,7 +9,7 @@ set -euo pipefail
 
 EXECUTE=${EXECUTE:-0}
 ALLOW_DANGEROUS=${ALLOW_DANGEROUS:-0}
-BUILD_CONTEXT=/Users/lawrencechen/fun/cmux
+BUILD_CONTEXT=${BUILD_CONTEXT:-$(pwd)}
 DESTDIR=${DESTDIR:-$(pwd)/_dockerfile_rootfs}
 mkdir -p "$DESTDIR"
 CURRENT_WORKDIR=/
@@ -37,11 +37,11 @@ if [ "$EXECUTE" = "1" ] && [ "$ALLOW_DANGEROUS" = "1" ]; then
   export DESTDIR="$DESTDIR" CURRENT_WORKDIR="$CURRENT_WORKDIR"
   bash -euo pipefail <<'__CMUX_RUN__'
 cd "${DESTDIR}${CURRENT_WORKDIR}"
-apt-get update && apt-get install -y --no-install-recommends ca-certificates curl wget git python3 make g++ bash unzip gnupg && rm -rf /var/lib/apt/lists/*
+apt-get update && apt-get install -y --no-install-recommends      ca-certificates      curl      wget      git      python3      make      g++      bash      unzip      gnupg      && rm -rf /var/lib/apt/lists/*
 __CMUX_RUN__
 else
   cat <<'__CMUX_SHOW__'
-apt-get update && apt-get install -y --no-install-recommends ca-certificates curl wget git python3 make g++ bash unzip gnupg && rm -rf /var/lib/apt/lists/*
+apt-get update && apt-get install -y --no-install-recommends      ca-certificates      curl      wget      git      python3      make      g++      bash      unzip      gnupg      && rm -rf /var/lib/apt/lists/*
 __CMUX_SHOW__
 fi
 
@@ -51,11 +51,11 @@ if [ "$EXECUTE" = "1" ] && [ "$ALLOW_DANGEROUS" = "1" ]; then
   export DESTDIR="$DESTDIR" CURRENT_WORKDIR="$CURRENT_WORKDIR"
   bash -euo pipefail <<'__CMUX_RUN__'
 cd "${DESTDIR}${CURRENT_WORKDIR}"
-curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && apt-get install -y nodejs && rm -rf /var/lib/apt/lists/* && npm install -g node-gyp && corepack enable && corepack prepare pnpm@10.14.0 --activate
+curl -fsSL https://deb.nodesource.com/setup_24.x | bash - &&      apt-get install -y nodejs &&      rm -rf /var/lib/apt/lists/* &&      npm install -g node-gyp &&      corepack enable &&      corepack prepare pnpm@10.14.0 --activate
 __CMUX_RUN__
 else
   cat <<'__CMUX_SHOW__'
-curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && apt-get install -y nodejs && rm -rf /var/lib/apt/lists/* && npm install -g node-gyp && corepack enable && corepack prepare pnpm@10.14.0 --activate
+curl -fsSL https://deb.nodesource.com/setup_24.x | bash - &&      apt-get install -y nodejs &&      rm -rf /var/lib/apt/lists/* &&      npm install -g node-gyp &&      corepack enable &&      corepack prepare pnpm@10.14.0 --activate
 __CMUX_SHOW__
 fi
 
@@ -65,11 +65,11 @@ if [ "$EXECUTE" = "1" ] && [ "$ALLOW_DANGEROUS" = "1" ]; then
   export DESTDIR="$DESTDIR" CURRENT_WORKDIR="$CURRENT_WORKDIR"
   bash -euo pipefail <<'__CMUX_RUN__'
 cd "${DESTDIR}${CURRENT_WORKDIR}"
-curl -fsSL https://bun.sh/install | bash && mv /root/.bun/bin/bun /usr/local/bin/ && ln -s /usr/local/bin/bun /usr/local/bin/bunx && bun --version && bunx --version
+curl -fsSL https://bun.sh/install | bash &&      mv /root/.bun/bin/bun /usr/local/bin/ &&      ln -s /usr/local/bin/bun /usr/local/bin/bunx &&      bun --version &&      bunx --version
 __CMUX_RUN__
 else
   cat <<'__CMUX_SHOW__'
-curl -fsSL https://bun.sh/install | bash && mv /root/.bun/bin/bun /usr/local/bin/ && ln -s /usr/local/bin/bun /usr/local/bin/bunx && bun --version && bunx --version
+curl -fsSL https://bun.sh/install | bash &&      mv /root/.bun/bin/bun /usr/local/bin/ &&      ln -s /usr/local/bin/bun /usr/local/bin/bunx &&      bun --version &&      bunx --version
 __CMUX_SHOW__
 fi
 
@@ -79,11 +79,11 @@ if [ "$EXECUTE" = "1" ] && [ "$ALLOW_DANGEROUS" = "1" ]; then
   export DESTDIR="$DESTDIR" CURRENT_WORKDIR="$CURRENT_WORKDIR"
   bash -euo pipefail <<'__CMUX_RUN__'
 cd "${DESTDIR}${CURRENT_WORKDIR}"
-if [ -z ${CODE_RELEASE} ]; then CODE_RELEASE=$(curl -sX GET https://api.github.com/repos/gitpod-io/openvscode-server/releases/latest | awk /tag_name/{print $4;exit} FS=["\"] | sed s|^openvscode-server-v||); fi && echo CODE_RELEASE=${CODE_RELEASE} && arch=$(dpkg --print-architecture) && if [ $arch = amd64 ]; then ARCH=x64; elif [ $arch = arm64 ]; then ARCH=arm64; fi && mkdir -p /app/openvscode-server && url=https://github.com/gitpod-io/openvscode-server/releases/download/openvscode-server-v${CODE_RELEASE}/openvscode-server-v${CODE_RELEASE}-linux-${ARCH}.tar.gz && echo Downloading: $url && ( curl -fSL --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/openvscode-server.tar.gz $url || curl -fSL4 --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/openvscode-server.tar.gz $url ) && tar xf /tmp/openvscode-server.tar.gz -C /app/openvscode-server/ --strip-components=1 && rm -rf /tmp/openvscode-server.tar.gz
+if [ -z "${CODE_RELEASE}" ]; then      CODE_RELEASE=$(curl -sX GET "https://api.github.com/repos/gitpod-io/openvscode-server/releases/latest"        | awk '/tag_name/{print $4;exit}' FS='["\"]'        | sed 's|^openvscode-server-v||');    fi &&    echo "CODE_RELEASE=${CODE_RELEASE}" &&    arch="$(dpkg --print-architecture)" &&    if [ "$arch" = "amd64" ]; then      ARCH="x64";    elif [ "$arch" = "arm64" ]; then      ARCH="arm64";    fi &&    mkdir -p /app/openvscode-server &&    url="https://github.com/gitpod-io/openvscode-server/releases/download/openvscode-server-v${CODE_RELEASE}/openvscode-server-v${CODE_RELEASE}-linux-${ARCH}.tar.gz" &&    echo "Downloading: $url" &&    (      curl -fSL --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/openvscode-server.tar.gz "$url"      || curl -fSL4 --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/openvscode-server.tar.gz "$url"    ) &&    tar xf /tmp/openvscode-server.tar.gz -C /app/openvscode-server/ --strip-components=1 &&    rm -rf /tmp/openvscode-server.tar.gz
 __CMUX_RUN__
 else
   cat <<'__CMUX_SHOW__'
-if [ -z ${CODE_RELEASE} ]; then CODE_RELEASE=$(curl -sX GET https://api.github.com/repos/gitpod-io/openvscode-server/releases/latest | awk /tag_name/{print $4;exit} FS=["\"] | sed s|^openvscode-server-v||); fi && echo CODE_RELEASE=${CODE_RELEASE} && arch=$(dpkg --print-architecture) && if [ $arch = amd64 ]; then ARCH=x64; elif [ $arch = arm64 ]; then ARCH=arm64; fi && mkdir -p /app/openvscode-server && url=https://github.com/gitpod-io/openvscode-server/releases/download/openvscode-server-v${CODE_RELEASE}/openvscode-server-v${CODE_RELEASE}-linux-${ARCH}.tar.gz && echo Downloading: $url && ( curl -fSL --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/openvscode-server.tar.gz $url || curl -fSL4 --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/openvscode-server.tar.gz $url ) && tar xf /tmp/openvscode-server.tar.gz -C /app/openvscode-server/ --strip-components=1 && rm -rf /tmp/openvscode-server.tar.gz
+if [ -z "${CODE_RELEASE}" ]; then      CODE_RELEASE=$(curl -sX GET "https://api.github.com/repos/gitpod-io/openvscode-server/releases/latest"        | awk '/tag_name/{print $4;exit}' FS='["\"]'        | sed 's|^openvscode-server-v||');    fi &&    echo "CODE_RELEASE=${CODE_RELEASE}" &&    arch="$(dpkg --print-architecture)" &&    if [ "$arch" = "amd64" ]; then      ARCH="x64";    elif [ "$arch" = "arm64" ]; then      ARCH="arm64";    fi &&    mkdir -p /app/openvscode-server &&    url="https://github.com/gitpod-io/openvscode-server/releases/download/openvscode-server-v${CODE_RELEASE}/openvscode-server-v${CODE_RELEASE}-linux-${ARCH}.tar.gz" &&    echo "Downloading: $url" &&    (      curl -fSL --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/openvscode-server.tar.gz "$url"      || curl -fSL4 --retry 6 --retry-all-errors --retry-delay 2 --connect-timeout 20 --max-time 600 -o /tmp/openvscode-server.tar.gz "$url"    ) &&    tar xf /tmp/openvscode-server.tar.gz -C /app/openvscode-server/ --strip-components=1 &&    rm -rf /tmp/openvscode-server.tar.gz
 __CMUX_SHOW__
 fi
 
@@ -92,25 +92,26 @@ fi
 # WORKDIR /cmux
 CURRENT_WORKDIR="/cmux"
 do_safe mkdir -p "$DESTDIR$CURRENT_WORKDIR"
+do_safe ln -sfn "$DESTDIR$CURRENT_WORKDIR" "$CURRENT_WORKDIR" 2>/dev/null || true
 do_safe cd "$DESTDIR$CURRENT_WORKDIR"
 # COPY  package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 # COPY -> copying into './' under DESTDIR
-do_safe mkdir -p "$DESTDIR./" 2>/dev/null || true
-do_safe cp -R "$BUILD_CONTEXT/package.json" "$DESTDIR./"
-do_safe cp -R "$BUILD_CONTEXT/pnpm-lock.yaml" "$DESTDIR./"
-do_safe cp -R "$BUILD_CONTEXT/pnpm-workspace.yaml" "$DESTDIR./"
-do_safe cp -R "$BUILD_CONTEXT/.npmrc" "$DESTDIR./"
+do_safe mkdir -p "$DESTDIR$CURRENT_WORKDIR/./" 2>/dev/null || true
+do_safe cp -R '$BUILD_CONTEXT/package.json' "$DESTDIR$CURRENT_WORKDIR/./"
+do_safe cp -R '$BUILD_CONTEXT/pnpm-lock.yaml' "$DESTDIR$CURRENT_WORKDIR/./"
+do_safe cp -R '$BUILD_CONTEXT/pnpm-workspace.yaml' "$DESTDIR$CURRENT_WORKDIR/./"
+do_safe cp -R '$BUILD_CONTEXT/.npmrc' "$DESTDIR$CURRENT_WORKDIR/./"
 # COPY --parents apps/*/package.json packages/*/package.json scripts/package.json ./
 # COPY -> copying into './' under DESTDIR
-do_safe mkdir -p "$DESTDIR./" 2>/dev/null || true
-do_safe cp -R "$BUILD_CONTEXT/apps/*/package.json" "$DESTDIR./"
-do_safe cp -R "$BUILD_CONTEXT/packages/*/package.json" "$DESTDIR./"
-do_safe cp -R "$BUILD_CONTEXT/scripts/package.json" "$DESTDIR./"
+do_safe mkdir -p "$DESTDIR$CURRENT_WORKDIR/./" 2>/dev/null || true
+do_safe cp --parents -R $BUILD_CONTEXT/apps/*/package.json "$DESTDIR$CURRENT_WORKDIR/./"
+do_safe cp --parents -R $BUILD_CONTEXT/packages/*/package.json "$DESTDIR$CURRENT_WORKDIR/./"
+do_safe cp --parents -R '$BUILD_CONTEXT/scripts/package.json' "$DESTDIR$CURRENT_WORKDIR/./"
 # Copy postinstall script
 # COPY  scripts/postinstall.cjs ./scripts/
 # COPY -> copying into './scripts/' under DESTDIR
-do_safe mkdir -p "$DESTDIR./scripts/" 2>/dev/null || true
-do_safe cp -R "$BUILD_CONTEXT/scripts/postinstall.cjs" "$DESTDIR./scripts/"
+do_safe mkdir -p "$DESTDIR$CURRENT_WORKDIR/./scripts/" 2>/dev/null || true
+do_safe cp -R '$BUILD_CONTEXT/scripts/postinstall.cjs' "$DESTDIR$CURRENT_WORKDIR/./scripts/"
 
 # Install dependencies with cache (non-interactive)
 # Note: vscode-extension filter uses the new package name without @
@@ -118,11 +119,11 @@ if [ "$EXECUTE" = "1" ] && [ "$ALLOW_DANGEROUS" = "1" ]; then
   export DESTDIR="$DESTDIR" CURRENT_WORKDIR="$CURRENT_WORKDIR"
   bash -euo pipefail <<'__CMUX_RUN__'
 cd "${DESTDIR}${CURRENT_WORKDIR}"
-CI=1 pnpm install --frozen-lockfile=true --filter @cmux/worker... --filter @cmux/shared... --filter cmux-vscode-extension...
+CI=1 pnpm -r install --frozen-lockfile=true
 __CMUX_RUN__
 else
   cat <<'__CMUX_SHOW__'
-CI=1 pnpm install --frozen-lockfile=true --filter @cmux/worker... --filter @cmux/shared... --filter cmux-vscode-extension...
+CI=1 pnpm -r install --frozen-lockfile=true
 __CMUX_SHOW__
 fi
 
@@ -131,112 +132,122 @@ if [ "$EXECUTE" = "1" ] && [ "$ALLOW_DANGEROUS" = "1" ]; then
   export DESTDIR="$DESTDIR" CURRENT_WORKDIR="$CURRENT_WORKDIR"
   bash -euo pipefail <<'__CMUX_RUN__'
 cd "${DESTDIR}${CURRENT_WORKDIR}"
-mkdir -p /builtins && echo {"name":"builtins","type":"module","version":"1.0.0"} > /builtins/package.json
+mkdir -p /builtins &&      echo '{"name":"builtins","type":"module","version":"1.0.0"}' > /builtins/package.json
 __CMUX_RUN__
 else
   cat <<'__CMUX_SHOW__'
-mkdir -p /builtins && echo {"name":"builtins","type":"module","version":"1.0.0"} > /builtins/package.json
+mkdir -p /builtins &&      echo '{"name":"builtins","type":"module","version":"1.0.0"}' > /builtins/package.json
 __CMUX_SHOW__
 fi
 
 # WORKDIR /builtins
 CURRENT_WORKDIR="/builtins"
 do_safe mkdir -p "$DESTDIR$CURRENT_WORKDIR"
+do_safe ln -sfn "$DESTDIR$CURRENT_WORKDIR" "$CURRENT_WORKDIR" 2>/dev/null || true
 do_safe cd "$DESTDIR$CURRENT_WORKDIR"
 
 # Copy source files needed for build
 # WORKDIR /cmux
 CURRENT_WORKDIR="/cmux"
 do_safe mkdir -p "$DESTDIR$CURRENT_WORKDIR"
+do_safe ln -sfn "$DESTDIR$CURRENT_WORKDIR" "$CURRENT_WORKDIR" 2>/dev/null || true
 do_safe cd "$DESTDIR$CURRENT_WORKDIR"
 # Copy shared package source and config
+# COPY  packages/shared/package.json ./packages/shared/
+# COPY -> copying into './packages/shared/' under DESTDIR
+do_safe mkdir -p "$DESTDIR$CURRENT_WORKDIR/./packages/shared/" 2>/dev/null || true
+do_safe cp -R '$BUILD_CONTEXT/packages/shared/package.json' "$DESTDIR$CURRENT_WORKDIR/./packages/shared/"
 # COPY  packages/shared/src ./packages/shared/src
 # COPY -> copying into './packages/shared/src' under DESTDIR
-do_safe mkdir -p "$DESTDIR./packages/shared/src" 2>/dev/null || true
-do_safe cp -R "$BUILD_CONTEXT/packages/shared/src" "$DESTDIR./packages/shared/src"
+do_safe mkdir -p "$DESTDIR$CURRENT_WORKDIR/./packages/shared" 2>/dev/null || true
+do_safe cp -R '$BUILD_CONTEXT/packages/shared/src' "$DESTDIR$CURRENT_WORKDIR/./packages/shared/src"
 # COPY  packages/shared/tsconfig.json ./packages/shared/
 # COPY -> copying into './packages/shared/' under DESTDIR
-do_safe mkdir -p "$DESTDIR./packages/shared/" 2>/dev/null || true
-do_safe cp -R "$BUILD_CONTEXT/packages/shared/tsconfig.json" "$DESTDIR./packages/shared/"
+do_safe mkdir -p "$DESTDIR$CURRENT_WORKDIR/./packages/shared/" 2>/dev/null || true
+do_safe cp -R '$BUILD_CONTEXT/packages/shared/tsconfig.json' "$DESTDIR$CURRENT_WORKDIR/./packages/shared/"
 
 # Copy convex package (needed by shared)
 # COPY  packages/convex ./packages/convex/
 # COPY -> copying into './packages/convex/' under DESTDIR
-do_safe mkdir -p "$DESTDIR./packages/convex/" 2>/dev/null || true
-do_safe cp -R "$BUILD_CONTEXT/packages/convex" "$DESTDIR./packages/convex/"
+do_safe mkdir -p "$DESTDIR$CURRENT_WORKDIR/./packages/convex/" 2>/dev/null || true
+do_safe cp -R '$BUILD_CONTEXT/packages/convex' "$DESTDIR$CURRENT_WORKDIR/./packages/convex/"
 
 # Copy worker source and scripts
 # COPY  apps/worker/src ./apps/worker/src
 # COPY -> copying into './apps/worker/src' under DESTDIR
-do_safe mkdir -p "$DESTDIR./apps/worker/src" 2>/dev/null || true
-do_safe cp -R "$BUILD_CONTEXT/apps/worker/src" "$DESTDIR./apps/worker/src"
+do_safe mkdir -p "$DESTDIR$CURRENT_WORKDIR/./apps/worker" 2>/dev/null || true
+do_safe cp -R '$BUILD_CONTEXT/apps/worker/src' "$DESTDIR$CURRENT_WORKDIR/./apps/worker/src"
 # COPY  apps/worker/scripts ./apps/worker/scripts
 # COPY -> copying into './apps/worker/scripts' under DESTDIR
-do_safe mkdir -p "$DESTDIR./apps/worker/scripts" 2>/dev/null || true
-do_safe cp -R "$BUILD_CONTEXT/apps/worker/scripts" "$DESTDIR./apps/worker/scripts"
+do_safe mkdir -p "$DESTDIR$CURRENT_WORKDIR/./apps/worker" 2>/dev/null || true
+do_safe cp -R '$BUILD_CONTEXT/apps/worker/scripts' "$DESTDIR$CURRENT_WORKDIR/./apps/worker/scripts"
 # COPY  apps/worker/tsconfig.json ./apps/worker/
 # COPY -> copying into './apps/worker/' under DESTDIR
-do_safe mkdir -p "$DESTDIR./apps/worker/" 2>/dev/null || true
-do_safe cp -R "$BUILD_CONTEXT/apps/worker/tsconfig.json" "$DESTDIR./apps/worker/"
+do_safe mkdir -p "$DESTDIR$CURRENT_WORKDIR/./apps/worker/" 2>/dev/null || true
+do_safe cp -R '$BUILD_CONTEXT/apps/worker/tsconfig.json' "$DESTDIR$CURRENT_WORKDIR/./apps/worker/"
 # COPY  apps/worker/wait-for-docker.sh ./apps/worker/
 # COPY -> copying into './apps/worker/' under DESTDIR
-do_safe mkdir -p "$DESTDIR./apps/worker/" 2>/dev/null || true
-do_safe cp -R "$BUILD_CONTEXT/apps/worker/wait-for-docker.sh" "$DESTDIR./apps/worker/"
+do_safe mkdir -p "$DESTDIR$CURRENT_WORKDIR/./apps/worker/" 2>/dev/null || true
+do_safe cp -R '$BUILD_CONTEXT/apps/worker/wait-for-docker.sh' "$DESTDIR$CURRENT_WORKDIR/./apps/worker/"
 
 # Copy VS Code extension source
+# COPY  packages/vscode-extension/package.json ./packages/vscode-extension/
+# COPY -> copying into './packages/vscode-extension/' under DESTDIR
+do_safe mkdir -p "$DESTDIR$CURRENT_WORKDIR/./packages/vscode-extension/" 2>/dev/null || true
+do_safe cp -R '$BUILD_CONTEXT/packages/vscode-extension/package.json' "$DESTDIR$CURRENT_WORKDIR/./packages/vscode-extension/"
 # COPY  packages/vscode-extension/src ./packages/vscode-extension/src
 # COPY -> copying into './packages/vscode-extension/src' under DESTDIR
-do_safe mkdir -p "$DESTDIR./packages/vscode-extension/src" 2>/dev/null || true
-do_safe cp -R "$BUILD_CONTEXT/packages/vscode-extension/src" "$DESTDIR./packages/vscode-extension/src"
+do_safe mkdir -p "$DESTDIR$CURRENT_WORKDIR/./packages/vscode-extension" 2>/dev/null || true
+do_safe cp -R '$BUILD_CONTEXT/packages/vscode-extension/src' "$DESTDIR$CURRENT_WORKDIR/./packages/vscode-extension/src"
 # COPY  packages/vscode-extension/tsconfig.json ./packages/vscode-extension/
 # COPY -> copying into './packages/vscode-extension/' under DESTDIR
-do_safe mkdir -p "$DESTDIR./packages/vscode-extension/" 2>/dev/null || true
-do_safe cp -R "$BUILD_CONTEXT/packages/vscode-extension/tsconfig.json" "$DESTDIR./packages/vscode-extension/"
+do_safe mkdir -p "$DESTDIR$CURRENT_WORKDIR/./packages/vscode-extension/" 2>/dev/null || true
+do_safe cp -R '$BUILD_CONTEXT/packages/vscode-extension/tsconfig.json' "$DESTDIR$CURRENT_WORKDIR/./packages/vscode-extension/"
 # COPY  packages/vscode-extension/.vscodeignore ./packages/vscode-extension/
 # COPY -> copying into './packages/vscode-extension/' under DESTDIR
-do_safe mkdir -p "$DESTDIR./packages/vscode-extension/" 2>/dev/null || true
-do_safe cp -R "$BUILD_CONTEXT/packages/vscode-extension/.vscodeignore" "$DESTDIR./packages/vscode-extension/"
+do_safe mkdir -p "$DESTDIR$CURRENT_WORKDIR/./packages/vscode-extension/" 2>/dev/null || true
+do_safe cp -R '$BUILD_CONTEXT/packages/vscode-extension/.vscodeignore' "$DESTDIR$CURRENT_WORKDIR/./packages/vscode-extension/"
 # COPY  packages/vscode-extension/LICENSE.md ./packages/vscode-extension/
 # COPY -> copying into './packages/vscode-extension/' under DESTDIR
-do_safe mkdir -p "$DESTDIR./packages/vscode-extension/" 2>/dev/null || true
-do_safe cp -R "$BUILD_CONTEXT/packages/vscode-extension/LICENSE.md" "$DESTDIR./packages/vscode-extension/"
+do_safe mkdir -p "$DESTDIR$CURRENT_WORKDIR/./packages/vscode-extension/" 2>/dev/null || true
+do_safe cp -R '$BUILD_CONTEXT/packages/vscode-extension/LICENSE.md' "$DESTDIR$CURRENT_WORKDIR/./packages/vscode-extension/"
 
 # Copy envctl/envd sources for build
 # COPY  packages/envctl/tsconfig.json ./packages/envctl/
 # COPY -> copying into './packages/envctl/' under DESTDIR
-do_safe mkdir -p "$DESTDIR./packages/envctl/" 2>/dev/null || true
-do_safe cp -R "$BUILD_CONTEXT/packages/envctl/tsconfig.json" "$DESTDIR./packages/envctl/"
+do_safe mkdir -p "$DESTDIR$CURRENT_WORKDIR/./packages/envctl/" 2>/dev/null || true
+do_safe cp -R '$BUILD_CONTEXT/packages/envctl/tsconfig.json' "$DESTDIR$CURRENT_WORKDIR/./packages/envctl/"
 # COPY  packages/envctl/tsconfig.build.json ./packages/envctl/
 # COPY -> copying into './packages/envctl/' under DESTDIR
-do_safe mkdir -p "$DESTDIR./packages/envctl/" 2>/dev/null || true
-do_safe cp -R "$BUILD_CONTEXT/packages/envctl/tsconfig.build.json" "$DESTDIR./packages/envctl/"
+do_safe mkdir -p "$DESTDIR$CURRENT_WORKDIR/./packages/envctl/" 2>/dev/null || true
+do_safe cp -R '$BUILD_CONTEXT/packages/envctl/tsconfig.build.json' "$DESTDIR$CURRENT_WORKDIR/./packages/envctl/"
 # COPY  packages/envctl/src ./packages/envctl/src
 # COPY -> copying into './packages/envctl/src' under DESTDIR
-do_safe mkdir -p "$DESTDIR./packages/envctl/src" 2>/dev/null || true
-do_safe cp -R "$BUILD_CONTEXT/packages/envctl/src" "$DESTDIR./packages/envctl/src"
+do_safe mkdir -p "$DESTDIR$CURRENT_WORKDIR/./packages/envctl" 2>/dev/null || true
+do_safe cp -R '$BUILD_CONTEXT/packages/envctl/src' "$DESTDIR$CURRENT_WORKDIR/./packages/envctl/src"
 # COPY  packages/envd/tsconfig.json ./packages/envd/
 # COPY -> copying into './packages/envd/' under DESTDIR
-do_safe mkdir -p "$DESTDIR./packages/envd/" 2>/dev/null || true
-do_safe cp -R "$BUILD_CONTEXT/packages/envd/tsconfig.json" "$DESTDIR./packages/envd/"
+do_safe mkdir -p "$DESTDIR$CURRENT_WORKDIR/./packages/envd/" 2>/dev/null || true
+do_safe cp -R '$BUILD_CONTEXT/packages/envd/tsconfig.json' "$DESTDIR$CURRENT_WORKDIR/./packages/envd/"
 # COPY  packages/envd/tsconfig.build.json ./packages/envd/
 # COPY -> copying into './packages/envd/' under DESTDIR
-do_safe mkdir -p "$DESTDIR./packages/envd/" 2>/dev/null || true
-do_safe cp -R "$BUILD_CONTEXT/packages/envd/tsconfig.build.json" "$DESTDIR./packages/envd/"
+do_safe mkdir -p "$DESTDIR$CURRENT_WORKDIR/./packages/envd/" 2>/dev/null || true
+do_safe cp -R '$BUILD_CONTEXT/packages/envd/tsconfig.build.json' "$DESTDIR$CURRENT_WORKDIR/./packages/envd/"
 # COPY  packages/envd/src ./packages/envd/src
 # COPY -> copying into './packages/envd/src' under DESTDIR
-do_safe mkdir -p "$DESTDIR./packages/envd/src" 2>/dev/null || true
-do_safe cp -R "$BUILD_CONTEXT/packages/envd/src" "$DESTDIR./packages/envd/src"
+do_safe mkdir -p "$DESTDIR$CURRENT_WORKDIR/./packages/envd" 2>/dev/null || true
+do_safe cp -R '$BUILD_CONTEXT/packages/envd/src' "$DESTDIR$CURRENT_WORKDIR/./packages/envd/src"
 
 # Build worker with bundling, using the installed node_modules
 if [ "$EXECUTE" = "1" ] && [ "$ALLOW_DANGEROUS" = "1" ]; then
   export DESTDIR="$DESTDIR" CURRENT_WORKDIR="$CURRENT_WORKDIR"
   bash -euo pipefail <<'__CMUX_RUN__'
 cd "${DESTDIR}${CURRENT_WORKDIR}"
-cd /cmux && bun build ./apps/worker/src/index.ts --target node --outdir ./apps/worker/build --external @cmux/convex --external node:* && echo Built worker && cp -r ./apps/worker/build /builtins/build && cp ./apps/worker/wait-for-docker.sh /usr/local/bin/ && chmod +x /usr/local/bin/wait-for-docker.sh
+cd /cmux &&      bun build ./apps/worker/src/index.ts      --target node      --outdir ./apps/worker/build      --external @cmux/convex      --external @cmux/shared      --external @xterm/*      --external express      --external multer      --external socket.io      --external undici      --external node:* &&      echo "Built worker" &&      cp -r ./apps/worker/build /builtins/build &&      cp ./apps/worker/wait-for-docker.sh /usr/local/bin/ &&      chmod +x /usr/local/bin/wait-for-docker.sh
 __CMUX_RUN__
 else
   cat <<'__CMUX_SHOW__'
-cd /cmux && bun build ./apps/worker/src/index.ts --target node --outdir ./apps/worker/build --external @cmux/convex --external node:* && echo Built worker && cp -r ./apps/worker/build /builtins/build && cp ./apps/worker/wait-for-docker.sh /usr/local/bin/ && chmod +x /usr/local/bin/wait-for-docker.sh
+cd /cmux &&      bun build ./apps/worker/src/index.ts      --target node      --outdir ./apps/worker/build      --external @cmux/convex      --external @cmux/shared      --external @xterm/*      --external express      --external multer      --external socket.io      --external undici      --external node:* &&      echo "Built worker" &&      cp -r ./apps/worker/build /builtins/build &&      cp ./apps/worker/wait-for-docker.sh /usr/local/bin/ &&      chmod +x /usr/local/bin/wait-for-docker.sh
 __CMUX_SHOW__
 fi
 
@@ -246,11 +257,11 @@ if [ "$EXECUTE" = "1" ] && [ "$ALLOW_DANGEROUS" = "1" ]; then
   export DESTDIR="$DESTDIR" CURRENT_WORKDIR="$CURRENT_WORKDIR"
   bash -euo pipefail <<'__CMUX_RUN__'
 cd "${DESTDIR}${CURRENT_WORKDIR}"
-cd /cmux && pnpm install --frozen-lockfile --filter @cmux/envctl --filter @cmux/envd && pnpm -F @cmux/envctl -F @cmux/envd build
+cd /cmux &&      pnpm install --frozen-lockfile --filter @cmux/envctl --filter @cmux/envd &&      pnpm -F @cmux/envctl -F @cmux/envd build
 __CMUX_RUN__
 else
   cat <<'__CMUX_SHOW__'
-cd /cmux && pnpm install --frozen-lockfile --filter @cmux/envctl --filter @cmux/envd && pnpm -F @cmux/envctl -F @cmux/envd build
+cd /cmux &&      pnpm install --frozen-lockfile --filter @cmux/envctl --filter @cmux/envd &&      pnpm -F @cmux/envctl -F @cmux/envd build
 __CMUX_SHOW__
 fi
 
@@ -273,7 +284,20 @@ fi
 # WORKDIR /cmux/packages/vscode-extension
 CURRENT_WORKDIR="/cmux/packages/vscode-extension"
 do_safe mkdir -p "$DESTDIR$CURRENT_WORKDIR"
+do_safe ln -sfn "$DESTDIR$CURRENT_WORKDIR" "$CURRENT_WORKDIR" 2>/dev/null || true
 do_safe cd "$DESTDIR$CURRENT_WORKDIR"
+if [ "$EXECUTE" = "1" ] && [ "$ALLOW_DANGEROUS" = "1" ]; then
+  export DESTDIR="$DESTDIR" CURRENT_WORKDIR="$CURRENT_WORKDIR"
+  bash -euo pipefail <<'__CMUX_RUN__'
+cd "${DESTDIR}${CURRENT_WORKDIR}"
+cd /cmux && pnpm install --filter "cmux-vscode-extension..."
+__CMUX_RUN__
+else
+  cat <<'__CMUX_SHOW__'
+cd /cmux && pnpm install --filter "cmux-vscode-extension..."
+__CMUX_SHOW__
+fi
+
 if [ "$EXECUTE" = "1" ] && [ "$ALLOW_DANGEROUS" = "1" ]; then
   export DESTDIR="$DESTDIR" CURRENT_WORKDIR="$CURRENT_WORKDIR"
   bash -euo pipefail <<'__CMUX_RUN__'
@@ -292,11 +316,11 @@ if [ "$EXECUTE" = "1" ] && [ "$ALLOW_DANGEROUS" = "1" ]; then
   export DESTDIR="$DESTDIR" CURRENT_WORKDIR="$CURRENT_WORKDIR"
   bash -euo pipefail <<'__CMUX_RUN__'
 cd "${DESTDIR}${CURRENT_WORKDIR}"
-/app/openvscode-server/bin/openvscode-server --install-extension /tmp/cmux-vscode-extension-0.0.1.vsix && rm /tmp/cmux-vscode-extension-0.0.1.vsix
+/app/openvscode-server/bin/openvscode-server --install-extension /tmp/cmux-vscode-extension-0.0.1.vsix &&      rm /tmp/cmux-vscode-extension-0.0.1.vsix
 __CMUX_RUN__
 else
   cat <<'__CMUX_SHOW__'
-/app/openvscode-server/bin/openvscode-server --install-extension /tmp/cmux-vscode-extension-0.0.1.vsix && rm /tmp/cmux-vscode-extension-0.0.1.vsix
+/app/openvscode-server/bin/openvscode-server --install-extension /tmp/cmux-vscode-extension-0.0.1.vsix &&      rm /tmp/cmux-vscode-extension-0.0.1.vsix
 __CMUX_SHOW__
 fi
 
@@ -306,11 +330,11 @@ if [ "$EXECUTE" = "1" ] && [ "$ALLOW_DANGEROUS" = "1" ]; then
   export DESTDIR="$DESTDIR" CURRENT_WORKDIR="$CURRENT_WORKDIR"
   bash -euo pipefail <<'__CMUX_RUN__'
 cd "${DESTDIR}${CURRENT_WORKDIR}"
-mkdir -p /root/.openvscode-server/data/User && echo {"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "terminal.integrated.defaultProfile.linux": "bash", "terminal.integrated.profiles.linux": {"bash": {"path": "/bin/bash", "args": ["-l"]}}} > /root/.openvscode-server/data/User/settings.json && mkdir -p /root/.openvscode-server/data/User/profiles/default-profile && echo {"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "terminal.integrated.defaultProfile.linux": "bash", "terminal.integrated.profiles.linux": {"bash": {"path": "/bin/bash", "args": ["-l"]}}} > /root/.openvscode-server/data/User/profiles/default-profile/settings.json && mkdir -p /root/.openvscode-server/data/Machine && echo {"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "terminal.integrated.defaultProfile.linux": "bash", "terminal.integrated.profiles.linux": {"bash": {"path": "/bin/bash", "args": ["-l"]}}} > /root/.openvscode-server/data/Machine/settings.json
+mkdir -p /root/.openvscode-server/data/User &&      echo '{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "terminal.integrated.defaultProfile.linux": "bash", "terminal.integrated.profiles.linux": {"bash": {"path": "/bin/bash", "args": ["-l"]}}}' > /root/.openvscode-server/data/User/settings.json &&      mkdir -p /root/.openvscode-server/data/User/profiles/default-profile &&      echo '{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "terminal.integrated.defaultProfile.linux": "bash", "terminal.integrated.profiles.linux": {"bash": {"path": "/bin/bash", "args": ["-l"]}}}' > /root/.openvscode-server/data/User/profiles/default-profile/settings.json &&      mkdir -p /root/.openvscode-server/data/Machine &&      echo '{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "terminal.integrated.defaultProfile.linux": "bash", "terminal.integrated.profiles.linux": {"bash": {"path": "/bin/bash", "args": ["-l"]}}}' > /root/.openvscode-server/data/Machine/settings.json
 __CMUX_RUN__
 else
   cat <<'__CMUX_SHOW__'
-mkdir -p /root/.openvscode-server/data/User && echo {"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "terminal.integrated.defaultProfile.linux": "bash", "terminal.integrated.profiles.linux": {"bash": {"path": "/bin/bash", "args": ["-l"]}}} > /root/.openvscode-server/data/User/settings.json && mkdir -p /root/.openvscode-server/data/User/profiles/default-profile && echo {"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "terminal.integrated.defaultProfile.linux": "bash", "terminal.integrated.profiles.linux": {"bash": {"path": "/bin/bash", "args": ["-l"]}}} > /root/.openvscode-server/data/User/profiles/default-profile/settings.json && mkdir -p /root/.openvscode-server/data/Machine && echo {"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "terminal.integrated.defaultProfile.linux": "bash", "terminal.integrated.profiles.linux": {"bash": {"path": "/bin/bash", "args": ["-l"]}}} > /root/.openvscode-server/data/Machine/settings.json
+mkdir -p /root/.openvscode-server/data/User &&      echo '{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "terminal.integrated.defaultProfile.linux": "bash", "terminal.integrated.profiles.linux": {"bash": {"path": "/bin/bash", "args": ["-l"]}}}' > /root/.openvscode-server/data/User/settings.json &&      mkdir -p /root/.openvscode-server/data/User/profiles/default-profile &&      echo '{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "terminal.integrated.defaultProfile.linux": "bash", "terminal.integrated.profiles.linux": {"bash": {"path": "/bin/bash", "args": ["-l"]}}}' > /root/.openvscode-server/data/User/profiles/default-profile/settings.json &&      mkdir -p /root/.openvscode-server/data/Machine &&      echo '{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "terminal.integrated.defaultProfile.linux": "bash", "terminal.integrated.profiles.linux": {"bash": {"path": "/bin/bash", "args": ["-l"]}}}' > /root/.openvscode-server/data/Machine/settings.json
 __CMUX_SHOW__
 fi
 
@@ -330,11 +354,11 @@ if [ "$EXECUTE" = "1" ] && [ "$ALLOW_DANGEROUS" = "1" ]; then
   export DESTDIR="$DESTDIR" CURRENT_WORKDIR="$CURRENT_WORKDIR"
   bash -euo pipefail <<'__CMUX_RUN__'
 cd "${DESTDIR}${CURRENT_WORKDIR}"
-apt-get update && apt-get install -y --no-install-recommends ca-certificates curl wget git python3 bash nano net-tools lsof sudo supervisor iptables openssl pigz xz-utils tmux ripgrep jq && rm -rf /var/lib/apt/lists/*
+apt-get update && apt-get install -y --no-install-recommends      ca-certificates      curl      wget      git      python3      bash      nano      net-tools      lsof      sudo      supervisor      iptables      openssl      pigz      xz-utils      tmux      ripgrep      jq      && rm -rf /var/lib/apt/lists/*
 __CMUX_RUN__
 else
   cat <<'__CMUX_SHOW__'
-apt-get update && apt-get install -y --no-install-recommends ca-certificates curl wget git python3 bash nano net-tools lsof sudo supervisor iptables openssl pigz xz-utils tmux ripgrep jq && rm -rf /var/lib/apt/lists/*
+apt-get update && apt-get install -y --no-install-recommends      ca-certificates      curl      wget      git      python3      bash      nano      net-tools      lsof      sudo      supervisor      iptables      openssl      pigz      xz-utils      tmux      ripgrep      jq      && rm -rf /var/lib/apt/lists/*
 __CMUX_SHOW__
 fi
 
@@ -344,11 +368,11 @@ if [ "$EXECUTE" = "1" ] && [ "$ALLOW_DANGEROUS" = "1" ]; then
   export DESTDIR="$DESTDIR" CURRENT_WORKDIR="$CURRENT_WORKDIR"
   bash -euo pipefail <<'__CMUX_RUN__'
 cd "${DESTDIR}${CURRENT_WORKDIR}"
-curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg && echo deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main | tee /etc/apt/sources.list.d/github-cli.list > /dev/null && apt-get update && apt-get install -y gh && rm -rf /var/lib/apt/lists/*
+curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg      && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg      && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null      && apt-get update      && apt-get install -y gh      && rm -rf /var/lib/apt/lists/*
 __CMUX_RUN__
 else
   cat <<'__CMUX_SHOW__'
-curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg && echo deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main | tee /etc/apt/sources.list.d/github-cli.list > /dev/null && apt-get update && apt-get install -y gh && rm -rf /var/lib/apt/lists/*
+curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg      && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg      && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null      && apt-get update      && apt-get install -y gh      && rm -rf /var/lib/apt/lists/*
 __CMUX_SHOW__
 fi
 
@@ -358,11 +382,11 @@ if [ "$EXECUTE" = "1" ] && [ "$ALLOW_DANGEROUS" = "1" ]; then
   export DESTDIR="$DESTDIR" CURRENT_WORKDIR="$CURRENT_WORKDIR"
   bash -euo pipefail <<'__CMUX_RUN__'
 cd "${DESTDIR}${CURRENT_WORKDIR}"
-curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && apt-get install -y nodejs && rm -rf /var/lib/apt/lists/* && corepack enable && corepack prepare pnpm@10.14.0 --activate
+curl -fsSL https://deb.nodesource.com/setup_24.x | bash - &&      apt-get install -y nodejs &&      rm -rf /var/lib/apt/lists/* &&      corepack enable &&      corepack prepare pnpm@10.14.0 --activate
 __CMUX_RUN__
 else
   cat <<'__CMUX_SHOW__'
-curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && apt-get install -y nodejs && rm -rf /var/lib/apt/lists/* && corepack enable && corepack prepare pnpm@10.14.0 --activate
+curl -fsSL https://deb.nodesource.com/setup_24.x | bash - &&      apt-get install -y nodejs &&      rm -rf /var/lib/apt/lists/* &&      corepack enable &&      corepack prepare pnpm@10.14.0 --activate
 __CMUX_SHOW__
 fi
 
@@ -532,11 +556,11 @@ if [ "$EXECUTE" = "1" ] && [ "$ALLOW_DANGEROUS" = "1" ]; then
   export DESTDIR="$DESTDIR" CURRENT_WORKDIR="$CURRENT_WORKDIR"
   bash -euo pipefail <<'__CMUX_RUN__'
 cd "${DESTDIR}${CURRENT_WORKDIR}"
-chmod +x /usr/local/bin/cmux-collect-relevant-diff.sh
+test -f /usr/local/bin/cmux-collect-relevant-diff.sh && chmod +x /usr/local/bin/cmux-collect-relevant-diff.sh || true
 __CMUX_RUN__
 else
   cat <<'__CMUX_SHOW__'
-chmod +x /usr/local/bin/cmux-collect-relevant-diff.sh
+test -f /usr/local/bin/cmux-collect-relevant-diff.sh && chmod +x /usr/local/bin/cmux-collect-relevant-diff.sh || true
 __CMUX_SHOW__
 fi
 
@@ -566,11 +590,11 @@ if [ "$EXECUTE" = "1" ] && [ "$ALLOW_DANGEROUS" = "1" ]; then
   export DESTDIR="$DESTDIR" CURRENT_WORKDIR="$CURRENT_WORKDIR"
   bash -euo pipefail <<'__CMUX_RUN__'
 cd "${DESTDIR}${CURRENT_WORKDIR}"
-set -eux; printf #!/bin/sh\nexec node /usr/local/lib/cmux/envctl/dist/index.js "$@"\n > /usr/local/bin/envctl && printf #!/bin/sh\nexec node /usr/local/lib/cmux/envd/dist/index.js "$@"\n > /usr/local/bin/envd && chmod +x /usr/local/bin/envctl /usr/local/bin/envd
+set -eux;      printf '#!/bin/sh\nexec node /usr/local/lib/cmux/envctl/dist/index.js "$@"\n' > /usr/local/bin/envctl &&      printf '#!/bin/sh\nexec node /usr/local/lib/cmux/envd/dist/index.js "$@"\n' > /usr/local/bin/envd &&      chmod +x /usr/local/bin/envctl /usr/local/bin/envd
 __CMUX_RUN__
 else
   cat <<'__CMUX_SHOW__'
-set -eux; printf #!/bin/sh\nexec node /usr/local/lib/cmux/envctl/dist/index.js "$@"\n > /usr/local/bin/envctl && printf #!/bin/sh\nexec node /usr/local/lib/cmux/envd/dist/index.js "$@"\n > /usr/local/bin/envd && chmod +x /usr/local/bin/envctl /usr/local/bin/envd
+set -eux;      printf '#!/bin/sh\nexec node /usr/local/lib/cmux/envctl/dist/index.js "$@"\n' > /usr/local/bin/envctl &&      printf '#!/bin/sh\nexec node /usr/local/lib/cmux/envd/dist/index.js "$@"\n' > /usr/local/bin/envd &&      chmod +x /usr/local/bin/envctl /usr/local/bin/envd
 __CMUX_SHOW__
 fi
 
@@ -580,11 +604,11 @@ if [ "$EXECUTE" = "1" ] && [ "$ALLOW_DANGEROUS" = "1" ]; then
   export DESTDIR="$DESTDIR" CURRENT_WORKDIR="$CURRENT_WORKDIR"
   bash -euo pipefail <<'__CMUX_RUN__'
 cd "${DESTDIR}${CURRENT_WORKDIR}"
-SHELL=/bin/bash pnpm setup && . /root/.bashrc
+SHELL=/bin/bash pnpm setup &&      . /root/.bashrc
 __CMUX_RUN__
 else
   cat <<'__CMUX_SHOW__'
-SHELL=/bin/bash pnpm setup && . /root/.bashrc
+SHELL=/bin/bash pnpm setup &&      . /root/.bashrc
 __CMUX_SHOW__
 fi
 
@@ -592,21 +616,21 @@ fi
 # Install tmux configuration for better mouse scrolling behavior
 # COPY  configs/tmux.conf /etc/tmux.conf
 # COPY -> copying into '/etc/tmux.conf' under DESTDIR
-do_safe mkdir -p "$DESTDIR/etc/tmux.conf" 2>/dev/null || true
-do_safe cp -R "$BUILD_CONTEXT/configs/tmux.conf" "$DESTDIR/etc/tmux.conf"
+do_safe mkdir -p "$DESTDIR/etc" 2>/dev/null || true
+do_safe cp -R '$BUILD_CONTEXT/configs/tmux.conf' "$DESTDIR/etc/tmux.conf"
 # COPY  configs/envctl.sh /etc/profile.d/envctl.sh
 # COPY -> copying into '/etc/profile.d/envctl.sh' under DESTDIR
-do_safe mkdir -p "$DESTDIR/etc/profile.d/envctl.sh" 2>/dev/null || true
-do_safe cp -R "$BUILD_CONTEXT/configs/envctl.sh" "$DESTDIR/etc/profile.d/envctl.sh"
+do_safe mkdir -p "$DESTDIR/etc/profile.d" 2>/dev/null || true
+do_safe cp -R '$BUILD_CONTEXT/configs/envctl.sh' "$DESTDIR/etc/profile.d/envctl.sh"
 if [ "$EXECUTE" = "1" ] && [ "$ALLOW_DANGEROUS" = "1" ]; then
   export DESTDIR="$DESTDIR" CURRENT_WORKDIR="$CURRENT_WORKDIR"
   bash -euo pipefail <<'__CMUX_RUN__'
 cd "${DESTDIR}${CURRENT_WORKDIR}"
-bash -lc echo "# Source envctl hook for interactive non-login shells" >> /etc/bash.bashrc &&      echo "if [ -f /etc/profile.d/envctl.sh ]; then . /etc/profile.d/envctl.sh; fi" >> /etc/bash.bashrc
+bash -lc 'echo "# Source envctl hook for interactive non-login shells" >> /etc/bash.bashrc &&      echo "if [ -f /etc/profile.d/envctl.sh ]; then . /etc/profile.d/envctl.sh; fi" >> /etc/bash.bashrc'
 __CMUX_RUN__
 else
   cat <<'__CMUX_SHOW__'
-bash -lc echo "# Source envctl hook for interactive non-login shells" >> /etc/bash.bashrc &&      echo "if [ -f /etc/profile.d/envctl.sh ]; then . /etc/profile.d/envctl.sh; fi" >> /etc/bash.bashrc
+bash -lc 'echo "# Source envctl hook for interactive non-login shells" >> /etc/bash.bashrc &&      echo "if [ -f /etc/profile.d/envctl.sh ]; then . /etc/profile.d/envctl.sh; fi" >> /etc/bash.bashrc'
 __CMUX_SHOW__
 fi
 
@@ -614,11 +638,11 @@ if [ "$EXECUTE" = "1" ] && [ "$ALLOW_DANGEROUS" = "1" ]; then
   export DESTDIR="$DESTDIR" CURRENT_WORKDIR="$CURRENT_WORKDIR"
   bash -euo pipefail <<'__CMUX_RUN__'
 cd "${DESTDIR}${CURRENT_WORKDIR}"
-mkdir -p /etc/zsh && bash -lc echo "# Source envctl hook for interactive zsh shells" >> /etc/zsh/zshrc &&      echo "if [ -f /etc/profile.d/envctl.sh ]; then . /etc/profile.d/envctl.sh; fi" >> /etc/zsh/zshrc
+mkdir -p /etc/zsh &&      bash -lc 'echo "# Source envctl hook for interactive zsh shells" >> /etc/zsh/zshrc &&      echo "if [ -f /etc/profile.d/envctl.sh ]; then . /etc/profile.d/envctl.sh; fi" >> /etc/zsh/zshrc'
 __CMUX_RUN__
 else
   cat <<'__CMUX_SHOW__'
-mkdir -p /etc/zsh && bash -lc echo "# Source envctl hook for interactive zsh shells" >> /etc/zsh/zshrc &&      echo "if [ -f /etc/profile.d/envctl.sh ]; then . /etc/profile.d/envctl.sh; fi" >> /etc/zsh/zshrc
+mkdir -p /etc/zsh &&      bash -lc 'echo "# Source envctl hook for interactive zsh shells" >> /etc/zsh/zshrc &&      echo "if [ -f /etc/profile.d/envctl.sh ]; then . /etc/profile.d/envctl.sh; fi" >> /etc/zsh/zshrc'
 __CMUX_SHOW__
 fi
 
@@ -629,11 +653,11 @@ if [ "$EXECUTE" = "1" ] && [ "$ALLOW_DANGEROUS" = "1" ]; then
   export DESTDIR="$DESTDIR" CURRENT_WORKDIR="$CURRENT_WORKDIR"
   bash -euo pipefail <<'__CMUX_RUN__'
 cd "${DESTDIR}${CURRENT_WORKDIR}"
-claude_vsix=$(rg --files /root/.bun/install/cache/@anthropic-ai 2>/dev/null | rg claude-code\.vsix$ | head -1) && if [ -n $claude_vsix ]; then echo Found claude-code.vsix at: $claude_vsix && /app/openvscode-server/bin/openvscode-server --install-extension $claude_vsix; else echo Warning: claude-code.vsix not found in Bun cache && exit 1; fi
+claude_vsix=$(rg --files /root/.bun/install/cache/@anthropic-ai 2>/dev/null | rg "claude-code\.vsix$" | head -1) &&      if [ -n "$claude_vsix" ]; then          echo "Found claude-code.vsix at: $claude_vsix" &&          /app/openvscode-server/bin/openvscode-server --install-extension "$claude_vsix";      else          echo "Warning: claude-code.vsix not found in Bun cache" &&          exit 1;      fi
 __CMUX_RUN__
 else
   cat <<'__CMUX_SHOW__'
-claude_vsix=$(rg --files /root/.bun/install/cache/@anthropic-ai 2>/dev/null | rg claude-code\.vsix$ | head -1) && if [ -n $claude_vsix ]; then echo Found claude-code.vsix at: $claude_vsix && /app/openvscode-server/bin/openvscode-server --install-extension $claude_vsix; else echo Warning: claude-code.vsix not found in Bun cache && exit 1; fi
+claude_vsix=$(rg --files /root/.bun/install/cache/@anthropic-ai 2>/dev/null | rg "claude-code\.vsix$" | head -1) &&      if [ -n "$claude_vsix" ]; then          echo "Found claude-code.vsix at: $claude_vsix" &&          /app/openvscode-server/bin/openvscode-server --install-extension "$claude_vsix";      else          echo "Warning: claude-code.vsix not found in Bun cache" &&          exit 1;      fi
 __CMUX_SHOW__
 fi
 
@@ -727,24 +751,100 @@ __CMUX_SHOW__
 fi
 
 
-# Copy startup script and prompt wrapper
-# COPY  startup.sh /startup.sh
-# COPY -> copying into '/startup.sh' under DESTDIR
-do_safe mkdir -p "$DESTDIR/startup.sh" 2>/dev/null || true
-do_safe cp -R "$BUILD_CONTEXT/startup.sh" "$DESTDIR/startup.sh"
-# COPY  prompt-wrapper.sh /usr/local/bin/prompt-wrapper
-# COPY -> copying into '/usr/local/bin/prompt-wrapper' under DESTDIR
-do_safe mkdir -p "$DESTDIR/usr/local/bin/prompt-wrapper" 2>/dev/null || true
-do_safe cp -R "$BUILD_CONTEXT/prompt-wrapper.sh" "$DESTDIR/usr/local/bin/prompt-wrapper"
+# Add supervisor fallback for startup.sh (when systemd is not PID 1)
 if [ "$EXECUTE" = "1" ] && [ "$ALLOW_DANGEROUS" = "1" ]; then
   export DESTDIR="$DESTDIR" CURRENT_WORKDIR="$CURRENT_WORKDIR"
   bash -euo pipefail <<'__CMUX_RUN__'
 cd "${DESTDIR}${CURRENT_WORKDIR}"
-chmod +x /startup.sh /usr/local/bin/prompt-wrapper
+cat > /etc/supervisor/conf.d/cmux-startup.conf << 'CONFIG'
+[program:cmux-startup]
+command=/startup.sh
+autostart=true
+autorestart=true
+stdout_logfile=/var/log/cmux_startup.out.log
+stderr_logfile=/var/log/cmux_startup.err.log
+CONFIG
 __CMUX_RUN__
 else
   cat <<'__CMUX_SHOW__'
-chmod +x /startup.sh /usr/local/bin/prompt-wrapper
+cat > /etc/supervisor/conf.d/cmux-startup.conf << 'CONFIG'
+[program:cmux-startup]
+command=/startup.sh
+autostart=true
+autorestart=true
+stdout_logfile=/var/log/cmux_startup.out.log
+stderr_logfile=/var/log/cmux_startup.err.log
+CONFIG
+__CMUX_SHOW__
+fi
+
+
+# Copy startup script and prompt wrapper
+# COPY  startup.sh /startup.sh
+# COPY -> copying into '/startup.sh' under DESTDIR
+do_safe mkdir -p "$DESTDIR" 2>/dev/null || true
+do_safe cp -R '$BUILD_CONTEXT/startup.sh' "$DESTDIR/startup.sh"
+# COPY  prompt-wrapper.sh /usr/local/bin/prompt-wrapper
+# COPY -> copying into '/usr/local/bin/prompt-wrapper' under DESTDIR
+do_safe mkdir -p "$DESTDIR/usr/local/bin" 2>/dev/null || true
+do_safe cp -R '$BUILD_CONTEXT/prompt-wrapper.sh' "$DESTDIR/usr/local/bin/prompt-wrapper"
+if [ "$EXECUTE" = "1" ] && [ "$ALLOW_DANGEROUS" = "1" ]; then
+  export DESTDIR="$DESTDIR" CURRENT_WORKDIR="$CURRENT_WORKDIR"
+  bash -euo pipefail <<'__CMUX_RUN__'
+cd "${DESTDIR}${CURRENT_WORKDIR}"
+chmod +x /startup.sh /usr/local/bin/prompt-wrapper || true
+__CMUX_RUN__
+else
+  cat <<'__CMUX_SHOW__'
+chmod +x /startup.sh /usr/local/bin/prompt-wrapper || true
+__CMUX_SHOW__
+fi
+
+
+# Install systemd unit to manage startup.sh when systemd is present
+if [ "$EXECUTE" = "1" ] && [ "$ALLOW_DANGEROUS" = "1" ]; then
+  export DESTDIR="$DESTDIR" CURRENT_WORKDIR="$CURRENT_WORKDIR"
+  bash -euo pipefail <<'__CMUX_RUN__'
+cd "${DESTDIR}${CURRENT_WORKDIR}"
+mkdir -p /etc/systemd/system
+cat > /etc/systemd/system/cmux-startup.service << 'UNIT'
+[Unit]
+Description=CMUX Startup Service
+After=network.target docker.service
+
+[Service]
+Type=simple
+ExecStart=/startup.sh
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+# Best-effort enable at build time (may no-op in container build)
+command -v systemctl >/dev/null 2>&1 && systemctl daemon-reload || true
+command -v systemctl >/dev/null 2>&1 && systemctl enable cmux-startup.service || true
+__CMUX_RUN__
+else
+  cat <<'__CMUX_SHOW__'
+mkdir -p /etc/systemd/system
+cat > /etc/systemd/system/cmux-startup.service << 'UNIT'
+[Unit]
+Description=CMUX Startup Service
+After=network.target docker.service
+
+[Service]
+Type=simple
+ExecStart=/startup.sh
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+# Best-effort enable at build time (may no-op in container build)
+command -v systemctl >/dev/null 2>&1 && systemctl daemon-reload || true
+command -v systemctl >/dev/null 2>&1 && systemctl enable cmux-startup.service || true
 __CMUX_SHOW__
 fi
 
@@ -758,6 +858,7 @@ fi
 # WORKDIR /
 CURRENT_WORKDIR="/"
 do_safe mkdir -p "$DESTDIR$CURRENT_WORKDIR"
+do_safe ln -sfn "$DESTDIR$CURRENT_WORKDIR" "$CURRENT_WORKDIR" 2>/dev/null || true
 do_safe cd "$DESTDIR$CURRENT_WORKDIR"
 
 # ENTRYPOINT ["/startup.sh"]

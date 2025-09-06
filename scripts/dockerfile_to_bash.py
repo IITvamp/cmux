@@ -79,7 +79,8 @@ def main() -> None:
     output.append("")
     output.append("EXECUTE=${EXECUTE:-0}")
     output.append("ALLOW_DANGEROUS=${ALLOW_DANGEROUS:-0}")
-    output.append(f"BUILD_CONTEXT={shlex.quote(str(build_context))}")
+    # Resolve build context at runtime to avoid embedding host paths
+    output.append("BUILD_CONTEXT=${BUILD_CONTEXT:-$(pwd)}")
     output.append("DESTDIR=${DESTDIR:-$(pwd)/_dockerfile_rootfs}")
     output.append("mkdir -p \"$DESTDIR\"")
     output.append("CURRENT_WORKDIR=/")
@@ -138,6 +139,8 @@ def main() -> None:
             output.append(f"# WORKDIR {wd}")
             output.append(f"CURRENT_WORKDIR=\"{wd}\"")
             output.append("do_safe mkdir -p \"$DESTDIR$CURRENT_WORKDIR\"")
+            # Symlink absolute workdir path to the DESTDIR-backed path for commands that use absolute paths
+            output.append("do_safe ln -sfn \"$DESTDIR$CURRENT_WORKDIR\" \"$CURRENT_WORKDIR\" 2>/dev/null || true")
             output.append("do_safe cd \"$DESTDIR$CURRENT_WORKDIR\"")
             return
 
@@ -174,19 +177,38 @@ def main() -> None:
                 return
 
             output.append(f"# {instr} -> copying into '{dest}' under DESTDIR")
-            output.append(f"do_safe mkdir -p \"$DESTDIR{dest}\" 2>/dev/null || true")
+            # Respect --parents flag if present
+            has_parents = any(f == "--parents" for f in flags)
+            # If multiple sources or trailing slash or --parents, ensure dest directory; else create parent directory
+            dest_is_dir = dest.endswith("/") or len(srcs) > 1 or has_parents
+            plain_target = dest if dest_is_dir else (dest.rsplit("/", 1)[0] if "/" in dest else "/")
+            # Anchor destination into DESTDIR and CURRENT_WORKDIR when relative
+            if dest.startswith("/"):
+                mkdir_target = f"$DESTDIR{plain_target}"
+                dest_path = f"$DESTDIR{dest}"
+            else:
+                # ensure leading separator between CURRENT_WORKDIR and target
+                mkdir_target = f"$DESTDIR$CURRENT_WORKDIR/{plain_target}" if plain_target != "/" else f"$DESTDIR$CURRENT_WORKDIR"
+                dest_path = f"$DESTDIR$CURRENT_WORKDIR/{dest}"
+            output.append(f"do_safe mkdir -p \"{mkdir_target}\" 2>/dev/null || true")
+            # Helper to format the source path: if it contains glob characters,
+            # do not quote it so the shell can expand; otherwise, quote safely.
+            def format_src(s: str) -> str:
+                if any(ch in s for ch in ['*', '?', '[']):
+                    return f"$BUILD_CONTEXT/{s}"
+                return shlex.quote(f"$BUILD_CONTEXT/{s}")
+
             for s in srcs:
-                # Use BUILD_CONTEXT, allow shell glob expansion on execution
-                output.append(f"do_safe cp -R \"$BUILD_CONTEXT/{s}\" \"$DESTDIR{dest}\"")
+                src_arg = format_src(s)
+                if has_parents:
+                    output.append(f"do_safe cp --parents -R {src_arg} \"{dest_path}\"")
+                else:
+                    output.append(f"do_safe cp -R {src_arg} \"{dest_path}\"")
             return
 
         if instr == "RUN":
-            # Drop BuildKit flags at start (e.g., --mount=type=cache)
-            r = rest
-            r_toks = shlex.split(r)
-            while r_toks and r_toks[0].startswith("--"):
-                r_toks.pop(0)
-            r = " ".join(r_toks) if r_toks else rest
+            # Drop any leading BuildKit flags without altering quoting
+            r = re.sub(r"^\s*(?:--\S+\s+)+", "", rest)
             output.append(render_run_block(r))
             return
 
@@ -258,4 +280,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
