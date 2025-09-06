@@ -73,11 +73,22 @@ sandboxesRouter.openapi(
     },
   }),
   async (c) => {
-    // Require authentication
-    const user = await stackServerAppJs.getUser({ tokenStore: c.req.raw });
-    if (!user) return c.text("Unauthorized", 401);
+    // Require authentication (via access token header/cookie)
+    const accessToken = await getAccessTokenFromRequest(c.req.raw);
+    if (!accessToken) return c.text("Unauthorized", 401);
 
     const body = c.req.valid("json");
+    try {
+      console.log("[sandboxes.start] incoming", {
+        teamSlugOrId: body.teamSlugOrId,
+        hasEnvId: Boolean(body.environmentId),
+        hasSnapshotId: Boolean(body.snapshotId),
+        repoUrl: body.repoUrl,
+        branch: body.branch,
+      });
+    } catch {
+      /* noop */
+    }
 
     try {
       // Verify team access
@@ -87,9 +98,7 @@ sandboxesRouter.openapi(
       });
 
       // Determine snapshotId with access checks
-      const token = await getAccessTokenFromRequest(c.req.raw);
-      if (!token) return c.text("Unauthorized", 401);
-      const convex = getConvex({ accessToken: token });
+      const convex = getConvex({ accessToken });
 
       let resolvedSnapshotId: string | null = null;
 
