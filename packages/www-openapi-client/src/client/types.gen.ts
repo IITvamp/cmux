@@ -189,6 +189,7 @@ export type StartSandboxResponse = {
 
 export type StartSandboxBody = {
     teamSlugOrId: string;
+    environmentId?: string;
     snapshotId?: string;
     ttlSeconds?: number;
     metadata?: {

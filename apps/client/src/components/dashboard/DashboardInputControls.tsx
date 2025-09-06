@@ -1,18 +1,23 @@
+import { env } from "@/client-env";
 import { AgentLogo } from "@/components/icons/agent-logos";
+import { GitHubIcon } from "@/components/icons/github";
 import { ModeToggleTooltip } from "@/components/ui/mode-toggle-tooltip";
-import SearchableSelect from "@/components/ui/searchable-select";
+import SearchableSelect, {
+  type SelectOption,
+} from "@/components/ui/searchable-select";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
+import { Link, useRouter } from "@tanstack/react-router";
 import clsx from "clsx";
-import { GitBranch, Image, Mic } from "lucide-react";
+import { GitBranch, Image, Mic, Server } from "lucide-react";
 import { memo, useCallback, useMemo } from "react";
 
 interface DashboardInputControlsProps {
-  projectOptions: string[];
+  projectOptions: SelectOption[];
   selectedProject: string[];
   onProjectChange: (projects: string[]) => void;
   branchOptions: string[];
@@ -25,6 +30,8 @@ interface DashboardInputControlsProps {
   isLoadingProjects: boolean;
   isLoadingBranches: boolean;
   teamSlugOrId: string;
+  cloudToggleDisabled?: boolean;
+  branchDisabled?: boolean;
 }
 
 export const DashboardInputControls = memo(function DashboardInputControls({
@@ -41,7 +48,10 @@ export const DashboardInputControls = memo(function DashboardInputControls({
   isLoadingProjects,
   isLoadingBranches,
   teamSlugOrId,
+  cloudToggleDisabled = false,
+  branchDisabled = false,
 }: DashboardInputControlsProps) {
+  const router = useRouter();
   const agentOptions = useMemo(() => {
     const vendorKey = (name: string): string => {
       const lower = name.toLowerCase();
@@ -77,6 +87,68 @@ export const DashboardInputControls = memo(function DashboardInputControls({
     }
   }, []);
 
+  function openCenteredPopup(
+    url: string,
+    opts?: { name?: string; width?: number; height?: number },
+    onClose?: () => void
+  ): Window | null {
+    const name = opts?.name ?? "cmux-popup";
+    const width = Math.floor(opts?.width ?? 980);
+    const height = Math.floor(opts?.height ?? 780);
+    const dualScreenLeft = window.screenLeft ?? window.screenX ?? 0;
+    const dualScreenTop = window.screenTop ?? window.screenY ?? 0;
+    const outerWidth = window.outerWidth || window.innerWidth || width;
+    const outerHeight = window.outerHeight || window.innerHeight || height;
+    const left = Math.max(0, dualScreenLeft + (outerWidth - width) / 2);
+    const top = Math.max(0, dualScreenTop + (outerHeight - height) / 2);
+    const features = [
+      `width=${width}`,
+      `height=${height}`,
+      `left=${Math.floor(left)}`,
+      `top=${Math.floor(top)}`,
+      "resizable=yes",
+      "scrollbars=yes",
+      "toolbar=no",
+      "location=no",
+      "status=no",
+      "menubar=no",
+    ].join(",");
+
+    const win = window.open("about:blank", name, features);
+    if (win) {
+      try {
+        (win as Window & { opener: null | Window }).opener = null;
+      } catch {
+        /* noop */
+      }
+      try {
+        win.location.href = url;
+      } catch {
+        window.open(url, "_blank");
+      }
+      win.focus?.();
+      if (onClose) watchPopupClosed(win, onClose);
+      return win;
+    } else {
+      window.open(url, "_blank");
+      return null;
+    }
+  }
+
+  function watchPopupClosed(win: Window | null, onClose: () => void): void {
+    if (!win) return;
+    const timer = window.setInterval(() => {
+      try {
+        if (win.closed) {
+          window.clearInterval(timer);
+          onClose();
+        }
+      } catch {
+        /* noop */
+      }
+    }, 600);
+  }
+
   return (
     <div className="flex items-end gap-1 grow">
       <div className="flex items-end gap-1">
@@ -90,28 +162,72 @@ export const DashboardInputControls = memo(function DashboardInputControls({
           loading={isLoadingProjects}
           maxTagCount={1}
           showSearch
+          footer={
+            <div className="p-1">
+              <Link
+                to="/$teamSlugOrId/environments/new"
+                params={{ teamSlugOrId }}
+                search={{
+                  step: undefined,
+                  selectedRepos: undefined,
+                  connectionLogin: undefined,
+                  repoSearch: undefined,
+                  instanceId: undefined,
+                }}
+                className="w-full px-2 h-8 flex items-center gap-2 text-[13.5px] text-neutral-800 dark:text-neutral-200 rounded-md hover:bg-neutral-50 dark:hover:bg-neutral-900 cursor-default"
+              >
+                <Server className="w-4 h-4 text-neutral-600 dark:text-neutral-300" />
+                <span className="select-none">Create environment</span>
+              </Link>
+              {env.NEXT_PUBLIC_GITHUB_APP_SLUG ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    const slug = env.NEXT_PUBLIC_GITHUB_APP_SLUG!;
+                    const url = `https://github.com/apps/${slug}/installations/new`;
+                    const win = openCenteredPopup(
+                      url,
+                      { name: "github-install" },
+                      () => {
+                        router.options.context?.queryClient?.invalidateQueries();
+                      }
+                    );
+                    win?.focus?.();
+                  }}
+                  className="w-full px-2 h-8 flex items-center gap-2 text-[13.5px] text-neutral-800 dark:text-neutral-200 rounded-md hover:bg-neutral-50 dark:hover:bg-neutral-900"
+                >
+                  <GitHubIcon className="w-4 h-4 text-neutral-600 dark:text-neutral-300" />
+                  <span className="select-none">Add GitHub account</span>
+                </button>
+              ) : null}
+            </div>
+          }
         />
 
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div>
-              <SearchableSelect
-                options={branchOptions}
-                value={selectedBranch}
-                onChange={onBranchChange}
-                placeholder="Branch"
-                singleSelect={true}
-                className="rounded-2xl"
-                loading={isLoadingBranches}
-                showSearch
-                leftIcon={
-                  <GitBranch className="w-4 h-4 text-neutral-500 dark:text-neutral-400" />
-                }
-              />
-            </div>
-          </TooltipTrigger>
-          <TooltipContent>Branch this task starts from</TooltipContent>
-        </Tooltip>
+        {branchDisabled ? null : (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div>
+                <SearchableSelect
+                  options={branchOptions}
+                  value={selectedBranch}
+                  onChange={onBranchChange}
+                  placeholder="Branch"
+                  singleSelect={true}
+                  className="rounded-2xl"
+                  loading={isLoadingBranches}
+                  showSearch
+                  disabled={branchDisabled}
+                  leftIcon={
+                    <GitBranch className="w-4 h-4 text-neutral-500 dark:text-neutral-400" />
+                  }
+                />
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>Branch this task starts from</TooltipContent>
+          </Tooltip>
+        )}
 
         <SearchableSelect
           options={agentOptions}
@@ -132,6 +248,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
           isCloudMode={isCloudMode}
           onToggle={onCloudModeToggle}
           teamSlugOrId={teamSlugOrId}
+          disabled={cloudToggleDisabled}
         />
 
         <button
