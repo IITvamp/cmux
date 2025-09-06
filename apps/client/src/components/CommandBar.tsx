@@ -3,7 +3,7 @@ import { api } from "@cmux/convex/api";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { Command } from "cmdk";
 import { useQuery, useMutation } from "convex/react";
-import { Monitor, Moon, Sun } from "lucide-react";
+import { Monitor, Moon, Sun, Settings, Plus, Server } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -21,6 +21,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
 
   const allTasks = useQuery(api.tasks.get, { teamSlugOrId });
   const createRun = useMutation(api.taskRuns.create);
+  const environments = useQuery(api.environments.list, { teamSlugOrId });
 
   useEffect(() => {
     const down = (e: KeyboardEvent) => {
@@ -79,6 +80,23 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
         navigate({
           to: "/$teamSlugOrId/dashboard",
           params: { teamSlugOrId },
+        });
+      } else if (value === "settings") {
+        navigate({
+          to: "/$teamSlugOrId/settings",
+          params: { teamSlugOrId },
+        });
+      } else if (value === "new-environment") {
+        navigate({
+          to: "/$teamSlugOrId/environments/new",
+          params: { teamSlugOrId },
+        });
+      } else if (value.startsWith("environment:")) {
+        const environmentId = value.slice(12);
+        navigate({
+          to: "/$teamSlugOrId/environments/$environmentId",
+          // @ts-expect-error - environmentId from string
+          params: { teamSlugOrId, environmentId },
         });
       } else if (value === "theme-light") {
         setTheme("light");
@@ -195,6 +213,17 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
             >
               <span className="text-sm">New Task</span>
             </Command.Item>
+            <Command.Item
+              value="settings"
+              onSelect={() => handleSelect("settings")}
+              className="flex items-center gap-2 px-3 py-2.5 mx-1 rounded-md cursor-pointer 
+                hover:bg-neutral-100 dark:hover:bg-neutral-800 
+                data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800
+                data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100"
+            >
+              <Settings className="h-4 w-4 text-neutral-500" />
+              <span className="text-sm">Settings</span>
+            </Command.Item>
           </Command.Group>
 
           <Command.Group>
@@ -232,6 +261,44 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
               <span className="text-sm">System Theme</span>
             </Command.Item>
           </Command.Group>
+
+          {environments && environments.length > 0 && (
+            <Command.Group>
+              <div className="px-2 py-1.5 text-xs text-neutral-500 dark:text-neutral-400">
+                Environments
+              </div>
+              <Command.Item
+                value="new-environment"
+                onSelect={() => handleSelect("new-environment")}
+                className="flex items-center gap-2 px-3 py-2.5 mx-1 rounded-md cursor-pointer 
+                  hover:bg-neutral-100 dark:hover:bg-neutral-800 
+                  data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800
+                  data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100"
+              >
+                <Plus className="h-4 w-4 text-neutral-500" />
+                <span className="text-sm">New Environment</span>
+              </Command.Item>
+              {environments.map((env) => (
+                <Command.Item
+                  key={env._id}
+                  value={`environment:${env._id}`}
+                  onSelect={() => handleSelect(`environment:${env._id}`)}
+                  className="flex items-center gap-2 px-3 py-2.5 mx-1 rounded-md cursor-pointer 
+                    hover:bg-neutral-100 dark:hover:bg-neutral-800 
+                    data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800
+                    data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100"
+                >
+                  <Server className="h-4 w-4 text-neutral-500" />
+                  <span className="flex-1 truncate text-sm">{env.name}</span>
+                  {env.isDefault && (
+                    <span className="text-xs px-2 py-0.5 rounded-full bg-neutral-200 dark:bg-neutral-700 text-neutral-500 dark:text-neutral-400">
+                      default
+                    </span>
+                  )}
+                </Command.Item>
+              ))}
+            </Command.Group>
+          )}
 
           {allTasks && allTasks.length > 0 && (
             <Command.Group>
