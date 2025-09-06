@@ -19,8 +19,6 @@ export const sandboxesRouter = new OpenAPIHono();
 const StartSandboxBody = z
   .object({
     teamSlugOrId: z.string(),
-    // Provide either an environmentId (preferred) or a raw snapshotId
-    // environmentId: typedZid("environments").optional(),
     environmentId: z.string().optional(),
     snapshotId: z.string().optional(),
     ttlSeconds: z
