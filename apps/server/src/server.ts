@@ -2097,6 +2097,11 @@ Please address the issue mentioned in the comment above.`;
       return;
     }
 
+    serverLogger.info("Closing HTTP server...");
+    httpServer.close(() => {
+      console.log("HTTP server closed");
+    });
+
     isCleaningUp = true;
     serverLogger.info("Cleaning up terminals and server...");
 
