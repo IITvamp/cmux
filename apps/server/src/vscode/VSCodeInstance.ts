@@ -1,7 +1,7 @@
 import { Id } from "@cmux/convex/dataModel";
 import type { ServerToWorkerEvents, WorkerToServerEvents } from "@cmux/shared";
 import { EventEmitter } from "node:events";
-import { io, type Socket } from "socket.io-client";
+import { connectToWorkerManagement } from "@cmux/shared/socket";
 import { dockerLogger } from "../utils/fileLogger.js";
 
 export interface VSCodeInstanceConfig {
@@ -34,10 +34,7 @@ export abstract class VSCodeInstance extends EventEmitter {
   protected instanceId: Id<"taskRuns">;
   protected taskRunId: Id<"taskRuns">;
   protected taskId: Id<"tasks">;
-  protected workerSocket: Socket<
-    WorkerToServerEvents,
-    ServerToWorkerEvents
-  > | null = null;
+  protected workerSocket: ReturnType<typeof connectToWorkerManagement> | null = null;
   protected workerConnected: boolean = false;
   protected teamSlugOrId: string;
 
@@ -80,15 +77,11 @@ export abstract class VSCodeInstance extends EventEmitter {
     );
 
     return new Promise((resolve, reject) => {
-      this.workerSocket = io(`${workerUrl}/management`, {
-        reconnection: true,
-        reconnectionAttempts: 10, // Keep trying 10 times
-        reconnectionDelay: 2000,
-        reconnectionDelayMax: 10000,
-        timeout: 30000, // 30 seconds timeout
-        transports: ["websocket"], // Allow fallback to polling
-        upgrade: false,
-        forceNew: true, // Force new connection
+      this.workerSocket = connectToWorkerManagement({
+        url: workerUrl,
+        timeoutMs: 30_000,
+        reconnectionAttempts: 10,
+        forceNew: true,
       });
 
       this.workerSocket.on("connect", () => {
@@ -182,7 +175,7 @@ export abstract class VSCodeInstance extends EventEmitter {
     });
   }
 
-  getWorkerSocket(): Socket<WorkerToServerEvents, ServerToWorkerEvents> {
+  getWorkerSocket(): ReturnType<typeof connectToWorkerManagement> {
     if (!this.workerSocket) {
       throw new Error("Worker socket not connected");
     }
