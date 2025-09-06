@@ -25,7 +25,7 @@ export const CloseTerminalSchema = z.object({
 });
 
 export const StartTaskSchema = z.object({
-  repoUrl: z.string(),
+  repoUrl: z.string().optional(),
   branch: z.string().optional(),
   taskDescription: z.string(),
   projectFullName: z.string(),
@@ -42,6 +42,7 @@ export const StartTaskSchema = z.object({
     )
     .optional(),
   theme: z.enum(["dark", "light", "system"]).optional(),
+  environmentId: typedZid("environments").optional(),
 });
 
 // Server to Client Events

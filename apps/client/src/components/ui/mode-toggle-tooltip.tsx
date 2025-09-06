@@ -13,6 +13,7 @@ interface ModeToggleTooltipProps {
   onToggle: () => void;
   className?: string;
   teamSlugOrId: string;
+  disabled?: boolean;
 }
 
 export function ModeToggleTooltip({
@@ -20,6 +21,7 @@ export function ModeToggleTooltip({
   onToggle,
   className,
   teamSlugOrId,
+  disabled = false,
 }: ModeToggleTooltipProps) {
   const [showTooltip, setShowTooltip] = React.useState(false);
   const [showWaitlistModal, setShowWaitlistModal] = React.useState(false);
@@ -47,6 +49,7 @@ export function ModeToggleTooltip({
   }, [location.href, user]);
 
   const handleClick = () => {
+    if (disabled) return;
     // Clear any existing timeout
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
@@ -111,6 +114,7 @@ export function ModeToggleTooltip({
         onMouseLeave={handleMouseLeave}
         color="primary"
         size="sm"
+        isDisabled={disabled}
         aria-label={isCloudMode ? "Cloud mode" : "Local mode"}
         thumbIcon={({ isSelected, className }) =>
           isSelected ? (
