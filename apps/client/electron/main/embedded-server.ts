@@ -22,7 +22,7 @@ export async function startEmbeddedServer() {
     async cleanup() {
       gitDiffManager.dispose();
       await ipcRealtimeServer.close();
-    }
+    },
   };
 }
 
@@ -41,58 +41,68 @@ function createIPCRealtimeServer(): RealtimeServer {
   }
 
   // Handle IPC connection from renderer
-  ipcMain.handle("socket:connect", async (event, query: Record<string, string>) => {
-    const socketId = `ipc_${Date.now()}_${Math.random()}`;
-    const ipcSocket: IPCSocket = {
-      id: socketId,
-      webContents: event.sender,
-      handshake: { query },
-      handlers: new Map(),
-      middlewares: [],
-    };
+  ipcMain.handle(
+    "socket:connect",
+    async (event, query: Record<string, string>) => {
+      const socketId = `ipc_${Date.now()}_${Math.random()}`;
+      const ipcSocket: IPCSocket = {
+        id: socketId,
+        webContents: event.sender,
+        handshake: { query },
+        handlers: new Map(),
+        middlewares: [],
+      };
 
-    sockets.set(socketId, ipcSocket);
+      sockets.set(socketId, ipcSocket);
 
-    // Create a RealtimeSocket wrapper for the server handlers
-    const realtimeSocket: RealtimeSocket = {
-      id: socketId,
-      handshake: ipcSocket.handshake,
-      
-      on(event: any, handler: any) {
-        if (!ipcSocket.handlers.has(event)) {
-          ipcSocket.handlers.set(event, []);
-        }
-        ipcSocket.handlers.get(event)!.push(handler);
-      },
+      // Create a RealtimeSocket wrapper for the server handlers
+      const realtimeSocket: RealtimeSocket = {
+        id: socketId,
+        handshake: ipcSocket.handshake,
 
-      emit(event: any, ...args: any[]) {
-        if (!ipcSocket.webContents.isDestroyed()) {
-          try {
-            // Send event to renderer via IPC
-            ipcSocket.webContents.send(`socket:event:${socketId}`, event, ...args);
-          } catch (err) {
-            console.error(`[IPC] Failed to emit ${event}:`, err);
+        on(event: any, handler: any) {
+          if (!ipcSocket.handlers.has(event)) {
+            ipcSocket.handlers.set(event, []);
           }
-        }
-      },
+          ipcSocket.handlers.get(event)!.push(handler);
+        },
 
-      use(middleware: (packet: unknown[], next: () => void) => void) {
-        ipcSocket.middlewares.push(middleware);
-      },
+        emit(event: any, ...args: any[]) {
+          if (!ipcSocket.webContents.isDestroyed()) {
+            try {
+              // Send event to renderer via IPC
+              ipcSocket.webContents.send(
+                `socket:event:${socketId}`,
+                event,
+                ...args
+              );
+            } catch (err) {
+              console.error(`[IPC] Failed to emit ${event}:`, err);
+            }
+          }
+        },
 
-      disconnect() {
-        sockets.delete(socketId);
-        if (!ipcSocket.webContents.isDestroyed()) {
-          ipcSocket.webContents.send(`socket:event:${socketId}`, "disconnect");
-        }
-      },
-    };
+        use(middleware: (packet: unknown[], next: () => void) => void) {
+          ipcSocket.middlewares.push(middleware);
+        },
 
-    // Notify all connection handlers
-    connectionHandlers.forEach(handler => handler(realtimeSocket));
+        disconnect() {
+          sockets.delete(socketId);
+          if (!ipcSocket.webContents.isDestroyed()) {
+            ipcSocket.webContents.send(
+              `socket:event:${socketId}`,
+              "disconnect"
+            );
+          }
+        },
+      };
 
-    return { socketId, connected: true };
-  });
+      // Notify all connection handlers
+      connectionHandlers.forEach((handler) => handler(realtimeSocket));
+
+      return { socketId, connected: true };
+    }
+  );
 
   // Handle IPC disconnect
   ipcMain.handle("socket:disconnect", async (_event, socketId: string) => {
@@ -100,59 +110,70 @@ function createIPCRealtimeServer(): RealtimeServer {
     if (socket) {
       // Trigger disconnect handlers
       const handlers = socket.handlers.get("disconnect") || [];
-      handlers.forEach(handler => handler());
+      handlers.forEach((handler) => handler());
       sockets.delete(socketId);
     }
     return { disconnected: true };
   });
 
   // Handle events from renderer
-  ipcMain.handle("socket:emit", async (_event, socketId: string, eventName: string, args: unknown[]) => {
-    const socket = sockets.get(socketId);
-    if (!socket) return { success: false };
+  ipcMain.handle(
+    "socket:emit",
+    async (_event, socketId: string, eventName: string, args: unknown[]) => {
+      const socket = sockets.get(socketId);
+      if (!socket) return { success: false };
 
-    // Check for callback
-    const lastArg = args[args.length - 1];
-    const hasCallback = typeof lastArg === "string" && lastArg.includes("_callback_");
+      // Check for callback
+      const lastArg = args[args.length - 1];
+      const hasCallback =
+        typeof lastArg === "string" && lastArg.includes("_callback_");
 
-    if (hasCallback) {
-      const callbackId = lastArg as string;
-      const dataArgs = args.slice(0, -1);
-      
-      // Run middlewares
-      runMiddlewares(socket.middlewares, [eventName, ...dataArgs], () => {
-        // Execute handlers with callback
-        const handlers = socket.handlers.get(eventName) || [];
-        handlers.forEach(handler => {
-          handler(...dataArgs, (response: unknown) => {
-            // Send callback response to renderer
-            if (!socket.webContents.isDestroyed()) {
-              socket.webContents.send(`socket:event:${socketId}`, `ack:${callbackId}`, response);
-            }
+      if (hasCallback) {
+        const callbackId = lastArg as string;
+        const dataArgs = args.slice(0, -1);
+
+        // Run middlewares
+        runMiddlewares(socket.middlewares, [eventName, ...dataArgs], () => {
+          // Execute handlers with callback
+          const handlers = socket.handlers.get(eventName) || [];
+          handlers.forEach((handler) => {
+            handler(...dataArgs, (response: unknown) => {
+              // Send callback response to renderer
+              if (!socket.webContents.isDestroyed()) {
+                socket.webContents.send(
+                  `socket:event:${socketId}`,
+                  `ack:${callbackId}`,
+                  response
+                );
+              }
+            });
           });
         });
-      });
-    } else {
-      // Run middlewares
-      runMiddlewares(socket.middlewares, [eventName, ...args], () => {
-        // Execute handlers without callback
-        const handlers = socket.handlers.get(eventName) || [];
-        handlers.forEach(handler => handler(...args));
-      });
+      } else {
+        // Run middlewares
+        runMiddlewares(socket.middlewares, [eventName, ...args], () => {
+          // Execute handlers without callback
+          const handlers = socket.handlers.get(eventName) || [];
+          handlers.forEach((handler) => handler(...args));
+        });
+      }
+
+      return { success: true };
     }
-    
-    return { success: true };
-  });
+  );
 
   // Handle listener registration from renderer
-  ipcMain.handle("socket:on", async (_event, socketId: string, eventName: string) => {
-    const socket = sockets.get(socketId);
-    if (socket) {
-      // Register that renderer wants to listen to this event
-      // (Events will be sent via socket:event:${socketId} channel)
+  ipcMain.handle(
+    "socket:on",
+    async (_event, socketId: string, eventName: string) => {
+      const socket = sockets.get(socketId);
+      if (socket) {
+        // Register that renderer wants to listen to this event
+        // (Events will be sent via socket:event:${socketId} channel)
+      }
+      return { success: true };
     }
-    return { success: true };
-  });
+  );
 
   return {
     onConnection(handler: (socket: RealtimeSocket) => void) {
@@ -161,10 +182,14 @@ function createIPCRealtimeServer(): RealtimeServer {
 
     emit(event: any, ...args: any[]) {
       // Broadcast to all connected sockets
-      sockets.forEach(socket => {
+      sockets.forEach((socket) => {
         if (!socket.webContents.isDestroyed()) {
           try {
-            socket.webContents.send(`socket:event:${socket.id}`, event, ...args);
+            socket.webContents.send(
+              `socket:event:${socket.id}`,
+              event,
+              ...args
+            );
           } catch (err) {
             console.error(`[IPC] Failed to broadcast ${event}:`, err);
           }
@@ -174,14 +199,14 @@ function createIPCRealtimeServer(): RealtimeServer {
 
     async close() {
       // Clean up all sockets
-      sockets.forEach(socket => {
+      sockets.forEach((socket) => {
         if (!socket.webContents.isDestroyed()) {
           socket.webContents.send(`socket:event:${socket.id}`, "disconnect");
         }
       });
       sockets.clear();
       connectionHandlers.length = 0;
-    }
+    },
   };
 }
 
@@ -191,16 +216,16 @@ function runMiddlewares(
   finalCallback: () => void
 ) {
   let index = 0;
-  
+
   function next() {
     if (index >= middlewares.length) {
       finalCallback();
       return;
     }
-    
+
     const middleware = middlewares[index++];
     middleware(packet, next);
   }
-  
+
   next();
 }

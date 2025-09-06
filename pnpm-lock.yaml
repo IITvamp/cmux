@@ -182,6 +182,9 @@ importers:
       engine.io-client:
         specifier: ^6.6.3
         version: 6.6.3
+      engine.io-parser:
+        specifier: ^5.2.1
+        version: 5.2.3
       framer-motion:
         specifier: ^12.23.3
         version: 12.23.12(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -278,6 +281,12 @@ importers:
       vscode-icons-js:
         specifier: ^11.6.1
         version: 11.6.1
+      ws:
+        specifier: ^8.17.1
+        version: 8.18.3
+      xmlhttprequest-ssl:
+        specifier: ^2.1.1
+        version: 2.1.2
       zod:
         specifier: ^3.25.67
         version: 3.25.76

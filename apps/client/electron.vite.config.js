@@ -10,13 +10,7 @@ const envDir = resolve("../../");
 
 export default defineConfig({
   main: {
-    plugins: [
-      resolveWorkspacePackages(),
-      externalizeDepsPlugin({
-        // Don't externalize workspace packages - we want to bundle them
-        exclude: ["@cmux/server", "@cmux/shared", "@cmux/convex"]
-      })
-    ],
+    plugins: [],
     build: {
       rollupOptions: {
         input: {
@@ -29,10 +23,7 @@ export default defineConfig({
     envPrefix: "NEXT_PUBLIC_",
   },
   preload: {
-    plugins: [externalizeDepsPlugin({
-      // Don't externalize workspace packages
-      exclude: ["@cmux/server", "@cmux/shared", "@cmux/convex"]
-    })],
+    plugins: [],
     build: {
       rollupOptions: {
         input: {
