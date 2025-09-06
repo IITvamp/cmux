@@ -1,4 +1,5 @@
 import { CmuxComments } from "@/components/cmux-comments";
+import { CommandBar } from "@/components/CommandBar";
 import { Sidebar } from "@/components/Sidebar";
 import { convexQueryClient } from "@/contexts/convex/convex-query-client";
 import { ExpandTasksProvider } from "@/contexts/expand-tasks/ExpandTasksProvider";
@@ -88,6 +89,8 @@ function LayoutComponent() {
 
   return (
     <>
+      <CommandBar teamSlugOrId={teamSlugOrId} />
+
       <ExpandTasksProvider>
         <div className="flex flex-row grow bg-white dark:bg-black">
           <Sidebar

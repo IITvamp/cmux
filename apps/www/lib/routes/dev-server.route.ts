@@ -1,7 +1,8 @@
 import type { ServerToWorkerEvents, WorkerToServerEvents } from "@cmux/shared";
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { MorphCloudClient } from "morphcloud";
-import { io, Socket } from "socket.io-client";
+import { DEFAULT_MORPH_SNAPSHOT_ID } from "@/lib/utils/morph-defaults";
+import { io, type Socket } from "socket.io-client";
 
 // Define the request schema based on StartTaskSchema
 const StartDevServerSchema = z.object({
@@ -151,7 +152,7 @@ devServerRouter.openapi(startDevServerRoute, async (c) => {
 
     // Start the instance with provided or default snapshot
     const instance = await client.instances.start({
-      snapshotId: body.snapshotId || "snapshot_kco1jqb6",
+      snapshotId: body.snapshotId || DEFAULT_MORPH_SNAPSHOT_ID,
       ttlSeconds: body.ttlSeconds || 60 * 30, // Default 30 minutes
       ttlAction: "pause",
       metadata: {
@@ -182,10 +183,13 @@ devServerRouter.openapi(startDevServerRoute, async (c) => {
     console.log(`VSCode URL: ${vscodeUrl}`);
 
     // Connect to the worker management namespace
-    const clientSocket = io(workerService.url + "/management", {
+    const clientSocket: Socket<
+      WorkerToServerEvents,
+      ServerToWorkerEvents
+    > = io(workerService.url + "/management", {
       timeout: 10000,
       reconnectionAttempts: 3,
-    }) as Socket<WorkerToServerEvents, ServerToWorkerEvents>;
+    });
 
     let terminalCreated = false;
 

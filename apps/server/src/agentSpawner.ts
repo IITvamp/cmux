@@ -21,9 +21,8 @@ import {
 import { getConvex } from "./utils/convexClient.js";
 import { getAuthToken, runWithAuthToken } from "./utils/requestContext.js";
 import { serverLogger } from "./utils/fileLogger.js";
-import { workerExec } from "./utils/workerExec.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
-import { MorphVSCodeInstance } from "./vscode/MorphVSCodeInstance.js";
+import { CmuxVSCodeInstance } from "./vscode/CmuxVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWorktreePath, setupProjectWorkspace } from "./workspace.js";
 import { retryOnOptimisticConcurrency } from "./utils/convexRetry.js";
@@ -42,10 +41,11 @@ export async function spawnAgent(
   agent: AgentConfig,
   taskId: Id<"tasks">,
   options: {
-    repoUrl: string;
+    repoUrl?: string;
     branch?: string;
     taskDescription: string;
     isCloudMode?: boolean;
+    environmentId?: Id<"environments"> | string;
     images?: Array<{
       src: string;
       fileName?: string;
@@ -241,7 +241,7 @@ export async function spawnAgent(
       for (const keyConfig of agent.apiKeys) {
         const key = apiKeys[keyConfig.envVar];
         if (key && key.trim().length > 0) {
-          const injectName = keyConfig.mapToEnvVar || keyConfig.envVar;
+          const injectName = keyConfig.mapToEnvVar || keyConfig.envVar;   
           envVars[injectName] = key;
         }
       }
@@ -276,13 +276,17 @@ export async function spawnAgent(
     console.log("[AgentSpawner] [isCloudMode]", options.isCloudMode);
 
     if (options.isCloudMode) {
-      // For Morph, create the instance and we'll clone the repo via socket command
-      vscodeInstance = new MorphVSCodeInstance({
+      // For remote sandboxes (Morph-backed via www API)
+      vscodeInstance = new CmuxVSCodeInstance({
         agentName: agent.name,
         taskRunId,
         taskId,
         theme: options.theme,
         teamSlugOrId,
+        repoUrl: options.repoUrl,
+        branch: options.branch,
+        newBranch,
+        environmentId: options.environmentId as Id<"environments"> | undefined,
       });
 
       worktreePath = "/root/workspace";
@@ -290,15 +294,15 @@ export async function spawnAgent(
       // For Docker, set up worktree as before
       const worktreeInfo = await getWorktreePath(
         {
-          repoUrl: options.repoUrl,
+          repoUrl: options.repoUrl!,
           branch: newBranch,
         },
         teamSlugOrId
       );
 
       // Setup workspace
-      const workspaceResult = await setupProjectWorkspace({
-        repoUrl: options.repoUrl,
+  const workspaceResult = await setupProjectWorkspace({
+        repoUrl: options.repoUrl!,
         // If not provided, setupProjectWorkspace detects default from origin
         branch: options.branch,
         worktreeInfo,
@@ -352,33 +356,16 @@ export async function spawnAgent(
       `VSCode instance spawned for agent ${agent.name}: ${vscodeUrl}`
     );
 
-    if (options.isCloudMode) {
-      // then we need to set up the repo
-      console.log("[AgentSpawner] [isCloudMode] Cloning repo");
-      await workerExec({
-        workerSocket: vscodeInstance.getWorkerSocket(),
-        command: "bash",
-        args: [
-          "-c",
-          // `git clone --depth=1 ${options.repoUrl} /root/workspace && git checkout ${newBranch} && git pull`,
-          `git pull && git switch -c ${newBranch}`,
-        ],
-        cwd: "/root",
-        env: {},
-      });
-      console.log("[AgentSpawner] [isCloudMode] Repo cloned!");
-
-      if (vscodeInstance instanceof MorphVSCodeInstance) {
-        console.log("[AgentSpawner] [isCloudMode] Setting up devcontainer");
-        void vscodeInstance
-          .setupDevcontainer()
-          .catch((err) =>
-            serverLogger.error(
-              "[AgentSpawner] setupDevcontainer encountered an error",
-              err
-            )
-          );
-      }
+    if (options.isCloudMode && vscodeInstance instanceof CmuxVSCodeInstance) {
+      console.log("[AgentSpawner] [isCloudMode] Setting up devcontainer");
+      void vscodeInstance
+        .setupDevcontainer()
+        .catch((err) =>
+          serverLogger.error(
+            "[AgentSpawner] setupDevcontainer encountered an error",
+            err
+          )
+        );
     }
 
     // Start file watching for real-time diff updates
@@ -916,12 +903,13 @@ export async function spawnAgent(
 export async function spawnAllAgents(
   taskId: Id<"tasks">,
   options: {
-    repoUrl: string;
+    repoUrl?: string;
     branch?: string;
     taskDescription: string;
     prTitle?: string;
     selectedAgents?: string[];
     isCloudMode?: boolean;
+    environmentId?: Id<"environments"> | string;
     images?: Array<{
       src: string;
       fileName?: string;

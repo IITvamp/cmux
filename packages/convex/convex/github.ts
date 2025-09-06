@@ -43,6 +43,34 @@ export const getBranches = authQuery({
       )
       .filter((q) => q.eq(q.field("repo"), repo))
       .collect();
+    // Single-pass deterministic sort:
+    // 1) Pin common branches first: main, dev, master, develop
+    // 2) Most recent activity desc (undefined last)
+    // 3) Creation time desc
+    // 4) Name asc (stable, deterministic tie-breaker)
+    const pinnedOrder = new Map<
+      string,
+      number
+    >([
+      ["main", 0],
+      ["dev", 1],
+      ["master", 2],
+      ["develop", 3],
+    ]);
+    branches.sort((a, b) => {
+      const pa = pinnedOrder.get(a.name) ?? Number.POSITIVE_INFINITY;
+      const pb = pinnedOrder.get(b.name) ?? Number.POSITIVE_INFINITY;
+      if (pa !== pb) return pa - pb;
+
+      const aAct = a.lastActivityAt ?? -Infinity;
+      const bAct = b.lastActivityAt ?? -Infinity;
+      if (aAct !== bAct) return bAct - aAct;
+
+      if (a._creationTime !== b._creationTime)
+        return b._creationTime - a._creationTime;
+
+      return a.name.localeCompare(b.name);
+    });
     return branches.map((b) => b.name);
   },
 });
@@ -121,7 +149,9 @@ export const assignProviderConnectionToTeam = authMutation({
     const now = Date.now();
     const row = await ctx.db
       .query("providerConnections")
-      .withIndex("by_installationId", (q) => q.eq("installationId", installationId))
+      .withIndex("by_installationId", (q) =>
+        q.eq("installationId", installationId)
+      )
       .first();
     if (!row) throw new Error("Installation not found");
     await ctx.db.patch(row._id, {
@@ -141,7 +171,9 @@ export const removeProviderConnection = authMutation({
     const teamId = await getTeamId(ctx, teamSlugOrId);
     const row = await ctx.db
       .query("providerConnections")
-      .withIndex("by_installationId", (q) => q.eq("installationId", installationId))
+      .withIndex("by_installationId", (q) =>
+        q.eq("installationId", installationId)
+      )
       .first();
     if (!row || row.teamId !== teamId) throw new Error("Not found");
     await ctx.db.patch(row._id, {
@@ -324,6 +356,67 @@ export const bulkInsertBranches = authMutation({
       )
     );
     return insertedIds;
+  },
+});
+
+// Upsert branches with activity metadata (name, lastActivityAt, lastCommitSha)
+export const bulkUpsertBranchesWithActivity = authMutation({
+  args: {
+    teamSlugOrId: v.string(),
+    repo: v.string(),
+    branches: v.array(
+      v.object({
+        name: v.string(),
+        lastActivityAt: v.optional(v.number()),
+        lastCommitSha: v.optional(v.string()),
+      })
+    ),
+  },
+  handler: async (ctx, { teamSlugOrId, repo, branches }) => {
+    const userId = ctx.identity.subject;
+    const teamId = await getTeamId(ctx, teamSlugOrId);
+
+    const existing = await ctx.db
+      .query("branches")
+      .withIndex("by_team_user", (q) =>
+        q.eq("teamId", teamId).eq("userId", userId)
+      )
+      .filter((q) => q.eq(q.field("repo"), repo))
+      .collect();
+    const byName = new Map(existing.map((b) => [b.name, b] as const));
+
+    const now = Date.now();
+    const ops = branches.map(async (b) => {
+      const row = byName.get(b.name);
+      if (row) {
+        // Patch only if values changed to reduce writes
+        const patch: Record<string, unknown> = {};
+        if (
+          typeof b.lastActivityAt === "number" &&
+          b.lastActivityAt !== row.lastActivityAt
+        ) {
+          patch.lastActivityAt = b.lastActivityAt;
+        }
+        if (b.lastCommitSha && b.lastCommitSha !== row.lastCommitSha) {
+          patch.lastCommitSha = b.lastCommitSha;
+        }
+        if (Object.keys(patch).length > 0) {
+          await ctx.db.patch(row._id, patch);
+        }
+        return row._id;
+      }
+      return await ctx.db.insert("branches", {
+        repo,
+        name: b.name,
+        userId,
+        teamId,
+        lastCommitSha: b.lastCommitSha,
+        lastActivityAt: b.lastActivityAt ?? now,
+      });
+    });
+
+    const ids = await Promise.all(ops);
+    return ids;
   },
 });
 
