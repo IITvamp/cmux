@@ -49,10 +49,8 @@ cp -r out "$APP_ASAR_DIR/"
 cp package.json "$APP_ASAR_DIR/"
 
 # Copy node_modules and dereference pnpm symlinks so runtime has real files
-# But exclude workspace packages that are already bundled
-echo "Copying dependencies (excluding bundled workspace packages)..."
-rsync -a --exclude='@cmux/server' --exclude='@cmux/shared' --exclude='@cmux/convex' \
-  node_modules/ "$APP_ASAR_DIR/node_modules/"
+echo "Copying dependencies..."
+cp -r node_modules "$APP_ASAR_DIR/"
 
 # Update Info.plist
 echo "Updating app metadata..."
