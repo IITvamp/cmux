@@ -21,7 +21,8 @@ import path, { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import util from "node:util";
 import { env } from "./electron-main-env";
-import { startSimpleEmbeddedServer } from "./simple-embedded-server";
+// Import the IPC-based embedded server
+import { startEmbeddedServer } from "./embedded-server";
 
 // Use a cookieable HTTPS origin intercepted locally instead of a custom scheme.
 const PARTITION = "persist:cmux";
@@ -243,11 +244,11 @@ app.on("open-url", (_event, url) => {
 });
 
 app.whenReady().then(async () => {
-  // Start the simple embedded server with IPC transport
+  // Start the embedded server over IPC (no HTTP port needed)
   try {
-    mainLog("Starting simple embedded server with IPC transport...");
-    startSimpleEmbeddedServer();
-    mainLog("Simple embedded server started successfully");
+    mainLog("Starting embedded server over IPC...");
+    await startEmbeddedServer();
+    mainLog("Embedded server started successfully over IPC");
   } catch (error) {
     mainError("Failed to start embedded server:", error);
   }

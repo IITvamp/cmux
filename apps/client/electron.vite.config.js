@@ -4,18 +4,24 @@ import react from "@vitejs/plugin-react";
 import { defineConfig, externalizeDepsPlugin } from "electron-vite";
 import { resolve } from "node:path";
 import tsconfigPaths from "vite-tsconfig-paths";
+import { resolveWorkspacePackages } from "./electron-vite-plugin-resolve-workspace.js";
 
 const envDir = resolve("../../");
 
 export default defineConfig({
   main: {
-    plugins: [externalizeDepsPlugin()],
+    plugins: [
+      resolveWorkspacePackages(),
+      externalizeDepsPlugin({
+        // Don't externalize workspace packages - we want to bundle them
+        exclude: ["@cmux/server", "@cmux/shared", "@cmux/convex"]
+      })
+    ],
     build: {
       rollupOptions: {
         input: {
           index: resolve("electron/main/index.ts"),
         },
-        external: ["@cmux/server"],
       },
     },
     // Load env vars from repo root so NEXT_PUBLIC_* from .env/.env.local apply
@@ -23,7 +29,10 @@ export default defineConfig({
     envPrefix: "NEXT_PUBLIC_",
   },
   preload: {
-    plugins: [externalizeDepsPlugin()],
+    plugins: [externalizeDepsPlugin({
+      // Don't externalize workspace packages
+      exclude: ["@cmux/server", "@cmux/shared", "@cmux/convex"]
+    })],
     build: {
       rollupOptions: {
         input: {

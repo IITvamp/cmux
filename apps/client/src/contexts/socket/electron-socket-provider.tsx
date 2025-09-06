@@ -4,9 +4,9 @@ import { useLocation } from "@tanstack/react-router";
 import { authJsonQueryOptions } from "../convex/authJsonQueryOptions";
 import { cachedGetUser } from "../../lib/cachedGetUser";
 import { stackClientApp } from "../../lib/stack";
+import { IPCSocketClient } from "../../lib/ipc-socket-client";
 import { WebSocketContext } from "./socket-context";
 import type { SocketContextType } from "./types";
-import { IPCSocketClient } from "../../lib/ipc-socket-client";
 
 // ElectronSocketProvider uses IPC to communicate with embedded server
 export const ElectronSocketProvider: React.FC<React.PropsWithChildren> = ({
@@ -50,44 +50,56 @@ export const ElectronSocketProvider: React.FC<React.PropsWithChildren> = ({
         query.auth_json = JSON.stringify(authJson);
       }
 
-      console.log("[ElectronSocket] Creating IPC socket connection");
-      const newSocket = new IPCSocketClient(query);
-      
-      createdSocket = newSocket;
-      if (disposed) {
-        newSocket.disconnect();
-        return;
-      }
-      
-      newSocket.connect();
-      setSocket(newSocket as any);
+      if (disposed) return;
 
-      newSocket.on("connect", () => {
-        console.log("[ElectronSocket] connected via IPC");
+      console.log("[ElectronSocket] Connecting via IPC...");
+      
+      // Create and connect IPC socket client
+      createdSocket = new IPCSocketClient(query);
+      
+      createdSocket.on("connect", () => {
+        if (disposed) return;
+        console.log("[ElectronSocket] Connected via IPC");
         setIsConnected(true);
       });
 
-      newSocket.on("disconnect", () => {
-        console.warn("[ElectronSocket] disconnected");
+      createdSocket.on("disconnect", () => {
+        if (disposed) return;
+        console.log("[ElectronSocket] Disconnected from IPC");
         setIsConnected(false);
       });
 
-      newSocket.on("connect_error", (err: any) => {
-        console.error("[ElectronSocket] connect_error", err);
+      createdSocket.on("connect_error", (error: unknown) => {
+        console.error("[ElectronSocket] Connection error:", error);
       });
 
-      newSocket.on("available-editors", (data: any) => {
-        setAvailableEditors(data as SocketContextType["availableEditors"]);
+      createdSocket.on("available-editors", (editors: unknown) => {
+        if (disposed) return;
+        console.log("[ElectronSocket] Available editors:", editors);
+        setAvailableEditors(editors as SocketContextType["availableEditors"]);
       });
+
+      // Connect the socket
+      createdSocket.connect();
+
+      if (!disposed) {
+        // Cast to any to satisfy Socket type requirement
+        setSocket(createdSocket as any);
+      }
     })();
 
     return () => {
       disposed = true;
-      if (createdSocket) createdSocket.disconnect();
+      if (createdSocket) {
+        console.log("[ElectronSocket] Cleaning up IPC socket");
+        createdSocket.disconnect();
+        setSocket(null);
+        setIsConnected(false);
+      }
     };
   }, [authToken, teamSlugOrId]);
 
-  const contextValue: SocketContextType = useMemo(
+  const contextValue = useMemo<SocketContextType>(
     () => ({
       socket,
       isConnected,
