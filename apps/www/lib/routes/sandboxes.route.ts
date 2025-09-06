@@ -6,6 +6,7 @@ import { env } from "@/lib/utils/www-env";
 import { api } from "@cmux/convex/api";
 import { DEFAULT_MORPH_SNAPSHOT_ID } from "@/lib/utils/morph-defaults";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { MorphCloudClient } from "morphcloud";
 import {
   generateGitHubInstallationToken,
@@ -19,6 +20,8 @@ export const sandboxesRouter = new OpenAPIHono();
 const StartSandboxBody = z
   .object({
     teamSlugOrId: z.string(),
+    // Provide either an environmentId (preferred) or a raw snapshotId
+    environmentId: typedZid("environments").optional(),
     snapshotId: z.string().optional(),
     ttlSeconds: z.number().optional().default(20 * 60),
     metadata: z.record(z.string(), z.string()).optional(),
@@ -83,9 +86,46 @@ sandboxesRouter.openapi(
         teamSlugOrId: body.teamSlugOrId,
       });
 
+      // Determine snapshotId with access checks
+      const token = await getAccessTokenFromRequest(c.req.raw);
+      if (!token) return c.text("Unauthorized", 401);
+      const convex = getConvex({ accessToken: token });
+
+      let resolvedSnapshotId: string | null = null;
+
+      if (body.environmentId) {
+        // Verify the environment belongs to this team
+        const envDoc = await convex.query(api.environments.get, {
+          teamSlugOrId: body.teamSlugOrId,
+          id: body.environmentId as unknown as string & {
+            __tableName: "environments";
+          },
+        });
+        if (!envDoc) {
+          return c.text("Environment not found or not accessible", 403);
+        }
+        resolvedSnapshotId = envDoc.morphSnapshotId;
+      } else if (body.snapshotId) {
+        // Ensure the provided snapshotId belongs to one of the team's environments
+        const envs = await convex.query(api.environments.list, {
+          teamSlugOrId: body.teamSlugOrId,
+        });
+        const match = envs.find((e) => e.morphSnapshotId === body.snapshotId);
+        if (!match) {
+          return c.text(
+            "Forbidden: Snapshot does not belong to this team",
+            403
+          );
+        }
+        resolvedSnapshotId = match.morphSnapshotId;
+      } else {
+        // Fall back to default snapshot if nothing provided
+        resolvedSnapshotId = DEFAULT_MORPH_SNAPSHOT_ID;
+      }
+
       const client = new MorphCloudClient({ apiKey: env.MORPH_API_KEY });
       const instance = await client.instances.start({
-        snapshotId: body.snapshotId || DEFAULT_MORPH_SNAPSHOT_ID,
+        snapshotId: resolvedSnapshotId,
         ttlSeconds: body.ttlSeconds ?? 20 * 60,
         ttlAction: "pause",
         metadata: {

@@ -21,6 +21,7 @@ export class CmuxVSCodeInstance extends VSCodeInstance {
   private repoUrl?: string;
   private branch?: string;
   private newBranch?: string;
+  private environmentId?: string;
 
   constructor(config: VSCodeInstanceConfig) {
     super(config);
@@ -28,10 +29,12 @@ export class CmuxVSCodeInstance extends VSCodeInstance {
       repoUrl?: string;
       branch?: string;
       newBranch?: string;
+      environmentId?: string;
     };
     this.repoUrl = cfg.repoUrl;
     this.branch = cfg.branch;
     this.newBranch = cfg.newBranch;
+    this.environmentId = cfg.environmentId;
   }
 
   async start(): Promise<VSCodeInstanceInfo> {
@@ -48,6 +51,7 @@ export class CmuxVSCodeInstance extends VSCodeInstance {
           taskRunId: String(this.taskRunId),
           agentName: this.config.agentName || "",
         },
+        ...(this.environmentId ? { environmentId: this.environmentId } : {}),
         ...(this.repoUrl
           ? {
               repoUrl: this.repoUrl,

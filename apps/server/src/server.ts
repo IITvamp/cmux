@@ -351,6 +351,7 @@ export async function startServer({
             prTitle: generatedTitle ?? undefined,
             selectedAgents: taskData.selectedAgents,
             isCloudMode: taskData.isCloudMode,
+            environmentId: taskData.environmentId,
             images: taskData.images,
             theme: taskData.theme,
           },
