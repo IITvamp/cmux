@@ -81,66 +81,6 @@ wait_for_dockerd() {
     fi
 }
 
-# Function to start devcontainer if present
-start_devcontainer() {
-    echo "[Startup] Checking for devcontainer configuration..." >> /var/log/cmux/startup.log
-    
-    # Wait for Docker to be ready first
-    wait_for_dockerd
-    
-    # Clean up any stale Docker resources
-    echo "[Startup] Cleaning up stale Docker resources..." >> /var/log/cmux/startup.log
-    docker system prune -f >/dev/null 2>&1 || true
-    # Kill any defunct docker-proxy processes
-    pkill -9 docker-proxy 2>/dev/null || true
-    
-    # Check if devcontainer.json exists in the workspace
-    if [ -f "/root/workspace/.devcontainer/devcontainer.json" ]; then
-        echo "[Startup] Found .devcontainer/devcontainer.json, starting devcontainer..." >> /var/log/cmux/startup.log
-        
-        # Start the devcontainer in the background using @devcontainers/cli
-        # Use a subshell to ensure errors don't propagate
-        (
-            cd /root/workspace
-            
-            # First, start the devcontainer
-            bunx @devcontainers/cli up --workspace-folder . >> /var/log/cmux/devcontainer.log 2>&1 || {
-                echo "[Startup] Devcontainer startup failed (non-fatal), check logs at /var/log/cmux/devcontainer.log" >> /var/log/cmux/startup.log
-                echo "[Startup] Devcontainer error (non-fatal): $(tail -5 /var/log/cmux/devcontainer.log)" >> /var/log/cmux/startup.log
-                exit 0  # Exit subshell but don't fail
-            }
-            
-            echo "[Startup] Devcontainer started successfully" >> /var/log/cmux/startup.log
-            
-            # If devcontainer started successfully and dev.sh exists, run it
-            if [ -f "/root/workspace/scripts/dev.sh" ]; then
-                echo "[Startup] Running ./scripts/dev.sh in devcontainer..." >> /var/log/cmux/startup.log
-                
-                # Get the container name/id from the devcontainer CLI output
-                CONTAINER_ID=$(bunx @devcontainers/cli read-configuration --workspace-folder . 2>/dev/null | grep -o '"containerId":"[^"]*"' | cut -d'"' -f4)
-                
-                if [ -n "$CONTAINER_ID" ]; then
-                    # Execute dev.sh inside the devcontainer
-                    docker exec -d "$CONTAINER_ID" bash -c "cd /root/workspace && ./scripts/dev.sh" >> /var/log/cmux/devcontainer-dev.log 2>&1 || {
-                        echo "[Startup] Failed to run dev.sh in devcontainer (non-fatal)" >> /var/log/cmux/startup.log
-                    }
-                    echo "[Startup] Started dev.sh in devcontainer (logs at /var/log/cmux/devcontainer-dev.log)" >> /var/log/cmux/startup.log
-                else
-                    # Fallback: try to run it directly if we can't get container ID
-                    bunx @devcontainers/cli exec --workspace-folder . bash -c "./scripts/dev.sh" >> /var/log/cmux/devcontainer-dev.log 2>&1 &
-                    echo "[Startup] Attempted to run dev.sh via devcontainer CLI (logs at /var/log/cmux/devcontainer-dev.log)" >> /var/log/cmux/startup.log
-                fi
-            else
-                echo "[Startup] No scripts/dev.sh found in workspace, skipping dev script" >> /var/log/cmux/startup.log
-            fi
-        ) &
-        
-        echo "[Startup] Devcontainer startup initiated in background (logs at /var/log/cmux/devcontainer.log)" >> /var/log/cmux/startup.log
-    else
-        echo "[Startup] No .devcontainer/devcontainer.json found, skipping devcontainer startup" >> /var/log/cmux/startup.log
-    fi
-}
-
 # Create log and lifecycle directories
 mkdir -p /var/log/cmux /root/lifecycle
 
@@ -226,11 +166,6 @@ export WORKER_PORT=39377
 # temporary hack to get around Claude's --dangerously-skip-permissions cannot be used with root/sudo privileges for security reasons
 export IS_SANDBOX=true
 
-# Start Docker readiness check and devcontainer in background
-# start_devcontainer &
-
-# Start default empty tmux session for cmux that the agent will be spawned in
-# (cd /root/workspace && tmux new-session -d -s cmux)
 
 rm -f /startup.sh
 

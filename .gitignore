@@ -32,3 +32,5 @@ out
 # Binary files
 cmux-cli
 .vercel
+
+__pycache__
