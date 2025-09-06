@@ -1,6 +1,7 @@
 import type { ServerToWorkerEvents, WorkerToServerEvents } from "@cmux/shared";
 import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { MorphCloudClient } from "morphcloud";
+import { DEFAULT_MORPH_SNAPSHOT_ID } from "@/lib/utils/morph-defaults";
 import { io, Socket } from "socket.io-client";
 
 // Define the request schema based on StartTaskSchema
@@ -151,7 +152,7 @@ devServerRouter.openapi(startDevServerRoute, async (c) => {
 
     // Start the instance with provided or default snapshot
     const instance = await client.instances.start({
-      snapshotId: body.snapshotId || "snapshot_kco1jqb6",
+      snapshotId: body.snapshotId || DEFAULT_MORPH_SNAPSHOT_ID,
       ttlSeconds: body.ttlSeconds || 60 * 30, // Default 30 minutes
       ttlAction: "pause",
       metadata: {

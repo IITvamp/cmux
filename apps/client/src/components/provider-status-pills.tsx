@@ -1,9 +1,4 @@
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useSocket } from "@/contexts/socket/use-socket";
 import type { ProviderStatus, ProviderStatusResponse } from "@cmux/shared";
 import { useNavigate } from "@tanstack/react-router";
@@ -73,8 +68,7 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
         isVisible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2"
       )}
     >
-      <TooltipProvider>
-        <div className="flex items-center gap-2 pointer-events-auto">
+      <div className="flex items-center gap-2 pointer-events-auto">
           {/* Summary pill when there are issues */}
           <Tooltip>
             <TooltipTrigger asChild>
@@ -271,7 +265,6 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
             </Tooltip>
           )}
         </div>
-      </TooltipProvider>
-    </div>
+      </div>
   );
 }

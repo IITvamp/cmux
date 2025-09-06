@@ -8,6 +8,8 @@ import { useLocation } from "@tanstack/react-router";
 import React, { useEffect, useMemo } from "react";
 import { io, Socket } from "socket.io-client";
 import { authJsonQueryOptions } from "../convex/authJsonQueryOptions";
+import { cachedGetUser } from "../../lib/cachedGetUser";
+import { stackClientApp } from "../../lib/stack";
 import { SocketContext } from "./socket-context";
 
 export interface SocketContextType {
@@ -47,33 +49,50 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
     if (!authToken) {
       return;
     }
-    const query: Record<string, string> = { auth: authToken };
-    if (teamSlugOrId) {
-      query.team = teamSlugOrId;
-    }
+    let disposed = false;
+    let createdSocket: Socket<ServerToClientEvents, ClientToServerEvents> | null = null;
+    (async () => {
+      // Fetch full auth JSON for server to forward as x-stack-auth
+      const user = await cachedGetUser(stackClientApp);
+      const authJson = user ? await user.getAuthJson() : undefined;
 
-    const newSocket = io(url, {
-      transports: ["websocket"],
-      query,
-    });
-    setSocket(newSocket);
+      const query: Record<string, string> = { auth: authToken };
+      if (teamSlugOrId) {
+        query.team = teamSlugOrId;
+      }
+      if (authJson) {
+        query.auth_json = JSON.stringify(authJson);
+      }
 
-    newSocket.on("connect", () => {
-      console.log("Socket connected");
-      setIsConnected(true);
-    });
+      const newSocket = io(url, {
+        transports: ["websocket"],
+        query,
+      });
+      createdSocket = newSocket;
+      if (disposed) {
+        newSocket.disconnect();
+        return;
+      }
+      setSocket(newSocket);
 
-    newSocket.on("disconnect", () => {
-      console.log("Socket disconnected");
-      setIsConnected(false);
-    });
+      newSocket.on("connect", () => {
+        console.log("Socket connected");
+        setIsConnected(true);
+      });
 
-    newSocket.on("available-editors", (data) => {
-      setAvailableEditors(data);
-    });
+      newSocket.on("disconnect", () => {
+        console.log("Socket disconnected");
+        setIsConnected(false);
+      });
+
+      newSocket.on("available-editors", (data) => {
+        setAvailableEditors(data);
+      });
+    })();
 
     return () => {
-      newSocket.disconnect();
+      disposed = true;
+      if (createdSocket) createdSocket.disconnect();
     };
   }, [url, authToken, teamSlugOrId]);
 

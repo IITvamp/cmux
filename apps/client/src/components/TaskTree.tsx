@@ -324,7 +324,7 @@ function TaskRunTreeInner({
         {/* Crown icon shown before status icon, with tooltip */}
         {run.isCrowned && (
           <div className="flex-shrink-0 absolute left-0 pt-[5.5px] pl-[26px]">
-            <Tooltip>
+            <Tooltip delayDuration={0}>
               <TooltipTrigger asChild>
                 <Crown className="w-3 h-3 text-yellow-500" />
               </TooltipTrigger>
@@ -572,7 +572,9 @@ function TaskRunTreeInner({
           style={{ paddingLeft: `${24 + (level + 1) * 16}px` }}
         >
           <GitPullRequest className="w-3 h-3 mr-2 text-neutral-400" />
-          <span className="text-neutral-600 dark:text-neutral-400">Pull Request</span>
+          <span className="text-neutral-600 dark:text-neutral-400">
+            Pull Request
+          </span>
         </Link>
       )}
 

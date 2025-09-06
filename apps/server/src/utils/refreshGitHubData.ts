@@ -90,17 +90,19 @@ export async function refreshBranchesForRepo(
   teamSlugOrId: string
 ) {
   try {
-    const branches = await ghApi.getRepoBranches(repo);
+    // Fetch branches with activity metadata
+    const branches = await ghApi.getRepoBranchesWithActivity(repo);
 
     if (branches.length > 0) {
-      await getConvex().mutation(api.github.bulkInsertBranches, {
+      await getConvex().mutation(api.github.bulkUpsertBranchesWithActivity, {
         teamSlugOrId,
         repo,
         branches,
       });
     }
 
-    return branches;
+    // Return names to callers (legacy shape)
+    return branches.map((b) => b.name);
   } catch (error) {
     if (error instanceof Error && "status" in error && error.status === 401) {
       serverLogger.info(
