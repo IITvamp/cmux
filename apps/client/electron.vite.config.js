@@ -10,7 +10,7 @@ const envDir = resolve("../../");
 
 export default defineConfig({
   main: {
-    plugins: [],
+    plugins: [resolveWorkspacePackages()],
     build: {
       rollupOptions: {
         input: {
@@ -23,7 +23,7 @@ export default defineConfig({
     envPrefix: "NEXT_PUBLIC_",
   },
   preload: {
-    plugins: [],
+    plugins: [resolveWorkspacePackages()],
     build: {
       rollupOptions: {
         input: {

@@ -1,12 +1,14 @@
-import React, { useEffect, useMemo } from "react";
+import { type MainServerSocket } from "@cmux/shared/socket";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "@tanstack/react-router";
-import { authJsonQueryOptions } from "../convex/authJsonQueryOptions";
+import React, { useEffect, useMemo } from "react";
 import { cachedGetUser } from "../../lib/cachedGetUser";
-import { stackClientApp } from "../../lib/stack";
 import { IPCSocketClient } from "../../lib/ipc-socket-client";
+import { stackClientApp } from "../../lib/stack";
+import { authJsonQueryOptions } from "../convex/authJsonQueryOptions";
 import { WebSocketContext } from "./socket-context";
 import type { SocketContextType } from "./types";
+
 
 // ElectronSocketProvider uses IPC to communicate with embedded server
 export const ElectronSocketProvider: React.FC<React.PropsWithChildren> = ({
@@ -83,8 +85,8 @@ export const ElectronSocketProvider: React.FC<React.PropsWithChildren> = ({
       createdSocket.connect();
 
       if (!disposed) {
-        // Cast to any to satisfy Socket type requirement
-        setSocket(createdSocket as any);
+        // Cast to Socket type to satisfy type requirement
+        setSocket(createdSocket as unknown as MainServerSocket);
       }
     })();
 
