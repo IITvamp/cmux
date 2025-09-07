@@ -21,6 +21,8 @@ export interface SelectOptionObject {
   icon?: React.ReactNode;
   // Stable key for the icon, used for de-duplication in stacked view
   iconKey?: string;
+  // Render as a non-selectable heading row
+  heading?: boolean;
 }
 
 export type SelectOption = string | SelectOptionObject;
@@ -40,6 +42,8 @@ export interface SearchableSelectProps {
   countLabel?: string;
   // Optional icon rendered at the start of the trigger (outside option labels)
   leftIcon?: React.ReactNode;
+  // Optional footer rendered below the scroll container
+  footer?: React.ReactNode;
 }
 
 function normalizeOptions(options: SelectOption[]): SelectOptionObject[] {
@@ -55,6 +59,18 @@ interface OptionItemProps {
 }
 
 function OptionItem({ opt, isSelected, onSelectValue }: OptionItemProps) {
+  if (opt.heading) {
+    return (
+      <div className="flex items-center gap-2 min-w-0 flex-1 pl-1 pr-3 py-1 h-[28px] text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">
+        {opt.icon ? (
+          <span className="shrink-0 inline-flex items-center justify-center">
+            {opt.icon}
+          </span>
+        ) : null}
+        <span className="truncate select-none">{opt.label}</span>
+      </div>
+    );
+  }
   return (
     <CommandItem
       value={`${opt.label} ${opt.value}`}
@@ -67,7 +83,7 @@ function OptionItem({ opt, isSelected, onSelectValue }: OptionItemProps) {
             {opt.icon}
           </span>
         ) : null}
-        <span className="truncate">{opt.label}</span>
+        <span className="truncate select-none">{opt.label}</span>
         {opt.isUnavailable ? (
           <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
         ) : null}
@@ -97,6 +113,7 @@ export function SearchableSelect({
   disabled = false,
   countLabel = "selected",
   leftIcon,
+  footer,
 }: SearchableSelectProps) {
   const normOptions = useMemo(() => normalizeOptions(options), [options]);
   const valueToOption = useMemo(
@@ -145,7 +162,7 @@ export function SearchableSelect({
               {selectedOpt.icon}
             </span>
           ) : null}
-          <span className="truncate">{label}</span>
+          <span className="truncate select-none">{label}</span>
         </span>
       );
     }
@@ -181,12 +198,14 @@ export function SearchableSelect({
               </span>
             ))}
           </span>
-          <span className="truncate">{`${value.length} ${countLabel}`}</span>
+          <span className="truncate select-none">{`${value.length} ${countLabel}`}</span>
         </span>
       );
     }
     // Fallback: show count only
-    return <span className="truncate">{`${value.length} ${countLabel}`}</span>;
+    return (
+      <span className="truncate select-none">{`${value.length} ${countLabel}`}</span>
+    );
   }, [
     countLabel,
     loading,
@@ -285,10 +304,10 @@ export function SearchableSelect({
           align="start"
           sideOffset={2}
           className={clsx(
-            "z-50 rounded-md border",
+            "z-50 rounded-md border overflow-hidden",
             "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950",
             // Fade out on close; open remains instant
-            "p-0 shadow-md outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0"
+            "p-0 drop-shadow-xs outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0"
           )}
           style={{ width: 300 }}
         >
@@ -315,7 +334,7 @@ export function SearchableSelect({
             ) : (
               <CommandList
                 ref={listRef}
-                className="max-h-[300px] overflow-y-auto"
+                className="max-h-[38px] overflow-y-auto"
               >
                 {filteredOptions.length === 0 ? (
                   <CommandEmpty>No options</CommandEmpty>
@@ -380,6 +399,11 @@ export function SearchableSelect({
               </CommandList>
             )}
           </Command>
+          {footer ? (
+            <div className="border-t border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950">
+              {footer}
+            </div>
+          ) : null}
         </Popover.Content>
       </Popover.Portal>
     </Popover.Root>

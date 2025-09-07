@@ -155,6 +155,11 @@ export async function startServer({
       return;
     }
 
+    serverLogger.info("Closing HTTP server...");
+    httpServer.close(() => {
+      console.log("HTTP server closed");
+    });
+
     isCleaningUp = true;
     serverLogger.info("Cleaning up terminals and server...");
 

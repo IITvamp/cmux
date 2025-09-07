@@ -18,3 +18,4 @@ onlyBuiltDependencies:
   - keytar
   - protobufjs
   - ssh2
+  - workerd
