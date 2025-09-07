@@ -35,9 +35,9 @@ async function fork({ vmId }: { vmId: string }) {
   return await result.json();
 }
 
-// const vmId = "bqavy";
+const vmId = "bqavy";
 // const vmId = "hwfod"; // suspended one
-const vmId = "zbnra"; // stopped one
+// const vmId = "zbnra"; // stopped one
 
 console.log("Forking VM:", vmId);
 console.time("Fork");
