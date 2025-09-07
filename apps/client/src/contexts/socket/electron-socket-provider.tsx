@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "@tanstack/react-router";
 import React, { useEffect, useMemo } from "react";
 import { cachedGetUser } from "../../lib/cachedGetUser";
-import { IPCSocketClient } from "../../lib/ipc-socket-client";
+import { CmuxIpcSocketClient } from "@/lib/cmux-ipc-socket-client";
 import { stackClientApp } from "../../lib/stack";
 import { authJsonQueryOptions } from "../convex/authJsonQueryOptions";
 import { ElectronSocketContext } from "./socket-context";
@@ -37,7 +37,7 @@ export const ElectronSocketProvider: React.FC<React.PropsWithChildren> = ({
     }
 
     let disposed = false;
-    let createdSocket: IPCSocketClient | null = null;
+    let createdSocket: CmuxIpcSocketClient | null = null;
 
     (async () => {
       // Fetch full auth JSON for server
@@ -54,10 +54,10 @@ export const ElectronSocketProvider: React.FC<React.PropsWithChildren> = ({
 
       if (disposed) return;
 
-      console.log("[ElectronSocket] Connecting via IPC...");
-      
-      // Create and connect IPC socket client
-      createdSocket = new IPCSocketClient(query);
+      console.log("[ElectronSocket] Connecting via IPC (cmux)...");
+
+      // Create and connect IPC socket client via cmux IPC transport
+      createdSocket = new CmuxIpcSocketClient(query);
       
       createdSocket.on("connect", () => {
         if (disposed) return;

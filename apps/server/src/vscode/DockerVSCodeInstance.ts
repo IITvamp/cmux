@@ -71,9 +71,8 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     // We'll take the first 12 chars for a shorter container name
     const shortId = getShortId(this.taskRunId);
     this.containerName = `cmux-${shortId}`;
+    // Use a published default image so packaged apps work without local builds
     this.imageName = process.env.WORKER_IMAGE_NAME || "cmux-worker:0.0.1";
-    // this.imageName =
-    //   process.env.WORKER_IMAGE_NAME || "lawrencecchen/cmux:0.2.16";
     dockerLogger.info(`WORKER_IMAGE_NAME: ${process.env.WORKER_IMAGE_NAME}`);
     dockerLogger.info(`this.imageName: ${this.imageName}`);
     // Register this instance
@@ -93,8 +92,6 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
       try {
         const stream = await docker.pull(this.imageName);
-
-        // Wait for pull to complete
         await new Promise((resolve, reject) => {
           docker.modem.followProgress(
             stream,
@@ -115,7 +112,6 @@ export class DockerVSCodeInstance extends VSCodeInstance {
             }
           );
         });
-
         dockerLogger.info(`Successfully pulled image ${this.imageName}`);
       } catch (pullError) {
         dockerLogger.error(
