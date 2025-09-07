@@ -278,13 +278,13 @@ app.on("open-url", (_event, url) => {
 });
 
 app.whenReady().then(async () => {
-  // Start the embedded server over IPC (no HTTP port needed)
+  // Start the embedded IPC server (registers cmux:register and cmux:rpc)
   try {
-    mainLog("Starting embedded server over IPC...");
+    mainLog("Starting embedded IPC server...");
     await startEmbeddedServer();
-    mainLog("Embedded server started successfully over IPC");
+    mainLog("Embedded IPC server started successfully");
   } catch (error) {
-    mainError("Failed to start embedded server:", error);
+    mainError("Failed to start embedded IPC server:", error);
   }
 
   // Try to register the custom protocol handler with the OS. electron-builder

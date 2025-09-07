@@ -111,16 +111,22 @@ const closeAllLoggers = () => {
   serverLogger.close();
 };
 
+const isElectron = Boolean((process as any).versions?.electron);
+
 process.on("exit", closeAllLoggers);
 process.on("SIGINT", closeAllLoggers);
 process.on("SIGTERM", closeAllLoggers);
+
 process.on("uncaughtException", (error) => {
   serverLogger.error("Uncaught exception:", error);
   closeAllLoggers();
-  process.exit(1);
+  // In Electron main process, do not hard-exit; allow app to continue
+  if (!isElectron) process.exit(1);
 });
+
 process.on("unhandledRejection", (reason, promise) => {
   serverLogger.error("Unhandled rejection at:", promise, "reason:", reason);
   closeAllLoggers();
-  process.exit(1);
+  // In Electron main process, do not hard-exit; allow app to continue
+  if (!isElectron) process.exit(1);
 });

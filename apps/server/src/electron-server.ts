@@ -26,6 +26,10 @@ export async function electronStartServer({
 
   process.on("uncaughtException", (error) => {
     serverLogger.error("Uncaught Exception:", error);
+    // In Electron main process, never hard-exit; log and continue
+    if (process.versions?.electron) {
+      return;
+    }
     // Don't exit for file system errors
     if (
       error &&
@@ -43,7 +47,7 @@ export async function electronStartServer({
         return;
       }
     }
-    // For other critical errors, still exit
+    // For other critical errors in non-Electron contexts, exit
     process.exit(1);
   });
 
@@ -71,8 +75,16 @@ export async function electronStartServer({
 
   serverLogger.info(`Electron IPC server started (no HTTP port)`);
 
-  // Wait for Convex
-  await waitForConvex();
+  // Wait for Convex (non-fatal for Electron: log and continue if unavailable)
+  try {
+    await waitForConvex();
+  } catch (e) {
+    if (process.versions?.electron) {
+      serverLogger.warn("Convex not ready; continuing in Electron context", e);
+    } else {
+      throw e;
+    }
+  }
 
   // Store default repo info if provided
   if (defaultRepo?.remoteName) {
@@ -185,18 +197,20 @@ export async function electronStartServer({
     dockerLogger.close();
   }
 
-  // Handle process termination signals
-  process.on("SIGINT", async () => {
-    serverLogger.info("Received SIGINT, shutting down gracefully...");
-    await cleanup();
-    process.exit(0);
-  });
+  // Handle process termination signals (avoid hard exit in Electron)
+  if (!(process.versions as any)?.electron) {
+    process.on("SIGINT", async () => {
+      serverLogger.info("Received SIGINT, shutting down gracefully...");
+      await cleanup();
+      process.exit(0);
+    });
 
-  process.on("SIGTERM", async () => {
-    serverLogger.info("Received SIGTERM, shutting down gracefully...");
-    await cleanup();
-    process.exit(0);
-  });
+    process.on("SIGTERM", async () => {
+      serverLogger.info("Received SIGTERM, shutting down gracefully...");
+      await cleanup();
+      process.exit(0);
+    });
+  }
 
   // Hot reload support
   if (import.meta.hot) {

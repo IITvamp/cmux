@@ -32,8 +32,12 @@ export function resolveWorkspacePackages() {
         return resolvePath(__dirname, '../../apps/server/src/server.ts');
       }
       
-      if (id === '@cmux/server') {
+  if (id === '@cmux/server') {
         return resolvePath(__dirname, '../../apps/server/src/index.ts');
+      }
+      // Explicit electron entry to avoid .js extension mismatch inside server index
+      if (id === '@cmux/server/electron-server') {
+        return resolvePath(__dirname, '../../apps/server/src/electron-server.ts');
       }
       
       if (id === '@cmux/shared' || id === '@cmux/shared/index') {

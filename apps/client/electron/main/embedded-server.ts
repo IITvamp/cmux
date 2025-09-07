@@ -33,6 +33,7 @@ export async function startEmbeddedServer() {
 // Create an IPC-based implementation of RealtimeServer
 function createIPCRealtimeServer(): RealtimeServer {
   const sockets = new Map<string, IPCSocket>();
+  const webContentsToSocketId = new Map<number, string>();
   const connectionHandlers: Array<(socket: RealtimeSocket) => void> = [];
 
   interface IPCSocket {
@@ -58,6 +59,7 @@ function createIPCRealtimeServer(): RealtimeServer {
       };
 
       sockets.set(socketId, ipcSocket);
+      webContentsToSocketId.set(event.sender.id, socketId);
 
       // Create a RealtimeSocket wrapper for the server handlers
       const realtimeSocket: RealtimeSocket = {
@@ -105,6 +107,81 @@ function createIPCRealtimeServer(): RealtimeServer {
       connectionHandlers.forEach((handler) => handler(realtimeSocket));
 
       return { socketId, connected: true };
+    }
+  );
+
+  // Cmux-style simple register (used by window.cmux.register)
+  ipcMain.handle(
+    "cmux:register",
+    async (
+      event,
+      meta: { auth?: string; team?: string; auth_json?: string }
+    ) => {
+      // Ensure one logical socket per renderer
+      const existingId = webContentsToSocketId.get(event.sender.id);
+      if (existingId) {
+        sockets.delete(existingId);
+      }
+
+      const socketId = `cmux_${event.sender.id}`;
+      const ipcSocket: IPCSocket = {
+        id: socketId,
+        webContents: event.sender,
+        handshake: {
+          query: {
+            auth: meta?.auth,
+            team: meta?.team,
+            auth_json: meta?.auth_json,
+          },
+        },
+        handlers: new Map(),
+        middlewares: [],
+      };
+
+      sockets.set(socketId, ipcSocket);
+      webContentsToSocketId.set(event.sender.id, socketId);
+
+      // Notify connection handlers to wire server-side listeners
+      const realtimeSocket: RealtimeSocket = {
+        id: socketId,
+        handshake: ipcSocket.handshake,
+        on(event: any, handler: any) {
+          if (!ipcSocket.handlers.has(event)) ipcSocket.handlers.set(event, []);
+          ipcSocket.handlers.get(event)!.push(handler);
+        },
+        emit(event: any, ...args: any[]) {
+          if (!ipcSocket.webContents.isDestroyed()) {
+            try {
+              ipcSocket.webContents.send(
+                `socket:event:${socketId}`,
+                event,
+                ...args
+              );
+              // Also emit cmux:event for cmux-style renderer client
+              ipcSocket.webContents.send(`cmux:event:${event}`, ...args);
+            } catch (err) {
+              console.error(`[IPC] Failed to emit ${event}:`, err);
+            }
+          }
+        },
+        use(middleware: (packet: unknown[], next: () => void) => void) {
+          ipcSocket.middlewares.push(middleware);
+        },
+        disconnect() {
+          sockets.delete(socketId);
+          webContentsToSocketId.delete(event.sender.id);
+          if (!ipcSocket.webContents.isDestroyed()) {
+            ipcSocket.webContents.send(
+              `socket:event:${socketId}`,
+              "disconnect"
+            );
+          }
+        },
+      };
+
+      connectionHandlers.forEach((handler) => handler(realtimeSocket));
+
+      return { success: true };
     }
   );
 
@@ -166,6 +243,41 @@ function createIPCRealtimeServer(): RealtimeServer {
     }
   );
 
+  // Cmux-style RPC (invoke single handler expecting ack)
+  ipcMain.handle(
+    "cmux:rpc",
+    async (
+      event,
+      { event: eventName, args }: { event: string; args: unknown[] }
+    ) => {
+      const socketId = webContentsToSocketId.get(event.sender.id);
+      if (!socketId)
+        throw new Error("Socket not registered. Call register first.");
+      const socket = sockets.get(socketId);
+      if (!socket) throw new Error("Socket not found for sender");
+
+      // Execute through middlewares then call the first handler with ack
+      return await new Promise((resolve, reject) => {
+        try {
+          runMiddlewares(socket.middlewares, [eventName, ...args], () => {
+            const handlers = socket.handlers.get(eventName) || [];
+            if (handlers.length === 0) {
+              reject(new Error(`No handler for event: ${eventName}`));
+              return;
+            }
+            const handler = handlers[0];
+            // Provide ack callback as last arg
+            const ack = (result?: unknown) => resolve(result);
+            if (args.length === 0) handler(ack);
+            else handler(...args, ack);
+          });
+        } catch (err) {
+          reject(err);
+        }
+      });
+    }
+  );
+
   // Handle listener registration from renderer
   ipcMain.handle(
     "socket:on",
@@ -194,6 +306,8 @@ function createIPCRealtimeServer(): RealtimeServer {
               event,
               ...args
             );
+            // Also broadcast on cmux:event for cmux-style renderer client
+            socket.webContents.send(`cmux:event:${event}`, ...args);
           } catch (err) {
             console.error(`[IPC] Failed to broadcast ${event}:`, err);
           }
