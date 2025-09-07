@@ -39,6 +39,13 @@ export function resolveWorkspacePackages() {
       if (id === '@cmux/shared' || id === '@cmux/shared/index') {
         return resolvePath(__dirname, '../../packages/shared/src/index.ts');
       }
+      // Explicit subpath mappings for shared
+      if (id === '@cmux/shared/socket') {
+        return resolvePath(__dirname, '../../packages/shared/src/socket-client.ts');
+      }
+      if (id === '@cmux/shared/node/socket') {
+        return resolvePath(__dirname, '../../packages/shared/src/node/socket-server.ts');
+      }
       
       if (id === '@cmux/convex') {
         return resolvePath(__dirname, '../../packages/convex/convex/_generated/server.js');

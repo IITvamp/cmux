@@ -9,6 +9,7 @@ import { authJsonQueryOptions } from "../convex/authJsonQueryOptions";
 import { cachedGetUser } from "../../lib/cachedGetUser";
 import { stackClientApp } from "../../lib/stack";
 import { WebSocketContext } from "./socket-context";
+import { isElectron } from "@/lib/electron";
 
 export interface SocketContextType {
   socket: MainServerSocket | null;
@@ -44,6 +45,12 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
   }, [location.pathname]);
 
   useEffect(() => {
+    // Never attempt network socket connection inside Electron builds.
+    // Also bail if preload exposed the Electron bridges.
+    const w = typeof window !== 'undefined' ? (window as unknown as { cmux?: unknown; electron?: unknown }) : undefined;
+    if (isElectron || w?.cmux || w?.electron) {
+      return;
+    }
     if (!authToken) {
       console.warn("[Socket] No auth token yet; delaying connect");
       return;

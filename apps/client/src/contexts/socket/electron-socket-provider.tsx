@@ -6,7 +6,7 @@ import { cachedGetUser } from "../../lib/cachedGetUser";
 import { IPCSocketClient } from "../../lib/ipc-socket-client";
 import { stackClientApp } from "../../lib/stack";
 import { authJsonQueryOptions } from "../convex/authJsonQueryOptions";
-import { WebSocketContext } from "./socket-context";
+import { ElectronSocketContext } from "./socket-context";
 import type { SocketContextType } from "./types";
 
 
@@ -111,8 +111,8 @@ export const ElectronSocketProvider: React.FC<React.PropsWithChildren> = ({
   );
 
   return (
-    <WebSocketContext.Provider value={contextValue}>
+    <ElectronSocketContext.Provider value={contextValue}>
       {children}
-    </WebSocketContext.Provider>
+    </ElectronSocketContext.Provider>
   );
 };
