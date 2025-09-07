@@ -1,16 +1,20 @@
+import type {
+  AvailableEditors,
+} from "@cmux/shared";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "@tanstack/react-router";
 import React, { useEffect, useMemo } from "react";
+import { connectToMainServer, type MainServerSocket } from "@cmux/shared/socket";
 import { authJsonQueryOptions } from "../convex/authJsonQueryOptions";
 import { cachedGetUser } from "../../lib/cachedGetUser";
 import { stackClientApp } from "../../lib/stack";
 import { WebSocketContext } from "./socket-context";
-import type { SocketContextType } from "./types";
-import type {
-  ClientToServerEvents,
-  ServerToClientEvents,
-} from "@cmux/shared";
-import type { Socket } from "socket.io-client";
+
+export interface SocketContextType {
+  socket: MainServerSocket | null;
+  isConnected: boolean;
+  availableEditors: AvailableEditors | null;
+}
 
 interface SocketProviderProps {
   children: React.ReactNode;
@@ -24,9 +28,9 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
   const authJsonQuery = useQuery(authJsonQueryOptions());
   const authToken = authJsonQuery.data?.accessToken;
   const location = useLocation();
-  const [socket, setSocket] = React.useState<
-    SocketContextType["socket"] | null
-  >(null);
+  const [socket, setSocket] = React.useState<SocketContextType["socket"] | null>(
+    null
+  );
   const [isConnected, setIsConnected] = React.useState(false);
   const [availableEditors, setAvailableEditors] =
     React.useState<SocketContextType["availableEditors"]>(null);
@@ -45,7 +49,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
       return;
     }
     let disposed = false;
-    let createdSocket: Socket<ServerToClientEvents, ClientToServerEvents> | null = null;
+    let createdSocket: MainServerSocket | null = null;
     (async () => {
       // Fetch full auth JSON for server to forward as x-stack-auth
       const user = await cachedGetUser(stackClientApp);
@@ -59,13 +63,11 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
         query.auth_json = JSON.stringify(authJson);
       }
 
-      // Always use Socket.IO - the server runs separately
-      console.log("[Socket] Using Socket.IO transport", { url });
-      // Dynamic import to reduce initial bundle size
-      const { io } = await import("socket.io-client");
-      const newSocket = io(url, {
-        transports: ["websocket"],
-        query,
+      const newSocket = connectToMainServer({
+        url,
+        authToken,
+        teamSlugOrId,
+        authJson,
       });
       
       createdSocket = newSocket;
@@ -92,8 +94,8 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
       console.error("[Socket] connect_error", errorMessage);
     });
 
-      newSocket.on("available-editors", (data) => {
-        setAvailableEditors(data as SocketContextType["availableEditors"]);
+      newSocket.on("available-editors", (data: AvailableEditors) => {
+        setAvailableEditors(data);
       });
     })();
 
