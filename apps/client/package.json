@@ -25,9 +25,7 @@
   "dependencies": {
     "@socket.io/component-emitter": "^3.1.2",
     "@base-ui-components/react": "1.0.0-beta.2",
-    "@cmux/convex": "workspace:*",
-    "@cmux/shared": "workspace:*",
-    "@cmux/www-openapi-client": "workspace:*",
+    
     "@convex-dev/react-query": "^0.0.0-alpha.11",
     "@heroui/react": "^2.8.2",
     "@lexical/code": "^0.32.1",
@@ -106,6 +104,9 @@
     "zod": "^3.25.67"
   },
   "devDependencies": {
+    "@cmux/convex": "workspace:*",
+    "@cmux/shared": "workspace:*",
+    "@cmux/www-openapi-client": "workspace:*",
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
     "@eslint/js": "^9.29.0",
