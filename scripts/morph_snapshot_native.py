@@ -101,9 +101,9 @@ for i in $(seq 1 30); do
   fi
   sleep 2
 done
-docker info >/dev/null 2>&1
-docker compose version >/dev/null 2>&1
-docker buildx version >/dev/null 2>&1
+docker info
+docker compose version
+docker buildx version
 
 # Node 24 (NodeSource installer handles codename/nodistro)
 curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
@@ -141,10 +141,10 @@ unzip -q -o {remote_zip} -d /workspace
     )
 
 
-def _devtools_build(snapshot: Snapshot) -> Snapshot:
+def _devtools_build(instance: Snapshot) -> Snapshot:
     # Dev tools (bun, OpenVSCode), repo builds (worker/envctl/envd), extension installs.
-    return snapshot.exec(
-        r"""
+    return instance.exec(
+        command=r"""
 set -euxo pipefail
 
 # Bun
@@ -247,14 +247,14 @@ cd /workspace
 claude_vsix=$(rg --files /root/.bun/install/cache/@anthropic-ai | rg "claude-code\.vsix$" | head -1)
 [ -n "${claude_vsix:-}" ] || { echo "claude-code.vsix not found in Bun cache" >&2; exit 1; }
 /opt/openvscode-server/bin/openvscode-server --install-extension "$claude_vsix"
-"""
+""",
     )
 
 
-def _systemd_services(snapshot: Snapshot) -> Snapshot:
+def _systemd_services(instance: Snapshot) -> Snapshot:
     # Units must start; failures abort.
-    return snapshot.exec(
-        r"""
+    return instance.exec(
+        command=r"""
 set -euxo pipefail
 
 install -d -m 0755 /var/log/cmux /run/cmux
@@ -356,7 +356,7 @@ if [ "$ok" -ne 1 ]; then
   journalctl -u cmux-openvscode --no-pager -n 200 || true
   exit 1
 fi
-"""
+""",
     )
 
 
@@ -379,7 +379,8 @@ disk_size = 32768
 digest_prefix = "cmux"
 
 zip_hash = _file_sha256_hex(local_zip)
-digest = f"{digest_prefix}_{vcpus}_{memory}_{disk_size}_{zip_hash[:16]}"
+# digest = f"{digest_prefix}_{vcpus}_{memory}_{disk_size}_{zip_hash[:16]}"
+digest = f"{digest_prefix}_{vcpus}_{memory}_{disk_size}"
 
 dotenv.load_dotenv()
 client = MorphCloudClient()
@@ -396,13 +397,14 @@ snapshot = _apt_stack(snapshot)
 print("Upload/unpack workspace")
 snapshot = _upload_workspace(snapshot, local_zip)
 
+print(f"Snapshot ID: {snapshot.id}")
+
 print("Dev tools + builds")
 snapshot = _devtools_build(snapshot)
 
 print("Systemd services + verification")
 snapshot = _systemd_services(snapshot)
 
-print(f"Snapshot ID: {snapshot.id}")
 
 if args.resnapshot:
     instance = client.instances.start(
