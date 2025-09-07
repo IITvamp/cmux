@@ -16,6 +16,8 @@ export interface VSCodeInstanceConfig {
   repoUrl?: string;
   branch?: string;
   newBranch?: string;
+  // Optional: when starting from an environment
+  environmentId?: Id<"environments"> | string;
 }
 
 export interface VSCodeInstanceInfo {

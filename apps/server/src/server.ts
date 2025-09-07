@@ -343,6 +343,7 @@ export async function startServer({
             prTitle: generatedTitle ?? undefined,
             selectedAgents: taskData.selectedAgents,
             isCloudMode: taskData.isCloudMode,
+            environmentId: taskData.environmentId,
             images: taskData.images,
             theme: taskData.theme,
           },
@@ -2087,6 +2088,11 @@ Please address the issue mentioned in the comment above.`;
       );
       return;
     }
+
+    serverLogger.info("Closing HTTP server...");
+    httpServer.close(() => {
+      console.log("HTTP server closed");
+    });
 
     isCleaningUp = true;
     serverLogger.info("Cleaning up terminals and server...");

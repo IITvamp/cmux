@@ -1,26 +1,30 @@
 import { getAccessTokenFromRequest } from "@/lib/utils/auth";
 import { getConvex } from "@/lib/utils/get-convex";
-import { stackServerAppJs } from "@/lib/utils/stack";
-import { verifyTeamAccess } from "@/lib/utils/team-verification";
-import { env } from "@/lib/utils/www-env";
-import { api } from "@cmux/convex/api";
-import { DEFAULT_MORPH_SNAPSHOT_ID } from "@/lib/utils/morph-defaults";
-import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
-import { MorphCloudClient } from "morphcloud";
 import {
   generateGitHubInstallationToken,
   getInstallationForRepo,
 } from "@/lib/utils/github-app-token";
 import { fetchGithubUserInfoForRequest } from "@/lib/utils/githubUserInfo";
 import { selectGitIdentity } from "@/lib/utils/gitIdentity";
+import { DEFAULT_MORPH_SNAPSHOT_ID } from "@/lib/utils/morph-defaults";
+import { verifyTeamAccess } from "@/lib/utils/team-verification";
+import { env } from "@/lib/utils/www-env";
+import { api } from "@cmux/convex/api";
+import { typedZid } from "@cmux/shared/utils/typed-zid";
+import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import { MorphCloudClient } from "morphcloud";
 
 export const sandboxesRouter = new OpenAPIHono();
 
 const StartSandboxBody = z
   .object({
     teamSlugOrId: z.string(),
+    environmentId: z.string().optional(),
     snapshotId: z.string().optional(),
-    ttlSeconds: z.number().optional().default(20 * 60),
+    ttlSeconds: z
+      .number()
+      .optional()
+      .default(20 * 60),
     metadata: z.record(z.string(), z.string()).optional(),
     // Optional hydration parameters to clone a repo into the sandbox on start
     repoUrl: z.string().optional(),
@@ -70,11 +74,22 @@ sandboxesRouter.openapi(
     },
   }),
   async (c) => {
-    // Require authentication
-    const user = await stackServerAppJs.getUser({ tokenStore: c.req.raw });
-    if (!user) return c.text("Unauthorized", 401);
+    // Require authentication (via access token header/cookie)
+    const accessToken = await getAccessTokenFromRequest(c.req.raw);
+    if (!accessToken) return c.text("Unauthorized", 401);
 
     const body = c.req.valid("json");
+    try {
+      console.log("[sandboxes.start] incoming", {
+        teamSlugOrId: body.teamSlugOrId,
+        hasEnvId: Boolean(body.environmentId),
+        hasSnapshotId: Boolean(body.snapshotId),
+        repoUrl: body.repoUrl,
+        branch: body.branch,
+      });
+    } catch {
+      /* noop */
+    }
 
     try {
       // Verify team access
@@ -83,14 +98,51 @@ sandboxesRouter.openapi(
         teamSlugOrId: body.teamSlugOrId,
       });
 
+      // Determine snapshotId with access checks
+      const convex = getConvex({ accessToken });
+
+      let resolvedSnapshotId: string | null = null;
+
+      if (body.environmentId) {
+        const environmentId = typedZid("environments").parse(
+          body.environmentId
+        );
+        // Verify the environment belongs to this team
+        const envDoc = await convex.query(api.environments.get, {
+          teamSlugOrId: body.teamSlugOrId,
+          id: environmentId,
+        });
+        if (!envDoc) {
+          return c.text("Environment not found or not accessible", 403);
+        }
+        resolvedSnapshotId = envDoc.morphSnapshotId;
+      } else if (body.snapshotId) {
+        // Ensure the provided snapshotId belongs to one of the team's environments
+        const envs = await convex.query(api.environments.list, {
+          teamSlugOrId: body.teamSlugOrId,
+        });
+        const match = envs.find((e) => e.morphSnapshotId === body.snapshotId);
+        if (!match) {
+          return c.text(
+            "Forbidden: Snapshot does not belong to this team",
+            403
+          );
+        }
+        resolvedSnapshotId = match.morphSnapshotId;
+      } else {
+        // Fall back to default snapshot if nothing provided
+        resolvedSnapshotId = DEFAULT_MORPH_SNAPSHOT_ID;
+      }
+
       const client = new MorphCloudClient({ apiKey: env.MORPH_API_KEY });
       const instance = await client.instances.start({
-        snapshotId: body.snapshotId || DEFAULT_MORPH_SNAPSHOT_ID,
+        snapshotId: resolvedSnapshotId,
         ttlSeconds: body.ttlSeconds ?? 20 * 60,
         ttlAction: "pause",
         metadata: {
           app: "cmux",
           teamId: team.uuid,
+          ...(body.environmentId ? { environmentId: body.environmentId } : {}),
           ...(body.metadata || {}),
         },
       });
@@ -139,7 +191,9 @@ sandboxesRouter.openapi(
       // Optional: Hydrate repo inside the sandbox
       if (body.repoUrl) {
         console.log(`[sandboxes.start] Hydrating repo for ${instance.id}`);
-        const match = body.repoUrl.match(/github\.com\/?([^\s/]+)\/([^\s/.]+)(?:\.git)?/i);
+        const match = body.repoUrl.match(
+          /github\.com\/?([^\s/]+)\/([^\s/.]+)(?:\.git)?/i
+        );
         if (!match) {
           return c.text("Unsupported repo URL; expected GitHub URL", 400);
         }
@@ -184,7 +238,7 @@ sandboxesRouter.openapi(
             `bash -lc "echo '${githubToken}' | gh auth login --with-token 2>&1 || true"`
           );
           console.log(
-            `[sandboxes.start] gh auth login exit=${ghRes.exit_code} stderr=${(ghRes.stderr || "").slice(0,200)}`
+            `[sandboxes.start] gh auth login exit=${ghRes.exit_code} stderr=${(ghRes.stderr || "").slice(0, 200)}`
           );
 
           // Git credential store for HTTPS operations
@@ -192,7 +246,7 @@ sandboxesRouter.openapi(
             `bash -lc "git config --global credential.helper store && printf '%s\\n' 'https://x-access-token:${githubToken}@github.com' > /root/.git-credentials && (git config --global --get credential.helper || true) && (test -f /root/.git-credentials && wc -c /root/.git-credentials || true)"`
           );
           console.log(
-            `[sandboxes.start] git creds configured exit=${credRes.exit_code} out=${(credRes.stdout||'').replace(/:[^@]*@/g, ':***@').slice(0,200)}`
+            `[sandboxes.start] git creds configured exit=${credRes.exit_code} out=${(credRes.stdout || "").replace(/:[^@]*@/g, ":***@").slice(0, 200)}`
           );
 
           const depth = body.depth ?? 1;
@@ -217,7 +271,7 @@ sandboxesRouter.openapi(
               `bash -lc "git clone --depth ${depth} https://x-access-token:${githubToken}@github.com/${owner}/${repo}.git ${workspace}"`
             );
             console.log(
-              `[sandboxes.start] clone exit=${cloneRes.exit_code} stderr=${(cloneRes.stderr||'').slice(0,300)}`
+              `[sandboxes.start] clone exit=${cloneRes.exit_code} stderr=${(cloneRes.stderr || "").slice(0, 300)}`
             );
             if (cloneRes.exit_code !== 0) {
               return c.text("Failed to clone repository", 500);
@@ -227,7 +281,7 @@ sandboxesRouter.openapi(
               `bash -lc "cd ${workspace} && git fetch --all --prune"`
             );
             console.log(
-              `[sandboxes.start] fetch exit=${fetchRes.exit_code} stderr=${(fetchRes.stderr||'').slice(0,200)}`
+              `[sandboxes.start] fetch exit=${fetchRes.exit_code} stderr=${(fetchRes.stderr || "").slice(0, 200)}`
             );
           }
 
@@ -236,14 +290,14 @@ sandboxesRouter.openapi(
             `bash -lc "cd ${workspace} && (git checkout ${baseBranch} || git checkout -b ${baseBranch} origin/${baseBranch}) && git pull --ff-only || true"`
           );
           console.log(
-            `[sandboxes.start] checkout ${baseBranch} exit=${coRes.exit_code} stderr=${(coRes.stderr||'').slice(0,200)}`
+            `[sandboxes.start] checkout ${baseBranch} exit=${coRes.exit_code} stderr=${(coRes.stderr || "").slice(0, 200)}`
           );
           if (body.newBranch) {
             const nbRes = await instance.exec(
               `bash -lc "cd ${workspace} && git switch -C ${body.newBranch}"`
             );
             console.log(
-              `[sandboxes.start] switch -C ${body.newBranch} exit=${nbRes.exit_code} stderr=${(nbRes.stderr||'').slice(0,200)}`
+              `[sandboxes.start] switch -C ${body.newBranch} exit=${nbRes.exit_code} stderr=${(nbRes.stderr || "").slice(0, 200)}`
             );
           }
 
@@ -251,7 +305,7 @@ sandboxesRouter.openapi(
             `bash -lc "ls -la ${workspace} | head -50"`
           );
           console.log(
-            `[sandboxes.start] workspace listing:\n${lsRes.stdout || ''}`
+            `[sandboxes.start] workspace listing:\n${lsRes.stdout || ""}`
           );
         } catch (e) {
           console.error(`[sandboxes.start] Hydration failed:`, e);
@@ -362,7 +416,6 @@ sandboxesRouter.openapi(
   }
 );
 
-
 // Publish devcontainer forwarded ports (read devcontainer.json inside instance, expose, persist to Convex)
 sandboxesRouter.openapi(
   createRoute({
@@ -414,41 +467,77 @@ sandboxesRouter.openapi(
       const instance = await client.instances.get({ instanceId: id });
 
       const CMUX_PORTS = new Set([39376, 39377, 39378]);
-      // Attempt to read devcontainer.json
+
+      // Attempt to read devcontainer.json for declared forwarded ports
       const devcontainerJson = await instance.exec(
         "cat /root/workspace/.devcontainer/devcontainer.json"
       );
-      if (devcontainerJson.exit_code !== 0) {
-        return c.text("devcontainer.json not found", 200);
-      }
-      const parsed = JSON.parse(devcontainerJson.stdout || "{}") as {
-        forwardPorts?: number[];
-      };
-      const ports = Array.isArray(parsed.forwardPorts)
+      const parsed =
+        devcontainerJson.exit_code === 0
+          ? (JSON.parse(devcontainerJson.stdout || "{}") as {
+              forwardPorts?: number[];
+            })
+          : { forwardPorts: [] as number[] };
+
+      const devcontainerPorts = Array.isArray(parsed.forwardPorts)
         ? (parsed.forwardPorts as number[])
         : [];
-      // Validate ports and avoid CMUX ports
-      for (const p of ports) {
-        if (CMUX_PORTS.has(p)) {
-          return c.text(`Port ${p} is reserved by cmux`, 400);
+
+      // Read environmentId from instance metadata (set during start)
+      const instanceMeta = (
+        instance as unknown as {
+          metadata?: { environmentId?: string };
         }
-      }
-      // Expose ports
-      for (const p of ports) {
+      ).metadata;
+
+      // Resolve environment-exposed ports (preferred)
+      const convex = getConvex({ accessToken: token });
+      let environmentPorts: number[] | undefined;
+      if (instanceMeta?.environmentId) {
         try {
-          await instance.exposeHttpService(`port-${p}` as const, p);
+          const envDoc = await convex.query(api.environments.get, {
+            teamSlugOrId,
+            id: instanceMeta.environmentId as string & {
+              __tableName: "environments";
+            },
+          });
+          environmentPorts = envDoc?.exposedPorts ?? undefined;
         } catch {
-          // continue exposing other ports
+          // ignore lookup errors; fall back to devcontainer ports
         }
       }
 
-      // Build networking list
+      // Build the set of ports we want to expose and persist
+      const allowedPorts = new Set<number>();
+      const addAllowed = (p: number) => {
+        if (!Number.isFinite(p)) return;
+        const pn = Math.floor(p);
+        if (pn > 0 && !CMUX_PORTS.has(pn)) allowedPorts.add(pn);
+      };
+
+      // Prefer environment.exposedPorts if available; otherwise use devcontainer forwardPorts
+      (environmentPorts && environmentPorts.length > 0
+        ? environmentPorts
+        : devcontainerPorts
+      ).forEach(addAllowed);
+
+      // Expose each allowed port in Morph (best-effort)
+      await Promise.all(
+        Array.from(allowedPorts).map(async (p) => {
+          try {
+            await instance.exposeHttpService(`port-${p}` as const, p);
+          } catch {
+            // continue exposing other ports
+          }
+        })
+      );
+
+      // Intersect exposed HTTP services with allowed ports
       const networking = instance.networking.httpServices
-        .filter((s) => !CMUX_PORTS.has(s.port))
+        .filter((s) => allowedPorts.has(s.port))
         .map((s) => ({ status: "running" as const, port: s.port, url: s.url }));
 
       // Persist to Convex
-      const convex = getConvex({ accessToken: token });
       await convex.mutation(api.taskRuns.updateNetworking, {
         teamSlugOrId,
         id: taskRunId as unknown as string & { __tableName: "taskRuns" },
