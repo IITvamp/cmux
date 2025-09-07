@@ -2,7 +2,7 @@ name: Rust
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [main]
   pull_request:
 
 jobs:
@@ -26,4 +26,3 @@ jobs:
 
       - name: Run tests
         run: cargo test --workspace --all-targets --all-features --verbose
-
