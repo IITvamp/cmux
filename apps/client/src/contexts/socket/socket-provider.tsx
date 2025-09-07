@@ -4,14 +4,14 @@ import type {
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "@tanstack/react-router";
 import React, { useEffect, useMemo } from "react";
-import { connectToMainServer } from "@cmux/shared/socket";
+import { connectToMainServer, type MainServerSocket } from "@cmux/shared/socket";
 import { authJsonQueryOptions } from "../convex/authJsonQueryOptions";
 import { cachedGetUser } from "../../lib/cachedGetUser";
 import { stackClientApp } from "../../lib/stack";
 import { SocketContext } from "./socket-context";
 
 export interface SocketContextType {
-  socket: ReturnType<typeof connectToMainServer> | null;
+  socket: MainServerSocket | null;
   isConnected: boolean;
   availableEditors: AvailableEditors | null;
 }
@@ -48,7 +48,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
       return;
     }
     let disposed = false;
-    let createdSocket: ReturnType<typeof connectToMainServer> | null = null;
+    let createdSocket: MainServerSocket | null = null;
     (async () => {
       // Fetch full auth JSON for server to forward as x-stack-auth
       const user = await cachedGetUser(stackClientApp);
@@ -85,7 +85,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
         setIsConnected(false);
       });
 
-      newSocket.on("available-editors", (data) => {
+      newSocket.on("available-editors", (data: AvailableEditors) => {
         setAvailableEditors(data);
       });
     })();

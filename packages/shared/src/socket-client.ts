@@ -38,6 +38,12 @@ export function connectToMainServer(
   >;
 }
 
+// Typed socket aliases for consumers
+export type MainServerSocket = Socket<
+  ServerToClientEvents,
+  ClientToServerEvents
+>;
+
 export interface WorkerManagementClientParams {
   url: string; // base worker URL, e.g., http://host:39377
   timeoutMs?: number;
