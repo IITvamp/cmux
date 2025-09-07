@@ -21,7 +21,17 @@ import {
 import path, { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import util from "node:util";
-import { env } from "./electron-main-env";
+import { promises as fs } from "node:fs";
+// Load env lazily to avoid startup crashes if validation fails
+async function getEnv() {
+  try {
+    const m = await import("./electron-main-env");
+    return m.env as { NEXT_PUBLIC_STACK_PROJECT_ID?: string };
+  } catch (e) {
+    // Fallback to non-fatal defaults
+    return { NEXT_PUBLIC_STACK_PROJECT_ID: "unknown" } as const;
+  }
+}
 // Import the IPC-based embedded server
 import { startEmbeddedServer } from "./embedded-server";
 
@@ -82,6 +92,30 @@ export function mainError(...args: unknown[]) {
   console.error("[MAIN]", line);
   emitToRenderer("error", `[MAIN] ${line}`);
 }
+
+// Write critical errors to a file to aid debugging packaged crashes
+async function writeFatalLog(...args: unknown[]) {
+  try {
+    const ts = new Date().toISOString().replace(/[:.]/g, "-");
+    const base = app.getPath("userData");
+    const file = path.join(base, `fatal-${ts}.log`);
+    const msg = formatArgs(args);
+    await fs.writeFile(file, msg + "\n", { encoding: "utf8" });
+  } catch {}
+}
+
+process.on("uncaughtException", (err) => {
+  try {
+    console.error("[MAIN] uncaughtException", err);
+  } catch {}
+  void writeFatalLog("uncaughtException", err);
+});
+process.on("unhandledRejection", (reason) => {
+  try {
+    console.error("[MAIN] unhandledRejection", reason);
+  } catch {}
+  void writeFatalLog("unhandledRejection", reason);
+});
 
 // Auto‑updates removed - doesn't work properly
 // function setupAutoUpdates() {
@@ -382,6 +416,7 @@ async function handleProtocolUrl(url: string): Promise<void> {
     currentUrl.hash = "";
     const realUrl = currentUrl.toString() + "/";
 
+    const env = await getEnv();
     await Promise.all([
       mainWindow.webContents.session.cookies.remove(
         realUrl,

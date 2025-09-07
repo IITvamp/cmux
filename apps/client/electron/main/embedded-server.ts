@@ -1,11 +1,15 @@
 import { ipcMain } from "electron";
 import type { RealtimeServer, RealtimeSocket } from "@cmux/server/realtime";
-import { setupSocketHandlers } from "@cmux/server/socket-handlers";
-import { GitDiffManager } from "@cmux/server/gitDiff";
 
 // This starts the full server functionality over IPC (no HTTP port needed)
 export async function startEmbeddedServer() {
   console.log("[EmbeddedServer] Starting full server over IPC transport");
+
+  // Lazily import server pieces to avoid loading failures before app is ready
+  const [{ setupSocketHandlers }, { GitDiffManager }] = await Promise.all([
+    import("@cmux/server/socket-handlers"),
+    import("@cmux/server/gitDiff"),
+  ]);
 
   // Initialize the git diff manager
   const gitDiffManager = new GitDiffManager();
