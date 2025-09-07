@@ -4,6 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { connectToWorkerManagement } from "@cmux/shared/socket";
+import { io } from "socket.io-client";
 
 try {
   const daytona = new Daytona();
@@ -151,12 +152,22 @@ try {
     console.log("Worker registered:", data);
 
     // Test creating a terminal
-    managementSocket.emit("worker:create-terminal", {
-      terminalId: "test-terminal-1",
-      cols: 80,
-      rows: 24,
-      cwd: "/",
-    });
+    managementSocket.emit(
+      "worker:create-terminal",
+      {
+        terminalId: "test-terminal-1",
+        cols: 80,
+        rows: 24,
+        cwd: "/",
+      },
+      (err) => {
+        if (err) {
+          console.error("Error creating terminal:", err);
+        } else {
+          console.log("Terminal created:", data);
+        }
+      }
+    );
   });
 
   managementSocket.on("worker:terminal-created", (data) => {
@@ -185,10 +196,6 @@ try {
 
   managementSocket.on("worker:heartbeat", (data) => {
     console.log("Worker heartbeat:", data);
-  });
-
-  managementSocket.on("error", (error) => {
-    console.error("Socket error:", error);
   });
 
   // Also test client connection
