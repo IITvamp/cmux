@@ -17,6 +17,7 @@ import {
   type ServerToClientEvents,
   type SocketData,
 } from "@cmux/shared";
+import { getMainServerSocketOptions } from "@cmux/shared/node/socket";
 import fuzzysort from "fuzzysort";
 import { minimatch } from "minimatch";
 import { exec, spawn } from "node:child_process";
@@ -26,7 +27,6 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { Server } from "socket.io";
-import { getMainServerSocketOptions } from "@cmux/shared/node/socket";
 import { spawnAllAgents } from "./agentSpawner.js";
 import { stopContainersForRuns } from "./archiveTask.js";
 import { execWithEnv } from "./execWithEnv.js";
