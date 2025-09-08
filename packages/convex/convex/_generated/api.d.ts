@@ -9,6 +9,7 @@
  */
 
 import type * as apiKeys from "../apiKeys.js";
+import type * as backfill from "../backfill.js";
 import type * as comments from "../comments.js";
 import type * as containerSettings from "../containerSettings.js";
 import type * as crown from "../crown.js";
@@ -47,6 +48,7 @@ import type {
  */
 declare const fullApi: ApiFromModules<{
   apiKeys: typeof apiKeys;
+  backfill: typeof backfill;
   comments: typeof comments;
   containerSettings: typeof containerSettings;
   crown: typeof crown;
