@@ -10,12 +10,15 @@ const envDir = resolve("../../");
 
 export default defineConfig({
   main: {
-    plugins: [resolveWorkspacePackages()],
+    plugins: [resolveWorkspacePackages(
+    )],
+
     build: {
       rollupOptions: {
         input: {
           index: resolve("electron/main/index.ts"),
         },
+        external: ["cpu-features"],
       },
     },
     // Load env vars from repo root so NEXT_PUBLIC_* from .env/.env.local apply
@@ -23,7 +26,8 @@ export default defineConfig({
     envPrefix: "NEXT_PUBLIC_",
   },
   preload: {
-    plugins: [resolveWorkspacePackages()],
+    plugins: [resolveWorkspacePackages(
+    )],
     build: {
       rollupOptions: {
         input: {

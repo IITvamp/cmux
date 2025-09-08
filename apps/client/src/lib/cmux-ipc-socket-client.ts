@@ -49,6 +49,7 @@ export class CmuxIpcSocketClient {
     window.cmux.on(key, (...args: unknown[]) => this.trigger(key, ...args));
     return this;
   }
+  //window.api.cmux
 
   off<E extends keyof ServerToClientEvents>(
     event?: E | string,
