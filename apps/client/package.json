@@ -10,7 +10,7 @@
   "scripts": {
     "dev": "vite",
     "dev:electron": "NEXT_PUBLIC_CONVEX_URL=http://localhost:9777 electron-vite dev -c electron.vite.config.js",
-    "build": "tsc -b && vite build -c vite.config.ts",
+    "build": "tsc -b && ./node_modules/rolldown-vite/bin/vite.js build -c vite.config.ts",
     "build:electron": "node ./scripts/generate-icons.mjs && electron-vite build -c electron.vite.config.js && electron-builder",
     "build:mac": "node ./scripts/generate-icons.mjs && electron-vite build -c electron.vite.config.js && electron-builder --mac",
     "build:mac:workaround": "./build-mac-workaround.sh",
@@ -118,6 +118,7 @@
     "globals": "^16.2.0",
     "npm-run-all": "^4.1.5",
     "png2icons": "^2.0.1",
+    "rolldown-vite": "^7.1.7",
     "tw-animate-css": "^1.3.4",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.34.1",
