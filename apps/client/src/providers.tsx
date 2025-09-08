@@ -1,5 +1,5 @@
-import { ThemeProvider } from "@/components/theme/theme-provider";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { ThemeProvider } from "#/components/theme/theme-provider";
+import { TooltipProvider } from "#/components/ui/tooltip";
 import { HeroUIProvider } from "@heroui/react";
 import { StackProvider, StackTheme } from "@stackframe/react";
 import { QueryClientProvider } from "@tanstack/react-query";

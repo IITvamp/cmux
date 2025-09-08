@@ -1,10 +1,10 @@
-import { FloatingPane } from "@/components/floating-pane";
+import { FloatingPane } from "#/components/floating-pane";
 import { api } from "@cmux/convex/api";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { useMemo } from "react";
-import { ElectronWebViewOrIframe } from "@/components/electron-webview";
+import { ElectronWebViewOrIframe } from "#/components/electron-webview";
 import z from "zod";
 
 const paramsSchema = z.object({

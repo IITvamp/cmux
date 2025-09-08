@@ -1,5 +1,5 @@
-import { FloatingPane } from "@/components/floating-pane";
-import { TaskTimeline } from "@/components/task-timeline";
+import { FloatingPane } from "#/components/floating-pane";
+import { TaskTimeline } from "#/components/task-timeline";
 import { api } from "@cmux/convex/api";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { convexQuery } from "@convex-dev/react-query";

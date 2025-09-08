@@ -1,13 +1,13 @@
-import { Button } from "@/components/ui/button";
+import { Button } from "#/components/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import { stackClientApp } from "@/lib/stack";
-import { isElectron } from "@/lib/electron";
+} from "#/components/ui/card";
+import { stackClientApp } from "#/lib/stack";
+import { isElectron } from "#/lib/electron";
 import { api } from "@cmux/convex/api";
 import { Skeleton } from "@heroui/react";
 import { useStackApp, useUser, type Team } from "@stackframe/react";

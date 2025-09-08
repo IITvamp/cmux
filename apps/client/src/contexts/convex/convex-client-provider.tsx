@@ -1,9 +1,9 @@
 "use client";
 
-import { env } from "@/client-env";
-import { getRandomKitty } from "@/components/kitties";
-import CmuxLogoMark from "@/components/logo/cmux-logo-mark";
-import { isElectron } from "@/lib/electron";
+import { env } from "#/client-env";
+import { getRandomKitty } from "#/components/kitties";
+import CmuxLogoMark from "#/components/logo/cmux-logo-mark";
+import { isElectron } from "#/lib/electron";
 import { SignIn, useUser } from "@stackframe/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Authenticated, ConvexProviderWithAuth } from "convex/react";

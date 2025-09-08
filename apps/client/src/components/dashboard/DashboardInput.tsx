@@ -1,4 +1,4 @@
-import LexicalEditor from "@/components/lexical/LexicalEditor";
+import LexicalEditor from "#/components/lexical/LexicalEditor";
 import clsx from "clsx";
 import { forwardRef, memo, useImperativeHandle, useRef, useMemo } from "react";
 

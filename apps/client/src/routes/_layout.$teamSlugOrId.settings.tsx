@@ -1,8 +1,8 @@
-import { ContainerSettings } from "@/components/ContainerSettings";
-import { FloatingPane } from "@/components/floating-pane";
-import { ProviderStatusSettings } from "@/components/provider-status-settings";
-import { useTheme } from "@/components/theme/use-theme";
-import { TitleBar } from "@/components/TitleBar";
+import { ContainerSettings } from "#/components/ContainerSettings";
+import { FloatingPane } from "#/components/floating-pane";
+import { ProviderStatusSettings } from "#/components/provider-status-settings";
+import { useTheme } from "#/components/theme/use-theme";
+import { TitleBar } from "#/components/TitleBar";
 import { api } from "@cmux/convex/api";
 import type { Doc } from "@cmux/convex/dataModel";
 import { AGENT_CONFIGS, type AgentConfig } from "@cmux/shared/agentConfig";

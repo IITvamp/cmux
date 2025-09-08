@@ -1,6 +1,6 @@
-import { useTheme } from "@/components/theme/use-theme";
-import { useSocket } from "@/contexts/socket/use-socket";
-import { cn } from "@/lib/utils";
+import { useTheme } from "#/components/theme/use-theme";
+import { useSocket } from "#/contexts/socket/use-socket";
+import { cn } from "#/lib/utils";
 import type { Id } from "@cmux/convex/dataModel";
 import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
 import { DiffEditor } from "@monaco-editor/react";

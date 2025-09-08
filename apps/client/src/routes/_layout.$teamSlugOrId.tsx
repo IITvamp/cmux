@@ -1,9 +1,9 @@
-import { CmuxComments } from "@/components/cmux-comments";
-import { CommandBar } from "@/components/CommandBar";
-import { Sidebar } from "@/components/Sidebar";
-import { convexQueryClient } from "@/contexts/convex/convex-query-client";
-import { ExpandTasksProvider } from "@/contexts/expand-tasks/ExpandTasksProvider";
-import { isFakeConvexId } from "@/lib/fakeConvexId";
+import { CmuxComments } from "#/components/cmux-comments";
+import { CommandBar } from "#/components/CommandBar";
+import { Sidebar } from "#/components/Sidebar";
+import { convexQueryClient } from "#/contexts/convex/convex-query-client";
+import { ExpandTasksProvider } from "#/contexts/expand-tasks/ExpandTasksProvider";
+import { isFakeConvexId } from "#/lib/fakeConvexId";
 import { api } from "@cmux/convex/api";
 import { type Id } from "@cmux/convex/dataModel";
 import { convexQuery } from "@convex-dev/react-query";

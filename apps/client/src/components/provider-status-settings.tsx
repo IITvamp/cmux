@@ -1,4 +1,4 @@
-import { useSocket } from "@/contexts/socket/use-socket";
+import { useSocket } from "#/contexts/socket/use-socket";
 import type { ProviderStatus, ProviderStatusResponse } from "@cmux/shared";
 import { AlertCircle, CheckCircle2, RefreshCw, XCircle } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";

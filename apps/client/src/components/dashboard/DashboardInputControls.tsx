@@ -1,15 +1,15 @@
-import { env } from "@/client-env";
-import { AgentLogo } from "@/components/icons/agent-logos";
-import { GitHubIcon } from "@/components/icons/github";
-import { ModeToggleTooltip } from "@/components/ui/mode-toggle-tooltip";
+import { env } from "#/client-env";
+import { AgentLogo } from "#/components/icons/agent-logos";
+import { GitHubIcon } from "#/components/icons/github";
+import { ModeToggleTooltip } from "#/components/ui/mode-toggle-tooltip";
 import SearchableSelect, {
   type SelectOption,
-} from "@/components/ui/searchable-select";
+} from "#/components/ui/searchable-select";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "#/components/ui/tooltip";
 import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
 import { Link, useRouter } from "@tanstack/react-router";
 import clsx from "clsx";

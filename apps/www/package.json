@@ -16,6 +16,7 @@
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^8.1.0",
     "@cmux/convex": "workspace:*",
+    "@cmux/client": "workspace:*",
     "@cmux/shared": "workspace:*",
     "@cmux/www-openapi-client": "workspace:*",
     "@hono/node-server": "^1.18.1",

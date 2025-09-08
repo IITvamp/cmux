@@ -1,5 +1,5 @@
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { isFakeConvexId } from "@/lib/fakeConvexId";
+import { Tooltip, TooltipContent, TooltipTrigger } from "#/components/ui/tooltip";
+import { isFakeConvexId } from "#/lib/fakeConvexId";
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
 import { useQuery } from "convex/react";

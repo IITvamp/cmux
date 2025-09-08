@@ -1,5 +1,5 @@
-import { cachedGetUser } from "@/lib/cachedGetUser";
-import { stackClientApp } from "@/lib/stack";
+import { cachedGetUser } from "#/lib/cachedGetUser";
+import { stackClientApp } from "#/lib/stack";
 import { queryOptions } from "@tanstack/react-query";
 
 export type AuthJson = { accessToken: string | null } | null;

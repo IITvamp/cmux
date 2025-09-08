@@ -1,8 +1,8 @@
-import { FloatingPane } from "@/components/floating-pane";
-import { GitDiffViewer } from "@/components/git-diff-viewer";
-import { TaskDetailHeader } from "@/components/task-detail-header";
-import { type MergeMethod } from "@/components/ui/merge-button";
-import { useSocket } from "@/contexts/socket/use-socket";
+import { FloatingPane } from "#/components/floating-pane";
+import { GitDiffViewer } from "#/components/git-diff-viewer";
+import { TaskDetailHeader } from "#/components/task-detail-header";
+import { type MergeMethod } from "#/components/ui/merge-button";
+import { useSocket } from "#/contexts/socket/use-socket";
 import { api } from "@cmux/convex/api";
 import { type Id } from "@cmux/convex/dataModel";
 import { typedZid } from "@cmux/shared/utils/typed-zid";

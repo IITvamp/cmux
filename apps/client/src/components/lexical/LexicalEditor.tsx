@@ -4,7 +4,7 @@ import {
   type SerializedEditorState,
 } from "lexical";
 
-import { editorStorage } from "@/lib/editorStorage";
+import { editorStorage } from "#/lib/editorStorage";
 import { CodeNode } from "@lexical/code";
 import { AutoLinkNode, LinkNode } from "@lexical/link";
 import { ListItemNode, ListNode } from "@lexical/list";

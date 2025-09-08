@@ -20,7 +20,10 @@
     ],
     
     "paths": {
-      "@/*": ["./*"]
+      "@/*": ["./*"],
+      "#/*": ["../client/src/*"],
+      "@cmux/shared/*": ["../../packages/shared/*"],
+      "@cmux/www-openapi-client/*": ["../../packages/www-openapi-client/*"]
     }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],

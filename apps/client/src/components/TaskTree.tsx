@@ -1,11 +1,11 @@
-import { OpenWithDropdown } from "@/components/OpenWithDropdown";
-import { Dropdown } from "@/components/ui/dropdown";
+import { OpenWithDropdown } from "#/components/OpenWithDropdown";
+import { Dropdown } from "#/components/ui/dropdown";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { useArchiveTask } from "@/hooks/useArchiveTask";
+} from "#/components/ui/tooltip";
+import { useArchiveTask } from "#/hooks/useArchiveTask";
 import { ContextMenu } from "@base-ui-components/react/context-menu";
 import { type Doc, type Id } from "@cmux/convex/dataModel";
 import { Link, useLocation } from "@tanstack/react-router";

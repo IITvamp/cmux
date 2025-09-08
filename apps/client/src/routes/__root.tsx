@@ -1,4 +1,4 @@
-import { useTheme } from "@/components/theme/use-theme";
+import { useTheme } from "#/components/theme/use-theme";
 import type { StackClientApp } from "@stackframe/react";
 import type { QueryClient } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";

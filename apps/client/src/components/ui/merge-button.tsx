@@ -1,4 +1,4 @@
-import { cn } from "@/lib/utils";
+import { cn } from "#/lib/utils";
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu";
 import { ChevronDown, GitMerge, GitPullRequest } from "lucide-react";
 import { useState } from "react";

@@ -1,4 +1,4 @@
-import { useTheme } from "@/components/theme/use-theme";
+import { useTheme } from "#/components/theme/use-theme";
 import { api } from "@cmux/convex/api";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { Command } from "cmdk";

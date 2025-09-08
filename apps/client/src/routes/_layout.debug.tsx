@@ -1,6 +1,6 @@
-import { FloatingPane } from "@/components/floating-pane";
-import { useSocket } from "@/contexts/socket/use-socket";
-import { stackClientApp } from "@/lib/stack";
+import { FloatingPane } from "#/components/floating-pane";
+import { useSocket } from "#/contexts/socket/use-socket";
+import { stackClientApp } from "#/lib/stack";
 import { createFileRoute } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/_layout/debug")({

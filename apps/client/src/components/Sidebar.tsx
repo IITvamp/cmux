@@ -1,7 +1,7 @@
-import { TaskTree, type TaskWithRuns } from "@/components/TaskTree";
-import { TaskTreeSkeleton } from "@/components/TaskTreeSkeleton";
-import { useExpandTasks } from "@/contexts/expand-tasks/ExpandTasksContext";
-import { isElectron } from "@/lib/electron";
+import { TaskTree, type TaskWithRuns } from "#/components/TaskTree";
+import { TaskTreeSkeleton } from "#/components/TaskTreeSkeleton";
+import { useExpandTasks } from "#/contexts/expand-tasks/ExpandTasksContext";
+import { isElectron } from "#/lib/electron";
 import { type Doc } from "@cmux/convex/dataModel";
 import { Link } from "@tanstack/react-router";
 import { Plus, ServerIcon } from "lucide-react";

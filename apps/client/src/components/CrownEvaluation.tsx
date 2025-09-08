@@ -1,4 +1,4 @@
-import { isFakeConvexId } from "@/lib/fakeConvexId";
+import { isFakeConvexId } from "#/lib/fakeConvexId";
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
 import { useQuery } from "convex/react";

@@ -1,4 +1,4 @@
-import { cn } from "@/lib/utils";
+import { cn } from "#/lib/utils";
 import { Switch } from "@heroui/react";
 import { useUser } from "@stackframe/react";
 import { useLocation } from "@tanstack/react-router";

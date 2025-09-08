@@ -1,7 +1,7 @@
-import { OpenWithDropdown } from "@/components/OpenWithDropdown";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useArchiveTask } from "@/hooks/useArchiveTask";
-import { isFakeConvexId } from "@/lib/fakeConvexId";
+import { OpenWithDropdown } from "#/components/OpenWithDropdown";
+import { Tooltip, TooltipContent, TooltipTrigger } from "#/components/ui/tooltip";
+import { useArchiveTask } from "#/hooks/useArchiveTask";
+import { isFakeConvexId } from "#/lib/fakeConvexId";
 import { ContextMenu } from "@base-ui-components/react/context-menu";
 import { api } from "@cmux/convex/api";
 import type { Doc } from "@cmux/convex/dataModel";

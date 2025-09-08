@@ -5,7 +5,7 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-} from "@/components/ui/command";
+} from "#/components/ui/command";
 import { Skeleton } from "@heroui/react";
 import * as Popover from "@radix-ui/react-popover";
 import { useVirtualizer } from "@tanstack/react-virtual";

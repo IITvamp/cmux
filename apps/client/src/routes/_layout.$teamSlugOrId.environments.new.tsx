@@ -1,7 +1,7 @@
-import { EnvironmentConfiguration } from "@/components/EnvironmentConfiguration";
-import { FloatingPane } from "@/components/floating-pane";
-import { RepositoryPicker } from "@/components/RepositoryPicker";
-import { TitleBar } from "@/components/TitleBar";
+import { EnvironmentConfiguration } from "#/components/EnvironmentConfiguration";
+import { FloatingPane } from "#/components/floating-pane";
+import { RepositoryPicker } from "#/components/RepositoryPicker";
+import { TitleBar } from "#/components/TitleBar";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo } from "react";
 

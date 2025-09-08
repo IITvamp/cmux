@@ -1,4 +1,4 @@
-import { useSocket } from "@/contexts/socket/use-socket";
+import { useSocket } from "#/contexts/socket/use-socket";
 import { ChevronDown, ExternalLink } from "lucide-react";
 import { useEffect, useRef, useState, useMemo } from "react";
 

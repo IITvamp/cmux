@@ -1,12 +1,6 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  env: {
-    NEXT_PUBLIC_STACK_PROJECT_ID: process.env.NEXT_PUBLIC_STACK_PROJECT_ID,
-    NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY:
-      process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY,
-    NEXT_PUBLIC_WWW_ORIGIN: process.env.NEXT_PUBLIC_WWW_ORIGIN,
-  },
   serverExternalPackages: ["morphcloud", "ssh2", "node-ssh", "cpu-features"],
   webpack: (config, { isServer }) => {
     if (isServer) {
@@ -19,6 +13,7 @@ const nextConfig: NextConfig = {
     }
     return config;
   },
+  transpilePackages: ["@cmux/client"],
 };
 
 export default nextConfig;

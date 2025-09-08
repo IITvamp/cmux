@@ -1,6 +1,6 @@
-import { convexQueryClient } from "@/contexts/convex/convex-query-client";
-import { FloatingPane } from "@/components/floating-pane";
-import { TitleBar } from "@/components/TitleBar";
+import { convexQueryClient } from "#/contexts/convex/convex-query-client";
+import { FloatingPane } from "#/components/floating-pane";
+import { TitleBar } from "#/components/TitleBar";
 import { api } from "@cmux/convex/api";
 import { convexQuery } from "@convex-dev/react-query";
 import { useSuspenseQuery } from "@tanstack/react-query";

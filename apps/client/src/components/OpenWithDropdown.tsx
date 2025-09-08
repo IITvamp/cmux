@@ -1,6 +1,6 @@
-import { Dropdown } from "@/components/ui/dropdown";
-import { editorIcons, type EditorType } from "@/components/ui/dropdown-types";
-import { useSocket } from "@/contexts/socket/use-socket";
+import { Dropdown } from "#/components/ui/dropdown";
+import { editorIcons, type EditorType } from "#/components/ui/dropdown-types";
+import { useSocket } from "#/contexts/socket/use-socket";
 import type { Doc } from "@cmux/convex/dataModel";
 import clsx from "clsx";
 import { EllipsisVertical, ExternalLink, GitBranch, Globe } from "lucide-react";

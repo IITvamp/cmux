@@ -1,5 +1,5 @@
-import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Button } from "#/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "#/components/ui/tooltip";
 import { Command } from "lucide-react";
 
 interface DashboardStartTaskButtonProps {

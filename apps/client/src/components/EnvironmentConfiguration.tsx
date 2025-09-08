@@ -1,6 +1,6 @@
-import { GitHubIcon } from "@/components/icons/github";
-import { ResizableColumns } from "@/components/ResizableColumns";
-import { parseEnvBlock } from "@/lib/parseEnvBlock";
+import { GitHubIcon } from "#/components/icons/github";
+import { ResizableColumns } from "#/components/ResizableColumns";
+import { parseEnvBlock } from "#/lib/parseEnvBlock";
 import { postApiEnvironmentsMutation } from "@cmux/www-openapi-client/react-query";
 import { Accordion, AccordionItem } from "@heroui/react";
 import { useMutation as useRQMutation } from "@tanstack/react-query";

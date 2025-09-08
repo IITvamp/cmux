@@ -1,4 +1,4 @@
-import { useSocket } from "@/contexts/socket/use-socket";
+import { useSocket } from "#/contexts/socket/use-socket";
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
 import type { SpawnFromComment } from "@cmux/shared";

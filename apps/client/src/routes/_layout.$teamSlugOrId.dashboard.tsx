@@ -1,25 +1,25 @@
 import {
   DashboardInput,
   type EditorApi,
-} from "@/components/dashboard/DashboardInput";
-import { DashboardInputControls } from "@/components/dashboard/DashboardInputControls";
-import { DashboardInputFooter } from "@/components/dashboard/DashboardInputFooter";
-import { DashboardStartTaskButton } from "@/components/dashboard/DashboardStartTaskButton";
-import { TaskList } from "@/components/dashboard/TaskList";
-import { FloatingPane } from "@/components/floating-pane";
-import { GitHubIcon } from "@/components/icons/github";
-import { ProviderStatusPills } from "@/components/provider-status-pills";
-import { useTheme } from "@/components/theme/use-theme";
-import { TitleBar } from "@/components/TitleBar";
-import type { SelectOption } from "@/components/ui/searchable-select";
+} from "#/components/dashboard/DashboardInput";
+import { DashboardInputControls } from "#/components/dashboard/DashboardInputControls";
+import { DashboardInputFooter } from "#/components/dashboard/DashboardInputFooter";
+import { DashboardStartTaskButton } from "#/components/dashboard/DashboardStartTaskButton";
+import { TaskList } from "#/components/dashboard/TaskList";
+import { FloatingPane } from "#/components/floating-pane";
+import { GitHubIcon } from "#/components/icons/github";
+import { ProviderStatusPills } from "#/components/provider-status-pills";
+import { useTheme } from "#/components/theme/use-theme";
+import { TitleBar } from "#/components/TitleBar";
+import type { SelectOption } from "#/components/ui/searchable-select";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { useExpandTasks } from "@/contexts/expand-tasks/ExpandTasksContext";
-import { useSocket } from "@/contexts/socket/use-socket";
-import { createFakeConvexId } from "@/lib/fakeConvexId";
+} from "#/components/ui/tooltip";
+import { useExpandTasks } from "#/contexts/expand-tasks/ExpandTasksContext";
+import { useSocket } from "#/contexts/socket/use-socket";
+import { createFakeConvexId } from "#/lib/fakeConvexId";
 import { api } from "@cmux/convex/api";
 import type { Doc } from "@cmux/convex/dataModel";
 import { convexQuery } from "@convex-dev/react-query";

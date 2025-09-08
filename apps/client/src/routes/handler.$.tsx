@@ -1,4 +1,4 @@
-import { stackClientApp } from "@/lib/stack";
+import { stackClientApp } from "#/lib/stack";
 import { StackHandler } from "@stackframe/react";
 import { createFileRoute, useLocation } from "@tanstack/react-router";
 

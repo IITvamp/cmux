@@ -1,6 +1,6 @@
-import { FloatingPane } from "@/components/floating-pane";
-import { TitleBar } from "@/components/TitleBar";
-import { convexQueryClient } from "@/contexts/convex/convex-query-client";
+import { FloatingPane } from "#/components/floating-pane";
+import { TitleBar } from "#/components/TitleBar";
+import { convexQueryClient } from "#/contexts/convex/convex-query-client";
 import { api } from "@cmux/convex/api";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { convexQuery } from "@convex-dev/react-query";

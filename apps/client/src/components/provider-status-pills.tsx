@@ -1,5 +1,5 @@
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { useSocket } from "@/contexts/socket/use-socket";
+import { Tooltip, TooltipContent, TooltipTrigger } from "#/components/ui/tooltip";
+import { useSocket } from "#/contexts/socket/use-socket";
 import type { ProviderStatus, ProviderStatusResponse } from "@cmux/shared";
 import { useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";

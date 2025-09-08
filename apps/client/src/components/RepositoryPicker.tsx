@@ -1,6 +1,6 @@
-import { env } from "@/client-env";
-import { GitHubIcon } from "@/components/icons/github";
-import { GitLabIcon } from "@/components/icons/gitlab";
+import { env } from "#/client-env";
+import { GitHubIcon } from "#/components/icons/github";
+import { GitLabIcon } from "#/components/icons/gitlab";
 import {
   Command,
   CommandEmpty,
@@ -8,14 +8,14 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-} from "@/components/ui/command";
-import { Skeleton } from "@/components/ui/skeleton";
+} from "#/components/ui/command";
+import { Skeleton } from "#/components/ui/skeleton";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
-import { useDebouncedValue } from "@/hooks/useDebouncedValue";
+} from "#/components/ui/tooltip";
+import { useDebouncedValue } from "#/hooks/useDebouncedValue";
 import { api } from "@cmux/convex/api";
 import {
   getApiIntegrationsGithubReposOptions,

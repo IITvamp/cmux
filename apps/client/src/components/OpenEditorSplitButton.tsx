@@ -1,5 +1,5 @@
-import { editorIcons } from "@/components/ui/dropdown-types";
-import { useSocket } from "@/contexts/socket/use-socket";
+import { editorIcons } from "#/components/ui/dropdown-types";
+import { useSocket } from "#/contexts/socket/use-socket";
 import { Menu } from "@base-ui-components/react/menu";
 import clsx from "clsx";
 import { Check, ChevronDown } from "lucide-react";

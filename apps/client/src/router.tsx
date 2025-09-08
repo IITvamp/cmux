@@ -1,4 +1,4 @@
-import { isElectron } from "@/lib/electron";
+import { isElectron } from "#/lib/electron";
 import { useStackApp } from "@stackframe/react";
 import {
   createHashHistory,

@@ -1,7 +1,7 @@
-import { OpenEditorSplitButton } from "@/components/OpenEditorSplitButton";
-import { Dropdown } from "@/components/ui/dropdown";
-import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
-import { useSocket } from "@/contexts/socket/use-socket";
+import { OpenEditorSplitButton } from "#/components/OpenEditorSplitButton";
+import { Dropdown } from "#/components/ui/dropdown";
+import { MergeButton, type MergeMethod } from "#/components/ui/merge-button";
+import { useSocket } from "#/contexts/socket/use-socket";
 import type { Doc } from "@cmux/convex/dataModel";
 import { Skeleton } from "@heroui/react";
 import { useClipboard } from "@mantine/hooks";
@@ -19,7 +19,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useCallback, useMemo, useState, type CSSProperties } from "react";
-import { isElectron } from "@/lib/electron";
+import { isElectron } from "#/lib/electron";
 import { toast } from "sonner";
 
 interface TaskDetailHeaderProps {
