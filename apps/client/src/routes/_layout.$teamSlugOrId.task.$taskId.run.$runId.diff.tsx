@@ -91,24 +91,18 @@ function RunDiffPage() {
   const diffsQuery = useRQ({
     queryKey: ["run-diffs", selectedRun?._id ?? "none"],
     queryFn: async () =>
-      await new Promise<import("@cmux/shared/diff-types").ReplaceDiffEntry[]>(
-        (resolve, reject) => {
-          if (!selectedRun?._id || !socket) {
-            console.error("No selected run or socket");
-            resolve([]);
-            return;
-          }
-          socket.emit(
-            "get-run-diffs",
-            { taskRunId: selectedRun._id },
-            (resp) => {
-              console.log("get-run-diffs", resp);
-              if (resp.ok) resolve(resp.diffs);
-              else reject(new Error(resp.error || "Failed to load diffs"));
-            }
-          );
+      await new Promise<ReplaceDiffEntry[]>((resolve, reject) => {
+        if (!selectedRun?._id || !socket) {
+          console.error("No selected run or socket");
+          resolve([]);
+          return;
         }
-      ),
+        socket.emit("get-run-diffs", { taskRunId: selectedRun._id }, (resp) => {
+          console.log("get-run-diffs", resp);
+          if (resp.ok) resolve(resp.diffs);
+          else reject(new Error(resp.error || "Failed to load diffs"));
+        });
+      }),
     enabled: !!selectedRun?._id && !!socket,
     staleTime: 10_000,
   });
@@ -135,11 +129,7 @@ function RunDiffPage() {
       socket.emit(
         "get-run-diffs",
         { taskRunId: runId },
-        (resp: {
-          ok: boolean;
-          diffs: import("@cmux/shared/diff-types").ReplaceDiffEntry[];
-          error?: string;
-        }) => {
+        (resp: { ok: boolean; diffs: ReplaceDiffEntry[]; error?: string }) => {
           if (resp.ok && queryClient) {
             queryClient.setQueryData(["run-diffs", runId], resp.diffs);
           }
