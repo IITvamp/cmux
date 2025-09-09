@@ -9,6 +9,25 @@ export function resolveWorkspacePackages() {
     name: "resolve-workspace-packages",
     enforce: "pre",
     resolveId(id, importer) {
+      // Handle .js imports from TypeScript files in @cmux/server
+      // This allows TypeScript to use .js extensions while resolving to .ts files
+      if (importer && importer.includes("apps/server/src/")) {
+        // For relative imports with .js extension from server files
+        if (id.startsWith("./") && id.endsWith(".js")) {
+          const tsPath = resolvePath(
+            dirname(importer),
+            id.replace(/\.js$/, ".ts")
+          );
+          return tsPath;
+        }
+      }
+      
+      // Also handle when electron builds import the server files
+      // When importing @cmux/server files that reference .js extensions internally
+      if (id.endsWith(".js") && id.includes("/apps/server/src/")) {
+        const tsPath = id.replace(/\.js$/, ".ts");
+        return tsPath;
+      }
       if (id === "@cmux/convex/api") {
         return resolvePath(
           __dirname,
