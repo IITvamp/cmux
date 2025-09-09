@@ -12,6 +12,7 @@ import { serverLogger } from "./utils/fileLogger.js";
 import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
 import type { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { retryOnOptimisticConcurrency } from "./utils/convexRetry.js";
+import { getRequestContext, runWithAuth } from "./utils/requestContext.js";
 
 // Handler for completing the task
 export async function handleTaskCompletion({
@@ -134,6 +135,8 @@ export async function handleTaskCompletion({
         );
 
         // Small delay to ensure git diff is fully persisted in Convex
+        // Note: We need to preserve the auth context for the crown evaluation
+        const authContext = getRequestContext();
         setTimeout(async () => {
           try {
             // Check if evaluation is already in progress
@@ -148,7 +151,18 @@ export async function handleTaskCompletion({
               return;
             }
 
-            await evaluateCrownWithClaudeCode(taskRunData.taskId, teamSlugOrId);
+            // Run evaluation with the preserved auth context
+            if (authContext?.authHeaderJson) {
+              await runWithAuth(
+                authContext.authToken,
+                authContext.authHeaderJson,
+                () => evaluateCrownWithClaudeCode(taskRunData.taskId, teamSlugOrId)
+              );
+            } else {
+              // If no auth context, try without it (will likely fail but worth trying)
+              await evaluateCrownWithClaudeCode(taskRunData.taskId, teamSlugOrId);
+            }
+            
             serverLogger.info(
               `[AgentSpawner] Crown evaluation completed successfully`
             );
