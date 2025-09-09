@@ -384,9 +384,6 @@ app.whenReady().then(async () => {
   ensureLogStreams();
   setupConsoleFileMirrors();
 
-  console.log("env", env);
-  console.log("import.meta.env", import.meta.env);
-
   // Ensure macOS menu and About panel use "cmux" instead of package.json name
   if (process.platform === "darwin") {
     try {
