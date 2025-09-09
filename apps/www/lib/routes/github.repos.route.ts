@@ -93,7 +93,7 @@ githubReposRouter.openapi(
     const octokit = new Octokit({
       authStrategy: createAppAuth,
       auth: {
-        appId: env.GITHUB_APP_ID,
+        appId: env.CMUX_GITHUB_APP_ID,
         privateKey: githubPrivateKey,
         installationId: target.installationId,
       },
