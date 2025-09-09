@@ -1,8 +1,6 @@
-import { promises as fs } from "node:fs";
-import * as path from "node:path";
 import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
+import { promises as fs } from "node:fs";
 import { RepositoryManager } from "../repositoryManager.js";
-import { serverLogger } from "../utils/fileLogger.js";
 import { getProjectPaths } from "../workspace.js";
 import { computeEntriesBetweenRefs } from "./parseGitDiff.js";
 
@@ -15,16 +13,25 @@ export interface CompareRefsArgs {
   originPathOverride?: string; // bypass clone/ensure and use this local repo path directly
 }
 
-export async function compareRefsForRepo(args: CompareRefsArgs): Promise<ReplaceDiffEntry[]> {
+export async function compareRefsForRepo(
+  args: CompareRefsArgs
+): Promise<ReplaceDiffEntry[]> {
   const { ref1, ref2, originPathOverride } = args;
 
   let originPath: string;
   if (originPathOverride) {
     originPath = originPathOverride;
   } else {
-    const repoUrl = args.repoUrl ?? (args.repoFullName ? `https://github.com/${args.repoFullName}.git` : undefined);
+    const repoUrl =
+      args.repoUrl ??
+      (args.repoFullName
+        ? `https://github.com/${args.repoFullName}.git`
+        : undefined);
     if (!repoUrl) throw new Error("repoUrl or repoFullName is required");
-    if (!args.teamSlugOrId) throw new Error("teamSlugOrId is required when not using originPathOverride");
+    if (!args.teamSlugOrId)
+      throw new Error(
+        "teamSlugOrId is required when not using originPathOverride"
+      );
 
     const projectPaths = await getProjectPaths(repoUrl, args.teamSlugOrId);
     await fs.mkdir(projectPaths.projectPath, { recursive: true });
@@ -86,10 +93,42 @@ export async function compareRefsForRepo(args: CompareRefsArgs): Promise<Replace
     originPath = projectPaths.originPath;
   }
 
+  // Resolve both refs to commit-ish that exist in the local clone.
+  const repoMgr = RepositoryManager.getInstance();
+  const resolveCommitish = async (
+    repoPath: string,
+    ref: string
+  ): Promise<string> => {
+    const candidates = [
+      ref,
+      `origin/${ref}`,
+      `refs/remotes/origin/${ref}`,
+      `refs/tags/${ref}`,
+    ];
+    for (const cand of candidates) {
+      const ok = await repoMgr
+        .executeGitCommand(`git rev-parse --verify --quiet ${cand}^{commit}`, {
+          cwd: repoPath,
+          suppressErrorLogging: true,
+        })
+        .then(() => true)
+        .catch(() => false);
+      if (ok) return cand;
+    }
+    throw new Error(
+      `Unknown ref '${ref}'. Ensure it exists (e.g., 'origin/${ref}') or push the branch.`
+    );
+  };
+
+  const [resolved1, resolved2] = await Promise.all([
+    resolveCommitish(originPath, ref1),
+    resolveCommitish(originPath, ref2),
+  ]);
+
   const entries = await computeEntriesBetweenRefs({
     repoPath: originPath,
-    ref1,
-    ref2,
+    ref1: resolved1,
+    ref2: resolved2,
     includeContents: true,
   });
   return entries;
