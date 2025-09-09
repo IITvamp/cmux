@@ -1,11 +1,16 @@
 #!/bin/bash
+
+# remove existing build
+rm -rf dist-electron
+rm -rf out
+
 # Build the Electron app first
 echo "Building Electron app..."
 npx electron-vite build -c electron.vite.config.js
 
 # Create a temporary directory for packaging
 TEMP_DIR=$(mktemp -d)
-APP_NAME="Cmux"
+APP_NAME="cmux"
 APP_DIR="$TEMP_DIR/$APP_NAME.app"
 
 echo "Creating app structure at $APP_DIR..."

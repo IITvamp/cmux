@@ -118,9 +118,11 @@ crownRouter.openapi(summarizeRoute, async (c) => {
 
     const anthropic = createAnthropic({ apiKey: env.ANTHROPIC_API_KEY });
 
+    const schema = originalZod.object({ summary: originalZod.string() });
+
     const { object } = await generateObject({
       model: anthropic("claude-opus-4-1-20250805"),
-      schema: originalZod.object({ summary: z.string() }),
+      schema,
       system:
         "You are an expert reviewer summarizing pull requests. Provide a clear, concise summary following the requested format.",
       prompt,
