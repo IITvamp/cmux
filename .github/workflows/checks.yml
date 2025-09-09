@@ -31,12 +31,15 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Lint
-        run: bun run lint
-
-      - name: Typecheck
-        run: bun run typecheck
-
-      - name: Package tests (cmux)
-        run: bun run test
-        working-directory: packages/cmux
+      - name: Checks and tests (parallel on one runner)
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun run check & pid1=$!
+          (cd packages/cmux && bun run test) & pid2=$!
+          wait $pid1; s1=$?
+          wait $pid2; s2=$?
+          if [ $s1 -ne 0 ] || [ $s2 -ne 0 ]; then
+            echo "At least one task failed"
+            exit 1
+          fi
