@@ -9,7 +9,8 @@ export const env = createEnv({
     CMUX_WWW_API_URL: z.url().optional(),
     NEXT_PUBLIC_CONVEX_URL: z.string().min(1),
   },
-  runtimeEnv: process.env || import.meta.env,
+  // Handle both Node and Vite/Bun
+  runtimeEnv: { ...import.meta.env, ...process.env },
   emptyStringAsUndefined: true,
 });
 

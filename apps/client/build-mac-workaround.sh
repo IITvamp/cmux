@@ -4,8 +4,12 @@
 rm -rf dist-electron
 rm -rf out
 
-# Build the Electron app first
+# Build the Electron app first with environment variables loaded
 echo "Building Electron app..."
+# Load environment variables from .env file
+set -a  # Mark all new variables for export
+source ../../.env
+set +a  # Turn off auto-export
 npx electron-vite build -c electron.vite.config.ts
 
 # Create a temporary directory for packaging
