@@ -1,5 +1,5 @@
-import { contextBridge, ipcRenderer } from "electron";
 import { electronAPI } from "@electron-toolkit/preload";
+import { contextBridge, ipcRenderer } from "electron";
 
 const api = {};
 
@@ -71,7 +71,6 @@ contextBridge.exposeInMainWorld("electron", electronAPI);
 contextBridge.exposeInMainWorld("api", api);
 contextBridge.exposeInMainWorld("cmux", cmuxAPI);
 
-console.log("cmuxAPI", cmuxAPI);
 // Mirror main process logs into the renderer console so they show up in
 // DevTools. Avoid exposing tokens or sensitive data in main logs.
 ipcRenderer.on(

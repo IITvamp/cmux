@@ -239,36 +239,106 @@ function createIPCRealtimeServer(): RealtimeServer {
     }
   );
 
-  // Cmux-style RPC (invoke single handler expecting ack)
   ipcMain.handle(
     "cmux:rpc",
     async (
       event,
       { event: eventName, args }: { event: string; args: unknown[] }
     ) => {
+      // Basic payload validation
+      const toSerializableError = (e: unknown) => {
+        if (e instanceof Error) {
+          return { name: e.name, message: e.message, stack: e.stack };
+        }
+        const msg = typeof e === "string" ? e : JSON.stringify(e);
+        return { name: "Error", message: msg, stack: undefined as string | undefined };
+      };
+      if (typeof eventName !== "string" || !Array.isArray(args)) {
+        return Promise.reject(toSerializableError(new Error("Invalid RPC payload")));
+      }
       const socketId = webContentsToSocketId.get(event.sender.id);
       if (!socketId)
-        throw new Error("Socket not registered. Call register first.");
+        return Promise.reject(
+          toSerializableError(new Error("Socket not registered. Call register first."))
+        );
       const socket = sockets.get(socketId);
-      if (!socket) throw new Error("Socket not found for sender");
+      if (!socket)
+        return Promise.reject(
+          toSerializableError(new Error("Socket not found for sender"))
+        );
 
       // Execute through middlewares then call the first handler with ack
       return await new Promise((resolve, reject) => {
+        const isPromise = (v: unknown): v is Promise<unknown> =>
+          typeof (v as { then?: unknown })?.then === "function";
+        let settled = false;
+        const finish = (fn: (value: unknown) => void, value: unknown) => {
+          if (settled) return;
+          settled = true;
+          try {
+            // Ensure value is structured-cloneable for IPC
+            const safe = structuredClone(value);
+            fn(safe);
+          } catch (e) {
+            // Fall back to rejecting with a clear error
+            const err =
+              e instanceof Error
+                ? e
+                : new Error(`Non-serializable RPC result: ${String(e)}`);
+            reject(toSerializableError(err));
+          }
+        };
+        const rejectOnce = (e: unknown) => {
+          if (settled) return;
+          settled = true;
+          const err = e instanceof Error ? e : new Error(String(e));
+          reject(toSerializableError(err));
+        };
+
+        // Safety timeout so invoke doesn't hang forever if ack is never called
+        const timeoutMs = 30_000;
+        const timer = setTimeout(() => {
+          rejectOnce(new Error(`RPC '${eventName}' timed out waiting for ack`));
+        }, timeoutMs);
+
         try {
           runMiddlewares(socket.middlewares, [eventName, ...args], () => {
             const handlers = socket.handlers.get(eventName) || [];
             if (handlers.length === 0) {
-              reject(new Error(`No handler for event: ${eventName}`));
+              clearTimeout(timer);
+              rejectOnce(new Error(`No handler for event: ${eventName}`));
               return;
             }
             const handler = handlers[0];
             // Provide ack callback as last arg
-            const ack = (result?: unknown) => resolve(result);
-            if (args.length === 0) handler(ack);
-            else handler(...args, ack);
+            const ack = (result?: unknown) => {
+              clearTimeout(timer);
+              finish(resolve, result);
+            };
+            try {
+              const fn = handler as (...fnArgs: unknown[]) => unknown;
+              const maybePromise: unknown =
+                args.length === 0 ? fn(ack) : fn(...args, ack);
+              // Support handlers that return a Promise instead of using ack
+              if (isPromise(maybePromise)) {
+                (maybePromise as Promise<unknown>)
+                  .then((val) => {
+                    clearTimeout(timer);
+                    finish(resolve, val);
+                  })
+                  .catch((err) => {
+                    clearTimeout(timer);
+                    rejectOnce(err);
+                  });
+              }
+            } catch (err) {
+              clearTimeout(timer);
+              rejectOnce(err);
+            }
           });
         } catch (err) {
-          reject(err);
+          clearTimeout(timer);
+          rejectOnce(err);
         }
       });
     }
