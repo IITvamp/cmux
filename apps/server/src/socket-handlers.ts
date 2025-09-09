@@ -24,7 +24,9 @@ import { spawnAllAgents } from "./agentSpawner.js";
 import { stopContainersForRuns } from "./archiveTask.js";
 import { execWithEnv } from "./execWithEnv.js";
 import { GitDiffManager } from "./gitDiff.js";
+import type { RealtimeServer } from "./realtime.js";
 import { RepositoryManager } from "./repositoryManager.js";
+import type { GitRepoInfo } from "./server.js";
 import { getPRTitleFromTaskDescription } from "./utils/branchNameGenerator.js";
 import { getConvex } from "./utils/convexClient.js";
 import { ensureRunWorktreeAndBranch } from "./utils/ensureRunWorktree.js";
@@ -48,8 +50,6 @@ import {
 import { runWithAuth, runWithAuthToken } from "./utils/requestContext.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { getProjectPaths } from "./workspace.js";
-import type { GitRepoInfo } from "./server.js";
-import type { RealtimeServer } from "./realtime.js";
 
 const execAsync = promisify(exec);
 

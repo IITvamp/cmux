@@ -1,5 +1,5 @@
-import { useContext } from "react";
 import { isElectron } from "@/lib/electron";
+import { useContext } from "react";
 import { ElectronSocketContext, WebSocketContext } from "./socket-context";
 
 export const useSocket = () => {

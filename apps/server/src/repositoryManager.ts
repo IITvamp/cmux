@@ -1,7 +1,7 @@
-import { exec, execFile } from "child_process";
-import * as fs from "fs/promises";
-import * as path from "path";
-import { promisify } from "util";
+import { exec, execFile } from "node:child_process";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import { promisify } from "node:util";
 import {
   generatePreCommitHook,
   generatePrePushHook,
@@ -31,9 +31,9 @@ interface GitCommandOptions {
 }
 
 interface QueuedOperation {
-  execute: () => Promise<any>;
-  resolve: (value: any) => void;
-  reject: (error: any) => void;
+  execute: () => Promise<unknown>;
+  resolve: (value: unknown) => void;
+  reject: (error: unknown) => void;
 }
 
 export class RepositoryManager {

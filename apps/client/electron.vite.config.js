@@ -11,11 +11,7 @@ const envDir = resolve("../../");
 export default defineConfig({
   main: {
     // Externalize deps from node_modules and resolve workspace packages
-    plugins: [
-      externalizeDepsPlugin(),
-      resolveWorkspacePackages(),
-    ],
-
+    plugins: [externalizeDepsPlugin(), resolveWorkspacePackages()],
     build: {
       rollupOptions: {
         input: {
@@ -39,10 +35,7 @@ export default defineConfig({
     envPrefix: "NEXT_PUBLIC_",
   },
   preload: {
-    plugins: [
-      externalizeDepsPlugin(),
-      resolveWorkspacePackages(),
-    ],
+    plugins: [externalizeDepsPlugin(), resolveWorkspacePackages()],
     build: {
       rollupOptions: {
         input: {

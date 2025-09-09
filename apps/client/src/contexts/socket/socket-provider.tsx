@@ -1,15 +1,15 @@
-import type {
-  AvailableEditors,
-} from "@cmux/shared";
+import type { AvailableEditors } from "@cmux/shared";
+import {
+  connectToMainServer,
+  type MainServerSocket,
+} from "@cmux/shared/socket";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "@tanstack/react-router";
 import React, { useEffect, useMemo } from "react";
-import { connectToMainServer, type MainServerSocket } from "@cmux/shared/socket";
-import { authJsonQueryOptions } from "../convex/authJsonQueryOptions";
 import { cachedGetUser } from "../../lib/cachedGetUser";
 import { stackClientApp } from "../../lib/stack";
+import { authJsonQueryOptions } from "../convex/authJsonQueryOptions";
 import { WebSocketContext } from "./socket-context";
-import { isElectron } from "@/lib/electron";
 
 export interface SocketContextType {
   socket: MainServerSocket | null;
@@ -29,9 +29,9 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
   const authJsonQuery = useQuery(authJsonQueryOptions());
   const authToken = authJsonQuery.data?.accessToken;
   const location = useLocation();
-  const [socket, setSocket] = React.useState<SocketContextType["socket"] | null>(
-    null
-  );
+  const [socket, setSocket] = React.useState<
+    SocketContextType["socket"] | null
+  >(null);
   const [isConnected, setIsConnected] = React.useState(false);
   const [availableEditors, setAvailableEditors] =
     React.useState<SocketContextType["availableEditors"]>(null);
@@ -45,12 +45,6 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
   }, [location.pathname]);
 
   useEffect(() => {
-    // Never attempt network socket connection inside Electron builds.
-    // Also bail if preload exposed the Electron bridges.
-    const w = typeof window !== 'undefined' ? (window as unknown as { cmux?: unknown; electron?: unknown }) : undefined;
-    if (isElectron || w?.cmux || w?.electron) {
-      return;
-    }
     if (!authToken) {
       console.warn("[Socket] No auth token yet; delaying connect");
       return;
@@ -76,7 +70,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
         teamSlugOrId,
         authJson,
       });
-      
+
       createdSocket = newSocket;
       if (disposed) {
         newSocket.disconnect();
@@ -84,22 +78,23 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
       }
       setSocket(newSocket);
 
-    newSocket.on("connect", () => {
-      console.log("[Socket] connected", { url, team: teamSlugOrId });
-      setIsConnected(true);
-    });
+      newSocket.on("connect", () => {
+        console.log("[Socket] connected", { url, team: teamSlugOrId });
+        setIsConnected(true);
+      });
 
-    newSocket.on("disconnect", () => {
-      console.warn("[Socket] disconnected");
-      setIsConnected(false);
-    });
+      newSocket.on("disconnect", () => {
+        console.warn("[Socket] disconnected");
+        setIsConnected(false);
+      });
 
-    newSocket.on("connect_error", (err) => {
-      const errorMessage = err && typeof err === 'object' && 'message' in err 
-        ? (err as Error).message 
-        : String(err);
-      console.error("[Socket] connect_error", errorMessage);
-    });
+      newSocket.on("connect_error", (err) => {
+        const errorMessage =
+          err && typeof err === "object" && "message" in err
+            ? (err as Error).message
+            : String(err);
+        console.error("[Socket] connect_error", errorMessage);
+      });
 
       newSocket.on("available-editors", (data: AvailableEditors) => {
         setAvailableEditors(data);
