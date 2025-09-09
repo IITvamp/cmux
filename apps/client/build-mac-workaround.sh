@@ -104,5 +104,5 @@ mv "$APP_DIR" "$OUTPUT_DIR/"
 # Clean up
 rm -rf "$TEMP_DIR"
 
-echo "Build complete! App is at $OUTPUT_DIR/$APP_NAME.app"
-echo "You can run it with: open $OUTPUT_DIR/$APP_NAME.app"
+echo "Build complete! App is at $(pwd)/$OUTPUT_DIR/$APP_NAME.app"
+echo "You can run it with: open $(pwd)/$OUTPUT_DIR/$APP_NAME.app"
