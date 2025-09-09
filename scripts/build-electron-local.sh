@@ -1,3 +1,3 @@
 #!/bin/bash
 
-(cd apps/client && bunx dotenv-cli -e ../../.env -- bun run build:mac:workaround)
+(cd apps/client && bun run --env-file ../../.env build:mac:workaround)
