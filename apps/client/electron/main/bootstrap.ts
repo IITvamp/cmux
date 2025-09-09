@@ -33,14 +33,18 @@ function ensureDir(p: string): void {
   }
 }
 
+function logFilePath(name: string): string {
+  const base = userDataDirSafe();
+  const dir = join(base, "logs");
+  ensureDir(dir);
+  return join(dir, name);
+}
+
 function writeEmergencyLog(prefix: string, body: unknown): void {
   try {
-    const base = userDataDirSafe();
-    const dir = join(base, "logs");
-    ensureDir(dir);
     // Deterministic but unique(ish) filename per boot error burst
     const rand = createHash("sha1").update(String(process.hrtime.bigint())).digest("hex").slice(0, 8);
-    const file = join(dir, `${prefix}-${rand}.log`);
+    const file = logFilePath(`${prefix}-${rand}.log`);
     const line = `[${timestamp()}] ${typeof body === "string" ? body : safeFormat(body)}\n`;
     appendFileSync(file, line, { encoding: "utf8" });
   } catch {
@@ -62,12 +66,71 @@ function safeFormat(v: unknown): string {
 }
 
 // Install process‑level handlers as early as possible
+// 1) Mirror console to main.log even before app.whenReady()
+(() => {
+  try {
+    const file = logFilePath("main.log");
+    const orig = {
+      log: console.log.bind(console),
+      warn: console.warn.bind(console),
+      error: console.error.bind(console),
+    } as const;
+    const write = (level: "LOG" | "WARN" | "ERROR", args: unknown[]) => {
+      try {
+        const body = args.map((a) => safeFormat(a)).join(" ");
+        appendFileSync(file, `[${timestamp()}] [MAIN] [${level}] ${body}\n`, {
+          encoding: "utf8",
+        });
+      } catch {
+        // ignore
+      }
+    };
+    console.log = (...args: unknown[]) => {
+      try {
+        orig.log(...args);
+      } finally {
+        write("LOG", args);
+      }
+    };
+    console.warn = (...args: unknown[]) => {
+      try {
+        orig.warn(...args);
+      } finally {
+        write("WARN", args);
+      }
+    };
+    console.error = (...args: unknown[]) => {
+      try {
+        orig.error(...args);
+      } finally {
+        write("ERROR", args);
+      }
+    };
+  } catch {
+    // ignore
+  }
+})();
+
+// 2) Fatal error capture
 process.prependListener("uncaughtException", (err) => {
   writeEmergencyLog("fatal-uncaughtException", err);
 });
 
 process.prependListener("unhandledRejection", (reason) => {
   writeEmergencyLog("fatal-unhandledRejection", reason);
+});
+
+process.prependListener("warning", (warning) => {
+  try {
+    const file = logFilePath("main.log");
+    appendFileSync(
+      file,
+      `[${timestamp()}] [MAIN] [WARN] Node warning: ${safeFormat(warning)}\n`,
+      { encoding: "utf8" }
+    );
+  } catch {
+    // ignore
+  }
 });
 
 // Capture renderer/child crashes at the app level
@@ -97,4 +160,3 @@ try {
     }
   }
 })();
-
