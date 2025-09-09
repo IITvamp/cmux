@@ -26,10 +26,10 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install
+        run: bun install
 
       - name: Lint
-        run: pnpm lint
+        run: bun run lint
 
       - name: Typecheck
         run: bun run typecheck
