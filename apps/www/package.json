@@ -41,6 +41,8 @@
     "socket.io-client": "^4.8.1",
     "tailwind-merge": "^2.5.5",
     "www": "^0.0.0",
+    "@ai-sdk/anthropic": "^2.0.6",
+    "ai": "^5.0.22",
     "zod": "^4.0.17"
   },
   "devDependencies": {

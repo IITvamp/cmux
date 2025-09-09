@@ -2,10 +2,7 @@ import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
 import { type AgentConfig } from "@cmux/shared/agentConfig";
 import { captureGitDiff } from "./captureGitDiff.js";
-import {
-  createPullRequestForWinner,
-  evaluateCrownWithClaudeCode,
-} from "./crownEvaluator.js";
+import { createPullRequestForWinner, evaluateCrown } from "./crownEvaluator.js";
 import performAutoCommitAndPush from "./performAutoCommitAndPush.js";
 import { getConvex } from "./utils/convexClient.js";
 import { serverLogger } from "./utils/fileLogger.js";
@@ -134,6 +131,7 @@ export async function handleTaskCompletion({
         );
 
         // Small delay to ensure git diff is fully persisted in Convex
+        // Note: We need to preserve the auth context for the crown evaluation
         setTimeout(async () => {
           try {
             // Check if evaluation is already in progress
@@ -148,7 +146,8 @@ export async function handleTaskCompletion({
               return;
             }
 
-            await evaluateCrownWithClaudeCode(taskRunData.taskId, teamSlugOrId);
+            await evaluateCrown(taskRunData.taskId, teamSlugOrId);
+
             serverLogger.info(
               `[AgentSpawner] Crown evaluation completed successfully`
             );

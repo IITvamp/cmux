@@ -1,22 +1,17 @@
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
-import { spawn } from "node:child_process";
-import { z } from "zod";
 import { getConvex } from "./utils/convexClient.js";
 import { serverLogger } from "./utils/fileLogger.js";
 import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
 import { workerExec } from "./utils/workerExec.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
+import { getWwwClient } from "./utils/wwwClient.js";
+import {
+  postApiCrownEvaluate,
+  postApiCrownSummarize,
+} from "@cmux/www-openapi-client";
 
 // Auto PR behavior is controlled via workspace settings in Convex
-
-const CrownEvaluationResponseSchema = z.object({
-  winner: z.number().int().min(0),
-  reason: z.string(),
-});
-
-type CrownEvaluationResponse = z.infer<typeof CrownEvaluationResponseSchema>;
-
 export async function createPullRequestForWinner(
   taskRunId: Id<"taskRuns">,
   taskId: Id<"tasks">,
@@ -298,9 +293,7 @@ Completed: ${new Date().toISOString()}`;
   }
 }
 
-// Removed VSCode extension fallback; using worker:exec exclusively
-
-export async function evaluateCrownWithClaudeCode(
+export async function evaluateCrown(
   taskId: Id<"tasks">,
   teamSlugOrId: string
 ): Promise<void> {
@@ -397,63 +390,30 @@ export async function evaluateCrownWithClaudeCode(
         const summarizationPrompt = `You are an expert reviewer summarizing a pull request.\n\nGOAL\n- Explain succinctly what changed and why.\n- Call out areas the user should review carefully.\n- Provide a quick test plan to validate the changes.\n\nCONTEXT\n- User's original request:\n${originalRequest}\n- Relevant diffs (unified):\n${effectiveDiff || "<no code changes captured>"}\n\nINSTRUCTIONS\n- Base your summary strictly on the provided diffs and request.\n- Be specific about files and functions when possible.\n- Prefer clear bullet points over prose. Keep it under ~300 words.\n- If there are no code changes, say so explicitly and suggest next steps.\n\nOUTPUT FORMAT (Markdown)\n## PR Review Summary\n- What Changed: bullet list\n- Review Focus: bullet list (risks/edge cases)\n- Test Plan: bullet list of practical steps\n- Follow-ups: optional bullets if applicable\n`;
 
         serverLogger.info(
-          `[CrownEvaluator] Generating PR summary comment via Claude Code...`
+          `[CrownEvaluator] Generating PR summary via Anthropic (AI SDK)...`
         );
 
         let commentText = "";
         try {
-          const args = [
-            "@anthropic-ai/claude-code",
-            "--model",
-            "claude-sonnet-4-20250514",
-            "--dangerously-skip-permissions",
-          ];
-          const proc = spawn("bunx", args, {
-            env: { ...process.env },
-            stdio: ["pipe", "pipe", "pipe"],
-            shell: false,
+          // Call the crown summarize endpoint
+          const res = await postApiCrownSummarize({
+            client: getWwwClient(),
+            body: {
+              prompt: summarizationPrompt,
+              teamSlugOrId,
+            },
           });
 
-          proc.stdin.write(summarizationPrompt);
-          proc.stdin.end();
-
-          let out = "";
-          let err = "";
-          const sExit: number = await new Promise((resolve, reject) => {
-            let exited = false;
-            proc.stdout.on("data", (d) => (out += d.toString()));
-            proc.stderr.on("data", (d) => (err += d.toString()));
-            proc.on("close", (code) => {
-              exited = true;
-              resolve(code ?? 0);
-            });
-            proc.on("error", (e) => {
-              exited = true;
-              reject(e);
-            });
-            setTimeout(() => {
-              if (!exited) {
-                proc.kill("SIGKILL");
-                reject(new Error("Claude Code summarization timeout"));
-              }
-            }, 60000);
-          });
-
-          if (sExit !== 0) {
-            serverLogger.error(
-              `[CrownEvaluator] Claude Code summarization failed: ${err}`
-            );
+          if (!res.data) {
+            serverLogger.error(`[CrownEvaluator] Crown summarize failed`);
+            return;
           }
-          commentText = out.trim();
+          commentText = res.data.summary;
         } catch (e) {
           serverLogger.error(
-            `[CrownEvaluator] Error running Claude Code summarization:`,
+            `[CrownEvaluator] Failed to generate PR summary:`,
             e
           );
-        }
-
-        if (!commentText) {
-          commentText = `## PR Review Summary\n- No AI summary available.\n- Captured diffs were empty or summarization failed.\n\nPlease review recent changes manually.`;
         }
 
         if (commentText.length > 8000) {
@@ -735,153 +695,26 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
     } catch {
       /* empty */
     }
+    const res = await postApiCrownEvaluate({
+      client: getWwwClient(),
+      body: {
+        prompt: evaluationPrompt,
+        teamSlugOrId,
+      },
+    });
 
-    serverLogger.info(`[CrownEvaluator] Starting Claude Code spawn...`);
-    const startTime = Date.now();
+    if (!res.data) {
+      serverLogger.error(`[CrownEvaluator] Crown evaluate failed`);
+    }
+    const jsonResponse = res.data;
 
-    // Try multiple approaches to run claude-code
-    let stdout = "";
-    let stderr = "";
-    let exitCode = -1;
-
-    // Only use bunx since npx consistently times out
-    try {
-      serverLogger.info(`[CrownEvaluator] Attempting to run with bunx...`);
-
-      // Remove --print flag and use stdin instead for more reliable execution
-      const args = [
-        "@anthropic-ai/claude-code",
-        "--model",
-        "claude-sonnet-4-20250514",
-        "--dangerously-skip-permissions",
-      ];
-
-      serverLogger.info(`[CrownEvaluator] Command: bunx ${args.join(" ")}`);
-
-      const bunxProcess = spawn("bunx", args, {
-        env: { ...process.env },
-        stdio: ["pipe", "pipe", "pipe"],
-        shell: false,
-      });
-
-      serverLogger.info(
-        `[CrownEvaluator] Process spawned with PID: ${bunxProcess.pid}`
-      );
-
-      // Write prompt to stdin and close
-      bunxProcess.stdin.write(evaluationPrompt);
-      bunxProcess.stdin.end();
-
-      stdout = "";
-      stderr = "";
-
-      // Track if we've received any data
-      let receivedStdout = false;
-      let receivedStderr = false;
-      let lastStderr = "";
-
-      bunxProcess.stdout.on("data", (data) => {
-        const chunk = data.toString();
-        stdout += chunk;
-        receivedStdout = true;
-        serverLogger.info(
-          `[CrownEvaluator] stdout (${chunk.length} chars): ${chunk.substring(0, 200)}`
-        );
-      });
-
-      bunxProcess.stderr.on("data", (data) => {
-        const chunk = data.toString();
-        stderr += chunk;
-        lastStderr = chunk;
-        receivedStderr = true;
-
-        // Log all stderr to debug the issue
-        serverLogger.info(`[CrownEvaluator] stderr: ${chunk.trim()}`);
-      });
-
-      // Add more detailed event handlers
-      bunxProcess.on("exit", (code, signal) => {
-        serverLogger.info(
-          `[CrownEvaluator] Process exited with code ${code} and signal ${signal}`
-        );
-        serverLogger.info(
-          `[CrownEvaluator] Exit occurred after ${Date.now() - startTime}ms`
-        );
-      });
-
-      bunxProcess.on("error", (error) => {
-        serverLogger.error(`[CrownEvaluator] Process spawn error:`, error);
-      });
-
-      exitCode = await new Promise<number>((resolve, reject) => {
-        let processExited = false;
-
-        bunxProcess.on("close", (code) => {
-          processExited = true;
-          serverLogger.info(
-            `[CrownEvaluator] Process closed with code: ${code}`
-          );
-          serverLogger.info(
-            `[CrownEvaluator] Received stdout: ${receivedStdout}, Received stderr: ${receivedStderr}`
-          );
-          serverLogger.info(
-            `[CrownEvaluator] Total stdout length: ${stdout.length}, stderr length: ${stderr.length}`
-          );
-
-          if (stderr.length > 0) {
-            serverLogger.info(`[CrownEvaluator] Full stderr output:`);
-            stderr.split("\n").forEach((line, idx) => {
-              if (line.trim()) {
-                serverLogger.info(`[CrownEvaluator]   stderr[${idx}]: ${line}`);
-              }
-            });
-          }
-
-          if (lastStderr.includes("Saved lockfile") && stdout.length === 0) {
-            serverLogger.error(
-              `[CrownEvaluator] Process failed after saving lockfile with no output`
-            );
-            serverLogger.error(
-              `[CrownEvaluator] This suggests Claude Code started but failed to execute`
-            );
-          }
-
-          resolve(code || 0);
-        });
-
-        bunxProcess.on("error", (err) => {
-          processExited = true;
-          serverLogger.error(`[CrownEvaluator] Process error: ${err.message}`);
-          reject(err);
-        });
-
-        setTimeout(() => {
-          if (!processExited) {
-            serverLogger.error(
-              `[CrownEvaluator] Process timeout after 60 seconds, killing...`
-            );
-            bunxProcess.kill("SIGKILL");
-            reject(new Error("Timeout"));
-          }
-        }, 60000); // Reduce timeout to 60 seconds
-      });
-
-      serverLogger.info(
-        `[CrownEvaluator] bunx completed with exit code ${exitCode}`
-      );
-    } catch (bunxError) {
-      serverLogger.error(`[CrownEvaluator] bunx failed:`, bunxError);
-
-      // Fallback: Pick the first completed run as winner if Claude Code fails
-      serverLogger.warn(
-        `[CrownEvaluator] Falling back to selecting first completed run as winner`
-      );
-
+    if (!jsonResponse) {
+      // Fallback: Pick the first completed run as winner
       const fallbackWinner = candidateData[0];
       await getConvex().mutation(api.crown.setCrownWinner, {
         teamSlugOrId,
         taskRunId: fallbackWinner.runId,
-        reason: "Selected as fallback winner (crown evaluation failed to run)",
+        reason: "Selected as fallback winner (evaluation failed)",
       });
 
       await getConvex().mutation(api.tasks.updateCrownError, {
@@ -904,170 +737,6 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
         teamSlugOrId
       );
       return;
-    }
-
-    serverLogger.info(
-      `[CrownEvaluator] Process completed after ${Date.now() - startTime}ms`
-    );
-    serverLogger.info(`[CrownEvaluator] Exit code: ${exitCode}`);
-    serverLogger.info(`[CrownEvaluator] Stdout length: ${stdout.length}`);
-    serverLogger.info(`[CrownEvaluator] Full stdout:\n${stdout}`);
-
-    if (exitCode !== 0) {
-      serverLogger.error(
-        `[CrownEvaluator] Claude Code exited with error code ${exitCode}. Stderr: ${stderr}`
-      );
-
-      // Fallback: Pick the first completed run as winner if Claude Code fails
-      serverLogger.warn(
-        `[CrownEvaluator] Falling back to selecting first completed run as winner due to non-zero exit code`
-      );
-
-      const fallbackWinner = candidateData[0];
-      await getConvex().mutation(api.crown.setCrownWinner, {
-        teamSlugOrId,
-        taskRunId: fallbackWinner.runId,
-        reason:
-          "Selected as fallback winner (crown evaluation exited with error)",
-      });
-
-      await getConvex().mutation(api.tasks.updateCrownError, {
-        teamSlugOrId,
-        id: taskId,
-        crownEvaluationError: undefined,
-      });
-
-      serverLogger.info(
-        `[CrownEvaluator] Fallback winner selected: ${fallbackWinner.agentName}`
-      );
-      await generateSystemTaskComment(
-        fallbackWinner.runId,
-        fallbackWinner.gitDiff
-      );
-      await createPullRequestForWinner(
-        fallbackWinner.runId,
-        taskId,
-        githubToken || undefined,
-        teamSlugOrId
-      );
-      return;
-    }
-
-    // Parse the response
-    let jsonResponse: CrownEvaluationResponse;
-
-    // Try to extract JSON from stdout - look for any JSON object with winner and reason
-    const jsonMatch =
-      stdout.match(
-        /\{[^{}]*"winner"\s*:\s*\d+[^{}]*"reason"\s*:\s*"[^"]*"[^{}]*\}/
-      ) ||
-      stdout.match(
-        /\{[^{}]*"reason"\s*:\s*"[^"]*"[^{}]*"winner"\s*:\s*\d+[^{}]*\}/
-      );
-
-    if (!jsonMatch) {
-      serverLogger.error(
-        `[CrownEvaluator] No JSON found in output. Full stdout:\n${stdout}`
-      );
-
-      // Try to find a complete JSON object anywhere in the output
-      try {
-        // Remove any non-JSON content before/after
-        const possibleJson = stdout.substring(
-          stdout.indexOf("{"),
-          stdout.lastIndexOf("}") + 1
-        );
-        const parsed = JSON.parse(possibleJson);
-        jsonResponse = CrownEvaluationResponseSchema.parse(parsed);
-        serverLogger.info(
-          `[CrownEvaluator] Extracted JSON from output: ${JSON.stringify(jsonResponse)}`
-        );
-      } catch {
-        // Last resort - try to find just a number
-        const numberMatch = stdout.match(/\b([01])\b/);
-        if (numberMatch) {
-          const index = parseInt(numberMatch[1], 10);
-          jsonResponse = {
-            winner: index,
-            reason: `Selected ${candidateData[index].agentName} based on implementation quality`,
-          };
-          serverLogger.info(
-            `[CrownEvaluator] Extracted winner index ${index} from output`
-          );
-        } else {
-          serverLogger.error(
-            `[CrownEvaluator] Could not extract valid response from output`
-          );
-
-          // Fallback: Pick the first completed run as winner
-          const fallbackWinner = candidateData[0];
-          await getConvex().mutation(api.crown.setCrownWinner, {
-            teamSlugOrId,
-            taskRunId: fallbackWinner.runId,
-            reason:
-              "Selected as fallback winner (no valid response from evaluator)",
-          });
-
-          await getConvex().mutation(api.tasks.updateCrownError, {
-            teamSlugOrId,
-            id: taskId,
-            crownEvaluationError: undefined,
-          });
-
-          serverLogger.info(
-            `[CrownEvaluator] Fallback winner selected: ${fallbackWinner.agentName}`
-          );
-          await createPullRequestForWinner(
-            fallbackWinner.runId,
-            taskId,
-            githubToken || undefined,
-            teamSlugOrId
-          );
-          return;
-        }
-      }
-    } else {
-      try {
-        const parsed = JSON.parse(jsonMatch[0]);
-        jsonResponse = CrownEvaluationResponseSchema.parse(parsed);
-        serverLogger.info(
-          `[CrownEvaluator] Successfully parsed JSON response: ${JSON.stringify(jsonResponse)}`
-        );
-      } catch (parseError) {
-        serverLogger.error(
-          `[CrownEvaluator] Failed to parse JSON:`,
-          parseError
-        );
-
-        // Fallback: Pick the first completed run as winner
-        const fallbackWinner = candidateData[0];
-        await getConvex().mutation(api.crown.setCrownWinner, {
-          teamSlugOrId,
-          taskRunId: fallbackWinner.runId,
-          reason: "Selected as fallback winner (invalid JSON from evaluator)",
-        });
-
-        await getConvex().mutation(api.tasks.updateCrownError, {
-          teamSlugOrId,
-          id: taskId,
-          crownEvaluationError: undefined,
-        });
-
-        serverLogger.info(
-          `[CrownEvaluator] Fallback winner selected: ${fallbackWinner.agentName}`
-        );
-        await generateSystemTaskComment(
-          fallbackWinner.runId,
-          fallbackWinner.gitDiff
-        );
-        await createPullRequestForWinner(
-          fallbackWinner.runId,
-          taskId,
-          githubToken || undefined,
-          teamSlugOrId
-        );
-        return;
-      }
     }
 
     // Validate winner index
