@@ -1,8 +1,5 @@
-import path, { dirname, join } from "node:path";
-import { fileURLToPath, pathToFileURL } from "node:url";
-if (!globalThis.__dirname) {
-  globalThis.__dirname = dirname(fileURLToPath(import.meta.url));
-}
+import path, { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { is } from "@electron-toolkit/utils";
 import {
@@ -78,12 +75,12 @@ function writeMainLogLine(level: "LOG" | "WARN" | "ERROR", line: string): void {
 }
 
 function writeRendererLogLine(
-  level: "LOG" | "WARN" | "ERROR" | "DEBUG" | "INFO",
+  level: "info" | "warning" | "error" | "debug",
   line: string
 ): void {
   if (!rendererLogStream) return;
   rendererLogStream.write(
-    `[${getTimestamp()}] [RENDERER] [${level}] ${line}\n`
+    `[${getTimestamp()}] [RENDERER] [${level.toUpperCase()}] ${line}\n`
   );
 }
 
@@ -304,7 +301,9 @@ function createWindow(): void {
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 12, y: 10 },
     webPreferences: {
-      preload: join(__dirname, "../preload/index.cjs"),
+      preload: app.isPackaged
+        ? join(app.getAppPath(), "out/preload/index.cjs")
+        : join(__dirname, "../preload/index.cjs"),
       sandbox: false,
       contextIsolation: true,
       nodeIntegration: false,
@@ -326,20 +325,12 @@ function createWindow(): void {
   // Capture renderer console output into renderer.log
   mainWindow.webContents.on(
     "console-message",
-    (_event, level, message, line, sourceId) => {
-      const levelLabel =
-        level === 0
-          ? "LOG"
-          : level === 1
-            ? "WARN"
-            : level === 2
-              ? "ERROR"
-              : level === 3
-                ? "DEBUG"
-                : "INFO";
-      const src = sourceId ? `${sourceId}${line ? `:${line}` : ""}` : "";
+    ({ level, lineNumber, message, sourceId }) => {
+      const src = sourceId
+        ? `${sourceId}${lineNumber ? `:${lineNumber}` : ""}`
+        : "";
       const msg = src ? `${message} (${src})` : message;
-      writeRendererLogLine(levelLabel, msg);
+      writeRendererLogLine(level, msg);
     }
   );
 
