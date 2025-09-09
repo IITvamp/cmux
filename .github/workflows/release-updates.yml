@@ -50,6 +50,9 @@ jobs:
           NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=${{ secrets.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY }}
           NEXT_PUBLIC_WWW_ORIGIN=${{ secrets.NEXT_PUBLIC_WWW_ORIGIN }}
           EOF
+      - name: Generate icons
+        working-directory: apps/client
+        run: bun run ./scripts/generate-icons.mjs
       - name: Build mac app via local script (x64)
         run: bash scripts/build-electron-local.sh
       - name: Detect mac signing secrets
@@ -127,6 +130,9 @@ jobs:
           NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=${{ secrets.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY }}
           NEXT_PUBLIC_WWW_ORIGIN=${{ secrets.NEXT_PUBLIC_WWW_ORIGIN }}
           EOF
+      - name: Generate icons
+        working-directory: apps/client
+        run: bun run ./scripts/generate-icons.mjs
       - name: Build mac app via local script (arm64)
         run: bash scripts/build-electron-local.sh
       - name: Detect mac signing secrets
