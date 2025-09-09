@@ -79,7 +79,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
       setSocket(newSocket);
 
       newSocket.on("connect", () => {
-        console.log("[Socket] connected", { url, team: teamSlugOrId });
+        console.log("[Socket] connected");
         setIsConnected(true);
       });
 

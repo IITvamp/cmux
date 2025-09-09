@@ -62,7 +62,6 @@ export const ElectronSocketProvider: React.FC<React.PropsWithChildren> = ({
 
       createdSocket.on("connect", () => {
         if (disposed) return;
-        console.log("[ElectronSocket] Connected via IPC");
         setIsConnected(true);
       });
 
