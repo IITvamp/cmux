@@ -19,36 +19,42 @@ const paramsSchema = z.object({
   runId: typedZid("taskRuns"),
 });
 
-export const Route = createFileRoute("/_layout/$teamSlugOrId/task/$taskId/run/$runId/diff")(
-  {
-    component: RunDiffPage,
-    params: {
-      parse: paramsSchema.parse,
-      stringify: (params) => {
-        return {
-          taskId: params.taskId,
-          runId: params.runId,
-        };
-      },
+const gitDiffViewerClassNames = {
+  fileDiffRow: {
+    button: "top-[96px] md:top-[56px]",
+  },
+};
+
+export const Route = createFileRoute(
+  "/_layout/$teamSlugOrId/task/$taskId/run/$runId/diff"
+)({
+  component: RunDiffPage,
+  params: {
+    parse: paramsSchema.parse,
+    stringify: (params) => {
+      return {
+        taskId: params.taskId,
+        runId: params.runId,
+      };
     },
-    loader: async (opts) => {
-      await Promise.all([
-        opts.context.queryClient.ensureQueryData(
-          convexQuery(api.taskRuns.getByTask, {
-            teamSlugOrId: opts.params.teamSlugOrId,
-            taskId: opts.params.taskId,
-          })
-        ),
-        opts.context.queryClient.ensureQueryData(
-          convexQuery(api.tasks.getById, {
-            teamSlugOrId: opts.params.teamSlugOrId,
-            id: opts.params.taskId,
-          })
-        ),
-      ]);
-    },
-  }
-);
+  },
+  loader: async (opts) => {
+    await Promise.all([
+      opts.context.queryClient.ensureQueryData(
+        convexQuery(api.taskRuns.getByTask, {
+          teamSlugOrId: opts.params.teamSlugOrId,
+          taskId: opts.params.taskId,
+        })
+      ),
+      opts.context.queryClient.ensureQueryData(
+        convexQuery(api.tasks.getById, {
+          teamSlugOrId: opts.params.teamSlugOrId,
+          id: opts.params.taskId,
+        })
+      ),
+    ]);
+  },
+});
 
 function RunDiffPage() {
   const { taskId, teamSlugOrId, runId } = Route.useParams();
@@ -299,7 +305,8 @@ function RunDiffPage() {
               isLoading={!diffsQuery.data && !!selectedRun}
               taskRunId={selectedRun?._id}
               key={selectedRun?._id}
-              onControlsChange={(c) => setDiffControls(c)}
+              onControlsChange={setDiffControls}
+              classNames={gitDiffViewerClassNames}
             />
           </div>
         </div>
