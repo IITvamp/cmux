@@ -65,9 +65,7 @@ export async function spawnAgent(
     // re-enter the auth context inside async event handlers later.
     const capturedAuthToken = getAuthToken();
     const capturedAuthHeaderJson = getAuthHeaderJson();
-    serverLogger.info(
-      `[AgentSpawner] Auth context captured at spawn - token: ${capturedAuthToken ? `${capturedAuthToken.substring(0, 20)}...` : "MISSING"}, headerJson: ${capturedAuthHeaderJson ? "Present" : "MISSING"}`
-    );
+
     const newBranch =
       options.newBranch ||
       (await generateNewBranchName(options.taskDescription, teamSlugOrId));

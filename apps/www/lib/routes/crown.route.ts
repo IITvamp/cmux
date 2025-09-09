@@ -2,6 +2,7 @@ import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { generateObject } from "ai";
 import { verifyTeamAccess } from "@/lib/utils/team-verification";
+import { env } from "@/lib/utils/www-env";
 
 const CrownEvaluationRequestSchema = z.object({
   prompt: z.string(),
@@ -114,14 +115,7 @@ crownRouter.openapi(summarizeRoute, async (c) => {
       }
     }
 
-    const anthropicKey = process.env.ANTHROPIC_API_KEY;
-    if (!anthropicKey) {
-      return c.json(
-        { code: 500, message: "Server missing ANTHROPIC_API_KEY" },
-        500
-      );
-    }
-    const anthropic = createAnthropic({ apiKey: anthropicKey });
+    const anthropic = createAnthropic({ apiKey: env.ANTHROPIC_API_KEY });
 
     const { object } = await generateObject({
       model: anthropic("claude-opus-4-1-20250805"),
@@ -172,14 +166,7 @@ crownRouter.openapi(evaluateRoute, async (c) => {
       return c.text("Unauthorized", 401);
     }
 
-    const anthropicKey = process.env.ANTHROPIC_API_KEY;
-    if (!anthropicKey) {
-      return c.json(
-        { code: 500, message: "Server missing ANTHROPIC_API_KEY" },
-        500
-      );
-    }
-    const anthropic = createAnthropic({ apiKey: anthropicKey });
+    const anthropic = createAnthropic({ apiKey: env.ANTHROPIC_API_KEY });
 
     const { object } = await generateObject({
       model: anthropic("claude-opus-4-1-20250805"),
