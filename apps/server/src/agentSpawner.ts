@@ -19,7 +19,7 @@ import {
   generateUniqueBranchNamesFromTitle,
 } from "./utils/branchNameGenerator.js";
 import { getConvex } from "./utils/convexClient.js";
-import { getAuthToken, runWithAuthToken } from "./utils/requestContext.js";
+import { getAuthToken, getAuthHeaderJson, runWithAuth } from "./utils/requestContext.js";
 import { serverLogger } from "./utils/fileLogger.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { CmuxVSCodeInstance } from "./vscode/CmuxVSCodeInstance.js";
@@ -57,9 +57,13 @@ export async function spawnAgent(
   teamSlugOrId: string
 ): Promise<AgentSpawnResult> {
   try {
-    // Capture the current auth token from AsyncLocalStorage so we can
+    // Capture the current auth token and header JSON from AsyncLocalStorage so we can
     // re-enter the auth context inside async event handlers later.
     const capturedAuthToken = getAuthToken();
+    const capturedAuthHeaderJson = getAuthHeaderJson();
+    serverLogger.info(
+      `[AgentSpawner] Auth context captured at spawn - token: ${capturedAuthToken ? `${capturedAuthToken.substring(0, 20)}...` : "MISSING"}, headerJson: ${capturedAuthHeaderJson ? "Present" : "MISSING"}`
+    );
     const newBranch =
       options.newBranch ||
       (await generateNewBranchName(options.taskDescription, teamSlugOrId));
@@ -397,7 +401,7 @@ export async function spawnAgent(
         );
         await new Promise((resolve) => setTimeout(resolve, 3000));
 
-        await runWithAuthToken(capturedAuthToken, async () =>
+        await runWithAuth(capturedAuthToken, capturedAuthHeaderJson, async () =>
           handleTaskCompletion({
             taskRunId,
             agent,
@@ -452,7 +456,7 @@ export async function spawnAgent(
         );
         await new Promise((resolve) => setTimeout(resolve, 3000));
 
-        await runWithAuthToken(capturedAuthToken, async () =>
+        await runWithAuth(capturedAuthToken, capturedAuthHeaderJson, async () =>
           handleTaskCompletion({
             taskRunId,
             agent,
@@ -496,7 +500,7 @@ export async function spawnAgent(
           `[AgentSpawner] Task ID matched! Marking task as complete for ${agent.name}`
         );
         vscodeInstance.stopFileWatch();
-        await runWithAuthToken(capturedAuthToken, async () =>
+        await runWithAuth(capturedAuthToken, capturedAuthHeaderJson, async () =>
           handleTaskCompletion({
             taskRunId,
             agent,
@@ -530,7 +534,7 @@ export async function spawnAgent(
 
         // Append error to log for context
         if (data.errorMessage) {
-          await runWithAuthToken(capturedAuthToken, async () =>
+          await runWithAuth(capturedAuthToken, capturedAuthHeaderJson, async () =>
             retryOnOptimisticConcurrency(() =>
               getConvex().mutation(api.taskRuns.appendLogPublic, {
                 teamSlugOrId,
@@ -542,7 +546,7 @@ export async function spawnAgent(
         }
 
         // Mark the run as failed with error message
-        await runWithAuthToken(capturedAuthToken, async () =>
+        await runWithAuth(capturedAuthToken, capturedAuthHeaderJson, async () =>
           retryOnOptimisticConcurrency(() =>
             getConvex().mutation(api.taskRuns.fail, {
               teamSlugOrId,

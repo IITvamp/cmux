@@ -408,18 +408,38 @@ export async function evaluateCrown(
           const url = `${baseUrl}/api/crown/summarize`;
 
           const token = getAuthToken();
+          serverLogger.info(
+            `[CrownEvaluator] Auth token from context: ${token ? `${token.substring(0, 20)}...` : "UNDEFINED"}`
+          );
           const headers: Record<string, string> = {
             "Content-Type": "application/json",
           };
           if (token) {
-            headers["x-stack-auth"] = JSON.stringify({ accessToken: token });
+            const authPayload = { accessToken: token };
+            headers["x-stack-auth"] = JSON.stringify(authPayload);
+            serverLogger.info(
+              `[CrownEvaluator] Setting x-stack-auth header with accessToken: ${token.substring(0, 20)}...`
+            );
+          } else {
+            serverLogger.error(
+              `[CrownEvaluator] NO AUTH TOKEN AVAILABLE - Request will likely fail`
+            );
           }
           serverLogger.info(
             `[CrownEvaluator] Preparing POST /api/crown/summarize x-stack-auth: ${Boolean(
               headers["x-stack-auth"]
             )}, team: ${teamSlugOrId}`
           );
+          serverLogger.info(
+            `[CrownEvaluator] Full headers being sent: ${JSON.stringify(headers)}`
+          );
 
+          serverLogger.info(
+            `[CrownEvaluator] Making POST request to ${url}`
+          );
+          serverLogger.info(
+            `[CrownEvaluator] Request body: { prompt: <${summarizationPrompt.length} chars>, teamSlugOrId: "${teamSlugOrId}" }`
+          );
           const res = await fetch(url, {
             method: "POST",
             headers,
@@ -738,12 +758,23 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
       const url = `${baseUrl}/api/crown/evaluate`;
 
       const token = getAuthToken();
+      serverLogger.info(
+        `[CrownEvaluator] Auth token from context for evaluate: ${token ? `${token.substring(0, 20)}...` : "UNDEFINED"}`
+      );
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       };
       if (token) {
-        headers["x-stack-auth"] = JSON.stringify({ accessToken: token });
+        const authPayload = { accessToken: token };
+        headers["x-stack-auth"] = JSON.stringify(authPayload);
         headers["authorization"] = `Bearer ${token}`;
+        serverLogger.info(
+          `[CrownEvaluator] Setting headers for evaluate - x-stack-auth and Bearer token: ${token.substring(0, 20)}...`
+        );
+      } else {
+        serverLogger.error(
+          `[CrownEvaluator] NO AUTH TOKEN AVAILABLE for evaluate - Request will likely fail`
+        );
       }
 
       serverLogger.info(
@@ -751,7 +782,16 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
           headers["x-stack-auth"]
         )}, team: ${teamSlugOrId}`
       );
+      serverLogger.info(
+        `[CrownEvaluator] Full headers for evaluate: ${JSON.stringify(headers)}`
+      );
 
+      serverLogger.info(
+        `[CrownEvaluator] Making POST request to ${url}`
+      );
+      serverLogger.info(
+        `[CrownEvaluator] Request body: { prompt: <${evaluationPrompt.length} chars>, teamSlugOrId: "${teamSlugOrId}" }`
+      );
       const res = await fetch(url, {
         method: "POST",
         headers,

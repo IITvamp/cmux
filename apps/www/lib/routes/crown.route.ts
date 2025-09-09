@@ -75,12 +75,24 @@ const summarizeRoute = createRoute({
 
 crownRouter.openapi(summarizeRoute, async (c) => {
   try {
+    console.log("[crown.summarize] Request headers:", c.req.header());
+    console.log("[crown.summarize] x-stack-auth header:", c.req.header("x-stack-auth"));
+    console.log("[crown.summarize] authorization header:", c.req.header("authorization"));
+    
     const user = await stackServerAppJs.getUser({ tokenStore: c.req.raw });
+    console.log("[crown.summarize] User from stack auth:", user ? "Found" : "NOT FOUND");
     if (!user) {
+      console.error("[crown.summarize] No user found from stackServerAppJs.getUser");
       return c.text("Unauthorized", 401);
     }
-    const { accessToken } = await user.getAuthJson();
-    if (!accessToken) return c.text("Unauthorized", 401);
+    const authJson = await user.getAuthJson();
+    console.log("[crown.summarize] Auth JSON keys:", Object.keys(authJson));
+    const { accessToken } = authJson;
+    console.log("[crown.summarize] Access token:", accessToken ? `${accessToken.substring(0, 20)}...` : "NOT FOUND");
+    if (!accessToken) {
+      console.error("[crown.summarize] No access token in auth JSON");
+      return c.text("Unauthorized", 401);
+    }
 
     const { prompt, teamSlugOrId } = c.req.valid("json");
 
@@ -132,12 +144,24 @@ crownRouter.openapi(summarizeRoute, async (c) => {
 
 crownRouter.openapi(evaluateRoute, async (c) => {
   try {
+    console.log("[crown.evaluate] Request headers:", c.req.header());
+    console.log("[crown.evaluate] x-stack-auth header:", c.req.header("x-stack-auth"));
+    console.log("[crown.evaluate] authorization header:", c.req.header("authorization"));
+    
     const user = await stackServerAppJs.getUser({ tokenStore: c.req.raw });
+    console.log("[crown.evaluate] User from stack auth:", user ? "Found" : "NOT FOUND");
     if (!user) {
+      console.error("[crown.evaluate] No user found from stackServerAppJs.getUser");
       return c.text("Unauthorized", 401);
     }
-    const { accessToken } = await user.getAuthJson();
-    if (!accessToken) return c.text("Unauthorized", 401);
+    const authJson = await user.getAuthJson();
+    console.log("[crown.evaluate] Auth JSON keys:", Object.keys(authJson));
+    const { accessToken } = authJson;
+    console.log("[crown.evaluate] Access token:", accessToken ? `${accessToken.substring(0, 20)}...` : "NOT FOUND");
+    if (!accessToken) {
+      console.error("[crown.evaluate] No access token in auth JSON");
+      return c.text("Unauthorized", 401);
+    }
 
     const { prompt, teamSlugOrId } = c.req.valid("json");
 
