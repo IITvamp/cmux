@@ -35,14 +35,23 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
       - uses: pnpm/action-setup@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.21
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Ensure pnpm lock visible to electron-builder
+      - name: Write .env for build
         shell: bash
-        run: cp pnpm-lock.yaml apps/client/pnpm-lock.yaml
-      - name: Generate icons
-        working-directory: apps/client
-        run: pnpm exec node ./scripts/generate-icons.mjs
+        run: |
+          cat > .env <<EOF
+          NEXT_PUBLIC_CONVEX_URL=${{ secrets.NEXT_PUBLIC_CONVEX_URL }}
+          NEXT_PUBLIC_STACK_PROJECT_ID=${{ secrets.NEXT_PUBLIC_STACK_PROJECT_ID }}
+          NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=${{ secrets.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY }}
+          NEXT_PUBLIC_WWW_ORIGIN=${{ secrets.NEXT_PUBLIC_WWW_ORIGIN }}
+          EOF
+      - name: Build mac app via local script (x64)
+        run: bash scripts/build-electron-local.sh
       - name: Detect mac signing secrets
         id: signing
         env:
@@ -58,7 +67,7 @@ jobs:
             if [ -z "${!k:-}" ]; then has=false; fi
           done
           echo "has=$has" >> "$GITHUB_OUTPUT"
-      - name: Prepare mac signing cert
+      - name: Prepare mac signing cert (x64)
         if: ${{ steps.signing.outputs.has == 'true' }}
         env:
           MAC_CERT_BASE64: ${{ secrets.MAC_CERT_BASE64 }}
@@ -66,28 +75,48 @@ jobs:
           set -euo pipefail
           CERT_PATH="$RUNNER_TEMP/mac_signing_cert.p12"
           node -e "process.stdout.write(Buffer.from(process.env.MAC_CERT_BASE64,'base64'))" > "$CERT_PATH"
-          echo "CSC_LINK=$CERT_PATH" >> "$GITHUB_ENV"
-      - name: Build & publish mac x64 (signed) to GitHub Releases
+          echo "CERT_PATH=$CERT_PATH" >> "$GITHUB_ENV"
+      - name: Import cert to keychain (x64)
         if: ${{ steps.signing.outputs.has == 'true' }}
         env:
-          GH_TOKEN: ${{ github.token }}
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-          # macOS code signing + notarization (CSC_LINK set in previous step)
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+          MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          security import "$CERT_PATH" -k ~/Library/Keychains/login.keychain-db -P "$MAC_CERT_PASSWORD" -T /usr/bin/codesign
+          security find-identity -v -p codesigning || true
+      - name: Code sign app (x64)
+        if: ${{ steps.signing.outputs.has == 'true' }}
+        run: |
+          set -euo pipefail
+          APP_PATH="apps/client/dist-electron/mac-x64/cmux.app"
+          IDENTITY=$(security find-identity -v -p codesigning | awk -F '"' '/Developer ID Application/ {print $2; exit} END { if (!NR) print "" }')
+          if [ -z "$IDENTITY" ]; then
+            IDENTITY=$(security find-identity -v -p codesigning | awk -F '"' 'NR==1{print $2}')
+          fi
+          echo "Using identity: $IDENTITY"
+          /usr/bin/codesign --deep --force --options runtime --timestamp -s "$IDENTITY" "$APP_PATH"
+          /usr/bin/codesign --verify -vv "$APP_PATH"
+      - name: Notarize app (x64)
+        if: ${{ steps.signing.outputs.has == 'true' }}
+        env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        working-directory: apps/client
         run: |
-          pnpm exec electron-vite build -c electron.vite.config.js
-          pnpm exec electron-builder --config electron-builder.json --mac --x64 --publish always --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
-      - name: Build & publish mac x64 (unsigned) to GitHub Releases
-        if: ${{ steps.signing.outputs.has != 'true' }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-        working-directory: apps/client
-        run: pnpm exec electron-vite build -c electron.vite.config.js && pnpm exec electron-builder --config electron-builder.json --mac dmg --x64 --publish always --config.mac.identity=null --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
+          set -euo pipefail
+          APP_PATH="apps/client/dist-electron/mac-x64/cmux.app"
+          xcrun notarytool submit "$APP_PATH" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --wait
+          xcrun stapler staple "$APP_PATH"
+      - name: Package app bundle (.zip)
+        run: |
+          APP_PATH="apps/client/dist-electron/mac-x64/cmux.app"
+          if [ ! -d "$APP_PATH" ]; then echo "App not found at $APP_PATH" >&2; exit 1; fi
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "cmux-mac-x64.zip"
+      - name: Upload asset to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            cmux-mac-x64.zip
 
   mac-arm64:
     name: macOS arm64
@@ -103,16 +132,25 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
       - uses: pnpm/action-setup@v4
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.21
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-      - name: Ensure pnpm lock visible to electron-builder
+      - name: Write .env for build
         shell: bash
-        run: cp pnpm-lock.yaml apps/client/pnpm-lock.yaml
-      - name: Generate icons
-        working-directory: apps/client
-        run: pnpm exec node ./scripts/generate-icons.mjs
+        run: |
+          cat > .env <<EOF
+          NEXT_PUBLIC_CONVEX_URL=${{ secrets.NEXT_PUBLIC_CONVEX_URL }}
+          NEXT_PUBLIC_STACK_PROJECT_ID=${{ secrets.NEXT_PUBLIC_STACK_PROJECT_ID }}
+          NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=${{ secrets.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY }}
+          NEXT_PUBLIC_WWW_ORIGIN=${{ secrets.NEXT_PUBLIC_WWW_ORIGIN }}
+          EOF
+      - name: Build mac app via local script (arm64)
+        run: bash scripts/build-electron-local.sh
       - name: Detect mac signing secrets
-        id: signing
+        id: signing_arm
         env:
           MAC_CERT_BASE64: ${{ secrets.MAC_CERT_BASE64 }}
           MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
@@ -126,36 +164,56 @@ jobs:
             if [ -z "${!k:-}" ]; then has=false; fi
           done
           echo "has=$has" >> "$GITHUB_OUTPUT"
-      - name: Prepare mac signing cert
-        if: ${{ steps.signing.outputs.has == 'true' }}
+      - name: Prepare mac signing cert (arm64)
+        if: ${{ steps.signing_arm.outputs.has == 'true' }}
         env:
           MAC_CERT_BASE64: ${{ secrets.MAC_CERT_BASE64 }}
         run: |
           set -euo pipefail
           CERT_PATH="$RUNNER_TEMP/mac_signing_cert.p12"
           node -e "process.stdout.write(Buffer.from(process.env.MAC_CERT_BASE64,'base64'))" > "$CERT_PATH"
-          echo "CSC_LINK=$CERT_PATH" >> "$GITHUB_ENV"
-      - name: Build & publish mac arm64 (signed) to GitHub Releases
-        if: ${{ steps.signing.outputs.has == 'true' }}
+          echo "CERT_PATH=$CERT_PATH" >> "$GITHUB_ENV"
+      - name: Import cert to keychain (arm64)
+        if: ${{ steps.signing_arm.outputs.has == 'true' }}
         env:
-          GH_TOKEN: ${{ github.token }}
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-          # macOS code signing + notarization (CSC_LINK set in previous step)
-          CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+          MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          security import "$CERT_PATH" -k ~/Library/Keychains/login.keychain-db -P "$MAC_CERT_PASSWORD" -T /usr/bin/codesign
+          security find-identity -v -p codesigning || true
+      - name: Code sign app (arm64)
+        if: ${{ steps.signing_arm.outputs.has == 'true' }}
+        run: |
+          set -euo pipefail
+          APP_PATH="apps/client/dist-electron/mac-arm64/cmux.app"
+          IDENTITY=$(security find-identity -v -p codesigning | awk -F '"' '/Developer ID Application/ {print $2; exit} END { if (!NR) print "" }')
+          if [ -z "$IDENTITY" ]; then
+            IDENTITY=$(security find-identity -v -p codesigning | awk -F '"' 'NR==1{print $2}')
+          fi
+          echo "Using identity: $IDENTITY"
+          /usr/bin/codesign --deep --force --options runtime --timestamp -s "$IDENTITY" "$APP_PATH"
+          /usr/bin/codesign --verify -vv "$APP_PATH"
+      - name: Notarize app (arm64)
+        if: ${{ steps.signing_arm.outputs.has == 'true' }}
+        env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        working-directory: apps/client
         run: |
-          pnpm exec electron-vite build -c electron.vite.config.js
-          pnpm exec electron-builder --config electron-builder.json --mac --arm64 --publish always --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
-      - name: Build & publish mac arm64 (unsigned) to GitHub Releases
-        if: ${{ steps.signing.outputs.has != 'true' }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-        working-directory: apps/client
-        run: pnpm exec electron-vite build -c electron.vite.config.js && pnpm exec electron-builder --config electron-builder.json --mac dmg --arm64 --publish always --config.mac.identity=null --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
+          set -euo pipefail
+          APP_PATH="apps/client/dist-electron/mac-arm64/cmux.app"
+          xcrun notarytool submit "$APP_PATH" --apple-id "$APPLE_ID" --team-id "$APPLE_TEAM_ID" --password "$APPLE_APP_SPECIFIC_PASSWORD" --wait
+          xcrun stapler staple "$APP_PATH"
+      - name: Package app bundle (.zip)
+        run: |
+          APP_PATH="apps/client/dist-electron/mac-arm64/cmux.app"
+          if [ ! -d "$APP_PATH" ]; then echo "App not found at $APP_PATH" >&2; exit 1; fi
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "cmux-mac-arm64.zip"
+      - name: Upload asset to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            cmux-mac-arm64.zip
 
   windows-x64:
     name: Windows x64
