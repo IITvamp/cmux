@@ -59,6 +59,7 @@ function DashboardComponent() {
 
   // State for loading states
   const [isLoadingBranches, setIsLoadingBranches] = useState(false);
+  const [dockerReady, setDockerReady] = useState<boolean | null>(null);
 
   // Ref to access editor API
   const editorApiRef = useRef<EditorApi | null>(null);
@@ -144,6 +145,13 @@ function DashboardComponent() {
 
     socket.emit("check-provider-status", (response) => {
       if (response.success) {
+        // Schedule next check via existing interval; also update docker readiness state
+        try {
+          const isRunning = Boolean(response.dockerStatus?.isRunning);
+          setDockerReady(isRunning);
+        } catch {
+          // Ignore parse errors
+        }
         checkProviderStatus();
       }
     });
@@ -613,6 +621,18 @@ function DashboardComponent() {
     effectiveSelectedBranch,
   ]);
 
+  const blockedByDocker = useMemo(() => {
+    // Only block when explicitly in local mode (not cloud, not environment) and we know Docker is not running
+    return !isEnvSelected && !isCloudMode && dockerReady === false;
+  }, [isEnvSelected, isCloudMode, dockerReady]);
+
+  const disabledReason = useMemo(() => {
+    if (blockedByDocker) {
+      return "Docker is not running. Start Docker Desktop.";
+    }
+    return undefined;
+  }, [blockedByDocker]);
+
   return (
     <FloatingPane header={<TitleBar title="cmux" />}>
       <div className="flex flex-col grow overflow-y-auto">
@@ -662,6 +682,7 @@ function DashboardComponent() {
                 <DashboardStartTaskButton
                   canSubmit={canSubmit}
                   onStartTask={handleStartTask}
+                  disabledReason={disabledReason}
                 />
               </DashboardInputFooter>
             </div>

@@ -5,13 +5,16 @@ import { Command } from "lucide-react";
 interface DashboardStartTaskButtonProps {
   canSubmit: boolean;
   onStartTask: () => void;
+  disabledReason?: string;
 }
 
 export function DashboardStartTaskButton({
   canSubmit,
   onStartTask,
+  disabledReason,
 }: DashboardStartTaskButtonProps) {
   const isMac = navigator.userAgent.toUpperCase().indexOf("MAC") >= 0;
+  const isDisabled = !canSubmit || !!disabledReason;
 
   return (
     <Tooltip>
@@ -21,7 +24,7 @@ export function DashboardStartTaskButton({
           variant="default"
           className="!h-7"
           onClick={onStartTask}
-          disabled={!canSubmit}
+          disabled={isDisabled}
         >
           Start task
         </Button>
@@ -30,12 +33,18 @@ export function DashboardStartTaskButton({
         side="bottom"
         className="flex items-center gap-1 bg-black text-white border-black [&>*:last-child]:bg-black [&>*:last-child]:fill-black"
       >
-        {isMac ? (
-          <Command className="w-3 h-3" />
+        {disabledReason ? (
+          <span className="text-xs">{disabledReason}</span>
         ) : (
-          <span className="text-xs">Ctrl</span>
+          <>
+            {isMac ? (
+              <Command className="w-3 h-3" />
+            ) : (
+              <span className="text-xs">Ctrl</span>
+            )}
+            <span>+ Enter</span>
+          </>
         )}
-        <span>+ Enter</span>
       </TooltipContent>
     </Tooltip>
   );
