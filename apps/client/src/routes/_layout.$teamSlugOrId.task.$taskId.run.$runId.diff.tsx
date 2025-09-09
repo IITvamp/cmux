@@ -5,6 +5,7 @@ import { type MergeMethod } from "@/components/ui/merge-button";
 import { useSocket } from "@/contexts/socket/use-socket";
 import { api } from "@cmux/convex/api";
 import { type Id } from "@cmux/convex/dataModel";
+import type { ReplaceDiffEntry } from "@cmux/shared";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { convexQuery } from "@convex-dev/react-query";
 import { useQuery as useRQ } from "@tanstack/react-query";
@@ -160,10 +161,7 @@ function RunDiffPage() {
 
   // Stabilize diffs per-run to avoid cross-run flashes
   const [stableDiffsByRun, setStableDiffsByRun] = useState<
-    Record<
-      Id<"taskRuns">,
-      import("@cmux/shared/diff-types").ReplaceDiffEntry[] | undefined
-    >
+    Record<Id<"taskRuns">, ReplaceDiffEntry[] | undefined>
   >({});
   useEffect(() => {
     const diffs = diffsQuery.data;
