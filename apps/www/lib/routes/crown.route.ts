@@ -2,7 +2,25 @@ import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { generateObject } from "ai";
 import { verifyTeamAccess } from "@/lib/utils/team-verification";
-import { stackServerAppJs } from "../utils/stack";
+
+const CrownEvaluationRequestSchema = z.object({
+  prompt: z.string(),
+  teamSlugOrId: z.string(),
+});
+
+const CrownEvaluationResponseSchema = z.object({
+  winner: z.number().int().min(0),
+  reason: z.string(),
+});
+
+const CrownSummarizationRequestSchema = z.object({
+  prompt: z.string(),
+  teamSlugOrId: z.string().optional(),
+});
+
+const CrownSummarizationResponseSchema = z.object({
+  summary: z.string(),
+});
 
 export const crownRouter = new OpenAPIHono();
 
@@ -13,10 +31,7 @@ const evaluateRoute = createRoute({
     body: {
       content: {
         "application/json": {
-          schema: z.object({
-            prompt: z.string(),
-            teamSlugOrId: z.string(),
-          }),
+          schema: CrownEvaluationRequestSchema,
         },
       },
       required: true,
@@ -27,10 +42,7 @@ const evaluateRoute = createRoute({
       description: "Crown evaluation result",
       content: {
         "application/json": {
-          schema: z.object({
-            winner: z.number().int().min(0),
-            reason: z.string(),
-          }),
+          schema: CrownEvaluationResponseSchema,
         },
       },
     },
@@ -48,10 +60,7 @@ const summarizeRoute = createRoute({
     body: {
       content: {
         "application/json": {
-          schema: z.object({
-            prompt: z.string(),
-            teamSlugOrId: z.string().optional(),
-          }),
+          schema: CrownSummarizationRequestSchema,
         },
       },
       required: true,
@@ -62,9 +71,7 @@ const summarizeRoute = createRoute({
       description: "Summary generated",
       content: {
         "application/json": {
-          schema: z.object({
-            summary: z.string(),
-          }),
+          schema: CrownSummarizationResponseSchema,
         },
       },
     },
@@ -75,26 +82,17 @@ const summarizeRoute = createRoute({
 
 crownRouter.openapi(summarizeRoute, async (c) => {
   try {
-    console.log("[crown.summarize] Request headers:", c.req.header());
-    console.log("[crown.summarize] x-stack-auth header:", c.req.header("x-stack-auth"));
-    console.log("[crown.summarize] authorization header:", c.req.header("authorization"));
-    
-    const user = await stackServerAppJs.getUser({ tokenStore: c.req.raw });
-    console.log("[crown.summarize] User from stack auth:", user ? "Found" : "NOT FOUND");
-    if (!user) {
-      console.error("[crown.summarize] No user found from stackServerAppJs.getUser");
-      return c.text("Unauthorized", 401);
-    }
-    const authJson = await user.getAuthJson();
-    console.log("[crown.summarize] Auth JSON keys:", Object.keys(authJson));
-    const { accessToken } = authJson;
-    console.log("[crown.summarize] Access token:", accessToken ? `${accessToken.substring(0, 20)}...` : "NOT FOUND");
-    if (!accessToken) {
-      console.error("[crown.summarize] No access token in auth JSON");
-      return c.text("Unauthorized", 401);
-    }
-
     const { prompt, teamSlugOrId } = c.req.valid("json");
+    const stackAuthHeader = c.req.header("x-stack-auth");
+
+    if (stackAuthHeader) {
+      const authData = JSON.parse(stackAuthHeader);
+      const accessToken = authData?.accessToken;
+      if (!accessToken) {
+        console.error("[crown.summarize] No access token found");
+        return c.text("Unauthorized", 401);
+      }
+    }
 
     // Verify team access if provided
     if (teamSlugOrId) {
@@ -144,26 +142,17 @@ crownRouter.openapi(summarizeRoute, async (c) => {
 
 crownRouter.openapi(evaluateRoute, async (c) => {
   try {
-    console.log("[crown.evaluate] Request headers:", c.req.header());
-    console.log("[crown.evaluate] x-stack-auth header:", c.req.header("x-stack-auth"));
-    console.log("[crown.evaluate] authorization header:", c.req.header("authorization"));
-    
-    const user = await stackServerAppJs.getUser({ tokenStore: c.req.raw });
-    console.log("[crown.evaluate] User from stack auth:", user ? "Found" : "NOT FOUND");
-    if (!user) {
-      console.error("[crown.evaluate] No user found from stackServerAppJs.getUser");
-      return c.text("Unauthorized", 401);
-    }
-    const authJson = await user.getAuthJson();
-    console.log("[crown.evaluate] Auth JSON keys:", Object.keys(authJson));
-    const { accessToken } = authJson;
-    console.log("[crown.evaluate] Access token:", accessToken ? `${accessToken.substring(0, 20)}...` : "NOT FOUND");
-    if (!accessToken) {
-      console.error("[crown.evaluate] No access token in auth JSON");
-      return c.text("Unauthorized", 401);
-    }
-
     const { prompt, teamSlugOrId } = c.req.valid("json");
+    const stackAuthHeader = c.req.header("x-stack-auth");
+
+    if (stackAuthHeader) {
+      const authData = JSON.parse(stackAuthHeader);
+      const accessToken = authData?.accessToken;
+      if (!accessToken) {
+        console.error("[crown.summarize] No access token found");
+        return c.text("Unauthorized", 401);
+      }
+    }
 
     // Verify team access (required)
     try {
@@ -192,14 +181,9 @@ crownRouter.openapi(evaluateRoute, async (c) => {
     }
     const anthropic = createAnthropic({ apiKey: anthropicKey });
 
-    const CrownSchema = z.object({
-      winner: z.number().int().min(0),
-      reason: z.string(),
-    });
-
     const { object } = await generateObject({
       model: anthropic("claude-opus-4-1-20250805"),
-      schema: CrownSchema,
+      schema: CrownEvaluationResponseSchema,
       system:
         "You select the best implementation from structured diff inputs and explain briefly why.",
       prompt,

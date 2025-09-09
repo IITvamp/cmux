@@ -1,22 +1,17 @@
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
-import { z } from "zod";
 import { getConvex } from "./utils/convexClient.js";
 import { serverLogger } from "./utils/fileLogger.js";
 import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
 import { workerExec } from "./utils/workerExec.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
-import { getAuthToken } from "./utils/requestContext.js";
+import { getWwwClient } from "./utils/wwwClient.js";
+import {
+  postApiCrownEvaluate,
+  postApiCrownSummarize,
+} from "@cmux/www-openapi-client";
 
 // Auto PR behavior is controlled via workspace settings in Convex
-
-const CrownEvaluationResponseSchema = z.object({
-  winner: z.number().int().min(0),
-  reason: z.string(),
-});
-
-type CrownEvaluationResponse = z.infer<typeof CrownEvaluationResponseSchema>;
-
 export async function createPullRequestForWinner(
   taskRunId: Id<"taskRuns">,
   taskId: Id<"tasks">,
@@ -401,71 +396,24 @@ export async function evaluateCrown(
         let commentText = "";
         try {
           // Call the crown summarize endpoint
-          const baseUrl =
-            process.env.WWW_API_BASE_URL ||
-            process.env.CMUX_WWW_API_URL ||
-            "http://localhost:9779";
-          const url = `${baseUrl}/api/crown/summarize`;
-
-          const token = getAuthToken();
-          serverLogger.info(
-            `[CrownEvaluator] Auth token from context: ${token ? `${token.substring(0, 20)}...` : "UNDEFINED"}`
-          );
-          const headers: Record<string, string> = {
-            "Content-Type": "application/json",
-          };
-          if (token) {
-            const authPayload = { accessToken: token };
-            headers["x-stack-auth"] = JSON.stringify(authPayload);
-            serverLogger.info(
-              `[CrownEvaluator] Setting x-stack-auth header with accessToken: ${token.substring(0, 20)}...`
-            );
-          } else {
-            serverLogger.error(
-              `[CrownEvaluator] NO AUTH TOKEN AVAILABLE - Request will likely fail`
-            );
-          }
-          serverLogger.info(
-            `[CrownEvaluator] Preparing POST /api/crown/summarize x-stack-auth: ${Boolean(
-              headers["x-stack-auth"]
-            )}, team: ${teamSlugOrId}`
-          );
-          serverLogger.info(
-            `[CrownEvaluator] Full headers being sent: ${JSON.stringify(headers)}`
-          );
-
-          serverLogger.info(
-            `[CrownEvaluator] Making POST request to ${url}`
-          );
-          serverLogger.info(
-            `[CrownEvaluator] Request body: { prompt: <${summarizationPrompt.length} chars>, teamSlugOrId: "${teamSlugOrId}" }`
-          );
-          const res = await fetch(url, {
-            method: "POST",
-            headers,
-            body: JSON.stringify({
+          const res = await postApiCrownSummarize({
+            client: getWwwClient(),
+            body: {
               prompt: summarizationPrompt,
               teamSlugOrId,
-            }),
+            },
           });
 
-          if (!res.ok) {
-            serverLogger.error(
-              `[CrownEvaluator] Crown summarize HTTP ${res.status}`
-            );
-          } else {
-            const data = await res.json();
-            commentText = data.summary || "";
+          if (!res.data) {
+            serverLogger.error(`[CrownEvaluator] Crown summarize failed`);
+            return;
           }
+          commentText = res.data.summary;
         } catch (e) {
           serverLogger.error(
-            `[CrownEvaluator] Anthropic summarization error:`,
+            `[CrownEvaluator] Failed to generate PR summary:`,
             e
           );
-        }
-
-        if (!commentText) {
-          commentText = `## PR Review Summary\n- No AI summary available.\n- Captured diffs were empty or summarization failed.\n\nPlease review recent changes manually.`;
         }
 
         if (commentText.length > 8000) {
@@ -747,72 +695,18 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
     } catch {
       /* empty */
     }
+    const res = await postApiCrownEvaluate({
+      client: getWwwClient(),
+      body: {
+        prompt: evaluationPrompt,
+        teamSlugOrId,
+      },
+    });
 
-    // Evaluate via apps/www crown endpoint (server-side Anthropic)
-    let jsonResponse: CrownEvaluationResponse | null = null;
-    try {
-      const baseUrl =
-        process.env.WWW_API_BASE_URL ||
-        process.env.CMUX_WWW_API_URL ||
-        "http://localhost:9779";
-      const url = `${baseUrl}/api/crown/evaluate`;
-
-      const token = getAuthToken();
-      serverLogger.info(
-        `[CrownEvaluator] Auth token from context for evaluate: ${token ? `${token.substring(0, 20)}...` : "UNDEFINED"}`
-      );
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-      if (token) {
-        const authPayload = { accessToken: token };
-        headers["x-stack-auth"] = JSON.stringify(authPayload);
-        headers["authorization"] = `Bearer ${token}`;
-        serverLogger.info(
-          `[CrownEvaluator] Setting headers for evaluate - x-stack-auth and Bearer token: ${token.substring(0, 20)}...`
-        );
-      } else {
-        serverLogger.error(
-          `[CrownEvaluator] NO AUTH TOKEN AVAILABLE for evaluate - Request will likely fail`
-        );
-      }
-
-      serverLogger.info(
-        `[CrownEvaluator] Preparing POST /api/crown/evaluate x-stack-auth: ${Boolean(
-          headers["x-stack-auth"]
-        )}, team: ${teamSlugOrId}`
-      );
-      serverLogger.info(
-        `[CrownEvaluator] Full headers for evaluate: ${JSON.stringify(headers)}`
-      );
-
-      serverLogger.info(
-        `[CrownEvaluator] Making POST request to ${url}`
-      );
-      serverLogger.info(
-        `[CrownEvaluator] Request body: { prompt: <${evaluationPrompt.length} chars>, teamSlugOrId: "${teamSlugOrId}" }`
-      );
-      const res = await fetch(url, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({ prompt: evaluationPrompt, teamSlugOrId }),
-      });
-
-      if (!res.ok) {
-        serverLogger.error(
-          `[CrownEvaluator] Crown evaluate HTTP ${res.status}`
-        );
-        const errorText = await res.text();
-        serverLogger.error(
-          `[CrownEvaluator] Crown evaluate error response: ${errorText}`
-        );
-      } else {
-        const data = await res.json();
-        jsonResponse = CrownEvaluationResponseSchema.parse(data);
-      }
-    } catch (err) {
-      serverLogger.error(`[CrownEvaluator] Crown evaluate request error:`, err);
+    if (!res.data) {
+      serverLogger.error(`[CrownEvaluator] Crown evaluate failed`);
     }
+    const jsonResponse = res.data;
 
     if (!jsonResponse) {
       // Fallback: Pick the first completed run as winner
