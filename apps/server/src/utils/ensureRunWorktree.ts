@@ -4,9 +4,9 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { RepositoryManager } from "../repositoryManager.js";
 import { getConvex } from "../utils/convexClient.js";
+import { retryOnOptimisticConcurrency } from "../utils/convexRetry.js";
 import { serverLogger } from "../utils/fileLogger.js";
 import { getWorktreePath, setupProjectWorkspace } from "../workspace.js";
-import { retryOnOptimisticConcurrency } from "../utils/convexRetry.js";
 
 export type EnsureWorktreeResult = {
   run: Doc<"taskRuns">;
@@ -88,10 +88,10 @@ export async function ensureRunWorktreeAndBranch(
         branch: baseBranch || undefined,
         worktreeInfo,
       });
-  if (!res.success || !res.worktreePath) {
-      throw new Error(res.error || "Failed to set up worktree");
-    }
-    worktreePath = res.worktreePath;
+      if (!res.success || !res.worktreePath) {
+        throw new Error(res.error || "Failed to set up worktree");
+      }
+      worktreePath = res.worktreePath;
       await retryOnOptimisticConcurrency(() =>
         getConvex().mutation(api.taskRuns.updateWorktreePath, {
           teamSlugOrId,
@@ -134,6 +134,34 @@ export async function ensureRunWorktreeAndBranch(
             cwd: worktreePath,
           });
         }
+      }
+      // After ensuring we're on the correct branch, attempt to fetch the remote
+      // branch for this run so the local worktree reflects the pushed commits.
+      // This is especially important in cloud mode where commits happen in a VM.
+      try {
+        // Fetch the specific branch, force-updating the remote-tracking ref
+        await repoMgr.executeGitCommand(
+          `git fetch --depth 1 origin +refs/heads/${branchName}:refs/remotes/origin/${branchName}`,
+          { cwd: worktreePath }
+        );
+        // If the worktree has no local changes, fast-forward/reset to origin/<branch>
+        const { stdout: statusOut } = await repoMgr.executeGitCommand(
+          `git status --porcelain`,
+          { cwd: worktreePath }
+        );
+        const isClean = statusOut.trim().length === 0;
+        if (isClean) {
+          // Only hard reset when clean to avoid clobbering local edits
+          await repoMgr.executeGitCommand(
+            `git reset --hard origin/${branchName}`,
+            { cwd: worktreePath }
+          );
+        }
+      } catch (e) {
+        // Non-fatal: if fetch/reset fails, continue so UI can still render whatever exists
+        serverLogger.warn(
+          `[ensureRunWorktree] Non-fatal fetch/update failure for ${branchName}: ${String(e)}`
+        );
       }
     } catch (e: unknown) {
       const err = e as { message?: string; stderr?: string };
