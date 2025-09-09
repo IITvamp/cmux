@@ -34,13 +34,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-      - uses: pnpm/action-setup@v4
+      # Use Bun for installs and tooling
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.2.21
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Install dependencies (bun)
+        run: bun install --frozen-lockfile
       - name: Write .env for build
         shell: bash
         run: |
@@ -88,7 +88,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         working-directory: apps/client
         run: |
-          pnpm exec electron-builder --config electron-builder.json --mac --x64 --publish always --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
+          bunx electron-builder --config electron-builder.json --mac --x64 --publish always --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
       - name: Build & publish mac x64 (unsigned) to GitHub Releases
         if: ${{ steps.signing.outputs.has != 'true' }}
         env:
@@ -96,7 +96,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         working-directory: apps/client
         run: |
-          pnpm exec electron-builder --config electron-builder.json --mac dmg zip --x64 --publish always --config.mac.identity=null --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
+          bunx electron-builder --config electron-builder.json --mac dmg zip --x64 --publish always --config.mac.identity=null --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
 
   mac-arm64:
     name: macOS arm64
@@ -111,13 +111,13 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-      - uses: pnpm/action-setup@v4
+      # Use Bun for installs and tooling
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.2.21
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+      - name: Install dependencies (bun)
+        run: bun install --frozen-lockfile
       - name: Write .env for build
         shell: bash
         run: |
@@ -165,7 +165,7 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         working-directory: apps/client
         run: |
-          pnpm exec electron-builder --config electron-builder.json --mac --arm64 --publish always --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
+          bunx electron-builder --config electron-builder.json --mac --arm64 --publish always --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
       - name: Build & publish mac arm64 (unsigned) to GitHub Releases
         if: ${{ steps.signing_arm.outputs.has != 'true' }}
         env:
@@ -173,7 +173,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
         working-directory: apps/client
         run: |
-          pnpm exec electron-builder --config electron-builder.json --mac dmg zip --arm64 --publish always --config.mac.identity=null --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
+          bunx electron-builder --config electron-builder.json --mac dmg zip --arm64 --publish always --config.mac.identity=null --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
 
   windows-x64:
     name: Windows x64
@@ -188,15 +188,24 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-      - uses: pnpm/action-setup@v4
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Ensure pnpm lock visible to electron-builder
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.21
+      - name: Install dependencies (bun)
+        run: bun install --frozen-lockfile
+      - name: Write .env for build
         shell: bash
-        run: cp pnpm-lock.yaml apps/client/pnpm-lock.yaml
+        run: |
+          cat > .env <<EOF
+          NEXT_PUBLIC_CONVEX_URL=${{ secrets.NEXT_PUBLIC_CONVEX_URL }}
+          NEXT_PUBLIC_STACK_PROJECT_ID=${{ secrets.NEXT_PUBLIC_STACK_PROJECT_ID }}
+          NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=${{ secrets.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY }}
+          NEXT_PUBLIC_WWW_ORIGIN=${{ secrets.NEXT_PUBLIC_WWW_ORIGIN }}
+          EOF
       - name: Generate icons
         working-directory: apps/client
-        run: pnpm exec node ./scripts/generate-icons.mjs
+        run: bun run ./scripts/generate-icons.mjs
       - name: Build & publish Windows x64 to GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
@@ -207,7 +216,7 @@ jobs:
           # CSC_LINK: base64:${{ secrets.WIN_CERT_BASE64 }}
           # CSC_KEY_PASSWORD: ${{ secrets.WIN_CERT_PASSWORD }}
         working-directory: apps/client
-        run: pnpm exec electron-vite build -c electron.vite.config.js && pnpm exec electron-builder --config electron-builder.json --win --x64 --publish always --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
+        run: bunx electron-vite build -c electron.vite.config.ts && bunx electron-builder --config electron-builder.json --win --x64 --publish always --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
 
   linux-x64:
     name: Linux x64
@@ -219,18 +228,27 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-      - uses: pnpm/action-setup@v4
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Ensure pnpm lock visible to electron-builder
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.2.21
+      - name: Install dependencies (bun)
+        run: bun install --frozen-lockfile
+      - name: Write .env for build
         shell: bash
-        run: cp pnpm-lock.yaml apps/client/pnpm-lock.yaml
+        run: |
+          cat > .env <<EOF
+          NEXT_PUBLIC_CONVEX_URL=${{ secrets.NEXT_PUBLIC_CONVEX_URL }}
+          NEXT_PUBLIC_STACK_PROJECT_ID=${{ secrets.NEXT_PUBLIC_STACK_PROJECT_ID }}
+          NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=${{ secrets.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY }}
+          NEXT_PUBLIC_WWW_ORIGIN=${{ secrets.NEXT_PUBLIC_WWW_ORIGIN }}
+          EOF
       - name: Generate icons
         working-directory: apps/client
-        run: pnpm exec node ./scripts/generate-icons.mjs
+        run: bun run ./scripts/generate-icons.mjs
       - name: Build & publish Linux AppImage x64 to GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
         working-directory: apps/client
-        run: pnpm exec electron-vite build -c electron.vite.config.js && pnpm exec electron-builder --config electron-builder.json --linux AppImage --x64 --publish always --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
+        run: bunx electron-vite build -c electron.vite.config.ts && bunx electron-builder --config electron-builder.json --linux AppImage --x64 --publish always --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
         
