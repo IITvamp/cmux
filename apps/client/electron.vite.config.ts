@@ -8,6 +8,20 @@ import { resolveWorkspacePackages } from "./electron-vite-plugin-resolve-workspa
 
 const envDir = resolve("../../");
 
+// Load environment variables from .env files
+const loadEnv = () => {
+  const envVars: Record<string, string> = {};
+  // Read from process.env which should have been populated by dotenv-cli
+  for (const key in process.env) {
+    if (key.startsWith("NEXT_PUBLIC_")) {
+      envVars[`import.meta.env.${key}`] = JSON.stringify(process.env[key]);
+    }
+  }
+  return envVars;
+};
+
+const envDefines = loadEnv();
+
 export default defineConfig({
   main: {
     // Externalize deps from node_modules (except @cmux/server) and resolve workspace packages
@@ -23,6 +37,7 @@ export default defineConfig({
       }),
       resolveWorkspacePackages(),
     ],
+    define: envDefines,
     build: {
       rollupOptions: {
         input: {
@@ -65,6 +80,7 @@ export default defineConfig({
       }),
       resolveWorkspacePackages(),
     ],
+    define: envDefines,
     build: {
       rollupOptions: {
         input: {
@@ -82,6 +98,7 @@ export default defineConfig({
   renderer: {
     root: ".",
     base: "./",
+    define: envDefines,
     build: {
       rollupOptions: {
         input: {
