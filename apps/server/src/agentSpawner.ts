@@ -19,7 +19,11 @@ import {
   generateUniqueBranchNamesFromTitle,
 } from "./utils/branchNameGenerator.js";
 import { getConvex } from "./utils/convexClient.js";
-import { getAuthToken, getAuthHeaderJson, runWithAuth } from "./utils/requestContext.js";
+import {
+  getAuthToken,
+  getAuthHeaderJson,
+  runWithAuth,
+} from "./utils/requestContext.js";
 import { serverLogger } from "./utils/fileLogger.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { CmuxVSCodeInstance } from "./vscode/CmuxVSCodeInstance.js";
@@ -245,7 +249,7 @@ export async function spawnAgent(
       for (const keyConfig of agent.apiKeys) {
         const key = apiKeys[keyConfig.envVar];
         if (key && key.trim().length > 0) {
-          const injectName = keyConfig.mapToEnvVar || keyConfig.envVar;   
+          const injectName = keyConfig.mapToEnvVar || keyConfig.envVar;
           envVars[injectName] = key;
         }
       }
@@ -305,7 +309,7 @@ export async function spawnAgent(
       );
 
       // Setup workspace
-  const workspaceResult = await setupProjectWorkspace({
+      const workspaceResult = await setupProjectWorkspace({
         repoUrl: options.repoUrl!,
         // If not provided, setupProjectWorkspace detects default from origin
         branch: options.branch,
@@ -534,14 +538,17 @@ export async function spawnAgent(
 
         // Append error to log for context
         if (data.errorMessage) {
-          await runWithAuth(capturedAuthToken, capturedAuthHeaderJson, async () =>
-            retryOnOptimisticConcurrency(() =>
-              getConvex().mutation(api.taskRuns.appendLogPublic, {
-                teamSlugOrId,
-                id: taskRunId,
-                content: `\n\n=== ERROR ===\n${data.errorMessage}\n=== END ERROR ===\n`,
-              })
-            )
+          await runWithAuth(
+            capturedAuthToken,
+            capturedAuthHeaderJson,
+            async () =>
+              retryOnOptimisticConcurrency(() =>
+                getConvex().mutation(api.taskRuns.appendLogPublic, {
+                  teamSlugOrId,
+                  id: taskRunId,
+                  content: `\n\n=== ERROR ===\n${data.errorMessage}\n=== END ERROR ===\n`,
+                })
+              )
           );
         }
 
