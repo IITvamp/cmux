@@ -6,7 +6,7 @@ import { serverLogger } from "./utils/fileLogger.js";
 import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
 import { workerExec } from "./utils/workerExec.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
-import { getAuthHeaderJson } from "./utils/requestContext.js";
+import { getAuthToken } from "./utils/requestContext.js";
 
 // Auto PR behavior is controlled via workspace settings in Convex
 
@@ -298,7 +298,7 @@ Completed: ${new Date().toISOString()}`;
   }
 }
 
-export async function evaluateCrownWithClaudeCode(
+export async function evaluateCrown(
   taskId: Id<"tasks">,
   teamSlugOrId: string
 ): Promise<void> {
@@ -406,15 +406,19 @@ export async function evaluateCrownWithClaudeCode(
             process.env.CMUX_WWW_API_URL ||
             "http://localhost:9779";
           const url = `${baseUrl}/api/crown/summarize`;
+
+          const token = getAuthToken();
           const headers: Record<string, string> = {
             "Content-Type": "application/json",
           };
-          
-          // Get auth from context
-          const authHeaderJson = getAuthHeaderJson();
-          if (authHeaderJson) {
-            headers["x-stack-auth"] = authHeaderJson;
+          if (token) {
+            headers["x-stack-auth"] = JSON.stringify({ accessToken: token });
           }
+          serverLogger.info(
+            `[CrownEvaluator] Preparing POST /api/crown/summarize x-stack-auth: ${Boolean(
+              headers["x-stack-auth"]
+            )}, team: ${teamSlugOrId}`
+          );
 
           const res = await fetch(url, {
             method: "POST",
@@ -732,26 +736,36 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
         process.env.CMUX_WWW_API_URL ||
         "http://localhost:9779";
       const url = `${baseUrl}/api/crown/evaluate`;
+
+      const token = getAuthToken();
       const headers: Record<string, string> = {
         "Content-Type": "application/json",
       };
-      
-      // Get auth from context
-      const authHeaderJson = getAuthHeaderJson();
-      if (authHeaderJson) {
-        headers["x-stack-auth"] = authHeaderJson;
+      if (token) {
+        headers["x-stack-auth"] = JSON.stringify({ accessToken: token });
+        headers["authorization"] = `Bearer ${token}`;
       }
+
+      serverLogger.info(
+        `[CrownEvaluator] Preparing POST /api/crown/evaluate x-stack-auth: ${Boolean(
+          headers["x-stack-auth"]
+        )}, team: ${teamSlugOrId}`
+      );
 
       const res = await fetch(url, {
         method: "POST",
         headers,
-        body: JSON.stringify({ ...evaluationData, teamSlugOrId }),
+        body: JSON.stringify({ prompt: evaluationPrompt, teamSlugOrId }),
       });
 
       if (!res.ok) {
-        serverLogger.error(`[CrownEvaluator] Crown evaluate HTTP ${res.status}`);
+        serverLogger.error(
+          `[CrownEvaluator] Crown evaluate HTTP ${res.status}`
+        );
         const errorText = await res.text();
-        serverLogger.error(`[CrownEvaluator] Crown evaluate error response: ${errorText}`);
+        serverLogger.error(
+          `[CrownEvaluator] Crown evaluate error response: ${errorText}`
+        );
       } else {
         const data = await res.json();
         jsonResponse = CrownEvaluationResponseSchema.parse(data);

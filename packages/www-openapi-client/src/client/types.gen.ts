@@ -977,12 +977,8 @@ export type PostApiCrownSummarizeResponse = PostApiCrownSummarizeResponses[keyof
 
 export type PostApiCrownEvaluateData = {
     body: {
-        implementations: Array<{
-            modelName: string;
-            gitDiff: string;
-            index: number;
-        }>;
-        teamSlugOrId?: string;
+        prompt: string;
+        teamSlugOrId: string;
     };
     path?: never;
     query?: never;

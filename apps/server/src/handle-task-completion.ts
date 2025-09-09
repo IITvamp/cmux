@@ -2,17 +2,14 @@ import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
 import { type AgentConfig } from "@cmux/shared/agentConfig";
 import { captureGitDiff } from "./captureGitDiff.js";
-import {
-  createPullRequestForWinner,
-  evaluateCrownWithClaudeCode,
-} from "./crownEvaluator.js";
+import { createPullRequestForWinner, evaluateCrown } from "./crownEvaluator.js";
 import performAutoCommitAndPush from "./performAutoCommitAndPush.js";
 import { getConvex } from "./utils/convexClient.js";
 import { serverLogger } from "./utils/fileLogger.js";
 import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
 import type { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { retryOnOptimisticConcurrency } from "./utils/convexRetry.js";
-import { getRequestContext, runWithAuth } from "./utils/requestContext.js";
+import { getRequestContext, runWithAuthToken } from "./utils/requestContext.js";
 
 // Handler for completing the task
 export async function handleTaskCompletion({
@@ -152,17 +149,16 @@ export async function handleTaskCompletion({
             }
 
             // Run evaluation with the preserved auth context
-            if (authContext?.authHeaderJson) {
-              await runWithAuth(
+            if (authContext?.authToken) {
+              await runWithAuthToken(
                 authContext.authToken,
-                authContext.authHeaderJson,
-                () => evaluateCrownWithClaudeCode(taskRunData.taskId, teamSlugOrId)
+                () => evaluateCrown(taskRunData.taskId, teamSlugOrId)
               );
             } else {
               // If no auth context, try without it (will likely fail but worth trying)
-              await evaluateCrownWithClaudeCode(taskRunData.taskId, teamSlugOrId);
+              await evaluateCrown(taskRunData.taskId, teamSlugOrId);
             }
-            
+
             serverLogger.info(
               `[AgentSpawner] Crown evaluation completed successfully`
             );

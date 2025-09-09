@@ -1,24 +1,10 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { generateObject } from "ai";
-import { stackServerAppJs } from "../utils/stack";
 import { verifyTeamAccess } from "@/lib/utils/team-verification";
+import { stackServerAppJs } from "../utils/stack";
 
 export const crownRouter = new OpenAPIHono();
-
-// Crown evaluation endpoint using server-side Vercel AI SDK + Anthropic
-const EvaluateBody = z.object({
-  implementations: z
-    .array(
-      z.object({
-        modelName: z.string(),
-        gitDiff: z.string(),
-        index: z.number().int(),
-      })
-    )
-    .min(1),
-  teamSlugOrId: z.string().optional(),
-});
 
 const evaluateRoute = createRoute({
   method: "post",
@@ -27,7 +13,10 @@ const evaluateRoute = createRoute({
     body: {
       content: {
         "application/json": {
-          schema: EvaluateBody,
+          schema: z.object({
+            prompt: z.string(),
+            teamSlugOrId: z.string(),
+          }),
         },
       },
       required: true,
@@ -86,18 +75,33 @@ const summarizeRoute = createRoute({
 
 crownRouter.openapi(summarizeRoute, async (c) => {
   try {
-    // Check authentication
     const user = await stackServerAppJs.getUser({ tokenStore: c.req.raw });
-    if (!user) return c.text("Unauthorized", 401);
+    if (!user) {
+      return c.text("Unauthorized", 401);
+    }
     const { accessToken } = await user.getAuthJson();
     if (!accessToken) return c.text("Unauthorized", 401);
 
     const { prompt, teamSlugOrId } = c.req.valid("json");
 
-    // Verify team access if teamSlugOrId is provided
+    // Verify team access if provided
     if (teamSlugOrId) {
-      const team = await verifyTeamAccess({ req: c.req.raw, teamSlugOrId });
-      if (!team) return c.text("Unauthorized", 401);
+      try {
+        const team = await verifyTeamAccess({ req: c.req.raw, teamSlugOrId });
+        if (!team) {
+          console.warn(
+            "[crown.summarize] Unauthorized: verifyTeamAccess returned null",
+            { teamSlugOrId }
+          );
+          return c.text("Unauthorized", 401);
+        }
+      } catch (e) {
+        console.warn("[crown.summarize] verifyTeamAccess failed", {
+          teamSlugOrId,
+          error: String(e),
+        });
+        return c.text("Unauthorized", 401);
+      }
     }
 
     const anthropicKey = process.env.ANTHROPIC_API_KEY;
@@ -110,7 +114,7 @@ crownRouter.openapi(summarizeRoute, async (c) => {
     const anthropic = createAnthropic({ apiKey: anthropicKey });
 
     const { object } = await generateObject({
-      model: anthropic("claude-3-5-sonnet-20241022"),
+      model: anthropic("claude-opus-4-1-20250805"),
       schema: z.object({ summary: z.string() }),
       system:
         "You are an expert reviewer summarizing pull requests. Provide a clear, concise summary following the requested format.",
@@ -128,27 +132,32 @@ crownRouter.openapi(summarizeRoute, async (c) => {
 
 crownRouter.openapi(evaluateRoute, async (c) => {
   try {
-    // Check authentication
     const user = await stackServerAppJs.getUser({ tokenStore: c.req.raw });
-    if (!user) return c.text("Unauthorized", 401);
+    if (!user) {
+      return c.text("Unauthorized", 401);
+    }
     const { accessToken } = await user.getAuthJson();
     if (!accessToken) return c.text("Unauthorized", 401);
 
-    const evaluationData = c.req.valid("json");
-    const { teamSlugOrId } = evaluationData;
+    const { prompt, teamSlugOrId } = c.req.valid("json");
 
-    // Verify team access if teamSlugOrId is provided
-    if (teamSlugOrId) {
+    // Verify team access (required)
+    try {
       const team = await verifyTeamAccess({ req: c.req.raw, teamSlugOrId });
-      if (!team) return c.text("Unauthorized", 401);
+      if (!team) {
+        console.warn(
+          "[crown.evaluate] Unauthorized: verifyTeamAccess returned null",
+          { teamSlugOrId }
+        );
+        return c.text("Unauthorized", 401);
+      }
+    } catch (e) {
+      console.warn("[crown.evaluate] verifyTeamAccess failed", {
+        teamSlugOrId,
+        error: String(e),
+      });
+      return c.text("Unauthorized", 401);
     }
-
-    // Compose prompt from evaluation data
-    const evaluationPrompt = `You are evaluating code implementations from different AI models.\n\nHere are the implementations to evaluate:\n${JSON.stringify(
-      evaluationData,
-      null,
-      2
-    )}\n\nNOTE: The git diffs shown contain only actual code changes. Lock files, build artifacts, and other non-essential files have been filtered out.\n\nAnalyze these implementations and select the best one based on:\n1. Code quality and correctness\n2. Completeness of the solution\n3. Following best practices\n4. Actually having meaningful code changes (if one has no changes, prefer the one with changes)\n\nRespond with a JSON object containing:\n- \"winner\": the index (0-based) of the best implementation\n- \"reason\": a brief explanation of why this implementation was chosen\n\nExample response:\n{\"winner\": 0, \"reason\": \"Model claude/sonnet-4 provided a more complete implementation with better error handling and cleaner code structure.\"}\n\nIMPORTANT: Respond ONLY with the JSON object, no other text.`;
 
     const anthropicKey = process.env.ANTHROPIC_API_KEY;
     if (!anthropicKey) {
@@ -163,12 +172,13 @@ crownRouter.openapi(evaluateRoute, async (c) => {
       winner: z.number().int().min(0),
       reason: z.string(),
     });
+
     const { object } = await generateObject({
-      model: anthropic("claude-3-5-haiku-20241022"),
+      model: anthropic("claude-opus-4-1-20250805"),
       schema: CrownSchema,
       system:
         "You select the best implementation from structured diff inputs and explain briefly why.",
-      prompt: evaluationPrompt,
+      prompt,
       temperature: 0,
       maxRetries: 2,
     });
