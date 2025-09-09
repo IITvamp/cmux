@@ -26,7 +26,7 @@ export default defineConfig({
     build: {
       rollupOptions: {
         input: {
-          index: resolve("electron/main/index.ts"),
+          index: resolve("electron/main/bootstrap.ts"),
         },
         // Avoid bundling native and perf optional deps; load at runtime
         // Also externalize docker libs which pull in ssh2 (native optional binding)

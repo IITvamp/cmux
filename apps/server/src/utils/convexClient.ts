@@ -1,8 +1,6 @@
 import { ConvexHttpClient } from "convex/browser";
 import { getAuthToken } from "./requestContext.js";
-
-export const CONVEX_URL =
-  process.env.NEXT_PUBLIC_CONVEX_URL || "http://127.0.0.1:9777";
+import { env } from "./server-env.js";
 
 // Return a Convex client bound to the current auth context
 export function getConvex() {
@@ -10,7 +8,7 @@ export function getConvex() {
   if (!auth) {
     throw new Error("No auth token found");
   }
-  const client = new ConvexHttpClient(CONVEX_URL);
+  const client = new ConvexHttpClient(env.NEXT_PUBLIC_CONVEX_URL);
   client.setAuth(auth);
   return client;
 }

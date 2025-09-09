@@ -4,9 +4,10 @@ import { z } from "zod";
 export const env = createEnv({
   server: {
     // Preferred base URL for the WWW (Hono) API
-    WWW_API_BASE_URL: z.string().url().optional(),
+    WWW_API_BASE_URL: z.url().optional(),
     // Back-compat alias used elsewhere
-    CMUX_WWW_API_URL: z.string().url().optional(),
+    CMUX_WWW_API_URL: z.url().optional(),
+    NEXT_PUBLIC_CONVEX_URL: z.string().min(1),
   },
   runtimeEnv: process.env,
   emptyStringAsUndefined: true,

@@ -8,11 +8,13 @@ import { is } from "@electron-toolkit/utils";
 import {
   app,
   BrowserWindow,
+  Menu,
   nativeImage,
   net,
   session,
   shell,
   type BrowserWindowConstructorOptions,
+  type MenuItemConstructorOptions,
 } from "electron";
 import { startEmbeddedServer } from "./embedded-server";
 // Auto-updater removed - doesn't work properly
@@ -24,7 +26,13 @@ import {
   jwtVerify,
   type JWTPayload,
 } from "jose";
-import { promises as fs } from "node:fs";
+import {
+  createWriteStream,
+  existsSync,
+  promises as fs,
+  mkdirSync,
+  type WriteStream,
+} from "node:fs";
 
 import util from "node:util";
 import { env } from "./electron-main-env";
@@ -36,6 +44,90 @@ const APP_HOST = "cmux.local";
 let rendererLoaded = false;
 let pendingProtocolUrl: string | null = null;
 let mainWindow: BrowserWindow | null = null;
+
+// Persistent log files
+let logsDir: string | null = null;
+let mainLogStream: WriteStream | null = null;
+let rendererLogStream: WriteStream | null = null;
+
+function getTimestamp(): string {
+  return new Date().toISOString();
+}
+
+function ensureLogStreams(): void {
+  if (logsDir) return; // already initialized
+  const base = app.getPath("userData");
+  const dir = path.join(base, "logs");
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+  logsDir = dir;
+  mainLogStream = createWriteStream(path.join(dir, "main.log"), {
+    flags: "a",
+    encoding: "utf8",
+  });
+  rendererLogStream = createWriteStream(path.join(dir, "renderer.log"), {
+    flags: "a",
+    encoding: "utf8",
+  });
+}
+
+function writeMainLogLine(level: "LOG" | "WARN" | "ERROR", line: string): void {
+  if (!mainLogStream) return;
+  mainLogStream.write(`[${getTimestamp()}] [MAIN] [${level}] ${line}\n`);
+}
+
+function writeRendererLogLine(
+  level: "LOG" | "WARN" | "ERROR" | "DEBUG" | "INFO",
+  line: string
+): void {
+  if (!rendererLogStream) return;
+  rendererLogStream.write(
+    `[${getTimestamp()}] [RENDERER] [${level}] ${line}\n`
+  );
+}
+
+function setupConsoleFileMirrors(): void {
+  const orig = {
+    log: console.log.bind(console),
+    warn: console.warn.bind(console),
+    error: console.error.bind(console),
+  } as const;
+
+  console.log = (...args: unknown[]) => {
+    try {
+      orig.log(...args);
+    } finally {
+      try {
+        writeMainLogLine("LOG", formatArgs(args));
+      } catch {
+        // ignore
+      }
+    }
+  };
+  console.warn = (...args: unknown[]) => {
+    try {
+      orig.warn(...args);
+    } finally {
+      try {
+        writeMainLogLine("WARN", formatArgs(args));
+      } catch {
+        // ignore
+      }
+    }
+  };
+  console.error = (...args: unknown[]) => {
+    try {
+      orig.error(...args);
+    } finally {
+      try {
+        writeMainLogLine("ERROR", formatArgs(args));
+      } catch {
+        // ignore
+      }
+    }
+  };
+}
 
 function resolveResourcePath(rel: string) {
   // Prod: packaged resources directory; Dev: look under client/assets
@@ -231,6 +323,26 @@ function createWindow(): void {
 
   mainWindow = new BrowserWindow(windowOptions);
 
+  // Capture renderer console output into renderer.log
+  mainWindow.webContents.on(
+    "console-message",
+    (_event, level, message, line, sourceId) => {
+      const levelLabel =
+        level === 0
+          ? "LOG"
+          : level === 1
+            ? "WARN"
+            : level === 2
+              ? "ERROR"
+              : level === 3
+                ? "DEBUG"
+                : "INFO";
+      const src = sourceId ? `${sourceId}${line ? `:${line}` : ""}` : "";
+      const msg = src ? `${message} (${src})` : message;
+      writeRendererLogLine(levelLabel, msg);
+    }
+  );
+
   mainWindow.on("ready-to-show", () => {
     mainLog("Window ready-to-show");
     mainWindow?.show();
@@ -278,6 +390,11 @@ app.on("open-url", (_event, url) => {
 });
 
 app.whenReady().then(async () => {
+  ensureLogStreams();
+  setupConsoleFileMirrors();
+
+  console.log("env", env);
+
   // Ensure macOS menu and About panel use "cmux" instead of package.json name
   if (process.platform === "darwin") {
     try {
@@ -346,6 +463,44 @@ app.whenReady().then(async () => {
   // Create the initial window.
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
 
+  // Production menu with Help -> Open Logs Folder
+  if (app.isPackaged) {
+    try {
+      const template: MenuItemConstructorOptions[] = [];
+      if (process.platform === "darwin") {
+        template.push(
+          { role: "appMenu" },
+          { role: "editMenu" },
+          { role: "viewMenu" },
+          { role: "windowMenu" }
+        );
+      } else {
+        template.push(
+          { label: "File", submenu: [{ role: "quit" }] },
+          { role: "editMenu" },
+          { role: "viewMenu" },
+          { role: "windowMenu" }
+        );
+      }
+      template.push({
+        role: "help",
+        submenu: [
+          {
+            label: "Open Logs Folder",
+            click: async () => {
+              if (!logsDir) ensureLogStreams();
+              if (logsDir) await shell.openPath(logsDir);
+            },
+          },
+        ],
+      });
+      const menu = Menu.buildFromTemplate(template);
+      Menu.setApplicationMenu(menu);
+    } catch (e) {
+      mainWarn("Failed to set application menu", e);
+    }
+  }
+
   app.on("activate", function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
@@ -354,6 +509,15 @@ app.whenReady().then(async () => {
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     app.quit();
+  }
+});
+
+app.on("before-quit", () => {
+  try {
+    mainLogStream?.end();
+    rendererLogStream?.end();
+  } catch {
+    // ignore
   }
 });
 
