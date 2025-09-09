@@ -1,5 +1,6 @@
 import { TaskTree, type TaskWithRuns } from "@/components/TaskTree";
 import { TaskTreeSkeleton } from "@/components/TaskTreeSkeleton";
+import { TimeDisplay } from "@/components/TimeDisplay";
 import { useExpandTasks } from "@/contexts/expand-tasks/ExpandTasksContext";
 import { isElectron } from "@/lib/electron";
 import { type Doc } from "@cmux/convex/dataModel";
@@ -149,7 +150,9 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
           {/* <Terminals */}
           <CmuxLogo height={32} />
         </Link>
-        <div className="grow"></div>
+        <div className="grow flex items-center justify-center">
+          <TimeDisplay />
+        </div>
         <Link
           to="/$teamSlugOrId/dashboard"
           params={{ teamSlugOrId }}
