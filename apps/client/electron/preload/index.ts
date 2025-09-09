@@ -1,7 +1,43 @@
 import { electronAPI } from "@electron-toolkit/preload";
 import { contextBridge, ipcRenderer } from "electron";
 
-const api = {};
+const api = {
+  updates: {
+    checkNow: () => ipcRenderer.invoke("update:check"),
+    installNow: () => ipcRenderer.invoke("update:install"),
+    onChecking: (cb: () => void) => {
+      const l = () => cb();
+      ipcRenderer.on("update:checking", l);
+      return () => ipcRenderer.removeListener("update:checking", l);
+    },
+    onAvailable: (
+      cb: (info: unknown) => void,
+    ) => {
+      const l = (_e: unknown, info: unknown) => cb(info);
+      ipcRenderer.on("update:available", l);
+      return () => ipcRenderer.removeListener("update:available", l);
+    },
+    onNotAvailable: (
+      cb: (info: unknown) => void,
+    ) => {
+      const l = (_e: unknown, info: unknown) => cb(info);
+      ipcRenderer.on("update:not-available", l);
+      return () => ipcRenderer.removeListener("update:not-available", l);
+    },
+    onProgress: (
+      cb: (progress: unknown) => void,
+    ) => {
+      const l = (_e: unknown, progress: unknown) => cb(progress);
+      ipcRenderer.on("update:progress", l);
+      return () => ipcRenderer.removeListener("update:progress", l);
+    },
+    onError: (cb: (message: string) => void) => {
+      const l = (_e: unknown, msg: string) => cb(msg);
+      ipcRenderer.on("update:error", l);
+      return () => ipcRenderer.removeListener("update:error", l);
+    },
+  },
+};
 
 // Cmux IPC API for Electron server communication
 const cmuxAPI = {

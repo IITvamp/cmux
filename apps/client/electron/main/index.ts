@@ -12,12 +12,14 @@ import {
   net,
   session,
   shell,
+  dialog,
+  ipcMain,
   type BrowserWindowConstructorOptions,
 } from "electron";
 import { startEmbeddedServer } from "./embedded-server";
-// Auto-updater removed - doesn't work properly
-// import electronUpdater from "electron-updater";
-// const { autoUpdater } = electronUpdater;
+// Cross-platform auto-updates via electron-updater (GitHub Releases provider).
+// electron-builder generates app-update.yml during publish which the updater reads.
+import { autoUpdater } from "electron-updater";
 import {
   createRemoteJWKSet,
   decodeJwt,
@@ -117,81 +119,86 @@ process.on("unhandledRejection", (reason) => {
   void writeFatalLog("unhandledRejection", reason);
 });
 
-// Auto‑updates removed - doesn't work properly
-// function setupAutoUpdates() {
-//   if (!app.isPackaged) {
-//     mainLog("Skipping auto-updates in development");
-//     return;
-//   }
-//
-//   try {
-//     // Wire logs
-//     (autoUpdater as unknown as { logger: unknown }).logger = {
-//       info: (...args: unknown[]) => mainLog("[updater]", ...args),
-//       warn: (...args: unknown[]) => mainWarn("[updater]", ...args),
-//       error: (...args: unknown[]) => mainError("[updater]", ...args),
-//     } as unknown as typeof autoUpdater.logger;
-//
-//     autoUpdater.autoDownload = true;
-//     autoUpdater.autoInstallOnAppQuit = true;
-//     autoUpdater.allowPrerelease = false;
-//   } catch (e) {
-//     mainWarn("Failed to initialize autoUpdater", e);
-//     return;
-//   }
-//
-//   autoUpdater.on("checking-for-update", () => mainLog("Checking for update…"));
-//   autoUpdater.on("update-available", (info) =>
-//     mainLog("Update available", info?.version)
-//   );
-//   autoUpdater.on("update-not-available", () => mainLog("No updates available"));
-//   autoUpdater.on("error", (err) => mainWarn("Updater error", err));
-//   autoUpdater.on("download-progress", (p) =>
-//     mainLog(
-//       "Update download progress",
-//       `${p.percent?.toFixed?.(1) ?? 0}% (${p.transferred}/${p.total})`
-//     )
-//   );
-//   autoUpdater.on("update-downloaded", async () => {
-//     if (!mainWindow) {
-//       mainLog("No main window; skipping update prompt");
-//       return;
-//     }
-//
-//     try {
-//       const res = await dialog.showMessageBox(mainWindow, {
-//         type: "info",
-//         buttons: ["Restart Now", "Later"],
-//         defaultId: 0,
-//         cancelId: 1,
-//         message: "An update is ready to install.",
-//         detail: "Restart Cmux to apply the latest version.",
-//       });
-//       if (res.response === 0) {
-//         mainLog("User accepted update; quitting and installing");
-//         autoUpdater.quitAndInstall();
-//       } else {
-//         mainLog("User deferred update installation");
-//       }
-//     } catch (e) {
-//       mainWarn("Failed to prompt for installing update", e);
-//       autoUpdater.quitAndInstall();
-//     }
-//   });
-//
-//   // Initial check and periodic re-checks
-//   autoUpdater
-//     .checkForUpdatesAndNotify()
-//     .catch((e) => mainWarn("checkForUpdatesAndNotify failed", e));
-//   setInterval(
-//     () => {
-//       autoUpdater
-//         .checkForUpdates()
-//         .catch((e) => mainWarn("Periodic checkForUpdates failed", e));
-//     },
-//     30 * 60 * 1000
-//   ); // 30 minutes
-// }
+function setupAutoUpdates() {
+  if (!app.isPackaged) {
+    mainLog("Skipping auto-updates in development");
+    return;
+  }
+
+  try {
+    // Forward updater logs to our logger and renderer mirror
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (autoUpdater as any).logger = {
+      info: (...args: unknown[]) => mainLog("[updater]", ...args),
+      warn: (...args: unknown[]) => mainWarn("[updater]", ...args),
+      error: (...args: unknown[]) => mainError("[updater]", ...args),
+    } as typeof autoUpdater.logger;
+
+    autoUpdater.autoDownload = true;
+    autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.allowPrerelease = false;
+  } catch (e) {
+    mainWarn("Failed to initialize autoUpdater", e);
+    return;
+  }
+
+  autoUpdater.on("checking-for-update", () => {
+    mainLog("Checking for update…");
+    mainWindow?.webContents.send("update:checking");
+  });
+  autoUpdater.on("update-available", (info) => {
+    mainLog("Update available", info?.version);
+    mainWindow?.webContents.send("update:available", info);
+  });
+  autoUpdater.on("update-not-available", (info) => {
+    mainLog("No updates available");
+    mainWindow?.webContents.send("update:not-available", info);
+  });
+  autoUpdater.on("error", (err) => {
+    mainWarn("Updater error", err);
+    mainWindow?.webContents.send("update:error", `${err}`);
+  });
+  autoUpdater.on("download-progress", (p) => {
+    mainLog(
+      "Update download progress",
+      `${p.percent?.toFixed?.(1) ?? 0}% (${p.transferred}/${p.total})`
+    );
+    mainWindow?.webContents.send("update:progress", p);
+  });
+  autoUpdater.on("update-downloaded", async (info) => {
+    mainLog("Update downloaded", info?.version);
+    if (!mainWindow) return;
+    try {
+      const res = await dialog.showMessageBox(mainWindow, {
+        type: "info",
+        buttons: ["Restart Now", "Later"],
+        defaultId: 0,
+        cancelId: 1,
+        message: "An update is ready to install.",
+        detail: "Restart Cmux to apply the latest version.",
+      });
+      if (res.response === 0) {
+        mainLog("User accepted update; quitting and installing");
+        autoUpdater.quitAndInstall();
+      } else {
+        mainLog("User deferred update installation");
+      }
+    } catch (e) {
+      mainWarn("Failed to prompt for installing update", e);
+      autoUpdater.quitAndInstall();
+    }
+  });
+
+  // Initial check and periodic re-checks
+  autoUpdater
+    .checkForUpdatesAndNotify()
+    .catch((e) => mainWarn("checkForUpdatesAndNotify failed", e));
+  setInterval(() => {
+    autoUpdater
+      .checkForUpdates()
+      .catch((e) => mainWarn("Periodic checkForUpdates failed", e));
+  }, 30 * 60 * 1000); // 30 minutes
+}
 
 async function handleOrQueueProtocolUrl(url: string) {
   if (mainWindow && rendererLoaded) {
@@ -238,8 +245,8 @@ function createWindow(): void {
 
   // Socket bridge not required; renderer connects directly
 
-  // Auto-updates removed - doesn't work properly
-  // setupAutoUpdates();
+  // Enable cross-platform auto-updates (GitHub provider via app-update.yml)
+  setupAutoUpdates();
 
   // Once the renderer is loaded, process any queued deep-link
   mainWindow.webContents.on("did-finish-load", () => {
@@ -349,6 +356,22 @@ app.whenReady().then(async () => {
   app.on("activate", function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
+
+  // Optional IPC for manual update control from renderer
+  try {
+    ipcMain.handle("update:check", async () => {
+      mainLog("IPC update:check invoked");
+      await autoUpdater.checkForUpdates();
+      return { started: true } as const;
+    });
+    ipcMain.handle("update:install", async () => {
+      mainLog("IPC update:install invoked");
+      autoUpdater.quitAndInstall();
+      return { quitting: true } as const;
+    });
+  } catch (e) {
+    mainWarn("Failed to register update IPC handlers", e);
+  }
 });
 
 app.on("window-all-closed", () => {
