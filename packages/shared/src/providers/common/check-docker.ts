@@ -11,7 +11,7 @@ export async function checkDockerStatus(): Promise<{
   const { exec } = await import("node:child_process");
   const { promisify } = await import("node:util");
   const execAsync = promisify(exec);
-  
+
   try {
     // Check if Docker is running
     const { stdout: versionOutput } = await execAsync(
@@ -38,7 +38,6 @@ export async function checkDockerStatus(): Promise<{
     // Check for worker image (use same default as DockerVSCodeInstance)
     const imageName = process.env.WORKER_IMAGE_NAME || "cmux-worker:0.0.1";
     if (imageName) {
-      
       try {
         // Check if image exists locally
         await execAsync(`docker image inspect ${imageName}`);
@@ -50,9 +49,11 @@ export async function checkDockerStatus(): Promise<{
         // Image doesn't exist locally
         // Check if a pull is in progress
         try {
-          const { stdout: psOutput } = await execAsync("docker ps -a --format '{{.Command}}'");
+          const { stdout: psOutput } = await execAsync(
+            "docker ps -a --format '{{.Command}}'"
+          );
           const isPulling = psOutput.includes(`pull ${imageName}`);
-          
+
           result.workerImage = {
             name: imageName,
             isAvailable: false,

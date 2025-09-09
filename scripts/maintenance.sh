@@ -18,6 +18,6 @@ else
   docker build -t cmux-worker:0.0.1 . &
 fi
 
-pnpm i --frozen-lockfile &
+bun i --frozen-lockfile &
 
 wait

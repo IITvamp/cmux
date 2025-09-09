@@ -4,8 +4,9 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "dev": "dotenv -e ../../.env -- next dev --turbopack --port 9779",
-    "build": "next build",
+    "dev": "dotenv -e ../../.env -- next dev --turbo --port 9779",
+    "prebuild": "bun run generate-openapi-client",
+    "build": "next build --turbo",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit -p tsconfig.json",
@@ -35,14 +36,14 @@
     "morphcloud": "^0.0.18",
     "next": "15.5.2",
     "octokit": "^3.2.2",
-    "react": "19.1.0",
-    "react-dom": "19.1.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
     "socket.io-client": "^4.8.1",
     "tailwind-merge": "^2.5.5",
     "www": "^0.0.0",
     "@ai-sdk/anthropic": "^2.0.6",
     "ai": "^5.0.22",
-    "zod": "^4.0.17"
+    "zod": "^4.1.5"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
@@ -50,7 +51,7 @@
     "@hey-api/openapi-ts": "^0.82.1",
     "@next/eslint-plugin-next": "^15.5.2",
     "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
+    "@types/node": "^24.3.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "dotenv": "^16.4.5",

@@ -9,6 +9,7 @@
   "scripts": {
     "clean": "bash scripts/clean.sh",
     "clean:node_modules": "bash scripts/clean.sh",
+    "precheck": "bun run generate-openapi-client",
     "check": "bun run scripts/check.ts",
     "lint": "bun run scripts/lint.ts",
     "test": "bun run scripts/test.ts",
@@ -24,8 +25,7 @@
     "typecheck:www-openapi-client": "cd packages/www-openapi-client && bun run typecheck",
     "typecheck:www": "cd apps/www && pnpm run typecheck",
     "generate-routes": "cd apps/client && bun run generate-routes",
-    "generate-openapi-client": "cd apps/www && bun run generate-openapi-client",
-    "postinstall": "node scripts/postinstall.cjs"
+    "generate-openapi-client": "cd apps/www && bun run generate-openapi-client"
   },
   "devDependencies": {
     "@eslint/js": "^9.34.0",
@@ -41,5 +41,15 @@
     "typescript": "5.8.3",
     "typescript-eslint": "^8.40.0"
   },
-  "packageManager": "pnpm@10.14.0"
+  "packageManager": "pnpm@10.14.0",
+  "overrides": {
+    "node-abi": "^4.14.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*",
+    "scripts"
+  ]
 }

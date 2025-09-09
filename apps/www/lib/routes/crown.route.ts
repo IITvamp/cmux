@@ -1,8 +1,9 @@
-import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
-import { createAnthropic } from "@ai-sdk/anthropic";
-import { generateObject } from "ai";
 import { verifyTeamAccess } from "@/lib/utils/team-verification";
 import { env } from "@/lib/utils/www-env";
+import { createAnthropic } from "@ai-sdk/anthropic";
+import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import { generateObject } from "ai";
+import { z as originalZod } from "zod";
 
 const CrownEvaluationRequestSchema = z.object({
   prompt: z.string(),
@@ -117,9 +118,11 @@ crownRouter.openapi(summarizeRoute, async (c) => {
 
     const anthropic = createAnthropic({ apiKey: env.ANTHROPIC_API_KEY });
 
+    const schema = originalZod.object({ summary: originalZod.string() });
+
     const { object } = await generateObject({
       model: anthropic("claude-opus-4-1-20250805"),
-      schema: z.object({ summary: z.string() }),
+      schema,
       system:
         "You are an expert reviewer summarizing pull requests. Provide a clear, concise summary following the requested format.",
       prompt,

@@ -62,14 +62,10 @@ RUN if [ -z "${CODE_RELEASE}" ]; then \
 
 # Copy package files for monorepo dependency installation
 WORKDIR /cmux
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
+COPY package.json bun.lock .npmrc ./
 COPY --parents apps/*/package.json packages/*/package.json scripts/package.json ./
-# Copy postinstall script
-COPY scripts/postinstall.cjs ./scripts/
 
-# Install dependencies with cache (non-interactive)
-# Note: vscode-extension filter uses the new package name without @
-RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store CI=1 pnpm install --frozen-lockfile=true --filter "@cmux/worker..." --filter "@cmux/shared..." --filter "cmux-vscode-extension..."
+RUN bun install --frozen-lockfile --production
 
 RUN mkdir -p /builtins && \
     echo '{"name":"builtins","type":"module","version":"1.0.0"}' > /builtins/package.json
@@ -118,8 +114,8 @@ RUN cd /cmux && \
 
 # Build envctl/envd (TypeScript → JS)
 RUN cd /cmux && \
-    pnpm install --frozen-lockfile --filter @cmux/envctl --filter @cmux/envd && \
-    pnpm -F @cmux/envctl -F @cmux/envd build
+    bun install --frozen-lockfile --production && \
+    bun -F @cmux/envctl -F @cmux/envd build
 
 # Verify bun is still working in builder
 RUN bun --version && bunx --version
@@ -189,6 +185,7 @@ COPY --from=builder /usr/local/bin/bunx /usr/local/bin/bunx
 
 # Verify bun works in runtime
 RUN bun --version && bunx --version
+
 RUN bun add -g @openai/codex@0.25.0 @anthropic-ai/claude-code@1.0.83 @google/gemini-cli@0.1.21 opencode-ai@0.6.4 codebuff @devcontainers/cli @sourcegraph/amp
 
 # Install cursor cli
@@ -253,10 +250,6 @@ RUN set -eux; \
     printf '#!/bin/sh\nexec node /usr/local/lib/cmux/envctl/dist/index.js "$@"\n' > /usr/local/bin/envctl && \
     printf '#!/bin/sh\nexec node /usr/local/lib/cmux/envd/dist/index.js "$@"\n' > /usr/local/bin/envd && \
     chmod +x /usr/local/bin/envctl /usr/local/bin/envd
-
-# Setup pnpm and install global packages
-RUN SHELL=/bin/bash pnpm setup && \
-    . /root/.bashrc
 
 # Install tmux configuration for better mouse scrolling behavior
 COPY configs/tmux.conf /etc/tmux.conf

@@ -1,14 +1,15 @@
-import type {
-  AvailableEditors,
-} from "@cmux/shared";
+import type { AvailableEditors } from "@cmux/shared";
+import {
+  connectToMainServer,
+  type MainServerSocket,
+} from "@cmux/shared/socket";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "@tanstack/react-router";
 import React, { useEffect, useMemo } from "react";
-import { connectToMainServer, type MainServerSocket } from "@cmux/shared/socket";
-import { authJsonQueryOptions } from "../convex/authJsonQueryOptions";
 import { cachedGetUser } from "../../lib/cachedGetUser";
 import { stackClientApp } from "../../lib/stack";
-import { SocketContext } from "./socket-context";
+import { authJsonQueryOptions } from "../convex/authJsonQueryOptions";
+import { WebSocketContext } from "./socket-context";
 
 export interface SocketContextType {
   socket: MainServerSocket | null;
@@ -28,12 +29,12 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
   const authJsonQuery = useQuery(authJsonQueryOptions());
   const authToken = authJsonQuery.data?.accessToken;
   const location = useLocation();
-  const [socket, setSocket] = React.useState<SocketContextType["socket"] | null>(
-    null
-  );
+  const [socket, setSocket] = React.useState<
+    SocketContextType["socket"] | null
+  >(null);
   const [isConnected, setIsConnected] = React.useState(false);
   const [availableEditors, setAvailableEditors] =
-    React.useState<AvailableEditors | null>(null);
+    React.useState<SocketContextType["availableEditors"]>(null);
 
   // Derive the current teamSlugOrId from the first URL segment, ignoring the team-picker route
   const teamSlugOrId = React.useMemo(() => {
@@ -45,6 +46,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
 
   useEffect(() => {
     if (!authToken) {
+      console.warn("[Socket] No auth token yet; delaying connect");
       return;
     }
     let disposed = false;
@@ -68,6 +70,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
         teamSlugOrId,
         authJson,
       });
+
       createdSocket = newSocket;
       if (disposed) {
         newSocket.disconnect();
@@ -76,13 +79,21 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
       setSocket(newSocket);
 
       newSocket.on("connect", () => {
-        console.log("Socket connected");
+        console.log("[Socket] connected");
         setIsConnected(true);
       });
 
       newSocket.on("disconnect", () => {
-        console.log("Socket disconnected");
+        console.warn("[Socket] disconnected");
         setIsConnected(false);
+      });
+
+      newSocket.on("connect_error", (err) => {
+        const errorMessage =
+          err && typeof err === "object" && "message" in err
+            ? (err as Error).message
+            : String(err);
+        console.error("[Socket] connect_error", errorMessage);
       });
 
       newSocket.on("available-editors", (data: AvailableEditors) => {
@@ -106,8 +117,8 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
   );
 
   return (
-    <SocketContext.Provider value={contextValue}>
+    <WebSocketContext.Provider value={contextValue}>
       {children}
-    </SocketContext.Provider>
+    </WebSocketContext.Provider>
   );
 };

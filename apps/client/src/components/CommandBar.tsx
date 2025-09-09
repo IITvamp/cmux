@@ -2,6 +2,8 @@ import { useTheme } from "@/components/theme/use-theme";
 import { api } from "@cmux/convex/api";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { Command } from "cmdk";
+import * as Dialog from "@radix-ui/react-dialog";
+import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { useQuery, useMutation } from "convex/react";
 import { Monitor, Moon, Sun } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -169,6 +171,9 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
         onValueChange={handleHighlight}
         defaultValue={openedWithShift ? "new-task" : undefined}
       >
+        <VisuallyHidden>
+          <Dialog.Title>Command Menu</Dialog.Title>
+        </VisuallyHidden>
         <div className="w-full max-w-2xl bg-white dark:bg-neutral-900 rounded-xl shadow-2xl border border-neutral-200 dark:border-neutral-700 overflow-hidden pointer-events-auto">
         <Command.Input
           value={search}
