@@ -1,7 +1,7 @@
-import { exec, execFile } from "child_process";
-import * as fs from "fs/promises";
-import * as path from "path";
-import { promisify } from "util";
+import { exec, execFile, type ExecFileOptions } from "node:child_process";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
+import { promisify } from "node:util";
 import {
   generatePreCommitHook,
   generatePrePushHook,
@@ -31,9 +31,9 @@ interface GitCommandOptions {
 }
 
 interface QueuedOperation {
-  execute: () => Promise<any>;
-  resolve: (value: any) => void;
-  reject: (error: any) => void;
+  execute: () => Promise<unknown>;
+  resolve: (value: unknown) => void;
+  reject: (error: unknown) => void;
 }
 
 export class RepositoryManager {
@@ -82,11 +82,12 @@ export class RepositoryManager {
   }
 
   private async queueOperation<T>(operation: () => Promise<T>): Promise<T> {
-    return new Promise((resolve, reject) => {
+    return new Promise<T>((resolve, reject) => {
       this.operationQueue.push({
         execute: operation,
-        resolve,
-        reject,
+        // Wrap resolve/reject to satisfy the queue's unknown-typed callbacks
+        resolve: (value: unknown) => resolve(value as T),
+        reject: (error: unknown) => reject(error),
       });
       this.processQueue();
     });
@@ -113,6 +114,25 @@ export class RepositoryManager {
   }
 
   // Note: Keep all git invocations using executeGitCommand with a shell, as some CI envs lack direct execFile PATH resolution.
+
+  // Attempt to extract a stderr string from an unknown error shape
+  private extractStderr(err: unknown): string | null {
+    if (typeof err === "object" && err !== null && "stderr" in err) {
+      const candidate = (err as { stderr?: unknown }).stderr;
+      if (typeof candidate === "string") return candidate;
+      if (
+        candidate &&
+        typeof (candidate as { toString?: () => string }).toString === "function"
+      ) {
+        try {
+          return (candidate as { toString: () => string }).toString();
+        } catch {
+          return null;
+        }
+      }
+    }
+    return null;
+  }
 
   async executeGitCommand(
     command: string,
@@ -141,9 +161,8 @@ export class RepositoryManager {
             serverLogger.error(`Git command failed: ${command}`);
             if (error instanceof Error) {
               serverLogger.error(`Error: ${error.message}`);
-              if ("stderr" in error && (error as any).stderr) {
-                serverLogger.error(`Stderr: ${(error as any).stderr}`);
-              }
+              const stderrMsg = this.extractStderr(error);
+              if (stderrMsg) serverLogger.error(`Stderr: ${stderrMsg}`);
             }
           }
           throw error;
@@ -156,11 +175,13 @@ export class RepositoryManager {
       const gitPath = await this.getGitPath();
       const args = this.tokenizeGitArgs(command.slice(4));
       try {
-        const result = await execFileAsync(gitPath, args, {
+        const execOptions: ExecFileOptions = {
           cwd: options?.cwd,
+          // Ensure string output for easier logging; fall back to utf8
           encoding: options?.encoding ?? "utf8",
           windowsHide: true,
-        } as any);
+        };
+        const result = await execFileAsync(gitPath, args, execOptions);
         return {
           stdout: result.stdout.toString(),
           stderr: result.stderr?.toString?.() || "",
@@ -173,9 +194,8 @@ export class RepositoryManager {
           );
           if (error instanceof Error) {
             serverLogger.error(`Error: ${error.message}`);
-            if ((error as any).stderr) {
-              serverLogger.error(`Stderr: ${(error as any).stderr}`);
-            }
+            const stderrMsg = this.extractStderr(error);
+            if (stderrMsg) serverLogger.error(`Stderr: ${stderrMsg}`);
           }
         }
       }
@@ -197,9 +217,8 @@ export class RepositoryManager {
         serverLogger.error(`Git command failed: ${command}`);
         if (error instanceof Error) {
           serverLogger.error(`Error: ${error.message}`);
-          if ("stderr" in error && (error as any).stderr) {
-            serverLogger.error(`Stderr: ${(error as any).stderr}`);
-          }
+          const stderrMsg = this.extractStderr(error);
+          if (stderrMsg) serverLogger.error(`Stderr: ${stderrMsg}`);
         }
       }
       throw error;
@@ -363,7 +382,7 @@ export class RepositoryManager {
           cwd: repoPath,
         });
       }
-    } catch (e) {
+    } catch (_e) {
       // If 'origin' does not exist, add it
       await this.executeGitCommand(`git remote add origin "${repoUrl}"`, {
         cwd: repoPath,

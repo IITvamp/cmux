@@ -1,10 +1,10 @@
-import { exec } from "node:child_process";
-import { RepositoryManager } from "./repositoryManager.js";
 import chokidar, { type FSWatcher } from "chokidar";
+import ignore from "ignore";
+import { exec } from "node:child_process";
 import { promises as fsp } from "node:fs";
 import * as path from "node:path";
-import ignore from "ignore";
 import { promisify } from "node:util";
+import { RepositoryManager } from "./repositoryManager.js";
 import { serverLogger } from "./utils/fileLogger.js";
 
 const execAsync = promisify(exec);

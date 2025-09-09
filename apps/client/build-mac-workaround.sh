@@ -1,11 +1,16 @@
 #!/bin/bash
+
+# remove existing build
+rm -rf dist-electron
+rm -rf out
+
 # Build the Electron app first
 echo "Building Electron app..."
-npx electron-vite build -c electron.vite.config.js
+npx electron-vite build -c electron.vite.config.ts
 
 # Create a temporary directory for packaging
 TEMP_DIR=$(mktemp -d)
-APP_NAME="Cmux"
+APP_NAME="cmux"
 APP_DIR="$TEMP_DIR/$APP_NAME.app"
 
 echo "Creating app structure at $APP_DIR..."
@@ -48,7 +53,6 @@ mkdir -p "$APP_ASAR_DIR"
 cp -r out "$APP_ASAR_DIR/"
 cp package.json "$APP_ASAR_DIR/"
 
-# Copy node_modules and dereference pnpm symlinks so runtime has real files
 echo "Copying dependencies..."
 cp -r node_modules "$APP_ASAR_DIR/"
 
@@ -104,5 +108,5 @@ mv "$APP_DIR" "$OUTPUT_DIR/"
 # Clean up
 rm -rf "$TEMP_DIR"
 
-echo "Build complete! App is at $OUTPUT_DIR/$APP_NAME.app"
-echo "You can run it with: open $OUTPUT_DIR/$APP_NAME.app"
+echo "Build complete! App is at $(pwd)/$OUTPUT_DIR/$APP_NAME.app"
+echo "You can run it with: open $(pwd)/$OUTPUT_DIR/$APP_NAME.app"

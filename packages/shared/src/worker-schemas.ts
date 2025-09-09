@@ -58,7 +58,7 @@ export const WorkerCreateTerminalSchema = z.object({
   cols: z.number().int().positive().default(80),
   rows: z.number().int().positive().default(24),
   cwd: z.string().optional(),
-  env: z.record(z.string()).optional(),
+  env: z.record(z.string(), z.string()).optional(),
   command: z.string().optional(),
   args: z.array(z.string()).optional(),
   taskId: typedZid("tasks").optional(),
@@ -160,7 +160,9 @@ export const WorkerUploadFilesSchema = z.object({
 // Git configuration schema
 export const WorkerConfigureGitSchema = z.object({
   githubToken: z.string().optional(),
-  gitConfig: z.record(z.string()).optional(), // Key-value pairs for git config
+  gitConfig: z
+    .record(z.string(), z.string())
+    .optional(), // Key-value pairs for git config
   sshKeys: z
     .object({
       privateKey: z.string().optional(), // Base64 encoded
@@ -175,7 +177,7 @@ export const WorkerExecSchema = z.object({
   command: z.string(),
   args: z.array(z.string()).optional(),
   cwd: z.string().optional(),
-  env: z.record(z.string()).optional(),
+  env: z.record(z.string(), z.string()).optional(),
   timeout: z.number().optional(), // Timeout in milliseconds
 });
 

@@ -108,9 +108,11 @@ function DashboardComponent() {
   }, []);
 
   // Fetch repos from Convex
-  const reposByOrgQuery = useQuery(
-    convexQuery(api.github.getReposByOrg, { teamSlugOrId })
-  );
+  const reposByOrgQuery = useQuery({
+    ...convexQuery(api.github.getReposByOrg, { teamSlugOrId }),
+    refetchOnMount: "always",
+    refetchOnWindowFocus: false,
+  });
   const reposByOrg = useMemo(
     () => reposByOrgQuery.data || {},
     [reposByOrgQuery.data]
