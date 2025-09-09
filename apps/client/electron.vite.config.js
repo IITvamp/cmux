@@ -13,15 +13,20 @@ export default defineConfig({
     // Externalize deps from node_modules (except @cmux/server) and resolve workspace packages
     plugins: [
       externalizeDepsPlugin({
-        exclude: ["@cmux/server", "@cmux/server/**"]
-      }), 
-      resolveWorkspacePackages()
+        exclude: [
+          "@cmux/server",
+          "@cmux/server/**",
+          "@cmux/shared",
+          "@cmux/convex",
+        ],
+      }),
+      resolveWorkspacePackages(),
     ],
     resolve: {
       extensionAlias: {
         ".js": [".js", ".ts", ".tsx"],
-        ".mjs": [".mjs", ".mts"]
-      }
+        ".mjs": [".mjs", ".mts"],
+      },
     },
     build: {
       rollupOptions: {
@@ -38,7 +43,16 @@ export default defineConfig({
           }
           // Externalize native modules and specific deps
           if (/\.node$/.test(id)) return true;
-          if (["cpu-features", "ssh2", "dockerode", "docker-modem", "bufferutil", "utf-8-validate"].includes(id)) {
+          if (
+            [
+              "cpu-features",
+              "ssh2",
+              "dockerode",
+              "docker-modem",
+              "bufferutil",
+              "utf-8-validate",
+            ].includes(id)
+          ) {
             return true;
           }
           return false;
@@ -52,9 +66,9 @@ export default defineConfig({
   preload: {
     plugins: [
       externalizeDepsPlugin({
-        exclude: ["@cmux/server", "@cmux/server/**"]
+        exclude: ["@cmux/server", "@cmux/server/**"],
       }),
-      resolveWorkspacePackages()
+      resolveWorkspacePackages(),
     ],
     build: {
       rollupOptions: {
