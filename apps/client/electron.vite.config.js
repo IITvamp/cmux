@@ -10,15 +10,28 @@ const envDir = resolve("../../");
 
 export default defineConfig({
   main: {
-    plugins: [resolveWorkspacePackages(
-    )],
+    // Externalize deps from node_modules and resolve workspace packages
+    plugins: [
+      externalizeDepsPlugin(),
+      resolveWorkspacePackages(),
+    ],
 
     build: {
       rollupOptions: {
         input: {
           index: resolve("electron/main/index.ts"),
         },
-        external: ["cpu-features"],
+        // Avoid bundling native and perf optional deps; load at runtime
+        // Also externalize docker libs which pull in ssh2 (native optional binding)
+        external: [
+          /\.node$/, // native addons
+          "cpu-features",
+          "ssh2",
+          "dockerode",
+          "docker-modem",
+          "bufferutil",
+          "utf-8-validate",
+        ],
       },
     },
     // Load env vars from repo root so NEXT_PUBLIC_* from .env/.env.local apply
@@ -26,8 +39,10 @@ export default defineConfig({
     envPrefix: "NEXT_PUBLIC_",
   },
   preload: {
-    plugins: [resolveWorkspacePackages(
-    )],
+    plugins: [
+      externalizeDepsPlugin(),
+      resolveWorkspacePackages(),
+    ],
     build: {
       rollupOptions: {
         input: {

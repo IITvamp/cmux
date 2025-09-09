@@ -2,7 +2,6 @@ import { is } from "@electron-toolkit/utils";
 import {
   app,
   BrowserWindow,
-
   nativeImage,
   net,
   session,
@@ -18,10 +17,10 @@ import {
   jwtVerify,
   type JWTPayload,
 } from "jose";
+import { promises as fs } from "node:fs";
 import path, { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import util from "node:util";
-import { promises as fs } from "node:fs";
 // Load env lazily to avoid startup crashes if validation fails
 async function getEnv() {
   try {
@@ -285,6 +284,7 @@ app.whenReady().then(async () => {
     mainLog("Embedded IPC server started successfully");
   } catch (error) {
     mainError("Failed to start embedded IPC server:", error);
+    process.exit(1);
   }
 
   // Try to register the custom protocol handler with the OS. electron-builder
