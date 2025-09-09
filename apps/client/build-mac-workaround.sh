@@ -6,7 +6,7 @@ rm -rf out
 
 # Build the Electron app first
 echo "Building Electron app..."
-npx electron-vite build -c electron.vite.config.js
+npx electron-vite build -c electron.vite.config.ts
 
 # Create a temporary directory for packaging
 TEMP_DIR=$(mktemp -d)

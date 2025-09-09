@@ -1,3 +1,9 @@
+import path, { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+if (!globalThis.__dirname) {
+  globalThis.__dirname = dirname(fileURLToPath(import.meta.url));
+}
+
 import { is } from "@electron-toolkit/utils";
 import {
   app,
@@ -19,8 +25,7 @@ import {
   type JWTPayload,
 } from "jose";
 import { promises as fs } from "node:fs";
-import path, { join } from "node:path";
-import { pathToFileURL } from "node:url";
+
 import util from "node:util";
 import { env } from "./electron-main-env";
 
@@ -273,6 +278,16 @@ app.on("open-url", (_event, url) => {
 });
 
 app.whenReady().then(async () => {
+  // Ensure macOS menu and About panel use "cmux" instead of package.json name
+  if (process.platform === "darwin") {
+    try {
+      app.setName("cmux");
+      app.setAboutPanelOptions({ applicationName: "cmux" });
+    } catch {
+      // ignore if not supported
+    }
+  }
+
   // Start the embedded IPC server (registers cmux:register and cmux:rpc)
   try {
     mainLog("Starting embedded IPC server...");

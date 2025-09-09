@@ -1,10 +1,11 @@
 import { dirname, resolve as resolvePath } from "node:path";
 import { fileURLToPath } from "node:url";
+import { type Plugin } from "vite";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // Custom Vite plugin to resolve workspace packages and ensure they're bundled
-export function resolveWorkspacePackages() {
+export function resolveWorkspacePackages(): Plugin {
   return {
     name: "resolve-workspace-packages",
     enforce: "pre",
@@ -21,7 +22,7 @@ export function resolveWorkspacePackages() {
           return tsPath;
         }
       }
-      
+
       // Also handle when electron builds import the server files
       // When importing @cmux/server files that reference .js extensions internally
       if (id.endsWith(".js") && id.includes("/apps/server/src/")) {

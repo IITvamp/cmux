@@ -4,7 +4,7 @@ import react from "@vitejs/plugin-react";
 import { defineConfig, externalizeDepsPlugin } from "electron-vite";
 import { resolve } from "node:path";
 import tsconfigPaths from "vite-tsconfig-paths";
-import { resolveWorkspacePackages } from "./electron-vite-plugin-resolve-workspace.js";
+import { resolveWorkspacePackages } from "./electron-vite-plugin-resolve-workspace.ts";
 
 const envDir = resolve("../../");
 
@@ -23,12 +23,6 @@ export default defineConfig({
       }),
       resolveWorkspacePackages(),
     ],
-    resolve: {
-      extensionAlias: {
-        ".js": [".js", ".ts", ".tsx"],
-        ".mjs": [".mjs", ".mts"],
-      },
-    },
     build: {
       rollupOptions: {
         input: {
