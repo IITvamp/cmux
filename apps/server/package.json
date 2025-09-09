@@ -2,13 +2,29 @@
   "name": "@cmux/server",
   "version": "1.0.0",
   "description": "cmux server",
-  "main": "src/index.ts",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts",
-    "./server": "./src/server.ts",
-    "./socket-handlers": "./src/socket-handlers.ts",
-    "./gitDiff": "./src/gitDiff.ts",
-    "./realtime": "./src/realtime.ts"
+    ".": {
+      "import": "./src/index.ts",
+      "types": "./src/index.ts"
+    },
+    "./server": {
+      "import": "./src/server.ts",
+      "types": "./src/server.ts"
+    },
+    "./socket-handlers": {
+      "import": "./src/socket-handlers.ts",
+      "types": "./src/socket-handlers.ts"
+    },
+    "./gitDiff": {
+      "import": "./src/gitDiff.ts",
+      "types": "./src/gitDiff.ts"
+    },
+    "./realtime": {
+      "import": "./src/realtime.ts",
+      "types": "./src/realtime.ts"
+    }
   },
   "type": "module",
   "scripts": {

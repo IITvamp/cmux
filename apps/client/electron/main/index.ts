@@ -8,6 +8,7 @@ import {
   shell,
   type BrowserWindowConstructorOptions,
 } from "electron";
+import { startEmbeddedServer } from "./embedded-server";
 // Auto-updater removed - doesn't work properly
 // import electronUpdater from "electron-updater";
 // const { autoUpdater } = electronUpdater;
@@ -21,18 +22,7 @@ import { promises as fs } from "node:fs";
 import path, { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import util from "node:util";
-// Load env lazily to avoid startup crashes if validation fails
-async function getEnv() {
-  try {
-    const m = await import("./electron-main-env");
-    return m.env as { NEXT_PUBLIC_STACK_PROJECT_ID?: string };
-  } catch (e) {
-    // Fallback to non-fatal defaults
-    return { NEXT_PUBLIC_STACK_PROJECT_ID: "unknown" } as const;
-  }
-}
-// Import the IPC-based embedded server
-import { startEmbeddedServer } from "./embedded-server";
+import { env } from "./electron-main-env";
 
 // Use a cookieable HTTPS origin intercepted locally instead of a custom scheme.
 const PARTITION = "persist:cmux";
@@ -100,19 +90,25 @@ async function writeFatalLog(...args: unknown[]) {
     const file = path.join(base, `fatal-${ts}.log`);
     const msg = formatArgs(args);
     await fs.writeFile(file, msg + "\n", { encoding: "utf8" });
-  } catch {}
+  } catch {
+    // ignore
+  }
 }
 
 process.on("uncaughtException", (err) => {
   try {
     console.error("[MAIN] uncaughtException", err);
-  } catch {}
+  } catch {
+    // ignore
+  }
   void writeFatalLog("uncaughtException", err);
 });
 process.on("unhandledRejection", (reason) => {
   try {
     console.error("[MAIN] unhandledRejection", reason);
-  } catch {}
+  } catch {
+    // ignore
+  }
   void writeFatalLog("unhandledRejection", reason);
 });
 
@@ -416,7 +412,6 @@ async function handleProtocolUrl(url: string): Promise<void> {
     currentUrl.hash = "";
     const realUrl = currentUrl.toString() + "/";
 
-    const env = await getEnv();
     await Promise.all([
       mainWindow.webContents.session.cookies.remove(
         realUrl,

@@ -1,5 +1,5 @@
-import { ipcMain } from "electron";
 import type { RealtimeServer, RealtimeSocket } from "@cmux/server/realtime";
+import { ipcMain } from "electron";
 
 // This starts the full server functionality over IPC (no HTTP port needed)
 export async function startEmbeddedServer() {
@@ -66,14 +66,14 @@ function createIPCRealtimeServer(): RealtimeServer {
         id: socketId,
         handshake: ipcSocket.handshake,
 
-        on(event: any, handler: any) {
+        on(event: string, handler: (...args: unknown[]) => void) {
           if (!ipcSocket.handlers.has(event)) {
             ipcSocket.handlers.set(event, []);
           }
           ipcSocket.handlers.get(event)!.push(handler);
         },
 
-        emit(event: any, ...args: any[]) {
+        emit(event: string, ...args: unknown[]) {
           if (!ipcSocket.webContents.isDestroyed()) {
             try {
               // Send event to renderer via IPC
@@ -145,11 +145,11 @@ function createIPCRealtimeServer(): RealtimeServer {
       const realtimeSocket: RealtimeSocket = {
         id: socketId,
         handshake: ipcSocket.handshake,
-        on(event: any, handler: any) {
+        on(event: string, handler: (...args: unknown[]) => void) {
           if (!ipcSocket.handlers.has(event)) ipcSocket.handlers.set(event, []);
           ipcSocket.handlers.get(event)!.push(handler);
         },
-        emit(event: any, ...args: any[]) {
+        emit(event: string, ...args: unknown[]) {
           if (!ipcSocket.webContents.isDestroyed()) {
             try {
               ipcSocket.webContents.send(
@@ -281,7 +281,7 @@ function createIPCRealtimeServer(): RealtimeServer {
   // Handle listener registration from renderer
   ipcMain.handle(
     "socket:on",
-    async (_event, socketId: string, eventName: string) => {
+    async (_event, socketId: string, _eventName: string) => {
       const socket = sockets.get(socketId);
       if (socket) {
         // Register that renderer wants to listen to this event
@@ -296,7 +296,7 @@ function createIPCRealtimeServer(): RealtimeServer {
       connectionHandlers.push(handler);
     },
 
-    emit(event: any, ...args: any[]) {
+    emit(event: string, ...args: unknown[]) {
       // Broadcast to all connected sockets
       sockets.forEach((socket) => {
         if (!socket.webContents.isDestroyed()) {
