@@ -5,14 +5,14 @@
   "private": true,
   "scripts": {
     "dev": "dotenv -e ../../.env -- next dev --turbopack --port 9779",
+    "prebuild": "bun run generate-openapi-client",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "dotenv -e ../../.env -- vitest run",
     "generate-openapi-client": "bun run --env-file ../../.env scripts/watch-openapi.ts",
-    "generate-openapi-client:watch": "bun run --watch --env-file ../../.env scripts/watch-openapi.ts",
-    "postinstall": "bun run generate-openapi-client"
+    "generate-openapi-client:watch": "bun run --watch --env-file ../../.env scripts/watch-openapi.ts"
   },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^8.1.0",
@@ -43,7 +43,7 @@
     "www": "^0.0.0",
     "@ai-sdk/anthropic": "^2.0.6",
     "ai": "^5.0.22",
-    "zod": "^4.0.17"
+    "zod": "^3.25.76"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
@@ -51,7 +51,7 @@
     "@hey-api/openapi-ts": "^0.82.1",
     "@next/eslint-plugin-next": "^15.5.2",
     "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
+    "@types/node": "^24.3.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "dotenv": "^16.4.5",
