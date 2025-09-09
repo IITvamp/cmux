@@ -1,9 +1,9 @@
 import { api } from "@cmux/convex/api";
+import { getMainServerSocketOptions } from "@cmux/shared/node/socket";
 import { exec } from "node:child_process";
 import { createServer } from "node:http";
 import { promisify } from "node:util";
 import { Server } from "socket.io";
-import { getMainServerSocketOptions } from "@cmux/shared/node/socket";
 import { GitDiffManager } from "./gitDiff.js";
 import { createProxyApp, setupWebSocketProxy } from "./proxyApp.js";
 import { createSocketIOTransport } from "./transports/socketio-transport.js";

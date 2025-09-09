@@ -417,8 +417,10 @@ function DashboardComponent() {
       value: `env:${env._id}`,
       icon: (
         <Tooltip>
-          <TooltipTrigger>
-            <ServerIcon className="w-4 h-4 text-neutral-600 dark:text-neutral-300" />
+          <TooltipTrigger asChild>
+            <span>
+              <ServerIcon className="w-4 h-4 text-neutral-600 dark:text-neutral-300" />
+            </span>
           </TooltipTrigger>
           <TooltipContent>Environment: {env.name}</TooltipContent>
         </Tooltip>
