@@ -41,3 +41,5 @@ cmux upgrade
 ```bash
 cmux uninstall
 ```
+
+**This line is now bold!**
