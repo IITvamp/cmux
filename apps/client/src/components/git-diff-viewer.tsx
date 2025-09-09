@@ -43,12 +43,7 @@ interface GitDiffViewerProps {
     totalAdditions: number;
     totalDeletions: number;
   }) => void;
-  classNames?: {
-    fileDiffRow?: {
-      button?: string;
-      container?: string;
-    };
-  };
+  classNames?: GitDiffViewerClassNames;
 }
 
 type FileGroup = {
