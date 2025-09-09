@@ -18,6 +18,7 @@ export default defineConfig({
           "@cmux/server/**",
           "@cmux/shared",
           "@cmux/convex",
+          "@cmux/www-openapi-client",
         ],
       }),
       resolveWorkspacePackages(),
@@ -36,27 +37,27 @@ export default defineConfig({
         // Avoid bundling native and perf optional deps; load at runtime
         // Also externalize docker libs which pull in ssh2 (native optional binding)
         // But DO NOT externalize @cmux/server - we want it bundled
-        external: (id) => {
-          // Don't externalize @cmux/server modules
-          if (id.startsWith("@cmux/server")) {
-            return false;
-          }
-          // Externalize native modules and specific deps
-          if (/\.node$/.test(id)) return true;
-          if (
-            [
-              "cpu-features",
-              "ssh2",
-              "dockerode",
-              "docker-modem",
-              "bufferutil",
-              "utf-8-validate",
-            ].includes(id)
-          ) {
-            return true;
-          }
-          return false;
-        },
+        // external: (id) => {
+        //   // Don't externalize @cmux/server modules
+        //   if (id.startsWith("@cmux/server")) {
+        //     return false;
+        //   }
+        //   // Externalize native modules and specific deps
+        //   if (/\.node$/.test(id)) return true;
+        //   if (
+        //     [
+        //       "cpu-features",
+        //       "ssh2",
+        //       "dockerode",
+        //       "docker-modem",
+        //       "bufferutil",
+        //       "utf-8-validate",
+        //     ].includes(id)
+        //   ) {
+        //     return true;
+        //   }
+        //   return false;
+        // },
       },
     },
     // Load env vars from repo root so NEXT_PUBLIC_* from .env/.env.local apply

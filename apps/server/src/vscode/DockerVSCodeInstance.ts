@@ -6,10 +6,10 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import * as os from "os";
 import * as path from "path";
 import { getConvex } from "../utils/convexClient.js";
-import { getAuthToken, runWithAuthToken } from "../utils/requestContext.js";
 import { cleanupGitCredentials } from "../utils/dockerGitSetup.js";
 import { dockerLogger } from "../utils/fileLogger.js";
 import { getGitHubTokenFromKeychain } from "../utils/getGitHubToken.js";
+import { getAuthToken, runWithAuthToken } from "../utils/requestContext.js";
 import {
   VSCodeInstance,
   type VSCodeInstanceConfig,
@@ -71,7 +71,6 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     // We'll take the first 12 chars for a shorter container name
     const shortId = getShortId(this.taskRunId);
     this.containerName = `cmux-${shortId}`;
-    // Use a published default image so packaged apps work without local builds
     this.imageName = process.env.WORKER_IMAGE_NAME || "cmux-worker:0.0.1";
     dockerLogger.info(`WORKER_IMAGE_NAME: ${process.env.WORKER_IMAGE_NAME}`);
     dockerLogger.info(`this.imageName: ${this.imageName}`);
