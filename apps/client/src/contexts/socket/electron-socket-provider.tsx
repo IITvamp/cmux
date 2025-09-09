@@ -1,14 +1,13 @@
+import { CmuxIpcSocketClient } from "@/lib/cmux-ipc-socket-client";
 import { type MainServerSocket } from "@cmux/shared/socket";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "@tanstack/react-router";
 import React, { useEffect, useMemo } from "react";
 import { cachedGetUser } from "../../lib/cachedGetUser";
-import { CmuxIpcSocketClient } from "@/lib/cmux-ipc-socket-client";
 import { stackClientApp } from "../../lib/stack";
 import { authJsonQueryOptions } from "../convex/authJsonQueryOptions";
 import { ElectronSocketContext } from "./socket-context";
 import type { SocketContextType } from "./types";
-
 
 // ElectronSocketProvider uses IPC to communicate with embedded server
 export const ElectronSocketProvider: React.FC<React.PropsWithChildren> = ({
@@ -17,7 +16,9 @@ export const ElectronSocketProvider: React.FC<React.PropsWithChildren> = ({
   const authJsonQuery = useQuery(authJsonQueryOptions());
   const authToken = authJsonQuery.data?.accessToken;
   const location = useLocation();
-  const [socket, setSocket] = React.useState<SocketContextType["socket"] | null>(null);
+  const [socket, setSocket] = React.useState<
+    SocketContextType["socket"] | null
+  >(null);
   const [isConnected, setIsConnected] = React.useState(false);
   const [availableEditors, setAvailableEditors] =
     React.useState<SocketContextType["availableEditors"]>(null);
@@ -58,7 +59,7 @@ export const ElectronSocketProvider: React.FC<React.PropsWithChildren> = ({
 
       // Create and connect IPC socket client via cmux IPC transport
       createdSocket = new CmuxIpcSocketClient(query);
-      
+
       createdSocket.on("connect", () => {
         if (disposed) return;
         console.log("[ElectronSocket] Connected via IPC");
