@@ -53,7 +53,6 @@ mkdir -p "$APP_ASAR_DIR"
 cp -r out "$APP_ASAR_DIR/"
 cp package.json "$APP_ASAR_DIR/"
 
-# Copy node_modules and dereference pnpm symlinks so runtime has real files
 echo "Copying dependencies..."
 cp -r node_modules "$APP_ASAR_DIR/"
 
