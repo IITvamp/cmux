@@ -1,26 +1,16 @@
 import { api } from "@cmux/convex/api";
-import { getMainServerSocketOptions } from "@cmux/shared/node/socket";
 import { exec } from "node:child_process";
 import { createServer } from "node:http";
 import { promisify } from "node:util";
-import { Server } from "socket.io";
 import { GitDiffManager } from "./gitDiff.js";
 import { createProxyApp, setupWebSocketProxy } from "./proxyApp.js";
-import { createSocketIOTransport } from "./transports/socketio-transport.js";
 import { setupSocketHandlers } from "./socket-handlers.js";
-import { dockerLogger, serverLogger } from "./utils/fileLogger.js";
+import { createSocketIOTransport } from "./transports/socketio-transport.js";
 import { getConvex } from "./utils/convexClient.js";
+import { dockerLogger, serverLogger } from "./utils/fileLogger.js";
 import { waitForConvex } from "./utils/waitForConvex.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
-import {
-  ClientToServerEvents,
-  ServerToClientEvents,
-  InterServerEvents,
-  SocketData,
-} from "@cmux/shared";
-import { runWithAuth } from "./utils/requestContext.js";
-// Team is supplied via socket handshake query param 'team'
 
 const execAsync = promisify(exec);
 
@@ -92,30 +82,6 @@ export async function startServer({
 
   // Create HTTP server with Express app
   const httpServer = createServer(proxyApp);
-
-  const io = new Server<
-    ClientToServerEvents,
-    ServerToClientEvents,
-    InterServerEvents,
-    SocketData
-  >(httpServer, getMainServerSocketOptions());
-
-  // Attach auth context from socket.io connection query param ?auth=JWT
-  io.use((socket, next) => {
-    const q = socket.handshake.query?.auth;
-    const token = Array.isArray(q)
-      ? q[0]
-      : typeof q === "string"
-        ? q
-        : undefined;
-    const qJson = socket.handshake.query?.auth_json;
-    const tokenJson = Array.isArray(qJson)
-      ? qJson[0]
-      : typeof qJson === "string"
-        ? qJson
-        : undefined;
-    runWithAuth(token, tokenJson, () => next());
-  });
 
   setupWebSocketProxy(httpServer);
 

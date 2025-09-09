@@ -30,8 +30,9 @@
   "scripts": {
     "start": "vite-node src/local-dev.ts",
     "dev3": "DENO_COMPAT=1 deno run -A --watch-hmr src/local-dev.ts",
-    "dev2": "vite-node src/local-dev.ts",
+    "devtsx": "bunx tsx src/local-dev.ts",
     "dev": "bun run --watch src/local-dev.ts",
+    "dev2": "vite-node src/local-dev.ts",
     "dev0": "DENO_COMPAT=1 deno run -A src/local-dev.ts",
     "dev-vite": "vite-node --watch src/local-dev.ts",
     "start-deno": "deno run -A src/local-dev.ts",
