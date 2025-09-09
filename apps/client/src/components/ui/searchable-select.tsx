@@ -148,7 +148,11 @@ export function SearchableSelect({
       return <Skeleton className="h-4 w-18 rounded-lg" />;
     }
     if (value.length === 0) {
-      return <span className="text-neutral-400 truncate">{placeholder}</span>;
+      return (
+        <span className="text-neutral-400 truncate select-none">
+          {placeholder}
+        </span>
+      );
     }
     // If exactly one is selected (single or multi), show icon (if any) + label
     if (value.length === 1) {
