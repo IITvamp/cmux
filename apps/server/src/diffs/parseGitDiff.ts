@@ -158,6 +158,147 @@ export async function computeEntriesNodeGit(opts: ParsedDiffOptions): Promise<Re
   return entries;
 }
 
+export async function computeEntriesBetweenRefs(opts: {
+  repoPath: string; // path to a local git repo (origin)
+  ref1: string;
+  ref2: string;
+  includeContents?: boolean;
+  maxBytes?: number;
+}): Promise<ReplaceDiffEntry[]> {
+  const { repoPath, ref1, ref2, includeContents = true, maxBytes = 950 * 1024 } = opts;
+  // Use --find-renames and NUL delimiter for reliable parsing
+  const { stdout: nsOut } = await execAsync(
+    `git diff --name-status -z --find-renames ${ref1}..${ref2}`,
+    { cwd: repoPath }
+  );
+  const tokens = nsOut.split("\0").filter(Boolean);
+  type Item = { status: DiffStatus; filePath: string; oldPath?: string };
+  const items: Item[] = [];
+  let i = 0;
+  while (i < tokens.length) {
+    const code = tokens[i++]!;
+    if (!code) break;
+    if (code.startsWith("R") || code.startsWith("C")) {
+      const oldPath = tokens[i++] || "";
+      const newPath = tokens[i++] || "";
+      if (!oldPath || !newPath) continue;
+      items.push({ status: "renamed", filePath: newPath, oldPath });
+    } else {
+      const fp = tokens[i++] || "";
+      if (!fp) continue;
+      const status: DiffStatus = code === "A" ? "added" : code === "D" ? "deleted" : "modified";
+      items.push({ status, filePath: fp });
+    }
+  }
+
+  const results = await Promise.all(
+    items.map(async (it) => {
+      let additions = 0;
+      let deletions = 0;
+      let isBinary = false;
+      let patchText: string | undefined;
+      let oldContent: string | undefined;
+      let newContent: string | undefined;
+
+      try {
+        const { stdout: ns } = await execAsync(
+          `git diff --numstat ${ref1}..${ref2} -- "${escapePath(it.filePath)}"`,
+          { cwd: repoPath }
+        );
+        const line = ns.split("\n").find((l) => l.trim().endsWith(`\t${it.filePath}`));
+        if (line) {
+          const [a, d] = line.split("\t");
+          isBinary = a === "-" || d === "-";
+          additions = isBinary ? 0 : parseInt(a || "0", 10);
+          deletions = isBinary ? 0 : parseInt(d || "0", 10);
+        }
+
+        if (!isBinary && includeContents) {
+          if (it.status !== "added") {
+            try {
+              const { stdout } = await execAsync(
+                `git show ${ref1}:"${escapePath(it.oldPath ?? it.filePath)}"`,
+                { cwd: repoPath, maxBuffer: 10 * 1024 * 1024 }
+              );
+              oldContent = stdout;
+            } catch {
+              oldContent = "";
+            }
+          } else {
+            oldContent = "";
+          }
+          if (it.status !== "deleted") {
+            try {
+              const { stdout } = await execAsync(
+                `git show ${ref2}:"${escapePath(it.filePath)}"`,
+                { cwd: repoPath, maxBuffer: 10 * 1024 * 1024 }
+              );
+              newContent = stdout;
+            } catch {
+              newContent = "";
+            }
+          } else {
+            newContent = "";
+          }
+
+          const { stdout: pOut } = await execAsync(
+            `git diff --patch --binary --no-color ${ref1}..${ref2} -- "${escapePath(it.filePath)}"`,
+            { cwd: repoPath, maxBuffer: 10 * 1024 * 1024 }
+          );
+          patchText = pOut || undefined;
+        }
+      } catch {
+        // fallthrough
+      }
+
+      const patchSize = !isBinary && patchText ? Buffer.byteLength(patchText, "utf8") : 0;
+      const oldSize = oldContent ? Buffer.byteLength(oldContent, "utf8") : 0;
+      const newSize = newContent ? Buffer.byteLength(newContent, "utf8") : 0;
+      const totalApprox = patchSize + oldSize + newSize;
+
+      const base: ReplaceDiffEntry = {
+        filePath: it.filePath,
+        oldPath: it.oldPath,
+        status: it.status,
+        additions,
+        deletions,
+        isBinary,
+        patchSize,
+        oldSize,
+        newSize,
+      };
+
+      if (!isBinary && includeContents) {
+        if (totalApprox <= maxBytes) {
+          base.patch = patchText;
+          base.oldContent = oldContent;
+          base.newContent = newContent;
+          base.contentOmitted = false;
+        } else {
+          base.patch = patchSize < maxBytes ? patchText : undefined;
+          base.contentOmitted = true;
+        }
+      } else {
+        base.contentOmitted = false;
+      }
+
+      if (
+        base.status === "modified" &&
+        !base.isBinary &&
+        base.additions === 0 &&
+        base.deletions === 0 &&
+        (!base.patch || base.patch.trim() === "")
+      ) {
+        return null;
+      }
+
+      return base;
+    })
+  );
+
+  return results.filter((e): e is ReplaceDiffEntry => !!e);
+}
+
 async function resolvePrimaryBaseRef(cwd: string): Promise<string> {
   // Prefer the repository default branch (e.g., origin/main)
   try {

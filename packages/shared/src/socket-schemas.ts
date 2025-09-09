@@ -99,6 +99,14 @@ export const GitFullDiffRequestSchema = z.object({
   workspacePath: z.string(),
 });
 
+// Compare arbitrary refs within a repository (e.g., branch names or SHAs)
+export const GitCompareRefsSchema = z.object({
+  // Full repo name, e.g., "owner/name". Server will derive remote URL.
+  repoFullName: z.string(),
+  ref1: z.string(),
+  ref2: z.string(),
+});
+
 export const GitFileSchema = z.object({
   path: z.string(),
   status: z.enum(["added", "modified", "deleted", "renamed"]),
@@ -373,6 +381,7 @@ export type GitStatusResponse = z.infer<typeof GitStatusResponseSchema>;
 export type GitDiffResponse = z.infer<typeof GitDiffResponseSchema>;
 export type GitFileChanged = z.infer<typeof GitFileChangedSchema>;
 export type GitFullDiffRequest = z.infer<typeof GitFullDiffRequestSchema>;
+export type GitCompareRefs = z.infer<typeof GitCompareRefsSchema>;
 export type GitFullDiffResponse = z.infer<typeof GitFullDiffResponseSchema>;
 export type OpenInEditor = z.infer<typeof OpenInEditorSchema>;
 export type OpenInEditorError = z.infer<typeof OpenInEditorErrorSchema>;
@@ -416,6 +425,15 @@ export interface ClientToServerEvents {
   "git-status": (data: GitStatusRequest) => void;
   "git-diff": (data: GitDiffRequest) => void;
   "git-full-diff": (data: GitFullDiffRequest) => void;
+  // Compare two refs for a given repo; returns ReplaceDiffEntry[]
+  "git-compare-refs": (
+    data: GitCompareRefs,
+    callback: (
+      response:
+        | { ok: true; diffs: import("./diff-types.js").ReplaceDiffEntry[] }
+        | { ok: false; error: string; diffs?: [] }
+    ) => void
+  ) => void;
   // On-demand diffs for a task run
   "get-run-diffs": (
     data: { taskRunId: Id<"taskRuns"> },

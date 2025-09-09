@@ -2,6 +2,7 @@ import { api } from "@cmux/convex/api";
 import {
   ArchiveTaskSchema,
   GitFullDiffRequestSchema,
+  GitCompareRefsSchema,
   GitHubCreateDraftPrSchema,
   GitHubFetchBranchesSchema,
   GitHubFetchReposSchema,
@@ -834,6 +835,28 @@ export async function startServer({
         socket.emit("git-full-diff-response", {
           diff: "",
           error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    });
+
+    // Compare two refs in a repository; ensure fetch/pull before computing diff
+    socket.on("git-compare-refs", async (data, callback) => {
+      try {
+        const { repoFullName, ref1, ref2 } = GitCompareRefsSchema.parse(data);
+        const { compareRefsForRepo } = await import("./diffs/compareRefs.js");
+        const diffs = await compareRefsForRepo({
+          repoFullName,
+          ref1,
+          ref2,
+          teamSlugOrId: safeTeam,
+        });
+        callback?.({ ok: true, diffs });
+      } catch (error) {
+        serverLogger.error("Error comparing refs:", error);
+        callback?.({
+          ok: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+          diffs: [],
         });
       }
     });
