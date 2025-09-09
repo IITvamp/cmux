@@ -24,6 +24,15 @@ import {
 } from "react";
 import { kitties } from "./kitties";
 
+type FileDiffRowClassNames = {
+  button?: string;
+  container?: string;
+};
+
+type GitDiffViewerClassNames = {
+  fileDiffRow?: FileDiffRowClassNames;
+};
+
 interface GitDiffViewerProps {
   diffs: ReplaceDiffEntry[];
   isLoading?: boolean;
