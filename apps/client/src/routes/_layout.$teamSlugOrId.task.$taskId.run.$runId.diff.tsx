@@ -2,13 +2,14 @@ import { FloatingPane } from "@/components/floating-pane";
 import { GitDiffViewer } from "@/components/git-diff-viewer";
 import { TaskDetailHeader } from "@/components/task-detail-header";
 import { type MergeMethod } from "@/components/ui/merge-button";
-import { useSocket } from "@/contexts/socket/use-socket";
+import type { CmuxSocket } from "@/contexts/socket/types";
+import { useSocketSuspense } from "@/contexts/socket/use-socket";
 import { api } from "@cmux/convex/api";
 import { type Id } from "@cmux/convex/dataModel";
 import type { ReplaceDiffEntry } from "@cmux/shared";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { convexQuery } from "@convex-dev/react-query";
-import { useQuery as useRQ } from "@tanstack/react-query";
+import { queryOptions, useQuery as useRQ } from "@tanstack/react-query";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { useEffect, useMemo, useState, type ComponentProps } from "react";
@@ -27,6 +28,29 @@ const gitDiffViewerClassNames: ComponentProps<
     button: "top-[96px] md:top-[56px]",
   },
 };
+
+const diffsQueryOptions = ({
+  socket,
+  selectedRunId,
+}: {
+  socket: CmuxSocket;
+  selectedRunId?: Id<"taskRuns">;
+}) =>
+  queryOptions({
+    enabled: Boolean(!!selectedRunId && socket && socket.active),
+    queryKey: ["run-diffs", selectedRunId, socket?.active],
+    queryFn: async () =>
+      await new Promise<ReplaceDiffEntry[] | undefined>((resolve, reject) => {
+        if (!selectedRunId || !socket || !socket.active) {
+          throw new Error("No socket or selected run id");
+        }
+        socket.emit("get-run-diffs", { taskRunId: selectedRunId }, (resp) => {
+          if (resp.ok) resolve(resp.diffs);
+          else reject(new Error(resp.error || "Failed to load diffs"));
+        });
+      }),
+    staleTime: 10_000,
+  });
 
 export const Route = createFileRoute(
   "/_layout/$teamSlugOrId/task/$taskId/run/$runId/diff"
@@ -69,7 +93,8 @@ function RunDiffPage() {
     totalAdditions: number;
     totalDeletions: number;
   } | null>(null);
-  const { socket } = useSocket();
+  // const { socket } = useSocket();
+  const { socket } = useSocketSuspense();
   const router = useRouter();
   const queryClient = router.options.context?.queryClient;
 
@@ -87,25 +112,9 @@ function RunDiffPage() {
     return taskRuns?.find((run) => run._id === runId);
   }, [runId, taskRuns]);
 
-  // Fetch diffs for the selected run via socket (on-demand)
-  const diffsQuery = useRQ({
-    queryKey: ["run-diffs", selectedRun?._id ?? "none"],
-    queryFn: async () =>
-      await new Promise<ReplaceDiffEntry[]>((resolve, reject) => {
-        if (!selectedRun?._id || !socket) {
-          console.error("No selected run or socket");
-          resolve([]);
-          return;
-        }
-        socket.emit("get-run-diffs", { taskRunId: selectedRun._id }, (resp) => {
-          console.log("get-run-diffs", resp);
-          if (resp.ok) resolve(resp.diffs);
-          else reject(new Error(resp.error || "Failed to load diffs"));
-        });
-      }),
-    enabled: !!selectedRun?._id && !!socket,
-    staleTime: 10_000,
-  });
+  const diffsQuery = useRQ(
+    diffsQueryOptions({ socket, selectedRunId: selectedRun?._id || runId })
+  );
 
   // On selection, sync PR state with GitHub so UI reflects latest
   useEffect(() => {

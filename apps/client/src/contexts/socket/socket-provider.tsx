@@ -10,6 +10,7 @@ import { cachedGetUser } from "../../lib/cachedGetUser";
 import { stackClientApp } from "../../lib/stack";
 import { authJsonQueryOptions } from "../convex/authJsonQueryOptions";
 import { WebSocketContext } from "./socket-context";
+import { socketBoot } from "./socket-boot";
 
 export interface SocketContextType {
   socket: MainServerSocket | null;
@@ -77,6 +78,8 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
         return;
       }
       setSocket(newSocket);
+      // Signal that the provider has created the socket instance
+      socketBoot.resolve();
 
       newSocket.on("connect", () => {
         console.log("[Socket] connected");
@@ -104,6 +107,8 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
     return () => {
       disposed = true;
       if (createdSocket) createdSocket.disconnect();
+      // Reset boot handle so future mounts can suspend appropriately
+      socketBoot.reset();
     };
   }, [url, authToken, teamSlugOrId]);
 

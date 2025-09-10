@@ -8,6 +8,7 @@ import { stackClientApp } from "../../lib/stack";
 import { authJsonQueryOptions } from "../convex/authJsonQueryOptions";
 import { ElectronSocketContext } from "./socket-context";
 import type { SocketContextType } from "./types";
+import { socketBoot } from "./socket-boot";
 
 // ElectronSocketProvider uses IPC to communicate with embedded server
 export const ElectronSocketProvider: React.FC<React.PropsWithChildren> = ({
@@ -87,6 +88,8 @@ export const ElectronSocketProvider: React.FC<React.PropsWithChildren> = ({
       if (!disposed) {
         // Cast to Socket type to satisfy type requirement
         setSocket(createdSocket as unknown as MainServerSocket);
+        // Signal that the provider has created the socket instance
+        socketBoot.resolve();
       }
     })();
 
@@ -98,6 +101,8 @@ export const ElectronSocketProvider: React.FC<React.PropsWithChildren> = ({
         setSocket(null);
         setIsConnected(false);
       }
+      // Reset boot handle so future mounts can suspend appropriately
+      socketBoot.reset();
     };
   }, [authToken, teamSlugOrId]);
 
