@@ -23,6 +23,7 @@ env:
 jobs:
   mac-x64:
     name: macOS x64
+    environment: electron
     runs-on: macos-13
     defaults:
       run:
@@ -103,6 +104,7 @@ jobs:
 
   mac-arm64:
     name: macOS arm64
+    environment: electron
     runs-on: macos-14
     defaults:
       run:
@@ -183,6 +185,7 @@ jobs:
 
   windows-x64:
     name: Windows x64
+    environment: electron
     runs-on: windows-latest
     defaults:
       run:
@@ -226,6 +229,7 @@ jobs:
 
   linux-x64:
     name: Linux x64
+    environment: electron
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
