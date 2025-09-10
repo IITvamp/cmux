@@ -87,6 +87,18 @@ jobs:
           node -e "process.stdout.write(Buffer.from(process.env.MAC_CERT_BASE64,'base64'))" > "$CERT_PATH"
           echo "CSC_LINK=$CERT_PATH" >> "$GITHUB_ENV"
 
+      - name: Prepare Apple API key file (x64)
+        if: ${{ steps.signing.outputs.has == 'true' }}
+        env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+        run: |
+          set -euo pipefail
+          KEY_PATH="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
+          # Write secret to file (handles both single-line and multi-line secrets)
+          printf "%s" "$APPLE_API_KEY" | perl -0777 -pe 's/\r\n|\r|\n/\n/g' > "$KEY_PATH"
+          echo "APPLE_API_KEY=$KEY_PATH" >> "$GITHUB_ENV"
+
       - name: Build & publish mac x64 (signed) to GitHub Releases
         if: ${{ steps.signing.outputs.has == 'true' }}
         env:
@@ -113,7 +125,7 @@ jobs:
 
       - name: Staple & verify (x64)
         if: ${{ steps.signing.outputs.has == 'true' }}
-        working-directory: apps/client/dist
+        working-directory: apps/client/dist-electron
         run: |
           set -euo pipefail
           APP="$(ls -1d mac*/**/*.app 2>/dev/null | head -n1 || true)"
@@ -217,6 +229,17 @@ jobs:
           node -e "process.stdout.write(Buffer.from(process.env.MAC_CERT_BASE64,'base64'))" > "$CERT_PATH"
           echo "CSC_LINK=$CERT_PATH" >> "$GITHUB_ENV"
 
+      - name: Prepare Apple API key file (arm64)
+        if: ${{ steps.signing_arm.outputs.has == 'true' }}
+        env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+        run: |
+          set -euo pipefail
+          KEY_PATH="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
+          printf "%s" "$APPLE_API_KEY" | perl -0777 -pe 's/\r\n|\r|\n/\n/g' > "$KEY_PATH"
+          echo "APPLE_API_KEY=$KEY_PATH" >> "$GITHUB_ENV"
+
       - name: Build & publish mac arm64 (signed) to GitHub Releases
         if: ${{ steps.signing_arm.outputs.has == 'true' }}
         env:
@@ -243,7 +266,7 @@ jobs:
 
       - name: Staple & verify (arm64)
         if: ${{ steps.signing_arm.outputs.has == 'true' }}
-        working-directory: apps/client/dist
+        working-directory: apps/client/dist-electron
         run: |
           set -euo pipefail
           APP="$(ls -1d mac*/**/*.app 2>/dev/null | head -n1 || true)"
