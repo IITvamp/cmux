@@ -239,6 +239,12 @@ function DashboardComponent() {
   );
 
   const handleStartTask = useCallback(async () => {
+    // Prevent starting tasks locally when Docker isn't ready (or unknown)
+    if (!isEnvSelected && !isCloudMode && dockerReady !== true) {
+      toast.error("Docker is not running. Start Docker Desktop.");
+      return;
+    }
+
     if (!selectedProject[0] || !taskDescription.trim()) {
       console.error("Please select a project and enter a task description");
       return;
@@ -367,6 +373,8 @@ function DashboardComponent() {
     addTaskToExpand,
     selectedAgents,
     isCloudMode,
+    isEnvSelected,
+    dockerReady,
     theme,
     generateUploadUrl,
   ]);
@@ -588,12 +596,31 @@ function DashboardComponent() {
     };
   }, []);
 
+  // Compute docker block state and disabled reason early so shortcuts respect it
+  const blockedByDocker = useMemo(() => {
+    // Block when explicitly in local mode (not cloud, not environment) and Docker is not confirmed ready
+    return !isEnvSelected && !isCloudMode && dockerReady !== true;
+  }, [isEnvSelected, isCloudMode, dockerReady]);
+
+  const disabledReason = useMemo(() => {
+    if (blockedByDocker) {
+      return "Docker is not running. Start Docker Desktop.";
+    }
+    return undefined;
+  }, [blockedByDocker]);
+
   // Handle Command+Enter keyboard shortcut
   const handleSubmit = useCallback(() => {
+    // Block Cmd/Ctrl+Enter when Docker isn't ready in local mode
+    if (blockedByDocker) {
+      toast.error("Docker is not running. Start Docker Desktop.");
+      return;
+    }
+
     if (selectedProject[0] && taskDescription.trim()) {
       handleStartTask();
     }
-  }, [selectedProject, taskDescription, handleStartTask]);
+  }, [blockedByDocker, selectedProject, taskDescription, handleStartTask]);
 
   // Memoized computed values for editor props
   const lexicalRepoUrl = useMemo(() => {
@@ -620,18 +647,6 @@ function DashboardComponent() {
     isEnvSelected,
     effectiveSelectedBranch,
   ]);
-
-  const blockedByDocker = useMemo(() => {
-    // Only block when explicitly in local mode (not cloud, not environment) and we know Docker is not running
-    return !isEnvSelected && !isCloudMode && dockerReady === false;
-  }, [isEnvSelected, isCloudMode, dockerReady]);
-
-  const disabledReason = useMemo(() => {
-    if (blockedByDocker) {
-      return "Docker is not running. Start Docker Desktop.";
-    }
-    return undefined;
-  }, [blockedByDocker]);
 
   return (
     <FloatingPane header={<TitleBar title="cmux" />}>

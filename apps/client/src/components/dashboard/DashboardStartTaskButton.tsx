@@ -18,16 +18,23 @@ export function DashboardStartTaskButton({
 
   return (
     <Tooltip>
+      {/* Wrap disabled button in a span so tooltip still shows */}
       <TooltipTrigger asChild>
-        <Button
-          size="sm"
-          variant="default"
-          className="!h-7"
-          onClick={onStartTask}
-          disabled={isDisabled}
+        <span
+          // Ensure tooltip can trigger even when the button is disabled
+          tabIndex={0}
+          className="inline-flex"
         >
-          Start task
-        </Button>
+          <Button
+            size="sm"
+            variant="default"
+            className="!h-7"
+            onClick={onStartTask}
+            disabled={isDisabled}
+          >
+            Start task
+          </Button>
+        </span>
       </TooltipTrigger>
       <TooltipContent
         side="bottom"

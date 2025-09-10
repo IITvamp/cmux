@@ -135,17 +135,13 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
             </TooltipContent>
           </Tooltip>
 
-          {/* Individual issue pills - only show critical ones */}
           {dockerNotReady && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
-                  onClick={() =>
-                    navigate({
-                      to: "/$teamSlugOrId/settings",
-                      params: { teamSlugOrId },
-                    })
-                  }
+                  onClick={() => {
+                    window.open("https://www.docker.com/products/docker-desktop/", "_blank");
+                  }}
                   className={clsx(
                     "flex items-center gap-1.5 px-2.5 py-1 rounded-lg",
                     "bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-600",
