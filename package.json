@@ -25,7 +25,8 @@
     "typecheck:www-openapi-client": "cd packages/www-openapi-client && bun run typecheck",
     "typecheck:www": "cd apps/www && pnpm run typecheck",
     "generate-routes": "cd apps/client && bun run generate-routes",
-    "generate-openapi-client": "cd apps/www && bun run generate-openapi-client"
+    "generate-openapi-client": "cd apps/www && bun run generate-openapi-client",
+    "build:mac-arm64-local": "bash scripts/build-local-mac-arm64.sh"
   },
   "devDependencies": {
     "@eslint/js": "^9.34.0",
