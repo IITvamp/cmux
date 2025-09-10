@@ -3,7 +3,7 @@ import { runDiffsQueryOptions } from "@/queries/run-diffs";
 import type { Id } from "@cmux/convex/dataModel";
 import type { ReplaceDiffEntry } from "@cmux/shared";
 import { useQueryClient, useQuery as useRQ } from "@tanstack/react-query";
-import { useEffect, useMemo, type ComponentProps } from "react";
+import { useEffect, type ComponentProps } from "react";
 import { GitDiffViewer } from "./git-diff-viewer";
 
 export interface RunDiffSectionProps {
@@ -11,8 +11,6 @@ export interface RunDiffSectionProps {
   worktreePath?: string | null;
   classNames?: ComponentProps<typeof GitDiffViewer>["classNames"];
   onControlsChange?: ComponentProps<typeof GitDiffViewer>["onControlsChange"];
-  onLoadingChange?: (loading: boolean) => void;
-  onHasAnyDiffsChange?: (has: boolean) => void;
 }
 
 export function RunDiffSection({
@@ -20,12 +18,9 @@ export function RunDiffSection({
   worktreePath,
   classNames,
   onControlsChange,
-  onLoadingChange,
-  onHasAnyDiffsChange,
 }: RunDiffSectionProps) {
   const { socket } = useSocketSuspense();
   const queryClient = useQueryClient();
-
   const diffsQuery = useRQ(runDiffsQueryOptions({ socket, selectedRunId }));
 
   // Live update diffs when files change for this worktree
@@ -55,22 +50,9 @@ export function RunDiffSection({
     void diffsQuery.refetch();
   }, [selectedRunId, diffsQuery.refetch, diffsQuery]);
 
-  const hasAny = useMemo(
-    () => (diffsQuery.data || []).length > 0,
-    [diffsQuery.data]
-  );
-
-  useEffect(() => {
-    onHasAnyDiffsChange?.(hasAny);
-  }, [hasAny, onHasAnyDiffsChange]);
-
-  useEffect(() => {
-    onLoadingChange?.(diffsQuery.isPending);
-  }, [diffsQuery.isPending, onLoadingChange]);
-
   return (
     <GitDiffViewer
-      diffs={diffsQuery.data || []}
+      diffs={diffsQuery.data?.diffs || []}
       isLoading={!diffsQuery.data && !!selectedRunId}
       taskRunId={selectedRunId}
       onControlsChange={onControlsChange}

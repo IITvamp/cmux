@@ -2,11 +2,9 @@ import { FloatingPane } from "@/components/floating-pane";
 import { GitDiffViewer } from "@/components/git-diff-viewer";
 import { RunDiffSection } from "@/components/RunDiffSection";
 import { TaskDetailHeader } from "@/components/task-detail-header";
-// Socket usage is delegated to child components to enable localized Suspense
 import { api } from "@cmux/convex/api";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { convexQuery } from "@convex-dev/react-query";
-// no tanstack query here; child handles diffs fetching
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { Suspense, useMemo, useState, type ComponentProps } from "react";
@@ -84,10 +82,6 @@ function RunDiffPage() {
     return taskRuns?.find((run) => run._id === runId);
   }, [runId, taskRuns]);
 
-  // Merge handlers moved into TaskDetailHeader (Suspense child)
-  const [isDiffsLoading, setIsDiffsLoading] = useState(false);
-  const [hasAnyDiffs, setHasAnyDiffs] = useState(false);
-
   return (
     <FloatingPane>
       <div className="flex h-full min-h-0 flex-col relative isolate">
@@ -98,12 +92,8 @@ function RunDiffPage() {
             selectedRun={selectedRun ?? null}
             isCreatingPr={isCreatingPr}
             setIsCreatingPr={setIsCreatingPr}
-            totalAdditions={diffControls?.totalAdditions}
-            totalDeletions={diffControls?.totalDeletions}
-            hasAnyDiffs={hasAnyDiffs}
             onExpandAll={diffControls?.expandAll}
             onCollapseAll={diffControls?.collapseAll}
-            isLoading={isDiffsLoading}
             teamSlugOrId={teamSlugOrId}
           />
           {task?.text && (
@@ -130,8 +120,6 @@ function RunDiffPage() {
                 selectedRunId={selectedRun?._id || runId}
                 worktreePath={selectedRun?.worktreePath || null}
                 onControlsChange={setDiffControls}
-                onLoadingChange={setIsDiffsLoading}
-                onHasAnyDiffsChange={setHasAnyDiffs}
                 classNames={gitDiffViewerClassNames}
               />
             </Suspense>

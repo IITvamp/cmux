@@ -1,6 +1,6 @@
 import type { Id } from "@cmux/convex/dataModel";
 import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
-import { computeEntriesNodeGit } from "./parseGitDiff.js";
+import { computeEntriesNodeGit, type ComputeEntriesPerf } from "./parseGitDiff.js";
 import { ensureRunWorktreeAndBranch } from "../utils/ensureRunWorktree.js";
 import { serverLogger } from "../utils/fileLogger.js";
 import type { RealtimeServer } from "../realtime.js";
@@ -12,7 +12,17 @@ export interface GetRunDiffsOptions {
   gitDiffManager: GitDiffManager;
   rt?: RealtimeServer;
   includeContents?: boolean;
+  perfOut?: GetRunDiffsPerf;
 }
+
+export type GetRunDiffsPerf = {
+  ensureMs: number;
+  computeMs: number;
+  watchMs: number;
+  totalMs: number;
+  watchStarted: boolean;
+  git?: ComputeEntriesPerf;
+};
 
 export async function getRunDiffs(options: GetRunDiffsOptions): Promise<ReplaceDiffEntry[]> {
   const {
@@ -28,9 +38,24 @@ export async function getRunDiffs(options: GetRunDiffsOptions): Promise<ReplaceD
   const tEnsure = Date.now();
   const worktreePath = ensured.worktreePath;
 
+  const gitPerf: ComputeEntriesPerf = {
+    resolveBaseMs: 0,
+    mergeBaseMs: 0,
+    listTrackedMs: 0,
+    listUntrackedMs: 0,
+    perFileBuildMs: 0,
+    numstatMs: 0,
+    patchMs: 0,
+    readOldMs: 0,
+    readNewMs: 0,
+    readUntrackedMs: 0,
+    totalMs: 0,
+  };
+
   const entries = await computeEntriesNodeGit({
     worktreePath,
     includeContents,
+    perfOut: gitPerf,
   });
   const tCompute = Date.now();
 
@@ -50,6 +75,15 @@ export async function getRunDiffs(options: GetRunDiffsOptions): Promise<ReplaceD
     }
   }
   const tWatch = Date.now();
+
+  if (options.perfOut) {
+    options.perfOut.ensureMs = tEnsure - t0;
+    options.perfOut.computeMs = tCompute - tEnsure;
+    options.perfOut.watchMs = tWatch - tCompute;
+    options.perfOut.totalMs = tWatch - t0;
+    options.perfOut.watchStarted = watchStarted;
+    options.perfOut.git = gitPerf;
+  }
 
   serverLogger.info(
     `[Perf][getRunDiffs] run=${String(taskRunId)} team=${teamSlugOrId} entries=${entries.length} ensureMs=${tEnsure - t0} computeMs=${tCompute - tEnsure} watchMs=${tWatch - tCompute} totalMs=${tWatch - t0} watchStarted=${watchStarted}`

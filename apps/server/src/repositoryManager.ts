@@ -293,6 +293,111 @@ export class RepositoryManager {
     return args;
   }
 
+  async getGitDir(repoPath: string): Promise<string> {
+    try {
+      const { stdout } = await this.executeGitCommand(`git rev-parse --git-dir`, {
+        cwd: repoPath,
+      });
+      const p = stdout.trim();
+      return path.isAbsolute(p) ? p : path.join(repoPath, p);
+    } catch {
+      return path.join(repoPath, ".git");
+    }
+  }
+
+  async isShallow(repoPath: string): Promise<boolean> {
+    try {
+      const shallowPath = path.join(repoPath, ".git", "shallow");
+      await fs.access(shallowPath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Prewarm commit history for fast ancestry (merge-base) operations.
+   * Uses partial clone filter to avoid fetching blobs, and writes commit-graph.
+   * Idempotent and rate-limited via a timestamp file under .git.
+   */
+  async prewarmCommitHistory(repoPath: string, branch: string, ttlMs = 30 * 60 * 1000): Promise<void> {
+    const gitDir = await this.getGitDir(repoPath);
+    const stamp = path.join(gitDir, "cmux-prewarm.stamp");
+    try {
+      const s = await fs.stat(stamp).catch(() => null);
+      if (s && Date.now() - s.mtimeMs < ttlMs) return;
+    } catch {
+      // ignore
+    }
+
+    try {
+      // Configure partial clone promisor settings (safe if already set)
+      await this.executeGitCommand(`git config core.partialclonefilter blob:none`, { cwd: repoPath });
+      await this.executeGitCommand(`git config remote.origin.promisor true`, { cwd: repoPath });
+    } catch (e) {
+      serverLogger.warn("Failed to set partial clone promisor config:", e);
+    }
+
+    const shallow = await this.isShallow(repoPath);
+    try {
+      if (shallow) {
+        // Unshallow commit history, but keep blobs filtered
+        await this.executeGitCommand(
+          `git fetch --filter=blob:none --unshallow --prune origin ${branch}`,
+          { cwd: repoPath }
+        );
+      } else {
+        // Ensure we have latest commit graph for branch history
+        await this.executeGitCommand(
+          `git fetch --filter=blob:none --prune origin ${branch}`,
+          { cwd: repoPath }
+        );
+      }
+    } catch (e) {
+      serverLogger.warn("Prewarm fetch failed:", e);
+    }
+
+    try {
+      // Commit-graph speeds ancestry queries significantly
+      await this.executeGitCommand(`git commit-graph write --reachable`, { cwd: repoPath });
+    } catch (e) {
+      // Non-fatal
+      serverLogger.warn("Commit-graph write failed:", e);
+    }
+
+    try {
+      await fs.writeFile(stamp, `${new Date().toISOString()}\n`, "utf8");
+    } catch {
+      // ignore
+    }
+  }
+
+  async updateRemoteBranchIfStale(
+    repoPath: string,
+    branch: string,
+    ttlMs = 20_000
+  ): Promise<void> {
+    const safeBranch = branch.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const gitDir = await this.getGitDir(repoPath);
+    const stamp = path.join(gitDir, `cmux-fetch-${safeBranch}.stamp`);
+    try {
+      const s = await fs.stat(stamp).catch(() => null);
+      if (s && Date.now() - s.mtimeMs < ttlMs) return;
+    } catch {
+      // ignore
+    }
+    try {
+      await this.removeStaleGitLock(repoPath, "shallow.lock", 15_000);
+      await this.executeGitCommand(
+        `git fetch --depth 1 origin +refs/heads/${branch}:refs/remotes/origin/${branch}`,
+        { cwd: repoPath }
+      );
+      await fs.writeFile(stamp, `${Date.now()}\n`, "utf8");
+    } catch (e) {
+      serverLogger.warn(`Stale fetch for ${branch} failed:`, e);
+    }
+  }
+
   private async configureGitPullStrategy(repoPath: string): Promise<void> {
     const strategy =
       this.config.pullStrategy === "ff-only"

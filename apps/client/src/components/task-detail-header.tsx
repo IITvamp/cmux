@@ -2,9 +2,12 @@ import { OpenEditorSplitButton } from "@/components/OpenEditorSplitButton";
 import { Dropdown } from "@/components/ui/dropdown";
 import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
 import { useSocketSuspense } from "@/contexts/socket/use-socket";
-import type { Doc } from "@cmux/convex/dataModel";
+import { isElectron } from "@/lib/electron";
+import { runDiffsQueryOptions } from "@/queries/run-diffs";
+import type { Doc, Id } from "@cmux/convex/dataModel";
 import { Skeleton } from "@heroui/react";
 import { useClipboard } from "@mantine/hooks";
+import { useQuery as useRQ, useSuspenseQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
 import {
@@ -18,8 +21,13 @@ import {
   GitMerge,
   Trash2,
 } from "lucide-react";
-import { Suspense, useCallback, useMemo, useState, type CSSProperties } from "react";
-import { isElectron } from "@/lib/electron";
+import {
+  Suspense,
+  useCallback,
+  useMemo,
+  useState,
+  type CSSProperties,
+} from "react";
 import { toast } from "sonner";
 
 interface TaskDetailHeaderProps {
@@ -30,14 +38,50 @@ interface TaskDetailHeaderProps {
   setIsCreatingPr: (v: boolean) => void;
   totalAdditions?: number;
   totalDeletions?: number;
-  hasAnyDiffs?: boolean;
   onExpandAll?: () => void;
   onCollapseAll?: () => void;
-  isLoading?: boolean;
   teamSlugOrId: string;
 }
 
 const ENABLE_MERGE_BUTTON = false;
+
+function AdditionsAndDeletions({ runId }: { runId?: Id<"taskRuns"> }) {
+  const { socket } = useSocketSuspense();
+  const diffsQuery = useRQ(
+    runDiffsQueryOptions({ socket, selectedRunId: runId })
+  );
+
+  if (diffsQuery.error) {
+    return (
+      <div className="flex items-center gap-2 text-[11px] ml-2 shrink-0">
+        <span className="text-neutral-500 dark:text-neutral-400 font-medium select-none">
+          Error loading diffs
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2 text-[11px] ml-2 shrink-0">
+      <Skeleton
+        className="rounded min-w-[20px] h-[14px]"
+        isLoaded={!!diffsQuery.data}
+      >
+        <span className="text-green-600 dark:text-green-400 font-medium select-none">
+          +{diffsQuery.data?.totalAdditions}
+        </span>
+      </Skeleton>
+      <Skeleton
+        className="rounded min-w-[20px] h-[14px]"
+        isLoaded={!!diffsQuery.data}
+      >
+        <span className="text-red-600 dark:text-red-400 font-medium select-none">
+          -{diffsQuery.data?.totalDeletions}
+        </span>
+      </Skeleton>
+    </div>
+  );
+}
 
 export function TaskDetailHeader({
   task,
@@ -45,12 +89,8 @@ export function TaskDetailHeader({
   selectedRun,
   isCreatingPr,
   setIsCreatingPr,
-  totalAdditions,
-  totalDeletions,
-  hasAnyDiffs,
   onExpandAll,
   onCollapseAll,
-  isLoading,
   teamSlugOrId,
 }: TaskDetailHeaderProps) {
   const navigate = useNavigate();
@@ -63,18 +103,6 @@ export function TaskDetailHeader({
     setAgentMenuOpen(open);
   }, []);
 
-  // Determine if there are any diffs to open a PR for
-  const hasChanges = useMemo(() => {
-    if (typeof hasAnyDiffs === "boolean") return hasAnyDiffs;
-    if (
-      typeof totalAdditions !== "number" ||
-      typeof totalDeletions !== "number"
-    ) {
-      return false;
-    }
-    return (totalAdditions || 0) + (totalDeletions || 0) > 0;
-  }, [hasAnyDiffs, totalAdditions, totalDeletions]);
-
   const taskTitle = task?.pullRequestTitle || task?.text;
 
   const handleCopyBranch = () => {
@@ -82,13 +110,7 @@ export function TaskDetailHeader({
       clipboard.copy(selectedRun.newBranch);
     }
   };
-
   const [isMerging, setIsMerging] = useState(false);
-
-  // Socket-dependent actions are implemented in a Suspense child below
-
-  // Socket-dependent actions are implemented in a Suspense child below
-
   const worktreePath = useMemo(
     () => selectedRun?.worktreePath || task?.worktreePath || null,
     [selectedRun?.worktreePath, task?.worktreePath]
@@ -109,18 +131,16 @@ export function TaskDetailHeader({
           <h1 className="text-sm font-bold truncate min-w-0" title={taskTitle}>
             {taskTitle || "Loading..."}
           </h1>
-          <div className="flex items-center gap-2 text-[11px] ml-2 shrink-0">
-            <span className="text-green-600 dark:text-green-400 font-medium select-none">
-              <Skeleton className="rounded min-w-[22px]" isLoaded={!isLoading}>
-                +{totalAdditions}
-              </Skeleton>
-            </span>
-            <span className="text-red-600 dark:text-red-400 font-medium select-none">
-              <Skeleton className="rounded min-w-[22px]" isLoaded={!isLoading}>
-                −{totalDeletions}
-              </Skeleton>
-            </span>
-          </div>
+          <Suspense
+            fallback={
+              <div className="flex items-center gap-2 text-[11px] ml-2 shrink-0">
+                <Skeleton className="rounded min-w-[20px] h-[14px] fade-out" />
+                <Skeleton className="rounded min-w-[20px] h-[14px] fade-out" />
+              </div>
+            }
+          >
+            <AdditionsAndDeletions runId={selectedRun?._id} />
+          </Suspense>
         </div>
 
         {/* Removed periodic refresh spinner */}
@@ -128,7 +148,11 @@ export function TaskDetailHeader({
         {/* Actions on right, vertically centered across rows */}
         <div
           className="col-start-3 row-start-1 row-span-2 self-center flex items-center gap-2 shrink-0"
-          style={isElectron ? ({ WebkitAppRegion: "no-drag" } as CSSProperties) : undefined}
+          style={
+            isElectron
+              ? ({ WebkitAppRegion: "no-drag" } as CSSProperties)
+              : undefined
+          }
         >
           <Suspense
             fallback={
@@ -154,7 +178,6 @@ export function TaskDetailHeader({
               selectedRun={selectedRun ?? null}
               prIsOpen={prIsOpen}
               prIsMerged={prIsMerged}
-              hasChanges={hasChanges}
               isCreatingPr={isCreatingPr}
               setIsCreatingPr={setIsCreatingPr}
               isOpeningPr={isOpeningPr}
@@ -198,7 +221,11 @@ export function TaskDetailHeader({
         {/* Branch row (second line, spans first two columns) */}
         <div
           className="col-start-1 row-start-2 col-span-2 flex items-center gap-2 text-xs text-neutral-400 min-w-0"
-          style={isElectron ? ({ WebkitAppRegion: "no-drag" } as CSSProperties) : undefined}
+          style={
+            isElectron
+              ? ({ WebkitAppRegion: "no-drag" } as CSSProperties)
+              : undefined
+          }
         >
           <button
             onClick={handleCopyBranch}
@@ -290,7 +317,10 @@ export function TaskDetailHeader({
                                   if (!isSelected) {
                                     navigate({
                                       to: "/$teamSlugOrId/task/$taskId",
-                                      params: { teamSlugOrId, taskId: task?._id },
+                                      params: {
+                                        teamSlugOrId,
+                                        taskId: task?._id,
+                                      },
                                       search: { runId: run._id },
                                     });
                                   }
@@ -330,7 +360,6 @@ function SocketActions({
   selectedRun,
   prIsOpen,
   prIsMerged,
-  hasChanges,
   isCreatingPr,
   setIsCreatingPr,
   isOpeningPr,
@@ -341,7 +370,6 @@ function SocketActions({
   selectedRun: Doc<"taskRuns"> | null;
   prIsOpen: boolean;
   prIsMerged: boolean;
-  hasChanges: boolean;
   isCreatingPr: boolean;
   setIsCreatingPr: (v: boolean) => void;
   isOpeningPr: boolean;
@@ -350,6 +378,10 @@ function SocketActions({
   setIsMerging: (v: boolean) => void;
 }) {
   const { socket } = useSocketSuspense();
+  const diffsQuery = useSuspenseQuery(
+    runDiffsQueryOptions({ socket, selectedRunId: selectedRun?._id })
+  );
+  const hasChanges = diffsQuery.data?.hasChanges;
 
   const handleMerge = async (method: MergeMethod) => {
     if (!socket || !selectedRun?._id) return;
@@ -389,7 +421,7 @@ function SocketActions({
       socket.emit(
         "github-merge-branch",
         { taskRunId: selectedRun._id },
-        (resp: { success: boolean; commitSha?: string; error?: string }) => {
+        (resp) => {
           setIsMerging(false);
           if (resp.success) {
             toast.success("Branch merged", {
@@ -413,22 +445,18 @@ function SocketActions({
     // Create PR or mark draft ready
     setIsOpeningPr(true);
     const toastId = toast.loading("Opening PR...");
-    socket.emit(
-      "github-open-pr",
-      { taskRunId: selectedRun._id },
-      (resp: { success: boolean; url?: string; error?: string }) => {
-        setIsOpeningPr(false);
-        if (resp.success) {
-          toast.success("PR opened", { id: toastId, description: resp.url });
-        } else {
-          console.error("Failed to open PR:", resp.error);
-          toast.error("Failed to open PR", {
-            id: toastId,
-            description: resp.error,
-          });
-        }
+    socket.emit("github-open-pr", { taskRunId: selectedRun._id }, (resp) => {
+      setIsOpeningPr(false);
+      if (resp.success) {
+        toast.success("PR opened", { id: toastId, description: resp.url });
+      } else {
+        console.error("Failed to open PR:", resp.error);
+        toast.error("Failed to open PR", {
+          id: toastId,
+          description: resp.error,
+        });
       }
-    );
+    });
   };
 
   const handleViewPR = () => {
@@ -473,7 +501,10 @@ function SocketActions({
           onMerge={prIsOpen ? handleMerge : async () => handleOpenPR()}
           isOpen={prIsOpen}
           disabled={
-            isOpeningPr || isCreatingPr || isMerging || (!prIsOpen && !hasChanges)
+            isOpeningPr ||
+            isCreatingPr ||
+            isMerging ||
+            (!prIsOpen && !hasChanges)
           }
         />
       )}
