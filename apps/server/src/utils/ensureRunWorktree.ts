@@ -140,10 +140,7 @@ export async function ensureRunWorktreeAndBranch(
       // This is especially important in cloud mode where commits happen in a VM.
       try {
         // Fetch the specific branch, force-updating the remote-tracking ref
-        await repoMgr.executeGitCommand(
-          `git fetch --depth 1 origin +refs/heads/${branchName}:refs/remotes/origin/${branchName}`,
-          { cwd: worktreePath }
-        );
+        await repoMgr.updateRemoteBranchIfStale(worktreePath, branchName);
         // If the worktree has no local changes, fast-forward/reset to origin/<branch>
         const { stdout: statusOut } = await repoMgr.executeGitCommand(
           `git status --porcelain`,
@@ -162,6 +159,13 @@ export async function ensureRunWorktreeAndBranch(
         serverLogger.warn(
           `[ensureRunWorktree] Non-fatal fetch/update failure for ${branchName}: ${String(e)}`
         );
+      }
+
+      // Prewarm both base and run branch histories to make merge-base fast/reliable
+      try {
+        await repoMgr.prewarmCommitHistory(worktreePath, branchName);
+      } catch (e) {
+        serverLogger.warn(`Prewarm run branch failed: ${String(e)}`);
       }
     } catch (e: unknown) {
       const err = e as { message?: string; stderr?: string };

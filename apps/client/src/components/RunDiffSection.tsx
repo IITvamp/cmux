@@ -3,7 +3,7 @@ import { runDiffsQueryOptions } from "@/queries/run-diffs";
 import type { Id } from "@cmux/convex/dataModel";
 import type { GitFileChanged, ReplaceDiffEntry } from "@cmux/shared";
 import { useQueryClient, useQuery as useRQ } from "@tanstack/react-query";
-import { useEffect, useMemo, type ComponentProps } from "react";
+import { useEffect, type ComponentProps } from "react";
 import { GitDiffViewer } from "./git-diff-viewer";
 
 export interface RunDiffSectionProps {
@@ -11,8 +11,6 @@ export interface RunDiffSectionProps {
   worktreePath?: string | null;
   classNames?: ComponentProps<typeof GitDiffViewer>["classNames"];
   onControlsChange?: ComponentProps<typeof GitDiffViewer>["onControlsChange"];
-  onLoadingChange?: (loading: boolean) => void;
-  onHasAnyDiffsChange?: (has: boolean) => void;
 }
 
 export function RunDiffSection({
@@ -20,15 +18,12 @@ export function RunDiffSection({
   worktreePath,
   classNames,
   onControlsChange,
-  onLoadingChange,
-  onHasAnyDiffsChange,
 }: RunDiffSectionProps) {
   const { socket } = useSocketSuspense();
   const queryClient = useQueryClient();
 
   const diffsQuery = useRQ(runDiffsQueryOptions({ taskRunId }));
 
-  // Live update diffs when files change for this worktree
   useEffect(() => {
     if (!socket || !taskRunId || !worktreePath) return;
     const onChanged = (data: GitFileChanged) => {
@@ -48,19 +43,6 @@ export function RunDiffSection({
       socket.off("git-file-changed", onChanged);
     };
   }, [socket, taskRunId, worktreePath, queryClient]);
-
-  const hasAny = useMemo(
-    () => (diffsQuery.data || []).length > 0,
-    [diffsQuery.data]
-  );
-
-  useEffect(() => {
-    onHasAnyDiffsChange?.(hasAny);
-  }, [hasAny, onHasAnyDiffsChange]);
-
-  useEffect(() => {
-    onLoadingChange?.(diffsQuery.isPending);
-  }, [diffsQuery.isPending, onLoadingChange]);
 
   if (diffsQuery.isPending) {
     return (

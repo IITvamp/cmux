@@ -27,6 +27,7 @@ function normalizeError(err: unknown): Error {
 function createSocketSuspender(socket: CmuxSocket): Suspender {
   let timeoutId: number | undefined;
   let settled = false;
+  let lastError: Error | null = null;
 
   const onConnect = () => {
     if (settled) return;
@@ -35,18 +36,15 @@ function createSocketSuspender(socket: CmuxSocket): Suspender {
     resolve();
   };
   const onConnectError = (err: unknown) => {
-    if (settled) return;
-    settled = true;
-    cleanup();
-    reject(normalizeError(err));
+    // Do not reject immediately; allow auto-retry within timeout window
+    lastError = normalizeError(err);
   };
 
   let resolve!: () => void;
-  let reject!: (e: Error) => void;
 
   const promise = new Promise<void>((res, rej) => {
     resolve = res;
-    reject = rej;
+    // We'll only use the local 'rej' when timing out
     // Attach listeners once
     socket.on("connect", onConnect as never);
     socket.on("connect_error", onConnectError as never);
@@ -55,7 +53,10 @@ function createSocketSuspender(socket: CmuxSocket): Suspender {
       if (settled) return;
       settled = true;
       cleanup();
-      rej(new Error("Socket connect timeout"));
+      const reason = lastError
+        ? new Error(`Socket connect timeout: ${lastError.message}`)
+        : new Error("Socket connect timeout");
+      rej(reason);
     }, CONNECT_TIMEOUT_MS) as unknown as number;
   });
 

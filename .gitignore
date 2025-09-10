@@ -28,6 +28,7 @@ out
 
 .env
 .env.production
+.env.codesign
 
 # Binary files
 cmux-cli
