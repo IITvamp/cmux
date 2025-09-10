@@ -11,11 +11,11 @@ export function runDiffsQueryOptions({
   selectedRunId?: Id<"taskRuns">;
 }) {
   return queryOptions<ReplaceDiffEntry[] | undefined>({
-    enabled: Boolean(!!selectedRunId && socket && socket.active),
-    queryKey: ["run-diffs", selectedRunId, socket?.active],
+    enabled: Boolean(!!selectedRunId && socket && socket.connected),
+    queryKey: ["run-diffs", selectedRunId, socket?.connected],
     queryFn: async () =>
       await new Promise<ReplaceDiffEntry[] | undefined>((resolve, reject) => {
-        if (!selectedRunId || !socket || !socket.active) {
+        if (!selectedRunId || !socket || !socket.connected) {
           throw new Error("No socket or selected run id");
         }
         socket.emit("get-run-diffs", { taskRunId: selectedRunId }, (resp) => {
@@ -26,4 +26,3 @@ export function runDiffsQueryOptions({
     staleTime: 10_000,
   });
 }
-

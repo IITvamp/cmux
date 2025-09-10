@@ -3,7 +3,9 @@
 import { env } from "@/client-env";
 import { getRandomKitty } from "@/components/kitties";
 import CmuxLogoMark from "@/components/logo/cmux-logo-mark";
+import { cachedGetUser } from "@/lib/cachedGetUser";
 import { isElectron } from "@/lib/electron";
+import { stackClientApp } from "@/lib/stack";
 import { SignIn, useUser } from "@stackframe/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Authenticated, ConvexProviderWithAuth } from "convex/react";
@@ -18,6 +20,7 @@ import {
   type ReactNode,
 } from "react";
 import { authJsonQueryOptions } from "./authJsonQueryOptions";
+import { signalConvexAuthReady } from "./convex-auth-ready";
 import { convexQueryClient } from "./convex-query-client";
 
 function OnReadyComponent({ onReady }: { onReady: () => void }) {
@@ -34,7 +37,12 @@ function useAuthFromStack() {
     ...authJsonQueryOptions(),
   });
   const isLoading = false;
-  const isAuthenticated = useMemo(() => !!user, [user]);
+  const accessToken = authJsonQuery.data?.accessToken ?? null;
+  // Only consider authenticated once an access token is available.
+  const isAuthenticated = useMemo(
+    () => Boolean(user && accessToken),
+    [user, accessToken]
+  );
   // Important: keep this function identity stable unless auth context truly changes.
   const fetchAccessToken = useCallback(
     async (_opts: { forceRefreshToken: boolean }) => {
@@ -42,7 +50,10 @@ function useAuthFromStack() {
       if (cached?.accessToken) {
         return cached.accessToken;
       }
-      return null;
+      // Fallback: directly ask Stack for a fresh token in case the cache is stale
+      const u = await cachedGetUser(stackClientApp);
+      const fresh = await u?.getAuthJson();
+      return fresh?.accessToken ?? null;
     },
     [authJsonQuery.data]
   );
@@ -128,6 +139,7 @@ function AuthenticatedOrSignIn({
 export function ConvexClientProvider({ children }: { children: ReactNode }) {
   const [bootReady, setBootReady] = useState(false);
   const onBootReady = useCallback(() => {
+    signalConvexAuthReady(true);
     setBootReady(true);
   }, []);
 
