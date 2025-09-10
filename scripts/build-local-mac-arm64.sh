@@ -31,11 +31,14 @@ bash scripts/build-electron-local.sh
 
 echo "[4/5] Running electron-builder for macOS arm64 (unsigned, local artifacts)..."
 export CSC_IDENTITY_AUTO_DISCOVERY=true
-(cd apps/client && bunx electron-builder \
-  --config electron-builder.json \
-  --mac dmg zip --arm64 \
-  --config.mac.identity=null \
-  --config.dmg.sign=false)
+# Extra guardrails against signing on local machines with valid Developer ID identities.
+unset CSC_NAME || true
+unset CSC_LINK || true
+unset CSC_KEY_PASSWORD || true
+DEBUG=electron-osx-sign*,electron-notarize* \
+  (cd apps/client && bunx electron-builder \
+    --config electron-builder.local.json \
+    --mac dmg zip --arm64)
 
 echo "[5/5] Build complete. Artifacts:"
 echo "  - App bundle: apps/client/dist-electron/mac-arm64/cmux.app"
@@ -43,4 +46,3 @@ echo "  - DMG/ZIP:   apps/client/dist-electron/"
 
 echo "Done. You can open the app with:"
 echo "  open apps/client/dist-electron/mac-arm64/cmux.app"
-
