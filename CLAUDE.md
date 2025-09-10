@@ -2,7 +2,7 @@ This project is called cmux. cmux is a web app that spawns Claude Code, Codex CL
 
 # Config
 
-Use pnpm to install dependencies and run the project.
+Use bun to install dependencies and run the project.
 `./scripts/dev.sh` will start the project. Optional flags:
 
 - `--force-docker-build`: Rebuild worker image even if cached.
