@@ -26,12 +26,14 @@ cachedGetUser(stackClientApp).then(async (user) => {
     signalConvexAuthReady(false);
     return;
   }
+  console.log("cachedGetUser", user);
   const authJson = await user.getAuthJson();
   if (!authJson.accessToken) {
     console.warn("[StackAuth] No access token; convex auth not ready");
     signalConvexAuthReady(false);
     return;
   }
+  console.log("authJson", authJson);
   let isFirstTime = true;
   convexQueryClient.convexClient.setAuth(
     async () => {
