@@ -14,17 +14,19 @@ permissions:
 
 env:
   NODE_VERSION: '24'
-  # Frontend build-time envs (exposed in bundle). Store values as GitHub Secrets.
-  NEXT_PUBLIC_CONVEX_URL: ${{ secrets.NEXT_PUBLIC_CONVEX_URL }}
-  NEXT_PUBLIC_STACK_PROJECT_ID: ${{ secrets.NEXT_PUBLIC_STACK_PROJECT_ID }}
-  NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: ${{ secrets.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY }}
-  NEXT_PUBLIC_WWW_ORIGIN: ${{ secrets.NEXT_PUBLIC_WWW_ORIGIN }}
 
 jobs:
   mac-x64:
     name: macOS x64
     environment: electron
     runs-on: macos-13
+    env:
+      # Frontend build-time envs (exposed in bundle). Environment-scoped secrets
+      # are only available within jobs that declare the environment.
+      NEXT_PUBLIC_CONVEX_URL: ${{ secrets.NEXT_PUBLIC_CONVEX_URL }}
+      NEXT_PUBLIC_STACK_PROJECT_ID: ${{ secrets.NEXT_PUBLIC_STACK_PROJECT_ID }}
+      NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: ${{ secrets.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY }}
+      NEXT_PUBLIC_WWW_ORIGIN: ${{ secrets.NEXT_PUBLIC_WWW_ORIGIN }}
     defaults:
       run:
         working-directory: ./
@@ -35,14 +37,52 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+      - name: Check for prebuilt mac x64 assets on release
+        id: prebuilt
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.event.repository.name }}
+          RELEASE_ID: ${{ github.event.release.id }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          const token = process.env.GH_TOKEN;
+          const owner = process.env.OWNER;
+          const repo = process.env.REPO;
+          const releaseId = process.env.RELEASE_ID;
+          const out = process.env.GITHUB_OUTPUT;
+          (async () => {
+            const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/releases/${releaseId}/assets`, {
+              headers: {
+                Authorization: `Bearer ${token}`,
+                'X-GitHub-Api-Version': '2022-11-28',
+                'Accept': 'application/vnd.github+json',
+              },
+            });
+            if (!res.ok) {
+              throw new Error(`Failed to list assets: ${res.status} ${res.statusText}`);
+            }
+            const assets = await res.json();
+            const names = assets.map((a) => a.name);
+            const hasYml = names.includes('latest-mac.yml');
+            const hasPkg = names.some((n) => (n.endsWith('.dmg') || n.endsWith('.zip')) && !n.includes('arm64'));
+            const has = hasYml && hasPkg;
+            fs.appendFileSync(out, `has=${has}\n`);
+          })().catch((e) => { console.error(e); process.exit(1); });
+          NODE
       # Use Bun for installs and tooling
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.2.21
       - name: Install dependencies (bun)
+        if: ${{ steps.prebuilt.outputs.has != 'true' }}
         run: bun install --frozen-lockfile
       - name: Write .env for build
+        if: ${{ steps.prebuilt.outputs.has != 'true' }}
         shell: bash
         run: |
           cat > .env <<EOF
@@ -52,11 +92,14 @@ jobs:
           NEXT_PUBLIC_WWW_ORIGIN=${{ secrets.NEXT_PUBLIC_WWW_ORIGIN }}
           EOF
       - name: Generate icons
+        if: ${{ steps.prebuilt.outputs.has != 'true' }}
         working-directory: apps/client
         run: bun run ./scripts/generate-icons.mjs
       - name: Build mac app via local script (x64)
+        if: ${{ steps.prebuilt.outputs.has != 'true' }}
         run: bash scripts/build-electron-local.sh
       - name: Detect mac signing secrets
+        if: ${{ steps.prebuilt.outputs.has != 'true' }}
         id: signing
         env:
           MAC_CERT_BASE64: ${{ secrets.MAC_CERT_BASE64 }}
@@ -72,7 +115,7 @@ jobs:
           done
           echo "has=$has" >> "$GITHUB_OUTPUT"
       - name: Prepare mac signing cert (x64)
-        if: ${{ steps.signing.outputs.has == 'true' }}
+        if: ${{ steps.prebuilt.outputs.has != 'true' && steps.signing.outputs.has == 'true' }}
         env:
           MAC_CERT_BASE64: ${{ secrets.MAC_CERT_BASE64 }}
         run: |
@@ -81,7 +124,7 @@ jobs:
           node -e "process.stdout.write(Buffer.from(process.env.MAC_CERT_BASE64,'base64'))" > "$CERT_PATH"
           echo "CSC_LINK=$CERT_PATH" >> "$GITHUB_ENV"
       - name: Build & publish mac x64 (signed) to GitHub Releases
-        if: ${{ steps.signing.outputs.has == 'true' }}
+        if: ${{ steps.prebuilt.outputs.has != 'true' && steps.signing.outputs.has == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
@@ -94,7 +137,7 @@ jobs:
         run: |
           bunx electron-builder --config electron-builder.json --mac --x64 --publish always --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
       - name: Build & publish mac x64 (unsigned) to GitHub Releases
-        if: ${{ steps.signing.outputs.has != 'true' }}
+        if: ${{ steps.prebuilt.outputs.has != 'true' && steps.signing.outputs.has != 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
@@ -106,6 +149,11 @@ jobs:
     name: macOS arm64
     environment: electron
     runs-on: macos-14
+    env:
+      NEXT_PUBLIC_CONVEX_URL: ${{ secrets.NEXT_PUBLIC_CONVEX_URL }}
+      NEXT_PUBLIC_STACK_PROJECT_ID: ${{ secrets.NEXT_PUBLIC_STACK_PROJECT_ID }}
+      NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: ${{ secrets.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY }}
+      NEXT_PUBLIC_WWW_ORIGIN: ${{ secrets.NEXT_PUBLIC_WWW_ORIGIN }}
     defaults:
       run:
         working-directory: ./
@@ -116,14 +164,52 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+      - name: Check for prebuilt mac arm64 assets on release
+        id: prebuilt
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.event.repository.name }}
+          RELEASE_ID: ${{ github.event.release.id }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          const token = process.env.GH_TOKEN;
+          const owner = process.env.OWNER;
+          const repo = process.env.REPO;
+          const releaseId = process.env.RELEASE_ID;
+          const out = process.env.GITHUB_OUTPUT;
+          (async () => {
+            const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/releases/${releaseId}/assets`, {
+              headers: {
+                Authorization: `Bearer ${token}`,
+                'X-GitHub-Api-Version': '2022-11-28',
+                'Accept': 'application/vnd.github+json',
+              },
+            });
+            if (!res.ok) {
+              throw new Error(`Failed to list assets: ${res.status} ${res.statusText}`);
+            }
+            const assets = await res.json();
+            const names = assets.map((a) => a.name);
+            const hasYml = names.includes('latest-mac.yml');
+            const hasPkg = names.some((n) => (n.includes('arm64') && (n.endsWith('.dmg') || n.endsWith('.zip'))));
+            const has = hasYml && hasPkg;
+            fs.appendFileSync(out, `has=${has}\n`);
+          })().catch((e) => { console.error(e); process.exit(1); });
+          NODE
       # Use Bun for installs and tooling
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.2.21
       - name: Install dependencies (bun)
+        if: ${{ steps.prebuilt.outputs.has != 'true' }}
         run: bun install --frozen-lockfile
       - name: Write .env for build
+        if: ${{ steps.prebuilt.outputs.has != 'true' }}
         shell: bash
         run: |
           cat > .env <<EOF
@@ -133,11 +219,14 @@ jobs:
           NEXT_PUBLIC_WWW_ORIGIN=${{ secrets.NEXT_PUBLIC_WWW_ORIGIN }}
           EOF
       - name: Generate icons
+        if: ${{ steps.prebuilt.outputs.has != 'true' }}
         working-directory: apps/client
         run: bun run ./scripts/generate-icons.mjs
       - name: Build mac app via local script (arm64)
+        if: ${{ steps.prebuilt.outputs.has != 'true' }}
         run: bash scripts/build-electron-local.sh
       - name: Detect mac signing secrets
+        if: ${{ steps.prebuilt.outputs.has != 'true' }}
         id: signing_arm
         env:
           MAC_CERT_BASE64: ${{ secrets.MAC_CERT_BASE64 }}
@@ -153,7 +242,7 @@ jobs:
           done
           echo "has=$has" >> "$GITHUB_OUTPUT"
       - name: Prepare mac signing cert (arm64)
-        if: ${{ steps.signing_arm.outputs.has == 'true' }}
+        if: ${{ steps.prebuilt.outputs.has != 'true' && steps.signing_arm.outputs.has == 'true' }}
         env:
           MAC_CERT_BASE64: ${{ secrets.MAC_CERT_BASE64 }}
         run: |
@@ -162,7 +251,7 @@ jobs:
           node -e "process.stdout.write(Buffer.from(process.env.MAC_CERT_BASE64,'base64'))" > "$CERT_PATH"
           echo "CSC_LINK=$CERT_PATH" >> "$GITHUB_ENV"
       - name: Build & publish mac arm64 (signed) to GitHub Releases
-        if: ${{ steps.signing_arm.outputs.has == 'true' }}
+        if: ${{ steps.prebuilt.outputs.has != 'true' && steps.signing_arm.outputs.has == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
@@ -175,7 +264,7 @@ jobs:
         run: |
           bunx electron-builder --config electron-builder.json --mac --arm64 --publish always --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
       - name: Build & publish mac arm64 (unsigned) to GitHub Releases
-        if: ${{ steps.signing_arm.outputs.has != 'true' }}
+        if: ${{ steps.prebuilt.outputs.has != 'true' && steps.signing_arm.outputs.has != 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
@@ -187,6 +276,11 @@ jobs:
     name: Windows x64
     environment: electron
     runs-on: windows-latest
+    env:
+      NEXT_PUBLIC_CONVEX_URL: ${{ secrets.NEXT_PUBLIC_CONVEX_URL }}
+      NEXT_PUBLIC_STACK_PROJECT_ID: ${{ secrets.NEXT_PUBLIC_STACK_PROJECT_ID }}
+      NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: ${{ secrets.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY }}
+      NEXT_PUBLIC_WWW_ORIGIN: ${{ secrets.NEXT_PUBLIC_WWW_ORIGIN }}
     defaults:
       run:
         working-directory: ./
@@ -197,13 +291,51 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+      - name: Check for prebuilt Windows x64 assets on release
+        id: prebuilt
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.event.repository.name }}
+          RELEASE_ID: ${{ github.event.release.id }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          const token = process.env.GH_TOKEN;
+          const owner = process.env.OWNER;
+          const repo = process.env.REPO;
+          const releaseId = process.env.RELEASE_ID;
+          const out = process.env.GITHUB_OUTPUT;
+          (async () => {
+            const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/releases/${releaseId}/assets`, {
+              headers: {
+                Authorization: `Bearer ${token}`,
+                'X-GitHub-Api-Version': '2022-11-28',
+                'Accept': 'application/vnd.github+json',
+              },
+            });
+            if (!res.ok) {
+              throw new Error(`Failed to list assets: ${res.status} ${res.statusText}`);
+            }
+            const assets = await res.json();
+            const names = assets.map((a) => a.name);
+            const hasYml = names.includes('latest.yml');
+            const hasExe = names.some((n) => n.endsWith('.exe'));
+            const has = hasYml && hasExe;
+            fs.appendFileSync(out, `has=${has}\n`);
+          })().catch((e) => { console.error(e); process.exit(1); });
+          NODE
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.2.21
       - name: Install dependencies (bun)
+        if: ${{ steps.prebuilt.outputs.has != 'true' }}
         run: bun install --frozen-lockfile
       - name: Write .env for build
+        if: ${{ steps.prebuilt.outputs.has != 'true' }}
         shell: bash
         run: |
           cat > .env <<EOF
@@ -213,9 +345,11 @@ jobs:
           NEXT_PUBLIC_WWW_ORIGIN=${{ secrets.NEXT_PUBLIC_WWW_ORIGIN }}
           EOF
       - name: Generate icons
+        if: ${{ steps.prebuilt.outputs.has != 'true' }}
         working-directory: apps/client
         run: bun run ./scripts/generate-icons.mjs
       - name: Build & publish Windows x64 to GitHub Releases
+        if: ${{ steps.prebuilt.outputs.has != 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
           # Windows code signing (optional). Uncomment and provide secrets
@@ -231,6 +365,11 @@ jobs:
     name: Linux x64
     environment: electron
     runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_CONVEX_URL: ${{ secrets.NEXT_PUBLIC_CONVEX_URL }}
+      NEXT_PUBLIC_STACK_PROJECT_ID: ${{ secrets.NEXT_PUBLIC_STACK_PROJECT_ID }}
+      NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: ${{ secrets.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY }}
+      NEXT_PUBLIC_WWW_ORIGIN: ${{ secrets.NEXT_PUBLIC_WWW_ORIGIN }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -238,13 +377,51 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+      - name: Check for prebuilt Linux x64 assets on release
+        id: prebuilt
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OWNER: ${{ github.repository_owner }}
+          REPO: ${{ github.event.repository.name }}
+          RELEASE_ID: ${{ github.event.release.id }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          const token = process.env.GH_TOKEN;
+          const owner = process.env.OWNER;
+          const repo = process.env.REPO;
+          const releaseId = process.env.RELEASE_ID;
+          const out = process.env.GITHUB_OUTPUT;
+          (async () => {
+            const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/releases/${releaseId}/assets`, {
+              headers: {
+                Authorization: `Bearer ${token}`,
+                'X-GitHub-Api-Version': '2022-11-28',
+                'Accept': 'application/vnd.github+json',
+              },
+            });
+            if (!res.ok) {
+              throw new Error(`Failed to list assets: ${res.status} ${res.statusText}`);
+            }
+            const assets = await res.json();
+            const names = assets.map((a) => a.name);
+            const hasYml = names.includes('latest-linux.yml');
+            const hasAppImage = names.some((n) => n.endsWith('.AppImage'));
+            const has = hasYml && hasAppImage;
+            fs.appendFileSync(out, `has=${has}\n`);
+          })().catch((e) => { console.error(e); process.exit(1); });
+          NODE
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.2.21
       - name: Install dependencies (bun)
+        if: ${{ steps.prebuilt.outputs.has != 'true' }}
         run: bun install --frozen-lockfile
       - name: Write .env for build
+        if: ${{ steps.prebuilt.outputs.has != 'true' }}
         shell: bash
         run: |
           cat > .env <<EOF
@@ -254,9 +431,11 @@ jobs:
           NEXT_PUBLIC_WWW_ORIGIN=${{ secrets.NEXT_PUBLIC_WWW_ORIGIN }}
           EOF
       - name: Generate icons
+        if: ${{ steps.prebuilt.outputs.has != 'true' }}
         working-directory: apps/client
         run: bun run ./scripts/generate-icons.mjs
       - name: Build & publish Linux AppImage x64 to GitHub Releases
+        if: ${{ steps.prebuilt.outputs.has != 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
         working-directory: apps/client
