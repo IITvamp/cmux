@@ -25,7 +25,6 @@ export const create = authMutation({
       agentName: args.agentName,
       newBranch: args.newBranch,
       status: "pending",
-      log: "",
       createdAt: now,
       updatedAt: now,
       userId,
@@ -120,26 +119,17 @@ export const updateStatus = internalMutation({
   },
 });
 
-// Append to task run log
+// Append to task run log - deprecated, no longer writing to log field
 export const appendLog = internalMutation({
   args: {
     id: v.id("taskRuns"),
     content: v.string(),
   },
   handler: async (ctx, args) => {
-    const run = await ctx.db.get(args.id);
-    if (!run) {
-      throw new Error("Task run not found");
-    }
-
+    // No-op: log field is being deprecated
     console.log(
-      `[appendLog] Adding ${args.content.length} chars to task run ${args.id}`
+      `[appendLog] Deprecated - not writing ${args.content.length} chars to task run ${args.id}`
     );
-
-    await ctx.db.patch(args.id, {
-      log: run.log + args.content,
-      updatedAt: Date.now(),
-    });
   },
 });
 
@@ -283,24 +273,10 @@ export const appendLogPublic = authMutation({
     content: v.string(),
   },
   handler: async (ctx, args) => {
-    const userId = ctx.identity.subject;
-    const run = await ctx.db.get(args.id);
-    if (!run) {
-      throw new Error("Task run not found");
-    }
-    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
-    if (run.teamId !== teamId || run.userId !== userId) {
-      throw new Error("Unauthorized");
-    }
-
+    // No-op: log field is being deprecated
     console.log(
-      `[appendLog] Adding ${args.content.length} chars to task run ${args.id}`
+      `[appendLogPublic] Deprecated - not writing ${args.content.length} chars to task run ${args.id}`
     );
-
-    await ctx.db.patch(args.id, {
-      log: run.log + args.content,
-      updatedAt: Date.now(),
-    });
   },
 });
 
