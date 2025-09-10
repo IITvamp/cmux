@@ -22,6 +22,7 @@ import { convexQueryClient } from "./convex-query-client";
 
 function OnReadyComponent({ onReady }: { onReady: () => void }) {
   useEffect(() => {
+    console.log("[ConvexClientProvider] Authenticated, boot ready");
     onReady();
   }, [onReady]);
   return null;

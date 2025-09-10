@@ -6,7 +6,8 @@ import { createFileRoute, Outlet } from "@tanstack/react-router";
 export const Route = createFileRoute("/_layout")({
   component: Layout,
   beforeLoad: async () => {
-    await convexAuthReadyPromise;
+    const ok = await convexAuthReadyPromise;
+    console.log("[Route.beforeLoad] convexAuthReady:", ok);
   },
 });
 
