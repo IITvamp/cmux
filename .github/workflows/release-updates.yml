@@ -55,6 +55,60 @@ jobs:
         working-directory: apps/client
         run: bun run ./scripts/generate-icons.mjs
 
+      - name: Ensure entitlements file exists (arm64)
+        working-directory: apps/client
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          if [ ! -f build/entitlements.mac.plist ]; then
+            cat > build/entitlements.mac.plist <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>com.apple.security.cs.allow-jit</key>
+            <true/>
+            <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+            <true/>
+            <key>com.apple.security.cs.debugger</key>
+            <true/>
+            <key>com.apple.security.network.client</key>
+            <true/>
+            <key>com.apple.security.network.server</key>
+            <true/>
+          </dict>
+          </plist>
+          EOF
+          fi
+
+      - name: Ensure entitlements file exists (x64)
+        working-directory: apps/client
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build
+          if [ ! -f build/entitlements.mac.plist ]; then
+            cat > build/entitlements.mac.plist <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>com.apple.security.cs.allow-jit</key>
+            <true/>
+            <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+            <true/>
+            <key>com.apple.security.cs.debugger</key>
+            <true/>
+            <key>com.apple.security.network.client</key>
+            <true/>
+            <key>com.apple.security.network.server</key>
+            <true/>
+          </dict>
+          </plist>
+          EOF
+          fi
+
       - name: Build mac app via local script (x64)
         run: bash scripts/build-electron-local.sh
 
@@ -102,6 +156,9 @@ jobs:
             --mac dmg zip --x64 \
             --publish always \
             --config.mac.forceCodeSigning=true \
+            --config.mac.entitlements="${{ github.workspace }}/apps/client/build/entitlements.mac.plist" \
+            --config.mac.entitlementsInherit="${{ github.workspace }}/apps/client/build/entitlements.mac.plist" \
+            --config.mac.notarize=true \
             --config.dmg.sign=false \
             --config.publish.provider=github \
             --config.publish.owner="${{ github.repository_owner }}" \
@@ -227,6 +284,9 @@ jobs:
             --mac dmg zip --arm64 \
             --publish always \
             --config.mac.forceCodeSigning=true \
+            --config.mac.entitlements="${{ github.workspace }}/apps/client/build/entitlements.mac.plist" \
+            --config.mac.entitlementsInherit="${{ github.workspace }}/apps/client/build/entitlements.mac.plist" \
+            --config.mac.notarize=true \
             --config.dmg.sign=false \
             --config.publish.provider=github \
             --config.publish.owner="${{ github.repository_owner }}" \
