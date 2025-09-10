@@ -1,8 +1,8 @@
 import { api } from "@cmux/convex/api";
 import {
   ArchiveTaskSchema,
-  GitFullDiffRequestSchema,
   GitCompareRefsSchema,
+  GitFullDiffRequestSchema,
   GitHubCreateDraftPrSchema,
   GitHubFetchBranchesSchema,
   GitHubFetchReposSchema,
@@ -23,6 +23,8 @@ import * as path from "node:path";
 import { promisify } from "node:util";
 import { spawnAllAgents } from "./agentSpawner.js";
 import { stopContainersForRuns } from "./archiveTask.js";
+import { compareRefsForRepo } from "./diffs/compareRefs.js";
+import { computeEntriesNodeGit } from "./diffs/parseGitDiff.js";
 import { execWithEnv } from "./execWithEnv.js";
 import { GitDiffManager } from "./gitDiff.js";
 import type { RealtimeServer } from "./realtime.js";
@@ -156,7 +158,6 @@ export function setupSocketHandlers(
     socket.on("git-compare-refs", async (data, callback) => {
       try {
         const { repoFullName, ref1, ref2 } = GitCompareRefsSchema.parse(data);
-        const { compareRefsForRepo } = await import("./diffs/compareRefs.js");
         const diffs = await compareRefsForRepo({
           repoFullName,
           ref1,
@@ -830,10 +831,7 @@ export function setupSocketHandlers(
         const { taskRunId } = data;
         // Ensure the worktree exists and is on the correct branch
         const ensured = await ensureRunWorktreeAndBranch(taskRunId, safeTeam);
-        const worktreePath = ensured.worktreePath as string;
-        const { computeEntriesNodeGit } = await import(
-          "./diffs/parseGitDiff.js"
-        );
+        const worktreePath = ensured.worktreePath;
         const entries = await computeEntriesNodeGit({
           worktreePath,
           includeContents: true,
