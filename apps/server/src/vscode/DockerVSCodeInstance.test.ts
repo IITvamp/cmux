@@ -123,6 +123,14 @@ describe("DockerVSCodeInstance", () => {
         return;
       }
 
+      // Pre-clean any existing container with the same name to avoid name conflicts
+      await new Promise<void>((resolve) => {
+        const cleanup = spawn("docker", ["rm", "-f", "cmux-test"]);
+        // ignore errors; container may not exist
+        cleanup.on("exit", () => resolve());
+        cleanup.on("error", () => resolve());
+      });
+
       containerMappings.set("cmux-test", {
         containerName: "cmux-test",
         instanceId: "test-instance" as Id<"taskRuns">,
@@ -145,15 +153,23 @@ describe("DockerVSCodeInstance", () => {
           "sleep",
           "2",
         ]);
+        let stderr = "";
+        proc.stderr?.on("data", (d) => {
+          stderr += d.toString();
+        });
         proc.on("exit", (code) => {
           if (code === 0) {
             resolve();
           } else {
-            console.error("docker run failed", proc.stderr.toString());
-            reject(new Error("docker run failed"));
+            const msg = stderr.trim();
+            console.error("docker run failed", msg);
+            reject(new Error(`docker run failed${msg ? `: ${msg}` : ""}`));
           }
         });
-        proc.on("error", reject);
+        proc.on("error", (err) => {
+          const msg = stderr.trim();
+          reject(new Error(`docker run error${msg ? `: ${msg}` : ""}: ${String(err)}`));
+        });
       });
 
       await new Promise((r) => setTimeout(r, 500));
