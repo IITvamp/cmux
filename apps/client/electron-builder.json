@@ -1,6 +1,6 @@
 {
   "appId": "com.cmux.app",
-  "productName": "Cmux",
+  "productName": "cmux",
   "directories": {
     "output": "dist-electron",
     "buildResources": "build"

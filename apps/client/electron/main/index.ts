@@ -17,7 +17,6 @@ import {
 import { startEmbeddedServer } from "./embedded-server";
 // Auto-updater
 import electronUpdater from "electron-updater";
-const { autoUpdater } = electronUpdater;
 import {
   createRemoteJWKSet,
   decodeJwt,
@@ -31,6 +30,7 @@ import {
   mkdirSync,
   type WriteStream,
 } from "node:fs";
+const { autoUpdater } = electronUpdater;
 
 import util from "node:util";
 import { env } from "./electron-main-env";
@@ -272,11 +272,14 @@ function setupAutoUpdates(): void {
   autoUpdater
     .checkForUpdatesAndNotify()
     .catch((e) => mainWarn("checkForUpdatesAndNotify failed", e));
-  setInterval(() => {
-    autoUpdater
-      .checkForUpdates()
-      .catch((e) => mainWarn("Periodic checkForUpdates failed", e));
-  }, 30 * 60 * 1000); // 30 minutes
+  setInterval(
+    () => {
+      autoUpdater
+        .checkForUpdates()
+        .catch((e) => mainWarn("Periodic checkForUpdates failed", e));
+    },
+    30 * 60 * 1000
+  ); // 30 minutes
 }
 
 async function handleOrQueueProtocolUrl(url: string) {
@@ -298,9 +301,7 @@ function createWindow(): void {
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 12, y: 10 },
     webPreferences: {
-      preload: app.isPackaged
-        ? join(app.getAppPath(), "out/preload/index.cjs")
-        : join(__dirname, "../preload/index.cjs"),
+      preload: join(app.getAppPath(), "out/preload/index.cjs"),
       sandbox: false,
       contextIsolation: true,
       nodeIntegration: false,
@@ -430,7 +431,6 @@ app.whenReady().then(async () => {
   const ses = session.fromPartition(PARTITION);
   // Intercept HTTPS for our private host and serve local files; pass-through others.
   ses.protocol.handle("https", async (req) => {
-    mainLog("Protocol handler invoked", { url: req.url });
     const u = new URL(req.url);
     if (u.hostname !== APP_HOST) return net.fetch(req);
     const pathname = u.pathname === "/" ? "/index.html" : u.pathname;
@@ -442,7 +442,6 @@ app.whenReady().then(async () => {
       mainWarn("Blocked path outside baseDir", { fsPath, baseDir });
       return new Response("Not found", { status: 404 });
     }
-    mainLog("Serving local file", { fsPath });
     return net.fetch(pathToFileURL(fsPath).toString());
   });
 

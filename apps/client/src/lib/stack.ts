@@ -41,10 +41,14 @@ cachedGetUser(stackClientApp).then(async (user) => {
         return authJson.accessToken;
       }
       const newAuthJson = await user.getAuthJson();
+      if (!newAuthJson.accessToken) {
+        console.warn("[StackAuth] No access token; convex auth not ready");
+        signalConvexAuthReady(false);
+        return;
+      }
       return newAuthJson.accessToken;
     },
     (isAuthenticated) => {
-      console.log("[StackAuth] convex setAuth callback", { isAuthenticated });
       signalConvexAuthReady(isAuthenticated);
     }
   );

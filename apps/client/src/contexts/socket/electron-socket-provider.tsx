@@ -6,11 +6,10 @@ import React, { useEffect, useMemo } from "react";
 import { cachedGetUser } from "../../lib/cachedGetUser";
 import { stackClientApp } from "../../lib/stack";
 import { authJsonQueryOptions } from "../convex/authJsonQueryOptions";
+import { setGlobalSocket, socketBoot } from "./socket-boot";
 import { ElectronSocketContext } from "./socket-context";
 import type { SocketContextType } from "./types";
-import { socketBoot } from "./socket-boot";
 
-// ElectronSocketProvider uses IPC to communicate with embedded server
 export const ElectronSocketProvider: React.FC<React.PropsWithChildren> = ({
   children,
 }) => {
@@ -23,8 +22,6 @@ export const ElectronSocketProvider: React.FC<React.PropsWithChildren> = ({
   const [isConnected, setIsConnected] = React.useState(false);
   const [availableEditors, setAvailableEditors] =
     React.useState<SocketContextType["availableEditors"]>(null);
-
-  // Derive the current teamSlugOrId from the first URL segment
   const teamSlugOrId = React.useMemo(() => {
     const pathname = location.pathname || "";
     const seg = pathname.split("/").filter(Boolean)[0];
@@ -42,7 +39,6 @@ export const ElectronSocketProvider: React.FC<React.PropsWithChildren> = ({
     let createdSocket: CmuxIpcSocketClient | null = null;
 
     (async () => {
-      // Fetch full auth JSON for server
       const user = await cachedGetUser(stackClientApp);
       const authJson = user ? await user.getAuthJson() : undefined;
 
@@ -57,8 +53,6 @@ export const ElectronSocketProvider: React.FC<React.PropsWithChildren> = ({
       if (disposed) return;
 
       console.log("[ElectronSocket] Connecting via IPC (cmux)...");
-
-      // Create and connect IPC socket client via cmux IPC transport
       createdSocket = new CmuxIpcSocketClient(query);
 
       createdSocket.on("connect", () => {
@@ -88,6 +82,7 @@ export const ElectronSocketProvider: React.FC<React.PropsWithChildren> = ({
       if (!disposed) {
         // Cast to Socket type to satisfy type requirement
         setSocket(createdSocket as unknown as MainServerSocket);
+        setGlobalSocket(createdSocket as unknown as MainServerSocket);
         // Signal that the provider has created the socket instance
         socketBoot.resolve();
       }
@@ -102,6 +97,7 @@ export const ElectronSocketProvider: React.FC<React.PropsWithChildren> = ({
         setIsConnected(false);
       }
       // Reset boot handle so future mounts can suspend appropriately
+      setGlobalSocket(null);
       socketBoot.reset();
     };
   }, [authToken, teamSlugOrId]);

@@ -172,7 +172,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
         onValueChange={handleHighlight}
         defaultValue={openedWithShift ? "new-task" : undefined}
       >
-        <Dialog.Title className="">Command Menu</Dialog.Title>
+        <Dialog.Title className="sr-only">Command Menu</Dialog.Title>
 
         <div className="w-full max-w-2xl bg-white dark:bg-neutral-900 rounded-xl shadow-2xl border border-neutral-200 dark:border-neutral-700 overflow-hidden pointer-events-auto">
           <Command.Input

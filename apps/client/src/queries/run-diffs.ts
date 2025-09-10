@@ -1,53 +1,27 @@
-import type { CmuxSocket } from "@/contexts/socket/types";
+import { waitForConnectedSocket } from "@/contexts/socket/socket-boot";
 import type { Id } from "@cmux/convex/dataModel";
 import type { ReplaceDiffEntry } from "@cmux/shared";
 import { queryOptions } from "@tanstack/react-query";
 
-type RunDiffsQueryResult = {
-  diffs: ReplaceDiffEntry[];
-  totalAdditions: number;
-  totalDeletions: number;
-  hasChanges: boolean;
-};
-
 export function runDiffsQueryOptions({
-  socket,
-  selectedRunId,
+  taskRunId,
 }: {
-  socket: CmuxSocket;
-  selectedRunId?: Id<"taskRuns">;
+  taskRunId: Id<"taskRuns">;
 }) {
-  return queryOptions<RunDiffsQueryResult | undefined>({
-    enabled: Boolean(!!selectedRunId && socket && socket.active),
-    queryKey: ["run-diffs", selectedRunId, socket?.active],
-    queryFn: async () =>
-      await new Promise<RunDiffsQueryResult | undefined>((resolve, reject) => {
-        if (!selectedRunId || !socket || !socket.active) {
-          throw new Error("No socket or selected run id");
-        }
-        socket.emit("get-run-diffs", { taskRunId: selectedRunId }, (resp) => {
+  return queryOptions({
+    queryKey: ["run-diffs", taskRunId],
+    queryFn: async () => {
+      const socket = await waitForConnectedSocket();
+      return await new Promise<ReplaceDiffEntry[]>((resolve, reject) => {
+        socket.emit("get-run-diffs", { taskRunId }, (resp) => {
           if (resp.ok) {
-            const totalAdditions = resp.diffs.reduce(
-              (acc, diff) => acc + diff.additions,
-              0
-            );
-            const totalDeletions = resp.diffs.reduce(
-              (acc, diff) => acc + diff.deletions,
-              0
-            );
-            const hasChanges =
-              (totalAdditions || 0) + (totalDeletions || 0) > 0;
-            resolve({
-              diffs: resp.diffs,
-              totalAdditions,
-              totalDeletions,
-              hasChanges,
-            });
+            resolve(resp.diffs);
           } else {
             reject(new Error(resp.error || "Failed to load diffs"));
           }
         });
-      }),
+      });
+    },
     staleTime: 10_000,
   });
 }

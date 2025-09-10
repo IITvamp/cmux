@@ -38,6 +38,7 @@ interface TaskDetailHeaderProps {
   setIsCreatingPr: (v: boolean) => void;
   totalAdditions?: number;
   totalDeletions?: number;
+  taskRunId: Id<"taskRuns">;
   onExpandAll?: () => void;
   onCollapseAll?: () => void;
   teamSlugOrId: string;
@@ -45,11 +46,8 @@ interface TaskDetailHeaderProps {
 
 const ENABLE_MERGE_BUTTON = false;
 
-function AdditionsAndDeletions({ runId }: { runId?: Id<"taskRuns"> }) {
-  const { socket } = useSocketSuspense();
-  const diffsQuery = useRQ(
-    runDiffsQueryOptions({ socket, selectedRunId: runId })
-  );
+function AdditionsAndDeletions({ taskRunId }: { taskRunId: Id<"taskRuns"> }) {
+  const diffsQuery = useRQ(runDiffsQueryOptions({ taskRunId }));
 
   if (diffsQuery.error) {
     return (
@@ -61,23 +59,38 @@ function AdditionsAndDeletions({ runId }: { runId?: Id<"taskRuns"> }) {
     );
   }
 
+  const totals = diffsQuery.data
+    ? diffsQuery.data.reduce(
+        (acc, d) => {
+          acc.add += d.additions || 0;
+          acc.del += d.deletions || 0;
+          return acc;
+        },
+        { add: 0, del: 0 }
+      )
+    : undefined;
+
   return (
     <div className="flex items-center gap-2 text-[11px] ml-2 shrink-0">
       <Skeleton
         className="rounded min-w-[20px] h-[14px]"
-        isLoaded={!!diffsQuery.data}
+        isLoaded={!diffsQuery.isPending}
       >
-        <span className="text-green-600 dark:text-green-400 font-medium select-none">
-          +{diffsQuery.data?.totalAdditions}
-        </span>
+        {totals && (
+          <span className="text-green-600 dark:text-green-400 font-medium select-none">
+            +{totals.add}
+          </span>
+        )}
       </Skeleton>
       <Skeleton
         className="rounded min-w-[20px] h-[14px]"
-        isLoaded={!!diffsQuery.data}
+        isLoaded={!diffsQuery.isPending}
       >
-        <span className="text-red-600 dark:text-red-400 font-medium select-none">
-          -{diffsQuery.data?.totalDeletions}
-        </span>
+        {totals && (
+          <span className="text-red-600 dark:text-red-400 font-medium select-none">
+            -{totals.del}
+          </span>
+        )}
       </Skeleton>
     </div>
   );
@@ -89,6 +102,7 @@ export function TaskDetailHeader({
   selectedRun,
   isCreatingPr,
   setIsCreatingPr,
+  taskRunId,
   onExpandAll,
   onCollapseAll,
   teamSlugOrId,
@@ -102,9 +116,8 @@ export function TaskDetailHeader({
   const handleAgentOpenChange = useCallback((open: boolean) => {
     setAgentMenuOpen(open);
   }, []);
-
+  // Header-level hasChanges no longer needed; SocketActions computes it
   const taskTitle = task?.pullRequestTitle || task?.text;
-
   const handleCopyBranch = () => {
     if (selectedRun?.newBranch) {
       clipboard.copy(selectedRun.newBranch);
@@ -139,7 +152,7 @@ export function TaskDetailHeader({
               </div>
             }
           >
-            <AdditionsAndDeletions runId={selectedRun?._id} />
+            <AdditionsAndDeletions taskRunId={taskRunId} />
           </Suspense>
         </div>
 
@@ -176,6 +189,7 @@ export function TaskDetailHeader({
           >
             <SocketActions
               selectedRun={selectedRun ?? null}
+              taskRunId={taskRunId}
               prIsOpen={prIsOpen}
               prIsMerged={prIsMerged}
               isCreatingPr={isCreatingPr}
@@ -358,6 +372,7 @@ export function TaskDetailHeader({
 
 function SocketActions({
   selectedRun,
+  taskRunId,
   prIsOpen,
   prIsMerged,
   isCreatingPr,
@@ -368,6 +383,7 @@ function SocketActions({
   setIsMerging,
 }: {
   selectedRun: Doc<"taskRuns"> | null;
+  taskRunId: Id<"taskRuns">;
   prIsOpen: boolean;
   prIsMerged: boolean;
   isCreatingPr: boolean;
@@ -378,19 +394,17 @@ function SocketActions({
   setIsMerging: (v: boolean) => void;
 }) {
   const { socket } = useSocketSuspense();
-  const diffsQuery = useSuspenseQuery(
-    runDiffsQueryOptions({ socket, selectedRunId: selectedRun?._id })
-  );
-  const hasChanges = diffsQuery.data?.hasChanges;
+  const diffsQuery = useSuspenseQuery(runDiffsQueryOptions({ taskRunId }));
+  const hasChanges = (diffsQuery.data || []).length > 0;
 
   const handleMerge = async (method: MergeMethod) => {
-    if (!socket || !selectedRun?._id) return;
+    if (!socket || !taskRunId) return;
     setIsMerging(true);
     const toastId = toast.loading(`Merging PR (${method})...`);
     await new Promise<void>((resolve) => {
       socket.emit(
         "github-merge-pr",
-        { taskRunId: selectedRun._id, method },
+        { taskRunId, method },
         (resp: {
           success: boolean;
           merged?: boolean;
@@ -414,38 +428,34 @@ function SocketActions({
   };
 
   const handleMergeBranch = async (): Promise<void> => {
-    if (!socket || !selectedRun?._id) return;
+    if (!socket || !taskRunId) return;
     setIsMerging(true);
     const toastId = toast.loading("Merging branch...");
     await new Promise<void>((resolve) => {
-      socket.emit(
-        "github-merge-branch",
-        { taskRunId: selectedRun._id },
-        (resp) => {
-          setIsMerging(false);
-          if (resp.success) {
-            toast.success("Branch merged", {
-              id: toastId,
-              description: resp.commitSha,
-            });
-          } else {
-            toast.error("Failed to merge branch", {
-              id: toastId,
-              description: resp.error,
-            });
-          }
-          resolve();
+      socket.emit("github-merge-branch", { taskRunId }, (resp) => {
+        setIsMerging(false);
+        if (resp.success) {
+          toast.success("Branch merged", {
+            id: toastId,
+            description: resp.commitSha,
+          });
+        } else {
+          toast.error("Failed to merge branch", {
+            id: toastId,
+            description: resp.error,
+          });
         }
-      );
+        resolve();
+      });
     });
   };
 
   const handleOpenPR = () => {
-    if (!socket || !selectedRun?._id) return;
+    if (!socket || !taskRunId) return;
     // Create PR or mark draft ready
     setIsOpeningPr(true);
     const toastId = toast.loading("Opening PR...");
-    socket.emit("github-open-pr", { taskRunId: selectedRun._id }, (resp) => {
+    socket.emit("github-open-pr", { taskRunId }, (resp) => {
       setIsOpeningPr(false);
       if (resp.success) {
         toast.success("PR opened", { id: toastId, description: resp.url });
@@ -460,18 +470,16 @@ function SocketActions({
   };
 
   const handleViewPR = () => {
-    if (!socket || !selectedRun?._id) return;
-    if (
-      selectedRun.pullRequestUrl &&
-      selectedRun.pullRequestUrl !== "pending"
-    ) {
-      window.open(selectedRun.pullRequestUrl, "_blank");
+    if (!socket || !taskRunId) return;
+    const prUrl = selectedRun?.pullRequestUrl;
+    if (prUrl && prUrl !== "pending") {
+      window.open(prUrl, "_blank");
       return;
     }
     setIsCreatingPr(true);
     socket.emit(
       "github-create-draft-pr",
-      { taskRunId: selectedRun._id },
+      { taskRunId },
       (resp: { success: boolean; url?: string; error?: string }) => {
         setIsCreatingPr(false);
         if (resp.success && resp.url) {

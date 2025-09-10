@@ -33,9 +33,8 @@ type GitDiffViewerClassNames = {
   fileDiffRow?: FileDiffRowClassNames;
 };
 
-interface GitDiffViewerProps {
+export interface GitDiffViewerProps {
   diffs: ReplaceDiffEntry[];
-  isLoading?: boolean;
   taskRunId?: Id<"taskRuns">;
   onControlsChange?: (controls: {
     expandAll: () => void;
@@ -90,7 +89,6 @@ function getStatusIcon(status: ReplaceDiffEntry["status"]) {
 
 export function GitDiffViewer({
   diffs,
-  isLoading,
   taskRunId,
   onControlsChange,
   classNames,
@@ -244,26 +242,6 @@ export function GitDiffViewer({
     // Totals update when diffs change; avoid including function identities
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [totalAdditions, totalDeletions, diffs.length]);
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-neutral-500 dark:text-neutral-400 text-sm select-none">
-          Loading diffs...
-        </div>
-      </div>
-    );
-  }
-
-  if (diffs.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-neutral-500 dark:text-neutral-400 text-sm select-none">
-          No changes to display
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div key={taskRunId ?? "_"} className="grow bg-white dark:bg-neutral-900">

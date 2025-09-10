@@ -260,7 +260,6 @@ function DashboardDiffPage() {
       <div className="flex-1 flex flex-col bg-white dark:bg-neutral-950 overflow-y-auto grow">
         <GitDiffViewer
           diffs={diffsQuery.data || []}
-          isLoading={diffsQuery.isPending && bothSelected}
           onControlsChange={() => {}}
         />
         {!bothSelected ? (

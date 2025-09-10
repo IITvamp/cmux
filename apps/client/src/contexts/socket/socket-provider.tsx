@@ -9,8 +9,8 @@ import React, { useEffect, useMemo } from "react";
 import { cachedGetUser } from "../../lib/cachedGetUser";
 import { stackClientApp } from "../../lib/stack";
 import { authJsonQueryOptions } from "../convex/authJsonQueryOptions";
+import { setGlobalSocket, socketBoot } from "./socket-boot";
 import { WebSocketContext } from "./socket-context";
-import { socketBoot } from "./socket-boot";
 
 export interface SocketContextType {
   socket: MainServerSocket | null;
@@ -78,6 +78,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
         return;
       }
       setSocket(newSocket);
+      setGlobalSocket(newSocket);
       // Signal that the provider has created the socket instance
       socketBoot.resolve();
 
@@ -108,6 +109,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
       disposed = true;
       if (createdSocket) createdSocket.disconnect();
       // Reset boot handle so future mounts can suspend appropriately
+      setGlobalSocket(null);
       socketBoot.reset();
     };
   }, [url, authToken, teamSlugOrId]);

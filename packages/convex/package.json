@@ -7,7 +7,8 @@
   "types": "./convex/_generated/server.d.ts",
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "deploy:prod": "convex deploy --env-file ../../.env.production"
   },
   "exports": {
     ".": {
