@@ -24,7 +24,7 @@ import { promisify } from "node:util";
 import { spawnAllAgents } from "./agentSpawner.js";
 import { stopContainersForRuns } from "./archiveTask.js";
 import { compareRefsForRepo } from "./diffs/compareRefs.js";
-import { computeEntriesNodeGit } from "./diffs/parseGitDiff.js";
+import { getRunDiffs } from "./diffs/getRunDiffs.js";
 import { execWithEnv } from "./execWithEnv.js";
 import { GitDiffManager } from "./gitDiff.js";
 import type { RealtimeServer } from "./realtime.js";
@@ -854,28 +854,20 @@ export function setupSocketHandlers(
 
     // Get diffs on demand to avoid storing in Convex
     socket.on("get-run-diffs", async (data, callback) => {
+      const t0 = Date.now();
       try {
         const { taskRunId } = data;
-        // Ensure the worktree exists and is on the correct branch
-        const ensured = await ensureRunWorktreeAndBranch(taskRunId, safeTeam);
-        const worktreePath = ensured.worktreePath;
-        const entries = await computeEntriesNodeGit({
-          worktreePath,
+        const entries = await getRunDiffs({
+          taskRunId,
+          teamSlugOrId: safeTeam,
+          gitDiffManager,
+          rt,
           includeContents: true,
         });
-        // Start watching this worktree to push reactive updates to this client group
-        try {
-          void gitDiffManager.watchWorkspace(worktreePath, () => {
-            rt.emit("git-file-changed", {
-              workspacePath: worktreePath,
-              filePath: "",
-            });
-          });
-        } catch (e) {
-          serverLogger.warn(
-            `Failed to start watcher for ${worktreePath}: ${String(e)}`
-          );
-        }
+        const t1 = Date.now();
+        serverLogger.info(
+          `[Perf][socket.get-run-diffs] run=${String(taskRunId)} team=${safeTeam} entries=${entries.length} totalMs=${t1 - t0}`
+        );
         callback?.({ ok: true, diffs: entries });
       } catch (error) {
         serverLogger.error("Error getting run diffs:", error);

@@ -77,8 +77,6 @@ function RunDiffPage() {
   const selectedRun = useMemo(() => {
     return taskRuns?.find((run) => run._id === runId);
   }, [runId, taskRuns]);
-  const [isDiffsLoading, setIsDiffsLoading] = useState(false);
-  const [hasAnyDiffs, setHasAnyDiffs] = useState(false);
   const taskRunId = selectedRun?._id || runId;
 
   return (
@@ -91,12 +89,9 @@ function RunDiffPage() {
             selectedRun={selectedRun ?? null}
             isCreatingPr={isCreatingPr}
             setIsCreatingPr={setIsCreatingPr}
-            totalAdditions={diffControls?.totalAdditions}
-            totalDeletions={diffControls?.totalDeletions}
-            hasAnyDiffs={hasAnyDiffs}
+            taskRunId={taskRunId}
             onExpandAll={diffControls?.expandAll}
             onCollapseAll={diffControls?.collapseAll}
-            isLoading={isDiffsLoading}
             teamSlugOrId={teamSlugOrId}
           />
           {task?.text && (
@@ -123,8 +118,6 @@ function RunDiffPage() {
                 taskRunId={taskRunId}
                 worktreePath={selectedRun?.worktreePath || null}
                 onControlsChange={setDiffControls}
-                onLoadingChange={setIsDiffsLoading}
-                onHasAnyDiffsChange={setHasAnyDiffs}
                 classNames={gitDiffViewerClassNames}
               />
             </Suspense>
