@@ -53,6 +53,7 @@ import {
 import { runWithAuth, runWithAuthToken } from "./utils/requestContext.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { getProjectPaths } from "./workspace.js";
+import { getRustTime } from "./native/time.js";
 
 const execAsync = promisify(exec);
 
@@ -90,6 +91,17 @@ export function setupSocketHandlers(
       runWithAuth(token, tokenJson, () => next());
     });
     serverLogger.info("Client connected:", socket.id);
+
+    // Rust N-API test endpoint
+    socket.on("rust-get-time", async (callback) => {
+      try {
+        const time = await getRustTime();
+        callback({ ok: true, time });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        callback({ ok: false, error: msg });
+      }
+    });
 
     // Send default repo info to newly connected client if available
     if (defaultRepo?.remoteName) {

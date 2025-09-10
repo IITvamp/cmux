@@ -162,6 +162,10 @@ if [ ! -d "node_modules" ] || [ "$FORCE_INSTALL" = "true" ]; then
     CI=1 bun install --frozen-lockfile || exit 1
 fi
 
+# Build Rust N-API addon (required)
+echo -e "${GREEN}Building native Rust addon...${NC}"
+(cd "$APP_DIR/apps/server/native/time" && bunx --bun @napi-rs/cli build --platform)
+
 # Function to prefix output with colored labels
 prefix_output() {
     local label="$1"

@@ -11,6 +11,7 @@ import { dockerLogger, serverLogger } from "./utils/fileLogger.js";
 import { waitForConvex } from "./utils/waitForConvex.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
+import { getRustTime } from "./native/time.js";
 
 const execAsync = promisify(exec);
 
@@ -94,6 +95,14 @@ export async function startServer({
   const server = httpServer.listen(port, async () => {
     serverLogger.info(`Terminal server listening on port ${port}`);
     serverLogger.info(`Visit http://localhost:${port} to see the app`);
+
+    // Probe native module once at startup (non-fatal)
+    try {
+      const t = await getRustTime();
+      serverLogger.info(`Rust native module loaded. Time(ms): ${t}`);
+    } catch (e) {
+      serverLogger.warn(`Rust native module not available: ${String(e)}`);
+    }
 
     // Wait for Convex
     await waitForConvex();
@@ -250,4 +259,3 @@ export async function startServer({
 
   return { cleanup };
 }
-

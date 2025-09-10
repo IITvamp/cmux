@@ -22,6 +22,11 @@
     {
       "from": "assets/cmux-logos/cmux.iconset",
       "to": "cmux-logos/cmux.iconset"
+    },
+    {
+      "from": "../../apps/server/native/time",
+      "to": "native/time",
+      "filter": ["*.node"]
     }
   ],
   "mac": {

@@ -32,3 +32,8 @@ out
 # Binary files
 cmux-cli
 .vercel
+
+# Native Rust addon artifacts
+apps/server/native/**/target/
+apps/server/native/**/*.node
+apps/server/native/**/Cargo.lock

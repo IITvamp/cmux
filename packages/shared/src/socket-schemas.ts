@@ -525,6 +525,10 @@ export interface ClientToServerEvents {
       error?: string;
     }) => void
   ) => void;
+  // Rust N-API test: returns current time
+  "rust-get-time": (
+    callback: (response: { ok: true; time: string } | { ok: false; error: string }) => void
+  ) => void;
   "check-provider-status": (
     callback: (response: ProviderStatusResponse) => void
   ) => void;
