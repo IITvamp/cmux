@@ -20,20 +20,36 @@ const execAsync = promisify(exec);
 export async function computeEntriesNodeGit(opts: ParsedDiffOptions): Promise<ReplaceDiffEntry[]> {
   const { worktreePath, includeContents = true, maxBytes = 950 * 1024 } = opts;
 
+  const tStart = Date.now();
   // Resolve a primary/base ref: prefer the repo default branch (e.g., origin/main)
+  const t0 = Date.now();
   const baseRef = await resolvePrimaryBaseRef(worktreePath);
+  const tBaseRef = Date.now();
   const compareBase = await resolveMergeBaseWithDeepen(worktreePath, baseRef);
+  const tMergeBase = Date.now();
 
   // Collect tracked changes vs baseRef (includes committed + staged + unstaged)
   const tracked = await getTrackedChanges(worktreePath, compareBase);
+  const tTracked = Date.now();
 
   // Collect untracked files (relative to baseRef they are also additions)
   const untracked = await getUntrackedFiles(worktreePath);
+  const tUntracked = Date.now();
 
   const entries: ReplaceDiffEntry[] = [];
 
+  // Aggregated timing counters for per-file operations
+  let timeNumstat = 0;
+  let timePatch = 0;
+  let timeReadOld = 0;
+  let timeReadNew = 0;
+  let timeReadUntracked = 0;
+  let perFileBuildMs = 0;
+  const slowFiles: { filePath: string; ms: number }[] = [];
+
   // Handle tracked files
   for (const t of tracked) {
+    const tFileStart = Date.now();
     const { status, filePath: fp, oldPath } = t;
     let additions = 0;
     let deletions = 0;
@@ -44,7 +60,9 @@ export async function computeEntriesNodeGit(opts: ParsedDiffOptions): Promise<Re
 
     try {
       // additions/deletions via numstat against baseRef; binary shows '-'
+      const tNs0 = Date.now();
       const nd = await gitNumstatForFile(worktreePath, compareBase, fp);
+      timeNumstat += Date.now() - tNs0;
       if (nd) {
         additions = nd.additions;
         deletions = nd.deletions;
@@ -56,21 +74,27 @@ export async function computeEntriesNodeGit(opts: ParsedDiffOptions): Promise<Re
           // new content from FS if exists
           if (status !== "deleted") {
             try {
+              const tRn0 = Date.now();
               newContent = await fs.readFile(path.join(worktreePath, fp), "utf8");
+              timeReadNew += Date.now() - tRn0;
             } catch {
               newContent = "";
             }
           }
           // old content from the effective comparison base (merge-base when available)
           if (status !== "added") {
+            const tOld0 = Date.now();
             oldContent = await gitShowFile(worktreePath, compareBase, fp).catch(() => "");
+            timeReadOld += Date.now() - tOld0;
           } else {
             oldContent = "";
           }
         }
 
         // patch text (omit for very large) against baseRef
+        const tP0 = Date.now();
         const p = await gitPatchForFile(worktreePath, compareBase, fp);
+        timePatch += Date.now() - tP0;
         if (p) patchText = p;
       }
     } catch (err) {
@@ -121,13 +145,21 @@ export async function computeEntriesNodeGit(opts: ParsedDiffOptions): Promise<Re
     }
 
     entries.push(base);
+    const tFileEnd = Date.now();
+    const elapsed = tFileEnd - tFileStart;
+    perFileBuildMs += elapsed;
+    if (elapsed > 50) {
+      slowFiles.push({ filePath: fp, ms: elapsed });
+    }
   }
 
   // Handle untracked files as added
   for (const fp of untracked) {
     let newContent = "";
     try {
+      const tRn0 = Date.now();
       newContent = await fs.readFile(path.join(worktreePath, fp), "utf8");
+      timeReadUntracked += Date.now() - tRn0;
     } catch {
       newContent = "";
     }
@@ -153,6 +185,23 @@ export async function computeEntriesNodeGit(opts: ParsedDiffOptions): Promise<Re
       base.contentOmitted = false;
     }
     entries.push(base);
+  }
+
+  const tEnd = Date.now();
+
+  // Sort and keep top 5 slowest files for visibility
+  slowFiles.sort((a, b) => b.ms - a.ms);
+  const topSlow = slowFiles.slice(0, 5);
+
+  serverLogger.info(
+    `[Perf][computeEntriesNodeGit] worktree=${worktreePath} baseRef=${baseRef} compareBase=${compareBase} tracked=${tracked.length} untracked=${untracked.length} entries=${entries.length} ` +
+      `resolveBaseMs=${tBaseRef - t0} mergeBaseMs=${tMergeBase - tBaseRef} listTrackedMs=${tTracked - tMergeBase} listUntrackedMs=${tUntracked - tTracked} ` +
+      `perFileBuildMs=${perFileBuildMs} numstatMs=${timeNumstat} patchMs=${timePatch} readOldMs=${timeReadOld} readNewMs=${timeReadNew} readUntrackedMs=${timeReadUntracked} totalMs=${tEnd - tStart}`
+  );
+  if (topSlow.length > 0) {
+    serverLogger.info(
+      `[Perf][computeEntriesNodeGit.slowest] ${JSON.stringify(topSlow)}`
+    );
   }
 
   return entries;

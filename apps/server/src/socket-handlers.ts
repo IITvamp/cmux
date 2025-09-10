@@ -854,6 +854,7 @@ export function setupSocketHandlers(
 
     // Get diffs on demand to avoid storing in Convex
     socket.on("get-run-diffs", async (data, callback) => {
+      const t0 = Date.now();
       try {
         const { taskRunId } = data;
         const entries = await getRunDiffs({
@@ -863,6 +864,10 @@ export function setupSocketHandlers(
           rt,
           includeContents: true,
         });
+        const t1 = Date.now();
+        serverLogger.info(
+          `[Perf][socket.get-run-diffs] run=${String(taskRunId)} team=${safeTeam} entries=${entries.length} totalMs=${t1 - t0}`
+        );
         callback?.({ ok: true, diffs: entries });
       } catch (error) {
         serverLogger.error("Error getting run diffs:", error);

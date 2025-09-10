@@ -10,16 +10,18 @@ type CliArgs = {
   team: string;
   user?: string;
   includeContents: boolean;
+  summaryOnly: boolean;
 };
 
 function parseArgs(argv: string[]): CliArgs {
-  const out: CliArgs = { team: "default", includeContents: true };
+  const out: CliArgs = { team: "default", includeContents: true, summaryOnly: false };
   for (let i = 2; i < argv.length; i++) {
     const a = argv[i] ?? "";
     if (a === "--run" || a === "-r") out.run = argv[++i];
     else if (a === "--team" || a === "-t") out.team = argv[++i] ?? out.team;
     else if (a === "--user" || a === "-u") out.user = argv[++i];
     else if (a === "--no-contents") out.includeContents = false;
+    else if (a === "--summary" || a === "-s") out.summaryOnly = true;
     else if (!out.run) out.run = a; // positional run id
   }
   return out;
@@ -54,7 +56,7 @@ async function main(): Promise<void> {
   const args = parseArgs(process.argv);
   if (!args.run) {
     console.error(
-      "Usage: bun run apps/server/src/scripts/get-run-diffs.ts --run <taskRunId> [--team <slug>] [--user <uuid>] [--no-contents]"
+      "Usage: bun run apps/server/src/scripts/get-run-diffs.ts --run <taskRunId> [--team <slug>] [--user <uuid>] [--no-contents] [--summary]"
     );
     process.exit(1);
   }
@@ -63,10 +65,12 @@ async function main(): Promise<void> {
   const defaultTestUser = "487b5ddc-0da0-4f12-8834-f452863a83f5";
   const userId = args.user || process.env.CMUX_TEST_USER_ID || defaultTestUser;
 
+  const tToken0 = Date.now();
   const accessToken = await mintStackAccessToken(userId);
+  const tToken1 = Date.now();
 
   const gitDiffManager = new GitDiffManager();
-  const start = Date.now();
+  const tDiff0 = Date.now();
 
   const diffs = await runWithAuthToken(accessToken, async () => {
     return await getRunDiffs({
@@ -77,17 +81,35 @@ async function main(): Promise<void> {
     });
   });
 
-  const elapsed = Date.now() - start;
-  const output = {
-    runId: args.run,
-    team: args.team,
-    userId,
-    count: (diffs as ReplaceDiffEntry[]).length,
-    elapsedMs: elapsed,
-    diffs,
-  };
-  console.log(JSON.stringify(output, null, 2));
+  const tDiff1 = Date.now();
+  const tokenMs = tToken1 - tToken0;
+  const diffMs = tDiff1 - tDiff0;
+  const totalMs = tokenMs + diffMs;
+
+  if (args.summaryOnly) {
+    const summary = {
+      runId: args.run,
+      team: args.team,
+      userId,
+      count: (diffs as ReplaceDiffEntry[]).length,
+      tokenMs,
+      diffMs,
+      totalMs,
+    };
+    console.log(JSON.stringify(summary, null, 2));
+  } else {
+    const output = {
+      runId: args.run,
+      team: args.team,
+      userId,
+      count: (diffs as ReplaceDiffEntry[]).length,
+      tokenMs,
+      diffMs,
+      totalMs,
+      diffs,
+    };
+    console.log(JSON.stringify(output, null, 2));
+  }
 }
 
 void main();
-
