@@ -30,7 +30,8 @@ export function buildMainClientQuery(
 export function connectToMainServer(
   params: MainServerClientParams
 ): Socket<ServerToClientEvents, ClientToServerEvents> {
-  const { url, transports = ["websocket"], ...rest } = params;
+  // Prefer WebSocket, but allow polling fallback to survive tricky dev setups
+  const { url, transports = ["websocket", "polling"], ...rest } = params;
   const query = buildMainClientQuery(rest);
   return io(url, { transports, query }) as Socket<
     ServerToClientEvents,
