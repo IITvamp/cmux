@@ -116,7 +116,6 @@ export function TaskDetailHeader({
   const handleAgentOpenChange = useCallback((open: boolean) => {
     setAgentMenuOpen(open);
   }, []);
-  // Header-level hasChanges no longer needed; SocketActions computes it
   const taskTitle = task?.pullRequestTitle || task?.text;
   const handleCopyBranch = () => {
     if (selectedRun?.newBranch) {
@@ -156,9 +155,6 @@ export function TaskDetailHeader({
           </Suspense>
         </div>
 
-        {/* Removed periodic refresh spinner */}
-
-        {/* Actions on right, vertically centered across rows */}
         <div
           className="col-start-3 row-start-1 row-span-2 self-center flex items-center gap-2 shrink-0"
           style={

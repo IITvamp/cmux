@@ -24,7 +24,6 @@ export function RunDiffSection({
 
   const diffsQuery = useRQ(runDiffsQueryOptions({ taskRunId }));
 
-  // Live update diffs when files change for this worktree
   useEffect(() => {
     if (!socket || !taskRunId || !worktreePath) return;
     const onChanged = (data: GitFileChanged) => {
