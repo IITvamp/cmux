@@ -2,6 +2,7 @@ import { OpenEditorSplitButton } from "@/components/OpenEditorSplitButton";
 import { Dropdown } from "@/components/ui/dropdown";
 import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
 import { useSocketSuspense } from "@/contexts/socket/use-socket";
+import { isElectron } from "@/lib/electron";
 import type { Doc } from "@cmux/convex/dataModel";
 import { Skeleton } from "@heroui/react";
 import { useClipboard } from "@mantine/hooks";
@@ -18,8 +19,13 @@ import {
   GitMerge,
   Trash2,
 } from "lucide-react";
-import { Suspense, useCallback, useMemo, useState, type CSSProperties } from "react";
-import { isElectron } from "@/lib/electron";
+import {
+  Suspense,
+  useCallback,
+  useMemo,
+  useState,
+  type CSSProperties,
+} from "react";
 import { toast } from "sonner";
 
 interface TaskDetailHeaderProps {
@@ -74,21 +80,13 @@ export function TaskDetailHeader({
     }
     return (totalAdditions || 0) + (totalDeletions || 0) > 0;
   }, [hasAnyDiffs, totalAdditions, totalDeletions]);
-
   const taskTitle = task?.pullRequestTitle || task?.text;
-
   const handleCopyBranch = () => {
     if (selectedRun?.newBranch) {
       clipboard.copy(selectedRun.newBranch);
     }
   };
-
   const [isMerging, setIsMerging] = useState(false);
-
-  // Socket-dependent actions are implemented in a Suspense child below
-
-  // Socket-dependent actions are implemented in a Suspense child below
-
   const worktreePath = useMemo(
     () => selectedRun?.worktreePath || task?.worktreePath || null,
     [selectedRun?.worktreePath, task?.worktreePath]
@@ -128,7 +126,11 @@ export function TaskDetailHeader({
         {/* Actions on right, vertically centered across rows */}
         <div
           className="col-start-3 row-start-1 row-span-2 self-center flex items-center gap-2 shrink-0"
-          style={isElectron ? ({ WebkitAppRegion: "no-drag" } as CSSProperties) : undefined}
+          style={
+            isElectron
+              ? ({ WebkitAppRegion: "no-drag" } as CSSProperties)
+              : undefined
+          }
         >
           <Suspense
             fallback={
@@ -198,7 +200,11 @@ export function TaskDetailHeader({
         {/* Branch row (second line, spans first two columns) */}
         <div
           className="col-start-1 row-start-2 col-span-2 flex items-center gap-2 text-xs text-neutral-400 min-w-0"
-          style={isElectron ? ({ WebkitAppRegion: "no-drag" } as CSSProperties) : undefined}
+          style={
+            isElectron
+              ? ({ WebkitAppRegion: "no-drag" } as CSSProperties)
+              : undefined
+          }
         >
           <button
             onClick={handleCopyBranch}
@@ -290,7 +296,10 @@ export function TaskDetailHeader({
                                   if (!isSelected) {
                                     navigate({
                                       to: "/$teamSlugOrId/task/$taskId",
-                                      params: { teamSlugOrId, taskId: task?._id },
+                                      params: {
+                                        teamSlugOrId,
+                                        taskId: task?._id,
+                                      },
                                       search: { runId: run._id },
                                     });
                                   }
@@ -473,7 +482,10 @@ function SocketActions({
           onMerge={prIsOpen ? handleMerge : async () => handleOpenPR()}
           isOpen={prIsOpen}
           disabled={
-            isOpeningPr || isCreatingPr || isMerging || (!prIsOpen && !hasChanges)
+            isOpeningPr ||
+            isCreatingPr ||
+            isMerging ||
+            (!prIsOpen && !hasChanges)
           }
         />
       )}

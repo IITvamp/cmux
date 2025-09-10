@@ -1,13 +1,13 @@
 import { useSocketSuspense } from "@/contexts/socket/use-socket";
 import { runDiffsQueryOptions } from "@/queries/run-diffs";
 import type { Id } from "@cmux/convex/dataModel";
-import type { ReplaceDiffEntry } from "@cmux/shared";
+import type { GitFileChanged, ReplaceDiffEntry } from "@cmux/shared";
 import { useQueryClient, useQuery as useRQ } from "@tanstack/react-query";
 import { useEffect, useMemo, type ComponentProps } from "react";
 import { GitDiffViewer } from "./git-diff-viewer";
 
 export interface RunDiffSectionProps {
-  selectedRunId?: Id<"taskRuns">;
+  taskRunId: Id<"taskRuns">;
   worktreePath?: string | null;
   classNames?: ComponentProps<typeof GitDiffViewer>["classNames"];
   onControlsChange?: ComponentProps<typeof GitDiffViewer>["onControlsChange"];
@@ -16,7 +16,7 @@ export interface RunDiffSectionProps {
 }
 
 export function RunDiffSection({
-  selectedRunId,
+  taskRunId,
   worktreePath,
   classNames,
   onControlsChange,
@@ -26,19 +26,19 @@ export function RunDiffSection({
   const { socket } = useSocketSuspense();
   const queryClient = useQueryClient();
 
-  const diffsQuery = useRQ(runDiffsQueryOptions({ socket, selectedRunId }));
+  const diffsQuery = useRQ(runDiffsQueryOptions({ taskRunId }));
 
   // Live update diffs when files change for this worktree
   useEffect(() => {
-    if (!socket || !selectedRunId || !worktreePath) return;
-    const onChanged = (data: { workspacePath: string; filePath: string }) => {
+    if (!socket || !taskRunId || !worktreePath) return;
+    const onChanged = (data: GitFileChanged) => {
       if (data.workspacePath !== worktreePath) return;
       socket.emit(
         "get-run-diffs",
-        { taskRunId: selectedRunId },
+        { taskRunId },
         (resp: { ok: boolean; diffs: ReplaceDiffEntry[]; error?: string }) => {
           if (resp.ok && queryClient) {
-            queryClient.setQueryData(["run-diffs", selectedRunId], resp.diffs);
+            queryClient.setQueryData(["run-diffs", taskRunId], resp.diffs);
           }
         }
       );
@@ -47,13 +47,7 @@ export function RunDiffSection({
     return () => {
       socket.off("git-file-changed", onChanged);
     };
-  }, [socket, selectedRunId, worktreePath, queryClient]);
-
-  // Initial fetch on run change
-  useEffect(() => {
-    if (!selectedRunId) return;
-    void diffsQuery.refetch();
-  }, [selectedRunId, diffsQuery.refetch, diffsQuery]);
+  }, [socket, taskRunId, worktreePath, queryClient]);
 
   const hasAny = useMemo(
     () => (diffsQuery.data || []).length > 0,
@@ -68,11 +62,39 @@ export function RunDiffSection({
     onLoadingChange?.(diffsQuery.isPending);
   }, [diffsQuery.isPending, onLoadingChange]);
 
+  if (diffsQuery.isPending) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-neutral-500 dark:text-neutral-400 text-sm select-none">
+          Loading diffs...
+        </div>
+      </div>
+    );
+  }
+
+  if (!diffsQuery.isSuccess) {
+    return (
+      <div className="flex items-center justify-center h-full">
+        <div className="text-red-500 dark:text-red-400 text-sm select-none">
+          Failed to load diffs.
+          <pre>{JSON.stringify(diffsQuery.error)}</pre>
+        </div>
+      </div>
+    );
+  }
+
+  if (diffsQuery.data.length === 0) {
+    <div className="flex items-center justify-center h-full">
+      <div className="text-neutral-500 dark:text-neutral-400 text-sm select-none">
+        No changes to display
+      </div>
+    </div>;
+  }
+
   return (
     <GitDiffViewer
-      diffs={diffsQuery.data || []}
-      isLoading={!diffsQuery.data && !!selectedRunId}
-      taskRunId={selectedRunId}
+      diffs={diffsQuery.data}
+      taskRunId={taskRunId}
       onControlsChange={onControlsChange}
       classNames={classNames}
     />

@@ -1,15 +1,14 @@
 import { FloatingPane } from "@/components/floating-pane";
-import { GitDiffViewer } from "@/components/git-diff-viewer";
+import { type GitDiffViewerProps } from "@/components/git-diff-viewer";
 import { RunDiffSection } from "@/components/RunDiffSection";
 import { TaskDetailHeader } from "@/components/task-detail-header";
-// Socket usage is delegated to child components to enable localized Suspense
+import { runDiffsQueryOptions } from "@/queries/run-diffs";
 import { api } from "@cmux/convex/api";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { convexQuery } from "@convex-dev/react-query";
-// no tanstack query here; child handles diffs fetching
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
-import { Suspense, useMemo, useState, type ComponentProps } from "react";
+import { Suspense, useMemo, useState } from "react";
 import z from "zod";
 
 const paramsSchema = z.object({
@@ -17,15 +16,11 @@ const paramsSchema = z.object({
   runId: typedZid("taskRuns"),
 });
 
-const gitDiffViewerClassNames: ComponentProps<
-  typeof GitDiffViewer
->["classNames"] = {
+const gitDiffViewerClassNames: GitDiffViewerProps["classNames"] = {
   fileDiffRow: {
     button: "top-[96px] md:top-[56px]",
   },
 };
-
-// diffs query logic moved into RunDiffSection to avoid socket use in this page
 
 export const Route = createFileRoute(
   "/_layout/$teamSlugOrId/task/$taskId/run/$runId/diff"
@@ -41,6 +36,10 @@ export const Route = createFileRoute(
     },
   },
   loader: async (opts) => {
+    const taskRunId = opts.params.runId;
+    void opts.context.queryClient.ensureQueryData(
+      runDiffsQueryOptions({ taskRunId })
+    );
     await Promise.all([
       opts.context.queryClient.ensureQueryData(
         convexQuery(api.taskRuns.getByTask, {
@@ -60,7 +59,6 @@ export const Route = createFileRoute(
 
 function RunDiffPage() {
   const { taskId, teamSlugOrId, runId } = Route.useParams();
-
   const [isCreatingPr, setIsCreatingPr] = useState(false);
   const [diffControls, setDiffControls] = useState<{
     expandAll: () => void;
@@ -68,8 +66,6 @@ function RunDiffPage() {
     totalAdditions: number;
     totalDeletions: number;
   } | null>(null);
-  // Router available if needed via useRouter(); not used here directly
-
   const task = useQuery(api.tasks.getById, {
     teamSlugOrId,
     id: taskId,
@@ -78,15 +74,12 @@ function RunDiffPage() {
     teamSlugOrId,
     taskId,
   });
-
-  // Get the specific run from the URL parameter
   const selectedRun = useMemo(() => {
     return taskRuns?.find((run) => run._id === runId);
   }, [runId, taskRuns]);
-
-  // Merge handlers moved into TaskDetailHeader (Suspense child)
   const [isDiffsLoading, setIsDiffsLoading] = useState(false);
   const [hasAnyDiffs, setHasAnyDiffs] = useState(false);
+  const taskRunId = selectedRun?._id || runId;
 
   return (
     <FloatingPane>
@@ -127,7 +120,7 @@ function RunDiffPage() {
               }
             >
               <RunDiffSection
-                selectedRunId={selectedRun?._id || runId}
+                taskRunId={taskRunId}
                 worktreePath={selectedRun?.worktreePath || null}
                 onControlsChange={setDiffControls}
                 onLoadingChange={setIsDiffsLoading}

@@ -1,8 +1,8 @@
 import { isElectron } from "@/lib/electron";
 import { useContext } from "react";
+import { socketBoot } from "./socket-boot";
 import { ElectronSocketContext, WebSocketContext } from "./socket-context";
 import type { CmuxSocket } from "./types";
-import { socketBoot } from "./socket-boot";
 
 // Suspense helpers for socket readiness
 const CONNECT_TIMEOUT_MS = 15_000;
@@ -80,7 +80,6 @@ function getSuspender(socket: CmuxSocket): Suspender {
   return susp;
 }
 
-
 function useWebSocket() {
   const ctx = useContext(WebSocketContext);
   if (!ctx) {
@@ -118,8 +117,6 @@ export function useSocketSuspense() {
     const suspender = getSuspender(socket);
     throw suspender.promise;
   }
-
-  console.log("suspending!");
 
   // Socket not created yet: suspend until the provider signals boot readiness
   throw socketBoot.promise;
