@@ -22,11 +22,13 @@ export const stackClientApp = new StackClientApp({
 
 cachedGetUser(stackClientApp).then(async (user) => {
   if (!user) {
+    console.warn("[StackAuth] No user; convex auth not ready");
     signalConvexAuthReady(false);
     return;
   }
   const authJson = await user.getAuthJson();
   if (!authJson.accessToken) {
+    console.warn("[StackAuth] No access token; convex auth not ready");
     signalConvexAuthReady(false);
     return;
   }
@@ -42,6 +44,7 @@ cachedGetUser(stackClientApp).then(async (user) => {
       return newAuthJson.accessToken;
     },
     (isAuthenticated) => {
+      console.log("[StackAuth] convex setAuth callback", { isAuthenticated });
       signalConvexAuthReady(isAuthenticated);
     }
   );
@@ -65,6 +68,20 @@ const fetchWithAuth = (async (request: Request) => {
   const response = await fetch(request, {
     headers: mergedHeaders,
   });
+  if (!response.ok) {
+    try {
+      const clone = response.clone();
+      const bodyText = await clone.text();
+      console.error("[APIError]", {
+        url: response.url,
+        status: response.status,
+        statusText: response.statusText,
+        body: bodyText.slice(0, 2000),
+      });
+    } catch (e) {
+      console.error("[APIError] Failed to read error body", e);
+    }
+  }
   return response;
 }) as typeof fetch; // TODO: remove when bun types dont conflict with node types
 
