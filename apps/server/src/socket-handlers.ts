@@ -213,6 +213,33 @@ export function setupSocketHandlers(
       serverLogger.info("starting task!", taskData);
       const taskId = taskData.taskId;
       try {
+        // For local mode, ensure Docker is running before attempting to spawn
+        if (!taskData.isCloudMode) {
+          try {
+            const { checkDockerStatus } = await import("@cmux/shared");
+            const docker = await checkDockerStatus();
+            if (!docker.isRunning) {
+              callback({
+                taskId,
+                error:
+                  "Docker is not running. Please start Docker Desktop or switch to Cloud mode.",
+              });
+              return;
+            }
+          } catch (e) {
+            serverLogger.warn(
+              "Failed to verify Docker status before start-task",
+              e
+            );
+            callback({
+              taskId,
+              error:
+                "Unable to verify Docker status. Ensure Docker is running or switch to Cloud mode.",
+            });
+            return;
+          }
+        }
+
         // Generate PR title early from the task description
         let generatedTitle: string | null = null;
         try {

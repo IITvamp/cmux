@@ -59,6 +59,7 @@ function DashboardComponent() {
 
   // State for loading states
   const [isLoadingBranches, setIsLoadingBranches] = useState(false);
+  const [dockerReady, setDockerReady] = useState<boolean | null>(null);
 
   // Ref to access editor API
   const editorApiRef = useRef<EditorApi | null>(null);
@@ -144,6 +145,13 @@ function DashboardComponent() {
 
     socket.emit("check-provider-status", (response) => {
       if (response.success) {
+        // Schedule next check via existing interval; also update docker readiness state
+        try {
+          const isRunning = Boolean(response.dockerStatus?.isRunning);
+          setDockerReady(isRunning);
+        } catch {
+          // Ignore parse errors
+        }
         checkProviderStatus();
       }
     });
@@ -231,6 +239,12 @@ function DashboardComponent() {
   );
 
   const handleStartTask = useCallback(async () => {
+    // Prevent starting tasks locally when Docker isn't ready (or unknown)
+    if (!isEnvSelected && !isCloudMode && dockerReady !== true) {
+      toast.error("Docker is not running. Start Docker Desktop.");
+      return;
+    }
+
     if (!selectedProject[0] || !taskDescription.trim()) {
       console.error("Please select a project and enter a task description");
       return;
@@ -359,6 +373,8 @@ function DashboardComponent() {
     addTaskToExpand,
     selectedAgents,
     isCloudMode,
+    isEnvSelected,
+    dockerReady,
     theme,
     generateUploadUrl,
   ]);
@@ -580,12 +596,31 @@ function DashboardComponent() {
     };
   }, []);
 
+  // Compute docker block state and disabled reason early so shortcuts respect it
+  const blockedByDocker = useMemo(() => {
+    // Block when explicitly in local mode (not cloud, not environment) and Docker is not confirmed ready
+    return !isEnvSelected && !isCloudMode && dockerReady !== true;
+  }, [isEnvSelected, isCloudMode, dockerReady]);
+
+  const disabledReason = useMemo(() => {
+    if (blockedByDocker) {
+      return "Docker is not running. Start Docker Desktop.";
+    }
+    return undefined;
+  }, [blockedByDocker]);
+
   // Handle Command+Enter keyboard shortcut
   const handleSubmit = useCallback(() => {
+    // Block Cmd/Ctrl+Enter when Docker isn't ready in local mode
+    if (blockedByDocker) {
+      toast.error("Docker is not running. Start Docker Desktop.");
+      return;
+    }
+
     if (selectedProject[0] && taskDescription.trim()) {
       handleStartTask();
     }
-  }, [selectedProject, taskDescription, handleStartTask]);
+  }, [blockedByDocker, selectedProject, taskDescription, handleStartTask]);
 
   // Memoized computed values for editor props
   const lexicalRepoUrl = useMemo(() => {
@@ -662,6 +697,7 @@ function DashboardComponent() {
                 <DashboardStartTaskButton
                   canSubmit={canSubmit}
                   onStartTask={handleStartTask}
+                  disabledReason={disabledReason}
                 />
               </DashboardInputFooter>
             </div>
