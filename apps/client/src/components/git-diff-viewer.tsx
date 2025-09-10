@@ -24,6 +24,15 @@ import {
 } from "react";
 import { kitties } from "./kitties";
 
+type FileDiffRowClassNames = {
+  button?: string;
+  container?: string;
+};
+
+type GitDiffViewerClassNames = {
+  fileDiffRow?: FileDiffRowClassNames;
+};
+
 interface GitDiffViewerProps {
   diffs: ReplaceDiffEntry[];
   isLoading?: boolean;
@@ -34,6 +43,7 @@ interface GitDiffViewerProps {
     totalAdditions: number;
     totalDeletions: number;
   }) => void;
+  classNames?: GitDiffViewerClassNames;
 }
 
 type FileGroup = {
@@ -83,6 +93,7 @@ export function GitDiffViewer({
   isLoading,
   taskRunId,
   onControlsChange,
+  classNames,
 }: GitDiffViewerProps) {
   const { theme } = useTheme();
 
@@ -271,6 +282,7 @@ export function GitDiffViewer({
                 editorRefs.current[`${taskRunId ?? "_"}:${file.filePath}`] = ed;
             }}
             runId={taskRunId}
+            classNames={classNames?.fileDiffRow}
           />
         ))}
         {/* End-of-diff message */}
@@ -297,6 +309,10 @@ interface FileDiffRowProps {
   calculateEditorHeight: (oldContent: string, newContent: string) => number;
   setEditorRef: (ed: editor.IStandaloneDiffEditor) => void;
   runId?: string;
+  classNames?: {
+    button?: string;
+    container?: string;
+  };
 }
 
 function FileDiffRow({
@@ -307,6 +323,7 @@ function FileDiffRow({
   calculateEditorHeight,
   setEditorRef,
   runId,
+  classNames,
 }: FileDiffRowProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const rafIdRef = useRef<number | null>(null);
@@ -328,10 +345,13 @@ function FileDiffRow({
   }, [isExpanded, file.filePath]);
 
   return (
-    <div className="bg-white dark:bg-neutral-900">
+    <div className={cn("bg-white dark:bg-neutral-900", classNames?.container)}>
       <button
         onClick={onToggle}
-        className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors text-left group pt-1 bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800 sticky top-[96px] md:top-[56px] z-40"
+        className={cn(
+          "w-full px-3 py-1.5 flex items-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors text-left group pt-1 bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800 sticky  z-40",
+          classNames?.button
+        )}
       >
         <div className="text-neutral-400 dark:text-neutral-500 group-hover:text-neutral-600 dark:group-hover:text-neutral-400">
           {isExpanded ? (

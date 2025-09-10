@@ -122,7 +122,8 @@ export class RepositoryManager {
       if (typeof candidate === "string") return candidate;
       if (
         candidate &&
-        typeof (candidate as { toString?: () => string }).toString === "function"
+        typeof (candidate as { toString?: () => string }).toString ===
+          "function"
       ) {
         try {
           return (candidate as { toString: () => string }).toString();
@@ -772,6 +773,46 @@ export class RepositoryManager {
 
     serverLogger.info(`Creating worktree with branch ${branchName}...`);
     try {
+      // Before creating the worktree, try to fetch the remote branch ref for this branch
+      // so that if the agent pushed it, we base the worktree on the pushed commits
+      // rather than creating a fresh branch off the base.
+      const fetchRemoteBranchRef = async (): Promise<boolean> => {
+        // Proactively clear shallow.lock to avoid fetch contention
+        await this.removeStaleGitLock(originPath, "shallow.lock", 15_000);
+        const fetchCmd = `git fetch --depth ${this.config.fetchDepth} origin +refs/heads/${branchName}:refs/remotes/origin/${branchName}`;
+        try {
+          await this.executeGitCommand(fetchCmd, { cwd: originPath });
+        } catch (e) {
+          const msg =
+            e instanceof Error ? `${e.message}\n${e || ""}` : String(e);
+          const lockHit =
+            msg.includes("shallow.lock") ||
+            msg.includes("could not lock shallow") ||
+            msg.includes("Another git process seems to be running");
+          if (lockHit) {
+            // Force-remove lock and retry once with a short backoff
+            await this.removeStaleGitLock(originPath, "shallow.lock", 0, true);
+            await new Promise((r) => setTimeout(r, 150));
+            await this.executeGitCommand(fetchCmd, { cwd: originPath });
+          } else {
+            // If fetch fails for other reasons (e.g., branch does not exist remotely),
+            // just continue and fall back to base branch creation below.
+            return false;
+          }
+        }
+        // Validate that the remote-tracking ref exists now
+        try {
+          await this.executeGitCommand(
+            `git rev-parse --verify refs/remotes/origin/${branchName}`,
+            { cwd: originPath, suppressErrorLogging: true }
+          );
+          return true;
+        } catch {
+          return false;
+        }
+      };
+
+      const remoteBranchAvailable = await fetchRemoteBranchRef();
       // If the branch is already attached to a worktree, reuse that path to avoid duplicates
       const preexistingPath = await this.findWorktreeUsingBranch(
         originPath,
@@ -830,7 +871,7 @@ export class RepositoryManager {
         }
       }
 
-      // Check if the branch already exists
+      // Check if the local branch already exists
       let branchExists = false;
       try {
         await this.executeGitCommand(
@@ -863,8 +904,18 @@ export class RepositoryManager {
             { cwd: originPath }
           );
         }
+      } else if (remoteBranchAvailable) {
+        // No local branch yet, but we do have a remote-tracking branch.
+        // Create/reset the local branch to that remote and attach the worktree.
+        serverLogger.info(
+          `Remote branch origin/${branchName} found; creating worktree tracking remote`
+        );
+        await this.executeGitCommand(
+          `git worktree add -B "${branchName}" "${worktreePath}" origin/${branchName}`,
+          { cwd: originPath }
+        );
       } else {
-        // Branch doesn't exist, create it with the worktree
+        // Neither local nor remote branch exists; create a new branch from base
         await this.executeGitCommand(
           `git worktree add -b "${branchName}" "${worktreePath}" origin/${baseBranch}`,
           { cwd: originPath }

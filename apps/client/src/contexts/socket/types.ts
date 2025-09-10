@@ -5,9 +5,9 @@ import type {
 } from "@cmux/shared";
 import type { Socket } from "socket.io-client";
 
+export type CmuxSocket = Socket<ServerToClientEvents, ClientToServerEvents>;
 export interface SocketContextType {
-  socket: Socket<ServerToClientEvents, ClientToServerEvents> | null;
+  socket: CmuxSocket | null;
   isConnected: boolean;
   availableEditors: AvailableEditors | null;
 }
-

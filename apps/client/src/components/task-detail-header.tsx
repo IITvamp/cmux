@@ -1,7 +1,7 @@
 import { OpenEditorSplitButton } from "@/components/OpenEditorSplitButton";
 import { Dropdown } from "@/components/ui/dropdown";
 import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
-import { useSocket } from "@/contexts/socket/use-socket";
+import { useSocketSuspense } from "@/contexts/socket/use-socket";
 import type { Doc } from "@cmux/convex/dataModel";
 import { Skeleton } from "@heroui/react";
 import { useClipboard } from "@mantine/hooks";
@@ -18,7 +18,7 @@ import {
   GitMerge,
   Trash2,
 } from "lucide-react";
-import { useCallback, useMemo, useState, type CSSProperties } from "react";
+import { Suspense, useCallback, useMemo, useState, type CSSProperties } from "react";
 import { isElectron } from "@/lib/electron";
 import { toast } from "sonner";
 
@@ -28,8 +28,6 @@ interface TaskDetailHeaderProps {
   selectedRun?: Doc<"taskRuns"> | null;
   isCreatingPr: boolean;
   setIsCreatingPr: (v: boolean) => void;
-  onMerge: (method: MergeMethod) => Promise<void>;
-  onMergeBranch?: () => Promise<void>;
   totalAdditions?: number;
   totalDeletions?: number;
   hasAnyDiffs?: boolean;
@@ -47,8 +45,6 @@ export function TaskDetailHeader({
   selectedRun,
   isCreatingPr,
   setIsCreatingPr,
-  onMerge,
-  onMergeBranch,
   totalAdditions,
   totalDeletions,
   hasAnyDiffs,
@@ -61,7 +57,6 @@ export function TaskDetailHeader({
   const clipboard = useClipboard({ timeout: 2000 });
   const prIsOpen = selectedRun?.pullRequestState === "open";
   const prIsMerged = selectedRun?.pullRequestState === "merged";
-  const { socket } = useSocket();
   const [agentMenuOpen, setAgentMenuOpen] = useState(false);
   const [isOpeningPr, setIsOpeningPr] = useState(false);
   const handleAgentOpenChange = useCallback((open: boolean) => {
@@ -89,74 +84,10 @@ export function TaskDetailHeader({
   };
 
   const [isMerging, setIsMerging] = useState(false);
-  const handleMerge = async (method: MergeMethod) => {
-    setIsMerging(true);
-    try {
-      await onMerge(method);
-    } finally {
-      setIsMerging(false);
-    }
-  };
 
-  const handleMergeBranch = async () => {
-    if (!onMergeBranch) return;
-    setIsMerging(true);
-    try {
-      await onMergeBranch();
-    } finally {
-      setIsMerging(false);
-    }
-  };
+  // Socket-dependent actions are implemented in a Suspense child below
 
-  const handleOpenPR = () => {
-    if (!socket || !selectedRun?._id) return;
-    // Create PR or mark draft ready
-    setIsOpeningPr(true);
-    const toastId = toast.loading("Opening PR...");
-    socket.emit(
-      "github-open-pr",
-      { taskRunId: selectedRun._id },
-      (resp: { success: boolean; url?: string; error?: string }) => {
-        setIsOpeningPr(false);
-        if (resp.success) {
-          toast.success("PR opened", { id: toastId, description: resp.url });
-        } else {
-          console.error("Failed to open PR:", resp.error);
-          toast.error("Failed to open PR", {
-            id: toastId,
-            description: resp.error,
-          });
-        }
-      }
-    );
-  };
-
-  const handleViewPR = () => {
-    if (!socket || !selectedRun?._id) return;
-    if (
-      selectedRun.pullRequestUrl &&
-      selectedRun.pullRequestUrl !== "pending"
-    ) {
-      window.open(selectedRun.pullRequestUrl, "_blank");
-      return;
-    }
-    setIsCreatingPr(true);
-    socket.emit(
-      "github-create-draft-pr",
-      { taskRunId: selectedRun._id },
-      (resp: { success: boolean; url?: string; error?: string }) => {
-        setIsCreatingPr(false);
-        if (resp.success && resp.url) {
-          window.open(resp.url, "_blank");
-        } else if (resp.error) {
-          console.error("Failed to create draft PR:", resp.error);
-          toast.error("Failed to create draft PR", {
-            description: resp.error,
-          });
-        }
-      }
-    );
-  };
+  // Socket-dependent actions are implemented in a Suspense child below
 
   const worktreePath = useMemo(
     () => selectedRun?.worktreePath || task?.worktreePath || null,
@@ -199,63 +130,39 @@ export function TaskDetailHeader({
           className="col-start-3 row-start-1 row-span-2 self-center flex items-center gap-2 shrink-0"
           style={isElectron ? ({ WebkitAppRegion: "no-drag" } as CSSProperties) : undefined}
         >
-          {prIsMerged ? (
-            <div
-              className="flex items-center gap-1.5 px-3 py-1 bg-[#8250df] text-white rounded font-medium text-xs select-none whitespace-nowrap border border-[#6e40cc] dark:bg-[#8250df] dark:border-[#6e40cc] cursor-not-allowed"
-              title="Pull request has been merged"
-            >
-              <GitMerge className="w-3.5 h-3.5" />
-              Merged
-            </div>
-          ) : (
-            <MergeButton
-              onMerge={
-                prIsOpen
-                  ? handleMerge
-                  : async () => {
-                      handleOpenPR();
-                    }
-              }
-              isOpen={prIsOpen}
-              disabled={
-                isOpeningPr ||
-                isCreatingPr ||
-                isMerging ||
-                (!prIsOpen && !hasChanges)
-              }
+          <Suspense
+            fallback={
+              <div className="flex items-center gap-2">
+                <button
+                  className="flex items-center gap-1.5 px-3 py-1 bg-neutral-200 dark:bg-neutral-800 text-neutral-200 dark:text-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded font-medium text-xs select-none whitespace-nowrap cursor-wait"
+                  disabled
+                >
+                  <GitMerge className="w-3.5 h-3.5" />
+                  Merge
+                </button>
+                <button
+                  className="flex items-center gap-1.5 px-3 py-1 bg-neutral-200 dark:bg-neutral-800 text-neutral-200 dark:text-neutral-800 border border-neutral-300 dark:border-neutral-700 rounded font-medium text-xs select-none whitespace-nowrap cursor-wait"
+                  disabled
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  Open draft PR
+                </button>
+              </div>
+            }
+          >
+            <SocketActions
+              selectedRun={selectedRun ?? null}
+              prIsOpen={prIsOpen}
+              prIsMerged={prIsMerged}
+              hasChanges={hasChanges}
+              isCreatingPr={isCreatingPr}
+              setIsCreatingPr={setIsCreatingPr}
+              isOpeningPr={isOpeningPr}
+              setIsOpeningPr={setIsOpeningPr}
+              isMerging={isMerging}
+              setIsMerging={setIsMerging}
             />
-          )}
-          {!prIsOpen && !prIsMerged && ENABLE_MERGE_BUTTON && (
-            <button
-              onClick={handleMergeBranch}
-              className="flex items-center gap-1.5 px-3 py-1 bg-[#8250df] text-white rounded hover:bg-[#8250df]/90 dark:bg-[#8250df] dark:hover:bg-[#8250df]/90 border border-[#6e40cc] dark:border-[#6e40cc] font-medium text-xs select-none disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-              disabled={isOpeningPr || isCreatingPr || isMerging || !hasChanges}
-            >
-              <GitMerge className="w-3.5 h-3.5" />
-              Merge
-            </button>
-          )}
-          {selectedRun?.pullRequestUrl &&
-          selectedRun.pullRequestUrl !== "pending" ? (
-            <a
-              href={selectedRun.pullRequestUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1.5 px-3 py-1 bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white border border-neutral-300 dark:border-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-700 font-medium text-xs select-none whitespace-nowrap"
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-              {selectedRun.pullRequestIsDraft ? "View draft PR" : "View PR"}
-            </a>
-          ) : (
-            <button
-              onClick={handleViewPR}
-              className="flex items-center gap-1.5 px-3 py-1 bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white border border-neutral-300 dark:border-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-700 font-medium text-xs select-none disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
-              disabled={isCreatingPr || isOpeningPr || isMerging || !hasChanges}
-            >
-              <ExternalLink className="w-3.5 h-3.5" />
-              {isCreatingPr ? "Creating draft PR..." : "Open draft PR"}
-            </button>
-          )}
+          </Suspense>
 
           <OpenEditorSplitButton worktreePath={worktreePath} />
 
@@ -416,5 +323,191 @@ export function TaskDetailHeader({
         </div>
       </div>
     </div>
+  );
+}
+
+function SocketActions({
+  selectedRun,
+  prIsOpen,
+  prIsMerged,
+  hasChanges,
+  isCreatingPr,
+  setIsCreatingPr,
+  isOpeningPr,
+  setIsOpeningPr,
+  isMerging,
+  setIsMerging,
+}: {
+  selectedRun: Doc<"taskRuns"> | null;
+  prIsOpen: boolean;
+  prIsMerged: boolean;
+  hasChanges: boolean;
+  isCreatingPr: boolean;
+  setIsCreatingPr: (v: boolean) => void;
+  isOpeningPr: boolean;
+  setIsOpeningPr: (v: boolean) => void;
+  isMerging: boolean;
+  setIsMerging: (v: boolean) => void;
+}) {
+  const { socket } = useSocketSuspense();
+
+  const handleMerge = async (method: MergeMethod) => {
+    if (!socket || !selectedRun?._id) return;
+    setIsMerging(true);
+    const toastId = toast.loading(`Merging PR (${method})...`);
+    await new Promise<void>((resolve) => {
+      socket.emit(
+        "github-merge-pr",
+        { taskRunId: selectedRun._id, method },
+        (resp: {
+          success: boolean;
+          merged?: boolean;
+          state?: string;
+          url?: string;
+          error?: string;
+        }) => {
+          setIsMerging(false);
+          if (resp.success) {
+            toast.success("PR merged", { id: toastId, description: resp.url });
+          } else {
+            toast.error("Failed to merge PR", {
+              id: toastId,
+              description: resp.error,
+            });
+          }
+          resolve();
+        }
+      );
+    });
+  };
+
+  const handleMergeBranch = async (): Promise<void> => {
+    if (!socket || !selectedRun?._id) return;
+    setIsMerging(true);
+    const toastId = toast.loading("Merging branch...");
+    await new Promise<void>((resolve) => {
+      socket.emit(
+        "github-merge-branch",
+        { taskRunId: selectedRun._id },
+        (resp: { success: boolean; commitSha?: string; error?: string }) => {
+          setIsMerging(false);
+          if (resp.success) {
+            toast.success("Branch merged", {
+              id: toastId,
+              description: resp.commitSha,
+            });
+          } else {
+            toast.error("Failed to merge branch", {
+              id: toastId,
+              description: resp.error,
+            });
+          }
+          resolve();
+        }
+      );
+    });
+  };
+
+  const handleOpenPR = () => {
+    if (!socket || !selectedRun?._id) return;
+    // Create PR or mark draft ready
+    setIsOpeningPr(true);
+    const toastId = toast.loading("Opening PR...");
+    socket.emit(
+      "github-open-pr",
+      { taskRunId: selectedRun._id },
+      (resp: { success: boolean; url?: string; error?: string }) => {
+        setIsOpeningPr(false);
+        if (resp.success) {
+          toast.success("PR opened", { id: toastId, description: resp.url });
+        } else {
+          console.error("Failed to open PR:", resp.error);
+          toast.error("Failed to open PR", {
+            id: toastId,
+            description: resp.error,
+          });
+        }
+      }
+    );
+  };
+
+  const handleViewPR = () => {
+    if (!socket || !selectedRun?._id) return;
+    if (
+      selectedRun.pullRequestUrl &&
+      selectedRun.pullRequestUrl !== "pending"
+    ) {
+      window.open(selectedRun.pullRequestUrl, "_blank");
+      return;
+    }
+    setIsCreatingPr(true);
+    socket.emit(
+      "github-create-draft-pr",
+      { taskRunId: selectedRun._id },
+      (resp: { success: boolean; url?: string; error?: string }) => {
+        setIsCreatingPr(false);
+        if (resp.success && resp.url) {
+          window.open(resp.url, "_blank");
+        } else if (resp.error) {
+          console.error("Failed to create draft PR:", resp.error);
+          toast.error("Failed to create draft PR", {
+            description: resp.error,
+          });
+        }
+      }
+    );
+  };
+
+  return (
+    <>
+      {prIsMerged ? (
+        <div
+          className="flex items-center gap-1.5 px-3 py-1 bg-[#8250df] text-white rounded font-medium text-xs select-none whitespace-nowrap border border-[#6e40cc] dark:bg-[#8250df] dark:border-[#6e40cc] cursor-not-allowed"
+          title="Pull request has been merged"
+        >
+          <GitMerge className="w-3.5 h-3.5" />
+          Merged
+        </div>
+      ) : (
+        <MergeButton
+          onMerge={prIsOpen ? handleMerge : async () => handleOpenPR()}
+          isOpen={prIsOpen}
+          disabled={
+            isOpeningPr || isCreatingPr || isMerging || (!prIsOpen && !hasChanges)
+          }
+        />
+      )}
+      {!prIsOpen && !prIsMerged && ENABLE_MERGE_BUTTON && (
+        <button
+          onClick={handleMergeBranch}
+          className="flex items-center gap-1.5 px-3 py-1 bg-[#8250df] text-white rounded hover:bg-[#8250df]/90 dark:bg-[#8250df] dark:hover:bg-[#8250df]/90 border border-[#6e40cc] dark:border-[#6e40cc] font-medium text-xs select-none disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+          disabled={isOpeningPr || isCreatingPr || isMerging || !hasChanges}
+        >
+          <GitMerge className="w-3.5 h-3.5" />
+          Merge
+        </button>
+      )}
+      {selectedRun?.pullRequestUrl &&
+      selectedRun.pullRequestUrl !== "pending" ? (
+        <a
+          href={selectedRun.pullRequestUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex items-center gap-1.5 px-3 py-1 bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white border border-neutral-300 dark:border-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-700 font-medium text-xs select-none whitespace-nowrap"
+        >
+          <ExternalLink className="w-3.5 h-3.5" />
+          {selectedRun.pullRequestIsDraft ? "View draft PR" : "View PR"}
+        </a>
+      ) : (
+        <button
+          onClick={handleViewPR}
+          className="flex items-center gap-1.5 px-3 py-1 bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white border border-neutral-300 dark:border-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-700 font-medium text-xs select-none disabled:opacity-60 disabled:cursor-not-allowed whitespace-nowrap"
+          disabled={isCreatingPr || isOpeningPr || isMerging || !hasChanges}
+        >
+          <ExternalLink className="w-3.5 h-3.5" />
+          {isCreatingPr ? "Creating draft PR..." : "Open draft PR"}
+        </button>
+      )}
+    </>
   );
 }

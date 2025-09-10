@@ -1,6 +1,7 @@
 import { api } from "@cmux/convex/api";
 import {
   ArchiveTaskSchema,
+  GitCompareRefsSchema,
   GitFullDiffRequestSchema,
   GitHubCreateDraftPrSchema,
   GitHubFetchBranchesSchema,
@@ -22,6 +23,8 @@ import * as path from "node:path";
 import { promisify } from "node:util";
 import { spawnAllAgents } from "./agentSpawner.js";
 import { stopContainersForRuns } from "./archiveTask.js";
+import { compareRefsForRepo } from "./diffs/compareRefs.js";
+import { computeEntriesNodeGit } from "./diffs/parseGitDiff.js";
 import { execWithEnv } from "./execWithEnv.js";
 import { GitDiffManager } from "./gitDiff.js";
 import type { RealtimeServer } from "./realtime.js";
@@ -150,6 +153,27 @@ export function setupSocketHandlers(
         "Skipping initial GitHub refresh: no auth token on connect"
       );
     }
+
+    // Compare two refs in a repository; ensure fetch/pull before computing diff
+    socket.on("git-compare-refs", async (data, callback) => {
+      try {
+        const { repoFullName, ref1, ref2 } = GitCompareRefsSchema.parse(data);
+        const diffs = await compareRefsForRepo({
+          repoFullName,
+          ref1,
+          ref2,
+          teamSlugOrId: safeTeam,
+        });
+        callback?.({ ok: true, diffs });
+      } catch (error) {
+        serverLogger.error("Error comparing refs:", error);
+        callback?.({
+          ok: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+          diffs: [],
+        });
+      }
+    });
 
     void (async () => {
       const commandExists = async (cmd: string) => {
@@ -834,10 +858,7 @@ export function setupSocketHandlers(
         const { taskRunId } = data;
         // Ensure the worktree exists and is on the correct branch
         const ensured = await ensureRunWorktreeAndBranch(taskRunId, safeTeam);
-        const worktreePath = ensured.worktreePath as string;
-        const { computeEntriesNodeGit } = await import(
-          "./diffs/parseGitDiff.js"
-        );
+        const worktreePath = ensured.worktreePath;
         const entries = await computeEntriesNodeGit({
           worktreePath,
           includeContents: true,
