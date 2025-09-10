@@ -35,14 +35,16 @@ export CSC_IDENTITY_AUTO_DISCOVERY=true
 unset CSC_NAME || true
 unset CSC_LINK || true
 unset CSC_KEY_PASSWORD || true
-DEBUG=electron-osx-sign*,electron-notarize* \
-  (cd apps/client && bunx electron-builder \
+( \
+  export DEBUG=electron-osx-sign*,electron-notarize*; \
+  cd apps/client && bunx electron-builder \
     --config electron-builder.local.json \
-    --mac dmg zip --arm64)
+    --mac dmg zip --arm64 \
+)
 
 echo "[5/5] Build complete. Artifacts:"
-echo "  - App bundle: apps/client/dist-electron/mac-arm64/cmux.app"
+echo "  - App bundle: apps/client/dist-electron/mac-arm64/Cmux.app"
 echo "  - DMG/ZIP:   apps/client/dist-electron/"
 
 echo "Done. You can open the app with:"
-echo "  open apps/client/dist-electron/mac-arm64/cmux.app"
+echo "  open apps/client/dist-electron/mac-arm64/Cmux.app"
