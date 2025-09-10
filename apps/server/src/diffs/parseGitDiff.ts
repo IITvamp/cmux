@@ -1,11 +1,11 @@
+import type { DiffStatus, ReplaceDiffEntry } from "@cmux/shared/diff-types";
+import { exec, spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
-import { exec, spawn } from "node:child_process";
-import type { ReplaceDiffEntry, DiffStatus } from "@cmux/shared/diff-types";
 import { RepositoryManager } from "../repositoryManager.js";
 import { serverLogger } from "../utils/fileLogger.js";
-import * as os from "node:os";
 
 export interface ParsedDiffOptions {
   worktreePath: string;
@@ -40,7 +40,9 @@ export type ComputeEntriesPerf = {
   slowest?: { filePath: string; ms: number }[];
 };
 
-export async function computeEntriesNodeGit(opts: ParsedDiffOptions): Promise<ReplaceDiffEntry[]> {
+export async function computeEntriesNodeGit(
+  opts: ParsedDiffOptions
+): Promise<ReplaceDiffEntry[]> {
   const { worktreePath, includeContents = true, maxBytes = 950 * 1024 } = opts;
 
   const tStart = Date.now();
@@ -76,7 +78,9 @@ export async function computeEntriesNodeGit(opts: ParsedDiffOptions): Promise<Re
 
   // Build a map of file -> full patch text in one git call to avoid N spawn cost
   const tP0All = Date.now();
-  const patchMap = await getPatchMap(worktreePath, compareBase).catch(() => new Map<string, string>());
+  const patchMap = await getPatchMap(worktreePath, compareBase).catch(
+    () => new Map<string, string>()
+  );
   timePatch += Date.now() - tP0All;
 
   // Concurrency limit for per-file work
@@ -97,7 +101,9 @@ export async function computeEntriesNodeGit(opts: ParsedDiffOptions): Promise<Re
     oldFetchPath: string | null;
   };
 
-  const trackedIntermediates: (BuildItem | null)[] = new Array(tracked.length).fill(null);
+  const trackedIntermediates: (BuildItem | null)[] = new Array(
+    tracked.length
+  ).fill(null);
 
   let idx = 0;
   const worker = async (): Promise<void> => {
@@ -127,7 +133,10 @@ export async function computeEntriesNodeGit(opts: ParsedDiffOptions): Promise<Re
             if (status !== "deleted") {
               try {
                 const tRn0 = Date.now();
-                newContent = await fs.readFile(path.join(worktreePath, fp), "utf8");
+                newContent = await fs.readFile(
+                  path.join(worktreePath, fp),
+                  "utf8"
+                );
                 timeReadNew += Date.now() - tRn0;
               } catch {
                 newContent = "";
@@ -139,10 +148,13 @@ export async function computeEntriesNodeGit(opts: ParsedDiffOptions): Promise<Re
           patchText = patchMap.get(fp);
         }
       } catch (err) {
-        serverLogger.warn(`[Diffs] Failed building entry for ${fp}: ${String(err)}`);
+        serverLogger.warn(
+          `[Diffs] Failed building entry for ${fp}: ${String(err)}`
+        );
       }
 
-      const patchSize = !isBinary && patchText ? Buffer.byteLength(patchText, "utf8") : 0;
+      const patchSize =
+        !isBinary && patchText ? Buffer.byteLength(patchText, "utf8") : 0;
       const newSize = newContent ? Buffer.byteLength(newContent, "utf8") : 0;
 
       const needOld =
@@ -192,13 +204,29 @@ export async function computeEntriesNodeGit(opts: ParsedDiffOptions): Promise<Re
   let oldMap = new Map<string, string>();
   if (needOldPaths.length > 0) {
     const tOld0 = Date.now();
-    oldMap = await gitShowFilesBatch(worktreePath, compareBase, needOldPaths).catch(() => new Map());
+    oldMap = await gitShowFilesBatch(
+      worktreePath,
+      compareBase,
+      needOldPaths
+    ).catch(() => new Map());
     timeReadOld += Date.now() - tOld0;
   }
 
   for (const it of trackedIntermediates) {
     if (!it) continue;
-    const { fp, oldPath, status, additions, deletions, isBinary, patchText, patchSize, newContent, newSize, oldFetchPath } = it;
+    const {
+      fp,
+      oldPath,
+      status,
+      additions,
+      deletions,
+      isBinary,
+      patchText,
+      patchSize,
+      newContent,
+      newSize,
+      oldFetchPath,
+    } = it;
     let oldContent: string | undefined = undefined;
     let oldSize = 0;
     if (!isBinary && status !== "added" && includeContents) {
@@ -362,7 +390,13 @@ export async function computeEntriesBetweenRefs(opts: {
   includeContents?: boolean;
   maxBytes?: number;
 }): Promise<ReplaceDiffEntry[]> {
-  const { repoPath, ref1, ref2, includeContents = true, maxBytes = 950 * 1024 } = opts;
+  const {
+    repoPath,
+    ref1,
+    ref2,
+    includeContents = true,
+    maxBytes = 950 * 1024,
+  } = opts;
   // Use --find-renames and NUL delimiter for reliable parsing
   const { stdout: nsOut } = await execAsync(
     `git diff --name-status -z --find-renames ${ref1}..${ref2}`,
@@ -383,7 +417,8 @@ export async function computeEntriesBetweenRefs(opts: {
     } else {
       const fp = tokens[i++] || "";
       if (!fp) continue;
-      const status: DiffStatus = code === "A" ? "added" : code === "D" ? "deleted" : "modified";
+      const status: DiffStatus =
+        code === "A" ? "added" : code === "D" ? "deleted" : "modified";
       items.push({ status, filePath: fp });
     }
   }
@@ -402,7 +437,9 @@ export async function computeEntriesBetweenRefs(opts: {
           `git diff --numstat ${ref1}..${ref2} -- "${escapePath(it.filePath)}"`,
           { cwd: repoPath }
         );
-        const line = ns.split("\n").find((l) => l.trim().endsWith(`\t${it.filePath}`));
+        const line = ns
+          .split("\n")
+          .find((l) => l.trim().endsWith(`\t${it.filePath}`));
         if (line) {
           const [a, d] = line.split("\t");
           isBinary = a === "-" || d === "-";
@@ -448,7 +485,8 @@ export async function computeEntriesBetweenRefs(opts: {
         // fallthrough
       }
 
-      const patchSize = !isBinary && patchText ? Buffer.byteLength(patchText, "utf8") : 0;
+      const patchSize =
+        !isBinary && patchText ? Buffer.byteLength(patchText, "utf8") : 0;
       const oldSize = oldContent ? Buffer.byteLength(oldContent, "utf8") : 0;
       const newSize = newContent ? Buffer.byteLength(newContent, "utf8") : 0;
       const totalApprox = patchSize + oldSize + newSize;
@@ -536,11 +574,16 @@ async function resolvePrimaryBaseRef(cwd: string): Promise<string> {
   return "origin/main";
 }
 
-async function resolveMergeBaseWithDeepen(cwd: string, baseRef: string): Promise<string> {
+async function resolveMergeBaseWithDeepen(
+  cwd: string,
+  baseRef: string
+): Promise<string> {
   // Try merge-base to emulate GitHub PR compare; shallow clones may need deepen
   const tryMergeBase = async (): Promise<string | null> => {
     try {
-      const { stdout } = await execAsync(`git merge-base ${baseRef} HEAD`, { cwd });
+      const { stdout } = await execAsync(`git merge-base ${baseRef} HEAD`, {
+        cwd,
+      });
       const mb = stdout.trim();
       return mb || null;
     } catch {
@@ -592,11 +635,16 @@ async function resolveMergeBaseWithDeepen(cwd: string, baseRef: string): Promise
   return baseRef;
 }
 
-async function getTrackedChanges(cwd: string, baseRef: string): Promise<{
-  status: DiffStatus;
-  filePath: string;
-  oldPath?: string;
-}[]> {
+async function getTrackedChanges(
+  cwd: string,
+  baseRef: string
+): Promise<
+  {
+    status: DiffStatus;
+    filePath: string;
+    oldPath?: string;
+  }[]
+> {
   // NUL-delimited; for renames, format is: Rxxx<TAB>old<NUL>new<NUL>
   // for normal entries: M|A|D<TAB>path<NUL>
   const { stdout } = await execAsync(
@@ -604,7 +652,8 @@ async function getTrackedChanges(cwd: string, baseRef: string): Promise<{
     { cwd }
   );
   const tokens = stdout.split("\0").filter(Boolean);
-  const items: { status: DiffStatus; filePath: string; oldPath?: string }[] = [];
+  const items: { status: DiffStatus; filePath: string; oldPath?: string }[] =
+    [];
   let i = 0;
   while (i < tokens.length) {
     const code = tokens[i++]!; // e.g., 'M', 'A', 'D', 'R100'
@@ -617,7 +666,8 @@ async function getTrackedChanges(cwd: string, baseRef: string): Promise<{
     } else {
       const fp = tokens[i++] || "";
       if (!fp) continue;
-      const status: DiffStatus = code === "A" ? "added" : code === "D" ? "deleted" : "modified";
+      const status: DiffStatus =
+        code === "A" ? "added" : code === "D" ? "deleted" : "modified";
       items.push({ status, filePath: fp });
     }
   }
@@ -626,7 +676,10 @@ async function getTrackedChanges(cwd: string, baseRef: string): Promise<{
 
 async function getUntrackedFiles(cwd: string): Promise<string[]> {
   try {
-    const { stdout } = await execAsync("git ls-files --others --exclude-standard -z", { cwd });
+    const { stdout } = await execAsync(
+      "git ls-files --others --exclude-standard -z",
+      { cwd }
+    );
     return stdout.split("\0").filter(Boolean);
   } catch {
     return [];
@@ -749,10 +802,18 @@ async function gitShowFilesBatch(
 async function getNumstatMap(
   cwd: string,
   baseRef: string
-): Promise<Map<string, { additions: number; deletions: number; isBinary: boolean }>> {
-  const out = new Map<string, { additions: number; deletions: number; isBinary: boolean }>();
+): Promise<
+  Map<string, { additions: number; deletions: number; isBinary: boolean }>
+> {
+  const out = new Map<
+    string,
+    { additions: number; deletions: number; isBinary: boolean }
+  >();
   try {
-    const { stdout } = await execAsync(`git diff --numstat --find-renames ${baseRef}`, { cwd });
+    const { stdout } = await execAsync(
+      `git diff --numstat --find-renames ${baseRef}`,
+      { cwd }
+    );
     const lines = stdout.split("\n");
     for (const line of lines) {
       if (!line.trim()) continue;
@@ -770,57 +831,6 @@ async function getNumstatMap(
     // fall back to empty map; per-file lookups may default to zeros
   }
   return out;
-}
-
-async function gitNumstatForFile(
-  cwd: string,
-  baseRef: string,
-  filePath: string
-): Promise<{ additions: number; deletions: number; isBinary: boolean } | null> {
-  try {
-    const { stdout } = await execAsync(
-      `git diff --numstat ${baseRef} -- "${escapePath(filePath)}"`,
-      { cwd }
-    );
-    // format: additions<TAB>deletions<TAB>path
-    const line = stdout.split("\n").find((l) => l.trim().endsWith(`\t${filePath}`));
-    if (!line) return { additions: 0, deletions: 0, isBinary: false };
-    const [a, d] = line.split("\t");
-    const isBinary = a === "-" || d === "-";
-    return {
-      additions: isBinary ? 0 : parseInt(a || "0", 10),
-      deletions: isBinary ? 0 : parseInt(d || "0", 10),
-      isBinary,
-    };
-  } catch {
-    return null;
-  }
-}
-
-async function gitPatchForFile(
-  cwd: string,
-  baseRef: string,
-  filePath: string
-): Promise<string | null> {
-  try {
-    const { stdout } = await execAsync(
-      `git diff --patch --binary --no-color ${baseRef} -- "${escapePath(
-        filePath
-      )}"`,
-      { cwd, maxBuffer: 10 * 1024 * 1024 }
-    );
-    return stdout || null;
-  } catch {
-    return null;
-  }
-}
-
-async function gitShowFile(cwd: string, baseRef: string, filePath: string): Promise<string> {
-  const { stdout } = await execAsync(
-    `git show ${baseRef}:"${escapePath(filePath)}"`,
-    { cwd, maxBuffer: 10 * 1024 * 1024 }
-  );
-  return stdout;
 }
 
 function escapePath(p: string): string {

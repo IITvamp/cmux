@@ -146,8 +146,12 @@ describe("DockerVSCodeInstance", () => {
           "2",
         ]);
         proc.on("exit", (code) => {
-          if (code === 0) resolve();
-          else reject(new Error("docker run failed"));
+          if (code === 0) {
+            resolve();
+          } else {
+            console.error("docker run failed", proc.stderr.toString());
+            reject(new Error("docker run failed"));
+          }
         });
         proc.on("error", reject);
       });
