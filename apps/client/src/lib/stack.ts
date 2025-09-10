@@ -41,6 +41,12 @@ cachedGetUser(stackClientApp).then(async (user) => {
         return authJson.accessToken;
       }
       const newAuthJson = await user.getAuthJson();
+      console.log("[StackAuth] newAuthJson", newAuthJson);
+      if (!newAuthJson.accessToken) {
+        console.warn("[StackAuth] No access token; convex auth not ready");
+        signalConvexAuthReady(false);
+        return;
+      }
       return newAuthJson.accessToken;
     },
     (isAuthenticated) => {
