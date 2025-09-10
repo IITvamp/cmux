@@ -95,17 +95,17 @@ jobs:
         run: |
           set -euo pipefail
           KEY_PATH="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
-          # Write secret to file (handles both single-line and multi-line secrets)
+          # Normalize line endings and write the PEM to disk
           printf "%s" "$APPLE_API_KEY" | perl -0777 -pe 's/\r\n|\r|\n/\n/g' > "$KEY_PATH"
+          # Expose the FILE PATH (not contents) to later steps
           echo "APPLE_API_KEY=$KEY_PATH" >> "$GITHUB_ENV"
 
       - name: Build & publish mac x64 (signed) to GitHub Releases
         if: ${{ steps.signing.outputs.has == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          CSC_LINK: ${{ env.CSC_LINK }}
+          # NOTE: Do not set APPLE_API_KEY here; it's the file path written to $GITHUB_ENV above.
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           DEBUG: electron-osx-sign*,electron-notarize*
@@ -244,9 +244,8 @@ jobs:
         if: ${{ steps.signing_arm.outputs.has == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
-          CSC_LINK: ${{ env.CSC_LINK }}
+          # NOTE: Do not set APPLE_API_KEY here; it's the file path written to $GITHUB_ENV above.
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
-          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           DEBUG: electron-osx-sign*,electron-notarize*
