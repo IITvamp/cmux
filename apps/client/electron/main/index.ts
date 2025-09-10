@@ -301,9 +301,7 @@ function createWindow(): void {
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 12, y: 10 },
     webPreferences: {
-      preload: app.isPackaged
-        ? join(app.getAppPath(), "out/preload/index.cjs")
-        : join(__dirname, "../preload/index.cjs"),
+      preload: join(app.getAppPath(), "out/preload/index.cjs"),
       sandbox: false,
       contextIsolation: true,
       nodeIntegration: false,
