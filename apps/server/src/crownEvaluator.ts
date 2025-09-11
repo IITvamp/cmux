@@ -539,18 +539,25 @@ export async function evaluateCrown(
         const workerDiff: string | null = await collectDiffViaWorker(run._id);
         let gitDiff: string = workerDiff ?? "";
 
-        // Fallback: Extract git diff from log - look for the dedicated sections
+        // Fallback: Extract git diff from concatenated log chunks
         if (!gitDiff) {
           gitDiff = "No changes detected";
 
+          // Concatenate log chunks for this run
+          const chunks = await getConvex().query(
+            api.taskRunLogChunks.getChunks,
+            { teamSlugOrId, taskRunId: run._id }
+          );
+          const fullLog = chunks.map((c) => c.content).join("");
+
           // Look for our well-defined git diff section - try multiple formats
-          let gitDiffMatch = run.log.match(
+          let gitDiffMatch = fullLog.match(
             /=== GIT DIFF ===\n([\s\S]*?)\n=== END GIT DIFF ===/
           );
 
           // Also try the new format with "ALL CHANGES"
           if (!gitDiffMatch) {
-            gitDiffMatch = run.log.match(
+            gitDiffMatch = fullLog.match(
               /=== ALL CHANGES \(git diff HEAD\) ===\n([\s\S]*?)\n=== END ALL CHANGES ===/
             );
           }
@@ -575,23 +582,23 @@ export async function evaluateCrown(
               `[CrownEvaluator] NO GIT DIFF SECTION FOUND for ${agentName}!`
             );
             serverLogger.error(
-              `[CrownEvaluator] Log contains "=== GIT DIFF ==="?: ${run.log.includes("=== GIT DIFF ===")}`
+              `[CrownEvaluator] Log contains "=== GIT DIFF ==="?: ${fullLog.includes("=== GIT DIFF ===")}`
             );
             serverLogger.error(
-              `[CrownEvaluator] Log contains "=== END GIT DIFF ==="?: ${run.log.includes("=== END GIT DIFF ===")}`
+              `[CrownEvaluator] Log contains "=== END GIT DIFF ==="?: ${fullLog.includes("=== END GIT DIFF ===")}`
             );
             serverLogger.error(
-              `[CrownEvaluator] Log contains "=== ALL CHANGES"?: ${run.log.includes("=== ALL CHANGES")}`
+              `[CrownEvaluator] Log contains "=== ALL CHANGES"?: ${fullLog.includes("=== ALL CHANGES")}`
             );
 
             // As a last resort, check if there's any indication of changes
             if (
-              run.log.includes("=== ALL STAGED CHANGES") ||
-              run.log.includes("=== AGGRESSIVE DIFF CAPTURE") ||
-              run.log.includes("ERROR: git diff --cached was empty")
+              fullLog.includes("=== ALL STAGED CHANGES") ||
+              fullLog.includes("=== AGGRESSIVE DIFF CAPTURE") ||
+              fullLog.includes("ERROR: git diff --cached was empty")
             ) {
               // Use whatever we can find
-              const lastPart = run.log.slice(-3000);
+              const lastPart = fullLog.slice(-3000);
               gitDiff = `ERROR: Git diff not properly captured. Last part of log:\n${lastPart}`;
             }
           }
@@ -607,9 +614,15 @@ export async function evaluateCrown(
         );
 
         // Log last 500 chars of the run log to debug
-        serverLogger.info(
-          `[CrownEvaluator] ${agentName} log tail: ...${run.log.slice(-500)}`
-        );
+        serverLogger.info(`[CrownEvaluator] ${agentName} log tail: ...`);
+        try {
+          const chunks = await getConvex().query(
+            api.taskRunLogChunks.getChunks,
+            { teamSlugOrId, taskRunId: run._id }
+          );
+          const fullLog = chunks.map((c) => c.content).join("");
+          serverLogger.info(`[CrownEvaluator] ${agentName} log tail: ...${fullLog.slice(-500)}`);
+        } catch {}
 
         return {
           index: idx,

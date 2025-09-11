@@ -541,9 +541,9 @@ export async function spawnAgent(
             capturedAuthHeaderJson,
             async () =>
               retryOnOptimisticConcurrency(() =>
-                getConvex().mutation(api.taskRuns.appendLogPublic, {
+                getConvex().mutation(api.taskRunLogChunks.appendChunkPublic, {
                   teamSlugOrId,
-                  id: taskRunId,
+                  taskRunId,
                   content: `\n\n=== ERROR ===\n${data.errorMessage}\n=== END ERROR ===\n`,
                 })
               )

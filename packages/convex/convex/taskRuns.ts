@@ -25,7 +25,6 @@ export const create = authMutation({
       agentName: args.agentName,
       newBranch: args.newBranch,
       status: "pending",
-      log: "",
       createdAt: now,
       updatedAt: now,
       userId,
@@ -135,11 +134,14 @@ export const appendLog = internalMutation({
     console.log(
       `[appendLog] Adding ${args.content.length} chars to task run ${args.id}`
     );
-
-    await ctx.db.patch(args.id, {
-      log: run.log + args.content,
-      updatedAt: Date.now(),
+    // Stop writing to taskRuns.log; write chunk row instead
+    await ctx.db.insert("taskRunLogChunks", {
+      taskRunId: args.id,
+      content: args.content,
+      userId: run.userId,
+      teamId: run.teamId,
     });
+    await ctx.db.patch(args.id, { updatedAt: Date.now() });
   },
 });
 
@@ -296,11 +298,14 @@ export const appendLogPublic = authMutation({
     console.log(
       `[appendLog] Adding ${args.content.length} chars to task run ${args.id}`
     );
-
-    await ctx.db.patch(args.id, {
-      log: run.log + args.content,
-      updatedAt: Date.now(),
+    // Stop writing to taskRuns.log; write chunk row instead
+    await ctx.db.insert("taskRunLogChunks", {
+      taskRunId: args.id,
+      content: args.content,
+      userId,
+      teamId,
     });
+    await ctx.db.patch(args.id, { updatedAt: Date.now() });
   },
 });
 

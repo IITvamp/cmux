@@ -62,9 +62,9 @@ export async function handleTaskCompletion({
     // Append git diff to the log; diffs are fetched on-demand now
     if (gitDiff && gitDiff.length > 0) {
       await retryOnOptimisticConcurrency(() =>
-        getConvex().mutation(api.taskRuns.appendLogPublic, {
+        getConvex().mutation(api.taskRunLogChunks.appendChunkPublic, {
           teamSlugOrId,
-          id: taskRunId,
+          taskRunId,
           content: `\n\n=== GIT DIFF ===\n${gitDiff}\n=== END GIT DIFF ===\n`,
         })
       );
