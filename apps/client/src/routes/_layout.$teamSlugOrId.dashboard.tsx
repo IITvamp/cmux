@@ -144,17 +144,10 @@ function DashboardComponent() {
     if (!socket) return;
 
     socket.emit("check-provider-status", (response) => {
-      if (response.success) {
-        // Schedule next check via existing interval; also update docker readiness state
-        try {
-          setDockerReady(
-            typeof response.dockerStatus?.isRunning === "boolean"
-              ? response.dockerStatus.isRunning
-              : null
-          );
-        } catch {
-          // Ignore parse errors
-        }
+      if (!response?.success) return;
+      const isRunning = response.dockerStatus?.isRunning;
+      if (typeof isRunning === "boolean") {
+        setDockerReady(isRunning);
       }
     });
   }, [socket]);
@@ -388,12 +381,9 @@ function DashboardComponent() {
   //   }
   // }, [reposByOrg, fetchRepos]);
 
-  // Check provider status on mount
+  // Check provider status once on mount (no polling)
   useEffect(() => {
     checkProviderStatus();
-    // Poll periodically to keep status fresh without recursive calls
-    const interval = setInterval(checkProviderStatus, 30000);
-    return () => clearInterval(interval);
   }, [checkProviderStatus]);
 
   // Fetch branches when repo changes
