@@ -544,13 +544,14 @@ export async function evaluateCrown(
           gitDiff = "No changes detected";
 
           // Look for our well-defined git diff section - try multiple formats
-          let gitDiffMatch = run.log.match(
+          const logContent = run.log || "";
+          let gitDiffMatch = logContent.match(
             /=== GIT DIFF ===\n([\s\S]*?)\n=== END GIT DIFF ===/
           );
 
           // Also try the new format with "ALL CHANGES"
           if (!gitDiffMatch) {
-            gitDiffMatch = run.log.match(
+            gitDiffMatch = logContent.match(
               /=== ALL CHANGES \(git diff HEAD\) ===\n([\s\S]*?)\n=== END ALL CHANGES ===/
             );
           }
@@ -575,23 +576,23 @@ export async function evaluateCrown(
               `[CrownEvaluator] NO GIT DIFF SECTION FOUND for ${agentName}!`
             );
             serverLogger.error(
-              `[CrownEvaluator] Log contains "=== GIT DIFF ==="?: ${run.log.includes("=== GIT DIFF ===")}`
+              `[CrownEvaluator] Log contains "=== GIT DIFF ==="?: ${logContent.includes("=== GIT DIFF ===")}`
             );
             serverLogger.error(
-              `[CrownEvaluator] Log contains "=== END GIT DIFF ==="?: ${run.log.includes("=== END GIT DIFF ===")}`
+              `[CrownEvaluator] Log contains "=== END GIT DIFF ==="?: ${logContent.includes("=== END GIT DIFF ===")}`
             );
             serverLogger.error(
-              `[CrownEvaluator] Log contains "=== ALL CHANGES"?: ${run.log.includes("=== ALL CHANGES")}`
+              `[CrownEvaluator] Log contains "=== ALL CHANGES"?: ${logContent.includes("=== ALL CHANGES")}`
             );
 
             // As a last resort, check if there's any indication of changes
             if (
-              run.log.includes("=== ALL STAGED CHANGES") ||
-              run.log.includes("=== AGGRESSIVE DIFF CAPTURE") ||
-              run.log.includes("ERROR: git diff --cached was empty")
+              logContent.includes("=== ALL STAGED CHANGES") ||
+              logContent.includes("=== AGGRESSIVE DIFF CAPTURE") ||
+              logContent.includes("ERROR: git diff --cached was empty")
             ) {
               // Use whatever we can find
-              const lastPart = run.log.slice(-3000);
+              const lastPart = logContent.slice(-3000);
               gitDiff = `ERROR: Git diff not properly captured. Last part of log:\n${lastPart}`;
             }
           }
@@ -607,8 +608,9 @@ export async function evaluateCrown(
         );
 
         // Log last 500 chars of the run log to debug
+        const logTail = (run.log || "").slice(-500);
         serverLogger.info(
-          `[CrownEvaluator] ${agentName} log tail: ...${run.log.slice(-500)}`
+          `[CrownEvaluator] ${agentName} log tail: ...${logTail}`
         );
 
         return {

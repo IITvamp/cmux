@@ -56,7 +56,6 @@ describe("stopContainersForRunsFromTree - cmux sandbox path", () => {
         taskId: zidTask.parse("tm1"),
         prompt: "p",
         status: "running",
-        log: "",
         createdAt: now,
         updatedAt: now,
         userId: "test-user",

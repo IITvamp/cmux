@@ -25,7 +25,6 @@ export const create = authMutation({
       agentName: args.agentName,
       newBranch: args.newBranch,
       status: "pending",
-      log: "",
       createdAt: now,
       updatedAt: now,
       userId,
@@ -120,26 +119,19 @@ export const updateStatus = internalMutation({
   },
 });
 
-// Append to task run log
+// Append to task run log - DEPRECATED: Use taskRunLogChunks instead
+// This function is kept for backward compatibility but does nothing
 export const appendLog = internalMutation({
   args: {
     id: v.id("taskRuns"),
     content: v.string(),
   },
-  handler: async (ctx, args) => {
-    const run = await ctx.db.get(args.id);
-    if (!run) {
-      throw new Error("Task run not found");
-    }
-
+  handler: async (_ctx, args) => {
+    // DEPRECATED: No longer appending to log field
+    // Logs should be written to taskRunLogChunks table instead
     console.log(
-      `[appendLog] Adding ${args.content.length} chars to task run ${args.id}`
+      `[appendLog] DEPRECATED: Ignoring append of ${args.content.length} chars to task run ${args.id}`
     );
-
-    await ctx.db.patch(args.id, {
-      log: run.log + args.content,
-      updatedAt: Date.now(),
-    });
   },
 });
 
@@ -276,31 +268,23 @@ export const updateStatusPublic = authMutation({
   },
 });
 
+// DEPRECATED: Use taskRunLogChunks.appendChunkPublic instead
+// This function is kept for backward compatibility but does nothing
 export const appendLogPublic = authMutation({
   args: {
     teamSlugOrId: v.string(),
     id: v.id("taskRuns"),
     content: v.string(),
   },
-  handler: async (ctx, args) => {
-    const userId = ctx.identity.subject;
-    const run = await ctx.db.get(args.id);
-    if (!run) {
-      throw new Error("Task run not found");
-    }
-    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
-    if (run.teamId !== teamId || run.userId !== userId) {
-      throw new Error("Unauthorized");
-    }
-
+  handler: async (_ctx, args) => {
+    // DEPRECATED: No longer appending to log field
+    // Logs should be written to taskRunLogChunks table instead
+    // const userId = ctx.identity.subject;
+    // const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
+    
     console.log(
-      `[appendLog] Adding ${args.content.length} chars to task run ${args.id}`
+      `[appendLogPublic] DEPRECATED: Ignoring append of ${args.content.length} chars to task run ${args.id}`
     );
-
-    await ctx.db.patch(args.id, {
-      log: run.log + args.content,
-      updatedAt: Date.now(),
-    });
   },
 });
 
