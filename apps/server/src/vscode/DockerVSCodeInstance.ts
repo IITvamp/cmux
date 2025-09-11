@@ -1125,63 +1125,66 @@ export class DockerVSCodeInstance extends VSCodeInstance {
   private static syncDockerContainerStates(): void {
     dockerLogger.info("Starting docker event stream for container state sync");
 
-    // Prefer the docker CLI when available, but gracefully fall back to Dockerode events
+    // Only use Dockerode in Electron; otherwise require docker CLI
+    const isElectron = Boolean(
+      (process.versions as unknown as { electron?: string })?.electron
+    );
+
+    if (isElectron) {
+      dockerLogger.info("Electron detected; using Dockerode event stream");
+      DockerVSCodeInstance.startDockerodeEventStream();
+      return;
+    }
+
+    // Non-Electron: require docker CLI events
     const dockerCmd = DockerVSCodeInstance.resolveDockerExecutable();
 
-    if (dockerCmd) {
-      try {
-        const proc = spawn(dockerCmd, ["events", "--format", "{{json .}}"]);
-        DockerVSCodeInstance.eventsProcess = proc;
+    if (!dockerCmd) {
+      dockerLogger.error(
+        "Docker CLI not found in PATH or known locations; cannot start container state sync in non-Electron context"
+      );
+      return;
+    }
 
-        proc.on("error", (err) => {
-          dockerLogger.error(
-            `[docker events] Failed to start CLI stream (${dockerCmd}):`,
-            err
-          );
-          DockerVSCodeInstance.eventsProcess = null;
-          // Fall back to Dockerode-based events
-          DockerVSCodeInstance.startDockerodeEventStream();
-        });
+    try {
+      const proc = spawn(dockerCmd, ["events", "--format", "{{json .}}"]);
+      DockerVSCodeInstance.eventsProcess = proc;
 
-        proc.stdout.setEncoding("utf8");
-        proc.stdout.on("data", (chunk: string) => {
-          const lines = chunk.split("\n").filter((l) => l.trim().length > 0);
-          for (const line of lines) {
-            try {
-              const event = JSON.parse(line) as DockerEvent;
-              void DockerVSCodeInstance.handleDockerEvent(event);
-            } catch (error) {
-              dockerLogger.error(
-                "[docker events] Failed to parse event:",
-                error
-              );
-            }
-          }
-        });
-
-        proc.stderr.on("data", (data: Buffer) => {
-          dockerLogger.error("[docker events]", data.toString());
-        });
-
-        proc.on("close", (code) => {
-          dockerLogger.info(`docker events stream closed with code ${code}`);
-        });
-        return;
-      } catch (err) {
+      proc.on("error", (err) => {
         dockerLogger.error(
-          `[docker events] Error spawning CLI (${dockerCmd}), falling back to socket:`,
+          `[docker events] Failed to start CLI stream (${dockerCmd}):`,
           err
         );
         DockerVSCodeInstance.eventsProcess = null;
-      }
-    } else {
-      dockerLogger.warn(
-        "Docker CLI not found in PATH or known locations; falling back to Dockerode events"
-      );
-    }
+      });
 
-    // Fallback: use Dockerode over the Unix socket
-    DockerVSCodeInstance.startDockerodeEventStream();
+      proc.stdout.setEncoding("utf8");
+      proc.stdout.on("data", (chunk: string) => {
+        const lines = chunk.split("\n").filter((l) => l.trim().length > 0);
+        for (const line of lines) {
+          try {
+            const event = JSON.parse(line) as DockerEvent;
+            void DockerVSCodeInstance.handleDockerEvent(event);
+          } catch (error) {
+            dockerLogger.error("[docker events] Failed to parse event:", error);
+          }
+        }
+      });
+
+      proc.stderr.on("data", (data: Buffer) => {
+        dockerLogger.error("[docker events]", data.toString());
+      });
+
+      proc.on("close", (code) => {
+        dockerLogger.info(`docker events stream closed with code ${code}`);
+      });
+    } catch (err) {
+      dockerLogger.error(
+        `[docker events] Error spawning CLI (${dockerCmd}); container state sync disabled`,
+        err
+      );
+      DockerVSCodeInstance.eventsProcess = null;
+    }
   }
 
   // Try to stream events using the Docker socket (no CLI dependency)
