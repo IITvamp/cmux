@@ -96,20 +96,20 @@ mod tests {
     run(&repo_dir, "git -c user.email=a@b -c user.name=test checkout -b main");
     fs::write(repo_dir.join("file.txt"), "base\n").unwrap();
     run(&repo_dir, "git add .");
-    run(&repo_dir, "git commit -m base");
+    run(&repo_dir, "git -c user.email=a@b -c user.name=test commit -m base");
     run(&repo_dir, "git checkout -b feature");
 
     let n = 60;
     for i in 1..=n {
       fs::write(repo_dir.join("file.txt"), format!("f{}\n", i)).unwrap();
       run(&repo_dir, "git add .");
-      run(&repo_dir, &format!("git commit -m f{}", i));
+      run(&repo_dir, &format!("git -c user.email=a@b -c user.name=test commit -m f{}", i));
     }
     run(&repo_dir, "git checkout main");
     for i in 1..=n {
       fs::write(repo_dir.join("file.txt"), format!("m{}\n", i)).unwrap();
       run(&repo_dir, "git add .");
-      run(&repo_dir, &format!("git commit -m m{}", i));
+      run(&repo_dir, &format!("git -c user.email=a@b -c user.name=test commit -m m{}", i));
     }
 
     let repo = gix::open(&repo_dir).unwrap();

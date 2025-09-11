@@ -21,7 +21,7 @@ fn workspace_diff_basic() {
   run(&work, "git -c user.email=a@b -c user.name=test checkout -b main");
   fs::write(work.join("a.txt"), b"a1\n").unwrap();
   run(&work, "git add .");
-  run(&work, "git commit -m init");
+  run(&work, "git -c user.email=a@b -c user.name=test commit -m init");
 
   fs::write(work.join("a.txt"), b"a1\na2\n").unwrap();
   fs::create_dir_all(work.join("src")).unwrap();
@@ -51,11 +51,11 @@ fn refs_diff_basic_on_local_repo() {
   run(&work, "git -c user.email=a@b -c user.name=test checkout -b main");
   std::fs::write(work.join("a.txt"), b"a1\n").unwrap();
   run(&work, "git add .");
-  run(&work, "git commit -m init");
+  run(&work, "git -c user.email=a@b -c user.name=test commit -m init");
   run(&work, "git checkout -b feature");
   std::fs::write(work.join("b.txt"), b"b\n").unwrap();
   run(&work, "git add .");
-  run(&work, "git commit -m change");
+  run(&work, "git -c user.email=a@b -c user.name=test commit -m change");
 
   let out = crate::diff::refs::diff_refs(GitDiffRefsOptions{
     ref1: "main".into(),
@@ -81,19 +81,19 @@ fn refs_merge_base_after_merge_is_branch_tip() {
   run(&work, "git -c user.email=a@b -c user.name=test checkout -b main");
   std::fs::write(work.join("file.txt"), b"base\n").unwrap();
   run(&work, "git add .");
-  run(&work, "git commit -m base");
+  run(&work, "git -c user.email=a@b -c user.name=test commit -m base");
 
   run(&work, "git checkout -b feature");
   std::fs::write(work.join("feat.txt"), b"feat\n").unwrap();
   run(&work, "git add .");
-  run(&work, "git commit -m feature-change");
+  run(&work, "git -c user.email=a@b -c user.name=test commit -m feature-change");
 
   run(&work, "git checkout main");
-  run(&work, "git merge --no-ff feature -m merge-feature");
+  run(&work, "git -c user.email=a@b -c user.name=test merge --no-ff feature -m merge-feature");
 
   std::fs::write(work.join("main.txt"), b"main\n").unwrap();
   run(&work, "git add .");
-  run(&work, "git commit -m main-after-merge");
+  run(&work, "git -c user.email=a@b -c user.name=test commit -m main-after-merge");
 
   let out = crate::diff::refs::diff_refs(GitDiffRefsOptions{
     ref1: "main".into(),
