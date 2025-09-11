@@ -34,7 +34,9 @@ function randomSuffix(): string {
   return Math.random().toString(36).slice(2, 8);
 }
 
-describe.sequential("stopContainersForRuns (docker E2E)", () => {
+describe.sequential.skipIf(
+  process.env.CMUX_SKIP_DOCKER_TESTS === "1" || process.platform === "darwin"
+)("stopContainersForRuns (docker E2E)", () => {
   const containers: string[] = [];
   const zidRun = typedZid("taskRuns");
   const zidTask = typedZid("tasks");
