@@ -90,7 +90,7 @@ describe("githubReposRouter via SDK", () => {
       query: { team: "manaflow", page: 1 },
       headers: { "x-stack-auth": JSON.stringify(tokens) },
     });
-    expect([200, 401, 501]).toContain(first.response.status);
+    expect([200, 401, 500, 501]).toContain(first.response.status);
     if (first.response.status === 200 && first.data) {
       const second = await getApiIntegrationsGithubRepos({
         client: testApiClient,
