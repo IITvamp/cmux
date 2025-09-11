@@ -3,6 +3,7 @@ import type { Id } from "@cmux/convex/dataModel";
 import { getShortId } from "@cmux/shared";
 import Docker from "dockerode";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import * as fs from "node:fs";
 import * as os from "os";
 import * as path from "path";
 import { getConvex } from "../utils/convexClient.js";
@@ -52,6 +53,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
   } | null = null;
   private static readonly PORT_CACHE_DURATION = 2000; // 2 seconds
   private static eventsProcess: ChildProcessWithoutNullStreams | null = null;
+  private static eventsStream: NodeJS.ReadableStream | null = null;
   private static dockerInstance: Docker | null = null;
 
   // Get or create the Docker singleton
@@ -1103,34 +1105,177 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       DockerVSCodeInstance.eventsProcess.kill();
       DockerVSCodeInstance.eventsProcess = null;
     }
+    if (DockerVSCodeInstance.eventsStream) {
+      try {
+        const s = DockerVSCodeInstance.eventsStream as unknown as {
+          removeAllListeners: (...args: unknown[]) => void;
+          destroy?: () => void;
+        };
+        s.removeAllListeners();
+        if (typeof s.destroy === "function") {
+          s.destroy();
+        }
+      } catch {
+        // ignore
+      }
+      DockerVSCodeInstance.eventsStream = null;
+    }
   }
 
   private static syncDockerContainerStates(): void {
     dockerLogger.info("Starting docker event stream for container state sync");
 
-    const proc = spawn("docker", ["events", "--format", "{{json .}}"]);
-    DockerVSCodeInstance.eventsProcess = proc;
+    // Prefer the docker CLI when available, but gracefully fall back to Dockerode events
+    const dockerCmd = DockerVSCodeInstance.resolveDockerExecutable();
 
-    proc.stdout.setEncoding("utf8");
-    proc.stdout.on("data", (chunk: string) => {
-      const lines = chunk.split("\n").filter((l) => l.trim().length > 0);
-      for (const line of lines) {
-        try {
-          const event = JSON.parse(line) as DockerEvent;
-          void DockerVSCodeInstance.handleDockerEvent(event);
-        } catch (error) {
-          dockerLogger.error("[docker events] Failed to parse event:", error);
-        }
+    if (dockerCmd) {
+      try {
+        const proc = spawn(dockerCmd, ["events", "--format", "{{json .}}"]);
+        DockerVSCodeInstance.eventsProcess = proc;
+
+        proc.on("error", (err) => {
+          dockerLogger.error(
+            `[docker events] Failed to start CLI stream (${dockerCmd}):`,
+            err
+          );
+          DockerVSCodeInstance.eventsProcess = null;
+          // Fall back to Dockerode-based events
+          DockerVSCodeInstance.startDockerodeEventStream();
+        });
+
+        proc.stdout.setEncoding("utf8");
+        proc.stdout.on("data", (chunk: string) => {
+          const lines = chunk.split("\n").filter((l) => l.trim().length > 0);
+          for (const line of lines) {
+            try {
+              const event = JSON.parse(line) as DockerEvent;
+              void DockerVSCodeInstance.handleDockerEvent(event);
+            } catch (error) {
+              dockerLogger.error(
+                "[docker events] Failed to parse event:",
+                error
+              );
+            }
+          }
+        });
+
+        proc.stderr.on("data", (data: Buffer) => {
+          dockerLogger.error("[docker events]", data.toString());
+        });
+
+        proc.on("close", (code) => {
+          dockerLogger.info(`docker events stream closed with code ${code}`);
+        });
+        return;
+      } catch (err) {
+        dockerLogger.error(
+          `[docker events] Error spawning CLI (${dockerCmd}), falling back to socket:`,
+          err
+        );
+        DockerVSCodeInstance.eventsProcess = null;
       }
-    });
+    } else {
+      dockerLogger.warn(
+        "Docker CLI not found in PATH or known locations; falling back to Dockerode events"
+      );
+    }
 
-    proc.stderr.on("data", (data: Buffer) => {
-      dockerLogger.error("[docker events]", data.toString());
-    });
+    // Fallback: use Dockerode over the Unix socket
+    DockerVSCodeInstance.startDockerodeEventStream();
+  }
 
-    proc.on("close", (code) => {
-      dockerLogger.info(`docker events stream closed with code ${code}`);
-    });
+  // Try to stream events using the Docker socket (no CLI dependency)
+  private static startDockerodeEventStream() {
+    try {
+      const docker = DockerVSCodeInstance.getDocker();
+      docker.getEvents({}, (err, stream) => {
+        if (err) {
+          dockerLogger.error("[docker events] Socket stream error:", err);
+          return;
+        }
+        if (!stream) {
+          dockerLogger.error(
+            "[docker events] No stream returned by docker.getEvents"
+          );
+          return;
+        }
+        DockerVSCodeInstance.eventsStream = stream;
+
+        let buffer = "";
+        stream.on("data", (chunk: Buffer | string) => {
+          buffer += chunk.toString();
+          for (;;) {
+            const idx = buffer.indexOf("\n");
+            if (idx === -1) break;
+            const line = buffer.slice(0, idx);
+            buffer = buffer.slice(idx + 1);
+            if (!line.trim()) continue;
+            try {
+              const event = JSON.parse(line) as DockerEvent;
+              void DockerVSCodeInstance.handleDockerEvent(event);
+            } catch (e) {
+              dockerLogger.error(
+                "[docker events] Failed to parse socket event:",
+                e
+              );
+            }
+          }
+        });
+
+        stream.on("error", (e) => {
+          dockerLogger.error("[docker events] Socket stream error:", e);
+        });
+
+        stream.on("close", () => {
+          dockerLogger.info("docker socket events stream closed");
+        });
+      });
+    } catch (e) {
+      dockerLogger.error(
+        "[docker events] Unable to start Dockerode event stream:",
+        e
+      );
+    }
+  }
+
+  // Locate a usable docker executable; return absolute path or null
+  private static resolveDockerExecutable(): string | null {
+    // User overrides
+    const candidates: string[] = [];
+    const envCandidates = [
+      process.env.DOCKER_CLI,
+      process.env.DOCKER_PATH,
+    ].filter(Boolean) as string[];
+    candidates.push(...envCandidates);
+
+    // Common locations (macOS + Linux)
+    candidates.push(
+      "/opt/homebrew/bin/docker",
+      "/usr/local/bin/docker",
+      "/usr/bin/docker",
+      // Docker Desktop app bundle resources
+      "/Applications/Docker.app/Contents/Resources/bin/docker",
+      "/Applications/Docker.app/Contents/Resources/bin/com.docker.cli"
+    );
+
+    // Also scan current PATH entries
+    const pathVar = process.env.PATH || "";
+    for (const dir of pathVar.split(":").filter(Boolean)) {
+      candidates.push(path.join(dir, "docker"));
+    }
+
+    const seen = new Set<string>();
+    for (const p of candidates) {
+      if (!p || seen.has(p)) continue;
+      seen.add(p);
+      try {
+        fs.accessSync(p, fs.constants.X_OK);
+        return p;
+      } catch {
+        // not accessible/executable
+      }
+    }
+    return null;
   }
 
   private static async handleDockerEvent(event: DockerEvent): Promise<void> {
