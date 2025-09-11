@@ -2,10 +2,8 @@ import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
 import { getShortId } from "@cmux/shared";
 import Docker from "dockerode";
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
-import * as fs from "node:fs";
-import * as os from "os";
-import * as path from "path";
+import * as os from "node:os";
+import * as path from "node:path";
 import { getConvex } from "../utils/convexClient.js";
 import { cleanupGitCredentials } from "../utils/dockerGitSetup.js";
 import { dockerLogger } from "../utils/fileLogger.js";
@@ -52,7 +50,6 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     timestamp: number;
   } | null = null;
   private static readonly PORT_CACHE_DURATION = 2000; // 2 seconds
-  private static eventsProcess: ChildProcessWithoutNullStreams | null = null;
   private static eventsStream: NodeJS.ReadableStream | null = null;
   private static dockerInstance: Docker | null = null;
 
@@ -299,7 +296,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         // Mount SSH directory for git authentication
         const sshDir = path.join(homeDir, ".ssh");
         try {
-          const fs = await import("fs");
+          const fs = await import("node:fs");
           await fs.promises.access(sshDir);
           binds.push(`${sshDir}:/root/.ssh:ro`);
           dockerLogger.info(`  SSH mount: ${sshDir} -> /root/.ssh (read-only)`);
@@ -309,7 +306,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
         // Mount git config if it exists
         try {
-          const fs = await import("fs");
+          const fs = await import("node:fs");
           await fs.promises.access(gitConfigPath);
 
           // Read and filter the git config to remove macOS-specific settings
@@ -352,7 +349,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         // Mount SSH directory for git authentication
         const sshDir = path.join(homeDir, ".ssh");
         try {
-          const fs = await import("fs");
+          const fs = await import("node:fs");
           await fs.promises.access(sshDir);
           binds.push(`${sshDir}:/root/.ssh:ro`);
           dockerLogger.info(`  SSH mount: ${sshDir} -> /root/.ssh (read-only)`);
@@ -363,7 +360,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         // Mount GitHub CLI config for authentication
         const ghConfigDir = path.join(homeDir, ".config", "gh");
         try {
-          const fs = await import("fs");
+          const fs = await import("node:fs");
           await fs.promises.access(ghConfigDir);
           binds.push(`${ghConfigDir}:/root/.config/gh:rw`);
           dockerLogger.info(
@@ -375,7 +372,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
         // Mount git config if it exists
         try {
-          const fs = await import("fs");
+          const fs = await import("node:fs");
           await fs.promises.access(gitConfigPath);
 
           // Read and filter the git config to remove macOS-specific settings
@@ -665,7 +662,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
     // Clean up temporary git config file
     try {
-      const fs = await import("fs");
+      const fs = await import("node:fs");
       const tempGitConfigPath = path.join(
         os.tmpdir(),
         "cmux-git-configs",
@@ -853,7 +850,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       }
 
       // Check host for .devcontainer/devcontainer.json
-      const fs = await import("fs");
+      const fs = await import("node:fs");
       const devcontainerFile = path.join(
         workspaceHostPath,
         ".devcontainer",
@@ -1027,7 +1024,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         | undefined = undefined;
 
       try {
-        const fs = await import("fs");
+        const fs = await import("node:fs");
         const privateKeyPath = path.join(sshDir, "id_rsa");
         const publicKeyPath = path.join(sshDir, "id_rsa.pub");
         const knownHostsPath = path.join(sshDir, "known_hosts");
@@ -1085,7 +1082,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
   private async getGitConfigValue(key: string): Promise<string | undefined> {
     try {
-      const { execSync } = await import("child_process");
+      const { execSync } = await import("node:child_process");
       const value = execSync(`git config --global ${key}`).toString().trim();
       return value || undefined;
     } catch {
@@ -1101,19 +1098,22 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
   // Static method to stop the container state sync
   static stopContainerStateSync(): void {
-    if (DockerVSCodeInstance.eventsProcess) {
-      DockerVSCodeInstance.eventsProcess.kill();
-      DockerVSCodeInstance.eventsProcess = null;
-    }
     if (DockerVSCodeInstance.eventsStream) {
       try {
-        const s = DockerVSCodeInstance.eventsStream as unknown as {
-          removeAllListeners: (...args: unknown[]) => void;
-          destroy?: () => void;
-        };
-        s.removeAllListeners();
-        if (typeof s.destroy === "function") {
-          s.destroy();
+        if (DockerVSCodeInstance.eventsStream) {
+          if (
+            "removeAllListeners" in DockerVSCodeInstance.eventsStream &&
+            typeof DockerVSCodeInstance.eventsStream.removeAllListeners ===
+              "function"
+          ) {
+            DockerVSCodeInstance.eventsStream.removeAllListeners();
+          }
+          if (
+            "destroy" in DockerVSCodeInstance.eventsStream &&
+            typeof DockerVSCodeInstance.eventsStream.destroy === "function"
+          ) {
+            DockerVSCodeInstance.eventsStream.destroy();
+          }
         }
       } catch {
         // ignore
@@ -1124,67 +1124,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
   private static syncDockerContainerStates(): void {
     dockerLogger.info("Starting docker event stream for container state sync");
-
-    // Only use Dockerode in Electron; otherwise require docker CLI
-    const isElectron = Boolean(
-      (process.versions as unknown as { electron?: string })?.electron
-    );
-
-    if (isElectron) {
-      dockerLogger.info("Electron detected; using Dockerode event stream");
-      DockerVSCodeInstance.startDockerodeEventStream();
-      return;
-    }
-
-    // Non-Electron: require docker CLI events
-    const dockerCmd = DockerVSCodeInstance.resolveDockerExecutable();
-
-    if (!dockerCmd) {
-      dockerLogger.error(
-        "Docker CLI not found in PATH or known locations; cannot start container state sync in non-Electron context"
-      );
-      return;
-    }
-
-    try {
-      const proc = spawn(dockerCmd, ["events", "--format", "{{json .}}"]);
-      DockerVSCodeInstance.eventsProcess = proc;
-
-      proc.on("error", (err) => {
-        dockerLogger.error(
-          `[docker events] Failed to start CLI stream (${dockerCmd}):`,
-          err
-        );
-        DockerVSCodeInstance.eventsProcess = null;
-      });
-
-      proc.stdout.setEncoding("utf8");
-      proc.stdout.on("data", (chunk: string) => {
-        const lines = chunk.split("\n").filter((l) => l.trim().length > 0);
-        for (const line of lines) {
-          try {
-            const event = JSON.parse(line) as DockerEvent;
-            void DockerVSCodeInstance.handleDockerEvent(event);
-          } catch (error) {
-            dockerLogger.error("[docker events] Failed to parse event:", error);
-          }
-        }
-      });
-
-      proc.stderr.on("data", (data: Buffer) => {
-        dockerLogger.error("[docker events]", data.toString());
-      });
-
-      proc.on("close", (code) => {
-        dockerLogger.info(`docker events stream closed with code ${code}`);
-      });
-    } catch (err) {
-      dockerLogger.error(
-        `[docker events] Error spawning CLI (${dockerCmd}); container state sync disabled`,
-        err
-      );
-      DockerVSCodeInstance.eventsProcess = null;
-    }
+    DockerVSCodeInstance.startDockerodeEventStream();
   }
 
   // Try to stream events using the Docker socket (no CLI dependency)
@@ -1239,46 +1179,6 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         e
       );
     }
-  }
-
-  // Locate a usable docker executable; return absolute path or null
-  private static resolveDockerExecutable(): string | null {
-    // User overrides
-    const candidates: string[] = [];
-    const envCandidates = [
-      process.env.DOCKER_CLI,
-      process.env.DOCKER_PATH,
-    ].filter(Boolean) as string[];
-    candidates.push(...envCandidates);
-
-    // Common locations (macOS + Linux)
-    candidates.push(
-      "/opt/homebrew/bin/docker",
-      "/usr/local/bin/docker",
-      "/usr/bin/docker",
-      // Docker Desktop app bundle resources
-      "/Applications/Docker.app/Contents/Resources/bin/docker",
-      "/Applications/Docker.app/Contents/Resources/bin/com.docker.cli"
-    );
-
-    // Also scan current PATH entries
-    const pathVar = process.env.PATH || "";
-    for (const dir of pathVar.split(":").filter(Boolean)) {
-      candidates.push(path.join(dir, "docker"));
-    }
-
-    const seen = new Set<string>();
-    for (const p of candidates) {
-      if (!p || seen.has(p)) continue;
-      seen.add(p);
-      try {
-        fs.accessSync(p, fs.constants.X_OK);
-        return p;
-      } catch {
-        // not accessible/executable
-      }
-    }
-    return null;
   }
 
   private static async handleDockerEvent(event: DockerEvent): Promise<void> {
