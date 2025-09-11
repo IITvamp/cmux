@@ -1,0 +1,90 @@
+import * as path from "node:path";
+import * as fs from "node:fs";
+import { createRequire } from "node:module";
+import { fileURLToPath } from "node:url";
+
+import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
+
+export type GitImplMode = "rust" | "js";
+
+export interface GitDiffWorkspaceOptions {
+  worktreePath: string;
+  includeContents?: boolean;
+  maxBytes?: number;
+}
+
+export interface GitDiffRefsOptions {
+  ref1: string;
+  ref2: string;
+  repoFullName?: string;
+  repoUrl?: string;
+  teamSlugOrId?: string;
+  originPathOverride?: string;
+  includeContents?: boolean;
+  maxBytes?: number;
+}
+
+type NativeGitModule = {
+  gitDiffWorkspace?: (opts: GitDiffWorkspaceOptions) => Promise<ReplaceDiffEntry[]>;
+  gitDiffRefs?: (opts: GitDiffRefsOptions) => Promise<ReplaceDiffEntry[]>;
+};
+
+function tryLoadNative(): NativeGitModule | null {
+  try {
+    const nodeRequire = createRequire(import.meta.url);
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const plat = process.platform;
+    const arch = process.arch;
+
+    const dirCandidates = [
+      process.env.CMUX_NATIVE_TIME_DIR,
+      typeof (process as unknown as { resourcesPath?: string }).resourcesPath ===
+      "string"
+        ? path.join(
+            (process as unknown as { resourcesPath: string }).resourcesPath,
+            "native",
+            "time"
+          )
+        : undefined,
+      fileURLToPath(new URL("../../native/time/", import.meta.url)),
+      path.resolve(here, "../../../server/native/time"),
+      path.resolve(here, "../../../../apps/server/native/time"),
+      path.resolve(process.cwd(), "../server/native/time"),
+      path.resolve(process.cwd(), "../../apps/server/native/time"),
+      path.resolve(process.cwd(), "apps/server/native/time"),
+      path.resolve(process.cwd(), "server/native/time"),
+    ];
+
+    for (const maybeDir of dirCandidates) {
+      const nativeDir = maybeDir ?? "";
+      if (!nativeDir) continue;
+      try {
+        const files = fs.readdirSync(nativeDir);
+        const nodes = files.filter((f) => f.startsWith("index.") && f.endsWith(".node"));
+        const preferred = nodes.find((f) => f.includes(plat) && f.includes(arch)) || nodes[0];
+        if (!preferred) continue;
+        const mod = nodeRequire(path.join(nativeDir, preferred)) as unknown as NativeGitModule;
+        return mod ?? null;
+      } catch {
+        // try next
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+let cachedNative: NativeGitModule | null | undefined;
+export function loadNativeGit(): NativeGitModule | null {
+  if (cachedNative === undefined) {
+    cachedNative = tryLoadNative();
+  }
+  return cachedNative ?? null;
+}
+
+export function getGitImplMode(): GitImplMode {
+  const v = (process.env.CMUX_GIT_IMPL || "rust").toLowerCase();
+  return v === "js" ? "js" : "rust";
+}
+

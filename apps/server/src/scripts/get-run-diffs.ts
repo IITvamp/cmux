@@ -161,7 +161,6 @@ function printPretty(data: {
   perf?: GetRunDiffsPerf;
 }): void {
   const p = data.perf;
-  const g = p?.git;
   const lines: string[] = [];
   lines.push("cmux get-run-diffs summary");
   lines.push("--------------------------");
@@ -178,51 +177,6 @@ function printPretty(data: {
   lines.push("  total:      " + ms(p?.totalMs));
   lines.push("");
 
-  if (g) {
-    lines.push("Git Diff Breakdown");
-    lines.push(
-      `  baseRef:     ${g.baseRef ?? "?"}  compareBase: ${g.compareBase ?? "?"}`
-    );
-    lines.push(
-      `  tracked:     ${g.tracked ?? 0}  untracked: ${g.untracked ?? 0}  entries: ${g.entries ?? 0}`
-    );
-    const total = g.totalMs || 0;
-    const parts: Array<[string, number]> = [
-      ["resolveBase", g.resolveBaseMs],
-      ["mergeBase", g.mergeBaseMs],
-      ["listTracked", g.listTrackedMs],
-      ["listUntracked", g.listUntrackedMs],
-      ["numstat", g.numstatMs],
-      ["patch", g.patchMs],
-      ["readOld", g.readOldMs],
-      ["readNew", g.readNewMs],
-      ["readUntracked", g.readUntrackedMs],
-    ];
-    // Sort by time desc
-    parts.sort((a, b) => (b[1] || 0) - (a[1] || 0));
-    for (const [name, val] of parts) {
-      const v = val || 0;
-      if (v <= 0) continue;
-      lines.push(`  ${name.padEnd(13)} ${ms(v).padEnd(8)} (${pct(v, total)})`);
-    }
-    if (g.perFileBuildMs && g.perFileBuildMs > 0) {
-      lines.push(`  perFileBuild agg: ${ms(g.perFileBuildMs)}`);
-    }
-    if (g.slowest && g.slowest.length > 0) {
-      lines.push("");
-      lines.push("Slowest Files");
-      for (const item of g.slowest) {
-        lines.push(`  ${item.filePath}  ${ms(item.ms)}`);
-      }
-    }
-    // Bottleneck suggestion line
-    const bottleneck = parts[0];
-    if (bottleneck && (bottleneck[1] || 0) > 0) {
-      lines.push("");
-      lines.push(
-        `Bottleneck: ${bottleneck[0]} (${ms(bottleneck[1] || 0)} of ${ms(total)})`
-      );
-    }
-  }
+  // Native ref diff does not emit granular TS perf breakdown here.
   console.log(lines.join("\n"));
 }
