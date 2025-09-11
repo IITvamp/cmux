@@ -87,6 +87,7 @@ pub fn diff_refs(opts: GitDiffRefsOptions) -> Result<Vec<DiffEntry>> {
     Ok(oid) => oid,
     Err(_) => {
       let d_r1 = t_r1.elapsed();
+      #[cfg(debug_assertions)]
       println!(
         "[cmux_native_git] git_diff_refs timings: total={}ms resolve_r1={}ms (failed to resolve); cwd={}",
         t_total.elapsed().as_millis(),
@@ -102,6 +103,7 @@ pub fn diff_refs(opts: GitDiffRefsOptions) -> Result<Vec<DiffEntry>> {
     Ok(oid) => oid,
     Err(_) => {
       let d_r2 = t_r2.elapsed();
+      #[cfg(debug_assertions)]
       println!(
         "[cmux_native_git] git_diff_refs timings: total={}ms resolve_r1={}ms resolve_r2={}ms (failed to resolve); cwd={}",
         t_total.elapsed().as_millis(),
@@ -255,6 +257,7 @@ pub fn diff_refs(opts: GitDiffRefsOptions) -> Result<Vec<DiffEntry>> {
   let d_loop_del = t_loop_del.elapsed();
 
   let d_total = t_total.elapsed();
+  #[cfg(debug_assertions)]
   println!(
     "[cmux_native_git] git_diff_refs timings: total={}ms repo_path={}ms fetch={}ms open_repo={}ms resolve_r1={}ms resolve_r2={}ms merge_base={}ms tree_ids={}ms collect_base={}ms collect_head={}ms add_mod_loop={}ms del_loop={}ms blob_read={}ms textdiff={}ms textdiff_count={} scanned_bytes={} files: +{} ~{} -{} (binary={}) max_textdiff={{path: {:?}, ms: {}}} cwd={}",
     d_total.as_millis(),
