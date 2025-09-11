@@ -4,6 +4,8 @@ import { getShortId } from "@cmux/shared";
 import Docker from "dockerode";
 import * as os from "node:os";
 import * as path from "node:path";
+import * as fs from "node:fs";
+import { execSync } from "node:child_process";
 import { getConvex } from "../utils/convexClient.js";
 import { cleanupGitCredentials } from "../utils/dockerGitSetup.js";
 import { dockerLogger } from "../utils/fileLogger.js";
@@ -296,7 +298,6 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         // Mount SSH directory for git authentication
         const sshDir = path.join(homeDir, ".ssh");
         try {
-          const fs = await import("node:fs");
           await fs.promises.access(sshDir);
           binds.push(`${sshDir}:/root/.ssh:ro`);
           dockerLogger.info(`  SSH mount: ${sshDir} -> /root/.ssh (read-only)`);
@@ -306,7 +307,6 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
         // Mount git config if it exists
         try {
-          const fs = await import("node:fs");
           await fs.promises.access(gitConfigPath);
 
           // Read and filter the git config to remove macOS-specific settings
@@ -349,7 +349,6 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         // Mount SSH directory for git authentication
         const sshDir = path.join(homeDir, ".ssh");
         try {
-          const fs = await import("node:fs");
           await fs.promises.access(sshDir);
           binds.push(`${sshDir}:/root/.ssh:ro`);
           dockerLogger.info(`  SSH mount: ${sshDir} -> /root/.ssh (read-only)`);
@@ -360,7 +359,6 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         // Mount GitHub CLI config for authentication
         const ghConfigDir = path.join(homeDir, ".config", "gh");
         try {
-          const fs = await import("node:fs");
           await fs.promises.access(ghConfigDir);
           binds.push(`${ghConfigDir}:/root/.config/gh:rw`);
           dockerLogger.info(
@@ -372,7 +370,6 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
         // Mount git config if it exists
         try {
-          const fs = await import("node:fs");
           await fs.promises.access(gitConfigPath);
 
           // Read and filter the git config to remove macOS-specific settings
@@ -662,7 +659,6 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
     // Clean up temporary git config file
     try {
-      const fs = await import("node:fs");
       const tempGitConfigPath = path.join(
         os.tmpdir(),
         "cmux-git-configs",
@@ -850,7 +846,6 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       }
 
       // Check host for .devcontainer/devcontainer.json
-      const fs = await import("node:fs");
       const devcontainerFile = path.join(
         workspaceHostPath,
         ".devcontainer",
@@ -1024,7 +1019,6 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         | undefined = undefined;
 
       try {
-        const fs = await import("node:fs");
         const privateKeyPath = path.join(sshDir, "id_rsa");
         const publicKeyPath = path.join(sshDir, "id_rsa.pub");
         const knownHostsPath = path.join(sshDir, "known_hosts");
@@ -1082,7 +1076,6 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
   private async getGitConfigValue(key: string): Promise<string | undefined> {
     try {
-      const { execSync } = await import("node:child_process");
       const value = execSync(`git config --global ${key}`).toString().trim();
       return value || undefined;
     } catch {
