@@ -118,8 +118,8 @@ if [[ "$SKIP_INSTALL" != "true" ]]; then
   (cd "$ROOT_DIR" && bun install --frozen-lockfile)
 fi
 
-echo "==> Prebuilding mac app via local script (workaround)"
-bash "$ROOT_DIR/scripts/build-electron-local.sh"
+echo "==> Prebuilding mac app via prod script (workaround)"
+bash "$ROOT_DIR/scripts/build-electron-prod.sh"
 
 # Detect presence of signing + notarization secrets (mirror GH workflow)
 echo "==> Detecting signing environment"
