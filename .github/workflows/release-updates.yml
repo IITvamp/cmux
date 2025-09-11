@@ -51,8 +51,8 @@ jobs:
         run: bun run ./scripts/generate-icons.mjs
       - name: Prepare macOS entitlements
         run: bash scripts/prepare-macos-entitlements.sh
-      - name: Build mac app via local script (x64)
-        run: bash scripts/build-electron-local.sh
+      - name: Build mac app via prod script (x64)
+        run: bash scripts/build-electron-prod.sh
       - name: Detect mac signing secrets
         id: signing
         env:
@@ -106,9 +106,39 @@ jobs:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: |
-          ARTIFACT="$(ls -1 *.dmg 2>/dev/null | head -n1 || true)"
+          set -e
+          echo "notarytool: $(xcrun notarytool --version 2>/dev/null || echo 'not found')"
+          ARTIFACT=""
+          if compgen -G "*.dmg" > /dev/null; then
+            ARTIFACT="$(ls -1 *.dmg | head -n1)"
+            echo "Submitting DMG: $ARTIFACT"
+          else
+            APP_PATH="$(ls -1d mac*/**/*.app 2>/dev/null | head -n1 || true)"
+            if [ -n "$APP_PATH" ]; then
+              ARTIFACT="$(basename "${APP_PATH%.app}").zip"
+              echo "Zipping .app with ditto: $APP_PATH -> $ARTIFACT"
+              (cd "$(dirname "$APP_PATH")" && ditto -c -k --sequesterRsrc --keepParent "$(basename "$APP_PATH")" "$PWD/$ARTIFACT")
+            fi
+          fi
           if [ -n "$ARTIFACT" ]; then
-            xcrun notarytool submit "$ARTIFACT" --wait --key "$APPLE_API_KEY" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER" --output-format json
+            set +e
+            OUT=$(xcrun notarytool submit "$ARTIFACT" --wait --key "$APPLE_API_KEY" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER" 2>&1)
+            CODE=$?
+            set -e
+            printf '%s\n' "$OUT" | sed -e 's/^/notarytool: /'
+            if [ $CODE -eq 0 ] && printf '%s' "$OUT" | grep -qi 'Accepted'; then
+              echo "Notarization accepted"
+            else
+              echo "Notarization did not report Accepted (exit $CODE). Attempting log fetch..." >&2
+              SUBMISSION_ID=$(printf '%s' "$OUT" | sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]\+\)".*/\1/p' | head -n1)
+              if [ -n "$SUBMISSION_ID" ]; then
+                xcrun notarytool log "$SUBMISSION_ID" --key "$APPLE_API_KEY" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER" --output-format text || true
+              fi
+              exit 1
+            fi
+          else
+            echo "No DMG or .app found to notarize" >&2
+            exit 1
           fi
       - name: Staple & verify (x64)
         if: ${{ steps.signing.outputs.has == 'true' }}
@@ -162,8 +192,8 @@ jobs:
         run: bun run ./scripts/generate-icons.mjs
       - name: Prepare macOS entitlements
         run: bash scripts/prepare-macos-entitlements.sh
-      - name: Build mac app via local script (arm64)
-        run: bash scripts/build-electron-local.sh
+      - name: Build mac app via prod script (arm64)
+        run: bash scripts/build-electron-prod.sh
       - name: Detect mac signing secrets
         id: signing_arm
         env:
@@ -217,9 +247,39 @@ jobs:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: |
-          ARTIFACT="$(ls -1 *.dmg 2>/dev/null | head -n1 || true)"
+          set -e
+          echo "notarytool: $(xcrun notarytool --version 2>/dev/null || echo 'not found')"
+          ARTIFACT=""
+          if compgen -G "*.dmg" > /dev/null; then
+            ARTIFACT="$(ls -1 *.dmg | head -n1)"
+            echo "Submitting DMG: $ARTIFACT"
+          else
+            APP_PATH="$(ls -1d mac*/**/*.app 2>/dev/null | head -n1 || true)"
+            if [ -n "$APP_PATH" ]; then
+              ARTIFACT="$(basename "${APP_PATH%.app}").zip"
+              echo "Zipping .app with ditto: $APP_PATH -> $ARTIFACT"
+              (cd "$(dirname "$APP_PATH")" && ditto -c -k --sequesterRsrc --keepParent "$(basename "$APP_PATH")" "$PWD/$ARTIFACT")
+            fi
+          fi
           if [ -n "$ARTIFACT" ]; then
-            xcrun notarytool submit "$ARTIFACT" --wait --key "$APPLE_API_KEY" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER" --output-format json
+            set +e
+            OUT=$(xcrun notarytool submit "$ARTIFACT" --wait --key "$APPLE_API_KEY" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER" 2>&1)
+            CODE=$?
+            set -e
+            printf '%s\n' "$OUT" | sed -e 's/^/notarytool: /'
+            if [ $CODE -eq 0 ] && printf '%s' "$OUT" | grep -qi 'Accepted'; then
+              echo "Notarization accepted"
+            else
+              echo "Notarization did not report Accepted (exit $CODE). Attempting log fetch..." >&2
+              SUBMISSION_ID=$(printf '%s' "$OUT" | sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]\+\)".*/\1/p' | head -n1)
+              if [ -n "$SUBMISSION_ID" ]; then
+                xcrun notarytool log "$SUBMISSION_ID" --key "$APPLE_API_KEY" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER" --output-format text || true
+              fi
+              exit 1
+            fi
+          else
+            echo "No DMG or .app found to notarize" >&2
+            exit 1
           fi
       - name: Staple & verify (arm64)
         if: ${{ steps.signing_arm.outputs.has == 'true' }}

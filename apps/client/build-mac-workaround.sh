@@ -6,9 +6,15 @@ rm -rf out
 
 # Build the Electron app first with environment variables loaded
 echo "Building Electron app..."
-# Load environment variables from .env file
+# Load environment variables from .env.production if present; otherwise .env
+ENV_FILE="../../.env.production"
+if [ ! -f "$ENV_FILE" ]; then
+  ENV_FILE="../../.env"
+fi
+echo "Using env file: $ENV_FILE"
 set -a  # Mark all new variables for export
-source ../../.env
+# shellcheck disable=SC1090
+source "$ENV_FILE"
 set +a  # Turn off auto-export
 npx electron-vite build -c electron.vite.config.ts
 
