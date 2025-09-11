@@ -147,12 +147,14 @@ function DashboardComponent() {
       if (response.success) {
         // Schedule next check via existing interval; also update docker readiness state
         try {
-          const isRunning = Boolean(response.dockerStatus?.isRunning);
-          setDockerReady(isRunning);
+          setDockerReady(
+            typeof response.dockerStatus?.isRunning === "boolean"
+              ? response.dockerStatus.isRunning
+              : null
+          );
         } catch {
           // Ignore parse errors
         }
-        checkProviderStatus();
       }
     });
   }, [socket]);
@@ -239,8 +241,8 @@ function DashboardComponent() {
   );
 
   const handleStartTask = useCallback(async () => {
-    // Prevent starting tasks locally when Docker isn't ready (or unknown)
-    if (!isEnvSelected && !isCloudMode && dockerReady !== true) {
+    // Prevent starting tasks locally only when Docker is explicitly not running
+    if (!isEnvSelected && !isCloudMode && dockerReady === false) {
       toast.error("Docker is not running. Start Docker Desktop.");
       return;
     }
@@ -389,6 +391,9 @@ function DashboardComponent() {
   // Check provider status on mount
   useEffect(() => {
     checkProviderStatus();
+    // Poll periodically to keep status fresh without recursive calls
+    const interval = setInterval(checkProviderStatus, 30000);
+    return () => clearInterval(interval);
   }, [checkProviderStatus]);
 
   // Fetch branches when repo changes
@@ -598,8 +603,8 @@ function DashboardComponent() {
 
   // Compute docker block state and disabled reason early so shortcuts respect it
   const blockedByDocker = useMemo(() => {
-    // Block when explicitly in local mode (not cloud, not environment) and Docker is not confirmed ready
-    return !isEnvSelected && !isCloudMode && dockerReady !== true;
+    // Block when explicitly in local mode (not cloud, not environment) and Docker is explicitly not running
+    return !isEnvSelected && !isCloudMode && dockerReady === false;
   }, [isEnvSelected, isCloudMode, dockerReady]);
 
   const disabledReason = useMemo(() => {
