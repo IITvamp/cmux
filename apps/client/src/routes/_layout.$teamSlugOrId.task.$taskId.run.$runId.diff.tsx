@@ -2,6 +2,7 @@ import { FloatingPane } from "@/components/floating-pane";
 import { type GitDiffViewerProps } from "@/components/git-diff-viewer";
 import { RunDiffSection } from "@/components/RunDiffSection";
 import { TaskDetailHeader } from "@/components/task-detail-header";
+import { diffRefsQueryOptions } from "@/queries/diff-refs";
 // Refs mode: no run-diffs prefetch
 import { api } from "@cmux/convex/api";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
@@ -36,7 +37,8 @@ export const Route = createFileRoute(
     },
   },
   loader: async (opts) => {
-    await Promise.all([
+    const { runId } = opts.params;
+    const [taskRuns, task] = await Promise.all([
       opts.context.queryClient.ensureQueryData(
         convexQuery(api.taskRuns.getByTask, {
           teamSlugOrId: opts.params.teamSlugOrId,
@@ -50,6 +52,20 @@ export const Route = createFileRoute(
         })
       ),
     ]);
+    const selectedTaskRun = taskRuns.find((run) => run._id === runId);
+    if (
+      task?.baseBranch &&
+      task.projectFullName &&
+      selectedTaskRun?.newBranch
+    ) {
+      void opts.context.queryClient.ensureQueryData(
+        diffRefsQueryOptions({
+          ref1: task.baseBranch,
+          ref2: selectedTaskRun?.newBranch,
+          repoFullName: task.projectFullName,
+        })
+      );
+    }
   },
 });
 
@@ -77,7 +93,9 @@ function RunDiffPage() {
   // 404 if selected run is missing
   if (!selectedRun) {
     return (
-      <div className="p-6 text-sm text-neutral-600 dark:text-neutral-300">404 – Run not found</div>
+      <div className="p-6 text-sm text-neutral-600 dark:text-neutral-300">
+        404 – Run not found
+      </div>
     );
   }
 

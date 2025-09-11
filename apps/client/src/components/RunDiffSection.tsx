@@ -49,6 +49,7 @@ export function RunDiffSection(props: RunDiffSectionProps) {
 
   return (
     <GitDiffViewer
+      key={`${repoFullName}:${ref1}:${ref2}`}
       diffs={diffsQuery.data}
       onControlsChange={onControlsChange}
       classNames={classNames}
