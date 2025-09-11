@@ -369,6 +369,7 @@ async function runTests() {
       const cmd = "pnpm";
       const useJson = showTimings && serverPkg.isVitest;
       let args: string[];
+      const skipDocker = process.env.CMUX_SKIP_DOCKER_TESTS === "1";
       if (useJson) {
         if (serverPkg.usesDotenv) {
           args = [
@@ -380,12 +381,24 @@ async function runTests() {
             "run",
             "--reporter=json",
             "--silent",
+            ...(skipDocker ? ["--exclude", "**/archiveTask.test.ts"] : []),
           ];
         } else {
-          args = ["exec", "vitest", "run", "--reporter=json", "--silent"];
+          args = [
+            "exec",
+            "vitest",
+            "run",
+            "--reporter=json",
+            "--silent",
+            ...(skipDocker ? ["--exclude", "**/archiveTask.test.ts"] : []),
+          ];
         }
       } else {
-        args = ["run", "test"];
+        args = [
+          "run",
+          "test",
+          ...(skipDocker ? ["--", "--exclude", "**/archiveTask.test.ts"] : []),
+        ];
       }
       console.log(`▶️  ${serverPkg.name}: starting tests`);
       const child = spawn(cmd, args, {

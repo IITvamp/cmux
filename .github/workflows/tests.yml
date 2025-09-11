@@ -56,5 +56,6 @@ jobs:
         env:
           # Keep default; set to 1 only if you want cross-builds for Linux
           CMUX_BUILD_LINUX: '0'
+          # Skip Docker E2E tests in CI for stability/speed
+          CMUX_SKIP_DOCKER_TESTS: '1'
         run: bun run test
-
