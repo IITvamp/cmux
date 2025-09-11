@@ -27,6 +27,7 @@ import { compareRefsForRepo } from "./diffs/compareRefs.js";
 import { getRunDiffs } from "./diffs/getRunDiffs.js";
 import { execWithEnv } from "./execWithEnv.js";
 import { GitDiffManager } from "./gitDiff.js";
+import { getRustTime } from "./native/core.js";
 import type { RealtimeServer } from "./realtime.js";
 import { RepositoryManager } from "./repositoryManager.js";
 import type { GitRepoInfo } from "./server.js";
@@ -53,7 +54,6 @@ import {
 import { runWithAuth, runWithAuthToken } from "./utils/requestContext.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { getProjectPaths } from "./workspace.js";
-import { getRustTime } from "./native/core.js";
 
 const execAsync = promisify(exec);
 
@@ -92,7 +92,6 @@ export function setupSocketHandlers(
     });
     serverLogger.info("Client connected:", socket.id);
 
-    // Rust N-API test endpoint
     socket.on("rust-get-time", async (callback) => {
       try {
         const time = await getRustTime();
@@ -187,7 +186,6 @@ export function setupSocketHandlers(
       }
     });
 
-    // New event: git-diff-refs (alias of compare using native path)
     socket.on("git-diff-refs", async (data, callback) => {
       try {
         const { repoFullName, ref1, ref2 } = GitCompareRefsSchema.parse(data);

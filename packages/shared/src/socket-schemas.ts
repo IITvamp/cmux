@@ -415,9 +415,7 @@ export type ProviderStatusResponse = z.infer<
 >;
 export type DefaultRepo = z.infer<typeof DefaultRepoSchema>;
 
-// Socket.io event map types
 export interface ClientToServerEvents {
-  // Terminal operations
   "start-task": (
     data: StartTask,
     callback: (response: TaskStarted | TaskError) => void
@@ -425,7 +423,6 @@ export interface ClientToServerEvents {
   "git-status": (data: GitStatusRequest) => void;
   "git-diff": (data: GitDiffRequest) => void;
   "git-full-diff": (data: GitFullDiffRequest) => void;
-  // Compare two refs for a given repo; returns ReplaceDiffEntry[]
   "git-compare-refs": (
     data: GitCompareRefs,
     callback: (
@@ -434,7 +431,6 @@ export interface ClientToServerEvents {
         | { ok: false; error: string; diffs?: [] }
     ) => void
   ) => void;
-  // New: diff arbitrary refs in a repo; same payload/response as git-compare-refs
   "git-diff-refs": (
     data: GitCompareRefs,
     callback: (
@@ -443,7 +439,6 @@ export interface ClientToServerEvents {
         | { ok: false; error: string; diffs?: [] }
     ) => void
   ) => void;
-  // On-demand diffs for a task run
   "get-run-diffs": (
     data: { taskRunId: Id<"taskRuns"> },
     callback: (
@@ -470,7 +465,6 @@ export interface ClientToServerEvents {
     callback: (response: OpenInEditorResponse) => void
   ) => void;
   "list-files": (data: ListFilesRequest) => void;
-  // GitHub operations
   "github-test-auth": (
     callback: (response: GitHubAuthResponse) => void
   ) => void;
@@ -482,7 +476,6 @@ export interface ClientToServerEvents {
     data: GitHubFetchBranches,
     callback: (response: GitHubBranchesResponse) => void
   ) => void;
-  // Create a draft pull request for a given task run
   "github-create-draft-pr": (
     data: GitHubCreateDraftPr,
     callback: (response: {
@@ -491,7 +484,6 @@ export interface ClientToServerEvents {
       error?: string;
     }) => void
   ) => void;
-  // Open PR: create a normal PR or mark draft ready
   "github-open-pr": (
     data: GitHubOpenPr,
     callback: (response: {
@@ -501,7 +493,6 @@ export interface ClientToServerEvents {
       error?: string;
     }) => void
   ) => void;
-  // Sync PR state with GitHub and update Convex
   "github-sync-pr-state": (
     data: GitHubSyncPrState,
     callback: (response: {
@@ -513,7 +504,6 @@ export interface ClientToServerEvents {
       error?: string;
     }) => void
   ) => void;
-  // Merge PR with selected method
   "github-merge-pr": (
     data: GitHubMergePr,
     callback: (response: {
@@ -524,7 +514,6 @@ export interface ClientToServerEvents {
       error?: string;
     }) => void
   ) => void;
-  // Merge branch directly
   "github-merge-branch": (
     data: GitHubMergeBranch,
     callback: (response: {
@@ -534,9 +523,10 @@ export interface ClientToServerEvents {
       error?: string;
     }) => void
   ) => void;
-  // Rust N-API test: returns current time
   "rust-get-time": (
-    callback: (response: { ok: true; time: string } | { ok: false; error: string }) => void
+    callback: (
+      response: { ok: true; time: string } | { ok: false; error: string }
+    ) => void
   ) => void;
   "check-provider-status": (
     callback: (response: ProviderStatusResponse) => void
@@ -576,7 +566,7 @@ export interface ServerToClientEvents {
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface InterServerEvents {
-  // No inter-server events in this application
+  // No inter-server events yet
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
