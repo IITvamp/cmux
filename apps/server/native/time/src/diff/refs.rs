@@ -102,8 +102,15 @@ pub fn diff_refs(opts: GitDiffRefsOptions) -> Result<Vec<DiffEntry>> {
   // Always fetch latest from origin to ensure up-to-date refs (best-effort)
   let _ = crate::repo::cache::fetch_origin_all_path(std::path::Path::new(&cwd));
   let repo = gix::open(&cwd)?;
-  let r1_oid = oid_from_rev_parse(&repo, &opts.ref1)?;
-  let r2_oid = oid_from_rev_parse(&repo, &opts.ref2)?;
+  // If either ref can't be resolved, treat as no diff
+  let r1_oid = match oid_from_rev_parse(&repo, &opts.ref1) {
+    Ok(oid) => oid,
+    Err(_) => return Ok(Vec::new()),
+  };
+  let r2_oid = match oid_from_rev_parse(&repo, &opts.ref2) {
+    Ok(oid) => oid,
+    Err(_) => return Ok(Vec::new()),
+  };
   let base_oid = merge_base_oid(&repo, r1_oid, r2_oid).unwrap_or(r1_oid);
 
   // Build tree maps of path -> blob id

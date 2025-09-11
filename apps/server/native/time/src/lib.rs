@@ -313,4 +313,31 @@ mod tests {
     assert_eq!(ent.additions, 0);
     assert_eq!(ent.deletions, 1);
   }
+
+  #[test]
+  fn refs_diff_nonexistent_branch_returns_empty() {
+    // Create a simple local repo with a single branch `main`
+    let tmp = tempdir().unwrap();
+    let work = tmp.path().join("repo");
+    fs::create_dir_all(&work).unwrap();
+    run(&work, "git init");
+    run(&work, "git -c user.email=a@b -c user.name=test checkout -b main");
+    fs::write(work.join("file.txt"), b"hello\n").unwrap();
+    run(&work, "git add .");
+    run(&work, "git commit -m init");
+
+    // Now diff against a branch name that doesn't exist
+    let out = crate::diff::refs::diff_refs(GitDiffRefsOptions{
+      ref1: "main".into(),
+      ref2: "this-branch-definitely-does-not-exist-123".into(),
+      repoFullName: None,
+      repoUrl: None,
+      teamSlugOrId: None,
+      originPathOverride: Some(work.to_string_lossy().to_string()),
+      includeContents: Some(true),
+      maxBytes: Some(1024*1024),
+    }).expect("diff should succeed and be empty for nonexistent branch");
+
+    assert!(out.is_empty(), "Expected empty diff when branch doesn't exist, got: {:?}", out);
+  }
 }
