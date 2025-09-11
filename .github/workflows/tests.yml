@@ -55,6 +55,8 @@ jobs:
 
       - name: Run tests
         env:
+          # CI environment flag
+          CI: 'true'
           # Keep default; set to 1 only if you want cross-builds for Linux
           CMUX_BUILD_LINUX: '0'
           # Skip Docker E2E tests in CI for stability/speed
