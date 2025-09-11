@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Result};
 use dirs_next::cache_dir;
-use std::{fs, path::PathBuf};
+use std::{collections::HashMap, fs, path::PathBuf};
+use std::sync::{Mutex, OnceLock};
 
 use crate::util::run_git;
 
@@ -11,6 +12,8 @@ struct CacheIndexEntry {
   slug: String,
   path: String,
   last_access_ms: u128,
+  #[serde(default)]
+  last_fetch_ms: Option<u128>,
 }
 
 #[derive(Default, Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -47,9 +50,11 @@ pub fn ensure_repo(url: &str) -> Result<PathBuf> {
       root.to_string_lossy().as_ref(),
       &["clone", "--no-single-branch", url, path.file_name().unwrap().to_str().unwrap()]
     )?;
+    // Mark fetched time on initial clone
+    let _ = update_cache_index_with(&root, &path, Some(now_ms()));
   } else {
-    // Best-effort fetch to update refs, tags, and prune using gix
-    let _ = fetch_origin_all_path(&path);
+    // Best-effort SWR fetch to update refs, tags, and prune
+    let _ = swr_fetch_origin_all_path_bool(&path, 5_000);
   }
   // If shallow, unshallow to have full history locally
   let shallow = path.join(".git").join("shallow");
@@ -106,6 +111,7 @@ fn update_cache_index(root: &PathBuf, repo_path: &PathBuf) -> Result<()> {
       slug,
       path: repo_path.to_string_lossy().to_string(),
       last_access_ms: now,
+      last_fetch_ms: None,
     });
   }
   // Keep unique by slug
@@ -115,6 +121,95 @@ fn update_cache_index(root: &PathBuf, repo_path: &PathBuf) -> Result<()> {
   Ok(())
 }
 
+fn now_ms() -> u128 {
+  std::time::SystemTime::now()
+    .duration_since(std::time::UNIX_EPOCH)
+    .unwrap()
+    .as_millis()
+}
+
+fn update_cache_index_with(root: &PathBuf, repo_path: &PathBuf, last_fetch_ms: Option<u128>) -> Result<()> {
+  let mut idx = load_index(root);
+  let pstr = repo_path.to_string_lossy().to_string();
+  let now = now_ms();
+  if let Some(e) = idx.entries.iter_mut().find(|e| e.path == pstr) {
+    e.last_access_ms = now;
+    if let Some(f) = last_fetch_ms { e.last_fetch_ms = Some(f); }
+  } else {
+    let slug = repo_path
+      .file_name()
+      .and_then(|s| s.to_str())
+      .unwrap_or("")
+      .to_string();
+    idx.entries.push(CacheIndexEntry {
+      slug,
+      path: pstr,
+      last_access_ms: now,
+      last_fetch_ms,
+    });
+  }
+  idx.entries.sort_by(|a, b| b.last_access_ms.cmp(&a.last_access_ms));
+  idx.entries.dedup_by(|a, b| a.slug == b.slug);
+  save_index(root, &idx)?;
+  Ok(())
+}
+
+fn get_cache_last_fetch(root: &PathBuf, repo_path: &PathBuf) -> Option<u128> {
+  let idx = load_index(root);
+  let pstr = repo_path.to_string_lossy().to_string();
+  idx.entries.into_iter().find(|e| e.path == pstr).and_then(|e| e.last_fetch_ms)
+}
+
+static SWR_FETCH_MAP: OnceLock<Mutex<HashMap<String, u128>>> = OnceLock::new();
+
+fn swr_map() -> &'static Mutex<HashMap<String, u128>> {
+  SWR_FETCH_MAP.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn get_map_last_fetch(repo_path: &PathBuf) -> Option<u128> {
+  let pstr = repo_path.to_string_lossy().to_string();
+  swr_map().lock().ok().and_then(|m| m.get(&pstr).copied())
+}
+
+fn set_map_last_fetch(repo_path: &PathBuf, t: u128) {
+  let pstr = repo_path.to_string_lossy().to_string();
+  if let Ok(mut m) = swr_map().lock() { m.insert(pstr, t); }
+}
+
+pub fn swr_fetch_origin_all_path_bool(path: &std::path::Path, window_ms: u128) -> Result<bool> {
+  let cwd = path.to_string_lossy().to_string();
+  let root = default_cache_root();
+  let now = now_ms();
+
+  let last_fetch_idx = get_cache_last_fetch(&root, &PathBuf::from(&cwd));
+  let last_fetch_map = get_map_last_fetch(&PathBuf::from(&cwd));
+  let last_fetch = last_fetch_idx.or(last_fetch_map);
+
+  if let Some(t) = last_fetch {
+    if now.saturating_sub(t) <= window_ms {
+      // spawn background fetch and return
+      let cwd_bg = cwd.clone();
+      let root_bg = root.clone();
+      std::thread::spawn(move || {
+        let _ = run_git(&cwd_bg, &["fetch", "--all", "--tags", "--prune"]);
+        let _ = update_cache_index_with(&root_bg, &PathBuf::from(&cwd_bg), Some(now_ms()));
+        set_map_last_fetch(&PathBuf::from(&cwd_bg), now_ms());
+      });
+      return Ok(false);
+    }
+  }
+
+  let _ = run_git(&cwd, &["fetch", "--all", "--tags", "--prune"]);
+  let now2 = now_ms();
+  let _ = update_cache_index_with(&root, &PathBuf::from(&cwd), Some(now2));
+  set_map_last_fetch(&PathBuf::from(&cwd), now2);
+  Ok(true)
+}
+
+pub fn swr_fetch_origin_all_path(path: &std::path::Path, window_ms: u128) -> Result<()> {
+  let _ = swr_fetch_origin_all_path_bool(path, window_ms)?;
+  Ok(())
+}
 pub fn fetch_origin_all_path(path: &std::path::Path) -> Result<()> {
   let cwd = path.to_string_lossy().to_string();
   let _ = run_git(&cwd, &["fetch", "--all", "--tags", "--prune"]);
@@ -135,4 +230,29 @@ fn enforce_cache_limit(root: &PathBuf) -> Result<()> {
   idx.entries = survivors;
   save_index(root, &idx)?;
   Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+  use tempfile::tempdir;
+
+  #[test]
+  fn swr_fetch_skips_within_window_and_backgrounds() {
+    let tmp = tempdir().unwrap();
+    let repo_dir = tmp.path().join("repo");
+    std::fs::create_dir_all(&repo_dir).unwrap();
+    // init local repo without remote
+    let status = if cfg!(target_os = "windows") {
+      std::process::Command::new("cmd").arg("/C").arg("git init").current_dir(&repo_dir).status()
+    } else {
+      std::process::Command::new("sh").arg("-c").arg("git init").current_dir(&repo_dir).status()
+    }.expect("spawn");
+    assert!(status.success());
+
+    let first = swr_fetch_origin_all_path_bool(&repo_dir, 5_000).expect("swr fetch 1");
+    let second = swr_fetch_origin_all_path_bool(&repo_dir, 5_000).expect("swr fetch 2");
+    assert!(first, "first call should be synchronous fetch");
+    assert!(!second, "second call within window should skip and background");
+  }
 }

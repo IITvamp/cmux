@@ -31,52 +31,8 @@ fn oid_from_rev_parse(repo: &Repository, rev: &str) -> anyhow::Result<ObjectId> 
   Err(anyhow::anyhow!("could not resolve rev '{}'", rev))
 }
 
-fn merge_base_oid(repo: &Repository, a: ObjectId, b: ObjectId) -> anyhow::Result<ObjectId> {
-  use std::collections::{HashMap, VecDeque};
-  let mut dist_a: HashMap<ObjectId, usize> = HashMap::new();
-  let mut qa: VecDeque<(ObjectId, usize)> = VecDeque::new();
-  qa.push_back((a, 0));
-  while let Some((id, d)) = qa.pop_front() {
-    if dist_a.contains_key(&id) { continue; }
-    dist_a.insert(id, d);
-    let obj = repo.find_object(id)?;
-    let commit = obj.try_into_commit()?;
-    for parent in commit.parent_ids() { qa.push_back((parent.detach(), d + 1)); }
-  }
-
-  let mut best: Option<(ObjectId, usize)> = None; // (id, cost)
-  let mut qb: VecDeque<(ObjectId, usize)> = VecDeque::new();
-  let mut seen_b: HashMap<ObjectId, usize> = HashMap::new();
-  qb.push_back((b, 0));
-  while let Some((id, d)) = qb.pop_front() {
-    if seen_b.contains_key(&id) { continue; }
-    seen_b.insert(id, d);
-    if let Some(da) = dist_a.get(&id) {
-      let cost = *da + d;
-      match best {
-        None => best = Some((id, cost)),
-        Some((_, c)) if cost < c => best = Some((id, cost)),
-        _ => {}
-      }
-    }
-    let obj = repo.find_object(id)?;
-    let commit = obj.try_into_commit()?;
-    for parent in commit.parent_ids() { qb.push_back((parent.detach(), d + 1)); }
-  }
-  Ok(best.map(|(id, _)| id).unwrap_or(a))
-}
-
 // Fast merge-base resolution via `git merge-base` with BFS fallback
-fn merge_base_oid_fast(repo_path: &str, repo: &Repository, a: ObjectId, b: ObjectId) -> ObjectId {
-  if let Ok(out) = crate::util::run_git(repo_path, &["merge-base", &a.to_string(), &b.to_string()]) {
-    if let Some(line) = out.lines().next() {
-      let hex = line.trim();
-      if let Ok(oid) = ObjectId::from_hex(hex.as_bytes()) { return oid; }
-    }
-  }
-  // Fallback to in-process BFS
-  merge_base_oid(repo, a, b).unwrap_or(a)
-}
+// Use the new merge_base module
 
 fn is_binary(data: &[u8]) -> bool {
   data.iter().any(|&b| b == 0) || std::str::from_utf8(data).is_err()
@@ -115,16 +71,12 @@ pub fn diff_refs(opts: GitDiffRefsOptions) -> Result<Vec<DiffEntry>> {
   let cwd = repo_path.to_string_lossy().to_string();
 
   // Resolve refs to OIDs using gitoxide only
-  // Avoid duplicate fetch: ensure_repo() already fetches when using cache.
-  // If an explicit originPathOverride is provided, do a best-effort fetch.
-  let should_fetch = opts.originPathOverride.is_some();
-  let d_fetch = if should_fetch {
+  // SWR fetch: if originPathOverride provided, do SWR(5s); else ensure_repo handled fetch.
+  let d_fetch = if opts.originPathOverride.is_some() {
     let t_fetch = Instant::now();
-    let _ = crate::repo::cache::fetch_origin_all_path(std::path::Path::new(&cwd));
+    let _ = crate::repo::cache::swr_fetch_origin_all_path(std::path::Path::new(&cwd), 5_000);
     t_fetch.elapsed()
-  } else {
-    Duration::from_millis(0)
-  };
+  } else { Duration::from_millis(0) };
 
   let t_open = Instant::now();
   let repo = gix::open(&cwd)?;
@@ -162,7 +114,8 @@ pub fn diff_refs(opts: GitDiffRefsOptions) -> Result<Vec<DiffEntry>> {
   };
   let d_r2 = t_r2.elapsed();
   let t_merge_base = Instant::now();
-  let base_oid = merge_base_oid_fast(&cwd, &repo, r1_oid, r2_oid);
+  let base_oid = crate::merge_base::merge_base(&cwd, &repo, r1_oid, r2_oid, crate::merge_base::MergeBaseStrategy::Git)
+    .unwrap_or(r1_oid);
   let d_merge_base = t_merge_base.elapsed();
 
   // Build tree maps of path -> blob id

@@ -4,6 +4,7 @@ mod types;
 mod util;
 mod repo;
 mod diff;
+mod merge_base;
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;

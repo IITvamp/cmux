@@ -114,8 +114,8 @@ pub fn diff_workspace(opts: GitDiffWorkspaceOptions) -> Result<Vec<DiffEntry>> {
   let cwd = PathBuf::from(&opts.worktreePath);
   let include = opts.includeContents.unwrap_or(true);
   let max_bytes = opts.maxBytes.unwrap_or(950*1024) as usize;
-  // Best-effort fetch to update remote-tracking refs for merge-base
-  let _ = crate::repo::cache::fetch_origin_all_path(&cwd);
+  // Best-effort SWR fetch (5s window) to update remote-tracking refs for merge-base
+  let _ = crate::repo::cache::swr_fetch_origin_all_path(&cwd, 5_000);
   let repo = gix::open(&cwd)?;
 
   let head_oid = repo.head_commit()?.id;
