@@ -1,34 +1,27 @@
-use gix::{hash::ObjectId, Repository};
+use gix::hash::ObjectId;
 
-pub mod git;
-pub mod bfs;
-
-#[derive(Copy, Clone, Debug)]
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
 pub enum MergeBaseStrategy {
   Git,
   Bfs,
 }
 
-pub fn merge_base(
-  repo_path: &str,
-  repo: &Repository,
-  a: ObjectId,
-  b: ObjectId,
-  strategy: MergeBaseStrategy,
-) -> Option<ObjectId> {
-  match strategy {
-    // Only use git strategy in production; no BFS fallback
-    MergeBaseStrategy::Git => git::merge_base_git(repo_path, a, b),
+pub fn merge_base(cwd: &str, repo: &gix::Repository, a: ObjectId, b: ObjectId, strat: MergeBaseStrategy) -> Option<ObjectId> {
+  match strat {
+    MergeBaseStrategy::Git => git::merge_base_git(cwd, a, b),
     MergeBaseStrategy::Bfs => bfs::merge_base_bfs(repo, a, b),
   }
 }
 
+pub mod git;
+pub mod bfs;
+
 #[cfg(test)]
 mod tests {
   use super::*;
+  use std::{fs, process::Command};
   use tempfile::tempdir;
-  use std::fs;
-  use std::process::Command;
 
   fn run(cwd: &std::path::Path, cmd: &str) {
     let status = if cfg!(target_os = "windows") {
@@ -45,28 +38,32 @@ mod tests {
     let tmp = tempdir().unwrap();
     let repo_dir = tmp.path().join("repo");
     fs::create_dir_all(&repo_dir).unwrap();
-
     run(&repo_dir, "git init");
     run(&repo_dir, "git -c user.email=a@b -c user.name=test checkout -b main");
-    fs::write(repo_dir.join("file.txt"), b"base\n").unwrap();
+    fs::write(repo_dir.join("file.txt"), "base\n").unwrap();
     run(&repo_dir, "git add .");
     run(&repo_dir, "git commit -m base");
     run(&repo_dir, "git checkout -b feature");
-    fs::write(repo_dir.join("file.txt"), b"feat1\n").unwrap();
-    run(&repo_dir, "git add .");
-    run(&repo_dir, "git commit -m f1");
-    run(&repo_dir, "git checkout main");
-    fs::write(repo_dir.join("file.txt"), b"main1\n").unwrap();
-    run(&repo_dir, "git add .");
-    run(&repo_dir, "git commit -m m1");
 
-    // Open repo with gix and get OIDs
+    let n = 60;
+    for i in 1..=n {
+      fs::write(repo_dir.join("file.txt"), format!("f{}\n", i)).unwrap();
+      run(&repo_dir, "git add .");
+      run(&repo_dir, &format!("git commit -m f{}", i));
+    }
+    run(&repo_dir, "git checkout main");
+    for i in 1..=n {
+      fs::write(repo_dir.join("file.txt"), format!("m{}\n", i)).unwrap();
+      run(&repo_dir, "git add .");
+      run(&repo_dir, &format!("git commit -m m{}", i));
+    }
+
     let repo = gix::open(&repo_dir).unwrap();
     let main_oid = repo.find_reference("refs/heads/main").unwrap().target().try_id().unwrap().to_owned();
     let feat_oid = repo.find_reference("refs/heads/feature").unwrap().target().try_id().unwrap().to_owned();
-    // Expect merge-base to be the initial commit (base)
-    let base_git = git::merge_base_git(&repo_dir.to_string_lossy(), main_oid, feat_oid).expect("git merge-base");
-    let base_bfs = bfs::merge_base_bfs(&repo, main_oid, feat_oid).expect("bfs merge-base");
-    assert_eq!(base_git, base_bfs);
+
+    let via_git = git::merge_base_git(&repo_dir.to_string_lossy(), main_oid, feat_oid).unwrap();
+    let via_bfs = bfs::merge_base_bfs(&repo, main_oid, feat_oid).unwrap();
+    assert_eq!(via_git, via_bfs, "merge-base mismatch");
   }
 }

@@ -14,7 +14,7 @@ use types::{DiffEntry, GitDiffRefsOptions, GitDiffWorkspaceOptions};
 pub async fn get_time() -> String {
   use std::time::{SystemTime, UNIX_EPOCH};
   #[cfg(debug_assertions)]
-  println!("[cmux_native_time] get_time invoked");
+  println!("[cmux_native_core] get_time invoked");
   let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap();
   now.as_millis().to_string()
 }
@@ -55,3 +55,4 @@ pub async fn git_diff_refs(opts: GitDiffRefsOptions) -> Result<Vec<DiffEntry>> {
 
 #[cfg(test)]
 mod tests;
+

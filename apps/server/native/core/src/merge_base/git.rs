@@ -11,4 +11,3 @@ pub fn merge_base_git(repo_path: &str, a: ObjectId, b: ObjectId) -> Option<Objec
   }
   None
 }
-

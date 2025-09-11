@@ -24,8 +24,8 @@
       "to": "cmux-logos/cmux.iconset"
     },
     {
-      "from": "../../apps/server/native/time",
-      "to": "native/time",
+      "from": "../../apps/server/native/core",
+      "to": "native/core",
       "filter": ["*.node"]
     }
   ],

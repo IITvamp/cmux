@@ -42,7 +42,7 @@ export async function getRunDiffs(
 
   const native = loadNativeGit();
   if (!native?.gitDiffRefs) {
-    throw new Error("Native git diff not available; rebuild @cmux/native-time");
+    throw new Error("Native git diff not available; rebuild @cmux/native-core");
   }
   const entries: ReplaceDiffEntry[] = await native.gitDiffRefs({
     ref1: ensured.baseBranch,

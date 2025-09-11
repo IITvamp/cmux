@@ -76,7 +76,6 @@ fn collect_tree_blobs(repo: &Repository, tree_id: ObjectId, prefix: &str, out: &
 }
 
 fn should_ignore(root: &Path, rel: &str) -> bool {
-  // Minimal .gitignore support: directory prefixes like 'node_modules/'
   let gi = root.join(".gitignore");
   if let Ok(s) = fs::read_to_string(&gi) {
     for line in s.lines() {
@@ -114,7 +113,6 @@ pub fn diff_workspace(opts: GitDiffWorkspaceOptions) -> Result<Vec<DiffEntry>> {
   let cwd = PathBuf::from(&opts.worktreePath);
   let include = opts.includeContents.unwrap_or(true);
   let max_bytes = opts.maxBytes.unwrap_or(950*1024) as usize;
-  // Best-effort SWR fetch (5s window) to update remote-tracking refs for merge-base
   let _ = crate::repo::cache::swr_fetch_origin_all_path(&cwd, 5_000);
   let repo = gix::open(&cwd)?;
 
@@ -122,19 +120,16 @@ pub fn diff_workspace(opts: GitDiffWorkspaceOptions) -> Result<Vec<DiffEntry>> {
   let base_candidate = default_remote_head(&repo).unwrap_or(head_oid);
   let merge_base = merge_base_oid(&repo, base_candidate, head_oid);
 
-  // Build base map from merge-base
   let base_commit = repo.find_object(merge_base)?.try_into_commit()?;
   let base_tree_id = base_commit.tree_id()?.detach();
   let mut base_map: HashMap<String, ObjectId> = HashMap::new();
   collect_tree_blobs(&repo, base_tree_id, "", &mut base_map)?;
 
-  // Workdir scan
   let workdir = repo.work_dir().unwrap_or_else(|| cwd.as_path());
   let files = scan_workdir(workdir);
 
   let mut out: Vec<DiffEntry> = Vec::new();
 
-  // Added/modified
   for rel in &files {
     let abs = workdir.join(rel);
     let new_data = fs::read(&abs).unwrap_or_default();
@@ -152,7 +147,6 @@ pub fn diff_workspace(opts: GitDiffWorkspaceOptions) -> Result<Vec<DiffEntry>> {
         out.push(e);
       }
       Some(old_id) => {
-        // load old blob
         let old_blob = repo.find_object(*old_id)?.try_into_blob()?;
         let old_data = &old_blob.data;
         if new_data == *old_data { continue; }
@@ -171,7 +165,6 @@ pub fn diff_workspace(opts: GitDiffWorkspaceOptions) -> Result<Vec<DiffEntry>> {
     }
   }
 
-  // Deletions
   let file_set: HashSet<&str> = files.iter().map(|s| s.as_str()).collect();
   for (rel, old_id) in &base_map {
     if file_set.contains(rel.as_str()) { continue; }
@@ -190,3 +183,4 @@ pub fn diff_workspace(opts: GitDiffWorkspaceOptions) -> Result<Vec<DiffEntry>> {
 
   Ok(out)
 }
+

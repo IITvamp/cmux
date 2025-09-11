@@ -356,6 +356,9 @@ async function runTests() {
 
   const resultsStage1 = await Promise.all([...tasksStage1, ...cargoTasks]);
 
+  // Build native Node-API addons for cargo crates (if they define a build script)
+  await buildNativeAddons(cargoCrates);
+
   // Stage 3 — run @cmux/server tests (after cargo)
   let serverResults: Result[] = [];
   if (serverPkg) {
@@ -533,6 +536,7 @@ function findCargoCrates(): { name: string; dir: string }[] {
       const cargo = join(dir, "Cargo.toml");
       if (existsSync(cargo)) {
         const name = dir.replace(rootPath + "/", "");
+        // Discover cargo crate
         if (!seen.has(dir)) {
           seen.add(dir);
           crates.push({ name, dir });
@@ -561,5 +565,64 @@ function walk(root: string, onDir: (dir: string) => void) {
       continue;
     }
     if (st && st.isDirectory()) walk(p, onDir);
+  }
+}
+
+// Build Node-API binaries for crates that expose a package.json with a build script
+async function buildNativeAddons(crates: { name: string; dir: string }[]) {
+  for (const c of crates) {
+    const pkgJsonPath = join(c.dir, "package.json");
+    if (!existsSync(pkgJsonPath)) continue;
+    try {
+      const pkg = JSON.parse(readFileSync(pkgJsonPath, "utf8")) as {
+        scripts?: Record<string, string>;
+      };
+      if (pkg.scripts?.build) {
+        console.log(`🔧 Building native addon for cargo:${c.name}`);
+        await new Promise<void>((resolve) => {
+          const child = spawn("bun", ["run", "build"], {
+            cwd: c.dir,
+            shell: true,
+            env: process.env,
+          });
+          child.stdout?.on("data", (d) => process.stdout.write(d));
+          child.stderr?.on("data", (d) => process.stderr.write(d));
+          child.on("close", () => resolve());
+          child.on("error", () => resolve());
+        });
+
+        // Optionally cross-build Linux targets if toolchains are present
+        const buildLinux = process.env.CMUX_BUILD_LINUX === "1";
+        if (buildLinux) {
+          console.log(`🔧 Building Linux targets for cargo:${c.name}`);
+          await new Promise<void>((resolve) => {
+            const child = spawn(
+              "bunx",
+              [
+                "--bun",
+                "@napi-rs/cli",
+                "build",
+                "--platform",
+                "--target",
+                "x86_64-unknown-linux-gnu",
+                "--target",
+                "aarch64-unknown-linux-gnu",
+              ],
+              {
+                cwd: c.dir,
+                shell: true,
+                env: process.env,
+              }
+            );
+            child.stdout?.on("data", (d) => process.stdout.write(d));
+            child.stderr?.on("data", (d) => process.stderr.write(d));
+            child.on("close", () => resolve());
+            child.on("error", () => resolve());
+          });
+        }
+      }
+    } catch {
+      // ignore invalid package.json
+    }
   }
 }

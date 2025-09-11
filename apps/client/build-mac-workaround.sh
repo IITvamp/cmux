@@ -14,7 +14,7 @@ set +a  # Turn off auto-export
 
 # Build native Rust addon (required)
 echo "Building native Rust addon for packaging (release)..."
-(cd ../../apps/server/native/time && bunx --bun @napi-rs/cli build --platform --release)
+(cd ../../apps/server/native/core && bunx --bun @napi-rs/cli build --platform --release)
 npx electron-vite build -c electron.vite.config.ts
 
 # Create a temporary directory for packaging
@@ -107,8 +107,8 @@ mv "$APP_DIR/Contents/MacOS/Electron" "$APP_DIR/Contents/MacOS/$APP_NAME"
 
 # Bundle native Rust addon (.node) into Resources so runtime loader can find it
 echo "Bundling native Rust addon (.node) into Resources..."
-NATIVE_SRC_DIR="$(pwd)/../../apps/server/native/time"
-NATIVE_DST_DIR="$RESOURCES_DIR/native/time"
+NATIVE_SRC_DIR="$(pwd)/../../apps/server/native/core"
+NATIVE_DST_DIR="$RESOURCES_DIR/native/core"
 mkdir -p "$NATIVE_DST_DIR"
 shopt -s nullglob
 NODE_BINARIES=("$NATIVE_SRC_DIR"/index.*.node)

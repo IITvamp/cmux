@@ -37,22 +37,22 @@ function tryLoadNative(): NativeGitModule | null {
     const arch = process.arch;
 
     const dirCandidates = [
-      process.env.CMUX_NATIVE_TIME_DIR,
+      process.env.CMUX_NATIVE_CORE_DIR,
       typeof (process as unknown as { resourcesPath?: string }).resourcesPath ===
       "string"
         ? path.join(
             (process as unknown as { resourcesPath: string }).resourcesPath,
             "native",
-            "time"
+            "core"
           )
         : undefined,
-      fileURLToPath(new URL("../../native/time/", import.meta.url)),
-      path.resolve(here, "../../../server/native/time"),
-      path.resolve(here, "../../../../apps/server/native/time"),
-      path.resolve(process.cwd(), "../server/native/time"),
-      path.resolve(process.cwd(), "../../apps/server/native/time"),
-      path.resolve(process.cwd(), "apps/server/native/time"),
-      path.resolve(process.cwd(), "server/native/time"),
+      fileURLToPath(new URL("../../native/core/", import.meta.url)),
+      path.resolve(here, "../../../server/native/core"),
+      path.resolve(here, "../../../../apps/server/native/core"),
+      path.resolve(process.cwd(), "../server/native/core"),
+      path.resolve(process.cwd(), "../../apps/server/native/core"),
+      path.resolve(process.cwd(), "apps/server/native/core"),
+      path.resolve(process.cwd(), "server/native/core"),
     ];
 
     for (const maybeDir of dirCandidates) {
@@ -87,4 +87,3 @@ export function getGitImplMode(): GitImplMode {
   const v = (process.env.CMUX_GIT_IMPL || "rust").toLowerCase();
   return v === "js" ? "js" : "rust";
 }
-

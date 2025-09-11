@@ -12,4 +12,3 @@ pub fn run_git(cwd: &str, args: &[&str]) -> Result<String> {
     Err(anyhow!("git {:?} failed: {}", args, err))
   }
 }
-

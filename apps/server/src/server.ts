@@ -11,7 +11,7 @@ import { dockerLogger, serverLogger } from "./utils/fileLogger.js";
 import { waitForConvex } from "./utils/waitForConvex.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
-import { getRustTime } from "./native/time.js";
+import { getRustTime } from "./native/core.js";
 
 const execAsync = promisify(exec);
 

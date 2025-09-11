@@ -11,7 +11,6 @@ use gix::{Repository, hash::ObjectId};
 use similar::TextDiff;
 
 fn oid_from_rev_parse(repo: &Repository, rev: &str) -> anyhow::Result<ObjectId> {
-  // Try to resolve via reference paths first
   if let Ok(oid) = ObjectId::from_hex(rev.as_bytes()) { return Ok(oid); }
   let candidates = [
     rev.to_string(),
@@ -24,15 +23,11 @@ fn oid_from_rev_parse(repo: &Repository, rev: &str) -> anyhow::Result<ObjectId> 
       if let Some(id) = r.target().try_id() { return Ok(id.to_owned()); }
     }
   }
-  // Try revision parser
   if let Ok(spec) = repo.rev_parse_single(rev) {
     if let Ok(obj) = spec.object() { return Ok(obj.id); }
   }
   Err(anyhow::anyhow!("could not resolve rev '{}'", rev))
 }
-
-// Fast merge-base resolution via `git merge-base` with BFS fallback
-// Use the new merge_base module
 
 fn is_binary(data: &[u8]) -> bool {
   data.iter().any(|&b| b == 0) || std::str::from_utf8(data).is_err()
@@ -70,8 +65,6 @@ pub fn diff_refs(opts: GitDiffRefsOptions) -> Result<Vec<DiffEntry>> {
   let d_repo_path = t_repo_path.elapsed();
   let cwd = repo_path.to_string_lossy().to_string();
 
-  // Resolve refs to OIDs using gitoxide only
-  // SWR fetch: if originPathOverride provided, do SWR(5s); else ensure_repo handled fetch.
   let d_fetch = if opts.originPathOverride.is_some() {
     let t_fetch = Instant::now();
     let _ = crate::repo::cache::swr_fetch_origin_all_path(std::path::Path::new(&cwd), 5_000);
@@ -81,7 +74,6 @@ pub fn diff_refs(opts: GitDiffRefsOptions) -> Result<Vec<DiffEntry>> {
   let t_open = Instant::now();
   let repo = gix::open(&cwd)?;
   let d_open = t_open.elapsed();
-  // If either ref can't be resolved, treat as no diff
   let t_r1 = Instant::now();
   let r1_oid = match oid_from_rev_parse(&repo, &opts.ref1) {
     Ok(oid) => oid,
@@ -120,7 +112,6 @@ pub fn diff_refs(opts: GitDiffRefsOptions) -> Result<Vec<DiffEntry>> {
     .unwrap_or(r1_oid);
   let d_merge_base = t_merge_base.elapsed();
 
-  // Build tree maps of path -> blob id
   let t_tree_ids = Instant::now();
   let base_commit = repo.find_object(base_oid)?.try_into_commit()?;
   let base_tree_id = base_commit.tree_id()?.detach();
@@ -149,7 +140,6 @@ pub fn diff_refs(opts: GitDiffRefsOptions) -> Result<Vec<DiffEntry>> {
   let mut max_diff_ns: u128 = 0;
   let mut max_diff_path: Option<String> = None;
 
-  // Additions and modifications
   let t_loop_add_mod = Instant::now();
   for (path, new_id) in &head_map {
     match base_map.get(path) {
@@ -228,7 +218,6 @@ pub fn diff_refs(opts: GitDiffRefsOptions) -> Result<Vec<DiffEntry>> {
   }
   let d_loop_add_mod = t_loop_add_mod.elapsed();
 
-  // Deletions
   let t_loop_del = Instant::now();
   for (path, old_id) in &base_map {
     if head_map.contains_key(path) { continue; }
@@ -287,3 +276,4 @@ pub fn diff_refs(opts: GitDiffRefsOptions) -> Result<Vec<DiffEntry>> {
 
   Ok(out)
 }
+

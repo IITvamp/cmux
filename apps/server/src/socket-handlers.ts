@@ -53,7 +53,7 @@ import {
 import { runWithAuth, runWithAuthToken } from "./utils/requestContext.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { getProjectPaths } from "./workspace.js";
-import { getRustTime } from "./native/time.js";
+import { getRustTime } from "./native/core.js";
 
 const execAsync = promisify(exec);
 

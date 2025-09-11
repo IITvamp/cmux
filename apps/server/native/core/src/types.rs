@@ -39,3 +39,4 @@ pub struct GitDiffRefsOptions {
   pub includeContents: Option<bool>,
   pub maxBytes: Option<i32>,
 }
+

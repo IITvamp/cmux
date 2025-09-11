@@ -3,11 +3,11 @@ import { createRequire } from "node:module";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export interface NativeTimeModule {
+export interface NativeCoreModule {
   getTime?: () => Promise<string>;
 }
 
-function tryLoadNative(): NativeTimeModule | null {
+function tryLoadNative(): NativeCoreModule | null {
   try {
     const nodeRequire = createRequire(import.meta.url);
     const here = path.dirname(fileURLToPath(import.meta.url));
@@ -15,27 +15,23 @@ function tryLoadNative(): NativeTimeModule | null {
     const arch = process.arch;
 
     const dirCandidates = [
-      // Explicit override for development or packaging scenarios
-      process.env.CMUX_NATIVE_TIME_DIR,
-      // When packaged by electron-builder, extraResources are placed under resourcesPath
-      typeof (process as unknown as { resourcesPath?: string })
-        .resourcesPath === "string"
+      process.env.CMUX_NATIVE_CORE_DIR,
+      typeof (process as unknown as { resourcesPath?: string }).resourcesPath ===
+      "string"
         ? path.join(
             (process as unknown as { resourcesPath: string }).resourcesPath,
             "native",
-            "time"
+            "core"
           )
         : undefined,
-      // Normal backend path
-      fileURLToPath(new URL("../../native/time/", import.meta.url)),
-      // When bundled into Electron main (dist-electron/main)
-      path.resolve(here, "../../../server/native/time"),
-      path.resolve(here, "../../../../apps/server/native/time"),
-      // Based on current working directory during dev
-      path.resolve(process.cwd(), "../server/native/time"),
-      path.resolve(process.cwd(), "../../apps/server/native/time"),
-      path.resolve(process.cwd(), "apps/server/native/time"),
-      path.resolve(process.cwd(), "server/native/time"),
+      fileURLToPath(new URL("../../native/core/", import.meta.url)),
+      path.resolve(here, "../../../server/native/core"),
+      path.resolve(here, "../../../../apps/server/native/core"),
+      path.resolve(process.cwd(), "../server/native/core"),
+      path.resolve(process.cwd(), "../../apps/server/native/core"),
+      path.resolve(process.cwd(), "apps/server/native/core"),
+      path.resolve(process.cwd(), "server/native/core"),
+      
     ];
 
     for (const maybeDir of dirCandidates) {
@@ -51,7 +47,7 @@ function tryLoadNative(): NativeTimeModule | null {
         if (!preferred) continue;
         const mod = nodeRequire(
           path.join(nativeDir, preferred)
-        ) as unknown as NativeTimeModule;
+        ) as unknown as NativeCoreModule;
         if (mod && typeof mod.getTime === "function") return mod;
       } catch {
         // try next
@@ -63,9 +59,9 @@ function tryLoadNative(): NativeTimeModule | null {
   }
 }
 
-let cached: NativeTimeModule | null = null;
+let cached: NativeCoreModule | null = null;
 
-function loadNative(): NativeTimeModule | null {
+function loadNative(): NativeCoreModule | null {
   if (!cached) cached = tryLoadNative();
   return cached;
 }
@@ -73,5 +69,5 @@ function loadNative(): NativeTimeModule | null {
 export async function getRustTime(): Promise<string> {
   const mod = loadNative();
   if (mod?.getTime) return mod.getTime();
-  throw new Error("@cmux/native-time not built or failed to load");
+  throw new Error("@cmux/native-core not built or failed to load");
 }

@@ -1,7 +1,7 @@
 use gix::{hash::ObjectId, Repository};
 use std::collections::{HashMap, VecDeque};
+// Instant is only used in tests
 
-// Optimized true bidirectional BFS to find a common ancestor minimizing sum of depths.
 pub fn merge_base_bfs(repo: &Repository, a: ObjectId, b: ObjectId) -> Option<ObjectId> {
   if a == b { return Some(a); }
 
@@ -16,50 +16,54 @@ pub fn merge_base_bfs(repo: &Repository, a: ObjectId, b: ObjectId) -> Option<Obj
 
   let mut best: Option<(ObjectId, usize)> = None; // (id, cost)
 
-  // Helper to expand one frontier step
-  let expand = |from_a: bool,
-                    repo: &Repository,
-                    qa: &mut VecDeque<ObjectId>,
-                    qb: &mut VecDeque<ObjectId>,
-                    dist_a: &mut HashMap<ObjectId, usize>,
-                    dist_b: &mut HashMap<ObjectId, usize>,
-                    best: &mut Option<(ObjectId, usize)>| -> anyhow::Result<bool> {
-    let (this_q, this_d, other_d) = if from_a { (qa, dist_a, dist_b) } else { (qb, dist_b, dist_a) };
+  fn expand(
+    from_a: bool,
+    repo: &Repository,
+    qa: &mut VecDeque<ObjectId>,
+    qb: &mut VecDeque<ObjectId>,
+    dist_a: &mut HashMap<ObjectId, usize>,
+    dist_b: &mut HashMap<ObjectId, usize>,
+    best: &mut Option<(ObjectId, usize)>,
+  ) -> bool {
+    let (this_q, this_d, other_d) = if from_a {
+      (qa, dist_a, dist_b)
+    } else {
+      (qb, dist_b, dist_a)
+    };
     if let Some(cur) = this_q.pop_front() {
       let d = *this_d.get(&cur).unwrap();
-      // If we already have a best and d is greater than current best/2, we can early stop
       if let Some((_, best_cost)) = best.as_ref() {
-        if d > *best_cost { return Ok(false); }
+        if d > *best_cost { return false; }
       }
-      let obj = repo.find_object(cur)?;
-      let commit = obj.try_into_commit()?;
-      for p in commit.parent_ids() {
-        let pid = p.detach();
-        if !this_d.contains_key(&pid) {
-          this_d.insert(pid, d + 1);
-          this_q.push_back(pid);
-          if let Some(od) = other_d.get(&pid) {
-            let cost = (d + 1) + *od;
-            match best {
-              None => *best = Some((pid, cost)),
-              Some((_, c)) if cost < *c => *best = Some((pid, cost)),
-              _ => {}
+      if let Ok(obj) = repo.find_object(cur) {
+        if let Ok(commit) = obj.try_into_commit() {
+          for p in commit.parent_ids() {
+            let pid = p.detach();
+            if !this_d.contains_key(&pid) {
+              this_d.insert(pid, d + 1);
+              this_q.push_back(pid);
+              if let Some(od) = other_d.get(&pid) {
+                let cost = (d + 1) + *od;
+                match best {
+                  None => *best = Some((pid, cost)),
+                  Some((_, c)) if cost < *c => *best = Some((pid, cost)),
+                  _ => {}
+                }
+              }
             }
           }
         }
       }
-      return Ok(true);
+      return true;
     }
-    Ok(false)
-  };
+    false
+  }
 
   // Alternate expanding the smaller frontier for performance.
   loop {
     let next_from_a = qa.len() <= qb.len();
-    let progressed = expand(next_from_a, repo, &mut qa, &mut qb, &mut dist_a, &mut dist_b, &mut best)
-      .unwrap_or(false)
-      || expand(!next_from_a, repo, &mut qa, &mut qb, &mut dist_a, &mut dist_b, &mut best)
-        .unwrap_or(false);
+    let progressed = expand(next_from_a, &repo, &mut qa, &mut qb, &mut dist_a, &mut dist_b, &mut best)
+      || expand(!next_from_a, &repo, &mut qa, &mut qb, &mut dist_a, &mut dist_b, &mut best);
     if !progressed { break; }
   }
 
@@ -69,9 +73,9 @@ pub fn merge_base_bfs(repo: &Repository, a: ObjectId, b: ObjectId) -> Option<Obj
 #[cfg(test)]
 mod tests {
   use super::*;
+  use std::time::Instant;
+  use std::{fs, process::Command};
   use tempfile::tempdir;
-  use std::{fs, time::Instant};
-  use std::process::Command;
 
   fn run(cwd: &std::path::Path, cmd: &str) {
     let status = if cfg!(target_os = "windows") {
@@ -88,15 +92,14 @@ mod tests {
     let tmp = tempdir().unwrap();
     let repo_dir = tmp.path().join("repo");
     fs::create_dir_all(&repo_dir).unwrap();
-
     run(&repo_dir, "git init");
     run(&repo_dir, "git -c user.email=a@b -c user.name=test checkout -b main");
-    fs::write(repo_dir.join("file.txt"), b"0\n").unwrap();
+    fs::write(repo_dir.join("file.txt"), "base\n").unwrap();
     run(&repo_dir, "git add .");
-    run(&repo_dir, "git commit -m c0");
-    // Diverge into two branches with N commits each
-    let n = 60; // keep tests fast
+    run(&repo_dir, "git commit -m base");
     run(&repo_dir, "git checkout -b feature");
+
+    let n = 60;
     for i in 1..=n {
       fs::write(repo_dir.join("file.txt"), format!("f{}\n", i)).unwrap();
       run(&repo_dir, "git add .");
