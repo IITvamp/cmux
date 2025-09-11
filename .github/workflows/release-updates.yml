@@ -27,19 +27,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.release.tag_name }}
-
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.2.21
-
       - name: Install dependencies (bun)
         run: bun install --frozen-lockfile
-
       - name: Write .env for build
         shell: bash
         run: |
@@ -50,17 +46,13 @@ jobs:
           NEXT_PUBLIC_WWW_ORIGIN=${{ secrets.NEXT_PUBLIC_WWW_ORIGIN }}
           NEXT_PUBLIC_GITHUB_APP_SLUG=${{ secrets.NEXT_PUBLIC_GITHUB_APP_SLUG }}
           EOF
-
       - name: Generate icons
         working-directory: apps/client
         run: bun run ./scripts/generate-icons.mjs
-
       - name: Prepare macOS entitlements
         run: bash scripts/prepare-macos-entitlements.sh
-
-      - name: Build mac app via local script (x64)
-        run: bash scripts/build-electron-local.sh
-
+      - name: Build mac app via prod script (x64)
+        run: bash scripts/build-electron-prod.sh
       - name: Detect mac signing secrets
         id: signing
         env:
@@ -70,64 +62,88 @@ jobs:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER}}
         run: |
-          set -euo pipefail
           has=true
           for k in MAC_CERT_BASE64 MAC_CERT_PASSWORD APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER; do
             if [ -z "${!k:-}" ]; then has=false; fi
           done
           echo "has=$has" >> "$GITHUB_OUTPUT"
-
       - name: Prepare mac signing cert (x64)
         if: ${{ steps.signing.outputs.has == 'true' }}
         env:
           MAC_CERT_BASE64: ${{ secrets.MAC_CERT_BASE64 }}
         run: |
-          set -euo pipefail
           CERT_PATH="$RUNNER_TEMP/mac_signing_cert.p12"
           node -e "process.stdout.write(Buffer.from(process.env.MAC_CERT_BASE64,'base64'))" > "$CERT_PATH"
           echo "CSC_LINK=$CERT_PATH" >> "$GITHUB_ENV"
-
       - name: Prepare Apple API key file (x64)
         if: ${{ steps.signing.outputs.has == 'true' }}
         env:
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
         run: |
-          set -euo pipefail
           KEY_PATH="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
-          # Normalize line endings and write the PEM to disk
           printf "%s" "$APPLE_API_KEY" | perl -0777 -pe 's/\r\n|\r|\n/\n/g' > "$KEY_PATH"
-          # Expose the FILE PATH (not contents) to later steps
           echo "APPLE_API_KEY=$KEY_PATH" >> "$GITHUB_ENV"
-
-      - name: Build & publish mac x64 (signed) to GitHub Releases
+      - name: Build mac x64 (signed; no auto-notarize)
         if: ${{ steps.signing.outputs.has == 'true' }}
         env:
-          GH_TOKEN: ${{ github.token }}
-          # NOTE: Do not set APPLE_API_KEY here; it's the file path written to $GITHUB_ENV above.
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          DEBUG: electron-osx-sign*,electron-notarize*
         working-directory: apps/client
         run: |
           bunx electron-builder \
             --config electron-builder.json \
             --mac dmg zip --x64 \
-            --publish always \
+            --publish never \
             --config.mac.forceCodeSigning=true \
             --config.mac.entitlements="${{ github.workspace }}/apps/client/build/entitlements.mac.plist" \
             --config.mac.entitlementsInherit="${{ github.workspace }}/apps/client/build/entitlements.mac.plist" \
-            --config.mac.notarize=true \
-            --config.publish.provider=github \
-            --config.publish.owner="${{ github.repository_owner }}" \
-            --config.publish.repo="${{ github.event.repository.name }}"
-
+            --config.mac.notarize=false
+      - name: Manually notarize with xcrun notarytool (x64)
+        if: ${{ steps.signing.outputs.has == 'true' }}
+        working-directory: apps/client/dist-electron
+        env:
+          APPLE_API_KEY: ${{ env.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          set -e
+          echo "notarytool: $(xcrun notarytool --version 2>/dev/null || echo 'not found')"
+          ARTIFACT=""
+          if compgen -G "*.dmg" > /dev/null; then
+            ARTIFACT="$(ls -1 *.dmg | head -n1)"
+            echo "Submitting DMG: $ARTIFACT"
+          else
+            APP_PATH="$(ls -1d mac*/**/*.app 2>/dev/null | head -n1 || true)"
+            if [ -n "$APP_PATH" ]; then
+              ARTIFACT="$(basename "${APP_PATH%.app}").zip"
+              echo "Zipping .app with ditto: $APP_PATH -> $ARTIFACT"
+              (cd "$(dirname "$APP_PATH")" && ditto -c -k --sequesterRsrc --keepParent "$(basename "$APP_PATH")" "$PWD/$ARTIFACT")
+            fi
+          fi
+          if [ -n "$ARTIFACT" ]; then
+            set +e
+            OUT=$(xcrun notarytool submit "$ARTIFACT" --wait --key "$APPLE_API_KEY" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER" 2>&1)
+            CODE=$?
+            set -e
+            printf '%s\n' "$OUT" | sed -e 's/^/notarytool: /'
+            if [ $CODE -eq 0 ] && printf '%s' "$OUT" | grep -qi 'Accepted'; then
+              echo "Notarization accepted"
+            else
+              echo "Notarization did not report Accepted (exit $CODE). Attempting log fetch..." >&2
+              SUBMISSION_ID=$(printf '%s' "$OUT" | sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]\+\)".*/\1/p' | head -n1)
+              if [ -n "$SUBMISSION_ID" ]; then
+                xcrun notarytool log "$SUBMISSION_ID" --key "$APPLE_API_KEY" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER" --output-format text || true
+              fi
+              exit 1
+            fi
+          else
+            echo "No DMG or .app found to notarize" >&2
+            exit 1
+          fi
       - name: Staple & verify (x64)
         if: ${{ steps.signing.outputs.has == 'true' }}
         working-directory: apps/client/dist-electron
         run: |
-          set -euo pipefail
           APP="$(ls -1d mac*/**/*.app 2>/dev/null | head -n1 || true)"
           DMG="$(ls -1 *.dmg 2>/dev/null | head -n1 || true)"
           if [ -n "$APP" ]; then
@@ -140,23 +156,6 @@ jobs:
             xcrun stapler validate "$DMG" || true
             spctl -a -t open -vv "$DMG"
           fi
-
-      # - name: Build & publish mac x64 (unsigned) to GitHub Releases
-      #   if: ${{ steps.signing.outputs.has != 'true' }}
-      #   env:
-      #     GH_TOKEN: ${{ github.token }}
-      #     CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-      #   working-directory: apps/client
-      #   run: |
-      #     bunx electron-builder \
-      #       --config electron-builder.json \
-      #       --mac dmg zip --x64 \
-      #       --publish always \
-      #       --config.mac.identity=null \
-      #       --config.dmg.sign=false \
-      #       --config.publish.provider=github \
-      #       --config.publish.owner="${{ github.repository_owner }}" \
-      #       --config.publish.repo="${{ github.event.repository.name }}"
 
   mac-arm64:
     name: macOS arm64
@@ -169,19 +168,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.release.tag_name }}
-
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.2.21
-
       - name: Install dependencies (bun)
         run: bun install --frozen-lockfile
-
       - name: Write .env for build
         shell: bash
         run: |
@@ -192,17 +187,13 @@ jobs:
           NEXT_PUBLIC_WWW_ORIGIN=${{ secrets.NEXT_PUBLIC_WWW_ORIGIN }}
           NEXT_PUBLIC_GITHUB_APP_SLUG=${{ secrets.NEXT_PUBLIC_GITHUB_APP_SLUG }}
           EOF
-
       - name: Generate icons
         working-directory: apps/client
         run: bun run ./scripts/generate-icons.mjs
-
       - name: Prepare macOS entitlements
         run: bash scripts/prepare-macos-entitlements.sh
-
-      - name: Build mac app via local script (arm64)
-        run: bash scripts/build-electron-local.sh
-
+      - name: Build mac app via prod script (arm64)
+        run: bash scripts/build-electron-prod.sh
       - name: Detect mac signing secrets
         id: signing_arm
         env:
@@ -212,62 +203,88 @@ jobs:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: |
-          set -euo pipefail
           has=true
           for k in MAC_CERT_BASE64 MAC_CERT_PASSWORD APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER; do
             if [ -z "${!k:-}" ]; then has=false; fi
           done
           echo "has=$has" >> "$GITHUB_OUTPUT"
-
       - name: Prepare mac signing cert (arm64)
         if: ${{ steps.signing_arm.outputs.has == 'true' }}
         env:
           MAC_CERT_BASE64: ${{ secrets.MAC_CERT_BASE64 }}
         run: |
-          set -euo pipefail
           CERT_PATH="$RUNNER_TEMP/mac_signing_cert.p12"
           node -e "process.stdout.write(Buffer.from(process.env.MAC_CERT_BASE64,'base64'))" > "$CERT_PATH"
           echo "CSC_LINK=$CERT_PATH" >> "$GITHUB_ENV"
-
       - name: Prepare Apple API key file (arm64)
         if: ${{ steps.signing_arm.outputs.has == 'true' }}
         env:
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
         run: |
-          set -euo pipefail
           KEY_PATH="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
           printf "%s" "$APPLE_API_KEY" | perl -0777 -pe 's/\r\n|\r|\n/\n/g' > "$KEY_PATH"
           echo "APPLE_API_KEY=$KEY_PATH" >> "$GITHUB_ENV"
-
-      - name: Build & publish mac arm64 (signed) to GitHub Releases
+      - name: Build mac arm64 (signed; no auto-notarize)
         if: ${{ steps.signing_arm.outputs.has == 'true' }}
         env:
-          GH_TOKEN: ${{ github.token }}
-          # NOTE: Do not set APPLE_API_KEY here; it's the file path written to $GITHUB_ENV above.
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
-          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
-          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-          DEBUG: electron-osx-sign*,electron-notarize*
         working-directory: apps/client
         run: |
           bunx electron-builder \
             --config electron-builder.json \
             --mac dmg zip --arm64 \
-            --publish always \
+            --publish never \
             --config.mac.forceCodeSigning=true \
             --config.mac.entitlements="${{ github.workspace }}/apps/client/build/entitlements.mac.plist" \
             --config.mac.entitlementsInherit="${{ github.workspace }}/apps/client/build/entitlements.mac.plist" \
-            --config.mac.notarize=true \
-            --config.publish.provider=github \
-            --config.publish.owner="${{ github.repository_owner }}" \
-            --config.publish.repo="${{ github.event.repository.name }}"
-
+            --config.mac.notarize=false
+      - name: Manually notarize with xcrun notarytool (arm64)
+        if: ${{ steps.signing_arm.outputs.has == 'true' }}
+        working-directory: apps/client/dist-electron
+        env:
+          APPLE_API_KEY: ${{ env.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+        run: |
+          set -e
+          echo "notarytool: $(xcrun notarytool --version 2>/dev/null || echo 'not found')"
+          ARTIFACT=""
+          if compgen -G "*.dmg" > /dev/null; then
+            ARTIFACT="$(ls -1 *.dmg | head -n1)"
+            echo "Submitting DMG: $ARTIFACT"
+          else
+            APP_PATH="$(ls -1d mac*/**/*.app 2>/dev/null | head -n1 || true)"
+            if [ -n "$APP_PATH" ]; then
+              ARTIFACT="$(basename "${APP_PATH%.app}").zip"
+              echo "Zipping .app with ditto: $APP_PATH -> $ARTIFACT"
+              (cd "$(dirname "$APP_PATH")" && ditto -c -k --sequesterRsrc --keepParent "$(basename "$APP_PATH")" "$PWD/$ARTIFACT")
+            fi
+          fi
+          if [ -n "$ARTIFACT" ]; then
+            set +e
+            OUT=$(xcrun notarytool submit "$ARTIFACT" --wait --key "$APPLE_API_KEY" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER" 2>&1)
+            CODE=$?
+            set -e
+            printf '%s\n' "$OUT" | sed -e 's/^/notarytool: /'
+            if [ $CODE -eq 0 ] && printf '%s' "$OUT" | grep -qi 'Accepted'; then
+              echo "Notarization accepted"
+            else
+              echo "Notarization did not report Accepted (exit $CODE). Attempting log fetch..." >&2
+              SUBMISSION_ID=$(printf '%s' "$OUT" | sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]\+\)".*/\1/p' | head -n1)
+              if [ -n "$SUBMISSION_ID" ]; then
+                xcrun notarytool log "$SUBMISSION_ID" --key "$APPLE_API_KEY" --key-id "$APPLE_API_KEY_ID" --issuer "$APPLE_API_ISSUER" --output-format text || true
+              fi
+              exit 1
+            fi
+          else
+            echo "No DMG or .app found to notarize" >&2
+            exit 1
+          fi
       - name: Staple & verify (arm64)
         if: ${{ steps.signing_arm.outputs.has == 'true' }}
         working-directory: apps/client/dist-electron
         run: |
-          set -euo pipefail
           APP="$(ls -1d mac*/**/*.app 2>/dev/null | head -n1 || true)"
           DMG="$(ls -1 *.dmg 2>/dev/null | head -n1 || true)"
           if [ -n "$APP" ]; then
@@ -280,23 +297,6 @@ jobs:
             xcrun stapler validate "$DMG" || true
             spctl -a -t open -vv "$DMG"
           fi
-
-      # - name: Build & publish mac arm64 (unsigned) to GitHub Releases
-      #   if: ${{ steps.signing_arm.outputs.has != 'true' }}
-      #   env:
-      #     GH_TOKEN: ${{ github.token }}
-      #     CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-      #   working-directory: apps/client
-      #   run: |
-      #     bunx electron-builder \
-      #       --config electron-builder.json \
-      #       --mac dmg zip --arm64 \
-      #       --publish always \
-      #       --config.mac.identity=null \
-      #       --config.dmg.sign=false \
-      #       --config.publish.provider=github \
-      #       --config.publish.owner="${{ github.repository_owner }}" \
-      #       --config.publish.repo="${{ github.event.repository.name }}"
 
   windows-x64:
     name: Windows x64
