@@ -235,7 +235,7 @@ function DashboardComponent() {
 
   const handleStartTask = useCallback(async () => {
     // Prevent starting tasks locally only when Docker is explicitly not running
-    if (!isEnvSelected && !isCloudMode && dockerReady === false) {
+    if (!isEnvSelected && !isCloudMode && !dockerReady) {
       toast.error("Docker is not running. Start Docker Desktop.");
       return;
     }
@@ -594,7 +594,7 @@ function DashboardComponent() {
   // Compute docker block state and disabled reason early so shortcuts respect it
   const blockedByDocker = useMemo(() => {
     // Block when explicitly in local mode (not cloud, not environment) and Docker is explicitly not running
-    return !isEnvSelected && !isCloudMode && dockerReady === false;
+    return !isEnvSelected && !isCloudMode && !dockerReady;
   }, [isEnvSelected, isCloudMode, dockerReady]);
 
   const disabledReason = useMemo(() => {
