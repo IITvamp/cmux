@@ -1,48 +1,22 @@
-import { useSocketSuspense } from "@/contexts/socket/use-socket";
-import { runDiffsQueryOptions } from "@/queries/run-diffs";
-import type { Id } from "@cmux/convex/dataModel";
-import type { GitFileChanged, ReplaceDiffEntry } from "@cmux/shared";
-import { useQueryClient, useQuery as useRQ } from "@tanstack/react-query";
-import { useEffect, type ComponentProps } from "react";
+import { diffRefsQueryOptions } from "@/queries/diff-refs";
+import { useQuery as useRQ } from "@tanstack/react-query";
+import { type ComponentProps } from "react";
 import { GitDiffViewer } from "./git-diff-viewer";
 
 export interface RunDiffSectionProps {
-  taskRunId: Id<"taskRuns">;
-  worktreePath?: string | null;
+  repoFullName: string;
+  ref1: string;
+  ref2: string;
   classNames?: ComponentProps<typeof GitDiffViewer>["classNames"];
   onControlsChange?: ComponentProps<typeof GitDiffViewer>["onControlsChange"];
 }
 
-export function RunDiffSection({
-  taskRunId,
-  worktreePath,
-  classNames,
-  onControlsChange,
-}: RunDiffSectionProps) {
-  const { socket } = useSocketSuspense();
-  const queryClient = useQueryClient();
+export function RunDiffSection(props: RunDiffSectionProps) {
+  const { repoFullName, ref1, ref2, classNames, onControlsChange } = props;
 
-  const diffsQuery = useRQ(runDiffsQueryOptions({ taskRunId }));
+  const diffsQuery = useRQ(diffRefsQueryOptions({ repoFullName, ref1, ref2 }));
 
-  useEffect(() => {
-    if (!socket || !taskRunId || !worktreePath) return;
-    const onChanged = (data: GitFileChanged) => {
-      if (data.workspacePath !== worktreePath) return;
-      socket.emit(
-        "get-run-diffs",
-        { taskRunId },
-        (resp: { ok: boolean; diffs: ReplaceDiffEntry[]; error?: string }) => {
-          if (resp.ok && queryClient) {
-            queryClient.setQueryData(["run-diffs", taskRunId], resp.diffs);
-          }
-        }
-      );
-    };
-    socket.on("git-file-changed", onChanged);
-    return () => {
-      socket.off("git-file-changed", onChanged);
-    };
-  }, [socket, taskRunId, worktreePath, queryClient]);
+  // No workspace watcher in refs mode
 
   if (diffsQuery.isPending) {
     return (
@@ -76,7 +50,6 @@ export function RunDiffSection({
   return (
     <GitDiffViewer
       diffs={diffsQuery.data}
-      taskRunId={taskRunId}
       onControlsChange={onControlsChange}
       classNames={classNames}
     />

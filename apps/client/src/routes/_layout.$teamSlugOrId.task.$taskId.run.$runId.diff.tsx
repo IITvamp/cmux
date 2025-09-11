@@ -2,7 +2,7 @@ import { FloatingPane } from "@/components/floating-pane";
 import { type GitDiffViewerProps } from "@/components/git-diff-viewer";
 import { RunDiffSection } from "@/components/RunDiffSection";
 import { TaskDetailHeader } from "@/components/task-detail-header";
-import { runDiffsQueryOptions } from "@/queries/run-diffs";
+// Refs mode: no run-diffs prefetch
 import { api } from "@cmux/convex/api";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { convexQuery } from "@convex-dev/react-query";
@@ -36,10 +36,6 @@ export const Route = createFileRoute(
     },
   },
   loader: async (opts) => {
-    const taskRunId = opts.params.runId;
-    void opts.context.queryClient.ensureQueryData(
-      runDiffsQueryOptions({ taskRunId })
-    );
     await Promise.all([
       opts.context.queryClient.ensureQueryData(
         convexQuery(api.taskRuns.getByTask, {
@@ -77,7 +73,20 @@ function RunDiffPage() {
   const selectedRun = useMemo(() => {
     return taskRuns?.find((run) => run._id === runId);
   }, [runId, taskRuns]);
-  const taskRunId = selectedRun?._id || runId;
+
+  // 404 if selected run is missing
+  if (!selectedRun) {
+    return (
+      <div className="p-6 text-sm text-neutral-600 dark:text-neutral-300">404 – Run not found</div>
+    );
+  }
+
+  const taskRunId = selectedRun._id;
+
+  // Compute refs for diff: base branch vs run branch
+  const repoFullName = task?.projectFullName || "";
+  const ref1 = task?.baseBranch || "main";
+  const ref2 = selectedRun.newBranch || "";
 
   return (
     <FloatingPane>
@@ -114,12 +123,19 @@ function RunDiffPage() {
                 </div>
               }
             >
-              <RunDiffSection
-                taskRunId={taskRunId}
-                worktreePath={selectedRun?.worktreePath || null}
-                onControlsChange={setDiffControls}
-                classNames={gitDiffViewerClassNames}
-              />
+              {repoFullName && ref1 && ref2 ? (
+                <RunDiffSection
+                  repoFullName={repoFullName}
+                  ref1={ref1}
+                  ref2={ref2}
+                  onControlsChange={setDiffControls}
+                  classNames={gitDiffViewerClassNames}
+                />
+              ) : (
+                <div className="p-6 text-sm text-neutral-600 dark:text-neutral-300">
+                  Missing repo or branches to show diff.
+                </div>
+              )}
             </Suspense>
           </div>
         </div>

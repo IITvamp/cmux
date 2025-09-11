@@ -187,6 +187,27 @@ export function setupSocketHandlers(
       }
     });
 
+    // New event: git-diff-refs (alias of compare using native path)
+    socket.on("git-diff-refs", async (data, callback) => {
+      try {
+        const { repoFullName, ref1, ref2 } = GitCompareRefsSchema.parse(data);
+        const diffs = await compareRefsForRepo({
+          repoFullName,
+          ref1,
+          ref2,
+          teamSlugOrId: safeTeam,
+        });
+        callback?.({ ok: true, diffs });
+      } catch (error) {
+        serverLogger.error("Error in git-diff-refs:", error);
+        callback?.({
+          ok: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+          diffs: [],
+        });
+      }
+    });
+
     void (async () => {
       const commandExists = async (cmd: string) => {
         try {

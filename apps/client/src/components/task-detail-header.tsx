@@ -3,11 +3,11 @@ import { Dropdown } from "@/components/ui/dropdown";
 import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
 import { useSocketSuspense } from "@/contexts/socket/use-socket";
 import { isElectron } from "@/lib/electron";
-import { runDiffsQueryOptions } from "@/queries/run-diffs";
+import { diffRefsQueryOptions } from "@/queries/diff-refs";
 import type { Doc, Id } from "@cmux/convex/dataModel";
 import { Skeleton } from "@heroui/react";
 import { useClipboard } from "@mantine/hooks";
-import { useQuery as useRQ, useSuspenseQuery } from "@tanstack/react-query";
+import { useQuery as useRQ } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
 import {
@@ -46,8 +46,16 @@ interface TaskDetailHeaderProps {
 
 const ENABLE_MERGE_BUTTON = false;
 
-function AdditionsAndDeletions({ taskRunId }: { taskRunId: Id<"taskRuns"> }) {
-  const diffsQuery = useRQ(runDiffsQueryOptions({ taskRunId }));
+function AdditionsAndDeletions({
+  repoFullName,
+  ref1,
+  ref2,
+}: {
+  repoFullName: string;
+  ref1: string;
+  ref2: string;
+}) {
+  const diffsQuery = useRQ(diffRefsQueryOptions({ repoFullName, ref1, ref2 }));
 
   if (diffsQuery.error) {
     return (
@@ -151,7 +159,11 @@ export function TaskDetailHeader({
               </div>
             }
           >
-            <AdditionsAndDeletions taskRunId={taskRunId} />
+            <AdditionsAndDeletions
+              repoFullName={task?.projectFullName || ""}
+              ref1={task?.baseBranch || ""}
+              ref2={selectedRun?.newBranch || ""}
+            />
           </Suspense>
         </div>
 
@@ -194,6 +206,9 @@ export function TaskDetailHeader({
               setIsOpeningPr={setIsOpeningPr}
               isMerging={isMerging}
               setIsMerging={setIsMerging}
+              repoFullName={task?.projectFullName || ""}
+              ref1={task?.baseBranch || ""}
+              ref2={selectedRun?.newBranch || ""}
             />
           </Suspense>
 
@@ -377,6 +392,9 @@ function SocketActions({
   setIsOpeningPr,
   isMerging,
   setIsMerging,
+  repoFullName,
+  ref1,
+  ref2,
 }: {
   selectedRun: Doc<"taskRuns"> | null;
   taskRunId: Id<"taskRuns">;
@@ -388,9 +406,13 @@ function SocketActions({
   setIsOpeningPr: (v: boolean) => void;
   isMerging: boolean;
   setIsMerging: (v: boolean) => void;
+  repoFullName: string;
+  ref1: string;
+  ref2: string;
 }) {
   const { socket } = useSocketSuspense();
-  const diffsQuery = useSuspenseQuery(runDiffsQueryOptions({ taskRunId }));
+  // const diffsQuery = useSuspenseQuery(runDiffsQueryOptions({ taskRunId }));
+  const diffsQuery = useRQ(diffRefsQueryOptions({ repoFullName, ref1, ref2 }));
   const hasChanges = (diffsQuery.data || []).length > 0;
 
   const handleMerge = async (method: MergeMethod) => {
