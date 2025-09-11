@@ -1,4 +1,5 @@
 import { env } from "@/client-env";
+import { isElectron } from "@/lib/electron";
 import { AgentLogo } from "@/components/icons/agent-logos";
 import { GitHubIcon } from "@/components/icons/github";
 import { ModeToggleTooltip } from "@/components/ui/mode-toggle-tooltip";
@@ -186,14 +187,19 @@ export const DashboardInputControls = memo(function DashboardInputControls({
                     e.preventDefault();
                     const slug = env.NEXT_PUBLIC_GITHUB_APP_SLUG!;
                     const url = `https://github.com/apps/${slug}/installations/new`;
-                    const win = openCenteredPopup(
-                      url,
-                      { name: "github-install" },
-                      () => {
-                        router.options.context?.queryClient?.invalidateQueries();
-                      }
-                    );
-                    win?.focus?.();
+                    if (isElectron) {
+                      // Open externally in the default browser when running in Electron
+                      window.open(url, "_blank");
+                    } else {
+                      const win = openCenteredPopup(
+                        url,
+                        { name: "github-install" },
+                        () => {
+                          router.options.context?.queryClient?.invalidateQueries();
+                        }
+                      );
+                      win?.focus?.();
+                    }
                   }}
                   className="w-full px-2 h-8 flex items-center gap-2 text-[13.5px] text-neutral-800 dark:text-neutral-200 rounded-md hover:bg-neutral-50 dark:hover:bg-neutral-900"
                 >

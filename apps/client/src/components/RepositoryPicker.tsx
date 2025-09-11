@@ -1,4 +1,5 @@
 import { env } from "@/client-env";
+import { isElectron } from "@/lib/electron";
 import { GitHubIcon } from "@/components/icons/github";
 import { GitLabIcon } from "@/components/icons/gitlab";
 import {
@@ -483,11 +484,16 @@ export function RepositoryPicker({
                                     ? "&"
                                     : "?";
                                   const url = `${installNewUrl}${sep}state=${encodeURIComponent(state)}`;
-                                  openCenteredPopup(
-                                    url,
-                                    { name: "github-install" },
-                                    handlePopupClosedRefetch
-                                  );
+                                  if (isElectron) {
+                                    // In Electron, open externally in the default browser
+                                    window.open(url, "_blank");
+                                  } else {
+                                    openCenteredPopup(
+                                      url,
+                                      { name: "github-install" },
+                                      handlePopupClosedRefetch
+                                    );
+                                  }
                                   setConnectionDropdownOpen(false);
                                 } catch (e) {
                                   console.error(
