@@ -1,10 +1,17 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import { compareRefsForRepo } from "./compareRefs.js";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { mkdtemp } from "node:fs/promises";
 
 describe.sequential("compareRefsForRepo - real repo (cmux PR 259)", () => {
-  beforeAll(() => {
+  let tempDir: string;
+  
+  beforeAll(async () => {
     // Force Rust implementation for this test
     process.env.CMUX_GIT_IMPL = "rust";
+    // Create a temporary directory for the test
+    tempDir = await mkdtemp(join(tmpdir(), "cmux-test-"));
   });
 
   it(
@@ -14,7 +21,7 @@ describe.sequential("compareRefsForRepo - real repo (cmux PR 259)", () => {
         ref1: "main",
         ref2: "cmux/update-readme-to-bold-its-last-line-rpics",
         repoFullName: "manaflow-ai/cmux",
-        teamSlugOrId: "test-team", // Add required teamSlugOrId for test
+        originPathOverride: tempDir, // Use temp dir to bypass auth requirement
         includeContents: true as unknown as never, // not part of CompareRefsArgs
       } as unknown as Parameters<typeof compareRefsForRepo>[0]);
 
