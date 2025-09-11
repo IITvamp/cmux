@@ -14,6 +14,7 @@ describe.sequential("compareRefsForRepo - real repo (cmux PR 259)", () => {
         ref1: "main",
         ref2: "cmux/update-readme-to-bold-its-last-line-rpics",
         repoFullName: "manaflow-ai/cmux",
+        teamSlugOrId: "test-team", // Add required teamSlugOrId for test
         includeContents: true as unknown as never, // not part of CompareRefsArgs
       } as unknown as Parameters<typeof compareRefsForRepo>[0]);
 
