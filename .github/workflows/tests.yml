@@ -13,7 +13,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, macos-13]
+        # os: [ubuntu-24.04, macos-13]
+        os: [ubuntu-24.04, macos-13-large]
 
     steps:
       - name: Checkout
@@ -56,11 +57,11 @@ jobs:
       - name: Run tests
         env:
           # CI environment flag
-          CI: 'true'
+          CI: "true"
           # Keep default; set to 1 only if you want cross-builds for Linux
-          CMUX_BUILD_LINUX: '0'
+          CMUX_BUILD_LINUX: "0"
           # Skip Docker E2E tests in CI for stability/speed
-          CMUX_SKIP_DOCKER_TESTS: '1'
+          CMUX_SKIP_DOCKER_TESTS: "1"
           # Stack Auth env vars
           STACK_SECRET_SERVER_KEY: ${{ secrets.STACK_SECRET_SERVER_KEY }}
           STACK_SUPER_SECRET_ADMIN_KEY: ${{ secrets.STACK_SUPER_SECRET_ADMIN_KEY }}
