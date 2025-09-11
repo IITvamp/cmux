@@ -114,55 +114,54 @@ fi
 echo "==> Prebuilding mac app via local script (workaround)"
 bash "$ROOT_DIR/scripts/build-electron-local.sh"
 
-echo "==> Validating signing and notarization environment"
-missing=()
+# Detect presence of signing + notarization secrets (mirror GH workflow)
+echo "==> Detecting signing environment"
+HAS_SIGNING=true
 for k in MAC_CERT_BASE64 MAC_CERT_PASSWORD APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER; do
-  if [[ -z "${!k:-}" ]]; then
-    missing+=("$k")
-  fi
+  if [[ -z "${!k:-}" ]]; then HAS_SIGNING=false; fi
 done
-if (( ${#missing[@]} > 0 )); then
-  echo "Missing required env vars: ${missing[*]}" >&2
-  exit 1
-fi
 
-echo "==> Preparing mac signing certificate (CSC_LINK)"
-TMPDIR_CERT="$(mktemp -d)"
-CERT_PATH="$TMPDIR_CERT/mac_signing_cert.p12"
+if [[ "$HAS_SIGNING" == "true" ]]; then
+  echo "==> Signing inputs detected; preparing certificate and Apple API key"
+  TMPDIR_CERT="$(mktemp -d)"
+  CERT_PATH="$TMPDIR_CERT/mac_signing_cert.p12"
+  node -e "process.stdout.write(Buffer.from(process.env.MAC_CERT_BASE64,'base64'))" > "$CERT_PATH"
+  export CSC_LINK="$CERT_PATH"
+  export CSC_KEY_PASSWORD="${CSC_KEY_PASSWORD:-$MAC_CERT_PASSWORD}"
 
-# Write base64 cert to file
-node -e "process.stdout.write(Buffer.from(process.env.MAC_CERT_BASE64,'base64'))" > "$CERT_PATH"
-export CSC_LINK="$CERT_PATH"
-export CSC_KEY_PASSWORD="${CSC_KEY_PASSWORD:-$MAC_CERT_PASSWORD}"
+  # Prepare Apple API key for notarytool: ensure APPLE_API_KEY is a readable file path
+  if [[ -f "${APPLE_API_KEY}" ]]; then
+    : # already a file path
+  else
+    TMPDIR_APIKEY="$(mktemp -d)"
+    API_KEY_PATH="$TMPDIR_APIKEY/AuthKey_${APPLE_API_KEY_ID:-api}.p8"
+    printf "%s" "${APPLE_API_KEY}" | perl -0777 -pe 's/\r\n|\r|\n/\n/g' > "$API_KEY_PATH"
+    export APPLE_API_KEY="$API_KEY_PATH"
+  fi
 
-# Avoid auto-discovery of other local identities; use provided cert only
-export CSC_IDENTITY_AUTO_DISCOVERY=false
-
-# Prepare Apple API key for notarytool: ensure APPLE_API_KEY is a readable file path
-echo "==> Preparing Apple API key file for notarytool"
-if [[ -f "${APPLE_API_KEY}" ]]; then
-  # APPLE_API_KEY already points to a file; use as-is
-  :
+  echo "==> Packaging (signed + notarized)"
+  export DEBUG="${DEBUG:-electron-osx-sign*,electron-notarize*}"
+  (cd "$CLIENT_DIR" && \
+    bunx electron-builder \
+      --config electron-builder.json \
+      --mac dmg zip --arm64 \
+      --publish never \
+      --config.mac.forceCodeSigning=true \
+      --config.mac.entitlements="$ENTITLEMENTS" \
+      --config.mac.entitlementsInherit="$ENTITLEMENTS" \
+      --config.mac.notarize=true)
 else
-  TMPDIR_APIKEY="$(mktemp -d)"
-  API_KEY_PATH="$TMPDIR_APIKEY/AuthKey_${APPLE_API_KEY_ID:-api}.p8"
-  # Write the key content to a file, normalizing line endings
-  printf "%s" "${APPLE_API_KEY}" | perl -0777 -pe 's/\r\n|\r|\n/\n/g' > "$API_KEY_PATH"
-  export APPLE_API_KEY="$API_KEY_PATH"
+  echo "==> No signing secrets; building unsigned like the commented GH path"
+  # Avoid any auto identity discovery and explicitly disable signing
+  export CSC_IDENTITY_AUTO_DISCOVERY=false
+  (cd "$CLIENT_DIR" && \
+    bunx electron-builder \
+      --config electron-builder.json \
+      --mac dmg zip --arm64 \
+      --publish never \
+      --config.mac.identity=null \
+      --config.dmg.sign=false)
 fi
-
-echo "==> Packaging, signing, and notarizing (electron-builder)"
-export DEBUG="${DEBUG:-electron-osx-sign*,electron-notarize*}"
-
-(cd "$CLIENT_DIR" && \
-  bunx electron-builder \
-    --config electron-builder.json \
-    --mac dmg zip --arm64 \
-    --publish never \
-    --config.mac.forceCodeSigning=true \
-    --config.mac.entitlements="$ENTITLEMENTS" \
-    --config.mac.entitlementsInherit="$ENTITLEMENTS" \
-    --config.mac.notarize=true)
 
 echo "==> Stapling and verifying outputs"
 if [[ -d "$DIST_DIR" ]]; then
