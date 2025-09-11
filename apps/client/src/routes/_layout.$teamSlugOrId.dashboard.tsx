@@ -144,10 +144,15 @@ function DashboardComponent() {
     if (!socket) return;
 
     socket.emit("check-provider-status", (response) => {
-      if (!response?.success) return;
-      const isRunning = response.dockerStatus?.isRunning;
-      if (typeof isRunning === "boolean") {
-        setDockerReady(isRunning);
+      if (response.success) {
+        // Schedule next check via existing interval; also update docker readiness state
+        try {
+          const isRunning = Boolean(response.dockerStatus?.isRunning);
+          setDockerReady(isRunning);
+        } catch {
+          // Ignore parse errors
+        }
+        checkProviderStatus();
       }
     });
   }, [socket]);
@@ -234,8 +239,8 @@ function DashboardComponent() {
   );
 
   const handleStartTask = useCallback(async () => {
-    // Prevent starting tasks locally only when Docker is explicitly not running
-    if (!isEnvSelected && !isCloudMode && !dockerReady) {
+    // Prevent starting tasks locally when Docker isn't ready (or unknown)
+    if (!isEnvSelected && !isCloudMode && dockerReady !== true) {
       toast.error("Docker is not running. Start Docker Desktop.");
       return;
     }
@@ -381,7 +386,7 @@ function DashboardComponent() {
   //   }
   // }, [reposByOrg, fetchRepos]);
 
-  // Check provider status once on mount (no polling)
+  // Check provider status on mount
   useEffect(() => {
     checkProviderStatus();
   }, [checkProviderStatus]);
@@ -593,8 +598,8 @@ function DashboardComponent() {
 
   // Compute docker block state and disabled reason early so shortcuts respect it
   const blockedByDocker = useMemo(() => {
-    // Block when explicitly in local mode (not cloud, not environment) and Docker is explicitly not running
-    return !isEnvSelected && !isCloudMode && !dockerReady;
+    // Block when explicitly in local mode (not cloud, not environment) and Docker is not confirmed ready
+    return !isEnvSelected && !isCloudMode && dockerReady !== true;
   }, [isEnvSelected, isCloudMode, dockerReady]);
 
   const disabledReason = useMemo(() => {
