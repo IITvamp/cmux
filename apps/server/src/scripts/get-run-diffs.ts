@@ -140,11 +140,6 @@ async function main(): Promise<void> {
 
 void main();
 
-function pct(part: number, total: number): string {
-  if (total <= 0) return "0%";
-  return `${((part / total) * 100).toFixed(1)}%`;
-}
-
 function ms(n: number | undefined): string {
   if (!n || n < 0) return "0ms";
   return `${n}ms`;
@@ -177,6 +172,5 @@ function printPretty(data: {
   lines.push("  total:      " + ms(p?.totalMs));
   lines.push("");
 
-  // Native ref diff does not emit granular TS perf breakdown here.
   console.log(lines.join("\n"));
 }

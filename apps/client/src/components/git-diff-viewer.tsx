@@ -1,5 +1,4 @@
 import { useTheme } from "@/components/theme/use-theme";
-// No socket usage in refs-only viewer
 import { cn } from "@/lib/utils";
 import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
 import { DiffEditor } from "@monaco-editor/react";
@@ -167,8 +166,6 @@ export function GitDiffViewer({
     setExpandedFiles(new Set());
   };
 
-  // No per-run cache in refs mode
-
   const calculateEditorHeight = (oldContent: string, newContent: string) => {
     const oldLines = oldContent.split("\n").length;
     const newLines = newContent.split("\n").length;
@@ -218,8 +215,7 @@ export function GitDiffViewer({
             theme={theme}
             calculateEditorHeight={calculateEditorHeight}
             setEditorRef={(ed) => {
-              if (ed)
-                editorRefs.current[`refs:${file.filePath}`] = ed;
+              if (ed) editorRefs.current[`refs:${file.filePath}`] = ed;
             }}
             classNames={classNames?.fileDiffRow}
           />
