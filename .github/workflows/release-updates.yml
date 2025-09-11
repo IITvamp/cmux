@@ -130,7 +130,7 @@ jobs:
   mac-arm64:
     name: macOS arm64
     environment: electron
-    runs-on: ${{ (vars.USE_LARGE_RUNNERS == 'true' && 'macos-13-xlarge') || 'macos-13' }}
+    runs-on: ${{ (vars.USE_LARGE_RUNNERS == 'true' && 'macos-14-xlarge') || 'macos-14' }}
     defaults:
       run:
         working-directory: ./
