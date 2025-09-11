@@ -1,9 +1,12 @@
 import type { Id } from "@cmux/convex/dataModel";
 import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
 import { StackAdminApp } from "@stackframe/js";
-import { getRunDiffs, type GetRunDiffsPerf } from "../diffs/getRunDiffs.js";
-import { GitDiffManager } from "../gitDiff.js";
-import { runWithAuthToken } from "../utils/requestContext.js";
+import {
+  getRunDiffs,
+  type GetRunDiffsPerf,
+} from "../../apps/server/src/diffs/getRunDiffs.js";
+import { GitDiffManager } from "../../apps/server/src/gitDiff.js";
+import { runWithAuthToken } from "../../apps/server/src/utils/requestContext.js";
 
 type CliArgs = {
   run?: string;
@@ -63,7 +66,7 @@ async function main(): Promise<void> {
   const args = parseArgs(process.argv);
   if (!args.run) {
     console.error(
-      "Usage: bun run apps/server/src/scripts/get-run-diffs.ts --run <taskRunId> [--team <slug>] [--user <uuid>] [--no-contents] [--summary]"
+      "Usage: bun run scripts/stackframe/get-run-diffs.ts --run <taskRunId> [--team <slug>] [--user <uuid>] [--no-contents] [--summary]"
     );
     process.exit(1);
   }
@@ -139,11 +142,6 @@ async function main(): Promise<void> {
 }
 
 void main();
-
-function pct(part: number, total: number): string {
-  if (total <= 0) return "0%";
-  return `${((part / total) * 100).toFixed(1)}%`;
-}
 
 function ms(n: number | undefined): string {
   if (!n || n < 0) return "0ms";

@@ -20,7 +20,7 @@
     },
     "apps/client": {
       "name": "@cmux/client",
-      "version": "1.0.6",
+      "version": "1.0.12",
       "dependencies": {
         "@base-ui-components/react": "1.0.0-beta.2",
         "@cmux/convex": "workspace:*",
@@ -181,7 +181,6 @@
         "@cmux/www-openapi-client": "workspace:*",
         "@daytonaio/sdk": "^0.22.1",
         "@octokit/auth-app": "^6.1.4",
-        "@stackframe/js": "^2.8.35",
         "@t3-oss/env-core": "^0.13.8",
         "@xterm/addon-serialize": "^0.13.0",
         "@xterm/headless": "^5.5.0",
@@ -332,11 +331,11 @@
         "convex-helpers": "^0.1.104",
         "socket.io-client": "^4.8.1",
         "svix": "^1.75.0",
-        "typescript": "^5.8.3",
         "zod": "^4.1.5",
       },
       "devDependencies": {
         "@octokit/webhooks-types": "^7.6.1",
+        "typescript": "^5.8.3",
         "vitest": "3.2.4",
       },
     },

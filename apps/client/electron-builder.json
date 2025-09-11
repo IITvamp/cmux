@@ -7,9 +7,20 @@
   },
   "files": [
     "out/**/*",
-    "package.json"
+    "package.json",
+    "!**/target/**",
+    "!**/*.rs",
+    "!**/Cargo.toml",
+    "!**/Cargo.lock",
+    "!**/.DS_Store",
+    "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
+    "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
+    "!**/node_modules/**/*.d.ts",
+    "!**/node_modules/.bin",
+    "!**/*.map"
   ],
   "asar": true,
+  "compression": "maximum",
   "npmRebuild": false,
   "nodeGypRebuild": false,
   "protocols": [
@@ -50,6 +61,7 @@
   },
   "dmg": {
     "icon": "build/icon.icns",
+    "internetEnabled": false,
     "contents": [
       {
         "x": 130,
