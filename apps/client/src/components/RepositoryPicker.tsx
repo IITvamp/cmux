@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { api } from "@cmux/convex/api";
+import { isElectron } from "@/lib/electron";
 import {
   getApiIntegrationsGithubReposOptions,
   postApiMorphSetupInstanceMutation,
@@ -221,6 +222,11 @@ export function RepositoryPicker({
     opts?: { name?: string; width?: number; height?: number },
     onClose?: () => void
   ): Window | null => {
+    if (isElectron) {
+      // In Electron, always open in the system browser and skip popup plumbing
+      window.open(url, "_blank", "noopener,noreferrer");
+      return null;
+    }
     const name = opts?.name ?? "cmux-popup";
     const width = Math.floor(opts?.width ?? 980);
     const height = Math.floor(opts?.height ?? 780);
@@ -628,13 +634,23 @@ export function RepositoryPicker({
                   ) : installNewUrl ? (
                     <a
                       href={installNewUrl}
-                      onClick={(e) => {
+                      onClick={async (e) => {
                         e.preventDefault();
-                        openCenteredPopup(
-                          installNewUrl,
-                          { name: "github-install" },
-                          handlePopupClosedRefetch
-                        );
+                        try {
+                          const { state } = await mintState({ teamSlugOrId });
+                          const sep = installNewUrl!.includes("?") ? "&" : "?";
+                          const url = `${installNewUrl}${sep}state=${encodeURIComponent(
+                            state
+                          )}`;
+                          openCenteredPopup(
+                            url,
+                            { name: "github-install" },
+                            handlePopupClosedRefetch
+                          );
+                        } catch (err) {
+                          console.error("Failed to start GitHub install:", err);
+                          alert("Failed to start installation. Please try again.");
+                        }
                       }}
                       className="inline-flex items-center gap-1 text-neutral-800 dark:text-neutral-200 hover:underline"
                     >
@@ -676,13 +692,23 @@ export function RepositoryPicker({
                   ) : installNewUrl ? (
                     <a
                       href={installNewUrl}
-                      onClick={(e) => {
+                      onClick={async (e) => {
                         e.preventDefault();
-                        openCenteredPopup(
-                          installNewUrl,
-                          { name: "github-install" },
-                          handlePopupClosedRefetch
-                        );
+                        try {
+                          const { state } = await mintState({ teamSlugOrId });
+                          const sep = installNewUrl!.includes("?") ? "&" : "?";
+                          const url = `${installNewUrl}${sep}state=${encodeURIComponent(
+                            state
+                          )}`;
+                          openCenteredPopup(
+                            url,
+                            { name: "github-install" },
+                            handlePopupClosedRefetch
+                          );
+                        } catch (err) {
+                          console.error("Failed to start GitHub install:", err);
+                          alert("Failed to start installation. Please try again.");
+                        }
                       }}
                       className="inline-flex items-center gap-1 text-neutral-800 dark:text-neutral-200 hover:underline"
                     >

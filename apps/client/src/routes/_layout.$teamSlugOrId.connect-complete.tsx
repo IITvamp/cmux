@@ -15,6 +15,18 @@ function ConnectComplete() {
   const [seconds, setSeconds] = useState(CLOSE_AFTER_SECONDS);
   const triedAutoClose = useRef(false);
 
+  // Attempt to deep-link back to the cmux app (Electron)
+  useEffect(() => {
+    const href = `cmux://github-connect-complete?team=${encodeURIComponent(
+      teamSlugOrId
+    )}`;
+    try {
+      window.location.href = href;
+    } catch {
+      // non-fatal; user can return manually
+    }
+  }, [teamSlugOrId]);
+
   useEffect(() => {
     const iv = window.setInterval(() => {
       setSeconds((s) => (s > 0 ? s - 1 : 0));
