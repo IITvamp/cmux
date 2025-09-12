@@ -341,8 +341,8 @@ export function SearchableSelect({
                 className="max-h-[38px] overflow-y-auto"
               >
                 {filteredOptions.length === 0 ? (
-                  <CommandEmpty className="select-none">
-                    No options
+                  <CommandEmpty>
+                    <span className="select-none">No options</span>
                   </CommandEmpty>
                 ) : (
                   <CommandGroup>

@@ -43,6 +43,60 @@ fn workspace_diff_basic() {
 }
 
 #[test]
+fn workspace_diff_unborn_head_uses_remote_default() {
+  let tmp = tempdir().unwrap();
+  let root = tmp.path();
+
+  // Create bare origin with a main branch and one file
+  let origin_path = root.join("origin.git");
+  fs::create_dir_all(&origin_path).unwrap();
+  run(&root, &format!("git init --bare {}", origin_path.file_name().unwrap().to_str().unwrap()));
+
+  // Seed repo to populate origin/main
+  let seed = root.join("seed");
+  fs::create_dir_all(&seed).unwrap();
+  run(&seed, "git init");
+  run(&seed, "git -c user.email=a@b -c user.name=test checkout -b main");
+  fs::write(seed.join("a.txt"), b"one\n").unwrap();
+  run(&seed, "git add .");
+  run(&seed, "git -c user.email=a@b -c user.name=test commit -m init");
+
+  // Point origin HEAD to main and push
+  let origin_url = origin_path.to_string_lossy().to_string();
+  run(&seed, &format!("git remote add origin {}", origin_url));
+  // Ensure origin default branch is main
+  run(&origin_path, "git symbolic-ref HEAD refs/heads/main");
+  run(&seed, "git push -u origin main");
+
+  // Create work repo with unborn HEAD, add remote, fetch only
+  let work = root.join("work");
+  fs::create_dir_all(&work).unwrap();
+  run(&work, "git init");
+  run(&work, &format!("git remote add origin {}", origin_url));
+  run(&work, "git fetch origin");
+
+  // Modify file relative to remote default without any local commit
+  fs::write(work.join("a.txt"), b"one\ntwo\n").unwrap();
+
+  let out = crate::diff::workspace::diff_workspace(GitDiffWorkspaceOptions{
+    worktreePath: work.to_string_lossy().to_string(),
+    includeContents: Some(true),
+    maxBytes: Some(1024*1024),
+  }).expect("diff workspace unborn");
+
+  // Expect a diff against remote default: a.txt should be modified
+  if !out.iter().any(|e| e.filePath == "a.txt") {
+    eprintln!("entries: {:?}", out.iter().map(|e| format!("{}:{}", e.status, e.filePath)).collect::<Vec<_>>());
+  }
+  let row = out.iter().find(|e| e.filePath == "a.txt").expect("has a.txt");
+  assert_eq!(row.status, "modified");
+  assert_eq!(row.contentOmitted, Some(false));
+  assert!(row.oldContent.as_deref() == Some("one\n"));
+  assert!(row.newContent.as_deref() == Some("one\ntwo\n"));
+  assert!(row.additions >= 1);
+}
+
+#[test]
 fn refs_diff_basic_on_local_repo() {
   let tmp = tempdir().unwrap();
   let work = tmp.path().join("repo");

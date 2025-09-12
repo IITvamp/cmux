@@ -29,7 +29,7 @@ pub fn list_remote_branches(opts: GitListRemoteBranchesOptions) -> Result<Vec<Br
   };
 
   // Make sure remotes are fresh (this is cheap if within SWR window)
-  let _ = swr_fetch_origin_all_path(&repo_path, 5_000);
+  let _ = swr_fetch_origin_all_path(&repo_path, crate::repo::cache::fetch_window_ms());
 
   let repo = gix::open(&repo_path)?;
 
