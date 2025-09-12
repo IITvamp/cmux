@@ -5,7 +5,6 @@ import Docker from "dockerode";
 import * as os from "node:os";
 import * as path from "node:path";
 import * as fs from "node:fs";
-import { execSync } from "node:child_process";
 import { getConvex } from "../utils/convexClient.js";
 import { cleanupGitCredentials } from "../utils/dockerGitSetup.js";
 import { dockerLogger } from "../utils/fileLogger.js";
@@ -1076,6 +1075,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
   private async getGitConfigValue(key: string): Promise<string | undefined> {
     try {
+      const { execSync } = await import("child_process");
       const value = execSync(`git config --global ${key}`).toString().trim();
       return value || undefined;
     } catch {

@@ -80,6 +80,46 @@ function DashboardComponent() {
     setTaskDescription(value);
   }, []);
 
+  // Fetch branches for selected repo from Convex
+  const isEnvSelected = useMemo(
+    () => (selectedProject[0] || "").startsWith("env:"),
+    [selectedProject]
+  );
+
+  const branchesQuery = useQuery({
+    ...convexQuery(api.github.getBranches, {
+      teamSlugOrId,
+      repo: selectedProject[0] || "",
+    }),
+    enabled: !!selectedProject[0] && !isEnvSelected,
+  });
+  const branches = useMemo(
+    () => branchesQuery.data || [],
+    [branchesQuery.data]
+  );
+
+  const fetchBranches = useCallback(
+    (repo: string) => {
+      if (!socket) return;
+
+      setIsLoadingBranches(true);
+      socket.emit(
+        "github-fetch-branches",
+        { teamSlugOrId, repo },
+        (response) => {
+          setIsLoadingBranches(false);
+          if (response.success) {
+            // Refetch from Convex to get updated data
+            branchesQuery.refetch();
+          } else if (response.error) {
+            console.error("Error fetching branches:", response.error);
+          }
+        }
+      );
+    },
+    [socket, teamSlugOrId, branchesQuery]
+  );
+
   // Callback for project selection changes
   const handleProjectChange = useCallback(
     (newProjects: string[]) => {
@@ -92,9 +132,11 @@ function DashboardComponent() {
       if ((newProjects[0] || "").startsWith("env:")) {
         setIsCloudMode(true);
         localStorage.setItem("isCloudMode", JSON.stringify(true));
+      } else {
+        void fetchBranches(newProjects[0]);
       }
     },
-    [selectedProject]
+    [selectedProject, fetchBranches]
   );
 
   // Callback for branch selection changes
@@ -119,24 +161,6 @@ function DashboardComponent() {
     [reposByOrgQuery.data]
   );
 
-  // Fetch branches for selected repo from Convex
-  const isEnvSelected = useMemo(
-    () => (selectedProject[0] || "").startsWith("env:"),
-    [selectedProject]
-  );
-
-  const branchesQuery = useQuery({
-    ...convexQuery(api.github.getBranches, {
-      teamSlugOrId,
-      repo: selectedProject[0] || "",
-    }),
-    enabled: !!selectedProject[0] && !isEnvSelected,
-  });
-  const branches = useMemo(
-    () => branchesQuery.data || [],
-    [branchesQuery.data]
-  );
-
   // Socket-based functions to fetch data from GitHub
   // Removed unused fetchRepos function - functionality is handled by Convex queries
 
@@ -151,28 +175,6 @@ function DashboardComponent() {
       }
     });
   }, [socket]);
-
-  const fetchBranches = useCallback(
-    (repo: string) => {
-      if (!socket) return;
-
-      setIsLoadingBranches(true);
-      socket.emit(
-        "github-fetch-branches",
-        { teamSlugOrId, repo },
-        (response) => {
-          setIsLoadingBranches(false);
-          if (response.success) {
-            // Refetch from Convex to get updated data
-            branchesQuery.refetch();
-          } else if (response.error) {
-            console.error("Error fetching branches:", response.error);
-          }
-        }
-      );
-    },
-    [socket, teamSlugOrId, branchesQuery]
-  );
 
   // Mutation to create tasks with optimistic update
   const createTask = useMutation(api.tasks.create).withOptimisticUpdate(
@@ -387,16 +389,16 @@ function DashboardComponent() {
   }, [checkProviderStatus]);
 
   // Fetch branches when repo changes
-  const selectedRepo = selectedProject[0];
-  useEffect(() => {
-    if (
-      selectedRepo &&
-      !selectedRepo.startsWith("env:") &&
-      branches.length === 0
-    ) {
-      fetchBranches(selectedRepo);
-    }
-  }, [selectedRepo, branches, fetchBranches]);
+  // const selectedRepo = selectedProject[0];
+  // useEffect(() => {
+  //   if (
+  //     selectedRepo &&
+  //     !selectedRepo.startsWith("env:") &&
+  //     branches.length === 0
+  //   ) {
+  //     fetchBranches(selectedRepo);
+  //   }
+  // }, [selectedRepo, branches, fetchBranches]);
 
   // Format repos for multiselect
   // Fetch environments
