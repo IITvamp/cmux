@@ -1,10 +1,11 @@
 import type { Id } from "@cmux/convex/dataModel";
 import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
-import { computeEntriesNodeGit, type ComputeEntriesPerf } from "./parseGitDiff.js";
+import { GitDiffManager } from "../gitDiff.js";
+import { loadNativeGit } from "../native/git.js";
+import type { RealtimeServer } from "../realtime.js";
 import { ensureRunWorktreeAndBranch } from "../utils/ensureRunWorktree.js";
 import { serverLogger } from "../utils/fileLogger.js";
-import type { RealtimeServer } from "../realtime.js";
-import { GitDiffManager } from "../gitDiff.js";
+// Stop using workspace diff; we rely on native ref diff.
 
 export interface GetRunDiffsOptions {
   taskRunId: Id<"taskRuns">;
@@ -21,10 +22,11 @@ export type GetRunDiffsPerf = {
   watchMs: number;
   totalMs: number;
   watchStarted: boolean;
-  git?: ComputeEntriesPerf;
 };
 
-export async function getRunDiffs(options: GetRunDiffsOptions): Promise<ReplaceDiffEntry[]> {
+export async function getRunDiffs(
+  options: GetRunDiffsOptions
+): Promise<ReplaceDiffEntry[]> {
   const {
     taskRunId,
     teamSlugOrId,
@@ -38,24 +40,15 @@ export async function getRunDiffs(options: GetRunDiffsOptions): Promise<ReplaceD
   const tEnsure = Date.now();
   const worktreePath = ensured.worktreePath;
 
-  const gitPerf: ComputeEntriesPerf = {
-    resolveBaseMs: 0,
-    mergeBaseMs: 0,
-    listTrackedMs: 0,
-    listUntrackedMs: 0,
-    perFileBuildMs: 0,
-    numstatMs: 0,
-    patchMs: 0,
-    readOldMs: 0,
-    readNewMs: 0,
-    readUntrackedMs: 0,
-    totalMs: 0,
-  };
-
-  const entries = await computeEntriesNodeGit({
-    worktreePath,
+  const native = loadNativeGit();
+  if (!native?.gitDiffRefs) {
+    throw new Error("Native git diff not available; rebuild @cmux/native-core");
+  }
+  const entries: ReplaceDiffEntry[] = await native.gitDiffRefs({
+    ref1: ensured.baseBranch,
+    ref2: ensured.branchName,
+    repoFullName: ensured.task.projectFullName || undefined,
     includeContents,
-    perfOut: gitPerf,
   });
   const tCompute = Date.now();
 
@@ -71,7 +64,9 @@ export async function getRunDiffs(options: GetRunDiffsOptions): Promise<ReplaceD
       });
       watchStarted = true;
     } catch (e) {
-      serverLogger.warn(`Failed to start watcher for ${worktreePath}: ${String(e)}`);
+      serverLogger.warn(
+        `Failed to start watcher for ${worktreePath}: ${String(e)}`
+      );
     }
   }
   const tWatch = Date.now();
@@ -82,7 +77,6 @@ export async function getRunDiffs(options: GetRunDiffsOptions): Promise<ReplaceD
     options.perfOut.watchMs = tWatch - tCompute;
     options.perfOut.totalMs = tWatch - t0;
     options.perfOut.watchStarted = watchStarted;
-    options.perfOut.git = gitPerf;
   }
 
   serverLogger.info(

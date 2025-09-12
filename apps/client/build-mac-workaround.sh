@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 # remove existing build
 rm -rf dist-electron
@@ -16,6 +17,10 @@ set -a  # Mark all new variables for export
 # shellcheck disable=SC1090
 source "$ENV_FILE"
 set +a  # Turn off auto-export
+
+# Build native Rust addon (required)
+echo "Building native Rust addon for packaging (release)..."
+(cd ../../apps/server/native/core && bunx --bun @napi-rs/cli build --platform --release)
 npx electron-vite build -c electron.vite.config.ts
 
 # Create a temporary directory for packaging
@@ -105,6 +110,24 @@ fi
 # Rename executable
 mv "$APP_DIR/Contents/MacOS/Electron" "$APP_DIR/Contents/MacOS/$APP_NAME"
 /usr/libexec/PlistBuddy -c "Set :CFBundleExecutable $APP_NAME" "$APP_DIR/Contents/Info.plist"
+
+# Bundle native Rust addon (.node) into Resources so runtime loader can find it
+echo "Bundling native Rust addon (.node) into Resources..."
+NATIVE_SRC_DIR="$(pwd)/../../apps/server/native/core"
+NATIVE_DST_DIR="$RESOURCES_DIR/native/core"
+mkdir -p "$NATIVE_DST_DIR"
+shopt -s nullglob
+NODE_BINARIES=("$NATIVE_SRC_DIR"/*.node)
+if [ ${#NODE_BINARIES[@]} -gt 0 ]; then
+  echo "Copying ${#NODE_BINARIES[@]} native binary(ies) from $NATIVE_SRC_DIR to $NATIVE_DST_DIR"
+  for f in "${NODE_BINARIES[@]}"; do
+    cp -f "$f" "$NATIVE_DST_DIR/"
+  done
+else
+  echo "ERROR: No native .node binary found in $NATIVE_SRC_DIR. Build failed." >&2
+  exit 1
+fi
+shopt -u nullglob
 
 # Create output directory based on architecture
 OUTPUT_DIR="dist-electron/mac-$ELECTRON_ARCH"

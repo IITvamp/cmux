@@ -1,9 +1,12 @@
 import type { Id } from "@cmux/convex/dataModel";
 import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
 import { StackAdminApp } from "@stackframe/js";
-import { getRunDiffs, type GetRunDiffsPerf } from "../diffs/getRunDiffs.js";
-import { GitDiffManager } from "../gitDiff.js";
-import { runWithAuthToken } from "../utils/requestContext.js";
+import {
+  getRunDiffs,
+  type GetRunDiffsPerf,
+} from "../../apps/server/src/diffs/getRunDiffs.js";
+import { GitDiffManager } from "../../apps/server/src/gitDiff.js";
+import { runWithAuthToken } from "../../apps/server/src/utils/requestContext.js";
 
 type CliArgs = {
   run?: string;
@@ -63,7 +66,7 @@ async function main(): Promise<void> {
   const args = parseArgs(process.argv);
   if (!args.run) {
     console.error(
-      "Usage: bun run apps/server/src/scripts/get-run-diffs.ts --run <taskRunId> [--team <slug>] [--user <uuid>] [--no-contents] [--summary]"
+      "Usage: bun run scripts/stackframe/get-run-diffs.ts --run <taskRunId> [--team <slug>] [--user <uuid>] [--no-contents] [--summary]"
     );
     process.exit(1);
   }
@@ -140,11 +143,6 @@ async function main(): Promise<void> {
 
 void main();
 
-function pct(part: number, total: number): string {
-  if (total <= 0) return "0%";
-  return `${((part / total) * 100).toFixed(1)}%`;
-}
-
 function ms(n: number | undefined): string {
   if (!n || n < 0) return "0ms";
   return `${n}ms`;
@@ -161,7 +159,6 @@ function printPretty(data: {
   perf?: GetRunDiffsPerf;
 }): void {
   const p = data.perf;
-  const g = p?.git;
   const lines: string[] = [];
   lines.push("cmux get-run-diffs summary");
   lines.push("--------------------------");
@@ -178,51 +175,6 @@ function printPretty(data: {
   lines.push("  total:      " + ms(p?.totalMs));
   lines.push("");
 
-  if (g) {
-    lines.push("Git Diff Breakdown");
-    lines.push(
-      `  baseRef:     ${g.baseRef ?? "?"}  compareBase: ${g.compareBase ?? "?"}`
-    );
-    lines.push(
-      `  tracked:     ${g.tracked ?? 0}  untracked: ${g.untracked ?? 0}  entries: ${g.entries ?? 0}`
-    );
-    const total = g.totalMs || 0;
-    const parts: Array<[string, number]> = [
-      ["resolveBase", g.resolveBaseMs],
-      ["mergeBase", g.mergeBaseMs],
-      ["listTracked", g.listTrackedMs],
-      ["listUntracked", g.listUntrackedMs],
-      ["numstat", g.numstatMs],
-      ["patch", g.patchMs],
-      ["readOld", g.readOldMs],
-      ["readNew", g.readNewMs],
-      ["readUntracked", g.readUntrackedMs],
-    ];
-    // Sort by time desc
-    parts.sort((a, b) => (b[1] || 0) - (a[1] || 0));
-    for (const [name, val] of parts) {
-      const v = val || 0;
-      if (v <= 0) continue;
-      lines.push(`  ${name.padEnd(13)} ${ms(v).padEnd(8)} (${pct(v, total)})`);
-    }
-    if (g.perFileBuildMs && g.perFileBuildMs > 0) {
-      lines.push(`  perFileBuild agg: ${ms(g.perFileBuildMs)}`);
-    }
-    if (g.slowest && g.slowest.length > 0) {
-      lines.push("");
-      lines.push("Slowest Files");
-      for (const item of g.slowest) {
-        lines.push(`  ${item.filePath}  ${ms(item.ms)}`);
-      }
-    }
-    // Bottleneck suggestion line
-    const bottleneck = parts[0];
-    if (bottleneck && (bottleneck[1] || 0) > 0) {
-      lines.push("");
-      lines.push(
-        `Bottleneck: ${bottleneck[0]} (${ms(bottleneck[1] || 0)} of ${ms(total)})`
-      );
-    }
-  }
+  // Native ref diff does not emit granular TS perf breakdown here.
   console.log(lines.join("\n"));
 }
