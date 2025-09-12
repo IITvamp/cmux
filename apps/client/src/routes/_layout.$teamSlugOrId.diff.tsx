@@ -9,6 +9,7 @@ import { api } from "@cmux/convex/api";
 import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
 import { convexQuery } from "@convex-dev/react-query";
 import { useQuery as useRQ } from "@tanstack/react-query";
+import { branchesQueryOptions } from "@/queries/branches";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { ArrowLeftRight, GitBranch } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -70,13 +71,12 @@ function DashboardDiffPage() {
     convexQuery(api.github.getReposByOrg, { teamSlugOrId })
   );
 
-  const branchesQuery = useRQ({
-    ...convexQuery(api.github.getBranches, {
+  const branchesQuery = useRQ(
+    branchesQueryOptions({
       teamSlugOrId,
-      repo: selectedProject || "",
-    }),
-    enabled: !!selectedProject,
-  });
+      repoFullName: selectedProject || "",
+    })
+  );
 
   const projectOptions: SelectOption[] = useMemo(() => {
     const byOrg =

@@ -1389,8 +1389,19 @@ Please address the issue mentioned in the comment above.`;
         );
 
         if (existingBranches.length > 0) {
-          // Return existing branches and refresh in background
-          callback({ success: true, branches: existingBranches });
+          // Reorder to pin origin/HEAD dynamically using native git if available
+          let branchesOut = existingBranches;
+          try {
+            const { listRemoteBranches } = await import("./native/git.js");
+            const head = (await listRemoteBranches({ repoFullName: repo }))?.[0]?.name;
+            if (head && branchesOut.includes(head)) {
+              branchesOut = [head, ...branchesOut.filter((b) => b !== head)];
+            }
+          } catch {
+            // ignore; fall back to stored order
+          }
+          // Return reordered branches and refresh in background
+          callback({ success: true, branches: branchesOut });
 
           // Refresh in the background
           refreshBranchesForRepo(repo, teamSlugOrId).catch((error) => {
@@ -1399,7 +1410,7 @@ Please address the issue mentioned in the comment above.`;
           return;
         }
 
-        // If no branches exist, fetch them
+        // If no branches exist, fetch them (already sorted with HEAD pinned)
         const branches = await refreshBranchesForRepo(repo, teamSlugOrId);
         callback({ success: true, branches });
       } catch (error) {

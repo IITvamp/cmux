@@ -24,6 +24,7 @@ import { api } from "@cmux/convex/api";
 import type { Doc } from "@cmux/convex/dataModel";
 import { convexQuery } from "@convex-dev/react-query";
 import { useQuery } from "@tanstack/react-query";
+import { branchesQueryOptions } from "@/queries/branches";
 import { createFileRoute } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useMutation } from "convex/react";
@@ -86,39 +87,24 @@ function DashboardComponent() {
     [selectedProject]
   );
 
-  const branchesQuery = useQuery({
-    ...convexQuery(api.github.getBranches, {
+  const branchesQuery = useQuery(
+    branchesQueryOptions({
       teamSlugOrId,
-      repo: selectedProject[0] || "",
-    }),
-    enabled: !!selectedProject[0] && !isEnvSelected,
-  });
+      repoFullName: selectedProject[0] || "",
+    })
+  );
   const branches = useMemo(
     () => branchesQuery.data || [],
     [branchesQuery.data]
   );
 
-  const fetchBranches = useCallback(
-    (repo: string) => {
-      if (!socket) return;
-
-      setIsLoadingBranches(true);
-      socket.emit(
-        "github-fetch-branches",
-        { teamSlugOrId, repo },
-        (response) => {
-          setIsLoadingBranches(false);
-          if (response.success) {
-            // Refetch from Convex to get updated data
-            branchesQuery.refetch();
-          } else if (response.error) {
-            console.error("Error fetching branches:", response.error);
-          }
-        }
-      );
-    },
-    [socket, teamSlugOrId, branchesQuery]
-  );
+  const fetchBranches = useCallback((_repo?: string) => {
+    setIsLoadingBranches(true);
+    branchesQuery
+      .refetch()
+      .finally(() => setIsLoadingBranches(false))
+      .catch(() => setIsLoadingBranches(false));
+  }, [branchesQuery]);
 
   // Callback for project selection changes
   const handleProjectChange = useCallback(

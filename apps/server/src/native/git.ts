@@ -27,6 +27,11 @@ export interface GitDiffRefsOptions {
 type NativeGitModule = {
   gitDiffWorkspace?: (opts: GitDiffWorkspaceOptions) => Promise<ReplaceDiffEntry[]>;
   gitDiffRefs?: (opts: GitDiffRefsOptions) => Promise<ReplaceDiffEntry[]>;
+  git_list_remote_branches?: (opts: {
+    repoFullName?: string;
+    repoUrl?: string;
+    originPathOverride?: string;
+  }) => Promise<Array<{ name: string; lastCommitSha?: string; lastActivityAt?: number; isDefault?: boolean }>>;
 };
 
 function tryLoadNative(): NativeGitModule | null {
@@ -86,4 +91,16 @@ export function loadNativeGit(): NativeGitModule | null {
 export function getGitImplMode(): GitImplMode {
   const v = (process.env.CMUX_GIT_IMPL || "rust").toLowerCase();
   return v === "js" ? "js" : "rust";
+}
+
+export async function listRemoteBranches(opts: {
+  repoFullName?: string;
+  repoUrl?: string;
+  originPathOverride?: string;
+}): Promise<Array<{ name: string; lastCommitSha?: string; lastActivityAt?: number; isDefault?: boolean }>> {
+  const mod = loadNativeGit();
+  if (!mod?.git_list_remote_branches) {
+    throw new Error("Native git_list_remote_branches not available; rebuild @cmux/native-core");
+  }
+  return mod.git_list_remote_branches(opts);
 }
