@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs";
 import { RepositoryManager } from "../repositoryManager.js";
 import { getProjectPaths } from "../workspace.js";
 import { computeEntriesBetweenRefs } from "./parseGitDiff.js";
+import { getGitImplMode, loadNativeGit } from "../native/git.js";
 
 export interface CompareRefsArgs {
   ref1: string;
@@ -17,6 +18,27 @@ export async function compareRefsForRepo(
   args: CompareRefsArgs
 ): Promise<ReplaceDiffEntry[]> {
   const { ref1, ref2, originPathOverride } = args;
+
+  // Prefer Rust native implementation up front to avoid JS-only requirements
+  const impl = getGitImplMode();
+  if (impl === "rust") {
+    const native = loadNativeGit();
+    if (native?.gitDiffRefs) {
+      try {
+        return await native.gitDiffRefs({
+          ref1,
+          ref2,
+          repoUrl: args.repoUrl,
+          repoFullName: args.repoFullName,
+          teamSlugOrId: args.teamSlugOrId,
+          originPathOverride: args.originPathOverride,
+          includeContents: true,
+        });
+      } catch {
+        // fallthrough to JS
+      }
+    }
+  }
 
   let originPath: string;
   if (originPathOverride) {
@@ -93,7 +115,7 @@ export async function compareRefsForRepo(
     originPath = projectPaths.originPath;
   }
 
-  // Resolve both refs to commit-ish that exist in the local clone.
+  // Resolve both refs to commit-ish that exist in the local clone (JS fallback)
   const repoMgr = RepositoryManager.getInstance();
   const resolveCommitish = async (
     repoPath: string,

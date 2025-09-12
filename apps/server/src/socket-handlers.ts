@@ -53,6 +53,7 @@ import {
 import { runWithAuth, runWithAuthToken } from "./utils/requestContext.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { getProjectPaths } from "./workspace.js";
+import { getRustTime } from "./native/core.js";
 
 const execAsync = promisify(exec);
 
@@ -90,6 +91,17 @@ export function setupSocketHandlers(
       runWithAuth(token, tokenJson, () => next());
     });
     serverLogger.info("Client connected:", socket.id);
+
+    // Rust N-API test endpoint
+    socket.on("rust-get-time", async (callback) => {
+      try {
+        const time = await getRustTime();
+        callback({ ok: true, time });
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        callback({ ok: false, error: msg });
+      }
+    });
 
     // Send default repo info to newly connected client if available
     if (defaultRepo?.remoteName) {
@@ -167,6 +179,27 @@ export function setupSocketHandlers(
         callback?.({ ok: true, diffs });
       } catch (error) {
         serverLogger.error("Error comparing refs:", error);
+        callback?.({
+          ok: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+          diffs: [],
+        });
+      }
+    });
+
+    // New event: git-diff-refs (alias of compare using native path)
+    socket.on("git-diff-refs", async (data, callback) => {
+      try {
+        const { repoFullName, ref1, ref2 } = GitCompareRefsSchema.parse(data);
+        const diffs = await compareRefsForRepo({
+          repoFullName,
+          ref1,
+          ref2,
+          teamSlugOrId: safeTeam,
+        });
+        callback?.({ ok: true, diffs });
+      } catch (error) {
+        serverLogger.error("Error in git-diff-refs:", error);
         callback?.({
           ok: false,
           error: error instanceof Error ? error.message : "Unknown error",

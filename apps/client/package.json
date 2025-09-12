@@ -1,6 +1,6 @@
 {
   "name": "@cmux/client",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "description": "cmux client application",
   "author": "cmux",
   "type": "module",
@@ -8,7 +8,7 @@
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "vite",
-    "predev:electron": "pnpm run rebuild:electron",
+    "predev:electron": "bun run rebuild:electron",
     "rebuild:electron": "electron-rebuild -f -t prod,dev",
     "dev:electron": "electron-vite dev -c electron.vite.config.ts",
     "build": "vite build -c vite.config.ts",
@@ -118,7 +118,6 @@
   "devDependencies": {
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
-    "@electron/rebuild": "^4.0.1",
     "@eslint/js": "^9.29.0",
     "@tanstack/react-query-devtools": "^5.81.5",
     "@tanstack/router-cli": "^1.124.0",

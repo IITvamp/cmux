@@ -434,6 +434,15 @@ export interface ClientToServerEvents {
         | { ok: false; error: string; diffs?: [] }
     ) => void
   ) => void;
+  // New: diff arbitrary refs in a repo; same payload/response as git-compare-refs
+  "git-diff-refs": (
+    data: GitCompareRefs,
+    callback: (
+      response:
+        | { ok: true; diffs: import("./diff-types.js").ReplaceDiffEntry[] }
+        | { ok: false; error: string; diffs?: [] }
+    ) => void
+  ) => void;
   // On-demand diffs for a task run
   "get-run-diffs": (
     data: { taskRunId: Id<"taskRuns"> },
@@ -524,6 +533,10 @@ export interface ClientToServerEvents {
       commitSha?: string;
       error?: string;
     }) => void
+  ) => void;
+  // Rust N-API test: returns current time
+  "rust-get-time": (
+    callback: (response: { ok: true; time: string } | { ok: false; error: string }) => void
   ) => void;
   "check-provider-status": (
     callback: (response: ProviderStatusResponse) => void
