@@ -632,5 +632,29 @@ async function handleProtocolUrl(url: string): Promise<void> {
     ]);
 
     mainWindow.webContents.reload();
+    return;
+  }
+
+  if (urlObj.hostname === "github-connect-complete") {
+    try {
+      mainLog("Deep link: github-connect-complete", {
+        team: urlObj.searchParams.get("team"),
+      });
+      // Bring app to front and refresh to pick up new connections
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+      const team = urlObj.searchParams.get("team");
+      try {
+        mainWindow.webContents.send("cmux:event:github-connect-complete", {
+          team,
+        });
+      } catch (emitErr) {
+        mainWarn("Failed to emit github-connect-complete", emitErr);
+      }
+    } catch (e) {
+      mainWarn("Failed to handle github-connect-complete", e);
+    }
+    return;
   }
 }
