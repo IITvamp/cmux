@@ -59,6 +59,7 @@ const fetchWithAuth = (async (request: Request) => {
   if (!user) {
     throw new Error("User not found");
   }
+  console.log("fetching url", request.url.toString());
   const authHeaders = await user.getAuthHeaders();
   const mergedHeaders = new Headers();
   for (const [key, value] of Object.entries(authHeaders)) {

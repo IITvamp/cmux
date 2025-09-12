@@ -4,6 +4,7 @@ set -e
 # remove existing build
 rm -rf dist-electron
 rm -rf out
+rm -rf build
 
 # Build the Electron app first with environment variables loaded
 echo "Building Electron app..."
@@ -95,7 +96,11 @@ if [ -d "$ICONSET_SRC" ]; then
   rsync -a "$ICONSET_SRC/" "$RESOURCES_DIR/cmux-logos/cmux.iconset/"
   if [ ! -f "$BUILD_ICON_ICNS" ] && command -v iconutil >/dev/null 2>&1; then
     echo "Generating build/icon.icns from iconset..."
-    iconutil -c icns "$ICONSET_SRC" -o "$BUILD_ICON_ICNS"
+    mkdir -p "$(dirname "$BUILD_ICON_ICNS")"
+    # Generate ICNS; don't fail the entire build if this step fails
+    if ! iconutil -c icns "$ICONSET_SRC" -o "$BUILD_ICON_ICNS"; then
+      echo "WARNING: iconutil failed to generate ICNS; continuing without custom icon" >&2
+    fi
   fi
 fi
 
