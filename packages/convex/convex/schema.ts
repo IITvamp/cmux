@@ -143,7 +143,8 @@ const convexSchema = defineSchema({
       v.literal("completed"),
       v.literal("failed")
     ),
-    log: v.string(), // CLI output log, will be appended to in real-time
+    // Optional log retained for backward compatibility; no longer written to.
+    log: v.optional(v.string()), // CLI output log (deprecated)
     worktreePath: v.optional(v.string()), // Path to the git worktree for this run
     newBranch: v.optional(v.string()), // The generated branch name for this run
     createdAt: v.number(),

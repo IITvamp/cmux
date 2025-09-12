@@ -497,7 +497,7 @@ export async function evaluateCrown(
         }
         if (!instance || !instance.isWorkerConnected()) {
           serverLogger.info(
-            `[CrownEvaluator] No live worker for run ${runId}; falling back to log parsing`
+            `[CrownEvaluator] No live worker for run ${runId}; unable to collect diff`
           );
           return null;
         }
@@ -513,7 +513,7 @@ export async function evaluateCrown(
         const diff = stdout?.trim() || "";
         if (diff.length === 0) {
           serverLogger.info(
-            `[CrownEvaluator] Worker diff empty for run ${runId}; falling back to log parsing`
+            `[CrownEvaluator] Worker diff empty for run ${runId}`
           );
           return null;
         }
@@ -537,65 +537,7 @@ export async function evaluateCrown(
         const agentName = agentMatch ? agentMatch[1] : "Unknown";
         // Try to collect diff via worker
         const workerDiff: string | null = await collectDiffViaWorker(run._id);
-        let gitDiff: string = workerDiff ?? "";
-
-        // Fallback: Extract git diff from log - look for the dedicated sections
-        if (!gitDiff) {
-          gitDiff = "No changes detected";
-
-          // Look for our well-defined git diff section - try multiple formats
-          let gitDiffMatch = run.log.match(
-            /=== GIT DIFF ===\n([\s\S]*?)\n=== END GIT DIFF ===/
-          );
-
-          // Also try the new format with "ALL CHANGES"
-          if (!gitDiffMatch) {
-            gitDiffMatch = run.log.match(
-              /=== ALL CHANGES \(git diff HEAD\) ===\n([\s\S]*?)\n=== END ALL CHANGES ===/
-            );
-          }
-
-          if (gitDiffMatch && gitDiffMatch[1]) {
-            gitDiff = gitDiffMatch[1].trim();
-
-            // If the diff includes the stat summary, extract just the detailed diff part
-            if (gitDiff.includes("=== DETAILED DIFF ===")) {
-              const detailedPart = gitDiff.split("=== DETAILED DIFF ===")[1];
-              if (detailedPart) {
-                gitDiff = detailedPart.trim();
-              }
-            }
-
-            serverLogger.info(
-              `[CrownEvaluator] Found git diff in logs for ${agentName}: ${gitDiff.length} chars`
-            );
-          } else {
-            // If no git diff section found, this is a serious problem
-            serverLogger.error(
-              `[CrownEvaluator] NO GIT DIFF SECTION FOUND for ${agentName}!`
-            );
-            serverLogger.error(
-              `[CrownEvaluator] Log contains "=== GIT DIFF ==="?: ${run.log.includes("=== GIT DIFF ===")}`
-            );
-            serverLogger.error(
-              `[CrownEvaluator] Log contains "=== END GIT DIFF ==="?: ${run.log.includes("=== END GIT DIFF ===")}`
-            );
-            serverLogger.error(
-              `[CrownEvaluator] Log contains "=== ALL CHANGES"?: ${run.log.includes("=== ALL CHANGES")}`
-            );
-
-            // As a last resort, check if there's any indication of changes
-            if (
-              run.log.includes("=== ALL STAGED CHANGES") ||
-              run.log.includes("=== AGGRESSIVE DIFF CAPTURE") ||
-              run.log.includes("ERROR: git diff --cached was empty")
-            ) {
-              // Use whatever we can find
-              const lastPart = run.log.slice(-3000);
-              gitDiff = `ERROR: Git diff not properly captured. Last part of log:\n${lastPart}`;
-            }
-          }
-        }
+        let gitDiff: string = workerDiff && workerDiff.length > 0 ? workerDiff : "No changes detected";
 
         // Limit to 5000 chars for the prompt
         if (gitDiff.length > 5000) {
@@ -606,10 +548,7 @@ export async function evaluateCrown(
           `[CrownEvaluator] Implementation ${idx} (${agentName}): ${gitDiff.length} chars of diff`
         );
 
-        // Log last 500 chars of the run log to debug
-        serverLogger.info(
-          `[CrownEvaluator] ${agentName} log tail: ...${run.log.slice(-500)}`
-        );
+        // Do not rely on logs; skip logging log tails.
 
         return {
           index: idx,
