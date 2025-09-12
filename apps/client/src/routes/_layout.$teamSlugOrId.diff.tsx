@@ -5,11 +5,11 @@ import {
   type SelectOption,
 } from "@/components/ui/searchable-select";
 import { useSocket } from "@/contexts/socket/use-socket";
+import { branchesQueryOptions } from "@/queries/branches";
 import { api } from "@cmux/convex/api";
 import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
 import { convexQuery } from "@convex-dev/react-query";
 import { useQuery as useRQ } from "@tanstack/react-query";
-import { branchesQueryOptions } from "@/queries/branches";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { ArrowLeftRight, GitBranch } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -166,7 +166,7 @@ function DashboardDiffPage() {
             return;
           }
           socket.emit(
-            "git-compare-refs",
+            "git-diff-refs",
             {
               repoFullName: selectedProject,
               ref1: search.ref1,
