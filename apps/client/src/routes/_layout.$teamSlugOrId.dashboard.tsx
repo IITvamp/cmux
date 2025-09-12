@@ -236,10 +236,24 @@ function DashboardComponent() {
   );
 
   const handleStartTask = useCallback(async () => {
-    // Prevent starting tasks locally only when Docker is explicitly not running
-    if (!isEnvSelected && !isCloudMode && !dockerReady) {
-      toast.error("Docker is not running. Start Docker Desktop.");
-      return;
+    // For local mode, perform a fresh docker check right before starting
+    if (!isEnvSelected && !isCloudMode) {
+      let ready = dockerReady;
+      if (!ready && socket) {
+        ready = await new Promise<boolean>((resolve) => {
+          socket.emit("check-provider-status", (response) => {
+            const isRunning = !!response?.dockerStatus?.isRunning;
+            if (typeof isRunning === "boolean") {
+              setDockerReady(isRunning);
+            }
+            resolve(isRunning);
+          });
+        });
+      }
+      if (!ready) {
+        toast.error("Docker is not running. Start Docker Desktop.");
+        return;
+      }
     }
 
     if (!selectedProject[0] || !taskDescription.trim()) {
@@ -383,9 +397,24 @@ function DashboardComponent() {
   //   }
   // }, [reposByOrg, fetchRepos]);
 
-  // Check provider status once on mount (no polling)
+  // Check provider status on mount and keep it fresh without page refresh
   useEffect(() => {
+    // Initial check
     checkProviderStatus();
+
+    // Poll while the dashboard is open so Docker state updates live
+    const interval = setInterval(() => {
+      checkProviderStatus();
+    }, 5000);
+
+    // Also refresh on window focus to catch recent changes quickly
+    const handleFocus = () => checkProviderStatus();
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", handleFocus);
+    };
   }, [checkProviderStatus]);
 
   // Fetch branches when repo changes
@@ -593,31 +622,14 @@ function DashboardComponent() {
     };
   }, []);
 
-  // Compute docker block state and disabled reason early so shortcuts respect it
-  const blockedByDocker = useMemo(() => {
-    // Block when explicitly in local mode (not cloud, not environment) and Docker is explicitly not running
-    return !isEnvSelected && !isCloudMode && !dockerReady;
-  }, [isEnvSelected, isCloudMode, dockerReady]);
-
-  const disabledReason = useMemo(() => {
-    if (blockedByDocker) {
-      return "Docker is not running. Start Docker Desktop.";
-    }
-    return undefined;
-  }, [blockedByDocker]);
+  // Do not pre-disable UI on Docker status; handle fresh check on submit
 
   // Handle Command+Enter keyboard shortcut
   const handleSubmit = useCallback(() => {
-    // Block Cmd/Ctrl+Enter when Docker isn't ready in local mode
-    if (blockedByDocker) {
-      toast.error("Docker is not running. Start Docker Desktop.");
-      return;
-    }
-
     if (selectedProject[0] && taskDescription.trim()) {
-      handleStartTask();
+      void handleStartTask();
     }
-  }, [blockedByDocker, selectedProject, taskDescription, handleStartTask]);
+  }, [selectedProject, taskDescription, handleStartTask]);
 
   // Memoized computed values for editor props
   const lexicalRepoUrl = useMemo(() => {
@@ -694,7 +706,6 @@ function DashboardComponent() {
                 <DashboardStartTaskButton
                   canSubmit={canSubmit}
                   onStartTask={handleStartTask}
-                  disabledReason={disabledReason}
                 />
               </DashboardInputFooter>
             </div>
