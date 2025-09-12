@@ -67,7 +67,10 @@ pub fn diff_refs(opts: GitDiffRefsOptions) -> Result<Vec<DiffEntry>> {
 
   let _d_fetch = if opts.originPathOverride.is_some() {
     let t_fetch = Instant::now();
-    let _ = crate::repo::cache::swr_fetch_origin_all_path(std::path::Path::new(&cwd), 5_000);
+    let _ = crate::repo::cache::swr_fetch_origin_all_path(
+      std::path::Path::new(&cwd),
+      crate::repo::cache::fetch_window_ms(),
+    );
     t_fetch.elapsed()
   } else { Duration::from_millis(0) };
 

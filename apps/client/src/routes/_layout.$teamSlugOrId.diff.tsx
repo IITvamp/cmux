@@ -5,6 +5,7 @@ import {
   type SelectOption,
 } from "@/components/ui/searchable-select";
 import { useSocket } from "@/contexts/socket/use-socket";
+import { branchesQueryOptions } from "@/queries/branches";
 import { api } from "@cmux/convex/api";
 import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
 import { convexQuery } from "@convex-dev/react-query";
@@ -70,13 +71,12 @@ function DashboardDiffPage() {
     convexQuery(api.github.getReposByOrg, { teamSlugOrId })
   );
 
-  const branchesQuery = useRQ({
-    ...convexQuery(api.github.getBranches, {
+  const branchesQuery = useRQ(
+    branchesQueryOptions({
       teamSlugOrId,
-      repo: selectedProject || "",
-    }),
-    enabled: !!selectedProject,
-  });
+      repoFullName: selectedProject || "",
+    })
+  );
 
   const projectOptions: SelectOption[] = useMemo(() => {
     const byOrg =
@@ -166,7 +166,7 @@ function DashboardDiffPage() {
             return;
           }
           socket.emit(
-            "git-compare-refs",
+            "git-diff-refs",
             {
               repoFullName: selectedProject,
               ref1: search.ref1,

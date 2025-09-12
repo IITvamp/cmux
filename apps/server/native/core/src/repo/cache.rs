@@ -7,6 +7,16 @@ use crate::util::run_git;
 
 const MAX_CACHE_REPOS: usize = 20;
 
+// Default SWR window for git fetches. Lower means fetch more often.
+pub const DEFAULT_FETCH_WINDOW_MS: u128 = 1_000; // 1s
+
+pub fn fetch_window_ms() -> u128 {
+  if let Ok(v) = std::env::var("CMUX_GIT_FETCH_WINDOW_MS") {
+    if let Ok(parsed) = v.parse::<u128>() { return parsed; }
+  }
+  DEFAULT_FETCH_WINDOW_MS
+}
+
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 struct CacheIndexEntry {
   slug: String,
@@ -50,7 +60,7 @@ pub fn ensure_repo(url: &str) -> Result<PathBuf> {
     )?;
     let _ = update_cache_index_with(&root, &path, Some(now_ms()));
   } else {
-    let _ = swr_fetch_origin_all_path_bool(&path, 5_000);
+    let _ = swr_fetch_origin_all_path_bool(&path, fetch_window_ms());
   }
   let shallow = path.join(".git").join("shallow");
   if shallow.exists() {

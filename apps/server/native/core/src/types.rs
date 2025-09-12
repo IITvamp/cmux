@@ -21,6 +21,23 @@ pub struct DiffEntry {
 
 #[napi(object)]
 #[derive(Default, Debug, Clone)]
+pub struct BranchInfo {
+  pub name: String,
+  pub lastCommitSha: Option<String>,
+  pub lastActivityAt: Option<i64>,
+  pub isDefault: Option<bool>,
+}
+
+#[napi(object)]
+#[derive(Default, Debug, Clone)]
+pub struct GitListRemoteBranchesOptions {
+  pub repoFullName: Option<String>,
+  pub repoUrl: Option<String>,
+  pub originPathOverride: Option<String>,
+}
+
+#[napi(object)]
+#[derive(Default, Debug, Clone)]
 pub struct GitDiffWorkspaceOptions {
   pub worktreePath: String,
   pub includeContents: Option<bool>,
@@ -39,4 +56,3 @@ pub struct GitDiffRefsOptions {
   pub includeContents: Option<bool>,
   pub maxBytes: Option<i32>,
 }
-

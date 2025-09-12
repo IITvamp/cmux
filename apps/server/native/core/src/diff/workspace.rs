@@ -113,17 +113,33 @@ pub fn diff_workspace(opts: GitDiffWorkspaceOptions) -> Result<Vec<DiffEntry>> {
   let cwd = PathBuf::from(&opts.worktreePath);
   let include = opts.includeContents.unwrap_or(true);
   let max_bytes = opts.maxBytes.unwrap_or(950*1024) as usize;
-  let _ = crate::repo::cache::swr_fetch_origin_all_path(&cwd, 5_000);
+  let _ = crate::repo::cache::swr_fetch_origin_all_path(&cwd, crate::repo::cache::fetch_window_ms());
   let repo = gix::open(&cwd)?;
 
-  let head_oid = repo.head_commit()?.id;
-  let base_candidate = default_remote_head(&repo).unwrap_or(head_oid);
-  let merge_base = merge_base_oid(&repo, base_candidate, head_oid);
-
-  let base_commit = repo.find_object(merge_base)?.try_into_commit()?;
-  let base_tree_id = base_commit.tree_id()?.detach();
+  // Determine base tree for diff. If HEAD is unborn (no commits), fall back to remote default.
   let mut base_map: HashMap<String, ObjectId> = HashMap::new();
-  collect_tree_blobs(&repo, base_tree_id, "", &mut base_map)?;
+  match repo.head_commit() {
+    Ok(commit) => {
+      let head_oid = commit.id;
+      let base_candidate = default_remote_head(&repo).unwrap_or(head_oid);
+      let merge_base = merge_base_oid(&repo, base_candidate, head_oid);
+      let base_commit = repo.find_object(merge_base)?.try_into_commit()?;
+      let base_tree_id = base_commit.tree_id()?.detach();
+      collect_tree_blobs(&repo, base_tree_id, "", &mut base_map)?;
+    }
+    Err(_) => {
+      // Unborn HEAD: try remote default HEAD tree; otherwise empty base
+      if let Some(remote_head) = default_remote_head(&repo) {
+        if let Ok(obj) = repo.find_object(remote_head) {
+          if let Ok(base_commit) = obj.try_into_commit() {
+            if let Ok(tree_id) = base_commit.tree_id() {
+              collect_tree_blobs(&repo, tree_id.detach(), "", &mut base_map)?;
+            }
+          }
+        }
+      }
+    }
+  }
 
   let workdir = repo.work_dir().unwrap_or_else(|| cwd.as_path());
   let files = scan_workdir(workdir);
@@ -183,4 +199,3 @@ pub fn diff_workspace(opts: GitDiffWorkspaceOptions) -> Result<Vec<DiffEntry>> {
 
   Ok(out)
 }
-

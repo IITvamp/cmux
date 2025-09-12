@@ -27,6 +27,7 @@ import { compareRefsForRepo } from "./diffs/compareRefs.js";
 import { getRunDiffs } from "./diffs/getRunDiffs.js";
 import { execWithEnv } from "./execWithEnv.js";
 import { GitDiffManager } from "./gitDiff.js";
+import { getRustTime } from "./native/core.js";
 import type { RealtimeServer } from "./realtime.js";
 import { RepositoryManager } from "./repositoryManager.js";
 import type { GitRepoInfo } from "./server.js";
@@ -53,7 +54,6 @@ import {
 import { runWithAuth, runWithAuthToken } from "./utils/requestContext.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { getProjectPaths } from "./workspace.js";
-import { getRustTime } from "./native/core.js";
 
 const execAsync = promisify(exec);
 
@@ -166,28 +166,6 @@ export function setupSocketHandlers(
       );
     }
 
-    // Compare two refs in a repository; ensure fetch/pull before computing diff
-    socket.on("git-compare-refs", async (data, callback) => {
-      try {
-        const { repoFullName, ref1, ref2 } = GitCompareRefsSchema.parse(data);
-        const diffs = await compareRefsForRepo({
-          repoFullName,
-          ref1,
-          ref2,
-          teamSlugOrId: safeTeam,
-        });
-        callback?.({ ok: true, diffs });
-      } catch (error) {
-        serverLogger.error("Error comparing refs:", error);
-        callback?.({
-          ok: false,
-          error: error instanceof Error ? error.message : "Unknown error",
-          diffs: [],
-        });
-      }
-    });
-
-    // New event: git-diff-refs (alias of compare using native path)
     socket.on("git-diff-refs", async (data, callback) => {
       try {
         const { repoFullName, ref1, ref2 } = GitCompareRefsSchema.parse(data);
@@ -1389,8 +1367,20 @@ Please address the issue mentioned in the comment above.`;
         );
 
         if (existingBranches.length > 0) {
-          // Return existing branches and refresh in background
-          callback({ success: true, branches: existingBranches });
+          // Reorder to pin origin/HEAD dynamically using native git if available
+          let branchesOut = existingBranches;
+          try {
+            const { listRemoteBranches } = await import("./native/git.js");
+            const head = (await listRemoteBranches({ repoFullName: repo }))?.[0]
+              ?.name;
+            if (head && branchesOut.includes(head)) {
+              branchesOut = [head, ...branchesOut.filter((b) => b !== head)];
+            }
+          } catch {
+            // ignore; fall back to stored order
+          }
+          // Return reordered branches and refresh in background
+          callback({ success: true, branches: branchesOut });
 
           // Refresh in the background
           refreshBranchesForRepo(repo, teamSlugOrId).catch((error) => {
@@ -1399,7 +1389,7 @@ Please address the issue mentioned in the comment above.`;
           return;
         }
 
-        // If no branches exist, fetch them
+        // If no branches exist, fetch them (already sorted with HEAD pinned)
         const branches = await refreshBranchesForRepo(repo, teamSlugOrId);
         callback({ success: true, branches });
       } catch (error) {

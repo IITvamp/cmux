@@ -5,10 +5,11 @@ mod util;
 mod repo;
 mod diff;
 mod merge_base;
+mod branches;
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
-use types::{DiffEntry, GitDiffRefsOptions, GitDiffWorkspaceOptions};
+use types::{BranchInfo, DiffEntry, GitDiffRefsOptions, GitDiffWorkspaceOptions, GitListRemoteBranchesOptions};
 
 #[napi]
 pub async fn get_time() -> String {
@@ -53,6 +54,20 @@ pub async fn git_diff_refs(opts: GitDiffRefsOptions) -> Result<Vec<DiffEntry>> {
     .map_err(|e| Error::from_reason(format!("{e:#}")))
 }
 
+#[napi]
+pub async fn git_list_remote_branches(opts: GitListRemoteBranchesOptions) -> Result<Vec<BranchInfo>> {
+  #[cfg(debug_assertions)]
+  println!(
+    "[cmux_native_git] git_list_remote_branches repoFullName={:?} repoUrl={:?} originPathOverride={:?}",
+    opts.repoFullName,
+    opts.repoUrl,
+    opts.originPathOverride
+  );
+  tokio::task::spawn_blocking(move || branches::list_remote_branches(opts))
+    .await
+    .map_err(|e| Error::from_reason(format!("Join error: {e}")))?
+    .map_err(|e| Error::from_reason(format!("{e:#}")))
+}
+
 #[cfg(test)]
 mod tests;
-
