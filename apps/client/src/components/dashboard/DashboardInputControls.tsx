@@ -1,4 +1,5 @@
 import { env } from "@/client-env";
+import { isElectron } from "@/lib/electron";
 import { AgentLogo } from "@/components/icons/agent-logos";
 import { GitHubIcon } from "@/components/icons/github";
 import { ModeToggleTooltip } from "@/components/ui/mode-toggle-tooltip";
@@ -12,6 +13,8 @@ import {
 } from "@/components/ui/tooltip";
 import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
 import { Link, useRouter } from "@tanstack/react-router";
+import { api } from "@cmux/convex/api";
+import { useMutation } from "convex/react";
 import clsx from "clsx";
 import { GitBranch, Image, Mic, Server } from "lucide-react";
 import { memo, useCallback, useMemo } from "react";
@@ -52,6 +55,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
   branchDisabled = false,
 }: DashboardInputControlsProps) {
   const router = useRouter();
+  const mintState = useMutation(api.github_app.mintInstallState);
   const agentOptions = useMemo(() => {
     const vendorKey = (name: string): string => {
       const lower = name.toLowerCase();
@@ -92,6 +96,11 @@ export const DashboardInputControls = memo(function DashboardInputControls({
     opts?: { name?: string; width?: number; height?: number },
     onClose?: () => void
   ): Window | null {
+    if (isElectron) {
+      // In Electron, always open in the system browser and skip popup plumbing
+      window.open(url, "_blank", "noopener,noreferrer");
+      return null;
+    }
     const name = opts?.name ?? "cmux-popup";
     const width = Math.floor(opts?.width ?? 980);
     const height = Math.floor(opts?.height ?? 780);
@@ -182,18 +191,28 @@ export const DashboardInputControls = memo(function DashboardInputControls({
               {env.NEXT_PUBLIC_GITHUB_APP_SLUG ? (
                 <button
                   type="button"
-                  onClick={(e) => {
+                  onClick={async (e) => {
                     e.preventDefault();
-                    const slug = env.NEXT_PUBLIC_GITHUB_APP_SLUG!;
-                    const url = `https://github.com/apps/${slug}/installations/new`;
-                    const win = openCenteredPopup(
-                      url,
-                      { name: "github-install" },
-                      () => {
-                        router.options.context?.queryClient?.invalidateQueries();
-                      }
-                    );
-                    win?.focus?.();
+                    try {
+                      const slug = env.NEXT_PUBLIC_GITHUB_APP_SLUG!;
+                      const baseUrl = `https://github.com/apps/${slug}/installations/new`;
+                      const { state } = await mintState({ teamSlugOrId });
+                      const sep = baseUrl.includes("?") ? "&" : "?";
+                      const url = `${baseUrl}${sep}state=${encodeURIComponent(
+                        state
+                      )}`;
+                      const win = openCenteredPopup(
+                        url,
+                        { name: "github-install" },
+                        () => {
+                          router.options.context?.queryClient?.invalidateQueries();
+                        }
+                      );
+                      win?.focus?.();
+                    } catch (err) {
+                      console.error("Failed to start GitHub install:", err);
+                      alert("Failed to start installation. Please try again.");
+                    }
                   }}
                   className="w-full px-2 h-8 flex items-center gap-2 text-[13.5px] text-neutral-800 dark:text-neutral-200 rounded-md hover:bg-neutral-50 dark:hover:bg-neutral-900"
                 >

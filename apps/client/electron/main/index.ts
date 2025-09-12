@@ -632,5 +632,22 @@ async function handleProtocolUrl(url: string): Promise<void> {
     ]);
 
     mainWindow.webContents.reload();
+    return;
+  }
+
+  if (urlObj.hostname === "github-connect-complete") {
+    try {
+      mainLog("Deep link: github-connect-complete", {
+        team: urlObj.searchParams.get("team"),
+      });
+      // Bring app to front and refresh to pick up new connections
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+      mainWindow.webContents.reload();
+    } catch (e) {
+      mainWarn("Failed to handle github-connect-complete", e);
+    }
+    return;
   }
 }
