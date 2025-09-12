@@ -24,10 +24,10 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
     });
   }, [socket]);
 
-  // Check status on mount and every 30 seconds
+  // Check status on mount and every 5 seconds so UI updates quickly
   useEffect(() => {
     checkProviderStatus();
-    const interval = setInterval(checkProviderStatus, 30000);
+    const interval = setInterval(checkProviderStatus, 5000);
     return () => clearInterval(interval);
   }, [checkProviderStatus]);
 
