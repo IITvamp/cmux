@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { getTeamId } from "../_shared/team";
 import { authMutation, authQuery } from "./users/utils";
 
+// Deprecated: do not write log chunks anymore (no-op)
 export const appendChunk = authMutation({
   args: {
     teamSlugOrId: v.string(),
@@ -9,17 +10,16 @@ export const appendChunk = authMutation({
     content: v.string(),
   },
   handler: async (ctx, args) => {
+    // Intentionally not inserting chunks to reduce DB bandwidth and prepare removal.
+    // Validate access but perform no write.
     const userId = ctx.identity.subject;
     const teamId = await getTeamId(ctx, args.teamSlugOrId);
-    await ctx.db.insert("taskRunLogChunks", {
-      taskRunId: args.taskRunId,
-      content: args.content,
-      userId,
-      teamId,
-    });
+    void userId;
+    void teamId;
   },
 });
 
+// Deprecated: do not write log chunks anymore (no-op)
 export const appendChunkPublic = authMutation({
   args: {
     teamSlugOrId: v.string(),
@@ -27,14 +27,11 @@ export const appendChunkPublic = authMutation({
     content: v.string(),
   },
   handler: async (ctx, args) => {
+    // Intentionally not inserting chunks; keep for backward compatibility.
     const userId = ctx.identity.subject;
     const teamId = await getTeamId(ctx, args.teamSlugOrId);
-    await ctx.db.insert("taskRunLogChunks", {
-      taskRunId: args.taskRunId,
-      content: args.content,
-      userId,
-      teamId,
-    });
+    void userId;
+    void teamId;
   },
 });
 
