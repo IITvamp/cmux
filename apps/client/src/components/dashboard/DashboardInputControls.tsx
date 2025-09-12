@@ -1,5 +1,4 @@
 import { env } from "@/client-env";
-import { isElectron } from "@/lib/electron";
 import { AgentLogo } from "@/components/icons/agent-logos";
 import { GitHubIcon } from "@/components/icons/github";
 import { ModeToggleTooltip } from "@/components/ui/mode-toggle-tooltip";
@@ -12,6 +11,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
+import { api } from "@cmux/convex/api";
+import { useMutation } from "convex/react";
 import { Link, useRouter } from "@tanstack/react-router";
 import clsx from "clsx";
 import { GitBranch, Image, Mic, Server } from "lucide-react";
@@ -53,6 +54,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
   branchDisabled = false,
 }: DashboardInputControlsProps) {
   const router = useRouter();
+  const mintInstallState = useMutation(api.github_app.mintInstallState);
   const agentOptions = useMemo(() => {
     const vendorKey = (name: string): string => {
       const lower = name.toLowerCase();
@@ -186,20 +188,32 @@ export const DashboardInputControls = memo(function DashboardInputControls({
                   onClick={(e) => {
                     e.preventDefault();
                     const slug = env.NEXT_PUBLIC_GITHUB_APP_SLUG!;
-                    const url = `https://github.com/apps/${slug}/installations/new`;
-                    if (isElectron) {
-                      // Open externally in the default browser when running in Electron
-                      window.open(url, "_blank");
-                    } else {
-                      const win = openCenteredPopup(
-                        url,
-                        { name: "github-install" },
-                        () => {
-                          router.options.context?.queryClient?.invalidateQueries();
-                        }
-                      );
-                      win?.focus?.();
-                    }
+                    const baseUrl = `https://github.com/apps/${slug}/installations/new`;
+                    // Prefer mapping installation back to current team via signed state
+                    mintInstallState({ teamSlugOrId })
+                      .then(({ state }) => {
+                        const sep = baseUrl.includes("?") ? "&" : "?";
+                        const url = `${baseUrl}${sep}state=${encodeURIComponent(state)}`;
+                        const win = openCenteredPopup(
+                          url,
+                          { name: "github-install" },
+                          () => {
+                            router.options.context?.queryClient?.invalidateQueries();
+                          }
+                        );
+                        win?.focus?.();
+                      })
+                      .catch(() => {
+                        // Fallback: open without state
+                        const win = openCenteredPopup(
+                          baseUrl,
+                          { name: "github-install" },
+                          () => {
+                            router.options.context?.queryClient?.invalidateQueries();
+                          }
+                        );
+                        win?.focus?.();
+                      });
                   }}
                   className="w-full px-2 h-8 flex items-center gap-2 text-[13.5px] text-neutral-800 dark:text-neutral-200 rounded-md hover:bg-neutral-50 dark:hover:bg-neutral-900"
                 >

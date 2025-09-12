@@ -1,5 +1,9 @@
 import { env } from "../_shared/convex-env";
-import { base64urlFromBytes, base64urlToBytes, bytesToHex } from "../_shared/encoding";
+import {
+  base64urlFromBytes,
+  base64urlToBytes,
+  bytesToHex,
+} from "../_shared/encoding";
 import { hmacSha256, safeEqualHex } from "../_shared/crypto";
 import { internal } from "./_generated/api";
 import { httpAction } from "./_generated/server";
@@ -75,6 +79,7 @@ export const githubSetup = httpAction(async (ctx, req) => {
     iat: number;
     exp: number;
     nonce: string;
+    ui?: string;
   };
   let payload: Payload;
   try {
@@ -121,6 +126,11 @@ export const githubSetup = httpAction(async (ctx, req) => {
     teamId: payload.teamId,
   });
   const teamPath = team?.slug ?? payload.teamId;
+  // If installation initiated from Electron, bounce back via deep link
+  if ((payload.ui || "").toLowerCase() === "electron") {
+    const deeplink = `cmux://connect-complete?team=${encodeURIComponent(teamPath)}`;
+    return Response.redirect(deeplink, 302);
+  }
   const target = `${base}/${encodeURIComponent(teamPath)}/connect-complete`;
   return Response.redirect(target, 302);
 });

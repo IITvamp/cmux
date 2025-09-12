@@ -99,7 +99,7 @@ function setupConsoleFileMirrors(): void {
       try {
         writeMainLogLine("LOG", formatArgs(args));
       } catch {
-        // ignore
+        void 0;
       }
     }
   };
@@ -357,9 +357,94 @@ function createWindow(): void {
     mainLog("did-navigate", { url });
   });
 
+  // In-app popup handling for specific flows (e.g., GitHub install/config)
   mainWindow.webContents.setWindowOpenHandler((details) => {
+    const { url, frameName, features } = details;
+    // Allow our app-triggered popups to open in a child BrowserWindow
+    // We use names like "github-install" and "github-config".
+    const isAppPopup =
+      url === "about:blank" &&
+      (frameName === "github-install" || frameName === "github-config");
+
+    if (isAppPopup) {
+      // Parse width/height from features if present
+      let width = 980;
+      let height = 780;
+      try {
+        const items = (features || "").split(",");
+        for (const it of items) {
+          const [k, v] = it.split("=");
+          if (k === "width") width = Math.max(320, Number(v) || width);
+          if (k === "height") height = Math.max(320, Number(v) || height);
+        }
+      } catch {
+        // ignore
+      }
+
+      return {
+        action: "allow" as const,
+        overrideBrowserWindowOptions: {
+          parent: mainWindow ?? undefined,
+          modal: false,
+          autoHideMenuBar: true,
+          width,
+          height,
+          webPreferences: {
+            // Use same session so our https://cmux.local handler and cookies apply
+            partition: PARTITION,
+            sandbox: false,
+            contextIsolation: true,
+            nodeIntegration: false,
+          },
+        },
+      };
+    }
+
+    // Default: open externally in the system browser
     shell.openExternal(details.url);
     return { action: "deny" };
+  });
+
+  // Watch child windows created via window.open and close them on deep-links
+  mainWindow.webContents.on("did-create-window", (child) => {
+    // Prevent unexpected popups inside the child; open external by default
+    child.webContents.setWindowOpenHandler((d) => {
+      shell.openExternal(d.url);
+      return { action: "deny" };
+    });
+
+    // If the GitHub flow bounces to cmux://, handle it and close the popup
+    child.webContents.on("will-navigate", (e, u) => {
+      if (u?.startsWith?.("cmux://")) {
+        try {
+          e.preventDefault();
+        } catch {
+          void 0;
+        }
+        void handleOrQueueProtocolUrl(u);
+        try {
+          child.close();
+          mainWindow?.focus();
+        } catch {
+          void 0;
+        }
+      }
+    });
+
+    child.webContents.on(
+      "did-redirect-navigation",
+      (_e, url, _isInPlace, _isMainFrame, _frameProcessId, _frameRoutingId) => {
+        if (typeof url === "string" && url?.startsWith?.("cmux://")) {
+          void handleOrQueueProtocolUrl(url);
+          try {
+            child.close();
+            mainWindow?.focus();
+          } catch {
+            void 0;
+          }
+        }
+      }
+    );
   });
 
   if (is.dev && process.env["ELECTRON_RENDERER_URL"]) {
@@ -632,5 +717,22 @@ async function handleProtocolUrl(url: string): Promise<void> {
     ]);
 
     mainWindow.webContents.reload();
+  } else if (urlObj.hostname === "connect-complete") {
+    const team = urlObj.searchParams.get("team");
+    try {
+      const path = team
+        ? `/${encodeURIComponent(team)}/connect-complete`
+        : "/team-picker";
+      const dest = `https://${APP_HOST}${path}`;
+      mainLog("Navigating to connect-complete in renderer", { dest });
+      await mainWindow.loadURL(dest);
+      if (process.platform === "darwin") {
+        app.dock?.show?.();
+      }
+      mainWindow.show();
+      mainWindow.focus();
+    } catch (e) {
+      mainWarn("Failed to handle connect-complete deeplink", e);
+    }
   }
 }
