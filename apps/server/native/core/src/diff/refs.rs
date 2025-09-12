@@ -11,21 +11,43 @@ use gix::{Repository, hash::ObjectId};
 use similar::TextDiff;
 
 fn oid_from_rev_parse(repo: &Repository, rev: &str) -> anyhow::Result<ObjectId> {
+  // 1) Direct SHA
   if let Ok(oid) = ObjectId::from_hex(rev.as_bytes()) { return Ok(oid); }
-  let candidates = [
-    rev.to_string(),
-    format!("refs/remotes/origin/{}", rev),
-    format!("refs/heads/{}", rev),
-    format!("refs/tags/{}", rev),
-  ];
-  for cand in candidates {
-    if let Ok(r) = repo.find_reference(&cand) {
+
+  // 2) If caller passed a fully qualified ref (e.g., refs/remotes/origin/HEAD), use it
+  if rev.starts_with("refs/") || rev == "HEAD" {
+    if let Ok(r) = repo.find_reference(rev) {
       if let Some(id) = r.target().try_id() { return Ok(id.to_owned()); }
     }
   }
+
+  // 3) Prefer remote-tracking ref for bare names (avoid stale local branches)
+  //    Also handle inputs like "origin/main" by normalizing to refs/remotes/origin/main
+  if let Some(rest) = rev.strip_prefix("origin/") {
+    let cand = format!("refs/remotes/origin/{}", rest);
+    if let Ok(r) = repo.find_reference(&cand) { if let Some(id) = r.target().try_id() { return Ok(id.to_owned()); } }
+  }
+
+  let remote_cand = format!("refs/remotes/origin/{}", rev);
+  if let Ok(r) = repo.find_reference(&remote_cand) {
+    if let Some(id) = r.target().try_id() { return Ok(id.to_owned()); }
+  }
+
+  // 4) Try git-style rev-parse (may resolve tags, HEAD^, origin/main, etc.)
   if let Ok(spec) = repo.rev_parse_single(rev) {
     if let Ok(obj) = spec.object() { return Ok(obj.id); }
   }
+
+  // 5) Fall back to local branch and tag namespaces
+  let local_head = format!("refs/heads/{}", rev);
+  if let Ok(r) = repo.find_reference(&local_head) {
+    if let Some(id) = r.target().try_id() { return Ok(id.to_owned()); }
+  }
+  let tag = format!("refs/tags/{}", rev);
+  if let Ok(r) = repo.find_reference(&tag) {
+    if let Some(id) = r.target().try_id() { return Ok(id.to_owned()); }
+  }
+
   Err(anyhow::anyhow!("could not resolve rev '{}'", rev))
 }
 

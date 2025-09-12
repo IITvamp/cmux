@@ -15,6 +15,7 @@ fn default_remote_head(repo: &Repository) -> Option<ObjectId> {
     }
   }
   if let Ok(r) = repo.find_reference("refs/remotes/origin/main") { if let Some(id) = r.target().try_id() { return Some(id.to_owned()); } }
+  if let Ok(r) = repo.find_reference("refs/remotes/origin/master") { if let Some(id) = r.target().try_id() { return Some(id.to_owned()); } }
   None
 }
 

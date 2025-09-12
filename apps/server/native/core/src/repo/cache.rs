@@ -58,9 +58,13 @@ pub fn ensure_repo(url: &str) -> Result<PathBuf> {
       root.to_string_lossy().as_ref(),
       &["clone", "--no-single-branch", url, path.file_name().unwrap().to_str().unwrap()]
     )?;
+    // Ensure the remote default HEAD is set so refs/remotes/origin/HEAD resolves consistently
+    let _ = run_git(path.to_string_lossy().as_ref(), &["remote", "set-head", "origin", "-a"]);
     let _ = update_cache_index_with(&root, &path, Some(now_ms()));
   } else {
     let _ = swr_fetch_origin_all_path_bool(&path, fetch_window_ms());
+    // Best-effort: refresh origin/HEAD symbolic ref after fetch
+    let _ = run_git(path.to_string_lossy().as_ref(), &["remote", "set-head", "origin", "-a"]);
   }
   let shallow = path.join(".git").join("shallow");
   if shallow.exists() {
@@ -194,6 +198,7 @@ pub fn swr_fetch_origin_all_path_bool(path: &std::path::Path, window_ms: u128) -
       let root_bg = root.clone();
       std::thread::spawn(move || {
         let _ = run_git(&cwd_bg, &["fetch", "--all", "--tags", "--prune"]);
+        let _ = run_git(&cwd_bg, &["remote", "set-head", "origin", "-a"]);
         let _ = update_cache_index_with(&root_bg, &PathBuf::from(&cwd_bg), Some(now_ms()));
         set_map_last_fetch(&PathBuf::from(&cwd_bg), now_ms());
       });
@@ -202,6 +207,7 @@ pub fn swr_fetch_origin_all_path_bool(path: &std::path::Path, window_ms: u128) -
   }
 
   let _ = run_git(&cwd, &["fetch", "--all", "--tags", "--prune"]);
+  let _ = run_git(&cwd, &["remote", "set-head", "origin", "-a"]);
   let now2 = now_ms();
   let _ = update_cache_index_with(&root, &PathBuf::from(&cwd), Some(now2));
   set_map_last_fetch(&PathBuf::from(&cwd), now2);
