@@ -22,10 +22,10 @@ export function ProviderStatusSettings() {
     });
   }, [socket]);
 
-  // Check status on mount and every 30 seconds
+  // Check status on mount and every 5 seconds
   useEffect(() => {
     checkProviderStatus();
-    const interval = setInterval(checkProviderStatus, 30000);
+    const interval = setInterval(checkProviderStatus, 5000);
     return () => clearInterval(interval);
   }, [checkProviderStatus]);
 

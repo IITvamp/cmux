@@ -24,10 +24,10 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
     });
   }, [socket]);
 
-  // Check status on mount and every 30 seconds
+  // Check status on mount and every 5 seconds so UI updates quickly
   useEffect(() => {
     checkProviderStatus();
-    const interval = setInterval(checkProviderStatus, 30000);
+    const interval = setInterval(checkProviderStatus, 5000);
     return () => clearInterval(interval);
   }, [checkProviderStatus]);
 
@@ -143,14 +143,14 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
                     window.open("https://www.docker.com/products/docker-desktop/", "_blank");
                   }}
                   className={clsx(
-                    "flex items-center gap-1.5 px-2.5 py-1 rounded-lg",
+                    "flex items-center gap-2 px-3 py-1.5 rounded-lg",
                     "bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-600",
                     "text-neutral-800 dark:text-neutral-200",
                     "text-xs font-medium cursor-default select-none"
                   )}
                 >
-                  <div className="w-1.5 h-1.5 rounded-full bg-orange-500"></div>
-                  Docker
+                  <div className="w-2 h-2 rounded-full bg-orange-500"></div>
+                  Docker required
                 </button>
               </TooltipTrigger>
               <TooltipContent>
