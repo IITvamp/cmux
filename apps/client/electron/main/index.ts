@@ -11,6 +11,7 @@ import {
   net,
   session,
   shell,
+  globalShortcut,
   type BrowserWindowConstructorOptions,
   type MenuItemConstructorOptions,
 } from "electron";
@@ -448,6 +449,37 @@ app.whenReady().then(async () => {
   // Create the initial window.
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
 
+  // Register global shortcuts for Command Palette (Cmd/Ctrl+K)
+  try {
+    // Plain Cmd/Ctrl+K
+    const ok1 = globalShortcut.register("CommandOrControl+K", () => {
+      try {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("cmux:event:shortcut:cmdk", {
+            withShift: false,
+          });
+        }
+      } catch {
+        // ignore send errors
+      }
+    });
+    // Shift+Cmd/Ctrl+K
+    const ok2 = globalShortcut.register("Shift+CommandOrControl+K", () => {
+      try {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send("cmux:event:shortcut:cmdk", {
+            withShift: true,
+          });
+        }
+      } catch {
+        // ignore send errors
+      }
+    });
+    mainLog("Registered global shortcuts for Cmd+K", { ok1, ok2 });
+  } catch (e) {
+    mainWarn("Failed to register global shortcuts", e);
+  }
+
   // Production menu with Help -> Open Logs Folder
   if (app.isPackaged) {
     try {
@@ -529,6 +561,7 @@ app.on("before-quit", () => {
   try {
     mainLogStream?.end();
     rendererLogStream?.end();
+    globalShortcut.unregisterAll();
   } catch {
     // ignore
   }

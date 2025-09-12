@@ -8,6 +8,7 @@ import { useMutation, useQuery } from "convex/react";
 import { Monitor, Moon, Sun } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
+import { isElectron } from "@/lib/electron";
 
 interface CommandBarProps {
   teamSlugOrId: string;
@@ -25,16 +26,42 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
   const createRun = useMutation(api.taskRuns.create);
 
   useEffect(() => {
+    // In the browser, fall back to document keydown
     const down = (e: KeyboardEvent) => {
       if (e.key === "k" && e.metaKey) {
         e.preventDefault();
         setOpenedWithShift(e.shiftKey);
-        setOpen((open) => !open);
+        setOpen((prev) => !prev);
       }
     };
 
-    document.addEventListener("keydown", down);
-    return () => document.removeEventListener("keydown", down);
+    let offShortcut: (() => void) | undefined;
+    if (isElectron && typeof window !== "undefined" && window.cmux) {
+      // Listen to Electron global shortcut from main process
+      offShortcut = window.cmux.on(
+        "shortcut:cmdk",
+        (payload: unknown) => {
+          const withShift =
+            typeof payload === "object" &&
+            payload !== null &&
+            "withShift" in (payload as Record<string, unknown>)
+              ? Boolean((payload as { withShift?: unknown }).withShift)
+              : false;
+          setOpenedWithShift(withShift);
+          setOpen((prev) => !prev);
+        }
+      );
+    } else {
+      document.addEventListener("keydown", down);
+    }
+
+    return () => {
+      if (offShortcut) {
+        offShortcut();
+      } else {
+        document.removeEventListener("keydown", down);
+      }
+    };
   }, []);
 
   const handleHighlight = useCallback(
