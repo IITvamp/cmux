@@ -26,7 +26,9 @@
   "protocols": [
     {
       "name": "cmux",
-      "schemes": ["cmux"]
+      "schemes": [
+        "cmux"
+      ]
     }
   ],
   "extraResources": [
@@ -37,7 +39,9 @@
     {
       "from": "../../apps/server/native/core",
       "to": "native/core",
-      "filter": ["*.node"]
+      "filter": [
+        "*.node"
+      ]
     }
   ],
   "mac": {
@@ -47,7 +51,10 @@
     "entitlements": "build/entitlements.mac.plist",
     "entitlementsInherit": "build/entitlements.mac.plist",
     "gatekeeperAssess": false,
-    "target": ["dmg", "zip"],
+    "target": [
+      "dmg",
+      "zip"
+    ],
     "extendInfo": {
       "CFBundleIconFile": "icon"
     }

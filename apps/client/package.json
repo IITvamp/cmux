@@ -8,7 +8,7 @@
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "vite",
-    "predev:electron": "pnpm run rebuild:electron",
+    "predev:electron": "bun run rebuild:electron",
     "rebuild:electron": "electron-rebuild -f -t prod,dev",
     "dev:electron": "electron-vite dev -c electron.vite.config.ts",
     "build": "vite build -c vite.config.ts",
@@ -22,7 +22,8 @@
     "preview:electron": "electron-vite preview -c electron.vite.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "generate-routes": "tsr generate",
-    "test": "vitest run"
+    "test": "vitest run",
+    "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
     "@base-ui-components/react": "1.0.0-beta.2",
@@ -118,7 +119,6 @@
   "devDependencies": {
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
-    "@electron/rebuild": "^4.0.1",
     "@eslint/js": "^9.29.0",
     "@tanstack/react-query-devtools": "^5.81.5",
     "@tanstack/router-cli": "^1.124.0",

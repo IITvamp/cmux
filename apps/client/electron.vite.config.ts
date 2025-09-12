@@ -25,7 +25,7 @@ export default defineConfig({
         input: {
           index: resolve("electron/main/bootstrap.ts"),
         },
-        treeshake: 'smallest',
+        treeshake: "smallest",
       },
     },
     envPrefix: "NEXT_PUBLIC_",
@@ -46,7 +46,7 @@ export default defineConfig({
           format: "cjs",
           entryFileNames: "[name].cjs",
         },
-        treeshake: 'smallest',
+        treeshake: "smallest",
       },
     },
     envPrefix: "NEXT_PUBLIC_",
@@ -59,7 +59,7 @@ export default defineConfig({
         input: {
           index: resolve("index.html"),
         },
-        treeshake: 'smallest',
+        treeshake: "smallest",
       },
     },
     resolve: {

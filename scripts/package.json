@@ -9,6 +9,8 @@
   "dependencies": {
     "@cmux/shared": "workspace:*",
     "@daytonaio/sdk": "^0.22.1",
+    "commander": "^12.1.0",
+    "prompts": "^2.4.2",
     "dotenv": "^16.6.1",
     "ignore": "^6.0.2",
     "morphcloud": "^0.0.18",
@@ -17,6 +19,7 @@
   },
   "devDependencies": {
     "@types/bun": "^1.2.19",
+    "@types/prompts": "^2.4.9",
     "@types/node": "^24.3.1",
     "typescript": "^5.8.3"
   }
