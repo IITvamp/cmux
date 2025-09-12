@@ -27,3 +27,27 @@ queryClient.getQueryCache().subscribe((event) => {
     console.error("[ReactQueryError] Failed to log query error", e);
   }
 });
+
+// Attach global cmux event listeners outside React to avoid Provider effects.
+try {
+  if (typeof window !== "undefined") {
+    const w = window as Window & { __cmuxGithubListenerAttached?: boolean };
+    if (!w.__cmuxGithubListenerAttached && w.cmux?.on) {
+      const off = w.cmux.on("github-connect-complete", () => {
+        try {
+          // Refresh data that depends on GitHub connection state
+          void queryClient.invalidateQueries();
+        } catch (_e) {
+          console.error(
+            "[QueryClient] Failed to invalidate on github-connect-complete"
+          );
+        }
+      });
+      // Mark as attached to avoid duplicate subscriptions under HMR
+      w.__cmuxGithubListenerAttached = true;
+      void off;
+    }
+  }
+} catch {
+  // Non-fatal if cmux or window is not available (e.g., SSR, tests)
+}

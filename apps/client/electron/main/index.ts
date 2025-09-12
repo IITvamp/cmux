@@ -644,7 +644,14 @@ async function handleProtocolUrl(url: string): Promise<void> {
       if (mainWindow.isMinimized()) mainWindow.restore();
       mainWindow.show();
       mainWindow.focus();
-      mainWindow.webContents.reload();
+      const team = urlObj.searchParams.get("team");
+      try {
+        mainWindow.webContents.send("cmux:event:github-connect-complete", {
+          team,
+        });
+      } catch (emitErr) {
+        mainWarn("Failed to emit github-connect-complete", emitErr);
+      }
     } catch (e) {
       mainWarn("Failed to handle github-connect-complete", e);
     }
