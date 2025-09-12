@@ -68,7 +68,7 @@ export default function CmuxLogo({
       {/* Wordmark */}
       {showWordmark && (
         <text
-          className="wordmark fill-neutral-900 dark:fill-white"
+          className="wordmark fill-neutral-900 fill-white"
           x={208}
           y={162}
           fontSize={112}
