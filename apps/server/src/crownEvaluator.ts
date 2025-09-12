@@ -537,7 +537,7 @@ export async function evaluateCrown(
         const agentName = agentMatch ? agentMatch[1] : "Unknown";
         // Try to collect diff via worker
         const workerDiff: string | null = await collectDiffViaWorker(run._id);
-        const gitDiff: string = workerDiff && workerDiff.length > 0 ? workerDiff : "No changes detected";
+        let gitDiff: string = workerDiff && workerDiff.length > 0 ? workerDiff : "No changes detected";
 
         // Limit to 5000 chars for the prompt
         if (gitDiff.length > 5000) {
