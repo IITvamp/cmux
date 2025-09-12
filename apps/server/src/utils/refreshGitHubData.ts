@@ -1,5 +1,6 @@
 import { api } from "@cmux/convex/api";
 import { ghApi } from "../ghApi.js";
+import { listRemoteBranches } from "../native/git.js";
 import { getConvex } from "./convexClient.js";
 import { serverLogger } from "./fileLogger.js";
 
@@ -90,8 +91,18 @@ export async function refreshBranchesForRepo(
   teamSlugOrId: string
 ) {
   try {
-    // Fetch branches with activity metadata
-    const branches = await ghApi.getRepoBranchesWithActivity(repo);
+    // Prefer local git via Rust (gitoxide) for branch listing, sorted by recency
+    let branches: { name: string; lastCommitSha?: string; lastActivityAt?: number }[];
+    try {
+      branches = await listRemoteBranches({ repoFullName: repo });
+    } catch (e) {
+      // Fallback to GitHub API if native unavailable or errors
+      const nativeMsg = e instanceof Error ? e.message : String(e);
+      serverLogger.info(
+        `Native branch listing failed for ${repo}; falling back to GitHub API: ${nativeMsg}`
+      );
+      branches = await ghApi.getRepoBranchesWithActivity(repo);
+    }
 
     if (branches.length > 0) {
       await getConvex().mutation(api.github.bulkUpsertBranchesWithActivity, {

@@ -59,24 +59,10 @@ export async function handleTaskCompletion({
       `[AgentSpawner] First 100 chars of diff: ${gitDiff.substring(0, 100)}`
     );
 
-    // Append git diff to the log; diffs are fetched on-demand now
-    if (gitDiff && gitDiff.length > 0) {
-      await retryOnOptimisticConcurrency(() =>
-        getConvex().mutation(api.taskRuns.appendLogPublic, {
-          teamSlugOrId,
-          id: taskRunId,
-          content: `\n\n=== GIT DIFF ===\n${gitDiff}\n=== END GIT DIFF ===\n`,
-        })
-      );
-      serverLogger.info(
-        `[AgentSpawner] Successfully appended ${gitDiff.length} chars of git diff to log for ${taskRunId}`
-      );
-    } else {
-      serverLogger.error(
-        `[AgentSpawner] NO GIT DIFF TO APPEND for ${agent.name} (${taskRunId})`
-      );
-      serverLogger.error(
-        `[AgentSpawner] This will cause crown evaluation to fail!`
+    // Do not write diffs to Convex logs; crown and UI fetch diffs directly.
+    if (!gitDiff || gitDiff.length === 0) {
+      serverLogger.warn(
+        `[AgentSpawner] No git diff captured for ${agent.name} (${taskRunId})`
       );
     }
 
@@ -130,7 +116,7 @@ export async function handleTaskCompletion({
           `[AgentSpawner] Triggering immediate crown evaluation`
         );
 
-        // Small delay to ensure git diff is fully persisted in Convex
+        // Small delay for worker-side file system settle before diff collection
         // Note: We need to preserve the auth context for the crown evaluation
         setTimeout(async () => {
           try {

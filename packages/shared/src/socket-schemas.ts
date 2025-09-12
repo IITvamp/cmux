@@ -425,16 +425,6 @@ export interface ClientToServerEvents {
   "git-status": (data: GitStatusRequest) => void;
   "git-diff": (data: GitDiffRequest) => void;
   "git-full-diff": (data: GitFullDiffRequest) => void;
-  // Compare two refs for a given repo; returns ReplaceDiffEntry[]
-  "git-compare-refs": (
-    data: GitCompareRefs,
-    callback: (
-      response:
-        | { ok: true; diffs: import("./diff-types.js").ReplaceDiffEntry[] }
-        | { ok: false; error: string; diffs?: [] }
-    ) => void
-  ) => void;
-  // New: diff arbitrary refs in a repo; same payload/response as git-compare-refs
   "git-diff-refs": (
     data: GitCompareRefs,
     callback: (
@@ -536,7 +526,9 @@ export interface ClientToServerEvents {
   ) => void;
   // Rust N-API test: returns current time
   "rust-get-time": (
-    callback: (response: { ok: true; time: string } | { ok: false; error: string }) => void
+    callback: (
+      response: { ok: true; time: string } | { ok: false; error: string }
+    ) => void
   ) => void;
   "check-provider-status": (
     callback: (response: ProviderStatusResponse) => void

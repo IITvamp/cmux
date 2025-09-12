@@ -534,21 +534,7 @@ export async function spawnAgent(
         }
         hasFailed = true;
 
-        // Append error to log for context
-        if (data.errorMessage) {
-          await runWithAuth(
-            capturedAuthToken,
-            capturedAuthHeaderJson,
-            async () =>
-              retryOnOptimisticConcurrency(() =>
-                getConvex().mutation(api.taskRuns.appendLogPublic, {
-                  teamSlugOrId,
-                  id: taskRunId,
-                  content: `\n\n=== ERROR ===\n${data.errorMessage}\n=== END ERROR ===\n`,
-                })
-              )
-          );
-        }
+        // Do not write failure info to Convex logs; rely on status and errorMessage fields.
 
         // Mark the run as failed with error message
         await runWithAuth(capturedAuthToken, capturedAuthHeaderJson, async () =>

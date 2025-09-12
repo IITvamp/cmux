@@ -25,7 +25,6 @@ export const create = authMutation({
       agentName: args.agentName,
       newBranch: args.newBranch,
       status: "pending",
-      log: "",
       createdAt: now,
       updatedAt: now,
       userId,
@@ -58,7 +57,9 @@ export const getByTask = authQuery({
 
     // First pass: create map with children arrays
     runs.forEach((run) => {
-      runMap.set(run._id, { ...run, children: [] });
+      // Strip heavy/deprecated log field from payload to reduce bandwidth
+      // Send empty string to avoid large payloads and keep type compatibility.
+      runMap.set(run._id, { ...(run as Doc<"taskRuns">), log: "", children: [] });
     });
 
     // Second pass: build tree
@@ -120,26 +121,18 @@ export const updateStatus = internalMutation({
   },
 });
 
-// Append to task run log
+// Append to task run log (deprecated – no-op)
 export const appendLog = internalMutation({
   args: {
     id: v.id("taskRuns"),
     content: v.string(),
   },
   handler: async (ctx, args) => {
-    const run = await ctx.db.get(args.id);
-    if (!run) {
-      throw new Error("Task run not found");
-    }
-
-    console.log(
-      `[appendLog] Adding ${args.content.length} chars to task run ${args.id}`
-    );
-
-    await ctx.db.patch(args.id, {
-      log: run.log + args.content,
-      updatedAt: Date.now(),
-    });
+    // Intentionally no-op to reduce DB bandwidth. Keep for backward compatibility.
+    // Touch updatedAt so callers relying on progress timestamps still see activity.
+    const exists = await ctx.db.get(args.id);
+    if (!exists) throw new Error("Task run not found");
+    await ctx.db.patch(args.id, { updatedAt: Date.now() });
   },
 });
 
@@ -276,6 +269,7 @@ export const updateStatusPublic = authMutation({
   },
 });
 
+// Append to task run log (deprecated – no-op)
 export const appendLogPublic = authMutation({
   args: {
     teamSlugOrId: v.string(),
@@ -285,22 +279,13 @@ export const appendLogPublic = authMutation({
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
     const run = await ctx.db.get(args.id);
-    if (!run) {
-      throw new Error("Task run not found");
-    }
+    if (!run) throw new Error("Task run not found");
     const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
     if (run.teamId !== teamId || run.userId !== userId) {
       throw new Error("Unauthorized");
     }
-
-    console.log(
-      `[appendLog] Adding ${args.content.length} chars to task run ${args.id}`
-    );
-
-    await ctx.db.patch(args.id, {
-      log: run.log + args.content,
-      updatedAt: Date.now(),
-    });
+    // Intentionally no-op to reduce DB bandwidth. Keep for backward compatibility.
+    await ctx.db.patch(args.id, { updatedAt: Date.now() });
   },
 });
 
