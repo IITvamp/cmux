@@ -1,10 +1,12 @@
+#!/usr/bin/env bun
+
 import { Command } from "commander";
+import dotenv from "dotenv";
 import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
-import { dirname, join, resolve } from "node:path";
 import { existsSync, promises as fsp } from "node:fs";
 import os from "node:os";
-import dotenv from "dotenv";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import prompts from "prompts";
 
 type NotaryHistoryItem = {
@@ -45,7 +47,10 @@ function loadCodesignEnv(): CodesignEnv {
   return { APPLE_API_KEY, APPLE_API_KEY_ID, APPLE_API_ISSUER };
 }
 
-async function withTempApiKey<T>(env: CodesignEnv, fn: (p: string) => Promise<T>): Promise<T> {
+async function withTempApiKey<T>(
+  env: CodesignEnv,
+  fn: (p: string) => Promise<T>
+): Promise<T> {
   const file = join(
     os.tmpdir(),
     `AuthKey_${env.APPLE_API_KEY_ID}_${Date.now()}.p8`
@@ -56,18 +61,25 @@ async function withTempApiKey<T>(env: CodesignEnv, fn: (p: string) => Promise<T>
   } finally {
     try {
       await fsp.unlink(file);
-    } catch {}
+    } catch {
+      // pass
+    }
   }
 }
 
-function spawnCapture(cmd: string, args: string[]): Promise<{ code: number; stdout: string; stderr: string }> {
+function spawnCapture(
+  cmd: string,
+  args: string[]
+): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolvePromise) => {
     const child = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", (d) => (stdout += d.toString()));
     child.stderr.on("data", (d) => (stderr += d.toString()));
-    child.on("close", (code) => resolvePromise({ code: code ?? 0, stdout, stderr }));
+    child.on("close", (code) =>
+      resolvePromise({ code: code ?? 0, stdout, stderr })
+    );
   });
 }
 
@@ -78,7 +90,10 @@ function spawnStream(cmd: string, args: string[]): Promise<number> {
   });
 }
 
-async function notaryHistory(env: CodesignEnv, limit = 10): Promise<NotaryHistoryItem[]> {
+async function notaryHistory(
+  env: CodesignEnv,
+  limit = 10
+): Promise<NotaryHistoryItem[]> {
   return withTempApiKey(env, async (apiKeyPath) => {
     const args = [
       "notarytool",
@@ -94,7 +109,9 @@ async function notaryHistory(env: CodesignEnv, limit = 10): Promise<NotaryHistor
     ];
     const { code, stdout, stderr } = await spawnCapture("xcrun", args);
     if (code !== 0) {
-      throw new Error(`notarytool history failed (code ${code}): ${stderr || stdout}`);
+      throw new Error(
+        `notarytool history failed (code ${code}): ${stderr || stdout}`
+      );
     }
     try {
       const parsed = JSON.parse(stdout) as { history?: NotaryHistoryItem[] };
@@ -106,7 +123,10 @@ async function notaryHistory(env: CodesignEnv, limit = 10): Promise<NotaryHistor
   });
 }
 
-async function notaryWait(env: CodesignEnv, submissionId: string): Promise<number> {
+async function notaryWait(
+  env: CodesignEnv,
+  submissionId: string
+): Promise<number> {
   return withTempApiKey(env, async (apiKeyPath) => {
     const args = [
       "notarytool",
@@ -125,7 +145,10 @@ async function notaryWait(env: CodesignEnv, submissionId: string): Promise<numbe
   });
 }
 
-async function notaryInfo(env: CodesignEnv, submissionId: string): Promise<unknown> {
+async function notaryInfo(
+  env: CodesignEnv,
+  submissionId: string
+): Promise<unknown> {
   return withTempApiKey(env, async (apiKeyPath) => {
     const args = [
       "notarytool",
@@ -142,16 +165,25 @@ async function notaryInfo(env: CodesignEnv, submissionId: string): Promise<unkno
     ];
     const { code, stdout, stderr } = await spawnCapture("xcrun", args);
     if (code !== 0) {
-      throw new Error(`notarytool info failed (code ${code}): ${stderr || stdout}`);
+      throw new Error(
+        `notarytool info failed (code ${code}): ${stderr || stdout}`
+      );
     }
     return JSON.parse(stdout) as unknown;
   });
 }
 
-async function notaryLog(env: CodesignEnv, submissionId: string, stream = true): Promise<string> {
+async function notaryLog(
+  env: CodesignEnv,
+  submissionId: string,
+  stream = true
+): Promise<string> {
   return withTempApiKey(env, async (apiKeyPath) => {
     // Write log to a temp file (newer notarytool requires output-path)
-    const outPath = join(os.tmpdir(), `notary-log-${submissionId}-${Date.now()}.log`);
+    const outPath = join(
+      os.tmpdir(),
+      `notary-log-${submissionId}-${Date.now()}.log`
+    );
     const baseArgs = [
       "notarytool",
       "log",
@@ -166,7 +198,10 @@ async function notaryLog(env: CodesignEnv, submissionId: string, stream = true):
       outPath,
     ];
     const { code, stdout, stderr } = await spawnCapture("xcrun", baseArgs);
-    if (code !== 0) throw new Error(`notarytool log failed (code ${code}): ${stderr || stdout}`);
+    if (code !== 0)
+      throw new Error(
+        `notarytool log failed (code ${code}): ${stderr || stdout}`
+      );
     const text = await fsp.readFile(outPath, "utf8");
     if (stream) {
       process.stdout.write(text);
@@ -218,13 +253,16 @@ async function interactive(): Promise<void> {
   }
 }
 
-async function interactiveSubmission(env: CodesignEnv, id: string): Promise<void> {
+async function interactiveSubmission(
+  env: CodesignEnv,
+  id: string
+): Promise<void> {
   while (true) {
     let status = "Unknown";
     try {
       const info = await notaryInfo(env, id);
       status = extractStatus(info);
-    } catch (e) {
+    } catch (_e) {
       // ignore, will show in actions if needed
     }
     const message = `Submission ${id}\nCurrent status: ${status}`;
@@ -255,7 +293,12 @@ async function interactiveSubmission(env: CodesignEnv, id: string): Promise<void
         const s = extractStatus(info);
         console.log(`Final status: ${s}`);
         if (s.toLowerCase() !== "accepted") {
-          const confirm = (await prompts({ type: "confirm", name: "y", message: "Show failure log now?", initial: true })) as { y?: boolean };
+          const confirm = (await prompts({
+            type: "confirm",
+            name: "y",
+            message: "Show failure log now?",
+            initial: true,
+          })) as { y?: boolean };
           if (confirm?.y) await notaryLog(env, id, true);
         }
       } catch (e) {
@@ -312,7 +355,9 @@ async function main(): Promise<void> {
   const program = new Command();
   program
     .name("notary-interactive")
-    .description("Interactive helper around xcrun notarytool (history, wait, logs)")
+    .description(
+      "Interactive helper around xcrun notarytool (history, wait, logs)"
+    )
     .version("0.1.0");
 
   program
@@ -345,7 +390,13 @@ async function main(): Promise<void> {
           title: `${it.id}  [${it.status}]  ${new Date(it.createdDate).toLocaleString()}  ${it.name ?? ""}`,
           value: it.id,
         }));
-        const sel = (await prompts({ type: "select", name: "v", message: "Select submission to wait for", choices, initial: 0 })) as { v?: string };
+        const sel = (await prompts({
+          type: "select",
+          name: "v",
+          message: "Select submission to wait for",
+          choices,
+          initial: 0,
+        })) as { v?: string };
         id = sel?.v;
       }
       if (!id) throw new Error("No submission id provided");
@@ -356,7 +407,12 @@ async function main(): Promise<void> {
       const status = extractStatus(info);
       console.log(`Final status: ${status}`);
       if (String(status).toLowerCase() !== "accepted") {
-        const confirm = (await prompts({ type: "confirm", name: "y", message: "Show failure log now?", initial: true })) as { y?: boolean };
+        const confirm = (await prompts({
+          type: "confirm",
+          name: "y",
+          message: "Show failure log now?",
+          initial: true,
+        })) as { y?: boolean };
         if (confirm?.y) await notaryLog(env, id, true);
       }
     });
@@ -366,24 +422,26 @@ async function main(): Promise<void> {
     .argument("[submissionId]", "Submission ID to view logs for")
     .option("-p, --pager", "Open in pager (less)")
     .description("Show notarization log for a submission")
-    .action(async (submissionId: string | undefined, opts: { pager?: boolean }) => {
-      const env = loadCodesignEnv();
-      let id = submissionId;
-      if (!id) {
-        const ans = await promptInput("Paste submission id:");
-        id = ans;
+    .action(
+      async (submissionId: string | undefined, opts: { pager?: boolean }) => {
+        const env = loadCodesignEnv();
+        let id = submissionId;
+        if (!id) {
+          const ans = await promptInput("Paste submission id:");
+          id = ans;
+        }
+        if (!id) throw new Error("No submission id provided");
+        if (opts.pager) {
+          const text = await notaryLog(env, id, false);
+          const file = join(os.tmpdir(), `notary-log-${id}.txt`);
+          await fsp.writeFile(file, text);
+          const pager = process.env.PAGER || "less";
+          await spawnStream(pager, [file]);
+        } else {
+          await notaryLog(env, id, true);
+        }
       }
-      if (!id) throw new Error("No submission id provided");
-      if (opts.pager) {
-        const text = await notaryLog(env, id, false);
-        const file = join(os.tmpdir(), `notary-log-${id}.txt`);
-        await fsp.writeFile(file, text);
-        const pager = process.env.PAGER || "less";
-        await spawnStream(pager, [file]);
-      } else {
-        await notaryLog(env, id, true);
-      }
-    });
+    );
 
   program
     .command("interactive")
