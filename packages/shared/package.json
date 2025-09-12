@@ -52,10 +52,16 @@
     "./utils/typed-zid": {
       "import": "./src/utils/typed-zid.ts",
       "types": "./src/utils/typed-zid.ts"
+    },
+    "./node/convex-cache": {
+      "import": "./src/node/convex-cache.ts",
+      "types": "./src/node/convex-cache.ts"
     }
   },
   "dependencies": {
     "@cmux/convex": "workspace:*",
+    "convex": "^1.18.7",
+    "jose": "^5.9.6",
     "zod": "^4.1.5",
     "socket.io-client": "^4.8.1"
   },
