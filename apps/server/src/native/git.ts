@@ -1,6 +1,6 @@
-import * as path from "node:path";
 import * as fs from "node:fs";
 import { createRequire } from "node:module";
+import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
@@ -25,13 +25,23 @@ export interface GitDiffRefsOptions {
 }
 
 type NativeGitModule = {
-  gitDiffWorkspace?: (opts: GitDiffWorkspaceOptions) => Promise<ReplaceDiffEntry[]>;
+  // napi-rs exports as camelCase
+  gitDiffWorkspace?: (
+    opts: GitDiffWorkspaceOptions
+  ) => Promise<ReplaceDiffEntry[]>;
   gitDiffRefs?: (opts: GitDiffRefsOptions) => Promise<ReplaceDiffEntry[]>;
-  git_list_remote_branches?: (opts: {
+  gitListRemoteBranches?: (opts: {
     repoFullName?: string;
     repoUrl?: string;
     originPathOverride?: string;
-  }) => Promise<Array<{ name: string; lastCommitSha?: string; lastActivityAt?: number; isDefault?: boolean }>>;
+  }) => Promise<
+    Array<{
+      name: string;
+      lastCommitSha?: string;
+      lastActivityAt?: number;
+      isDefault?: boolean;
+    }>
+  >;
 };
 
 function tryLoadNative(): NativeGitModule | null {
@@ -43,8 +53,8 @@ function tryLoadNative(): NativeGitModule | null {
 
     const dirCandidates = [
       process.env.CMUX_NATIVE_CORE_DIR,
-      typeof (process as unknown as { resourcesPath?: string }).resourcesPath ===
-      "string"
+      typeof (process as unknown as { resourcesPath?: string })
+        .resourcesPath === "string"
         ? path.join(
             (process as unknown as { resourcesPath: string }).resourcesPath,
             "native",
@@ -66,9 +76,12 @@ function tryLoadNative(): NativeGitModule | null {
       try {
         const files = fs.readdirSync(nativeDir);
         const nodes = files.filter((f) => f.endsWith(".node"));
-        const preferred = nodes.find((f) => f.includes(plat) && f.includes(arch)) || nodes[0];
+        const preferred =
+          nodes.find((f) => f.includes(plat) && f.includes(arch)) || nodes[0];
         if (!preferred) continue;
-        const mod = nodeRequire(path.join(nativeDir, preferred)) as unknown as NativeGitModule;
+        const mod = nodeRequire(
+          path.join(nativeDir, preferred)
+        ) as unknown as NativeGitModule;
         return mod ?? null;
       } catch {
         // try next
@@ -97,10 +110,19 @@ export async function listRemoteBranches(opts: {
   repoFullName?: string;
   repoUrl?: string;
   originPathOverride?: string;
-}): Promise<Array<{ name: string; lastCommitSha?: string; lastActivityAt?: number; isDefault?: boolean }>> {
+}): Promise<
+  Array<{
+    name: string;
+    lastCommitSha?: string;
+    lastActivityAt?: number;
+    isDefault?: boolean;
+  }>
+> {
   const mod = loadNativeGit();
-  if (!mod?.git_list_remote_branches) {
-    throw new Error("Native git_list_remote_branches not available; rebuild @cmux/native-core");
+  if (!mod?.gitListRemoteBranches) {
+    throw new Error(
+      "Native gitListRemoteBranches not available; rebuild @cmux/native-core"
+    );
   }
-  return mod.git_list_remote_branches(opts);
+  return mod.gitListRemoteBranches(opts);
 }
