@@ -149,7 +149,7 @@ export function ModeToggleTooltip({
                 "bg-black text-white text-xs rounded-md overflow-hidden w-24 whitespace-nowrap"
               )}
             >
-              <div className="relative h-4 flex items-center w-full">
+              <div className="relative h-4 flex items-center w-full select-none">
                 <div className="relative w-full flex">
                   <motion.div
                     className="flex items-center justify-center absolute inset-0 will-change-transform"
