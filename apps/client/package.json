@@ -22,8 +22,7 @@
     "preview:electron": "electron-vite preview -c electron.vite.config.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "generate-routes": "tsr generate",
-    "test": "vitest run",
-    "postinstall": "electron-builder install-app-deps"
+    "test": "vitest run"
   },
   "dependencies": {
     "@base-ui-components/react": "1.0.0-beta.2",
