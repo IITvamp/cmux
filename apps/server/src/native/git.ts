@@ -60,7 +60,7 @@ function tryLoadNative(): NativeGitModule | null {
       if (!nativeDir) continue;
       try {
         const files = fs.readdirSync(nativeDir);
-        const nodes = files.filter((f) => f.startsWith("index.") && f.endsWith(".node"));
+        const nodes = files.filter((f) => f.endsWith(".node"));
         const preferred = nodes.find((f) => f.includes(plat) && f.includes(arch)) || nodes[0];
         if (!preferred) continue;
         const mod = nodeRequire(path.join(nativeDir, preferred)) as unknown as NativeGitModule;

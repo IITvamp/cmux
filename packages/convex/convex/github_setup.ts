@@ -1,5 +1,9 @@
 import { env } from "../_shared/convex-env";
-import { base64urlFromBytes, base64urlToBytes, bytesToHex } from "../_shared/encoding";
+import {
+  base64urlFromBytes,
+  base64urlToBytes,
+  bytesToHex,
+} from "../_shared/encoding";
 import { hmacSha256, safeEqualHex } from "../_shared/crypto";
 import { internal } from "./_generated/api";
 import { httpAction } from "./_generated/server";

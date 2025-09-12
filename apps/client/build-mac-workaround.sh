@@ -117,7 +117,7 @@ NATIVE_SRC_DIR="$(pwd)/../../apps/server/native/core"
 NATIVE_DST_DIR="$RESOURCES_DIR/native/core"
 mkdir -p "$NATIVE_DST_DIR"
 shopt -s nullglob
-NODE_BINARIES=("$NATIVE_SRC_DIR"/index.*.node)
+NODE_BINARIES=("$NATIVE_SRC_DIR"/*.node)
 if [ ${#NODE_BINARIES[@]} -gt 0 ]; then
   echo "Copying ${#NODE_BINARIES[@]} native binary(ies) from $NATIVE_SRC_DIR to $NATIVE_DST_DIR"
   for f in "${NODE_BINARIES[@]}"; do
