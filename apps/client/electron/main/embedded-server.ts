@@ -251,15 +251,23 @@ function createIPCRealtimeServer(): RealtimeServer {
           return { name: e.name, message: e.message, stack: e.stack };
         }
         const msg = typeof e === "string" ? e : JSON.stringify(e);
-        return { name: "Error", message: msg, stack: undefined as string | undefined };
+        return {
+          name: "Error",
+          message: msg,
+          stack: undefined as string | undefined,
+        };
       };
       if (typeof eventName !== "string" || !Array.isArray(args)) {
-        return Promise.reject(toSerializableError(new Error("Invalid RPC payload")));
+        return Promise.reject(
+          toSerializableError(new Error("Invalid RPC payload"))
+        );
       }
       const socketId = webContentsToSocketId.get(event.sender.id);
       if (!socketId)
         return Promise.reject(
-          toSerializableError(new Error("Socket not registered. Call register first."))
+          toSerializableError(
+            new Error("Socket not registered. Call register first.")
+          )
         );
       const socket = sockets.get(socketId);
       if (!socket)
