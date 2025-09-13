@@ -8,6 +8,10 @@ export const env = createEnv({
     // Back-compat alias used elsewhere
     CMUX_WWW_API_URL: z.url().optional(),
     NEXT_PUBLIC_CONVEX_URL: z.string().min(1),
+    // Optional server-owned AI provider keys for server-side generation
+    OPENAI_API_KEY: z.string().optional(),
+    GEMINI_API_KEY: z.string().optional(),
+    ANTHROPIC_API_KEY: z.string().optional(),
   },
   // Handle both Node and Vite/Bun
   runtimeEnv: { ...import.meta.env, ...process.env },
