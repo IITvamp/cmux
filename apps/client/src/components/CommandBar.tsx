@@ -18,6 +18,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [openedWithShift, setOpenedWithShift] = useState(false);
+  const openRef = useRef<boolean>(false);
   const prevFocusedElRef = useRef<HTMLElement | null>(null);
   const prevSourceContentsIdRef = useRef<number | null>(null);
   const prevSourceFrameRoutingIdRef = useRef<number | null>(null);
@@ -28,6 +29,10 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
 
   const allTasks = useQuery(api.tasks.get, { teamSlugOrId });
   const createRun = useMutation(api.taskRuns.create);
+
+  useEffect(() => {
+    openRef.current = open;
+  }, [open]);
 
   useEffect(() => {
     // In Electron, prefer global shortcut from main via cmux event.
@@ -42,21 +47,25 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
           | undefined;
         // Only handle Cmd+K (no shift/ctrl variations)
         setOpenedWithShift(false);
-        // Capture the currently focused element before opening
-        prevFocusedElRef.current = document.activeElement as HTMLElement | null;
-        setOpen((open) => !open);
-        // Best-effort capture of the previous focused element happens in the
-        // open/close effect below. For cross-webContents focus (webview), we
-        // also remember the originating WebContents id if provided.
-        if (payload && typeof payload.sourceContentsId === "number") {
-          prevSourceContentsIdRef.current = payload.sourceContentsId;
+        if (!openRef.current) {
+          // About to OPEN: capture focus targets and source frame info
+          prevFocusedElRef.current =
+            document.activeElement as HTMLElement | null;
+          if (payload && typeof payload.sourceContentsId === "number") {
+            prevSourceContentsIdRef.current = payload.sourceContentsId;
+          }
+          if (payload && typeof payload.sourceFrameRoutingId === "number") {
+            prevSourceFrameRoutingIdRef.current = payload.sourceFrameRoutingId;
+          }
+          if (payload && typeof payload.sourceFrameProcessId === "number") {
+            prevSourceFrameProcessIdRef.current = payload.sourceFrameProcessId;
+          }
+        } else {
+          // About to CLOSE via toggle: normalize state like Esc path
+          setSearch("");
+          setOpenedWithShift(false);
         }
-        if (payload && typeof payload.sourceFrameRoutingId === "number") {
-          prevSourceFrameRoutingIdRef.current = payload.sourceFrameRoutingId;
-        }
-        if (payload && typeof payload.sourceFrameProcessId === "number") {
-          prevSourceFrameProcessIdRef.current = payload.sourceFrameProcessId;
-        }
+        setOpen((cur) => !cur);
       });
       return () => {
         // Unsubscribe if available
@@ -68,10 +77,16 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
     const down = (e: KeyboardEvent) => {
       if (e.key === "k" && e.metaKey) {
         e.preventDefault();
-        setOpenedWithShift(e.shiftKey);
-        // Capture the currently focused element before opening
-        prevFocusedElRef.current = document.activeElement as HTMLElement | null;
-        setOpen((open) => !open);
+        if (!openRef.current) {
+          setOpenedWithShift(e.shiftKey);
+          // Capture the currently focused element before opening
+          prevFocusedElRef.current =
+            document.activeElement as HTMLElement | null;
+        } else {
+          setOpenedWithShift(false);
+          setSearch("");
+        }
+        setOpen((cur) => !cur);
       }
     };
     document.addEventListener("keydown", down);
