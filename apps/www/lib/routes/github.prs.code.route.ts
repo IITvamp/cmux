@@ -147,12 +147,9 @@ githubPrsCodeRouter.openapi(
       "GET /repos/{owner}/{repo}/pulls/{pull_number}",
       { owner, repo, pull_number: number }
     );
-    const pr = prRes.data as unknown as {
-      head?: { ref?: string; sha?: string };
-      base?: { ref?: string; sha?: string };
-    };
-    const headSha = pr.head?.sha;
-    const baseSha = pr.base?.sha;
+    const pr = prRes.data
+    const headSha = pr.head.sha;
+    const baseSha = pr.base.sha;
 
     // Fetch PR files with pagination
     type PrFile = {
