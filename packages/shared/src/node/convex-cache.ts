@@ -9,19 +9,8 @@ interface CacheEntry {
 
 class ConvexClientCache {
   private cache = new Map<string, CacheEntry>();
-  private cleanupInterval: NodeJS.Timeout | null = null;
-
-  constructor() {
-    this.startCleanupInterval();
-  }
-
-  private startCleanupInterval(): void {
-    this.cleanupInterval = setInterval(() => {
-      this.cleanupExpired();
-    }, 60 * 1000); // Clean up every minute
-    // Allow Node to exit naturally even if interval exists (build/generate scripts)
-    this.cleanupInterval.unref?.();
-  }
+  private lastCleanupMs = 0;
+  private readonly cleanupEveryMs = 60_000; // sweep at most once per minute on access
 
   private cleanupExpired(): void {
     const now = Date.now() / 1000;
@@ -32,10 +21,17 @@ class ConvexClientCache {
     }
   }
 
+  private maybeCleanup(): void {
+    const nowMs = Date.now();
+    if (nowMs - this.lastCleanupMs >= this.cleanupEveryMs) {
+      this.cleanupExpired();
+      this.lastCleanupMs = nowMs;
+    }
+  }
+
   private getCacheKey(accessToken: string, convexUrl: string): string | null {
     try {
       const jwt = decodeJwt(accessToken);
-      // Use sub (subject), iat (issued at) and URL as unique key
       const sub = jwt.sub || "";
       const iat = jwt.iat || 0;
       return `${sub}-${iat}-${convexUrl}`;
@@ -46,6 +42,7 @@ class ConvexClientCache {
   }
 
   get(accessToken: string, convexUrl: string): ConvexHttpClient | null {
+    this.maybeCleanup();
     const cacheKey = this.getCacheKey(accessToken, convexUrl);
     if (!cacheKey) {
       return null;
@@ -56,14 +53,12 @@ class ConvexClientCache {
       return null;
     }
 
-    // Check if token is expired
     const now = Date.now() / 1000;
     if (entry.expiry < now) {
       this.cache.delete(cacheKey);
       return null;
     }
 
-    // Verify token hasn't changed
     if (entry.accessToken !== accessToken) {
       this.cache.delete(cacheKey);
       return null;
@@ -73,6 +68,7 @@ class ConvexClientCache {
   }
 
   set(accessToken: string, convexUrl: string, client: ConvexHttpClient): void {
+    this.maybeCleanup();
     const cacheKey = this.getCacheKey(accessToken, convexUrl);
     if (!cacheKey) {
       return;
@@ -80,7 +76,7 @@ class ConvexClientCache {
 
     try {
       const jwt = decodeJwt(accessToken);
-      const expiry = jwt.exp || Date.now() / 1000 + 3600; // Default to 1 hour if no exp
+      const expiry = jwt.exp || Date.now() / 1000 + 3600; // default 1h if no exp
 
       this.cache.set(cacheKey, {
         client,
@@ -97,10 +93,6 @@ class ConvexClientCache {
   }
 
   destroy(): void {
-    if (this.cleanupInterval) {
-      clearInterval(this.cleanupInterval);
-      this.cleanupInterval = null;
-    }
     this.clear();
   }
 }
