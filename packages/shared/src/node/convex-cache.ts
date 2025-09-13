@@ -78,7 +78,7 @@ class ConvexClientCache {
 
     try {
       const jwt = decodeJwt(accessToken);
-      const expiry = jwt.exp || (Date.now() / 1000 + 3600); // Default to 1 hour if no exp
+      const expiry = jwt.exp || Date.now() / 1000 + 3600; // Default to 1 hour if no exp
 
       this.cache.set(cacheKey, {
         client,
