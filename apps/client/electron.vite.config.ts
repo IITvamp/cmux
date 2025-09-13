@@ -3,8 +3,12 @@ import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig, externalizeDepsPlugin } from "electron-vite";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import tsconfigPaths from "vite-tsconfig-paths";
 import { resolveWorkspacePackages } from "./electron-vite-plugin-resolve-workspace.ts";
+
+const __dirname = fileURLToPath(new URL(".", import.meta.url));
+const repoRoot = resolve(__dirname, "..", "..");
 
 export default defineConfig({
   main: {
@@ -20,6 +24,7 @@ export default defineConfig({
       }),
       resolveWorkspacePackages(),
     ],
+    envDir: repoRoot,
     build: {
       rollupOptions: {
         input: {
@@ -37,6 +42,7 @@ export default defineConfig({
       }),
       resolveWorkspacePackages(),
     ],
+    envDir: repoRoot,
     build: {
       rollupOptions: {
         input: {
@@ -53,6 +59,7 @@ export default defineConfig({
   },
   renderer: {
     root: ".",
+    envDir: repoRoot,
     base: "./",
     build: {
       rollupOptions: {
