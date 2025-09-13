@@ -5,11 +5,11 @@ import { serverLogger } from "./utils/fileLogger.js";
 import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
 import { workerExec } from "./utils/workerExec.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
-import { getWwwClient } from "./utils/wwwClient.js";
-import {
-  postApiCrownEvaluate,
-  postApiCrownSummarize,
-} from "@cmux/www-openapi-client";
+import { createAnthropic } from "@ai-sdk/anthropic";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import { createOpenAI } from "@ai-sdk/openai";
+import { generateObject, type LanguageModel } from "ai";
+import { z } from "zod";
 
 // Auto PR behavior is controlled via workspace settings in Convex
 export async function createPullRequestForWinner(
@@ -293,6 +293,34 @@ Completed: ${new Date().toISOString()}`;
   }
 }
 
+function getModelAndProvider(
+  apiKeys: Record<string, string>
+): { model: LanguageModel; providerName: string } | null {
+  const merged = {
+    OPENAI_API_KEY: apiKeys.OPENAI_API_KEY || process.env.OPENAI_API_KEY,
+    GEMINI_API_KEY: apiKeys.GEMINI_API_KEY || process.env.GEMINI_API_KEY,
+    ANTHROPIC_API_KEY:
+      apiKeys.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY,
+  } as Record<string, string | undefined>;
+
+  if (merged.OPENAI_API_KEY) {
+    const openai = createOpenAI({ apiKey: merged.OPENAI_API_KEY });
+    return { model: openai("gpt-5-nano"), providerName: "OpenAI" };
+  }
+  if (merged.GEMINI_API_KEY) {
+    const google = createGoogleGenerativeAI({ apiKey: merged.GEMINI_API_KEY });
+    return { model: google("gemini-2.5-flash"), providerName: "Gemini" };
+  }
+  if (merged.ANTHROPIC_API_KEY) {
+    const anthropic = createAnthropic({ apiKey: merged.ANTHROPIC_API_KEY });
+    return {
+      model: anthropic("claude-3-5-haiku-20241022"),
+      providerName: "Anthropic",
+    };
+  }
+  return null;
+}
+
 export async function evaluateCrown(
   taskId: Id<"tasks">,
   teamSlugOrId: string
@@ -390,25 +418,37 @@ export async function evaluateCrown(
         const summarizationPrompt = `You are an expert reviewer summarizing a pull request.\n\nGOAL\n- Explain succinctly what changed and why.\n- Call out areas the user should review carefully.\n- Provide a quick test plan to validate the changes.\n\nCONTEXT\n- User's original request:\n${originalRequest}\n- Relevant diffs (unified):\n${effectiveDiff || "<no code changes captured>"}\n\nINSTRUCTIONS\n- Base your summary strictly on the provided diffs and request.\n- Be specific about files and functions when possible.\n- Prefer clear bullet points over prose. Keep it under ~300 words.\n- If there are no code changes, say so explicitly and suggest next steps.\n\nOUTPUT FORMAT (Markdown)\n## PR Review Summary\n- What Changed: bullet list\n- Review Focus: bullet list (risks/edge cases)\n- Test Plan: bullet list of practical steps\n- Follow-ups: optional bullets if applicable\n`;
 
         serverLogger.info(
-          `[CrownEvaluator] Generating PR summary via Anthropic (AI SDK)...`
+          `[CrownEvaluator] Generating PR summary via local AI SDK...`
         );
 
         let commentText = "";
         try {
-          // Call the crown summarize endpoint
-          const res = await postApiCrownSummarize({
-            client: getWwwClient(),
-            body: {
+          const apiKeys = await getConvex().query(
+            api.apiKeys.getAllForAgents,
+            { teamSlugOrId }
+          );
+          const cfg = getModelAndProvider(apiKeys);
+          if (!cfg) {
+            serverLogger.warn(
+              `[CrownEvaluator] No AI provider configured; skipping PR summary`
+            );
+          } else {
+            const { model, providerName } = cfg;
+            const schema = z.object({ summary: z.string() });
+            const { object } = await generateObject({
+              model,
+              schema,
+              system:
+                "You are an expert reviewer summarizing pull requests. Provide a clear, concise summary following the requested format.",
               prompt: summarizationPrompt,
-              teamSlugOrId,
-            },
-          });
-
-          if (!res.data) {
-            serverLogger.error(`[CrownEvaluator] Crown summarize failed`);
-            return;
+              temperature: 0,
+              maxRetries: 2,
+            });
+            commentText = object.summary;
+            serverLogger.info(
+              `[CrownEvaluator] PR summary generated via ${providerName}`
+            );
           }
-          commentText = res.data.summary;
         } catch (e) {
           serverLogger.error(
             `[CrownEvaluator] Failed to generate PR summary:`,
@@ -634,18 +674,41 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
     } catch {
       /* empty */
     }
-    const res = await postApiCrownEvaluate({
-      client: getWwwClient(),
-      body: {
-        prompt: evaluationPrompt,
+    // Perform evaluation locally via AI SDK instead of HTTP
+    let jsonResponse: { winner: number; reason: string } | null = null;
+    try {
+      const apiKeys = await getConvex().query(api.apiKeys.getAllForAgents, {
         teamSlugOrId,
-      },
-    });
-
-    if (!res.data) {
-      serverLogger.error(`[CrownEvaluator] Crown evaluate failed`);
+      });
+      const cfg = getModelAndProvider(apiKeys);
+      if (!cfg) {
+        serverLogger.warn(
+          `[CrownEvaluator] No AI provider configured; falling back to default winner`
+        );
+      } else {
+        const { model, providerName } = cfg;
+        const schema = z.object({
+          winner: z.number().int().min(0),
+          reason: z.string(),
+        });
+        const { object } = await generateObject({
+          model,
+          schema,
+          system:
+            "You select the best implementation from structured diff inputs and explain briefly why.",
+          prompt: evaluationPrompt,
+          temperature: 0,
+          maxRetries: 2,
+        });
+        jsonResponse = object;
+        serverLogger.info(
+          `[CrownEvaluator] Evaluation completed via ${providerName}`
+        );
+      }
+    } catch (e) {
+      serverLogger.error(`[CrownEvaluator] Local evaluation failed:`, e);
+      jsonResponse = null;
     }
-    const jsonResponse = res.data;
 
     if (!jsonResponse) {
       // Fallback: Pick the first completed run as winner

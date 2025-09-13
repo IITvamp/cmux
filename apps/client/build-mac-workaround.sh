@@ -8,16 +8,46 @@ rm -rf build
 
 # Build the Electron app first with environment variables loaded
 echo "Building Electron app..."
-# Load environment variables from .env.production if present; otherwise .env
-ENV_FILE="../../.env.production"
-if [ ! -f "$ENV_FILE" ]; then
-  ENV_FILE="../../.env"
+
+# Determine env file
+# Priority: CLI flag --env-file <path> > $CMUX_ENV_FILE > default prod with fallback to .env
+ENV_FILE_DEFAULT="../../.env.production"
+ENV_FILE="${CMUX_ENV_FILE:-$ENV_FILE_DEFAULT}"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --env-file)
+      if [[ -n "${2:-}" ]]; then
+        ENV_FILE="$2"
+        shift 2
+      else
+        echo "--env-file requires a path" >&2
+        exit 1
+      fi
+      ;;
+    *)
+      shift
+      ;;
+  esac
+done
+
+if [[ ! -f "$ENV_FILE" ]]; then
+  echo "Specified env file not found: $ENV_FILE. Falling back to ../../.env" >&2
+  if [[ -f "../../.env" ]]; then
+    ENV_FILE="../../.env"
+  else
+    echo "No env file found; continuing without sourcing a file" >&2
+    ENV_FILE=""
+  fi
 fi
-echo "Using env file: $ENV_FILE"
-set -a  # Mark all new variables for export
-# shellcheck disable=SC1090
-source "$ENV_FILE"
-set +a  # Turn off auto-export
+
+if [[ -n "$ENV_FILE" ]]; then
+  echo "Using env file: $ENV_FILE"
+  set -a  # Mark all new variables for export
+  # shellcheck disable=SC1090
+  source "$ENV_FILE"
+  set +a  # Turn off auto-export
+fi
 
 # Build native Rust addon (required)
 echo "Building native Rust addon for packaging (release)..."

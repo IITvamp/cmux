@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Local macOS arm64 build for Electron app (no notarization)
-# Closely mirrors scripts/build-prod-mac-arm64.sh but skips all notarize/staple steps.
+# Local macOS arm64 build for Electron app (no notarization, no signing)
+# Closely mirrors scripts/build-prod-mac-arm64.sh but skips all signing/notarize steps.
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 CLIENT_DIR="$ROOT_DIR/apps/client"
@@ -15,19 +15,15 @@ usage() {
   cat <<EOF
 Usage: $(basename "$0") [--env-file path] [--skip-install]
 
-Builds macOS arm64 DMG/ZIP locally without notarization.
-
-Optional env vars for code signing:
-  MAC_CERT_BASE64        Base64-encoded .p12 certificate
-  MAC_CERT_PASSWORD      Password for the .p12 certificate
+Builds macOS arm64 DMG/ZIP locally with no signing and no notarization.
 
 Options:
   --env-file path        Source environment variables from a file before running
   --skip-install         Skip 'bun install --frozen-lockfile'
 
 Notes:
-  - Produces unsigned artifacts unless MAC_CERT_* are provided.
-  - No notarization or stapling is performed by this script.
+  - Produces unsigned artifacts only.
+  - No signing, notarization, or stapling is performed by this script.
 EOF
 }
 
@@ -84,12 +80,6 @@ if [[ -n "$ENV_FILE" ]]; then
   # shellcheck disable=SC1090
   source "$ENV_FILE"
   set +a
-elif [[ -f "$ROOT_DIR/.env.codesign" ]]; then
-  echo "==> Loading codesign env from .env.codesign"
-  set -a
-  # shellcheck disable=SC1090
-  source "$ROOT_DIR/.env.codesign"
-  set +a
 fi
 
 echo "==> Generating icons"
@@ -111,51 +101,16 @@ fi
 echo "==> Prebuilding mac app via prod script (workaround)"
 bash "$ROOT_DIR/scripts/build-electron-prod.sh"
 
-# Determine if we have signing materials
-HAS_SIGNING=true
-for k in MAC_CERT_BASE64 MAC_CERT_PASSWORD; do
-  if [[ -z "${!k:-}" ]]; then HAS_SIGNING=false; fi
-done
-
 mkdir -p "$DIST_DIR"
 
-if [[ "$HAS_SIGNING" == "true" ]]; then
-  echo "==> Code signing enabled (no notarization)"
-  # codesign requires Xcode CLT
-  if ! command -v xcrun >/dev/null 2>&1; then
-    echo "xcrun not found; proceeding with UNSIGNED build" >&2
-    HAS_SIGNING=false
-  fi
-fi
-
-if [[ "$HAS_SIGNING" == "true" ]]; then
-  TMPDIR_CERT="$(mktemp -d)"
-  CERT_PATH="$TMPDIR_CERT/mac_signing_cert.p12"
-  node -e "process.stdout.write(Buffer.from(process.env.MAC_CERT_BASE64,'base64'))" > "$CERT_PATH"
-  export CSC_LINK="$CERT_PATH"
-  export CSC_KEY_PASSWORD="${CSC_KEY_PASSWORD:-$MAC_CERT_PASSWORD}"
-
-  echo "==> Packaging (signed; notarization disabled)"
-  (cd "$CLIENT_DIR" && \
-    bunx electron-builder \
-      --config electron-builder.json \
-      --mac dmg zip --arm64 \
-      --publish never \
-      --config.mac.forceCodeSigning=true \
-      --config.mac.entitlements="$ENTITLEMENTS" \
-      --config.mac.entitlementsInherit="$ENTITLEMENTS" \
-      --config.mac.notarize=false)
-else
-  echo "==> Packaging (unsigned; notarization disabled)"
-  export CSC_IDENTITY_AUTO_DISCOVERY=false
-  (cd "$CLIENT_DIR" && \
-    bunx electron-builder \
-      --config electron-builder.json \
-      --mac dmg zip --arm64 \
-      --publish never \
-      --config.mac.identity=null \
-      --config.dmg.sign=false)
-fi
+echo "==> Packaging (unsigned; no notarization)"
+export CSC_IDENTITY_AUTO_DISCOVERY=false
+(cd "$CLIENT_DIR" && \
+  bunx electron-builder \
+    --config electron-builder.json \
+    --mac dmg zip --arm64 \
+    --publish never \
+    --config.mac.identity=null \
+    --config.dmg.sign=false)
 
 echo "==> Done. Outputs in: $DIST_DIR"
-
