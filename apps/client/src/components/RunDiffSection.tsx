@@ -1,5 +1,4 @@
-import { diffRefsQueryOptions } from "@/queries/diff-refs";
-import { diffLandedQueryOptions } from "@/queries/diff-landed";
+import { diffSmartQueryOptions } from "@/queries/diff-smart";
 import { useQuery as useRQ } from "@tanstack/react-query";
 import { type ComponentProps } from "react";
 import { GitDiffViewer } from "./git-diff-viewer";
@@ -8,27 +7,17 @@ export interface RunDiffSectionProps {
   repoFullName: string;
   ref1: string;
   ref2: string;
-  viewMode?: "latest" | "landed";
   classNames?: ComponentProps<typeof GitDiffViewer>["classNames"];
   onControlsChange?: ComponentProps<typeof GitDiffViewer>["onControlsChange"];
 }
 
 export function RunDiffSection(props: RunDiffSectionProps) {
-  const { repoFullName, ref1, ref2, viewMode = "latest", classNames, onControlsChange } = props;
-
-  const latestQuery = useRQ(diffRefsQueryOptions({ repoFullName, ref1, ref2 }));
-  const landedQuery = useRQ(
-    viewMode === "landed"
-      ? diffLandedQueryOptions({ repoFullName, baseRef: ref1, headRef: ref2 })
-      : { queryKey: ["diff-landed-disabled"], queryFn: async () => [] }
+  const { repoFullName, ref1, ref2, classNames, onControlsChange } = props;
+  const diffsQuery = useRQ(
+    repoFullName && ref1 && ref2
+      ? diffSmartQueryOptions({ repoFullName, baseRef: ref1, headRef: ref2 })
+      : { queryKey: ["diff-smart-disabled"], queryFn: async () => [] }
   );
-  const diffsQuery = viewMode === "landed" ? landedQuery : latestQuery;
-
-  // Debugging aid for user: log active mode and results
-  if (typeof window !== "undefined") {
-    // eslint-disable-next-line no-console
-    console.debug("[RunDiffSection]", { repoFullName, ref1, ref2, viewMode, latestLen: latestQuery.data?.length, landedLen: landedQuery.data?.length });
-  }
 
   // No workspace watcher in refs mode
 

@@ -2,14 +2,14 @@ import { FloatingPane } from "@/components/floating-pane";
 import { type GitDiffViewerProps } from "@/components/git-diff-viewer";
 import { RunDiffSection } from "@/components/RunDiffSection";
 import { TaskDetailHeader } from "@/components/task-detail-header";
-import { diffRefsQueryOptions } from "@/queries/diff-refs";
+import { diffSmartQueryOptions } from "@/queries/diff-smart";
 // Refs mode: no run-diffs prefetch
 import { api } from "@cmux/convex/api";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { convexQuery } from "@convex-dev/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import z from "zod";
 
 const paramsSchema = z.object({
@@ -59,9 +59,9 @@ export const Route = createFileRoute(
       selectedTaskRun?.newBranch
     ) {
       void opts.context.queryClient.ensureQueryData(
-        diffRefsQueryOptions({
-          ref1: task.baseBranch,
-          ref2: selectedTaskRun?.newBranch,
+        diffSmartQueryOptions({
+          baseRef: task.baseBranch,
+          headRef: selectedTaskRun?.newBranch,
           repoFullName: task.projectFullName,
         })
       );
@@ -90,13 +90,7 @@ function RunDiffPage() {
     return taskRuns?.find((run) => run._id === runId);
   }, [runId, taskRuns]);
 
-  // View mode across header and diff section
-  const [viewMode, setViewMode] = useState<"latest" | "landed">(
-    selectedRun?.pullRequestState === "merged" ? "landed" : "latest"
-  );
-  useEffect(() => {
-    if (selectedRun?.pullRequestState === "merged") setViewMode("landed");
-  }, [selectedRun?.pullRequestState]);
+  // Smart diff – no separate latest/landed modes
 
   // 404 if selected run is missing
   if (!selectedRun) {
@@ -130,8 +124,6 @@ function RunDiffPage() {
             onExpandAll={diffControls?.expandAll}
             onCollapseAll={diffControls?.collapseAll}
             teamSlugOrId={teamSlugOrId}
-            viewMode={viewMode}
-            onChangeViewMode={setViewMode}
           />
           {task?.text && (
             <div className="mb-2 px-3.5">
@@ -158,7 +150,6 @@ function RunDiffPage() {
                   repoFullName={repoFullName}
                   ref1={ref1}
                   ref2={ref2}
-                  viewMode={viewMode}
                   onControlsChange={setDiffControls}
                   classNames={gitDiffViewerClassNames}
                 />

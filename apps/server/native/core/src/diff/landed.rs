@@ -1,6 +1,6 @@
 use anyhow::Result;
 use gix::{bstr::ByteSlice, hash::ObjectId, Repository};
-use std::time::{Duration, Instant};
+use std::time::{Instant};
 
 use crate::types::{DiffEntry, GitDiffLandedOptions, GitDiffRefsOptions};
 
@@ -164,8 +164,31 @@ pub fn landed_diff(opts: GitDiffLandedOptions) -> Result<Vec<DiffEntry>> {
   #[cfg(debug_assertions)]
   println!("[native.landed] resolved base_tip={} head_tip={}", b_tip, h_tip);
 
+  // Early-out: if refs point to the same commit, nothing landed
+  if b_tip == h_tip {
+    let _d_total = t_total.elapsed();
+    #[cfg(debug_assertions)]
+    println!(
+      "[cmux_native_git] git_diff_landed timings: total={}ms repo_path={}ms open_repo={}ms resolve={}ms detect={}ms refs_diff={}ms out_len=0 (equal tips)",
+      _d_total.as_millis(),
+      _d_repo_path.as_millis(),
+      _d_open.as_millis(),
+      _d_resolve.as_millis(),
+      0,
+      0,
+    );
+    #[cfg(debug_assertions)]
+    println!("[native.landed] tips equal; returning empty");
+    return Ok(Vec::new());
+  }
+
   // Determine ref pair to diff via refs-diff
   let t_detect = Instant::now();
+  // Precompute if head is already ancestor of base (i.e., HEAD tip is contained in base).
+  // This is true for: (a) merged via merge-commit; (b) merged via fast-forward; (c) no commits on head yet.
+  // We'll use this only as a guard to avoid expensive and error-prone heuristics when there's no merge-by-message.
+  let head_is_ancestor_of_base = is_ancestor(&repo, h_tip, b_tip);
+
   let pair: Option<(String, String)> = if let Some(b0s) = &opts.b0Ref {
     let b0 = oid_from_rev_parse(&repo, b0s)?;
     if let Some(c1) = first_commit_after_b0_on_first_parent(&repo, b_tip, b0) {
@@ -188,13 +211,19 @@ pub fn landed_diff(opts: GitDiffLandedOptions) -> Result<Vec<DiffEntry>> {
       None
     }
   } else {
-    // No B0: prefer message-based detection (GitHub-style merge commits), fallback to heuristic
+    // No B0: prefer message-based detection (GitHub-style merge commits)
     #[cfg(debug_assertions)]
     println!("[native.landed] scanning merges on base first-parent (by message, then heuristic)");
     if let Some((p1, m)) = find_merge_by_message(&repo, b_tip, &opts.headRef, 10_000) {
       #[cfg(debug_assertions)]
       println!("[native.landed] strategy=merge-by-message P1={} MERGE={}", p1, m);
       Some((p1.to_string(), m.to_string()))
+    } else if head_is_ancestor_of_base {
+      // Head tip is already contained in base, but no merge-by-message matched -> likely unmerged branch with no commits.
+      // Avoid heuristic false-positives; return empty.
+      #[cfg(debug_assertions)]
+      println!("[native.landed] head is ancestor of base and no message match; returning empty");
+      None
     } else if let Some((p1, m)) = find_merge_integrating_head(&repo, b_tip, h_tip, 10_000) {
       #[cfg(debug_assertions)]
       println!("[native.landed] strategy=heuristic-merge P1={} MERGE={}", p1, m);

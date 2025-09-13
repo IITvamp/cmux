@@ -247,3 +247,33 @@ fn landed_diff_with_path_override_is_fast() {
     out.len()
   );
 }
+
+#[test]
+fn landed_diff_equal_tips_returns_empty() {
+  let tmp = tempdir().unwrap();
+  let work = tmp.path().join("repo");
+  fs::create_dir_all(&work).unwrap();
+
+  // Initialize base and create a new branch without commits
+  run(&work, "git init");
+  run(&work, "git -c user.email=a@b -c user.name=test checkout -b main");
+  fs::write(work.join("f.txt"), b"base\n").unwrap();
+  run(&work, "git add .");
+  run(&work, "git -c user.email=a@b -c user.name=test commit -m base");
+  run(&work, "git checkout -b feature");
+  // No commits on feature; tips equal
+
+  let out = crate::diff::landed::landed_diff(GitDiffLandedOptions {
+    baseRef: "main".into(),
+    headRef: "feature".into(),
+    b0Ref: None,
+    repoFullName: None,
+    repoUrl: None,
+    teamSlugOrId: None,
+    originPathOverride: Some(work.to_string_lossy().to_string()),
+    includeContents: Some(true),
+    maxBytes: Some(1024 * 1024),
+  })
+  .expect("landed diff");
+  assert!(out.is_empty(), "expected empty landed diff for equal tips");
+}

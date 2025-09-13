@@ -6,9 +6,8 @@ import {
 } from "@/components/ui/searchable-select";
 import { useSocket } from "@/contexts/socket/use-socket";
 import { branchesQueryOptions } from "@/queries/branches";
-import { diffLandedQueryOptions } from "@/queries/diff-landed";
+import { diffSmartQueryOptions } from "@/queries/diff-smart";
 import { api } from "@cmux/convex/api";
-import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
 import { convexQuery } from "@convex-dev/react-query";
 import { useQuery as useRQ } from "@tanstack/react-query";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
@@ -150,100 +149,33 @@ function DashboardDiffPage() {
   }, [search.ref1, search.ref2, setSearch]);
 
   const bothSelected = !!search.ref1 && !!search.ref2 && !!selectedProject;
-  const [viewMode, setViewMode] = useState<"latest" | "landed">("latest");
-
-  const latestQuery = useRQ<ReplaceDiffEntry[]>({
-    queryKey: [
-      "dashboard-compare-diffs",
-      teamSlugOrId,
-      selectedProject || "none",
-      search.ref1 || "",
-      search.ref2 || "",
-    ],
-    queryFn: async () =>
-      await new Promise<import("@cmux/shared/diff-types").ReplaceDiffEntry[]>(
-        (resolve, reject) => {
-          if (!socket || !selectedProject || !search.ref1 || !search.ref2) {
-            resolve([]);
-            return;
-          }
-          socket.emit(
-            "git-diff-refs",
-            {
-              repoFullName: selectedProject,
-              ref1: search.ref1,
-              ref2: search.ref2,
-            },
-            (resp: {
-              ok: boolean;
-              diffs?: import("@cmux/shared/diff-types").ReplaceDiffEntry[];
-              error?: string;
-            }) => {
-              if (resp.ok) resolve(resp.diffs || []);
-              else reject(new Error(resp.error || "Failed to compare refs"));
-            }
-          );
-        }
-      ),
-    enabled: !!socket && bothSelected,
-    staleTime: 10_000,
-    retry: 1,
-  });
-
-  const landedQuery = useRQ(
-    selectedProject && search.ref1 && search.ref2 && viewMode === "landed"
-      ? diffLandedQueryOptions({
+  const diffsQuery = useRQ(
+    selectedProject && search.ref1 && search.ref2
+      ? diffSmartQueryOptions({
           repoFullName: selectedProject,
           baseRef: search.ref1,
           headRef: search.ref2,
         })
-      : { queryKey: ["diff-landed-disabled"], queryFn: async () => [] }
+      : { queryKey: ["diff-smart-disabled"], queryFn: async () => [] }
   );
 
-  const diffsQuery = viewMode === "landed" ? landedQuery : latestQuery;
-
-  // If Latest returns empty (and refs differ), prefer Landed automatically
-  useEffect(() => {
-    if (
-      viewMode === "latest" &&
-      latestQuery.isSuccess &&
-      (latestQuery.data?.length || 0) === 0 &&
-      search.ref1 &&
-      search.ref2 &&
-      search.ref1 !== search.ref2
-    ) {
-      setViewMode("landed");
-    }
-  }, [
-    viewMode,
-    latestQuery.isSuccess,
-    latestQuery.data,
-    search.ref1,
-    search.ref2,
-  ]);
+  // Smart view: no toggle logic needed
 
   useEffect(() => {
-    if (latestQuery.isError || landedQuery.isError) {
+    if (diffsQuery.isError) {
       const err = diffsQuery.error as unknown;
       const msg = err instanceof Error ? err.message : String(err ?? "");
-      toast.error(
-        viewMode === "landed"
-          ? "Failed to load landed diffs"
-          : "Failed to compare refs",
-        { description: msg }
-      );
+      toast.error("Failed to load diffs", { description: msg });
     }
-  }, [latestQuery.isError, landedQuery.isError, viewMode, diffsQuery.error]);
+  }, [diffsQuery.isError, diffsQuery.error]);
 
   // On socket connect, kick a refetch if we have required selections
   useEffect(() => {
     if (socket && bothSelected) {
-      void latestQuery.refetch();
-      if (viewMode === "landed") void landedQuery.refetch();
+      void diffsQuery.refetch();
     }
-    // Intentionally exclude queries from deps to avoid infinite loops.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [socket, bothSelected, viewMode]);
+  }, [socket, bothSelected]);
 
   return (
     <div className="flex flex-col h-screen min-h-0 grow">
@@ -298,37 +230,7 @@ function DashboardDiffPage() {
         />
       </div>
       <div className="flex-1 flex flex-col bg-white dark:bg-neutral-950 overflow-y-auto grow">
-        <div className="border-b border-neutral-200 dark:border-neutral-800 px-3 py-2 flex items-center gap-2">
-          <div className="text-sm text-neutral-600 dark:text-neutral-300">
-            View:
-          </div>
-          <div className="inline-flex rounded-md border border-neutral-200 dark:border-neutral-800 overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setViewMode("latest")}
-              className={
-                "px-3 py-1 text-sm " +
-                (viewMode === "latest"
-                  ? "bg-neutral-100 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100"
-                  : "bg-white dark:bg-neutral-950 text-neutral-600 dark:text-neutral-300")
-              }
-            >
-              Latest
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode("landed")}
-              className={
-                "px-3 py-1 text-sm border-l border-neutral-200 dark:border-neutral-800 " +
-                (viewMode === "landed"
-                  ? "bg-neutral-100 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100"
-                  : "bg-white dark:bg-neutral-950 text-neutral-600 dark:text-neutral-300")
-              }
-            >
-              Landed
-            </button>
-          </div>
-        </div>
+        {/* Smart view: no toggle */}
         <GitDiffViewer
           diffs={diffsQuery.data || []}
           onControlsChange={() => {}}

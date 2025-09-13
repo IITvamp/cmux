@@ -249,35 +249,36 @@ export function setupSocketHandlers(
           JSON.stringify({ repoFullName, baseRef, headRef, b0Ref })
         );
         // Ensure local clone (same as landed)
-        let originPathOverride = "";
-        try {
-          const repoUrl = `https://github.com/${repoFullName}.git`;
-          const repoManager = RepositoryManager.getInstance();
-          const { originPath } = await (
-            await import("./workspace.js")
-          ).getProjectPaths(repoUrl, safeTeam);
-          await repoManager.ensureRepository(repoUrl, originPath);
-          originPathOverride = originPath;
-        } catch (e) {
-          serverLogger.warn(
-            "Could not ensure local clone for smart diffs:",
-            e
-          );
-        }
+        // let originPathOverride = "";
+        // try {
+        //   const repoUrl = `https://github.com/${repoFullName}.git`;
+        //   const repoManager = RepositoryManager.getInstance();
+        //   const { originPath } = await (
+        //     await import("./workspace.js")
+        //   ).getProjectPaths(repoUrl, safeTeam);
+        //   await repoManager.ensureRepository(repoUrl, originPath);
+        //   originPathOverride = originPath;
+        // } catch (e) {
+        //   serverLogger.warn("Could not ensure local clone for smart diffs:", e);
+        // }
         const { compareRefsForRepo } = await import("./diffs/compareRefs.js");
         const { landedDiffForRepo } = await import("./native/git.js");
         const t0 = Date.now();
         const latest = await compareRefsForRepo({
           ref1: baseRef,
           ref2: headRef,
-          originPathOverride,
+          // originPathOverride,
           repoFullName,
         });
         if (latest.length > 0) {
           const t1 = Date.now();
           serverLogger.info(
             "[socket] git-diff-smart results",
-            JSON.stringify({ strategy: "latest", count: latest.length, ms: t1 - t0 })
+            JSON.stringify({
+              strategy: "latest",
+              count: latest.length,
+              ms: t1 - t0,
+            })
           );
           return callback?.({ ok: true, diffs: latest, strategy: "latest" });
         }
@@ -286,13 +287,19 @@ export function setupSocketHandlers(
           baseRef,
           headRef,
           b0Ref,
-          originPathOverride,
+          // originPathOverride,
+          repoFullName,
           includeContents: true,
         });
         const t3 = Date.now();
         serverLogger.info(
           "[socket] git-diff-smart results",
-          JSON.stringify({ strategy: "landed", count: landed.length, msLatest: t2 - t0, msLanded: t3 - t2 })
+          JSON.stringify({
+            strategy: "landed",
+            count: landed.length,
+            msLatest: t2 - t0,
+            msLanded: t3 - t2,
+          })
         );
         callback?.({ ok: true, diffs: landed, strategy: "landed" });
       } catch (error) {

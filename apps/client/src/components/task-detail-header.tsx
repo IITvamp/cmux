@@ -3,8 +3,7 @@ import { Dropdown } from "@/components/ui/dropdown";
 import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
 import { useSocketSuspense } from "@/contexts/socket/use-socket";
 import { isElectron } from "@/lib/electron";
-import { diffRefsQueryOptions } from "@/queries/diff-refs";
-import { diffLandedQueryOptions } from "@/queries/diff-landed";
+import { diffSmartQueryOptions } from "@/queries/diff-smart";
 import type { Doc, Id } from "@cmux/convex/dataModel";
 import { Skeleton } from "@heroui/react";
 import { useClipboard } from "@mantine/hooks";
@@ -43,8 +42,7 @@ interface TaskDetailHeaderProps {
   onExpandAll?: () => void;
   onCollapseAll?: () => void;
   teamSlugOrId: string;
-  viewMode: "latest" | "landed";
-  onChangeViewMode?: (mode: "latest" | "landed") => void;
+  // Smart diff view (no toggle)
 }
 
 const ENABLE_MERGE_BUTTON = false;
@@ -53,29 +51,16 @@ function AdditionsAndDeletions({
   repoFullName,
   ref1,
   ref2,
-  viewMode,
 }: {
   repoFullName: string;
   ref1: string;
   ref2: string;
-  viewMode: "latest" | "landed";
 }) {
-  const latestQuery = useRQ(diffRefsQueryOptions({ repoFullName, ref1, ref2 }));
-  const landedQuery = useRQ(
-    viewMode === "landed"
-      ? diffLandedQueryOptions({ repoFullName, baseRef: ref1, headRef: ref2 })
-      : { queryKey: ["diff-landed-disabled"], queryFn: async () => [] }
+  const diffsQuery = useRQ(
+    repoFullName && ref1 && ref2
+      ? diffSmartQueryOptions({ repoFullName, baseRef: ref1, headRef: ref2 })
+      : { queryKey: ["diff-smart-disabled"], queryFn: async () => [] }
   );
-  const effectiveMode =
-    viewMode === "latest" &&
-    latestQuery.isSuccess &&
-    (latestQuery.data?.length || 0) === 0 &&
-    ref1 &&
-    ref2 &&
-    ref1 !== ref2
-      ? "landed"
-      : viewMode;
-  const diffsQuery = effectiveMode === "landed" ? landedQuery : latestQuery;
 
   if (diffsQuery.error) {
     return (
@@ -134,8 +119,6 @@ export function TaskDetailHeader({
   onExpandAll,
   onCollapseAll,
   teamSlugOrId,
-  viewMode,
-  onChangeViewMode,
 }: TaskDetailHeaderProps) {
   const navigate = useNavigate();
   const clipboard = useClipboard({ timeout: 2000 });
@@ -181,12 +164,11 @@ export function TaskDetailHeader({
               </div>
             }
           >
-            <AdditionsAndDeletions
-              repoFullName={task?.projectFullName || ""}
-              ref1={task?.baseBranch || ""}
-              ref2={selectedRun?.newBranch || ""}
-              viewMode={viewMode}
-            />
+          <AdditionsAndDeletions
+            repoFullName={task?.projectFullName || ""}
+            ref1={task?.baseBranch || ""}
+            ref2={selectedRun?.newBranch || ""}
+          />
           </Suspense>
         </div>
 
@@ -198,32 +180,7 @@ export function TaskDetailHeader({
               : undefined
           }
         >
-          <div className="inline-flex rounded-md border border-neutral-200 dark:border-neutral-700 overflow-hidden mr-2">
-            <button
-              type="button"
-              onClick={() => onChangeViewMode?.("latest")}
-              className={
-                "px-2.5 py-1 text-[11px] " +
-                (viewMode === "latest"
-                  ? "bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
-                  : "bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-300")
-              }
-            >
-              Latest
-            </button>
-            <button
-              type="button"
-              onClick={() => onChangeViewMode?.("landed")}
-              className={
-                "px-2.5 py-1 text-[11px] border-l border-neutral-200 dark:border-neutral-700 " +
-                (viewMode === "landed"
-                  ? "bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
-                  : "bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-300")
-              }
-            >
-              Landed
-            </button>
-          </div>
+          {/* Removed Latest/Landed toggle; using smart diff */}
           <Suspense
             fallback={
               <div className="flex items-center gap-2">
@@ -461,7 +418,11 @@ function SocketActions({
 }) {
   const { socket } = useSocketSuspense();
   // const diffsQuery = useSuspenseQuery(runDiffsQueryOptions({ taskRunId }));
-  const diffsQuery = useRQ(diffRefsQueryOptions({ repoFullName, ref1, ref2 }));
+  const diffsQuery = useRQ(
+    repoFullName && ref1 && ref2
+      ? diffSmartQueryOptions({ repoFullName, baseRef: ref1, headRef: ref2 })
+      : { queryKey: ["diff-smart-disabled"], queryFn: async () => [] }
+  );
   const hasChanges = (diffsQuery.data || []).length > 0;
 
   const handleMerge = async (method: MergeMethod) => {
