@@ -396,3 +396,33 @@ fn refs_diff_pr_282_counts() {
 
   assert_eq!((adds, dels), (3117, 11), "mismatch for pr 282 {}..{} entries={}", from, to, out.len());
 }
+
+#[test]
+fn refs_diff_pr_255_counts() {
+  // PR 255 expected stats: +56 -8 relative to main
+  // Head commit resolved locally:
+  //   head: c7ab60e672d48475d9da08b494044f38183755d3
+  let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+  let repo_root = find_git_root(manifest_dir);
+  // Fetch main and PR ref to ensure availability
+  run(&repo_root, "git fetch --prune --tags --force origin refs/heads/main:refs/remotes/origin/main refs/pull/255/head:refs/remotes/origin/pr-255");
+
+  let from = "origin/main"; // base branch
+  let to = "c7ab60e672d48475d9da08b494044f38183755d3"; // PR #255 head
+
+  let out = crate::diff::refs::diff_refs(GitDiffRefsOptions{
+    ref1: from.into(),
+    ref2: to.into(),
+    repoFullName: None,
+    repoUrl: None,
+    teamSlugOrId: None,
+    originPathOverride: Some(repo_root.to_string_lossy().to_string()),
+    includeContents: Some(true),
+    maxBytes: Some(100*1024*1024),
+  }).expect("diff refs pr 255");
+
+  let adds: i32 = out.iter().map(|e| e.additions).sum();
+  let dels: i32 = out.iter().map(|e| e.deletions).sum();
+
+  assert_eq!((adds, dels), (56, 8), "mismatch for pr 255 {}..{} entries={}", from, to, out.len());
+}
