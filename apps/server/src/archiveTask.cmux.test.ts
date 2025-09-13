@@ -35,7 +35,7 @@ describe("stopContainersForRunsFromTree - cmux sandbox path", () => {
     const addr = server.address();
     if (addr && typeof addr === "object" && addr.port) {
       serverUrl = `http://localhost:${addr.port}`;
-      process.env.WWW_API_BASE_URL = serverUrl;
+      process.env.NEXT_PUBLIC_WWW_ORIGIN = serverUrl;
     } else {
       throw new Error("Failed to get test server port");
     }
@@ -82,4 +82,3 @@ describe("stopContainersForRunsFromTree - cmux sandbox path", () => {
     expect(hit?.url).toBe(`/api/sandboxes/${instanceId}/stop`);
   });
 });
-
