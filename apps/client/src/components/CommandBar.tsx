@@ -2,12 +2,12 @@ import { useTheme } from "@/components/theme/use-theme";
 import { api } from "@cmux/convex/api";
 import * as Dialog from "@radix-ui/react-dialog";
 
+import { isElectron } from "@/lib/electron";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { Command } from "cmdk";
 import { useMutation, useQuery } from "convex/react";
 import { Monitor, Moon, Sun } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
-import { isElectron } from "@/lib/electron";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 interface CommandBarProps {
@@ -18,6 +18,10 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [openedWithShift, setOpenedWithShift] = useState(false);
+  const prevFocusedElRef = useRef<HTMLElement | null>(null);
+  const prevSourceContentsIdRef = useRef<number | null>(null);
+  const prevSourceFrameRoutingIdRef = useRef<number | null>(null);
+  const prevSourceFrameProcessIdRef = useRef<number | null>(null);
   const navigate = useNavigate();
   const router = useRouter();
   const { setTheme } = useTheme();
@@ -28,10 +32,31 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
   useEffect(() => {
     // In Electron, prefer global shortcut from main via cmux event.
     if (isElectron) {
-      const off = window.cmux?.on?.("shortcut:cmd-k", () => {
+      const off = window.cmux?.on?.("shortcut:cmd-k", (...args: unknown[]) => {
+        const payload = (args?.[0] ?? undefined) as
+          | {
+              sourceContentsId?: number;
+              sourceFrameRoutingId?: number;
+              sourceFrameProcessId?: number;
+            }
+          | undefined;
         // Only handle Cmd+K (no shift/ctrl variations)
         setOpenedWithShift(false);
+        // Capture the currently focused element before opening
+        prevFocusedElRef.current = document.activeElement as HTMLElement | null;
         setOpen((open) => !open);
+        // Best-effort capture of the previous focused element happens in the
+        // open/close effect below. For cross-webContents focus (webview), we
+        // also remember the originating WebContents id if provided.
+        if (payload && typeof payload.sourceContentsId === "number") {
+          prevSourceContentsIdRef.current = payload.sourceContentsId;
+        }
+        if (payload && typeof payload.sourceFrameRoutingId === "number") {
+          prevSourceFrameRoutingIdRef.current = payload.sourceFrameRoutingId;
+        }
+        if (payload && typeof payload.sourceFrameProcessId === "number") {
+          prevSourceFrameProcessIdRef.current = payload.sourceFrameProcessId;
+        }
       });
       return () => {
         // Unsubscribe if available
@@ -44,12 +69,74 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
       if (e.key === "k" && e.metaKey) {
         e.preventDefault();
         setOpenedWithShift(e.shiftKey);
+        // Capture the currently focused element before opening
+        prevFocusedElRef.current = document.activeElement as HTMLElement | null;
         setOpen((open) => !open);
       }
     };
     document.addEventListener("keydown", down);
     return () => document.removeEventListener("keydown", down);
   }, []);
+
+  // Track and restore focus across open/close, including iframes/webviews.
+  useEffect(() => {
+    // Inform Electron main about palette open state to gate focus capture
+    if (isElectron && window.cmux?.ui?.setCommandPaletteOpen) {
+      void window.cmux.ui.setCommandPaletteOpen(open);
+    }
+
+    if (!open) {
+      // Restore previous focus on close, after dialog unmounts.
+      const el = prevFocusedElRef.current;
+      if (el) {
+        // Delay to allow the dialog to fully unmount and release focus trap.
+        const id = window.setTimeout(() => {
+          try {
+            el.focus({ preventScroll: true });
+            if ((el as HTMLIFrameElement).tagName === "IFRAME") {
+              try {
+                (el as HTMLIFrameElement).contentWindow?.focus?.();
+              } catch {
+                // ignore cross-origin focus errors
+              }
+            }
+          } catch {
+            // ignore focus failures (element may be gone)
+          }
+          // If the focus originated from a separate WebContents (webview),
+          // ask main to focus that WebContents explicitly as a fallback.
+          const wcId = prevSourceContentsIdRef.current;
+          const frId = prevSourceFrameRoutingIdRef.current;
+          const fpId = prevSourceFrameProcessIdRef.current;
+          if (
+            typeof wcId === "number" &&
+            typeof frId === "number" &&
+            typeof fpId === "number" &&
+            window.cmux?.ui?.restoreLastFocusInFrame
+          ) {
+            void window.cmux.ui
+              .restoreLastFocusInFrame(wcId, frId, fpId)
+              .then((res) => {
+                if (
+                  !res?.ok &&
+                  window.cmux?.ui?.restoreLastFocusInWebContents
+                ) {
+                  // Fallback to focusing at the WebContents level
+                  void window.cmux.ui.restoreLastFocusInWebContents(wcId);
+                }
+              });
+          } else if (
+            typeof wcId === "number" &&
+            window.cmux?.ui?.restoreLastFocusInWebContents
+          ) {
+            void window.cmux.ui.restoreLastFocusInWebContents(wcId);
+          }
+        }, 0);
+        return () => window.clearTimeout(id);
+      }
+    }
+    return undefined;
+  }, [open]);
 
   const handleHighlight = useCallback(
     async (value: string) => {

@@ -6,11 +6,14 @@ import {
   app,
   BrowserWindow,
   dialog,
+  ipcMain,
   Menu,
   nativeImage,
   net,
   session,
   shell,
+  webContents,
+  webFrameMain,
   type BrowserWindowConstructorOptions,
   type MenuItemConstructorOptions,
 } from "electron";
@@ -42,11 +45,15 @@ const APP_HOST = "cmux.local";
 let rendererLoaded = false;
 let pendingProtocolUrl: string | null = null;
 let mainWindow: BrowserWindow | null = null;
+// Track whether the Command Palette (Cmd+K) is currently open in the renderer.
+let cmdkOpen = false;
 
 // Persistent log files
 let logsDir: string | null = null;
 let mainLogStream: WriteStream | null = null;
 let rendererLogStream: WriteStream | null = null;
+let keyDebugStream: WriteStream | null = null;
+let _keyDebugPath: string | null = null;
 
 function getTimestamp(): string {
   return new Date().toISOString();
@@ -125,6 +132,50 @@ function setupConsoleFileMirrors(): void {
       }
     }
   };
+}
+
+function ensureKeyDebugFile(): void {
+  try {
+    if (keyDebugStream) return;
+    // Try to place a debug file in the repository logs/ folder during dev
+    // else fall back to userData/logs.
+    const appPath = app.getAppPath();
+    let repoLogs: string | null = null;
+    try {
+      // Heuristic: appPath ends in apps/client in dev. Go up two levels.
+      const maybeRoot = path.resolve(appPath, "../..");
+      const candidate = path.join(maybeRoot, "logs");
+      if (!existsSync(candidate)) mkdirSync(candidate, { recursive: true });
+      repoLogs = candidate;
+    } catch {
+      repoLogs = null;
+    }
+    const outDir = repoLogs || logsDir || app.getPath("userData");
+    const filePath = path.join(outDir, "cmdk-debug.log");
+    keyDebugStream = createWriteStream(filePath, {
+      flags: "a",
+      encoding: "utf8",
+    });
+    _keyDebugPath = filePath;
+    mainLog("CmdK debug log path:", filePath);
+  } catch (e) {
+    // If anything fails, ignore; we'll just rely on main.log
+    mainWarn("Failed to initialize CmdK debug log file", e);
+  }
+}
+
+function keyDebug(event: string, data?: unknown): void {
+  try {
+    ensureKeyDebugFile();
+    const line = JSON.stringify({
+      ts: getTimestamp(),
+      event,
+      data,
+    });
+    keyDebugStream?.write(line + "\n");
+  } catch {
+    // ignore
+  }
 }
 
 function resolveResourcePath(rel: string) {
@@ -381,6 +432,7 @@ app.on("open-url", (_event, url) => {
 app.whenReady().then(async () => {
   ensureLogStreams();
   setupConsoleFileMirrors();
+  ensureKeyDebugFile();
 
   // Ensure macOS menu and About panel use "cmux" instead of package.json name
   if (process.platform === "darwin") {
@@ -394,34 +446,250 @@ app.whenReady().then(async () => {
 
   // Capture Cmd+K within the app only (works across iframes/webviews)
   try {
-    const handleBeforeInput = (e: Electron.Event, input: Electron.Input) => {
-      if (input.type !== "keyDown") return;
-      const isMac = process.platform === "darwin";
-      const isCmdK = (isMac ? input.meta : input.control) &&
-        !input.alt &&
-        input.key.toLowerCase() === "k";
-      if (!isCmdK) return;
-      // Prevent default to avoid in-app conflicts (e.g., terminal clear)
-      // and ensure a single toggle per key press.
-      e.preventDefault();
-      const focusedWin = BrowserWindow.getFocusedWindow() ?? mainWindow ?? BrowserWindow.getAllWindows()[0] ?? null;
-      if (focusedWin && !focusedWin.isDestroyed()) {
-        try {
-          focusedWin.webContents.send("cmux:event:shortcut:cmd-k");
-        } catch (e) {
-          mainWarn("Failed to emit Cmd+K from before-input-event", e);
-        }
-      }
-    };
-
     // Attach to all webContents including webviews and subframes
     app.on("web-contents-created", (_event, contents) => {
       try {
-        contents.on("before-input-event", handleBeforeInput);
+        keyDebug("web-contents-created", {
+          id: contents.id,
+          type: contents.getType?.(),
+          url: contents.getURL?.(),
+        });
+      } catch {
+        // ignore debug log failures
+      }
+      try {
+        contents.on("before-input-event", (e, input) => {
+          keyDebug("before-input-event", {
+            id: contents.id,
+            type: contents.getType?.(),
+            key: input.key,
+            code: input.code,
+            meta: input.meta,
+            ctrl: input.control,
+            alt: input.alt,
+            shift: input.shift,
+            typeInput: input.type,
+          });
+          if (input.type !== "keyDown") return;
+          const isMac = process.platform === "darwin";
+          const isCmdK =
+            (isMac ? input.meta : input.control) &&
+            !input.alt &&
+            input.key.toLowerCase() === "k";
+          if (!isCmdK) return;
+          // Prevent default to avoid in-app conflicts (e.g., terminal clear)
+          // and ensure a single toggle per key press.
+          e.preventDefault();
+          keyDebug("cmdk-detected", {
+            sourceId: contents.id,
+            type: contents.getType?.(),
+          });
+          // If the Command Palette is already open, do NOT overwrite the
+          // previously captured focus target. Simply emit the toggle event.
+          if (cmdkOpen) {
+            keyDebug("skip-capture-already-open", { id: contents.id });
+            const targetWin =
+              BrowserWindow.getFocusedWindow() ??
+              mainWindow ??
+              BrowserWindow.getAllWindows()[0] ??
+              null;
+            if (targetWin && !targetWin.isDestroyed()) {
+              try {
+                targetWin.webContents.send("cmux:event:shortcut:cmd-k");
+                keyDebug("emit-cmdk", {
+                  to: targetWin.webContents.id,
+                  from: contents.id,
+                });
+              } catch (err) {
+                mainWarn("Failed to emit Cmd+K (already open)", err);
+                keyDebug("emit-cmdk-error", { err: String(err) });
+              }
+            }
+            return;
+          }
+
+          // Otherwise, capture the currently focused element inside this
+          // WebContents BEFORE we emit to the renderer (which might change focus).
+          try {
+            const frame = contents.focusedFrame ?? contents.mainFrame;
+            frame
+              .executeJavaScript(
+                `(() => { try {
+                  const el = document.activeElement;
+                  // Store element and tag for better restore + debugging
+                  window.__cmuxLastFocused = el;
+                  // @ts-ignore - attach for debug
+                  window.__cmuxLastFocusedTag = el?.tagName ?? null;
+                  return window.__cmuxLastFocusedTag || true;
+                } catch { return false } })()`,
+                true
+              )
+              .then((res) => {
+                keyDebug("capture-last-focused", {
+                  id: contents.id,
+                  res,
+                  frameRoutingId: frame.routingId,
+                  frameProcessId: frame.processId,
+                  frameUrl: frame.url,
+                  frameOrigin: frame.origin,
+                });
+                const targetWin =
+                  BrowserWindow.getFocusedWindow() ??
+                  mainWindow ??
+                  BrowserWindow.getAllWindows()[0] ??
+                  null;
+                if (targetWin && !targetWin.isDestroyed()) {
+                  try {
+                    targetWin.webContents.send("cmux:event:shortcut:cmd-k", {
+                      sourceContentsId: contents.id,
+                      sourceFrameRoutingId: frame.routingId,
+                      sourceFrameProcessId: frame.processId,
+                    });
+                    keyDebug("emit-cmdk", {
+                      to: targetWin.webContents.id,
+                      from: contents.id,
+                      frameRoutingId: frame.routingId,
+                      frameProcessId: frame.processId,
+                    });
+                  } catch (err) {
+                    mainWarn(
+                      "Failed to emit Cmd+K from before-input-event",
+                      err
+                    );
+                    keyDebug("emit-cmdk-error", { err: String(err) });
+                  }
+                }
+              })
+              .catch((err) =>
+                keyDebug("capture-last-focused-error", {
+                  id: contents.id,
+                  err: String(err),
+                })
+              );
+          } catch {
+            // ignore capture failures
+          }
+        });
       } catch {
         // ignore
       }
     });
+
+    // Allow renderer to explicitly focus a specific WebContents id
+    ipcMain.handle("cmux:ui:focus-webcontents", (_evt, id: number) => {
+      try {
+        const wc = webContents.fromId(id);
+        if (!wc || wc.isDestroyed()) return { ok: false };
+        wc.focus();
+        keyDebug("focus-webcontents", { id });
+        return { ok: true };
+      } catch (err) {
+        mainWarn("Failed to focus webContents", { id, err });
+        keyDebug("focus-webcontents-error", { id, err: String(err) });
+        return { ok: false };
+      }
+    });
+
+    ipcMain.handle(
+      "cmux:ui:webcontents-restore-last-focus",
+      async (_evt, id: number) => {
+        try {
+          const wc = webContents.fromId(id);
+          if (!wc || wc.isDestroyed()) return { ok: false };
+          await wc.focus();
+          keyDebug("restore-last-focus.begin", { id });
+          const ok = await wc.executeJavaScript(
+            `(() => {
+              try {
+                const el = window.__cmuxLastFocused;
+                if (el && typeof el.focus === 'function') {
+                  el.focus();
+                  if (el.tagName === 'IFRAME') {
+                    try { el.contentWindow && el.contentWindow.focus && el.contentWindow.focus(); } catch {}
+                  }
+                  return true;
+                }
+                const a = document.activeElement;
+                if (a && typeof a.focus === 'function') { a.focus(); return true; }
+                if (document.body && typeof document.body.focus === 'function') { document.body.focus(); return true; }
+                return false;
+              } catch { return false; }
+            })()`,
+            true
+          );
+          keyDebug("restore-last-focus.result", { id, ok });
+          return { ok: Boolean(ok) };
+        } catch (err) {
+          mainWarn("Failed to restore focus in webContents", { id, err });
+          keyDebug("restore-last-focus.error", { id, err: String(err) });
+          return { ok: false };
+        }
+      }
+    );
+
+    ipcMain.handle(
+      "cmux:ui:frame-restore-last-focus",
+      async (
+        _evt,
+        info: {
+          contentsId: number;
+          frameRoutingId: number;
+          frameProcessId: number;
+        }
+      ) => {
+        try {
+          const wc = webContents.fromId(info.contentsId);
+          if (!wc || wc.isDestroyed()) return { ok: false };
+          const frame = webFrameMain.fromId(
+            info.frameProcessId,
+            info.frameRoutingId
+          );
+          if (!frame) {
+            keyDebug("frame-restore-last-focus.no-frame", info);
+            return { ok: false };
+          }
+          await wc.focus();
+          keyDebug("frame-restore-last-focus.begin", info);
+          const ok = await frame.executeJavaScript(
+            `(() => {
+              try {
+                const el = window.__cmuxLastFocused;
+                if (el && typeof el.focus === 'function') { el.focus(); return true; }
+                const a = document.activeElement;
+                if (a && typeof a.focus === 'function') { a.focus(); return true; }
+                if (document.body && typeof document.body.focus === 'function') { document.body.focus(); return true; }
+                return false;
+              } catch { return false; }
+            })()`,
+            true
+          );
+          keyDebug("frame-restore-last-focus.result", { ...info, ok });
+          return { ok: Boolean(ok) };
+        } catch (err) {
+          keyDebug("frame-restore-last-focus.error", {
+            ...info,
+            err: String(err),
+          });
+          return { ok: false };
+        }
+      }
+    );
+
+    // Renderer reports when Command Palette opens/closes so we don't
+    // overwrite previously captured focus while it's open.
+    ipcMain.handle(
+      "cmux:ui:set-command-palette-open",
+      (_evt, isOpen: boolean) => {
+        try {
+          cmdkOpen = Boolean(isOpen);
+          keyDebug("cmdk-open-state", { open: cmdkOpen });
+          return { ok: true };
+        } catch (err) {
+          keyDebug("cmdk-open-state-error", { err: String(err) });
+          return { ok: false };
+        }
+      }
+    );
   } catch (e) {
     mainWarn("Error setting up before-input-event handler for Cmd+K", e);
   }
@@ -482,70 +750,90 @@ app.whenReady().then(async () => {
   // Create the initial window.
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
 
-  // Production menu with Help -> Open Logs Folder
-  if (app.isPackaged) {
-    try {
-      const template: MenuItemConstructorOptions[] = [];
-      if (process.platform === "darwin") {
-        template.push(
-          { role: "appMenu" },
-          { role: "editMenu" },
-          { role: "viewMenu" },
-          { role: "windowMenu" }
-        );
-      } else {
-        template.push(
-          { label: "File", submenu: [{ role: "quit" }] },
-          { role: "editMenu" },
-          { role: "viewMenu" },
-          { role: "windowMenu" }
-        );
-      }
-      template.push({
-        role: "help",
+  // Application menu with Command Palette accelerator; keep Help items.
+  try {
+    const template: MenuItemConstructorOptions[] = [];
+    if (process.platform === "darwin") {
+      template.push({ role: "appMenu" });
+    } else {
+      template.push({ label: "File", submenu: [{ role: "quit" }] });
+    }
+    template.push(
+      { role: "editMenu" },
+      {
+        label: "Commands",
         submenu: [
           {
-            label: "Check for Updates…",
-            click: async () => {
-              if (!app.isPackaged) {
-                await dialog.showMessageBox({
-                  type: "info",
-                  message: "Updates are only available in packaged builds.",
-                });
-                return;
-              }
+            label: "Command Palette…",
+            accelerator: "CommandOrControl+K",
+            click: () => {
               try {
-                mainLog("Manual update check initiated");
-                const result = await autoUpdater.checkForUpdates();
-                if (!result?.updateInfo) {
-                  await dialog.showMessageBox({
-                    type: "info",
-                    message: "You’re up to date.",
-                  });
-                }
-              } catch (e) {
-                mainWarn("Manual checkForUpdates failed", e);
-                await dialog.showMessageBox({
-                  type: "error",
-                  message: "Failed to check for updates.",
+                const target =
+                  BrowserWindow.getFocusedWindow() ??
+                  mainWindow ??
+                  BrowserWindow.getAllWindows()[0] ??
+                  null;
+                keyDebug("menu-accelerator-cmdk", {
+                  to: target?.webContents.id,
                 });
+                if (target && !target.isDestroyed()) {
+                  target.webContents.send("cmux:event:shortcut:cmd-k");
+                }
+              } catch (err) {
+                mainWarn("Failed to emit Cmd+K from menu accelerator", err);
+                keyDebug("menu-accelerator-cmdk-error", { err: String(err) });
               }
-            },
-          },
-          {
-            label: "Open Logs Folder",
-            click: async () => {
-              if (!logsDir) ensureLogStreams();
-              if (logsDir) await shell.openPath(logsDir);
             },
           },
         ],
-      });
-      const menu = Menu.buildFromTemplate(template);
-      Menu.setApplicationMenu(menu);
-    } catch (e) {
-      mainWarn("Failed to set application menu", e);
-    }
+      },
+      { role: "viewMenu" },
+      { role: "windowMenu" }
+    );
+    template.push({
+      role: "help",
+      submenu: [
+        {
+          label: "Check for Updates…",
+          click: async () => {
+            if (!app.isPackaged) {
+              await dialog.showMessageBox({
+                type: "info",
+                message: "Updates are only available in packaged builds.",
+              });
+              return;
+            }
+            try {
+              mainLog("Manual update check initiated");
+              const result = await autoUpdater.checkForUpdates();
+              if (!result?.updateInfo) {
+                await dialog.showMessageBox({
+                  type: "info",
+                  message: "You’re up to date.",
+                });
+              }
+            } catch (e) {
+              mainWarn("Manual checkForUpdates failed", e);
+              await dialog.showMessageBox({
+                type: "error",
+                message: "Failed to check for updates.",
+              });
+            }
+          },
+        },
+        {
+          label: "Open Logs Folder",
+          click: async () => {
+            if (!logsDir) ensureLogStreams();
+            if (logsDir) await shell.openPath(logsDir);
+          },
+        },
+      ],
+    });
+    const menu = Menu.buildFromTemplate(template);
+    Menu.setApplicationMenu(menu);
+  } catch (e) {
+    mainWarn("Failed to set application menu", e);
   }
 
   app.on("activate", function () {

@@ -65,6 +65,36 @@ const cmuxAPI = {
       );
     },
   },
+  // UI helpers
+  ui: {
+    focusWebContents: (id: number) => {
+      return ipcRenderer.invoke("cmux:ui:focus-webcontents", id) as Promise<
+        { ok: boolean }
+      >;
+    },
+    restoreLastFocusInWebContents: (id: number) => {
+      return ipcRenderer.invoke(
+        "cmux:ui:webcontents-restore-last-focus",
+        id
+      ) as Promise<{ ok: boolean }>;
+    },
+    restoreLastFocusInFrame: (
+      contentsId: number,
+      frameRoutingId: number,
+      frameProcessId: number
+    ) => {
+      return ipcRenderer.invoke(
+        "cmux:ui:frame-restore-last-focus",
+        { contentsId, frameRoutingId, frameProcessId }
+      ) as Promise<{ ok: boolean }>;
+    },
+    setCommandPaletteOpen: (open: boolean) => {
+      return ipcRenderer.invoke(
+        "cmux:ui:set-command-palette-open",
+        Boolean(open)
+      ) as Promise<{ ok: boolean }>;
+    },
+  },
 };
 
 contextBridge.exposeInMainWorld("electron", electronAPI);
