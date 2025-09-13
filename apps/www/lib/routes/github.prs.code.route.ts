@@ -15,34 +15,35 @@ const Query = z
     owner: z.string().min(1).openapi({ description: "GitHub owner/org" }),
     repo: z.string().min(1).openapi({ description: "GitHub repo name" }),
     number: z.coerce.number().min(1).openapi({ description: "PR number" }),
-    includeContents: z
-      .coerce
+    includeContents: z.coerce
       .boolean()
       .optional()
       .default(false)
       .openapi({ description: "If true, include head file contents (base64)" }),
-    includePatch: z
-      .coerce
+    includePatch: z.coerce
       .boolean()
       .optional()
       .default(true)
       .openapi({ description: "If true, include unified diff patch hunks" }),
-    maxFileBytes: z
-      .coerce
+    maxFileBytes: z.coerce
       .number()
       .min(1)
       .max(5_000_000)
       .optional()
       .default(1_000_000)
-      .openapi({ description: "Skip fetching contents when file size exceeds this (default 1MB)" }),
-    maxPages: z
-      .coerce
+      .openapi({
+        description:
+          "Skip fetching contents when file size exceeds this (default 1MB)",
+      }),
+    maxPages: z.coerce
       .number()
       .min(1)
       .max(50)
       .optional()
       .default(10)
-      .openapi({ description: "Paginate PR files up to this many pages (default 10)" }),
+      .openapi({
+        description: "Paginate PR files up to this many pages (default 10)",
+      }),
   })
   .openapi("GithubPrsCodeQuery");
 
@@ -129,7 +130,9 @@ githubPrsCodeRouter.openapi(
       isActive?: boolean | null;
     };
     const target = (connections as Conn[]).find(
-      (co) => (co.isActive ?? true) && (co.accountLogin ?? "").toLowerCase() === owner.toLowerCase()
+      (co) =>
+        (co.isActive ?? true) &&
+        (co.accountLogin ?? "").toLowerCase() === owner.toLowerCase()
     );
     if (!target) return c.text("Installation not found for owner", 404);
 
@@ -147,7 +150,7 @@ githubPrsCodeRouter.openapi(
       "GET /repos/{owner}/{repo}/pulls/{pull_number}",
       { owner, repo, pull_number: number }
     );
-    const pr = prRes.data
+    const pr = prRes.data;
     const headSha = pr.head.sha;
     const baseSha = pr.base.sha;
 
@@ -178,7 +181,7 @@ githubPrsCodeRouter.openapi(
           page,
         }
       );
-      const chunk = (filesRes.data as unknown as PrFile[]) || [];
+      const chunk = filesRes.data || [];
       files.push(...chunk);
       if (chunk.length < 100) break;
     }
@@ -217,11 +220,18 @@ githubPrsCodeRouter.openapi(
             type?: string;
           };
           const typ = contentObj.type;
-          const size = typeof contentObj.size === "number" ? contentObj.size : undefined;
+          const size =
+            typeof contentObj.size === "number" ? contentObj.size : undefined;
           if (typ === "file" && (size === undefined || size <= maxFileBytes)) {
-            if (contentObj.encoding === "base64" && typeof contentObj.content === "string") {
+            if (
+              contentObj.encoding === "base64" &&
+              typeof contentObj.content === "string"
+            ) {
               entry.size = size;
-              entry.contents = { encoding: "base64", content: contentObj.content };
+              entry.contents = {
+                encoding: "base64",
+                content: contentObj.content,
+              };
             } else {
               entry.truncated = true; // unexpected format
               entry.size = size;
@@ -254,11 +264,18 @@ githubPrsCodeRouter.openapi(
             type?: string;
           };
           const typ = baseObj.type;
-          const size = typeof baseObj.size === "number" ? baseObj.size : undefined;
+          const size =
+            typeof baseObj.size === "number" ? baseObj.size : undefined;
           if (typ === "file" && (size === undefined || size <= maxFileBytes)) {
-            if (baseObj.encoding === "base64" && typeof baseObj.content === "string") {
+            if (
+              baseObj.encoding === "base64" &&
+              typeof baseObj.content === "string"
+            ) {
               entry.sizeBase = size;
-              entry.baseContents = { encoding: "base64", content: baseObj.content };
+              entry.baseContents = {
+                encoding: "base64",
+                content: baseObj.content,
+              };
             } else {
               entry.truncatedBase = true;
               entry.sizeBase = size;
