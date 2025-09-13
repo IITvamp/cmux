@@ -139,14 +139,14 @@ export function setupSocketHandlers(
     const safeTeam = initialTeam || "default";
     if (!hasRefreshedGithub && initialToken) {
       hasRefreshedGithub = true;
-      runWithAuth(initialToken, initialAuthJson, () => {
+      runWithAuth(initialToken, initialAuthJson, async () => {
         if (!initialTeam) {
           serverLogger.warn(
             "No team provided on socket handshake; skipping initial GitHub refresh"
           );
           return;
         }
-        refreshGitHubData({ teamSlugOrId: initialTeam }).catch((error) => {
+        await refreshGitHubData({ teamSlugOrId: initialTeam }).catch((error) => {
           serverLogger.error("Background refresh failed:", error);
         });
       });
@@ -1210,17 +1210,17 @@ export function setupSocketHandlers(
           callback({ success: true, repos: reposByOrg });
 
           // Refresh in the background to add any new repos
-          runWithAuthToken(initialToken, () =>
-            refreshGitHubData({ teamSlugOrId }).catch((error) => {
+          runWithAuthToken(initialToken, async () => {
+            await refreshGitHubData({ teamSlugOrId }).catch((error) => {
               serverLogger.error("Background refresh failed:", error);
-            })
-          );
+            });
+          });
           return;
         }
 
         // If no repos exist, do a full fetch
-        await runWithAuthToken(initialToken, () =>
-          refreshGitHubData({ teamSlugOrId })
+        await runWithAuthToken(initialToken, async () =>
+          await refreshGitHubData({ teamSlugOrId })
         );
         const reposByOrg = await getConvex().query(api.github.getReposByOrg, {
           teamSlugOrId,
