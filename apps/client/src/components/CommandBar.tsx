@@ -162,7 +162,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
   return (
     <>
       <div
-        className="fixed inset-0 z-50"
+        className="fixed inset-0 z-[var(--z-commandbar)]"
         onClick={() => {
           setOpen(false);
           setSearch("");
@@ -175,7 +175,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
         label="Command Menu"
         title="Command Menu"
         loop
-        className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh] pointer-events-none"
+        className="fixed inset-0 z-[var(--z-commandbar)] flex items-start justify-center pt-[20vh] pointer-events-none"
         onKeyDown={(e) => {
           if (e.key === "Escape") {
             setOpen(false);

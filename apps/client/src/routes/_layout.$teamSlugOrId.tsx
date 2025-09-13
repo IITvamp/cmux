@@ -121,7 +121,7 @@ function LayoutComponent() {
           position: "fixed",
           bottom: "16px",
           right: "16px",
-          zIndex: 9999,
+          zIndex: "var(--z-overlay)",
           background: "#ffbf00",
           color: "#000",
           border: "none",

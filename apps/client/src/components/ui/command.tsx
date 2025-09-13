@@ -129,7 +129,7 @@ const CommandDialog = ({
     <Popover.Root open={open} onOpenChange={onOpenChange}>
       <Popover.Portal>
         <Popover.Content
-          className="fixed left-1/2 top-1/2 z-50 w-full max-w-[450px] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 p-0 shadow-md outline-none"
+          className="fixed left-1/2 top-1/2 z-[var(--z-modal)] w-full max-w-[450px] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 p-0 shadow-md outline-none"
           onOpenAutoFocus={(e) => e.preventDefault()}
         >
           <Command {...props}>{children}</Command>

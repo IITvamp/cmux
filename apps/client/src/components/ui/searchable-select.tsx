@@ -308,7 +308,7 @@ export function SearchableSelect({
           align="start"
           sideOffset={2}
           className={clsx(
-            "z-50 rounded-md border overflow-hidden",
+            "z-[var(--z-modal)] rounded-md border overflow-hidden",
             "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950",
             // Fade out on close; open remains instant
             "p-0 drop-shadow-xs outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0"
