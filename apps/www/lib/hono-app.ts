@@ -4,6 +4,9 @@ import { githubPrsBackfillRouter } from "@/lib/routes/github.prs.backfill.route"
 import { githubPrsBackfillRepoRouter } from "@/lib/routes/github.prs.backfill-repo.route";
 import { githubPrsCodeRouter } from "@/lib/routes/github.prs.code.route";
 import { githubPrsPatchRouter } from "@/lib/routes/github.prs.patch.route";
+import { githubPrsFilesRouter } from "@/lib/routes/github.prs.files.route";
+import { githubPrsFileContentsRouter } from "@/lib/routes/github.prs.file-contents.route";
+import { githubPrsFileContentsBatchRouter } from "@/lib/routes/github.prs.file-contents-batch.route";
 import { githubUserRouter } from "@/lib/routes/github.user.route";
 import {
   booksRouter,
@@ -94,6 +97,9 @@ app.route("/", githubPrsBackfillRouter);
 app.route("/", githubPrsBackfillRepoRouter);
 app.route("/", githubPrsCodeRouter);
 app.route("/", githubPrsPatchRouter);
+app.route("/", githubPrsFilesRouter);
+app.route("/", githubPrsFileContentsRouter);
+app.route("/", githubPrsFileContentsBatchRouter);
 app.route("/", githubUserRouter);
 app.route("/", morphRouter);
 app.route("/", environmentsRouter);

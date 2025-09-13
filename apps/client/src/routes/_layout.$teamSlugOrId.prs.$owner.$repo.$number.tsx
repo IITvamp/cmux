@@ -1,11 +1,18 @@
 import { GitDiffViewer } from "@/components/git-diff-viewer";
 import { api } from "@cmux/convex/api";
 import { type ReplaceDiffEntry } from "@cmux/shared/diff-types";
-import { getApiIntegrationsGithubPrsCodeOptions } from "@cmux/www-openapi-client/react-query";
+import {
+  getApiIntegrationsGithubPrsFilesOptions,
+  getApiIntegrationsGithubPrsFileContentsOptions,
+} from "@cmux/www-openapi-client/react-query";
+import {
+  postApiIntegrationsGithubPrsFileContentsBatch,
+  type PostApiIntegrationsGithubPrsFileContentsBatchResponse,
+} from "@cmux/www-openapi-client";
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { useQuery as useConvexQuery } from "convex/react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 function formatTimeAgo(input?: number): string {
   if (!input) return "";
@@ -31,15 +38,12 @@ export const Route = createFileRoute(
   loader: async (opts) => {
     const { teamSlugOrId, owner, repo, number } = opts.params;
     void opts.context.queryClient.ensureQueryData(
-      getApiIntegrationsGithubPrsCodeOptions({
+      getApiIntegrationsGithubPrsFilesOptions({
         query: {
           team: teamSlugOrId,
           owner,
           repo,
           number: Number(number),
-          includeContents: true,
-          includePatch: true,
-          maxFileBytes: 500000,
           maxPages: 10,
         },
       })
@@ -62,74 +66,165 @@ function PRDetails() {
     );
   }, [prs, owner, repo, number]);
 
-  const codeQuery = useQuery({
-    ...getApiIntegrationsGithubPrsCodeOptions({
+  const filesQuery = useQuery({
+    ...getApiIntegrationsGithubPrsFilesOptions({
       query: {
         team: teamSlugOrId,
         owner,
         repo,
         number: Number(number),
-        includeContents: true,
-        includePatch: true,
-        maxFileBytes: 500000,
         maxPages: 10,
       },
     }),
     enabled: !!target,
   });
 
-  const diffs = useMemo<ReplaceDiffEntry[]>(() => {
-    const data = codeQuery.data;
-    if (!data) return [];
-    const decodeBase64 = (b64?: string): string => {
-      if (!b64) return "";
-      try {
-        // Decode base64 safely to UTF-8
-        const bin = atob(b64);
-        const bytes = new Uint8Array(bin.length);
-        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-        return new TextDecoder().decode(bytes);
-      } catch {
-        try {
-          return atob(b64);
-        } catch {
-          return "";
-        }
-      }
-    };
-    return (data.files || []).map((f) => {
+  const [diffs, setDiffs] = useState<ReplaceDiffEntry[]>([]);
+  useEffect(() => {
+    const data = filesQuery.data;
+    if (!data) return;
+    const mapped: ReplaceDiffEntry[] = (data.files || []).map((f) => {
       const status =
         f.status === "removed"
           ? ("deleted" as const)
           : f.status === "modified"
-            ? ("modified" as const)
-            : f.status === "renamed"
-              ? ("renamed" as const)
-              : ("added" as const);
-      const oldContent = decodeBase64(f.baseContents?.content);
-      const newContent = decodeBase64(f.contents?.content);
-      const entry: ReplaceDiffEntry = {
+          ? ("modified" as const)
+          : f.status === "renamed"
+          ? ("renamed" as const)
+          : ("added" as const);
+      return {
         filePath: f.filename,
         oldPath: f.previous_filename ?? undefined,
         status,
         additions: f.additions ?? 0,
         deletions: f.deletions ?? 0,
         patch: f.patch,
-        oldContent: status === "added" ? "" : oldContent,
-        newContent: status === "deleted" ? "" : newContent,
-        isBinary:
-          // Heuristic: if neither side has content and patch absent, treat as binary/omitted
-          (!f.contents && !f.baseContents && !f.patch) || false,
-        contentOmitted: Boolean(
-          (f.truncated && !f.contents) || (f.truncatedBase && !f.baseContents)
-        ),
-        oldSize: f.sizeBase,
-        newSize: f.size,
+        oldContent: status === "added" ? "" : "",
+        newContent: status === "deleted" ? "" : "",
+        isBinary: false,
+        contentOmitted: true,
+        oldSize: undefined,
+        newSize: undefined,
         patchSize: f.patch ? f.patch.length : undefined,
-      };
-      return entry;
+      } satisfies ReplaceDiffEntry;
     });
-  }, [codeQuery.data]);
+    setDiffs(mapped);
+  }, [filesQuery.data]);
+
+  const router = useRouter();
+  const decodeBase64 = (b64?: string): string => {
+    if (!b64) return "";
+    try {
+      const bin = atob(b64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return new TextDecoder().decode(bytes);
+    } catch {
+      try {
+        return atob(b64);
+      } catch {
+        return "";
+      }
+    }
+  };
+
+  const handleToggle = (filePath: string, isExpanded: boolean) => {
+    if (!isExpanded) return;
+    const current = diffs.find((d) => d.filePath === filePath);
+    if (!current) return;
+    const needsHead = (current.newContent ?? "") === "" && current.status !== "deleted";
+    const needsBase = (current.oldContent ?? "") === "" && current.status !== "added";
+    if (!needsHead && !needsBase) return;
+    const options = getApiIntegrationsGithubPrsFileContentsOptions({
+      query: {
+        team: teamSlugOrId,
+        owner,
+        repo,
+        number: Number(number),
+        path: filePath,
+        previous_filename: current.oldPath,
+        which: "both",
+        maxFileBytes: 500000,
+      },
+    });
+    void router.options.context?.queryClient.ensureQueryData(options).then((data) => {
+      if (!data) return;
+      setDiffs((prev) =>
+        prev.map((d) => {
+          if (d.filePath !== filePath) return d;
+          return {
+            ...d,
+            oldContent: d.status === "added" ? "" : decodeBase64(data.base?.content),
+            newContent: d.status === "deleted" ? "" : decodeBase64(data.head?.content),
+            contentOmitted: false,
+          };
+        })
+      );
+    });
+  };
+
+  // Background prefetch of all file contents with limited concurrency (batch).
+  useEffect(() => {
+    const data = filesQuery.data;
+    if (!data || diffs.length === 0) return;
+    let cancelled = false;
+    const maxConcurrency = 2;
+    const batchSize = 12;
+    // Build prefetch queue: prioritize by magnitude of changes (additions+deletions) desc
+    const queue = [...diffs]
+      .filter((d) => d.contentOmitted)
+      .sort((a, b) => b.additions + b.deletions - (a.additions + a.deletions));
+
+    let inFlight = 0;
+    const next = () => {
+      if (cancelled) return;
+      if (inFlight >= maxConcurrency) return;
+      if (queue.length === 0) return;
+      const group = queue.splice(0, batchSize);
+      inFlight += 1;
+      void postApiIntegrationsGithubPrsFileContentsBatch({
+        body: {
+          team: teamSlugOrId,
+          owner,
+          repo,
+          number: Number(number),
+          files: group.map((g) => ({ path: g.filePath, previous_filename: g.oldPath })),
+          which: "both",
+          maxFileBytes: 500000,
+        },
+      })
+        .then(({ data }) => {
+          const res = data as PostApiIntegrationsGithubPrsFileContentsBatchResponse | undefined;
+          if (cancelled || !res) return;
+          const byPath = new Map(
+            (res.results ?? []).map((r) => [r.path, r] as const)
+          );
+          setDiffs((prev) =>
+            prev.map((d) => {
+              const r = byPath.get(d.filePath);
+              if (!r) return d;
+              return {
+                ...d,
+                oldContent:
+                  d.status === "added" ? "" : decodeBase64(r.base?.content),
+                newContent:
+                  d.status === "deleted" ? "" : decodeBase64(r.head?.content),
+                contentOmitted: false,
+              };
+            })
+          );
+        })
+        .finally(() => {
+          inFlight -= 1;
+          next();
+        });
+      if (inFlight < maxConcurrency) next();
+    };
+    for (let i = 0; i < maxConcurrency; i++) next();
+    return () => {
+      cancelled = true;
+    };
+  }, [filesQuery.data, diffs, router, teamSlugOrId, owner, repo, number]);
 
   if (!target) {
     return (
@@ -228,11 +323,11 @@ function PRDetails() {
         </div>
       </div>
       <div className="mt-6">
-        {codeQuery.isLoading ? (
+        {filesQuery.isLoading ? (
           <div className="text-neutral-500 dark:text-neutral-400 text-sm">
             Loading diffs…
           </div>
-        ) : codeQuery.isError ? (
+        ) : filesQuery.isError ? (
           <div className="text-red-600 dark:text-red-400 text-sm">
             Failed to load diffs
           </div>
@@ -241,7 +336,7 @@ function PRDetails() {
             No file changes
           </div>
         ) : (
-          <GitDiffViewer diffs={diffs} />
+          <GitDiffViewer diffs={diffs} onFileToggle={handleToggle} />
         )}
       </div>
     </div>

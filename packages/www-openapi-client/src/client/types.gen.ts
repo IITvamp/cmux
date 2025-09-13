@@ -194,6 +194,87 @@ export type GithubPrCodeResponse = {
     files: Array<GithubPrFile>;
 };
 
+export type GithubPrsFilesResponse = {
+    repoFullName: string;
+    number: number;
+    head: {
+        ref?: string;
+        sha?: string;
+    };
+    base: {
+        ref?: string;
+        sha?: string;
+    };
+    files: Array<{
+        filename: string;
+        previous_filename?: string;
+        status: string;
+        additions?: number;
+        deletions?: number;
+        changes?: number;
+        patch?: string;
+    }>;
+};
+
+export type GithubPrsFileContentsResponse = {
+    path: string;
+    head?: {
+        encoding: 'base64';
+        content: string;
+        size?: number;
+    };
+    base?: {
+        encoding: 'base64';
+        content: string;
+        size?: number;
+    };
+    truncatedHead?: boolean;
+    truncatedBase?: boolean;
+};
+
+export type GithubPrsFileContentsBatchResponse = {
+    repoFullName: string;
+    number: number;
+    head: {
+        ref?: string;
+        sha?: string;
+    };
+    base: {
+        ref?: string;
+        sha?: string;
+    };
+    results: Array<{
+        path: string;
+        head?: {
+            encoding: 'base64';
+            content: string;
+            size?: number;
+        };
+        base?: {
+            encoding: 'base64';
+            content: string;
+            size?: number;
+        };
+        truncatedHead?: boolean;
+        truncatedBase?: boolean;
+        headSize?: number;
+        baseSize?: number;
+    }>;
+};
+
+export type GithubPrsFileContentsBatchBody = {
+    team: string;
+    owner: string;
+    repo: string;
+    number: number;
+    files: Array<{
+        path: string;
+        previous_filename?: string;
+    }>;
+    which?: 'both' | 'head' | 'base';
+    maxFileBytes?: number;
+};
+
 export type GithubUserInfo = {
     /**
      * GitHub numeric user id
@@ -923,6 +1004,102 @@ export type GetApiIntegrationsGithubPrsRawResponses = {
 };
 
 export type GetApiIntegrationsGithubPrsRawResponse = GetApiIntegrationsGithubPrsRawResponses[keyof GetApiIntegrationsGithubPrsRawResponses];
+
+export type GetApiIntegrationsGithubPrsFilesData = {
+    body?: never;
+    path?: never;
+    query: {
+        team: string;
+        owner: string;
+        repo: string;
+        number: number;
+        maxPages?: number;
+    };
+    url: '/api/integrations/github/prs/files';
+};
+
+export type GetApiIntegrationsGithubPrsFilesErrors = {
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Not found
+     */
+    404: unknown;
+};
+
+export type GetApiIntegrationsGithubPrsFilesResponses = {
+    /**
+     * OK
+     */
+    200: GithubPrsFilesResponse;
+};
+
+export type GetApiIntegrationsGithubPrsFilesResponse = GetApiIntegrationsGithubPrsFilesResponses[keyof GetApiIntegrationsGithubPrsFilesResponses];
+
+export type GetApiIntegrationsGithubPrsFileContentsData = {
+    body?: never;
+    path?: never;
+    query: {
+        team: string;
+        owner: string;
+        repo: string;
+        number: number;
+        path: string;
+        previous_filename?: string;
+        which?: 'both' | 'head' | 'base';
+        maxFileBytes?: number;
+    };
+    url: '/api/integrations/github/prs/file-contents';
+};
+
+export type GetApiIntegrationsGithubPrsFileContentsErrors = {
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Not found
+     */
+    404: unknown;
+};
+
+export type GetApiIntegrationsGithubPrsFileContentsResponses = {
+    /**
+     * OK
+     */
+    200: GithubPrsFileContentsResponse;
+};
+
+export type GetApiIntegrationsGithubPrsFileContentsResponse = GetApiIntegrationsGithubPrsFileContentsResponses[keyof GetApiIntegrationsGithubPrsFileContentsResponses];
+
+export type PostApiIntegrationsGithubPrsFileContentsBatchData = {
+    body: GithubPrsFileContentsBatchBody;
+    path?: never;
+    query?: never;
+    url: '/api/integrations/github/prs/file-contents/batch';
+};
+
+export type PostApiIntegrationsGithubPrsFileContentsBatchErrors = {
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Not found
+     */
+    404: unknown;
+};
+
+export type PostApiIntegrationsGithubPrsFileContentsBatchResponses = {
+    /**
+     * OK
+     */
+    200: GithubPrsFileContentsBatchResponse;
+};
+
+export type PostApiIntegrationsGithubPrsFileContentsBatchResponse = PostApiIntegrationsGithubPrsFileContentsBatchResponses[keyof PostApiIntegrationsGithubPrsFileContentsBatchResponses];
 
 export type GetApiIntegrationsGithubUserData = {
     body?: never;
