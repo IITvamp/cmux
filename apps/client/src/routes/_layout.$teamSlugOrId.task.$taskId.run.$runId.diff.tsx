@@ -90,8 +90,6 @@ function RunDiffPage() {
     return taskRuns?.find((run) => run._id === runId);
   }, [runId, taskRuns]);
 
-  // Smart diff – no separate latest/landed modes
-
   // 404 if selected run is missing
   if (!selectedRun) {
     return (
@@ -107,8 +105,6 @@ function RunDiffPage() {
   const repoFullName = task?.projectFullName || "";
   const ref1 = task?.baseBranch || "main";
   const ref2 = selectedRun.newBranch || "";
-
-  // viewMode is defined above; keep it in sync with selectedRun
 
   return (
     <FloatingPane>
