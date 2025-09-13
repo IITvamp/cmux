@@ -122,7 +122,7 @@ pub fn diff_refs(opts: GitDiffRefsOptions) -> Result<Vec<DiffEntry>> {
   let _d_r2 = t_r2.elapsed();
   let t_merge_base = Instant::now();
   // Compute merge-base; prefer BFS (pure gix) to avoid shelling out
-  let base_oid = crate::merge_base::merge_base(&cwd, &repo, r1_oid, r2_oid, crate::merge_base::MergeBaseStrategy::Git)
+  let base_oid = crate::merge_base::merge_base(&cwd, &repo, r1_oid, r2_oid, crate::merge_base::MergeBaseStrategy::Bfs)
     .unwrap_or(r1_oid);
   let _d_merge_base = t_merge_base.elapsed();
   #[cfg(debug_assertions)]
