@@ -30,6 +30,19 @@ node ./scripts/generate-icons.mjs
 # Build electron bundles
 npx electron-vite build -c electron.vite.config.ts
 
+# Resolve monorepo root and node_modules location
+ROOT_DIR="$(cd "$(dirname "$0")"/../.. && pwd)"
+
+# Prefer local node_modules if present; otherwise use hoisted root node_modules
+if [ -d "./node_modules" ]; then
+  NODE_MODULES_DIR="./node_modules"
+elif [ -d "$ROOT_DIR/node_modules" ]; then
+  NODE_MODULES_DIR="$ROOT_DIR/node_modules"
+else
+  echo "ERROR: node_modules not found in client or repository root." >&2
+  exit 1
+fi
+
 # Create a temporary directory for packaging
 TEMP_DIR=$(mktemp -d)
 APP_NAME="cmux"
@@ -38,7 +51,13 @@ APP_DIR="$TEMP_DIR/$APP_NAME.app"
 echo "Creating app structure at $APP_DIR..."
 
 # Download Electron binary if not cached
-ELECTRON_VERSION="37.2.4"
+# Detect Electron version from installed package to avoid mismatches
+if [ -f "$NODE_MODULES_DIR/electron/package.json" ]; then
+  ELECTRON_VERSION=$(node -p "require('$NODE_MODULES_DIR/electron/package.json').version")
+else
+  # Fallback to a reasonable default if detection fails
+  ELECTRON_VERSION="38.0.0"
+fi
 ELECTRON_CACHE="${HOME}/.cache/electron"
 ARCH=$(uname -m)
 
@@ -75,8 +94,8 @@ mkdir -p "$APP_ASAR_DIR"
 cp -r out "$APP_ASAR_DIR/"
 cp package.json "$APP_ASAR_DIR/"
 
-echo "Copying dependencies..."
-cp -r node_modules "$APP_ASAR_DIR/"
+echo "Copying dependencies from $NODE_MODULES_DIR..."
+cp -r "$NODE_MODULES_DIR" "$APP_ASAR_DIR/"
 
 # Update Info.plist
 echo "Updating app metadata..."
