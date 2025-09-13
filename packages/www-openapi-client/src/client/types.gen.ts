@@ -102,6 +102,98 @@ export type GithubReposResponse = {
     repos: Array<GithubRepo>;
 };
 
+export type GithubPullRequestItem = {
+    id: number;
+    number: number;
+    title: string;
+    state: 'open' | 'closed';
+    user?: {
+        login: string;
+        id: number;
+        avatar_url?: string;
+    };
+    repository_full_name: string;
+    html_url: string;
+    created_at?: string;
+    updated_at?: string;
+    comments?: number;
+};
+
+export type GithubPullRequestsResponse = {
+    total_count: number;
+    pullRequests: Array<GithubPullRequestItem>;
+};
+
+export type GithubPrsBackfillBody = {
+    /**
+     * Team slug or UUID
+     */
+    team: string;
+    /**
+     * GitHub PR URL like https://github.com/{owner}/{repo}/pull/{number}
+     */
+    url: string;
+};
+
+export type GithubPrsBackfillRepoBody = {
+    /**
+     * Team slug or UUID
+     */
+    team: string;
+    /**
+     * owner/repo
+     */
+    repoFullName: string;
+    /**
+     * PR state to backfill (default all)
+     */
+    state?: 'open' | 'closed' | 'all';
+    /**
+     * Safety cap on number of pages (default 50)
+     */
+    maxPages?: number;
+};
+
+export type GithubPrFile = {
+    filename: string;
+    status: string;
+    sha?: string;
+    additions?: number;
+    deletions?: number;
+    changes?: number;
+    previous_filename?: string;
+    patch?: string;
+    size?: number;
+    contents?: {
+        encoding: 'base64';
+        content: string;
+    };
+    truncated?: boolean;
+    baseContents?: {
+        encoding: 'base64';
+        content: string;
+    };
+    truncatedBase?: boolean;
+    sizeBase?: number;
+    html_url?: string;
+    raw_url?: string;
+    blob_url?: string;
+};
+
+export type GithubPrCodeResponse = {
+    repoFullName: string;
+    number: number;
+    head: {
+        ref?: string;
+        sha?: string;
+    };
+    base: {
+        ref?: string;
+        sha?: string;
+    };
+    files: Array<GithubPrFile>;
+};
+
 export type GithubUserInfo = {
     /**
      * GitHub numeric user id
@@ -601,6 +693,236 @@ export type GetApiIntegrationsGithubReposResponses = {
 };
 
 export type GetApiIntegrationsGithubReposResponse = GetApiIntegrationsGithubReposResponses[keyof GetApiIntegrationsGithubReposResponses];
+
+export type GetApiIntegrationsGithubPrsData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * Team slug or UUID
+         */
+        team: string;
+        /**
+         * GitHub App installation ID to query
+         */
+        installationId?: number | null;
+        /**
+         * Optional search term to filter by title or author
+         */
+        q?: string;
+        /**
+         * Filter PRs by state (default open)
+         */
+        state?: 'open' | 'closed' | 'all';
+        /**
+         * 1-based page index (default 1)
+         */
+        page?: number;
+        /**
+         * Results per page (default 20, max 100)
+         */
+        per_page?: number;
+    };
+    url: '/api/integrations/github/prs';
+};
+
+export type GetApiIntegrationsGithubPrsErrors = {
+    /**
+     * Bad request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Not configured
+     */
+    501: unknown;
+};
+
+export type GetApiIntegrationsGithubPrsResponses = {
+    /**
+     * OK
+     */
+    200: GithubPullRequestsResponse;
+};
+
+export type GetApiIntegrationsGithubPrsResponse = GetApiIntegrationsGithubPrsResponses[keyof GetApiIntegrationsGithubPrsResponses];
+
+export type PostApiIntegrationsGithubPrsBackfillData = {
+    body: GithubPrsBackfillBody;
+    path?: never;
+    query?: never;
+    url: '/api/integrations/github/prs/backfill';
+};
+
+export type PostApiIntegrationsGithubPrsBackfillErrors = {
+    /**
+     * Bad request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Not configured
+     */
+    501: unknown;
+};
+
+export type PostApiIntegrationsGithubPrsBackfillResponses = {
+    /**
+     * OK
+     */
+    200: unknown;
+};
+
+export type PostApiIntegrationsGithubPrsBackfillRepoData = {
+    body: GithubPrsBackfillRepoBody;
+    path?: never;
+    query?: never;
+    url: '/api/integrations/github/prs/backfill-repo';
+};
+
+export type PostApiIntegrationsGithubPrsBackfillRepoErrors = {
+    /**
+     * Bad request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * Not configured
+     */
+    501: unknown;
+};
+
+export type PostApiIntegrationsGithubPrsBackfillRepoResponses = {
+    /**
+     * OK
+     */
+    200: unknown;
+};
+
+export type GetApiIntegrationsGithubPrsCodeData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * Team slug or UUID
+         */
+        team: string;
+        /**
+         * GitHub owner/org
+         */
+        owner: string;
+        /**
+         * GitHub repo name
+         */
+        repo: string;
+        /**
+         * PR number
+         */
+        number: number;
+        /**
+         * If true, include head file contents (base64)
+         */
+        includeContents?: boolean | null;
+        /**
+         * If true, include unified diff patch hunks
+         */
+        includePatch?: boolean | null;
+        /**
+         * Skip fetching contents when file size exceeds this (default 1MB)
+         */
+        maxFileBytes?: number;
+        /**
+         * Paginate PR files up to this many pages (default 10)
+         */
+        maxPages?: number;
+    };
+    url: '/api/integrations/github/prs/code';
+};
+
+export type GetApiIntegrationsGithubPrsCodeErrors = {
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Not found
+     */
+    404: unknown;
+};
+
+export type GetApiIntegrationsGithubPrsCodeResponses = {
+    /**
+     * OK
+     */
+    200: GithubPrCodeResponse;
+};
+
+export type GetApiIntegrationsGithubPrsCodeResponse = GetApiIntegrationsGithubPrsCodeResponses[keyof GetApiIntegrationsGithubPrsCodeResponses];
+
+export type GetApiIntegrationsGithubPrsRawData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * Team slug or UUID
+         */
+        team: string;
+        /**
+         * GitHub owner/org
+         */
+        owner: string;
+        /**
+         * GitHub repo name
+         */
+        repo: string;
+        /**
+         * PR number
+         */
+        number: number;
+        /**
+         * Return .patch or .diff format (default patch)
+         */
+        format?: 'patch' | 'diff';
+    };
+    url: '/api/integrations/github/prs/raw';
+};
+
+export type GetApiIntegrationsGithubPrsRawErrors = {
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Not found
+     */
+    404: unknown;
+};
+
+export type GetApiIntegrationsGithubPrsRawResponses = {
+    /**
+     * OK
+     */
+    200: string;
+};
+
+export type GetApiIntegrationsGithubPrsRawResponse = GetApiIntegrationsGithubPrsRawResponses[keyof GetApiIntegrationsGithubPrsRawResponses];
 
 export type GetApiIntegrationsGithubUserData = {
     body?: never;

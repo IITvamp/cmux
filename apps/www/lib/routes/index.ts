@@ -7,3 +7,8 @@ export { environmentsRouter } from "./environments.route";
 export { sandboxesRouter } from "./sandboxes.route";
 export { githubUserRouter } from "./github.user.route";
 export { crownRouter } from "./crown.route";
+export { githubPrsRouter } from "./github.prs.route";
+export { githubPrsBackfillRouter } from "./github.prs.backfill.route";
+export { githubPrsBackfillRepoRouter } from "./github.prs.backfill-repo.route";
+export { githubPrsCodeRouter } from "./github.prs.code.route";
+export { githubPrsPatchRouter } from "./github.prs.patch.route";
