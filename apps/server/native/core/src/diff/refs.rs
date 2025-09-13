@@ -240,14 +240,14 @@ pub fn diff_refs(opts: GitDiffRefsOptions) -> Result<Vec<DiffEntry>> {
         e.newSize = Some(new_sz as i32);
         if old_sz + new_sz <= max_bytes {
           let t_diff = Instant::now();
+          // Use changes grouped by operations; count per-line inserts/deletes only.
           let diff = TextDiff::from_lines(&old_str, &new_str);
           let mut adds = 0i32; let mut dels = 0i32;
           for op in diff.ops() {
-            let tag = op.tag();
             for change in diff.iter_changes(op) {
-              match (tag, change.tag()) {
-                (similar::DiffTag::Insert, _) => adds += 1,
-                (similar::DiffTag::Delete, _) => dels += 1,
+              match change.tag() {
+                similar::ChangeTag::Insert => adds += 1,
+                similar::ChangeTag::Delete => dels += 1,
                 _ => {}
               }
             }

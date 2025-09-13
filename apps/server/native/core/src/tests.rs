@@ -1,6 +1,7 @@
 use super::*;
 use std::{fs, process::Command};
 use tempfile::tempdir;
+use std::path::{Path, PathBuf};
 
 fn run(cwd: &std::path::Path, cmd: &str) {
   let status = if cfg!(target_os = "windows") {
@@ -10,6 +11,14 @@ fn run(cwd: &std::path::Path, cmd: &str) {
   }
   .expect("spawn");
   assert!(status.success(), "command failed: {cmd}");
+}
+
+fn find_git_root(mut p: PathBuf) -> PathBuf {
+  loop {
+    if p.join(".git").exists() { return p; }
+    if !p.pop() { break; }
+  }
+  panic!(".git not found from test cwd");
 }
 
 #[test]
@@ -276,4 +285,86 @@ fn landed_diff_equal_tips_returns_empty() {
   })
   .expect("landed diff");
   assert!(out.is_empty(), "expected empty landed diff for equal tips");
+}
+
+#[test]
+fn refs_diff_numstat_matches_known_pairs() {
+  // Ensure we run against the repo root so refs are available
+  let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+  let repo_root = find_git_root(manifest_dir);
+  // Proactively fetch to make sure remote-only commits are present locally
+  run(&repo_root, "git fetch --all --tags --prune");
+
+  let cases = vec![
+    ("63f3bf66676b5bc7d495f6aaacabe75895ff2045", "0ae5f5b2098b4d7c5f3185943251fba8ee791575", 6, 30),
+    ("7a985028c3ecc57f110d91191a4d000c39f0a63e", "5f7d671ca484360df34e363511a0dd60ebe25c79", 294, 255),
+    ("4a886e5e769857b9af000224a33460f96fa66545", "08db1fe57536b2832a75b8eff5c1955e735157e6", 512, 232),
+    ("2f5f387feee44af6d540da544a0501678dcc2538", "2b292770f68d8c097420bd70fd446ca22a88ec62", 3, 3),
+  ];
+
+  for (from, to, exp_adds, exp_dels) in cases {
+    let out = crate::diff::refs::diff_refs(GitDiffRefsOptions{
+      ref1: from.into(),
+      ref2: to.into(),
+      repoFullName: None,
+      repoUrl: None,
+      teamSlugOrId: None,
+      originPathOverride: Some(repo_root.to_string_lossy().to_string()),
+      includeContents: Some(true),
+      maxBytes: Some(10*1024*1024),
+    }).expect("diff refs");
+    let adds: i32 = out.iter().map(|e| e.additions).sum();
+    let dels: i32 = out.iter().map(|e| e.deletions).sum();
+    assert_eq!((adds, dels), (exp_adds, exp_dels), "mismatch for {}..{} entries={}", from, to, out.len());
+  }
+}
+
+#[test]
+fn refs_diff_handles_binary_files() {
+  let tmp = tempdir().unwrap();
+  let work = tmp.path().join("repo");
+  std::fs::create_dir_all(&work).unwrap();
+  run(&work, "git init");
+  run(&work, "git -c user.email=a@b -c user.name=test checkout -b main");
+
+  // Commit an initial binary file with NUL bytes
+  let bin1: Vec<u8> = vec![0, 159, 146, 150, 0, 1, 2, 3, 4, 5];
+  std::fs::write(work.join("bin.dat"), &bin1).unwrap();
+  run(&work, "git add .");
+  run(&work, "git -c user.email=a@b -c user.name=test commit -m init");
+  let c1 = String::from_utf8(Command::new(if cfg!(target_os = "windows") {"cmd"} else {"sh"})
+    .arg(if cfg!(target_os = "windows") {"/C"} else {"-c"})
+    .arg("git rev-parse HEAD")
+    .current_dir(&work)
+    .output().unwrap().stdout).unwrap();
+  let c1 = c1.trim().to_string();
+
+  // Modify the binary file
+  let mut bin2 = bin1.clone();
+  bin2.extend_from_slice(&[6,7,8,9,0]);
+  std::fs::write(work.join("bin.dat"), &bin2).unwrap();
+  run(&work, "git add .");
+  run(&work, "git -c user.email=a@b -c user.name=test commit -m update");
+  let c2 = String::from_utf8(Command::new(if cfg!(target_os = "windows") {"cmd"} else {"sh"})
+    .arg(if cfg!(target_os = "windows") {"/C"} else {"-c"})
+    .arg("git rev-parse HEAD")
+    .current_dir(&work)
+    .output().unwrap().stdout).unwrap();
+  let c2 = c2.trim().to_string();
+
+  let out = crate::diff::refs::diff_refs(GitDiffRefsOptions{
+    ref1: c1.clone(),
+    ref2: c2.clone(),
+    repoFullName: None,
+    repoUrl: None,
+    teamSlugOrId: None,
+    originPathOverride: Some(work.to_string_lossy().to_string()),
+    includeContents: Some(true),
+    maxBytes: Some(1024*1024),
+  }).expect("diff refs binary");
+
+  let bin_entry = out.iter().find(|e| e.filePath == "bin.dat").expect("binary entry");
+  assert!(bin_entry.isBinary, "binary file should be detected");
+  assert_eq!(bin_entry.additions, 0);
+  assert_eq!(bin_entry.deletions, 0);
 }
