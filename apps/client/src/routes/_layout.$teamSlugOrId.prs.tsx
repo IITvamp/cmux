@@ -1,5 +1,11 @@
+import { convexQueryClient } from "@/contexts/convex/convex-query-client";
 import { api } from "@cmux/convex/api";
-import { createFileRoute, Outlet, useLocation, Link } from "@tanstack/react-router";
+import {
+  createFileRoute,
+  Link,
+  Outlet,
+  useLocation,
+} from "@tanstack/react-router";
 import { useQuery as useConvexQuery } from "convex/react";
 import { useMemo, useState } from "react";
 
@@ -24,6 +30,17 @@ function formatTimeAgo(input?: string): string {
 
 export const Route = createFileRoute("/_layout/$teamSlugOrId/prs")({
   component: PRsPage,
+  loader: async (opts) => {
+    const { teamSlugOrId } = opts.params;
+    convexQueryClient.convexClient.prewarmQuery({
+      query: api.github.listProviderConnections,
+      args: { teamSlugOrId },
+    });
+    convexQueryClient.convexClient.prewarmQuery({
+      query: api.github_prs.listPullRequests,
+      args: { teamSlugOrId, state: "open", search: "" },
+    });
+  },
 });
 
 function PRsPage() {
@@ -112,9 +129,13 @@ function PRsPage() {
             <ul>
               {filteredPrs.map((pr) => {
                 const [owner, repo] = pr.repoFullName.split("/", 2);
-                const isSelected = selectedKey === `${pr.repoFullName}#${pr.number}`;
+                const isSelected =
+                  selectedKey === `${pr.repoFullName}#${pr.number}`;
                 return (
-                  <li key={`${pr.repoFullName}#${pr.number}`} className="border-b border-neutral-100 dark:border-neutral-900">
+                  <li
+                    key={`${pr.repoFullName}#${pr.number}`}
+                    className="border-b border-neutral-100 dark:border-neutral-900"
+                  >
                     <Link
                       to="/$teamSlugOrId/prs/$owner/$repo/$number"
                       params={{
@@ -131,7 +152,12 @@ function PRsPage() {
                         {pr.title}
                       </div>
                       <div className="text-xs text-neutral-600 dark:text-neutral-400 mt-0.5">
-                        {pr.repoFullName}#{pr.number} • {pr.authorLogin || ""} • {formatTimeAgo(pr.updatedAt ? new Date(pr.updatedAt).toISOString() : undefined)}
+                        {pr.repoFullName}#{pr.number} • {pr.authorLogin || ""} •{" "}
+                        {formatTimeAgo(
+                          pr.updatedAt
+                            ? new Date(pr.updatedAt).toISOString()
+                            : undefined
+                        )}
                       </div>
                     </Link>
                   </li>
