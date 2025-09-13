@@ -214,14 +214,22 @@ function DashboardDiffPage() {
     ) {
       setViewMode("landed");
     }
-  }, [viewMode, latestQuery.isSuccess, latestQuery.data, search.ref1, search.ref2]);
+  }, [
+    viewMode,
+    latestQuery.isSuccess,
+    latestQuery.data,
+    search.ref1,
+    search.ref2,
+  ]);
 
   useEffect(() => {
     if (latestQuery.isError || landedQuery.isError) {
       const err = diffsQuery.error as unknown;
       const msg = err instanceof Error ? err.message : String(err ?? "");
       toast.error(
-        viewMode === "landed" ? "Failed to load landed diffs" : "Failed to compare refs",
+        viewMode === "landed"
+          ? "Failed to load landed diffs"
+          : "Failed to compare refs",
         { description: msg }
       );
     }
@@ -238,7 +246,7 @@ function DashboardDiffPage() {
   }, [socket, bothSelected, viewMode]);
 
   return (
-    <div className="flex flex-col h-full min-h-0 grow">
+    <div className="flex flex-col h-screen min-h-0 grow">
       <div className="border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 py-2 flex items-center gap-2">
         <SearchableSelect
           options={projectOptions}
@@ -291,7 +299,9 @@ function DashboardDiffPage() {
       </div>
       <div className="flex-1 flex flex-col bg-white dark:bg-neutral-950 overflow-y-auto grow">
         <div className="border-b border-neutral-200 dark:border-neutral-800 px-3 py-2 flex items-center gap-2">
-          <div className="text-sm text-neutral-600 dark:text-neutral-300">View:</div>
+          <div className="text-sm text-neutral-600 dark:text-neutral-300">
+            View:
+          </div>
           <div className="inline-flex rounded-md border border-neutral-200 dark:border-neutral-800 overflow-hidden">
             <button
               type="button"

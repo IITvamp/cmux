@@ -115,6 +115,14 @@ export const GitLandedRefsSchema = z.object({
   b0Ref: z.string().optional(),
 });
 
+// Smart diff request: returns latest or landed depending on branch state
+export const GitSmartRefsSchema = z.object({
+  repoFullName: z.string(),
+  baseRef: z.string(),
+  headRef: z.string(),
+  b0Ref: z.string().optional(),
+});
+
 export const GitFileSchema = z.object({
   path: z.string(),
   status: z.enum(["added", "modified", "deleted", "renamed"]),
@@ -429,6 +437,14 @@ export interface ClientToServerEvents {
   "start-task": (
     data: StartTask,
     callback: (response: TaskStarted | TaskError) => void
+  ) => void;
+  "git-diff-smart": (
+    data: z.infer<typeof GitSmartRefsSchema>,
+    callback: (
+      response:
+        | { ok: true; diffs: import("./diff-types.js").ReplaceDiffEntry[]; strategy?: "latest" | "landed" }
+        | { ok: false; error: string; diffs?: [] }
+    ) => void
   ) => void;
   "git-status": (data: GitStatusRequest) => void;
   "git-diff": (data: GitDiffRequest) => void;

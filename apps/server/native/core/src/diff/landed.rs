@@ -1,5 +1,6 @@
 use anyhow::Result;
 use gix::{bstr::ByteSlice, hash::ObjectId, Repository};
+use std::time::{Duration, Instant};
 
 use crate::types::{DiffEntry, GitDiffLandedOptions, GitDiffRefsOptions};
 
@@ -132,6 +133,7 @@ fn last_fp_block_ancestor_of_head(repo: &Repository, b_tip: ObjectId, b0: Object
 }
 
 pub fn landed_diff(opts: GitDiffLandedOptions) -> Result<Vec<DiffEntry>> {
+  let t_total = Instant::now();
   #[cfg(debug_assertions)]
   println!(
     "[native.landed] start baseRef={} headRef={} b0Ref={:?} originPathOverride={:?}",
@@ -141,22 +143,29 @@ pub fn landed_diff(opts: GitDiffLandedOptions) -> Result<Vec<DiffEntry>> {
   let max_bytes = opts.maxBytes.unwrap_or(950*1024);
 
   // Reuse ensure_repo & path resolution
+  let t_repo_path = Instant::now();
   let repo_path = if let Some(p) = &opts.originPathOverride { std::path::PathBuf::from(p) } else {
     let url = crate::repo::cache::resolve_repo_url(opts.repoFullName.as_deref(), opts.repoUrl.as_deref())?;
     crate::repo::cache::ensure_repo(&url)?
   };
+  let _d_repo_path = t_repo_path.elapsed();
   let cwd = repo_path.to_string_lossy().to_string();
+  let t_open = Instant::now();
   let repo = gix::open(&cwd)?;
+  let _d_open = t_open.elapsed();
 
   // Prefer origin/<ref> if plain ref fails
+  let t_resolve = Instant::now();
   let b_tip = oid_from_rev_parse(&repo, &opts.baseRef)
     .or_else(|_| oid_from_rev_parse(&repo, &format!("origin/{}", opts.baseRef)))?;
   let h_tip = oid_from_rev_parse(&repo, &opts.headRef)
     .or_else(|_| oid_from_rev_parse(&repo, &format!("origin/{}", opts.headRef)))?;
+  let _d_resolve = t_resolve.elapsed();
   #[cfg(debug_assertions)]
   println!("[native.landed] resolved base_tip={} head_tip={}", b_tip, h_tip);
 
   // Determine ref pair to diff via refs-diff
+  let t_detect = Instant::now();
   let pair: Option<(String, String)> = if let Some(b0s) = &opts.b0Ref {
     let b0 = oid_from_rev_parse(&repo, b0s)?;
     if let Some(c1) = first_commit_after_b0_on_first_parent(&repo, b_tip, b0) {
@@ -197,10 +206,12 @@ pub fn landed_diff(opts: GitDiffLandedOptions) -> Result<Vec<DiffEntry>> {
     }
   };
 
+  let _d_detect = t_detect.elapsed();
   if let Some((r1, r2)) = pair {
     #[cfg(debug_assertions)]
     println!("[native.landed] diff pair: {} -> {} (cwd={})", r1, r2, cwd);
     // Delegate to refs diff with chosen commit IDs
+    let t_refs = Instant::now();
     let d = crate::diff::refs::diff_refs(GitDiffRefsOptions{
       ref1: r1,
       ref2: r2,
@@ -211,10 +222,34 @@ pub fn landed_diff(opts: GitDiffLandedOptions) -> Result<Vec<DiffEntry>> {
       includeContents: Some(include),
       maxBytes: Some(max_bytes),
     })?;
+    let _d_refs = t_refs.elapsed();
+    let _d_total = t_total.elapsed();
+    #[cfg(debug_assertions)]
+    println!(
+      "[cmux_native_git] git_diff_landed timings: total={}ms repo_path={}ms open_repo={}ms resolve={}ms detect={}ms refs_diff={}ms out_len={}",
+      _d_total.as_millis(),
+      _d_repo_path.as_millis(),
+      _d_open.as_millis(),
+      _d_resolve.as_millis(),
+      _d_detect.as_millis(),
+      _d_refs.as_millis(),
+      d.len()
+    );
     #[cfg(debug_assertions)]
     println!("[native.landed] result entries={}", d.len());
     Ok(d)
   } else {
+    let _d_total = t_total.elapsed();
+    #[cfg(debug_assertions)]
+    println!(
+      "[cmux_native_git] git_diff_landed timings: total={}ms repo_path={}ms open_repo={}ms resolve={}ms detect={}ms refs_diff={}ms out_len=0",
+      _d_total.as_millis(),
+      _d_repo_path.as_millis(),
+      _d_open.as_millis(),
+      _d_resolve.as_millis(),
+      _d_detect.as_millis(),
+      0,
+    );
     #[cfg(debug_assertions)]
     println!("[native.landed] no pair determined; returning empty");
     Ok(Vec::new())

@@ -214,6 +214,7 @@ export function setupSocketHandlers(
           "[socket] git-diff-landed invoking landedDiffForRepo",
           JSON.stringify({ originPathOverride })
         );
+        const t0 = Date.now();
         const diffs = await landedDiffForRepo({
           baseRef,
           headRef,
@@ -221,13 +222,81 @@ export function setupSocketHandlers(
           b0Ref,
           includeContents: true,
         });
+        const t1 = Date.now();
         serverLogger.info(
           "[socket] git-diff-landed results",
-          JSON.stringify({ count: diffs.length })
+          JSON.stringify({ count: diffs.length, ms: t1 - t0 })
         );
         callback?.({ ok: true, diffs });
       } catch (error) {
         serverLogger.error("Error in git-diff-landed:", error);
+        callback?.({
+          ok: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+          diffs: [],
+        });
+      }
+    });
+
+    // Smart diff: prefer latest for unmerged branches, landed for merged
+    socket.on("git-diff-smart", async (data, callback) => {
+      try {
+        const { GitSmartRefsSchema } = await import("@cmux/shared");
+        const { repoFullName, baseRef, headRef, b0Ref } =
+          GitSmartRefsSchema.parse(data);
+        serverLogger.info(
+          "[socket] git-diff-smart",
+          JSON.stringify({ repoFullName, baseRef, headRef, b0Ref })
+        );
+        // Ensure local clone (same as landed)
+        let originPathOverride = "";
+        try {
+          const repoUrl = `https://github.com/${repoFullName}.git`;
+          const repoManager = RepositoryManager.getInstance();
+          const { originPath } = await (
+            await import("./workspace.js")
+          ).getProjectPaths(repoUrl, safeTeam);
+          await repoManager.ensureRepository(repoUrl, originPath);
+          originPathOverride = originPath;
+        } catch (e) {
+          serverLogger.warn(
+            "Could not ensure local clone for smart diffs:",
+            e
+          );
+        }
+        const { compareRefsForRepo } = await import("./diffs/compareRefs.js");
+        const { landedDiffForRepo } = await import("./native/git.js");
+        const t0 = Date.now();
+        const latest = await compareRefsForRepo({
+          ref1: baseRef,
+          ref2: headRef,
+          originPathOverride,
+          repoFullName,
+        });
+        if (latest.length > 0) {
+          const t1 = Date.now();
+          serverLogger.info(
+            "[socket] git-diff-smart results",
+            JSON.stringify({ strategy: "latest", count: latest.length, ms: t1 - t0 })
+          );
+          return callback?.({ ok: true, diffs: latest, strategy: "latest" });
+        }
+        const t2 = Date.now();
+        const landed = await landedDiffForRepo({
+          baseRef,
+          headRef,
+          b0Ref,
+          originPathOverride,
+          includeContents: true,
+        });
+        const t3 = Date.now();
+        serverLogger.info(
+          "[socket] git-diff-smart results",
+          JSON.stringify({ strategy: "landed", count: landed.length, msLatest: t2 - t0, msLanded: t3 - t2 })
+        );
+        callback?.({ ok: true, diffs: landed, strategy: "landed" });
+      } catch (error) {
+        serverLogger.error("Error in git-diff-smart:", error);
         callback?.({
           ok: false,
           error: error instanceof Error ? error.message : "Unknown error",

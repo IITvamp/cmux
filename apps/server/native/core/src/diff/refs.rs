@@ -71,14 +71,18 @@ pub fn diff_refs(opts: GitDiffRefsOptions) -> Result<Vec<DiffEntry>> {
   let _d_repo_path = t_repo_path.elapsed();
   let cwd = repo_path.to_string_lossy().to_string();
 
+  // If a specific repo path is provided, assume the caller ensures freshness.
+  // Avoid synchronous fetch here to reduce latency.
   let _d_fetch = if opts.originPathOverride.is_some() {
+    Duration::from_millis(0)
+  } else {
     let t_fetch = Instant::now();
     let _ = crate::repo::cache::swr_fetch_origin_all_path(
       std::path::Path::new(&cwd),
       crate::repo::cache::fetch_window_ms(),
     );
     t_fetch.elapsed()
-  } else { Duration::from_millis(0) };
+  };
 
   let t_open = Instant::now();
   let repo = gix::open(&cwd)?;
