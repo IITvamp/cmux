@@ -1,5 +1,6 @@
 import { RunDiffSection } from "@/components/RunDiffSection";
 import { Dropdown } from "@/components/ui/dropdown";
+import { refWithOrigin } from "@/lib/refWithOrigin";
 import { diffSmartQueryOptions } from "@/queries/diff-smart";
 import { api } from "@cmux/convex/api";
 import { convexQuery } from "@convex-dev/react-query";
@@ -8,13 +9,6 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery as useConvexQuery } from "convex/react";
 import { ExternalLink } from "lucide-react";
 import { Suspense, useMemo, useState } from "react";
-
-function refWithOrigin(ref: string) {
-  if (ref.startsWith("origin/")) {
-    return ref;
-  }
-  return `origin/${ref}`;
-}
 
 export const Route = createFileRoute(
   "/_layout/$teamSlugOrId/prs/$owner/$repo/$number"

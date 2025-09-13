@@ -164,11 +164,11 @@ export function TaskDetailHeader({
               </div>
             }
           >
-          <AdditionsAndDeletions
-            repoFullName={task?.projectFullName || ""}
-            ref1={task?.baseBranch || ""}
-            ref2={selectedRun?.newBranch || ""}
-          />
+            <AdditionsAndDeletions
+              repoFullName={task?.projectFullName || ""}
+              ref1={task?.baseBranch || ""}
+              ref2={selectedRun?.newBranch || ""}
+            />
           </Suspense>
         </div>
 
@@ -417,11 +417,8 @@ function SocketActions({
   ref2: string;
 }) {
   const { socket } = useSocketSuspense();
-  // const diffsQuery = useSuspenseQuery(runDiffsQueryOptions({ taskRunId }));
   const diffsQuery = useRQ(
-    repoFullName && ref1 && ref2
-      ? diffSmartQueryOptions({ repoFullName, baseRef: ref1, headRef: ref2 })
-      : { queryKey: ["diff-smart-disabled"], queryFn: async () => [] }
+    diffSmartQueryOptions({ repoFullName, baseRef: ref1, headRef: ref2 })
   );
   const hasChanges = (diffsQuery.data || []).length > 0;
 

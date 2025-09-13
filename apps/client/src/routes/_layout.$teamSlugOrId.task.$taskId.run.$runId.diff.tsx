@@ -2,6 +2,7 @@ import { FloatingPane } from "@/components/floating-pane";
 import { type GitDiffViewerProps } from "@/components/git-diff-viewer";
 import { RunDiffSection } from "@/components/RunDiffSection";
 import { TaskDetailHeader } from "@/components/task-detail-header";
+import { refWithOrigin } from "@/lib/refWithOrigin";
 import { diffSmartQueryOptions } from "@/queries/diff-smart";
 // Refs mode: no run-diffs prefetch
 import { api } from "@cmux/convex/api";
@@ -103,8 +104,8 @@ function RunDiffPage() {
 
   // Compute refs for diff: base branch vs run branch
   const repoFullName = task?.projectFullName || "";
-  const ref1 = task?.baseBranch || "main";
-  const ref2 = selectedRun.newBranch || "";
+  const ref1 = refWithOrigin(task?.baseBranch || "main");
+  const ref2 = refWithOrigin(selectedRun.newBranch || "");
 
   return (
     <FloatingPane>
