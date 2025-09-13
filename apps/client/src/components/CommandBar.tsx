@@ -1,4 +1,5 @@
 import { useTheme } from "@/components/theme/use-theme";
+import { useSocket } from "@/contexts/socket/use-socket";
 import { api } from "@cmux/convex/api";
 import * as Dialog from "@radix-ui/react-dialog";
 
@@ -20,6 +21,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
   const navigate = useNavigate();
   const router = useRouter();
   const { setTheme } = useTheme();
+  const { socket } = useSocket();
 
   const allTasks = useQuery(api.tasks.get, { teamSlugOrId });
   const createRun = useMutation(api.taskRuns.create);
@@ -36,6 +38,24 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
     document.addEventListener("keydown", down);
     return () => document.removeEventListener("keydown", down);
   }, []);
+
+  // Listen for global shortcut event from Electron
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleGlobalShortcut = (data: { shortcut: string }) => {
+      if (data.shortcut === "cmd+k") {
+        setOpenedWithShift(false);
+        setOpen((open) => !open);
+      }
+    };
+
+    socket.on("global-shortcut-triggered", handleGlobalShortcut as never);
+
+    return () => {
+      socket.off("global-shortcut-triggered", handleGlobalShortcut as never);
+    };
+  }, [socket]);
 
   const handleHighlight = useCallback(
     async (value: string) => {

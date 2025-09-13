@@ -19,6 +19,7 @@ export async function startEmbeddedServer() {
   console.log("[EmbeddedServer] Full server started successfully over IPC");
 
   return {
+    server: ipcRealtimeServer,
     async cleanup() {
       gitDiffManager.dispose();
       await ipcRealtimeServer.close();

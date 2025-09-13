@@ -564,6 +564,7 @@ export interface ServerToClientEvents {
   "vscode-error": (data: VSCodeError) => void;
   "default-repo": (data: DefaultRepo) => void;
   "available-editors": (data: AvailableEditors) => void;
+  "global-shortcut-triggered": (data: { shortcut: string }) => void;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type

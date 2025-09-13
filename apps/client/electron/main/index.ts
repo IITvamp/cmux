@@ -6,6 +6,7 @@ import {
   app,
   BrowserWindow,
   dialog,
+  globalShortcut,
   Menu,
   nativeImage,
   net,
@@ -42,6 +43,7 @@ const APP_HOST = "cmux.local";
 let rendererLoaded = false;
 let pendingProtocolUrl: string | null = null;
 let mainWindow: BrowserWindow | null = null;
+let ipcServer: { emit: (event: string, ...args: unknown[]) => void } | null = null;
 
 // Persistent log files
 let logsDir: string | null = null;
@@ -395,7 +397,8 @@ app.whenReady().then(async () => {
   // Start the embedded IPC server (registers cmux:register and cmux:rpc)
   try {
     mainLog("Starting embedded IPC server...");
-    await startEmbeddedServer();
+    const server = await startEmbeddedServer();
+    ipcServer = server.server;
     mainLog("Embedded IPC server started successfully");
   } catch (error) {
     mainError("Failed to start embedded IPC server:", error);
@@ -447,6 +450,24 @@ app.whenReady().then(async () => {
 
   // Create the initial window.
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
+
+  // Register global shortcut for Cmd+K (macOS only)
+  if (process.platform === "darwin") {
+    const shortcut = "Cmd+K";
+    const registered = globalShortcut.register(shortcut, () => {
+      mainLog("Global shortcut triggered:", shortcut);
+      // Emit event to all connected sockets
+      if (ipcServer) {
+        ipcServer.emit("global-shortcut-triggered", { shortcut: "cmd+k" });
+      }
+    });
+    
+    if (!registered) {
+      mainWarn("Failed to register global shortcut:", shortcut);
+    } else {
+      mainLog("Global shortcut registered:", shortcut);
+    }
+  }
 
   // Production menu with Help -> Open Logs Folder
   if (app.isPackaged) {
@@ -527,6 +548,8 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   try {
+    // Unregister all global shortcuts
+    globalShortcut.unregisterAll();
     mainLogStream?.end();
     rendererLogStream?.end();
   } catch {
