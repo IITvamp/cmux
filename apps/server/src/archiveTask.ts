@@ -6,6 +6,7 @@ import { promisify } from "node:util";
 import { getConvex } from "./utils/convexClient.js";
 import { serverLogger } from "./utils/fileLogger.js";
 import { getAuthHeaderJson, getAuthToken } from "./utils/requestContext.js";
+import { getWwwBaseUrl } from "./utils/server-env.js";
 
 const execAsync = promisify(exec);
 
@@ -40,8 +41,7 @@ async function stopDockerContainer(containerName: string): Promise<void> {
 }
 
 async function stopCmuxSandbox(instanceId: string): Promise<void> {
-  const baseUrl =
-    process.env.WWW_API_BASE_URL || process.env.CMUX_WWW_API_URL || "http://localhost:9779";
+  const baseUrl = getWwwBaseUrl();
   const url = `${baseUrl}/api/sandboxes/${encodeURIComponent(instanceId)}/stop`;
   const token = getAuthToken();
   const headers: Record<string, string> = {};

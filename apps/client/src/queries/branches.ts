@@ -16,7 +16,7 @@ export function branchesQueryOptions({
         socket.emit(
           "github-fetch-branches",
           { teamSlugOrId, repo: repoFullName },
-          (response: { success: boolean; branches?: string[]; error?: string }) => {
+          (response) => {
             if (response.success) resolve(response.branches || []);
             else reject(new Error(response.error || "Failed to load branches"));
           }
@@ -26,4 +26,3 @@ export function branchesQueryOptions({
     staleTime: 10_000,
   });
 }
-

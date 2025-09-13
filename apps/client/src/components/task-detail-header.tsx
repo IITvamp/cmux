@@ -3,7 +3,7 @@ import { Dropdown } from "@/components/ui/dropdown";
 import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
 import { useSocketSuspense } from "@/contexts/socket/use-socket";
 import { isElectron } from "@/lib/electron";
-import { diffRefsQueryOptions } from "@/queries/diff-refs";
+import { diffSmartQueryOptions } from "@/queries/diff-smart";
 import type { Doc, Id } from "@cmux/convex/dataModel";
 import { Skeleton } from "@heroui/react";
 import { useClipboard } from "@mantine/hooks";
@@ -42,6 +42,7 @@ interface TaskDetailHeaderProps {
   onExpandAll?: () => void;
   onCollapseAll?: () => void;
   teamSlugOrId: string;
+  // Smart diff view (no toggle)
 }
 
 const ENABLE_MERGE_BUTTON = false;
@@ -55,7 +56,11 @@ function AdditionsAndDeletions({
   ref1: string;
   ref2: string;
 }) {
-  const diffsQuery = useRQ(diffRefsQueryOptions({ repoFullName, ref1, ref2 }));
+  const diffsQuery = useRQ(
+    repoFullName && ref1 && ref2
+      ? diffSmartQueryOptions({ repoFullName, baseRef: ref1, headRef: ref2 })
+      : { queryKey: ["diff-smart-disabled"], queryFn: async () => [] }
+  );
 
   if (diffsQuery.error) {
     return (
@@ -175,6 +180,7 @@ export function TaskDetailHeader({
               : undefined
           }
         >
+          {/* Removed Latest/Landed toggle; using smart diff */}
           <Suspense
             fallback={
               <div className="flex items-center gap-2">
@@ -411,8 +417,9 @@ function SocketActions({
   ref2: string;
 }) {
   const { socket } = useSocketSuspense();
-  // const diffsQuery = useSuspenseQuery(runDiffsQueryOptions({ taskRunId }));
-  const diffsQuery = useRQ(diffRefsQueryOptions({ repoFullName, ref1, ref2 }));
+  const diffsQuery = useRQ(
+    diffSmartQueryOptions({ repoFullName, baseRef: ref1, headRef: ref2 })
+  );
   const hasChanges = (diffsQuery.data || []).length > 0;
 
   const handleMerge = async (method: MergeMethod) => {
