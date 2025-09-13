@@ -1,69 +1,97 @@
-import { exec as execCb } from "node:child_process";
-import { promises as fs } from "node:fs";
-import * as fsp from "node:fs/promises";
-import * as os from "node:os";
-import * as path from "node:path";
-import { promisify } from "node:util";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, test } from "vitest";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { spawnSync } from "node:child_process";
 import { compareRefsForRepo } from "./compareRefs.js";
 
-const exec = promisify(execCb);
-
-async function initRepo(): Promise<{ repoPath: string; root: string }> {
-  const tmp = await fsp.mkdtemp(path.join(os.tmpdir(), "cmux-compare-func-"));
-  const work = path.join(tmp, "work");
-  await fs.mkdir(work, { recursive: true });
-  await exec(`git init "${work}"`);
-  await exec(`git -C "${work}" config user.name "Test User"`);
-  await exec(`git -C "${work}" config user.email "test@example.com"`);
-  await exec(`git -C "${work}" checkout -b main`);
-  await fs.writeFile(path.join(work, "a.txt"), "a1\n", "utf8");
-  await exec(`git -C "${work}" add a.txt`);
-  await exec(`git -C "${work}" commit -m init`);
-  return { repoPath: work, root: tmp };
-}
-
-async function cleanup(dir: string): Promise<void> {
-  try {
-    await fsp.rm(dir, { recursive: true, force: true });
-  } catch {
-    /* ignore */
+function run(cwd: string, cmd: string) {
+  const shell = process.platform === "win32" ? "cmd" : "sh";
+  const args = process.platform === "win32" ? ["/C", cmd] : ["-c", cmd];
+  const res = spawnSync(shell, args, { cwd, stdio: "pipe", encoding: "utf8" });
+  if (res.status !== 0) {
+    throw new Error(`Command failed (${res.status}): ${cmd}\n${res.stdout}\n${res.stderr}`);
   }
+  return res.stdout.trim();
 }
 
-describe("compareRefsForRepo", () => {
-  let repoPath: string;
-  let root: string;
+function initRepo(): string {
+  const dir = mkdtempSync(join(tmpdir(), "cmux-git-"));
+  run(dir, "git init");
+  run(dir, "git -c user.email=a@b -c user.name=test checkout -b main");
+  writeFileSync(join(dir, "a.txt"), "hello\n");
+  run(dir, "git add .");
+  run(dir, "git -c user.email=a@b -c user.name=test commit -m base");
+  return dir;
+}
 
-  beforeEach(async () => {
-    const init = await initRepo();
-    repoPath = init.repoPath;
-    root = init.root;
-  });
-
-  afterEach(async () => {
-    await cleanup(root);
-  });
-
-  it("returns diffs between branches using originPathOverride", async () => {
-    // Create changes on a feature branch
-    await exec(`git -C "${repoPath}" checkout -b feature`);
-    await fs.appendFile(path.join(repoPath, "a.txt"), "a2\n", "utf8");
-    await fs.writeFile(path.join(repoPath, "b.txt"), "b\n", "utf8");
-    await exec(`git -C "${repoPath}" add .`);
-    await exec(`git -C "${repoPath}" commit -m change`);
+describe("compareRefsForRepo (native)", () => {
+  test("detects pure rename via identity (unchanged content)", async () => {
+    const repo = initRepo();
+    run(repo, "git checkout -b feature");
+    run(repo, "git mv a.txt b.txt");
+    run(repo, "git -c user.email=a@b -c user.name=test commit -m rename");
 
     const diffs = await compareRefsForRepo({
       ref1: "main",
       ref2: "feature",
-      originPathOverride: repoPath,
+      originPathOverride: repo,
     });
 
-    const files = new Map(diffs.map((d) => [d.filePath, d]));
-    expect(files.has("a.txt")).toBe(true);
-    expect(files.get("a.txt")!.status).toBe("modified");
-    expect(files.has("b.txt")).toBe(true);
-    expect(files.get("b.txt")!.status).toBe("added");
+    // Expect a single rename entry with identical content
+    expect(Array.isArray(diffs)).toBe(true);
+    const rename = diffs.find((d) => d.status === "renamed");
+    expect(rename).toBeTruthy();
+    expect(rename!.oldPath).toBe("a.txt");
+    expect(rename!.filePath).toBe("b.txt");
+    expect(rename!.isBinary).toBe(false);
+    // unchanged content, additions/deletions 0
+    expect(rename!.additions).toBe(0);
+    expect(rename!.deletions).toBe(0);
+    expect(rename!.oldContent).toBe("hello\n");
+    expect(rename!.newContent).toBe("hello\n");
+  });
+
+  test("added and deleted without rename when content changes", async () => {
+    const repo = initRepo();
+    run(repo, "git checkout -b feature");
+    // simulate rename+modify: rename then change content in new path
+    run(repo, "git mv a.txt b.txt");
+    writeFileSync(join(repo, "b.txt"), "hello world\n");
+    run(repo, "git add .");
+    run(repo, "git -c user.email=a@b -c user.name=test commit -m rename_modify");
+
+    const diffs = await compareRefsForRepo({
+      ref1: "main",
+      ref2: "feature",
+      originPathOverride: repo,
+    });
+
+    // With identity-based detection only, this shows added+deleted
+    const added = diffs.find((d) => d.status === "added" && d.filePath === "b.txt");
+    const deleted = diffs.find((d) => d.status === "deleted" && d.filePath === "a.txt");
+    expect(added).toBeTruthy();
+    expect(deleted).toBeTruthy();
+  });
+
+  test("modified in place", async () => {
+    const repo = initRepo();
+    run(repo, "git checkout -b feature");
+    // modify the file without renaming
+    writeFileSync(join(repo, "a.txt"), "hello\nworld\n");
+    run(repo, "git add .");
+    run(repo, "git -c user.email=a@b -c user.name=test commit -m change");
+
+    const diffs = await compareRefsForRepo({
+      ref1: "main",
+      ref2: "feature",
+      originPathOverride: repo,
+    });
+
+    const mod = diffs.find((d) => d.status === "modified" && d.filePath === "a.txt");
+    expect(mod).toBeTruthy();
+    expect(mod!.isBinary).toBe(false);
+    expect(mod!.additions).toBeGreaterThanOrEqual(1);
   });
 });
 

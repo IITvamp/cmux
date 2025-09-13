@@ -1,4 +1,4 @@
-import { diffRefsQueryOptions } from "@/queries/diff-refs";
+import { diffSmartQueryOptions } from "@/queries/diff-smart";
 import { useQuery as useRQ } from "@tanstack/react-query";
 import { type ComponentProps } from "react";
 import { GitDiffViewer } from "./git-diff-viewer";
@@ -13,8 +13,11 @@ export interface RunDiffSectionProps {
 
 export function RunDiffSection(props: RunDiffSectionProps) {
   const { repoFullName, ref1, ref2, classNames, onControlsChange } = props;
-
-  const diffsQuery = useRQ(diffRefsQueryOptions({ repoFullName, ref1, ref2 }));
+  const diffsQuery = useRQ(
+    repoFullName && ref1 && ref2
+      ? diffSmartQueryOptions({ repoFullName, baseRef: ref1, headRef: ref2 })
+      : { queryKey: ["diff-smart-disabled"], queryFn: async () => [] }
+  );
 
   // No workspace watcher in refs mode
 
