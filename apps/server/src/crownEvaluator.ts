@@ -10,6 +10,9 @@ import { createGoogleGenerativeAI } from "@ai-sdk/google";
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateObject, type LanguageModel } from "ai";
 import { z } from "zod";
+import { postApiCrownEvaluate, postApiCrownSummarize } from "@cmux/www-openapi-client";
+import { getWwwClient } from "./utils/wwwClient.js";
+import { env as serverEnv } from "./utils/server-env.js";
 
 // Auto PR behavior is controlled via workspace settings in Convex
 export async function createPullRequestForWinner(
@@ -296,11 +299,14 @@ Completed: ${new Date().toISOString()}`;
 function getModelAndProvider(
   apiKeys: Record<string, string>
 ): { model: LanguageModel; providerName: string } | null {
+  // Prefer user-provided keys; otherwise fall back to server-owned keys
+  // defined in apps/server env. This ensures these keys are never exposed to
+  // any client context.
   const merged = {
-    OPENAI_API_KEY: apiKeys.OPENAI_API_KEY || process.env.OPENAI_API_KEY,
-    GEMINI_API_KEY: apiKeys.GEMINI_API_KEY || process.env.GEMINI_API_KEY,
+    OPENAI_API_KEY: apiKeys.OPENAI_API_KEY || serverEnv.OPENAI_API_KEY,
+    GEMINI_API_KEY: apiKeys.GEMINI_API_KEY || serverEnv.GEMINI_API_KEY,
     ANTHROPIC_API_KEY:
-      apiKeys.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY,
+      apiKeys.ANTHROPIC_API_KEY || serverEnv.ANTHROPIC_API_KEY,
   } as Record<string, string | undefined>;
 
   if (merged.OPENAI_API_KEY) {
@@ -430,8 +436,30 @@ export async function evaluateCrown(
           const cfg = getModelAndProvider(apiKeys);
           if (!cfg) {
             serverLogger.warn(
-              `[CrownEvaluator] No AI provider configured; skipping PR summary`
+              `[CrownEvaluator] No AI provider configured; attempting WWW summarization with server-owned key`
             );
+            try {
+              const res = await postApiCrownSummarize({
+                client: getWwwClient(),
+                body: { prompt: summarizationPrompt, teamSlugOrId },
+              });
+              const data = res.data as { summary: string } | undefined;
+              if (data?.summary) {
+                commentText = data.summary;
+                serverLogger.info(
+                  `[CrownEvaluator] PR summary generated via WWW (server-owned key)`
+                );
+              } else {
+                serverLogger.warn(
+                  `[CrownEvaluator] WWW summarization returned no data; leaving comment blank`
+                );
+              }
+            } catch (err) {
+              serverLogger.error(
+                `[CrownEvaluator] WWW summarization failed; leaving comment blank`,
+                err
+              );
+            }
           } else {
             const { model, providerName } = cfg;
             const schema = z.object({ summary: z.string() });
@@ -674,7 +702,7 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
     } catch {
       /* empty */
     }
-    // Perform evaluation locally via AI SDK instead of HTTP
+    // Perform evaluation locally via AI SDK when possible; otherwise try WWW
     let jsonResponse: { winner: number; reason: string } | null = null;
     try {
       const apiKeys = await getConvex().query(api.apiKeys.getAllForAgents, {
@@ -683,8 +711,30 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
       const cfg = getModelAndProvider(apiKeys);
       if (!cfg) {
         serverLogger.warn(
-          `[CrownEvaluator] No AI provider configured; falling back to default winner`
+          `[CrownEvaluator] No AI provider configured; attempting server-owned fallback via WWW`
         );
+        try {
+          const res = await postApiCrownEvaluate({
+            client: getWwwClient(),
+            body: { prompt: evaluationPrompt, teamSlugOrId },
+          });
+          const data = res.data as { winner: number; reason: string } | undefined;
+          if (data) {
+            jsonResponse = data;
+            serverLogger.info(
+              `[CrownEvaluator] Evaluation completed via WWW (server-owned key)`
+            );
+          } else {
+            serverLogger.warn(
+              `[CrownEvaluator] WWW crown evaluation returned no data; will use fallback`
+            );
+          }
+        } catch (err) {
+          serverLogger.error(
+            `[CrownEvaluator] WWW crown evaluation failed; will use fallback`,
+            err
+          );
+        }
       } else {
         const { model, providerName } = cfg;
         const schema = z.object({
@@ -708,6 +758,25 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
     } catch (e) {
       serverLogger.error(`[CrownEvaluator] Local evaluation failed:`, e);
       jsonResponse = null;
+      // Try server-owned fallback over WWW before giving up
+      try {
+        const res = await postApiCrownEvaluate({
+          client: getWwwClient(),
+          body: { prompt: evaluationPrompt, teamSlugOrId },
+        });
+        const data = res.data as { winner: number; reason: string } | undefined;
+        if (data) {
+          jsonResponse = data;
+          serverLogger.info(
+            `[CrownEvaluator] Evaluation completed via WWW (server-owned key) after local failure`
+          );
+        }
+      } catch (err) {
+        serverLogger.error(
+          `[CrownEvaluator] WWW crown evaluation failed after local failure`,
+          err
+        );
+      }
     }
 
     if (!jsonResponse) {
