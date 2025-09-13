@@ -6,7 +6,6 @@ import {
   app,
   BrowserWindow,
   dialog,
-  globalShortcut,
   Menu,
   nativeImage,
   net,
@@ -393,35 +392,38 @@ app.whenReady().then(async () => {
     }
   }
 
-  // Register global shortcut for Cmd+K on macOS only
+  // Capture Cmd+K within the app only (works across iframes/webviews)
   try {
-    if (process.platform === "darwin") {
-      const registered = globalShortcut.register("Command+K", () => {
+    const handleBeforeInput = (e: Electron.Event, input: Electron.Input) => {
+      if (input.type !== "keyDown") return;
+      const isMac = process.platform === "darwin";
+      const isCmdK = (isMac ? input.meta : input.control) &&
+        !input.alt &&
+        input.key.toLowerCase() === "k";
+      if (!isCmdK) return;
+      // Prevent default to avoid in-app conflicts (e.g., terminal clear)
+      // and ensure a single toggle per key press.
+      e.preventDefault();
+      const focusedWin = BrowserWindow.getFocusedWindow() ?? mainWindow ?? BrowserWindow.getAllWindows()[0] ?? null;
+      if (focusedWin && !focusedWin.isDestroyed()) {
         try {
-          const target = mainWindow ?? BrowserWindow.getAllWindows()[0] ?? null;
-          if (target && !target.isDestroyed()) {
-            // Use cmux-style event channel so renderer can subscribe via window.cmux.on
-            target.webContents.send("cmux:event:shortcut:cmd-k");
-          }
+          focusedWin.webContents.send("cmux:event:shortcut:cmd-k");
         } catch (e) {
-          mainWarn("Failed to emit Cmd+K shortcut event", e);
+          mainWarn("Failed to emit Cmd+K from before-input-event", e);
         }
-      });
-      if (!registered) {
-        mainWarn("Failed to register global shortcut: Command+K");
       }
+    };
 
-      app.on("will-quit", () => {
-        try {
-          globalShortcut.unregister("Command+K");
-          globalShortcut.unregisterAll();
-        } catch {
-          // ignore
-        }
-      });
-    }
+    // Attach to all webContents including webviews and subframes
+    app.on("web-contents-created", (_event, contents) => {
+      try {
+        contents.on("before-input-event", handleBeforeInput);
+      } catch {
+        // ignore
+      }
+    });
   } catch (e) {
-    mainWarn("Error setting up global shortcuts", e);
+    mainWarn("Error setting up before-input-event handler for Cmd+K", e);
   }
 
   // Start the embedded IPC server (registers cmux:register and cmux:rpc)
