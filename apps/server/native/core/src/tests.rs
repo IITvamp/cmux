@@ -368,3 +368,31 @@ fn refs_diff_handles_binary_files() {
   assert_eq!(bin_entry.additions, 0);
   assert_eq!(bin_entry.deletions, 0);
 }
+
+#[test]
+fn refs_diff_pr_282_counts() {
+  // PR 282 patch stats: +3117 -11 relative to main
+  let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+  let repo_root = find_git_root(manifest_dir);
+  // Fetch the PR ref to ensure both commits are available locally
+  run(&repo_root, "git fetch --prune --tags --force origin refs/heads/main:refs/remotes/origin/main refs/pull/282/head:refs/remotes/origin/pr-282");
+
+  let from = "origin/main"; // base branch
+  let to = "d2f53cf036676bc56f949b9a9454c421ab06940c";   // PR head
+
+  let out = crate::diff::refs::diff_refs(GitDiffRefsOptions{
+    ref1: from.into(),
+    ref2: to.into(),
+    repoFullName: None,
+    repoUrl: None,
+    teamSlugOrId: None,
+    originPathOverride: Some(repo_root.to_string_lossy().to_string()),
+    includeContents: Some(true),
+    maxBytes: Some(100*1024*1024),
+  }).expect("diff refs pr 282");
+
+  let adds: i32 = out.iter().map(|e| e.additions).sum();
+  let dels: i32 = out.iter().map(|e| e.deletions).sum();
+
+  assert_eq!((adds, dels), (3117, 11), "mismatch for pr 282 {}..{} entries={}", from, to, out.len());
+}
