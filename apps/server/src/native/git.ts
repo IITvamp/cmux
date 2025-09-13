@@ -30,6 +30,17 @@ type NativeGitModule = {
     opts: GitDiffWorkspaceOptions
   ) => Promise<ReplaceDiffEntry[]>;
   gitDiffRefs?: (opts: GitDiffRefsOptions) => Promise<ReplaceDiffEntry[]>;
+  gitDiffLanded?: (opts: {
+    baseRef: string;
+    headRef: string;
+    b0Ref?: string;
+    repoFullName?: string;
+    repoUrl?: string;
+    teamSlugOrId?: string;
+    originPathOverride?: string;
+    includeContents?: boolean;
+    maxBytes?: number;
+  }) => Promise<ReplaceDiffEntry[]>;
   gitListRemoteBranches?: (opts: {
     repoFullName?: string;
     repoUrl?: string;
@@ -104,6 +115,34 @@ export function loadNativeGit(): NativeGitModule | null {
 export function getGitImplMode(): GitImplMode {
   const v = (process.env.CMUX_GIT_IMPL || "rust").toLowerCase();
   return v === "js" ? "js" : "rust";
+}
+
+export async function landedDiffForRepo(args: {
+  baseRef: string;
+  headRef: string;
+  b0Ref?: string;
+  repoFullName?: string;
+  repoUrl?: string;
+  teamSlugOrId?: string;
+  originPathOverride?: string;
+  includeContents?: boolean;
+  maxBytes?: number;
+}): Promise<ReplaceDiffEntry[]> {
+  const mod = loadNativeGit();
+  if (!mod?.gitDiffLanded) {
+    throw new Error("Native gitDiffLanded not available; rebuild @cmux/native-core");
+  }
+  return mod.gitDiffLanded({
+    baseRef: args.baseRef,
+    headRef: args.headRef,
+    b0Ref: args.b0Ref,
+    repoFullName: args.repoFullName,
+    repoUrl: args.repoUrl,
+    teamSlugOrId: args.teamSlugOrId,
+    originPathOverride: args.originPathOverride,
+    includeContents: args.includeContents,
+    maxBytes: args.maxBytes,
+  });
 }
 
 export async function listRemoteBranches(opts: {

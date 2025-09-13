@@ -47,10 +47,7 @@ import {
 } from "./utils/githubPr.js";
 import { getOctokit } from "./utils/octokit.js";
 import { checkAllProvidersStatus } from "./utils/providerStatus.js";
-import {
-  refreshBranchesForRepo,
-  refreshGitHubData,
-} from "./utils/refreshGitHubData.js";
+import { refreshGitHubData } from "./utils/refreshGitHubData.js";
 import { runWithAuth, runWithAuthToken } from "./utils/requestContext.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { getProjectPaths } from "./workspace.js";
@@ -178,6 +175,135 @@ export function setupSocketHandlers(
         callback?.({ ok: true, diffs });
       } catch (error) {
         serverLogger.error("Error in git-diff-refs:", error);
+        callback?.({
+          ok: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+          diffs: [],
+        });
+      }
+    });
+
+    // Landed diff (closed-PR semantics): compute what actually landed on base
+    socket.on("git-diff-landed", async (data, callback) => {
+      try {
+        const { GitLandedRefsSchema } = await import("@cmux/shared");
+        const { repoFullName, baseRef, headRef, b0Ref } =
+          GitLandedRefsSchema.parse(data);
+        serverLogger.info(
+          "[socket] git-diff-landed",
+          JSON.stringify({ repoFullName, baseRef, headRef, b0Ref })
+        );
+        const { landedDiffForRepo } = await import("./native/git.js");
+        // Ensure a local clone exists under our standard workspace
+        let originPathOverride = "";
+        try {
+          const repoUrl = `https://github.com/${repoFullName}.git`;
+          const repoManager = RepositoryManager.getInstance();
+          const { originPath } = await (
+            await import("./workspace.js")
+          ).getProjectPaths(repoUrl, safeTeam);
+          await repoManager.ensureRepository(repoUrl, originPath);
+          originPathOverride = originPath;
+        } catch (e) {
+          serverLogger.warn(
+            "Could not ensure local clone for landed diffs:",
+            e
+          );
+        }
+        serverLogger.info(
+          "[socket] git-diff-landed invoking landedDiffForRepo",
+          JSON.stringify({ originPathOverride })
+        );
+        const t0 = Date.now();
+        const diffs = await landedDiffForRepo({
+          baseRef,
+          headRef,
+          originPathOverride,
+          b0Ref,
+          includeContents: true,
+        });
+        const t1 = Date.now();
+        serverLogger.info(
+          "[socket] git-diff-landed results",
+          JSON.stringify({ count: diffs.length, ms: t1 - t0 })
+        );
+        callback?.({ ok: true, diffs });
+      } catch (error) {
+        serverLogger.error("Error in git-diff-landed:", error);
+        callback?.({
+          ok: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+          diffs: [],
+        });
+      }
+    });
+
+    // Smart diff: prefer latest for unmerged branches, landed for merged
+    socket.on("git-diff-smart", async (data, callback) => {
+      try {
+        const { GitSmartRefsSchema } = await import("@cmux/shared");
+        const { repoFullName, baseRef, headRef, b0Ref } =
+          GitSmartRefsSchema.parse(data);
+        serverLogger.info(
+          "[socket] git-diff-smart",
+          JSON.stringify({ repoFullName, baseRef, headRef, b0Ref })
+        );
+        // Ensure local clone (same as landed)
+        // let originPathOverride = "";
+        // try {
+        //   const repoUrl = `https://github.com/${repoFullName}.git`;
+        //   const repoManager = RepositoryManager.getInstance();
+        //   const { originPath } = await (
+        //     await import("./workspace.js")
+        //   ).getProjectPaths(repoUrl, safeTeam);
+        //   await repoManager.ensureRepository(repoUrl, originPath);
+        //   originPathOverride = originPath;
+        // } catch (e) {
+        //   serverLogger.warn("Could not ensure local clone for smart diffs:", e);
+        // }
+        const { compareRefsForRepo } = await import("./diffs/compareRefs.js");
+        const { landedDiffForRepo } = await import("./native/git.js");
+        const t0 = Date.now();
+        const latest = await compareRefsForRepo({
+          ref1: baseRef,
+          ref2: headRef,
+          // originPathOverride,
+          repoFullName,
+        });
+        if (latest.length > 0) {
+          const t1 = Date.now();
+          serverLogger.info(
+            "[socket] git-diff-smart results",
+            JSON.stringify({
+              strategy: "latest",
+              count: latest.length,
+              ms: t1 - t0,
+            })
+          );
+          return callback?.({ ok: true, diffs: latest, strategy: "latest" });
+        }
+        const t2 = Date.now();
+        const landed = await landedDiffForRepo({
+          baseRef,
+          headRef,
+          b0Ref,
+          // originPathOverride,
+          repoFullName,
+          includeContents: true,
+        });
+        const t3 = Date.now();
+        serverLogger.info(
+          "[socket] git-diff-smart results",
+          JSON.stringify({
+            strategy: "landed",
+            count: landed.length,
+            msLatest: t2 - t0,
+            msLanded: t3 - t2,
+          })
+        );
+        callback?.({ ok: true, diffs: landed, strategy: "landed" });
+      } catch (error) {
+        serverLogger.error("Error in git-diff-smart:", error);
         callback?.({
           ok: false,
           error: error instanceof Error ? error.message : "Unknown error",
@@ -1355,51 +1481,14 @@ Please address the issue mentioned in the comment above.`;
 
     socket.on("github-fetch-branches", async (data, callback) => {
       try {
-        const { teamSlugOrId, repo } = GitHubFetchBranchesSchema.parse(data);
+        const { repo } = GitHubFetchBranchesSchema.parse(data);
 
-        // Check if we already have branches for this repo
-        const existingBranches = await getConvex().query(
-          api.github.getBranches,
-          {
-            teamSlugOrId,
-            repo,
-          }
-        );
-
-        if (existingBranches.length > 0) {
-          // Reorder to pin origin/HEAD dynamically using native git if available
-          let branchesOut = existingBranches;
-          try {
-            const { listRemoteBranches } = await import("./native/git.js");
-            const head = (await listRemoteBranches({ repoFullName: repo }))?.[0]
-              ?.name;
-            if (head && branchesOut.includes(head)) {
-              branchesOut = [head, ...branchesOut.filter((b) => b !== head)];
-            }
-          } catch {
-            // ignore; fall back to stored order
-          }
-          // Return reordered branches and refresh in background
-          callback({ success: true, branches: branchesOut });
-
-          // Refresh in the background
-          refreshBranchesForRepo(repo, teamSlugOrId).catch((error) => {
-            serverLogger.error("Background branch refresh failed:", error);
-          });
-          return;
-        }
-
-        // If no branches exist, fetch them (already sorted with HEAD pinned)
-        const branches = await refreshBranchesForRepo(repo, teamSlugOrId);
-        callback({ success: true, branches });
+        const { listRemoteBranches } = await import("./native/git.js");
+        const branches = await listRemoteBranches({ repoFullName: repo });
+        callback({ success: true, branches: branches.map((b) => b.name) });
+        return;
       } catch (error) {
         serverLogger.error("Error fetching branches:", error);
-        callback({
-          success: false,
-          error: `Failed to fetch branches: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        });
       }
     });
 

@@ -6,8 +6,8 @@ import {
 } from "@/components/ui/searchable-select";
 import { useSocket } from "@/contexts/socket/use-socket";
 import { branchesQueryOptions } from "@/queries/branches";
+import { diffSmartQueryOptions } from "@/queries/diff-smart";
 import { api } from "@cmux/convex/api";
-import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
 import { convexQuery } from "@convex-dev/react-query";
 import { useQuery as useRQ } from "@tanstack/react-query";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
@@ -149,50 +149,23 @@ function DashboardDiffPage() {
   }, [search.ref1, search.ref2, setSearch]);
 
   const bothSelected = !!search.ref1 && !!search.ref2 && !!selectedProject;
+  const diffsQuery = useRQ(
+    selectedProject && search.ref1 && search.ref2
+      ? diffSmartQueryOptions({
+          repoFullName: selectedProject,
+          baseRef: search.ref1,
+          headRef: search.ref2,
+        })
+      : { queryKey: ["diff-smart-disabled"], queryFn: async () => [] }
+  );
 
-  const diffsQuery = useRQ<ReplaceDiffEntry[]>({
-    queryKey: [
-      "dashboard-compare-diffs",
-      teamSlugOrId,
-      selectedProject || "none",
-      search.ref1 || "",
-      search.ref2 || "",
-    ],
-    queryFn: async () =>
-      await new Promise<import("@cmux/shared/diff-types").ReplaceDiffEntry[]>(
-        (resolve, reject) => {
-          if (!socket || !selectedProject || !search.ref1 || !search.ref2) {
-            resolve([]);
-            return;
-          }
-          socket.emit(
-            "git-diff-refs",
-            {
-              repoFullName: selectedProject,
-              ref1: search.ref1,
-              ref2: search.ref2,
-            },
-            (resp: {
-              ok: boolean;
-              diffs?: import("@cmux/shared/diff-types").ReplaceDiffEntry[];
-              error?: string;
-            }) => {
-              if (resp.ok) resolve(resp.diffs || []);
-              else reject(new Error(resp.error || "Failed to compare refs"));
-            }
-          );
-        }
-      ),
-    enabled: !!socket && bothSelected,
-    staleTime: 10_000,
-    retry: 1,
-  });
+  // Smart view: no toggle logic needed
 
   useEffect(() => {
     if (diffsQuery.isError) {
       const err = diffsQuery.error as unknown;
       const msg = err instanceof Error ? err.message : String(err ?? "");
-      toast.error("Failed to compare refs", { description: msg });
+      toast.error("Failed to load diffs", { description: msg });
     }
   }, [diffsQuery.isError, diffsQuery.error]);
 
@@ -201,12 +174,11 @@ function DashboardDiffPage() {
     if (socket && bothSelected) {
       void diffsQuery.refetch();
     }
-    // Intentionally exclude diffsQuery from deps to avoid infinite loops.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, bothSelected]);
 
   return (
-    <div className="flex flex-col h-full min-h-0 grow">
+    <div className="flex flex-col h-screen min-h-0 grow">
       <div className="border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 py-2 flex items-center gap-2">
         <SearchableSelect
           options={projectOptions}
@@ -258,6 +230,7 @@ function DashboardDiffPage() {
         />
       </div>
       <div className="flex-1 flex flex-col bg-white dark:bg-neutral-950 overflow-y-auto grow">
+        {/* Smart view: no toggle */}
         <GitDiffViewer
           diffs={diffsQuery.data || []}
           onControlsChange={() => {}}

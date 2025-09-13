@@ -2,7 +2,7 @@ import { FloatingPane } from "@/components/floating-pane";
 import { type GitDiffViewerProps } from "@/components/git-diff-viewer";
 import { RunDiffSection } from "@/components/RunDiffSection";
 import { TaskDetailHeader } from "@/components/task-detail-header";
-import { diffRefsQueryOptions } from "@/queries/diff-refs";
+import { diffSmartQueryOptions } from "@/queries/diff-smart";
 // Refs mode: no run-diffs prefetch
 import { api } from "@cmux/convex/api";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
@@ -59,9 +59,9 @@ export const Route = createFileRoute(
       selectedTaskRun?.newBranch
     ) {
       void opts.context.queryClient.ensureQueryData(
-        diffRefsQueryOptions({
-          ref1: task.baseBranch,
-          ref2: selectedTaskRun?.newBranch,
+        diffSmartQueryOptions({
+          baseRef: task.baseBranch,
+          headRef: selectedTaskRun?.newBranch,
           repoFullName: task.projectFullName,
         })
       );

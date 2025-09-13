@@ -8,7 +8,7 @@ use crate::util::run_git;
 const MAX_CACHE_REPOS: usize = 20;
 
 // Default SWR window for git fetches. Lower means fetch more often.
-pub const DEFAULT_FETCH_WINDOW_MS: u128 = 1_000; // 1s
+pub const DEFAULT_FETCH_WINDOW_MS: u128 = 5_000; // 5s
 
 pub fn fetch_window_ms() -> u128 {
   if let Ok(v) = std::env::var("CMUX_GIT_FETCH_WINDOW_MS") {
