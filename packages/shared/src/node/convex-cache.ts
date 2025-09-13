@@ -19,6 +19,8 @@ class ConvexClientCache {
     this.cleanupInterval = setInterval(() => {
       this.cleanupExpired();
     }, 60 * 1000); // Clean up every minute
+    // Allow Node to exit naturally even if interval exists (build/generate scripts)
+    this.cleanupInterval.unref?.();
   }
 
   private cleanupExpired(): void {
