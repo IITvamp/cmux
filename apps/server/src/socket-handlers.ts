@@ -47,10 +47,7 @@ import {
 } from "./utils/githubPr.js";
 import { getOctokit } from "./utils/octokit.js";
 import { checkAllProvidersStatus } from "./utils/providerStatus.js";
-import {
-  refreshBranchesForRepo,
-  refreshGitHubData,
-} from "./utils/refreshGitHubData.js";
+import { refreshGitHubData } from "./utils/refreshGitHubData.js";
 import { runWithAuth, runWithAuthToken } from "./utils/requestContext.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { getProjectPaths } from "./workspace.js";
@@ -178,6 +175,59 @@ export function setupSocketHandlers(
         callback?.({ ok: true, diffs });
       } catch (error) {
         serverLogger.error("Error in git-diff-refs:", error);
+        callback?.({
+          ok: false,
+          error: error instanceof Error ? error.message : "Unknown error",
+          diffs: [],
+        });
+      }
+    });
+
+    // Landed diff (closed-PR semantics): compute what actually landed on base
+    socket.on("git-diff-landed", async (data, callback) => {
+      try {
+        const { GitLandedRefsSchema } = await import("@cmux/shared");
+        const { repoFullName, baseRef, headRef, b0Ref } =
+          GitLandedRefsSchema.parse(data);
+        serverLogger.info(
+          "[socket] git-diff-landed",
+          JSON.stringify({ repoFullName, baseRef, headRef, b0Ref })
+        );
+        const { landedDiffForRepo } = await import("./native/git.js");
+        // Ensure a local clone exists under our standard workspace
+        let originPathOverride = "";
+        try {
+          const repoUrl = `https://github.com/${repoFullName}.git`;
+          const repoManager = RepositoryManager.getInstance();
+          const { originPath } = await (
+            await import("./workspace.js")
+          ).getProjectPaths(repoUrl, safeTeam);
+          await repoManager.ensureRepository(repoUrl, originPath);
+          originPathOverride = originPath;
+        } catch (e) {
+          serverLogger.warn(
+            "Could not ensure local clone for landed diffs:",
+            e
+          );
+        }
+        serverLogger.info(
+          "[socket] git-diff-landed invoking landedDiffForRepo",
+          JSON.stringify({ originPathOverride })
+        );
+        const diffs = await landedDiffForRepo({
+          baseRef,
+          headRef,
+          originPathOverride,
+          b0Ref,
+          includeContents: true,
+        });
+        serverLogger.info(
+          "[socket] git-diff-landed results",
+          JSON.stringify({ count: diffs.length })
+        );
+        callback?.({ ok: true, diffs });
+      } catch (error) {
+        serverLogger.error("Error in git-diff-landed:", error);
         callback?.({
           ok: false,
           error: error instanceof Error ? error.message : "Unknown error",
@@ -1355,51 +1405,14 @@ Please address the issue mentioned in the comment above.`;
 
     socket.on("github-fetch-branches", async (data, callback) => {
       try {
-        const { teamSlugOrId, repo } = GitHubFetchBranchesSchema.parse(data);
+        const { repo } = GitHubFetchBranchesSchema.parse(data);
 
-        // Check if we already have branches for this repo
-        const existingBranches = await getConvex().query(
-          api.github.getBranches,
-          {
-            teamSlugOrId,
-            repo,
-          }
-        );
-
-        if (existingBranches.length > 0) {
-          // Reorder to pin origin/HEAD dynamically using native git if available
-          let branchesOut = existingBranches;
-          try {
-            const { listRemoteBranches } = await import("./native/git.js");
-            const head = (await listRemoteBranches({ repoFullName: repo }))?.[0]
-              ?.name;
-            if (head && branchesOut.includes(head)) {
-              branchesOut = [head, ...branchesOut.filter((b) => b !== head)];
-            }
-          } catch {
-            // ignore; fall back to stored order
-          }
-          // Return reordered branches and refresh in background
-          callback({ success: true, branches: branchesOut });
-
-          // Refresh in the background
-          refreshBranchesForRepo(repo, teamSlugOrId).catch((error) => {
-            serverLogger.error("Background branch refresh failed:", error);
-          });
-          return;
-        }
-
-        // If no branches exist, fetch them (already sorted with HEAD pinned)
-        const branches = await refreshBranchesForRepo(repo, teamSlugOrId);
-        callback({ success: true, branches });
+        const { listRemoteBranches } = await import("./native/git.js");
+        const branches = await listRemoteBranches({ repoFullName: repo });
+        callback({ success: true, branches: branches.map((b) => b.name) });
+        return;
       } catch (error) {
         serverLogger.error("Error fetching branches:", error);
-        callback({
-          success: false,
-          error: `Failed to fetch branches: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        });
       }
     });
 

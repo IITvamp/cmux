@@ -107,6 +107,14 @@ export const GitCompareRefsSchema = z.object({
   ref2: z.string(),
 });
 
+// Landed diff request: compute what landed on base when head was integrated
+export const GitLandedRefsSchema = z.object({
+  repoFullName: z.string(),
+  baseRef: z.string(),
+  headRef: z.string(),
+  b0Ref: z.string().optional(),
+});
+
 export const GitFileSchema = z.object({
   path: z.string(),
   status: z.enum(["added", "modified", "deleted", "renamed"]),
@@ -427,6 +435,14 @@ export interface ClientToServerEvents {
   "git-full-diff": (data: GitFullDiffRequest) => void;
   "git-diff-refs": (
     data: GitCompareRefs,
+    callback: (
+      response:
+        | { ok: true; diffs: import("./diff-types.js").ReplaceDiffEntry[] }
+        | { ok: false; error: string; diffs?: [] }
+    ) => void
+  ) => void;
+  "git-diff-landed": (
+    data: z.infer<typeof GitLandedRefsSchema>,
     callback: (
       response:
         | { ok: true; diffs: import("./diff-types.js").ReplaceDiffEntry[] }

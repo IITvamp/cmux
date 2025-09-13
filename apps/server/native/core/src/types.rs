@@ -56,3 +56,17 @@ pub struct GitDiffRefsOptions {
   pub includeContents: Option<bool>,
   pub maxBytes: Option<i32>,
 }
+
+#[napi(object)]
+#[derive(Default, Debug, Clone)]
+pub struct GitDiffLandedOptions {
+  pub baseRef: String,
+  pub headRef: String,
+  pub b0Ref: Option<String>,
+  pub repoFullName: Option<String>,
+  pub repoUrl: Option<String>,
+  pub teamSlugOrId: Option<String>,
+  pub originPathOverride: Option<String>,
+  pub includeContents: Option<bool>,
+  pub maxBytes: Option<i32>,
+}

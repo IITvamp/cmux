@@ -162,3 +162,46 @@ fn refs_merge_base_after_merge_is_branch_tip() {
 
   assert_eq!(out.len(), 0, "Expected no differences after merge, got: {:?}", out);
 }
+
+#[test]
+fn landed_diff_merge_by_message_yields_changes() {
+  let tmp = tempdir().unwrap();
+  let work = tmp.path().join("repo");
+  fs::create_dir_all(&work).unwrap();
+
+  // Initialize base
+  run(&work, "git init");
+  run(&work, "git -c user.email=a@b -c user.name=test checkout -b main");
+  fs::write(work.join("f.txt"), b"base\n").unwrap();
+  run(&work, "git add .");
+  run(&work, "git -c user.email=a@b -c user.name=test commit -m base");
+
+  // Feature branch with a change
+  run(&work, "git checkout -b feature");
+  fs::write(work.join("f.txt"), b"feature\n").unwrap();
+  run(&work, "git add .");
+  run(&work, "git -c user.email=a@b -c user.name=test commit -m feature-change");
+
+  // Merge back to main with a message that includes the head branch name
+  run(&work, "git checkout main");
+  run(&work, "git -c user.email=a@b -c user.name=test merge --no-ff feature -m 'Merge pull request #1 from test/feature'");
+
+  let out = crate::diff::landed::landed_diff(GitDiffLandedOptions {
+    baseRef: "main".into(),
+    headRef: "feature".into(),
+    b0Ref: None,
+    repoFullName: None,
+    repoUrl: None,
+    teamSlugOrId: None,
+    originPathOverride: Some(work.to_string_lossy().to_string()),
+    includeContents: Some(true),
+    maxBytes: Some(1024 * 1024),
+  })
+  .expect("landed diff");
+
+  assert!(
+    out.iter().any(|e| e.filePath == "f.txt"),
+    "expected f.txt in landed diff, got {:?}",
+    out
+  );
+}
