@@ -58,7 +58,6 @@ let logsDir: string | null = null;
 let mainLogStream: WriteStream | null = null;
 let rendererLogStream: WriteStream | null = null;
 let keyDebugStream: WriteStream | null = null;
-let _keyDebugPath: string | null = null;
 
 function getTimestamp(): string {
   return new Date().toISOString();
@@ -161,7 +160,6 @@ function ensureKeyDebugFile(): void {
       flags: "a",
       encoding: "utf8",
     });
-    _keyDebugPath = filePath;
     mainLog("CmdK debug log path:", filePath);
   } catch (e) {
     // If anything fails, ignore; we'll just rely on main.log
@@ -722,7 +720,10 @@ app.whenReady().then(async () => {
         if (!info) return { ok: false };
         const wc = webContents.fromId(info.contentsId);
         if (!wc || wc.isDestroyed()) return { ok: false };
-        const frame = webFrameMain.fromId(info.frameProcessId, info.frameRoutingId);
+        const frame = webFrameMain.fromId(
+          info.frameProcessId,
+          info.frameRoutingId
+        );
         if (!frame) return { ok: false };
         await wc.focus();
         const ok = await frame.executeJavaScript(

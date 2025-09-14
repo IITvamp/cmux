@@ -35,7 +35,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
   useEffect(() => {
     // In Electron, prefer global shortcut from main via cmux event.
     if (isElectron) {
-      const off = window.cmux?.on?.("shortcut:cmd-k", () => {
+      const off = window.cmux.on("shortcut:cmd-k", () => {
         // Only handle Cmd+K (no shift/ctrl variations)
         setOpenedWithShift(false);
         if (openRef.current) {
