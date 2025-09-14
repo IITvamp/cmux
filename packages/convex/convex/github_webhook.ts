@@ -130,6 +130,135 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
             // swallow
           }
         }
+        // Handle CI checks/status-like events and persist normalized records
+        try {
+          const repoFullName = String((body as any)?.repository?.full_name ?? "");
+          const installation = Number((body as any)?.installation?.id ?? 0);
+          if (repoFullName && installation) {
+            const conn = await _ctx.runQuery(
+              internal.github_app.getProviderConnectionByInstallationId,
+              { installationId: installation }
+            );
+            const teamId = conn?.teamId;
+            if (teamId) {
+              // Normalize by event type
+              if (event === "check_run") {
+                const cr = (body as any).check_run ?? {};
+                const cs = (body as any).check_run?.check_suite ?? (body as any).check_suite ?? {};
+                const sha = String(cr?.head_sha ?? cr?.pull_requests?.[0]?.head?.sha ?? cs?.head_sha ?? "");
+                const name = String(cr?.name ?? "");
+                if (sha && name) {
+                  const status: string | undefined = typeof cr?.status === "string" ? cr.status : undefined;
+                  const conclusion: string | undefined = typeof cr?.conclusion === "string" ? cr.conclusion : undefined;
+                  const startedAt = typeof cr?.started_at === "string" ? Date.parse(cr.started_at) : undefined;
+                  const completedAt = typeof cr?.completed_at === "string" ? Date.parse(cr.completed_at) : undefined;
+                  const detailsUrl = typeof cr?.html_url === "string" ? cr.html_url : undefined;
+                  const branch = typeof cs?.head_branch === "string" ? cs.head_branch : undefined;
+                  await _ctx.runMutation(internal.github_checks.upsertFromWebhook, {
+                    installationId: installation,
+                    teamId,
+                    repoFullName,
+                    sha,
+                    branch,
+                    checkType: "check_run",
+                    name,
+                    status: status as any,
+                    conclusion: conclusion as any,
+                    detailsUrl,
+                    externalId: String(cr?.id ?? ""),
+                    startedAt,
+                    completedAt,
+                  });
+                }
+              } else if (event === "status") {
+                const st = (body as any) ?? {};
+                const sha = String(st?.sha ?? "");
+                const name = String(st?.context ?? "");
+                if (sha && name) {
+                  const stateStr = String(st?.state ?? ""); // success | failure | pending | error
+                  const detailsUrl = typeof st?.target_url === "string" ? st.target_url : undefined;
+                  const branches = Array.isArray(st?.branches) ? st.branches : [];
+                  const branch = branches.length > 0 && typeof branches[0]?.name === "string" ? branches[0].name : undefined;
+                  // Map GitHub Status API to our fields
+                  const conclusion =
+                    stateStr === "success"
+                      ? "success"
+                      : stateStr === "failure" || stateStr === "error"
+                      ? (stateStr as any)
+                      : undefined;
+                  const statusNorm: any = stateStr === "pending" ? "pending" : conclusion ? "completed" : undefined;
+                  await _ctx.runMutation(internal.github_checks.upsertFromWebhook, {
+                    installationId: installation,
+                    teamId,
+                    repoFullName,
+                    sha,
+                    branch,
+                    checkType: "status",
+                    name,
+                    status: statusNorm,
+                    conclusion: conclusion as any,
+                    detailsUrl,
+                    externalId: name,
+                  });
+                }
+              } else if (event === "workflow_run") {
+                const wr = (body as any).workflow_run ?? {};
+                const sha = String(wr?.head_sha ?? "");
+                const name = String(wr?.name ?? "");
+                if (sha && name) {
+                  const status: string | undefined = typeof wr?.status === "string" ? wr.status : undefined;
+                  const conclusion: string | undefined = typeof wr?.conclusion === "string" ? wr.conclusion : undefined;
+                  const branch = typeof wr?.head_branch === "string" ? wr.head_branch : undefined;
+                  const detailsUrl = typeof wr?.html_url === "string" ? wr.html_url : undefined;
+                  const createdAt = typeof wr?.created_at === "string" ? Date.parse(wr.created_at) : undefined;
+                  const updatedAt = typeof wr?.updated_at === "string" ? Date.parse(wr.updated_at) : undefined;
+                  await _ctx.runMutation(internal.github_checks.upsertFromWebhook, {
+                    installationId: installation,
+                    teamId,
+                    repoFullName,
+                    sha,
+                    branch,
+                    checkType: "workflow_run",
+                    name,
+                    status: status as any,
+                    conclusion: conclusion as any,
+                    detailsUrl,
+                    externalId: String(wr?.id ?? ""),
+                    startedAt: createdAt,
+                    completedAt: updatedAt,
+                  });
+                }
+              } else if (event === "workflow_job") {
+                const wj = (body as any).workflow_job ?? {};
+                const sha = String(wj?.head_sha ?? "");
+                const name = String(wj?.name ?? "");
+                if (sha && name) {
+                  const status: string | undefined = typeof wj?.status === "string" ? wj.status : undefined;
+                  const conclusion: string | undefined = typeof wj?.conclusion === "string" ? wj.conclusion : undefined;
+                  const detailsUrl = typeof wj?.html_url === "string" ? wj.html_url : undefined;
+                  const startedAt = typeof wj?.started_at === "string" ? Date.parse(wj.started_at) : undefined;
+                  const completedAt = typeof wj?.completed_at === "string" ? Date.parse(wj.completed_at) : undefined;
+                  await _ctx.runMutation(internal.github_checks.upsertFromWebhook, {
+                    installationId: installation,
+                    teamId,
+                    repoFullName,
+                    sha,
+                    checkType: "workflow_job",
+                    name,
+                    status: status as any,
+                    conclusion: conclusion as any,
+                    detailsUrl,
+                    externalId: String(wj?.id ?? ""),
+                    startedAt,
+                    completedAt,
+                  });
+                }
+              }
+            }
+          }
+        } catch (_err) {
+          // swallow
+        }
         break;
       }
       default: {

@@ -491,6 +491,54 @@ const convexSchema = defineSchema({
     .index("by_team_repo_number", ["teamId", "repoFullName", "number"]) // upsert key
     .index("by_installation", ["installationId", "updatedAt"]) // debug/ops
     .index("by_repo", ["repoFullName", "updatedAt"]),
+
+  // Normalized commit checks/statuses from GitHub webhooks
+  commitChecks: defineTable({
+    provider: v.literal("github"),
+    installationId: v.number(),
+    teamId: v.string(),
+    repoFullName: v.string(), // owner/repo
+    sha: v.string(),
+    branch: v.optional(v.string()), // head branch when provided
+    checkType: v.union(
+      v.literal("check_run"),
+      v.literal("status"),
+      v.literal("workflow_run"),
+      v.literal("workflow_job")
+    ),
+    name: v.string(),
+    status: v.optional(
+      v.union(
+        v.literal("queued"),
+        v.literal("in_progress"),
+        v.literal("completed"),
+        v.literal("pending")
+      )
+    ),
+    conclusion: v.optional(
+      v.union(
+        v.literal("success"),
+        v.literal("failure"),
+        v.literal("neutral"),
+        v.literal("cancelled"),
+        v.literal("timed_out"),
+        v.literal("action_required"),
+        v.literal("skipped"),
+        v.literal("stale"),
+        v.literal("error")
+      )
+    ),
+    detailsUrl: v.optional(v.string()),
+    externalId: v.optional(v.string()),
+    startedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_team_repo_sha", ["teamId", "repoFullName", "sha"]) // fetch by commit
+    .index("by_repo_sha", ["repoFullName", "sha"]) // debugging
+    .index("by_team_recent", ["teamId", "updatedAt"]) // recent activity
+    .index("by_installation", ["installationId", "updatedAt"]), // ops
 });
 
 export default convexSchema;

@@ -12,6 +12,7 @@ import { convexQuery } from "@convex-dev/react-query";
 import { useQuery as useRQ } from "@tanstack/react-query";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { ArrowLeftRight, GitBranch } from "lucide-react";
+import { GitHubChecksSummary } from "@/components/GitHubChecksSummary";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -159,6 +160,32 @@ function DashboardDiffPage() {
       : { queryKey: ["diff-smart-disabled"], queryFn: async () => [] }
   );
 
+  // Resolve head ref commit SHA for checks summary (use ref2 as "head")
+  const [headSha, setHeadSha] = useState<string | null>(null);
+  useEffect(() => {
+    const load = async () => {
+      try {
+        if (!selectedProject || !search.ref2) {
+          setHeadSha(null);
+          return;
+        }
+        const [owner, repo] = selectedProject.split("/", 2);
+        const resp = await fetch(
+          `/api/integrations/github/commits/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/${encodeURIComponent(search.ref2)}?team=${encodeURIComponent(teamSlugOrId)}`
+        );
+        if (!resp.ok) {
+          setHeadSha(null);
+          return;
+        }
+        const data = (await resp.json()) as { sha?: string };
+        setHeadSha(typeof data.sha === "string" && data.sha.length > 0 ? data.sha : null);
+      } catch {
+        setHeadSha(null);
+      }
+    };
+    void load();
+  }, [selectedProject, search.ref2, teamSlugOrId]);
+
   // Smart view: no toggle logic needed
 
   useEffect(() => {
@@ -230,6 +257,15 @@ function DashboardDiffPage() {
         />
       </div>
       <div className="flex-1 flex flex-col bg-white dark:bg-neutral-950 overflow-y-auto grow">
+        {selectedProject && headSha ? (
+          <div className="px-3 py-2 border-b border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/40">
+            <GitHubChecksSummary
+              teamSlugOrId={teamSlugOrId}
+              repoFullName={selectedProject}
+              sha={headSha}
+            />
+          </div>
+        ) : null}
         {/* Smart view: no toggle */}
         <GitDiffViewer
           diffs={diffsQuery.data || []}

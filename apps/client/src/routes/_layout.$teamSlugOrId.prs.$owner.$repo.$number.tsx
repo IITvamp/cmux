@@ -8,6 +8,7 @@ import { useQuery as useRQ } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery as useConvexQuery } from "convex/react";
 import { ExternalLink } from "lucide-react";
+import { GitHubChecksSummary } from "@/components/GitHubChecksSummary";
 import { Suspense, useMemo, useState } from "react";
 
 export const Route = createFileRoute(
@@ -218,6 +219,16 @@ function PRDetails() {
             <span className="text-[11px] text-neutral-600 dark:text-neutral-300 select-none">
               {currentPR.headRef || "?"} → {currentPR.baseRef || "?"}
             </span>
+            {currentPR.headSha ? (
+              <>
+                <span className="text-neutral-500 dark:text-neutral-600 select-none">•</span>
+                <GitHubChecksSummary
+                  teamSlugOrId={teamSlugOrId}
+                  repoFullName={currentPR.repoFullName}
+                  sha={currentPR.headSha}
+                />
+              </>
+            ) : null}
           </div>
         </div>
       </div>
