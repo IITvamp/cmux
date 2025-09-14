@@ -270,14 +270,14 @@ export function SearchableSelect({
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
-      <div className={clsx("relative inline-flex items-center")}>
+      <div className={clsx("inline-flex items-center")}>
         <Popover.Trigger asChild>
           <button
             ref={triggerRef}
             type="button"
             disabled={disabled}
             className={clsx(
-              "inline-flex h-7 items-center rounded-md border",
+              "relative inline-flex h-7 items-center rounded-md border",
               "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950",
               // Dim background when popover is open via aria-expanded
               "aria-expanded:bg-neutral-50 dark:aria-expanded:bg-neutral-900",
@@ -291,7 +291,7 @@ export function SearchableSelect({
               className
             )}
           >
-            <span className="flex-1 min-w-0 text-left text-[13.5px] inline-flex items-center gap-1.5">
+            <span className="flex-1 min-w-0 text-left text-[13.5px] inline-flex items-center gap-1.5 pr-1">
               {leftIcon ? (
                 <span className="shrink-0 inline-flex items-center justify-center">
                   {leftIcon}
@@ -299,16 +299,17 @@ export function SearchableSelect({
               ) : null}
               {displayContent}
             </span>
+            {/* Place chevron inside the button so clicking it triggers the popover */}
+            <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-neutral-500" />
           </button>
         </Popover.Trigger>
-        <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-neutral-500" />
       </div>
       <Popover.Portal>
         <Popover.Content
           align="start"
           sideOffset={2}
           className={clsx(
-            "z-50 rounded-md border overflow-hidden",
+            "z-[var(--z-modal)] rounded-md border overflow-hidden",
             "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950",
             // Fade out on close; open remains instant
             "p-0 drop-shadow-xs outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0"

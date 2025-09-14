@@ -480,7 +480,7 @@ etc.`}
           <div
             aria-hidden={iframeLoaded}
             className={clsx(
-              "absolute inset-0 z-10 flex items-center justify-center backdrop-blur-sm transition-opacity duration-300",
+              "absolute inset-0 z-[var(--z-low)] flex items-center justify-center backdrop-blur-sm transition-opacity duration-300",
               "bg-white/60 dark:bg-neutral-950/60",
               iframeLoaded
                 ? "opacity-0 pointer-events-none"

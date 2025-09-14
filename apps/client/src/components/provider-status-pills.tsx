@@ -63,7 +63,7 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
   return (
     <div
       className={clsx(
-        "absolute left-0 right-0 -top-9 flex justify-center pointer-events-none z-10",
+        "absolute left-0 right-0 -top-9 flex justify-center pointer-events-none z-[var(--z-low)]",
         "transition-all duration-500 ease-out",
         isVisible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2"
       )}

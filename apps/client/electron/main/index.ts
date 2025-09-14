@@ -33,6 +33,7 @@ import {
 const { autoUpdater } = electronUpdater;
 
 import util from "node:util";
+import { initCmdK, keyDebug } from "./cmdk";
 import { env } from "./electron-main-env";
 
 // Use a cookieable HTTPS origin intercepted locally instead of a custom scheme.
@@ -381,6 +382,13 @@ app.on("open-url", (_event, url) => {
 app.whenReady().then(async () => {
   ensureLogStreams();
   setupConsoleFileMirrors();
+  initCmdK({
+    getMainWindow: () => mainWindow,
+    logger: {
+      log: mainLog,
+      warn: mainWarn,
+    },
+  });
 
   // Ensure macOS menu and About panel use "cmux" instead of package.json name
   if (process.platform === "darwin") {
@@ -448,70 +456,90 @@ app.whenReady().then(async () => {
   // Create the initial window.
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
 
-  // Production menu with Help -> Open Logs Folder
-  if (app.isPackaged) {
-    try {
-      const template: MenuItemConstructorOptions[] = [];
-      if (process.platform === "darwin") {
-        template.push(
-          { role: "appMenu" },
-          { role: "editMenu" },
-          { role: "viewMenu" },
-          { role: "windowMenu" }
-        );
-      } else {
-        template.push(
-          { label: "File", submenu: [{ role: "quit" }] },
-          { role: "editMenu" },
-          { role: "viewMenu" },
-          { role: "windowMenu" }
-        );
-      }
-      template.push({
-        role: "help",
+  // Application menu with Command Palette accelerator; keep Help items.
+  try {
+    const template: MenuItemConstructorOptions[] = [];
+    if (process.platform === "darwin") {
+      template.push({ role: "appMenu" });
+    } else {
+      template.push({ label: "File", submenu: [{ role: "quit" }] });
+    }
+    template.push(
+      { role: "editMenu" },
+      {
+        label: "Commands",
         submenu: [
           {
-            label: "Check for Updates…",
-            click: async () => {
-              if (!app.isPackaged) {
-                await dialog.showMessageBox({
-                  type: "info",
-                  message: "Updates are only available in packaged builds.",
-                });
-                return;
-              }
+            label: "Command Palette…",
+            accelerator: "CommandOrControl+K",
+            click: () => {
               try {
-                mainLog("Manual update check initiated");
-                const result = await autoUpdater.checkForUpdates();
-                if (!result?.updateInfo) {
-                  await dialog.showMessageBox({
-                    type: "info",
-                    message: "You’re up to date.",
-                  });
-                }
-              } catch (e) {
-                mainWarn("Manual checkForUpdates failed", e);
-                await dialog.showMessageBox({
-                  type: "error",
-                  message: "Failed to check for updates.",
+                const target =
+                  BrowserWindow.getFocusedWindow() ??
+                  mainWindow ??
+                  BrowserWindow.getAllWindows()[0] ??
+                  null;
+                keyDebug("menu-accelerator-cmdk", {
+                  to: target?.webContents.id,
                 });
+                if (target && !target.isDestroyed()) {
+                  target.webContents.send("cmux:event:shortcut:cmd-k");
+                }
+              } catch (err) {
+                mainWarn("Failed to emit Cmd+K from menu accelerator", err);
+                keyDebug("menu-accelerator-cmdk-error", { err: String(err) });
               }
-            },
-          },
-          {
-            label: "Open Logs Folder",
-            click: async () => {
-              if (!logsDir) ensureLogStreams();
-              if (logsDir) await shell.openPath(logsDir);
             },
           },
         ],
-      });
-      const menu = Menu.buildFromTemplate(template);
-      Menu.setApplicationMenu(menu);
-    } catch (e) {
-      mainWarn("Failed to set application menu", e);
-    }
+      },
+      { role: "viewMenu" },
+      { role: "windowMenu" }
+    );
+    template.push({
+      role: "help",
+      submenu: [
+        {
+          label: "Check for Updates…",
+          click: async () => {
+            if (!app.isPackaged) {
+              await dialog.showMessageBox({
+                type: "info",
+                message: "Updates are only available in packaged builds.",
+              });
+              return;
+            }
+            try {
+              mainLog("Manual update check initiated");
+              const result = await autoUpdater.checkForUpdates();
+              if (!result?.updateInfo) {
+                await dialog.showMessageBox({
+                  type: "info",
+                  message: "You’re up to date.",
+                });
+              }
+            } catch (e) {
+              mainWarn("Manual checkForUpdates failed", e);
+              await dialog.showMessageBox({
+                type: "error",
+                message: "Failed to check for updates.",
+              });
+            }
+          },
+        },
+        {
+          label: "Open Logs Folder",
+          click: async () => {
+            if (!logsDir) ensureLogStreams();
+            if (logsDir) await shell.openPath(logsDir);
+          },
+        },
+      ],
+    });
+    const menu = Menu.buildFromTemplate(template);
+    Menu.setApplicationMenu(menu);
+  } catch (e) {
+    mainWarn("Failed to set application menu", e);
   }
 
   app.on("activate", function () {

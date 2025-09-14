@@ -2,11 +2,12 @@ import { useTheme } from "@/components/theme/use-theme";
 import { api } from "@cmux/convex/api";
 import * as Dialog from "@radix-ui/react-dialog";
 
+import { isElectron } from "@/lib/electron";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { Command } from "cmdk";
 import { useMutation, useQuery } from "convex/react";
-import { Monitor, Moon, Sun } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { GitPullRequest, Monitor, Moon, Sun, Plus } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 interface CommandBarProps {
@@ -17,6 +18,9 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [openedWithShift, setOpenedWithShift] = useState(false);
+  const openRef = useRef<boolean>(false);
+  // Used only in non-Electron fallback
+  const prevFocusedElRef = useRef<HTMLElement | null>(null);
   const navigate = useNavigate();
   const router = useRouter();
   const { setTheme } = useTheme();
@@ -25,17 +29,90 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
   const createRun = useMutation(api.taskRuns.create);
 
   useEffect(() => {
+    openRef.current = open;
+  }, [open]);
+
+  useEffect(() => {
+    // In Electron, prefer global shortcut from main via cmux event.
+    if (isElectron) {
+      const off = window.cmux.on("shortcut:cmd-k", () => {
+        // Only handle Cmd+K (no shift/ctrl variations)
+        setOpenedWithShift(false);
+        if (openRef.current) {
+          // About to CLOSE via toggle: normalize state like Esc path
+          setSearch("");
+          setOpenedWithShift(false);
+        }
+        setOpen((cur) => !cur);
+      });
+      return () => {
+        // Unsubscribe if available
+        if (typeof off === "function") off();
+      };
+    }
+
+    // Web/non-Electron fallback: local keydown listener for Cmd+K
     const down = (e: KeyboardEvent) => {
-      if (e.key === "k" && e.metaKey) {
+      // Only trigger on EXACT Cmd+K (no Shift/Alt/Ctrl)
+      if (
+        e.key.toLowerCase() === "k" &&
+        e.metaKey &&
+        !e.shiftKey &&
+        !e.altKey &&
+        !e.ctrlKey
+      ) {
         e.preventDefault();
-        setOpenedWithShift(e.shiftKey);
-        setOpen((open) => !open);
+        if (openRef.current) {
+          setOpenedWithShift(false);
+          setSearch("");
+        } else {
+          setOpenedWithShift(false);
+          // Capture the currently focused element before opening (web only)
+          prevFocusedElRef.current =
+            document.activeElement as HTMLElement | null;
+        }
+        setOpen((cur) => !cur);
       }
     };
-
     document.addEventListener("keydown", down);
     return () => document.removeEventListener("keydown", down);
   }, []);
+
+  // Track and restore focus across open/close, including iframes/webviews.
+  useEffect(() => {
+    // Inform Electron main about palette open state to gate focus capture
+    if (isElectron && window.cmux?.ui?.setCommandPaletteOpen) {
+      void window.cmux.ui.setCommandPaletteOpen(open);
+    }
+
+    if (!open) {
+      if (isElectron && window.cmux?.ui?.restoreLastFocus) {
+        // Ask main to restore using stored info for this window
+        void window.cmux.ui.restoreLastFocus();
+      } else {
+        // Web-only fallback: restore previously focused element in same doc
+        const el = prevFocusedElRef.current;
+        if (el) {
+          const id = window.setTimeout(() => {
+            try {
+              el.focus({ preventScroll: true });
+              if ((el as HTMLIFrameElement).tagName === "IFRAME") {
+                try {
+                  (el as HTMLIFrameElement).contentWindow?.focus?.();
+                } catch {
+                  // ignore
+                }
+              }
+            } catch {
+              // ignore
+            }
+          }, 0);
+          return () => window.clearTimeout(id);
+        }
+      }
+    }
+    return undefined;
+  }, [open]);
 
   const handleHighlight = useCallback(
     async (value: string) => {
@@ -80,6 +157,11 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
       if (value === "new-task") {
         navigate({
           to: "/$teamSlugOrId/dashboard",
+          params: { teamSlugOrId },
+        });
+      } else if (value === "pull-requests") {
+        navigate({
+          to: "/$teamSlugOrId/prs",
           params: { teamSlugOrId },
         });
       } else if (value === "theme-light") {
@@ -148,7 +230,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
   return (
     <>
       <div
-        className="fixed inset-0 z-50"
+        className="fixed inset-0 z-[var(--z-commandbar)]"
         onClick={() => {
           setOpen(false);
           setSearch("");
@@ -161,7 +243,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
         label="Command Menu"
         title="Command Menu"
         loop
-        className="fixed inset-0 z-50 flex items-start justify-center pt-[20vh] pointer-events-none"
+        className="fixed inset-0 z-[var(--z-commandbar)] flex items-start justify-center pt-[20vh] pointer-events-none"
         onKeyDown={(e) => {
           if (e.key === "Escape") {
             setOpen(false);
@@ -193,12 +275,24 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
               <Command.Item
                 value="new-task"
                 onSelect={() => handleSelect("new-task")}
-                className="flex items-center gap-2 px-3 py-2.5 mx-1 rounded-md cursor-pointer 
-                hover:bg-neutral-100 dark:hover:bg-neutral-800 
+                className="flex items-center gap-2 px-3 py-2.5 mx-1 rounded-md cursor-pointer
+                hover:bg-neutral-100 dark:hover:bg-neutral-800
                 data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800
                 data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100"
               >
+                <Plus className="h-4 w-4 text-neutral-500" />
                 <span className="text-sm">New Task</span>
+              </Command.Item>
+              <Command.Item
+                value="pull-requests"
+                onSelect={() => handleSelect("pull-requests")}
+                className="flex items-center gap-2 px-3 py-2.5 mx-1 rounded-md cursor-pointer
+                hover:bg-neutral-100 dark:hover:bg-neutral-800
+                data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800
+                data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100"
+              >
+                <GitPullRequest className="h-4 w-4 text-neutral-500" />
+                <span className="text-sm">Pull Requests</span>
               </Command.Item>
             </Command.Group>
 

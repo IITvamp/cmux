@@ -268,7 +268,7 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
             // marginRight: "-5px",
             background: "transparent",
             // background: "red",
-            zIndex: 99999999,
+            zIndex: "var(--z-sidebar-resize-handle)",
           } as CSSProperties
         }
       />

@@ -2,7 +2,7 @@
 
 import { env } from "@/client-env";
 import { getRandomKitty } from "@/components/kitties";
-import CmuxLogoMark from "@/components/logo/cmux-logo-mark";
+import CmuxLogoMarkAnimated from "@/components/logo/cmux-logo-mark-animated";
 import { cachedGetUser } from "@/lib/cachedGetUser";
 import { isElectron } from "@/lib/electron";
 import { stackClientApp } from "@/lib/stack";
@@ -85,7 +85,7 @@ function AuthenticatedOrSignIn({
         {showSignIn ? (
           <motion.div
             key="signin"
-            className="absolute inset-0 w-screen h-dvh flex items-center justify-center bg-white dark:bg-black z-[99999999]"
+            className="absolute inset-0 w-screen h-dvh flex items-center justify-center bg-white dark:bg-black z-[var(--z-global-blocking)]"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -149,13 +149,13 @@ export function ConvexClientProvider({ children }: { children: ReactNode }) {
         {!bootReady ? (
           <motion.div
             key="boot-loader"
-            className="absolute inset-0 w-screen h-dvh flex flex-col items-center justify-center bg-white dark:bg-black z-[99999999]"
+            className="absolute inset-0 w-screen h-dvh flex flex-col items-center justify-center bg-white dark:bg-black z-[var(--z-global-blocking)]"
             initial={{ opacity: 1 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.22, ease: "easeOut" }}
           >
-            <CmuxLogoMark height={40} />
+            <CmuxLogoMarkAnimated height={40} duration={2.9} />
             <pre className="text-xs font-mono text-neutral-200 dark:text-neutral-800 absolute bottom-0 left-0 pl-4 pb-4">
               {getRandomKitty()}
             </pre>

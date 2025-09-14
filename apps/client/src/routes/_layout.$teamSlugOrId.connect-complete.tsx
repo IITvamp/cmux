@@ -57,7 +57,7 @@ function ConnectComplete() {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-10 bg-gradient-to-b from-neutral-50 to-white dark:from-neutral-950 dark:to-neutral-900">
+    <div className="fixed inset-0 z-[var(--z-modal)] flex items-center justify-center px-4 py-10 bg-gradient-to-b from-neutral-50 to-white dark:from-neutral-950 dark:to-neutral-900">
       <div className="w-full max-w-md">
         <div className="relative overflow-hidden rounded-2xl border border-neutral-200 dark:border-neutral-800 bg-white/80 dark:bg-neutral-950/80 shadow-xl backdrop-blur-sm">
           <div className="p-8">
