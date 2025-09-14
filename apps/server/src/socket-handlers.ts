@@ -1481,13 +1481,38 @@ Please address the issue mentioned in the comment above.`;
     socket.on("github-fetch-branches", async (data, callback) => {
       try {
         const { repo } = GitHubFetchBranchesSchema.parse(data);
-
-        const { listRemoteBranches } = await import("./native/git.js");
-        const branches = await listRemoteBranches({ repoFullName: repo });
-        callback({ success: true, branches: branches.map((b) => b.name) });
+        
+        serverLogger.info(`[github-fetch-branches] Starting branch fetch for repo: ${repo}, team: ${safeTeam}`);
+        
+        // Import the refresh function
+        const { refreshBranchesForRepo } = await import("./utils/refreshGitHubData.js");
+        
+        // Fetch branches and store them in the database
+        const branchNames = await refreshBranchesForRepo(repo, safeTeam);
+        
+        serverLogger.info(`[github-fetch-branches] Successfully fetched and stored ${branchNames.length} branches for ${repo}`);
+        
+        // Also fetch from database to verify they were saved
+        const savedBranches = await getConvex().query(api.github.getBranches, {
+          teamSlugOrId: safeTeam,
+          repo,
+        });
+        
+        serverLogger.info(`[github-fetch-branches] Database verification: ${savedBranches.length} branches in DB for ${repo}`);
+        
+        if (savedBranches.length !== branchNames.length) {
+          serverLogger.warn(`[github-fetch-branches] Branch count mismatch! Fetched: ${branchNames.length}, Saved: ${savedBranches.length}`);
+        }
+        
+        callback({ success: true, branches: savedBranches });
         return;
       } catch (error) {
         serverLogger.error("Error fetching branches:", error);
+        callback({ 
+          success: false, 
+          branches: [],
+          error: error instanceof Error ? error.message : "Unknown error"
+        });
       }
     });
 

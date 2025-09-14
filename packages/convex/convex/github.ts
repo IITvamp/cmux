@@ -350,7 +350,7 @@ export const bulkInsertBranches = authMutation({
       )
     );
     return insertedIds;
-  },
+  }, 
 });
 
 // Upsert branches with activity metadata (name, lastActivityAt, lastCommitSha)
