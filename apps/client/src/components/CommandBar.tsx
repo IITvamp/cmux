@@ -53,13 +53,20 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
 
     // Web/non-Electron fallback: local keydown listener for Cmd+K
     const down = (e: KeyboardEvent) => {
-      if (e.key === "k" && e.metaKey) {
+      // Only trigger on EXACT Cmd+K (no Shift/Alt/Ctrl)
+      if (
+        e.key.toLowerCase() === "k" &&
+        e.metaKey &&
+        !e.shiftKey &&
+        !e.altKey &&
+        !e.ctrlKey
+      ) {
         e.preventDefault();
         if (openRef.current) {
           setOpenedWithShift(false);
           setSearch("");
         } else {
-          setOpenedWithShift(e.shiftKey);
+          setOpenedWithShift(false);
           // Capture the currently focused element before opening (web only)
           prevFocusedElRef.current =
             document.activeElement as HTMLElement | null;
