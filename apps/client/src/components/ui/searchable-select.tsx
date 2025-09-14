@@ -270,14 +270,14 @@ export function SearchableSelect({
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
-      <div className={clsx("relative inline-flex items-center")}>
+      <div className={clsx("inline-flex items-center")}> 
         <Popover.Trigger asChild>
           <button
             ref={triggerRef}
             type="button"
             disabled={disabled}
             className={clsx(
-              "inline-flex h-7 items-center rounded-md border",
+              "relative inline-flex h-7 items-center rounded-md border",
               "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950",
               // Dim background when popover is open via aria-expanded
               "aria-expanded:bg-neutral-50 dark:aria-expanded:bg-neutral-900",
@@ -299,9 +299,10 @@ export function SearchableSelect({
               ) : null}
               {displayContent}
             </span>
+            {/* Place chevron inside the button so clicking it triggers the popover */}
+            <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-neutral-500" />
           </button>
         </Popover.Trigger>
-        <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-neutral-500" />
       </div>
       <Popover.Portal>
         <Popover.Content
