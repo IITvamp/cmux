@@ -30,9 +30,9 @@ export default function CmuxLogo({
   showWordmark = true,
   showGuides = false,
   showBorder = false,
-  markTranslateX,
-  markTranslateY,
-  markScale,
+  markTranslateX = 87.2,
+  markTranslateY = 62.7,
+  markScale = 0.2,
   style,
   ...rest
 }: Props) {
@@ -142,11 +142,7 @@ export default function CmuxLogo({
       {/* Logomark (left-flush) */}
       {/* Replaced arrow with new SVG path */}
       {/* Scale and position the new arrow to fit existing layout */}
-      <g
-        transform={`translate(${markTranslateX ?? 87.2}, ${
-          markTranslateY ?? 41.4
-        }) scale(${markScale ?? 0.2})`}
-      >
+      <g transform={`translate(${markTranslateX}, ${markTranslateY}) scale(${markScale})`}>
         <g filter="url(#filter0_dd_116_97)">
           <path
             d="M64 64L453 333.5L64 603V483.222L273.462 333.5L64 183.778V64Z"
