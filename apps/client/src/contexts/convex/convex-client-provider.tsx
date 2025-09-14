@@ -2,7 +2,7 @@
 
 import { env } from "@/client-env";
 import { getRandomKitty } from "@/components/kitties";
-import CmuxLogoMark from "@/components/logo/cmux-logo-mark";
+import CmuxLogoMarkAnimated from "@/components/logo/cmux-logo-mark-animated";
 import { cachedGetUser } from "@/lib/cachedGetUser";
 import { isElectron } from "@/lib/electron";
 import { stackClientApp } from "@/lib/stack";
@@ -92,7 +92,7 @@ function AuthenticatedOrSignIn({
           >
             {isElectron ? (
               <div
-            className="absolute top-0 left-0 right-0 h-[24px]"
+                className="absolute top-0 left-0 right-0 h-[24px]"
                 style={{ WebkitAppRegion: "drag" } as CSSProperties}
               />
             ) : null}
@@ -155,7 +155,7 @@ export function ConvexClientProvider({ children }: { children: ReactNode }) {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.22, ease: "easeOut" }}
           >
-            <CmuxLogoMark height={40} />
+            <CmuxLogoMarkAnimated height={40} duration={2.9} />
             <pre className="text-xs font-mono text-neutral-200 dark:text-neutral-800 absolute bottom-0 left-0 pl-4 pb-4">
               {getRandomKitty()}
             </pre>

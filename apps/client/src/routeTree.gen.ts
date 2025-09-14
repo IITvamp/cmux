@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as DebugIconRouteImport } from './routes/debug-icon'
 import { Route as LayoutRouteImport } from './routes/_layout'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as HandlerSplatRouteImport } from './routes/handler.$'
@@ -34,6 +35,11 @@ import { Route as LayoutTeamSlugOrIdTaskTaskIdRunRunIdPrRouteImport } from './ro
 import { Route as LayoutTeamSlugOrIdTaskTaskIdRunRunIdDiffRouteImport } from './routes/_layout.$teamSlugOrId.task.$taskId.run.$runId.diff'
 import { Route as LayoutTeamSlugOrIdTaskTaskIdRunRunIdPreviewPortRouteImport } from './routes/_layout.$teamSlugOrId.task.$taskId.run.$runId.preview.$port'
 
+const DebugIconRoute = DebugIconRouteImport.update({
+  id: '/debug-icon',
+  path: '/debug-icon',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LayoutRoute = LayoutRouteImport.update({
   id: '/_layout',
   getParentRoute: () => rootRouteImport,
@@ -171,6 +177,7 @@ const LayoutTeamSlugOrIdTaskTaskIdRunRunIdPreviewPortRoute =
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/debug-icon': typeof DebugIconRoute
   '/$teamSlugOrId': typeof LayoutTeamSlugOrIdRouteWithChildren
   '/debug': typeof LayoutDebugRoute
   '/profile': typeof LayoutProfileRoute
@@ -196,6 +203,7 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/debug-icon': typeof DebugIconRoute
   '/$teamSlugOrId': typeof LayoutTeamSlugOrIdRouteWithChildren
   '/debug': typeof LayoutDebugRoute
   '/profile': typeof LayoutProfileRoute
@@ -221,6 +229,7 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/_layout': typeof LayoutRouteWithChildren
+  '/debug-icon': typeof DebugIconRoute
   '/_layout/$teamSlugOrId': typeof LayoutTeamSlugOrIdRouteWithChildren
   '/_layout/debug': typeof LayoutDebugRoute
   '/_layout/profile': typeof LayoutProfileRoute
@@ -248,6 +257,7 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
+    | '/debug-icon'
     | '/$teamSlugOrId'
     | '/debug'
     | '/profile'
@@ -273,6 +283,7 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
+    | '/debug-icon'
     | '/$teamSlugOrId'
     | '/debug'
     | '/profile'
@@ -297,6 +308,7 @@ export interface FileRouteTypes {
     | '__root__'
     | '/'
     | '/_layout'
+    | '/debug-icon'
     | '/_layout/$teamSlugOrId'
     | '/_layout/debug'
     | '/_layout/profile'
@@ -324,11 +336,19 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LayoutRoute: typeof LayoutRouteWithChildren
+  DebugIconRoute: typeof DebugIconRoute
   HandlerSplatRoute: typeof HandlerSplatRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/debug-icon': {
+      id: '/debug-icon'
+      path: '/debug-icon'
+      fullPath: '/debug-icon'
+      preLoaderRoute: typeof DebugIconRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_layout': {
       id: '/_layout'
       path: ''
@@ -611,6 +631,7 @@ const LayoutRouteWithChildren =
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LayoutRoute: LayoutRouteWithChildren,
+  DebugIconRoute: DebugIconRoute,
   HandlerSplatRoute: HandlerSplatRoute,
 }
 export const routeTree = rootRouteImport
