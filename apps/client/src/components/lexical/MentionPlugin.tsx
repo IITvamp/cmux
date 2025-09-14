@@ -56,7 +56,7 @@ function MentionMenu({
   return createPortal(
     <div
       ref={menuRef}
-      className="absolute z-[var(--z-modal)] w-72 max-h-48 overflow-y-auto bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-md shadow-lg"
+      className="absolute z-[var(--z-modal)] w-full max-w-[580px] min-w-72 max-h-48 overflow-y-auto bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-md shadow-lg"
       style={{
         top: position.top,
         left: position.left,
@@ -110,7 +110,14 @@ function MentionMenu({
               alt=""
               className="w-3 h-3 flex-shrink-0"
             />
-            <span className="truncate">{file.relativePath}</span>
+            <div className="flex items-center gap-1 min-w-0 flex-1">
+              <span className="font-medium">{file.name}</span>
+              {file.relativePath !== file.name && (
+                <span className="text-neutral-500 dark:text-neutral-400 truncate">
+                  {file.relativePath.substring(0, file.relativePath.lastIndexOf('/'))}
+                </span>
+              )}
+            </div>
           </button>
         ))
       )}
