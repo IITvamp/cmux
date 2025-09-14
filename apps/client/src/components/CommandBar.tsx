@@ -24,6 +24,39 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
   const navigate = useNavigate();
   const router = useRouter();
   const { setTheme } = useTheme();
+  // Position of command bar relative to its default centered position.
+  const [pos, setPos] = useState<{ x: number; y: number }>(() => {
+    try {
+      const raw = localStorage.getItem("cmux:cmdk:position");
+      if (raw) {
+        const parsed = JSON.parse(raw) as { x: number; y: number };
+        if (
+          typeof parsed?.x === "number" &&
+          typeof parsed?.y === "number" &&
+          isFinite(parsed.x) &&
+          isFinite(parsed.y)
+        ) {
+          return parsed;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return { x: 0, y: 0 };
+  });
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const dragState = useRef<
+    | {
+        pointerId: number;
+        startX: number;
+        startY: number;
+        startPosX: number;
+        startPosY: number;
+        offsetX: number;
+        offsetY: number;
+      }
+    | null
+  >(null);
 
   const allTasks = useQuery(api.tasks.get, { teamSlugOrId });
   const createRun = useMutation(api.taskRuns.create);
@@ -106,6 +139,110 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
     }
     return undefined;
   }, [open]);
+
+  // Persist position when it changes.
+  useEffect(() => {
+    try {
+      localStorage.setItem("cmux:cmdk:position", JSON.stringify(pos));
+    } catch {
+      // ignore
+    }
+  }, [pos]);
+
+  // Clamp position on resize to keep within viewport.
+  useEffect(() => {
+    const onResize = () => {
+      const el = panelRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const margin = 16; // keep at least 16px visible
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      // Current rect is based on current pos; compute clamped delta to keep inside
+      let dx = 0;
+      let dy = 0;
+      if (rect.left < margin) dx = margin - rect.left;
+      if (rect.top < margin) dy = margin - rect.top;
+      if (rect.right > vw - margin) dx = (vw - margin) - rect.right;
+      if (rect.bottom > vh - margin) dy = (vh - margin) - rect.bottom;
+      if (dx !== 0 || dy !== 0) setPos((p) => ({ x: p.x + dx, y: p.y + dy }));
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  const onPointerDownDrag = useCallback((e: React.PointerEvent) => {
+    const el = panelRef.current;
+    if (!el) return;
+    // Only left button / primary touch
+    if (e.button !== 0 && e.pointerType === "mouse") return;
+    // Avoid starting drag from interactive controls unless explicitly on handle
+    const target = e.target as HTMLElement;
+    const interactive = target.closest(
+      "input, textarea, select, button, a, [role=button], [role=menuitem], [contenteditable=true]"
+    );
+    const isHandle = target.closest('[data-cmdk-drag-handle="true"]');
+    if (interactive && !isHandle) return;
+
+    const rect = el.getBoundingClientRect();
+    dragState.current = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      startPosX: pos.x,
+      startPosY: pos.y,
+      offsetX: e.clientX - rect.left,
+      offsetY: e.clientY - rect.top,
+    };
+    try {
+      el.setPointerCapture(e.pointerId);
+    } catch {
+      // ignore
+    }
+    e.preventDefault();
+  }, [pos.x, pos.y]);
+
+  const onPointerMoveDrag = useCallback((e: React.PointerEvent) => {
+    const st = dragState.current;
+    const el = panelRef.current;
+    if (!st || !el) return;
+    const rect = el.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const margin = 16; // keep some of it visible
+
+    // Desired absolute top-left based on pointer and stored offset
+    let desiredLeft = e.clientX - st.offsetX;
+    let desiredTop = e.clientY - st.offsetY;
+
+    // Clamp within viewport bounds with margin
+    const maxLeft = vw - margin - rect.width;
+    const maxTop = vh - margin - rect.height;
+    desiredLeft = Math.min(Math.max(desiredLeft, margin), Math.max(margin, maxLeft));
+    desiredTop = Math.min(Math.max(desiredTop, margin), Math.max(margin, maxTop));
+
+    // Current absolute left/top
+    const curLeft = rect.left;
+    const curTop = rect.top;
+    const dx = desiredLeft - curLeft;
+    const dy = desiredTop - curTop;
+    if (dx !== 0 || dy !== 0) setPos((p) => ({ x: p.x + dx, y: p.y + dy }));
+
+    e.preventDefault();
+  }, []);
+
+  const onPointerUpDrag = useCallback((e: React.PointerEvent) => {
+    const el = panelRef.current;
+    const st = dragState.current;
+    if (!st || !el) return;
+    try {
+      el.releasePointerCapture(st.pointerId);
+    } catch {
+      // ignore
+    }
+    dragState.current = null;
+    e.preventDefault();
+  }, []);
 
   const handleHighlight = useCallback(
     async (value: string) => {
@@ -249,7 +386,20 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
       >
         <Dialog.Title className="sr-only">Command Menu</Dialog.Title>
 
-        <div className="w-full max-w-2xl bg-white dark:bg-neutral-900 rounded-xl shadow-2xl border border-neutral-200 dark:border-neutral-700 overflow-hidden pointer-events-auto">
+        <div
+          ref={panelRef}
+          onPointerDown={onPointerDownDrag}
+          onPointerMove={onPointerMoveDrag}
+          onPointerUp={onPointerUpDrag}
+          className="relative w-full max-w-2xl bg-white dark:bg-neutral-900 rounded-xl shadow-2xl border border-neutral-200 dark:border-neutral-700 overflow-hidden pointer-events-auto cursor-default select-none"
+          style={{ transform: `translate(${pos.x}px, ${pos.y}px)` }}
+        >
+          {/* Invisible drag handle at top to initiate dragging without interfering with input */}
+          <div
+            data-cmdk-drag-handle="true"
+            className="absolute inset-x-0 top-0 h-3 cursor-move"
+            onPointerDown={onPointerDownDrag}
+          />
           <Command.Input
             value={search}
             onValueChange={setSearch}
