@@ -6,7 +6,7 @@ import { isElectron } from "@/lib/electron";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { Command } from "cmdk";
 import { useMutation, useQuery } from "convex/react";
-import { GitPullRequest, Monitor, Moon, Sun } from "lucide-react";
+import { GitPullRequest, Monitor, Moon, Plus, Sun } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -273,6 +273,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
                 data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800
                 data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100"
               >
+                <Plus className="h-4 w-4 text-neutral-500" />
                 <span className="text-sm">New Task</span>
               </Command.Item>
               <Command.Item
