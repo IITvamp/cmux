@@ -307,6 +307,15 @@ export interface WorkerToServerEvents {
 
   // Error reporting
   "worker:error": (data: { workerId: string; error: string }) => void;
+
+  // Git bundle for repo sync
+  "worker:git-bundle": (data: {
+    workerId: string;
+    taskRunId: Id<"taskRuns">;
+    bundleBase64: string;
+    branchName: string;
+    timestamp: number;
+  }) => void;
 }
 
 // For worker's internal socket server (client connections)

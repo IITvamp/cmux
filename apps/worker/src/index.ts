@@ -1012,6 +1012,11 @@ async function createTerminal(
             agentModel: options.agentModel,
             elapsedMs: Date.now() - processStartTime,
           });
+
+          // Create and send git bundle for repo sync
+          createAndSendGitBundle(options.taskRunId!, cwd).catch((error) => {
+            log("ERROR", "Failed to create git bundle:", error);
+          });
         })
         .catch((e) => {
           log(
@@ -1261,3 +1266,71 @@ function gracefulShutdown() {
 
 process.on("SIGTERM", gracefulShutdown);
 process.on("SIGINT", gracefulShutdown);
+
+/**
+ * Create a git bundle of the current branch and send it to the main server
+ */
+async function createAndSendGitBundle(
+  taskRunId: string,
+  worktreePath: string
+): Promise<void> {
+  try {
+    log("INFO", `Creating git bundle for task ${taskRunId}`);
+
+    // Get the current branch name
+    const { stdout: branchName } = await execAsync(
+      "git rev-parse --abbrev-ref HEAD",
+      { cwd: worktreePath }
+    );
+    const branch = branchName.trim();
+
+    // Create a unique bundle filename
+    const bundleFile = `/tmp/bundle-${taskRunId}-${Date.now()}.bundle`;
+
+    // Get the base commit (where this branch diverged from main/master)
+    let baseCommit = "";
+    try {
+      const { stdout: mergeBase } = await execAsync(
+        "git merge-base HEAD origin/main || git merge-base HEAD origin/master",
+        { cwd: worktreePath }
+      );
+      baseCommit = mergeBase.trim();
+    } catch {
+      // If no merge base, include all commits
+      log("WARN", "No merge base found, creating full bundle");
+    }
+
+    // Create the bundle
+    const bundleCmd = baseCommit
+      ? `git bundle create ${bundleFile} ${baseCommit}..HEAD`
+      : `git bundle create ${bundleFile} HEAD`;
+
+    await execAsync(bundleCmd, { cwd: worktreePath });
+
+    // Read the bundle file
+    const bundleData = await fs.readFile(bundleFile);
+    const bundleBase64 = bundleData.toString("base64");
+
+    // Clean up the bundle file
+    await fs.unlink(bundleFile);
+
+    log(
+      "INFO",
+      `Git bundle created for task ${taskRunId}, size: ${bundleData.length} bytes`
+    );
+
+    // Send the bundle to the main server
+    emitToMainServer("worker:git-bundle", {
+      workerId: WORKER_ID,
+      taskRunId,
+      bundleBase64,
+      branchName: branch,
+      timestamp: Date.now(),
+    });
+
+    log("INFO", `Git bundle sent to main server for task ${taskRunId}`);
+  } catch (error) {
+    log("ERROR", `Failed to create git bundle for task ${taskRunId}:`, error);
+    throw error;
+  }
+}

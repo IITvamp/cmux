@@ -560,6 +560,47 @@ export async function spawnAgent(
       }
     });
 
+    // Set up git-bundle event handler
+    vscodeInstance.on("git-bundle", async (data) => {
+      serverLogger.info(
+        `[AgentSpawner] Git bundle received for ${agent.name}:`,
+        {
+          taskRunId: data.taskRunId,
+          branchName: data.branchName,
+          bundleSize: data.bundleBase64.length,
+        }
+      );
+
+      if (data.taskRunId !== taskRunId) {
+        serverLogger.warn(
+          `[AgentSpawner] Bundle event taskRunId mismatch; ignoring`
+        );
+        return;
+      }
+
+      try {
+        // Apply the git bundle to both the worktree and rust git cache
+        await runWithAuth(capturedAuthToken, capturedAuthHeaderJson, async () => {
+          const { applyGitBundle } = await import("./utils/applyGitBundle.js");
+          await applyGitBundle({
+            bundleBase64: data.bundleBase64,
+            branchName: data.branchName,
+            worktreePath,
+            repoUrl: options.repoUrl,
+            teamSlugOrId,
+          });
+          serverLogger.info(
+            `[AgentSpawner] Git bundle applied successfully for ${agent.name}`
+          );
+        });
+      } catch (error) {
+        serverLogger.error(
+          `[AgentSpawner] Error applying git bundle for ${agent.name}:`,
+          error
+        );
+      }
+    });
+
     // Get ports if it's a Docker instance
     let ports:
       | { vscode: string; worker: string; extension?: string }

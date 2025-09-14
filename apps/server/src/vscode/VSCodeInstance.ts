@@ -167,6 +167,18 @@ export abstract class VSCodeInstance extends EventEmitter {
         this.emit("file-changes", data);
       });
 
+      this.workerSocket.on("worker:git-bundle", (data) => {
+        dockerLogger.info(
+          `[VSCodeInstance ${this.instanceId}] Git bundle received:`,
+          {
+            taskRunId: data.taskRunId,
+            branchName: data.branchName,
+            bundleSize: data.bundleBase64.length,
+          }
+        );
+        this.emit("git-bundle", data);
+      });
+
       this.workerSocket.on("worker:error", (data) => {
         dockerLogger.error(
           `[VSCodeInstance ${this.instanceId}] Worker error:`,
