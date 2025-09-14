@@ -100,6 +100,69 @@ const cmuxAPI = {
       ) as Promise<{ ok: boolean }>;
     },
   },
+  // WebContentsView API
+  webContentsView: {
+    create: (options: unknown) => {
+      return ipcRenderer.invoke("wcv:create", options) as Promise<number>;
+    },
+    destroy: (id: number) => {
+      return ipcRenderer.invoke("wcv:destroy", id) as Promise<void>;
+    },
+    setBounds: (id: number, bounds: unknown) => {
+      return ipcRenderer.invoke("wcv:setBounds", id, bounds) as Promise<void>;
+    },
+    setVisible: (id: number, visible: boolean) => {
+      return ipcRenderer.invoke("wcv:setVisible", id, visible) as Promise<void>;
+    },
+    loadURL: (id: number, url: string) => {
+      return ipcRenderer.invoke("wcv:loadURL", id, url) as Promise<void>;
+    },
+    reload: (id: number) => {
+      return ipcRenderer.invoke("wcv:reload", id) as Promise<void>;
+    },
+    goBack: (id: number) => {
+      return ipcRenderer.invoke("wcv:goBack", id) as Promise<void>;
+    },
+    goForward: (id: number) => {
+      return ipcRenderer.invoke("wcv:goForward", id) as Promise<void>;
+    },
+    executeJavaScript: (id: number, code: string) => {
+      return ipcRenderer.invoke("wcv:executeJavaScript", id, code) as Promise<unknown>;
+    },
+    insertCSS: (id: number, css: string) => {
+      return ipcRenderer.invoke("wcv:insertCSS", id, css) as Promise<void>;
+    },
+    focus: (id: number) => {
+      return ipcRenderer.invoke("wcv:focus", id) as Promise<void>;
+    },
+    blur: (id: number) => {
+      return ipcRenderer.invoke("wcv:blur", id) as Promise<void>;
+    },
+    canGoBack: (id: number) => {
+      return ipcRenderer.invoke("wcv:canGoBack", id) as Promise<boolean>;
+    },
+    canGoForward: (id: number) => {
+      return ipcRenderer.invoke("wcv:canGoForward", id) as Promise<boolean>;
+    },
+    getURL: (id: number) => {
+      return ipcRenderer.invoke("wcv:getURL", id) as Promise<string>;
+    },
+    getTitle: (id: number) => {
+      return ipcRenderer.invoke("wcv:getTitle", id) as Promise<string>;
+    },
+    isLoading: (id: number) => {
+      return ipcRenderer.invoke("wcv:isLoading", id) as Promise<boolean>;
+    },
+    stop: (id: number) => {
+      return ipcRenderer.invoke("wcv:stop", id) as Promise<void>;
+    },
+    openDevTools: (id: number) => {
+      return ipcRenderer.invoke("wcv:openDevTools", id) as Promise<void>;
+    },
+    closeDevTools: (id: number) => {
+      return ipcRenderer.invoke("wcv:closeDevTools", id) as Promise<void>;
+    },
+  },
 };
 
 contextBridge.exposeInMainWorld("electron", electronAPI);

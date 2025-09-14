@@ -35,6 +35,7 @@ const { autoUpdater } = electronUpdater;
 import util from "node:util";
 import { initCmdK, keyDebug } from "./cmdk";
 import { env } from "./electron-main-env";
+import { initWebContentsViewHandlers, cleanupWebContentsViews } from "./webcontentsview";
 
 // Use a cookieable HTTPS origin intercepted locally instead of a custom scheme.
 const PARTITION = "persist:cmux";
@@ -321,6 +322,9 @@ function createWindow(): void {
 
   mainWindow = new BrowserWindow(windowOptions);
 
+  // Initialize WebContentsView handlers
+  initWebContentsViewHandlers(mainWindow);
+
   // Capture renderer console output into renderer.log
   mainWindow.webContents.on(
     "console-message",
@@ -555,6 +559,7 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   try {
+    cleanupWebContentsViews();
     mainLogStream?.end();
     rendererLogStream?.end();
   } catch {

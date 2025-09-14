@@ -20,6 +20,28 @@ declare global {
         setCommandPaletteOpen: (open: boolean) => Promise<{ ok: boolean }>;
         restoreLastFocus: () => Promise<{ ok: boolean }>;
       };
+      webContentsView: {
+        create: (options: unknown) => Promise<number>;
+        destroy: (id: number) => Promise<void>;
+        setBounds: (id: number, bounds: unknown) => Promise<void>;
+        setVisible: (id: number, visible: boolean) => Promise<void>;
+        loadURL: (id: number, url: string) => Promise<void>;
+        reload: (id: number) => Promise<void>;
+        goBack: (id: number) => Promise<void>;
+        goForward: (id: number) => Promise<void>;
+        executeJavaScript: (id: number, code: string) => Promise<unknown>;
+        insertCSS: (id: number, css: string) => Promise<void>;
+        focus: (id: number) => Promise<void>;
+        blur: (id: number) => Promise<void>;
+        canGoBack: (id: number) => Promise<boolean>;
+        canGoForward: (id: number) => Promise<boolean>;
+        getURL: (id: number) => Promise<string>;
+        getTitle: (id: number) => Promise<string>;
+        isLoading: (id: number) => Promise<boolean>;
+        stop: (id: number) => Promise<void>;
+        openDevTools: (id: number) => Promise<void>;
+        closeDevTools: (id: number) => Promise<void>;
+      };
       socket: {
         connect: (query: Record<string, string>) => Promise<unknown>;
         disconnect: (socketId: string) => Promise<unknown>;
