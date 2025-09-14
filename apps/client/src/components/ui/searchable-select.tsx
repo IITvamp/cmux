@@ -301,7 +301,22 @@ export function SearchableSelect({
             </span>
           </button>
         </Popover.Trigger>
-        <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-neutral-500" />
+        <button
+          type="button"
+          aria-label="Toggle menu"
+          disabled={disabled}
+          onClick={() => setOpen((o) => !o)}
+          tabIndex={-1}
+          className={clsx(
+            "absolute right-1.5 top-1/2 -translate-y-1/2",
+            "p-1 rounded",
+            "text-neutral-500",
+            "hover:bg-neutral-100 dark:hover:bg-neutral-800",
+            "disabled:opacity-60"
+          )}
+        >
+          <ChevronDown className="h-3.5 w-3.5" />
+        </button>
       </div>
       <Popover.Portal>
         <Popover.Content
