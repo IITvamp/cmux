@@ -3,10 +3,11 @@ import { api } from "@cmux/convex/api";
 import * as Dialog from "@radix-ui/react-dialog";
 
 import { isElectron } from "@/lib/electron";
+import { useSocket } from "@/contexts/socket/use-socket";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { Command } from "cmdk";
 import { useMutation, useQuery } from "convex/react";
-import { GitPullRequest, Monitor, Moon, Sun } from "lucide-react";
+import { GitPullRequest, Monitor, Moon, Plus, Sun } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -23,10 +24,12 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
   const prevFocusedElRef = useRef<HTMLElement | null>(null);
   const navigate = useNavigate();
   const router = useRouter();
-  const { setTheme } = useTheme();
+  const { setTheme, theme } = useTheme();
+  const { socket } = useSocket();
 
   const allTasks = useQuery(api.tasks.get, { teamSlugOrId });
   const createRun = useMutation(api.taskRuns.create);
+  const createTask = useMutation(api.tasks.create);
 
   useEffect(() => {
     openRef.current = open;
@@ -145,9 +148,103 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
     [router, teamSlugOrId]
   );
 
+  const handleAutoStartTask = useCallback(async () => {
+    // Navigate to dashboard and prepare to start a task
+    navigate({
+      to: "/$teamSlugOrId/dashboard",
+      params: { teamSlugOrId },
+    });
+
+    // Close the command bar
+    setOpen(false);
+    setSearch("");
+    setOpenedWithShift(false);
+
+    // Get stored preferences from localStorage
+    const storedProject = localStorage.getItem("selectedProject");
+    const storedAgents = localStorage.getItem("selectedAgents");
+    const storedCloudMode = localStorage.getItem("isCloudMode");
+
+    if (!storedProject || !storedAgents) {
+      toast.error("Please configure project and agents in the dashboard first");
+      return;
+    }
+
+    const selectedProject = JSON.parse(storedProject);
+    const selectedAgents = JSON.parse(storedAgents);
+    const isCloudMode = storedCloudMode ? JSON.parse(storedCloudMode) : false;
+
+    if (!selectedProject[0] || selectedAgents.length === 0) {
+      toast.error("Please configure project and agents in the dashboard first");
+      return;
+    }
+
+    if (!socket) {
+      toast.error("Socket not connected");
+      return;
+    }
+
+    // For simplicity, we'll prompt for task description
+    // In a real implementation, you might want to open a modal or use the search value
+    const taskDescription = search.trim() || "New task from command bar";
+
+    const projectFullName = selectedProject[0];
+    const envSelected = projectFullName.startsWith("env:");
+
+    try {
+      // Create task in Convex
+      const taskId = await createTask({
+        teamSlugOrId,
+        text: taskDescription,
+        projectFullName: envSelected ? undefined : projectFullName,
+      });
+
+      const repoUrl = envSelected
+        ? undefined
+        : `https://github.com/${projectFullName}.git`;
+
+      // Start the task
+      socket.emit(
+        "start-task",
+        {
+          ...(repoUrl ? { repoUrl } : {}),
+          taskDescription,
+          projectFullName,
+          taskId,
+          selectedAgents: selectedAgents.length > 0 ? selectedAgents : undefined,
+          isCloudMode: envSelected ? true : isCloudMode,
+          ...(envSelected
+            ? {
+                environmentId: projectFullName.replace(
+                  /^env:/,
+                  ""
+                ) as string & {
+                  __tableName: "environments";
+                },
+              }
+            : {}),
+          theme,
+        },
+        (response) => {
+          if ("error" in response) {
+            console.error("Task start error:", response.error);
+            toast.error(`Task start error: ${response.error}`);
+          } else {
+            toast.success("Task started successfully");
+          }
+        }
+      );
+    } catch (error) {
+      console.error("Error starting task:", error);
+      toast.error("Failed to start task");
+    }
+  }, [navigate, teamSlugOrId, search, socket, createTask, theme]);
+
   const handleSelect = useCallback(
     async (value: string) => {
-      if (value === "new-task") {
+      if (value === "auto-start-task") {
+        await handleAutoStartTask();
+      } else if (value === "new-task") {
         navigate({
           to: "/$teamSlugOrId/dashboard",
           params: { teamSlugOrId },
@@ -215,7 +312,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
       setSearch("");
       setOpenedWithShift(false);
     },
-    [navigate, teamSlugOrId, setTheme, createRun]
+    [navigate, teamSlugOrId, setTheme, createRun, handleAutoStartTask]
   );
 
   if (!open) return null;
@@ -258,7 +355,20 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
           />
           <Command.List className="max-h-[400px] overflow-y-auto px-1 pb-2 flex flex-col gap-2">
             <Command.Empty className="py-6 text-center text-sm text-neutral-500 dark:text-neutral-400">
-              No results found.
+              <div className="flex flex-col items-center gap-3">
+                <span>No results found.</span>
+                {search.trim() && (
+                  <button
+                    onClick={() => handleSelect("auto-start-task")}
+                    className="flex items-center gap-2 px-4 py-2 rounded-md
+                      bg-blue-500 hover:bg-blue-600 text-white transition-colors
+                      text-sm font-medium"
+                  >
+                    <Plus className="h-4 w-4" />
+                    <span>Start task: "{search}"</span>
+                  </button>
+                )}
+              </div>
             </Command.Empty>
 
             <Command.Group>
