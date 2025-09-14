@@ -55,7 +55,7 @@ function DebugIconPage() {
   const [showGuides, setShowGuides] = useState<boolean>(true);
   const [showBorder, setShowBorder] = useState<boolean>(true);
   const [showWordmark, setShowWordmark] = useState<boolean>(true);
-  const [pulse, setPulse] = useState<number>(3.2);
+  const [pulse, setPulse] = useState<number>(2.9);
 
   const code = useMemo(
     () =>

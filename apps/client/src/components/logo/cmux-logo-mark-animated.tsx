@@ -20,7 +20,7 @@ export default function CmuxLogoMarkAnimated({
   label,
   from = "#00D4FF",
   to = "#7C3AED",
-  duration = 3.2,
+  duration = 2.9,
   style,
   ...rest
 }: Props) {
@@ -205,4 +205,3 @@ export default function CmuxLogoMarkAnimated({
     </svg>
   );
 }
-
