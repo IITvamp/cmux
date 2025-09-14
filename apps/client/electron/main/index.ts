@@ -35,6 +35,7 @@ const { autoUpdater } = electronUpdater;
 import util from "node:util";
 import { initCmdK, keyDebug } from "./cmdk";
 import { env } from "./electron-main-env";
+import { registerWcvIpc } from "./wcv";
 
 // Use a cookieable HTTPS origin intercepted locally instead of a custom scheme.
 const PARTITION = "persist:cmux";
@@ -320,6 +321,9 @@ function createWindow(): void {
   }
 
   mainWindow = new BrowserWindow(windowOptions);
+
+  // Register WebContentsView IPC bridge using a getter for the window
+  registerWcvIpc(() => mainWindow);
 
   // Capture renderer console output into renderer.log
   mainWindow.webContents.on(

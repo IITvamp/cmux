@@ -100,6 +100,28 @@ const cmuxAPI = {
       ) as Promise<{ ok: boolean }>;
     },
   },
+  // WebContentsView controls
+  wcv: {
+    create: () => ipcRenderer.invoke("wcv:create") as Promise<{ id: number }>,
+    destroy: (id: number) => ipcRenderer.invoke("wcv:destroy", id) as Promise<{ ok: boolean }>,
+    attach: (id: number) => ipcRenderer.invoke("wcv:attach", id) as Promise<{ ok: boolean }>,
+    detach: (id: number) => ipcRenderer.invoke("wcv:detach", id) as Promise<{ ok: boolean }>,
+    setBounds: (id: number, bounds: { x: number; y: number; width: number; height: number }) =>
+      ipcRenderer.invoke("wcv:set-bounds", id, bounds) as Promise<{ ok: boolean }>,
+    loadURL: (id: number, url: string) => ipcRenderer.invoke("wcv:load-url", id, url) as Promise<{ ok: boolean }>,
+    reload: (id: number) => ipcRenderer.invoke("wcv:reload", id) as Promise<{ ok: boolean }>,
+    goBack: (id: number) => ipcRenderer.invoke("wcv:go-back", id) as Promise<{ ok: boolean }>,
+    goForward: (id: number) => ipcRenderer.invoke("wcv:go-forward", id) as Promise<{ ok: boolean }>,
+    openDevTools: (id: number) => ipcRenderer.invoke("wcv:open-devtools", id) as Promise<{ ok: boolean }>,
+    closeDevTools: (id: number) => ipcRenderer.invoke("wcv:close-devtools", id) as Promise<{ ok: boolean }>,
+    focus: (id: number) => ipcRenderer.invoke("wcv:focus", id) as Promise<{ ok: boolean }>,
+    onEvent: (id: number, cb: (payload: unknown) => void) => {
+      const ch = `wcv:event:${id}`;
+      const listener = (_e: Electron.IpcRendererEvent, payload: unknown) => cb(payload);
+      ipcRenderer.on(ch, listener);
+      return () => ipcRenderer.removeListener(ch, listener);
+    },
+  },
 };
 
 contextBridge.exposeInMainWorld("electron", electronAPI);

@@ -30,6 +30,24 @@ declare global {
           callback: (eventName: string, ...args: unknown[]) => void
         ) => void;
       };
+      wcv: {
+        create: () => Promise<{ id: number }>;
+        destroy: (id: number) => Promise<{ ok: boolean }>;
+        attach: (id: number) => Promise<{ ok: boolean }>;
+        detach: (id: number) => Promise<{ ok: boolean }>;
+        setBounds: (
+          id: number,
+          bounds: { x: number; y: number; width: number; height: number }
+        ) => Promise<{ ok: boolean }>;
+        loadURL: (id: number, url: string) => Promise<{ ok: boolean }>;
+        reload: (id: number) => Promise<{ ok: boolean }>;
+        goBack: (id: number) => Promise<{ ok: boolean }>;
+        goForward: (id: number) => Promise<{ ok: boolean }>;
+        openDevTools: (id: number) => Promise<{ ok: boolean }>;
+        closeDevTools: (id: number) => Promise<{ ok: boolean }>;
+        focus: (id: number) => Promise<{ ok: boolean }>;
+        onEvent: (id: number, cb: (payload: unknown) => void) => () => void;
+      };
     };
   }
 }
