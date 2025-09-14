@@ -9,6 +9,9 @@ import { useMutation, useQuery } from "convex/react";
 import { GitPullRequest, Monitor, Moon, Sun } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { useSocket } from "@/contexts/socket/use-socket";
+import { branchesQueryOptions } from "@/queries/branches";
+import { useQuery as useRQ } from "@tanstack/react-query";
 
 interface CommandBarProps {
   teamSlugOrId: string;
@@ -19,14 +22,57 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
   const [search, setSearch] = useState("");
   const [openedWithShift, setOpenedWithShift] = useState(false);
   const openRef = useRef<boolean>(false);
+  const listRef = useRef<HTMLDivElement | null>(null);
   // Used only in non-Electron fallback
   const prevFocusedElRef = useRef<HTMLElement | null>(null);
   const navigate = useNavigate();
   const router = useRouter();
-  const { setTheme } = useTheme();
+  const { setTheme, theme } = useTheme();
+  const { socket } = useSocket();
 
   const allTasks = useQuery(api.tasks.get, { teamSlugOrId });
   const createRun = useMutation(api.taskRuns.create);
+  const createTask = useMutation(api.tasks.create);
+
+  // Load persisted selections like the Dashboard
+  const selectedProject = (() => {
+    try {
+      const raw = localStorage.getItem("selectedProject");
+      const parsed = raw ? (JSON.parse(raw) as string[]) : [];
+      return parsed[0] || "";
+    } catch {
+      return "";
+    }
+  })();
+  const isCloudMode = (() => {
+    try {
+      const raw = localStorage.getItem("isCloudMode");
+      return raw ? Boolean(JSON.parse(raw)) : false;
+    } catch {
+      return false;
+    }
+  })();
+  const selectedAgents = (() => {
+    try {
+      const raw = localStorage.getItem("selectedAgents");
+      const parsed = raw ? (JSON.parse(raw) as string[]) : [
+        "claude/opus-4.1",
+        "codex/gpt-5",
+      ];
+      return parsed;
+    } catch {
+      return ["claude/opus-4.1", "codex/gpt-5"];
+    }
+  })();
+
+  // Branches for currently selected repo (if any) to mirror dashboard defaults
+  const branchesQuery = useRQ(
+    branchesQueryOptions({
+      teamSlugOrId,
+      repoFullName: selectedProject || "",
+    }),
+    { enabled: Boolean(selectedProject) && !selectedProject.startsWith("env:") }
+  );
 
   useEffect(() => {
     openRef.current = open;
@@ -218,6 +264,114 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
     [navigate, teamSlugOrId, setTheme, createRun]
   );
 
+  // Quick start from palette when no results match
+  const handleQuickStart = useCallback(async () => {
+    const description = search.trim();
+    if (!description) return;
+
+    // Require a project/environment selection like the dashboard
+    if (!selectedProject) {
+      toast.error("Select a repo or environment on the Dashboard first");
+      navigate({ to: "/$teamSlugOrId/dashboard", params: { teamSlugOrId } });
+      return;
+    }
+
+    // For local mode, verify provider readiness (Docker)
+    const envSelected = selectedProject.startsWith("env:");
+    if (!envSelected && !isCloudMode) {
+      const ready = await new Promise<boolean>((resolve) => {
+        if (!socket) return resolve(false);
+        socket.emit("check-provider-status", (response: any) => {
+          resolve(Boolean(response?.dockerStatus?.isRunning));
+        });
+      });
+      if (!ready) {
+        toast.error("Docker is not running. Start Docker Desktop.");
+        return;
+      }
+    }
+
+    // Determine branch like dashboard does
+    let branch: string | undefined;
+    if (!envSelected) {
+      const list = branchesQuery.data || [];
+      if (list.length > 0) {
+        branch = list.includes("main")
+          ? "main"
+          : list.includes("master")
+            ? "master"
+            : list[0];
+      }
+      if (!branch) {
+        toast.error("Could not determine a branch for the repository");
+        return;
+      }
+    }
+
+    try {
+      // Create task record
+      const taskId = await createTask({
+        teamSlugOrId,
+        text: description,
+        projectFullName: envSelected ? undefined : selectedProject,
+        baseBranch: envSelected ? undefined : branch,
+      });
+
+      const repoUrl = envSelected
+        ? undefined
+        : `https://github.com/${selectedProject}.git`;
+
+      // Fire-and-forget start via socket
+      if (socket) {
+        socket.emit(
+          "start-task",
+          {
+            ...(repoUrl ? { repoUrl } : {}),
+            ...(envSelected ? {} : { branch }),
+            taskDescription: description,
+            projectFullName: selectedProject,
+            taskId,
+            selectedAgents: selectedAgents.length > 0 ? selectedAgents : undefined,
+            isCloudMode: envSelected ? true : isCloudMode,
+            ...(envSelected
+              ? {
+                  environmentId: selectedProject.replace(/^env:/, "") as string & {
+                    __tableName: "environments";
+                  },
+                }
+              : {}),
+            theme,
+          },
+          (response: any) => {
+            if (response && "error" in response) {
+              toast.error(`Task start error: ${response.error}`);
+            }
+          }
+        );
+      }
+
+      // Close palette and clear search
+      setOpen(false);
+      setSearch("");
+      setOpenedWithShift(false);
+    } catch (error) {
+      toast.error("Failed to start task");
+      // eslint-disable-next-line no-console
+      console.error("Quick start error:", error);
+    }
+  }, [
+    branchesQuery.data,
+    createTask,
+    isCloudMode,
+    navigate,
+    search,
+    selectedAgents,
+    selectedProject,
+    socket,
+    teamSlugOrId,
+    theme,
+  ]);
+
   if (!open) return null;
 
   return (
@@ -255,10 +409,31 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
             onValueChange={setSearch}
             placeholder="Type a command or search..."
             className="w-full px-4 py-3 text-sm bg-transparent border-b border-neutral-200 dark:border-neutral-700 outline-none placeholder:text-neutral-500 dark:placeholder:text-neutral-400"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                const hasItem = Boolean(
+                  listRef.current?.querySelector('[cmdk-item]')
+                );
+                if (!hasItem && search.trim()) {
+                  e.preventDefault();
+                  void handleQuickStart();
+                }
+              }
+            }}
           />
-          <Command.List className="max-h-[400px] overflow-y-auto px-1 pb-2 flex flex-col gap-2">
+          <Command.List ref={listRef} className="max-h-[400px] overflow-y-auto px-1 pb-2 flex flex-col gap-2">
             <Command.Empty className="py-6 text-center text-sm text-neutral-500 dark:text-neutral-400">
-              No results found.
+              {search.trim() ? (
+                <button
+                  type="button"
+                  onClick={() => void handleQuickStart()}
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-md bg-neutral-100 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+                >
+                  Start task “{search.trim()}”
+                </button>
+              ) : (
+                <>No results found.</>
+              )}
             </Command.Empty>
 
             <Command.Group>
