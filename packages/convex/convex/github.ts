@@ -15,8 +15,73 @@ export const getReposByOrg = authQuery({
       )
       .collect();
 
-    // Group by organization
-    const reposByOrg = repos.reduce(
+    // Get recently used repos from tasks
+    const recentTasks = await ctx.db
+      .query("tasks")
+      .withIndex("by_team_user", (q) =>
+        q.eq("teamId", teamId).eq("userId", userId)
+      )
+      .collect();
+
+    // Create a map of repo to most recent task creation time
+    const repoLastUsedMap = new Map<string, number>();
+    for (const task of recentTasks) {
+      if (task.projectFullName && task.createdAt) {
+        const existing = repoLastUsedMap.get(task.projectFullName);
+        if (!existing || task.createdAt > existing) {
+          repoLastUsedMap.set(task.projectFullName, task.createdAt);
+        }
+      }
+    }
+
+    // Get last activity for repos from branches
+    const branches = await ctx.db
+      .query("branches")
+      .withIndex("by_team_user", (q) =>
+        q.eq("teamId", teamId).eq("userId", userId)
+      )
+      .collect();
+
+    // Create a map of repo to most recent branch activity
+    const repoLastActivityMap = new Map<string, number>();
+    for (const branch of branches) {
+      if (branch.repo && branch.lastActivityAt) {
+        const existing = repoLastActivityMap.get(branch.repo);
+        if (!existing || branch.lastActivityAt > existing) {
+          repoLastActivityMap.set(branch.repo, branch.lastActivityAt);
+        }
+      }
+    }
+
+    // Add sorting metadata to repos
+    const reposWithMetadata = repos.map(repo => ({
+      ...repo,
+      lastUsedAt: repoLastUsedMap.get(repo.fullName),
+      lastActivityAt: repoLastActivityMap.get(repo.fullName),
+    }));
+
+    // Sort repos: MRU first, then by last activity, then alphabetically
+    reposWithMetadata.sort((a, b) => {
+      // First priority: Most recently used (from tasks)
+      if (a.lastUsedAt && b.lastUsedAt) {
+        return b.lastUsedAt - a.lastUsedAt;
+      }
+      if (a.lastUsedAt && !b.lastUsedAt) return -1;
+      if (!a.lastUsedAt && b.lastUsedAt) return 1;
+
+      // Second priority: Most recent activity (from branches)
+      if (a.lastActivityAt && b.lastActivityAt) {
+        return b.lastActivityAt - a.lastActivityAt;
+      }
+      if (a.lastActivityAt && !b.lastActivityAt) return -1;
+      if (!a.lastActivityAt && b.lastActivityAt) return 1;
+
+      // Third priority: Alphabetical by fullName
+      return a.fullName.localeCompare(b.fullName);
+    });
+
+    // Group by organization while preserving sort order
+    const reposByOrg = reposWithMetadata.reduce(
       (acc, repo) => {
         if (!acc[repo.org]) {
           acc[repo.org] = [];
@@ -24,7 +89,7 @@ export const getReposByOrg = authQuery({
         acc[repo.org].push(repo);
         return acc;
       },
-      {} as Record<string, typeof repos>
+      {} as Record<string, typeof reposWithMetadata>
     );
 
     return reposByOrg;

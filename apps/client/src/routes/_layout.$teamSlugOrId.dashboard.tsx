@@ -423,21 +423,30 @@ function DashboardComponent() {
 
   const projectOptions = useMemo(() => {
     // Repo options as objects with GitHub icon
-    const repoValues = Array.from(
-      new Set(
-        Object.entries(reposByOrg || {}).flatMap(([, repos]) =>
-          repos.map((repo) => repo.fullName)
-        )
-      )
-    );
-    const repoOptions = repoValues.map((fullName) => ({
-      label: fullName,
-      value: fullName,
-      icon: (
-        <GitHubIcon className="w-4 h-4 text-neutral-600 dark:text-neutral-300" />
-      ),
-      iconKey: "github",
-    }));
+    // Maintain sort order from the backend (MRU first, then last activity)
+    const sortedRepos: Array<{ fullName: string }> = [];
+    Object.entries(reposByOrg || {}).forEach(([, repos]) => {
+      sortedRepos.push(...repos);
+    });
+
+    // Remove duplicates while preserving order
+    const seenRepos = new Set<string>();
+    const repoOptions = sortedRepos
+      .filter((repo) => {
+        if (seenRepos.has(repo.fullName)) {
+          return false;
+        }
+        seenRepos.add(repo.fullName);
+        return true;
+      })
+      .map((repo) => ({
+        label: repo.fullName,
+        value: repo.fullName,
+        icon: (
+          <GitHubIcon className="w-4 h-4 text-neutral-600 dark:text-neutral-300" />
+        ),
+        iconKey: "github",
+      }));
 
     // Environment options as objects with an icon and stable key
     const envOptions = (environmentsQuery.data || []).map((env) => ({
