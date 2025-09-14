@@ -9,7 +9,8 @@ import { type Id } from "@cmux/convex/dataModel";
 import { convexQuery } from "@convex-dev/react-query";
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { useQueries, useQuery } from "convex/react";
-import { Suspense, useMemo } from "react";
+import { Suspense, useEffect, useMemo } from "react";
+import { setLastTeamSlugOrId } from "@/lib/lastTeam";
 
 export const Route = createFileRoute("/_layout/$teamSlugOrId")({
   component: LayoutComponentWrapper,
@@ -143,6 +144,9 @@ function LayoutComponent() {
 // Avoid nesting providers here to prevent auth/loading thrash.
 function LayoutComponentWrapper() {
   const { teamSlugOrId } = Route.useParams();
+  useEffect(() => {
+    setLastTeamSlugOrId(teamSlugOrId);
+  }, [teamSlugOrId]);
   return (
     <>
       <LayoutComponent />
