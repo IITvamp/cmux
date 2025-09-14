@@ -6,14 +6,11 @@ import {
   app,
   BrowserWindow,
   dialog,
-  ipcMain,
   Menu,
   nativeImage,
   net,
   session,
   shell,
-  webContents,
-  webFrameMain,
   type BrowserWindowConstructorOptions,
   type MenuItemConstructorOptions,
 } from "electron";
@@ -36,6 +33,7 @@ import {
 const { autoUpdater } = electronUpdater;
 
 import util from "node:util";
+import { initCmdK, keyDebug } from "./cmdk";
 import { env } from "./electron-main-env";
 
 // Use a cookieable HTTPS origin intercepted locally instead of a custom scheme.
@@ -45,19 +43,11 @@ const APP_HOST = "cmux.local";
 let rendererLoaded = false;
 let pendingProtocolUrl: string | null = null;
 let mainWindow: BrowserWindow | null = null;
-// Track whether the Command Palette (Cmd+K) is currently open in the renderer.
-let cmdkOpen = false;
-// Track the last captured focus location per BrowserWindow (by renderer webContents id)
-const lastFocusByWindow = new Map<
-  number,
-  { contentsId: number; frameRoutingId: number; frameProcessId: number }
->();
 
 // Persistent log files
 let logsDir: string | null = null;
 let mainLogStream: WriteStream | null = null;
 let rendererLogStream: WriteStream | null = null;
-let keyDebugStream: WriteStream | null = null;
 
 function getTimestamp(): string {
   return new Date().toISOString();
@@ -136,49 +126,6 @@ function setupConsoleFileMirrors(): void {
       }
     }
   };
-}
-
-function ensureKeyDebugFile(): void {
-  try {
-    if (keyDebugStream) return;
-    // Try to place a debug file in the repository logs/ folder during dev
-    // else fall back to userData/logs.
-    const appPath = app.getAppPath();
-    let repoLogs: string | null = null;
-    try {
-      // Heuristic: appPath ends in apps/client in dev. Go up two levels.
-      const maybeRoot = path.resolve(appPath, "../..");
-      const candidate = path.join(maybeRoot, "logs");
-      if (!existsSync(candidate)) mkdirSync(candidate, { recursive: true });
-      repoLogs = candidate;
-    } catch {
-      repoLogs = null;
-    }
-    const outDir = repoLogs || logsDir || app.getPath("userData");
-    const filePath = path.join(outDir, "cmdk-debug.log");
-    keyDebugStream = createWriteStream(filePath, {
-      flags: "a",
-      encoding: "utf8",
-    });
-    mainLog("CmdK debug log path:", filePath);
-  } catch (e) {
-    // If anything fails, ignore; we'll just rely on main.log
-    mainWarn("Failed to initialize CmdK debug log file", e);
-  }
-}
-
-function keyDebug(event: string, data?: unknown): void {
-  try {
-    ensureKeyDebugFile();
-    const line = JSON.stringify({
-      ts: getTimestamp(),
-      event,
-      data,
-    });
-    keyDebugStream?.write(line + "\n");
-  } catch {
-    // ignore
-  }
 }
 
 function resolveResourcePath(rel: string) {
@@ -435,7 +382,13 @@ app.on("open-url", (_event, url) => {
 app.whenReady().then(async () => {
   ensureLogStreams();
   setupConsoleFileMirrors();
-  ensureKeyDebugFile();
+  initCmdK({
+    getMainWindow: () => mainWindow,
+    logger: {
+      log: mainLog,
+      warn: mainWarn,
+    },
+  });
 
   // Ensure macOS menu and About panel use "cmux" instead of package.json name
   if (process.platform === "darwin") {
@@ -445,309 +398,6 @@ app.whenReady().then(async () => {
     } catch {
       // ignore if not supported
     }
-  }
-
-  // Capture Cmd+K within the app only (works across iframes/webviews)
-  try {
-    // Attach to all webContents including webviews and subframes
-    app.on("web-contents-created", (_event, contents) => {
-      try {
-        keyDebug("web-contents-created", {
-          id: contents.id,
-          type: contents.getType?.(),
-          url: contents.getURL?.(),
-        });
-      } catch {
-        // ignore debug log failures
-      }
-      try {
-        contents.on("before-input-event", (e, input) => {
-          keyDebug("before-input-event", {
-            id: contents.id,
-            type: contents.getType?.(),
-            key: input.key,
-            code: input.code,
-            meta: input.meta,
-            ctrl: input.control,
-            alt: input.alt,
-            shift: input.shift,
-            typeInput: input.type,
-          });
-          if (input.type !== "keyDown") return;
-          const isMac = process.platform === "darwin";
-          const isCmdK =
-            (isMac ? input.meta : input.control) &&
-            !input.alt &&
-            input.key.toLowerCase() === "k";
-          if (!isCmdK) return;
-          // Prevent default to avoid in-app conflicts (e.g., terminal clear)
-          // and ensure a single toggle per key press.
-          e.preventDefault();
-          keyDebug("cmdk-detected", {
-            sourceId: contents.id,
-            type: contents.getType?.(),
-          });
-          // If the Command Palette is already open, do NOT overwrite the
-          // previously captured focus target. Simply emit the toggle event.
-          if (cmdkOpen) {
-            keyDebug("skip-capture-already-open", { id: contents.id });
-            const targetWin =
-              BrowserWindow.getFocusedWindow() ??
-              mainWindow ??
-              BrowserWindow.getAllWindows()[0] ??
-              null;
-            if (targetWin && !targetWin.isDestroyed()) {
-              try {
-                targetWin.webContents.send("cmux:event:shortcut:cmd-k");
-                keyDebug("emit-cmdk", {
-                  to: targetWin.webContents.id,
-                  from: contents.id,
-                });
-              } catch (err) {
-                mainWarn("Failed to emit Cmd+K (already open)", err);
-                keyDebug("emit-cmdk-error", { err: String(err) });
-              }
-            }
-            return;
-          }
-
-          // Otherwise, capture the currently focused element inside this
-          // WebContents BEFORE we emit to the renderer (which might change focus).
-          try {
-            const frame = contents.focusedFrame ?? contents.mainFrame;
-            frame
-              .executeJavaScript(
-                `(() => { try {
-                  const el = document.activeElement;
-                  // Store element and tag for better restore + debugging
-                  window.__cmuxLastFocused = el;
-                  // @ts-ignore - attach for debug
-                  window.__cmuxLastFocusedTag = el?.tagName ?? null;
-                  return window.__cmuxLastFocusedTag || true;
-                } catch { return false } })()`,
-                true
-              )
-              .then((res) => {
-                keyDebug("capture-last-focused", {
-                  id: contents.id,
-                  res,
-                  frameRoutingId: frame.routingId,
-                  frameProcessId: frame.processId,
-                  frameUrl: frame.url,
-                  frameOrigin: frame.origin,
-                });
-                const targetWin =
-                  BrowserWindow.getFocusedWindow() ??
-                  mainWindow ??
-                  BrowserWindow.getAllWindows()[0] ??
-                  null;
-                if (targetWin && !targetWin.isDestroyed()) {
-                  try {
-                    // Remember where focus came from for this window so we can
-                    // restore it later without renderer passing ids back.
-                    lastFocusByWindow.set(targetWin.webContents.id, {
-                      contentsId: contents.id,
-                      frameRoutingId: frame.routingId,
-                      frameProcessId: frame.processId,
-                    });
-                    keyDebug("remember-last-focus", {
-                      windowId: targetWin.webContents.id,
-                      contentsId: contents.id,
-                      frameRoutingId: frame.routingId,
-                      frameProcessId: frame.processId,
-                    });
-                  } catch {
-                    // ignore
-                  }
-                  try {
-                    targetWin.webContents.send("cmux:event:shortcut:cmd-k", {
-                      sourceContentsId: contents.id,
-                      sourceFrameRoutingId: frame.routingId,
-                      sourceFrameProcessId: frame.processId,
-                    });
-                    keyDebug("emit-cmdk", {
-                      to: targetWin.webContents.id,
-                      from: contents.id,
-                      frameRoutingId: frame.routingId,
-                      frameProcessId: frame.processId,
-                    });
-                  } catch (err) {
-                    mainWarn(
-                      "Failed to emit Cmd+K from before-input-event",
-                      err
-                    );
-                    keyDebug("emit-cmdk-error", { err: String(err) });
-                  }
-                }
-              })
-              .catch((err) =>
-                keyDebug("capture-last-focused-error", {
-                  id: contents.id,
-                  err: String(err),
-                })
-              );
-          } catch {
-            // ignore capture failures
-          }
-        });
-      } catch {
-        // ignore
-      }
-    });
-
-    // Allow renderer to explicitly focus a specific WebContents id
-    ipcMain.handle("cmux:ui:focus-webcontents", (_evt, id: number) => {
-      try {
-        const wc = webContents.fromId(id);
-        if (!wc || wc.isDestroyed()) return { ok: false };
-        wc.focus();
-        keyDebug("focus-webcontents", { id });
-        return { ok: true };
-      } catch (err) {
-        mainWarn("Failed to focus webContents", { id, err });
-        keyDebug("focus-webcontents-error", { id, err: String(err) });
-        return { ok: false };
-      }
-    });
-
-    ipcMain.handle(
-      "cmux:ui:webcontents-restore-last-focus",
-      async (_evt, id: number) => {
-        try {
-          const wc = webContents.fromId(id);
-          if (!wc || wc.isDestroyed()) return { ok: false };
-          await wc.focus();
-          keyDebug("restore-last-focus.begin", { id });
-          const ok = await wc.executeJavaScript(
-            `(() => {
-              try {
-                const el = window.__cmuxLastFocused;
-                if (el && typeof el.focus === 'function') {
-                  el.focus();
-                  if (el.tagName === 'IFRAME') {
-                    try { el.contentWindow && el.contentWindow.focus && el.contentWindow.focus(); } catch {}
-                  }
-                  return true;
-                }
-                const a = document.activeElement;
-                if (a && typeof a.focus === 'function') { a.focus(); return true; }
-                if (document.body && typeof document.body.focus === 'function') { document.body.focus(); return true; }
-                return false;
-              } catch { return false; }
-            })()`,
-            true
-          );
-          keyDebug("restore-last-focus.result", { id, ok });
-          return { ok: Boolean(ok) };
-        } catch (err) {
-          mainWarn("Failed to restore focus in webContents", { id, err });
-          keyDebug("restore-last-focus.error", { id, err: String(err) });
-          return { ok: false };
-        }
-      }
-    );
-
-    ipcMain.handle(
-      "cmux:ui:frame-restore-last-focus",
-      async (
-        _evt,
-        info: {
-          contentsId: number;
-          frameRoutingId: number;
-          frameProcessId: number;
-        }
-      ) => {
-        try {
-          const wc = webContents.fromId(info.contentsId);
-          if (!wc || wc.isDestroyed()) return { ok: false };
-          const frame = webFrameMain.fromId(
-            info.frameProcessId,
-            info.frameRoutingId
-          );
-          if (!frame) {
-            keyDebug("frame-restore-last-focus.no-frame", info);
-            return { ok: false };
-          }
-          await wc.focus();
-          keyDebug("frame-restore-last-focus.begin", info);
-          const ok = await frame.executeJavaScript(
-            `(() => {
-              try {
-                const el = window.__cmuxLastFocused;
-                if (el && typeof el.focus === 'function') { el.focus(); return true; }
-                const a = document.activeElement;
-                if (a && typeof a.focus === 'function') { a.focus(); return true; }
-                if (document.body && typeof document.body.focus === 'function') { document.body.focus(); return true; }
-                return false;
-              } catch { return false; }
-            })()`,
-            true
-          );
-          keyDebug("frame-restore-last-focus.result", { ...info, ok });
-          return { ok: Boolean(ok) };
-        } catch (err) {
-          keyDebug("frame-restore-last-focus.error", {
-            ...info,
-            err: String(err),
-          });
-          return { ok: false };
-        }
-      }
-    );
-
-    // Renderer reports when Command Palette opens/closes so we don't
-    // overwrite previously captured focus while it's open.
-    ipcMain.handle(
-      "cmux:ui:set-command-palette-open",
-      (_evt, isOpen: boolean) => {
-        try {
-          cmdkOpen = Boolean(isOpen);
-          keyDebug("cmdk-open-state", { open: cmdkOpen });
-          return { ok: true };
-        } catch (err) {
-          keyDebug("cmdk-open-state-error", { err: String(err) });
-          return { ok: false };
-        }
-      }
-    );
-
-    // Simple restore using stored last focus info for this window
-    ipcMain.handle("cmux:ui:restore-last-focus", async (evt) => {
-      try {
-        const windowWcId = evt.sender.id;
-        const info = lastFocusByWindow.get(windowWcId);
-        keyDebug("window-restore-last-focus.begin", { windowWcId, info });
-        if (!info) return { ok: false };
-        const wc = webContents.fromId(info.contentsId);
-        if (!wc || wc.isDestroyed()) return { ok: false };
-        const frame = webFrameMain.fromId(
-          info.frameProcessId,
-          info.frameRoutingId
-        );
-        if (!frame) return { ok: false };
-        await wc.focus();
-        const ok = await frame.executeJavaScript(
-          `(() => {
-            try {
-              const el = window.__cmuxLastFocused;
-              if (el && typeof el.focus === 'function') { el.focus(); return true; }
-              const a = document.activeElement;
-              if (a && typeof a.focus === 'function') { a.focus(); return true; }
-              if (document.body && typeof document.body.focus === 'function') { document.body.focus(); return true; }
-              return false;
-            } catch { return false; }
-          })()`,
-          true
-        );
-        keyDebug("window-restore-last-focus.result", { windowWcId, ok });
-        return { ok: Boolean(ok) };
-      } catch (err) {
-        keyDebug("window-restore-last-focus.error", { err: String(err) });
-        return { ok: false };
-      }
-    });
-  } catch (e) {
-    mainWarn("Error setting up before-input-event handler for Cmd+K", e);
   }
 
   // Start the embedded IPC server (registers cmux:register and cmux:rpc)
