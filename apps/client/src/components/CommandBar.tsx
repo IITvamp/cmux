@@ -1,3 +1,4 @@
+import * as React from "react";
 import { useTheme } from "@/components/theme/use-theme";
 import { api } from "@cmux/convex/api";
 import * as Dialog from "@radix-ui/react-dialog";
@@ -19,6 +20,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
   const [search, setSearch] = useState("");
   const [openedWithShift, setOpenedWithShift] = useState(false);
   const openRef = useRef<boolean>(false);
+  const panelRef = useRef<HTMLDivElement | null>(null);
   // Used only in non-Electron fallback
   const prevFocusedElRef = useRef<HTMLElement | null>(null);
   const navigate = useNavigate();
@@ -31,6 +33,127 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
   useEffect(() => {
     openRef.current = open;
   }, [open]);
+
+  type Position = { x: number; y: number };
+  const STORAGE_KEY = "cmux:cmdk:position";
+  const [position, setPosition] = useState<Position | null>(null);
+  const dragState = useRef<
+    | {
+        startX: number;
+        startY: number;
+        originX: number;
+        originY: number;
+        width: number;
+        height: number;
+      }
+    | null
+  >(null);
+
+  const clampToViewport = useCallback(
+    (x: number, y: number, width: number, height: number): Position => {
+      const vw = window.innerWidth;
+      const vh = window.innerHeight;
+      const margin = 32; // keep at least 32px visible both sides
+      const minX = margin - width;
+      const maxX = vw - margin;
+      const minY = margin - height;
+      const maxY = vh - margin;
+      const clampedX = Math.min(Math.max(x, minX), maxX);
+      const clampedY = Math.min(Math.max(y, minY), maxY);
+      return { x: clampedX, y: clampedY };
+    },
+    []
+  );
+
+  // Initialize or restore position on open
+  useEffect(() => {
+    if (!open) return;
+    const el = panelRef.current;
+    const savedRaw = localStorage.getItem(STORAGE_KEY);
+    const initialize = () => {
+      const rect = el?.getBoundingClientRect();
+      if (!rect) return;
+      if (savedRaw) {
+        try {
+          const saved = JSON.parse(savedRaw) as Position;
+          const clamped = clampToViewport(saved.x, saved.y, rect.width, rect.height);
+          setPosition(clamped);
+          return;
+        } catch {
+          // ignore malformed
+        }
+      }
+      // Default: horizontally centered, 20vh from top
+      const defaultX = Math.round(window.innerWidth / 2 - rect.width / 2);
+      const defaultY = Math.round(window.innerHeight * 0.2);
+      const clamped = clampToViewport(defaultX, defaultY, rect.width, rect.height);
+      setPosition(clamped);
+    };
+
+    // Defer to next frame to ensure layout is ready
+    const id = window.requestAnimationFrame(initialize);
+    return () => window.cancelAnimationFrame(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  // Re-clamp on resize while open
+  useEffect(() => {
+    if (!open) return;
+    const handler = () => {
+      const rect = panelRef.current?.getBoundingClientRect();
+      if (!rect || !position) return;
+      setPosition(clampToViewport(position.x, position.y, rect.width, rect.height));
+    };
+    window.addEventListener("resize", handler);
+    return () => window.removeEventListener("resize", handler);
+  }, [open, position, clampToViewport]);
+
+  const onPointerDownHandle = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return; // only left button
+    const rect = panelRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const current = position ?? { x: Math.round(rect.left), y: Math.round(rect.top) };
+    dragState.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      originX: current.x,
+      originY: current.y,
+      width: rect.width,
+      height: rect.height,
+    };
+    (e.currentTarget as HTMLDivElement).setPointerCapture(e.pointerId);
+    e.preventDefault();
+  }, [position]);
+
+  // Global pointer move/up listeners while dragging
+  useEffect(() => {
+    const onMove = (e: PointerEvent) => {
+      if (!dragState.current) return;
+      const { startX, startY, originX, originY, width, height } = dragState.current;
+      const next = clampToViewport(originX + (e.clientX - startX), originY + (e.clientY - startY), width, height);
+      setPosition(next);
+    };
+    const onUp = () => {
+      if (!dragState.current || !panelRef.current || !position) {
+        dragState.current = null;
+        return;
+      }
+      dragState.current = null;
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(position));
+      } catch {
+        // ignore storage errors
+      }
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, [position, clampToViewport]);
 
   useEffect(() => {
     // In Electron, prefer global shortcut from main via cmux event.
@@ -236,7 +359,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
         label="Command Menu"
         title="Command Menu"
         loop
-        className="fixed inset-0 z-[var(--z-commandbar)] flex items-start justify-center pt-[20vh] pointer-events-none"
+        className="fixed inset-0 z-[var(--z-commandbar)] pointer-events-none"
         onKeyDown={(e) => {
           if (e.key === "Escape") {
             setOpen(false);
@@ -249,7 +372,26 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
       >
         <Dialog.Title className="sr-only">Command Menu</Dialog.Title>
 
-        <div className="w-full max-w-2xl bg-white dark:bg-neutral-900 rounded-xl shadow-2xl border border-neutral-200 dark:border-neutral-700 overflow-hidden pointer-events-auto">
+        <div
+          ref={panelRef}
+          className="w-full max-w-2xl bg-white dark:bg-neutral-900 rounded-xl shadow-2xl border border-neutral-200 dark:border-neutral-700 overflow-hidden pointer-events-auto"
+          style={
+            position
+              ? { position: "fixed", left: position.x, top: position.y }
+              : { position: "fixed", left: "50%", top: "20vh", transform: "translateX(-50%)" }
+          }
+          onPointerDown={(e) => {
+            // Prevent underlying overlay click when starting a drag in empty areas
+            e.stopPropagation();
+          }}
+        >
+          <div
+            role="button"
+            aria-label="Drag command bar"
+            tabIndex={-1}
+            onPointerDown={onPointerDownHandle}
+            className="h-3 cursor-move active:cursor-grabbing select-none bg-transparent"
+          />
           <Command.Input
             value={search}
             onValueChange={setSearch}
