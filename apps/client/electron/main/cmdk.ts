@@ -94,10 +94,17 @@ export function initCmdK(opts: {
         });
         if (input.type !== "keyDown") return;
         const isMac = process.platform === "darwin";
-        const isCmdK =
-          (isMac ? input.meta : input.control) &&
-          !input.alt &&
-          input.key.toLowerCase() === "k";
+        // Only trigger on EXACT Cmd+K (mac) or Ctrl+K (others)
+        const isCmdK = (() => {
+          if (input.key.toLowerCase() !== "k") return false;
+          if (input.alt || input.shift) return false;
+          if (isMac) {
+            // Require meta only; disallow ctrl on mac
+            return Boolean(input.meta) && !input.control;
+          }
+          // Non-mac: require ctrl only; disallow meta
+          return Boolean(input.control) && !input.meta;
+        })();
         if (!isCmdK) return;
         // Prevent default to avoid in-app conflicts and ensure single toggle
         e.preventDefault();
@@ -345,4 +352,3 @@ export function initCmdK(opts: {
     }
   });
 }
-

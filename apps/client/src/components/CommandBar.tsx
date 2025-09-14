@@ -6,7 +6,7 @@ import { isElectron } from "@/lib/electron";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { Command } from "cmdk";
 import { useMutation, useQuery } from "convex/react";
-import { GitPullRequest, Monitor, Moon, Sun } from "lucide-react";
+import { GitPullRequest, Monitor, Moon, Sun, Plus } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -53,13 +53,20 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
 
     // Web/non-Electron fallback: local keydown listener for Cmd+K
     const down = (e: KeyboardEvent) => {
-      if (e.key === "k" && e.metaKey) {
+      // Only trigger on EXACT Cmd+K (no Shift/Alt/Ctrl)
+      if (
+        e.key.toLowerCase() === "k" &&
+        e.metaKey &&
+        !e.shiftKey &&
+        !e.altKey &&
+        !e.ctrlKey
+      ) {
         e.preventDefault();
         if (openRef.current) {
           setOpenedWithShift(false);
           setSearch("");
         } else {
-          setOpenedWithShift(e.shiftKey);
+          setOpenedWithShift(false);
           // Capture the currently focused element before opening (web only)
           prevFocusedElRef.current =
             document.activeElement as HTMLElement | null;
@@ -273,6 +280,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
                 data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800
                 data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100"
               >
+                <Plus className="h-4 w-4 text-neutral-500" />
                 <span className="text-sm">New Task</span>
               </Command.Item>
               <Command.Item
