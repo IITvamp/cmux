@@ -270,7 +270,7 @@ export function SearchableSelect({
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
-      <div className={clsx("inline-flex items-center")}> 
+      <div className={clsx("inline-flex items-center")}>
         <Popover.Trigger asChild>
           <button
             ref={triggerRef}
@@ -291,7 +291,7 @@ export function SearchableSelect({
               className
             )}
           >
-            <span className="flex-1 min-w-0 text-left text-[13.5px] inline-flex items-center gap-1.5">
+            <span className="flex-1 min-w-0 text-left text-[13.5px] inline-flex items-center gap-1.5 pr-1">
               {leftIcon ? (
                 <span className="shrink-0 inline-flex items-center justify-center">
                   {leftIcon}
