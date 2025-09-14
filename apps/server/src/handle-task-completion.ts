@@ -9,6 +9,11 @@ import { serverLogger } from "./utils/fileLogger.js";
 import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
 import type { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { retryOnOptimisticConcurrency } from "./utils/convexRetry.js";
+import { applyGitBundle } from "./utils/applyGitBundle.js";
+import { exec as _exec } from "node:child_process";
+import { promisify } from "node:util";
+
+const exec = promisify(_exec);
 
 // Handler for completing the task
 export async function handleTaskCompletion({
@@ -241,6 +246,47 @@ export async function handleTaskCompletion({
           serverLogger.info(
             `[AgentSpawner] Auto-commit completed successfully for ${agent.name}`
           );
+
+          // After auto-commit, request a git bundle from the worker and apply it locally
+          try {
+            const workerSocket = vscodeInstance.getWorkerSocket();
+            serverLogger.info(`[AgentSpawner] Requesting git bundle from worker...`);
+            // One-time handler for the bundle
+            const onBundle = async (payload: {
+              workerId: string;
+              taskRunId?: string;
+              branch: string;
+              headOid: string;
+              baseOid?: string;
+              bundleName: string;
+              bundle: ArrayBuffer;
+            }) => {
+              try {
+                // Resolve repo URL from worktree
+                const { stdout } = await exec(`git remote get-url origin`, { cwd: worktreePath });
+                const repoUrl = stdout.trim();
+                serverLogger.info(
+                  `[GitBundle] Received bundle for ${payload.branch}@${payload.headOid}, applying...`
+                );
+                await applyGitBundle({
+                  worktreePath,
+                  repoUrl,
+                  branch: payload.branch,
+                  bundleName: payload.bundleName,
+                  bundleBytes: payload.bundle,
+                });
+              } catch (e) {
+                serverLogger.error(`[GitBundle] Failed applying bundle`, e);
+              } finally {
+                // Clean up listener
+                workerSocket.off("worker:git-bundle", onBundle as any);
+              }
+            };
+            workerSocket.on("worker:git-bundle", onBundle as any);
+            workerSocket.emit("worker:create-git-bundle", { taskRunId });
+          } catch (e) {
+            serverLogger.error(`[AgentSpawner] Failed to retrieve/apply git bundle`, e);
+          }
         } catch (error) {
           serverLogger.error(
             `[AgentSpawner] Auto-commit failed for ${agent.name}:`,

@@ -265,6 +265,12 @@ export interface ServerToWorkerEvents {
   "worker:check-docker": (
     callback: (response: DockerReadinessResponse) => void
   ) => void;
+
+  // Git operations
+  "worker:create-git-bundle": (data: {
+    taskRunId?: Id<"taskRuns">;
+    cwd?: string; // defaults to /root/workspace inside worker
+  }) => void;
 }
 
 export interface WorkerFileChange {
@@ -307,6 +313,17 @@ export interface WorkerToServerEvents {
 
   // Error reporting
   "worker:error": (data: { workerId: string; error: string }) => void;
+
+  // Git bundle transfer
+  "worker:git-bundle": (data: {
+    workerId: string;
+    taskRunId?: Id<"taskRuns">;
+    branch: string;
+    headOid: string;
+    baseOid?: string;
+    bundleName: string;
+    bundle: ArrayBuffer; // raw bundle bytes
+  }) => void;
 }
 
 // For worker's internal socket server (client connections)

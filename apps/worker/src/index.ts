@@ -413,6 +413,65 @@ managementIO.on("connection", (socket) => {
     }
   });
 
+  // Create a git bundle from the current workspace and send to server
+  socket.on("worker:create-git-bundle", async (data) => {
+    try {
+      const cwd = (data && data.cwd) || "/root/workspace";
+      // Discover branch and head
+      const { stdout: branchOut } = await execAsync(
+        "git rev-parse --abbrev-ref HEAD",
+        { cwd }
+      );
+      const branch = branchOut.trim();
+      const { stdout: headOut } = await execAsync("git rev-parse HEAD", { cwd });
+      const headOid = headOut.trim();
+
+      // Try find a merge-base against origin/{branch}
+      let baseOid: string | undefined;
+      try {
+        const { stdout: baseOut } = await execAsync(
+          `git merge-base HEAD origin/${branch}`,
+          { cwd }
+        );
+        baseOid = baseOut.trim();
+      } catch {
+        baseOid = undefined;
+      }
+
+      const bundleName = `cmux-${branch}-${Date.now()}.bundle`;
+      const bundlePath = path.join("/tmp", bundleName);
+
+      // Build the bundle rev-list spec: limit to commits not in base when available
+      const revSpec = baseOid ? `^${baseOid} HEAD` : `HEAD`;
+      await execAsync(`git bundle create "${bundlePath}" ${revSpec}`, { cwd });
+
+      const bundleBuf = await fs.readFile(bundlePath);
+      // Clean up the temp file best-effort
+      try {
+        await fs.unlink(bundlePath);
+      } catch {
+        // ignore
+      }
+
+      emitToMainServer("worker:git-bundle", {
+        workerId: WORKER_ID,
+        taskRunId: data?.taskRunId,
+        branch,
+        headOid,
+        baseOid,
+        bundleName,
+        bundle: bundleBuf.buffer,
+      });
+      log("INFO", `Sent git bundle for ${branch}@${headOid} (${bundleName})`);
+    } catch (error) {
+      log("ERROR", "Failed to create/send git bundle", error);
+      emitToMainServer("worker:error", {
+        workerId: WORKER_ID,
+        error: error instanceof Error ? error.message : "Failed to create git bundle",
+      });
+    }
+  });
+
   socket.on("worker:check-docker", async (callback) => {
     console.log(`Worker ${WORKER_ID} checking Docker readiness`);
 
