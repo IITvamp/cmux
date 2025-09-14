@@ -56,7 +56,7 @@ function MentionMenu({
   return createPortal(
     <div
       ref={menuRef}
-      className="absolute z-[var(--z-modal)] w-72 max-h-48 overflow-y-auto bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-md shadow-lg"
+      className="absolute z-[var(--z-modal)] max-w-[580px] min-w-[280px] w-max max-h-48 overflow-y-auto bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-md shadow-lg"
       style={{
         top: position.top,
         left: position.left,
@@ -93,26 +93,55 @@ function MentionMenu({
             : "Please select a project to see files"}
         </div>
       ) : (
-        files.map((file, index) => (
-          <button
-            key={file.relativePath}
-            onClick={() => onSelect(file)}
-            className={clsx(
-              "w-full text-left px-2.5 py-1 text-xs flex items-center gap-1.5",
-              index === selectedIndex
-                ? "bg-blue-100 dark:bg-blue-900/30 text-blue-900 dark:text-blue-100"
-                : "hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-900 dark:text-neutral-100"
-            )}
-            type="button"
-          >
-            <img
-              src={`https://cdn.jsdelivr.net/gh/vscode-icons/vscode-icons/icons/${file.name === "Dockerfile" ? "file_type_docker.svg" : getIconForFile(file.name)}`}
-              alt=""
-              className="w-3 h-3 flex-shrink-0"
-            />
-            <span className="truncate">{file.relativePath}</span>
-          </button>
-        ))
+        files.map((file, index) => {
+          const lastSlashIndex = file.relativePath.lastIndexOf('/');
+          const fileName = lastSlashIndex !== -1
+            ? file.relativePath.substring(lastSlashIndex + 1)
+            : file.relativePath;
+          const dirPath = lastSlashIndex !== -1
+            ? file.relativePath.substring(0, lastSlashIndex)
+            : '';
+
+          return (
+            <button
+              key={file.relativePath}
+              onClick={() => onSelect(file)}
+              className={clsx(
+                "w-full text-left px-2.5 py-1 text-xs flex items-center gap-1.5",
+                index === selectedIndex
+                  ? "bg-blue-100 dark:bg-blue-900/30"
+                  : "hover:bg-neutral-100 dark:hover:bg-neutral-700"
+              )}
+              type="button"
+            >
+              <img
+                src={`https://cdn.jsdelivr.net/gh/vscode-icons/vscode-icons/icons/${file.name === "Dockerfile" ? "file_type_docker.svg" : getIconForFile(file.name)}`}
+                alt=""
+                className="w-3 h-3 flex-shrink-0"
+              />
+              <div className="flex-1 min-w-0 flex items-center gap-1">
+                <span className={clsx(
+                  "font-medium truncate",
+                  index === selectedIndex
+                    ? "text-blue-900 dark:text-blue-100"
+                    : "text-neutral-900 dark:text-neutral-100"
+                )}>
+                  {fileName}
+                </span>
+                {dirPath && (
+                  <span className={clsx(
+                    "truncate",
+                    index === selectedIndex
+                      ? "text-blue-700 dark:text-blue-300"
+                      : "text-neutral-500 dark:text-neutral-400"
+                  )}>
+                    {dirPath}/
+                  </span>
+                )}
+              </div>
+            </button>
+          );
+        })
       )}
     </div>,
     document.body
