@@ -6,7 +6,7 @@ import { isElectron } from "@/lib/electron";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { Command } from "cmdk";
 import { useMutation, useQuery } from "convex/react";
-import { Monitor, Moon, Sun } from "lucide-react";
+import { GitPullRequest, Monitor, Moon, Sun } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -152,6 +152,11 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
           to: "/$teamSlugOrId/dashboard",
           params: { teamSlugOrId },
         });
+      } else if (value === "pull-requests") {
+        navigate({
+          to: "/$teamSlugOrId/prs",
+          params: { teamSlugOrId },
+        });
       } else if (value === "theme-light") {
         setTheme("light");
       } else if (value === "theme-dark") {
@@ -263,12 +268,23 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
               <Command.Item
                 value="new-task"
                 onSelect={() => handleSelect("new-task")}
-                className="flex items-center gap-2 px-3 py-2.5 mx-1 rounded-md cursor-pointer 
-                hover:bg-neutral-100 dark:hover:bg-neutral-800 
+                className="flex items-center gap-2 px-3 py-2.5 mx-1 rounded-md cursor-pointer
+                hover:bg-neutral-100 dark:hover:bg-neutral-800
                 data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800
                 data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100"
               >
                 <span className="text-sm">New Task</span>
+              </Command.Item>
+              <Command.Item
+                value="pull-requests"
+                onSelect={() => handleSelect("pull-requests")}
+                className="flex items-center gap-2 px-3 py-2.5 mx-1 rounded-md cursor-pointer
+                hover:bg-neutral-100 dark:hover:bg-neutral-800
+                data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800
+                data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100"
+              >
+                <GitPullRequest className="h-4 w-4 text-neutral-500" />
+                <span className="text-sm">Pull Requests</span>
               </Command.Item>
             </Command.Group>
 
