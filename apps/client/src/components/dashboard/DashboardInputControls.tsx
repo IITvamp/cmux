@@ -14,6 +14,9 @@ import {
 import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
 import { Link, useRouter } from "@tanstack/react-router";
 import { api } from "@cmux/convex/api";
+import type { Doc } from "@cmux/convex/dataModel";
+import { convexQuery } from "@convex-dev/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useMutation } from "convex/react";
 import clsx from "clsx";
 import { GitBranch, Image, Mic, Server } from "lucide-react";
@@ -56,6 +59,97 @@ export const DashboardInputControls = memo(function DashboardInputControls({
 }: DashboardInputControlsProps) {
   const router = useRouter();
   const mintState = useMutation(api.github_app.mintInstallState);
+
+  // Fetch recent PRs to infer repo commit recency
+  const pullRequestsQuery = useQuery(
+    convexQuery(api.github_prs.listPullRequests, {
+      teamSlugOrId,
+      state: "all",
+      limit: 500,
+    })
+  );
+
+  // Build a map of repo -> most recent PR updatedAt (as a proxy for commit activity)
+  const repoLatestPrUpdatedAt = useMemo(() => {
+    const rows = (pullRequestsQuery.data || []) as Array<Doc<"pullRequests">>;
+    const latest = new Map<string, number>();
+    for (const r of rows) {
+      const repo = r.repoFullName;
+      const ts = typeof r.updatedAt === "number" ? r.updatedAt : -Infinity;
+      const prev = latest.get(repo) ?? -Infinity;
+      if (ts > prev) latest.set(repo, ts);
+    }
+    return latest;
+  }, [pullRequestsQuery.data]);
+
+  // MRU: track last-used repositories in localStorage
+  const recordRepoUse = useCallback((repoFullName: string) => {
+    try {
+      const key = "cmuxRepoUsage";
+      const raw = localStorage.getItem(key);
+      const obj: Record<string, number> = raw ? JSON.parse(raw) : {};
+      obj[repoFullName] = Date.now();
+      localStorage.setItem(key, JSON.stringify(obj));
+    } catch {
+      // ignore storage errors
+    }
+  }, []);
+
+  const getRepoLastUsedAt = useCallback((repoFullName: string): number => {
+    try {
+      const raw = localStorage.getItem("cmuxRepoUsage");
+      if (!raw) return Number.NEGATIVE_INFINITY;
+      const obj: Record<string, number> = JSON.parse(raw);
+      const v = obj[repoFullName];
+      return typeof v === "number" ? v : Number.NEGATIVE_INFINITY;
+    } catch {
+      return Number.NEGATIVE_INFINITY;
+    }
+  }, []);
+
+  // Sort Repositories: 1) MRU desc, 2) latest PR updatedAt desc, 3) label asc
+  const sortedProjectOptions = useMemo(() => {
+    type OptObj = {
+      label: string;
+      value: string;
+      heading?: boolean;
+      icon?: React.ReactNode;
+      iconKey?: string;
+      isUnavailable?: boolean;
+    };
+
+    // Normalize incoming options to objects
+    const norm: OptObj[] = projectOptions.map((o) =>
+      typeof o === "string" ? { label: o, value: o } : (o as OptObj)
+    );
+
+    if (norm.length === 0) return projectOptions;
+
+    const repoHeadingIdx = norm.findIndex(
+      (o) => o.value === "__heading-repo" && o.heading === true
+    );
+    if (repoHeadingIdx === -1) return projectOptions;
+
+    const before = projectOptions.slice(0, repoHeadingIdx + 1);
+    const rest = norm.slice(repoHeadingIdx + 1);
+
+    // Treat the remainder as repo options (non-heading)
+    const repoOpts = rest.filter((o) => !o.heading);
+
+    const sorted = [...repoOpts].sort((a, b) => {
+      const aUsed = getRepoLastUsedAt(a.value);
+      const bUsed = getRepoLastUsedAt(b.value);
+      if (aUsed !== bUsed) return bUsed - aUsed;
+
+      const aPr = repoLatestPrUpdatedAt.get(a.value) ?? Number.NEGATIVE_INFINITY;
+      const bPr = repoLatestPrUpdatedAt.get(b.value) ?? Number.NEGATIVE_INFINITY;
+      if (aPr !== bPr) return bPr - aPr;
+
+      return a.label.localeCompare(b.label);
+    });
+
+    return [...before, ...sorted];
+  }, [projectOptions, getRepoLastUsedAt, repoLatestPrUpdatedAt]);
   const agentOptions = useMemo(() => {
     const vendorKey = (name: string): string => {
       const lower = name.toLowerCase();
@@ -162,9 +256,15 @@ export const DashboardInputControls = memo(function DashboardInputControls({
     <div className="flex items-end gap-1 grow">
       <div className="flex items-end gap-1">
         <SearchableSelect
-          options={projectOptions}
+          options={sortedProjectOptions}
           value={selectedProject}
-          onChange={onProjectChange}
+          onChange={(vals) => {
+            const v = vals[0];
+            if (v && !v.startsWith("env:") && !v.startsWith("__heading")) {
+              recordRepoUse(v);
+            }
+            onProjectChange(vals);
+          }}
           placeholder="Select project"
           singleSelect={true}
           className="rounded-2xl"
