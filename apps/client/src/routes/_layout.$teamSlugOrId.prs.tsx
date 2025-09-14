@@ -1,5 +1,5 @@
-import { convexQueryClient } from "@/contexts/convex/convex-query-client";
 import { FloatingPane } from "@/components/floating-pane";
+import { convexQueryClient } from "@/contexts/convex/convex-query-client";
 import { api } from "@cmux/convex/api";
 import {
   createFileRoute,
@@ -7,6 +7,7 @@ import {
   Outlet,
   useLocation,
 } from "@tanstack/react-router";
+import clsx from "clsx";
 import { useQuery as useConvexQuery } from "convex/react";
 import { useMemo, useState } from "react";
 
@@ -91,16 +92,18 @@ function PRsPage() {
 
   return (
     <FloatingPane>
-      <div className="flex h-full min-h-0 flex-col relative isolate">
-        <div className="flex-1 min-h-0 overflow-y-auto">
-          <div className="flex flex-row grow min-h-0 w-full bg-white dark:bg-black">
+      <div className="flex flex-1 min-h-0 h-full flex-col">
+        <div className="flex-1 min-h-0 h-full">
+          <div className="flex flex-row flex-1 min-h-0 h-full w-full bg-white dark:bg-black">
             {/* Left list */}
-            <div className="w-[420px] border-r border-neutral-200 dark:border-neutral-800 flex flex-col min-h-0 border-l">
+            <div className="w-[420px] border-r border-neutral-200 dark:border-neutral-800 flex flex-col min-h-0">
               <div className="p-3 border-b border-neutral-200 dark:border-neutral-800 flex gap-2 items-center">
                 <select
                   className="flex-0 rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-2 py-1 text-sm"
                   value={installationId ?? ""}
-                  onChange={(e) => setInstallationId(Number(e.target.value) || null)}
+                  onChange={(e) =>
+                    setInstallationId(Number(e.target.value) || null)
+                  }
                 >
                   {activeConnections.map((c) => (
                     <option key={c.installationId} value={c.installationId}>
@@ -124,13 +127,15 @@ function PRsPage() {
                   <option value="all">All</option>
                 </select>
               </div>
-              <div className="flex-1 overflow-auto">
+              <div className="flex-1 min-h-0 overflow-y-auto">
                 {!prs ? (
                   <div className="p-4 text-neutral-500">Loading…</div>
                 ) : filteredPrs.length === 0 ? (
-                  <div className="p-4 text-neutral-500">No pull requests found</div>
+                  <div className="p-4 text-neutral-500">
+                    No pull requests found
+                  </div>
                 ) : (
-                  <ul>
+                  <ul className="flex flex-col gap-0.5 py-1">
                     {filteredPrs.map((pr) => {
                       const [owner, repo] = pr.repoFullName.split("/", 2);
                       const isSelected =
@@ -138,7 +143,7 @@ function PRsPage() {
                       return (
                         <li
                           key={`${pr.repoFullName}#${pr.number}`}
-                          className="border-b border-neutral-100 dark:border-neutral-900"
+                          className=""
                         >
                           <Link
                             to="/$teamSlugOrId/prs/$owner/$repo/$number"
@@ -148,20 +153,27 @@ function PRsPage() {
                               repo: repo || "",
                               number: String(pr.number),
                             }}
-                            className={`block px-4 py-3 hover:bg-neutral-50 dark:hover:bg-neutral-900/50 ${
-                              isSelected ? "bg-neutral-50 dark:bg-neutral-900/50" : ""
-                            }`}
+                            className={clsx("block px-1")}
                           >
-                            <div className="text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate">
-                              {pr.title}
-                            </div>
-                            <div className="text-xs text-neutral-600 dark:text-neutral-400 mt-0.5">
-                              {pr.repoFullName}#{pr.number} • {pr.authorLogin || ""} •{" "}
-                              {formatTimeAgo(
-                                pr.updatedAt
-                                  ? new Date(pr.updatedAt).toISOString()
-                                  : undefined
+                            <div
+                              className={clsx(
+                                "hover:bg-neutral-200/50 dark:bg-neutral-800/50 px-4 py-2 rounded-md",
+                                isSelected &&
+                                  "bg-neutral-200/50 dark:bg-neutral-800/50"
                               )}
+                            >
+                              <div className="text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate">
+                                {pr.title}
+                              </div>
+                              <div className="text-xs text-neutral-600 dark:text-neutral-400 mt-0.5">
+                                {pr.repoFullName}#{pr.number} •{" "}
+                                {pr.authorLogin || ""} •{" "}
+                                {formatTimeAgo(
+                                  pr.updatedAt
+                                    ? new Date(pr.updatedAt).toISOString()
+                                    : undefined
+                                )}
+                              </div>
                             </div>
                           </Link>
                         </li>
@@ -173,11 +185,11 @@ function PRsPage() {
             </div>
 
             {/* Right panel details */}
-            <div className="flex-1 min-w-0 bg-white dark:bg-black overflow-auto">
+            <div className="flex-1 min-w-0 min-h-0 bg-white dark:bg-black flex flex-col overflow-y-auto">
               {selectedKey ? (
                 <Outlet />
               ) : (
-                <div className="h-full w-full flex items-center justify-center text-neutral-500 dark:text-neutral-400">
+                <div className="flex-1 w-full flex items-center justify-center text-neutral-500 dark:text-neutral-400">
                   Select a pull request
                 </div>
               )}
