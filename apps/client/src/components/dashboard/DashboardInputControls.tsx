@@ -161,13 +161,14 @@ export const DashboardInputControls = memo(function DashboardInputControls({
   return (
     <div className="flex items-end gap-1 grow">
       <div className="flex items-end gap-1">
-        <SearchableSelect
+        <div className="min-w-0 basis-[580px] shrink">
+          <SearchableSelect
           options={projectOptions}
           value={selectedProject}
           onChange={onProjectChange}
           placeholder="Select project"
           singleSelect={true}
-          className="rounded-2xl"
+          className="rounded-2xl w-full max-w-[580px] min-w-0"
           loading={isLoadingProjects}
           maxTagCount={1}
           showSearch
@@ -223,6 +224,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
             </div>
           }
         />
+        </div>
 
         {branchDisabled ? null : (
           <Tooltip>

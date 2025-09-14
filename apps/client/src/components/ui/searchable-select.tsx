@@ -23,6 +23,8 @@ export interface SelectOptionObject {
   iconKey?: string;
   // Render as a non-selectable heading row
   heading?: boolean;
+  // Optional secondary text rendered muted after the label
+  secondary?: string;
 }
 
 export type SelectOption = string | SelectOptionObject;
@@ -84,6 +86,11 @@ function OptionItem({ opt, isSelected, onSelectValue }: OptionItemProps) {
           </span>
         ) : null}
         <span className="truncate select-none">{opt.label}</span>
+        {opt.secondary ? (
+          <span className="truncate select-none text-neutral-500 dark:text-neutral-400">
+            {opt.secondary}
+          </span>
+        ) : null}
         {opt.isUnavailable ? (
           <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
         ) : null}
@@ -160,13 +167,18 @@ export function SearchableSelect({
       const selectedOpt = normOptions.find((o) => o.value === selectedVal);
       const label = selectedLabels[0];
       return (
-        <span className="inline-flex items-center gap-2">
+        <span className="inline-flex items-center gap-2 min-w-0">
           {selectedOpt?.icon ? (
             <span className="shrink-0 inline-flex items-center justify-center">
               {selectedOpt.icon}
             </span>
           ) : null}
           <span className="truncate select-none">{label}</span>
+          {selectedOpt?.secondary ? (
+            <span className="truncate select-none text-neutral-500 dark:text-neutral-400">
+              {selectedOpt.secondary}
+            </span>
+          ) : null}
         </span>
       );
     }

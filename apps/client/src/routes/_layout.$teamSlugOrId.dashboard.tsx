@@ -430,14 +430,19 @@ function DashboardComponent() {
         )
       )
     );
-    const repoOptions = repoValues.map((fullName) => ({
-      label: fullName,
-      value: fullName,
-      icon: (
-        <GitHubIcon className="w-4 h-4 text-neutral-600 dark:text-neutral-300" />
-      ),
-      iconKey: "github",
-    }));
+    const repoOptions = repoValues.map((fullName) => {
+      const parts = fullName.split("/");
+      const repoName = parts[parts.length - 1] ?? fullName;
+      return {
+        label: repoName,
+        secondary: fullName,
+        value: fullName,
+        icon: (
+          <GitHubIcon className="w-4 h-4 text-neutral-600 dark:text-neutral-300" />
+        ),
+        iconKey: "github",
+      } satisfies SelectOption;
+    });
 
     // Environment options as objects with an icon and stable key
     const envOptions = (environmentsQuery.data || []).map((env) => ({
