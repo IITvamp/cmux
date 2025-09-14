@@ -20,6 +20,7 @@ interface CmuxAPI {
       frameProcessId: number
     ) => Promise<{ ok: boolean }>;
     setCommandPaletteOpen: (open: boolean) => Promise<{ ok: boolean }>;
+    restoreLastFocus: () => Promise<{ ok: boolean }>;
   };
   socket: CmuxSocketAPI;
 }

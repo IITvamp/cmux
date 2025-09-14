@@ -18,6 +18,7 @@ declare global {
           frameProcessId: number
         ) => Promise<{ ok: boolean }>;
         setCommandPaletteOpen: (open: boolean) => Promise<{ ok: boolean }>;
+        restoreLastFocus: () => Promise<{ ok: boolean }>;
       };
       socket: {
         connect: (query: Record<string, string>) => Promise<unknown>;

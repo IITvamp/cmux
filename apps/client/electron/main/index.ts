@@ -47,6 +47,11 @@ let pendingProtocolUrl: string | null = null;
 let mainWindow: BrowserWindow | null = null;
 // Track whether the Command Palette (Cmd+K) is currently open in the renderer.
 let cmdkOpen = false;
+// Track the last captured focus location per BrowserWindow (by renderer webContents id)
+const lastFocusByWindow = new Map<
+  number,
+  { contentsId: number; frameRoutingId: number; frameProcessId: number }
+>();
 
 // Persistent log files
 let logsDir: string | null = null;
@@ -540,6 +545,23 @@ app.whenReady().then(async () => {
                   null;
                 if (targetWin && !targetWin.isDestroyed()) {
                   try {
+                    // Remember where focus came from for this window so we can
+                    // restore it later without renderer passing ids back.
+                    lastFocusByWindow.set(targetWin.webContents.id, {
+                      contentsId: contents.id,
+                      frameRoutingId: frame.routingId,
+                      frameProcessId: frame.processId,
+                    });
+                    keyDebug("remember-last-focus", {
+                      windowId: targetWin.webContents.id,
+                      contentsId: contents.id,
+                      frameRoutingId: frame.routingId,
+                      frameProcessId: frame.processId,
+                    });
+                  } catch {
+                    // ignore
+                  }
+                  try {
                     targetWin.webContents.send("cmux:event:shortcut:cmd-k", {
                       sourceContentsId: contents.id,
                       sourceFrameRoutingId: frame.routingId,
@@ -690,6 +712,39 @@ app.whenReady().then(async () => {
         }
       }
     );
+
+    // Simple restore using stored last focus info for this window
+    ipcMain.handle("cmux:ui:restore-last-focus", async (evt) => {
+      try {
+        const windowWcId = evt.sender.id;
+        const info = lastFocusByWindow.get(windowWcId);
+        keyDebug("window-restore-last-focus.begin", { windowWcId, info });
+        if (!info) return { ok: false };
+        const wc = webContents.fromId(info.contentsId);
+        if (!wc || wc.isDestroyed()) return { ok: false };
+        const frame = webFrameMain.fromId(info.frameProcessId, info.frameRoutingId);
+        if (!frame) return { ok: false };
+        await wc.focus();
+        const ok = await frame.executeJavaScript(
+          `(() => {
+            try {
+              const el = window.__cmuxLastFocused;
+              if (el && typeof el.focus === 'function') { el.focus(); return true; }
+              const a = document.activeElement;
+              if (a && typeof a.focus === 'function') { a.focus(); return true; }
+              if (document.body && typeof document.body.focus === 'function') { document.body.focus(); return true; }
+              return false;
+            } catch { return false; }
+          })()`,
+          true
+        );
+        keyDebug("window-restore-last-focus.result", { windowWcId, ok });
+        return { ok: Boolean(ok) };
+      } catch (err) {
+        keyDebug("window-restore-last-focus.error", { err: String(err) });
+        return { ok: false };
+      }
+    });
   } catch (e) {
     mainWarn("Error setting up before-input-event handler for Cmd+K", e);
   }
