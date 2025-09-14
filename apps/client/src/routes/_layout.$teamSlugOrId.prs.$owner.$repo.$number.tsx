@@ -130,7 +130,7 @@ function PRDetails() {
   return (
     <div className="px-0 py-0">
       {/* Header (styled like TaskDetailHeader) */}
-      <div className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white px-3.5 sticky top-0 z-50 py-2">
+      <div className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white px-3.5 sticky top-0 z-[var(--z-sticky)] py-2">
         <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-3 gap-y-1">
           <div className="col-start-1 row-start-1 flex items-center gap-2 relative min-w-0">
             <h1

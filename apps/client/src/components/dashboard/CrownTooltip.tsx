@@ -82,7 +82,7 @@ export function CrownStatus({ taskId, teamSlugOrId }: CrownStatusProps) {
           </div>
         </TooltipTrigger>
         <TooltipContent
-          className="max-w-sm p-3 z-[9999]"
+          className="max-w-sm p-3 z-[var(--z-overlay)]"
           side="bottom"
           sideOffset={5}
         >
@@ -139,7 +139,7 @@ export function CrownStatus({ taskId, teamSlugOrId }: CrownStatusProps) {
             </div>
           </TooltipTrigger>
           <TooltipContent
-            className="max-w-sm p-3 z-[9999]"
+            className="max-w-sm p-3 z-[var(--z-overlay)]"
             side="bottom"
             sideOffset={5}
           >
@@ -180,7 +180,7 @@ export function CrownStatus({ taskId, teamSlugOrId }: CrownStatusProps) {
           </div>
         </TooltipTrigger>
         <TooltipContent
-          className="max-w-sm p-3 z-[9999]"
+          className="max-w-sm p-3 z-[var(--z-overlay)]"
           side="bottom"
           sideOffset={5}
         >

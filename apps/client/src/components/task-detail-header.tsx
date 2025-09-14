@@ -147,7 +147,7 @@ export function TaskDetailHeader({
 
   return (
     <div
-      className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white px-3.5 sticky top-0 z-50 py-2"
+      className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white px-3.5 sticky top-0 z-[var(--z-sticky)] py-2"
       style={dragStyle}
     >
       <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-3 gap-y-1">
@@ -272,14 +272,14 @@ export function TaskDetailHeader({
               />
               <Copy
                 className={clsx(
-                  "w-3 h-3 absolute inset-0 z-10",
+                  "w-3 h-3 absolute inset-0 z-[var(--z-low)]",
                   clipboard.copied ? "hidden" : "hidden group-hover:block"
                 )}
                 aria-hidden={clipboard.copied}
               />
               <Check
                 className={clsx(
-                  "w-3 h-3 text-green-400 absolute inset-0 z-50",
+                  "w-3 h-3 text-green-400 absolute inset-0 z-[var(--z-sticky)]",
                   clipboard.copied ? "block" : "hidden"
                 )}
                 aria-hidden={!clipboard.copied}

@@ -85,14 +85,14 @@ function AuthenticatedOrSignIn({
         {showSignIn ? (
           <motion.div
             key="signin"
-            className="absolute inset-0 w-screen h-dvh flex items-center justify-center bg-white dark:bg-black z-[99999999]"
+            className="absolute inset-0 w-screen h-dvh flex items-center justify-center bg-white dark:bg-black z-[var(--z-global-blocking)]"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
             {isElectron ? (
               <div
-                className="absolute top-0 left-0 right-0 h-[24px]"
+            className="absolute top-0 left-0 right-0 h-[24px]"
                 style={{ WebkitAppRegion: "drag" } as CSSProperties}
               />
             ) : null}
@@ -149,7 +149,7 @@ export function ConvexClientProvider({ children }: { children: ReactNode }) {
         {!bootReady ? (
           <motion.div
             key="boot-loader"
-            className="absolute inset-0 w-screen h-dvh flex flex-col items-center justify-center bg-white dark:bg-black z-[99999999]"
+            className="absolute inset-0 w-screen h-dvh flex flex-col items-center justify-center bg-white dark:bg-black z-[var(--z-global-blocking)]"
             initial={{ opacity: 1 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
