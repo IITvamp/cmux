@@ -60,8 +60,8 @@
   },
   "dependencies": {
     "@cmux/convex": "workspace:*",
-    "convex": "^1.18.7",
-    "jose": "^5.9.6",
+    "convex": "^1.27.0",
+    "jose": "^6.1.0",
     "zod": "^4.1.5",
     "socket.io-client": "^4.8.1"
   },
