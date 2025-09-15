@@ -43,6 +43,9 @@ export const env = createEnv({
   client: {
     NEXT_PUBLIC_STACK_PROJECT_ID: z.string().min(1),
     NEXT_PUBLIC_CONVEX_URL: z.string().min(1),
+    // Optional: base URL for Electron auto-updates when not using app-update.yml
+    // Example: https://updates.example.com/cmux
+    NEXT_PUBLIC_UPDATES_URL: z.string().url().optional(),
   },
   runtimeEnv: import.meta.env,
   emptyStringAsUndefined: true,

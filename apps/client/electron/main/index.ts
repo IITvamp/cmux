@@ -230,6 +230,32 @@ function setupAutoUpdates(): void {
     return;
   }
 
+  // Prefer an explicit feed URL via env if provided; otherwise, rely on
+  // electron-builder's app-update.yml. If neither exists, skip updates.
+  try {
+    const explicitUrl = env.NEXT_PUBLIC_UPDATES_URL;
+    if (explicitUrl) {
+      mainLog("Configuring auto-updater with generic provider", {
+        url: explicitUrl,
+      });
+      // electron-updater supports programmatic configuration via setFeedURL.
+      // This avoids the need for app-update.yml when we have an explicit URL.
+      autoUpdater.setFeedURL({ provider: "generic", url: explicitUrl });
+    } else {
+      const ymlPath = join(process.resourcesPath, "app-update.yml");
+      if (!existsSync(ymlPath)) {
+        mainWarn(
+          "No update configuration found (missing app-update.yml and NEXT_PUBLIC_UPDATES_URL); skipping auto-updates"
+        );
+        return;
+      }
+      mainLog("Using app-update.yml from resources", { path: ymlPath });
+    }
+  } catch (e) {
+    mainWarn("Failed to configure update provider", e);
+    return;
+  }
+
   autoUpdater.on("checking-for-update", () => mainLog("Checking for update…"));
   autoUpdater.on("update-available", (info) =>
     mainLog("Update available", info?.version)
@@ -510,6 +536,18 @@ app.whenReady().then(async () => {
               return;
             }
             try {
+              // Ensure we have an update configuration before calling the updater
+              const hasExplicit = Boolean(env.NEXT_PUBLIC_UPDATES_URL);
+              const hasYml = existsSync(join(process.resourcesPath, "app-update.yml"));
+              if (!hasExplicit && !hasYml) {
+                await dialog.showMessageBox({
+                  type: "info",
+                  message:
+                    "No update source configured. Set NEXT_PUBLIC_UPDATES_URL or build with app-update.yml.",
+                });
+                return;
+              }
+
               mainLog("Manual update check initiated");
               const result = await autoUpdater.checkForUpdates();
               if (!result?.updateInfo) {
