@@ -109,14 +109,21 @@ githubReposRouter.openapi(
         target.accountType === "Organization"
           ? `org:${target.accountLogin}`
           : `user:${target.accountLogin}`;
-      const q = [ownerQualifier, search ? `${search} in:name` : null]
+      // Include forks explicitly so forked repositories are discoverable.
+      // Keep owner scoping and optional name search.
+      const q = [
+        ownerQualifier,
+        search ? `${search} in:name` : null,
+        "fork:true",
+      ]
         .filter(Boolean)
         .join(" ");
       const searchRes = await octokit.request("GET /search/repositories", {
         q,
         sort: "updated",
         order: "desc",
-        per_page: 5,
+        // Return more than a handful to improve discoverability
+        per_page: 50,
         page,
       });
       allRepos.push(
