@@ -40,7 +40,7 @@ npx electron-vite build -c electron.vite.config.ts
 TEMP_DIR=$(mktemp -d)
 APP_NAME="cmux"
 APP_DIR="$TEMP_DIR/$APP_NAME.app"
-APP_VERSION=$(node -e "const fs = require('node:fs'); const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8')); if (!pkg.version) { process.exitCode = 1; return; } process.stdout.write(pkg.version);")
+APP_VERSION=$(node -e "const fs = require('node:fs'); const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8')); if (!pkg.version) { process.exit(1); } process.stdout.write(String(pkg.version));")
 if [ -z "$APP_VERSION" ]; then
   echo "ERROR: Unable to determine app version from package.json" >&2
   exit 1
