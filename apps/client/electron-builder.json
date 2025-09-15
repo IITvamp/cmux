@@ -37,6 +37,10 @@
       "to": "cmux-logos/cmux.iconset"
     },
     {
+      "from": "electron/app-update.yml",
+      "to": "app-update.yml"
+    },
+    {
       "from": "../../apps/server/native/core",
       "to": "native/core",
       "filter": [
