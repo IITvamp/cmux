@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/tooltip";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { api } from "@cmux/convex/api";
+import { isElectron } from "@/lib/electron";
 import {
   getApiIntegrationsGithubReposOptions,
   postApiMorphSetupInstanceMutation,
@@ -221,6 +222,11 @@ export function RepositoryPicker({
     opts?: { name?: string; width?: number; height?: number },
     onClose?: () => void
   ): Window | null => {
+    if (isElectron) {
+      // In Electron, always open in the system browser and skip popup plumbing
+      window.open(url, "_blank", "noopener,noreferrer");
+      return null;
+    }
     const name = opts?.name ?? "cmux-popup";
     const width = Math.floor(opts?.width ?? 980);
     const height = Math.floor(opts?.height ?? 780);
@@ -385,7 +391,7 @@ export function RepositoryPicker({
           </Popover.Trigger>
           <Popover.Portal>
             <Popover.Content
-              className="w-[320px] rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 shadow-md outline-none z-[10001]"
+              className="w-[320px] rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 shadow-md outline-none z-[var(--z-popover)]"
               align="start"
               sideOffset={4}
             >
@@ -439,7 +445,7 @@ export function RepositoryPicker({
                                     <TooltipTrigger asChild>
                                       <button
                                         type="button"
-                                        className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 relative z-[10010]"
+                                        className="p-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 relative z-[var(--z-popover-hover)]"
                                         onClick={(e) => {
                                           e.stopPropagation();
                                           e.preventDefault();
@@ -453,7 +459,7 @@ export function RepositoryPicker({
                                         <Settings className="w-3 h-3 text-neutral-600 dark:text-neutral-300" />
                                       </button>
                                     </TooltipTrigger>
-                                    <TooltipContent className="z-[10020]">
+                                    <TooltipContent className="z-[var(--z-tooltip)]">
                                       Add Repos
                                     </TooltipContent>
                                   </Tooltip>
@@ -628,13 +634,23 @@ export function RepositoryPicker({
                   ) : installNewUrl ? (
                     <a
                       href={installNewUrl}
-                      onClick={(e) => {
+                      onClick={async (e) => {
                         e.preventDefault();
-                        openCenteredPopup(
-                          installNewUrl,
-                          { name: "github-install" },
-                          handlePopupClosedRefetch
-                        );
+                        try {
+                          const { state } = await mintState({ teamSlugOrId });
+                          const sep = installNewUrl!.includes("?") ? "&" : "?";
+                          const url = `${installNewUrl}${sep}state=${encodeURIComponent(
+                            state
+                          )}`;
+                          openCenteredPopup(
+                            url,
+                            { name: "github-install" },
+                            handlePopupClosedRefetch
+                          );
+                        } catch (err) {
+                          console.error("Failed to start GitHub install:", err);
+                          alert("Failed to start installation. Please try again.");
+                        }
                       }}
                       className="inline-flex items-center gap-1 text-neutral-800 dark:text-neutral-200 hover:underline"
                     >
@@ -676,13 +692,23 @@ export function RepositoryPicker({
                   ) : installNewUrl ? (
                     <a
                       href={installNewUrl}
-                      onClick={(e) => {
+                      onClick={async (e) => {
                         e.preventDefault();
-                        openCenteredPopup(
-                          installNewUrl,
-                          { name: "github-install" },
-                          handlePopupClosedRefetch
-                        );
+                        try {
+                          const { state } = await mintState({ teamSlugOrId });
+                          const sep = installNewUrl!.includes("?") ? "&" : "?";
+                          const url = `${installNewUrl}${sep}state=${encodeURIComponent(
+                            state
+                          )}`;
+                          openCenteredPopup(
+                            url,
+                            { name: "github-install" },
+                            handlePopupClosedRefetch
+                          );
+                        } catch (err) {
+                          console.error("Failed to start GitHub install:", err);
+                          alert("Failed to start installation. Please try again.");
+                        }
                       }}
                       className="inline-flex items-center gap-1 text-neutral-800 dark:text-neutral-200 hover:underline"
                     >

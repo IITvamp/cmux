@@ -220,7 +220,7 @@ function TaskTreeInner({
           </Link>
         </ContextMenu.Trigger>
         <ContextMenu.Portal>
-          <ContextMenu.Positioner className="outline-none z-[10000]">
+          <ContextMenu.Positioner className="outline-none z-[var(--z-context-menu)]">
             <ContextMenu.Popup className="origin-[var(--transform-origin)] rounded-md bg-white dark:bg-neutral-800 py-1 text-neutral-900 dark:text-neutral-100 shadow-lg shadow-gray-200 outline-1 outline-neutral-200 transition-[opacity] data-[ending-style]:opacity-0 dark:shadow-none dark:-outline-offset-1 dark:outline-neutral-700">
               <ContextMenu.Item
                 className="flex items-center gap-2 cursor-default py-1.5 pr-8 pl-3 text-[13px] leading-5 outline-none select-none data-[highlighted]:relative data-[highlighted]:z-0 data-[highlighted]:text-white data-[highlighted]:before:absolute data-[highlighted]:before:inset-x-1 data-[highlighted]:before:inset-y-0 data-[highlighted]:before:z-[-1] data-[highlighted]:before:rounded-sm data-[highlighted]:before:bg-neutral-900 dark:data-[highlighted]:before:bg-neutral-700"
@@ -324,7 +324,7 @@ function TaskRunTreeInner({
         {/* Crown icon shown before status icon, with tooltip */}
         {run.isCrowned && (
           <div className="flex-shrink-0 absolute left-0 pt-[5.5px] pl-[26px]">
-            <Tooltip>
+            <Tooltip delayDuration={0}>
               <TooltipTrigger asChild>
                 <Crown className="w-3 h-3 text-yellow-500" />
               </TooltipTrigger>
@@ -332,7 +332,7 @@ function TaskRunTreeInner({
                 <TooltipContent
                   side="right"
                   sideOffset={6}
-                  className="max-w-sm p-3 z-[9999]"
+                  className="max-w-sm p-3 z-[var(--z-overlay)]"
                 >
                   <div className="space-y-1.5">
                     <p className="font-medium text-sm">Evaluation Reason</p>
@@ -559,6 +559,24 @@ function TaskRunTreeInner({
         <GitCompare className="w-3 h-3 mr-2 text-neutral-400" />
         <span className="text-neutral-600 dark:text-neutral-400">Git diff</span>
       </Link>
+
+      {/* Pull Request link as a separate tree item */}
+      {run.pullRequestUrl && run.pullRequestUrl !== "pending" && (
+        <Link
+          to="/$teamSlugOrId/task/$taskId/run/$runId/pr"
+          params={{ teamSlugOrId, taskId, runId: run._id }}
+          className={clsx(
+            "flex items-center px-2 py-1 text-xs rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default mt-px",
+            "[&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800"
+          )}
+          style={{ paddingLeft: `${24 + (level + 1) * 16}px` }}
+        >
+          <GitPullRequest className="w-3 h-3 mr-2 text-neutral-400" />
+          <span className="text-neutral-600 dark:text-neutral-400">
+            Pull Request
+          </span>
+        </Link>
+      )}
 
       {/* Preview link for port 5173 if available */}
       {port5173 && (

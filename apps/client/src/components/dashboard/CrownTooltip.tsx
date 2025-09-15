@@ -1,9 +1,4 @@
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { isFakeConvexId } from "@/lib/fakeConvexId";
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
@@ -80,50 +75,48 @@ export function CrownStatus({ taskId, teamSlugOrId }: CrownStatusProps) {
     );
 
     pillContent = (
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div className="flex items-center gap-1.5 cursor-help">
-              {waitingContent}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="flex items-center gap-1.5 cursor-help">
+            {waitingContent}
+          </div>
+        </TooltipTrigger>
+        <TooltipContent
+          className="max-w-sm p-3 z-[var(--z-overlay)]"
+          side="bottom"
+          sideOffset={5}
+        >
+          <div className="space-y-2">
+            <p className="font-medium text-sm">Crown Evaluation System</p>
+            <p className="text-xs text-muted-foreground">
+              Multiple AI models are working on your task in parallel. Once
+              all models complete, Claude will evaluate and select the best
+              implementation.
+            </p>
+            <div className="border-t pt-2 mt-2">
+              <p className="text-xs font-medium mb-1">Competing models:</p>
+              <ul className="text-xs text-muted-foreground space-y-0.5">
+                {taskRuns.map((run, idx) => {
+                  const agentName = getAgentName(run.prompt);
+                  const status =
+                    run.status === "completed"
+                      ? "✓"
+                      : run.status === "running"
+                        ? "⏳"
+                        : run.status === "failed"
+                          ? "✗"
+                          : "•";
+                  return (
+                    <li key={idx}>
+                      {status} {agentName}
+                    </li>
+                  );
+                })}
+              </ul>
             </div>
-          </TooltipTrigger>
-          <TooltipContent
-            className="max-w-sm p-3 z-[9999]"
-            side="bottom"
-            sideOffset={5}
-          >
-            <div className="space-y-2">
-              <p className="font-medium text-sm">Crown Evaluation System</p>
-              <p className="text-xs text-muted-foreground">
-                Multiple AI models are working on your task in parallel. Once
-                all models complete, Claude will evaluate and select the best
-                implementation.
-              </p>
-              <div className="border-t pt-2 mt-2">
-                <p className="text-xs font-medium mb-1">Competing models:</p>
-                <ul className="text-xs text-muted-foreground space-y-0.5">
-                  {taskRuns.map((run, idx) => {
-                    const agentName = getAgentName(run.prompt);
-                    const status =
-                      run.status === "completed"
-                        ? "✓"
-                        : run.status === "running"
-                          ? "⏳"
-                          : run.status === "failed"
-                            ? "✗"
-                            : "•";
-                    return (
-                      <li key={idx}>
-                        {status} {agentName}
-                      </li>
-                    );
-                  })}
-                </ul>
-              </div>
-            </div>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+          </div>
+        </TooltipContent>
+      </Tooltip>
     );
 
     pillClassName +=
@@ -139,30 +132,28 @@ export function CrownStatus({ taskId, teamSlugOrId }: CrownStatusProps) {
     // If we have a reason, wrap in tooltip
     if (crownedRun.crownReason) {
       pillContent = (
-        <TooltipProvider>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <div className="flex items-center gap-1.5 cursor-help">
-                {winnerContent}
-              </div>
-            </TooltipTrigger>
-            <TooltipContent
-              className="max-w-sm p-3 z-[9999]"
-              side="bottom"
-              sideOffset={5}
-            >
-              <div className="space-y-2">
-                <p className="font-medium text-sm">Evaluation Reason</p>
-                <p className="text-xs text-muted-foreground">
-                  {crownedRun.crownReason}
-                </p>
-                <p className="text-xs text-muted-foreground border-t pt-2 mt-2">
-                  Evaluated against {taskRuns.length} implementations
-                </p>
-              </div>
-            </TooltipContent>
-          </Tooltip>
-        </TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <div className="flex items-center gap-1.5 cursor-help">
+              {winnerContent}
+            </div>
+          </TooltipTrigger>
+          <TooltipContent
+            className="max-w-sm p-3 z-[var(--z-overlay)]"
+            side="bottom"
+            sideOffset={5}
+          >
+            <div className="space-y-2">
+              <p className="font-medium text-sm">Evaluation Reason</p>
+              <p className="text-xs text-muted-foreground">
+                {crownedRun.crownReason}
+              </p>
+              <p className="text-xs text-muted-foreground border-t pt-2 mt-2">
+                Evaluated against {taskRuns.length} implementations
+              </p>
+            </div>
+          </TooltipContent>
+        </Tooltip>
       );
     } else {
       pillContent = winnerContent;
@@ -182,41 +173,37 @@ export function CrownStatus({ taskId, teamSlugOrId }: CrownStatusProps) {
     );
 
     pillContent = (
-      <TooltipProvider>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <div className="flex items-center gap-1.5 cursor-help">
-              {evaluatingContent}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="flex items-center gap-1.5 cursor-help">
+            {evaluatingContent}
+          </div>
+        </TooltipTrigger>
+        <TooltipContent
+          className="max-w-sm p-3 z-[var(--z-overlay)]"
+          side="bottom"
+          sideOffset={5}
+        >
+          <div className="space-y-2">
+            <p className="font-medium text-sm">AI Judge in Progress</p>
+            <p className="text-xs text-muted-foreground">
+              Claude is analyzing the code implementations from all models to
+              determine which one best solves your task. The evaluation
+              considers code quality, completeness, best practices, and
+              correctness.
+            </p>
+            <div className="border-t pt-2 mt-2">
+              <p className="text-xs font-medium mb-1">Completed implementations:</p>
+              <ul className="text-xs text-muted-foreground space-y-0.5">
+                {completedRuns.map((run, idx) => {
+                  const agentName = getAgentName(run.prompt);
+                  return <li key={idx}>• {agentName}</li>;
+                })}
+              </ul>
             </div>
-          </TooltipTrigger>
-          <TooltipContent
-            className="max-w-sm p-3 z-[9999]"
-            side="bottom"
-            sideOffset={5}
-          >
-            <div className="space-y-2">
-              <p className="font-medium text-sm">AI Judge in Progress</p>
-              <p className="text-xs text-muted-foreground">
-                Claude is analyzing the code implementations from all models to
-                determine which one best solves your task. The evaluation
-                considers code quality, completeness, best practices, and
-                correctness.
-              </p>
-              <div className="border-t pt-2 mt-2">
-                <p className="text-xs font-medium mb-1">
-                  Completed implementations:
-                </p>
-                <ul className="text-xs text-muted-foreground space-y-0.5">
-                  {completedRuns.map((run, idx) => {
-                    const agentName = getAgentName(run.prompt);
-                    return <li key={idx}>• {agentName}</li>;
-                  })}
-                </ul>
-              </div>
-            </div>
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+          </div>
+        </TooltipContent>
+      </Tooltip>
     );
 
     pillClassName +=

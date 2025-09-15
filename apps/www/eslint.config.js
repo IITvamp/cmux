@@ -15,6 +15,14 @@ export default tseslint.config(
   ...compat.extends("next/core-web-vitals"),
   // TypeScript ESLint recommended (no type-checking required)
   ...tseslint.configs.recommended,
+  // Ensure TypeScript parser resolves the correct tsconfig root
+  {
+    languageOptions: {
+      parserOptions: {
+        tsconfigRootDir: __dirname,
+      },
+    },
+  },
   // Ignores
   {
     ignores: [

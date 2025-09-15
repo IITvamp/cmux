@@ -34,9 +34,12 @@ echo "IS_DEVCONTAINER: $IS_DEVCONTAINER"
 # Parse command line arguments
 FORCE_DOCKER_BUILD=false
 SHOW_COMPOSE_LOGS=false
-SKIP_CONVEX="${SKIP_CONVEX:-false}"
-for arg in "$@"; do
-    case $arg in
+# Default to skipping Convex unless explicitly disabled via env/flag
+SKIP_CONVEX="${SKIP_CONVEX:-true}"
+RUN_ELECTRON=false
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
         --force-docker-build)
             FORCE_DOCKER_BUILD=true
             shift
@@ -45,8 +48,40 @@ for arg in "$@"; do
             SHOW_COMPOSE_LOGS=true
             shift
             ;;
+        --electron)
+            RUN_ELECTRON=true
+            shift
+            ;;
         --skip-convex)
-            SKIP_CONVEX=true
+            # Support `--skip-convex true|false` and bare `--skip-convex` (defaults to true)
+            if [[ -n "${2:-}" && "${2}" != --* ]]; then
+                case "$2" in
+                    true|false)
+                        SKIP_CONVEX="$2"
+                        shift 2
+                        ;;
+                    *)
+                        echo "Invalid value for --skip-convex: $2. Use true or false." >&2
+                        exit 1
+                        ;;
+                esac
+            else
+                SKIP_CONVEX=true
+                shift
+            fi
+            ;;
+        --skip-convex=*)
+            val="${1#*=}"
+            if [[ "$val" = "true" || "$val" = "false" ]]; then
+                SKIP_CONVEX="$val"
+            else
+                echo "Invalid value for --skip-convex: $val. Use true or false." >&2
+                exit 1
+            fi
+            shift
+            ;;
+        *)
+            # Unknown flag; ignore and shift
             shift
             ;;
     esac
@@ -103,6 +138,7 @@ cleanup() {
     [ -n "$DOCKER_COMPOSE_PID" ] && kill $DOCKER_COMPOSE_PID 2>/dev/null
     [ -n "$SERVER_GLOBAL_PID" ] && kill $SERVER_GLOBAL_PID 2>/dev/null
     [ -n "$OPENAPI_CLIENT_PID" ] && kill $OPENAPI_CLIENT_PID 2>/dev/null
+    [ -n "$ELECTRON_PID" ] && kill $ELECTRON_PID 2>/dev/null
     # Give processes time to cleanup
     sleep 1
     # Force kill any remaining processes
@@ -113,6 +149,7 @@ cleanup() {
     [ -n "$DOCKER_COMPOSE_PID" ] && kill -9 $DOCKER_COMPOSE_PID 2>/dev/null
     [ -n "$SERVER_GLOBAL_PID" ] && kill -9 $SERVER_GLOBAL_PID 2>/dev/null
     [ -n "$OPENAPI_CLIENT_PID" ] && kill -9 $OPENAPI_CLIENT_PID 2>/dev/null
+    [ -n "$ELECTRON_PID" ] && kill -9 $ELECTRON_PID 2>/dev/null
     exit
 }
 
@@ -122,8 +159,12 @@ trap cleanup EXIT INT TERM
 # Check if node_modules exist, if not install dependencies
 if [ ! -d "node_modules" ] || [ "$FORCE_INSTALL" = "true" ]; then
     echo -e "${BLUE}Installing dependencies...${NC}"
-    CI=1 pnpm install --frozen-lockfile || exit 1
+    CI=1 bun install --frozen-lockfile || exit 1
 fi
+
+# Build Rust N-API addon (required)
+echo -e "${GREEN}Building native Rust addon...${NC}"
+(cd "$APP_DIR/apps/server/native/core" && bunx --bun @napi-rs/cli build --platform)
 
 # Function to prefix output with colored labels
 prefix_output() {
@@ -221,12 +262,23 @@ echo -e "${GREEN}Starting openapi client generator...${NC}"
 OPENAPI_CLIENT_PID=$!
 check_process $OPENAPI_CLIENT_PID "OpenAPI Client Generator"
 
+# Start Electron if requested
+if [ "$RUN_ELECTRON" = "true" ]; then
+    echo -e "${GREEN}Starting Electron app...${NC}"
+    (cd "$APP_DIR/apps/client" && exec bash -c 'trap "kill -9 0" EXIT; bunx dotenv-cli -e ../../.env -- pnpm dev:electron 2>&1 | tee "$LOG_DIR/electron.log" | prefix_output "ELECTRON" "$RED"') &
+    ELECTRON_PID=$!
+    check_process $ELECTRON_PID "Electron App"
+fi
+
 echo -e "${GREEN}Terminal app is running!${NC}"
 echo -e "${BLUE}Frontend: http://localhost:5173${NC}"
 echo -e "${BLUE}Backend: http://localhost:9776${NC}"
 echo -e "${BLUE}WWW: http://localhost:9779${NC}"
 if [ "$SKIP_CONVEX" != "true" ]; then
     echo -e "${BLUE}Convex: http://localhost:$CONVEX_PORT${NC}"
+fi
+if [ "$RUN_ELECTRON" = "true" ]; then
+    echo -e "${BLUE}Electron app is starting...${NC}"
 fi
 echo -e "\nPress Ctrl+C to stop all services"
 

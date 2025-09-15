@@ -1,11 +1,22 @@
 import { githubReposRouter } from "@/lib/routes/github.repos.route";
+import { githubPrsRouter } from "@/lib/routes/github.prs.route";
+import { githubPrsBackfillRouter } from "@/lib/routes/github.prs.backfill.route";
+import { githubPrsBackfillRepoRouter } from "@/lib/routes/github.prs.backfill-repo.route";
+import { githubPrsCodeRouter } from "@/lib/routes/github.prs.code.route";
+import { githubPrsPatchRouter } from "@/lib/routes/github.prs.patch.route";
+import { githubPrsFilesRouter } from "@/lib/routes/github.prs.files.route";
+import { githubPrsFileContentsRouter } from "@/lib/routes/github.prs.file-contents.route";
+import { githubPrsFileContentsBatchRouter } from "@/lib/routes/github.prs.file-contents-batch.route";
+import { githubUserRouter } from "@/lib/routes/github.user.route";
 import {
   booksRouter,
   devServerRouter,
   environmentsRouter,
   healthRouter,
+  sandboxesRouter,
   morphRouter,
   usersRouter,
+  crownRouter,
 } from "@/lib/routes/index";
 import { stackServerApp } from "@/lib/utils/stack";
 import { swaggerUI } from "@hono/swagger-ui";
@@ -81,8 +92,19 @@ app.route("/", usersRouter);
 app.route("/", booksRouter);
 app.route("/", devServerRouter);
 app.route("/", githubReposRouter);
+app.route("/", githubPrsRouter);
+app.route("/", githubPrsBackfillRouter);
+app.route("/", githubPrsBackfillRepoRouter);
+app.route("/", githubPrsCodeRouter);
+app.route("/", githubPrsPatchRouter);
+app.route("/", githubPrsFilesRouter);
+app.route("/", githubPrsFileContentsRouter);
+app.route("/", githubPrsFileContentsBatchRouter);
+app.route("/", githubUserRouter);
 app.route("/", morphRouter);
 app.route("/", environmentsRouter);
+app.route("/", sandboxesRouter);
+app.route("/", crownRouter);
 
 // OpenAPI documentation
 app.doc("/doc", {

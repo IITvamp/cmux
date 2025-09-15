@@ -19,13 +19,17 @@ import {
   generateUniqueBranchNamesFromTitle,
 } from "./utils/branchNameGenerator.js";
 import { getConvex } from "./utils/convexClient.js";
-import { getAuthToken, runWithAuthToken } from "./utils/requestContext.js";
+import {
+  getAuthToken,
+  getAuthHeaderJson,
+  runWithAuth,
+} from "./utils/requestContext.js";
 import { serverLogger } from "./utils/fileLogger.js";
-import { workerExec } from "./utils/workerExec.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
-import { MorphVSCodeInstance } from "./vscode/MorphVSCodeInstance.js";
+import { CmuxVSCodeInstance } from "./vscode/CmuxVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWorktreePath, setupProjectWorkspace } from "./workspace.js";
+import { retryOnOptimisticConcurrency } from "./utils/convexRetry.js";
 
 export interface AgentSpawnResult {
   agentName: string;
@@ -41,10 +45,11 @@ export async function spawnAgent(
   agent: AgentConfig,
   taskId: Id<"tasks">,
   options: {
-    repoUrl: string;
+    repoUrl?: string;
     branch?: string;
     taskDescription: string;
     isCloudMode?: boolean;
+    environmentId?: Id<"environments"> | string;
     images?: Array<{
       src: string;
       fileName?: string;
@@ -56,9 +61,11 @@ export async function spawnAgent(
   teamSlugOrId: string
 ): Promise<AgentSpawnResult> {
   try {
-    // Capture the current auth token from AsyncLocalStorage so we can
+    // Capture the current auth token and header JSON from AsyncLocalStorage so we can
     // re-enter the auth context inside async event handlers later.
     const capturedAuthToken = getAuthToken();
+    const capturedAuthHeaderJson = getAuthHeaderJson();
+
     const newBranch =
       options.newBranch ||
       (await generateNewBranchName(options.taskDescription, teamSlugOrId));
@@ -275,13 +282,17 @@ export async function spawnAgent(
     console.log("[AgentSpawner] [isCloudMode]", options.isCloudMode);
 
     if (options.isCloudMode) {
-      // For Morph, create the instance and we'll clone the repo via socket command
-      vscodeInstance = new MorphVSCodeInstance({
+      // For remote sandboxes (Morph-backed via www API)
+      vscodeInstance = new CmuxVSCodeInstance({
         agentName: agent.name,
         taskRunId,
         taskId,
         theme: options.theme,
         teamSlugOrId,
+        repoUrl: options.repoUrl,
+        branch: options.branch,
+        newBranch,
+        environmentId: options.environmentId as Id<"environments"> | undefined,
       });
 
       worktreePath = "/root/workspace";
@@ -289,7 +300,7 @@ export async function spawnAgent(
       // For Docker, set up worktree as before
       const worktreeInfo = await getWorktreePath(
         {
-          repoUrl: options.repoUrl,
+          repoUrl: options.repoUrl!,
           branch: newBranch,
         },
         teamSlugOrId
@@ -297,7 +308,7 @@ export async function spawnAgent(
 
       // Setup workspace
       const workspaceResult = await setupProjectWorkspace({
-        repoUrl: options.repoUrl,
+        repoUrl: options.repoUrl!,
         // If not provided, setupProjectWorkspace detects default from origin
         branch: options.branch,
         worktreeInfo,
@@ -329,12 +340,14 @@ export async function spawnAgent(
       });
     }
 
-    // Update the task run with the worktree path
-    await getConvex().mutation(api.taskRuns.updateWorktreePath, {
-      teamSlugOrId,
-      id: taskRunId,
-      worktreePath: worktreePath,
-    });
+    // Update the task run with the worktree path (retry on OCC)
+    await retryOnOptimisticConcurrency(() =>
+      getConvex().mutation(api.taskRuns.updateWorktreePath, {
+        teamSlugOrId,
+        id: taskRunId,
+        worktreePath: worktreePath,
+      })
+    );
 
     // Store the VSCode instance
     // VSCodeInstance.getInstances().set(vscodeInstance.getInstanceId(), vscodeInstance);
@@ -349,26 +362,16 @@ export async function spawnAgent(
       `VSCode instance spawned for agent ${agent.name}: ${vscodeUrl}`
     );
 
-    if (options.isCloudMode) {
-      // then we need to set up the repo
-      console.log("[AgentSpawner] [isCloudMode] Cloning repo");
-      await workerExec({
-        workerSocket: vscodeInstance.getWorkerSocket(),
-        command: "bash",
-        args: [
-          "-c",
-          // `git clone --depth=1 ${options.repoUrl} /root/workspace && git checkout ${newBranch} && git pull`,
-          `git pull && git switch -c ${newBranch}`,
-        ],
-        cwd: "/root",
-        env: {},
-      });
-      console.log("[AgentSpawner] [isCloudMode] Repo cloned!");
-
-      if (vscodeInstance instanceof MorphVSCodeInstance) {
-        console.log("[AgentSpawner] [isCloudMode] Setting up devcontainer");
-        void vscodeInstance.setupDevcontainer();
-      }
+    if (options.isCloudMode && vscodeInstance instanceof CmuxVSCodeInstance) {
+      console.log("[AgentSpawner] [isCloudMode] Setting up devcontainer");
+      void vscodeInstance
+        .setupDevcontainer()
+        .catch((err) =>
+          serverLogger.error(
+            "[AgentSpawner] setupDevcontainer encountered an error",
+            err
+          )
+        );
     }
 
     // Start file watching for real-time diff updates
@@ -400,7 +403,7 @@ export async function spawnAgent(
         );
         await new Promise((resolve) => setTimeout(resolve, 3000));
 
-        await runWithAuthToken(capturedAuthToken, async () =>
+        await runWithAuth(capturedAuthToken, capturedAuthHeaderJson, async () =>
           handleTaskCompletion({
             taskRunId,
             agent,
@@ -455,7 +458,7 @@ export async function spawnAgent(
         );
         await new Promise((resolve) => setTimeout(resolve, 3000));
 
-        await runWithAuthToken(capturedAuthToken, async () =>
+        await runWithAuth(capturedAuthToken, capturedAuthHeaderJson, async () =>
           handleTaskCompletion({
             taskRunId,
             agent,
@@ -499,7 +502,7 @@ export async function spawnAgent(
           `[AgentSpawner] Task ID matched! Marking task as complete for ${agent.name}`
         );
         vscodeInstance.stopFileWatch();
-        await runWithAuthToken(capturedAuthToken, async () =>
+        await runWithAuth(capturedAuthToken, capturedAuthHeaderJson, async () =>
           handleTaskCompletion({
             taskRunId,
             agent,
@@ -531,26 +534,19 @@ export async function spawnAgent(
         }
         hasFailed = true;
 
-        // Append error to log for context
-        if (data.errorMessage) {
-          await runWithAuthToken(capturedAuthToken, async () =>
-            getConvex().mutation(api.taskRuns.appendLogPublic, {
-              teamSlugOrId,
-              id: taskRunId,
-              content: `\n\n=== ERROR ===\n${data.errorMessage}\n=== END ERROR ===\n`,
-            })
-          );
-        }
+        // Do not write failure info to Convex logs; rely on status and errorMessage fields.
 
         // Mark the run as failed with error message
-        await runWithAuthToken(capturedAuthToken, async () =>
-          getConvex().mutation(api.taskRuns.fail, {
-            teamSlugOrId,
-            id: taskRunId,
-            errorMessage: data.errorMessage || "Terminal failed",
-            // WorkerTerminalFailed does not include exitCode in schema; default to 1
-            exitCode: 1,
-          })
+        await runWithAuth(capturedAuthToken, capturedAuthHeaderJson, async () =>
+          retryOnOptimisticConcurrency(() =>
+            getConvex().mutation(api.taskRuns.fail, {
+              teamSlugOrId,
+              id: taskRunId,
+              errorMessage: data.errorMessage || "Terminal failed",
+              // WorkerTerminalFailed does not include exitCode in schema; default to 1
+              exitCode: 1,
+            })
+          )
         );
 
         serverLogger.info(
@@ -581,20 +577,22 @@ export async function spawnAgent(
       }
     }
 
-    // Update VSCode instance information in Convex
-    await getConvex().mutation(api.taskRuns.updateVSCodeInstance, {
-      teamSlugOrId,
-      id: taskRunId,
-      vscode: {
-        provider: vscodeInfo.provider,
-        containerName: vscodeInstance.getName(),
-        status: "running",
-        url: vscodeInfo.url,
-        workspaceUrl: vscodeInfo.workspaceUrl,
-        startedAt: Date.now(),
-        ...(ports ? { ports } : {}),
-      },
-    });
+    // Update VSCode instance information in Convex (retry on OCC)
+    await retryOnOptimisticConcurrency(() =>
+      getConvex().mutation(api.taskRuns.updateVSCodeInstance, {
+        teamSlugOrId,
+        id: taskRunId,
+        vscode: {
+          provider: vscodeInfo.provider,
+          containerName: vscodeInstance.getName(),
+          status: "running",
+          url: vscodeInfo.url,
+          workspaceUrl: vscodeInfo.workspaceUrl,
+          startedAt: Date.now(),
+          ...(ports ? { ports } : {}),
+        },
+      })
+    );
 
     // Use taskRunId as terminal ID for compatibility
     const terminalId = taskRunId;
@@ -900,12 +898,13 @@ export async function spawnAgent(
 export async function spawnAllAgents(
   taskId: Id<"tasks">,
   options: {
-    repoUrl: string;
+    repoUrl?: string;
     branch?: string;
     taskDescription: string;
     prTitle?: string;
     selectedAgents?: string[];
     isCloudMode?: boolean;
+    environmentId?: Id<"environments"> | string;
     images?: Array<{
       src: string;
       fileName?: string;

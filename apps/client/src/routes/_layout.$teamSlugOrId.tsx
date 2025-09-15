@@ -1,4 +1,5 @@
 import { CmuxComments } from "@/components/cmux-comments";
+import { CommandBar } from "@/components/CommandBar";
 import { Sidebar } from "@/components/Sidebar";
 import { convexQueryClient } from "@/contexts/convex/convex-query-client";
 import { ExpandTasksProvider } from "@/contexts/expand-tasks/ExpandTasksProvider";
@@ -8,7 +9,8 @@ import { type Id } from "@cmux/convex/dataModel";
 import { convexQuery } from "@convex-dev/react-query";
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { useQueries, useQuery } from "convex/react";
-import { Suspense, useMemo } from "react";
+import { Suspense, useEffect, useMemo } from "react";
+import { setLastTeamSlugOrId } from "@/lib/lastTeam";
 
 export const Route = createFileRoute("/_layout/$teamSlugOrId")({
   component: LayoutComponentWrapper,
@@ -88,8 +90,10 @@ function LayoutComponent() {
 
   return (
     <>
+      <CommandBar teamSlugOrId={teamSlugOrId} />
+
       <ExpandTasksProvider>
-        <div className="flex flex-row grow bg-white dark:bg-black">
+        <div className="flex flex-row grow min-h-0 bg-white dark:bg-black">
           <Sidebar
             tasks={tasks}
             tasksWithRuns={tasksWithRuns}
@@ -118,7 +122,7 @@ function LayoutComponent() {
           position: "fixed",
           bottom: "16px",
           right: "16px",
-          zIndex: 9999,
+          zIndex: "var(--z-overlay)",
           background: "#ffbf00",
           color: "#000",
           border: "none",
@@ -140,6 +144,9 @@ function LayoutComponent() {
 // Avoid nesting providers here to prevent auth/loading thrash.
 function LayoutComponentWrapper() {
   const { teamSlugOrId } = Route.useParams();
+  useEffect(() => {
+    setLastTeamSlugOrId(teamSlugOrId);
+  }, [teamSlugOrId]);
   return (
     <>
       <LayoutComponent />

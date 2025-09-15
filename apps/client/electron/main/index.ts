@@ -1,25 +1,39 @@
+import path, { join } from "node:path";
+import { pathToFileURL } from "node:url";
+
 import { is } from "@electron-toolkit/utils";
 import {
   app,
   BrowserWindow,
   dialog,
+  Menu,
   nativeImage,
   net,
   session,
   shell,
   type BrowserWindowConstructorOptions,
+  type MenuItemConstructorOptions,
 } from "electron";
+import { startEmbeddedServer } from "./embedded-server";
+// Auto-updater
 import electronUpdater from "electron-updater";
-const { autoUpdater } = electronUpdater;
 import {
   createRemoteJWKSet,
   decodeJwt,
   jwtVerify,
   type JWTPayload,
 } from "jose";
-import path, { join } from "node:path";
-import { pathToFileURL } from "node:url";
+import {
+  createWriteStream,
+  existsSync,
+  promises as fs,
+  mkdirSync,
+  type WriteStream,
+} from "node:fs";
+const { autoUpdater } = electronUpdater;
+
 import util from "node:util";
+import { initCmdK, keyDebug } from "./cmdk";
 import { env } from "./electron-main-env";
 
 // Use a cookieable HTTPS origin intercepted locally instead of a custom scheme.
@@ -29,6 +43,90 @@ const APP_HOST = "cmux.local";
 let rendererLoaded = false;
 let pendingProtocolUrl: string | null = null;
 let mainWindow: BrowserWindow | null = null;
+
+// Persistent log files
+let logsDir: string | null = null;
+let mainLogStream: WriteStream | null = null;
+let rendererLogStream: WriteStream | null = null;
+
+function getTimestamp(): string {
+  return new Date().toISOString();
+}
+
+function ensureLogStreams(): void {
+  if (logsDir) return; // already initialized
+  const base = app.getPath("userData");
+  const dir = path.join(base, "logs");
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
+  logsDir = dir;
+  mainLogStream = createWriteStream(path.join(dir, "main.log"), {
+    flags: "a",
+    encoding: "utf8",
+  });
+  rendererLogStream = createWriteStream(path.join(dir, "renderer.log"), {
+    flags: "a",
+    encoding: "utf8",
+  });
+}
+
+function writeMainLogLine(level: "LOG" | "WARN" | "ERROR", line: string): void {
+  if (!mainLogStream) return;
+  mainLogStream.write(`[${getTimestamp()}] [MAIN] [${level}] ${line}\n`);
+}
+
+function writeRendererLogLine(
+  level: "info" | "warning" | "error" | "debug",
+  line: string
+): void {
+  if (!rendererLogStream) return;
+  rendererLogStream.write(
+    `[${getTimestamp()}] [RENDERER] [${level.toUpperCase()}] ${line}\n`
+  );
+}
+
+function setupConsoleFileMirrors(): void {
+  const orig = {
+    log: console.log.bind(console),
+    warn: console.warn.bind(console),
+    error: console.error.bind(console),
+  } as const;
+
+  console.log = (...args: unknown[]) => {
+    try {
+      orig.log(...args);
+    } finally {
+      try {
+        writeMainLogLine("LOG", formatArgs(args));
+      } catch {
+        // ignore
+      }
+    }
+  };
+  console.warn = (...args: unknown[]) => {
+    try {
+      orig.warn(...args);
+    } finally {
+      try {
+        writeMainLogLine("WARN", formatArgs(args));
+      } catch {
+        // ignore
+      }
+    }
+  };
+  console.error = (...args: unknown[]) => {
+    try {
+      orig.error(...args);
+    } finally {
+      try {
+        writeMainLogLine("ERROR", formatArgs(args));
+      } catch {
+        // ignore
+      }
+    }
+  };
+}
 
 function resolveResourcePath(rel: string) {
   // Prod: packaged resources directory; Dev: look under client/assets
@@ -80,16 +178,44 @@ export function mainError(...args: unknown[]) {
   emitToRenderer("error", `[MAIN] ${line}`);
 }
 
-// Auto‑updates (enabled)
-// - Uses electron-updater reading app-update.yml from electron-builder.
-function setupAutoUpdates() {
+// Write critical errors to a file to aid debugging packaged crashes
+async function writeFatalLog(...args: unknown[]) {
+  try {
+    const ts = new Date().toISOString().replace(/[:.]/g, "-");
+    const base = app.getPath("userData");
+    const file = path.join(base, `fatal-${ts}.log`);
+    const msg = formatArgs(args);
+    await fs.writeFile(file, msg + "\n", { encoding: "utf8" });
+  } catch {
+    // ignore
+  }
+}
+
+process.on("uncaughtException", (err) => {
+  try {
+    console.error("[MAIN] uncaughtException", err);
+  } catch {
+    // ignore
+  }
+  void writeFatalLog("uncaughtException", err);
+});
+process.on("unhandledRejection", (reason) => {
+  try {
+    console.error("[MAIN] unhandledRejection", reason);
+  } catch {
+    // ignore
+  }
+  void writeFatalLog("unhandledRejection", reason);
+});
+
+function setupAutoUpdates(): void {
   if (!app.isPackaged) {
     mainLog("Skipping auto-updates in development");
     return;
   }
 
   try {
-    // Wire logs
+    // Wire logs to our logger
     (autoUpdater as unknown as { logger: unknown }).logger = {
       info: (...args: unknown[]) => mainLog("[updater]", ...args),
       warn: (...args: unknown[]) => mainWarn("[updater]", ...args),
@@ -176,10 +302,11 @@ function createWindow(): void {
     titleBarStyle: "hiddenInset",
     trafficLightPosition: { x: 12, y: 10 },
     webPreferences: {
-      preload: join(__dirname, "../preload/index.cjs"),
+      preload: join(app.getAppPath(), "out/preload/index.cjs"),
       sandbox: false,
       contextIsolation: true,
       nodeIntegration: false,
+      webviewTag: true,
       partition: PARTITION,
     },
   };
@@ -194,12 +321,26 @@ function createWindow(): void {
 
   mainWindow = new BrowserWindow(windowOptions);
 
+  // Capture renderer console output into renderer.log
+  mainWindow.webContents.on(
+    "console-message",
+    ({ level, lineNumber, message, sourceId }) => {
+      const src = sourceId
+        ? `${sourceId}${lineNumber ? `:${lineNumber}` : ""}`
+        : "";
+      const msg = src ? `${message} (${src})` : message;
+      writeRendererLogLine(level, msg);
+    }
+  );
+
   mainWindow.on("ready-to-show", () => {
     mainLog("Window ready-to-show");
     mainWindow?.show();
   });
 
-  // Start update checks after first window exists so dialogs have a parent.
+  // Socket bridge not required; renderer connects directly
+
+  // Initialize auto-updates
   setupAutoUpdates();
 
   // Once the renderer is loaded, process any queued deep-link
@@ -238,7 +379,50 @@ app.on("open-url", (_event, url) => {
   handleOrQueueProtocolUrl(url);
 });
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  ensureLogStreams();
+  setupConsoleFileMirrors();
+  initCmdK({
+    getMainWindow: () => mainWindow,
+    logger: {
+      log: mainLog,
+      warn: mainWarn,
+    },
+  });
+
+  // Ensure macOS menu and About panel use "cmux" instead of package.json name
+  if (process.platform === "darwin") {
+    try {
+      app.setName("cmux");
+      app.setAboutPanelOptions({ applicationName: "cmux" });
+    } catch {
+      // ignore if not supported
+    }
+  }
+
+  // Start the embedded IPC server (registers cmux:register and cmux:rpc)
+  try {
+    mainLog("Starting embedded IPC server...");
+    await startEmbeddedServer();
+    mainLog("Embedded IPC server started successfully");
+  } catch (error) {
+    mainError("Failed to start embedded IPC server:", error);
+    process.exit(1);
+  }
+
+  // Try to register the custom protocol handler with the OS. electron-builder
+  // will add CFBundleURLTypes on macOS, but calling this is harmless and also
+  // helps on Windows/Linux when packaged.
+  try {
+    const ok = app.setAsDefaultProtocolClient("cmux");
+    mainLog("setAsDefaultProtocolClient(cmux)", {
+      ok,
+      packaged: app.isPackaged,
+    });
+  } catch (e) {
+    mainWarn("setAsDefaultProtocolClient failed", e);
+  }
+
   // When packaged, electron-vite outputs the renderer to out/renderer
   // which is bundled inside app.asar (referenced by app.getAppPath()).
   const baseDir = path.join(app.getAppPath(), "out", "renderer");
@@ -255,7 +439,6 @@ app.whenReady().then(() => {
   const ses = session.fromPartition(PARTITION);
   // Intercept HTTPS for our private host and serve local files; pass-through others.
   ses.protocol.handle("https", async (req) => {
-    mainLog("Protocol handler invoked", { url: req.url });
     const u = new URL(req.url);
     if (u.hostname !== APP_HOST) return net.fetch(req);
     const pathname = u.pathname === "/" ? "/index.html" : u.pathname;
@@ -267,12 +450,97 @@ app.whenReady().then(() => {
       mainWarn("Blocked path outside baseDir", { fsPath, baseDir });
       return new Response("Not found", { status: 404 });
     }
-    mainLog("Serving local file", { fsPath });
     return net.fetch(pathToFileURL(fsPath).toString());
   });
 
   // Create the initial window.
   if (BrowserWindow.getAllWindows().length === 0) createWindow();
+
+  // Application menu with Command Palette accelerator; keep Help items.
+  try {
+    const template: MenuItemConstructorOptions[] = [];
+    if (process.platform === "darwin") {
+      template.push({ role: "appMenu" });
+    } else {
+      template.push({ label: "File", submenu: [{ role: "quit" }] });
+    }
+    template.push(
+      { role: "editMenu" },
+      {
+        label: "Commands",
+        submenu: [
+          {
+            label: "Command Palette…",
+            accelerator: "CommandOrControl+K",
+            click: () => {
+              try {
+                const target =
+                  BrowserWindow.getFocusedWindow() ??
+                  mainWindow ??
+                  BrowserWindow.getAllWindows()[0] ??
+                  null;
+                keyDebug("menu-accelerator-cmdk", {
+                  to: target?.webContents.id,
+                });
+                if (target && !target.isDestroyed()) {
+                  target.webContents.send("cmux:event:shortcut:cmd-k");
+                }
+              } catch (err) {
+                mainWarn("Failed to emit Cmd+K from menu accelerator", err);
+                keyDebug("menu-accelerator-cmdk-error", { err: String(err) });
+              }
+            },
+          },
+        ],
+      },
+      { role: "viewMenu" },
+      { role: "windowMenu" }
+    );
+    template.push({
+      role: "help",
+      submenu: [
+        {
+          label: "Check for Updates…",
+          click: async () => {
+            if (!app.isPackaged) {
+              await dialog.showMessageBox({
+                type: "info",
+                message: "Updates are only available in packaged builds.",
+              });
+              return;
+            }
+            try {
+              mainLog("Manual update check initiated");
+              const result = await autoUpdater.checkForUpdates();
+              if (!result?.updateInfo) {
+                await dialog.showMessageBox({
+                  type: "info",
+                  message: "You’re up to date.",
+                });
+              }
+            } catch (e) {
+              mainWarn("Manual checkForUpdates failed", e);
+              await dialog.showMessageBox({
+                type: "error",
+                message: "Failed to check for updates.",
+              });
+            }
+          },
+        },
+        {
+          label: "Open Logs Folder",
+          click: async () => {
+            if (!logsDir) ensureLogStreams();
+            if (logsDir) await shell.openPath(logsDir);
+          },
+        },
+      ],
+    });
+    const menu = Menu.buildFromTemplate(template);
+    Menu.setApplicationMenu(menu);
+  } catch (e) {
+    mainWarn("Failed to set application menu", e);
+  }
 
   app.on("activate", function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
@@ -282,6 +550,15 @@ app.whenReady().then(() => {
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     app.quit();
+  }
+});
+
+app.on("before-quit", () => {
+  try {
+    mainLogStream?.end();
+    rendererLogStream?.end();
+  } catch {
+    // ignore
   }
 });
 
@@ -383,5 +660,29 @@ async function handleProtocolUrl(url: string): Promise<void> {
     ]);
 
     mainWindow.webContents.reload();
+    return;
+  }
+
+  if (urlObj.hostname === "github-connect-complete") {
+    try {
+      mainLog("Deep link: github-connect-complete", {
+        team: urlObj.searchParams.get("team"),
+      });
+      // Bring app to front and refresh to pick up new connections
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show();
+      mainWindow.focus();
+      const team = urlObj.searchParams.get("team");
+      try {
+        mainWindow.webContents.send("cmux:event:github-connect-complete", {
+          team,
+        });
+      } catch (emitErr) {
+        mainWarn("Failed to emit github-connect-complete", emitErr);
+      }
+    } catch (e) {
+      mainWarn("Failed to handle github-connect-complete", e);
+    }
+    return;
   }
 }

@@ -1,6 +1,6 @@
 {
   "appId": "com.cmux.app",
-  "productName": "Cmux",
+  "productName": "cmux",
   "directories": {
     "output": "dist-electron",
     "buildResources": "build"
@@ -8,15 +8,40 @@
   "files": [
     "out/**/*",
     "package.json",
-    "node_modules/**/*"
+    "!**/target/**",
+    "!**/*.rs",
+    "!**/Cargo.toml",
+    "!**/Cargo.lock",
+    "!**/.DS_Store",
+    "!**/node_modules/*/{CHANGELOG.md,README.md,README,readme.md,readme}",
+    "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
+    "!**/node_modules/**/*.d.ts",
+    "!**/node_modules/.bin",
+    "!**/*.map"
   ],
   "asar": true,
+  "compression": "maximum",
   "npmRebuild": false,
   "nodeGypRebuild": false,
+  "protocols": [
+    {
+      "name": "cmux",
+      "schemes": [
+        "cmux"
+      ]
+    }
+  ],
   "extraResources": [
     {
       "from": "assets/cmux-logos/cmux.iconset",
       "to": "cmux-logos/cmux.iconset"
+    },
+    {
+      "from": "../../apps/server/native/core",
+      "to": "native/core",
+      "filter": [
+        "*.node"
+      ]
     }
   ],
   "mac": {
@@ -26,7 +51,10 @@
     "entitlements": "build/entitlements.mac.plist",
     "entitlementsInherit": "build/entitlements.mac.plist",
     "gatekeeperAssess": false,
-    "target": ["dmg", "zip"],
+    "target": [
+      "dmg",
+      "zip"
+    ],
     "extendInfo": {
       "CFBundleIconFile": "icon"
     }
@@ -40,6 +68,7 @@
   },
   "dmg": {
     "icon": "build/icon.icns",
+    "internetEnabled": false,
     "contents": [
       {
         "x": 130,

@@ -1,6 +1,11 @@
-import type { EnvironmentContext, EnvironmentResult } from "../common/environment-result.js";
+import type {
+  EnvironmentContext,
+  EnvironmentResult,
+} from "../common/environment-result.js";
 
-export async function getClaudeEnvironment(_ctx: EnvironmentContext): Promise<EnvironmentResult> {
+export async function getClaudeEnvironment(
+  _ctx: EnvironmentContext
+): Promise<EnvironmentResult> {
   // These must be lazy since configs are imported into the browser
   const { exec } = await import("node:child_process");
   const { promisify } = await import("node:util");
@@ -103,11 +108,13 @@ export async function getClaudeEnvironment(_ctx: EnvironmentContext): Promise<En
   startupCommands.unshift("mkdir -p ~/.claude");
   startupCommands.push("mkdir -p ~/.claude/bin");
   startupCommands.push("mkdir -p /root/lifecycle/claude");
-  
+
   // Clean up any previous Claude completion markers
   // This should run before the agent starts to ensure clean state
-  startupCommands.push("rm -f /root/lifecycle/claude-complete-* 2>/dev/null || true");
-  
+  startupCommands.push(
+    "rm -f /root/lifecycle/claude-complete-* 2>/dev/null || true"
+  );
+
   // Create the stop hook script in /root/lifecycle (outside git repo)
   const stopHookScript = `#!/bin/bash
 # Claude Code stop hook for cmux task completion detection
@@ -143,11 +150,11 @@ exit 0`;
     contentBase64: Buffer.from(stopHookScript).toString("base64"),
     mode: "755",
   });
-  
+
   // Create settings.json with hooks configuration
   const settingsConfig: Record<string, unknown> = {
     // Configure helper to avoid env-var based prompting
-    apiKeyHelper: "/root/.claude/bin/anthropic_key_helper.sh",
+    // apiKeyHelper: "/root/.claude/bin/anthropic_key_helper.sh",
     hooks: {
       Stop: [
         {
@@ -161,14 +168,16 @@ exit 0`;
       ],
     },
   };
-  
+
   // Add settings.json to files array as well
   files.push({
     destinationPath: "/root/lifecycle/claude/settings.json",
-    contentBase64: Buffer.from(JSON.stringify(settingsConfig, null, 2)).toString("base64"),
+    contentBase64: Buffer.from(
+      JSON.stringify(settingsConfig, null, 2)
+    ).toString("base64"),
     mode: "644",
   });
-  
+
   // Add apiKey helper script to read key from file
   const helperScript = `#!/bin/sh
 exec cat "$HOME/.claude/bin/.anthropic_key"`;
@@ -177,14 +186,20 @@ exec cat "$HOME/.claude/bin/.anthropic_key"`;
     contentBase64: Buffer.from(helperScript).toString("base64"),
     mode: "700",
   });
-  
+
   // Create symlink from ~/.claude/settings.json to /root/lifecycle/claude/settings.json
   // Claude looks for settings in ~/.claude/settings.json
-  startupCommands.push("ln -sf /root/lifecycle/claude/settings.json /root/.claude/settings.json");
-  
+  startupCommands.push(
+    "ln -sf /root/lifecycle/claude/settings.json /root/.claude/settings.json"
+  );
+
   // Log the files for debugging
-  startupCommands.push("echo '[CMUX] Created Claude hook files in /root/lifecycle:' && ls -la /root/lifecycle/claude/");
-  startupCommands.push("echo '[CMUX] Settings symlink in ~/.claude:' && ls -la /root/.claude/");
+  startupCommands.push(
+    "echo '[CMUX] Created Claude hook files in /root/lifecycle:' && ls -la /root/lifecycle/claude/"
+  );
+  startupCommands.push(
+    "echo '[CMUX] Settings symlink in ~/.claude:' && ls -la /root/.claude/"
+  );
 
   return { files, env, startupCommands };
 }

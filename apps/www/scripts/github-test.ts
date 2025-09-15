@@ -15,7 +15,7 @@ const stackAdminApp = new StackAdminApp({
 });
 
 const user = await stackAdminApp.getUser(
-  "477b6de8-075a-45ea-9c59-f65a65cb124d"
+  "487b5ddc-0da0-4f12-8834-f452863a83f5"
 );
 
 if (!user) {
@@ -43,7 +43,7 @@ console.log(result);
 
 // For each provider connection (GitHub App installation), use an installation token
 // so private repos are included. Do NOT use the user's OAuth token here.
-const appId = env.GITHUB_APP_ID;
+const appId = env.CMUX_GITHUB_APP_ID;
 
 await Promise.all(
   result

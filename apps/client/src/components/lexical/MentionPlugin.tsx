@@ -56,7 +56,7 @@ function MentionMenu({
   return createPortal(
     <div
       ref={menuRef}
-      className="absolute z-50 w-72 max-h-48 overflow-y-auto bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-md shadow-lg"
+      className="absolute z-[var(--z-modal)] max-h-48 overflow-y-auto bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-md shadow-lg max-w-[580px]"
       style={{
         top: position.top,
         left: position.left,
@@ -93,7 +93,12 @@ function MentionMenu({
             : "Please select a project to see files"}
         </div>
       ) : (
-        files.map((file, index) => (
+        files.map((file, index) => {
+          const rel = file.relativePath.replace(/\\/g, "/");
+          const lastSlash = rel.lastIndexOf("/");
+          const dirPath = lastSlash > -1 ? rel.slice(0, lastSlash) : "";
+          const fileName = file.name || (lastSlash > -1 ? rel.slice(lastSlash + 1) : rel);
+          return (
           <button
             key={file.relativePath}
             onClick={() => onSelect(file)}
@@ -110,9 +115,15 @@ function MentionMenu({
               alt=""
               className="w-3 h-3 flex-shrink-0"
             />
-            <span className="truncate">{file.relativePath}</span>
+            <div className="flex items-center gap-1 min-w-0 whitespace-nowrap">
+              <span className="truncate font-medium">{fileName}</span>
+              {dirPath ? (
+                <span className="truncate text-neutral-500 dark:text-neutral-400">{dirPath}</span>
+              ) : null}
+            </div>
           </button>
-        ))
+          );
+        })
       )}
     </div>,
     document.body

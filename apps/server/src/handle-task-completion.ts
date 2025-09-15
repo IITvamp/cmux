@@ -2,15 +2,13 @@ import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
 import { type AgentConfig } from "@cmux/shared/agentConfig";
 import { captureGitDiff } from "./captureGitDiff.js";
-import {
-  createPullRequestForWinner,
-  evaluateCrownWithClaudeCode,
-} from "./crownEvaluator.js";
+import { createPullRequestForWinner, evaluateCrown } from "./crownEvaluator.js";
 import performAutoCommitAndPush from "./performAutoCommitAndPush.js";
 import { getConvex } from "./utils/convexClient.js";
 import { serverLogger } from "./utils/fileLogger.js";
 import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
 import type { VSCodeInstance } from "./vscode/VSCodeInstance.js";
+import { retryOnOptimisticConcurrency } from "./utils/convexRetry.js";
 
 // Handler for completing the task
 export async function handleTaskCompletion({
@@ -29,12 +27,14 @@ export async function handleTaskCompletion({
   teamSlugOrId: string;
 }) {
   try {
-    // Mark task as complete
-    await getConvex().mutation(api.taskRuns.complete, {
-      teamSlugOrId,
-      id: taskRunId,
-      exitCode,
-    });
+    // Mark task as complete (retry on OCC)
+    await retryOnOptimisticConcurrency(() =>
+      getConvex().mutation(api.taskRuns.complete, {
+        teamSlugOrId,
+        id: taskRunId,
+        exitCode,
+      })
+    );
 
     // Capture git diff before marking as complete
     serverLogger.info(
@@ -59,22 +59,10 @@ export async function handleTaskCompletion({
       `[AgentSpawner] First 100 chars of diff: ${gitDiff.substring(0, 100)}`
     );
 
-    // Append git diff to the log; diffs are fetched on-demand now
-    if (gitDiff && gitDiff.length > 0) {
-      await getConvex().mutation(api.taskRuns.appendLogPublic, {
-        teamSlugOrId,
-        id: taskRunId,
-        content: `\n\n=== GIT DIFF ===\n${gitDiff}\n=== END GIT DIFF ===\n`,
-      });
-      serverLogger.info(
-        `[AgentSpawner] Successfully appended ${gitDiff.length} chars of git diff to log for ${taskRunId}`
-      );
-    } else {
-      serverLogger.error(
-        `[AgentSpawner] NO GIT DIFF TO APPEND for ${agent.name} (${taskRunId})`
-      );
-      serverLogger.error(
-        `[AgentSpawner] This will cause crown evaluation to fail!`
+    // Do not write diffs to Convex logs; crown and UI fetch diffs directly.
+    if (!gitDiff || gitDiff.length === 0) {
+      serverLogger.warn(
+        `[AgentSpawner] No git diff captured for ${agent.name} (${taskRunId})`
       );
     }
 
@@ -128,7 +116,8 @@ export async function handleTaskCompletion({
           `[AgentSpawner] Triggering immediate crown evaluation`
         );
 
-        // Small delay to ensure git diff is fully persisted in Convex
+        // Small delay for worker-side file system settle before diff collection
+        // Note: We need to preserve the auth context for the crown evaluation
         setTimeout(async () => {
           try {
             // Check if evaluation is already in progress
@@ -143,7 +132,8 @@ export async function handleTaskCompletion({
               return;
             }
 
-            await evaluateCrownWithClaudeCode(taskRunData.taskId, teamSlugOrId);
+            await evaluateCrown(taskRunData.taskId, teamSlugOrId);
+
             serverLogger.info(
               `[AgentSpawner] Crown evaluation completed successfully`
             );
@@ -281,11 +271,13 @@ export async function handleTaskCompletion({
           containerSettings.reviewPeriodMinutes * 60 * 1000;
         const scheduledStopAt = Date.now() + reviewPeriodMs;
 
-        await getConvex().mutation(api.taskRuns.updateScheduledStop, {
-          teamSlugOrId,
-          id: taskRunId,
-          scheduledStopAt,
-        });
+        await retryOnOptimisticConcurrency(() =>
+          getConvex().mutation(api.taskRuns.updateScheduledStop, {
+            teamSlugOrId,
+            id: taskRunId,
+            scheduledStopAt,
+          })
+        );
 
         serverLogger.info(
           `[AgentSpawner] Scheduled container stop for ${new Date(scheduledStopAt).toISOString()}`

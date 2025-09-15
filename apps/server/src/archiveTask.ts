@@ -1,11 +1,12 @@
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
 import type { FunctionReturnType } from "convex/server";
-import { MorphCloudClient } from "morphcloud";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { getConvex } from "./utils/convexClient.js";
 import { serverLogger } from "./utils/fileLogger.js";
+import { getAuthHeaderJson, getAuthToken } from "./utils/requestContext.js";
+import { getWwwBaseUrl } from "./utils/server-env.js";
 
 const execAsync = promisify(exec);
 
@@ -39,10 +40,19 @@ async function stopDockerContainer(containerName: string): Promise<void> {
   }
 }
 
-async function pauseMorphInstance(instanceId: string): Promise<void> {
-  const client = new MorphCloudClient();
-  const instance = await client.instances.get({ instanceId });
-  await instance.pause();
+async function stopCmuxSandbox(instanceId: string): Promise<void> {
+  const baseUrl = getWwwBaseUrl();
+  const url = `${baseUrl}/api/sandboxes/${encodeURIComponent(instanceId)}/stop`;
+  const token = getAuthToken();
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers["x-stack-auth"] =
+      getAuthHeaderJson() || JSON.stringify({ accessToken: token });
+  }
+  const res = await fetch(url, { method: "POST", headers });
+  if (!res.ok && res.status !== 204) {
+    throw new Error(`Failed stopping sandbox ${instanceId}: HTTP ${res.status}`);
+  }
 }
 
 export async function stopContainersForRuns(
@@ -141,7 +151,7 @@ export function stopContainersForRunsFromTree(
           };
         }
         if (t.provider === "morph") {
-          await pauseMorphInstance(t.containerName);
+          await stopCmuxSandbox(t.containerName);
           serverLogger.info(
             `Successfully paused Morph instance: ${t.containerName}`
           );

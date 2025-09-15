@@ -7,9 +7,16 @@ import { DashboardInputFooter } from "@/components/dashboard/DashboardInputFoote
 import { DashboardStartTaskButton } from "@/components/dashboard/DashboardStartTaskButton";
 import { TaskList } from "@/components/dashboard/TaskList";
 import { FloatingPane } from "@/components/floating-pane";
+import { GitHubIcon } from "@/components/icons/github";
 import { ProviderStatusPills } from "@/components/provider-status-pills";
 import { useTheme } from "@/components/theme/use-theme";
 import { TitleBar } from "@/components/TitleBar";
+import type { SelectOption } from "@/components/ui/searchable-select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useExpandTasks } from "@/contexts/expand-tasks/ExpandTasksContext";
 import { useSocket } from "@/contexts/socket/use-socket";
 import { createFakeConvexId } from "@/lib/fakeConvexId";
@@ -17,9 +24,11 @@ import { api } from "@cmux/convex/api";
 import type { Doc } from "@cmux/convex/dataModel";
 import { convexQuery } from "@convex-dev/react-query";
 import { useQuery } from "@tanstack/react-query";
+import { branchesQueryOptions } from "@/queries/branches";
 import { createFileRoute } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useMutation } from "convex/react";
+import { Server as ServerIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -29,6 +38,7 @@ export const Route = createFileRoute("/_layout/$teamSlugOrId/dashboard")({
 
 function DashboardComponent() {
   const { teamSlugOrId } = Route.useParams();
+  const searchParams = Route.useSearch() as { environmentId?: string };
   const { socket } = useSocket();
   const { theme } = useTheme();
   const { addTaskToExpand } = useExpandTasks();
@@ -50,14 +60,51 @@ function DashboardComponent() {
 
   // State for loading states
   const [isLoadingBranches, setIsLoadingBranches] = useState(false);
+  const [dockerReady, setDockerReady] = useState<boolean | null>(null);
 
   // Ref to access editor API
   const editorApiRef = useRef<EditorApi | null>(null);
+
+  // Preselect environment if provided in URL search params
+  useEffect(() => {
+    if (searchParams?.environmentId) {
+      const val = `env:${searchParams.environmentId}`;
+      setSelectedProject([val]);
+      localStorage.setItem("selectedProject", JSON.stringify([val]));
+      setIsCloudMode(true);
+      localStorage.setItem("isCloudMode", JSON.stringify(true));
+    }
+  }, [searchParams?.environmentId]);
 
   // Callback for task description changes
   const handleTaskDescriptionChange = useCallback((value: string) => {
     setTaskDescription(value);
   }, []);
+
+  // Fetch branches for selected repo from Convex
+  const isEnvSelected = useMemo(
+    () => (selectedProject[0] || "").startsWith("env:"),
+    [selectedProject]
+  );
+
+  const branchesQuery = useQuery(
+    branchesQueryOptions({
+      teamSlugOrId,
+      repoFullName: selectedProject[0] || "",
+    })
+  );
+  const branches = useMemo(
+    () => branchesQuery.data || [],
+    [branchesQuery.data]
+  );
+
+  const fetchBranches = useCallback((_repo?: string) => {
+    setIsLoadingBranches(true);
+    branchesQuery
+      .refetch()
+      .finally(() => setIsLoadingBranches(false))
+      .catch(() => setIsLoadingBranches(false));
+  }, [branchesQuery]);
 
   // Callback for project selection changes
   const handleProjectChange = useCallback(
@@ -67,8 +114,15 @@ function DashboardComponent() {
       if (newProjects[0] !== selectedProject[0]) {
         setSelectedBranch([]);
       }
+      // If selecting an environment, enforce cloud mode
+      if ((newProjects[0] || "").startsWith("env:")) {
+        setIsCloudMode(true);
+        localStorage.setItem("isCloudMode", JSON.stringify(true));
+      } else {
+        void fetchBranches(newProjects[0]);
+      }
     },
-    [selectedProject]
+    [selectedProject, fetchBranches]
   );
 
   // Callback for branch selection changes
@@ -83,25 +137,14 @@ function DashboardComponent() {
   }, []);
 
   // Fetch repos from Convex
-  const reposByOrgQuery = useQuery(
-    convexQuery(api.github.getReposByOrg, { teamSlugOrId })
-  );
+  const reposByOrgQuery = useQuery({
+    ...convexQuery(api.github.getReposByOrg, { teamSlugOrId }),
+    refetchOnMount: "always",
+    refetchOnWindowFocus: false,
+  });
   const reposByOrg = useMemo(
     () => reposByOrgQuery.data || {},
     [reposByOrgQuery.data]
-  );
-
-  // Fetch branches for selected repo from Convex
-  const branchesQuery = useQuery({
-    ...convexQuery(api.github.getBranches, {
-      teamSlugOrId,
-      repo: selectedProject[0] || "",
-    }),
-    enabled: !!selectedProject[0],
-  });
-  const branches = useMemo(
-    () => branchesQuery.data || [],
-    [branchesQuery.data]
   );
 
   // Socket-based functions to fetch data from GitHub
@@ -111,33 +154,13 @@ function DashboardComponent() {
     if (!socket) return;
 
     socket.emit("check-provider-status", (response) => {
-      if (response.success) {
-        checkProviderStatus();
+      if (!response?.success) return;
+      const isRunning = response.dockerStatus?.isRunning;
+      if (typeof isRunning === "boolean") {
+        setDockerReady(isRunning);
       }
     });
   }, [socket]);
-
-  const fetchBranches = useCallback(
-    (repo: string) => {
-      if (!socket) return;
-
-      setIsLoadingBranches(true);
-      socket.emit(
-        "github-fetch-branches",
-        { teamSlugOrId, repo },
-        (response) => {
-          setIsLoadingBranches(false);
-          if (response.success) {
-            // Refetch from Convex to get updated data
-            branchesQuery.refetch();
-          } else if (response.error) {
-            console.error("Error fetching branches:", response.error);
-          }
-        }
-      );
-    },
-    [socket, teamSlugOrId, branchesQuery]
-  );
 
   // Mutation to create tasks with optimistic update
   const createTask = useMutation(api.tasks.create).withOptimisticUpdate(
@@ -199,6 +222,26 @@ function DashboardComponent() {
   );
 
   const handleStartTask = useCallback(async () => {
+    // For local mode, perform a fresh docker check right before starting
+    if (!isEnvSelected && !isCloudMode) {
+      let ready = dockerReady;
+      if (!ready && socket) {
+        ready = await new Promise<boolean>((resolve) => {
+          socket.emit("check-provider-status", (response) => {
+            const isRunning = !!response?.dockerStatus?.isRunning;
+            if (typeof isRunning === "boolean") {
+              setDockerReady(isRunning);
+            }
+            resolve(isRunning);
+          });
+        });
+      }
+      if (!ready) {
+        toast.error("Docker is not running. Start Docker Desktop.");
+        return;
+      }
+    }
+
     if (!selectedProject[0] || !taskDescription.trim()) {
       console.error("Please select a project and enter a task description");
       return;
@@ -211,10 +254,7 @@ function DashboardComponent() {
     // Use the effective selected branch (respects available branches and sensible defaults)
     const branch = effectiveSelectedBranch[0];
     const projectFullName = selectedProject[0];
-    if (!projectFullName) {
-      console.error("Please select a project");
-      return;
-    }
+    const envSelected = projectFullName.startsWith("env:");
 
     try {
       // Extract content including images from the editor
@@ -269,28 +309,40 @@ function DashboardComponent() {
       const taskId = await createTask({
         teamSlugOrId,
         text: content?.text || taskDescription, // Use content.text which includes image references
-        projectFullName,
-        baseBranch: branch,
+        projectFullName: envSelected ? undefined : projectFullName,
+        baseBranch: envSelected ? undefined : branch,
         images: uploadedImages.length > 0 ? uploadedImages : undefined,
       });
 
       // Hint the sidebar to auto-expand this task once it appears
       addTaskToExpand(taskId);
 
-      const repoUrl = `https://github.com/${projectFullName}.git`;
+      const repoUrl = envSelected
+        ? undefined
+        : `https://github.com/${projectFullName}.git`;
 
       // For socket.io, we need to send the content text (which includes image references) and the images
       socket.emit(
         "start-task",
         {
-          repoUrl,
-          branch,
+          ...(repoUrl ? { repoUrl } : {}),
+          ...(envSelected ? {} : { branch }),
           taskDescription: content?.text || taskDescription, // Use content.text which includes image references
           projectFullName,
           taskId,
           selectedAgents:
             selectedAgents.length > 0 ? selectedAgents : undefined,
-          isCloudMode,
+          isCloudMode: envSelected ? true : isCloudMode,
+          ...(envSelected
+            ? {
+                environmentId: projectFullName.replace(
+                  /^env:/,
+                  ""
+                ) as string & {
+                  __tableName: "environments";
+                },
+              }
+            : {}),
           images: images.length > 0 ? images : undefined,
           theme,
         },
@@ -318,6 +370,8 @@ function DashboardComponent() {
     addTaskToExpand,
     selectedAgents,
     isCloudMode,
+    isEnvSelected,
+    dockerReady,
     theme,
     generateUploadUrl,
   ]);
@@ -329,36 +383,109 @@ function DashboardComponent() {
   //   }
   // }, [reposByOrg, fetchRepos]);
 
-  // Check provider status on mount
+  // Check provider status on mount and keep it fresh without page refresh
   useEffect(() => {
+    // Initial check
     checkProviderStatus();
+
+    // Poll while the dashboard is open so Docker state updates live
+    const interval = setInterval(() => {
+      checkProviderStatus();
+    }, 5000);
+
+    // Also refresh on window focus to catch recent changes quickly
+    const handleFocus = () => checkProviderStatus();
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", handleFocus);
+    };
   }, [checkProviderStatus]);
 
   // Fetch branches when repo changes
-  const selectedRepo = selectedProject[0];
-  useEffect(() => {
-    if (selectedRepo && branches.length === 0) {
-      fetchBranches(selectedRepo);
-    }
-  }, [selectedRepo, branches, fetchBranches]);
+  // const selectedRepo = selectedProject[0];
+  // useEffect(() => {
+  //   if (
+  //     selectedRepo &&
+  //     !selectedRepo.startsWith("env:") &&
+  //     branches.length === 0
+  //   ) {
+  //     fetchBranches(selectedRepo);
+  //   }
+  // }, [selectedRepo, branches, fetchBranches]);
 
   // Format repos for multiselect
+  // Fetch environments
+  const environmentsQuery = useQuery(
+    convexQuery(api.environments.list, { teamSlugOrId })
+  );
+
   const projectOptions = useMemo(() => {
-    const list = Object.entries(reposByOrg || {}).flatMap(([, repos]) =>
-      repos.map((repo) => repo.fullName)
+    // Repo options as objects with GitHub icon
+    const repoValues = Array.from(
+      new Set(
+        Object.entries(reposByOrg || {}).flatMap(([, repos]) =>
+          repos.map((repo) => repo.fullName)
+        )
+      )
     );
-    // Deduplicate by full name to avoid duplicate Select keys
-    return Array.from(new Set(list));
-  }, [reposByOrg]);
+    const repoOptions = repoValues.map((fullName) => ({
+      label: fullName,
+      value: fullName,
+      icon: (
+        <GitHubIcon className="w-4 h-4 text-neutral-600 dark:text-neutral-300" />
+      ),
+      iconKey: "github",
+    }));
+
+    // Environment options as objects with an icon and stable key
+    const envOptions = (environmentsQuery.data || []).map((env) => ({
+      label: `${env.name}`,
+      value: `env:${env._id}`,
+      icon: (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span>
+              <ServerIcon className="w-4 h-4 text-neutral-600 dark:text-neutral-300" />
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>Environment: {env.name}</TooltipContent>
+        </Tooltip>
+      ),
+      iconKey: "environment",
+    }));
+
+    const options: SelectOption[] = [];
+    if (envOptions.length > 0) {
+      options.push({
+        label: "Environments",
+        value: "__heading-env",
+        heading: true,
+      });
+      options.push(...envOptions);
+    }
+    if (repoOptions.length > 0) {
+      options.push({
+        label: "Repositories",
+        value: "__heading-repo",
+        heading: true,
+      });
+      options.push(...repoOptions);
+    }
+
+    return options;
+  }, [reposByOrg, environmentsQuery.data]);
 
   const branchOptions = branches || [];
 
   // Cloud mode toggle handler
   const handleCloudModeToggle = useCallback(() => {
+    if (isEnvSelected) return; // environment forces cloud mode
     const newMode = !isCloudMode;
     setIsCloudMode(newMode);
     localStorage.setItem("isCloudMode", JSON.stringify(newMode));
-  }, [isCloudMode]);
+  }, [isCloudMode, isEnvSelected]);
 
   // Listen for VSCode spawned events
   useEffect(() => {
@@ -481,35 +608,40 @@ function DashboardComponent() {
     };
   }, []);
 
+  // Do not pre-disable UI on Docker status; handle fresh check on submit
+
   // Handle Command+Enter keyboard shortcut
   const handleSubmit = useCallback(() => {
     if (selectedProject[0] && taskDescription.trim()) {
-      handleStartTask();
+      void handleStartTask();
     }
   }, [selectedProject, taskDescription, handleStartTask]);
 
   // Memoized computed values for editor props
-  const lexicalRepoUrl = useMemo(
-    () =>
-      selectedProject[0]
-        ? `https://github.com/${selectedProject[0]}.git`
-        : undefined,
-    [selectedProject]
-  );
+  const lexicalRepoUrl = useMemo(() => {
+    if (!selectedProject[0]) return undefined;
+    if (isEnvSelected) return undefined;
+    return `https://github.com/${selectedProject[0]}.git`;
+  }, [selectedProject, isEnvSelected]);
 
   const lexicalBranch = useMemo(
     () => effectiveSelectedBranch[0],
     [effectiveSelectedBranch]
   );
 
-  const canSubmit = useMemo(
-    () =>
-      !!selectedProject[0] &&
-      !!taskDescription.trim() &&
-      !!effectiveSelectedBranch[0] &&
-      selectedAgents.length > 0,
-    [selectedProject, taskDescription, effectiveSelectedBranch, selectedAgents]
-  );
+  const canSubmit = useMemo(() => {
+    if (!selectedProject[0]) return false;
+    if (!taskDescription.trim()) return false;
+    if (selectedAgents.length === 0) return false;
+    if (isEnvSelected) return true; // no branch required when environment selected
+    return !!effectiveSelectedBranch[0];
+  }, [
+    selectedProject,
+    taskDescription,
+    selectedAgents,
+    isEnvSelected,
+    effectiveSelectedBranch,
+  ]);
 
   return (
     <FloatingPane header={<TitleBar title="cmux" />}>
@@ -554,6 +686,8 @@ function DashboardComponent() {
                     isLoadingBranches || branchesQuery.isLoading
                   }
                   teamSlugOrId={teamSlugOrId}
+                  cloudToggleDisabled={isEnvSelected}
+                  branchDisabled={isEnvSelected}
                 />
                 <DashboardStartTaskButton
                   canSubmit={canSubmit}

@@ -92,7 +92,7 @@ export function MergeButton({
 
         <DropdownMenu.Portal>
           <DropdownMenu.Content
-            className="min-w-[220px] bg-white dark:bg-neutral-900 rounded-md p-1 shadow-lg border border-neutral-200 dark:border-neutral-800 z-50"
+            className="min-w-[220px] bg-white dark:bg-neutral-900 rounded-md p-1 shadow-lg border border-neutral-200 dark:border-neutral-800 z-[var(--z-modal)]"
             sideOffset={5}
           >
             {mergeOptions.map((option) => (

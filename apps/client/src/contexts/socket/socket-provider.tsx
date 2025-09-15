@@ -1,17 +1,19 @@
-import type {
-  AvailableEditors,
-  ClientToServerEvents,
-  ServerToClientEvents,
-} from "@cmux/shared";
+import type { AvailableEditors } from "@cmux/shared";
+import {
+  connectToMainServer,
+  type MainServerSocket,
+} from "@cmux/shared/socket";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "@tanstack/react-router";
 import React, { useEffect, useMemo } from "react";
-import { io, Socket } from "socket.io-client";
+import { cachedGetUser } from "../../lib/cachedGetUser";
+import { stackClientApp } from "../../lib/stack";
 import { authJsonQueryOptions } from "../convex/authJsonQueryOptions";
-import { SocketContext } from "./socket-context";
+import { setGlobalSocket, socketBoot } from "./socket-boot";
+import { WebSocketContext } from "./socket-context";
 
 export interface SocketContextType {
-  socket: Socket<ServerToClientEvents, ClientToServerEvents> | null;
+  socket: MainServerSocket | null;
   isConnected: boolean;
   availableEditors: AvailableEditors | null;
 }
@@ -33,7 +35,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
   >(null);
   const [isConnected, setIsConnected] = React.useState(false);
   const [availableEditors, setAvailableEditors] =
-    React.useState<AvailableEditors | null>(null);
+    React.useState<SocketContextType["availableEditors"]>(null);
 
   // Derive the current teamSlugOrId from the first URL segment, ignoring the team-picker route
   const teamSlugOrId = React.useMemo(() => {
@@ -45,35 +47,70 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
 
   useEffect(() => {
     if (!authToken) {
+      console.warn("[Socket] No auth token yet; delaying connect");
       return;
     }
-    const query: Record<string, string> = { auth: authToken };
-    if (teamSlugOrId) {
-      query.team = teamSlugOrId;
-    }
+    let disposed = false;
+    let createdSocket: MainServerSocket | null = null;
+    (async () => {
+      // Fetch full auth JSON for server to forward as x-stack-auth
+      const user = await cachedGetUser(stackClientApp);
+      const authJson = user ? await user.getAuthJson() : undefined;
 
-    const newSocket = io(url, {
-      transports: ["websocket"],
-      query,
-    });
-    setSocket(newSocket);
+      const query: Record<string, string> = { auth: authToken };
+      if (teamSlugOrId) {
+        query.team = teamSlugOrId;
+      }
+      if (authJson) {
+        query.auth_json = JSON.stringify(authJson);
+      }
 
-    newSocket.on("connect", () => {
-      console.log("Socket connected");
-      setIsConnected(true);
-    });
+      const newSocket = connectToMainServer({
+        url,
+        authToken,
+        teamSlugOrId,
+        authJson,
+      });
 
-    newSocket.on("disconnect", () => {
-      console.log("Socket disconnected");
-      setIsConnected(false);
-    });
+      createdSocket = newSocket;
+      if (disposed) {
+        newSocket.disconnect();
+        return;
+      }
+      setSocket(newSocket);
+      setGlobalSocket(newSocket);
+      // Signal that the provider has created the socket instance
+      socketBoot.resolve();
 
-    newSocket.on("available-editors", (data) => {
-      setAvailableEditors(data);
-    });
+      newSocket.on("connect", () => {
+        console.log("[Socket] connected");
+        setIsConnected(true);
+      });
+
+      newSocket.on("disconnect", () => {
+        console.warn("[Socket] disconnected");
+        setIsConnected(false);
+      });
+
+      newSocket.on("connect_error", (err) => {
+        const errorMessage =
+          err && typeof err === "object" && "message" in err
+            ? (err as Error).message
+            : String(err);
+        console.error("[Socket] connect_error", errorMessage);
+      });
+
+      newSocket.on("available-editors", (data: AvailableEditors) => {
+        setAvailableEditors(data);
+      });
+    })();
 
     return () => {
-      newSocket.disconnect();
+      disposed = true;
+      if (createdSocket) createdSocket.disconnect();
+      // Reset boot handle so future mounts can suspend appropriately
+      setGlobalSocket(null);
+      socketBoot.reset();
     };
   }, [url, authToken, teamSlugOrId]);
 
@@ -87,8 +124,8 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({
   );
 
   return (
-    <SocketContext.Provider value={contextValue}>
+    <WebSocketContext.Provider value={contextValue}>
       {children}
-    </SocketContext.Provider>
+    </WebSocketContext.Provider>
   );
 };

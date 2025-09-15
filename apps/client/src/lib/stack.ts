@@ -22,42 +22,75 @@ export const stackClientApp = new StackClientApp({
 
 cachedGetUser(stackClientApp).then(async (user) => {
   if (!user) {
+    console.warn("[StackAuth] No user; convex auth not ready");
     signalConvexAuthReady(false);
     return;
   }
   const authJson = await user.getAuthJson();
   if (!authJson.accessToken) {
+    console.warn("[StackAuth] No access token; convex auth not ready");
     signalConvexAuthReady(false);
     return;
   }
+  let isFirstTime = true;
   convexQueryClient.convexClient.setAuth(
-    async () => authJson.accessToken,
+    async () => {
+      // First time we get the auth token, we use the cached one. In subsequent calls, we call stack to get the latest auth token.
+      if (isFirstTime) {
+        isFirstTime = false;
+        return authJson.accessToken;
+      }
+      const newAuthJson = await user.getAuthJson();
+      if (!newAuthJson.accessToken) {
+        console.warn("[StackAuth] No access token; convex auth not ready");
+        signalConvexAuthReady(false);
+        return;
+      }
+      return newAuthJson.accessToken;
+    },
     (isAuthenticated) => {
       signalConvexAuthReady(isAuthenticated);
     }
   );
 });
 
+const fetchWithAuth = (async (request: Request) => {
+  const user = await cachedGetUser(stackClientApp);
+  if (!user) {
+    throw new Error("User not found");
+  }
+  console.log("fetching url", request.url.toString());
+  const authHeaders = await user.getAuthHeaders();
+  const mergedHeaders = new Headers();
+  for (const [key, value] of Object.entries(authHeaders)) {
+    mergedHeaders.set(key, value);
+  }
+  for (const [key, value] of request instanceof Request
+    ? request.headers.entries()
+    : []) {
+    mergedHeaders.set(key, value);
+  }
+  const response = await fetch(request, {
+    headers: mergedHeaders,
+  });
+  if (!response.ok) {
+    try {
+      const clone = response.clone();
+      const bodyText = await clone.text();
+      console.error("[APIError]", {
+        url: response.url,
+        status: response.status,
+        statusText: response.statusText,
+        body: bodyText.slice(0, 2000),
+      });
+    } catch (e) {
+      console.error("[APIError] Failed to read error body", e);
+    }
+  }
+  return response;
+}) as typeof fetch; // TODO: remove when bun types dont conflict with node types
+
 wwwOpenAPIClient.setConfig({
   baseUrl: env.NEXT_PUBLIC_WWW_ORIGIN,
-  fetch: async (request) => {
-    const user = await cachedGetUser(stackClientApp);
-    if (!user) {
-      throw new Error("User not found");
-    }
-    const authHeaders = await user.getAuthHeaders();
-    const mergedHeaders = new Headers();
-    for (const [key, value] of Object.entries(authHeaders)) {
-      mergedHeaders.set(key, value);
-    }
-    for (const [key, value] of request instanceof Request
-      ? request.headers.entries()
-      : []) {
-      mergedHeaders.set(key, value);
-    }
-    const response = await fetch(request, {
-      headers: mergedHeaders,
-    });
-    return response;
-  },
+  fetch: fetchWithAuth,
 });

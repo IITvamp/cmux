@@ -199,6 +199,16 @@ export async function setupProjectWorkspace(args: {
       args.branch ||
       (await repoManager.getDefaultBranch(worktreeInfo.originPath));
 
+    // Prewarm commit history at origin for fast merge-base computation
+    try {
+      await repoManager.prewarmCommitHistory(
+        worktreeInfo.originPath,
+        baseBranch
+      );
+    } catch (e) {
+      serverLogger.warn("Prewarm commit history failed:", e);
+    }
+
     // If a worktree for this branch already exists anywhere, reuse it
     try {
       const existingByBranch = await repoManager.findWorktreeUsingBranch(

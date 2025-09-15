@@ -2,3 +2,4 @@
 // This exports the library functions for use by other packages
 
 export { startServer } from "./server.js";
+export type { GitRepoInfo } from "./server.js";

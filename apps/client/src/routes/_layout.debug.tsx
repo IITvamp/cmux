@@ -36,6 +36,26 @@ function DebugComponent() {
 
         <button
           onClick={() => {
+            socket?.emit("rust-get-time", (res) => {
+              if (res.ok) {
+                console.log("Rust time (ms since epoch):", res.time);
+                // eslint-disable-next-line no-alert
+                alert(`Rust time: ${new Date(Number(res.time)).toISOString()}`);
+              } else {
+                console.error("Rust error:", res.error);
+                // eslint-disable-next-line no-alert
+                alert(`Rust error: ${res.error}`);
+              }
+            });
+          }}
+        >
+          Rust time
+        </button>
+
+        <br />
+
+        <button
+          onClick={() => {
             const teamSlugOrId =
               typeof window !== "undefined"
                 ? window.location.pathname.split("/")[1] || "default"
@@ -49,6 +69,27 @@ function DebugComponent() {
         </button>
 
         <br />
+
+        <button
+          onClick={async () => {
+            const user = await stackClientApp.getUser();
+            if (!user) throw new Error("No user");
+            const authHeaders = await user.getAuthHeaders();
+            const res = await fetch(
+              "http://localhost:9779/api/integrations/github/user",
+              {
+                headers: {
+                  ...authHeaders,
+                },
+                credentials: "include",
+              }
+            );
+            const data = await res.json();
+            console.log("github user info", data);
+          }}
+        >
+          get github email
+        </button>
 
         {/* <button
           onClick={async () => {

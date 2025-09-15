@@ -13,6 +13,7 @@ interface ModeToggleTooltipProps {
   onToggle: () => void;
   className?: string;
   teamSlugOrId: string;
+  disabled?: boolean;
 }
 
 export function ModeToggleTooltip({
@@ -20,6 +21,7 @@ export function ModeToggleTooltip({
   onToggle,
   className,
   teamSlugOrId,
+  disabled = false,
 }: ModeToggleTooltipProps) {
   const [showTooltip, setShowTooltip] = React.useState(false);
   const [showWaitlistModal, setShowWaitlistModal] = React.useState(false);
@@ -47,6 +49,7 @@ export function ModeToggleTooltip({
   }, [location.href, user]);
 
   const handleClick = () => {
+    if (disabled) return;
     // Clear any existing timeout
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
@@ -111,6 +114,7 @@ export function ModeToggleTooltip({
         onMouseLeave={handleMouseLeave}
         color="primary"
         size="sm"
+        isDisabled={disabled}
         aria-label={isCloudMode ? "Cloud mode" : "Local mode"}
         thumbIcon={({ isSelected, className }) =>
           isSelected ? (
@@ -135,7 +139,7 @@ export function ModeToggleTooltip({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -4 }}
             transition={{ duration: 0.15, ease: "easeOut" }}
-            className="absolute top-full left-1/2 -translate-x-1/2 z-50 mt-2"
+            className="absolute top-full left-1/2 -translate-x-1/2 z-[var(--z-modal)] mt-2"
           >
             {/* Arrow pointing up - matching shadcn style */}
             <div className="absolute left-[calc(50%_-4px)] translate-y-[calc(-50%_+1px)] size-2.5 rounded-[2px] rotate-45 bg-black" />
@@ -145,7 +149,7 @@ export function ModeToggleTooltip({
                 "bg-black text-white text-xs rounded-md overflow-hidden w-24 whitespace-nowrap"
               )}
             >
-              <div className="relative h-4 flex items-center w-full">
+              <div className="relative h-4 flex items-center w-full select-none">
                 <div className="relative w-full flex">
                   <motion.div
                     className="flex items-center justify-center absolute inset-0 will-change-transform"

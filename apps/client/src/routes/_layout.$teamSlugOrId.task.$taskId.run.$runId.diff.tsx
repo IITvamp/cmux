@@ -1,17 +1,16 @@
 import { FloatingPane } from "@/components/floating-pane";
-import { GitDiffViewer } from "@/components/git-diff-viewer";
+import { type GitDiffViewerProps } from "@/components/git-diff-viewer";
+import { RunDiffSection } from "@/components/RunDiffSection";
 import { TaskDetailHeader } from "@/components/task-detail-header";
-import { type MergeMethod } from "@/components/ui/merge-button";
-import { useSocket } from "@/contexts/socket/use-socket";
+import { refWithOrigin } from "@/lib/refWithOrigin";
+import { diffSmartQueryOptions } from "@/queries/diff-smart";
+// Refs mode: no run-diffs prefetch
 import { api } from "@cmux/convex/api";
-import { type Id } from "@cmux/convex/dataModel";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { convexQuery } from "@convex-dev/react-query";
-import { useQuery as useRQ } from "@tanstack/react-query";
-import { createFileRoute, useRouter } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
-import { useEffect, useMemo, useState } from "react";
-import { toast } from "sonner";
+import { Suspense, useMemo, useState } from "react";
 import z from "zod";
 
 const paramsSchema = z.object({
@@ -19,40 +18,60 @@ const paramsSchema = z.object({
   runId: typedZid("taskRuns"),
 });
 
-export const Route = createFileRoute("/_layout/$teamSlugOrId/task/$taskId/run/$runId/diff")(
-  {
-    component: RunDiffPage,
-    params: {
-      parse: paramsSchema.parse,
-      stringify: (params) => {
-        return {
-          taskId: params.taskId,
-          runId: params.runId,
-        };
-      },
+const gitDiffViewerClassNames: GitDiffViewerProps["classNames"] = {
+  fileDiffRow: {
+    button: "top-[96px] md:top-[56px]",
+  },
+};
+
+export const Route = createFileRoute(
+  "/_layout/$teamSlugOrId/task/$taskId/run/$runId/diff"
+)({
+  component: RunDiffPage,
+  params: {
+    parse: paramsSchema.parse,
+    stringify: (params) => {
+      return {
+        taskId: params.taskId,
+        runId: params.runId,
+      };
     },
-    loader: async (opts) => {
-      await Promise.all([
-        opts.context.queryClient.ensureQueryData(
-          convexQuery(api.taskRuns.getByTask, {
-            teamSlugOrId: opts.params.teamSlugOrId,
-            taskId: opts.params.taskId,
-          })
-        ),
-        opts.context.queryClient.ensureQueryData(
-          convexQuery(api.tasks.getById, {
-            teamSlugOrId: opts.params.teamSlugOrId,
-            id: opts.params.taskId,
-          })
-        ),
-      ]);
-    },
-  }
-);
+  },
+  loader: async (opts) => {
+    const { runId } = opts.params;
+    const [taskRuns, task] = await Promise.all([
+      opts.context.queryClient.ensureQueryData(
+        convexQuery(api.taskRuns.getByTask, {
+          teamSlugOrId: opts.params.teamSlugOrId,
+          taskId: opts.params.taskId,
+        })
+      ),
+      opts.context.queryClient.ensureQueryData(
+        convexQuery(api.tasks.getById, {
+          teamSlugOrId: opts.params.teamSlugOrId,
+          id: opts.params.taskId,
+        })
+      ),
+    ]);
+    const selectedTaskRun = taskRuns.find((run) => run._id === runId);
+    if (
+      task?.baseBranch &&
+      task.projectFullName &&
+      selectedTaskRun?.newBranch
+    ) {
+      void opts.context.queryClient.ensureQueryData(
+        diffSmartQueryOptions({
+          baseRef: task.baseBranch,
+          headRef: selectedTaskRun?.newBranch,
+          repoFullName: task.projectFullName,
+        })
+      );
+    }
+  },
+});
 
 function RunDiffPage() {
   const { taskId, teamSlugOrId, runId } = Route.useParams();
-
   const [isCreatingPr, setIsCreatingPr] = useState(false);
   const [diffControls, setDiffControls] = useState<{
     expandAll: () => void;
@@ -60,10 +79,6 @@ function RunDiffPage() {
     totalAdditions: number;
     totalDeletions: number;
   } | null>(null);
-  const { socket } = useSocket();
-  const router = useRouter();
-  const queryClient = router.options.context?.queryClient;
-
   const task = useQuery(api.tasks.getById, {
     teamSlugOrId,
     id: taskId,
@@ -72,190 +87,25 @@ function RunDiffPage() {
     teamSlugOrId,
     taskId,
   });
-
-  // Get the specific run from the URL parameter
   const selectedRun = useMemo(() => {
     return taskRuns?.find((run) => run._id === runId);
   }, [runId, taskRuns]);
 
-  // Fetch diffs for the selected run via socket (on-demand)
-  const diffsQuery = useRQ({
-    queryKey: ["run-diffs", selectedRun?._id ?? "none"],
-    queryFn: async () =>
-      await new Promise<import("@cmux/shared/diff-types").ReplaceDiffEntry[]>(
-        (resolve, reject) => {
-          if (!selectedRun?._id || !socket) {
-            console.error("No selected run or socket");
-            resolve([]);
-            return;
-          }
-          socket.emit(
-            "get-run-diffs",
-            { taskRunId: selectedRun._id },
-            (resp) => {
-              console.log("get-run-diffs", resp);
-              if (resp.ok) resolve(resp.diffs);
-              else reject(new Error(resp.error || "Failed to load diffs"));
-            }
-          );
-        }
-      ),
-    enabled: !!selectedRun?._id && !!socket,
-    staleTime: 10_000,
-  });
-
-  // On selection, sync PR state with GitHub so UI reflects latest
-  useEffect(() => {
-    if (!selectedRun?._id || !socket) return;
-    socket.emit(
-      "github-sync-pr-state",
-      { taskRunId: selectedRun._id },
-      (_resp: { success: boolean }) => {
-        // Convex subscription will update UI automatically
-      }
+  // 404 if selected run is missing
+  if (!selectedRun) {
+    return (
+      <div className="p-6 text-sm text-neutral-600 dark:text-neutral-300">
+        404 – Run not found
+      </div>
     );
-  }, [selectedRun?._id, socket]);
+  }
 
-  // Live update diffs when files change for this worktree; mutate TanStack cache directly
-  useEffect(() => {
-    if (!socket || !selectedRun?._id || !selectedRun?.worktreePath) return;
-    const runId = selectedRun._id;
-    const workspacePath = selectedRun.worktreePath as string;
-    const onChanged = (data: { workspacePath: string; filePath: string }) => {
-      if (data.workspacePath !== workspacePath) return;
-      socket.emit(
-        "get-run-diffs",
-        { taskRunId: runId },
-        (resp: {
-          ok: boolean;
-          diffs: import("@cmux/shared/diff-types").ReplaceDiffEntry[];
-          error?: string;
-        }) => {
-          if (resp.ok && queryClient) {
-            queryClient.setQueryData(["run-diffs", runId], resp.diffs);
-          }
-        }
-      );
-    };
-    socket.on("git-file-changed", onChanged);
-    return () => {
-      socket.off("git-file-changed", onChanged);
-    };
-  }, [socket, selectedRun?._id, selectedRun?.worktreePath, queryClient]);
+  const taskRunId = selectedRun._id;
 
-  // Check for new changes on mount and periodically
-  // Initial load on run change
-  useEffect(() => {
-    if (!selectedRun?._id) return;
-    void diffsQuery.refetch();
-  }, [selectedRun?._id, diffsQuery.refetch, diffsQuery]);
-
-  // Stabilize diffs per-run to avoid cross-run flashes
-  const [stableDiffsByRun, setStableDiffsByRun] = useState<
-    Record<
-      Id<"taskRuns">,
-      import("@cmux/shared/diff-types").ReplaceDiffEntry[] | undefined
-    >
-  >({});
-  useEffect(() => {
-    const diffs = diffsQuery.data;
-    if (!diffs || !selectedRun?._id) return;
-    const runKey = selectedRun._id;
-    setStableDiffsByRun((prev) => {
-      const prevForRun = prev[runKey];
-      if (!prevForRun) return { ...prev, [runKey]: diffs };
-      const prevByPath = new Map(prevForRun.map((d) => [d.filePath, d]));
-      const next: typeof diffs = diffs.map((d) => {
-        const p = prevByPath.get(d.filePath);
-        if (!p) return d;
-        const same =
-          p.status === d.status &&
-          p.additions === d.additions &&
-          p.deletions === d.deletions &&
-          p.isBinary === d.isBinary &&
-          (p.patch || "") === (d.patch || "") &&
-          (p.oldContent || "") === (d.oldContent || "") &&
-          (p.newContent || "") === (d.newContent || "") &&
-          (p.contentOmitted || false) === (d.contentOmitted || false);
-        return same ? p : d;
-      });
-      return { ...prev, [runKey]: next };
-    });
-  }, [diffsQuery.data, selectedRun?._id]);
-
-  // When a refresh cycle ends, apply whatever the latest diffs are for this run
-  useEffect(() => {
-    const diffs = diffsQuery.data;
-    if (diffs && selectedRun?._id) {
-      setStableDiffsByRun((prev) => ({
-        ...prev,
-        [selectedRun._id]: diffs,
-      }));
-    }
-  }, [diffsQuery.data, selectedRun?._id]);
-
-  const [, setIsMerging] = useState(false);
-  const handleMerge = async (method: MergeMethod): Promise<void> => {
-    if (!socket || !selectedRun?._id) return;
-    setIsMerging(true);
-    const toastId = toast.loading(`Merging PR (${method})...`);
-    await new Promise<void>((resolve) => {
-      socket.emit(
-        "github-merge-pr",
-        { taskRunId: selectedRun._id, method },
-        (resp: {
-          success: boolean;
-          merged?: boolean;
-          state?: string;
-          url?: string;
-          error?: string;
-        }) => {
-          setIsMerging(false);
-          if (resp.success) {
-            toast.success("PR merged", { id: toastId, description: resp.url });
-          } else {
-            toast.error("Failed to merge PR", {
-              id: toastId,
-              description: resp.error,
-            });
-          }
-          resolve();
-        }
-      );
-    });
-  };
-
-  const handleMergeBranch = async (): Promise<void> => {
-    if (!socket || !selectedRun?._id) return;
-    setIsMerging(true);
-    const toastId = toast.loading("Merging branch...");
-    await new Promise<void>((resolve) => {
-      socket.emit(
-        "github-merge-branch",
-        { taskRunId: selectedRun._id },
-        (resp: { success: boolean; commitSha?: string; error?: string }) => {
-          setIsMerging(false);
-          if (resp.success) {
-            toast.success("Branch merged", {
-              id: toastId,
-              description: resp.commitSha,
-            });
-          } else {
-            toast.error("Failed to merge branch", {
-              id: toastId,
-              description: resp.error,
-            });
-          }
-          resolve();
-        }
-      );
-    });
-  };
-
-  const hasAnyDiffs = !!(
-    (selectedRun?._id ? stableDiffsByRun[selectedRun._id] : diffsQuery.data) ||
-    []
-  ).length;
+  // Compute refs for diff: base branch vs run branch
+  const repoFullName = task?.projectFullName || "";
+  const ref1 = refWithOrigin(task?.baseBranch || "main");
+  const ref2 = refWithOrigin(selectedRun.newBranch || "");
 
   return (
     <FloatingPane>
@@ -267,14 +117,9 @@ function RunDiffPage() {
             selectedRun={selectedRun ?? null}
             isCreatingPr={isCreatingPr}
             setIsCreatingPr={setIsCreatingPr}
-            onMerge={handleMerge}
-            onMergeBranch={handleMergeBranch}
-            totalAdditions={diffControls?.totalAdditions}
-            totalDeletions={diffControls?.totalDeletions}
-            hasAnyDiffs={hasAnyDiffs}
+            taskRunId={taskRunId}
             onExpandAll={diffControls?.expandAll}
             onCollapseAll={diffControls?.collapseAll}
-            isLoading={diffsQuery.isPending}
             teamSlugOrId={teamSlugOrId}
           />
           {task?.text && (
@@ -288,19 +133,29 @@ function RunDiffPage() {
             </div>
           )}
           <div className="bg-white dark:bg-neutral-950 grow flex flex-col">
-            <GitDiffViewer
-              diffs={
-                (selectedRun?._id
-                  ? stableDiffsByRun[selectedRun._id]
-                  : undefined) ||
-                diffsQuery.data ||
-                []
+            <Suspense
+              fallback={
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-neutral-500 dark:text-neutral-400 text-sm select-none">
+                    Loading diffs...
+                  </div>
+                </div>
               }
-              isLoading={!diffsQuery.data && !!selectedRun}
-              taskRunId={selectedRun?._id}
-              key={selectedRun?._id}
-              onControlsChange={(c) => setDiffControls(c)}
-            />
+            >
+              {repoFullName && ref1 && ref2 ? (
+                <RunDiffSection
+                  repoFullName={repoFullName}
+                  ref1={ref1}
+                  ref2={ref2}
+                  onControlsChange={setDiffControls}
+                  classNames={gitDiffViewerClassNames}
+                />
+              ) : (
+                <div className="p-6 text-sm text-neutral-600 dark:text-neutral-300">
+                  Missing repo or branches to show diff.
+                </div>
+              )}
+            </Suspense>
           </div>
         </div>
       </div>

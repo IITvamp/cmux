@@ -25,7 +25,7 @@ export const CloseTerminalSchema = z.object({
 });
 
 export const StartTaskSchema = z.object({
-  repoUrl: z.string(),
+  repoUrl: z.string().optional(),
   branch: z.string().optional(),
   taskDescription: z.string(),
   projectFullName: z.string(),
@@ -42,6 +42,7 @@ export const StartTaskSchema = z.object({
     )
     .optional(),
   theme: z.enum(["dark", "light", "system"]).optional(),
+  environmentId: typedZid("environments").optional(),
 });
 
 // Server to Client Events
@@ -96,6 +97,30 @@ export const GitDiffRequestSchema = z.object({
 
 export const GitFullDiffRequestSchema = z.object({
   workspacePath: z.string(),
+});
+
+// Compare arbitrary refs within a repository (e.g., branch names or SHAs)
+export const GitCompareRefsSchema = z.object({
+  // Full repo name, e.g., "owner/name". Server will derive remote URL.
+  repoFullName: z.string(),
+  ref1: z.string(),
+  ref2: z.string(),
+});
+
+// Landed diff request: compute what landed on base when head was integrated
+export const GitLandedRefsSchema = z.object({
+  repoFullName: z.string(),
+  baseRef: z.string(),
+  headRef: z.string(),
+  b0Ref: z.string().optional(),
+});
+
+// Smart diff request: returns latest or landed depending on branch state
+export const GitSmartRefsSchema = z.object({
+  repoFullName: z.string(),
+  baseRef: z.string(),
+  headRef: z.string(),
+  b0Ref: z.string().optional(),
 });
 
 export const GitFileSchema = z.object({
@@ -372,6 +397,7 @@ export type GitStatusResponse = z.infer<typeof GitStatusResponseSchema>;
 export type GitDiffResponse = z.infer<typeof GitDiffResponseSchema>;
 export type GitFileChanged = z.infer<typeof GitFileChangedSchema>;
 export type GitFullDiffRequest = z.infer<typeof GitFullDiffRequestSchema>;
+export type GitCompareRefs = z.infer<typeof GitCompareRefsSchema>;
 export type GitFullDiffResponse = z.infer<typeof GitFullDiffResponseSchema>;
 export type OpenInEditor = z.infer<typeof OpenInEditorSchema>;
 export type OpenInEditorError = z.infer<typeof OpenInEditorErrorSchema>;
@@ -412,9 +438,33 @@ export interface ClientToServerEvents {
     data: StartTask,
     callback: (response: TaskStarted | TaskError) => void
   ) => void;
+  "git-diff-smart": (
+    data: z.infer<typeof GitSmartRefsSchema>,
+    callback: (
+      response:
+        | { ok: true; diffs: import("./diff-types.js").ReplaceDiffEntry[]; strategy?: "latest" | "landed" }
+        | { ok: false; error: string; diffs?: [] }
+    ) => void
+  ) => void;
   "git-status": (data: GitStatusRequest) => void;
   "git-diff": (data: GitDiffRequest) => void;
   "git-full-diff": (data: GitFullDiffRequest) => void;
+  "git-diff-refs": (
+    data: GitCompareRefs,
+    callback: (
+      response:
+        | { ok: true; diffs: import("./diff-types.js").ReplaceDiffEntry[] }
+        | { ok: false; error: string; diffs?: [] }
+    ) => void
+  ) => void;
+  "git-diff-landed": (
+    data: z.infer<typeof GitLandedRefsSchema>,
+    callback: (
+      response:
+        | { ok: true; diffs: import("./diff-types.js").ReplaceDiffEntry[] }
+        | { ok: false; error: string; diffs?: [] }
+    ) => void
+  ) => void;
   // On-demand diffs for a task run
   "get-run-diffs": (
     data: { taskRunId: Id<"taskRuns"> },
@@ -505,6 +555,12 @@ export interface ClientToServerEvents {
       commitSha?: string;
       error?: string;
     }) => void
+  ) => void;
+  // Rust N-API test: returns current time
+  "rust-get-time": (
+    callback: (
+      response: { ok: true; time: string } | { ok: false; error: string }
+    ) => void
   ) => void;
   "check-provider-status": (
     callback: (response: ProviderStatusResponse) => void

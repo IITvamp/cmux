@@ -1,7 +1,6 @@
 import { useTheme } from "@/components/theme/use-theme";
-import { useSocket } from "@/contexts/socket/use-socket";
+// No socket usage in refs-only viewer
 import { cn } from "@/lib/utils";
-import type { Id } from "@cmux/convex/dataModel";
 import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
 import { DiffEditor } from "@monaco-editor/react";
 import {
@@ -24,16 +23,25 @@ import {
 } from "react";
 import { kitties } from "./kitties";
 
-interface GitDiffViewerProps {
+type FileDiffRowClassNames = {
+  button?: string;
+  container?: string;
+};
+
+type GitDiffViewerClassNames = {
+  fileDiffRow?: FileDiffRowClassNames;
+};
+
+export interface GitDiffViewerProps {
   diffs: ReplaceDiffEntry[];
-  isLoading?: boolean;
-  taskRunId?: Id<"taskRuns">;
   onControlsChange?: (controls: {
     expandAll: () => void;
     collapseAll: () => void;
     totalAdditions: number;
     totalDeletions: number;
   }) => void;
+  classNames?: GitDiffViewerClassNames;
+  onFileToggle?: (filePath: string, isExpanded: boolean) => void;
 }
 
 type FileGroup = {
@@ -80,9 +88,9 @@ function getStatusIcon(status: ReplaceDiffEntry["status"]) {
 
 export function GitDiffViewer({
   diffs,
-  isLoading,
-  taskRunId,
   onControlsChange,
+  classNames,
+  onFileToggle,
 }: GitDiffViewerProps) {
   const { theme } = useTheme();
 
@@ -92,11 +100,6 @@ export function GitDiffViewer({
 
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
   const editorRefs = useRef<Record<string, editor.IStandaloneDiffEditor>>({});
-  // Cache fetched contents per run+file to avoid cross-run flashes
-  const [lazyContents, setLazyContents] = useState<
-    Record<string, { oldContent: string; newContent: string }>
-  >({});
-  const { socket } = useSocket();
 
   // Group diffs by file
   const fileGroups: FileGroup[] = useMemo(
@@ -106,18 +109,12 @@ export function GitDiffViewer({
         status: diff.status,
         additions: diff.additions,
         deletions: diff.deletions,
-        oldContent:
-          (lazyContents[`${taskRunId ?? "_"}:${diff.filePath}`]?.oldContent ??
-            diff.oldContent) ||
-          "",
-        newContent:
-          (lazyContents[`${taskRunId ?? "_"}:${diff.filePath}`]?.newContent ??
-            diff.newContent) ||
-          "",
+        oldContent: diff.oldContent || "",
+        newContent: diff.newContent || "",
         patch: diff.patch,
         isBinary: diff.isBinary,
       })),
-    [diffs, lazyContents, taskRunId]
+    [diffs]
   );
 
   // Maintain minimal reactivity; no debug logging in production
@@ -159,26 +156,10 @@ export function GitDiffViewer({
       const wasExpanded = newExpanded.has(filePath);
       if (wasExpanded) newExpanded.delete(filePath);
       else newExpanded.add(filePath);
-      // If content was omitted due to size, fetch on demand
-      if (!wasExpanded) {
-        const diff = diffs.find((d) => d.filePath === filePath);
-        if (diff && diff.contentOmitted && taskRunId && socket) {
-          socket.emit(
-            "git-diff-file-contents",
-            { taskRunId, filePath },
-            (res) => {
-              if (res.ok) {
-                setLazyContents((prev) => ({
-                  ...prev,
-                  [`${taskRunId}:${filePath}`]: {
-                    oldContent: res.oldContent || "",
-                    newContent: res.newContent || "",
-                  },
-                }));
-              }
-            }
-          );
-        }
+      try {
+        onFileToggle?.(filePath, !wasExpanded);
+      } catch {
+        // ignore
       }
       return newExpanded;
     });
@@ -192,11 +173,7 @@ export function GitDiffViewer({
     setExpandedFiles(new Set());
   };
 
-  // Clear per-run caches on run switch to prevent flashing old content
-  useEffect(() => {
-    // Reset lazy contents for new run
-    setLazyContents({});
-  }, [taskRunId]);
+  // No per-run cache in refs mode
 
   const calculateEditorHeight = (oldContent: string, newContent: string) => {
     const oldLines = oldContent.split("\n").length;
@@ -234,33 +211,13 @@ export function GitDiffViewer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [totalAdditions, totalDeletions, diffs.length]);
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-neutral-500 dark:text-neutral-400 text-sm select-none">
-          Loading diffs...
-        </div>
-      </div>
-    );
-  }
-
-  if (diffs.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <div className="text-neutral-500 dark:text-neutral-400 text-sm select-none">
-          No changes to display
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div key={taskRunId ?? "_"} className="grow bg-white dark:bg-neutral-900">
+    <div className="grow bg-white dark:bg-neutral-900">
       {/* Diff sections */}
       <div className="">
         {fileGroups.map((file) => (
           <MemoFileDiffRow
-            key={`${taskRunId ?? "_"}:${file.filePath}`}
+            key={`refs:${file.filePath}`}
             file={file}
             isExpanded={expandedFiles.has(file.filePath)}
             onToggle={() => toggleFile(file.filePath)}
@@ -268,9 +225,9 @@ export function GitDiffViewer({
             calculateEditorHeight={calculateEditorHeight}
             setEditorRef={(ed) => {
               if (ed)
-                editorRefs.current[`${taskRunId ?? "_"}:${file.filePath}`] = ed;
+                editorRefs.current[`refs:${file.filePath}`] = ed;
             }}
-            runId={taskRunId}
+            classNames={classNames?.fileDiffRow}
           />
         ))}
         {/* End-of-diff message */}
@@ -297,6 +254,10 @@ interface FileDiffRowProps {
   calculateEditorHeight: (oldContent: string, newContent: string) => number;
   setEditorRef: (ed: editor.IStandaloneDiffEditor) => void;
   runId?: string;
+  classNames?: {
+    button?: string;
+    container?: string;
+  };
 }
 
 function FileDiffRow({
@@ -307,6 +268,7 @@ function FileDiffRow({
   calculateEditorHeight,
   setEditorRef,
   runId,
+  classNames,
 }: FileDiffRowProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const rafIdRef = useRef<number | null>(null);
@@ -328,10 +290,13 @@ function FileDiffRow({
   }, [isExpanded, file.filePath]);
 
   return (
-    <div className="bg-white dark:bg-neutral-900">
+    <div className={cn("bg-white dark:bg-neutral-900", classNames?.container)}>
       <button
         onClick={onToggle}
-        className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors text-left group pt-1 bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800 sticky top-[96px] md:top-[56px] z-40"
+        className={cn(
+          "w-full px-3 py-1.5 flex items-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors text-left group pt-1 bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800 sticky  z-[var(--z-sticky-low)]",
+          classNames?.button
+        )}
       >
         <div className="text-neutral-400 dark:text-neutral-500 group-hover:text-neutral-600 dark:group-hover:text-neutral-400">
           {isExpanded ? (

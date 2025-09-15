@@ -1,5 +1,9 @@
 import { env } from "../_shared/convex-env";
-import { base64urlFromBytes, base64urlToBytes, bytesToHex } from "../_shared/encoding";
+import {
+  base64urlFromBytes,
+  base64urlToBytes,
+  bytesToHex,
+} from "../_shared/encoding";
 import { hmacSha256, safeEqualHex } from "../_shared/crypto";
 import { internal } from "./_generated/api";
 import { httpAction } from "./_generated/server";
@@ -9,6 +13,8 @@ export const githubSetup = httpAction(async (ctx, req) => {
   const installationIdStr = url.searchParams.get("installation_id");
   const state = url.searchParams.get("state");
   const base = env.BASE_APP_URL.replace(/\/$/, "");
+  const toCmuxDeepLink = (team?: string | null) =>
+    `cmux://github-connect-complete${team ? `?team=${encodeURIComponent(team)}` : ""}`;
 
   if (!installationIdStr) {
     return new Response("missing params", { status: 400 });
@@ -30,8 +36,8 @@ export const githubSetup = httpAction(async (ctx, req) => {
         teamId: existing.teamId,
       });
       const teamPath = team?.slug ?? existing.teamId;
-      const target = `${base}/${encodeURIComponent(teamPath)}/connect-complete`;
-      return Response.redirect(target, 302);
+      // Prefer deep-linking back to the app to finish the flow
+      return Response.redirect(toCmuxDeepLink(teamPath), 302);
     }
     // Fallback: send user to team picker if we can't resolve a team
     return Response.redirect(`${base}/team-picker`, 302);
@@ -43,7 +49,10 @@ export const githubSetup = httpAction(async (ctx, req) => {
 
   // Parse token: v1.<payload>.<sig>
   const parts = state.split(".");
-  if (parts.length !== 3) return new Response("invalid state", { status: 400 });
+  if (parts.length !== 3) {
+    // Fallback to deep link if state is malformed
+    return Response.redirect(toCmuxDeepLink(), 302);
+  }
   let payloadStr = "";
   const version = parts[0];
 
@@ -54,7 +63,7 @@ export const githubSetup = httpAction(async (ctx, req) => {
     const sigBuf = await hmacSha256(env.INSTALL_STATE_SECRET, payloadStr);
     const actualSigB64 = base64urlFromBytes(sigBuf);
     if (actualSigB64 !== expectedSigB64) {
-      return new Response("invalid signature", { status: 400 });
+      return Response.redirect(toCmuxDeepLink(), 302);
     }
   } else if (version === "v1") {
     payloadStr = decodeURIComponent(parts[1] ?? "");
@@ -62,10 +71,10 @@ export const githubSetup = httpAction(async (ctx, req) => {
     const sigBuf = await hmacSha256(env.INSTALL_STATE_SECRET, payloadStr);
     const actualSigHex = bytesToHex(sigBuf);
     if (!safeEqualHex(actualSigHex, expectedSigHex)) {
-      return new Response("invalid signature", { status: 400 });
+      return Response.redirect(toCmuxDeepLink(), 302);
     }
   } else {
-    return new Response("invalid state", { status: 400 });
+    return Response.redirect(toCmuxDeepLink(), 302);
   }
 
   type Payload = {
@@ -80,7 +89,7 @@ export const githubSetup = httpAction(async (ctx, req) => {
   try {
     payload = JSON.parse(payloadStr) as Payload;
   } catch {
-    return new Response("invalid payload", { status: 400 });
+    return Response.redirect(toCmuxDeepLink(), 302);
   }
 
   const now = Date.now();
@@ -89,7 +98,8 @@ export const githubSetup = httpAction(async (ctx, req) => {
       nonce: payload.nonce,
       expire: true,
     });
-    return new Response("state expired", { status: 400 });
+    // Expired state: still bring user back to the app to retry
+    return Response.redirect(toCmuxDeepLink(), 302);
   }
 
   // Ensure nonce exists and is pending
@@ -97,7 +107,9 @@ export const githubSetup = httpAction(async (ctx, req) => {
     nonce: payload.nonce,
   });
   if (!row || row.status !== "pending") {
-    return new Response("invalid state nonce", { status: 400 });
+    // State already consumed or unknown. Bring the user back to the app,
+    // where we can surface any missing connection.
+    return Response.redirect(toCmuxDeepLink(), 302);
   }
 
   // Mark used
@@ -121,6 +133,6 @@ export const githubSetup = httpAction(async (ctx, req) => {
     teamId: payload.teamId,
   });
   const teamPath = team?.slug ?? payload.teamId;
-  const target = `${base}/${encodeURIComponent(teamPath)}/connect-complete`;
-  return Response.redirect(target, 302);
+  // Prefer deep link back into the app so Electron foregrounds and refreshes.
+  return Response.redirect(toCmuxDeepLink(teamPath), 302);
 });

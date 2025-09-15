@@ -143,7 +143,8 @@ const convexSchema = defineSchema({
       v.literal("completed"),
       v.literal("failed")
     ),
-    log: v.string(), // CLI output log, will be appended to in real-time
+    // Optional log retained for backward compatibility; no longer written to.
+    log: v.optional(v.string()), // CLI output log (deprecated)
     worktreePath: v.optional(v.string()), // Path to the git worktree for this run
     newBranch: v.optional(v.string()), // The generated branch name for this run
     createdAt: v.number(),
@@ -330,6 +331,19 @@ const convexSchema = defineSchema({
     teamId: v.string(),
   }).index("by_team_user", ["teamId", "userId"]),
 
+  // System and user comments attached to a task
+  taskComments: defineTable({
+    taskId: v.id("tasks"),
+    content: v.string(),
+    userId: v.string(), // "cmux" for system comments; otherwise the author user id
+    teamId: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_task", ["taskId", "createdAt"]) // fetch comments for a task chronologically
+    .index("by_team_task", ["teamId", "taskId", "createdAt"]) // scoped by team
+    .index("by_team_user", ["teamId", "userId"]),
+
   comments: defineTable({
     url: v.string(), // Full URL of the website where comment was created
     page: v.string(), // Page URL/path where comment was created
@@ -429,6 +443,54 @@ const convexSchema = defineSchema({
     ),
     createdAt: v.number(),
   }).index("by_nonce", ["nonce"]),
+
+  // Pull Requests ingested from GitHub (via webhook or backfill)
+  pullRequests: defineTable({
+    // Identity within provider and repo context
+    provider: v.literal("github"),
+    installationId: v.number(),
+    repositoryId: v.optional(v.number()),
+    repoFullName: v.string(), // owner/repo
+    number: v.number(), // PR number
+    providerPrId: v.optional(v.number()), // GitHub numeric id
+
+    // Team scoping
+    teamId: v.string(),
+
+    // Core fields
+    title: v.string(),
+    state: v.union(v.literal("open"), v.literal("closed")),
+    merged: v.optional(v.boolean()),
+    draft: v.optional(v.boolean()),
+    authorLogin: v.optional(v.string()),
+    authorId: v.optional(v.number()),
+    htmlUrl: v.optional(v.string()),
+
+    // Branch and commit info
+    baseRef: v.optional(v.string()),
+    headRef: v.optional(v.string()),
+    baseSha: v.optional(v.string()),
+    headSha: v.optional(v.string()),
+
+    // Timestamps
+    createdAt: v.optional(v.number()),
+    updatedAt: v.optional(v.number()),
+    closedAt: v.optional(v.number()),
+    mergedAt: v.optional(v.number()),
+
+    // Misc metrics
+    commentsCount: v.optional(v.number()),
+    reviewCommentsCount: v.optional(v.number()),
+    commitsCount: v.optional(v.number()),
+    additions: v.optional(v.number()),
+    deletions: v.optional(v.number()),
+    changedFiles: v.optional(v.number()),
+  })
+    .index("by_team", ["teamId", "updatedAt"]) // list by team, recent first client-side
+    .index("by_team_state", ["teamId", "state", "updatedAt"]) // filter by state
+    .index("by_team_repo_number", ["teamId", "repoFullName", "number"]) // upsert key
+    .index("by_installation", ["installationId", "updatedAt"]) // debug/ops
+    .index("by_repo", ["repoFullName", "updatedAt"]),
 });
 
 export default convexSchema;

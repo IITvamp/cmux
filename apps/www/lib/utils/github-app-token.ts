@@ -32,7 +32,7 @@ export async function generateGitHubInstallationToken({
   const octokit = new Octokit({
     authStrategy: createAppAuth,
     auth: {
-      appId: env.GITHUB_APP_ID,
+      appId: env.CMUX_GITHUB_APP_ID,
       privateKey: githubPrivateKey,
       installationId,
     },
@@ -92,7 +92,7 @@ export async function getInstallationForRepo(
   const octokit = new Octokit({
     authStrategy: createAppAuth,
     auth: {
-      appId: env.GITHUB_APP_ID,
+      appId: env.CMUX_GITHUB_APP_ID,
       privateKey: githubPrivateKey,
     },
   });

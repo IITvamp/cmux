@@ -2,8 +2,10 @@
 
 import { env } from "@/client-env";
 import { getRandomKitty } from "@/components/kitties";
-import CmuxLogoMark from "@/components/logo/cmux-logo-mark";
+import CmuxLogoMarkAnimated from "@/components/logo/cmux-logo-mark-animated";
+import { cachedGetUser } from "@/lib/cachedGetUser";
 import { isElectron } from "@/lib/electron";
+import { stackClientApp } from "@/lib/stack";
 import { SignIn, useUser } from "@stackframe/react";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { Authenticated, ConvexProviderWithAuth } from "convex/react";
@@ -14,14 +16,16 @@ import {
   useEffect,
   useMemo,
   useState,
-  type ReactNode,
   type CSSProperties,
+  type ReactNode,
 } from "react";
 import { authJsonQueryOptions } from "./authJsonQueryOptions";
+import { signalConvexAuthReady } from "./convex-auth-ready";
 import { convexQueryClient } from "./convex-query-client";
 
 function OnReadyComponent({ onReady }: { onReady: () => void }) {
   useEffect(() => {
+    console.log("[ConvexClientProvider] Authenticated, boot ready");
     onReady();
   }, [onReady]);
   return null;
@@ -33,7 +37,12 @@ function useAuthFromStack() {
     ...authJsonQueryOptions(),
   });
   const isLoading = false;
-  const isAuthenticated = useMemo(() => !!user, [user]);
+  const accessToken = authJsonQuery.data?.accessToken ?? null;
+  // Only consider authenticated once an access token is available.
+  const isAuthenticated = useMemo(
+    () => Boolean(user && accessToken),
+    [user, accessToken]
+  );
   // Important: keep this function identity stable unless auth context truly changes.
   const fetchAccessToken = useCallback(
     async (_opts: { forceRefreshToken: boolean }) => {
@@ -41,7 +50,10 @@ function useAuthFromStack() {
       if (cached?.accessToken) {
         return cached.accessToken;
       }
-      return null;
+      // Fallback: directly ask Stack for a fresh token in case the cache is stale
+      const u = await cachedGetUser(stackClientApp);
+      const fresh = await u?.getAuthJson();
+      return fresh?.accessToken ?? null;
     },
     [authJsonQuery.data]
   );
@@ -73,7 +85,7 @@ function AuthenticatedOrSignIn({
         {showSignIn ? (
           <motion.div
             key="signin"
-            className="absolute inset-0 w-screen h-dvh flex items-center justify-center bg-white dark:bg-black z-[99999999]"
+            className="absolute inset-0 w-screen h-dvh flex items-center justify-center bg-white dark:bg-black z-[var(--z-global-blocking)]"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -108,6 +120,7 @@ function AuthenticatedOrSignIn({
                 <p className="text-xs text-neutral-500 dark:text-neutral-500 text-center">
                   After signing in, you'll be returned automatically.
                 </p>
+                <SignIn />
               </div>
             ) : (
               <SignIn />
@@ -126,6 +139,7 @@ function AuthenticatedOrSignIn({
 export function ConvexClientProvider({ children }: { children: ReactNode }) {
   const [bootReady, setBootReady] = useState(false);
   const onBootReady = useCallback(() => {
+    signalConvexAuthReady(true);
     setBootReady(true);
   }, []);
 
@@ -135,13 +149,13 @@ export function ConvexClientProvider({ children }: { children: ReactNode }) {
         {!bootReady ? (
           <motion.div
             key="boot-loader"
-            className="absolute inset-0 w-screen h-dvh flex flex-col items-center justify-center bg-white dark:bg-black z-[99999999]"
+            className="absolute inset-0 w-screen h-dvh flex flex-col items-center justify-center bg-white dark:bg-black z-[var(--z-global-blocking)]"
             initial={{ opacity: 1 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.22, ease: "easeOut" }}
           >
-            <CmuxLogoMark height={40} />
+            <CmuxLogoMarkAnimated height={40} duration={2.9} />
             <pre className="text-xs font-mono text-neutral-200 dark:text-neutral-800 absolute bottom-0 left-0 pl-4 pb-4">
               {getRandomKitty()}
             </pre>

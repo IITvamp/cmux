@@ -12,6 +12,7 @@ import { api } from "@cmux/convex/api";
 import { Skeleton } from "@heroui/react";
 import { useStackApp, useUser, type Team } from "@stackframe/react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { setLastTeamSlugOrId } from "@/lib/lastTeam";
 import { useQuery as useConvexQuery, useMutation } from "convex/react";
 import type React from "react";
 
@@ -95,6 +96,7 @@ function TeamPicker() {
           : undefined) ?? newTeam.id;
 
       await user.setSelectedTeam(newTeam);
+      setLastTeamSlugOrId(teamSlugOrId);
       await navigate({
         to: "/$teamSlugOrId/dashboard",
         params: { teamSlugOrId },
@@ -189,6 +191,9 @@ function TeamItem({ team, getClientSlug }: TeamItemProps) {
       <Link
         to="/$teamSlugOrId/dashboard"
         params={{ teamSlugOrId }}
+        onClick={() => {
+          setLastTeamSlugOrId(teamSlugOrId);
+        }}
         className={
           "group flex w-full text-left rounded-xl border transition-all focus:outline-none border-neutral-200 hover:border-neutral-300 dark:border-neutral-800 dark:hover:border-neutral-700 bg-white dark:bg-neutral-900/80 disabled:border-neutral-200 dark:disabled:border-neutral-800 p-4"
         }

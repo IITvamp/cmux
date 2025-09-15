@@ -64,7 +64,7 @@ class PersistentIframeManager {
         width: 0;
         height: 0;
         pointer-events: none;
-        z-index: 9999;
+        z-index: var(--z-overlay);
       `;
       document.body.appendChild(this.container);
     };
@@ -206,7 +206,9 @@ class PersistentIframeManager {
         entry.wrapper.style.cssText = `
           position: fixed;
           top: 0;
+          right: 0;
           left: 0;
+          bottom: 0;
           visibility: visible;
           pointer-events: auto;
           overflow: hidden;
@@ -217,7 +219,9 @@ class PersistentIframeManager {
         entry.wrapper.style.cssText = `
           position: fixed;
           top: 0;
+          right: 0;
           left: 0;
+          bottom: 0;
           visibility: visible;
           pointer-events: auto;
           overflow: hidden;

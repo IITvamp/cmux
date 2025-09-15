@@ -1,12 +1,26 @@
-import AntdMultiSelect from "@/components/AntdMultiSelect";
+import { env } from "@/client-env";
+import { isElectron } from "@/lib/electron";
+import { AgentLogo } from "@/components/icons/agent-logos";
+import { GitHubIcon } from "@/components/icons/github";
 import { ModeToggleTooltip } from "@/components/ui/mode-toggle-tooltip";
+import SearchableSelect, {
+  type SelectOption,
+} from "@/components/ui/searchable-select";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
+import { Link, useRouter } from "@tanstack/react-router";
+import { api } from "@cmux/convex/api";
+import { useMutation } from "convex/react";
 import clsx from "clsx";
-import { Image, Mic } from "lucide-react";
+import { GitBranch, Image, Mic, Server } from "lucide-react";
 import { memo, useCallback, useMemo } from "react";
 
 interface DashboardInputControlsProps {
-  projectOptions: string[];
+  projectOptions: SelectOption[];
   selectedProject: string[];
   onProjectChange: (projects: string[]) => void;
   branchOptions: string[];
@@ -19,6 +33,8 @@ interface DashboardInputControlsProps {
   isLoadingProjects: boolean;
   isLoadingBranches: boolean;
   teamSlugOrId: string;
+  cloudToggleDisabled?: boolean;
+  branchDisabled?: boolean;
 }
 
 export const DashboardInputControls = memo(function DashboardInputControls({
@@ -35,11 +51,33 @@ export const DashboardInputControls = memo(function DashboardInputControls({
   isLoadingProjects,
   isLoadingBranches,
   teamSlugOrId,
+  cloudToggleDisabled = false,
+  branchDisabled = false,
 }: DashboardInputControlsProps) {
-  const agentOptions = useMemo(
-    () => AGENT_CONFIGS.map((agent) => agent.name),
-    []
-  );
+  const router = useRouter();
+  const mintState = useMutation(api.github_app.mintInstallState);
+  const agentOptions = useMemo(() => {
+    const vendorKey = (name: string): string => {
+      const lower = name.toLowerCase();
+      if (lower.startsWith("codex/")) return "openai";
+      if (lower.startsWith("claude/")) return "claude";
+      if (lower.startsWith("gemini/")) return "gemini";
+      if (lower.includes("kimi")) return "kimi";
+      if (lower.includes("glm")) return "glm";
+      if (lower.includes("grok")) return "grok";
+      if (lower.includes("qwen")) return "qwen";
+      if (lower.startsWith("cursor/")) return "cursor";
+      if (lower.startsWith("amp")) return "amp";
+      if (lower.startsWith("opencode/")) return "opencode";
+      return "other";
+    };
+    return AGENT_CONFIGS.map((agent) => ({
+      label: agent.name,
+      value: agent.name,
+      icon: <AgentLogo agentName={agent.name} className="w-4 h-4" />,
+      iconKey: vendorKey(agent.name),
+    }));
+  }, []);
   // Determine OS for potential future UI tweaks
   // const isMac = navigator.userAgent.toUpperCase().indexOf("MAC") >= 0;
 
@@ -53,41 +91,173 @@ export const DashboardInputControls = memo(function DashboardInputControls({
     }
   }, []);
 
+  function openCenteredPopup(
+    url: string,
+    opts?: { name?: string; width?: number; height?: number },
+    onClose?: () => void
+  ): Window | null {
+    if (isElectron) {
+      // In Electron, always open in the system browser and skip popup plumbing
+      window.open(url, "_blank", "noopener,noreferrer");
+      return null;
+    }
+    const name = opts?.name ?? "cmux-popup";
+    const width = Math.floor(opts?.width ?? 980);
+    const height = Math.floor(opts?.height ?? 780);
+    const dualScreenLeft = window.screenLeft ?? window.screenX ?? 0;
+    const dualScreenTop = window.screenTop ?? window.screenY ?? 0;
+    const outerWidth = window.outerWidth || window.innerWidth || width;
+    const outerHeight = window.outerHeight || window.innerHeight || height;
+    const left = Math.max(0, dualScreenLeft + (outerWidth - width) / 2);
+    const top = Math.max(0, dualScreenTop + (outerHeight - height) / 2);
+    const features = [
+      `width=${width}`,
+      `height=${height}`,
+      `left=${Math.floor(left)}`,
+      `top=${Math.floor(top)}`,
+      "resizable=yes",
+      "scrollbars=yes",
+      "toolbar=no",
+      "location=no",
+      "status=no",
+      "menubar=no",
+    ].join(",");
+
+    const win = window.open("about:blank", name, features);
+    if (win) {
+      try {
+        (win as Window & { opener: null | Window }).opener = null;
+      } catch {
+        /* noop */
+      }
+      try {
+        win.location.href = url;
+      } catch {
+        window.open(url, "_blank");
+      }
+      win.focus?.();
+      if (onClose) watchPopupClosed(win, onClose);
+      return win;
+    } else {
+      window.open(url, "_blank");
+      return null;
+    }
+  }
+
+  function watchPopupClosed(win: Window | null, onClose: () => void): void {
+    if (!win) return;
+    const timer = window.setInterval(() => {
+      try {
+        if (win.closed) {
+          window.clearInterval(timer);
+          onClose();
+        }
+      } catch {
+        /* noop */
+      }
+    }, 600);
+  }
+
   return (
     <div className="flex items-end gap-1 grow">
       <div className="flex items-end gap-1">
-        <AntdMultiSelect
+        <SearchableSelect
           options={projectOptions}
           value={selectedProject}
           onChange={onProjectChange}
           placeholder="Select project"
           singleSelect={true}
-          className="!min-w-[300px] !max-w-[500px] !rounded-2xl"
+          className="rounded-2xl"
           loading={isLoadingProjects}
           maxTagCount={1}
           showSearch
+          footer={
+            <div className="p-1">
+              <Link
+                to="/$teamSlugOrId/environments/new"
+                params={{ teamSlugOrId }}
+                search={{
+                  step: undefined,
+                  selectedRepos: undefined,
+                  connectionLogin: undefined,
+                  repoSearch: undefined,
+                  instanceId: undefined,
+                }}
+                className="w-full px-2 h-8 flex items-center gap-2 text-[13.5px] text-neutral-800 dark:text-neutral-200 rounded-md hover:bg-neutral-50 dark:hover:bg-neutral-900 cursor-default"
+              >
+                <Server className="w-4 h-4 text-neutral-600 dark:text-neutral-300" />
+                <span className="select-none">Create environment</span>
+              </Link>
+              {env.NEXT_PUBLIC_GITHUB_APP_SLUG ? (
+                <button
+                  type="button"
+                  onClick={async (e) => {
+                    e.preventDefault();
+                    try {
+                      const slug = env.NEXT_PUBLIC_GITHUB_APP_SLUG!;
+                      const baseUrl = `https://github.com/apps/${slug}/installations/new`;
+                      const { state } = await mintState({ teamSlugOrId });
+                      const sep = baseUrl.includes("?") ? "&" : "?";
+                      const url = `${baseUrl}${sep}state=${encodeURIComponent(
+                        state
+                      )}`;
+                      const win = openCenteredPopup(
+                        url,
+                        { name: "github-install" },
+                        () => {
+                          router.options.context?.queryClient?.invalidateQueries();
+                        }
+                      );
+                      win?.focus?.();
+                    } catch (err) {
+                      console.error("Failed to start GitHub install:", err);
+                      alert("Failed to start installation. Please try again.");
+                    }
+                  }}
+                  className="w-full px-2 h-8 flex items-center gap-2 text-[13.5px] text-neutral-800 dark:text-neutral-200 rounded-md hover:bg-neutral-50 dark:hover:bg-neutral-900"
+                >
+                  <GitHubIcon className="w-4 h-4 text-neutral-600 dark:text-neutral-300" />
+                  <span className="select-none">Add GitHub account</span>
+                </button>
+              ) : null}
+            </div>
+          }
         />
 
-        <AntdMultiSelect
-          options={branchOptions}
-          value={selectedBranch}
-          onChange={onBranchChange}
-          placeholder="Branch"
-          singleSelect={true}
-          className="!min-w-[120px] !rounded-2xl"
-          loading={isLoadingBranches}
-          showSearch
-        />
+        {branchDisabled ? null : (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div>
+                <SearchableSelect
+                  options={branchOptions}
+                  value={selectedBranch}
+                  onChange={onBranchChange}
+                  placeholder="Branch"
+                  singleSelect={true}
+                  className="rounded-2xl"
+                  loading={isLoadingBranches}
+                  showSearch
+                  disabled={branchDisabled}
+                  leftIcon={
+                    <GitBranch className="w-4 h-4 text-neutral-500 dark:text-neutral-400" />
+                  }
+                />
+              </div>
+            </TooltipTrigger>
+            <TooltipContent>Branch this task starts from</TooltipContent>
+          </Tooltip>
+        )}
 
-        <AntdMultiSelect
+        <SearchableSelect
           options={agentOptions}
           value={selectedAgents}
           onChange={onAgentChange}
           placeholder="Select agents"
           singleSelect={false}
           maxTagCount={1}
-          className="!w-[220px] !max-w-[220px] !rounded-2xl"
+          className="rounded-2xl"
           showSearch
+          countLabel="agents"
         />
       </div>
 
@@ -97,6 +267,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
           isCloudMode={isCloudMode}
           onToggle={onCloudModeToggle}
           teamSlugOrId={teamSlugOrId}
+          disabled={cloudToggleDisabled}
         />
 
         <button

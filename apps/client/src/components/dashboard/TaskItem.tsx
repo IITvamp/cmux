@@ -1,10 +1,5 @@
 import { OpenWithDropdown } from "@/components/OpenWithDropdown";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useArchiveTask } from "@/hooks/useArchiveTask";
 import { isFakeConvexId } from "@/lib/fakeConvexId";
 import { ContextMenu } from "@base-ui-components/react/context-menu";
@@ -202,7 +197,7 @@ export const TaskItem = memo(function TaskItem({
           </div>
         </ContextMenu.Trigger>
         <ContextMenu.Portal>
-          <ContextMenu.Positioner className="outline-none z-[10000]">
+          <ContextMenu.Positioner className="outline-none z-[var(--z-context-menu)]">
             <ContextMenu.Popup className="origin-[var(--transform-origin)] rounded-md bg-white dark:bg-neutral-800 py-1 text-neutral-900 dark:text-neutral-100 shadow-lg shadow-gray-200 outline-1 outline-neutral-200 transition-[opacity] data-[ending-style]:opacity-0 dark:shadow-none dark:-outline-offset-1 dark:outline-neutral-700">
               <ContextMenu.Item
                 className="flex items-center gap-2 cursor-default py-1.5 pr-8 pl-3 text-[13px] leading-5 outline-none select-none data-[highlighted]:relative data-[highlighted]:z-0 data-[highlighted]:text-white data-[highlighted]:before:absolute data-[highlighted]:before:inset-x-1 data-[highlighted]:before:inset-y-0 data-[highlighted]:before:z-[-1] data-[highlighted]:before:rounded-sm data-[highlighted]:before:bg-neutral-900 dark:data-[highlighted]:before:bg-neutral-700"
@@ -235,32 +230,30 @@ export const TaskItem = memo(function TaskItem({
       <div className="right-2 top-0 bottom-0 absolute py-2">
         <div className="flex gap-1">
           {/* Copy button */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={handleCopy}
-                  className={clsx(
-                    "p-1 rounded",
-                    "bg-neutral-100 dark:bg-neutral-700",
-                    "text-neutral-600 dark:text-neutral-400",
-                    "hover:bg-neutral-200 dark:hover:bg-neutral-600",
-                    "group-hover:opacity-100 opacity-0"
-                  )}
-                  title="Copy task description"
-                >
-                  {clipboard.copied ? (
-                    <Check className="w-3.5 h-3.5" />
-                  ) : (
-                    <Copy className="w-3.5 h-3.5" />
-                  )}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="top">
-                {clipboard.copied ? "Copied!" : "Copy description"}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                onClick={handleCopy}
+                className={clsx(
+                  "p-1 rounded",
+                  "bg-neutral-100 dark:bg-neutral-700",
+                  "text-neutral-600 dark:text-neutral-400",
+                  "hover:bg-neutral-200 dark:hover:bg-neutral-600",
+                  "group-hover:opacity-100 opacity-0"
+                )}
+                title="Copy task description"
+              >
+                {clipboard.copied ? (
+                  <Check className="w-3.5 h-3.5" />
+                ) : (
+                  <Copy className="w-3.5 h-3.5" />
+                )}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              {clipboard.copied ? "Copied!" : "Copy description"}
+            </TooltipContent>
+          </Tooltip>
 
           {/* Open with dropdown - always appears on hover */}
           <OpenWithDropdown
@@ -272,73 +265,69 @@ export const TaskItem = memo(function TaskItem({
 
           {/* Keep-alive button */}
           {runWithVSCode && hasActiveVSCode && (
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={handleToggleKeepAlive}
-                    className={clsx(
-                      "p-1 rounded",
-                      "bg-neutral-100 dark:bg-neutral-700",
-                      runWithVSCode.vscode?.keepAlive
-                        ? "text-blue-600 dark:text-blue-400"
-                        : "text-neutral-600 dark:text-neutral-400",
-                      "hover:bg-neutral-200 dark:hover:bg-neutral-600",
-                      "group-hover:opacity-100 opacity-0",
-                      "hidden" // TODO: show this button
-                    )}
-                  >
-                    <Pin className="w-3.5 h-3.5" />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="top">
-                  {runWithVSCode.vscode?.keepAlive
-                    ? "Container will stay running"
-                    : "Keep container running"}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  onClick={handleToggleKeepAlive}
+                  className={clsx(
+                    "p-1 rounded",
+                    "bg-neutral-100 dark:bg-neutral-700",
+                    runWithVSCode.vscode?.keepAlive
+                      ? "text-blue-600 dark:text-blue-400"
+                      : "text-neutral-600 dark:text-neutral-400",
+                    "hover:bg-neutral-200 dark:hover:bg-neutral-600",
+                    "group-hover:opacity-100 opacity-0",
+                    "hidden" // TODO: show this button
+                  )}
+                >
+                  <Pin className="w-3.5 h-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                {runWithVSCode.vscode?.keepAlive
+                  ? "Container will stay running"
+                  : "Keep container running"}
+              </TooltipContent>
+            </Tooltip>
           )}
 
           {/* Archive / Unarchive button with tooltip */}
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                {task.isArchived ? (
-                  <button
-                    onClick={handleUnarchive}
-                    className={clsx(
-                      "p-1 rounded",
-                      "bg-neutral-100 dark:bg-neutral-700",
-                      "text-neutral-600 dark:text-neutral-400",
-                      "hover:bg-neutral-200 dark:hover:bg-neutral-600",
-                      "group-hover:opacity-100 opacity-0"
-                    )}
-                    title="Unarchive task"
-                  >
-                    <ArchiveRestore className="w-3.5 h-3.5" />
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleArchive}
-                    className={clsx(
-                      "p-1 rounded",
-                      "bg-neutral-100 dark:bg-neutral-700",
-                      "text-neutral-600 dark:text-neutral-400",
-                      "hover:bg-neutral-200 dark:hover:bg-neutral-600",
-                      "group-hover:opacity-100 opacity-0"
-                    )}
-                    title="Archive task"
-                  >
-                    <Archive className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </TooltipTrigger>
-              <TooltipContent side="top">
-                {task.isArchived ? "Unarchive task" : "Archive task"}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              {task.isArchived ? (
+                <button
+                  onClick={handleUnarchive}
+                  className={clsx(
+                    "p-1 rounded",
+                    "bg-neutral-100 dark:bg-neutral-700",
+                    "text-neutral-600 dark:text-neutral-400",
+                    "hover:bg-neutral-200 dark:hover:bg-neutral-600",
+                    "group-hover:opacity-100 opacity-0"
+                  )}
+                  title="Unarchive task"
+                >
+                  <ArchiveRestore className="w-3.5 h-3.5" />
+                </button>
+              ) : (
+                <button
+                  onClick={handleArchive}
+                  className={clsx(
+                    "p-1 rounded",
+                    "bg-neutral-100 dark:bg-neutral-700",
+                    "text-neutral-600 dark:text-neutral-400",
+                    "hover:bg-neutral-200 dark:hover:bg-neutral-600",
+                    "group-hover:opacity-100 opacity-0"
+                  )}
+                  title="Archive task"
+                >
+                  <Archive className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              {task.isArchived ? "Unarchive task" : "Archive task"}
+            </TooltipContent>
+          </Tooltip>
         </div>
       </div>
     </div>
