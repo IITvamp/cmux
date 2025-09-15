@@ -18,6 +18,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { getIconForFile } from "vscode-icons-js";
 import { useSocket } from "../../contexts/socket/use-socket";
+import { isElectron } from "@/lib/electron";
 
 const MENTION_TRIGGER = "@";
 
@@ -139,59 +140,100 @@ export function MentionPlugin({ repoUrl, branch }: MentionPluginProps) {
   const triggerNodeRef = useRef<TextNode | null>(null);
   const { socket } = useSocket();
 
-  // Fetch all files once when repository URL is available
+  // Fetch files when repository URL is available
   useEffect(() => {
-    if (repoUrl && socket) {
-      setIsLoading(true);
+    if (!repoUrl || !socket) {
+      setFiles([]);
+      setIsLoading(false);
+      return;
+    }
+    setIsLoading(true);
+    if (isElectron) {
+      // Electron path: delegate to Rust for listing (no pattern initially)
+      socket.emit("rust-list-files", {
+        repoPath: repoUrl,
+        branch: branch || undefined,
+      });
+      const handleRust = (data: { files: FileInfo[]; error?: string }) => {
+        setIsLoading(false);
+        if (!data.error) {
+          const fileList = data.files.filter((f) => !f.isDirectory);
+          setFiles(fileList);
+          setFilteredFiles(fileList);
+          setSelectedIndex(0);
+        } else {
+          setFiles([]);
+          setFilteredFiles([]);
+        }
+      };
+      socket.on("rust-list-files-response", handleRust);
+      return () => {
+        socket.off("rust-list-files-response", handleRust);
+      };
+    } else {
+      // Web path: list all once; filter locally
       socket.emit("list-files", {
         repoPath: repoUrl,
         branch: branch || undefined,
-        // Don't send pattern - we want all files
       });
-
-      const handleFilesResponse = (data: {
-        files: FileInfo[];
-        error?: string;
-      }) => {
+      const handleFilesResponse = (data: { files: FileInfo[]; error?: string }) => {
         setIsLoading(false);
         if (!data.error) {
-          // Filter to only show actual files, not directories
           const fileList = data.files.filter((f) => !f.isDirectory);
           setFiles(fileList);
+          setFilteredFiles(fileList);
+          setSelectedIndex(0);
         } else {
           setFiles([]);
+          setFilteredFiles([]);
         }
       };
-
       socket.on("list-files-response", handleFilesResponse);
-
       return () => {
         socket.off("list-files-response", handleFilesResponse);
       };
-    } else if (!repoUrl) {
-      // If no repository URL, set empty files list
-      setFiles([]);
-      setIsLoading(false);
     }
   }, [repoUrl, branch, socket]);
 
-  // Filter files based on search text using fuzzysort
+  // Filter files based on search text
   useEffect(() => {
-    if (searchText) {
-      // Use fuzzysort for fuzzy matching
-      const results = fuzzysort.go(searchText, files, {
-        key: "relativePath",
-        threshold: -10000, // Show all results
-        limit: 50, // Limit for performance
+    if (!repoUrl || !socket) return;
+    if (isElectron) {
+      // Ask Rust to do fuzzy match/sort
+      setIsLoading(true);
+      socket.emit("rust-list-files", {
+        repoPath: repoUrl,
+        branch: branch || undefined,
+        pattern: searchText || undefined,
       });
-
-      setFilteredFiles(results.map((result) => result.obj));
-      setSelectedIndex(0);
+      const handleRust = (data: { files: FileInfo[]; error?: string }) => {
+        setIsLoading(false);
+        if (!data.error) {
+          const fileList = data.files.filter((f) => !f.isDirectory);
+          setFilteredFiles(fileList);
+          setSelectedIndex(0);
+        }
+      };
+      socket.on("rust-list-files-response", handleRust);
+      return () => {
+        socket.off("rust-list-files-response", handleRust);
+      };
     } else {
-      setFilteredFiles(files);
-      setSelectedIndex(0);
+      // Client-side fuzzy sort
+      if (searchText) {
+        const results = fuzzysort.go(searchText, files, {
+          key: "relativePath",
+          threshold: -10000,
+          limit: 50,
+        });
+        setFilteredFiles(results.map((r) => r.obj));
+        setSelectedIndex(0);
+      } else {
+        setFilteredFiles(files);
+        setSelectedIndex(0);
+      }
     }
-  }, [searchText, files]);
+  }, [repoUrl, branch, socket, searchText, files]);
 
   const hideMenu = useCallback(() => {
     setIsShowingMenu(false);

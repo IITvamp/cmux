@@ -28,6 +28,7 @@ import { getRunDiffs } from "./diffs/getRunDiffs.js";
 import { execWithEnv } from "./execWithEnv.js";
 import { GitDiffManager } from "./gitDiff.js";
 import { getRustTime } from "./native/core.js";
+import { listRepoFilesRust } from "./native/git.js";
 import type { RealtimeServer } from "./realtime.js";
 import { RepositoryManager } from "./repositoryManager.js";
 import type { GitRepoInfo } from "./server.js";
@@ -1271,6 +1272,26 @@ export function setupSocketHandlers(
       } catch (error) {
         serverLogger.error("Error listing files:", error);
         socket.emit("list-files-response", {
+          files: [],
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
+      }
+    });
+
+    // Electron-only: Rust-backed file listing with fuzzy sorting
+    socket.on("rust-list-files", async (data) => {
+      try {
+        const { repoPath: repoUrl, branch, pattern } = ListFilesRequestSchema.parse(data);
+        // Call into Rust N-API directly; rely on its internal cache/clone
+        const files = await listRepoFilesRust({
+          repoUrl,
+          branch: branch || undefined,
+          pattern: pattern || undefined,
+        });
+        socket.emit("rust-list-files-response", { files });
+      } catch (error) {
+        serverLogger.error("Error rust-list-files:", error);
+        socket.emit("rust-list-files-response", {
           files: [],
           error: error instanceof Error ? error.message : "Unknown error",
         });

@@ -53,6 +53,20 @@ type NativeGitModule = {
       isDefault?: boolean;
     }>
   >;
+  gitListRepoFiles?: (opts: {
+    repoFullName?: string;
+    repoUrl?: string;
+    originPathOverride?: string;
+    branch?: string;
+    pattern?: string;
+  }) => Promise<
+    Array<{
+      path: string;
+      name: string;
+      isDirectory: boolean;
+      relativePath: string;
+    }>
+  >;
 };
 
 function tryLoadNative(): NativeGitModule | null {
@@ -164,4 +178,27 @@ export async function listRemoteBranches(opts: {
     );
   }
   return mod.gitListRemoteBranches(opts);
+}
+
+export async function listRepoFilesRust(opts: {
+  repoFullName?: string;
+  repoUrl?: string;
+  originPathOverride?: string;
+  branch?: string;
+  pattern?: string;
+}): Promise<
+  Array<{
+    path: string;
+    name: string;
+    isDirectory: boolean;
+    relativePath: string;
+  }>
+> {
+  const mod = loadNativeGit();
+  if (!mod?.gitListRepoFiles) {
+    throw new Error(
+      "Native gitListRepoFiles not available; rebuild @cmux/native-core"
+    );
+  }
+  return mod.gitListRepoFiles(opts);
 }

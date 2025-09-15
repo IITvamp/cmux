@@ -70,3 +70,22 @@ pub struct GitDiffLandedOptions {
   pub includeContents: Option<bool>,
   pub maxBytes: Option<i32>,
 }
+
+#[napi(object)]
+#[derive(Default, Debug, Clone)]
+pub struct FileInfoNative {
+  pub path: String,
+  pub name: String,
+  pub isDirectory: bool,
+  pub relativePath: String,
+}
+
+#[napi(object)]
+#[derive(Default, Debug, Clone)]
+pub struct GitListRepoFilesOptions {
+  pub repoFullName: Option<String>,
+  pub repoUrl: Option<String>,
+  pub originPathOverride: Option<String>,
+  pub branch: Option<String>,
+  pub pattern: Option<String>,
+}

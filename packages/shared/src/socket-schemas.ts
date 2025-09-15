@@ -217,6 +217,10 @@ export const ListFilesResponseSchema = z.object({
   error: z.string().optional(),
 });
 
+// Rust-backed file listing (Electron-only path)
+export const RustListFilesRequestSchema = ListFilesRequestSchema;
+export const RustListFilesResponseSchema = ListFilesResponseSchema;
+
 // VSCode instance events (used for notifications)
 export const VSCodeSpawnedSchema = z.object({
   instanceId: z.string(),
@@ -406,6 +410,8 @@ export type AvailableEditors = z.infer<typeof AvailableEditorsSchema>;
 export type ListFilesRequest = z.infer<typeof ListFilesRequestSchema>;
 export type FileInfo = z.infer<typeof FileInfoSchema>;
 export type ListFilesResponse = z.infer<typeof ListFilesResponseSchema>;
+export type RustListFilesRequest = z.infer<typeof RustListFilesRequestSchema>;
+export type RustListFilesResponse = z.infer<typeof RustListFilesResponseSchema>;
 export type VSCodeSpawned = z.infer<typeof VSCodeSpawnedSchema>;
 export type VSCodeError = z.infer<typeof VSCodeErrorSchema>;
 export type GitHubFetchBranches = z.infer<typeof GitHubFetchBranchesSchema>;
@@ -492,6 +498,8 @@ export interface ClientToServerEvents {
     callback: (response: OpenInEditorResponse) => void
   ) => void;
   "list-files": (data: ListFilesRequest) => void;
+  // Electron-only: Rust-backed file listing for @-mentions
+  "rust-list-files": (data: RustListFilesRequest) => void;
   // GitHub operations
   "github-test-auth": (
     callback: (response: GitHubAuthResponse) => void
@@ -592,6 +600,8 @@ export interface ServerToClientEvents {
   "git-full-diff-response": (data: GitFullDiffResponse) => void;
   "open-in-editor-error": (data: OpenInEditorError) => void;
   "list-files-response": (data: ListFilesResponse) => void;
+  // Electron-only response for Rust-backed listing
+  "rust-list-files-response": (data: RustListFilesResponse) => void;
   "vscode-spawned": (data: VSCodeSpawned) => void;
   "vscode-error": (data: VSCodeError) => void;
   "default-repo": (data: DefaultRepo) => void;
