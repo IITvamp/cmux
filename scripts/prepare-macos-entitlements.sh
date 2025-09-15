@@ -21,6 +21,8 @@ if [ ! -f "$ENTITLEMENTS_FILE" ]; then
   <true/>
   <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
   <true/>
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
   <key>com.apple.security.cs.debugger</key>
   <true/>
   <key>com.apple.security.network.client</key>
@@ -34,4 +36,3 @@ EOF
 else
   echo "Entitlements already present: $ENTITLEMENTS_FILE (no changes)"
 fi
-

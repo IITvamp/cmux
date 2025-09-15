@@ -58,6 +58,8 @@ security set-key-partition-list -S apple-tool:,apple: -s -k "" "$KEYCHAIN_PATH"
 
 # Sign the app
 echo "==> Signing app..."
+bash "$ROOT_DIR/scripts/prepare-macos-entitlements.sh" || true
+
 codesign --deep --force --verify --verbose \
   --sign "Developer ID Application: Manaflow, Inc. (7WLXT3NR37)" \
   --keychain "$KEYCHAIN_PATH" \
