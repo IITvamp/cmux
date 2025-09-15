@@ -10,6 +10,7 @@ import {
 import clsx from "clsx";
 import { useQuery as useConvexQuery } from "convex/react";
 import { useMemo, useState } from "react";
+import { ResizableColumns } from "@/components/ResizableColumns";
 
 function formatTimeAgo(input?: string): string {
   if (!input) return "";
@@ -94,9 +95,15 @@ function PRsPage() {
     <FloatingPane>
       <div className="flex flex-1 min-h-0 h-full flex-col">
         <div className="flex-1 min-h-0 h-full">
-          <div className="flex flex-row flex-1 min-h-0 h-full w-full bg-white dark:bg-black">
-            {/* Left list */}
-            <div className="w-[420px] border-r border-neutral-200 dark:border-neutral-800 flex flex-col min-h-0">
+          <div className="flex-1 min-h-0 h-full w-full bg-white dark:bg-black">
+            <ResizableColumns
+              storageKey="prs.leftWidth"
+              defaultLeftWidth={420}
+              minLeft={280}
+              maxLeft={720}
+              separatorClassName="border-l border-r border-neutral-200 dark:border-neutral-800"
+              left={
+                <div className="flex flex-col min-h-0 h-full">
               <div className="p-3 border-b border-neutral-200 dark:border-neutral-800 flex gap-2 items-center">
                 <select
                   className="flex-0 rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-2 py-1 text-sm"
@@ -182,18 +189,20 @@ function PRsPage() {
                   </ul>
                 )}
               </div>
-            </div>
-
-            {/* Right panel details */}
-            <div className="flex-1 min-w-0 min-h-0 bg-white dark:bg-black flex flex-col overflow-y-auto">
-              {selectedKey ? (
-                <Outlet />
-              ) : (
-                <div className="flex-1 w-full flex items-center justify-center text-neutral-500 dark:text-neutral-400">
-                  Select a pull request
                 </div>
-              )}
-            </div>
+              }
+              right={
+                <div className="min-w-0 min-h-0 bg-white dark:bg-black flex flex-col overflow-y-auto h-full">
+                  {selectedKey ? (
+                    <Outlet />
+                  ) : (
+                    <div className="flex-1 w-full flex items-center justify-center text-neutral-500 dark:text-neutral-400">
+                      Select a pull request
+                    </div>
+                  )}
+                </div>
+              }
+            />
           </div>
         </div>
       </div>
