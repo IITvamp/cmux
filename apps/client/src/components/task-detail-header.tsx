@@ -480,18 +480,31 @@ function SocketActions({
     // Create PR or mark draft ready
     setIsOpeningPr(true);
     const toastId = toast.loading("Opening PR...");
-    socket.emit("github-open-pr", { taskRunId }, (resp) => {
-      setIsOpeningPr(false);
-      if (resp.success) {
-        toast.success("PR opened", { id: toastId, description: resp.url });
-      } else {
-        console.error("Failed to open PR:", resp.error);
-        toast.error("Failed to open PR", {
-          id: toastId,
-          description: resp.error,
-        });
+    socket.emit(
+      "github-open-pr",
+      { taskRunId },
+      (resp: { success: boolean; url?: string; error?: string }) => {
+        setIsOpeningPr(false);
+        if (resp.success) {
+          toast.success("PR opened", {
+            id: toastId,
+            description: resp.url,
+            action: resp.url
+              ? {
+                  label: "Open on GitHub",
+                  onClick: () => window.open(resp.url as string, "_blank", "noopener,noreferrer"),
+                }
+              : undefined,
+          });
+        } else {
+          console.error("Failed to open PR:", resp.error);
+          toast.error("Failed to open PR", {
+            id: toastId,
+            description: resp.error,
+          });
+        }
       }
-    });
+    );
   };
 
   const handleViewPR = () => {
