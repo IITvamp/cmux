@@ -30,7 +30,7 @@ import {
   KEY_ENTER_COMMAND,
   type SerializedEditorState,
 } from "lexical";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { EditorStatePlugin } from "./EditorStatePlugin";
 import { ImageNode } from "./ImageNode";
 import { ImagePlugin } from "./ImagePlugin";
@@ -508,21 +508,24 @@ export default function LexicalEditor({
   maxHeight,
   onEditorReady,
 }: LexicalEditorProps) {
-  const initialConfig = {
-    namespace: "TaskEditor",
-    theme,
-    onError,
-    nodes: [
-      HeadingNode,
-      ListNode,
-      ListItemNode,
-      QuoteNode,
-      CodeNode,
-      LinkNode,
-      AutoLinkNode,
-      ImageNode,
-    ],
-  };
+  const initialConfig = useMemo(
+    () => ({
+      namespace: "TaskEditor",
+      theme,
+      onError,
+      nodes: [
+        HeadingNode,
+        ListNode,
+        ListItemNode,
+        QuoteNode,
+        CodeNode,
+        LinkNode,
+        AutoLinkNode,
+        ImageNode,
+      ],
+    }),
+    []
+  );
 
   return (
     <LexicalComposer initialConfig={initialConfig}>
