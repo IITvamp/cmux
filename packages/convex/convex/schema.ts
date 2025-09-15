@@ -491,6 +491,92 @@ const convexSchema = defineSchema({
     .index("by_team_repo_number", ["teamId", "repoFullName", "number"]) // upsert key
     .index("by_installation", ["installationId", "updatedAt"]) // debug/ops
     .index("by_repo", ["repoFullName", "updatedAt"]),
+
+  // GitHub Workflow Runs (Actions) history
+  workflowRuns: defineTable({
+    provider: v.literal("github"),
+    installationId: v.number(),
+    repoFullName: v.string(),
+    repositoryId: v.optional(v.number()),
+    runId: v.number(), // workflow_run.id
+    runNumber: v.optional(v.number()),
+    workflowId: v.optional(v.number()),
+    workflowName: v.optional(v.string()),
+    status: v.optional(
+      v.union(
+        v.literal("queued"),
+        v.literal("in_progress"),
+        v.literal("completed")
+      )
+    ),
+    conclusion: v.optional(
+      v.union(
+        v.literal("success"),
+        v.literal("failure"),
+        v.literal("neutral"),
+        v.literal("cancelled"),
+        v.literal("timed_out"),
+        v.literal("action_required"),
+        v.literal("stale"),
+        v.literal("skipped")
+      )
+    ),
+    headBranch: v.optional(v.string()),
+    headSha: v.optional(v.string()),
+    event: v.optional(v.string()),
+    htmlUrl: v.optional(v.string()),
+    createdAt: v.optional(v.number()),
+    updatedAt: v.optional(v.number()),
+    runStartedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    teamId: v.optional(v.string()), // best-effort mapping via installation
+  })
+    .index("by_installation", ["installationId", "runId"]) // idempotent upsert
+    .index("by_repo", ["repoFullName", "runId"]) // listing per repo
+    .index("by_branch", ["repoFullName", "headBranch", "runId"]) // branch filtering
+    .index("by_team", ["teamId", "updatedAt"]),
+
+  // GitHub Check Suites and Runs history
+  checkRuns: defineTable({
+    provider: v.literal("github"),
+    installationId: v.number(),
+    repoFullName: v.string(),
+    repositoryId: v.optional(v.number()),
+    checkRunId: v.number(), // check_run.id
+    externalId: v.optional(v.string()),
+    name: v.string(),
+    status: v.optional(
+      v.union(
+        v.literal("queued"),
+        v.literal("in_progress"),
+        v.literal("completed")
+      )
+    ),
+    conclusion: v.optional(
+      v.union(
+        v.literal("success"),
+        v.literal("failure"),
+        v.literal("neutral"),
+        v.literal("cancelled"),
+        v.literal("timed_out"),
+        v.literal("action_required"),
+        v.literal("stale"),
+        v.literal("skipped")
+      )
+    ),
+    detailsUrl: v.optional(v.string()),
+    htmlUrl: v.optional(v.string()),
+    headSha: v.optional(v.string()),
+    startedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    outputTitle: v.optional(v.string()),
+    outputSummary: v.optional(v.string()),
+    outputText: v.optional(v.string()),
+    teamId: v.optional(v.string()),
+  })
+    .index("by_installation", ["installationId", "checkRunId"]) // upsert key
+    .index("by_repo_sha", ["repoFullName", "headSha", "checkRunId"]) // per commit
+    .index("by_team", ["teamId", "completedAt"]),
 });
 
 export default convexSchema;
