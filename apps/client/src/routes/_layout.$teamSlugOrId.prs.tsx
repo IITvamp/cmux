@@ -9,7 +9,7 @@ import {
 } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useQuery as useConvexQuery } from "convex/react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 function formatTimeAgo(input?: string): string {
   if (!input) return "";
@@ -90,13 +90,73 @@ function PRsPage() {
     return null;
   }, [location.pathname]);
 
+  // Resizable sidebar state and handlers
+  const minSidebarWidth = 280;
+  const maxSidebarWidth = 640;
+  const sidebarStorageKey = "prsSidebarWidth";
+  const [sidebarWidth, setSidebarWidth] = useState<number>(420);
+  const draggingRef = useRef<boolean>(false);
+  const startXRef = useRef<number>(0);
+  const startWRef = useRef<number>(420);
+
+  // Load saved width
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const v = Number(window.localStorage.getItem(sidebarStorageKey));
+    if (Number.isFinite(v) && v >= minSidebarWidth && v <= maxSidebarWidth) {
+      setSidebarWidth(v);
+      startWRef.current = v;
+    }
+  }, []);
+
+  // Persist width
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(sidebarStorageKey, String(sidebarWidth));
+  }, [sidebarWidth]);
+
+  // Drag listeners
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!draggingRef.current) return;
+      const dx = e.clientX - startXRef.current;
+      const next = Math.min(
+        maxSidebarWidth,
+        Math.max(minSidebarWidth, startWRef.current + dx)
+      );
+      setSidebarWidth(next);
+    };
+    const onUp = () => {
+      if (!draggingRef.current) return;
+      draggingRef.current = false;
+      document.body.classList.remove("select-none", "cursor-col-resize");
+      startWRef.current = sidebarWidth;
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [sidebarWidth]);
+
+  const handleDividerMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    draggingRef.current = true;
+    startXRef.current = e.clientX;
+    startWRef.current = sidebarWidth;
+    document.body.classList.add("select-none", "cursor-col-resize");
+  };
+
   return (
     <FloatingPane>
       <div className="flex flex-1 min-h-0 h-full flex-col">
         <div className="flex-1 min-h-0 h-full">
           <div className="flex flex-row flex-1 min-h-0 h-full w-full bg-white dark:bg-black">
-            {/* Left list */}
-            <div className="w-[420px] border-r border-neutral-200 dark:border-neutral-800 flex flex-col min-h-0">
+            {/* Left list (resizable) */}
+            <div
+              className="border-r border-neutral-200 dark:border-neutral-800 flex flex-col min-h-0"
+              style={{ width: sidebarWidth }}
+            >
               <div className="p-3 border-b border-neutral-200 dark:border-neutral-800 flex gap-2 items-center">
                 <select
                   className="flex-0 rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-2 py-1 text-sm"
@@ -183,6 +243,14 @@ function PRsPage() {
                 )}
               </div>
             </div>
+            {/* Divider */}
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              onMouseDown={handleDividerMouseDown}
+              className="w-1 cursor-col-resize bg-neutral-200 dark:bg-neutral-800 hover:bg-neutral-300 dark:hover:bg-neutral-700 active:bg-neutral-400 dark:active:bg-neutral-600"
+              title="Drag to resize"
+            />
 
             {/* Right panel details */}
             <div className="flex-1 min-w-0 min-h-0 bg-white dark:bg-black flex flex-col overflow-y-auto">
