@@ -129,6 +129,116 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
           } catch (_err) {
             // swallow
           }
+        } else if (event === "check_run") {
+          try {
+            const repoFullName = String((body as any)?.repository?.full_name ?? "");
+            const repositoryId = Number((body as any)?.repository?.id ?? 0) || undefined;
+            const installation = Number((body as any)?.installation?.id ?? 0);
+            if (!repoFullName || !installation) break;
+            const conn = await _ctx.runQuery(
+              internal.github_app.getProviderConnectionByInstallationId,
+              { installationId: installation }
+            );
+            const teamId = conn?.teamId;
+            if (!teamId) break;
+            await _ctx.runMutation(internal.github_ci.upsertCheckRunFromWebhook, {
+              installationId: installation,
+              repoFullName,
+              repositoryId,
+              teamId,
+              payload: body,
+            });
+          } catch (_err) {
+            // swallow
+          }
+        } else if (event === "check_suite") {
+          try {
+            const repoFullName = String((body as any)?.repository?.full_name ?? "");
+            const repositoryId = Number((body as any)?.repository?.id ?? 0) || undefined;
+            const installation = Number((body as any)?.installation?.id ?? 0);
+            if (!repoFullName || !installation) break;
+            const conn = await _ctx.runQuery(
+              internal.github_app.getProviderConnectionByInstallationId,
+              { installationId: installation }
+            );
+            const teamId = conn?.teamId;
+            if (!teamId) break;
+            await _ctx.runMutation(internal.github_ci.upsertCheckSuiteFromWebhook, {
+              installationId: installation,
+              repoFullName,
+              repositoryId,
+              teamId,
+              payload: body,
+            });
+          } catch (_err) {
+            // swallow
+          }
+        } else if (event === "status") {
+          try {
+            const repoFullName = String((body as any)?.repository?.full_name ?? "");
+            const repositoryId = Number((body as any)?.repository?.id ?? 0) || undefined;
+            const installation = Number((body as any)?.installation?.id ?? 0);
+            if (!repoFullName || !installation) break;
+            const conn = await _ctx.runQuery(
+              internal.github_app.getProviderConnectionByInstallationId,
+              { installationId: installation }
+            );
+            const teamId = conn?.teamId;
+            if (!teamId) break;
+            await _ctx.runMutation(internal.github_ci.upsertCommitStatusFromWebhook, {
+              installationId: installation,
+              repoFullName,
+              repositoryId,
+              teamId,
+              payload: body,
+            });
+          } catch (_err) {
+            // swallow
+          }
+        } else if (event === "workflow_run") {
+          try {
+            const repoFullName = String((body as any)?.repository?.full_name ?? "");
+            const repositoryId = Number((body as any)?.repository?.id ?? 0) || undefined;
+            const installation = Number((body as any)?.installation?.id ?? 0);
+            if (!repoFullName || !installation) break;
+            const conn = await _ctx.runQuery(
+              internal.github_app.getProviderConnectionByInstallationId,
+              { installationId: installation }
+            );
+            const teamId = conn?.teamId;
+            if (!teamId) break;
+            await _ctx.runMutation(internal.github_ci.upsertWorkflowRunFromWebhook, {
+              installationId: installation,
+              repoFullName,
+              repositoryId,
+              teamId,
+              payload: body,
+            });
+          } catch (_err) {
+            // swallow
+          }
+        } else if (event === "workflow_job") {
+          try {
+            const repoFullName = String((body as any)?.repository?.full_name ?? "");
+            const repositoryId = Number((body as any)?.repository?.id ?? 0) || undefined;
+            const installation = Number((body as any)?.installation?.id ?? 0);
+            if (!repoFullName || !installation) break;
+            const conn = await _ctx.runQuery(
+              internal.github_app.getProviderConnectionByInstallationId,
+              { installationId: installation }
+            );
+            const teamId = conn?.teamId;
+            if (!teamId) break;
+            await _ctx.runMutation(internal.github_ci.upsertWorkflowJobFromWebhook, {
+              installationId: installation,
+              repoFullName,
+              repositoryId,
+              teamId,
+              payload: body,
+            });
+          } catch (_err) {
+            // swallow
+          }
         }
         break;
       }

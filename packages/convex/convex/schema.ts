@@ -491,6 +491,214 @@ const convexSchema = defineSchema({
     .index("by_team_repo_number", ["teamId", "repoFullName", "number"]) // upsert key
     .index("by_installation", ["installationId", "updatedAt"]) // debug/ops
     .index("by_repo", ["repoFullName", "updatedAt"]),
+
+  // GitHub Check Suites
+  githubCheckSuites: defineTable({
+    provider: v.literal("github"),
+    installationId: v.number(),
+    teamId: v.string(),
+    repositoryId: v.optional(v.number()),
+    repoFullName: v.string(),
+    suiteId: v.number(),
+    headSha: v.string(),
+    status: v.union(
+      v.literal("queued"),
+      v.literal("in_progress"),
+      v.literal("completed")
+    ),
+    conclusion: v.optional(
+      v.union(
+        v.literal("success"),
+        v.literal("failure"),
+        v.literal("neutral"),
+        v.literal("cancelled"),
+        v.literal("timed_out"),
+        v.literal("action_required"),
+        v.literal("stale"),
+        v.literal("skipped"),
+        v.literal("startup_failure")
+      )
+    ),
+    appSlug: v.optional(v.string()),
+    createdAt: v.optional(v.number()),
+    updatedAt: v.optional(v.number()),
+  })
+    .index("by_team_repo_suite", ["teamId", "repoFullName", "suiteId"]) // upsert key
+    .index("by_repo_sha", ["repoFullName", "headSha"]) // resolve by commit
+    .index("by_installation", ["installationId", "updatedAt"]),
+
+  // GitHub Check Runs
+  githubCheckRuns: defineTable({
+    provider: v.literal("github"),
+    installationId: v.number(),
+    teamId: v.string(),
+    repositoryId: v.optional(v.number()),
+    repoFullName: v.string(),
+    runId: v.number(),
+    suiteId: v.optional(v.number()),
+    name: v.string(),
+    status: v.union(
+      v.literal("queued"),
+      v.literal("in_progress"),
+      v.literal("completed")
+    ),
+    conclusion: v.optional(
+      v.union(
+        v.literal("success"),
+        v.literal("failure"),
+        v.literal("neutral"),
+        v.literal("cancelled"),
+        v.literal("timed_out"),
+        v.literal("action_required"),
+        v.literal("stale"),
+        v.literal("skipped"),
+        v.literal("startup_failure")
+      )
+    ),
+    headSha: v.string(),
+    appSlug: v.optional(v.string()),
+    externalId: v.optional(v.string()),
+    htmlUrl: v.optional(v.string()),
+    startedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_team_repo_run", ["teamId", "repoFullName", "runId"]) // upsert key
+    .index("by_suiteId", ["suiteId"]) // group by suite
+    .index("by_repo_sha", ["repoFullName", "headSha"]) // resolve by commit
+    .index("by_installation", ["installationId", "startedAt"]),
+
+  // Classic GitHub Commit Statuses (contexts)
+  githubCommitStatuses: defineTable({
+    provider: v.literal("github"),
+    installationId: v.number(),
+    teamId: v.string(),
+    repositoryId: v.optional(v.number()),
+    repoFullName: v.string(),
+    statusId: v.optional(v.number()),
+    sha: v.string(),
+    context: v.string(),
+    state: v.union(
+      v.literal("error"),
+      v.literal("failure"),
+      v.literal("pending"),
+      v.literal("success")
+    ),
+    description: v.optional(v.string()),
+    targetUrl: v.optional(v.string()),
+    createdAt: v.optional(v.number()),
+    updatedAt: v.optional(v.number()),
+  })
+    .index("by_team_repo_sha_ctx", ["teamId", "repoFullName", "sha", "context"]) // upsert key
+    .index("by_repo_sha", ["repoFullName", "sha"]) // resolve by commit
+    .index("by_installation", ["installationId", "updatedAt"]),
+
+  // GitHub Actions Workflow Runs
+  githubWorkflowRuns: defineTable({
+    provider: v.literal("github"),
+    installationId: v.number(),
+    teamId: v.string(),
+    repositoryId: v.optional(v.number()),
+    repoFullName: v.string(),
+    runId: v.number(),
+    workflowId: v.optional(v.number()),
+    name: v.optional(v.string()),
+    headBranch: v.optional(v.string()),
+    headSha: v.string(),
+    status: v.union(
+      v.literal("queued"),
+      v.literal("in_progress"),
+      v.literal("completed")
+    ),
+    conclusion: v.optional(
+      v.union(
+        v.literal("success"),
+        v.literal("failure"),
+        v.literal("neutral"),
+        v.literal("cancelled"),
+        v.literal("timed_out"),
+        v.literal("action_required"),
+        v.literal("stale"),
+        v.literal("skipped"),
+        v.literal("startup_failure")
+      )
+    ),
+    event: v.optional(v.string()),
+    htmlUrl: v.optional(v.string()),
+    runNumber: v.optional(v.number()),
+    createdAt: v.optional(v.number()),
+    updatedAt: v.optional(v.number()),
+    runStartedAt: v.optional(v.number()),
+  })
+    .index("by_team_repo_run", ["teamId", "repoFullName", "runId"]) // upsert key
+    .index("by_repo_sha", ["repoFullName", "headSha"]) // resolve by commit
+    .index("by_installation", ["installationId", "updatedAt"]),
+
+  // GitHub Actions Workflow Jobs
+  githubWorkflowJobs: defineTable({
+    provider: v.literal("github"),
+    installationId: v.number(),
+    teamId: v.string(),
+    repositoryId: v.optional(v.number()),
+    repoFullName: v.string(),
+    jobId: v.number(),
+    runId: v.number(),
+    name: v.string(),
+    status: v.union(
+      v.literal("queued"),
+      v.literal("in_progress"),
+      v.literal("completed")
+    ),
+    conclusion: v.optional(
+      v.union(
+        v.literal("success"),
+        v.literal("failure"),
+        v.literal("neutral"),
+        v.literal("cancelled"),
+        v.literal("timed_out"),
+        v.literal("action_required"),
+        v.literal("stale"),
+        v.literal("skipped"),
+        v.literal("startup_failure")
+      )
+    ),
+    htmlUrl: v.optional(v.string()),
+    runnerName: v.optional(v.string()),
+    startedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_team_repo_job", ["teamId", "repoFullName", "jobId"]) // upsert key
+    .index("by_run", ["runId"]) // group by run
+    .index("by_installation", ["installationId", "startedAt"]),
+
+  // Optional: compact history of CI-related webhook events for auditing
+  githubCiEvents: defineTable({
+    provider: v.literal("github"),
+    installationId: v.number(),
+    teamId: v.string(),
+    repoFullName: v.string(),
+    type: v.union(
+      v.literal("check_run"),
+      v.literal("check_suite"),
+      v.literal("status"),
+      v.literal("workflow_run"),
+      v.literal("workflow_job")
+    ),
+    action: v.string(),
+    sha: v.optional(v.string()),
+    runId: v.optional(v.number()),
+    suiteId: v.optional(v.number()),
+    jobId: v.optional(v.number()),
+    context: v.optional(v.string()),
+    status: v.optional(v.string()),
+    conclusion: v.optional(v.string()),
+    name: v.optional(v.string()),
+    createdAt: v.number(), // event timestamp (when available)
+    receivedAt: v.number(), // when we stored it
+  })
+    .index("by_team_type", ["teamId", "type", "createdAt"]) // query by type/time
+    .index("by_run", ["runId"]) // correlate with runs
+    .index("by_suite", ["suiteId"]) // correlate with suites
+    .index("by_job", ["jobId"]) // correlate with jobs
 });
 
 export default convexSchema;
