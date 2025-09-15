@@ -39,9 +39,11 @@ echo "==> Step 2: Installing dependencies..."
 cd "$ROOT_DIR"
 bun install --frozen-lockfile
 
-# Step 3: Generate icons
+# Step 3: Prepare entitlements and generate icons
 echo ""
-echo "==> Step 3: Generating icons..."
+echo "==> Step 3: Preparing entitlements and generating icons..."
+cd "$ROOT_DIR"
+bash "$ROOT_DIR/scripts/prepare-macos-entitlements.sh" || true
 cd "$CLIENT_DIR"
 bun run ./scripts/generate-icons.mjs
 
@@ -120,18 +122,15 @@ if command -v create-dmg &> /dev/null; then
     "$DMG_PATH" \
     "$APP_PATH"
 else
-  # Fallback to hdiutil
+  # Fallback to hdiutil, auto-sizing to content to avoid space errors
   echo "create-dmg not found, using hdiutil..."
-  
-  TEMP_DMG="/tmp/cmux-temp.dmg"
+
   VOL_NAME="cmux"
-  
-  # Create temporary DMG
-  hdiutil create -volname "$VOL_NAME" -size 300m -fs HFS+ -srcfolder "$APP_PATH" "$TEMP_DMG"
-  
-  # Convert to compressed DMG
-  hdiutil convert "$TEMP_DMG" -format UDZO -o "$DMG_PATH"
-  rm -f "$TEMP_DMG"
+  # Overwrite any existing DMG
+  rm -f "$DMG_PATH"
+
+  # Create compressed DMG directly from the app folder (auto-sized)
+  hdiutil create -volname "$VOL_NAME" -srcfolder "$APP_PATH" -ov -format UDZO "$DMG_PATH"
 fi
 
 # Sign the DMG

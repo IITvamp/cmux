@@ -1,10 +1,12 @@
 #!/bin/bash
 set -e
 
-# remove existing build
+# remove existing build artifacts; keep build/ to preserve entitlements between steps
 rm -rf dist-electron
 rm -rf out
-rm -rf build
+# Do NOT remove the entire build directory; it contains entitlements.mac.plist used for signing.
+# If you need to refresh icons, uncomment the next line to delete only icon outputs.
+# rm -f build/icon.icns build/icon.ico build/icon.png || true
 
 # Build the Electron app first with environment variables loaded
 echo "Building Electron app..."
@@ -26,6 +28,10 @@ echo "Building native Rust addon for packaging (release)..."
 # Generate icons using the shared script (unified with standard builds)
 echo "Generating icons via scripts/generate-icons.mjs..."
 node ./scripts/generate-icons.mjs
+
+# Ensure macOS entitlements file exists after the cleanup above
+ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+bash "$ROOT_DIR/scripts/prepare-macos-entitlements.sh" || true
 
 # Build electron bundles
 npx electron-vite build -c electron.vite.config.ts

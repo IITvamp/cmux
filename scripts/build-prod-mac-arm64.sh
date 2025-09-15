@@ -102,11 +102,11 @@ elif [[ -f "$ROOT_DIR/.env.codesign" ]]; then
   set +a
 fi
 
-echo "==> Generating icons"
-(cd "$CLIENT_DIR" && bun run ./scripts/generate-icons.mjs)
-
 echo "==> Preparing macOS entitlements"
 bash "$ROOT_DIR/scripts/prepare-macos-entitlements.sh"
+
+echo "==> Generating icons"
+(cd "$CLIENT_DIR" && bun run ./scripts/generate-icons.mjs)
 
 if [[ ! -f "$ENTITLEMENTS" ]]; then
   echo "Entitlements file missing at $ENTITLEMENTS" >&2
@@ -120,6 +120,10 @@ fi
 
 echo "==> Prebuilding mac app via prod script (workaround)"
 bash "$ROOT_DIR/scripts/build-electron-prod.sh"
+
+# The workaround script cleans the client's build directory; recreate entitlements after
+echo "==> Re-preparing macOS entitlements (after prebuild)"
+bash "$ROOT_DIR/scripts/prepare-macos-entitlements.sh" || true
 
 # Detect presence of signing + notarization secrets (mirror GH workflow)
 echo "==> Detecting signing environment"
@@ -148,6 +152,7 @@ if [[ "$HAS_SIGNING" == "true" ]]; then
 
   echo "==> Packaging (signed; built-in notarize disabled due to macOS 15 notarytool JSON issue)"
   export DEBUG="${DEBUG:-electron-osx-sign*,electron-notarize*}"
+  # Ensure entitlements exist right before packaging
   (cd "$CLIENT_DIR" && \
     bunx electron-builder \
       --config electron-builder.json \
@@ -221,6 +226,7 @@ else
   echo "==> No signing secrets; building unsigned like the commented GH path"
   # Avoid any auto identity discovery and explicitly disable signing
   export CSC_IDENTITY_AUTO_DISCOVERY=false
+  # Ensure entitlements exist right before packaging
   (cd "$CLIENT_DIR" && \
     bunx electron-builder \
       --config electron-builder.json \

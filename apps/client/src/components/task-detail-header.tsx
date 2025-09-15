@@ -483,7 +483,19 @@ function SocketActions({
     socket.emit("github-open-pr", { taskRunId }, (resp) => {
       setIsOpeningPr(false);
       if (resp.success) {
-        toast.success("PR opened", { id: toastId, description: resp.url });
+        toast.success("PR opened", {
+          id: toastId,
+          description: resp.url,
+          ...(resp.url
+            ? {
+                action: {
+                  label: "View PR",
+                  onClick: () =>
+                    window.open(resp.url, "_blank", "noopener,noreferrer"),
+                },
+              }
+            : {}),
+        });
       } else {
         console.error("Failed to open PR:", resp.error);
         toast.error("Failed to open PR", {
