@@ -491,6 +491,100 @@ const convexSchema = defineSchema({
     .index("by_team_repo_number", ["teamId", "repoFullName", "number"]) // upsert key
     .index("by_installation", ["installationId", "updatedAt"]) // debug/ops
     .index("by_repo", ["repoFullName", "updatedAt"]),
+
+  githubCheckExecutions: defineTable({
+    provider: v.literal("github"),
+    installationId: v.number(),
+    repoFullName: v.string(),
+    commitSha: v.string(),
+    type: v.union(
+      v.literal("status"),
+      v.literal("check_suite"),
+      v.literal("check_run"),
+      v.literal("workflow_run"),
+      v.literal("workflow_job")
+    ),
+    externalId: v.string(),
+    teamId: v.string(),
+    name: v.optional(v.string()),
+    status: v.optional(v.string()),
+    conclusion: v.optional(v.string()),
+    detailsUrl: v.optional(v.string()),
+    htmlUrl: v.optional(v.string()),
+    description: v.optional(v.string()),
+    context: v.optional(v.string()),
+    appSlug: v.optional(v.string()),
+    workflowName: v.optional(v.string()),
+    workflowPath: v.optional(v.string()),
+    jobName: v.optional(v.string()),
+    runAttempt: v.optional(v.number()),
+    checkSuiteId: v.optional(v.number()),
+    workflowRunId: v.optional(v.number()),
+    headBranch: v.optional(v.string()),
+    startedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    lastEventAction: v.optional(v.string()),
+    lastEventTimestamp: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_installation_external", ["installationId", "type", "externalId"])
+    .index("by_team_repo_commit", [
+      "teamId",
+      "repoFullName",
+      "commitSha",
+    ])
+    .index("by_team_updated", ["teamId", "updatedAt"]),
+
+  githubCheckExecutionHistory: defineTable({
+    executionId: v.id("githubCheckExecutions"),
+    provider: v.literal("github"),
+    installationId: v.number(),
+    repoFullName: v.string(),
+    commitSha: v.string(),
+    type: v.union(
+      v.literal("status"),
+      v.literal("check_suite"),
+      v.literal("check_run"),
+      v.literal("workflow_run"),
+      v.literal("workflow_job")
+    ),
+    externalId: v.string(),
+    teamId: v.string(),
+    action: v.optional(v.string()),
+    name: v.optional(v.string()),
+    status: v.optional(v.string()),
+    conclusion: v.optional(v.string()),
+    detailsUrl: v.optional(v.string()),
+    htmlUrl: v.optional(v.string()),
+    description: v.optional(v.string()),
+    context: v.optional(v.string()),
+    appSlug: v.optional(v.string()),
+    workflowName: v.optional(v.string()),
+    workflowPath: v.optional(v.string()),
+    jobName: v.optional(v.string()),
+    runAttempt: v.optional(v.number()),
+    checkSuiteId: v.optional(v.number()),
+    workflowRunId: v.optional(v.number()),
+    headBranch: v.optional(v.string()),
+    startedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    eventTimestamp: v.optional(v.number()),
+    receivedAt: v.number(),
+  })
+    .index("by_execution", ["executionId", "receivedAt"])
+    .index("by_team_commit", [
+      "teamId",
+      "repoFullName",
+      "commitSha",
+      "receivedAt",
+    ])
+    .index("by_installation_external", [
+      "installationId",
+      "type",
+      "externalId",
+      "receivedAt",
+    ]),
 });
 
 export default convexSchema;
