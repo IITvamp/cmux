@@ -109,7 +109,7 @@ githubReposRouter.openapi(
         target.accountType === "Organization"
           ? `org:${target.accountLogin}`
           : `user:${target.accountLogin}`;
-      const q = [ownerQualifier, search ? `${search} in:name` : null]
+      const q = [ownerQualifier, "fork:true", search ? `${search} in:name` : null]
         .filter(Boolean)
         .join(" ");
       const searchRes = await octokit.request("GET /search/repositories", {
