@@ -1,3 +1,4 @@
+import { ResizableColumns } from "@/components/ResizableColumns";
 import { FloatingPane } from "@/components/floating-pane";
 import { convexQueryClient } from "@/contexts/convex/convex-query-client";
 import { api } from "@cmux/convex/api";
@@ -95,105 +96,111 @@ function PRsPage() {
       <div className="flex flex-1 min-h-0 h-full flex-col">
         <div className="flex-1 min-h-0 h-full">
           <div className="flex flex-row flex-1 min-h-0 h-full w-full bg-white dark:bg-black">
-            {/* Left list */}
-            <div className="w-[420px] border-r border-neutral-200 dark:border-neutral-800 flex flex-col min-h-0">
-              <div className="p-3 border-b border-neutral-200 dark:border-neutral-800 flex gap-2 items-center">
-                <select
-                  className="flex-0 rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-2 py-1 text-sm"
-                  value={installationId ?? ""}
-                  onChange={(e) =>
-                    setInstallationId(Number(e.target.value) || null)
-                  }
-                >
-                  {activeConnections.map((c) => (
-                    <option key={c.installationId} value={c.installationId}>
-                      {c.accountLogin}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  placeholder="Search PRs"
-                  className="flex-1 rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-2 py-1 text-sm"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-                <select
-                  className="flex-0 rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-2 py-1 text-sm"
-                  value={state}
-                  onChange={(e) => setState(e.target.value as typeof state)}
-                >
-                  <option value="open">Open</option>
-                  <option value="closed">Closed</option>
-                  <option value="all">All</option>
-                </select>
-              </div>
-              <div className="flex-1 min-h-0 overflow-y-auto">
-                {!prs ? (
-                  <div className="p-4 text-neutral-500">Loading…</div>
-                ) : filteredPrs.length === 0 ? (
-                  <div className="p-4 text-neutral-500">
-                    No pull requests found
+            <ResizableColumns
+              className="flex-1 min-h-0"
+              storageKey="prsSidebarWidth"
+              defaultLeftWidth={420}
+              left={
+                <div className="h-full border-r border-neutral-200 dark:border-neutral-800 flex flex-col min-h-0">
+                  <div className="p-3 border-b border-neutral-200 dark:border-neutral-800 flex gap-2 items-center">
+                    <select
+                      className="flex-0 rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-2 py-1 text-sm"
+                      value={installationId ?? ""}
+                      onChange={(e) =>
+                        setInstallationId(Number(e.target.value) || null)
+                      }
+                    >
+                      {activeConnections.map((c) => (
+                        <option key={c.installationId} value={c.installationId}>
+                          {c.accountLogin}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      placeholder="Search PRs"
+                      className="flex-1 rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-2 py-1 text-sm"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                    />
+                    <select
+                      className="flex-0 rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 px-2 py-1 text-sm"
+                      value={state}
+                      onChange={(e) => setState(e.target.value as typeof state)}
+                    >
+                      <option value="open">Open</option>
+                      <option value="closed">Closed</option>
+                      <option value="all">All</option>
+                    </select>
                   </div>
-                ) : (
-                  <ul className="flex flex-col gap-0.5 py-1">
-                    {filteredPrs.map((pr) => {
-                      const [owner, repo] = pr.repoFullName.split("/", 2);
-                      const isSelected =
-                        selectedKey === `${pr.repoFullName}#${pr.number}`;
-                      return (
-                        <li
-                          key={`${pr.repoFullName}#${pr.number}`}
-                          className=""
-                        >
-                          <Link
-                            to="/$teamSlugOrId/prs/$owner/$repo/$number"
-                            params={{
-                              teamSlugOrId,
-                              owner: owner || "",
-                              repo: repo || "",
-                              number: String(pr.number),
-                            }}
-                            className={clsx("block px-1")}
-                          >
-                            <div
-                              className={clsx(
-                                "hover:bg-neutral-200/50 dark:bg-neutral-800/50 px-4 py-2 rounded-md",
-                                isSelected &&
-                                  "bg-neutral-200/50 dark:bg-neutral-800/50"
-                              )}
+                  <div className="flex-1 min-h-0 overflow-y-auto">
+                    {!prs ? (
+                      <div className="p-4 text-neutral-500">Loading…</div>
+                    ) : filteredPrs.length === 0 ? (
+                      <div className="p-4 text-neutral-500">
+                        No pull requests found
+                      </div>
+                    ) : (
+                      <ul className="flex flex-col gap-0.5 py-1">
+                        {filteredPrs.map((pr) => {
+                          const [owner, repo] = pr.repoFullName.split("/", 2);
+                          const isSelected =
+                            selectedKey === `${pr.repoFullName}#${pr.number}`;
+                          return (
+                            <li
+                              key={`${pr.repoFullName}#${pr.number}`}
+                              className=""
                             >
-                              <div className="text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate">
-                                {pr.title}
-                              </div>
-                              <div className="text-xs text-neutral-600 dark:text-neutral-400 mt-0.5">
-                                {pr.repoFullName}#{pr.number} •{" "}
-                                {pr.authorLogin || ""} •{" "}
-                                {formatTimeAgo(
-                                  pr.updatedAt
-                                    ? new Date(pr.updatedAt).toISOString()
-                                    : undefined
-                                )}
-                              </div>
-                            </div>
-                          </Link>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </div>
-            </div>
-
-            {/* Right panel details */}
-            <div className="flex-1 min-w-0 min-h-0 bg-white dark:bg-black flex flex-col overflow-y-auto">
-              {selectedKey ? (
-                <Outlet />
-              ) : (
-                <div className="flex-1 w-full flex items-center justify-center text-neutral-500 dark:text-neutral-400">
-                  Select a pull request
+                              <Link
+                                to="/$teamSlugOrId/prs/$owner/$repo/$number"
+                                params={{
+                                  teamSlugOrId,
+                                  owner: owner || "",
+                                  repo: repo || "",
+                                  number: String(pr.number),
+                                }}
+                                className={clsx("block px-1")}
+                              >
+                                <div
+                                  className={clsx(
+                                    "hover:bg-neutral-200/50 dark:bg-neutral-800/50 px-4 py-2 rounded-md",
+                                    isSelected &&
+                                      "bg-neutral-200/50 dark:bg-neutral-800/50"
+                                  )}
+                                >
+                                  <div className="text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate">
+                                    {pr.title}
+                                  </div>
+                                  <div className="text-xs text-neutral-600 dark:text-neutral-400 mt-0.5">
+                                    {pr.repoFullName}#{pr.number} •{" "}
+                                    {pr.authorLogin || ""} •{" "}
+                                    {formatTimeAgo(
+                                      pr.updatedAt
+                                        ? new Date(pr.updatedAt).toISOString()
+                                        : undefined
+                                    )}
+                                  </div>
+                                </div>
+                              </Link>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
                 </div>
-              )}
-            </div>
+              }
+              right={
+                <div className="flex-1 min-w-0 min-h-0 bg-white dark:bg-black flex flex-col overflow-y-auto">
+                  {selectedKey ? (
+                    <Outlet />
+                  ) : (
+                    <div className="flex-1 w-full flex items-center justify-center text-neutral-500 dark:text-neutral-400">
+                      Select a pull request
+                    </div>
+                  )}
+                </div>
+              }
+            />
           </div>
         </div>
       </div>
