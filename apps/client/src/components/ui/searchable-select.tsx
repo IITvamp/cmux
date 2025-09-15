@@ -186,7 +186,7 @@ export function SearchableSelect({
       seen.add(it.key);
       uniqueIcons.push(it.icon);
     }
-    if (uniqueIcons.length >= 2) {
+    if (uniqueIcons.length > 0) {
       const maxIcons = 5;
       return (
         <span className="inline-flex items-center gap-2">
