@@ -108,27 +108,123 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
       case "status":
       case "workflow_run":
       case "workflow_job": {
-        if (event === "pull_request") {
-          try {
+        // Resolve team by installation
+        const installation = Number(
+          // @ts-expect-error: installation union on WebhookEvent
+          (body as any)?.installation?.id ?? 0
+        );
+        const repoFullName = String(
+          // @ts-expect-error: repository union on WebhookEvent
+          (body as any)?.repository?.full_name ?? ""
+        );
+        if (!installation || !repoFullName) break;
+        const conn = await _ctx.runQuery(
+          internal.github_app.getProviderConnectionByInstallationId,
+          { installationId: installation }
+        );
+        const teamId = conn?.teamId;
+        if (!teamId) break;
+
+        try {
+          if (event === "pull_request") {
             const prPayload = body as PullRequestEvent;
-            const repoFullName = String(prPayload.repository?.full_name ?? "");
-            const installation = Number(prPayload.installation?.id ?? 0);
-            if (!repoFullName || !installation) break;
-            const conn = await _ctx.runQuery(
-              internal.github_app.getProviderConnectionByInstallationId,
-              { installationId: installation }
-            );
-            const teamId = conn?.teamId;
-            if (!teamId) break;
             await _ctx.runMutation(internal.github_prs.upsertFromWebhookPayload, {
               installationId: installation,
               repoFullName,
               teamId,
               payload: prPayload,
             });
-          } catch (_err) {
-            // swallow
+          } else if (event === "issue_comment") {
+            // @ts-expect-error: Will be present after convex codegen
+            await _ctx.runMutation(
+              internal.github_comments.upsertIssueCommentFromWebhookPayload,
+              {
+                installationId: installation,
+                repoFullName,
+                teamId,
+                payload: body as any,
+              }
+            );
+          } else if (event === "pull_request_review") {
+            // @ts-expect-error: Will be present after convex codegen
+            await _ctx.runMutation(
+              internal.github_comments.upsertPullRequestReviewFromWebhookPayload,
+              {
+                installationId: installation,
+                repoFullName,
+                teamId,
+                payload: body as any,
+              }
+            );
+          } else if (event === "pull_request_review_comment") {
+            // @ts-expect-error: Will be present after convex codegen
+            await _ctx.runMutation(
+              internal.github_comments.upsertPullRequestReviewCommentFromWebhookPayload,
+              {
+                installationId: installation,
+                repoFullName,
+                teamId,
+                payload: body as any,
+              }
+            );
+          } else if (event === "check_suite") {
+            // @ts-expect-error: Will be present after convex codegen
+            await _ctx.runMutation(
+              internal.github_checks.upsertCheckSuiteFromWebhookPayload,
+              {
+                installationId: installation,
+                repoFullName,
+                teamId,
+                payload: body as any,
+              }
+            );
+          } else if (event === "check_run") {
+            // @ts-expect-error: Will be present after convex codegen
+            await _ctx.runMutation(
+              internal.github_checks.upsertCheckRunFromWebhookPayload,
+              {
+                installationId: installation,
+                repoFullName,
+                teamId,
+                payload: body as any,
+              }
+            );
+          } else if (event === "status") {
+            // @ts-expect-error: Will be present after convex codegen
+            await _ctx.runMutation(
+              internal.github_statuses.upsertCommitStatusFromWebhookPayload,
+              {
+                installationId: installation,
+                repoFullName,
+                teamId,
+                payload: body as any,
+              }
+            );
+          } else if (event === "workflow_run") {
+            // @ts-expect-error: Will be present after convex codegen
+            await _ctx.runMutation(
+              internal.github_actions.upsertWorkflowRunFromWebhookPayload,
+              {
+                installationId: installation,
+                repoFullName,
+                teamId,
+                payload: body as any,
+              }
+            );
+          } else if (event === "workflow_job") {
+            // @ts-expect-error: Will be present after convex codegen
+            await _ctx.runMutation(
+              internal.github_actions.upsertWorkflowJobFromWebhookPayload,
+              {
+                installationId: installation,
+                repoFullName,
+                teamId,
+                payload: body as any,
+              }
+            );
           }
+        } catch (_err) {
+          // swallow to avoid retries while iterating
         }
         break;
       }

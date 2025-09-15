@@ -491,6 +491,465 @@ const convexSchema = defineSchema({
     .index("by_team_repo_number", ["teamId", "repoFullName", "number"]) // upsert key
     .index("by_installation", ["installationId", "updatedAt"]) // debug/ops
     .index("by_repo", ["repoFullName", "updatedAt"]),
+
+  // GitHub Checks: Check Suites
+  githubCheckSuites: defineTable({
+    // Scope
+    teamId: v.string(),
+    installationId: v.number(),
+    repoFullName: v.string(), // owner/repo
+    repositoryId: v.optional(v.number()),
+
+    // Identity
+    checkSuiteId: v.number(), // GitHub check_suite.id
+
+    // Core fields (mirror GitHub)
+    headBranch: v.optional(v.string()),
+    headSha: v.string(),
+    status: v.optional(
+      v.union(
+        v.literal("requested"),
+        v.literal("queued"),
+        v.literal("in_progress"),
+        v.literal("completed")
+      )
+    ),
+    conclusion: v.optional(
+      v.union(
+        v.literal("success"),
+        v.literal("failure"),
+        v.literal("neutral"),
+        v.literal("cancelled"),
+        v.literal("timed_out"),
+        v.literal("action_required"),
+        v.literal("stale"),
+        v.literal("skipped"),
+        v.literal("startup_failure")
+      )
+    ),
+    latestCheckRunsCount: v.optional(v.number()),
+    before: v.optional(v.string()),
+    after: v.optional(v.string()),
+    appSlug: v.optional(v.string()),
+
+    // Timestamps
+    createdAt: v.optional(v.number()),
+    updatedAt: v.optional(v.number()),
+  })
+    .index("by_team_repo_suite", ["teamId", "repoFullName", "checkSuiteId"]) // upsert key
+    .index("by_installation_suite", ["installationId", "checkSuiteId"]) // provider key
+    .index("by_headSha", ["headSha"]) // traverse by commit
+    .index("by_repo_headSha", ["repoFullName", "headSha"]),
+
+  // GitHub Checks: Check Runs
+  githubCheckRuns: defineTable({
+    // Scope
+    teamId: v.string(),
+    installationId: v.number(),
+    repoFullName: v.string(),
+    repositoryId: v.optional(v.number()),
+
+    // Identity
+    checkRunId: v.number(), // GitHub check_run.id
+    checkSuiteId: v.optional(v.number()),
+
+    // Core fields
+    name: v.optional(v.string()),
+    headSha: v.string(),
+    status: v.optional(
+      v.union(
+        v.literal("queued"),
+        v.literal("in_progress"),
+        v.literal("completed"),
+        v.literal("requested"),
+        v.literal("pending")
+      )
+    ),
+    conclusion: v.optional(
+      v.union(
+        v.literal("success"),
+        v.literal("failure"),
+        v.literal("neutral"),
+        v.literal("cancelled"),
+        v.literal("timed_out"),
+        v.literal("action_required"),
+        v.literal("stale"),
+        v.literal("skipped"),
+        v.literal("startup_failure")
+      )
+    ),
+    externalId: v.optional(v.string()),
+    detailsUrl: v.optional(v.string()),
+    htmlUrl: v.optional(v.string()),
+    startedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+    output: v.optional(
+      v.object({
+        title: v.optional(v.string()),
+        summary: v.optional(v.string()),
+        text: v.optional(v.string()),
+        annotationsCount: v.optional(v.number()),
+        annotationsUrl: v.optional(v.string()),
+      })
+    ),
+    appSlug: v.optional(v.string()),
+  })
+    .index("by_team_repo_run", ["teamId", "repoFullName", "checkRunId"]) // upsert key
+    .index("by_installation_run", ["installationId", "checkRunId"]) // provider key
+    .index("by_suite", ["checkSuiteId"]) // list runs for a suite
+    .index("by_headSha", ["headSha"]) // traverse by commit
+    .index("by_status", ["status"]),
+
+  // GitHub Actions: Workflow Runs
+  githubWorkflowRuns: defineTable({
+    // Scope
+    teamId: v.string(),
+    installationId: v.number(),
+    repoFullName: v.string(),
+    repositoryId: v.optional(v.number()),
+
+    // Identity
+    runId: v.number(), // workflow_run.id
+    runNumber: v.optional(v.number()),
+    runAttempt: v.optional(v.number()),
+
+    // Core fields
+    workflowId: v.optional(v.number()),
+    workflowName: v.optional(v.string()),
+    name: v.optional(v.string()),
+    event: v.optional(v.string()),
+    headBranch: v.optional(v.string()),
+    headSha: v.string(),
+    status: v.optional(
+      v.union(
+        v.literal("queued"),
+        v.literal("in_progress"),
+        v.literal("completed"),
+        v.literal("requested"),
+        v.literal("waiting"),
+        v.literal("pending")
+      )
+    ),
+    conclusion: v.optional(
+      v.union(
+        v.literal("success"),
+        v.literal("failure"),
+        v.literal("neutral"),
+        v.literal("cancelled"),
+        v.literal("timed_out"),
+        v.literal("action_required"),
+        v.literal("stale"),
+        v.literal("skipped")
+      )
+    ),
+    checkSuiteId: v.optional(v.number()),
+    actorLogin: v.optional(v.string()),
+    actorId: v.optional(v.number()),
+    htmlUrl: v.optional(v.string()),
+
+    // Timestamps
+    createdAt: v.optional(v.number()),
+    updatedAt: v.optional(v.number()),
+    runStartedAt: v.optional(v.number()),
+  })
+    .index("by_team_repo_run", ["teamId", "repoFullName", "runId"]) // upsert key
+    .index("by_installation_run", ["installationId", "runId"]) // provider key
+    .index("by_headSha", ["headSha"]) // traverse by commit
+    .index("by_status", ["status"])
+    .index("by_workflow", ["workflowId", "updatedAt"]),
+
+  // GitHub Actions: Workflow Jobs
+  githubWorkflowJobs: defineTable({
+    // Scope
+    teamId: v.string(),
+    installationId: v.number(),
+    repoFullName: v.string(),
+    repositoryId: v.optional(v.number()),
+
+    // Identity
+    jobId: v.number(), // job.id
+    runId: v.number(), // workflow_run.id
+    runAttempt: v.optional(v.number()),
+
+    // Core fields
+    name: v.optional(v.string()),
+    headSha: v.optional(v.string()),
+    status: v.optional(
+      v.union(v.literal("queued"), v.literal("in_progress"), v.literal("completed"))
+    ),
+    conclusion: v.optional(
+      v.union(
+        v.literal("success"),
+        v.literal("failure"),
+        v.literal("neutral"),
+        v.literal("cancelled"),
+        v.literal("timed_out"),
+        v.literal("action_required"),
+        v.literal("stale"),
+        v.literal("skipped")
+      )
+    ),
+    htmlUrl: v.optional(v.string()),
+    runnerName: v.optional(v.string()),
+    labels: v.optional(v.array(v.string())),
+    steps: v.optional(
+      v.array(
+        v.object({
+          number: v.optional(v.number()),
+          name: v.optional(v.string()),
+          status: v.optional(
+            v.union(
+              v.literal("queued"),
+              v.literal("in_progress"),
+              v.literal("completed")
+            )
+          ),
+          conclusion: v.optional(
+            v.union(
+              v.literal("success"),
+              v.literal("failure"),
+              v.literal("neutral"),
+              v.literal("cancelled"),
+              v.literal("timed_out"),
+              v.literal("action_required"),
+              v.literal("stale"),
+              v.literal("skipped")
+            )
+          ),
+          startedAt: v.optional(v.number()),
+          completedAt: v.optional(v.number()),
+        })
+      )
+    ),
+    startedAt: v.optional(v.number()),
+    completedAt: v.optional(v.number()),
+  })
+    .index("by_team_repo_job", ["teamId", "repoFullName", "jobId"]) // upsert key
+    .index("by_installation_job", ["installationId", "jobId"]) // provider key
+    .index("by_run", ["runId", "status"]),
+
+  // GitHub Commit Statuses (legacy Status API)
+  githubCommitStatuses: defineTable({
+    // Scope
+    teamId: v.string(),
+    installationId: v.number(),
+    repoFullName: v.string(),
+    repositoryId: v.optional(v.number()),
+
+    // Identity
+    sha: v.string(),
+    context: v.string(),
+
+    // Core fields
+    state: v.union(
+      v.literal("error"),
+      v.literal("failure"),
+      v.literal("pending"),
+      v.literal("success")
+    ),
+    targetUrl: v.optional(v.string()),
+    description: v.optional(v.string()),
+    creatorLogin: v.optional(v.string()),
+    creatorId: v.optional(v.number()),
+
+    // Timestamps
+    updatedAt: v.number(), // last update
+  })
+    .index("by_team_repo_sha_ctx", ["teamId", "repoFullName", "sha", "context"]) // upsert key
+    .index("by_repo_sha", ["repoFullName", "sha"]) // aggregate by commit
+    .index("by_sha", ["sha"]) // global commit view
+    .index("by_team_updated", ["teamId", "updatedAt"]),
+
+  // History tables (state transitions)
+  githubCheckRunHistory: defineTable({
+    teamId: v.string(),
+    installationId: v.number(),
+    repoFullName: v.string(),
+    checkRunId: v.number(),
+    status: v.optional(
+      v.union(
+        v.literal("queued"),
+        v.literal("in_progress"),
+        v.literal("completed"),
+        v.literal("requested"),
+        v.literal("pending")
+      )
+    ),
+    conclusion: v.optional(
+      v.union(
+        v.literal("success"),
+        v.literal("failure"),
+        v.literal("neutral"),
+        v.literal("cancelled"),
+        v.literal("timed_out"),
+        v.literal("action_required"),
+        v.literal("stale"),
+        v.literal("skipped"),
+        v.literal("startup_failure")
+      )
+    ),
+    createdAt: v.number(),
+  }).index("by_run_time", ["checkRunId", "createdAt"]),
+
+  githubWorkflowRunHistory: defineTable({
+    teamId: v.string(),
+    installationId: v.number(),
+    repoFullName: v.string(),
+    runId: v.number(),
+    runAttempt: v.optional(v.number()),
+    status: v.optional(
+      v.union(
+        v.literal("queued"),
+        v.literal("in_progress"),
+        v.literal("completed"),
+        v.literal("requested"),
+        v.literal("waiting"),
+        v.literal("pending")
+      )
+    ),
+    conclusion: v.optional(
+      v.union(
+        v.literal("success"),
+        v.literal("failure"),
+        v.literal("neutral"),
+        v.literal("cancelled"),
+        v.literal("timed_out"),
+        v.literal("action_required"),
+        v.literal("stale"),
+        v.literal("skipped")
+      )
+    ),
+    createdAt: v.number(),
+  }).index("by_run_time", ["runId", "createdAt"]),
+
+  githubWorkflowJobHistory: defineTable({
+    teamId: v.string(),
+    installationId: v.number(),
+    repoFullName: v.string(),
+    jobId: v.number(),
+    runId: v.number(),
+    status: v.optional(
+      v.union(v.literal("queued"), v.literal("in_progress"), v.literal("completed"))
+    ),
+    conclusion: v.optional(
+      v.union(
+        v.literal("success"),
+        v.literal("failure"),
+        v.literal("neutral"),
+        v.literal("cancelled"),
+        v.literal("timed_out"),
+        v.literal("action_required"),
+        v.literal("stale"),
+        v.literal("skipped")
+      )
+    ),
+    createdAt: v.number(),
+  }).index("by_job_time", ["jobId", "createdAt"]),
+
+  githubCommitStatusHistory: defineTable({
+    teamId: v.string(),
+    installationId: v.number(),
+    repoFullName: v.string(),
+    sha: v.string(),
+    context: v.string(),
+    state: v.union(
+      v.literal("error"),
+      v.literal("failure"),
+      v.literal("pending"),
+      v.literal("success")
+    ),
+    updatedAt: v.number(),
+  }).index("by_sha_ctx_time", ["sha", "context", "updatedAt"]),
+
+  // PR Comments and Reviews
+  githubIssueComments: defineTable({
+    // Scope
+    teamId: v.string(),
+    installationId: v.number(),
+    repoFullName: v.string(),
+    repositoryId: v.optional(v.number()),
+
+    // Linkage
+    number: v.number(), // issue/PR number
+
+    // Identity
+    commentId: v.number(), // GitHub comment.id
+
+    // Content
+    body: v.string(),
+    authorLogin: v.optional(v.string()),
+    authorId: v.optional(v.number()),
+    htmlUrl: v.optional(v.string()),
+
+    // Timestamps
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_team_repo_pr", ["teamId", "repoFullName", "number", "commentId"]) // upsert key
+    .index("by_installation_comment", ["installationId", "commentId"]) // provider key
+    .index("by_pr_time", ["repoFullName", "number", "createdAt"]),
+
+  githubPullRequestReviews: defineTable({
+    // Scope
+    teamId: v.string(),
+    installationId: v.number(),
+    repoFullName: v.string(),
+    repositoryId: v.optional(v.number()),
+
+    // Linkage
+    number: v.number(), // PR number
+
+    // Identity
+    reviewId: v.number(),
+
+    // Content
+    state: v.string(), // approved | changes_requested | commented | dismissed | etc.
+    body: v.optional(v.string()),
+    authorLogin: v.optional(v.string()),
+    authorId: v.optional(v.number()),
+    commitId: v.optional(v.string()),
+    htmlUrl: v.optional(v.string()),
+
+    // Timestamps
+    submittedAt: v.optional(v.number()),
+  })
+    .index("by_team_repo_pr", ["teamId", "repoFullName", "number", "reviewId"]) // upsert key
+    .index("by_installation_review", ["installationId", "reviewId"]) // provider key
+    .index("by_pr_time", ["repoFullName", "number", "submittedAt"]),
+
+  githubPullRequestReviewComments: defineTable({
+    // Scope
+    teamId: v.string(),
+    installationId: v.number(),
+    repoFullName: v.string(),
+    repositoryId: v.optional(v.number()),
+
+    // Linkage
+    number: v.number(), // PR number
+
+    // Identity
+    commentId: v.number(),
+    reviewId: v.optional(v.number()),
+
+    // Content
+    body: v.string(),
+    authorLogin: v.optional(v.string()),
+    authorId: v.optional(v.number()),
+    path: v.optional(v.string()),
+    diffHunk: v.optional(v.string()),
+    position: v.optional(v.number()),
+    line: v.optional(v.number()),
+    originalLine: v.optional(v.number()),
+    side: v.optional(v.string()),
+    htmlUrl: v.optional(v.string()),
+
+    // Timestamps
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_team_repo_pr", ["teamId", "repoFullName", "number", "commentId"]) // upsert key
+    .index("by_installation_comment", ["installationId", "commentId"]) // provider key
+    .index("by_pr_time", ["repoFullName", "number", "createdAt"]),
 });
 
 export default convexSchema;
