@@ -186,7 +186,10 @@ export function SearchableSelect({
       seen.add(it.key);
       uniqueIcons.push(it.icon);
     }
-    if (uniqueIcons.length >= 2) {
+    // If there's at least one unique icon, show it/them alongside the count.
+    // Previously this only rendered when there were 2+, which hid the icon
+    // when selecting multiple items of the same type (e.g., two Claude agents).
+    if (uniqueIcons.length >= 1) {
       const maxIcons = 5;
       return (
         <span className="inline-flex items-center gap-2">
