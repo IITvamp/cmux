@@ -1,6 +1,6 @@
 {
   "name": "@cmux/client",
-  "version": "1.0.13",
+  "version": "1.0.14",
   "description": "cmux client application",
   "author": "cmux",
   "type": "module",
@@ -80,7 +80,7 @@
     "fs-extra": "^11.3.1",
     "fuzzysort": "^3.1.0",
     "graceful-fs": "^4.2.11",
-    "jose": "^6.0.13",
+    "jose": "^6.1.0",
     "js-yaml": "^4.1.0",
     "jsonfile": "^6.1.0",
     "jwt-decode": "^4.0.0",

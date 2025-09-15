@@ -128,123 +128,131 @@ function PRDetails() {
   } as const;
 
   return (
-    <div className="px-0 py-0">
-      {/* Header (styled like TaskDetailHeader) */}
-      <div className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white px-3.5 sticky top-0 z-[var(--z-sticky)] py-2">
-        <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-3 gap-y-1">
-          <div className="col-start-1 row-start-1 flex items-center gap-2 relative min-w-0">
-            <h1
-              className="text-sm font-bold truncate min-w-0"
-              title={currentPR.title}
-            >
-              {currentPR.title}
-            </h1>
-            <Suspense
-              fallback={
-                <div className="flex items-center gap-2 text-[11px] ml-2 shrink-0" />
-              }
-            >
-              <AdditionsAndDeletions
-                repoFullName={currentPR.repoFullName}
-                ref1={currentPR.baseRef || ""}
-                ref2={currentPR.headRef || ""}
-              />
-            </Suspense>
-          </div>
+    <div className="flex flex-1 min-h-0 flex-col">
+      <div className="flex-1 min-h-0">
+        <div className="px-0 py-0">
+          {/* Header (styled like TaskDetailHeader) */}
+          <div className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white px-3.5 sticky top-0 z-[var(--z-sticky)] py-2">
+            <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-x-3 gap-y-1">
+              <div className="col-start-1 row-start-1 flex items-center gap-2 relative min-w-0">
+                <h1
+                  className="text-sm font-bold truncate min-w-0"
+                  title={currentPR.title}
+                >
+                  {currentPR.title}
+                </h1>
+                <Suspense
+                  fallback={
+                    <div className="flex items-center gap-2 text-[11px] ml-2 shrink-0" />
+                  }
+                >
+                  <AdditionsAndDeletions
+                    repoFullName={currentPR.repoFullName}
+                    ref1={currentPR.baseRef || ""}
+                    ref2={currentPR.headRef || ""}
+                  />
+                </Suspense>
+              </div>
 
-          <div className="col-start-3 row-start-1 row-span-2 self-center flex items-center gap-2 shrink-0">
-            {currentPR.draft ? (
-              <span className="text-xs px-2 py-1 rounded-md bg-neutral-200 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 select-none">
-                Draft
-              </span>
-            ) : null}
-            {currentPR.merged ? (
-              <span className="text-xs px-2 py-1 rounded-md bg-purple-200 dark:bg-purple-900/40 text-purple-900 dark:text-purple-200 select-none">
-                Merged
-              </span>
-            ) : currentPR.state === "closed" ? (
-              <span className="text-xs px-2 py-1 rounded-md bg-red-200 dark:bg-red-900/40 text-red-900 dark:text-red-200 select-none">
-                Closed
-              </span>
-            ) : (
-              <span className="text-xs px-2 py-1 rounded-md bg-green-200 dark:bg-green-900/40 text-green-900 dark:text-green-200 select-none">
-                Open
-              </span>
-            )}
-            {currentPR.htmlUrl ? (
-              <a
-                className="flex items-center gap-1.5 px-3 py-1 bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white border border-neutral-300 dark:border-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-700 font-medium text-xs select-none whitespace-nowrap"
-                href={currentPR.htmlUrl}
-                target="_blank"
-                rel="noreferrer"
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-                Open on GitHub
-              </a>
-            ) : null}
-            <Dropdown.Root>
-              <Dropdown.Trigger
-                className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-white select-none"
-                aria-label="More actions"
-              >
-                ⋯
-              </Dropdown.Trigger>
-              <Dropdown.Portal>
-                <Dropdown.Positioner sideOffset={5}>
-                  <Dropdown.Popup>
-                    <Dropdown.Arrow />
-                    <Dropdown.Item onClick={() => diffControls?.expandAll?.()}>
-                      Expand all
-                    </Dropdown.Item>
-                    <Dropdown.Item
-                      onClick={() => diffControls?.collapseAll?.()}
-                    >
-                      Collapse all
-                    </Dropdown.Item>
-                  </Dropdown.Popup>
-                </Dropdown.Positioner>
-              </Dropdown.Portal>
-            </Dropdown.Root>
-          </div>
+              <div className="col-start-3 row-start-1 row-span-2 self-center flex items-center gap-2 shrink-0">
+                {currentPR.draft ? (
+                  <span className="text-xs px-2 py-1 rounded-md bg-neutral-200 dark:bg-neutral-800 text-neutral-800 dark:text-neutral-200 select-none">
+                    Draft
+                  </span>
+                ) : null}
+                {currentPR.merged ? (
+                  <span className="text-xs px-2 py-1 rounded-md bg-purple-200 dark:bg-purple-900/40 text-purple-900 dark:text-purple-200 select-none">
+                    Merged
+                  </span>
+                ) : currentPR.state === "closed" ? (
+                  <span className="text-xs px-2 py-1 rounded-md bg-red-200 dark:bg-red-900/40 text-red-900 dark:text-red-200 select-none">
+                    Closed
+                  </span>
+                ) : (
+                  <span className="text-xs px-2 py-1 rounded-md bg-green-200 dark:bg-green-900/40 text-green-900 dark:text-green-200 select-none">
+                    Open
+                  </span>
+                )}
+                {currentPR.htmlUrl ? (
+                  <a
+                    className="flex items-center gap-1.5 px-3 py-1 bg-neutral-200 dark:bg-neutral-800 text-neutral-900 dark:text-white border border-neutral-300 dark:border-neutral-700 rounded hover:bg-neutral-300 dark:hover:bg-neutral-700 font-medium text-xs select-none whitespace-nowrap"
+                    href={currentPR.htmlUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    Open on GitHub
+                  </a>
+                ) : null}
+                <Dropdown.Root>
+                  <Dropdown.Trigger
+                    className="p-1 text-neutral-400 hover:text-neutral-700 dark:hover:text-white select-none"
+                    aria-label="More actions"
+                  >
+                    ⋯
+                  </Dropdown.Trigger>
+                  <Dropdown.Portal>
+                    <Dropdown.Positioner sideOffset={5}>
+                      <Dropdown.Popup>
+                        <Dropdown.Arrow />
+                        <Dropdown.Item
+                          onClick={() => diffControls?.expandAll?.()}
+                        >
+                          Expand all
+                        </Dropdown.Item>
+                        <Dropdown.Item
+                          onClick={() => diffControls?.collapseAll?.()}
+                        >
+                          Collapse all
+                        </Dropdown.Item>
+                      </Dropdown.Popup>
+                    </Dropdown.Positioner>
+                  </Dropdown.Portal>
+                </Dropdown.Root>
+              </div>
 
-          <div className="col-start-1 row-start-2 col-span-2 flex items-center gap-2 text-xs text-neutral-400 min-w-0">
-            <span className="font-mono text-neutral-600 dark:text-neutral-300 truncate min-w-0 max-w-full select-none text-[11px]">
-              {currentPR.repoFullName}#{currentPR.number} •{" "}
-              {currentPR.authorLogin || ""}
-            </span>
-            <span className="text-neutral-500 dark:text-neutral-600 select-none">
-              •
-            </span>
-            <span className="text-[11px] text-neutral-600 dark:text-neutral-300 select-none">
-              {currentPR.headRef || "?"} → {currentPR.baseRef || "?"}
-            </span>
-          </div>
-        </div>
-      </div>
-      <div className="mt-6 bg-white dark:bg-neutral-950">
-        <Suspense
-          fallback={
-            <div className="flex items-center justify-center h-full">
-              <div className="text-neutral-500 dark:text-neutral-400 text-sm select-none">
-                Loading diffs...
+              <div className="col-start-1 row-start-2 col-span-2 flex items-center gap-2 text-xs text-neutral-400 min-w-0">
+                <span className="font-mono text-neutral-600 dark:text-neutral-300 truncate min-w-0 max-w-full select-none text-[11px]">
+                  {currentPR.repoFullName}#{currentPR.number} •{" "}
+                  {currentPR.authorLogin || ""}
+                </span>
+                <span className="text-neutral-500 dark:text-neutral-600 select-none">
+                  •
+                </span>
+                <span className="text-[11px] text-neutral-600 dark:text-neutral-300 select-none">
+                  {currentPR.headRef || "?"} → {currentPR.baseRef || "?"}
+                </span>
               </div>
             </div>
-          }
-        >
-          {currentPR?.repoFullName && currentPR.baseRef && currentPR.headRef ? (
-            <RunDiffSection
-              repoFullName={currentPR.repoFullName}
-              ref1={refWithOrigin(currentPR.baseRef)}
-              ref2={refWithOrigin(currentPR.headRef)}
-              onControlsChange={setDiffControls}
-              classNames={gitDiffViewerClassNames}
-            />
-          ) : (
-            <div className="px-6 text-sm text-neutral-600 dark:text-neutral-300">
-              Missing repo or branches to show diff.
-            </div>
-          )}
-        </Suspense>
+          </div>
+          <div className="mt-6 bg-white dark:bg-neutral-950">
+            <Suspense
+              fallback={
+                <div className="flex items-center justify-center h-full">
+                  <div className="text-neutral-500 dark:text-neutral-400 text-sm select-none">
+                    Loading diffs...
+                  </div>
+                </div>
+              }
+            >
+              {currentPR?.repoFullName &&
+              currentPR.baseRef &&
+              currentPR.headRef ? (
+                <RunDiffSection
+                  repoFullName={currentPR.repoFullName}
+                  ref1={refWithOrigin(currentPR.baseRef)}
+                  ref2={refWithOrigin(currentPR.headRef)}
+                  onControlsChange={setDiffControls}
+                  classNames={gitDiffViewerClassNames}
+                />
+              ) : (
+                <div className="px-6 text-sm text-neutral-600 dark:text-neutral-300">
+                  Missing repo or branches to show diff.
+                </div>
+              )}
+            </Suspense>
+          </div>
+        </div>
       </div>
     </div>
   );
