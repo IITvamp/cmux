@@ -153,8 +153,6 @@ exit 0`;
 
   // Create settings.json with hooks configuration
   const settingsConfig: Record<string, unknown> = {
-    // Configure helper to avoid env-var based prompting
-    // apiKeyHelper: "/root/.claude/bin/anthropic_key_helper.sh",
     hooks: {
       Stop: [
         {
@@ -169,6 +167,11 @@ exit 0`;
     },
   };
 
+  // If we did not hydrate OAuth credentials, fall back to apiKey helper script
+  if (!credentialsAdded) {
+    settingsConfig.apiKeyHelper = "/root/.claude/bin/anthropic_key_helper.sh";
+  }
+
   // Add settings.json to files array as well
   files.push({
     destinationPath: "/root/lifecycle/claude/settings.json",
@@ -180,7 +183,15 @@ exit 0`;
 
   // Add apiKey helper script to read key from file
   const helperScript = `#!/bin/sh
-exec cat "$HOME/.claude/bin/.anthropic_key"`;
+KEY_FILE="$HOME/.claude/bin/.anthropic_key"
+
+if [ -f "$KEY_FILE" ]; then
+  cat "$KEY_FILE"
+  exit 0
+fi
+
+echo "Claude API key helper could not find a key at $KEY_FILE" >&2
+exit 1`;
   files.push({
     destinationPath: `$HOME/.claude/bin/anthropic_key_helper.sh`,
     contentBase64: Buffer.from(helperScript).toString("base64"),
