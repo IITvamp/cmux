@@ -209,8 +209,28 @@ process.on("unhandledRejection", (reason) => {
 });
 
 function setupAutoUpdates(): void {
+  // Only attempt auto-updates for packaged builds
   if (!app.isPackaged) {
     mainLog("Skipping auto-updates in development");
+    return;
+  }
+
+  // If no provider is configured, electron-updater tries to read
+  // app-update.yml from the Resources directory. Guard for its absence
+  // to avoid ENOENT errors on locally packaged builds.
+  const resourcesUpdateYaml = path.join(process.resourcesPath, "app-update.yml");
+
+  // Optional: allow configuring a Generic feed URL at runtime for private
+  // builds by setting CMUX_UPDATES_URL env var (e.g. https://updates.example.com/cmux)
+  const runtimeGenericFeed = process.env.CMUX_UPDATES_URL;
+
+  const hasBundledProvider = existsSync(resourcesUpdateYaml);
+  const hasRuntimeProvider = typeof runtimeGenericFeed === "string" && runtimeGenericFeed.length > 0;
+
+  if (!hasBundledProvider && !hasRuntimeProvider) {
+    mainLog(
+      "Auto-updates disabled: no app-update.yml and no CMUX_UPDATES_URL"
+    );
     return;
   }
 
@@ -225,6 +245,24 @@ function setupAutoUpdates(): void {
     autoUpdater.autoDownload = true;
     autoUpdater.autoInstallOnAppQuit = true;
     autoUpdater.allowPrerelease = false;
+
+    // If a runtime Generic feed URL is provided, configure it explicitly.
+    if (hasRuntimeProvider) {
+      // PublishConfiguration for generic provider
+      const feed = {
+        provider: "generic",
+        url: runtimeGenericFeed as string,
+      } as const;
+      // setFeedURL throws on malformed config; keep within try/catch
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      (autoUpdater as any).setFeedURL(feed);
+      mainLog("Auto-updater feed set from CMUX_UPDATES_URL", {
+        url: runtimeGenericFeed,
+      });
+    } else {
+      // Using bundled app-update.yml; nothing else to do.
+      mainLog("Auto-updater configured from bundled app-update.yml");
+    }
   } catch (e) {
     mainWarn("Failed to initialize autoUpdater", e);
     return;
@@ -506,6 +544,19 @@ app.whenReady().then(async () => {
               await dialog.showMessageBox({
                 type: "info",
                 message: "Updates are only available in packaged builds.",
+              });
+              return;
+            }
+            // Surface a clear message if no provider is configured
+            const hasYaml = existsSync(path.join(process.resourcesPath, "app-update.yml"));
+            const hasRuntime = Boolean(process.env.CMUX_UPDATES_URL && process.env.CMUX_UPDATES_URL.length > 0);
+            if (!hasYaml && !hasRuntime) {
+              await dialog.showMessageBox({
+                type: "info",
+                message:
+                  "This build has no update provider configured.",
+                detail:
+                  "Bundle app-update.yml (via electron-builder publish) or set CMUX_UPDATES_URL to enable updates.",
               });
               return;
             }
