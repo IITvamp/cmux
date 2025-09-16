@@ -39,6 +39,20 @@ jobs:
       - name: Install app deps in apps/client (bun)
         working-directory: apps/client
         run: bun install --frozen-lockfile
+      - name: Ensure local production node_modules (apps/client)
+        working-directory: apps/client
+        run: |
+          set -euo pipefail
+          echo "Ensuring local production node_modules in $(pwd)..."
+          bun install --frozen-lockfile --production || true
+          if [ ! -d node_modules ]; then
+            echo "Bun did not materialize node_modules; falling back to npm..."
+            npm i --omit=dev --no-audit --no-fund
+          fi
+          if [ ! -d node_modules ]; then
+            echo "ERROR: apps/client/node_modules still missing after attempts." >&2
+            exit 1
+          fi
       - name: Install app deps in apps/client (bun)
         working-directory: apps/client
         run: bun install --frozen-lockfile
@@ -85,6 +99,20 @@ jobs:
       - name: Install app deps in apps/client (bun)
         working-directory: apps/client
         run: bun install --frozen-lockfile
+      - name: Ensure local production node_modules (apps/client)
+        working-directory: apps/client
+        run: |
+          set -euo pipefail
+          echo "Ensuring local production node_modules in $(pwd)..."
+          bun install --frozen-lockfile --production || true
+          if [ ! -d node_modules ]; then
+            echo "Bun did not materialize node_modules; falling back to npm..."
+            npm i --omit=dev --no-audit --no-fund
+          fi
+          if [ ! -d node_modules ]; then
+            echo "ERROR: apps/client/node_modules still missing after attempts." >&2
+            exit 1
+          fi
       - name: Install app deps in apps/client (bun)
         working-directory: apps/client
         run: bun install --frozen-lockfile
