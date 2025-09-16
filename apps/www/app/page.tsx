@@ -5,9 +5,9 @@ import CmuxLogo from "@/components/logo/cmux-logo";
 import { Cloud, GitBranch, GitPullRequest, Star, Terminal, Users, Zap } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import cmuxDemo0 from "./../docs/assets/cmux-demo-0.png";
-import cmuxDemo1 from "./../docs/assets/cmux-demo-1.png";
-import cmuxDemo5 from "./../docs/assets/cmux-demo-5.png";
+import cmuxDemo0 from "../../../docs/assets/cmux-demo-0.png";
+import cmuxDemo1 from "../../../docs/assets/cmux-demo-1.png";
+import cmuxDemo5 from "../../../docs/assets/cmux-demo-5.png";
  
 
 export default function LandingPage() {
