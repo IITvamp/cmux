@@ -220,6 +220,9 @@ if [ $retry_count -eq $MAX_RETRIES ]; then
     echo "[Startup] Warning: Failed to connect to OpenVSCode server after $MAX_RETRIES attempts" >> /var/log/cmux/startup.log
 fi
 
+# Start envctl
+envd >/dev/null 2>&1 &
+
 # Start the worker
 export NODE_ENV=production
 export WORKER_PORT=39377

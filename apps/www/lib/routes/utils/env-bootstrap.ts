@@ -41,24 +41,29 @@ export function buildEnvironmentBootstrapCommand(
   const markers = resolveMarkers(overrides);
 
   const scriptLines = [
-    "set -euo pipefail",
-    `cat <<'${markers.envMarker}' > ${markers.tempFilePath}`,
+    `tmpfile=${markers.tempFilePath}`,
+    `cat <<\\${markers.envMarker} > "$tmpfile"`,
     envContent,
     markers.envMarker,
-    `chmod 600 ${markers.tempFilePath}`,
-    "if command -v envctl >/dev/null 2>&1; then",
-    `  envctl load ${markers.tempFilePath} && rm -f ${markers.tempFilePath}`,
-    "else",
-    `  mv ${markers.tempFilePath} /root/.cmux-env`,
-    "  chmod 600 /root/.cmux-env",
-    "  if ! grep -q 'cmux environment bootstrap' /root/.bashrc 2>/dev/null; then",
-    `    cat <<'${markers.bashrcMarker}' >> /root/.bashrc`,
-    DEFAULT_BOOTSTRAP_SNIPPET,
-    markers.bashrcMarker,
+    "chmod 600 \"$tmpfile\"",
+    "envctl_bin=$(command -v envctl 2>/dev/null || true)",
+    "if [ -n \"$envctl_bin\" ]; then",
+    "  if \"$envctl_bin\" load \"$tmpfile\"; then",
+    "    rm -f \"$tmpfile\"",
+    "    exit 0",
     "  fi",
     "fi",
+    "mv \"$tmpfile\" /root/.cmux-env",
+    "chmod 600 /root/.cmux-env",
+    "if ! grep -q \"cmux environment bootstrap\" /root/.bashrc 2>/dev/null; then",
+    `  cat <<\\${markers.bashrcMarker} >> /root/.bashrc`,
+    DEFAULT_BOOTSTRAP_SNIPPET,
+    markers.bashrcMarker,
+    "fi",
+    "exit 0",
   ];
 
-  const script = scriptLines.join("\n");
-  return `bash -lc ${JSON.stringify(script)}`;
+  const script = `${scriptLines.join("\n")}\n`;
+  const singleQuoted = `'${script.split("'").join(`'"'"'`)}'`;
+  return `bash -lc ${singleQuoted}`;
 }

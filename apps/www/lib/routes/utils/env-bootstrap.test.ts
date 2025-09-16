@@ -11,9 +11,11 @@ describe("buildEnvironmentBootstrapCommand", () => {
       tempFilePath: "/tmp/test-env",
     });
 
-    expect(cmd).toContain("cat <<'ENV_MARK' > /tmp/test-env");
+    expect(cmd).toContain("tmpfile=/tmp/test-env");
+    expect(cmd).toContain("envctl_bin=$(command -v envctl 2>/dev/null || true)");
+    expect(cmd).toContain("cat <<'ENV_MARK' > \"$tmpfile\"");
     expect(cmd).toContain(envContent);
-    expect(cmd).toContain("envctl load /tmp/test-env");
+    expect(cmd).toContain("\"$envctl_bin\" load \"$tmpfile\"");
   });
 
   it("adds fallback bootstrap snippet", () => {

@@ -241,15 +241,15 @@ COPY --from=builder /cmux/apps/worker/scripts/collect-relevant-diff.sh /usr/loca
 RUN chmod +x /usr/local/bin/cmux-collect-relevant-diff.sh
 
 # Install envctl/envd into runtime
-RUN mkdir -p /usr/local/lib/cmux
-COPY --from=builder /cmux/packages/envctl/dist /usr/local/lib/cmux/envctl/dist
-COPY --from=builder /cmux/packages/envctl/package.json /usr/local/lib/cmux/envctl/package.json
-COPY --from=builder /cmux/packages/envd/dist /usr/local/lib/cmux/envd/dist
-COPY --from=builder /cmux/packages/envd/package.json /usr/local/lib/cmux/envd/package.json
-RUN set -eux; \
-    printf '#!/bin/sh\nexec node /usr/local/lib/cmux/envctl/dist/index.js "$@"\n' > /usr/local/bin/envctl && \
-    printf '#!/bin/sh\nexec node /usr/local/lib/cmux/envd/dist/index.js "$@"\n' > /usr/local/bin/envd && \
-    chmod +x /usr/local/bin/envctl /usr/local/bin/envd
+RUN curl https://raw.githubusercontent.com/lawrencecchen/cmux-env/refs/heads/main/scripts/install.sh | bash && \
+    envctl --version && \
+    { \
+      echo "# >>> envctl hook >>>"; \
+      echo 'export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp}"'; \
+      echo 'export ENVCTL_GEN=${ENVCTL_GEN:-0}'; \
+      envctl hook bash; \
+      echo "# <<< envctl hook <<<"; \
+    } >> "$HOME/.bashrc"
 
 # Install tmux configuration for better mouse scrolling behavior
 COPY configs/tmux.conf /etc/tmux.conf
@@ -260,8 +260,6 @@ RUN mkdir -p /etc/zsh && \
     bash -lc 'echo "# Source envctl hook for interactive zsh shells" >> /etc/zsh/zshrc && \
     echo "if [ -f /etc/profile.d/envctl.sh ]; then . /etc/profile.d/envctl.sh; fi" >> /etc/zsh/zshrc'
 
-
-# Find and install claude-code.vsix from Bun cache using ripgrep
 RUN claude_vsix=$(rg --files /root/.bun/install/cache/@anthropic-ai 2>/dev/null | rg "claude-code\.vsix$" | head -1) && \
     if [ -n "$claude_vsix" ]; then \
         echo "Found claude-code.vsix at: $claude_vsix" && \
