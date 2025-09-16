@@ -6,23 +6,46 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { Skeleton } from "@heroui/react";
 import * as Popover from "@radix-ui/react-popover";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import clsx from "clsx";
-import { AlertTriangle, Check, ChevronDown, Loader2 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  AlertTriangle,
+  Check,
+  ChevronDown,
+  Loader2,
+  OctagonAlert,
+} from "lucide-react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+
+interface OptionWarning {
+  tooltip: ReactNode;
+  onClick?: () => void;
+}
 
 export interface SelectOptionObject {
   label: string;
   value: string;
   isUnavailable?: boolean;
   // Optional icon element to render before the label
-  icon?: React.ReactNode;
+  icon?: ReactNode;
   // Stable key for the icon, used for de-duplication in stacked view
   iconKey?: string;
   // Render as a non-selectable heading row
   heading?: boolean;
+  warning?: OptionWarning;
 }
 
 export type SelectOption = string | SelectOptionObject;
@@ -41,9 +64,48 @@ export interface SearchableSelectProps {
   // Label shown in multi-select trigger as "N <countLabel>"
   countLabel?: string;
   // Optional icon rendered at the start of the trigger (outside option labels)
-  leftIcon?: React.ReactNode;
+  leftIcon?: ReactNode;
   // Optional footer rendered below the scroll container
-  footer?: React.ReactNode;
+  footer?: ReactNode;
+}
+
+interface WarningIndicatorProps {
+  warning: OptionWarning;
+  onActivate?: () => void;
+  className?: string;
+}
+
+function WarningIndicator({ warning, onActivate, className }: WarningIndicatorProps) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            warning.onClick?.();
+            onActivate?.();
+          }}
+          aria-label="Open settings to finish setup"
+          className={clsx(
+            "inline-flex h-5 w-5 items-center justify-center rounded-sm",
+            "cursor-pointer text-red-500 hover:text-red-600",
+            "dark:text-red-400 dark:hover:text-red-300",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/60",
+            "focus-visible:ring-offset-1 focus-visible:ring-offset-white dark:focus-visible:ring-offset-neutral-900",
+            className
+          )}
+        >
+          <OctagonAlert className="h-3.5 w-3.5" aria-hidden="true" />
+          <span className="sr-only">Setup required</span>
+        </button>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-xs text-xs leading-snug">
+        {warning.tooltip}
+      </TooltipContent>
+    </Tooltip>
+  );
 }
 
 function normalizeOptions(options: SelectOption[]): SelectOptionObject[] {
@@ -56,9 +118,10 @@ interface OptionItemProps {
   opt: SelectOptionObject;
   isSelected: boolean;
   onSelectValue: (val: string) => void;
+  onWarningAction?: () => void;
 }
 
-function OptionItem({ opt, isSelected, onSelectValue }: OptionItemProps) {
+function OptionItem({ opt, isSelected, onSelectValue, onWarningAction }: OptionItemProps) {
   if (opt.heading) {
     return (
       <div className="flex items-center gap-2 min-w-0 flex-1 pl-1 pr-3 py-1 h-[28px] text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">
@@ -84,7 +147,9 @@ function OptionItem({ opt, isSelected, onSelectValue }: OptionItemProps) {
           </span>
         ) : null}
         <span className="truncate select-none">{opt.label}</span>
-        {opt.isUnavailable ? (
+        {opt.warning ? (
+          <WarningIndicator warning={opt.warning} onActivate={onWarningAction} />
+        ) : opt.isUnavailable ? (
           <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
         ) : null}
       </div>
@@ -167,6 +232,12 @@ export function SearchableSelect({
             </span>
           ) : null}
           <span className="truncate select-none">{label}</span>
+          {selectedOpt?.warning ? (
+            <WarningIndicator
+              warning={selectedOpt.warning}
+              onActivate={() => setOpen(false)}
+            />
+          ) : null}
         </span>
       );
     }
@@ -177,10 +248,18 @@ export function SearchableSelect({
         if (!o || !o.icon) return null;
         return { key: o.iconKey ?? o.value, icon: o.icon };
       })
-      .filter(Boolean) as Array<{ key: string; icon: React.ReactNode }>;
+      .filter(Boolean) as Array<{ key: string; icon: ReactNode }>;
+    const selectedWarnings = value
+      .map((v) => valueToOption.get(v)?.warning)
+      .filter(Boolean) as OptionWarning[];
+    const firstWarning = selectedWarnings[0];
+    const aggregatedWarningTooltip =
+      firstWarning?.tooltip ?? (
+        <span>Some selected agents still need credentials in Settings.</span>
+      );
     // Deduplicate by icon key (e.g., vendor) while preserving order
     const seen = new Set<string>();
-    const uniqueIcons: React.ReactNode[] = [];
+    const uniqueIcons: ReactNode[] = [];
     for (const it of selectedWithIcons) {
       if (seen.has(it.key)) continue;
       seen.add(it.key);
@@ -203,12 +282,36 @@ export function SearchableSelect({
             ))}
           </span>
           <span className="truncate select-none">{`${value.length} ${countLabel}`}</span>
+          {selectedWarnings.length ? (
+            <WarningIndicator
+              warning={{
+                tooltip: aggregatedWarningTooltip,
+                onClick: () => {
+                  firstWarning?.onClick?.();
+                },
+              }}
+              onActivate={() => setOpen(false)}
+            />
+          ) : null}
         </span>
       );
     }
     // Fallback: show count only
     return (
-      <span className="truncate select-none">{`${value.length} ${countLabel}`}</span>
+      <span className="inline-flex items-center gap-2 truncate select-none">
+        <span>{`${value.length} ${countLabel}`}</span>
+        {selectedWarnings.length ? (
+          <WarningIndicator
+            warning={{
+              tooltip: aggregatedWarningTooltip,
+              onClick: () => {
+                firstWarning?.onClick?.();
+              },
+            }}
+            onActivate={() => setOpen(false)}
+          />
+        ) : null}
+      </span>
     );
   }, [
     countLabel,
@@ -361,6 +464,7 @@ export function SearchableSelect({
                                   opt={opt}
                                   isSelected={isSelected}
                                   onSelectValue={onSelectValue}
+                                  onWarningAction={() => setOpen(false)}
                                 />
                               );
                             })}
@@ -394,6 +498,7 @@ export function SearchableSelect({
                                   opt={opt}
                                   isSelected={isSelected}
                                   onSelectValue={onSelectValue}
+                                  onWarningAction={() => setOpen(false)}
                                 />
                               </div>
                             );

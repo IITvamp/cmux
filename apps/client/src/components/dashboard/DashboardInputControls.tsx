@@ -5,6 +5,7 @@ import { GitHubIcon } from "@/components/icons/github";
 import { ModeToggleTooltip } from "@/components/ui/mode-toggle-tooltip";
 import SearchableSelect, {
   type SelectOption,
+  type SelectOptionObject,
 } from "@/components/ui/searchable-select";
 import {
   Tooltip,
@@ -12,6 +13,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
+import type { ProviderStatus, ProviderStatusResponse } from "@cmux/shared";
 import { Link, useRouter } from "@tanstack/react-router";
 import { api } from "@cmux/convex/api";
 import { useMutation } from "convex/react";
@@ -35,6 +37,7 @@ interface DashboardInputControlsProps {
   teamSlugOrId: string;
   cloudToggleDisabled?: boolean;
   branchDisabled?: boolean;
+  providerStatus?: ProviderStatusResponse | null;
 }
 
 export const DashboardInputControls = memo(function DashboardInputControls({
@@ -53,9 +56,23 @@ export const DashboardInputControls = memo(function DashboardInputControls({
   teamSlugOrId,
   cloudToggleDisabled = false,
   branchDisabled = false,
+  providerStatus = null,
 }: DashboardInputControlsProps) {
   const router = useRouter();
   const mintState = useMutation(api.github_app.mintInstallState);
+  const providerStatusMap = useMemo(() => {
+    const map = new Map<string, ProviderStatus>();
+    providerStatus?.providers?.forEach((provider) => {
+      map.set(provider.name, provider);
+    });
+    return map;
+  }, [providerStatus?.providers]);
+  const handleOpenSettings = useCallback(() => {
+    void router.navigate({
+      to: "/$teamSlugOrId/settings",
+      params: { teamSlugOrId },
+    });
+  }, [router, teamSlugOrId]);
   const agentOptions = useMemo(() => {
     const vendorKey = (name: string): string => {
       const lower = name.toLowerCase();
@@ -71,13 +88,44 @@ export const DashboardInputControls = memo(function DashboardInputControls({
       if (lower.startsWith("opencode/")) return "opencode";
       return "other";
     };
-    return AGENT_CONFIGS.map((agent) => ({
-      label: agent.name,
-      value: agent.name,
-      icon: <AgentLogo agentName={agent.name} className="w-4 h-4" />,
-      iconKey: vendorKey(agent.name),
-    }));
-  }, []);
+    return AGENT_CONFIGS.map((agent) => {
+      const status = providerStatusMap.get(agent.name);
+      const missingRequirements = status?.missingRequirements ?? [];
+      const isAvailable = status?.isAvailable ?? true;
+      return {
+        label: agent.name,
+        value: agent.name,
+        icon: <AgentLogo agentName={agent.name} className="w-4 h-4" />,
+        iconKey: vendorKey(agent.name),
+        isUnavailable: !isAvailable,
+        warning: !isAvailable
+          ? {
+              tooltip: (
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-red-500">
+                    Setup required
+                  </p>
+                  <p className="text-xs text-neutral-700 dark:text-neutral-300">
+                    Add credentials for this agent in Settings.
+                  </p>
+                  {missingRequirements.length > 0 ? (
+                    <ul className="list-disc pl-4 text-xs text-neutral-600 dark:text-neutral-400">
+                      {missingRequirements.map((req) => (
+                        <li key={req}>{req}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  <p className="text-[10px] uppercase tracking-wide text-neutral-400 dark:text-neutral-500 pt-1 border-t border-neutral-200 dark:border-neutral-700">
+                    Click to open settings
+                  </p>
+                </div>
+              ),
+              onClick: handleOpenSettings,
+            }
+          : undefined,
+      } satisfies SelectOptionObject;
+    });
+  }, [handleOpenSettings, providerStatusMap]);
   // Determine OS for potential future UI tweaks
   // const isMac = navigator.userAgent.toUpperCase().indexOf("MAC") >= 0;
 
