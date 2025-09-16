@@ -19,17 +19,17 @@ import {
   generateUniqueBranchNamesFromTitle,
 } from "./utils/branchNameGenerator.js";
 import { getConvex } from "./utils/convexClient.js";
+import { retryOnOptimisticConcurrency } from "./utils/convexRetry.js";
+import { serverLogger } from "./utils/fileLogger.js";
 import {
-  getAuthToken,
   getAuthHeaderJson,
+  getAuthToken,
   runWithAuth,
 } from "./utils/requestContext.js";
-import { serverLogger } from "./utils/fileLogger.js";
-import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { CmuxVSCodeInstance } from "./vscode/CmuxVSCodeInstance.js";
+import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWorktreePath, setupProjectWorkspace } from "./workspace.js";
-import { retryOnOptimisticConcurrency } from "./utils/convexRetry.js";
 
 export interface AgentSpawnResult {
   agentName: string;
@@ -81,7 +81,7 @@ export async function spawnAgent(
       {
         teamSlugOrId,
         taskId: taskId,
-        prompt: `${options.taskDescription} (${agent.name})`,
+        prompt: options.taskDescription,
         agentName: agent.name,
         newBranch,
       }
