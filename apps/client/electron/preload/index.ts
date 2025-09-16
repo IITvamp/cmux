@@ -100,6 +100,10 @@ const cmuxAPI = {
       ) as Promise<{ ok: boolean }>;
     },
   },
+  logs: {
+    getAll: () => ipcRenderer.invoke("cmux:logs:get-all"),
+    copyAll: () => ipcRenderer.invoke("cmux:logs:copy-all"),
+  },
 };
 
 contextBridge.exposeInMainWorld("electron", electronAPI);

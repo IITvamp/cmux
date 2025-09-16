@@ -3,10 +3,19 @@ import { api } from "@cmux/convex/api";
 import * as Dialog from "@radix-ui/react-dialog";
 
 import { isElectron } from "@/lib/electron";
+import { copyAllElectronLogs } from "@/lib/logs";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { Command } from "cmdk";
 import { useMutation, useQuery } from "convex/react";
-import { GitPullRequest, Monitor, Moon, Sun, Plus } from "lucide-react";
+import {
+  ClipboardCopy,
+  GitPullRequest,
+  Monitor,
+  Moon,
+  Plus,
+  ScrollText,
+  Sun,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -116,7 +125,13 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
 
   const handleHighlight = useCallback(
     async (value: string) => {
-      if (value?.startsWith("task:")) {
+      if (value === "logs-view") {
+        try {
+          await router.preloadRoute({ to: "/logs" });
+        } catch {
+          // ignore preload failure
+        }
+      } else if (value?.startsWith("task:")) {
         const parts = value.slice(5).split(":");
         const taskId = parts[0];
         const action = parts[1];
@@ -170,6 +185,21 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
         setTheme("dark");
       } else if (value === "theme-system") {
         setTheme("system");
+      } else if (value === "logs-view") {
+        navigate({
+          to: "/logs",
+        });
+      } else if (value === "logs-copy") {
+        try {
+          const result = await copyAllElectronLogs();
+          const plural = result.fileCount === 1 ? "log" : "logs";
+          toast.success(`Copied ${result.fileCount} ${plural} to the clipboard.`);
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          toast.error("Failed to copy logs", { description: message });
+          return;
+        }
       } else if (value.startsWith("task:")) {
         const parts = value.slice(5).split(":");
         const taskId = parts[0];
@@ -296,8 +326,38 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
               </Command.Item>
             </Command.Group>
 
+            {isElectron ? (
             <Command.Group>
               <div className="px-2 py-1.5 text-xs text-neutral-500 dark:text-neutral-400">
+                Logs
+              </div>
+              <Command.Item
+                value="logs-view"
+                onSelect={() => handleSelect("logs-view")}
+                className="flex items-center gap-2 px-3 py-2.5 mx-1 rounded-md cursor-pointer
+                hover:bg-neutral-100 dark:hover:bg-neutral-800
+                data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800
+                data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100"
+              >
+                <ScrollText className="h-4 w-4 text-neutral-500" />
+                <span className="text-sm">Logs: View</span>
+              </Command.Item>
+              <Command.Item
+                value="logs-copy"
+                onSelect={() => handleSelect("logs-copy")}
+                className="flex items-center gap-2 px-3 py-2.5 mx-1 rounded-md cursor-pointer
+                hover:bg-neutral-100 dark:hover:bg-neutral-800
+                data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800
+                data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100"
+              >
+                <ClipboardCopy className="h-4 w-4 text-neutral-500" />
+                <span className="text-sm">Logs: Copy all</span>
+              </Command.Item>
+            </Command.Group>
+          ) : null}
+
+          <Command.Group>
+            <div className="px-2 py-1.5 text-xs text-neutral-500 dark:text-neutral-400">
                 Theme
               </div>
               <Command.Item

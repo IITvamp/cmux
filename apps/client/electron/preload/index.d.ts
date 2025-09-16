@@ -1,4 +1,8 @@
 import { ElectronAPI } from "@electron-toolkit/preload";
+import type {
+  CopyAllLogsResult,
+  ElectronLogFile,
+} from "../../src/types/electron-logs";
 
 declare global {
   interface Window {
@@ -29,6 +33,10 @@ declare global {
           socketId: string,
           callback: (eventName: string, ...args: unknown[]) => void
         ) => void;
+      };
+      logs: {
+        getAll: () => Promise<ElectronLogFile[]>;
+        copyAll: () => Promise<CopyAllLogsResult>;
       };
     };
   }

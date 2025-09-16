@@ -34,6 +34,7 @@ const { autoUpdater } = electronUpdater;
 
 import util from "node:util";
 import { initCmdK, keyDebug } from "./cmdk";
+import { registerLogHandlers } from "./logs";
 import { env } from "./electron-main-env";
 
 // Use a cookieable HTTPS origin intercepted locally instead of a custom scheme.
@@ -382,6 +383,10 @@ app.on("open-url", (_event, url) => {
 app.whenReady().then(async () => {
   ensureLogStreams();
   setupConsoleFileMirrors();
+  registerLogHandlers({
+    log: mainLog,
+    warn: mainWarn,
+  });
   initCmdK({
     getMainWindow: () => mainWindow,
     logger: {
