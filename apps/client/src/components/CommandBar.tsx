@@ -1,12 +1,12 @@
 import { useTheme } from "@/components/theme/use-theme";
-import { api } from "@cmux/convex/api";
-import * as Dialog from "@radix-ui/react-dialog";
-
 import { isElectron } from "@/lib/electron";
+import { api } from "@cmux/convex/api";
+import type { Id } from "@cmux/convex/dataModel";
+import * as Dialog from "@radix-ui/react-dialog";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { Command } from "cmdk";
 import { useMutation, useQuery } from "convex/react";
-import { GitPullRequest, Monitor, Moon, Sun, Plus } from "lucide-react";
+import { GitPullRequest, Monitor, Moon, Plus, Sun } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -172,7 +172,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
         setTheme("system");
       } else if (value.startsWith("task:")) {
         const parts = value.slice(5).split(":");
-        const taskId = parts[0];
+        const taskId = parts[0] as Id<"tasks">;
         const action = parts[1];
 
         if (action === "vs" || action === "gitdiff") {
@@ -180,7 +180,6 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
             // Create a new run for VS Code or git diff
             const runId = await createRun({
               teamSlugOrId,
-              // @ts-expect-error - taskId from string
               taskId,
               prompt: action === "vs" ? "Opening VS Code" : "Viewing git diff",
             });
@@ -189,13 +188,11 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
               if (action === "vs") {
                 navigate({
                   to: "/$teamSlugOrId/task/$taskId/run/$runId/vscode",
-                  // @ts-expect-error - taskId and runId extracted from string
                   params: { teamSlugOrId, taskId, runId },
                 });
               } else {
                 navigate({
                   to: "/$teamSlugOrId/task/$taskId/run/$runId/diff",
-                  // @ts-expect-error - taskId and runId extracted from string
                   params: { teamSlugOrId, taskId, runId },
                 });
               }
@@ -204,7 +201,6 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
             toast.error("Failed to create run");
             navigate({
               to: "/$teamSlugOrId/task/$taskId",
-              // @ts-expect-error - taskId extracted from string
               params: { teamSlugOrId, taskId },
               search: { runId: undefined },
             });
@@ -212,7 +208,6 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
         } else {
           navigate({
             to: "/$teamSlugOrId/task/$taskId",
-            // @ts-expect-error - taskId extracted from string
             params: { teamSlugOrId, taskId },
             search: { runId: undefined },
           });
