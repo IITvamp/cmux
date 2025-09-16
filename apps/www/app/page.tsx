@@ -5,6 +5,9 @@ import CmuxLogo from "@/components/logo/cmux-logo";
 import { Cloud, GitBranch, GitPullRequest, Star, Terminal, Users, Zap } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import cmuxDemo0 from "./../docs/assets/cmux-demo-0.png";
+import cmuxDemo1 from "./../docs/assets/cmux-demo-1.png";
+import cmuxDemo5 from "./../docs/assets/cmux-demo-5.png";
  
 
 export default function LandingPage() {
@@ -28,7 +31,7 @@ export default function LandingPage() {
         <span className="whitespace-nowrap ml-2">
           <a
             href="#requirements"
-            className="whitespace-nowrap bg-black px-2 py-0.5 rounded-sm font-semibold text-blue-300 hover:text-blue-200"
+          className="whitespace-nowrap bg-black px-2 py-0.5 rounded-sm font-semibold text-blue-300 hover:text-blue-200"
           >
             See requirements
           </a>
@@ -184,7 +187,7 @@ export default function LandingPage() {
           {/* First demo image combined with hero */}
           <div className="mt-16 mb-8 relative overflow-hidden rounded-lg">
             <Image
-              src="/cmux-demo-1.png"
+              src={cmuxDemo1}
               alt="cmux dashboard showing task management for AI agents"
               width={3248}
               height={2112}
@@ -269,7 +272,7 @@ export default function LandingPage() {
           </div>
           <div className="mt-16 mb-8 relative overflow-hidden rounded-lg">
             <Image
-              src="/cmux-demo-0.png"
+              src={cmuxDemo0}
               alt="cmux dashboard showing task management for AI agents"
               width={3248}
               height={2112}
@@ -390,7 +393,7 @@ export default function LandingPage() {
           </div>
           <div className="mt-8 relative overflow-hidden rounded-lg">
             <Image
-              src="/cmux-demo-5.png"
+              src={cmuxDemo5}
               alt="cmux vscode instances showing diffs"
               width={3248}
               height={2112}

@@ -2,9 +2,6 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   serverExternalPackages: ["morphcloud", "ssh2", "node-ssh", "cpu-features"],
-  images: {
-    formats: ["image/avif", "image/webp"],
-  },
   webpack: (config, { isServer }) => {
     if (isServer) {
       const externals = ["morphcloud", "ssh2", "node-ssh", "cpu-features"];
