@@ -1,4 +1,3 @@
-import { getVSCodeSubdomain } from "@cmux/shared";
 import {
   getApiSandboxesByIdStatus,
   postApiSandboxesByIdPublishDevcontainer,
@@ -47,7 +46,7 @@ export class CmuxVSCodeInstance extends VSCodeInstance {
         teamSlugOrId: this.teamSlugOrId,
         ttlSeconds: 20 * 60,
         metadata: {
-          instance: `cmux-${getVSCodeSubdomain({ taskRunId: this.taskRunId })}`,
+          instance: `cmux-${this.taskRunId}`,
           taskRunId: String(this.taskRunId),
           agentName: this.config.agentName || "",
         },

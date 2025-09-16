@@ -1,5 +1,4 @@
 import { api } from "@cmux/convex/api";
-import { getVSCodeSubdomain } from "@cmux/shared";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { convexQuery } from "@convex-dev/react-query";
 import { useSuspenseQuery } from "@tanstack/react-query";
@@ -10,8 +9,6 @@ import z from "zod";
 import { usePersistentIframe } from "../hooks/usePersistentIframe";
 import { preloadTaskRunIframes } from "../lib/preloadTaskRunIframes";
 
-// Configuration: Set to true to use the proxy URL, false to use direct localhost URL
-const USE_PROXY_URL = false;
 
 const paramsSchema = z.object({
   taskId: typedZid("tasks"),
@@ -58,14 +55,7 @@ function VSCodeComponent() {
     })
   );
 
-  const subdomain = getVSCodeSubdomain({
-    taskRunId,
-    containerName: taskRun?.data?.vscode?.containerName,
-  });
-
-  const iframeUrl = USE_PROXY_URL
-    ? `http://${subdomain}.39378.localhost:9776/?folder=/root/workspace`
-    : taskRun?.data?.vscode?.workspaceUrl || "about:blank";
+  const iframeUrl = taskRun?.data?.vscode?.workspaceUrl || "about:blank";
 
   const onLoad = useCallback(() => {
     console.log(`Iframe loaded for task run ${taskRunId}`);

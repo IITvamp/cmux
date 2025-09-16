@@ -1,4 +1,3 @@
-import { getVSCodeSubdomain } from "@cmux/shared";
 import { persistentIframeManager } from "./persistentIframeManager";
 
 /**
@@ -29,14 +28,8 @@ export async function preloadTaskRunIframes(
  */
 export async function preloadTaskRunIframe(
   taskRunId: string,
-  containerName?: string | null
+  url: string
 ): Promise<void> {
-  const subdomain = getVSCodeSubdomain({
-    taskRunId,
-    containerName,
-  });
-  const url = `http://${subdomain}.39378.localhost:9776/?folder=/root/workspace`;
-
   await persistentIframeManager.preloadIframe(`task-run-${taskRunId}`, url, {
     allow: "clipboard-read; clipboard-write",
     sandbox:

@@ -1,6 +1,5 @@
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
-import { getVSCodeSubdomain } from "@cmux/shared";
 import Docker from "dockerode";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -43,7 +42,6 @@ interface DockerEvent {
 
 export class DockerVSCodeInstance extends VSCodeInstance {
   private containerName: string;
-  private subdomain: string;
   private imageName: string;
   private container: Docker.Container | null = null;
   private authToken: string | undefined;
@@ -67,11 +65,7 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
   constructor(config: VSCodeInstanceConfig) {
     super(config);
-    // Derive a deterministic, collision-resistant subdomain from the taskRunId
-    this.subdomain = getVSCodeSubdomain({
-      taskRunId: this.taskRunId,
-    });
-    this.containerName = `cmux-${this.subdomain}`;
+    this.containerName = `cmux-${this.taskRunId}`;
     this.imageName = process.env.WORKER_IMAGE_NAME || "cmux-worker:0.0.1";
     dockerLogger.info(`WORKER_IMAGE_NAME: ${process.env.WORKER_IMAGE_NAME}`);
     dockerLogger.info(`this.imageName: ${this.imageName}`);
@@ -495,13 +489,9 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     const workerUrl = `http://localhost:${workerPort}`;
 
     // Generate the proxy URL that clients will use
-    const proxyBaseUrl = `http://${this.subdomain}.39378.localhost:9776`;
-    const proxyWorkspaceUrl = `${proxyBaseUrl}/?folder=/root/workspace`;
-
     dockerLogger.info(`Docker VSCode instance started:`);
     dockerLogger.info(`  VS Code URL: ${workspaceUrl}`);
     dockerLogger.info(`  Worker URL: ${workerUrl}`);
-    dockerLogger.info(`  Proxy URL: ${proxyWorkspaceUrl}`);
 
     // Monitor container events
     this.setupContainerEventMonitoring();

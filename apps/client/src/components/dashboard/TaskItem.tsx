@@ -5,7 +5,6 @@ import { isFakeConvexId } from "@/lib/fakeConvexId";
 import { ContextMenu } from "@base-ui-components/react/context-menu";
 import { api } from "@cmux/convex/api";
 import type { Doc } from "@cmux/convex/dataModel";
-import { getVSCodeSubdomain } from "@cmux/shared";
 import { useClipboard } from "@mantine/hooks";
 import { useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
@@ -77,16 +76,8 @@ export const TaskItem = memo(function TaskItem({
 
   // Generate the VSCode URL if available
   const vscodeUrl = useMemo(() => {
-    if (
-      hasActiveVSCode &&
-      runWithVSCode?.vscode?.containerName &&
-      runWithVSCode?.vscode?.ports?.vscode
-    ) {
-      const subdomain = getVSCodeSubdomain({
-        taskRunId: runWithVSCode._id,
-        containerName: runWithVSCode.vscode.containerName,
-      });
-      return `http://${subdomain}.39378.localhost:9776/`;
+    if (hasActiveVSCode && runWithVSCode?.vscode?.workspaceUrl) {
+      return runWithVSCode.vscode.workspaceUrl;
     }
     return null;
   }, [hasActiveVSCode, runWithVSCode]);
