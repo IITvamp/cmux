@@ -194,11 +194,11 @@ function TaskDetailPage() {
               >
                 <span style={{ paddingLeft: `${run.depth * 12}px` }}>
                   {(() => {
-                    const agentMatch = run.prompt.match(/\(([^)]+)\)$/);
-                    const agentName = agentMatch
-                      ? agentMatch[1]
-                      : `Run ${index + 1}`;
-                    return agentName;
+                    const name = run.agentName?.trim();
+                    if (name && name.length > 0) return name;
+                    // Legacy fallback: parse from prompt suffix if present
+                    const match = run.prompt.match(/\(([^)]+)\)$/);
+                    return match?.[1] || `Run ${index + 1}`;
                   })()}
                   {run.status === "running" && " 🟢"}
                   {run.status === "completed" && " ✅"}

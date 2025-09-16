@@ -28,9 +28,11 @@ export function CrownEvaluation({
     return null;
   }
 
-  // Extract agent name from prompt
-  const agentMatch = crownedRun.prompt.match(/\(([^)]+)\)$/);
-  const agentName = agentMatch ? agentMatch[1] : "Unknown";
+  // Prefer stored agentName; fall back to parsing from prompt as legacy
+  const agentName =
+    (crownedRun.agentName && crownedRun.agentName.trim()) ||
+    crownedRun.prompt.match(/\(([^)]+)\)$/)?.[1] ||
+    "Unknown";
 
   return (
     <Card className="border-yellow-200 dark:border-yellow-900 bg-yellow-50 dark:bg-yellow-950/20">

@@ -53,9 +53,12 @@ export function CrownStatus({ taskId, teamSlugOrId }: CrownStatusProps) {
     (run) => run.status === "completed" || run.status === "failed"
   );
 
-  // Extract agent names
-  const getAgentName = (prompt: string) => {
-    const match = prompt.match(/\(([^)]+)\)$/);
+  // Resolve agent name (prefer stored run.agentName)
+  const resolveAgentName = (run: { agentName?: string; prompt: string }) => {
+    const fromRun = run.agentName?.trim();
+    if (fromRun && fromRun.length > 0) return fromRun;
+    // Legacy fallback: parse trailing (agent) from prompt if present
+    const match = run.prompt.match(/\(([^)]+)\)$/);
     return match ? match[1] : "Unknown";
   };
 
@@ -97,7 +100,7 @@ export function CrownStatus({ taskId, teamSlugOrId }: CrownStatusProps) {
               <p className="text-xs font-medium mb-1">Competing models:</p>
               <ul className="text-xs text-muted-foreground space-y-0.5">
                 {taskRuns.map((run, idx) => {
-                  const agentName = getAgentName(run.prompt);
+                  const agentName = resolveAgentName(run);
                   const status =
                     run.status === "completed"
                       ? "✓"
@@ -125,7 +128,7 @@ export function CrownStatus({ taskId, teamSlugOrId }: CrownStatusProps) {
     const winnerContent = (
       <>
         <Crown className="w-3 h-3" />
-        <span>Winner: {getAgentName(crownedRun.prompt)}</span>
+        <span>Winner: {resolveAgentName(crownedRun)}</span>
       </>
     );
 
@@ -196,7 +199,7 @@ export function CrownStatus({ taskId, teamSlugOrId }: CrownStatusProps) {
               <p className="text-xs font-medium mb-1">Completed implementations:</p>
               <ul className="text-xs text-muted-foreground space-y-0.5">
                 {completedRuns.map((run, idx) => {
-                  const agentName = getAgentName(run.prompt);
+                  const agentName = resolveAgentName(run);
                   return <li key={idx}>• {agentName}</li>;
                 })}
               </ul>

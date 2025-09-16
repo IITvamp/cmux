@@ -75,9 +75,11 @@ export async function createPullRequestForWinner(
       return;
     }
 
-    // Extract agent name from prompt
-    const agentMatch = taskRun.prompt.match(/\(([^)]+)\)$/);
-    const agentName = agentMatch ? agentMatch[1] : "Unknown";
+    // Resolve agent name (prefer stored value; fallback to legacy parsing)
+    const agentName =
+      (taskRun.agentName && taskRun.agentName.trim()) ||
+      taskRun.prompt.match(/\(([^)]+)\)$/)?.[1] ||
+      "Unknown";
 
     // Create PR title and body using stored task title when available
     const prTitle =
@@ -532,9 +534,11 @@ export async function evaluateCrown(
 
     const candidateData = await Promise.all(
       completedRuns.map(async (run, idx) => {
-        // Extract agent name from prompt
-        const agentMatch = run.prompt.match(/\(([^)]+)\)$/);
-        const agentName = agentMatch ? agentMatch[1] : "Unknown";
+        // Resolve agent name (prefer stored value; fallback to legacy parsing)
+        const agentName =
+          (run.agentName && run.agentName.trim()) ||
+          run.prompt.match(/\(([^)]+)\)$/)?.[1] ||
+          "Unknown";
         // Try to collect diff via worker
         const workerDiff: string | null = await collectDiffViaWorker(run._id);
         let gitDiff: string = workerDiff && workerDiff.length > 0 ? workerDiff : "No changes detected";
