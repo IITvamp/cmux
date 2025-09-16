@@ -142,7 +142,7 @@ export default function LandingPage() {
 
               <div className="mt-10 flex flex-col sm:flex-row items-center gap-4">
                 <a
-                  href="https://github.com/manaflow-ai/cmux/releases/download/v1.0.5/Cmux-1.0.5.dmg"
+                  href="https://github.com/manaflow-ai/cmux/releases/download/v1.0.16/cmux-1.0.16-arm64.dmg"
                   target="_blank"
                   rel="noopener noreferrer"
                   title="Requires macOS"
