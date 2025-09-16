@@ -1,5 +1,4 @@
 import { env } from "@/client-env";
-import { isElectron } from "@/lib/electron";
 import { AgentLogo } from "@/components/icons/agent-logos";
 import { GitHubIcon } from "@/components/icons/github";
 import { ModeToggleTooltip } from "@/components/ui/mode-toggle-tooltip";
@@ -12,12 +11,13 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
-import type { ProviderStatus, ProviderStatusResponse } from "@cmux/shared";
-import { Link, useRouter } from "@tanstack/react-router";
+import { isElectron } from "@/lib/electron";
 import { api } from "@cmux/convex/api";
-import { useMutation } from "convex/react";
+import type { ProviderStatus, ProviderStatusResponse } from "@cmux/shared";
+import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
+import { Link, useRouter } from "@tanstack/react-router";
 import clsx from "clsx";
+import { useMutation } from "convex/react";
 import { GitBranch, Image, Mic, Server } from "lucide-react";
 import { memo, useCallback, useMemo } from "react";
 
@@ -105,17 +105,17 @@ export const DashboardInputControls = memo(function DashboardInputControls({
                   <p className="text-xs font-semibold text-red-500">
                     Setup required
                   </p>
-                  <p className="text-xs text-neutral-700 dark:text-neutral-300">
+                  <p className="text-xs text-neutral-300">
                     Add credentials for this agent in Settings.
                   </p>
                   {missingRequirements.length > 0 ? (
-                    <ul className="list-disc pl-4 text-xs text-neutral-600 dark:text-neutral-400">
+                    <ul className="list-disc pl-4 text-xs text-neutral-400">
                       {missingRequirements.map((req) => (
                         <li key={req}>{req}</li>
                       ))}
                     </ul>
                   ) : null}
-                  <p className="text-[10px] uppercase tracking-wide text-neutral-400 dark:text-neutral-500 pt-1 border-t border-neutral-200 dark:border-neutral-700">
+                  <p className="text-[10px] tracking-wide text-neutral-500 pt-1 border-t border-neutral-700">
                     Click to open settings
                   </p>
                 </div>
