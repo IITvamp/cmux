@@ -20,11 +20,11 @@ import {
 import { useExpandTasks } from "@/contexts/expand-tasks/ExpandTasksContext";
 import { useSocket } from "@/contexts/socket/use-socket";
 import { createFakeConvexId } from "@/lib/fakeConvexId";
+import { branchesQueryOptions } from "@/queries/branches";
 import { api } from "@cmux/convex/api";
 import type { Doc } from "@cmux/convex/dataModel";
 import { convexQuery } from "@convex-dev/react-query";
 import { useQuery } from "@tanstack/react-query";
-import { branchesQueryOptions } from "@/queries/branches";
 import { createFileRoute } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useMutation } from "convex/react";
@@ -98,13 +98,16 @@ function DashboardComponent() {
     [branchesQuery.data]
   );
 
-  const fetchBranches = useCallback((_repo?: string) => {
-    setIsLoadingBranches(true);
-    branchesQuery
-      .refetch()
-      .finally(() => setIsLoadingBranches(false))
-      .catch(() => setIsLoadingBranches(false));
-  }, [branchesQuery]);
+  const fetchBranches = useCallback(
+    (_repo?: string) => {
+      setIsLoadingBranches(true);
+      branchesQuery
+        .refetch()
+        .finally(() => setIsLoadingBranches(false))
+        .catch(() => setIsLoadingBranches(false));
+    },
+    [branchesQuery]
+  );
 
   // Callback for project selection changes
   const handleProjectChange = useCallback(
@@ -642,6 +645,9 @@ function DashboardComponent() {
     isEnvSelected,
     effectiveSelectedBranch,
   ]);
+
+  console.log("selectedProject");
+  console.log(selectedProject);
 
   return (
     <FloatingPane header={<TitleBar title="cmux" />}>

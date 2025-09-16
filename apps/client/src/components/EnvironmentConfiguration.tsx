@@ -1,6 +1,7 @@
 import { GitHubIcon } from "@/components/icons/github";
 import { ResizableColumns } from "@/components/ResizableColumns";
 import { parseEnvBlock } from "@/lib/parseEnvBlock";
+import { formatEnvVarsContent } from "@cmux/shared/utils/format-env-vars-content";
 import { postApiEnvironmentsMutation } from "@cmux/www-openapi-client/react-query";
 import { Accordion, AccordionItem } from "@heroui/react";
 import { useMutation as useRQMutation } from "@tanstack/react-query";
@@ -78,10 +79,11 @@ export function EnvironmentConfiguration({
       return;
     }
 
-    const envVarsContent = envVars
-      .filter((r) => r.name.trim().length > 0)
-      .map((r) => `${r.name}=${r.value}`)
-      .join("\n");
+    const envVarsContent = formatEnvVarsContent(
+      envVars
+        .filter((r) => r.name.trim().length > 0)
+        .map((r) => ({ name: r.name, value: r.value }))
+    );
 
     const ports = exposedPorts
       .split(",")

@@ -7,12 +7,14 @@ import {
 import { fetchGithubUserInfoForRequest } from "@/lib/utils/githubUserInfo";
 import { selectGitIdentity } from "@/lib/utils/gitIdentity";
 import { DEFAULT_MORPH_SNAPSHOT_ID } from "@/lib/utils/morph-defaults";
+import { stackServerAppJs } from "@/lib/utils/stack";
 import { verifyTeamAccess } from "@/lib/utils/team-verification";
 import { env } from "@/lib/utils/www-env";
 import { api } from "@cmux/convex/api";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { MorphCloudClient } from "morphcloud";
+import { buildEnvironmentBootstrapCommand } from "./utils/env-bootstrap";
 
 export const sandboxesRouter = new OpenAPIHono();
 
@@ -102,6 +104,7 @@ sandboxesRouter.openapi(
       const convex = getConvex({ accessToken });
 
       let resolvedSnapshotId: string | null = null;
+      let environmentDataVaultKey: string | undefined;
 
       if (body.environmentId) {
         const environmentId = typedZid("environments").parse(
@@ -116,6 +119,7 @@ sandboxesRouter.openapi(
           return c.text("Environment not found or not accessible", 403);
         }
         resolvedSnapshotId = envDoc.morphSnapshotId;
+        environmentDataVaultKey = envDoc.dataVaultKey;
       } else if (body.snapshotId) {
         // Ensure the provided snapshotId belongs to one of the team's environments
         const envs = await convex.query(api.environments.list, {
@@ -132,6 +136,33 @@ sandboxesRouter.openapi(
       } else {
         // Fall back to default snapshot if nothing provided
         resolvedSnapshotId = DEFAULT_MORPH_SNAPSHOT_ID;
+      }
+
+      let environmentEnvVarsContent: string | null = null;
+      if (environmentDataVaultKey) {
+        try {
+          const store =
+            await stackServerAppJs.getDataVaultStore("cmux-snapshot-envs");
+          environmentEnvVarsContent = await store.getValue(
+            environmentDataVaultKey,
+            {
+              secret: env.STACK_DATA_VAULT_SECRET,
+            }
+          );
+          try {
+            const length = environmentEnvVarsContent?.length ?? 0;
+            console.log(
+              `[sandboxes.start] Loaded environment env vars (chars=${length})`
+            );
+          } catch {
+            /* noop */
+          }
+        } catch (error) {
+          console.error(
+            "[sandboxes.start] Failed to fetch environment env vars",
+            error
+          );
+        }
       }
 
       const client = new MorphCloudClient({ apiKey: env.MORPH_API_KEY });
@@ -153,6 +184,37 @@ sandboxesRouter.openapi(
       if (!vscodeService || !workerService) {
         await instance.stop().catch(() => {});
         return c.text("VSCode or worker service not found", 500);
+      }
+
+      console.log("environmentEnvVarsContent");
+      console.log(environmentEnvVarsContent);
+
+      if (
+        environmentEnvVarsContent &&
+        environmentEnvVarsContent.trim().length > 0
+      ) {
+        try {
+          const bootstrapCmd = buildEnvironmentBootstrapCommand(
+            environmentEnvVarsContent
+          );
+          console.log("bootstrapCmd");
+          console.log(bootstrapCmd);
+          const loadRes = await instance.exec(bootstrapCmd);
+          if (loadRes.exit_code === 0) {
+            console.log(
+              `[sandboxes.start] Applied environment env vars via envctl`
+            );
+          } else {
+            console.error(
+              `[sandboxes.start] Env var bootstrap failed exit=${loadRes.exit_code} stderr=${(loadRes.stderr || "").slice(0, 200)}`
+            );
+          }
+        } catch (error) {
+          console.error(
+            "[sandboxes.start] Failed to apply environment env vars",
+            error
+          );
+        }
       }
 
       // Configure git identity from Convex + GitHub user info so commits don't fail
