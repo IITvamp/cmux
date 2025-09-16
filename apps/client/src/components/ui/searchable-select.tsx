@@ -22,13 +22,7 @@ import {
   Loader2,
   OctagonAlert,
 } from "lucide-react";
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 interface OptionWarning {
   tooltip: ReactNode;
@@ -75,9 +69,13 @@ interface WarningIndicatorProps {
   className?: string;
 }
 
-function WarningIndicator({ warning, onActivate, className }: WarningIndicatorProps) {
+function WarningIndicator({
+  warning,
+  onActivate,
+  className,
+}: WarningIndicatorProps) {
   return (
-    <Tooltip>
+    <Tooltip delayDuration={0}>
       <TooltipTrigger asChild>
         <button
           type="button"
@@ -121,7 +119,12 @@ interface OptionItemProps {
   onWarningAction?: () => void;
 }
 
-function OptionItem({ opt, isSelected, onSelectValue, onWarningAction }: OptionItemProps) {
+function OptionItem({
+  opt,
+  isSelected,
+  onSelectValue,
+  onWarningAction,
+}: OptionItemProps) {
   if (opt.heading) {
     return (
       <div className="flex items-center gap-2 min-w-0 flex-1 pl-1 pr-3 py-1 h-[28px] text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">
@@ -148,7 +151,10 @@ function OptionItem({ opt, isSelected, onSelectValue, onWarningAction }: OptionI
         ) : null}
         <span className="truncate select-none">{opt.label}</span>
         {opt.warning ? (
-          <WarningIndicator warning={opt.warning} onActivate={onWarningAction} />
+          <WarningIndicator
+            warning={opt.warning}
+            onActivate={onWarningAction}
+          />
         ) : opt.isUnavailable ? (
           <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
         ) : null}
@@ -253,10 +259,9 @@ export function SearchableSelect({
       .map((v) => valueToOption.get(v)?.warning)
       .filter(Boolean) as OptionWarning[];
     const firstWarning = selectedWarnings[0];
-    const aggregatedWarningTooltip =
-      firstWarning?.tooltip ?? (
-        <span>Some selected agents still need credentials in Settings.</span>
-      );
+    const aggregatedWarningTooltip = firstWarning?.tooltip ?? (
+      <span>Some selected agents still need credentials in Settings.</span>
+    );
     // Deduplicate by icon key (e.g., vendor) while preserving order
     const seen = new Set<string>();
     const uniqueIcons: ReactNode[] = [];
