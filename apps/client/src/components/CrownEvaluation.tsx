@@ -28,11 +28,10 @@ export function CrownEvaluation({
     return null;
   }
 
-  // Prefer stored agentName; fall back to parsing from prompt as legacy
+  // Prefer stored agentName, use "Unknown" when missing
+  const storedAgentName = crownedRun.agentName?.trim();
   const agentName =
-    (crownedRun.agentName && crownedRun.agentName.trim()) ||
-    crownedRun.prompt.match(/\(([^)]+)\)$/)?.[1] ||
-    "Unknown";
+    storedAgentName && storedAgentName.length > 0 ? storedAgentName : "unknown agent";
 
   return (
     <Card className="border-yellow-200 dark:border-yellow-900 bg-yellow-50 dark:bg-yellow-950/20">

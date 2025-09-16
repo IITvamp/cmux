@@ -11,6 +11,13 @@ import {
   postApiCrownSummarize,
 } from "@cmux/www-openapi-client";
 
+const UNKNOWN_AGENT_NAME = "unknown agent";
+
+function getAgentNameOrUnknown(agentName?: string | null): string {
+  const trimmed = agentName?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : UNKNOWN_AGENT_NAME;
+}
+
 // Auto PR behavior is controlled via workspace settings in Convex
 export async function createPullRequestForWinner(
   taskRunId: Id<"taskRuns">,
@@ -75,11 +82,7 @@ export async function createPullRequestForWinner(
       return;
     }
 
-    // Resolve agent name (prefer stored value; fallback to legacy parsing)
-    const agentName =
-      (taskRun.agentName && taskRun.agentName.trim()) ||
-      taskRun.prompt.match(/\(([^)]+)\)$/)?.[1] ||
-      "Unknown";
+    const agentName = getAgentNameOrUnknown(taskRun.agentName);
 
     // Create PR title and body using stored task title when available
     const prTitle =
@@ -534,14 +537,13 @@ export async function evaluateCrown(
 
     const candidateData = await Promise.all(
       completedRuns.map(async (run, idx) => {
-        // Resolve agent name (prefer stored value; fallback to legacy parsing)
-        const agentName =
-          (run.agentName && run.agentName.trim()) ||
-          run.prompt.match(/\(([^)]+)\)$/)?.[1] ||
-          "Unknown";
+        const agentName = getAgentNameOrUnknown(run.agentName);
         // Try to collect diff via worker
         const workerDiff: string | null = await collectDiffViaWorker(run._id);
-        let gitDiff: string = workerDiff && workerDiff.length > 0 ? workerDiff : "No changes detected";
+        let gitDiff: string =
+          workerDiff && workerDiff.length > 0
+            ? workerDiff
+            : "No changes detected";
 
         // Limit to 5000 chars for the prompt
         if (gitDiff.length > 5000) {

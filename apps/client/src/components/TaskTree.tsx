@@ -58,13 +58,6 @@ function getRunDisplayText(run: TaskRunWithChildren): string {
     return fromRun;
   }
 
-  // Legacy fallback: attempt to parse trailing (agent) from prompt if present
-  const agentMatch = run.prompt.match(/\(([^)]+)\)$/);
-  const parsed = agentMatch ? agentMatch[1] : null;
-  if (parsed) {
-    return parsed;
-  }
-
   return run.prompt.substring(0, 50) + "...";
 }
 

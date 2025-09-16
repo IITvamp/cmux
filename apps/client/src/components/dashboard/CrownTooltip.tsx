@@ -54,12 +54,9 @@ export function CrownStatus({ taskId, teamSlugOrId }: CrownStatusProps) {
   );
 
   // Resolve agent name (prefer stored run.agentName)
-  const resolveAgentName = (run: { agentName?: string; prompt: string }) => {
+  const resolveAgentName = (run: { agentName?: string | null }) => {
     const fromRun = run.agentName?.trim();
-    if (fromRun && fromRun.length > 0) return fromRun;
-    // Legacy fallback: parse trailing (agent) from prompt if present
-    const match = run.prompt.match(/\(([^)]+)\)$/);
-    return match ? match[1] : "Unknown";
+    return fromRun && fromRun.length > 0 ? fromRun : "unknown agent";
   };
 
   // Determine the status pill content
