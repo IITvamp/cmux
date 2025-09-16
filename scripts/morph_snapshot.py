@@ -26,6 +26,12 @@ dotenv.load_dotenv()
 
 client = MorphCloudClient()
 
+
+# Morph snapshots run on x86_64 hardware; Docker plugins must match this arch
+MORPH_EXPECTED_UNAME_ARCH = "x86_64"
+DOCKER_COMPOSE_VERSION = "v2.32.2"
+DOCKER_BUILDX_VERSION = "v0.18.0"
+
 # Track live instance for cleanup on exit
 current_instance: t.Optional[object] = None
 
@@ -618,6 +624,20 @@ def ensure_docker(snapshot: Snapshot) -> Snapshot:
         "(docker compose version 2>/dev/null || echo 'docker compose plugin not available') && "
         "echo 'Docker commands verified'"
     )
+    docker_plugin_cmds = [
+        "mkdir -p /usr/local/lib/docker/cli-plugins",
+        "arch=$(uname -m)",
+        f"[ \"$arch\" = \"{MORPH_EXPECTED_UNAME_ARCH}\" ] || (echo \"Morph snapshot architecture mismatch: expected {MORPH_EXPECTED_UNAME_ARCH} but got $arch\" >&2; exit 1)",
+        f"curl -fsSL https://github.com/docker/compose/releases/download/{DOCKER_COMPOSE_VERSION}/docker-compose-linux-{MORPH_EXPECTED_UNAME_ARCH} "
+        f"-o /usr/local/lib/docker/cli-plugins/docker-compose",
+        "chmod +x /usr/local/lib/docker/cli-plugins/docker-compose",
+        f"curl -fsSL https://github.com/docker/buildx/releases/download/{DOCKER_BUILDX_VERSION}/buildx-{DOCKER_BUILDX_VERSION}.linux-amd64 "
+        f"-o /usr/local/lib/docker/cli-plugins/docker-buildx",
+        "chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx",
+        "docker compose version",
+        "docker buildx version",
+    ]
+    snapshot = snapshot.exec(" && ".join(docker_plugin_cmds))
     # Ensure IPv6 localhost resolution
     snapshot = snapshot.exec("echo '::1       localhost' >> /etc/hosts")
     return snapshot
