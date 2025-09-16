@@ -3,6 +3,8 @@ import { api } from "@cmux/convex/api";
 import * as Dialog from "@radix-ui/react-dialog";
 
 import { isElectron } from "@/lib/electron";
+import { copyAllElectronLogs } from "@/lib/electron-logs/electron-logs";
+import { ElectronLogsCommandItems } from "./command-bar/ElectronLogsCommandItems";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { Command } from "cmdk";
 import { useMutation, useQuery } from "convex/react";
@@ -116,7 +118,13 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
 
   const handleHighlight = useCallback(
     async (value: string) => {
-      if (value?.startsWith("task:")) {
+      if (value === "logs:view") {
+        try {
+          await router.preloadRoute({ to: "/logs" });
+        } catch {
+          // ignore preload errors
+        }
+      } else if (value?.startsWith("task:")) {
         const parts = value.slice(5).split(":");
         const taskId = parts[0];
         const action = parts[1];
@@ -164,6 +172,19 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
           to: "/$teamSlugOrId/prs",
           params: { teamSlugOrId },
         });
+      } else if (value === "logs:view") {
+        navigate({ to: "/logs" });
+      } else if (value === "logs:copy") {
+        try {
+          const ok = await copyAllElectronLogs();
+          if (ok) {
+            toast.success("Copied logs to clipboard");
+          } else {
+            toast.error("Unable to copy logs");
+          }
+        } catch {
+          toast.error("Unable to copy logs");
+        }
       } else if (value === "theme-light") {
         setTheme("light");
       } else if (value === "theme-dark") {
@@ -295,6 +316,10 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
                 <span className="text-sm">Pull Requests</span>
               </Command.Item>
             </Command.Group>
+
+            {isElectron ? (
+              <ElectronLogsCommandItems onSelect={handleSelect} />
+            ) : null}
 
             <Command.Group>
               <div className="px-2 py-1.5 text-xs text-neutral-500 dark:text-neutral-400">
