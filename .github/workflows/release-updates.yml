@@ -43,19 +43,19 @@ jobs:
         working-directory: apps/client
         run: |
           set -euo pipefail
-          echo "Ensuring local production node_modules in $(pwd)..."
-          bun install --frozen-lockfile --production || true
+          echo "Ensuring local node_modules in $(pwd)..."
+          # First try a local bun install to materialize node_modules
+          bun install --frozen-lockfile || true
           if [ ! -d node_modules ]; then
-            echo "Bun did not materialize node_modules; falling back to npm..."
-            npm i --omit=dev --no-audit --no-fund
+            echo "Local node_modules missing; copying from workspace root..."
+            # Copy the hoisted workspace root node_modules into the app package
+            # -L to dereference any symlinks so the packaged app has real files
+            rsync -aL --delete ../../node_modules/ node_modules/ || true
           fi
           if [ ! -d node_modules ]; then
             echo "ERROR: apps/client/node_modules still missing after attempts." >&2
             exit 1
           fi
-      - name: Install app deps in apps/client (bun)
-        working-directory: apps/client
-        run: bun install --frozen-lockfile
       - name: Write .env for build
         shell: bash
         run: |
@@ -103,19 +103,19 @@ jobs:
         working-directory: apps/client
         run: |
           set -euo pipefail
-          echo "Ensuring local production node_modules in $(pwd)..."
-          bun install --frozen-lockfile --production || true
+          echo "Ensuring local node_modules in $(pwd)..."
+          # First try a local bun install to materialize node_modules
+          bun install --frozen-lockfile || true
           if [ ! -d node_modules ]; then
-            echo "Bun did not materialize node_modules; falling back to npm..."
-            npm i --omit=dev --no-audit --no-fund
+            echo "Local node_modules missing; copying from workspace root..."
+            # Copy the hoisted workspace root node_modules into the app package
+            # -L to dereference any symlinks so the packaged app has real files
+            rsync -aL --delete ../../node_modules/ node_modules/ || true
           fi
           if [ ! -d node_modules ]; then
             echo "ERROR: apps/client/node_modules still missing after attempts." >&2
             exit 1
           fi
-      - name: Install app deps in apps/client (bun)
-        working-directory: apps/client
-        run: bun install --frozen-lockfile
       - name: Write .env for build
         shell: bash
         run: |
