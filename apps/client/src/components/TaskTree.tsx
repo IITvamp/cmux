@@ -52,12 +52,10 @@ function getRunDisplayText(run: TaskRunWithChildren): string {
     return run.summary;
   }
 
-  // Extract agent name from prompt if it exists
-  const agentMatch = run.prompt.match(/\(([^)]+)\)$/);
-  const agentName = agentMatch ? agentMatch[1] : null;
-
-  if (agentName) {
-    return agentName;
+  // Prefer stored agentName; fall back to parsing only if missing
+  const fromRun = run.agentName?.trim();
+  if (fromRun && fromRun.length > 0) {
+    return fromRun;
   }
 
   return run.prompt.substring(0, 50) + "...";

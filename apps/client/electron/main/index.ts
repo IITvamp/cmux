@@ -23,13 +23,9 @@ import {
   jwtVerify,
   type JWTPayload,
 } from "jose";
-import {
-  createWriteStream,
-  existsSync,
-  promises as fs,
-  mkdirSync,
-  type WriteStream,
-} from "node:fs";
+import { promises as fs } from "node:fs";
+import { appendLogWithRotation, type LogRotationOptions } from "./log-management/log-rotation";
+import { ensureLogDirectory } from "./log-management/log-paths";
 const { autoUpdater } = electronUpdater;
 
 import util from "node:util";
@@ -46,43 +42,46 @@ let mainWindow: BrowserWindow | null = null;
 
 // Persistent log files
 let logsDir: string | null = null;
-let mainLogStream: WriteStream | null = null;
-let rendererLogStream: WriteStream | null = null;
+let mainLogPath: string | null = null;
+let rendererLogPath: string | null = null;
+
+const LOG_ROTATION: LogRotationOptions = {
+  maxBytes: 5 * 1024 * 1024,
+  maxBackups: 3,
+};
 
 function getTimestamp(): string {
   return new Date().toISOString();
 }
 
-function ensureLogStreams(): void {
-  if (logsDir) return; // already initialized
-  const base = app.getPath("userData");
-  const dir = path.join(base, "logs");
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
-  }
+function ensureLogFiles(): void {
+  if (logsDir && mainLogPath && rendererLogPath) return;
+  const dir = ensureLogDirectory();
   logsDir = dir;
-  mainLogStream = createWriteStream(path.join(dir, "main.log"), {
-    flags: "a",
-    encoding: "utf8",
-  });
-  rendererLogStream = createWriteStream(path.join(dir, "renderer.log"), {
-    flags: "a",
-    encoding: "utf8",
-  });
+  mainLogPath = join(dir, "main.log");
+  rendererLogPath = join(dir, "renderer.log");
 }
 
 function writeMainLogLine(level: "LOG" | "WARN" | "ERROR", line: string): void {
-  if (!mainLogStream) return;
-  mainLogStream.write(`[${getTimestamp()}] [MAIN] [${level}] ${line}\n`);
+  if (!mainLogPath) ensureLogFiles();
+  if (!mainLogPath) return;
+  appendLogWithRotation(
+    mainLogPath,
+    `[${getTimestamp()}] [MAIN] [${level}] ${line}\n`,
+    LOG_ROTATION
+  );
 }
 
 function writeRendererLogLine(
   level: "info" | "warning" | "error" | "debug",
   line: string
 ): void {
-  if (!rendererLogStream) return;
-  rendererLogStream.write(
-    `[${getTimestamp()}] [RENDERER] [${level.toUpperCase()}] ${line}\n`
+  if (!rendererLogPath) ensureLogFiles();
+  if (!rendererLogPath) return;
+  appendLogWithRotation(
+    rendererLogPath,
+    `[${getTimestamp()}] [RENDERER] [${level.toUpperCase()}] ${line}\n`,
+    LOG_ROTATION
   );
 }
 
@@ -380,7 +379,7 @@ app.on("open-url", (_event, url) => {
 });
 
 app.whenReady().then(async () => {
-  ensureLogStreams();
+  ensureLogFiles();
   setupConsoleFileMirrors();
   initCmdK({
     getMainWindow: () => mainWindow,
@@ -530,7 +529,7 @@ app.whenReady().then(async () => {
         {
           label: "Open Logs Folder",
           click: async () => {
-            if (!logsDir) ensureLogStreams();
+            if (!logsDir) ensureLogFiles();
             if (logsDir) await shell.openPath(logsDir);
           },
         },
@@ -550,15 +549,6 @@ app.whenReady().then(async () => {
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     app.quit();
-  }
-});
-
-app.on("before-quit", () => {
-  try {
-    mainLogStream?.end();
-    rendererLogStream?.end();
-  } catch {
-    // ignore
   }
 });
 
