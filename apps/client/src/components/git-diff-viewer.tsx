@@ -46,6 +46,7 @@ export interface GitDiffViewerProps {
 
 type FileGroup = {
   filePath: string;
+  oldPath?: string;
   status: ReplaceDiffEntry["status"];
   additions: number;
   deletions: number;
@@ -106,6 +107,7 @@ export function GitDiffViewer({
     () =>
       (diffs || []).map((diff) => ({
         filePath: diff.filePath,
+        oldPath: diff.oldPath,
         status: diff.status,
         additions: diff.additions,
         deletions: diff.deletions,
@@ -217,7 +219,7 @@ export function GitDiffViewer({
       <div className="">
         {fileGroups.map((file) => (
           <MemoFileDiffRow
-            key={`refs:${file.filePath}`}
+            key={`refs:${file.oldPath ?? ""}->${file.filePath}`}
             file={file}
             isExpanded={expandedFiles.has(file.filePath)}
             onToggle={() => toggleFile(file.filePath)}
@@ -274,6 +276,9 @@ function FileDiffRow({
   const rafIdRef = useRef<number | null>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const revealedRef = useRef<boolean>(false);
+  const originalPathForModel = file.oldPath ?? file.filePath;
+  const originalLanguage = getLanguageFromPath(originalPathForModel);
+  const modifiedLanguage = getLanguageFromPath(file.filePath);
 
   // Set an initial height before paint to reduce flicker
   useLayoutEffect(() => {
@@ -308,18 +313,33 @@ function FileDiffRow({
         <div className={cn("flex-shrink-0", getStatusColor(file.status))}>
           {getStatusIcon(file.status)}
         </div>
-        <div className="flex-1 min-w-0 flex items-center gap-3">
-          <span className="font-mono text-xs text-neutral-700 dark:text-neutral-300 truncate select-none">
-            {file.filePath}
-          </span>
-          <div className="flex items-center gap-2 text-[11px]">
-            <span className="text-green-600 dark:text-green-400 font-medium select-none">
-              +{file.additions}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-3 min-w-0">
+            <span
+              className="font-mono text-xs text-neutral-700 dark:text-neutral-300 truncate select-none"
+              title={file.filePath}
+            >
+              {file.filePath}
             </span>
-            <span className="text-red-600 dark:text-red-400 font-medium select-none">
-              −{file.deletions}
-            </span>
+            <div className="flex items-center gap-2 text-[11px] shrink-0">
+              <span className="text-green-600 dark:text-green-400 font-medium select-none">
+                +{file.additions}
+              </span>
+              <span className="text-red-600 dark:text-red-400 font-medium select-none">
+                −{file.deletions}
+              </span>
+            </div>
           </div>
+          {file.oldPath && file.oldPath !== file.filePath ? (
+            <div className="flex items-center gap-1 text-[10px] text-neutral-500 dark:text-neutral-400 font-mono truncate">
+              <span className="tracking-wide uppercase text-[9px] text-neutral-400 dark:text-neutral-500 select-none">
+                from
+              </span>
+              <span className="truncate" title={file.oldPath}>
+                {file.oldPath}
+              </span>
+            </div>
+          ) : null}
         </div>
       </button>
 
@@ -336,10 +356,10 @@ function FileDiffRow({
           ) : (
             <div ref={containerRef}>
               <DiffEditor
-                key={`${runId ?? "_"}:${theme ?? "_"}:${file.filePath}`}
+                key={`${runId ?? "_"}:${theme ?? "_"}:${file.oldPath ?? "_"}:${file.filePath}`}
                 original={file.oldContent}
                 modified={file.newContent}
-                language={getLanguageFromPath(file.filePath)}
+                language={modifiedLanguage}
                 theme={theme === "dark" ? "vs-dark" : "vs"}
                 onMount={(editor, monaco) => {
                   setEditorRef(editor);
@@ -350,25 +370,25 @@ function FileDiffRow({
 
                   // Create fresh models per run+file to avoid reuse across runs
                   try {
-                    const language = getLanguageFromPath(file.filePath);
+                    const scope = runId ?? "_";
                     const originalUri = monaco.Uri.parse(
-                      `inmemory://diff/${runId ?? "_"}/${encodeURIComponent(
-                        file.filePath
+                      `inmemory://diff/${scope}/${encodeURIComponent(
+                        originalPathForModel
                       )}?side=original`
                     );
                     const modifiedUri = monaco.Uri.parse(
-                      `inmemory://diff/${runId ?? "_"}/${encodeURIComponent(
+                      `inmemory://diff/${scope}/${encodeURIComponent(
                         file.filePath
                       )}?side=modified`
                     );
                     const originalModel = monaco.editor.createModel(
                       file.oldContent,
-                      language,
+                      originalLanguage,
                       originalUri
                     );
                     const modifiedModel = monaco.editor.createModel(
                       file.newContent,
-                      language,
+                      modifiedLanguage,
                       modifiedUri
                     );
                     editor.setModel({
@@ -554,6 +574,7 @@ const MemoFileDiffRow = memo(FileDiffRow, (prev, next) => {
     prev.isExpanded === next.isExpanded &&
     prev.theme === next.theme &&
     a.filePath === b.filePath &&
+    (a.oldPath || "") === (b.oldPath || "") &&
     a.status === b.status &&
     a.additions === b.additions &&
     a.deletions === b.deletions &&

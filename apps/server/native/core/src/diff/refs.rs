@@ -149,6 +149,7 @@ pub fn diff_refs(opts: GitDiffRefsOptions) -> Result<Vec<DiffEntry>> {
   let mut _num_added: usize = 0;
   let mut _num_modified: usize = 0;
   let mut _num_deleted: usize = 0;
+  let mut _num_renamed: usize = 0;
   let mut _num_binary: usize = 0;
   let mut _total_scanned_bytes: usize = 0;
   let mut _blob_read_ns: u128 = 0;
@@ -215,6 +216,104 @@ pub fn diff_refs(opts: GitDiffRefsOptions) -> Result<Vec<DiffEntry>> {
       } else { e.contentOmitted = Some(true); }
     } else { e.contentOmitted = Some(false); }
     out.push(e);
+    if bin { _num_binary += 1; }
+    _num_renamed += 1;
+  }
+
+  // Detect renames with modifications via git diff --find-renames output
+  {
+    let base_arg = base_oid.to_string();
+    let head_arg = r2_oid.to_string();
+    let args = [
+      "diff",
+      "--name-status",
+      "--find-renames",
+      "-z",
+      base_arg.as_str(),
+      head_arg.as_str(),
+    ];
+    if let Ok(raw) = crate::util::run_git(&cwd, &args) {
+      let tokens: Vec<&str> = raw.split('\0').filter(|s| !s.is_empty()).collect();
+      let mut idx = 0usize;
+      while idx < tokens.len() {
+        let code = tokens[idx];
+        idx += 1;
+        if code.starts_with('R') {
+          if idx + 1 >= tokens.len() { break; }
+          let old_path = tokens[idx].to_string();
+          let new_path = tokens[idx + 1].to_string();
+          idx += 2;
+          if !base_only.contains_key(&old_path) || !head_only.contains_key(&new_path) {
+            continue;
+          }
+          let old_id = match base_map.get(&old_path) {
+            Some(id) => *id,
+            None => continue,
+          };
+          let new_id = match head_map.get(&new_path) {
+            Some(id) => *id,
+            None => continue,
+          };
+          let t_bl = Instant::now();
+          let old_data = get_blob_bytes(old_id);
+          let new_data = get_blob_bytes(new_id);
+          _blob_read_ns += t_bl.elapsed().as_nanos();
+          let bin = match (&old_data, &new_data) {
+            (Some(a), Some(b)) => is_binary(a) || is_binary(b),
+            _ => true,
+          };
+          let mut e = DiffEntry{ filePath: new_path.clone(), oldPath: Some(old_path.clone()), status: "renamed".into(), additions: 0, deletions: 0, isBinary: bin, ..Default::default() };
+          if include {
+            if let Some(buf) = &old_data { e.oldSize = Some(buf.len() as i32); }
+            if let Some(buf) = &new_data { e.newSize = Some(buf.len() as i32); }
+          }
+          if include && !bin {
+            let old_str = String::from_utf8_lossy(old_data.as_ref().unwrap()).into_owned();
+            let new_str = String::from_utf8_lossy(new_data.as_ref().unwrap()).into_owned();
+            let old_sz = old_str.as_bytes().len();
+            let new_sz = new_str.as_bytes().len();
+            if old_sz + new_sz <= max_bytes {
+              let t_diff = Instant::now();
+              let diff = TextDiff::from_lines(&old_str, &new_str);
+              let mut adds = 0i32;
+              let mut dels = 0i32;
+              for op in diff.ops() {
+                for change in diff.iter_changes(op) {
+                  match change.tag() {
+                    similar::ChangeTag::Insert => adds += 1,
+                    similar::ChangeTag::Delete => dels += 1,
+                    _ => {}
+                  }
+                }
+              }
+              let d_diff = t_diff.elapsed().as_nanos();
+              _textdiff_ns += d_diff;
+              _textdiff_count += 1;
+              _total_scanned_bytes += old_sz + new_sz;
+              if d_diff > _max_diff_ns {
+                _max_diff_ns = d_diff;
+                _max_diff_path = Some(format!("{} -> {}", old_path, new_path));
+              }
+              e.additions = adds;
+              e.deletions = dels;
+              e.oldContent = Some(old_str);
+              e.newContent = Some(new_str);
+              e.contentOmitted = Some(false);
+            } else { e.contentOmitted = Some(true); }
+          } else { e.contentOmitted = Some(false); }
+          if bin { _num_binary += 1; }
+          _num_renamed += 1;
+          base_only.remove(&old_path);
+          head_only.remove(&new_path);
+          out.push(e);
+        } else if code.starts_with('C') {
+          if idx + 1 >= tokens.len() { break; }
+          idx += 2;
+        } else {
+          if idx < tokens.len() { idx += 1; }
+        }
+      }
+    }
   }
 
   // Handle modifications where the path exists in both
@@ -327,7 +426,7 @@ pub fn diff_refs(opts: GitDiffRefsOptions) -> Result<Vec<DiffEntry>> {
   let _d_total = t_total.elapsed();
   #[cfg(debug_assertions)]
   println!(
-    "[cmux_native_git] git_diff_refs timings: total={}ms repo_path={}ms fetch={}ms open_repo={}ms resolve_r1={}ms resolve_r2={}ms merge_base={}ms tree_ids={}ms collect_base={}ms collect_head={}ms add_mod_loop={}ms del_loop={}ms blob_read={}ms textdiff={}ms textdiff_count={} scanned_bytes={} files: +{} ~{} -{} (binary={}) max_textdiff={{path: {:?}, ms: {}}} cwd={} out_len={}",
+    "[cmux_native_git] git_diff_refs timings: total={}ms repo_path={}ms fetch={}ms open_repo={}ms resolve_r1={}ms resolve_r2={}ms merge_base={}ms tree_ids={}ms collect_base={}ms collect_head={}ms add_mod_loop={}ms del_loop={}ms blob_read={}ms textdiff={}ms textdiff_count={} scanned_bytes={} files: +{} ~{} -{} r={} (binary={}) max_textdiff={{path: {:?}, ms: {}}} cwd={} out_len={}",
     _d_total.as_millis(),
     _d_repo_path.as_millis(),
     _d_fetch.as_millis(),
@@ -347,6 +446,7 @@ pub fn diff_refs(opts: GitDiffRefsOptions) -> Result<Vec<DiffEntry>> {
     _num_added,
     _num_modified,
     _num_deleted,
+    _num_renamed,
     _num_binary,
     _max_diff_path,
     (_max_diff_ns as f64 / 1_000_000.0) as i64,
