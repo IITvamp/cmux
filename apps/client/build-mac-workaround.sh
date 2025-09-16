@@ -4,7 +4,6 @@ set -e
 # remove existing build artifacts; keep build/ to preserve entitlements between steps
 rm -rf dist-electron
 rm -rf out
-# Do NOT remove the entire build directory; it contains entitlements.mac.plist used for signing.
 # If you need to refresh icons, uncomment the next line to delete only icon outputs.
 # rm -f build/icon.icns build/icon.ico build/icon.png || true
 
