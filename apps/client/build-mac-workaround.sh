@@ -33,8 +33,8 @@ node ./scripts/generate-icons.mjs
 ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 bash "$ROOT_DIR/scripts/prepare-macos-entitlements.sh" || true
 
-# Build electron bundles
-npx electron-vite build -c electron.vite.config.ts
+# Build electron bundles using Bun (avoids npm/npx ESM bin issues)
+bunx electron-vite build -c electron.vite.config.ts
 
 # Create a temporary directory for packaging
 TEMP_DIR=$(mktemp -d)
