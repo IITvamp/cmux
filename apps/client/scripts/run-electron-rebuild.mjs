@@ -100,37 +100,56 @@ if (nodeModulesDir) {
 }
 
 const bunxBinary = process.platform === "win32" ? "bunx.cmd" : "bunx";
-const child = spawn(
-  bunxBinary,
-  [
-    "@electron/rebuild",
-    "-f",
-    "-t",
-    "prod,dev",
-    "--use-electron-clang",
-    "--version",
-    version,
-  ],
-  {
-    cwd: projectRoot,
-    env: process.env,
-    stdio: "inherit",
-  }
-);
 
-child.on("exit", (code, signal) => {
-  if (signal) {
-    process.exit(1);
-  }
+const runRebuild = (useElectronClang) =>
+  new Promise((resolve, reject) => {
+    const args = ["@electron/rebuild", "-f", "-t", "prod,dev"];
+    if (useElectronClang) args.push("--use-electron-clang");
+    args.push("--version", version);
 
-  if (code && code !== 0) {
-    process.exit(code);
-  }
+    const child = spawn(bunxBinary, args, {
+      cwd: projectRoot,
+      env: process.env,
+      stdio: ["inherit", "pipe", "pipe"],
+    });
 
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout?.on("data", (chunk) => {
+      stdout += chunk.toString();
+      process.stdout.write(chunk);
+    });
+
+    child.stderr?.on("data", (chunk) => {
+      stderr += chunk.toString();
+      process.stderr.write(chunk);
+    });
+
+    child.on("error", (error) => {
+      reject({ error, stdout, stderr, code: 1 });
+    });
+
+    child.on("exit", (code, signal) => {
+      if (signal) {
+        reject({ code: 1, signal, stdout, stderr });
+      } else if (code && code !== 0) {
+        reject({ code, stdout, stderr });
+      } else {
+        resolve({ stdout, stderr });
+      }
+    });
+  });
+
+try {
+  await runRebuild(false);
   process.exit(0);
-});
-
-child.on("error", (error) => {
-  console.error("Failed to launch electron-rebuild:", error);
-  process.exit(1);
-});
+} catch (error) {
+  if (error?.stderr) {
+    process.stderr.write(error.stderr);
+  }
+  if (error?.error) {
+    console.error("Failed to launch electron-rebuild:", error.error);
+  }
+  process.exit(error?.code ?? 1);
+}
