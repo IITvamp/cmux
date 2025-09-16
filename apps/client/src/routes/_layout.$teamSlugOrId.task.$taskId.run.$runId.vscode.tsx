@@ -1,5 +1,5 @@
 import { api } from "@cmux/convex/api";
-import { getShortId } from "@cmux/shared";
+import { getVSCodeSubdomain } from "@cmux/shared";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { convexQuery } from "@convex-dev/react-query";
 import { useSuspenseQuery } from "@tanstack/react-query";
@@ -58,10 +58,13 @@ function VSCodeComponent() {
     })
   );
 
-  const shortId = getShortId(taskRunId);
+  const subdomain = getVSCodeSubdomain({
+    taskRunId,
+    containerName: taskRun?.data?.vscode?.containerName,
+  });
 
   const iframeUrl = USE_PROXY_URL
-    ? `http://${shortId}.39378.localhost:9776/?folder=/root/workspace`
+    ? `http://${subdomain}.39378.localhost:9776/?folder=/root/workspace`
     : taskRun?.data?.vscode?.workspaceUrl || "about:blank";
 
   const onLoad = useCallback(() => {
