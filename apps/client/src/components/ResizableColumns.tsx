@@ -1,3 +1,4 @@
+import clsx from "clsx";
 import React, {
   useCallback,
   useEffect,
@@ -141,10 +142,16 @@ export function ResizableColumns({
         role="separator"
         aria-orientation="vertical"
         onMouseDown={startResizing}
-        className={`h-full cursor-col-resize bg-transparent hover:bg-neutral-200 dark:hover:bg-neutral-800 active:bg-neutral-300 dark:active:bg-neutral-700 ${separatorClassName ?? ""}`}
+        className={clsx(
+          "absolute inset-y-0 cursor-col-resize bg-transparent hover:bg-neutral-200 dark:hover:bg-neutral-800 active:bg-neutral-300 dark:active:bg-neutral-700",
+          separatorClassName
+        )}
         style={{
+          left: `${leftWidth}px`,
           width: `${separatorWidth}px`,
           minWidth: `${separatorWidth}px`,
+          transform: "translateX(-50%)",
+          zIndex: "var(--z-sidebar-resize-handle)",
         }}
         title="Resize"
       />

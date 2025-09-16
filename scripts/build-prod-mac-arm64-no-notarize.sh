@@ -111,6 +111,10 @@ fi
 echo "==> Prebuilding mac app via prod script (workaround)"
 bash "$ROOT_DIR/scripts/build-electron-prod.sh"
 
+# The workaround script cleans the client's build directory; recreate entitlements after
+echo "==> Re-preparing macOS entitlements (after prebuild)"
+bash "$ROOT_DIR/scripts/prepare-macos-entitlements.sh" || true
+
 # Determine if we have signing materials
 HAS_SIGNING=true
 for k in MAC_CERT_BASE64 MAC_CERT_PASSWORD; do
@@ -158,4 +162,3 @@ else
 fi
 
 echo "==> Done. Outputs in: $DIST_DIR"
-
