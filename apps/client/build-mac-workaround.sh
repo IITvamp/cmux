@@ -32,8 +32,8 @@ node ./scripts/generate-icons.mjs
 ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 bash "$ROOT_DIR/scripts/prepare-macos-entitlements.sh" || true
 
-# Build electron bundles
-npx electron-vite build -c electron.vite.config.ts
+# Build electron bundles using Bun (avoids npm/npx ESM bin issues)
+bunx electron-vite build -c electron.vite.config.ts
 
 # Create a temporary directory for packaging
 TEMP_DIR=$(mktemp -d)
@@ -85,8 +85,21 @@ mkdir -p "$APP_ASAR_DIR"
 cp -r out "$APP_ASAR_DIR/"
 cp package.json "$APP_ASAR_DIR/"
 
+echo "Preparing production dependencies..."
+# Ensure local production node_modules exists for the packaged app. In workspaces,
+# Bun may hoist to the repo root; create a local node_modules if missing.
+if [ ! -d "node_modules" ]; then
+  echo "node_modules not found; installing production dependencies with Bun..."
+  bun install --frozen-lockfile --production
+fi
+
 echo "Copying dependencies..."
-cp -r node_modules "$APP_ASAR_DIR/"
+if [ -d "node_modules" ]; then
+  cp -r node_modules "$APP_ASAR_DIR/"
+else
+  echo "ERROR: node_modules still missing after install. Aborting." >&2
+  exit 1
+fi
 
 # Update Info.plist
 echo "Updating app metadata..."
