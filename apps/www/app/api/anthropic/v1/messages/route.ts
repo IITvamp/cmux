@@ -11,6 +11,10 @@ const allowedModels = new Set([
 
 const hardCodedApiKey = "sk_placeholder_cmux_anthropic_api_key";
 
+function getIsOAuthToken(token: string) {
+  return token.includes("sk-ant-oat");
+}
+
 export async function POST(request: NextRequest) {
   try {
     // Get query parameters
@@ -19,10 +23,13 @@ export async function POST(request: NextRequest) {
 
     const xApiKeyHeader = request.headers.get("x-api-key");
     const authorizationHeader = request.headers.get("authorization");
+    const isOAuthToken = getIsOAuthToken(
+      xApiKeyHeader || authorizationHeader || ""
+    );
     const useOriginalApiKey =
+      !isOAuthToken &&
       xApiKeyHeader !== hardCodedApiKey &&
       authorizationHeader !== hardCodedApiKey;
-
     const body = await request.json();
     const model = body.model;
     if (!useOriginalApiKey && !allowedModels.has(model)) {
