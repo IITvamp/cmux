@@ -4,7 +4,7 @@ import type {
 } from "../common/environment-result.js";
 
 export async function getClaudeEnvironment(
-  _ctx: EnvironmentContext
+  ctx: EnvironmentContext
 ): Promise<EnvironmentResult> {
   // These must be lazy since configs are imported into the browser
   const { exec } = await import("node:child_process");
@@ -17,6 +17,7 @@ export async function getClaudeEnvironment(
   const files: EnvironmentResult["files"] = [];
   const env: Record<string, string> = {
     ANTHROPIC_BASE_URL: "https://www.cmux.dev/api/anthropic",
+    ANTHROPIC_CUSTOM_HEADERS: `x-cmux-token:${ctx.taskRunJwt}`,
   };
   const startupCommands: string[] = [];
 

@@ -76,13 +76,16 @@ export async function spawnAgent(
     );
 
     // Create a task run for this specific agent
-    const taskRunId = await getConvex().mutation(api.taskRuns.create, {
-      teamSlugOrId,
-      taskId: taskId,
-      prompt: `${options.taskDescription} (${agent.name})`,
-      agentName: agent.name,
-      newBranch,
-    });
+    const { taskRunId, jwt: taskRunJwt } = await getConvex().mutation(
+      api.taskRuns.create,
+      {
+        teamSlugOrId,
+        taskId: taskId,
+        prompt: `${options.taskDescription} (${agent.name})`,
+        agentName: agent.name,
+        newBranch,
+      }
+    );
 
     // Fetch the task to get image storage IDs
     const task = await getConvex().query(api.tasks.getById, {
@@ -208,6 +211,7 @@ export async function spawnAgent(
     let envVars: Record<string, string> = {
       CMUX_PROMPT: processedTaskDescription,
       CMUX_TASK_RUN_ID: taskRunId,
+      CMUX_TASK_RUN_JWT: taskRunJwt,
       PROMPT: processedTaskDescription,
     };
 
@@ -219,6 +223,7 @@ export async function spawnAgent(
       const envResult = await agent.environment({
         taskRunId: taskRunId,
         prompt: processedTaskDescription,
+        taskRunJwt,
       });
       envVars = {
         ...envVars,

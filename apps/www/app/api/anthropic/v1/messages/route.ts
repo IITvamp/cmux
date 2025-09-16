@@ -1,5 +1,7 @@
 import { env } from "@/lib/utils/www-env";
 import { NextRequest, NextResponse } from "next/server";
+import { jwtVerify } from "jose";
+import { z } from "zod";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 
@@ -11,11 +13,48 @@ const allowedModels = new Set([
 
 const hardCodedApiKey = "sk_placeholder_cmux_anthropic_api_key";
 
+const taskRunJwtSecret = new TextEncoder().encode(
+  env.CMUX_TASK_RUN_JWT_SECRET
+);
+
+const TaskRunTokenPayloadSchema = z.object({
+  taskRunId: z.string().min(1),
+  teamId: z.string().min(1),
+  userId: z.string().min(1),
+});
+
+type TaskRunTokenPayload = z.infer<typeof TaskRunTokenPayloadSchema>;
+
+async function requireTaskRunToken(
+  request: NextRequest
+): Promise<TaskRunTokenPayload> {
+  const token = request.headers.get("x-cmux-token");
+  if (!token) {
+    throw new Error("Missing CMUX token");
+  }
+
+  const verification = await jwtVerify(token, taskRunJwtSecret);
+  const parsed = TaskRunTokenPayloadSchema.safeParse(verification.payload);
+  if (!parsed.success) {
+    throw new Error("Invalid CMUX token payload");
+  }
+
+  return parsed.data;
+}
+
 function getIsOAuthToken(token: string) {
   return token.includes("sk-ant-oat");
 }
 
 export async function POST(request: NextRequest) {
+  let taskRunToken: TaskRunTokenPayload;
+  try {
+    taskRunToken = await requireTaskRunToken(request);
+  } catch (authError) {
+    console.error("[anthropic proxy] Auth error:", authError);
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     // Get query parameters
     const searchParams = request.nextUrl.searchParams;
@@ -41,11 +80,17 @@ export async function POST(request: NextRequest) {
 
     // Build headers
     const headers: Record<string, string> = useOriginalApiKey
-      ? Object.fromEntries(request.headers)
+      ? (() => {
+          const filtered = new Headers(request.headers);
+          filtered.delete("x-cmux-token");
+          filtered.set("x-cmux-task-run-id", taskRunToken.taskRunId);
+          return Object.fromEntries(filtered);
+        })()
       : {
           "Content-Type": "application/json",
           "x-api-key": env.ANTHROPIC_API_KEY,
           "anthropic-version": "2023-06-01",
+          "x-cmux-task-run-id": taskRunToken.taskRunId,
         };
 
     // Add beta header if beta param is present
