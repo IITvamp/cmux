@@ -79,7 +79,6 @@ export async function spawnAgent(
     const taskRunId = await getConvex().mutation(api.taskRuns.create, {
       teamSlugOrId,
       taskId: taskId,
-      // Store the original task description as the prompt; do not append agent name
       prompt: options.taskDescription,
       agentName: agent.name,
       newBranch,
