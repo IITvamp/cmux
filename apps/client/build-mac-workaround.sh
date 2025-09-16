@@ -1,10 +1,12 @@
 #!/bin/bash
 set -e
 
-# remove existing build
+# remove existing build artifacts; keep build/ to preserve entitlements between steps
 rm -rf dist-electron
 rm -rf out
-rm -rf build
+# Do NOT remove the entire build directory; it contains entitlements.mac.plist used for signing.
+# If you need to refresh icons, uncomment the next line to delete only icon outputs.
+# rm -f build/icon.icns build/icon.ico build/icon.png || true
 
 # Build the Electron app first with environment variables loaded
 echo "Building Electron app..."
@@ -27,6 +29,10 @@ echo "Building native Rust addon for packaging (release)..."
 echo "Generating icons via scripts/generate-icons.mjs..."
 node ./scripts/generate-icons.mjs
 
+# Ensure macOS entitlements file exists after the cleanup above
+ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
+bash "$ROOT_DIR/scripts/prepare-macos-entitlements.sh" || true
+
 # Build electron bundles
 npx electron-vite build -c electron.vite.config.ts
 
@@ -34,6 +40,11 @@ npx electron-vite build -c electron.vite.config.ts
 TEMP_DIR=$(mktemp -d)
 APP_NAME="cmux"
 APP_DIR="$TEMP_DIR/$APP_NAME.app"
+APP_VERSION=$(node -e "const fs = require('node:fs'); const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8')); if (!pkg.version) { process.exit(1); } process.stdout.write(String(pkg.version));")
+if [ -z "$APP_VERSION" ]; then
+  echo "ERROR: Unable to determine app version from package.json" >&2
+  exit 1
+fi
 
 echo "Creating app structure at $APP_DIR..."
 
@@ -83,8 +94,8 @@ echo "Updating app metadata..."
 /usr/libexec/PlistBuddy -c "Set :CFBundleName $APP_NAME" "$APP_DIR/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName $APP_NAME" "$APP_DIR/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier com.cmux.app" "$APP_DIR/Contents/Info.plist"
-/usr/libexec/PlistBuddy -c "Set :CFBundleVersion 1.0.0" "$APP_DIR/Contents/Info.plist"
-/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 1.0.0" "$APP_DIR/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $APP_VERSION" "$APP_DIR/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $APP_VERSION" "$APP_DIR/Contents/Info.plist"
 
 # Register cmux:// URL scheme so macOS knows to open this app for deep links
 /usr/libexec/PlistBuddy -c "Add :CFBundleURLTypes array" "$APP_DIR/Contents/Info.plist" 2>/dev/null || true
@@ -101,6 +112,14 @@ if [ -d "$ICONSET_SRC" ]; then
   mkdir -p "$RESOURCES_DIR/cmux-logos"
   rsync -a "$ICONSET_SRC/" "$RESOURCES_DIR/cmux-logos/cmux.iconset/"
 fi
+
+# Include auto-update configuration required by electron-updater
+APP_UPDATE_SRC="$(pwd)/electron/app-update.yml"
+if [ ! -f "$APP_UPDATE_SRC" ]; then
+  echo "ERROR: Auto-update config missing at $APP_UPDATE_SRC" >&2
+  exit 1
+fi
+cp "$APP_UPDATE_SRC" "$RESOURCES_DIR/app-update.yml"
 
 if [ -f "$BUILD_ICON_ICNS" ]; then
   echo "Installing app icon..."

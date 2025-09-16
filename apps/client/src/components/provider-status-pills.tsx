@@ -38,12 +38,10 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
     status.providers?.filter((p: ProviderStatus) => !p.isAvailable) ?? [];
 
   const dockerNotReady = !status.dockerStatus?.isRunning;
-  const gitNotReady = !status.gitStatus?.isAvailable;
   const dockerImageNotReady =
     status.dockerStatus?.workerImage &&
     !status.dockerStatus.workerImage.isAvailable;
   const dockerImagePulling = status.dockerStatus?.workerImage?.isPulling;
-  const githubNotConfigured = !status.githubStatus?.hasToken;
 
   // Count total available and unavailable providers
   const totalProviders = status.providers?.length ?? 0;
@@ -53,9 +51,7 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
   if (
     unavailableProviders.length === 0 &&
     !dockerNotReady &&
-    !gitNotReady &&
-    !dockerImageNotReady &&
-    !githubNotConfigured
+    !dockerImageNotReady
   ) {
     return null;
   }
@@ -118,16 +114,6 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
                     pulling...
                   </p>
                 )}
-                {gitNotReady && <p>• Git installation required</p>}
-                {githubNotConfigured && (
-                  <p>• GitHub PAT token configuration needed</p>
-                )}
-                {unavailableProviders.length > 0 && (
-                  <p>
-                    • {unavailableProviders.length} AI provider
-                    {unavailableProviders.length > 1 ? "s" : ""} need setup
-                  </p>
-                )}
                 <p className="text-slate-500 dark:text-slate-400 mt-2 pt-1 border-t border-slate-200 dark:border-slate-700">
                   Click to open settings
                 </p>
@@ -161,37 +147,6 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
               </TooltipContent>
             </Tooltip>
           )}
-
-          {gitNotReady && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() =>
-                    navigate({
-                      to: "/$teamSlugOrId/settings",
-                      params: { teamSlugOrId },
-                    })
-                  }
-                  className={clsx(
-                    "flex items-center gap-1.5 px-2.5 py-1 rounded-lg",
-                    "bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-600",
-                    "text-neutral-800 dark:text-neutral-200",
-                    "text-xs font-medium cursor-default select-none"
-                  )}
-                >
-                  <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div>
-                  Git
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p className="font-medium">Git Installation</p>
-                <p className="text-xs opacity-90">
-                  Git is required for repository management and version control
-                </p>
-              </TooltipContent>
-            </Tooltip>
-          )}
-
           {dockerImageNotReady && (
             <Tooltip>
               <TooltipTrigger asChild>
@@ -223,39 +178,6 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
                   {dockerImagePulling
                     ? `Pulling ${status.dockerStatus?.workerImage?.name}...`
                     : `${status.dockerStatus?.workerImage?.name} needs to be downloaded`}
-                </p>
-              </TooltipContent>
-            </Tooltip>
-          )}
-
-          {githubNotConfigured && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  onClick={() =>
-                    navigate({
-                      to: "/$teamSlugOrId/settings",
-                      params: { teamSlugOrId },
-                    })
-                  }
-                  className={clsx(
-                    "flex items-center gap-1.5 px-2.5 py-1 rounded-lg",
-                    "bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-600",
-                    "text-neutral-800 dark:text-neutral-200",
-                    "text-xs font-medium cursor-default select-none"
-                  )}
-                >
-                  <div className="w-1.5 h-1.5 rounded-full bg-amber-500"></div>
-                  Add GitHub token
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p className="font-medium">
-                  Optional: Configure GitHub Personal Access Token
-                </p>
-                <p className="text-xs opacity-90">
-                  Configure your GitHub Personal Access Token to enable
-                  automatic PR creation and repository management
                 </p>
               </TooltipContent>
             </Tooltip>

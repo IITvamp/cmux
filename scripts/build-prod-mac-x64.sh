@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Local macOS arm64 build + sign + notarize for Electron app
-# Mirrors the steps in .github/workflows/release-updates.yml (mac-arm64 job)
+# Local macOS x64 build + sign + notarize for Electron app
+# Mirrors the steps in .github/workflows/release-updates.yml (mac-x64 job)
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 CLIENT_DIR="$ROOT_DIR/apps/client"
 ENTITLEMENTS="$CLIENT_DIR/build/entitlements.mac.plist"
 DIST_DIR="$CLIENT_DIR/dist-electron"
 
-ARCH_EXPECTED="arm64"
+ARCH_EXPECTED="x86_64"
 
 usage() {
   cat <<EOF
 Usage: $(basename "$0") [--env-file path] [--skip-install]
 
-Builds, signs, notarizes macOS arm64 DMG/ZIP locally.
+Builds, signs, notarizes macOS x64 DMG/ZIP locally.
 
 Required env vars for signing + notarization:
   MAC_CERT_BASE64        Base64-encoded .p12 certificate
@@ -156,7 +156,7 @@ if [[ "$HAS_SIGNING" == "true" ]]; then
   (cd "$CLIENT_DIR" && \
     bunx electron-builder \
       --config electron-builder.json \
-      --mac dmg zip --arm64 \
+      --mac dmg zip --x64 \
       --publish never \
       --config.mac.forceCodeSigning=true \
       --config.mac.entitlements="$ENTITLEMENTS" \
@@ -189,7 +189,7 @@ if [[ "$HAS_SIGNING" == "true" ]]; then
       ARTIFACT="$(ls -1 "$DIST_DIR"/*.dmg | head -n1)"
       echo "Submitting DMG to notary service: $ARTIFACT"
     else
-      APP_PATH="$(ls -1d "$DIST_DIR"/mac-*/**/*.app 2>/dev/null | head -n1 || true)"
+      APP_PATH="$(ls -1d "$DIST_DIR"/mac*/**/*.app 2>/dev/null | head -n1 || true)"
       if [[ -z "$APP_PATH" ]]; then
         echo "No artifact found to notarize under $DIST_DIR" >&2
       else
@@ -223,14 +223,14 @@ if [[ "$HAS_SIGNING" == "true" ]]; then
     fi
   fi
 else
-  echo "==> No signing secrets; building unsigned like the commented GH path"
+  echo "==> No signing secrets; building unsigned"
   # Avoid any auto identity discovery and explicitly disable signing
   export CSC_IDENTITY_AUTO_DISCOVERY=false
   # Ensure entitlements exist right before packaging
   (cd "$CLIENT_DIR" && \
     bunx electron-builder \
       --config electron-builder.json \
-      --mac dmg zip --arm64 \
+      --mac dmg zip --x64 \
       --publish never \
       --config.mac.identity=null \
       --config.dmg.sign=false)
@@ -270,3 +270,4 @@ else
 fi
 
 echo "==> Done. Outputs in: $DIST_DIR"
+
