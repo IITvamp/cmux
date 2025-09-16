@@ -186,9 +186,6 @@ sandboxesRouter.openapi(
         return c.text("VSCode or worker service not found", 500);
       }
 
-      console.log("environmentEnvVarsContent");
-      console.log(environmentEnvVarsContent);
-
       if (
         environmentEnvVarsContent &&
         environmentEnvVarsContent.trim().length > 0
