@@ -82,8 +82,15 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
                   "text-xs font-medium cursor-default select-none"
                 )}
               >
-                <div className="w-2 h-2 rounded-full bg-red-500"></div>
-                <span>Setup required</span>
+                <div
+                  className={clsx(
+                    "w-2 h-2 rounded-full",
+                    availableProviders > 0 ? "bg-amber-500" : "bg-red-500"
+                  )}
+                ></div>
+                <span>
+                  {availableProviders > 0 ? "Optional setup" : "Setup required"}
+                </span>
                 <div className="flex items-center gap-1">
                   {availableProviders > 0 && (
                     <span className="text-emerald-600 dark:text-emerald-400 text-[10px] font-normal">
@@ -99,7 +106,11 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
               </button>
             </TooltipTrigger>
             <TooltipContent className="max-w-xs">
-              <p className="font-medium mb-1">Configuration Needed</p>
+              <p className="font-medium mb-1">
+                {availableProviders > 0
+                  ? "Some providers can be configured"
+                  : "Configuration needed"}
+              </p>
               <div className="text-xs space-y-1">
                 {dockerNotReady && <p>• Docker needs to be running</p>}
                 {dockerImageNotReady && !dockerImagePulling && (

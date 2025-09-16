@@ -102,8 +102,8 @@ export const DashboardInputControls = memo(function DashboardInputControls({
           ? {
               tooltip: (
                 <div className="space-y-1">
-                  <p className="text-xs font-semibold text-red-500">
-                    Setup required
+                  <p className="text-xs font-semibold text-amber-500">
+                    Not configured
                   </p>
                   <p className="text-xs text-neutral-300">
                     Add credentials for this agent in Settings.
