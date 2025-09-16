@@ -13,14 +13,7 @@ export GIT_PAGER=cat
 export PAGER=cat
 
 MAX_SIZE=${CMUX_DIFF_MAX_SIZE_BYTES:-200000}
-
-repo_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
-if [[ -z "${repo_root}" ]]; then
-  echo "Not a git repository" >&2
-  exit 1
-fi
-
-cd "${repo_root}"
+TARGET_PATH="${1:-$(pwd)}"
 
 is_ignored_path() {
   local p="$1"
@@ -86,92 +79,151 @@ determine_base_ref() {
   echo ""
 }
 
-base_ref=$(determine_base_ref)
+collect_diff_for_repo() {
+  local repo_root="$1"
+  (
+    cd "$repo_root"
 
-if [[ -n "$base_ref" ]]; then
-  # Compute merge-base and diff against it so staged and unstaged changes are included
-  merge_base=$(git merge-base "$base_ref" HEAD 2>/dev/null || echo "")
+    base_ref=$(determine_base_ref)
 
-  # Gather changed tracked files relative to merge-base
-  changed_tracked=$(git --no-pager diff --name-only "$merge_base" || true)
-  # Also gather untracked files
-  untracked=$(git ls-files --others --exclude-standard || true)
-  filtered_files=()
-  OIFS="$IFS"; IFS=$'\n'
-  for f in $changed_tracked; do
-    [[ -n "$f" ]] || continue
-    if is_ignored_path "$f"; then continue; fi
-    size=0
-    if [[ -f "$f" ]]; then
-      size=$(wc -c <"$f" 2>/dev/null || echo 0)
-    elif [[ -n "$merge_base" ]]; then
-      # For deletions, look up the blob size at merge-base
-      size=$(git cat-file -s "$merge_base:$f" 2>/dev/null || echo 0)
+    if [[ -n "$base_ref" ]]; then
+      # Compute merge-base and diff against it so staged and unstaged changes are included
+      merge_base=$(git merge-base "$base_ref" HEAD 2>/dev/null || echo "")
+
+      # Gather changed tracked files relative to merge-base
+      changed_tracked=$(git --no-pager diff --name-only "$merge_base" || true)
+      # Also gather untracked files
+      untracked=$(git ls-files --others --exclude-standard || true)
+      filtered_files=()
+      OIFS="$IFS"; IFS=$'\n'
+      for f in $changed_tracked; do
+        [[ -n "$f" ]] || continue
+        if is_ignored_path "$f"; then continue; fi
+        size=0
+        if [[ -f "$f" ]]; then
+          size=$(wc -c <"$f" 2>/dev/null || echo 0)
+        elif [[ -n "$merge_base" ]]; then
+          # For deletions, look up the blob size at merge-base
+          size=$(git cat-file -s "$merge_base:$f" 2>/dev/null || echo 0)
+        fi
+        case "$size" in
+          ''|*[!0-9]*) size=0 ;;
+        esac
+        if [ "$size" -gt "$MAX_SIZE" ]; then continue; fi
+        filtered_files+=("$f")
+      done
+      # Include untracked files after filtering
+      for f in $untracked; do
+        [[ -n "$f" ]] || continue
+        if is_ignored_path "$f"; then continue; fi
+        if [[ -f "$f" ]]; then
+          size=$(wc -c <"$f" 2>/dev/null || echo 0)
+          case "$size" in
+            ''|*[!0-9]*) size=0 ;;
+          esac
+          if [ "$size" -gt "$MAX_SIZE" ]; then continue; fi
+        fi
+        filtered_files+=("$f")
+      done
+      IFS="$OIFS"
+
+      if [ ${#filtered_files[@]} -eq 0 ]; then
+        exit 0
+      fi
+
+      # Output the filtered diff against merge-base (includes staged + unstaged)
+      git --no-pager diff -M --no-color "$merge_base" -- "${filtered_files[@]}" || true
+      exit 0
     fi
-    case "$size" in
-      ''|*[!0-9]*) size=0 ;;
-    esac
-    if [ "$size" -gt "$MAX_SIZE" ]; then continue; fi
-    filtered_files+=("$f")
-  done
-  # Include untracked files after filtering
-  for f in $untracked; do
-    [[ -n "$f" ]] || continue
-    if is_ignored_path "$f"; then continue; fi
-    if [[ -f "$f" ]]; then
-      size=$(wc -c <"$f" 2>/dev/null || echo 0)
-      case "$size" in
-        ''|*[!0-9]*) size=0 ;;
-      esac
-      if [ "$size" -gt "$MAX_SIZE" ]; then continue; fi
-    fi
-    filtered_files+=("$f")
-  done
-  IFS="$OIFS"
 
-  if [ ${#filtered_files[@]} -eq 0 ]; then
-    # Nothing relevant changed
-    exit 0
-  fi
+    # Fallback: no suitable origin base found. Diff the working tree by staging
+    # into a temporary index with filtering (original behavior).
+    tracked=$(git --no-pager diff --name-only || true)
+    staged_mods=$(git --no-pager diff --name-only --cached || true)
+    untracked=$(git ls-files --others --exclude-standard || true)
+    deleted_list=$( (git --no-pager diff --name-only --diff-filter=D; git ls-files --deleted) 2>/dev/null | sort -u || true )
 
-  # Output the filtered diff against merge-base (includes staged + unstaged)
-  git --no-pager diff -M --no-color "$merge_base" -- "${filtered_files[@]}" || true
+    tmp_index=$(mktemp)
+    rm -f "$tmp_index" || true
+    trap 'rm -f "$tmp_index"' EXIT
+    export GIT_INDEX_FILE="$tmp_index"
+
+    {
+      echo "$tracked"
+      echo "$staged_mods"
+      echo "$untracked"
+    } | while IFS= read -r f; do
+      [[ -n "$f" ]] || continue
+      if is_ignored_path "$f"; then continue; fi
+      if [[ -f "$f" ]]; then
+        size=$(wc -c <"$f" 2>/dev/null || echo 0)
+        case "$size" in
+          ''|*[!0-9]*) size=0 ;;
+        esac
+        if [ "$size" -gt "$MAX_SIZE" ]; then continue; fi
+      fi
+      git add -- "$f" 2>/dev/null || true
+    done
+
+    echo "$deleted_list" | while IFS= read -r f; do
+      [[ -n "$f" ]] || continue
+      if is_ignored_path "$f"; then continue; fi
+      git update-index --remove -- "$f" 2>/dev/null || true
+    done
+
+    git --no-pager diff --staged --no-color || true
+  )
+}
+
+if git -C "$TARGET_PATH" rev-parse --show-toplevel >/dev/null 2>&1; then
+  repo_root=$(git -C "$TARGET_PATH" rev-parse --show-toplevel)
+  collect_diff_for_repo "$repo_root"
   exit 0
 fi
 
-# Fallback: no suitable origin base found. Diff the working tree by staging
-# into a temporary index with filtering (original behavior).
-tracked=$(git --no-pager diff --name-only || true)
-staged_mods=$(git --no-pager diff --name-only --cached || true)
-untracked=$(git ls-files --others --exclude-standard || true)
-deleted_list=$( (git --no-pager diff --name-only --diff-filter=D; git ls-files --deleted) 2>/dev/null | sort -u || true )
+if [[ ! -d "$TARGET_PATH" ]]; then
+  echo "Not a git repository" >&2
+  exit 1
+fi
 
-tmp_index=$(mktemp)
-rm -f "$tmp_index" || true
-trap 'rm -f "$tmp_index"' EXIT
-export GIT_INDEX_FILE="$tmp_index"
-
-{
-  echo "$tracked"
-  echo "$staged_mods"
-  echo "$untracked"
-} | while IFS= read -r f; do
-  [[ -n "$f" ]] || continue
-  if is_ignored_path "$f"; then continue; fi
-  if [[ -f "$f" ]]; then
-    size=$(wc -c <"$f" 2>/dev/null || echo 0)
-    case "$size" in
-      ''|*[!0-9]*) size=0 ;;
-    esac
-    if [ "$size" -gt "$MAX_SIZE" ]; then continue; fi
+found_repos=()
+while IFS= read -r candidate; do
+  if git -C "$candidate" rev-parse --show-toplevel >/dev/null 2>&1; then
+    repo_root=$(git -C "$candidate" rev-parse --show-toplevel 2>/dev/null || true)
+    if [[ -n "$repo_root" ]]; then
+      found_repos+=("$repo_root")
+    fi
   fi
-  git add -- "$f" 2>/dev/null || true
-done
+done < <(find "$TARGET_PATH" -mindepth 1 -maxdepth 1 -type d -print 2>/dev/null | sort)
 
-echo "$deleted_list" | while IFS= read -r f; do
-  [[ -n "$f" ]] || continue
-  if is_ignored_path "$f"; then continue; fi
-  git update-index --remove -- "$f" 2>/dev/null || true
-done
+if [ ${#found_repos[@]} -eq 0 ]; then
+  echo "Not a git repository" >&2
+  exit 1
+fi
 
-git --no-pager diff --staged --no-color || true
+unique_repos=()
+if [ ${#found_repos[@]} -gt 0 ]; then
+  while IFS= read -r repo; do
+    unique_repos+=("$repo")
+  done < <(printf '%s\n' "${found_repos[@]}" | sort -u)
+fi
+
+first=1
+for repo in "${unique_repos[@]}"; do
+  diff_output=$(collect_diff_for_repo "$repo")
+  repo_name=$(basename "$repo")
+  if [[ $first -eq 0 ]]; then
+    printf '\n'
+  fi
+  printf '===== Repository: %s =====\n' "$repo_name"
+  if [[ -n "$diff_output" ]]; then
+    printf '%s' "$diff_output"
+    case "$diff_output" in
+      *$'\n') ;;
+      *) printf '\n' ;;
+    esac
+  else
+    printf '(No relevant changes)\n'
+  fi
+  first=0
+done
