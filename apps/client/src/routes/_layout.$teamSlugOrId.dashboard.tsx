@@ -8,7 +8,6 @@ import { DashboardStartTaskButton } from "@/components/dashboard/DashboardStartT
 import { TaskList } from "@/components/dashboard/TaskList";
 import { FloatingPane } from "@/components/floating-pane";
 import { GitHubIcon } from "@/components/icons/github";
-import { ProviderStatusPills } from "@/components/provider-status-pills";
 import { useTheme } from "@/components/theme/use-theme";
 import { TitleBar } from "@/components/TitleBar";
 import type { SelectOption } from "@/components/ui/searchable-select";
@@ -22,6 +21,7 @@ import { useSocket } from "@/contexts/socket/use-socket";
 import { createFakeConvexId } from "@/lib/fakeConvexId";
 import { api } from "@cmux/convex/api";
 import type { Doc } from "@cmux/convex/dataModel";
+import type { ProviderStatusResponse } from "@cmux/shared";
 import { convexQuery } from "@convex-dev/react-query";
 import { useQuery } from "@tanstack/react-query";
 import { branchesQueryOptions } from "@/queries/branches";
@@ -61,6 +61,8 @@ function DashboardComponent() {
   // State for loading states
   const [isLoadingBranches, setIsLoadingBranches] = useState(false);
   const [dockerReady, setDockerReady] = useState<boolean | null>(null);
+  const [providerStatus, setProviderStatus] =
+    useState<ProviderStatusResponse | null>(null);
 
   // Ref to access editor API
   const editorApiRef = useRef<EditorApi | null>(null);
@@ -154,10 +156,13 @@ function DashboardComponent() {
     if (!socket) return;
 
     socket.emit("check-provider-status", (response) => {
-      if (!response?.success) return;
-      const isRunning = response.dockerStatus?.isRunning;
-      if (typeof isRunning === "boolean") {
-        setDockerReady(isRunning);
+      if (!response) return;
+      setProviderStatus(response);
+      if (response.success) {
+        const isRunning = response.dockerStatus?.isRunning;
+        if (typeof isRunning === "boolean") {
+          setDockerReady(isRunning);
+        }
       }
     });
   }, [socket]);
@@ -654,9 +659,6 @@ function DashboardComponent() {
                 "relative bg-white dark:bg-neutral-700/50 border border-neutral-200 dark:border-neutral-500/15 rounded-2xl transition-all"
               )}
             >
-              {/* Provider Status Pills */}
-              <ProviderStatusPills teamSlugOrId={teamSlugOrId} />
-
               {/* Editor Input */}
               <DashboardInput
                 ref={editorApiRef}
@@ -688,6 +690,7 @@ function DashboardComponent() {
                   teamSlugOrId={teamSlugOrId}
                   cloudToggleDisabled={isEnvSelected}
                   branchDisabled={isEnvSelected}
+                  providerStatus={providerStatus}
                 />
                 <DashboardStartTaskButton
                   canSubmit={canSubmit}
