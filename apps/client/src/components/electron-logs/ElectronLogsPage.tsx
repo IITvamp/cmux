@@ -9,8 +9,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useElectronLogsQuery } from "@/hooks/useElectronLogsQuery";
 import { useElectronMainLogStream } from "@/hooks/useElectronMainLogStream";
-import { copyAllElectronLogs } from "@/lib/electron-logs/electron-logs";
 import { isElectron } from "@/lib/electron";
+import { copyAllElectronLogs } from "@/lib/electron-logs/electron-logs";
 import type { ElectronLogFile } from "@/lib/electron-logs/types";
 import { cn } from "@/lib/utils";
 import { ClipboardCopy, RefreshCcw } from "lucide-react";
@@ -53,8 +53,8 @@ export function ElectronLogsPage() {
                 Logs are only available in the desktop app
               </CardTitle>
               <CardDescription className="text-sm text-neutral-600 dark:text-neutral-400">
-                Launch the Electron application to inspect local log files and the
-                main process output.
+                Launch the Electron application to inspect local log files and
+                the main process output.
               </CardDescription>
             </CardHeader>
           </Card>
@@ -64,7 +64,7 @@ export function ElectronLogsPage() {
   }
 
   return (
-    <div className="px-6 py-8">
+    <div className="px-6 py-8 h-full overflow-y-auto">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
         <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -129,7 +129,8 @@ export function ElectronLogsPage() {
                   No log files detected
                 </CardTitle>
                 <CardDescription className="text-sm text-neutral-600 dark:text-neutral-400">
-                  The Electron app has not written any log files yet. Trigger an action and refresh to see new entries.
+                  The Electron app has not written any log files yet. Trigger an
+                  action and refresh to see new entries.
                 </CardDescription>
               </CardHeader>
             </Card>

@@ -4,13 +4,13 @@ import * as Dialog from "@radix-ui/react-dialog";
 
 import { isElectron } from "@/lib/electron";
 import { copyAllElectronLogs } from "@/lib/electron-logs/electron-logs";
-import { ElectronLogsCommandItems } from "./command-bar/ElectronLogsCommandItems";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { Command } from "cmdk";
 import { useMutation, useQuery } from "convex/react";
-import { GitPullRequest, Monitor, Moon, Sun, Plus } from "lucide-react";
+import { GitPullRequest, Monitor, Moon, Plus, Sun } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { ElectronLogsCommandItems } from "./command-bar/ElectronLogsCommandItems";
 
 interface CommandBarProps {
   teamSlugOrId: string;
@@ -120,7 +120,10 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
     async (value: string) => {
       if (value === "logs:view") {
         try {
-          await router.preloadRoute({ to: "/logs" });
+          await router.preloadRoute({
+            to: "/$teamSlugOrId/logs",
+            params: { teamSlugOrId },
+          });
         } catch {
           // ignore preload errors
         }
@@ -173,7 +176,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
           params: { teamSlugOrId },
         });
       } else if (value === "logs:view") {
-        navigate({ to: "/logs" });
+        navigate({ to: "/$teamSlugOrId/logs", params: { teamSlugOrId } });
       } else if (value === "logs:copy") {
         try {
           const ok = await copyAllElectronLogs();
@@ -317,10 +320,6 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
               </Command.Item>
             </Command.Group>
 
-            {isElectron ? (
-              <ElectronLogsCommandItems onSelect={handleSelect} />
-            ) : null}
-
             <Command.Group>
               <div className="px-2 py-1.5 text-xs text-neutral-500 dark:text-neutral-400">
                 Theme
@@ -456,6 +455,10 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
                 ])}
               </Command.Group>
             )}
+
+            {isElectron ? (
+              <ElectronLogsCommandItems onSelect={handleSelect} />
+            ) : null}
           </Command.List>
         </div>
       </Command.Dialog>
