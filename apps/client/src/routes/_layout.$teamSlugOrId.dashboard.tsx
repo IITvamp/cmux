@@ -19,6 +19,12 @@ import {
 import { useExpandTasks } from "@/contexts/expand-tasks/ExpandTasksContext";
 import { useSocket } from "@/contexts/socket/use-socket";
 import { createFakeConvexId } from "@/lib/fakeConvexId";
+import {
+  loadRecentProjects,
+  sortReposByRecency,
+  touchRecentProject,
+  type RecentProjectsMap,
+} from "@/lib/recentProjects";
 import { api } from "@cmux/convex/api";
 import type { Doc } from "@cmux/convex/dataModel";
 import type { ProviderStatusResponse } from "@cmux/shared";
@@ -57,6 +63,25 @@ function DashboardComponent() {
     const stored = localStorage.getItem("isCloudMode");
     return stored ? JSON.parse(stored) : false;
   });
+  const [recentProjects, setRecentProjects] = useState<RecentProjectsMap>(() =>
+    loadRecentProjects()
+  );
+  const recordRecentProject = useCallback(
+    (fullName?: string | null) => {
+      if (!fullName || fullName.startsWith("env:")) return;
+      setRecentProjects((prev) => touchRecentProject(prev, fullName));
+    },
+    [touchRecentProject]
+  );
+
+  useEffect(() => {
+    const current = selectedProject[0];
+    if (!current || current.startsWith("env:")) return;
+    setRecentProjects((prev) => {
+      if (prev[current]) return prev;
+      return touchRecentProject(prev, current);
+    });
+  }, [selectedProject, touchRecentProject]);
 
   // State for loading states
   const [isLoadingBranches, setIsLoadingBranches] = useState(false);
@@ -123,8 +148,9 @@ function DashboardComponent() {
       } else {
         void fetchBranches(newProjects[0]);
       }
+      recordRecentProject(newProjects[0]);
     },
-    [selectedProject, fetchBranches]
+    [selectedProject, fetchBranches, recordRecentProject]
   );
 
   // Callback for branch selection changes
@@ -145,7 +171,8 @@ function DashboardComponent() {
     refetchOnWindowFocus: false,
   });
   const reposByOrg = useMemo(
-    () => reposByOrgQuery.data || {},
+    () =>
+      (reposByOrgQuery.data || {}) as Record<string, Doc<"repos">[]>,
     [reposByOrgQuery.data]
   );
 
@@ -427,17 +454,28 @@ function DashboardComponent() {
   );
 
   const projectOptions = useMemo(() => {
-    // Repo options as objects with GitHub icon
-    const repoValues = Array.from(
-      new Set(
-        Object.entries(reposByOrg || {}).flatMap(([, repos]) =>
-          repos.map((repo) => repo.fullName)
-        )
-      )
-    );
-    const repoOptions = repoValues.map((fullName) => ({
-      label: fullName,
-      value: fullName,
+    const repoMap = new Map<string, Doc<"repos">>();
+    Object.values(reposByOrg || {}).forEach((repos) => {
+      repos.forEach((repo) => {
+        const existing = repoMap.get(repo.fullName);
+        if (!existing) {
+          repoMap.set(repo.fullName, repo);
+          return;
+        }
+        const currentSynced = existing.lastSyncedAt ?? 0;
+        const nextSynced = repo.lastSyncedAt ?? 0;
+        if (nextSynced > currentSynced) {
+          repoMap.set(repo.fullName, repo);
+        }
+      });
+    });
+
+    const repoOptions = sortReposByRecency(
+      Array.from(repoMap.values()),
+      recentProjects
+    ).map((repo) => ({
+      label: repo.fullName,
+      value: repo.fullName,
       icon: (
         <GitHubIcon className="w-4 h-4 text-neutral-600 dark:text-neutral-300" />
       ),
@@ -480,7 +518,7 @@ function DashboardComponent() {
     }
 
     return options;
-  }, [reposByOrg, environmentsQuery.data]);
+  }, [reposByOrg, environmentsQuery.data, recentProjects]);
 
   const branchOptions = branches || [];
 
@@ -530,6 +568,7 @@ function DashboardComponent() {
         "selectedProject",
         JSON.stringify([data.repoFullName])
       );
+      recordRecentProject(data.repoFullName);
 
       // Set the selected branch
       if (data.branch) {
@@ -542,7 +581,7 @@ function DashboardComponent() {
     return () => {
       socket.off("default-repo", handleDefaultRepo);
     };
-  }, [socket]);
+  }, [socket, recordRecentProject]);
 
   // Global keydown handler for autofocus
   useEffect(() => {

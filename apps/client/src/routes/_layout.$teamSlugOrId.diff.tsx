@@ -9,6 +9,13 @@ import { branchesQueryOptions } from "@/queries/branches";
 import { diffSmartQueryOptions } from "@/queries/diff-smart";
 import { api } from "@cmux/convex/api";
 import { convexQuery } from "@convex-dev/react-query";
+import {
+  loadRecentProjects,
+  sortReposByRecency,
+  touchRecentProject,
+  type RecentProjectsMap,
+} from "@/lib/recentProjects";
+import type { Doc } from "@cmux/convex/dataModel";
 import { useQuery as useRQ } from "@tanstack/react-query";
 import { createFileRoute, useRouter } from "@tanstack/react-router";
 import { ArrowLeftRight, GitBranch } from "lucide-react";
@@ -39,6 +46,24 @@ function DashboardDiffPage() {
       return null;
     }
   });
+  const [recentProjects, setRecentProjects] = useState<RecentProjectsMap>(() =>
+    loadRecentProjects()
+  );
+  const recordRecentProject = useCallback(
+    (fullName?: string | null) => {
+      if (!fullName || fullName.startsWith("env:")) return;
+      setRecentProjects((prev) => touchRecentProject(prev, fullName));
+    },
+    [touchRecentProject]
+  );
+
+  useEffect(() => {
+    if (!selectedProject || selectedProject.startsWith("env:")) return;
+    setRecentProjects((prev) => {
+      if (prev[selectedProject]) return prev;
+      return touchRecentProject(prev, selectedProject);
+    });
+  }, [selectedProject, touchRecentProject]);
 
   useEffect(() => {
     if (selectedProject) return;
@@ -50,6 +75,7 @@ function DashboardDiffPage() {
         "selectedProject",
         JSON.stringify([data.repoFullName])
       );
+      recordRecentProject(data.repoFullName);
     };
     // Rely on SocketProvider attaching a socket to window if available
     const w = window as unknown as {
@@ -65,7 +91,7 @@ function DashboardDiffPage() {
       };
     }
     return () => {};
-  }, [selectedProject]);
+  }, [selectedProject, recordRecentProject]);
 
   const reposByOrgQuery = useRQ(
     convexQuery(api.github.getReposByOrg, { teamSlugOrId })
@@ -80,19 +106,29 @@ function DashboardDiffPage() {
 
   const projectOptions: SelectOption[] = useMemo(() => {
     const byOrg =
-      (reposByOrgQuery.data as
-        | Record<string, Array<{ fullName: string }>>
-        | undefined) || {};
-    const repoValues = Array.from(
-      new Set(
-        Object.entries(byOrg).flatMap(([, repos]) =>
-          repos.map((r) => r.fullName)
-        )
-      )
-    );
-    const repoOptions = repoValues.map((fullName) => ({
-      label: fullName,
-      value: fullName,
+      (reposByOrgQuery.data as Record<string, Doc<"repos">[]> | undefined) ||
+      {};
+    const repoMap = new Map<string, Doc<"repos">>();
+    Object.values(byOrg).forEach((repos) => {
+      repos.forEach((repo) => {
+        const existing = repoMap.get(repo.fullName);
+        if (!existing) {
+          repoMap.set(repo.fullName, repo);
+          return;
+        }
+        const currentSynced = existing.lastSyncedAt ?? 0;
+        const nextSynced = repo.lastSyncedAt ?? 0;
+        if (nextSynced > currentSynced) {
+          repoMap.set(repo.fullName, repo);
+        }
+      });
+    });
+    const repoOptions = sortReposByRecency(
+      Array.from(repoMap.values()),
+      recentProjects
+    ).map((repo) => ({
+      label: repo.fullName,
+      value: repo.fullName,
       icon: (
         <GitHubIcon className="w-4 h-4 text-neutral-600 dark:text-neutral-300" />
       ),
@@ -108,7 +144,7 @@ function DashboardDiffPage() {
       opts.push(...repoOptions);
     }
     return opts;
-  }, [reposByOrgQuery.data]);
+  }, [reposByOrgQuery.data, recentProjects]);
 
   const branchOptions: SelectOption[] = useMemo(() => {
     const b = (branchesQuery.data || []) as string[];
@@ -192,6 +228,7 @@ function DashboardDiffPage() {
             );
             // Clear refs when repo changes
             setSearch({ ref1: undefined, ref2: undefined });
+            recordRecentProject(v);
           }}
           placeholder="Select repository"
           singleSelect
