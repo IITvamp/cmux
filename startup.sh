@@ -7,35 +7,8 @@ export PATH="/usr/local/bin:$PATH"
 # Create log dir early
 mkdir -p /var/log/cmux || true
 
-# Start envd (per-user env daemon) in background and wait for socket
-start_envd() {
-  local runtime_dir="${XDG_RUNTIME_DIR:-/tmp}"
-  local sock_dir="$runtime_dir/cmux-envd"
-  local sock_path="$sock_dir/envd.sock"
-  mkdir -p "$sock_dir" || true
-  if ! pgrep -f "node .*envd/dist/index.js" >/dev/null 2>&1; then
-    echo "[Startup] Starting envd daemon..." >> /var/log/cmux/startup.log
-    (XDG_RUNTIME_DIR="$runtime_dir" nohup envd >/var/log/cmux/envd.log 2>&1 &)
-  fi
-  # Wait briefly for the socket to appear
-  for i in $(seq 1 100); do
-    [ -S "$sock_path" ] && break
-    sleep 0.05
-  done
-  if [ ! -S "$sock_path" ]; then
-    echo "[Startup] Warning: envd socket not found at $sock_path" >> /var/log/cmux/startup.log
-  else
-    echo "[Startup] envd ready at $sock_path" >> /var/log/cmux/startup.log
-  fi
-}
-
-# Skip DinD setup that might interfere - supervisor will handle Docker startup
-
 # Start supervisor to manage dockerd (in background, but with -n for proper signal handling)
 /usr/bin/supervisord -n >> /dev/null 2>&1 &
-
-# Bring up env daemon immediately
-start_envd
 
 # Wait for Docker daemon to be ready
 # Based on https://github.com/cruizba/ubuntu-dind/blob/master/start-docker.sh
@@ -219,9 +192,6 @@ done
 if [ $retry_count -eq $MAX_RETRIES ]; then
     echo "[Startup] Warning: Failed to connect to OpenVSCode server after $MAX_RETRIES attempts" >> /var/log/cmux/startup.log
 fi
-
-# Start envctl
-envd >/dev/null 2>&1 &
 
 # Start the worker
 export NODE_ENV=production

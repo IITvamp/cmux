@@ -92,14 +92,6 @@ COPY packages/vscode-extension/tsconfig.json ./packages/vscode-extension/
 COPY packages/vscode-extension/.vscodeignore ./packages/vscode-extension/
 COPY packages/vscode-extension/LICENSE.md ./packages/vscode-extension/
 
-# Copy envctl/envd sources for build
-COPY packages/envctl/tsconfig.json ./packages/envctl/
-COPY packages/envctl/tsconfig.build.json ./packages/envctl/
-COPY packages/envctl/src ./packages/envctl/src
-COPY packages/envd/tsconfig.json ./packages/envd/
-COPY packages/envd/tsconfig.build.json ./packages/envd/
-COPY packages/envd/src ./packages/envd/src
-
 # Build worker with bundling, using the installed node_modules
 RUN cd /cmux && \
     bun build ./apps/worker/src/index.ts \
@@ -111,11 +103,6 @@ RUN cd /cmux && \
     cp -r ./apps/worker/build /builtins/build && \
     cp ./apps/worker/wait-for-docker.sh /usr/local/bin/ && \
     chmod +x /usr/local/bin/wait-for-docker.sh
-
-# Build envctl/envd (TypeScript → JS)
-RUN cd /cmux && \
-    bun install --frozen-lockfile --production && \
-    bun -F @cmux/envctl -F @cmux/envd build
 
 # Verify bun is still working in builder
 RUN bun --version && bunx --version
@@ -241,18 +228,12 @@ COPY --from=builder /cmux/apps/worker/scripts/collect-relevant-diff.sh /usr/loca
 RUN chmod +x /usr/local/bin/cmux-collect-relevant-diff.sh
 
 # Install envctl/envd into runtime
-RUN curl https://raw.githubusercontent.com/lawrencecchen/cmux-env/76f50631b1bc377bee53ea192f27f1006d615092/scripts/install.sh | bash && \
+RUN CMUX_ENV_VERSION=0.0.2 curl https://raw.githubusercontent.com/lawrencecchen/cmux-env/refs/heads/main/scripts/install.sh | bash && \
     envctl --version && \
     envctl install-hook bash
 
 # Install tmux configuration for better mouse scrolling behavior
 COPY configs/tmux.conf /etc/tmux.conf
-COPY configs/envctl.sh /etc/profile.d/envctl.sh
-RUN bash -lc 'echo "# Source envctl hook for interactive non-login shells" >> /etc/bash.bashrc && \
-    echo "if [ -f /etc/profile.d/envctl.sh ]; then . /etc/profile.d/envctl.sh; fi" >> /etc/bash.bashrc'
-RUN mkdir -p /etc/zsh && \
-    bash -lc 'echo "# Source envctl hook for interactive zsh shells" >> /etc/zsh/zshrc && \
-    echo "if [ -f /etc/profile.d/envctl.sh ]; then . /etc/profile.d/envctl.sh; fi" >> /etc/zsh/zshrc'
 
 RUN claude_vsix=$(rg --files /root/.bun/install/cache/@anthropic-ai 2>/dev/null | rg "claude-code\.vsix$" | head -1) && \
     if [ -n "$claude_vsix" ]; then \
