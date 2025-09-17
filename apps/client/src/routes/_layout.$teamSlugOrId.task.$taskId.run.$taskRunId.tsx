@@ -1,5 +1,4 @@
 import { api } from "@cmux/convex/api";
-import { getShortId } from "@cmux/shared";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { convexQuery } from "@convex-dev/react-query";
 import { useSuspenseQuery } from "@tanstack/react-query";
@@ -9,8 +8,6 @@ import { useCallback } from "react";
 import { usePersistentIframe } from "../hooks/usePersistentIframe";
 import { preloadTaskRunIframes } from "../lib/preloadTaskRunIframes";
 
-// Configuration: Set to true to use the proxy URL, false to use direct localhost URL
-const USE_PROXY_URL = false;
 
 export const Route = createFileRoute(
   "/_layout/$teamSlugOrId/task/$taskId/run/$taskRunId"
@@ -47,11 +44,7 @@ function TaskRunComponent() {
     })
   );
 
-  const shortId = getShortId(taskRunId);
-
-  const iframeUrl = USE_PROXY_URL
-    ? `http://${shortId}.39378.localhost:9776/?folder=/root/workspace`
-    : taskRun?.data?.vscode?.workspaceUrl || "about:blank";
+  const iframeUrl = taskRun?.data?.vscode?.workspaceUrl || "about:blank";
 
   const onLoad = useCallback(() => {
     console.log(`Iframe loaded for task run ${taskRunId}`);

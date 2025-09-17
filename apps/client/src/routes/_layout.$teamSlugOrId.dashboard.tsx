@@ -8,7 +8,6 @@ import { DashboardStartTaskButton } from "@/components/dashboard/DashboardStartT
 import { TaskList } from "@/components/dashboard/TaskList";
 import { FloatingPane } from "@/components/floating-pane";
 import { GitHubIcon } from "@/components/icons/github";
-import { ProviderStatusPills } from "@/components/provider-status-pills";
 import { useTheme } from "@/components/theme/use-theme";
 import { TitleBar } from "@/components/TitleBar";
 import type { SelectOption } from "@/components/ui/searchable-select";
@@ -23,6 +22,7 @@ import { createFakeConvexId } from "@/lib/fakeConvexId";
 import { branchesQueryOptions } from "@/queries/branches";
 import { api } from "@cmux/convex/api";
 import type { Doc } from "@cmux/convex/dataModel";
+import type { ProviderStatusResponse } from "@cmux/shared";
 import { convexQuery } from "@convex-dev/react-query";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
@@ -58,9 +58,9 @@ function DashboardComponent() {
     return stored ? JSON.parse(stored) : false;
   });
 
-  // State for loading states
-  const [isLoadingBranches, setIsLoadingBranches] = useState(false);
   const [dockerReady, setDockerReady] = useState<boolean | null>(null);
+  const [providerStatus, setProviderStatus] =
+    useState<ProviderStatusResponse | null>(null);
 
   // Ref to access editor API
   const editorApiRef = useRef<EditorApi | null>(null);
@@ -87,28 +87,17 @@ function DashboardComponent() {
     [selectedProject]
   );
 
-  const branchesQuery = useQuery(
-    branchesQueryOptions({
+  const branchesQuery = useQuery({
+    ...branchesQueryOptions({
       teamSlugOrId,
       repoFullName: selectedProject[0] || "",
-    })
-  );
+    }),
+    enabled: !!selectedProject[0],
+  });
   const branches = useMemo(
     () => branchesQuery.data || [],
     [branchesQuery.data]
   );
-
-  const fetchBranches = useCallback(
-    (_repo?: string) => {
-      setIsLoadingBranches(true);
-      branchesQuery
-        .refetch()
-        .finally(() => setIsLoadingBranches(false))
-        .catch(() => setIsLoadingBranches(false));
-    },
-    [branchesQuery]
-  );
-
   // Callback for project selection changes
   const handleProjectChange = useCallback(
     (newProjects: string[]) => {
@@ -121,11 +110,9 @@ function DashboardComponent() {
       if ((newProjects[0] || "").startsWith("env:")) {
         setIsCloudMode(true);
         localStorage.setItem("isCloudMode", JSON.stringify(true));
-      } else {
-        void fetchBranches(newProjects[0]);
       }
     },
-    [selectedProject, fetchBranches]
+    [selectedProject]
   );
 
   // Callback for branch selection changes
@@ -157,10 +144,13 @@ function DashboardComponent() {
     if (!socket) return;
 
     socket.emit("check-provider-status", (response) => {
-      if (!response?.success) return;
-      const isRunning = response.dockerStatus?.isRunning;
-      if (typeof isRunning === "boolean") {
-        setDockerReady(isRunning);
+      if (!response) return;
+      setProviderStatus(response);
+      if (response.success) {
+        const isRunning = response.dockerStatus?.isRunning;
+        if (typeof isRunning === "boolean") {
+          setDockerReady(isRunning);
+        }
       }
     });
   }, [socket]);
@@ -406,18 +396,6 @@ function DashboardComponent() {
     };
   }, [checkProviderStatus]);
 
-  // Fetch branches when repo changes
-  // const selectedRepo = selectedProject[0];
-  // useEffect(() => {
-  //   if (
-  //     selectedRepo &&
-  //     !selectedRepo.startsWith("env:") &&
-  //     branches.length === 0
-  //   ) {
-  //     fetchBranches(selectedRepo);
-  //   }
-  // }, [selectedRepo, branches, fetchBranches]);
-
   // Format repos for multiselect
   // Fetch environments
   const environmentsQuery = useQuery(
@@ -660,9 +638,6 @@ function DashboardComponent() {
                 "relative bg-white dark:bg-neutral-700/50 border border-neutral-200 dark:border-neutral-500/15 rounded-2xl transition-all"
               )}
             >
-              {/* Provider Status Pills */}
-              <ProviderStatusPills teamSlugOrId={teamSlugOrId} />
-
               {/* Editor Input */}
               <DashboardInput
                 ref={editorApiRef}
@@ -688,12 +663,11 @@ function DashboardComponent() {
                   isCloudMode={isCloudMode}
                   onCloudModeToggle={handleCloudModeToggle}
                   isLoadingProjects={reposByOrgQuery.isLoading}
-                  isLoadingBranches={
-                    isLoadingBranches || branchesQuery.isLoading
-                  }
+                  isLoadingBranches={branchesQuery.isPending}
                   teamSlugOrId={teamSlugOrId}
                   cloudToggleDisabled={isEnvSelected}
-                  branchDisabled={isEnvSelected}
+                  branchDisabled={isEnvSelected || !selectedProject[0]}
+                  providerStatus={providerStatus}
                 />
                 <DashboardStartTaskButton
                   canSubmit={canSubmit}

@@ -1,9 +1,22 @@
+import type {
+  ElectronLogsPayload,
+  ElectronMainLogMessage,
+} from "../lib/electron-logs/types";
+
 interface CmuxSocketAPI {
   connect: (query: Record<string, string>) => Promise<{ socketId: string; connected: boolean }>;
   disconnect: (socketId: string) => Promise<{ disconnected: boolean }>;
   emit: (socketId: string, eventName: string, ...args: unknown[]) => Promise<{ success: boolean }>;
   on: (socketId: string, eventName: string) => Promise<{ success: boolean }>;
   onEvent: (socketId: string, callback: (eventName: string, ...args: unknown[]) => void) => void;
+}
+
+interface CmuxLogsAPI {
+  onMainLog: (
+    callback: (entry: ElectronMainLogMessage) => void
+  ) => () => void;
+  readAll: () => Promise<ElectronLogsPayload>;
+  copyAll: () => Promise<{ ok: boolean }>;
 }
 
 interface CmuxAPI {
@@ -23,6 +36,7 @@ interface CmuxAPI {
     restoreLastFocus: () => Promise<{ ok: boolean }>;
   };
   socket: CmuxSocketAPI;
+  logs: CmuxLogsAPI;
 }
 
 declare global {

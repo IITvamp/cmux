@@ -4,13 +4,13 @@ import { Sidebar } from "@/components/Sidebar";
 import { convexQueryClient } from "@/contexts/convex/convex-query-client";
 import { ExpandTasksProvider } from "@/contexts/expand-tasks/ExpandTasksProvider";
 import { isFakeConvexId } from "@/lib/fakeConvexId";
+import { setLastTeamSlugOrId } from "@/lib/lastTeam";
 import { api } from "@cmux/convex/api";
 import { type Id } from "@cmux/convex/dataModel";
 import { convexQuery } from "@convex-dev/react-query";
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { useQueries, useQuery } from "convex/react";
 import { Suspense, useEffect, useMemo } from "react";
-import { setLastTeamSlugOrId } from "@/lib/lastTeam";
 
 export const Route = createFileRoute("/_layout/$teamSlugOrId")({
   component: LayoutComponentWrapper,
@@ -19,9 +19,14 @@ export const Route = createFileRoute("/_layout/$teamSlugOrId")({
     const teamMemberships = await convexQueryClient.convexClient.query(
       api.teams.listTeamMemberships
     );
-    const teamMembership = teamMemberships.find(
-      (m) => m.team.slug === teamSlugOrId || m.team.teamId === teamSlugOrId
-    );
+    const teamMembership = teamMemberships.find((membership) => {
+      const team = membership.team;
+      const membershipTeamId = team?.teamId ?? membership.teamId;
+      const membershipSlug = team?.slug;
+      return (
+        membershipSlug === teamSlugOrId || membershipTeamId === teamSlugOrId
+      );
+    });
     if (!teamMembership) {
       throw redirect({ to: "/team-picker" });
     }
