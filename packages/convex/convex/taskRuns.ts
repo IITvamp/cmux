@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { SignJWT } from "jose";
-import { resolveTeamIdLoose } from "../_shared/team";
 import { env } from "../_shared/convex-env";
+import { resolveTeamIdLoose } from "../_shared/team";
 import type { Doc } from "./_generated/dataModel";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authMutation, authQuery } from "./users/utils";
@@ -40,7 +40,7 @@ export const create = authMutation({
       .setProtectedHeader({ alg: "HS256" })
       .setIssuedAt()
       .setExpirationTime("12h")
-      .sign(new TextEncoder().encode(env.TASK_RUN_JWT_SECRET));
+      .sign(new TextEncoder().encode(env.CMUX_TASK_RUN_JWT_SECRET));
 
     return { taskRunId, jwt };
   },
@@ -71,7 +71,11 @@ export const getByTask = authQuery({
     runs.forEach((run) => {
       // Strip heavy/deprecated log field from payload to reduce bandwidth
       // Send empty string to avoid large payloads and keep type compatibility.
-      runMap.set(run._id, { ...(run as Doc<"taskRuns">), log: "", children: [] });
+      runMap.set(run._id, {
+        ...run,
+        log: "",
+        children: [],
+      });
     });
 
     // Second pass: build tree
