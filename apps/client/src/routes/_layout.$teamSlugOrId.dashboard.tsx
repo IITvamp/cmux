@@ -624,9 +624,6 @@ function DashboardComponent() {
     effectiveSelectedBranch,
   ]);
 
-  console.log("selectedProject");
-  console.log(selectedProject);
-
   return (
     <FloatingPane header={<TitleBar title="cmux" />}>
       <div className="flex flex-col grow overflow-y-auto">
@@ -663,7 +660,7 @@ function DashboardComponent() {
                   isCloudMode={isCloudMode}
                   onCloudModeToggle={handleCloudModeToggle}
                   isLoadingProjects={reposByOrgQuery.isLoading}
-                  isLoadingBranches={branchesQuery.isPending}
+                  isLoadingBranches={branchesQuery.isLoading}
                   teamSlugOrId={teamSlugOrId}
                   cloudToggleDisabled={isEnvSelected}
                   branchDisabled={isEnvSelected || !selectedProject[0]}

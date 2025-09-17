@@ -243,13 +243,7 @@ RUN chmod +x /usr/local/bin/cmux-collect-relevant-diff.sh
 # Install envctl/envd into runtime
 RUN curl https://raw.githubusercontent.com/lawrencecchen/cmux-env/76f50631b1bc377bee53ea192f27f1006d615092/scripts/install.sh | bash && \
     envctl --version && \
-    { \
-      echo "# >>> envctl hook >>>"; \
-      echo 'export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/tmp}"'; \
-      echo 'export ENVCTL_GEN=${ENVCTL_GEN:-0}'; \
-      envctl hook bash; \
-      echo "# <<< envctl hook <<<"; \
-    } >> "$HOME/.bashrc"
+    envctl install-hook bash
 
 # Install tmux configuration for better mouse scrolling behavior
 COPY configs/tmux.conf /etc/tmux.conf
