@@ -19,12 +19,12 @@ import {
 import { useExpandTasks } from "@/contexts/expand-tasks/ExpandTasksContext";
 import { useSocket } from "@/contexts/socket/use-socket";
 import { createFakeConvexId } from "@/lib/fakeConvexId";
+import { branchesQueryOptions } from "@/queries/branches";
 import { api } from "@cmux/convex/api";
 import type { Doc } from "@cmux/convex/dataModel";
 import type { ProviderStatusResponse } from "@cmux/shared";
 import { convexQuery } from "@convex-dev/react-query";
 import { useQuery } from "@tanstack/react-query";
-import { branchesQueryOptions } from "@/queries/branches";
 import { createFileRoute } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useMutation } from "convex/react";
@@ -58,8 +58,6 @@ function DashboardComponent() {
     return stored ? JSON.parse(stored) : false;
   });
 
-  // State for loading states
-  const [isLoadingBranches, setIsLoadingBranches] = useState(false);
   const [dockerReady, setDockerReady] = useState<boolean | null>(null);
   const [providerStatus, setProviderStatus] =
     useState<ProviderStatusResponse | null>(null);
@@ -89,24 +87,17 @@ function DashboardComponent() {
     [selectedProject]
   );
 
-  const branchesQuery = useQuery(
-    branchesQueryOptions({
+  const branchesQuery = useQuery({
+    ...branchesQueryOptions({
       teamSlugOrId,
       repoFullName: selectedProject[0] || "",
-    })
-  );
+    }),
+    enabled: !!selectedProject[0],
+  });
   const branches = useMemo(
     () => branchesQuery.data || [],
     [branchesQuery.data]
   );
-
-  const fetchBranches = useCallback((_repo?: string) => {
-    setIsLoadingBranches(true);
-    branchesQuery
-      .refetch()
-      .finally(() => setIsLoadingBranches(false))
-      .catch(() => setIsLoadingBranches(false));
-  }, [branchesQuery]);
 
   // Callback for project selection changes
   const handleProjectChange = useCallback(
@@ -120,11 +111,9 @@ function DashboardComponent() {
       if ((newProjects[0] || "").startsWith("env:")) {
         setIsCloudMode(true);
         localStorage.setItem("isCloudMode", JSON.stringify(true));
-      } else {
-        void fetchBranches(newProjects[0]);
       }
     },
-    [selectedProject, fetchBranches]
+    [selectedProject]
   );
 
   // Callback for branch selection changes
@@ -408,18 +397,6 @@ function DashboardComponent() {
     };
   }, [checkProviderStatus]);
 
-  // Fetch branches when repo changes
-  // const selectedRepo = selectedProject[0];
-  // useEffect(() => {
-  //   if (
-  //     selectedRepo &&
-  //     !selectedRepo.startsWith("env:") &&
-  //     branches.length === 0
-  //   ) {
-  //     fetchBranches(selectedRepo);
-  //   }
-  // }, [selectedRepo, branches, fetchBranches]);
-
   // Format repos for multiselect
   // Fetch environments
   const environmentsQuery = useQuery(
@@ -684,9 +661,7 @@ function DashboardComponent() {
                   isCloudMode={isCloudMode}
                   onCloudModeToggle={handleCloudModeToggle}
                   isLoadingProjects={reposByOrgQuery.isLoading}
-                  isLoadingBranches={
-                    isLoadingBranches || branchesQuery.isLoading
-                  }
+                  isLoadingBranches={branchesQuery.isPending}
                   teamSlugOrId={teamSlugOrId}
                   cloudToggleDisabled={isEnvSelected}
                   branchDisabled={isEnvSelected || !selectedProject[0]}
