@@ -66,23 +66,14 @@ jobs:
           NEXT_PUBLIC_WWW_ORIGIN=${{ secrets.NEXT_PUBLIC_WWW_ORIGIN }}
           NEXT_PUBLIC_GITHUB_APP_SLUG=${{ secrets.NEXT_PUBLIC_GITHUB_APP_SLUG }}
           EOF
-      - name: Build, sign, and notarize (x64) via script
+      - name: Build, sign, and notarize (x64) via publish script
         env:
           MAC_CERT_BASE64: ${{ secrets.MAC_CERT_BASE64 }}
           MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-        run: |
-          if [[ -n "${APPLE_API_KEY_ID:-}" ]]; then
-            APPLE_API_KEY_ID=$(printf '%s' "$APPLE_API_KEY_ID" | perl -pe 's/[\s"\']+//g')
-            export APPLE_API_KEY_ID
-          fi
-          if [[ -n "${APPLE_API_ISSUER:-}" ]]; then
-            APPLE_API_ISSUER=$(printf '%s' "$APPLE_API_ISSUER" | perl -pe 's/[\s"\']+//g')
-            export APPLE_API_ISSUER
-          fi
-          bash scripts/build-prod-mac-x64.sh --skip-install
+        run: bash scripts/publish-build-mac-x64.sh --skip-install
 
   mac-arm64:
     name: macOS arm64
@@ -134,23 +125,14 @@ jobs:
           NEXT_PUBLIC_WWW_ORIGIN=${{ secrets.NEXT_PUBLIC_WWW_ORIGIN }}
           NEXT_PUBLIC_GITHUB_APP_SLUG=${{ secrets.NEXT_PUBLIC_GITHUB_APP_SLUG }}
           EOF
-      - name: Build, sign, and notarize (arm64) via script
+      - name: Build, sign, and notarize (arm64) via publish script
         env:
           MAC_CERT_BASE64: ${{ secrets.MAC_CERT_BASE64 }}
           MAC_CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
-        run: |
-          if [[ -n "${APPLE_API_KEY_ID:-}" ]]; then
-            APPLE_API_KEY_ID=$(printf '%s' "$APPLE_API_KEY_ID" | perl -pe 's/[\s"\']+//g')
-            export APPLE_API_KEY_ID
-          fi
-          if [[ -n "${APPLE_API_ISSUER:-}" ]]; then
-            APPLE_API_ISSUER=$(printf '%s' "$APPLE_API_ISSUER" | perl -pe 's/[\s"\']+//g')
-            export APPLE_API_ISSUER
-          fi
-          bash scripts/publish-build-mac-arm64.sh --skip-install
+        run: bash scripts/publish-build-mac-arm64.sh --skip-install
 
   windows-x64:
     name: Windows x64
