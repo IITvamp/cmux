@@ -689,7 +689,7 @@ function DashboardComponent() {
                   }
                   teamSlugOrId={teamSlugOrId}
                   cloudToggleDisabled={isEnvSelected}
-                  branchDisabled={isEnvSelected}
+                  branchDisabled={isEnvSelected || !selectedProject[0]}
                   providerStatus={providerStatus}
                 />
                 <DashboardStartTaskButton
