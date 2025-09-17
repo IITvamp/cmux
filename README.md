@@ -40,6 +40,4 @@ cmux upgrade
 
 ## Uninstall
 
-```bash
-cmux uninstall
-```
+**`cmux uninstall`**
