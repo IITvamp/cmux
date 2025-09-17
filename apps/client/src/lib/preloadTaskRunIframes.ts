@@ -1,4 +1,3 @@
-import { getShortId } from "@cmux/shared";
 import { persistentIframeManager } from "./persistentIframeManager";
 
 /**
@@ -27,10 +26,10 @@ export async function preloadTaskRunIframes(
  * @param taskRunId - Task run ID to preload
  * @returns Promise that resolves when the iframe is loaded
  */
-export async function preloadTaskRunIframe(taskRunId: string): Promise<void> {
-  const shortId = getShortId(taskRunId);
-  const url = `http://${shortId}.39378.localhost:9776/?folder=/root/workspace`;
-
+export async function preloadTaskRunIframe(
+  taskRunId: string,
+  url: string
+): Promise<void> {
   await persistentIframeManager.preloadIframe(`task-run-${taskRunId}`, url, {
     allow: "clipboard-read; clipboard-write",
     sandbox:
