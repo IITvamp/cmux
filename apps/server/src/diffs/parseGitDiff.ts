@@ -118,6 +118,7 @@ export async function computeEntriesNodeGit(
       let isBinary = false;
       let patchText: string | undefined;
       let newContent: string | undefined;
+      const skipContent = status === "renamed";
 
       try {
         // additions/deletions from global numstat map
@@ -129,7 +130,7 @@ export async function computeEntriesNodeGit(
         }
 
         if (!isBinary) {
-          if (includeContents) {
+          if (includeContents && !skipContent) {
             if (status !== "deleted") {
               try {
                 const tRn0 = Date.now();
@@ -145,7 +146,9 @@ export async function computeEntriesNodeGit(
             // We'll batch old-content fetch later; just decide if needed
           }
 
-          patchText = patchMap.get(fp);
+          if (!skipContent) {
+            patchText = patchMap.get(fp);
+          }
         }
       } catch (err) {
         serverLogger.warn(
@@ -161,6 +164,7 @@ export async function computeEntriesNodeGit(
         !isBinary &&
         includeContents &&
         status !== "added" &&
+        status !== "renamed" &&
         patchSize + newSize <= maxBytes;
 
       const oldFetchPath = needOld
@@ -447,7 +451,7 @@ export async function computeEntriesBetweenRefs(opts: {
           deletions = isBinary ? 0 : parseInt(d || "0", 10);
         }
 
-        if (!isBinary && includeContents) {
+        if (!isBinary && includeContents && it.status !== "renamed") {
           if (it.status !== "added") {
             try {
               const { stdout } = await execAsync(

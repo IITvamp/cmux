@@ -48,8 +48,10 @@ describe("compareRefsForRepo (native)", () => {
     // unchanged content, additions/deletions 0
     expect(rename!.additions).toBe(0);
     expect(rename!.deletions).toBe(0);
-    expect(rename!.oldContent).toBe("hello\n");
-    expect(rename!.newContent).toBe("hello\n");
+    expect(rename!.oldContent).toBeUndefined();
+    expect(rename!.newContent).toBeUndefined();
+    expect(rename!.contentOmitted).toBe(false);
+    expect(rename!.newSize).toBeGreaterThan(0);
   });
 
   test("added and deleted without rename when content changes", async () => {

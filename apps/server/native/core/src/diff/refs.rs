@@ -204,16 +204,11 @@ pub fn diff_refs(opts: GitDiffRefsOptions) -> Result<Vec<DiffEntry>> {
       None => (true, 0),
     };
     let mut e = DiffEntry{ filePath: new_path.clone(), oldPath: Some(old_path.clone()), status: "renamed".into(), additions: 0, deletions: 0, isBinary: bin, ..Default::default() };
-    if include && !bin {
-      let new_str = String::from_utf8_lossy(new_data.as_ref().unwrap()).into_owned();
+    if new_data.is_some() {
       e.newSize = Some(new_sz as i32);
       e.oldSize = Some(new_sz as i32);
-      if new_sz <= max_bytes {
-        e.oldContent = Some(new_str.clone());
-        e.newContent = Some(new_str);
-        e.contentOmitted = Some(false);
-      } else { e.contentOmitted = Some(true); }
-    } else { e.contentOmitted = Some(false); }
+    }
+    e.contentOmitted = Some(false);
     out.push(e);
   }
 
@@ -421,11 +416,7 @@ pub fn diff_refs(opts: GitDiffRefsOptions) -> Result<Vec<DiffEntry>> {
               let oldp = parts[1].to_string();
               let newp = parts[2].to_string();
               let mut e = DiffEntry{ filePath: newp.clone(), oldPath: Some(oldp.clone()), status: "renamed".into(), additions: 0, deletions: 0, isBinary: false, ..Default::default() };
-              if include {
-                let new_s = crate::util::run_git(&cwd, &["show", &format!("{}:{}", r2_oid, newp)]).unwrap_or_default();
-                let new_sz = new_s.as_bytes().len(); e.newSize = Some(new_sz as i32); e.oldSize = Some(new_sz as i32);
-                if new_sz <= max_bytes { e.oldContent = Some(new_s.clone()); e.newContent = Some(new_s); e.contentOmitted = Some(false);} else { e.contentOmitted = Some(true); }
-              }
+              e.contentOmitted = Some(false);
               fallback.push(e);
             }
           }
