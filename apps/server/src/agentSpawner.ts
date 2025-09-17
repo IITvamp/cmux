@@ -19,17 +19,17 @@ import {
   generateUniqueBranchNamesFromTitle,
 } from "./utils/branchNameGenerator.js";
 import { getConvex } from "./utils/convexClient.js";
+import { retryOnOptimisticConcurrency } from "./utils/convexRetry.js";
+import { serverLogger } from "./utils/fileLogger.js";
 import {
-  getAuthToken,
   getAuthHeaderJson,
+  getAuthToken,
   runWithAuth,
 } from "./utils/requestContext.js";
-import { serverLogger } from "./utils/fileLogger.js";
-import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { CmuxVSCodeInstance } from "./vscode/CmuxVSCodeInstance.js";
+import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWorktreePath, setupProjectWorkspace } from "./workspace.js";
-import { retryOnOptimisticConcurrency } from "./utils/convexRetry.js";
 
 export interface AgentSpawnResult {
   agentName: string;
@@ -76,13 +76,16 @@ export async function spawnAgent(
     );
 
     // Create a task run for this specific agent
-    const taskRunId = await getConvex().mutation(api.taskRuns.create, {
-      teamSlugOrId,
-      taskId: taskId,
-      prompt: `${options.taskDescription} (${agent.name})`,
-      agentName: agent.name,
-      newBranch,
-    });
+    const { taskRunId, jwt: taskRunJwt } = await getConvex().mutation(
+      api.taskRuns.create,
+      {
+        teamSlugOrId,
+        taskId: taskId,
+        prompt: options.taskDescription,
+        agentName: agent.name,
+        newBranch,
+      }
+    );
 
     // Fetch the task to get image storage IDs
     const task = await getConvex().query(api.tasks.getById, {
@@ -208,6 +211,7 @@ export async function spawnAgent(
     let envVars: Record<string, string> = {
       CMUX_PROMPT: processedTaskDescription,
       CMUX_TASK_RUN_ID: taskRunId,
+      CMUX_TASK_RUN_JWT: taskRunJwt,
       PROMPT: processedTaskDescription,
     };
 
@@ -219,6 +223,7 @@ export async function spawnAgent(
       const envResult = await agent.environment({
         taskRunId: taskRunId,
         prompt: processedTaskDescription,
+        taskRunJwt,
       });
       envVars = {
         ...envVars,

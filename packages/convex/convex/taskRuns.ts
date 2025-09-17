@@ -1,5 +1,7 @@
 import { v } from "convex/values";
+import { SignJWT } from "jose";
 import { resolveTeamIdLoose } from "../_shared/team";
+import { env } from "../_shared/convex-env";
 import type { Doc } from "./_generated/dataModel";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authMutation, authQuery } from "./users/utils";
@@ -30,7 +32,17 @@ export const create = authMutation({
       userId,
       teamId,
     });
-    return taskRunId;
+    const jwt = await new SignJWT({
+      taskRunId,
+      teamId,
+      userId,
+    })
+      .setProtectedHeader({ alg: "HS256" })
+      .setIssuedAt()
+      .setExpirationTime("12h")
+      .sign(new TextEncoder().encode(env.TASK_RUN_JWT_SECRET));
+
+    return { taskRunId, jwt };
   },
 });
 
