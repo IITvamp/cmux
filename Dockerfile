@@ -232,6 +232,9 @@ RUN CMUX_ENV_VERSION=0.0.3 curl https://raw.githubusercontent.com/lawrencecchen/
     envctl --version && \
     envctl install-hook bash
 
+# Create .profile that sources .bashrc for login shells
+RUN echo '[ -f ~/.bashrc ] && . ~/.bashrc' > /root/.profile
+
 # Install tmux configuration for better mouse scrolling behavior
 COPY configs/tmux.conf /etc/tmux.conf
 
