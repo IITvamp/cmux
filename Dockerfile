@@ -228,7 +228,7 @@ COPY --from=builder /cmux/apps/worker/scripts/collect-relevant-diff.sh /usr/loca
 RUN chmod +x /usr/local/bin/cmux-collect-relevant-diff.sh
 
 # Install envctl/envd into runtime
-RUN CMUX_ENV_VERSION=0.0.2 curl https://raw.githubusercontent.com/lawrencecchen/cmux-env/refs/heads/main/scripts/install.sh | bash && \
+RUN CMUX_ENV_VERSION=0.0.3 curl https://raw.githubusercontent.com/lawrencecchen/cmux-env/refs/heads/main/scripts/install.sh | bash && \
     envctl --version && \
     envctl install-hook bash
 
