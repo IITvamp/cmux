@@ -1,21 +1,248 @@
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
+import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
 import { getConvex } from "./utils/convexClient.js";
 import { serverLogger } from "./utils/fileLogger.js";
 import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
-import { workerExec } from "./utils/workerExec.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWwwClient } from "./utils/wwwClient.js";
 import {
   postApiCrownEvaluate,
   postApiCrownSummarize,
 } from "@cmux/www-openapi-client";
+import { loadNativeGit } from "./native/git.js";
+import { ensureRunWorktreeAndBranch } from "./utils/ensureRunWorktree.js";
 
 const UNKNOWN_AGENT_NAME = "unknown agent";
 
 function getAgentNameOrUnknown(agentName?: string | null): string {
   const trimmed = agentName?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : UNKNOWN_AGENT_NAME;
+}
+
+const DIFF_PROMPT_MAX_CHARS = 5_000;
+const DIFF_COMMENT_MAX_CHARS = 15_000;
+const DIFF_MAX_PATCH_BYTES = 200_000;
+
+const DIFF_IGNORED_FILE_SUFFIXES = [
+  ".log",
+  ".tmp",
+  ".cache",
+  ".map",
+  ".min.js",
+  ".min.css",
+];
+
+const DIFF_IGNORED_EXACT_FILENAMES = new Set([
+  "pnpm-lock.yaml",
+  "yarn.lock",
+  "package-lock.json",
+  "Gemfile.lock",
+  "poetry.lock",
+  "Pipfile.lock",
+  "composer.lock",
+  ".DS_Store",
+]);
+
+const DIFF_IGNORED_PATH_SEGMENTS = new Set([
+  ".git",
+  "node_modules",
+  "dist",
+  "build",
+  ".next",
+  "out",
+  ".turbo",
+  "coverage",
+  ".nyc_output",
+  "vscode-test",
+  "vendor",
+]);
+
+const DIFF_IGNORED_EXTENSIONS = new Set([
+  "png",
+  "jpg",
+  "jpeg",
+  "gif",
+  "svg",
+  "ico",
+  "webp",
+  "bmp",
+  "pdf",
+  "zip",
+  "tar",
+  "tgz",
+  "gz",
+  "xz",
+  "bz2",
+  "7z",
+  "mp4",
+  "mp3",
+  "avi",
+]);
+
+interface DiffFetchOptions {
+  maxChars?: number;
+  fallback?: string;
+}
+
+function normalizeDiffPath(filePath: string): string {
+  return filePath.replace(/\\/g, "/").replace(/^\.\/?/, "");
+}
+
+function hasIgnoredSegment(normalized: string): boolean {
+  const segments = normalized.split("/");
+  return segments.some((segment) => DIFF_IGNORED_PATH_SEGMENTS.has(segment));
+}
+
+function hasIgnoredExtension(normalized: string): boolean {
+  const lastDot = normalized.lastIndexOf(".");
+  if (lastDot === -1) return false;
+  const ext = normalized.slice(lastDot + 1).toLowerCase();
+  return DIFF_IGNORED_EXTENSIONS.has(ext);
+}
+
+function hasIgnoredSuffix(normalized: string): boolean {
+  const lower = normalized.toLowerCase();
+  if (lower === ".env.local") return true;
+  if (/^\.env\.[^.]+\.local$/.test(lower)) return true;
+  return DIFF_IGNORED_FILE_SUFFIXES.some((suffix) => lower.endsWith(suffix));
+}
+
+function shouldIgnoreDiffPath(filePath: string | undefined): boolean {
+  if (!filePath) return false;
+  const normalized = normalizeDiffPath(filePath);
+  const fileName = normalized.split("/").pop() ?? normalized;
+  if (DIFF_IGNORED_EXACT_FILENAMES.has(fileName)) return true;
+  if (hasIgnoredSegment(normalized)) return true;
+  if (hasIgnoredExtension(normalized)) return true;
+  if (hasIgnoredSuffix(normalized)) return true;
+  return false;
+}
+
+function renderDiffEntries(
+  entries: ReplaceDiffEntry[],
+  options: DiffFetchOptions
+): string {
+  const sections: string[] = [];
+  const notes: string[] = [];
+  let omittedLargePatch = false;
+  let mentionedBinary = false;
+
+  for (const entry of entries) {
+    const currentPath = normalizeDiffPath(
+      entry.filePath || entry.oldPath || "unknown"
+    );
+    const wasIgnored = [entry.filePath, entry.oldPath].some((path) =>
+      shouldIgnoreDiffPath(path)
+    );
+    if (wasIgnored) {
+      serverLogger.debug(
+        `[CrownEvaluator] Skipping diff for ignored path ${currentPath}`
+      );
+      continue;
+    }
+
+    const patch = entry.patch?.trim() ?? "";
+    const patchBytes = patch ? Buffer.byteLength(patch, "utf8") : 0;
+    const oldPath = normalizeDiffPath(entry.oldPath ?? entry.filePath ?? "unknown");
+    const newPath = normalizeDiffPath(entry.filePath ?? entry.oldPath ?? "unknown");
+    const header = `diff --git a/${oldPath} b/${newPath}`;
+
+    if (patch && patchBytes > DIFF_MAX_PATCH_BYTES) {
+      omittedLargePatch = true;
+      sections.push(
+        `${header}\n# Diff omitted: patch exceeded ${DIFF_MAX_PATCH_BYTES} bytes (${patchBytes} bytes)`
+      );
+      continue;
+    }
+
+    if (patch) {
+      sections.push(patch);
+      continue;
+    }
+
+    if (entry.isBinary) {
+      mentionedBinary = true;
+      sections.push(`${header}\n# Binary file ${entry.status} (${currentPath})`);
+      continue;
+    }
+
+    sections.push(
+      `${header}\n# No textual diff available (status: ${entry.status})`
+    );
+  }
+
+  let diffText = sections.join("\n\n").trim();
+
+  if (!diffText) {
+    if (options.fallback) {
+      return options.fallback;
+    }
+    if (omittedLargePatch) {
+      return "# Diff omitted due to size constraints.";
+    }
+    if (mentionedBinary) {
+      return "# Changes are binary files without textual diffs.";
+    }
+    return "";
+  }
+
+  if (omittedLargePatch) {
+    notes.push(
+      `Some diffs were omitted because they exceeded ${DIFF_MAX_PATCH_BYTES} bytes.`
+    );
+  }
+  if (mentionedBinary) {
+    notes.push("Binary files are listed without contents.");
+  }
+
+  if (notes.length > 0) {
+    diffText = `${diffText}\n\n# Notes\n${notes
+      .map((note) => `- ${note}`)
+      .join("\n")}`;
+  }
+
+  const maxChars = options.maxChars ?? DIFF_PROMPT_MAX_CHARS;
+  if (diffText.length > maxChars) {
+    diffText = `${diffText.slice(0, maxChars)}\n... (truncated)`;
+  }
+
+  return diffText;
+}
+
+async function fetchRunDiffFromSource(
+  runId: Id<"taskRuns">,
+  teamSlugOrId: string,
+  options: DiffFetchOptions
+): Promise<string> {
+  try {
+    const ensured = await ensureRunWorktreeAndBranch(runId, teamSlugOrId);
+    const native = loadNativeGit();
+    if (!native?.gitDiffRefs) {
+      serverLogger.warn(
+        `[CrownEvaluator] Native git diff not available; returning fallback diff`
+      );
+      return options.fallback ?? "";
+    }
+
+    const entries = await native.gitDiffRefs({
+      ref1: ensured.baseBranch,
+      ref2: ensured.branchName,
+      repoFullName: ensured.task.projectFullName || undefined,
+      teamSlugOrId,
+      originPathOverride: ensured.worktreePath,
+      includeContents: true,
+      maxBytes: 950 * 1024,
+    });
+
+    return renderDiffEntries(entries, options);
+  } catch (error) {
+    serverLogger.error(
+      `[CrownEvaluator] Failed to fetch diff via source of truth for run ${runId}:`,
+      error
+    );
+    return options.fallback ?? "";
+  }
 }
 
 // Auto PR behavior is controlled via workspace settings in Convex
@@ -353,36 +580,13 @@ export async function evaluateCrown(
           return;
         }
 
-        // Try to collect worker diff for the winner; fall back to provided diff
-        let effectiveDiff = fallbackGitDiff || "";
-        const instances = VSCodeInstance.getInstances();
-        let instance: VSCodeInstance | undefined;
-        for (const [, inst] of instances) {
-          if (inst.getTaskRunId() === winnerRunId) {
-            instance = inst;
-            break;
-          }
-        }
-        if (instance && instance.isWorkerConnected()) {
-          try {
-            const workerSocket = instance.getWorkerSocket();
-            const { stdout } = await workerExec({
-              workerSocket,
-              command: "/bin/bash",
-              args: ["-c", "/usr/local/bin/cmux-collect-relevant-diff.sh"],
-              cwd: "/root/workspace",
-              env: {},
-              timeout: 30000,
-            });
-            const diff = (stdout || "").trim();
-            if (diff.length > 0) effectiveDiff = diff;
-          } catch (e) {
-            serverLogger.error(
-              `[CrownEvaluator] Failed to collect diff for task comment:`,
-              e
-            );
-          }
-        }
+        const effectiveDiff = await fetchRunDiffFromSource(winnerRunId, teamSlugOrId, {
+          fallback: fallbackGitDiff,
+          maxChars: DIFF_COMMENT_MAX_CHARS,
+        });
+        serverLogger.info(
+          `[CrownEvaluator] Diff for system comment (run ${winnerRunId}) is ${effectiveDiff.length} chars`
+        );
 
         // Pull original request text for context
         const task = await getConvex().query(api.tasks.getById, {
@@ -486,64 +690,22 @@ export async function evaluateCrown(
       return;
     }
 
-    // Helper to extract a relevant git diff using worker script when possible
-    const collectDiffViaWorker = async (
+    const collectDiffForEvaluation = async (
       runId: Id<"taskRuns">
-    ): Promise<string | null> => {
-      try {
-        // Find a live VSCode instance for this run
-        const instances = VSCodeInstance.getInstances();
-        let instance: VSCodeInstance | undefined;
-        for (const [, inst] of instances) {
-          if (inst.getTaskRunId() === runId) {
-            instance = inst;
-            break;
-          }
-        }
-        if (!instance || !instance.isWorkerConnected()) {
-          serverLogger.info(
-            `[CrownEvaluator] No live worker for run ${runId}; unable to collect diff`
-          );
-          return null;
-        }
-        const workerSocket = instance.getWorkerSocket();
-        const { stdout } = await workerExec({
-          workerSocket,
-          command: "/bin/bash",
-          args: ["-c", "/usr/local/bin/cmux-collect-relevant-diff.sh"],
-          cwd: "/root/workspace",
-          env: {},
-          timeout: 30000,
-        });
-        const diff = stdout?.trim() || "";
-        if (diff.length === 0) {
-          serverLogger.info(
-            `[CrownEvaluator] Worker diff empty for run ${runId}`
-          );
-          return null;
-        }
-        serverLogger.info(
-          `[CrownEvaluator] Collected worker diff for ${runId} (${diff.length} chars)`
-        );
-        return diff;
-      } catch (err) {
-        serverLogger.error(
-          `[CrownEvaluator] Failed collecting worker diff for run ${runId}:`,
-          err
-        );
-        return null;
-      }
+    ): Promise<string> => {
+      const diff = await fetchRunDiffFromSource(runId, teamSlugOrId, {
+        maxChars: DIFF_PROMPT_MAX_CHARS,
+        fallback: "",
+      });
+      return diff.trim().length > 0 ? diff : "No changes detected";
     };
 
     const candidateData = await Promise.all(
       completedRuns.map(async (run, idx) => {
         const agentName = getAgentNameOrUnknown(run.agentName);
-        // Try to collect diff via worker
-        const workerDiff: string | null = await collectDiffViaWorker(run._id);
-        let gitDiff: string =
-          workerDiff && workerDiff.length > 0
-            ? workerDiff
-            : "No changes detected";
+        // Fetch diff using the same source-of-truth as the git diff viewer
+        const gitDiffRaw = await collectDiffForEvaluation(run._id);
+        let gitDiff = gitDiffRaw;
 
         // Limit to 5000 chars for the prompt
         if (gitDiff.length > 5000) {
