@@ -46,6 +46,7 @@ export interface GitDiffViewerProps {
 
 type FileGroup = {
   filePath: string;
+  oldPath?: string;
   status: ReplaceDiffEntry["status"];
   additions: number;
   deletions: number;
@@ -106,6 +107,7 @@ export function GitDiffViewer({
     () =>
       (diffs || []).map((diff) => ({
         filePath: diff.filePath,
+        oldPath: diff.oldPath,
         status: diff.status,
         additions: diff.additions,
         deletions: diff.deletions,
@@ -310,7 +312,9 @@ function FileDiffRow({
         </div>
         <div className="flex-1 min-w-0 flex items-center gap-3">
           <span className="font-mono text-xs text-neutral-700 dark:text-neutral-300 truncate select-none">
-            {file.filePath}
+            {file.status === "renamed" && file.oldPath
+              ? `${file.oldPath} → ${file.filePath}`
+              : file.filePath}
           </span>
           <div className="flex items-center gap-2 text-[11px]">
             <span className="text-green-600 dark:text-green-400 font-medium select-none">
@@ -325,7 +329,24 @@ function FileDiffRow({
 
       {isExpanded && (
         <div className="border-t border-neutral-200 dark:border-neutral-800 overflow-hidden">
-          {file.isBinary ? (
+          {file.status === "renamed" ? (
+            <div className="px-3 py-6 text-center text-neutral-500 dark:text-neutral-400 text-xs bg-neutral-50 dark:bg-neutral-900/50">
+              {file.oldPath ? (
+                <span className="inline-flex flex-wrap items-center justify-center gap-1">
+                  <span>File was renamed from</span>
+                  <span className="font-mono text-neutral-700 dark:text-neutral-300">
+                    {file.oldPath}
+                  </span>
+                  <span>to</span>
+                  <span className="font-mono text-neutral-700 dark:text-neutral-300">
+                    {file.filePath}
+                  </span>
+                </span>
+              ) : (
+                "File was renamed"
+              )}
+            </div>
+          ) : file.isBinary ? (
             <div className="px-3 py-6 text-center text-neutral-500 dark:text-neutral-400 text-xs bg-neutral-50 dark:bg-neutral-900/50">
               Binary file not shown
             </div>
@@ -554,6 +575,7 @@ const MemoFileDiffRow = memo(FileDiffRow, (prev, next) => {
     prev.isExpanded === next.isExpanded &&
     prev.theme === next.theme &&
     a.filePath === b.filePath &&
+    a.oldPath === b.oldPath &&
     a.status === b.status &&
     a.additions === b.additions &&
     a.deletions === b.deletions &&
