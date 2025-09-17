@@ -13,4 +13,4 @@ if [[ ! -f "$ENV_FILE" ]]; then
   ENV_FILE="$ROOT_DIR/.env"
 fi
 
-(cd "$CLIENT_DIR" && bun run --env-file "$ENV_FILE" build:mac:workaround)
+(cd "$CLIENT_DIR" && bun run --env-file "$ENV_FILE" publish:mac:workaround)

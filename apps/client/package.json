@@ -16,6 +16,8 @@
     "build:mac": "node ./scripts/generate-icons.mjs && electron-vite build -c electron.vite.config.ts && electron-builder --mac",
     "prebuild:mac:workaround": "node ./scripts/run-electron-rebuild.mjs",
     "build:mac:workaround": "./build-mac-workaround.sh",
+    "prepublish:mac:workaround": "node ./scripts/run-electron-rebuild.mjs",
+    "publish:mac:workaround": "./publish-mac-run-workaround.sh",
     "dist": "node ./scripts/generate-icons.mjs && electron-builder",
     "lint": "eslint .",
     "preview": "vite preview",
