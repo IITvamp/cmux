@@ -1,7 +1,6 @@
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
 import { type AgentConfig } from "@cmux/shared/agentConfig";
-import { captureGitDiff } from "./captureGitDiff.js";
 import { createPullRequestForWinner, evaluateCrown } from "./crownEvaluator.js";
 import performAutoCommitAndPush from "./performAutoCommitAndPush.js";
 import { getConvex } from "./utils/convexClient.js";
@@ -36,39 +35,7 @@ export async function handleTaskCompletion({
       })
     );
 
-    // Capture git diff before marking as complete
-    serverLogger.info(
-      `[AgentSpawner] ============================================`
-    );
-    serverLogger.info(`[AgentSpawner] CAPTURING GIT DIFF FOR ${agent.name}`);
-    serverLogger.info(`[AgentSpawner] Task Run ID: ${taskRunId}`);
-    serverLogger.info(`[AgentSpawner] Worktree Path: ${worktreePath}`);
-    serverLogger.info(
-      `[AgentSpawner] VSCode Instance Connected: ${vscodeInstance.isWorkerConnected()}`
-    );
-    serverLogger.info(
-      `[AgentSpawner] ============================================`
-    );
-
-    // Use the original captureGitDiff function which uses worker:exec
-    const gitDiff = await captureGitDiff(vscodeInstance, worktreePath);
-    serverLogger.info(
-      `[AgentSpawner] Captured git diff for ${agent.name}: ${gitDiff.length} chars`
-    );
-    serverLogger.info(
-      `[AgentSpawner] First 100 chars of diff: ${gitDiff.substring(0, 100)}`
-    );
-
-    // Do not write diffs to Convex logs; crown and UI fetch diffs directly.
-    if (!gitDiff || gitDiff.length === 0) {
-      serverLogger.warn(
-        `[AgentSpawner] No git diff captured for ${agent.name} (${taskRunId})`
-      );
-    }
-
-    serverLogger.info(
-      `[AgentSpawner] Updated taskRun ${taskRunId} as completed with exit code ${exitCode}`
-    );
+    serverLogger.info(`[AgentSpawner] Updated taskRun ${taskRunId} as completed with exit code ${exitCode}`);
 
     // Check if all runs are complete and evaluate crown
     const taskRunData = await getConvex().query(api.taskRuns.get, {
@@ -81,145 +48,7 @@ export async function handleTaskCompletion({
     );
 
     if (taskRunData) {
-      serverLogger.info(
-        `[AgentSpawner] Calling checkAndEvaluateCrown for task ${taskRunData.taskId}`
-      );
-
-      const winnerId = await getConvex().mutation(
-        api.tasks.checkAndEvaluateCrown,
-        {
-          teamSlugOrId,
-          taskId: taskRunData.taskId,
-        }
-      );
-
-      serverLogger.info(
-        `[AgentSpawner] checkAndEvaluateCrown returned: ${winnerId}`
-      );
-
-      // If winnerId is "pending", trigger Claude Code evaluation
-      if (winnerId === "pending") {
-        serverLogger.info(
-          `[AgentSpawner] ==========================================`
-        );
-        serverLogger.info(
-          `[AgentSpawner] CROWN EVALUATION NEEDED - TRIGGERING NOW`
-        );
-        serverLogger.info(`[AgentSpawner] Task ID: ${taskRunData.taskId}`);
-        serverLogger.info(
-          `[AgentSpawner] ==========================================`
-        );
-
-        // Trigger crown evaluation immediately for faster response
-        // The periodic checker will also handle retries if this fails
-        serverLogger.info(
-          `[AgentSpawner] Triggering immediate crown evaluation`
-        );
-
-        // Small delay for worker-side file system settle before diff collection
-        // Note: We need to preserve the auth context for the crown evaluation
-        setTimeout(async () => {
-          try {
-            // Check if evaluation is already in progress
-            const task = await getConvex().query(api.tasks.getById, {
-              teamSlugOrId,
-              id: taskRunData.taskId,
-            });
-            if (task?.crownEvaluationError === "in_progress") {
-              serverLogger.info(
-                `[AgentSpawner] Crown evaluation already in progress for task ${taskRunData.taskId}`
-              );
-              return;
-            }
-
-            await evaluateCrown(taskRunData.taskId, teamSlugOrId);
-
-            serverLogger.info(
-              `[AgentSpawner] Crown evaluation completed successfully`
-            );
-
-            // Check if this task run won
-            const updatedTaskRun = await getConvex().query(api.taskRuns.get, {
-              teamSlugOrId,
-              id: taskRunId,
-            });
-
-            if (updatedTaskRun?.isCrowned) {
-              serverLogger.info(
-                `[AgentSpawner] 🏆 This task run won the crown! ${agent.name} is the winner!`
-              );
-            }
-          } catch (error) {
-            serverLogger.error(
-              `[AgentSpawner] Crown evaluation failed:`,
-              error
-            );
-            // The periodic checker will retry
-          }
-        }, 3000); // 3 second delay to ensure data persistence
-      } else if (winnerId) {
-        serverLogger.info(
-          `[AgentSpawner] Task completed with winner: ${winnerId}`
-        );
-
-        // For single agent scenario, trigger auto-PR if enabled
-        const taskRuns = await getConvex().query(api.taskRuns.getByTask, {
-          teamSlugOrId,
-          taskId: taskRunData.taskId,
-        });
-
-        if (taskRuns.length === 1) {
-          serverLogger.info(
-            `[AgentSpawner] Single agent scenario - checking auto-PR settings`
-          );
-
-          // Check if auto-PR is enabled
-          const ws = await getConvex().query(api.workspaceSettings.get, {
-            teamSlugOrId,
-          });
-          const autoPrEnabled = ws?.autoPrEnabled ?? false;
-
-          if (autoPrEnabled && winnerId) {
-            serverLogger.info(
-              `[AgentSpawner] Triggering auto-PR for single agent completion`
-            );
-
-            const githubToken = await getGitHubTokenFromKeychain();
-
-            // Small delay to ensure git diff is persisted
-            setTimeout(async () => {
-              try {
-                await createPullRequestForWinner(
-                  winnerId,
-                  taskRunData.taskId,
-                  githubToken || undefined,
-                  teamSlugOrId
-                );
-                serverLogger.info(
-                  `[AgentSpawner] Auto-PR completed for single agent`
-                );
-              } catch (error) {
-                serverLogger.error(
-                  `[AgentSpawner] Auto-PR failed for single agent:`,
-                  error
-                );
-              }
-            }, 3000);
-          } else {
-            serverLogger.info(
-              `[AgentSpawner] Auto-PR disabled or not applicable for single agent`
-            );
-          }
-        }
-      } else {
-        serverLogger.info(
-          `[AgentSpawner] No crown evaluation needed (winnerId: ${winnerId})`
-        );
-      }
-    }
-
-    // Enable auto-commit after task completion
-    if (taskRunData) {
+      // Perform auto-commit and push BEFORE crown evaluation so diffs are available to the diff viewer source of truth
       const task = await getConvex().query(api.tasks.getById, {
         teamSlugOrId,
         id: taskRunData.taskId,
@@ -227,7 +56,7 @@ export async function handleTaskCompletion({
 
       if (task) {
         serverLogger.info(
-          `[AgentSpawner] Performing auto-commit for ${agent.name}`
+          `[AgentSpawner] Performing auto-commit for ${agent.name} (pre-crown)`
         );
 
         try {
@@ -247,6 +76,113 @@ export async function handleTaskCompletion({
             error
           );
         }
+      }
+
+      serverLogger.info(
+        `[AgentSpawner] Calling checkAndEvaluateCrown for task ${taskRunData.taskId}`
+      );
+
+      const winnerId = await getConvex().mutation(
+        api.tasks.checkAndEvaluateCrown,
+        {
+          teamSlugOrId,
+          taskId: taskRunData.taskId,
+        }
+      );
+
+      serverLogger.info(
+        `[AgentSpawner] checkAndEvaluateCrown returned: ${winnerId}`
+      );
+
+      // If winnerId is "pending", trigger Claude Code evaluation
+      if (winnerId === "pending") {
+        serverLogger.info(`[AgentSpawner] ==========================================`);
+        serverLogger.info(`[AgentSpawner] CROWN EVALUATION NEEDED - TRIGGERING NOW`);
+        serverLogger.info(`[AgentSpawner] Task ID: ${taskRunData.taskId}`);
+        serverLogger.info(`[AgentSpawner] ==========================================`);
+
+        // Trigger crown evaluation immediately (we already committed/pushed)
+        try {
+          // Check if evaluation is already in progress
+          const taskNow = await getConvex().query(api.tasks.getById, {
+            teamSlugOrId,
+            id: taskRunData.taskId,
+          });
+          if (taskNow?.crownEvaluationError === "in_progress") {
+            serverLogger.info(
+              `[AgentSpawner] Crown evaluation already in progress for task ${taskRunData.taskId}`
+            );
+          } else {
+            await evaluateCrown(taskRunData.taskId, teamSlugOrId);
+            serverLogger.info(`[AgentSpawner] Crown evaluation completed successfully`);
+
+            // Check if this task run won
+            const updatedTaskRun = await getConvex().query(api.taskRuns.get, {
+              teamSlugOrId,
+              id: taskRunId,
+            });
+            if (updatedTaskRun?.isCrowned) {
+              serverLogger.info(
+                `[AgentSpawner] 🏆 This task run won the crown! ${agent.name} is the winner!`
+              );
+            }
+          }
+        } catch (error) {
+          serverLogger.error(`[AgentSpawner] Crown evaluation failed:`, error);
+          // Periodic checker will retry
+        }
+      } else if (winnerId) {
+        serverLogger.info(
+          `[AgentSpawner] Task completed with winner: ${winnerId}`
+        );
+
+        // For single agent scenario, auto-PR if enabled (commit already done above)
+        const taskRuns = await getConvex().query(api.taskRuns.getByTask, {
+          teamSlugOrId,
+          taskId: taskRunData.taskId,
+        });
+
+        if (taskRuns.length === 1) {
+          serverLogger.info(
+            `[AgentSpawner] Single agent scenario - checking auto-PR settings`
+          );
+
+          const ws = await getConvex().query(api.workspaceSettings.get, {
+            teamSlugOrId,
+          });
+          const autoPrEnabled = ws?.autoPrEnabled ?? false;
+
+          if (autoPrEnabled && winnerId) {
+            serverLogger.info(
+              `[AgentSpawner] Triggering auto-PR for single agent completion`
+            );
+            const githubToken = await getGitHubTokenFromKeychain();
+            try {
+              await createPullRequestForWinner(
+                winnerId,
+                taskRunData.taskId,
+                githubToken || undefined,
+                teamSlugOrId
+              );
+              serverLogger.info(
+                `[AgentSpawner] Auto-PR completed for single agent`
+              );
+            } catch (error) {
+              serverLogger.error(
+                `[AgentSpawner] Auto-PR failed for single agent:`,
+                error
+              );
+            }
+          } else {
+            serverLogger.info(
+              `[AgentSpawner] Auto-PR disabled or not applicable for single agent`
+            );
+          }
+        }
+      } else {
+        serverLogger.info(
+          `[AgentSpawner] No crown evaluation needed (winnerId: ${winnerId})`
+        );
       }
     }
 

@@ -1,21 +1,83 @@
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
+import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
 import { getConvex } from "./utils/convexClient.js";
 import { serverLogger } from "./utils/fileLogger.js";
 import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
-import { workerExec } from "./utils/workerExec.js";
-import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWwwClient } from "./utils/wwwClient.js";
 import {
   postApiCrownEvaluate,
   postApiCrownSummarize,
 } from "@cmux/www-openapi-client";
+import { getRunDiffs } from "./diffs/getRunDiffs.js";
+import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
+import { workerExec } from "./utils/workerExec.js";
 
 const UNKNOWN_AGENT_NAME = "unknown agent";
 
 function getAgentNameOrUnknown(agentName?: string | null): string {
   const trimmed = agentName?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : UNKNOWN_AGENT_NAME;
+}
+
+// Filter out noisy paths from diff entries (aligns with capture filters)
+function isNoisePath(filePath: string): boolean {
+  const patterns: RegExp[] = [
+    /(^|\/)node_modules\//,
+    /(^|\/)dist\//,
+    /(^|\/)build\//,
+    /(^|\/)out\//,
+    /(^|\/)\.next\//,
+    /(^|\/)\.turbo\//,
+    /(^|\/)coverage\//,
+    /(^|\/)\.nyc_output\//,
+    /(^|\/)\.parcel-cache\//,
+    /(^|\/)\.cache\//,
+    /\.lock$/,
+    /-lock\.(json|ya?ml)$/,
+    /(^|\/)pnpm-lock\.ya?ml$/,
+    /(^|\/)yarn\.lock$/,
+    /(^|\/)package-lock\.json$/,
+    /(^|\/)Gemfile\.lock$/,
+    /(^|\/)poetry\.lock$/,
+    /(^|\/)Pipfile\.lock$/,
+    /(^|\/)composer\.lock$/,
+    /\.log$/,
+    /\.map$/,
+    /\.min\.(js|css)$/,
+    /(^|\/)\.DS_Store$/,
+  ];
+  return patterns.some((re) => re.test(filePath));
+}
+
+// Convert ReplaceDiffEntry list into a compact unified-diff style string for LLMs
+function formatDiffsForPrompt(entries: ReplaceDiffEntry[], maxChars = 5000): string {
+  const filtered = entries.filter((e) => !isNoisePath(e.filePath));
+  const parts: string[] = [];
+  for (const e of filtered) {
+    const oldPath = e.oldPath || e.filePath;
+    const newPath = e.filePath;
+    parts.push(`diff --git a/${oldPath} b/${newPath}`);
+    parts.push(`status ${e.status} +${e.additions} -${e.deletions}`);
+    if (e.patch && e.patch.trim().length > 0) {
+      // Ensure patch is not excessively large per file
+      const perFilePatch = e.patch.length > 3000 ? `${e.patch.slice(0, 3000)}\n... (truncated)` : e.patch;
+      parts.push(perFilePatch);
+    } else if (!e.isBinary) {
+      // Fallback when patch is missing: show a brief placeholder
+      parts.push(`--- a/${oldPath}`);
+      parts.push(`+++ b/${newPath}`);
+      parts.push(`@@ (patch omitted)`);
+    } else {
+      parts.push(`(binary file changed)`);
+    }
+    parts.push("");
+    const current = parts.join("\n");
+    if (current.length >= maxChars) break;
+  }
+  let out = parts.join("\n");
+  if (out.length > maxChars) out = `${out.slice(0, maxChars)}\n... (truncated)`;
+  return out || "<no code changes>";
 }
 
 // Auto PR behavior is controlled via workspace settings in Convex
@@ -337,8 +399,7 @@ export async function evaluateCrown(
 
     // Helper: generate and persist a system task comment summarizing the winner
     const generateSystemTaskComment = async (
-      winnerRunId: Id<"taskRuns">,
-      fallbackGitDiff: string
+      winnerRunId: Id<"taskRuns">
     ) => {
       try {
         // Skip if a system comment already exists for this task
@@ -352,37 +413,14 @@ export async function evaluateCrown(
           );
           return;
         }
-
-        // Try to collect worker diff for the winner; fall back to provided diff
-        let effectiveDiff = fallbackGitDiff || "";
-        const instances = VSCodeInstance.getInstances();
-        let instance: VSCodeInstance | undefined;
-        for (const [, inst] of instances) {
-          if (inst.getTaskRunId() === winnerRunId) {
-            instance = inst;
-            break;
-          }
-        }
-        if (instance && instance.isWorkerConnected()) {
-          try {
-            const workerSocket = instance.getWorkerSocket();
-            const { stdout } = await workerExec({
-              workerSocket,
-              command: "/bin/bash",
-              args: ["-c", "/usr/local/bin/cmux-collect-relevant-diff.sh"],
-              cwd: "/root/workspace",
-              env: {},
-              timeout: 30000,
-            });
-            const diff = (stdout || "").trim();
-            if (diff.length > 0) effectiveDiff = diff;
-          } catch (e) {
-            serverLogger.error(
-              `[CrownEvaluator] Failed to collect diff for task comment:`,
-              e
-            );
-          }
-        }
+        // Use the same source of truth as the Git Diff Viewer
+        const runDiffs = await getRunDiffs({
+          taskRunId: winnerRunId,
+          teamSlugOrId,
+          gitDiffManager: new (await import("./gitDiff.js")).GitDiffManager(),
+          includeContents: true,
+        });
+        const effectiveDiff = formatDiffsForPrompt(runDiffs);
 
         // Pull original request text for context
         const task = await getConvex().query(api.tasks.getById, {
@@ -486,75 +524,36 @@ export async function evaluateCrown(
       return;
     }
 
-    // Helper to extract a relevant git diff using worker script when possible
-    const collectDiffViaWorker = async (
+    // Helper to get diffs for a run from the same source used by the UI
+    const collectDiffFromSourceOfTruth = async (
       runId: Id<"taskRuns">
-    ): Promise<string | null> => {
+    ): Promise<string> => {
       try {
-        // Find a live VSCode instance for this run
-        const instances = VSCodeInstance.getInstances();
-        let instance: VSCodeInstance | undefined;
-        for (const [, inst] of instances) {
-          if (inst.getTaskRunId() === runId) {
-            instance = inst;
-            break;
-          }
-        }
-        if (!instance || !instance.isWorkerConnected()) {
-          serverLogger.info(
-            `[CrownEvaluator] No live worker for run ${runId}; unable to collect diff`
-          );
-          return null;
-        }
-        const workerSocket = instance.getWorkerSocket();
-        const { stdout } = await workerExec({
-          workerSocket,
-          command: "/bin/bash",
-          args: ["-c", "/usr/local/bin/cmux-collect-relevant-diff.sh"],
-          cwd: "/root/workspace",
-          env: {},
-          timeout: 30000,
+        const diffs = await getRunDiffs({
+          taskRunId: runId,
+          teamSlugOrId,
+          gitDiffManager: new (await import("./gitDiff.js")).GitDiffManager(),
+          includeContents: true,
         });
-        const diff = stdout?.trim() || "";
-        if (diff.length === 0) {
-          serverLogger.info(
-            `[CrownEvaluator] Worker diff empty for run ${runId}`
-          );
-          return null;
-        }
-        serverLogger.info(
-          `[CrownEvaluator] Collected worker diff for ${runId} (${diff.length} chars)`
-        );
-        return diff;
+        return formatDiffsForPrompt(diffs);
       } catch (err) {
         serverLogger.error(
-          `[CrownEvaluator] Failed collecting worker diff for run ${runId}:`,
+          `[CrownEvaluator] Failed to get diffs for run ${runId}:`,
           err
         );
-        return null;
+        return "<no code changes>";
       }
     };
 
     const candidateData = await Promise.all(
       completedRuns.map(async (run, idx) => {
         const agentName = getAgentNameOrUnknown(run.agentName);
-        // Try to collect diff via worker
-        const workerDiff: string | null = await collectDiffViaWorker(run._id);
-        let gitDiff: string =
-          workerDiff && workerDiff.length > 0
-            ? workerDiff
-            : "No changes detected";
-
-        // Limit to 5000 chars for the prompt
-        if (gitDiff.length > 5000) {
-          gitDiff = gitDiff.substring(0, 5000) + "\n... (truncated)";
-        }
+        const diffText = await collectDiffFromSourceOfTruth(run._id);
+        const gitDiff = diffText.length > 0 ? diffText : "No changes detected";
 
         serverLogger.info(
           `[CrownEvaluator] Implementation ${idx} (${agentName}): ${gitDiff.length} chars of diff`
         );
-
-        // Do not rely on logs; skip logging log tails.
 
         return {
           index: idx,
@@ -671,10 +670,7 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
       serverLogger.info(
         `[CrownEvaluator] Fallback winner selected: ${fallbackWinner.agentName}`
       );
-      await generateSystemTaskComment(
-        fallbackWinner.runId,
-        fallbackWinner.gitDiff
-      );
+      await generateSystemTaskComment(fallbackWinner.runId);
       await createPullRequestForWinner(
         fallbackWinner.runId,
         taskId,
@@ -708,10 +704,7 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
       serverLogger.info(
         `[CrownEvaluator] Fallback winner selected: ${fallbackWinner.agentName}`
       );
-      await generateSystemTaskComment(
-        fallbackWinner.runId,
-        fallbackWinner.gitDiff
-      );
+      await generateSystemTaskComment(fallbackWinner.runId);
       await createPullRequestForWinner(
         fallbackWinner.runId,
         taskId,
@@ -754,7 +747,7 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
     );
 
     // After choosing a winner, generate and persist a task comment (by cmux)
-    await generateSystemTaskComment(winner.runId, winner.gitDiff);
+    await generateSystemTaskComment(winner.runId);
   } catch (error) {
     serverLogger.error(`[CrownEvaluator] Error during evaluation:`, error);
 
