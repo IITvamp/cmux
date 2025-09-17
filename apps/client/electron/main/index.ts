@@ -5,7 +5,9 @@ import { is } from "@electron-toolkit/utils";
 import {
   app,
   BrowserWindow,
+  clipboard,
   dialog,
+  ipcMain,
   Menu,
   nativeImage,
   net,
@@ -26,6 +28,7 @@ import {
 import { promises as fs } from "node:fs";
 import { appendLogWithRotation, type LogRotationOptions } from "./log-management/log-rotation";
 import { ensureLogDirectory } from "./log-management/log-paths";
+import { collectAllLogs } from "./log-management/collect-logs";
 const { autoUpdater } = electronUpdater;
 
 import util from "node:util";
@@ -175,6 +178,30 @@ export function mainError(...args: unknown[]) {
 
   console.error("[MAIN]", line);
   emitToRenderer("error", `[MAIN] ${line}`);
+}
+
+function registerLogIpcHandlers(): void {
+  ipcMain.handle("cmux:logs:read-all", async () => {
+    try {
+      return await collectAllLogs();
+    } catch (error) {
+      mainWarn("Failed to read logs for renderer", error);
+      const err = error instanceof Error ? error : new Error(String(error));
+      throw err;
+    }
+  });
+
+  ipcMain.handle("cmux:logs:copy-all", async () => {
+    try {
+      const { combinedText } = await collectAllLogs();
+      clipboard.writeText(combinedText);
+      return { ok: true };
+    } catch (error) {
+      mainWarn("Failed to copy logs for renderer", error);
+      const err = error instanceof Error ? error : new Error(String(error));
+      throw err;
+    }
+  });
 }
 
 // Write critical errors to a file to aid debugging packaged crashes
@@ -381,6 +408,7 @@ app.on("open-url", (_event, url) => {
 app.whenReady().then(async () => {
   ensureLogFiles();
   setupConsoleFileMirrors();
+  registerLogIpcHandlers();
   initCmdK({
     getMainWindow: () => mainWindow,
     logger: {

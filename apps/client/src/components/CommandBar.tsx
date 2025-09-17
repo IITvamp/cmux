@@ -1,5 +1,6 @@
 import { useTheme } from "@/components/theme/use-theme";
 import { isElectron } from "@/lib/electron";
+import { copyAllElectronLogs } from "@/lib/electron-logs/electron-logs";
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
 import * as Dialog from "@radix-ui/react-dialog";
@@ -8,6 +9,8 @@ import { Command } from "cmdk";
 import { useQuery } from "convex/react";
 import { GitPullRequest, Monitor, Moon, Plus, Sun } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
+import { ElectronLogsCommandItems } from "./command-bar/ElectronLogsCommandItems";
 
 interface CommandBarProps {
   teamSlugOrId: string;
@@ -114,11 +117,22 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
 
   const handleHighlight = useCallback(
     async (value: string) => {
-      if (value?.startsWith("task:")) {
+      if (value === "logs:view") {
+        try {
+          await router.preloadRoute({
+            to: "/$teamSlugOrId/logs",
+            params: { teamSlugOrId },
+          });
+        } catch {
+          // ignore preload errors
+        }
+      } else if (value?.startsWith("task:")) {
         const parts = value.slice(5).split(":");
         const taskId = parts[0];
         const action = parts[1];
-        const task = allTasks?.find((t) => t._id === (taskId as Id<"tasks">));
+        const task = allTasks?.find(
+          (t) => t._id === (taskId as Id<"tasks">)
+        );
         const runId = task?.selectedTaskRun?._id;
 
         try {
@@ -181,6 +195,19 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
           to: "/$teamSlugOrId/prs",
           params: { teamSlugOrId },
         });
+      } else if (value === "logs:view") {
+        navigate({ to: "/$teamSlugOrId/logs", params: { teamSlugOrId } });
+      } else if (value === "logs:copy") {
+        try {
+          const ok = await copyAllElectronLogs();
+          if (ok) {
+            toast.success("Copied logs to clipboard");
+          } else {
+            toast.error("Unable to copy logs");
+          }
+        } catch {
+          toast.error("Unable to copy logs");
+        }
       } else if (value === "theme-light") {
         setTheme("light");
       } else if (value === "theme-dark") {
@@ -454,6 +481,10 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
                 })}
               </Command.Group>
             )}
+
+            {isElectron ? (
+              <ElectronLogsCommandItems onSelect={handleSelect} />
+            ) : null}
           </Command.List>
         </div>
       </Command.Dialog>

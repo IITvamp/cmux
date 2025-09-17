@@ -1,7 +1,14 @@
 import { electronAPI } from "@electron-toolkit/preload";
 import { contextBridge, ipcRenderer } from "electron";
+import type {
+  ElectronLogsPayload,
+  ElectronMainLogMessage,
+} from "../../src/lib/electron-logs/types";
 
 const api = {};
+
+type LogListener = (entry: ElectronMainLogMessage) => void;
+const mainLogListeners = new Set<LogListener>();
 
 // Cmux IPC API for Electron server communication
 const cmuxAPI = {
@@ -100,6 +107,18 @@ const cmuxAPI = {
       ) as Promise<{ ok: boolean }>;
     },
   },
+  logs: {
+    onMainLog: (callback: LogListener) => {
+      mainLogListeners.add(callback);
+      return () => {
+        mainLogListeners.delete(callback);
+      };
+    },
+    readAll: () =>
+      ipcRenderer.invoke("cmux:logs:read-all") as Promise<ElectronLogsPayload>,
+    copyAll: () =>
+      ipcRenderer.invoke("cmux:logs:copy-all") as Promise<{ ok: boolean }>,
+  },
 };
 
 contextBridge.exposeInMainWorld("electron", electronAPI);
@@ -111,14 +130,25 @@ contextBridge.exposeInMainWorld("cmux", cmuxAPI);
 ipcRenderer.on(
   "main-log",
   (_event, payload: { level: "log" | "warn" | "error"; message: string }) => {
-    const level = payload?.level ?? "log";
-    const msg = payload?.message ?? "";
+    const level = (payload?.level ?? "log") as ElectronMainLogMessage["level"];
+    const message =
+      typeof payload?.message === "string" ? payload.message : String(payload?.message ?? "");
+    const entry: ElectronMainLogMessage = { level, message };
+
     const fn = console[level] ?? console.log;
     try {
-      fn(msg);
+      fn(message);
     } catch {
       // fallback
-      console.log(msg);
+      console.log(message);
+    }
+
+    for (const listener of Array.from(mainLogListeners)) {
+      try {
+        listener(entry);
+      } catch {
+        // ignore listener errors to avoid breaking the bridge
+      }
     }
   }
 );
