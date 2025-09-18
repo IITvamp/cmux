@@ -371,7 +371,9 @@ else
   ARTIFACTS=()
   while IFS= read -r artifact; do
     ARTIFACTS+=("$artifact")
-  done < <(find "$DIST_DIR" -mindepth 1 -maxdepth 1 -type f \(-name "*.dmg" -o -name "*.zip"\) -print | sort)
+  done < <(find "$DIST_DIR" -mindepth 1 -maxdepth 1 -type f \
+    \( -name "*.dmg" -o -name "*.zip" -o -name "latest-*.yml" -o -name "*.blockmap" \) \
+    -print | sort)
 
   if [[ -z "$PUBLISH_OWNER" || -z "$PUBLISH_REPO" ]]; then
     echo "Skipping GitHub release publish: repository owner/name not available" >&2
