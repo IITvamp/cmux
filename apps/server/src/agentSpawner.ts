@@ -402,12 +402,6 @@ export async function spawnAgent(
           );
           return;
         }
-        // CRITICAL: Add a delay to ensure changes are written to disk
-        serverLogger.info(
-          `[AgentSpawner] Waiting 3 seconds for file system to settle before capturing git diff...`
-        );
-        await new Promise((resolve) => setTimeout(resolve, 3000));
-
         await runWithAuth(capturedAuthToken, capturedAuthHeaderJson, async () =>
           handleTaskCompletion({
             taskRunId,
@@ -457,12 +451,6 @@ export async function spawnAgent(
         serverLogger.info(
           `[AgentSpawner] Task ID matched! Marking task as complete for ${agent.name}`
         );
-        // CRITICAL: Add a delay to ensure changes are written to disk
-        serverLogger.info(
-          `[AgentSpawner] Waiting 3 seconds for file system to settle before capturing git diff...`
-        );
-        await new Promise((resolve) => setTimeout(resolve, 3000));
-
         await runWithAuth(capturedAuthToken, capturedAuthHeaderJson, async () =>
           handleTaskCompletion({
             taskRunId,
