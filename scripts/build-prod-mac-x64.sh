@@ -250,9 +250,9 @@ if [[ -d "$DIST_DIR" ]]; then
 
   if [[ -n "$APP" && -d "$APP" ]]; then
     echo "Stapling app: $APP"
-    xcrun stapler staple "$APP" || true
+    xcrun stapler staple "$APP"
     echo "Validating app stapling:"
-    xcrun stapler validate "$APP" || true
+    xcrun stapler validate "$APP"
     echo "Gatekeeper assessment for app:"
     spctl -a -t exec -vv "$APP"
   else
@@ -261,11 +261,11 @@ if [[ -d "$DIST_DIR" ]]; then
 
   if [[ -n "$DMG" && -f "$DMG" ]]; then
     echo "Stapling DMG: $DMG"
-    xcrun stapler staple "$DMG" || true
+    xcrun stapler staple "$DMG"
     echo "Validating DMG stapling:"
-    xcrun stapler validate "$DMG" || true
+    xcrun stapler validate "$DMG"
     echo "Gatekeeper assessment for DMG:"
-    spctl -a -t open -vv "$DMG"
+    spctl -a -t open -vv --context context:primary-signature "$DMG"
   else
     echo "No .dmg found under $DIST_DIR" >&2
   fi
