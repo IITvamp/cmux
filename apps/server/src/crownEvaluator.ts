@@ -1,17 +1,17 @@
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
 import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
-import { getConvex } from "./utils/convexClient.js";
-import { serverLogger } from "./utils/fileLogger.js";
-import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
-import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
-import { getWwwClient } from "./utils/wwwClient.js";
 import {
   postApiCrownEvaluate,
   postApiCrownSummarize,
 } from "@cmux/www-openapi-client";
-import { loadNativeGit } from "./native/git.js";
-import { ensureRunWorktreeAndBranch } from "./utils/ensureRunWorktree.js";
+import { getRunDiffs } from "./diffs/getRunDiffs.js";
+import { GitDiffManager } from "./gitDiff.js";
+import { getConvex } from "./utils/convexClient.js";
+import { serverLogger } from "./utils/fileLogger.js";
+import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
+import { getWwwClient } from "./utils/wwwClient.js";
+import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 
 const UNKNOWN_AGENT_NAME = "unknown agent";
 
@@ -82,7 +82,6 @@ const DIFF_IGNORED_EXTENSIONS = new Set([
 
 interface DiffFetchOptions {
   maxChars?: number;
-  fallback?: string;
 }
 
 function normalizeDiffPath(filePath: string): string {
@@ -144,8 +143,12 @@ function renderDiffEntries(
 
     const patch = entry.patch?.trim() ?? "";
     const patchBytes = patch ? Buffer.byteLength(patch, "utf8") : 0;
-    const oldPath = normalizeDiffPath(entry.oldPath ?? entry.filePath ?? "unknown");
-    const newPath = normalizeDiffPath(entry.filePath ?? entry.oldPath ?? "unknown");
+    const oldPath = normalizeDiffPath(
+      entry.oldPath ?? entry.filePath ?? "unknown"
+    );
+    const newPath = normalizeDiffPath(
+      entry.filePath ?? entry.oldPath ?? "unknown"
+    );
     const header = `diff --git a/${oldPath} b/${newPath}`;
 
     if (patch && patchBytes > DIFF_MAX_PATCH_BYTES) {
@@ -163,7 +166,9 @@ function renderDiffEntries(
 
     if (entry.isBinary) {
       mentionedBinary = true;
-      sections.push(`${header}\n# Binary file ${entry.status} (${currentPath})`);
+      sections.push(
+        `${header}\n# Binary file ${entry.status} (${currentPath})`
+      );
       continue;
     }
 
@@ -175,9 +180,6 @@ function renderDiffEntries(
   let diffText = sections.join("\n\n").trim();
 
   if (!diffText) {
-    if (options.fallback) {
-      return options.fallback;
-    }
     if (omittedLargePatch) {
       return "# Diff omitted due to size constraints.";
     }
@@ -210,38 +212,32 @@ function renderDiffEntries(
   return diffText;
 }
 
+const gitDiffManager = new GitDiffManager();
+
 async function fetchRunDiffFromSource(
   runId: Id<"taskRuns">,
   teamSlugOrId: string,
   options: DiffFetchOptions
 ): Promise<string> {
   try {
-    const ensured = await ensureRunWorktreeAndBranch(runId, teamSlugOrId);
-    const native = loadNativeGit();
-    if (!native?.gitDiffRefs) {
-      serverLogger.warn(
-        `[CrownEvaluator] Native git diff not available; returning fallback diff`
-      );
-      return options.fallback ?? "";
-    }
-
-    const entries = await native.gitDiffRefs({
-      ref1: ensured.baseBranch,
-      ref2: ensured.branchName,
-      repoFullName: ensured.task.projectFullName || undefined,
+    const entries = await getRunDiffs({
+      taskRunId: runId,
       teamSlugOrId,
-      originPathOverride: ensured.worktreePath,
+      gitDiffManager,
       includeContents: true,
-      maxBytes: 950 * 1024,
     });
+
+    if (entries.length === 0) {
+      return "";
+    }
 
     return renderDiffEntries(entries, options);
   } catch (error) {
     serverLogger.error(
-      `[CrownEvaluator] Failed to fetch diff via source of truth for run ${runId}:`,
+      `[CrownEvaluator] Failed to collect diff for run ${runId}:`,
       error
     );
-    return options.fallback ?? "";
+    return "";
   }
 }
 
@@ -564,8 +560,7 @@ export async function evaluateCrown(
 
     // Helper: generate and persist a system task comment summarizing the winner
     const generateSystemTaskComment = async (
-      winnerRunId: Id<"taskRuns">,
-      fallbackGitDiff: string
+      winnerRunId: Id<"taskRuns">
     ) => {
       try {
         // Skip if a system comment already exists for this task
@@ -580,10 +575,13 @@ export async function evaluateCrown(
           return;
         }
 
-        const effectiveDiff = await fetchRunDiffFromSource(winnerRunId, teamSlugOrId, {
-          fallback: fallbackGitDiff,
-          maxChars: DIFF_COMMENT_MAX_CHARS,
-        });
+        const effectiveDiff = await fetchRunDiffFromSource(
+          winnerRunId,
+          teamSlugOrId,
+          {
+            maxChars: DIFF_COMMENT_MAX_CHARS,
+          }
+        );
         serverLogger.info(
           `[CrownEvaluator] Diff for system comment (run ${winnerRunId}) is ${effectiveDiff.length} chars`
         );
@@ -695,7 +693,6 @@ export async function evaluateCrown(
     ): Promise<string> => {
       const diff = await fetchRunDiffFromSource(runId, teamSlugOrId, {
         maxChars: DIFF_PROMPT_MAX_CHARS,
-        fallback: "",
       });
       return diff.trim().length > 0 ? diff : "No changes detected";
     };
@@ -833,10 +830,7 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
       serverLogger.info(
         `[CrownEvaluator] Fallback winner selected: ${fallbackWinner.agentName}`
       );
-      await generateSystemTaskComment(
-        fallbackWinner.runId,
-        fallbackWinner.gitDiff
-      );
+      await generateSystemTaskComment(fallbackWinner.runId);
       await createPullRequestForWinner(
         fallbackWinner.runId,
         taskId,
@@ -870,10 +864,7 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
       serverLogger.info(
         `[CrownEvaluator] Fallback winner selected: ${fallbackWinner.agentName}`
       );
-      await generateSystemTaskComment(
-        fallbackWinner.runId,
-        fallbackWinner.gitDiff
-      );
+      await generateSystemTaskComment(fallbackWinner.runId);
       await createPullRequestForWinner(
         fallbackWinner.runId,
         taskId,
@@ -916,7 +907,7 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
     );
 
     // After choosing a winner, generate and persist a task comment (by cmux)
-    await generateSystemTaskComment(winner.runId, winner.gitDiff);
+    await generateSystemTaskComment(winner.runId);
   } catch (error) {
     serverLogger.error(`[CrownEvaluator] Error during evaluation:`, error);
 
