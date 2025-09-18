@@ -27,50 +27,58 @@ describe("morphRouter - live", () => {
     expect(res.response.status).toBe(401);
   });
 
-  it("creates and then reuses an instance with instanceId", async () => {
-    const tokens = await __TEST_INTERNAL_ONLY_GET_STACK_TOKENS();
-    // First call: create new instance
-    const first = await postApiMorphSetupInstance({
-      client: testApiClient,
-      headers: { "x-stack-auth": JSON.stringify(tokens) },
-      body: { teamSlugOrId: "manaflow", ttlSeconds: 300 },
-    });
-    // Accept 200 (OK) or 500 (server error due to team/auth issues)
-    expect([200, 500]).toContain(first.response.status);
-    if (first.response.status !== 200) return; // Skip rest if server error
-    const firstBody = first.data as unknown as {
-      instanceId: string;
-      vscodeUrl: string;
-      clonedRepos: string[];
-      removedRepos: string[];
-    };
-    expect(typeof firstBody.instanceId).toBe("string");
-    expect(firstBody.instanceId.length).toBeGreaterThan(0);
-    expect(firstBody.vscodeUrl.includes("/?folder=/root/workspace")).toBe(true);
-    createdInstanceId = firstBody.instanceId;
+  it(
+    "creates and then reuses an instance with instanceId",
+    {
+      timeout: 20_000,
+    },
+    async () => {
+      const tokens = await __TEST_INTERNAL_ONLY_GET_STACK_TOKENS();
+      // First call: create new instance
+      const first = await postApiMorphSetupInstance({
+        client: testApiClient,
+        headers: { "x-stack-auth": JSON.stringify(tokens) },
+        body: { teamSlugOrId: "manaflow", ttlSeconds: 300 },
+      });
+      // Accept 200 (OK) or 500 (server error due to team/auth issues)
+      expect([200, 500]).toContain(first.response.status);
+      if (first.response.status !== 200) return; // Skip rest if server error
+      const firstBody = first.data as unknown as {
+        instanceId: string;
+        vscodeUrl: string;
+        clonedRepos: string[];
+        removedRepos: string[];
+      };
+      expect(typeof firstBody.instanceId).toBe("string");
+      expect(firstBody.instanceId.length).toBeGreaterThan(0);
+      expect(firstBody.vscodeUrl.includes("/?folder=/root/workspace")).toBe(
+        true
+      );
+      createdInstanceId = firstBody.instanceId;
 
-    // Second call: reuse existing instance by passing instanceId
-    const second = await postApiMorphSetupInstance({
-      client: testApiClient,
-      headers: { "x-stack-auth": JSON.stringify(tokens) },
-      body: {
-        teamSlugOrId: "manaflow",
-        instanceId: firstBody.instanceId,
-        ttlSeconds: 300,
-      },
-    });
-    expect(second.response.status).toBe(200);
-    const secondBody = second.data as unknown as {
-      instanceId: string;
-      vscodeUrl: string;
-      clonedRepos: string[];
-      removedRepos: string[];
-    };
-    expect(secondBody.instanceId).toBe(firstBody.instanceId);
-    expect(secondBody.vscodeUrl.includes("/?folder=/root/workspace")).toBe(
-      true
-    );
-  });
+      // Second call: reuse existing instance by passing instanceId
+      const second = await postApiMorphSetupInstance({
+        client: testApiClient,
+        headers: { "x-stack-auth": JSON.stringify(tokens) },
+        body: {
+          teamSlugOrId: "manaflow",
+          instanceId: firstBody.instanceId,
+          ttlSeconds: 300,
+        },
+      });
+      expect(second.response.status).toBe(200);
+      const secondBody = second.data as unknown as {
+        instanceId: string;
+        vscodeUrl: string;
+        clonedRepos: string[];
+        removedRepos: string[];
+      };
+      expect(secondBody.instanceId).toBe(firstBody.instanceId);
+      expect(secondBody.vscodeUrl.includes("/?folder=/root/workspace")).toBe(
+        true
+      );
+    }
+  );
 
   it("denies reusing an instance with a different team", async () => {
     const tokens = await __TEST_INTERNAL_ONLY_GET_STACK_TOKENS();
