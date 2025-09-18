@@ -382,6 +382,10 @@ function FileDiffRow({
   }, [theme]);
 
   useEffect(() => {
+    if (!isExpanded) {
+      return;
+    }
+
     const container = diffContainerRef.current;
     if (!container) {
       return;
@@ -558,7 +562,7 @@ function FileDiffRow({
       setEditorRef(null);
       revealedRef.current = false;
     };
-  }, [diffEditorOptions, file.filePath, runId, setEditorRef]);
+  }, [diffEditorOptions, file.filePath, isExpanded, runId, setEditorRef]);
 
   useEffect(() => {
     const instance = diffEditorRef.current;
