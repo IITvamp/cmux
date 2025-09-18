@@ -298,9 +298,15 @@ Completed: ${new Date().toISOString()}`;
   }
 }
 
+type EvaluateCrownOptions = {
+  triggeringRunId?: Id<"taskRuns">;
+  precollectedDiff?: string;
+};
+
 export async function evaluateCrown(
   taskId: Id<"tasks">,
-  teamSlugOrId: string
+  teamSlugOrId: string,
+  options: EvaluateCrownOptions = {}
 ): Promise<void> {
   serverLogger.info(
     `[CrownEvaluator] =================================================`
@@ -539,7 +545,13 @@ export async function evaluateCrown(
       completedRuns.map(async (run, idx) => {
         const agentName = getAgentNameOrUnknown(run.agentName);
         // Try to collect diff via worker
-        const workerDiff: string | null = await collectDiffViaWorker(run._id);
+        const precollected =
+          options.triggeringRunId && run._id === options.triggeringRunId
+            ? options.precollectedDiff?.trim() ?? ""
+            : "";
+        const workerDiff: string | null = precollected
+          ? precollected
+          : await collectDiffViaWorker(run._id);
         let gitDiff: string =
           workerDiff && workerDiff.length > 0
             ? workerDiff

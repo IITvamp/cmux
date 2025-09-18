@@ -49,39 +49,13 @@ export default async function performAutoCommitAndPush(
         ? taskDescription.substring(0, 69) + "..."
         : taskDescription;
 
-    // Collect relevant diff from worker via script (does not modify repo index)
+    // Use the precollected diff for commit message generation; avoid re-fetching
     let commitMessage = "";
-    const normalizedPreDiff = precollectedDiff?.trim();
-    const shouldReusePreDiff =
-      !!normalizedPreDiff && normalizedPreDiff !== "No changes detected";
-    let diffForCommit = "";
+    const diffForCommit = (precollectedDiff ?? "").trim();
 
-    if (shouldReusePreDiff) {
-      diffForCommit = precollectedDiff as string;
-      serverLogger.info(
-        `[AgentSpawner] Reusing precollected diff (${diffForCommit.length} chars)`
-      );
-    } else {
-      try {
-        const { stdout: diffOut } = await workerExec({
-          workerSocket,
-          command: "/bin/bash",
-          args: ["-c", "/usr/local/bin/cmux-collect-relevant-diff.sh"],
-          cwd: "/root/workspace",
-          env: {},
-          timeout: 30000,
-        });
-        diffForCommit = diffOut;
-        serverLogger.info(
-          `[AgentSpawner] Collected relevant diff (${diffOut.length} chars)`
-        );
-      } catch (e) {
-        serverLogger.error(
-          `[AgentSpawner] Failed to collect diff for commit message:`,
-          e
-        );
-      }
-    }
+    serverLogger.info(
+      `[AgentSpawner] Using precollected diff for commit message (${diffForCommit.length} chars)`
+    );
 
     try {
       const aiCommit = await generateCommitMessageFromDiff(

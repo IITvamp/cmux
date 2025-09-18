@@ -2,9 +2,6 @@ import { serverLogger } from "./utils/fileLogger.js";
 import { workerExec } from "./utils/workerExec.js";
 import type { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 
-const WORKSPACE_ROOT = "/root/workspace";
-const DIFF_SCRIPT = "/usr/local/bin/cmux-collect-relevant-diff.sh";
-
 export async function captureGitDiff(
   vscodeInstance: VSCodeInstance,
   worktreePath: string
@@ -21,14 +18,14 @@ export async function captureGitDiff(
   try {
     const workerSocket = vscodeInstance.getWorkerSocket();
     serverLogger.info(
-      `[AgentSpawner] Collecting relevant git diff via ${DIFF_SCRIPT} for ${worktreePath}`
+      `[AgentSpawner] Collecting relevant git diff for ${worktreePath}`
     );
 
     const { stdout, stderr, exitCode } = await workerExec({
       workerSocket,
       command: "/bin/bash",
-      args: [DIFF_SCRIPT],
-      cwd: WORKSPACE_ROOT,
+      args: ["-c", "/usr/local/bin/cmux-collect-relevant-diff.sh"],
+      cwd: "/root/workspace",
       env: {},
       timeout: 30000,
     });
@@ -46,13 +43,9 @@ export async function captureGitDiff(
 
     return diff || "No changes detected";
   } catch (error) {
-    serverLogger.error(
-      `[AgentSpawner] Error capturing git diff via ${DIFF_SCRIPT}:`,
-      error
-    );
-    throw new Error(
-      `[AgentSpawner] Error capturing git diff via ${DIFF_SCRIPT}`,
-      { cause: error }
-    );
+    serverLogger.error(`[AgentSpawner] Error capturing git diff:`, error);
+    throw new Error(`[AgentSpawner] Error capturing git diff`, {
+      cause: error,
+    });
   }
 }
