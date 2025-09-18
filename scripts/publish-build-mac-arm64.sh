@@ -67,6 +67,15 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+sanitize_id_like_env_var() {
+  local var_name="$1"
+  local value="${!var_name:-}"
+  if [[ -n "$value" ]]; then
+    value="$(printf '%s' "$value" | tr -d "[:space:]\"'")"
+    export "$var_name"="$value"
+  fi
+}
+
 # Preconditions
 if [[ "$(uname)" != "Darwin" ]]; then
   echo "This script must run on macOS." >&2
@@ -84,7 +93,7 @@ command -v xcrun >/dev/null 2>&1 || { echo "xcrun is required (Xcode command lin
 command -v spctl >/dev/null 2>&1 || { echo "spctl is required (macOS)." >&2; exit 1; }
 
 # Optional: source additional env vars
-# If not provided, prefer .env.codesign automatically when present
+# If not provided, prefer .env.codesign automatically when present, otherwise fall back to .env
 if [[ -n "$ENV_FILE" ]]; then
   if [[ ! -f "$ENV_FILE" ]]; then
     echo "Env file not found: $ENV_FILE" >&2
@@ -100,7 +109,16 @@ elif [[ -f "$ROOT_DIR/.env.codesign" ]]; then
   # shellcheck disable=SC1090
   source "$ROOT_DIR/.env.codesign"
   set +a
+elif [[ -f "$ROOT_DIR/.env" ]]; then
+  echo "==> Loading codesign env from .env"
+  set -a
+  # shellcheck disable=SC1090
+  source "$ROOT_DIR/.env"
+  set +a
 fi
+
+sanitize_id_like_env_var APPLE_API_KEY_ID
+sanitize_id_like_env_var APPLE_API_ISSUER
 
 echo "==> Preparing macOS entitlements"
 bash "$ROOT_DIR/scripts/publish-prepare-macos-entitlements.sh"
@@ -194,7 +212,7 @@ if [[ "$HAS_SIGNING" == "true" ]]; then
       ARTIFACT="$(ls -1 "$DIST_DIR"/*.dmg | head -n1)"
       echo "Submitting DMG to notary service: $ARTIFACT"
     else
-      APP_PATH="$(ls -1d "$DIST_DIR"/mac-*/**/*.app 2>/dev/null | head -n1 || true)"
+      APP_PATH="$(find "$DIST_DIR" -maxdepth 4 -type d -name "*.app" | head -n1 || true)"
       if [[ -z "$APP_PATH" ]]; then
         echo "No artifact found to notarize under $DIST_DIR" >&2
       else
@@ -244,7 +262,7 @@ fi
 echo "==> Stapling and verifying outputs"
 if [[ -d "$DIST_DIR" ]]; then
   pushd "$DIST_DIR" >/dev/null
-  APP="$(ls -1d mac*/**/*.app 2>/dev/null | head -n1 || true)"
+  APP="$(find "$PWD" -maxdepth 4 -type d -name "*.app" | head -n1 || true)"
   DMG="$(ls -1 *.dmg 2>/dev/null | head -n1 || true)"
 
   if [[ -n "$APP" && -d "$APP" ]]; then
@@ -255,7 +273,7 @@ if [[ -d "$DIST_DIR" ]]; then
     echo "Gatekeeper assessment for app:"
     spctl -a -t exec -vv "$APP"
   else
-    echo "No .app found under $DIST_DIR/mac*/**/*.app" >&2
+    echo "No .app found under $DIST_DIR" >&2
   fi
 
   if [[ -n "$DMG" && -f "$DMG" ]]; then

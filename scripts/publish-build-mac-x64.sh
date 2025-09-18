@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Local macOS x64 build + sign + notarize for Electron app
-# Mirrors the steps in .github/workflows/release-updates.yml (mac-x64 job)
+# CI macOS x64 build + sign + notarize for Electron app
+# Mirrors the steps in .github/workflows/release-updates.yml (mac-x64 job) without reusing local scripts
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 CLIENT_DIR="$ROOT_DIR/apps/client"
@@ -67,6 +67,15 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+sanitize_id_like_env_var() {
+  local var_name="$1"
+  local value="${!var_name:-}"
+  if [[ -n "$value" ]]; then
+    value="$(printf '%s' "$value" | tr -d "[:space:]\"'")"
+    export "$var_name"="$value"
+  fi
+}
+
 # Preconditions
 if [[ "$(uname)" != "Darwin" ]]; then
   echo "This script must run on macOS." >&2
@@ -108,8 +117,11 @@ elif [[ -f "$ROOT_DIR/.env" ]]; then
   set +a
 fi
 
+sanitize_id_like_env_var APPLE_API_KEY_ID
+sanitize_id_like_env_var APPLE_API_ISSUER
+
 echo "==> Preparing macOS entitlements"
-bash "$ROOT_DIR/scripts/prepare-macos-entitlements.sh"
+bash "$ROOT_DIR/scripts/publish-prepare-macos-entitlements.sh"
 
 echo "==> Generating icons"
 (cd "$CLIENT_DIR" && bun run ./scripts/generate-icons.mjs)
@@ -122,14 +134,19 @@ fi
 if [[ "$SKIP_INSTALL" != "true" ]]; then
   echo "==> Installing dependencies (bun install --frozen-lockfile)"
   (cd "$ROOT_DIR" && bun install --frozen-lockfile)
+else
+  if [[ ! -d "$ROOT_DIR/node_modules" || ! -d "$CLIENT_DIR/node_modules" ]]; then
+    echo "==> node_modules missing; installing dependencies despite --skip-install"
+    (cd "$ROOT_DIR" && bun install --frozen-lockfile)
+  fi
 fi
 
 echo "==> Prebuilding mac app via prod script (workaround)"
-bash "$ROOT_DIR/scripts/build-electron-prod.sh"
+bash "$ROOT_DIR/scripts/publish-build-electron-prod.sh"
 
 # The workaround script cleans the client's build directory; recreate entitlements after
 echo "==> Re-preparing macOS entitlements (after prebuild)"
-bash "$ROOT_DIR/scripts/prepare-macos-entitlements.sh" || true
+bash "$ROOT_DIR/scripts/publish-prepare-macos-entitlements.sh" || true
 
 # Detect presence of signing + notarization secrets (mirror GH workflow)
 echo "==> Detecting signing environment"
@@ -229,7 +246,7 @@ if [[ "$HAS_SIGNING" == "true" ]]; then
     fi
   fi
 else
-  echo "==> No signing secrets; building unsigned"
+  echo "==> No signing secrets; building unsigned like the commented GH path"
   # Avoid any auto identity discovery and explicitly disable signing
   export CSC_IDENTITY_AUTO_DISCOVERY=false
   # Ensure entitlements exist right before packaging
