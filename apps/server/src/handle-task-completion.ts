@@ -161,8 +161,10 @@ export async function handleTaskCompletion({
                 `[AgentSpawner] Crown evaluation already in progress for task ${taskRunData.taskId}`
               );
             } else {
-              await evaluateCrown(taskRunData.taskId, teamSlugOrId, {
-                triggeringRunId: taskRunId,
+              await evaluateCrown({
+                taskId: taskRunData.taskId,
+                teamSlugOrId,
+                crownRunId: taskRunId,
                 precollectedDiff: gitDiff,
               });
 
