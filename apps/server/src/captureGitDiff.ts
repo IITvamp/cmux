@@ -13,7 +13,9 @@ export async function captureGitDiff(
     serverLogger.warn(
       `[AgentSpawner] Cannot capture git diff — worker not connected for ${worktreePath}`
     );
-    return "";
+    throw new Error(
+      `[AgentSpawner] Cannot capture git diff — worker not connected for ${worktreePath}`
+    );
   }
 
   try {
@@ -48,6 +50,9 @@ export async function captureGitDiff(
       `[AgentSpawner] Error capturing git diff via ${DIFF_SCRIPT}:`,
       error
     );
-    return "";
+    throw new Error(
+      `[AgentSpawner] Error capturing git diff via ${DIFF_SCRIPT}`,
+      { cause: error }
+    );
   }
 }
