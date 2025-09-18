@@ -1,5 +1,4 @@
 import { useTheme } from "@/components/theme/use-theme";
-// No socket usage in refs-only viewer
 import { cn } from "@/lib/utils";
 import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
 import {
@@ -221,6 +220,7 @@ export function GitDiffViewer({
             classNames={classNames?.fileDiffRow}
           />
         ))}
+        <hr className="border-neutral-200 dark:border-neutral-800" />
         {/* End-of-diff message */}
         <div className="px-3 py-6 text-center">
           <span className="text-xs text-neutral-500 dark:text-neutral-400 select-none">
@@ -514,35 +514,39 @@ function FileDiffRow({
     monaco.editor.setTheme(currentTheme);
 
     return () => {
-      layoutSchedulerRef.current = null;
-      for (const disposable of disposables) {
-        disposable.dispose();
-      }
-      if (rafIdRef.current != null) {
-        cancelAnimationFrame(rafIdRef.current);
-        rafIdRef.current = null;
-      }
-      cancelAnimationFrame(rafHandle);
-      if (resizeObserverRef.current) {
-        resizeObserverRef.current.disconnect();
-        resizeObserverRef.current = null;
-      }
       try {
-        diffEditor.setModel(null);
-      } catch {
-        // ignore
+        layoutSchedulerRef.current = null;
+        for (const disposable of disposables) {
+          disposable.dispose();
+        }
+        if (rafIdRef.current != null) {
+          cancelAnimationFrame(rafIdRef.current);
+          rafIdRef.current = null;
+        }
+        cancelAnimationFrame(rafHandle);
+        if (resizeObserverRef.current) {
+          resizeObserverRef.current.disconnect();
+          resizeObserverRef.current = null;
+        }
+        try {
+          diffEditor.setModel(null);
+        } catch {
+          // ignore
+        }
+        if (modelsRef.current) {
+          modelsRef.current.original.dispose();
+          modelsRef.current.modified.dispose();
+          modelsRef.current = null;
+        }
+        diffEditor.dispose();
+        if (diffEditorRef.current === diffEditor) {
+          diffEditorRef.current = null;
+        }
+        setEditorRef(null);
+        revealedRef.current = false;
+      } catch (error) {
+        console.error("Error disposing diff editor", error);
       }
-      if (modelsRef.current) {
-        modelsRef.current.original.dispose();
-        modelsRef.current.modified.dispose();
-        modelsRef.current = null;
-      }
-      diffEditor.dispose();
-      if (diffEditorRef.current === diffEditor) {
-        diffEditorRef.current = null;
-      }
-      setEditorRef(null);
-      revealedRef.current = false;
     };
   }, [diffEditorOptions, file.filePath, isExpanded, runId, setEditorRef]);
 
@@ -576,7 +580,7 @@ function FileDiffRow({
       <button
         onClick={onToggle}
         className={cn(
-          "w-full px-3 py-1.5 flex items-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors text-left group pt-1 bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800 sticky  z-[var(--z-sticky-low)]",
+          "w-full px-3 py-1.5 flex items-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors text-left group pt-1 bg-white dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-800 sticky z-[var(--z-sticky-low)]",
           classNames?.button
         )}
       >
