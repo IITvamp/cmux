@@ -326,7 +326,7 @@ export async function evaluateCrown({
     try {
       const acquired = await getConvex().mutation(
         api.tasks.tryBeginCrownEvaluation,
-        { teamSlugOrId: teamSlugOrId, id: taskId }
+        { teamSlugOrId, id: taskId }
       );
       if (!acquired) {
         serverLogger.info(
@@ -395,7 +395,7 @@ export async function evaluateCrown({
 
         // Pull original request text for context
         const task = await getConvex().query(api.tasks.getById, {
-          teamSlugOrId: teamSlugOrId,
+          teamSlugOrId,
           id: taskId,
         });
         const originalRequest = task?.text || "";
@@ -414,7 +414,7 @@ export async function evaluateCrown({
             client: getWwwClient(),
             body: {
               prompt: summarizationPrompt,
-              teamSlugOrId: teamSlugOrId,
+              teamSlugOrId,
             },
           });
 
@@ -436,7 +436,7 @@ export async function evaluateCrown({
 
         await getConvex().mutation(api.taskComments.createSystemForTask, {
           teamSlugOrId,
-          taskId: taskId,
+          taskId,
           content: commentText,
         });
 
