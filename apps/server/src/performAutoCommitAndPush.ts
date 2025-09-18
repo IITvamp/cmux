@@ -18,7 +18,7 @@ export default async function performAutoCommitAndPush(
   taskRunId: Id<"taskRuns">,
   taskDescription: string,
   teamSlugOrId: string,
-  precollectedDiff?: string
+  precollectedDiff: string
 ): Promise<void> {
   try {
     serverLogger.info(`[AgentSpawner] Starting auto-commit for ${agent.name}`);
@@ -49,9 +49,9 @@ export default async function performAutoCommitAndPush(
         ? taskDescription.substring(0, 69) + "..."
         : taskDescription;
 
-    // Use the precollected diff for commit message generation; avoid re-fetching
+    // Use the precollected diff for commit message generation
     let commitMessage = "";
-    const diffForCommit = (precollectedDiff ?? "").trim();
+    const diffForCommit = precollectedDiff.trim();
 
     serverLogger.info(
       `[AgentSpawner] Using precollected diff for commit message (${diffForCommit.length} chars)`
