@@ -299,20 +299,20 @@ Completed: ${new Date().toISOString()}`;
 }
 
 type EvaluateCrownOptions = {
-  triggeringRunId?: Id<"taskRuns">;
-  precollectedDiff?: string;
+  taskId: Id<"tasks">;
+  teamSlugOrId: string;
+  crownRunId: Id<"taskRuns">;
+  precollectedDiff: string;
 };
 
 export async function evaluateCrown(
-  taskId: Id<"tasks">,
-  teamSlugOrId: string,
-  options: EvaluateCrownOptions = {}
+  options: EvaluateCrownOptions
 ): Promise<void> {
   serverLogger.info(
     `[CrownEvaluator] =================================================`
   );
   serverLogger.info(
-    `[CrownEvaluator] STARTING CROWN EVALUATION FOR TASK ${taskId}`
+    `[CrownEvaluator] STARTING CROWN EVALUATION FOR TASK ${options.taskId}`
   );
   serverLogger.info(
     `[CrownEvaluator] =================================================`
@@ -323,7 +323,7 @@ export async function evaluateCrown(
     try {
       const acquired = await getConvex().mutation(
         api.tasks.tryBeginCrownEvaluation,
-        { teamSlugOrId, id: taskId }
+        { teamSlugOrId: options.teamSlugOrId, id: options.taskId }
       );
       if (!acquired) {
         serverLogger.info(
@@ -350,7 +350,7 @@ export async function evaluateCrown(
         // Skip if a system comment already exists for this task
         const existing = await getConvex().query(
           api.taskComments.latestSystemByTask,
-          { teamSlugOrId, taskId }
+          { teamSlugOrId: options.teamSlugOrId, taskId: options.taskId }
         );
         if (existing) {
           serverLogger.info(
@@ -392,8 +392,8 @@ export async function evaluateCrown(
 
         // Pull original request text for context
         const task = await getConvex().query(api.tasks.getById, {
-          teamSlugOrId,
-          id: taskId,
+          teamSlugOrId: options.teamSlugOrId,
+          id: options.taskId,
         });
         const originalRequest = task?.text || "";
 
@@ -411,7 +411,7 @@ export async function evaluateCrown(
             client: getWwwClient(),
             body: {
               prompt: summarizationPrompt,
-              teamSlugOrId,
+              teamSlugOrId: options.teamSlugOrId,
             },
           });
 
@@ -432,13 +432,13 @@ export async function evaluateCrown(
         }
 
         await getConvex().mutation(api.taskComments.createSystemForTask, {
-          teamSlugOrId,
-          taskId,
+          teamSlugOrId: options.teamSlugOrId,
+          taskId: options.taskId,
           content: commentText,
         });
 
         serverLogger.info(
-          `[CrownEvaluator] Saved system task comment for task ${taskId}`
+          `[CrownEvaluator] Saved system task comment for task ${options.taskId}`
         );
       } catch (e) {
         serverLogger.error(
@@ -450,16 +450,16 @@ export async function evaluateCrown(
 
     // Get task and runs
     const task = await getConvex().query(api.tasks.getById, {
-      teamSlugOrId,
-      id: taskId,
+      teamSlugOrId: options.teamSlugOrId,
+      id: options.taskId,
     });
     if (!task) {
       throw new Error("Task not found");
     }
 
     const taskRuns = await getConvex().query(api.taskRuns.getByTask, {
-      teamSlugOrId,
-      taskId,
+      teamSlugOrId: options.teamSlugOrId,
+      taskId: options.taskId,
     });
     const completedRuns = taskRuns.filter((run) => run.status === "completed");
 
@@ -474,19 +474,19 @@ export async function evaluateCrown(
     const existingEvaluation = await getConvex().query(
       api.crown.getCrownEvaluation,
       {
-        teamSlugOrId,
-        taskId: taskId,
+        teamSlugOrId: options.teamSlugOrId,
+        taskId: options.taskId,
       }
     );
 
     if (existingEvaluation) {
       serverLogger.info(
-        `[CrownEvaluator] Crown evaluation already exists for task ${taskId}, skipping`
+        `[CrownEvaluator] Crown evaluation already exists for task ${options.taskId}, skipping`
       );
       // Clear the pending status
       await getConvex().mutation(api.tasks.updateCrownError, {
-        teamSlugOrId,
-        id: taskId,
+        teamSlugOrId: options.teamSlugOrId,
+        id: options.taskId,
         crownEvaluationError: undefined,
       });
       return;
@@ -546,8 +546,8 @@ export async function evaluateCrown(
         const agentName = getAgentNameOrUnknown(run.agentName);
         // Try to collect diff via worker
         const precollected =
-          options.triggeringRunId && run._id === options.triggeringRunId
-            ? options.precollectedDiff?.trim() ?? ""
+          options.crownRunId && run._id === options.crownRunId
+            ? (options.precollectedDiff?.trim() ?? "")
             : "";
         const workerDiff: string | null = precollected
           ? precollected
@@ -629,8 +629,8 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
     // Status already set by tryBeginCrownEvaluation; keep for compatibility if not set
     try {
       await getConvex().mutation(api.tasks.updateCrownError, {
-        teamSlugOrId,
-        id: taskId,
+        teamSlugOrId: options.teamSlugOrId,
+        id: options.taskId,
         crownEvaluationError: "in_progress",
       });
     } catch {
@@ -640,7 +640,7 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
       client: getWwwClient(),
       body: {
         prompt: evaluationPrompt,
-        teamSlugOrId,
+        teamSlugOrId: options.teamSlugOrId,
       },
     });
 
@@ -653,14 +653,14 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
       // Fallback: Pick the first completed run as winner
       const fallbackWinner = candidateData[0];
       await getConvex().mutation(api.crown.setCrownWinner, {
-        teamSlugOrId,
+        teamSlugOrId: options.teamSlugOrId,
         taskRunId: fallbackWinner.runId,
         reason: "Selected as fallback winner (evaluation failed)",
       });
 
       await getConvex().mutation(api.tasks.updateCrownError, {
-        teamSlugOrId,
-        id: taskId,
+        teamSlugOrId: options.teamSlugOrId,
+        id: options.taskId,
         crownEvaluationError: undefined,
       });
 
@@ -673,9 +673,9 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
       );
       await createPullRequestForWinner(
         fallbackWinner.runId,
-        taskId,
+        options.taskId,
         githubToken || undefined,
-        teamSlugOrId
+        options.teamSlugOrId
       );
       return;
     }
@@ -689,15 +689,15 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
       // Fallback: Pick the first completed run as winner
       const fallbackWinner = candidateData[0];
       await getConvex().mutation(api.crown.setCrownWinner, {
-        teamSlugOrId,
+        teamSlugOrId: options.teamSlugOrId,
         taskRunId: fallbackWinner.runId,
         reason:
           "Selected as fallback winner (invalid winner index from evaluator)",
       });
 
       await getConvex().mutation(api.tasks.updateCrownError, {
-        teamSlugOrId,
-        id: taskId,
+        teamSlugOrId: options.teamSlugOrId,
+        id: options.taskId,
         crownEvaluationError: undefined,
       });
 
@@ -710,9 +710,9 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
       );
       await createPullRequestForWinner(
         fallbackWinner.runId,
-        taskId,
+        options.taskId,
         githubToken || undefined,
-        teamSlugOrId
+        options.teamSlugOrId
       );
       return;
     }
@@ -725,30 +725,29 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
 
     // Update the database
     await getConvex().mutation(api.crown.setCrownWinner, {
-      teamSlugOrId,
+      teamSlugOrId: options.teamSlugOrId,
       taskRunId: winner.runId,
       reason: jsonResponse.reason,
     });
 
     // Clear any error
     await getConvex().mutation(api.tasks.updateCrownError, {
-      teamSlugOrId,
-      id: taskId,
+      teamSlugOrId: options.teamSlugOrId,
+      id: options.taskId,
       crownEvaluationError: undefined,
     });
 
     serverLogger.info(
-      `[CrownEvaluator] Crown evaluation completed successfully for task ${taskId}`
+      `[CrownEvaluator] Crown evaluation completed successfully for task ${options.taskId}`
     );
 
     // Create pull request for the winner
     await createPullRequestForWinner(
       winner.runId,
-      taskId,
+      options.taskId,
       githubToken || undefined,
-      teamSlugOrId
+      options.teamSlugOrId
     );
-
     // After choosing a winner, generate and persist a task comment (by cmux)
     await generateSystemTaskComment(winner.runId, winner.gitDiff);
   } catch (error) {
@@ -756,8 +755,8 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
 
     // Update task with error status
     await getConvex().mutation(api.tasks.updateCrownError, {
-      teamSlugOrId,
-      id: taskId,
+      teamSlugOrId: options.teamSlugOrId,
+      id: options.taskId,
       crownEvaluationError: `Failed: ${error instanceof Error ? error.message : String(error)}`,
     });
 
