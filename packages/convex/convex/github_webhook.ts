@@ -1,6 +1,7 @@
 import type {
   InstallationEvent,
   PullRequestEvent,
+  PushEvent,
   WebhookEvent,
 } from "@octokit/webhooks-types";
 import { env } from "../_shared/convex-env";
@@ -19,6 +20,30 @@ async function verifySignature(
   const sigBuf = await hmacSha256(secret, payload);
   const computedHex = bytesToHex(sigBuf).toLowerCase();
   return safeEqualHex(computedHex, expectedHex);
+}
+
+const MILLIS_THRESHOLD = 1_000_000_000_000;
+
+function normalizeTimestamp(
+  value: number | string | null | undefined
+): number | undefined {
+  if (value === null || value === undefined) return undefined;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return undefined;
+    const normalized = value > MILLIS_THRESHOLD ? value : value * 1000;
+    return Math.round(normalized);
+  }
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) {
+    const normalized =
+      numeric > MILLIS_THRESHOLD ? numeric : numeric * 1000;
+    return Math.round(normalized);
+  }
+  const parsed = Date.parse(value);
+  if (!Number.isNaN(parsed)) {
+    return parsed;
+  }
+  return undefined;
 }
 
 export const githubWebhook = httpAction(async (_ctx, req) => {
@@ -126,6 +151,42 @@ export const githubWebhook = httpAction(async (_ctx, req) => {
               teamId,
               payload: prPayload,
             });
+          } catch (_err) {
+            // swallow
+          }
+        } else if (event === "push") {
+          try {
+            const pushPayload = body as PushEvent;
+            const repoFullName = String(pushPayload.repository?.full_name ?? "");
+            const installation = Number(pushPayload.installation?.id ?? 0);
+            if (!repoFullName || !installation) break;
+            const conn = await _ctx.runQuery(
+              internal.github_app.getProviderConnectionByInstallationId,
+              { installationId: installation }
+            );
+            const teamId = conn?.teamId;
+            if (!teamId) break;
+            const repoPushedAt = normalizeTimestamp(
+              pushPayload.repository?.pushed_at
+            );
+            const headCommitAt = normalizeTimestamp(
+              pushPayload.head_commit?.timestamp
+            );
+            const pushedAtMillis =
+              repoPushedAt ?? headCommitAt ?? Date.now();
+            const providerRepoId =
+              typeof pushPayload.repository?.id === "number"
+                ? pushPayload.repository.id
+                : undefined;
+            await _ctx.runMutation(
+              internal.github.updateRepoActivityFromWebhook,
+              {
+                teamId,
+                repoFullName,
+                pushedAt: pushedAtMillis,
+                providerRepoId,
+              }
+            );
           } catch (_err) {
             // swallow
           }
