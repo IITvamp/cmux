@@ -69,7 +69,7 @@ case "$BUMP_TARGET" in
   *)
     new_version="$BUMP_TARGET"
     ;;
-fi
+esac
 
 if [[ ! "$new_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   echo "Version \"$new_version\" is not a valid semver (x.y.z)." >&2
