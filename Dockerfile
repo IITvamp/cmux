@@ -115,14 +115,6 @@ RUN bun run package && cp cmux-vscode-extension-0.0.1.vsix /tmp/cmux-vscode-exte
 RUN /app/openvscode-server/bin/openvscode-server --install-extension /tmp/cmux-vscode-extension-0.0.1.vsix && \
     rm /tmp/cmux-vscode-extension-0.0.1.vsix
 
-# Create VS Code user settings
-RUN mkdir -p /root/.openvscode-server/data/User && \
-    echo '{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "terminal.integrated.defaultProfile.linux": "bash", "terminal.integrated.profiles.linux": {"bash": {"path": "/bin/bash", "args": ["-l"]}}}' > /root/.openvscode-server/data/User/settings.json && \
-    mkdir -p /root/.openvscode-server/data/User/profiles/default-profile && \
-    echo '{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "terminal.integrated.defaultProfile.linux": "bash", "terminal.integrated.profiles.linux": {"bash": {"path": "/bin/bash", "args": ["-l"]}}}' > /root/.openvscode-server/data/User/profiles/default-profile/settings.json && \
-    mkdir -p /root/.openvscode-server/data/Machine && \
-    echo '{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "terminal.integrated.defaultProfile.linux": "bash", "terminal.integrated.profiles.linux": {"bash": {"path": "/bin/bash", "args": ["-l"]}}}' > /root/.openvscode-server/data/Machine/settings.json
-
 # Stage 2: Runtime stage
 FROM ubuntu:24.04 AS runtime
 
@@ -230,10 +222,10 @@ RUN chmod +x /usr/local/bin/cmux-collect-relevant-diff.sh
 # Install envctl/envd into runtime
 RUN CMUX_ENV_VERSION=0.0.3 curl https://raw.githubusercontent.com/lawrencecchen/cmux-env/refs/heads/main/scripts/install.sh | bash && \
     envctl --version && \
-    envctl install-hook bash
-
-# Create .profile that sources .bashrc for login shells
-RUN echo '[ -f ~/.bashrc ] && . ~/.bashrc' > /root/.profile
+    envctl install-hook bash && \
+    echo '[ -f ~/.bashrc ] && . ~/.bashrc' > /root/.profile && \
+    echo '[ -f ~/.bashrc ] && . ~/.bashrc' > /root/.bash_profile && \
+    echo '[ -f ~/.bashrc ] && . ~/.bashrc' >> /app/openvscode-server/out/vs/workbench/contrib/terminal/common/scripts/shellIntegration-bash.sh
 
 # Install tmux configuration for better mouse scrolling behavior
 COPY configs/tmux.conf /etc/tmux.conf
@@ -289,6 +281,17 @@ EOF
 COPY startup.sh /startup.sh
 COPY prompt-wrapper.sh /usr/local/bin/prompt-wrapper
 RUN chmod +x /startup.sh /usr/local/bin/prompt-wrapper
+
+
+
+
+# Create VS Code user settings
+RUN mkdir -p /root/.openvscode-server/data/User && \
+    echo '{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "terminal.integrated.shell.linux": "bash", "terminal.integrated.shellArgs.linux": ["-l"]}' > /root/.openvscode-server/data/User/settings.json && \
+    mkdir -p /root/.openvscode-server/data/User/profiles/default-profile && \
+    echo '{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "terminal.integrated.shell.linux": "bash", "terminal.integrated.shellArgs.linux": ["-l"]}' > /root/.openvscode-server/data/User/profiles/default-profile/settings.json && \
+    mkdir -p /root/.openvscode-server/data/Machine && \
+    echo '{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "terminal.integrated.shell.linux": "bash", "terminal.integrated.shellArgs.linux": ["-l"]}' > /root/.openvscode-server/data/Machine/settings.json
 
 # Ports
 # 39376: VS Code Extension Socket Server
