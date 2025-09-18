@@ -35,7 +35,7 @@ describe("ensureQuotedEnvVarsContent", () => {
     ].join("\n");
     const result = ensureQuotedEnvVarsContent(input);
     expect(result).toBe(
-      'CERT="-----BEGIN CERT-----\nline-1\nline-2==\n-----END CERT-----"\nNEXT="ok"'
+      'CERT="-----BEGIN CERT-----\\nline-1\\nline-2==\\n-----END CERT-----"\nNEXT="ok"'
     );
   });
 

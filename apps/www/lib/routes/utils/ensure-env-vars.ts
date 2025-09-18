@@ -1,21 +1,22 @@
 import { Buffer } from "node:buffer";
 
-const keyRegex =
-  /^\s*(?:export\s+|set\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$/;
+const keyRegex = /^\s*(?:export\s+|set\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$/;
 
 const quoteValue = (rawValue: string): string => {
   const trimmed = rawValue.trim();
-  if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) {
-    return trimmed;
+  let inner = rawValue;
+
+  if (trimmed.length >= 2) {
+    const first = trimmed[0];
+    const last = trimmed[trimmed.length - 1];
+    if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+      inner = trimmed.slice(1, -1);
+    }
   }
 
-  if (trimmed.length >= 2 && trimmed.startsWith("'") && trimmed.endsWith("'")) {
-    const inner = trimmed.slice(1, -1).replace(/"/g, '\\"');
-    return `"${inner}"`;
-  }
-
-  const escaped = rawValue.replace(/"/g, '\\"');
-  return `"${escaped}"`;
+  const newlineEscaped = inner.replace(/\n/g, "\\n");
+  const quoteEscaped = newlineEscaped.replace(/"/g, '\\"');
+  return `"${quoteEscaped}"`;
 };
 
 export function ensureQuotedEnvVarsContent(content: string): string {
@@ -59,7 +60,7 @@ export function ensureQuotedEnvVarsContent(content: string): string {
 }
 
 export const envctlLoadCommand = (encodedEnv: string): string =>
-  `bash -lc "envctl load --base64 '${encodedEnv}'"`;
+  `envctl load --base64 ${encodedEnv}`;
 
 export const encodeEnvContentForEnvctl = (content: string): string => {
   const safe = ensureQuotedEnvVarsContent(content);
