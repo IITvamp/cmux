@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
 import { getConvex } from "./utils/convexClient.js";
@@ -5,6 +6,8 @@ import { serverLogger } from "./utils/fileLogger.js";
 import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
 import { workerExec } from "./utils/workerExec.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
+import { getAuthHeaderJson } from "./utils/requestContext.js";
+import { getWwwBaseUrl } from "./utils/server-env.js";
 import { getWwwClient } from "./utils/wwwClient.js";
 import {
   postApiCrownEvaluate,
@@ -16,6 +19,144 @@ const UNKNOWN_AGENT_NAME = "unknown agent";
 function getAgentNameOrUnknown(agentName?: string | null): string {
   const trimmed = agentName?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : UNKNOWN_AGENT_NAME;
+}
+
+const WORKER_HTTP_SCRIPT = String.raw`import { Buffer } from 'node:buffer';
+
+function buildUrl(baseUrl, path) {
+  const normalizedBase = typeof baseUrl === 'string' ? baseUrl.replace(/\/+$/, '') : '';
+  const normalizedPath = typeof path === 'string' && path.length > 0
+    ? (path.startsWith('/') ? path : '/' + path)
+    : '';
+  return normalizedBase + normalizedPath;
+}
+
+async function main() {
+  const baseUrl = process.env.CMUX_HTTP_BASE_URL;
+  const path = process.env.CMUX_HTTP_PATH || '';
+  const method = process.env.CMUX_HTTP_METHOD || 'POST';
+  const authJson = process.env.CMUX_HTTP_AUTH_JSON;
+  const bodyB64 = process.env.CMUX_HTTP_BODY_B64;
+
+  if (!baseUrl) {
+    console.error('Missing CMUX_HTTP_BASE_URL');
+    process.exit(1);
+  }
+
+  const url = buildUrl(baseUrl, path);
+  let payload;
+  if (bodyB64) {
+    try {
+      const decoded = Buffer.from(bodyB64, 'base64').toString('utf8');
+      payload = JSON.parse(decoded);
+    } catch (error) {
+      console.error('Failed to decode request body', error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  }
+
+  const headers = new Headers();
+  headers.set('Content-Type', 'application/json');
+  if (authJson) {
+    headers.set('x-stack-auth', authJson);
+  }
+
+  const response = await fetch(url, {
+    method,
+    headers,
+    body: payload ? JSON.stringify(payload) : undefined,
+  });
+
+  const text = await response.text();
+  if (!response.ok) {
+    console.error('HTTP_ERROR', String(response.status), text);
+    process.exit(response.status || 1);
+  }
+
+  process.stdout.write(text);
+}
+
+main().catch((error) => {
+  console.error(
+    'UNEXPECTED_ERROR',
+    error instanceof Error ? error.stack ?? error.message : String(error)
+  );
+  process.exit(1);
+});`;
+
+const WORKER_HTTP_BRIDGE_COMMAND = `set -euo pipefail
+cat <<'__CMUX_HTTP__' >/tmp/cmux-http-request.mjs
+${WORKER_HTTP_SCRIPT}
+__CMUX_HTTP__
+node --input-type=module /tmp/cmux-http-request.mjs
+rm -f /tmp/cmux-http-request.mjs
+`;
+
+function findConnectedWorkerInstance(
+  preferredRunIds: Id<"taskRuns">[]
+): VSCodeInstance | null {
+  const instances = Array.from(VSCodeInstance.getInstances().values());
+  for (const runId of preferredRunIds) {
+    const matched = instances.find(
+      (instance) =>
+        instance.getTaskRunId() === runId && instance.isWorkerConnected()
+    );
+    if (matched) {
+      return matched;
+    }
+  }
+  return instances.find((instance) => instance.isWorkerConnected()) ?? null;
+}
+
+async function postJsonViaWorker<T>({
+  workerInstance,
+  path,
+  body,
+  authHeaderJson,
+  baseUrl,
+  timeoutMs = 90_000,
+}: {
+  workerInstance: VSCodeInstance;
+  path: string;
+  body: unknown;
+  authHeaderJson?: string;
+  baseUrl: string;
+  timeoutMs?: number;
+}): Promise<T> {
+  const workerSocket = workerInstance.getWorkerSocket();
+  const env: Record<string, string> = {
+    CMUX_HTTP_BASE_URL: baseUrl,
+    CMUX_HTTP_PATH: path,
+    CMUX_HTTP_METHOD: "POST",
+    CMUX_HTTP_BODY_B64: Buffer.from(JSON.stringify(body)).toString("base64"),
+  };
+  if (authHeaderJson) {
+    env.CMUX_HTTP_AUTH_JSON = authHeaderJson;
+  }
+
+  const { stdout } = await workerExec({
+    workerSocket,
+    command: "/bin/bash",
+    args: ["-lc", WORKER_HTTP_BRIDGE_COMMAND],
+    cwd: "/root/workspace",
+    env,
+    timeout: timeoutMs,
+  });
+
+  const trimmed = stdout?.trim();
+  if (!trimmed) {
+    throw new Error("Empty response from worker HTTP bridge");
+  }
+
+  try {
+    return JSON.parse(trimmed) as T;
+  } catch (error) {
+    throw new Error(
+      `Failed to parse worker HTTP response: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
 }
 
 // Auto PR behavior is controlled via workspace settings in Convex
@@ -343,6 +484,8 @@ export async function evaluateCrown({
     }
 
     const githubToken = await getGitHubTokenFromKeychain();
+    const authHeaderJson = getAuthHeaderJson();
+    const wwwBaseUrl = getWwwBaseUrl();
 
     // Helper: generate and persist a system task comment summarizing the winner
     const generateSystemTaskComment = async (
@@ -408,26 +551,62 @@ export async function evaluateCrown({
         );
 
         let commentText = "";
-        try {
-          // Call the crown summarize endpoint
-          const res = await postApiCrownSummarize({
-            client: getWwwClient(),
-            body: {
-              prompt: summarizationPrompt,
-              teamSlugOrId,
-            },
-          });
+        const workerForSummary =
+          instance && instance.isWorkerConnected()
+            ? instance
+            : findConnectedWorkerInstance([winnerRunId]);
 
-          if (!res.data) {
-            serverLogger.error(`[CrownEvaluator] Crown summarize failed`);
-            return;
+        if (workerForSummary && authHeaderJson) {
+          try {
+            const summaryResponse = await postJsonViaWorker<{
+              summary: string;
+            }>({
+              workerInstance: workerForSummary,
+              path: "/api/crown/summarize",
+              body: {
+                prompt: summarizationPrompt,
+                teamSlugOrId,
+              },
+              authHeaderJson,
+              baseUrl: wwwBaseUrl,
+              timeoutMs: 90_000,
+            });
+            commentText = summaryResponse.summary;
+          } catch (error) {
+            serverLogger.error(
+              `[CrownEvaluator] Worker summarize request failed:`,
+              error
+            );
           }
-          commentText = res.data.summary;
-        } catch (e) {
-          serverLogger.error(
-            `[CrownEvaluator] Failed to generate PR summary:`,
-            e
+        } else {
+          serverLogger.warn(
+            `[CrownEvaluator] Skipping worker summarize (hasWorker=${Boolean(
+              workerForSummary
+            )}, hasAuth=${Boolean(authHeaderJson)})`
           );
+        }
+
+        if (!commentText) {
+          try {
+            const res = await postApiCrownSummarize({
+              client: getWwwClient(),
+              body: {
+                prompt: summarizationPrompt,
+                teamSlugOrId,
+              },
+            });
+
+            if (!res.data) {
+              serverLogger.error(`[CrownEvaluator] Crown summarize failed`);
+              return;
+            }
+            commentText = res.data.summary;
+          } catch (e) {
+            serverLogger.error(
+              `[CrownEvaluator] Failed to generate PR summary:`,
+              e
+            );
+          }
         }
 
         if (commentText.length > 8000) {
@@ -639,18 +818,64 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
     } catch {
       /* empty */
     }
-    const res = await postApiCrownEvaluate({
-      client: getWwwClient(),
-      body: {
-        prompt: evaluationPrompt,
-        teamSlugOrId,
-      },
-    });
+    const preferredWorkerRunIds = Array.from(
+      new Set<Id<"taskRuns">>([
+        crownRunId,
+        ...candidateData.map((candidate) => candidate.runId),
+      ])
+    );
 
-    if (!res.data) {
-      serverLogger.error(`[CrownEvaluator] Crown evaluate failed`);
+    const workerForEvaluation =
+      authHeaderJson && preferredWorkerRunIds.length > 0
+        ? findConnectedWorkerInstance(preferredWorkerRunIds)
+        : null;
+
+    let jsonResponse: { winner: number; reason: string } | null = null;
+
+    if (workerForEvaluation && authHeaderJson) {
+      try {
+        jsonResponse = await postJsonViaWorker<{
+          winner: number;
+          reason: string;
+        }>({
+          workerInstance: workerForEvaluation,
+          path: "/api/crown/evaluate",
+          body: {
+            prompt: evaluationPrompt,
+            teamSlugOrId,
+          },
+          authHeaderJson,
+          baseUrl: wwwBaseUrl,
+          timeoutMs: 120_000,
+        });
+      } catch (error) {
+        serverLogger.error(
+          `[CrownEvaluator] Worker evaluate request failed:`,
+          error
+        );
+      }
+    } else {
+      serverLogger.warn(
+        `[CrownEvaluator] Skipping worker evaluate (hasWorker=${Boolean(
+          workerForEvaluation
+        )}, hasAuth=${Boolean(authHeaderJson)})`
+      );
     }
-    const jsonResponse = res.data;
+
+    if (!jsonResponse) {
+      const res = await postApiCrownEvaluate({
+        client: getWwwClient(),
+        body: {
+          prompt: evaluationPrompt,
+          teamSlugOrId,
+        },
+      });
+
+      if (!res.data) {
+        serverLogger.error(`[CrownEvaluator] Crown evaluate failed`);
+      }
+      jsonResponse = res.data ?? null;
+    }
 
     if (!jsonResponse) {
       // Fallback: Pick the first completed run as winner
