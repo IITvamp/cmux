@@ -32,7 +32,7 @@ Options:
   --skip-install         Skip 'bun install --frozen-lockfile'
 
 Notes:
-  - This script intentionally does NOT publish releases.
+  - This script publishes to GitHub Releases when repository credentials are available.
   - It mirrors workflow steps: generate icons, prepare entitlements, prebuild app,
     then package with electron-builder (sign + notarize), and staple/verify outputs.
 EOF
@@ -353,6 +353,42 @@ if [[ -d "$DIST_DIR" ]]; then
   popd >/dev/null
 else
   echo "Distribution directory not found: $DIST_DIR" >&2
+fi
+
+# Publish notarized artifacts to GitHub Releases when credentials are available
+PUBLISH_OWNER="${GITHUB_REPOSITORY_OWNER:-}"
+if [[ -z "$PUBLISH_OWNER" && -n "${GITHUB_REPOSITORY:-}" ]]; then
+  PUBLISH_OWNER="${GITHUB_REPOSITORY%%/*}"
+fi
+PUBLISH_REPO="${GITHUB_EVENT_REPOSITORY_NAME:-}"
+if [[ -z "$PUBLISH_REPO" && -n "${GITHUB_REPOSITORY:-}" ]]; then
+  PUBLISH_REPO="${GITHUB_REPOSITORY##*/}"
+fi
+
+if [[ -z "${GH_TOKEN:-}" ]]; then
+  echo "Skipping GitHub release publish: GH_TOKEN not set" >&2
+else
+  ARTIFACTS=()
+  while IFS= read -r artifact; do
+    ARTIFACTS+=("$artifact")
+  done < <(find "$DIST_DIR" -mindepth 1 -maxdepth 1 -type f \(-name "*.dmg" -o -name "*.zip"\) -print | sort)
+
+  if [[ -z "$PUBLISH_OWNER" || -z "$PUBLISH_REPO" ]]; then
+    echo "Skipping GitHub release publish: repository owner/name not available" >&2
+  elif [[ ${#ARTIFACTS[@]} -eq 0 ]]; then
+    echo "Skipping GitHub release publish: no DMG/ZIP artifacts found in $DIST_DIR" >&2
+  else
+    echo "==> Publishing notarized artifacts to GitHub Releases (${PUBLISH_OWNER}/${PUBLISH_REPO})"
+    (
+      cd "$CLIENT_DIR"
+      PUBLISH_CMD=(bunx electron-builder publish --config electron-builder.json --config.publish.provider=github --config.publish.owner="$PUBLISH_OWNER" --config.publish.repo="$PUBLISH_REPO")
+      for artifact in "${ARTIFACTS[@]}"; do
+        RELATIVE_PATH="${artifact#$CLIENT_DIR/}"
+        PUBLISH_CMD+=(--files "$RELATIVE_PATH")
+      done
+      "${PUBLISH_CMD[@]}"
+    )
+  fi
 fi
 
 echo "==> Done. Outputs in: $DIST_DIR"
