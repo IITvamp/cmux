@@ -135,7 +135,7 @@ if [ -n "$VSCODE_THEME" ]; then
     fi
     
     # Update VS Code settings files with theme and git configuration
-    SETTINGS_JSON='{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "terminal.integrated.shell.linux": "bash", "terminal.integrated.shellArgs.linux": ["-l"], "workbench.colorTheme": "'$COLOR_THEME'", "git.openDiffOnClick": true, "scm.defaultViewMode": "tree", "git.showPushSuccessNotification": true, "git.autorefresh": true, "git.branchCompareWith": "main"}'
+    SETTINGS_JSON='{"workbench.startupEditor": "none", "terminal.integrated.shellIntegration.enabled": false, "terminal.integrated.macOptionClickForcesSelection": true, "terminal.integrated.shell.linux": "bash", "terminal.integrated.shellArgs.linux": ["-l"], "workbench.colorTheme": "'$COLOR_THEME'", "git.openDiffOnClick": true, "scm.defaultViewMode": "tree", "git.showPushSuccessNotification": true, "git.autorefresh": true, "git.branchCompareWith": "main"}'
     
     # Update all VS Code settings locations
     echo "$SETTINGS_JSON" > /root/.openvscode-server/data/User/settings.json
@@ -146,7 +146,7 @@ if [ -n "$VSCODE_THEME" ]; then
 else
     # Even if no theme is specified, configure git settings
     echo "[Startup] Configuring VS Code git settings" >> /var/log/cmux/startup.log
-    SETTINGS_JSON='{"workbench.startupEditor": "none", "terminal.integrated.macOptionClickForcesSelection": true, "terminal.integrated.shell.linux": "bash", "terminal.integrated.shellArgs.linux": ["-l"], "git.openDiffOnClick": true, "scm.defaultViewMode": "tree", "git.showPushSuccessNotification": true, "git.autorefresh": true, "git.branchCompareWith": "main"}'
+    SETTINGS_JSON='{"workbench.startupEditor": "none", "terminal.integrated.shellIntegration.enabled": false, "terminal.integrated.macOptionClickForcesSelection": true, "terminal.integrated.shell.linux": "bash", "terminal.integrated.shellArgs.linux": ["-l"], "git.openDiffOnClick": true, "scm.defaultViewMode": "tree", "git.showPushSuccessNotification": true, "git.autorefresh": true, "git.branchCompareWith": "main"}'
     
     # Update all VS Code settings locations
     echo "$SETTINGS_JSON" > /root/.openvscode-server/data/User/settings.json

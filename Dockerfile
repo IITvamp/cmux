@@ -224,8 +224,7 @@ RUN CMUX_ENV_VERSION=0.0.7 curl https://raw.githubusercontent.com/lawrencecchen/
     envctl --version && \
     envctl install-hook bash && \
     echo '[ -f ~/.bashrc ] && . ~/.bashrc' > /root/.profile && \
-    echo '[ -f ~/.bashrc ] && . ~/.bashrc' > /root/.bash_profile && \
-    echo '[ -f ~/.bashrc ] && . ~/.bashrc' >> /app/openvscode-server/out/vs/workbench/contrib/terminal/common/scripts/shellIntegration-bash.sh
+    echo '[ -f ~/.bashrc ] && . ~/.bashrc' > /root/.bash_profile
 
 # Install tmux configuration for better mouse scrolling behavior
 COPY configs/tmux.conf /etc/tmux.conf
