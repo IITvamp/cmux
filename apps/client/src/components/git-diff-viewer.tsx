@@ -99,7 +99,9 @@ export function GitDiffViewer({
     return kitties[Math.floor(Math.random() * kitties.length)];
   }, []);
 
-  const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
+  const [expandedFiles, setExpandedFiles] = useState<Set<string>>(
+    new Set(diffs.map((d) => d.filePath))
+  );
   const editorRefs = useRef<Record<string, editor.IStandaloneDiffEditor>>({});
 
   // Group diffs by file
@@ -117,39 +119,6 @@ export function GitDiffViewer({
       })),
     [diffs]
   );
-
-  // Maintain minimal reactivity; no debug logging in production
-  useEffect(() => {
-    // No-op effect to keep hook ordering consistent if needed later
-  }, [diffs]);
-
-  // Maintain expansion state across refreshes:
-  // - On first load: expand all
-  // - On subsequent diffs changes: preserve existing expansions, expand only truly new files
-  //   (detected via previous file list, not by expansion set)
-  const prevFilesRef = useRef<Set<string> | null>(null);
-  useEffect(() => {
-    const nextPathsArr = diffs.map((d) => d.filePath);
-    const nextPaths = new Set(nextPathsArr);
-    setExpandedFiles((prev) => {
-      // First load: expand everything
-      if (prevFilesRef.current == null) {
-        return new Set(nextPaths);
-      }
-      const next = new Set<string>();
-      // Keep expansions that still exist
-      for (const p of prev) {
-        if (nextPaths.has(p)) next.add(p);
-      }
-      // Expand only files not seen before (true additions)
-      for (const p of nextPaths) {
-        if (!prevFilesRef.current.has(p)) next.add(p);
-      }
-      return next;
-    });
-    // Update the seen file set after computing the next expansion state
-    prevFilesRef.current = nextPaths;
-  }, [diffs]);
 
   const toggleFile = useCallback(
     (filePath: string) => {
@@ -294,72 +263,67 @@ function FileDiffRow({
 }: FileDiffRowProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const diffContainerRef = useRef<HTMLDivElement | null>(null);
-  const diffEditorRef =
-    useRef<editor.IStandaloneDiffEditor | null>(null);
+  const diffEditorRef = useRef<editor.IStandaloneDiffEditor | null>(null);
   const rafIdRef = useRef<number | null>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
-  const modelsRef = useRef<
-    | {
-        original: editor.ITextModel;
-        modified: editor.ITextModel;
-      }
-    | null
-  >(null);
+  const modelsRef = useRef<{
+    original: editor.ITextModel;
+    modified: editor.ITextModel;
+  } | null>(null);
   const layoutSchedulerRef = useRef<(() => void) | null>(null);
   const themeRef = useRef(theme);
   const revealedRef = useRef<boolean>(false);
 
-  const diffEditorOptions = useMemo<
-    monaco.editor.IStandaloneDiffEditorConstructionOptions
-  >(
-    () => ({
-      readOnly: true,
-      renderSideBySide: true,
-      minimap: { enabled: false },
-      scrollBeyondLastLine: false,
-      fontSize: 12,
-      lineHeight: 18,
-      fontFamily:
-        "'JetBrains Mono', 'SF Mono', Monaco, 'Courier New', monospace",
-      wordWrap: "on",
-      automaticLayout: false,
-      renderOverviewRuler: false,
-      scrollbar: {
-        vertical: "hidden",
-        horizontal: "auto",
-        verticalScrollbarSize: 8,
-        horizontalScrollbarSize: 8,
-        handleMouseWheel: true,
-        alwaysConsumeMouseWheel: false,
-      },
-      lineNumbers: "on",
-      renderLineHighlight: "none",
-      hideCursorInOverviewRuler: true,
-      overviewRulerBorder: false,
-      overviewRulerLanes: 0,
-      renderValidationDecorations: "off",
-      diffWordWrap: "on",
-      renderIndicators: true,
-      renderMarginRevertIcon: false,
-      lineDecorationsWidth: 12,
-      lineNumbersMinChars: 4,
-      glyphMargin: false,
-      folding: false,
-      contextmenu: false,
-      renderWhitespace: "selection",
-      guides: {
-        indentation: false,
-      },
-      padding: { top: 2, bottom: 2 },
-      hideUnchangedRegions: {
-        enabled: true,
-        revealLineCount: 3,
-        minimumLineCount: 50,
-        contextLineCount: 3,
-      },
-    }),
-    []
-  );
+  const diffEditorOptions =
+    useMemo<monaco.editor.IStandaloneDiffEditorConstructionOptions>(
+      () => ({
+        readOnly: true,
+        renderSideBySide: true,
+        minimap: { enabled: false },
+        scrollBeyondLastLine: false,
+        fontSize: 12,
+        lineHeight: 18,
+        fontFamily:
+          "'JetBrains Mono', 'SF Mono', Monaco, 'Courier New', monospace",
+        wordWrap: "on",
+        automaticLayout: false,
+        renderOverviewRuler: false,
+        scrollbar: {
+          vertical: "hidden",
+          horizontal: "auto",
+          verticalScrollbarSize: 8,
+          horizontalScrollbarSize: 8,
+          handleMouseWheel: true,
+          alwaysConsumeMouseWheel: false,
+        },
+        lineNumbers: "on",
+        renderLineHighlight: "none",
+        hideCursorInOverviewRuler: true,
+        overviewRulerBorder: false,
+        overviewRulerLanes: 0,
+        renderValidationDecorations: "off",
+        diffWordWrap: "on",
+        renderIndicators: true,
+        renderMarginRevertIcon: false,
+        lineDecorationsWidth: 12,
+        lineNumbersMinChars: 4,
+        glyphMargin: false,
+        folding: false,
+        contextmenu: false,
+        renderWhitespace: "selection",
+        guides: {
+          indentation: false,
+        },
+        padding: { top: 2, bottom: 2 },
+        hideUnchangedRegions: {
+          enabled: true,
+          revealLineCount: 3,
+          minimumLineCount: 50,
+          contextLineCount: 3,
+        },
+      }),
+      []
+    );
 
   const modelSeedRef = useRef({
     old: file.oldContent,
