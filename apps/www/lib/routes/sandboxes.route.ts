@@ -14,7 +14,10 @@ import { api } from "@cmux/convex/api";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { MorphCloudClient } from "morphcloud";
-import { buildEnvironmentBootstrapCommand } from "./utils/env-bootstrap";
+import {
+  encodeEnvContentForEnvctl,
+  envctlLoadCommand,
+} from "./utils/ensure-env-vars";
 
 export const sandboxesRouter = new OpenAPIHono();
 
@@ -44,6 +47,19 @@ const StartSandboxResponse = z
     provider: z.enum(["morph"]).default("morph"),
   })
   .openapi("StartSandboxResponse");
+
+const UpdateSandboxEnvBody = z
+  .object({
+    teamSlugOrId: z.string(),
+    envVarsContent: z.string(),
+  })
+  .openapi("UpdateSandboxEnvBody");
+
+const UpdateSandboxEnvResponse = z
+  .object({
+    applied: z.literal(true),
+  })
+  .openapi("UpdateSandboxEnvResponse");
 
 // Start a new sandbox (currently Morph-backed)
 sandboxesRouter.openapi(
@@ -191,12 +207,10 @@ sandboxesRouter.openapi(
         environmentEnvVarsContent.trim().length > 0
       ) {
         try {
-          const bootstrapCmd = buildEnvironmentBootstrapCommand(
+          const encodedEnv = encodeEnvContentForEnvctl(
             environmentEnvVarsContent
           );
-          console.log("bootstrapCmd");
-          console.log(bootstrapCmd);
-          const loadRes = await instance.exec(bootstrapCmd);
+          const loadRes = await instance.exec(envctlLoadCommand(encodedEnv));
           if (loadRes.exit_code === 0) {
             console.log(
               `[sandboxes.start] Applied environment env vars via envctl`
@@ -382,6 +396,95 @@ sandboxesRouter.openapi(
     } catch (error) {
       console.error("Failed to start sandbox:", error);
       return c.text("Failed to start sandbox", 500);
+    }
+  }
+);
+
+sandboxesRouter.openapi(
+  createRoute({
+    method: "post" as const,
+    path: "/sandboxes/{id}/env",
+    tags: ["Sandboxes"],
+    summary: "Apply environment variables to a running sandbox",
+    request: {
+      params: z.object({ id: z.string() }),
+      body: {
+        content: {
+          "application/json": {
+            schema: UpdateSandboxEnvBody,
+          },
+        },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        content: {
+          "application/json": {
+            schema: UpdateSandboxEnvResponse,
+          },
+        },
+        description: "Environment variables applied",
+      },
+      401: { description: "Unauthorized" },
+      403: { description: "Forbidden" },
+      404: { description: "Sandbox not found" },
+      500: { description: "Failed to apply environment variables" },
+    },
+  }),
+  async (c) => {
+    const accessToken = await getAccessTokenFromRequest(c.req.raw);
+    if (!accessToken) return c.text("Unauthorized", 401);
+
+    const { id } = c.req.valid("param");
+    const { teamSlugOrId, envVarsContent } = c.req.valid("json");
+
+    try {
+      const team = await verifyTeamAccess({
+        req: c.req.raw,
+        teamSlugOrId,
+      });
+
+      const client = new MorphCloudClient({ apiKey: env.MORPH_API_KEY });
+      const instance = await client.instances
+        .get({ instanceId: id })
+        .catch((error) => {
+          console.error("[sandboxes.env] Failed to load instance", error);
+          return null;
+        });
+
+      if (!instance) {
+        return c.text("Sandbox not found", 404);
+      }
+
+      const metadataTeamId = (
+        instance as unknown as {
+          metadata?: { teamId?: string };
+        }
+      ).metadata?.teamId;
+
+      if (metadataTeamId && metadataTeamId !== team.uuid) {
+        return c.text("Forbidden", 403);
+      }
+
+      const encodedEnv = encodeEnvContentForEnvctl(envVarsContent);
+      const command = envctlLoadCommand(encodedEnv);
+      console.log(`[sandboxes.env] envctl load command: ${command}`);
+      const execResult = await instance.exec(command);
+      if (execResult.exit_code !== 0) {
+        console.error(
+          `[sandboxes.env] envctl load failed exit=${execResult.exit_code} stderr=${(execResult.stderr || "").slice(0, 200)}`
+        );
+        return c.text("Failed to apply environment variables", 500);
+      }
+
+      return c.json({ applied: true as const });
+    } catch (error) {
+      console.error(
+        "[sandboxes.env] Failed to apply environment variables",
+        error
+      );
+      return c.text("Failed to apply environment variables", 500);
     }
   }
 );
