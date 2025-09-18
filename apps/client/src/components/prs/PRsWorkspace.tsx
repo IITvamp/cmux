@@ -52,7 +52,7 @@ export function PRsWorkspace({
         <div className="flex-1 min-h-0 h-full">
           <ResizableColumns
             storageKey={leftStorageKey}
-            defaultLeftWidth={420}
+            defaultLeftWidth={355}
             minLeft={260}
             maxLeft={720}
             separatorWidth={6}
