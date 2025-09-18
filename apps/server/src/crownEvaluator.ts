@@ -6,6 +6,8 @@ import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
 import { workerExec } from "./utils/workerExec.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWwwClient } from "./utils/wwwClient.js";
+import { getWwwBaseUrl } from "./utils/server-env.js";
+import { getAuthHeaderJson } from "./utils/requestContext.js";
 import {
   postApiCrownEvaluate,
   postApiCrownSummarize,
@@ -409,20 +411,62 @@ export async function evaluateCrown({
 
         let commentText = "";
         try {
-          // Call the crown summarize endpoint
-          const res = await postApiCrownSummarize({
-            client: getWwwClient(),
-            body: {
-              prompt: summarizationPrompt,
-              teamSlugOrId,
-            },
-          });
+          // Prefer to call central server from the worker directly; fallback to server fetch
+          const baseUrl = getWwwBaseUrl();
+          const authJson = getAuthHeaderJson();
 
-          if (!res.data) {
-            serverLogger.error(`[CrownEvaluator] Crown summarize failed`);
-            return;
+          if (instance && instance.isWorkerConnected() && authJson) {
+            const workerSocket = instance.getWorkerSocket();
+            try {
+              const { stdout, exitCode, stderr } = await workerExec({
+                workerSocket: workerSocket!,
+                command: "/bin/bash",
+                args: [
+                  "-lc",
+                  // Use curl from inside the worker to call central server
+                  // Headers: application/json and x-stack-auth (JSON string)
+                  `curl -sfS -H "content-type: application/json" -H "x-stack-auth: $X_STACK_AUTH" -X POST ${baseUrl}/api/crown/summarize -d '${JSON.stringify(
+                    {
+                      prompt: summarizationPrompt,
+                      teamSlugOrId,
+                    }
+                  ).replace(/'/g, "'\\''")}'`,
+                ],
+                cwd: "/root/workspace",
+                env: { X_STACK_AUTH: authJson },
+                timeout: 30000,
+              });
+              if (exitCode === 0 && stdout) {
+                const parsed = JSON.parse(stdout);
+                commentText = parsed.summary || "";
+              } else {
+                serverLogger.error(
+                  `[CrownEvaluator] Worker summarize curl failed (${exitCode}): ${stderr}`
+                );
+              }
+            } catch (e) {
+              serverLogger.error(
+                `[CrownEvaluator] Worker summarize request error:`,
+                e
+              );
+            }
           }
-          commentText = res.data.summary;
+
+          // Fallback to server-side client if needed
+          if (!commentText) {
+            const res = await postApiCrownSummarize({
+              client: getWwwClient(),
+              body: {
+                prompt: summarizationPrompt,
+                teamSlugOrId,
+              },
+            });
+            if (!res.data) {
+              serverLogger.error(`[CrownEvaluator] Crown summarize failed`);
+              return;
+            }
+            commentText = res.data.summary;
+          }
         } catch (e) {
           serverLogger.error(
             `[CrownEvaluator] Failed to generate PR summary:`,
@@ -639,18 +683,66 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
     } catch {
       /* empty */
     }
-    const res = await postApiCrownEvaluate({
-      client: getWwwClient(),
-      body: {
-        prompt: evaluationPrompt,
-        teamSlugOrId,
-      },
-    });
+    // Prefer a direct call from the worker to the central server
+    const baseUrl = getWwwBaseUrl();
+    const authJson = getAuthHeaderJson();
+    let jsonResponse: { winner: number; reason: string } | null = null;
 
-    if (!res.data) {
-      serverLogger.error(`[CrownEvaluator] Crown evaluate failed`);
+    // Try crownRunId's worker first
+    const instances = VSCodeInstance.getInstances();
+    let evalInstance: VSCodeInstance | undefined;
+    for (const [, inst] of instances) {
+      if (inst.getTaskRunId() === crownRunId) {
+        evalInstance = inst;
+        break;
+      }
     }
-    const jsonResponse = res.data;
+
+    if (evalInstance && evalInstance.isWorkerConnected() && authJson) {
+      try {
+        const workerSocket = evalInstance.getWorkerSocket();
+        const { stdout, exitCode, stderr } = await workerExec({
+          workerSocket: workerSocket!,
+          command: "/bin/bash",
+          args: [
+            "-lc",
+            `curl -sfS -H "content-type: application/json" -H "x-stack-auth: $X_STACK_AUTH" -X POST ${baseUrl}/api/crown/evaluate -d '${JSON.stringify(
+              {
+                prompt: evaluationPrompt,
+                teamSlugOrId,
+              }
+            ).replace(/'/g, "'\\''")}'`,
+          ],
+          cwd: "/root/workspace",
+          env: { X_STACK_AUTH: authJson },
+          timeout: 60000,
+        });
+        if (exitCode === 0 && stdout) {
+          jsonResponse = JSON.parse(stdout);
+        } else {
+          serverLogger.error(
+            `[CrownEvaluator] Worker evaluate curl failed (${exitCode}): ${stderr}`
+          );
+        }
+      } catch (e) {
+        serverLogger.error(`[CrownEvaluator] Worker evaluate error:`, e);
+      }
+    }
+
+    // Fallback to server-side request if worker path unavailable
+    if (!jsonResponse) {
+      const res = await postApiCrownEvaluate({
+        client: getWwwClient(),
+        body: {
+          prompt: evaluationPrompt,
+          teamSlugOrId,
+        },
+      });
+      if (!res.data) {
+        serverLogger.error(`[CrownEvaluator] Crown evaluate failed`);
+      }
+      jsonResponse = res.data ?? null;
+    }
 
     if (!jsonResponse) {
       // Fallback: Pick the first completed run as winner
