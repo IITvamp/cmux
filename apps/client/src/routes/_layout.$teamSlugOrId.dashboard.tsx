@@ -97,7 +97,6 @@ function DashboardComponent() {
     () => branchesQuery.data || [],
     [branchesQuery.data]
   );
-
   // Callback for project selection changes
   const handleProjectChange = useCallback(
     (newProjects: string[]) => {

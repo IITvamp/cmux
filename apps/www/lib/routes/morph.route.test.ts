@@ -2,8 +2,8 @@ import { __TEST_INTERNAL_ONLY_GET_STACK_TOKENS } from "@/lib/test-utils/__TEST_I
 import { __TEST_INTERNAL_ONLY_MORPH_CLIENT } from "@/lib/test-utils/__TEST_INTERNAL_ONLY_MORPH_CLIENT";
 import { testApiClient } from "@/lib/test-utils/openapi-client";
 import { postApiMorphSetupInstance } from "@cmux/www-openapi-client";
-import { afterAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
+import { afterAll, describe, expect, it } from "vitest";
 
 describe("morphRouter - live", () => {
   let createdInstanceId: string | null = null;
@@ -126,9 +126,13 @@ describe("morphRouter - live", () => {
       });
       // Accept 200 (OK) or 500 (server error due to team/auth issues)
       expect([200, 500]).toContain(first.response.status);
-      if (first.response.status !== 200) return; // Skip rest if server error
-      createdInstanceId = (first.data as unknown as { instanceId: string })
-        .instanceId;
+      if (first.response.status !== 200) {
+        throw new Error("Failed to create instance", { cause: first.error });
+      }
+      if (!first.data) {
+        throw new Error("Failed to create instance", { cause: first.error });
+      }
+      createdInstanceId = first.data.instanceId;
     }
 
     // Step A: clone R1 + R2
@@ -137,22 +141,22 @@ describe("morphRouter - live", () => {
       headers: { "x-stack-auth": JSON.stringify(tokens) },
       body: {
         teamSlugOrId: "manaflow",
-        instanceId: createdInstanceId!,
+        instanceId: createdInstanceId,
         selectedRepos: [R1, R2],
         ttlSeconds: 900,
       },
     });
     expect(a.response.status).toBe(200);
-    const aBody = a.data as unknown as {
-      clonedRepos: string[];
-      removedRepos: string[];
-    };
+    const aBody = a.data;
+    if (!aBody) {
+      throw new Error("Failed to create instance", { cause: a.error });
+    }
     // Should have at least cloned these repos; removedRepos may contain pre-existing folders
     expect(aBody.clonedRepos).toEqual(expect.arrayContaining([R1, R2]));
 
     // Verify in-VM that R1 and R2 exist with correct remotes
     const instA = await __TEST_INTERNAL_ONLY_MORPH_CLIENT.instances.get({
-      instanceId: createdInstanceId!,
+      instanceId: createdInstanceId,
     });
     const r1Check = await instA.exec(
       `bash -lc "test -d /root/workspace/${N1}/.git && git -C /root/workspace/${N1} remote get-url origin"`
@@ -171,16 +175,16 @@ describe("morphRouter - live", () => {
       headers: { "x-stack-auth": JSON.stringify(tokens) },
       body: {
         teamSlugOrId: "manaflow",
-        instanceId: createdInstanceId!,
+        instanceId: createdInstanceId,
         selectedRepos: [R1, R2, R3],
         ttlSeconds: 900,
       },
     });
     expect(b.response.status).toBe(200);
-    const bBody = b.data as unknown as {
-      clonedRepos: string[];
-      removedRepos: string[];
-    };
+    const bBody = b.data;
+    if (!bBody) {
+      throw new Error("Failed to create instance", { cause: b.error });
+    }
     expect(bBody.clonedRepos).toEqual(expect.arrayContaining([R3]));
     // Must NOT remove R1 or R2 here
     expect(bBody.removedRepos).not.toEqual(expect.arrayContaining([N1, N2]));
@@ -191,22 +195,22 @@ describe("morphRouter - live", () => {
       headers: { "x-stack-auth": JSON.stringify(tokens) },
       body: {
         teamSlugOrId: "manaflow",
-        instanceId: createdInstanceId!,
+        instanceId: createdInstanceId,
         selectedRepos: [R1, R3],
         ttlSeconds: 900,
       },
     });
     expect(c.response.status).toBe(200);
-    const cBody = c.data as unknown as {
-      clonedRepos: string[];
-      removedRepos: string[];
-    };
+    const cBody = c.data;
+    if (!cBody) {
+      throw new Error("Failed to create instance", { cause: c.error });
+    }
     expect(cBody.removedRepos).toEqual(expect.arrayContaining([N2]));
     expect(cBody.removedRepos).not.toEqual(expect.arrayContaining([N1, N3]));
 
     // Verify in-VM that R2 was removed and R1/R3 remain with correct remotes
     const instC = await __TEST_INTERNAL_ONLY_MORPH_CLIENT.instances.get({
-      instanceId: createdInstanceId!,
+      instanceId: createdInstanceId,
     });
     const r2Gone = await instC.exec(
       `bash -lc "test ! -d /root/workspace/${N2}"`
@@ -229,16 +233,16 @@ describe("morphRouter - live", () => {
       headers: { "x-stack-auth": JSON.stringify(tokens) },
       body: {
         teamSlugOrId: "manaflow",
-        instanceId: createdInstanceId!,
+        instanceId: createdInstanceId,
         selectedRepos: [R1, R2, R3],
         ttlSeconds: 900,
       },
     });
     expect(d.response.status).toBe(200);
-    const dBody = d.data as unknown as {
-      clonedRepos: string[];
-      removedRepos: string[];
-    };
+    const dBody = d.data;
+    if (!dBody) {
+      throw new Error("Failed to create instance", { cause: d.error });
+    }
     expect(dBody.clonedRepos).toEqual(expect.arrayContaining([R2]));
     expect(dBody.removedRepos).not.toEqual(expect.arrayContaining([N1, N3]));
   }, 300_000);
