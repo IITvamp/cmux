@@ -276,6 +276,7 @@ function FileDiffRow({
   const rafIdRef = useRef<number | null>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const revealedRef = useRef<boolean>(false);
+  const cleanupRef = useRef<(() => void) | null>(null);
 
   // Set an initial height before paint to reduce flicker
   useLayoutEffect(() => {
@@ -359,12 +360,18 @@ function FileDiffRow({
                 modified={file.newContent}
                 language={getLanguageFromPath(file.filePath)}
                 theme={theme === "dark" ? "vs-dark" : "vs"}
-                onMount={(editor, monaco) => {
-                  setEditorRef(editor);
+                onMount={(editorInstance, monaco) => {
+                  cleanupRef.current?.();
+                  cleanupRef.current = null;
+
+                  setEditorRef(editorInstance);
                   // Start hidden to avoid intermediate flashes
                   if (containerRef.current) {
                     containerRef.current.style.visibility = "hidden";
                   }
+
+                  let originalModel: editor.ITextModel | null = null;
+                  let modifiedModel: editor.ITextModel | null = null;
 
                   // Create fresh models per run+file to avoid reuse across runs
                   try {
@@ -379,30 +386,31 @@ function FileDiffRow({
                         file.filePath
                       )}?side=modified`
                     );
-                    const originalModel = monaco.editor.createModel(
+                    originalModel = monaco.editor.createModel(
                       file.oldContent,
                       language,
                       originalUri
                     );
-                    const modifiedModel = monaco.editor.createModel(
+                    modifiedModel = monaco.editor.createModel(
                       file.newContent,
                       language,
                       modifiedUri
                     );
-                    editor.setModel({
+                    editorInstance.setModel({
                       original: originalModel,
                       modified: modifiedModel,
                     });
                   } catch {
                     // ignore if monaco not available
                   }
+
                   const scheduleMeasureAndLayout = () => {
                     if (rafIdRef.current != null) {
                       cancelAnimationFrame(rafIdRef.current);
                     }
                     rafIdRef.current = requestAnimationFrame(() => {
-                      const modifiedEditor = editor.getModifiedEditor();
-                      const originalEditor = editor.getOriginalEditor();
+                      const modifiedEditor = editorInstance.getModifiedEditor();
+                      const originalEditor = editorInstance.getOriginalEditor();
                       const modifiedContentHeight =
                         modifiedEditor.getContentHeight();
                       const originalContentHeight =
@@ -423,19 +431,19 @@ function FileDiffRow({
                         const width =
                           containerRef.current.clientWidth || undefined;
                         if (typeof width === "number") {
-                          editor.layout({ width, height: newHeight });
+                          editorInstance.layout({ width, height: newHeight });
                           // Double-rAF to ensure Monaco settles after DOM style changes
                           requestAnimationFrame(() => {
-                            editor.layout({ width, height: newHeight });
+                            editorInstance.layout({ width, height: newHeight });
                             if (containerRef.current && !revealedRef.current) {
                               containerRef.current.style.visibility = "visible";
                               revealedRef.current = true;
                             }
                           });
                         } else {
-                          editor.layout();
+                          editorInstance.layout();
                           requestAnimationFrame(() => {
-                            editor.layout();
+                            editorInstance.layout();
                             if (containerRef.current && !revealedRef.current) {
                               containerRef.current.style.visibility = "visible";
                               revealedRef.current = true;
@@ -443,9 +451,9 @@ function FileDiffRow({
                           });
                         }
                       } else {
-                        editor.layout();
+                        editorInstance.layout();
                         requestAnimationFrame(() => {
-                          editor.layout();
+                          editorInstance.layout();
                           if (containerRef.current && !revealedRef.current) {
                             containerRef.current.style.visibility = "visible";
                             revealedRef.current = true;
@@ -454,21 +462,34 @@ function FileDiffRow({
                       }
                     });
                   };
-                  const mod = editor.getModifiedEditor();
-                  const orig = editor.getOriginalEditor();
-                  const d1 = mod.onDidContentSizeChange(
+
+                  const disposables: Array<{ dispose: () => void }> = [];
+                  const modifiedEditor = editorInstance.getModifiedEditor();
+                  const originalEditor = editorInstance.getOriginalEditor();
+                  disposables.push(
+                    modifiedEditor.onDidContentSizeChange(scheduleMeasureAndLayout)
+                  );
+                  disposables.push(
+                    originalEditor.onDidContentSizeChange(scheduleMeasureAndLayout)
+                  );
+                  disposables.push(
+                    modifiedEditor.onDidChangeHiddenAreas(scheduleMeasureAndLayout)
+                  );
+                  disposables.push(
+                    originalEditor.onDidChangeHiddenAreas(scheduleMeasureAndLayout)
+                  );
+                  const diffDisposable = editorInstance.onDidUpdateDiff?.(
                     scheduleMeasureAndLayout
                   );
-                  const d2 = orig.onDidContentSizeChange(
-                    scheduleMeasureAndLayout
-                  );
-                  const d3 = mod.onDidChangeHiddenAreas(
-                    scheduleMeasureAndLayout
-                  );
-                  const d4 = orig.onDidChangeHiddenAreas(
-                    scheduleMeasureAndLayout
-                  );
-                  const d5 = editor.onDidUpdateDiff?.(scheduleMeasureAndLayout);
+                  if (diffDisposable) {
+                    disposables.push(diffDisposable);
+                  }
+
+                  const disposeEditor = editorInstance.onDidDispose(() => {
+                    cleanupRef.current?.();
+                    cleanupRef.current = null;
+                  });
+                  disposables.push(disposeEditor);
 
                   // Observe container size changes to trigger layout
                   if (containerRef.current && !resizeObserverRef.current) {
@@ -482,32 +503,38 @@ function FileDiffRow({
                   requestAnimationFrame(() => {
                     scheduleMeasureAndLayout();
                   });
-                  return () => {
-                    d1.dispose();
-                    d2.dispose();
-                    d3.dispose();
-                    d4.dispose();
-                    d5?.dispose?.();
+
+                  cleanupRef.current = () => {
+                    for (const disposable of disposables) {
+                      try {
+                        disposable.dispose();
+                      } catch {
+                        // ignore
+                      }
+                    }
+                    disposables.length = 0;
+
                     if (rafIdRef.current != null) {
                       cancelAnimationFrame(rafIdRef.current);
                       rafIdRef.current = null;
                     }
+
                     if (resizeObserverRef.current) {
                       resizeObserverRef.current.disconnect();
                       resizeObserverRef.current = null;
                     }
-                    // Dispose models we created to avoid leaks and reuse
+
                     try {
-                      const model = editor.getModel();
-                      if (model?.original) {
-                        model.original.dispose?.();
-                      }
-                      if (model?.modified) {
-                        model.modified.dispose?.();
-                      }
-                    } catch (_e) {
+                      originalModel?.dispose();
+                      modifiedModel?.dispose();
+                    } catch {
                       // ignore if monaco not available
                     }
+
+                    originalModel = null;
+                    modifiedModel = null;
+                    revealedRef.current = false;
+                    cleanupRef.current = null;
                   };
                 }}
                 options={{
