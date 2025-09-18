@@ -18,7 +18,7 @@ import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
 import { Link, useRouter } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useMutation } from "convex/react";
-import { GitBranch, Image, Mic, Server } from "lucide-react";
+import { GitBranch, Image, Mic, Server, X } from "lucide-react";
 import { memo, useCallback, useMemo } from "react";
 
 interface DashboardInputControlsProps {
@@ -126,6 +126,14 @@ export const DashboardInputControls = memo(function DashboardInputControls({
       } satisfies SelectOptionObject;
     });
   }, [handleOpenSettings, providerStatusMap]);
+
+  const agentOptionsByValue = useMemo(() => {
+    const map = new Map<string, SelectOptionObject>();
+    for (const option of agentOptions) {
+      map.set(option.value, option);
+    }
+    return map;
+  }, [agentOptions]);
   // Determine OS for potential future UI tweaks
   // const isMac = navigator.userAgent.toUpperCase().indexOf("MAC") >= 0;
 
@@ -138,6 +146,49 @@ export const DashboardInputControls = memo(function DashboardInputControls({
       lexicalWindow.__lexicalImageFileSelect();
     }
   }, []);
+
+  const handleAgentRemove = useCallback(
+    (agent: string) => {
+      onAgentChange(selectedAgents.filter((value) => value !== agent));
+    },
+    [onAgentChange, selectedAgents]
+  );
+
+  const agentSelectionFooter = selectedAgents.length ? (
+    <div className="px-3 py-2 bg-neutral-50 dark:bg-neutral-900/70">
+      <div className="flex flex-wrap gap-1.5">
+        {selectedAgents.map((agent) => {
+          const option = agentOptionsByValue.get(agent);
+          const label = option?.label ?? agent;
+          return (
+            <button
+              key={agent}
+              type="button"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                handleAgentRemove(agent);
+              }}
+              className="inline-flex items-center gap-1 rounded-full bg-neutral-200 dark:bg-neutral-800/80 px-2 py-1 text-[12px] text-neutral-700 dark:text-neutral-200 hover:bg-neutral-300 dark:hover:bg-neutral-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60"
+            >
+              {option?.icon ? (
+                <span className="inline-flex h-3.5 w-3.5 items-center justify-center">
+                  {option.icon}
+                </span>
+              ) : null}
+              <span className="max-w-[140px] truncate text-left">{label}</span>
+              <X className="h-3 w-3" aria-hidden="true" />
+              <span className="sr-only">Remove {label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  ) : (
+    <div className="px-3 py-3 text-[12px] text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-900/70">
+      No agents selected yet.
+    </div>
+  );
 
   function openCenteredPopup(
     url: string,
@@ -306,6 +357,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
           className="rounded-2xl"
           showSearch
           countLabel="agents"
+          footer={agentSelectionFooter}
         />
       </div>
 
