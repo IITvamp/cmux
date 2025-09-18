@@ -17,7 +17,8 @@ export default async function performAutoCommitAndPush(
   agent: AgentConfig,
   taskRunId: Id<"taskRuns">,
   taskDescription: string,
-  teamSlugOrId: string
+  teamSlugOrId: string,
+  precollectedDiff?: string
 ): Promise<void> {
   try {
     serverLogger.info(`[AgentSpawner] Starting auto-commit for ${agent.name}`);
@@ -50,21 +51,41 @@ export default async function performAutoCommitAndPush(
 
     // Collect relevant diff from worker via script (does not modify repo index)
     let commitMessage = "";
-    try {
-      const { stdout: diffOut } = await workerExec({
-        workerSocket,
-        command: "/bin/bash",
-        args: ["-c", "/usr/local/bin/cmux-collect-relevant-diff.sh"],
-        cwd: "/root/workspace",
-        env: {},
-        timeout: 30000,
-      });
-      serverLogger.info(
-        `[AgentSpawner] Collected relevant diff (${diffOut.length} chars)`
-      );
+    const normalizedPreDiff = precollectedDiff?.trim();
+    const shouldReusePreDiff =
+      !!normalizedPreDiff && normalizedPreDiff !== "No changes detected";
+    let diffForCommit = "";
 
+    if (shouldReusePreDiff) {
+      diffForCommit = precollectedDiff as string;
+      serverLogger.info(
+        `[AgentSpawner] Reusing precollected diff (${diffForCommit.length} chars)`
+      );
+    } else {
+      try {
+        const { stdout: diffOut } = await workerExec({
+          workerSocket,
+          command: "/bin/bash",
+          args: ["-c", "/usr/local/bin/cmux-collect-relevant-diff.sh"],
+          cwd: "/root/workspace",
+          env: {},
+          timeout: 30000,
+        });
+        diffForCommit = diffOut;
+        serverLogger.info(
+          `[AgentSpawner] Collected relevant diff (${diffOut.length} chars)`
+        );
+      } catch (e) {
+        serverLogger.error(
+          `[AgentSpawner] Failed to collect diff for commit message:`,
+          e
+        );
+      }
+    }
+
+    try {
       const aiCommit = await generateCommitMessageFromDiff(
-        diffOut,
+        diffForCommit,
         teamSlugOrId
       );
       if (aiCommit && aiCommit.trim()) {
@@ -73,17 +94,15 @@ export default async function performAutoCommitAndPush(
         console.warn(
           "No AI commit message generated, falling back to task-based message"
         );
-        // Fallback to task-based message
         commitMessage = `${truncatedDescription}\n\nTask completed by ${agent.name} agent${
           isCrowned ? " 🏆" : ""
         }`;
       }
     } catch (e) {
       serverLogger.error(
-        `[AgentSpawner] Failed to collect diff or generate commit message:`,
+        `[AgentSpawner] Failed to generate commit message:`,
         e
       );
-      // Fallback commit message
       commitMessage = `${truncatedDescription}\n\nTask completed by ${agent.name} agent${
         isCrowned ? " 🏆" : ""
       }`;
