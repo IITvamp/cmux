@@ -81,6 +81,7 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: bash scripts/publish-build-mac-x64.sh --skip-install
       - name: Publish notarized macOS x64 artifacts to GitHub Releases
+        if: ${{ github.event_name == 'release' }}
         env:
           GH_TOKEN: ${{ github.token }}
         working-directory: apps/client
@@ -93,11 +94,9 @@ jobs:
             echo "No notarized macOS x64 artifacts found in dist-electron" >&2
             exit 1
           fi
-          cmd=(bunx electron-builder publish --config electron-builder.json --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}" --config.publish.draft=false)
-          for artifact in "${artifacts[@]}"; do
-            cmd+=(--files "$artifact")
-          done
-          "${cmd[@]}"
+          release_tag="${{ github.event.release.tag_name }}"
+          gh release upload "$release_tag" "${artifacts[@]}" --clobber
+          gh release edit "$release_tag" --draft=false
 
   mac-arm64:
     name: macOS arm64
@@ -158,6 +157,7 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: bash scripts/publish-build-mac-arm64.sh --skip-install
       - name: Publish notarized macOS arm64 artifacts to GitHub Releases
+        if: ${{ github.event_name == 'release' }}
         env:
           GH_TOKEN: ${{ github.token }}
         working-directory: apps/client
@@ -170,11 +170,9 @@ jobs:
             echo "No notarized macOS arm64 artifacts found in dist-electron" >&2
             exit 1
           fi
-          cmd=(bunx electron-builder publish --config electron-builder.json --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}" --config.publish.draft=false)
-          for artifact in "${artifacts[@]}"; do
-            cmd+=(--files "$artifact")
-          done
-          "${cmd[@]}"
+          release_tag="${{ github.event.release.tag_name }}"
+          gh release upload "$release_tag" "${artifacts[@]}" --clobber
+          gh release edit "$release_tag" --draft=false
 
   windows-x64:
     name: Windows x64
