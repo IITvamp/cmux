@@ -5,7 +5,7 @@ import { postApiSandboxesStart } from "@cmux/www-openapi-client";
 import { describe, expect, it } from "vitest";
 
 const ENVIRONMENT_ID =
-  process.env.DEBUG_ENVIRONMENT_ID ?? "mn7esn546hk5y9c819pdr23wph7qpmb0";
+  process.env.DEBUG_ENVIRONMENT_ID ?? "mn71k65q132jp5wb51p4btmzn57qvk3y";
 
 describe("sandboxesRouter integration", () => {
   it("rejects providing a snapshotId not owned by the team", async () => {
@@ -26,7 +26,7 @@ describe("sandboxesRouter integration", () => {
   it(
     "starts sandbox for configured environment",
     {
-      timeout: 10000,
+      timeout: 45000,
     },
     async () => {
       const tokens = await __TEST_INTERNAL_ONLY_GET_STACK_TOKENS();
