@@ -24,14 +24,16 @@ const DIFF_PROMPT_MAX_CHARS = 5_000;
 const DIFF_COMMENT_MAX_CHARS = 15_000;
 const DIFF_MAX_PATCH_BYTES = 200_000;
 
-const DIFF_IGNORED_FILE_SUFFIXES = [
+const DIFF_IGNORED_SUFFIXES = [
   ".log",
   ".tmp",
   ".cache",
   ".map",
   ".min.js",
   ".min.css",
-];
+] as const;
+
+const DIFF_IGNORED_REGEXES: readonly RegExp[] = [/^\.env\.[^.]+\.local$/];
 
 const DIFF_IGNORED_EXACT_FILENAMES = new Set([
   "pnpm-lock.yaml",
@@ -88,34 +90,41 @@ function normalizeDiffPath(filePath: string): string {
   return filePath.replace(/\\/g, "/").replace(/^\.\/?/, "");
 }
 
-function hasIgnoredSegment(normalized: string): boolean {
-  const segments = normalized.split("/");
-  return segments.some((segment) => DIFF_IGNORED_PATH_SEGMENTS.has(segment));
-}
+type NormalizedDiffPathInfo = {
+  normalized: string;
+  lower: string;
+  fileName: string;
+  segments: string[];
+  extension: string;
+};
 
-function hasIgnoredExtension(normalized: string): boolean {
-  const lastDot = normalized.lastIndexOf(".");
-  if (lastDot === -1) return false;
-  const ext = normalized.slice(lastDot + 1).toLowerCase();
-  return DIFF_IGNORED_EXTENSIONS.has(ext);
-}
-
-function hasIgnoredSuffix(normalized: string): boolean {
-  const lower = normalized.toLowerCase();
-  if (lower === ".env.local") return true;
-  if (/^\.env\.[^.]+\.local$/.test(lower)) return true;
-  return DIFF_IGNORED_FILE_SUFFIXES.some((suffix) => lower.endsWith(suffix));
-}
+const DIFF_IGNORED_CHECKS: Array<(info: NormalizedDiffPathInfo) => boolean> = [
+  (info) => DIFF_IGNORED_EXACT_FILENAMES.has(info.fileName),
+  (info) =>
+    info.segments.some((segment) => DIFF_IGNORED_PATH_SEGMENTS.has(segment)),
+  (info) =>
+    info.extension.length > 0 && DIFF_IGNORED_EXTENSIONS.has(info.extension),
+  (info) => DIFF_IGNORED_SUFFIXES.some((suffix) => info.lower.endsWith(suffix)),
+  (info) => DIFF_IGNORED_REGEXES.some((regex) => regex.test(info.lower)),
+];
 
 function shouldIgnoreDiffPath(filePath: string | undefined): boolean {
   if (!filePath) return false;
   const normalized = normalizeDiffPath(filePath);
-  const fileName = normalized.split("/").pop() ?? normalized;
-  if (DIFF_IGNORED_EXACT_FILENAMES.has(fileName)) return true;
-  if (hasIgnoredSegment(normalized)) return true;
-  if (hasIgnoredExtension(normalized)) return true;
-  if (hasIgnoredSuffix(normalized)) return true;
-  return false;
+  const segments = normalized.split("/");
+  const fileName = segments[segments.length - 1] ?? normalized;
+  const lower = normalized.toLowerCase();
+  const lastDot = fileName.lastIndexOf(".");
+  const extension =
+    lastDot === -1 ? "" : fileName.slice(lastDot + 1).toLowerCase();
+  const info: NormalizedDiffPathInfo = {
+    normalized,
+    lower,
+    fileName,
+    segments,
+    extension,
+  };
+  return DIFF_IGNORED_CHECKS.some((predicate) => predicate(info));
 }
 
 function renderDiffEntries(
@@ -559,9 +568,7 @@ export async function evaluateCrown(
     const githubToken = await getGitHubTokenFromKeychain();
 
     // Helper: generate and persist a system task comment summarizing the winner
-    const generateSystemTaskComment = async (
-      winnerRunId: Id<"taskRuns">
-    ) => {
+    const generateSystemTaskComment = async (winnerRunId: Id<"taskRuns">) => {
       try {
         // Skip if a system comment already exists for this task
         const existing = await getConvex().query(
