@@ -93,7 +93,7 @@ jobs:
             echo "No notarized macOS x64 artifacts found in dist-electron" >&2
             exit 1
           fi
-          cmd=(bunx electron-builder publish --config electron-builder.json --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}" --publish always)
+          cmd=(bunx electron-builder publish --config electron-builder.json --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}" --config.publish.draft=false)
           for artifact in "${artifacts[@]}"; do
             cmd+=(--files "$artifact")
           done
@@ -170,7 +170,7 @@ jobs:
             echo "No notarized macOS arm64 artifacts found in dist-electron" >&2
             exit 1
           fi
-          cmd=(bunx electron-builder publish --config electron-builder.json --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}" --publish always)
+          cmd=(bunx electron-builder publish --config electron-builder.json --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}" --config.publish.draft=false)
           for artifact in "${artifacts[@]}"; do
             cmd+=(--files "$artifact")
           done
