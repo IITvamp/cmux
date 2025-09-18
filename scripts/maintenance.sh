@@ -12,9 +12,7 @@ for arg in "$@"; do
   esac
 done
 
-# cleanup
-
-./scripts/cleanup.sh
+./scripts/clean.sh
 
 if [ "$NO_CACHE" = true ]; then
   docker build -t cmux-worker:0.0.1 . --no-cache &
