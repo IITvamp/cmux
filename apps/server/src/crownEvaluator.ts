@@ -566,22 +566,6 @@ export async function evaluateCrown(
       })
     );
 
-    // Log what we found for debugging
-    for (const c of candidateData) {
-      serverLogger.info(
-        `[CrownEvaluator] ${c.agentName} diff preview: ${c.gitDiff.substring(0, 200)}...`
-      );
-
-      if (
-        c.gitDiff === "No changes detected" ||
-        c.gitDiff.startsWith("ERROR:")
-      ) {
-        serverLogger.error(
-          `[CrownEvaluator] WARNING: ${c.agentName} has no valid git diff!`
-        );
-      }
-    }
-
     // Create structured data for the evaluation
     const evaluationData = {
       implementations: candidateData.map((candidate, idx) => ({
