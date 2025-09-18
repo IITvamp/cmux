@@ -18,7 +18,7 @@ import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
 import { Link, useRouter } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useMutation } from "convex/react";
-import { GitBranch, Image, Mic, Server } from "lucide-react";
+import { GitBranch, Image, Mic, Server, X } from "lucide-react";
 import { memo, useCallback, useMemo } from "react";
 
 interface DashboardInputControlsProps {
@@ -126,6 +126,52 @@ export const DashboardInputControls = memo(function DashboardInputControls({
       } satisfies SelectOptionObject;
     });
   }, [handleOpenSettings, providerStatusMap]);
+
+  const agentFooter = useMemo(() => {
+    if (selectedAgents.length === 0) return null;
+    const optionsByValue = new Map(
+      agentOptions.map((o) => [
+        typeof o === "string" ? o : o.value,
+        typeof o === "string" ? { label: o, value: o } : o,
+      ])
+    );
+    return (
+      <div className="p-1.5">
+        <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto pr-1">
+          {selectedAgents.map((val) => {
+            const opt = optionsByValue.get(val);
+            const label = opt?.label ?? val;
+            const icon = opt && "icon" in opt ? opt.icon : null;
+            return (
+              <button
+                key={val}
+                type="button"
+                onClick={(e) => {
+                  e.preventDefault();
+                  onAgentChange(selectedAgents.filter((v) => v !== val));
+                }}
+                className={
+                  "group inline-flex items-center gap-1.5 pl-1.5 pr-1.5 py-0.5 rounded-full " +
+                  "border border-neutral-200 dark:border-neutral-800 " +
+                  "bg-neutral-50 dark:bg-neutral-900 text-neutral-800 dark:text-neutral-200 " +
+                  "hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors"
+                }
+                title={`Remove ${label}`}
+              >
+                {icon ? (
+                  <span className="shrink-0 inline-flex items-center justify-center">{icon}</span>
+                ) : null}
+                <span className="text-[12px] leading-5 truncate max-w-[140px] select-none">
+                  {label}
+                </span>
+                <X className="w-3.5 h-3.5 text-neutral-500 group-hover:text-neutral-700 dark:text-neutral-400 dark:group-hover:text-neutral-200" />
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }, [agentOptions, onAgentChange, selectedAgents]);
   // Determine OS for potential future UI tweaks
   // const isMac = navigator.userAgent.toUpperCase().indexOf("MAC") >= 0;
 
@@ -306,6 +352,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
           className="rounded-2xl"
           showSearch
           countLabel="agents"
+          footer={agentFooter}
         />
       </div>
 
