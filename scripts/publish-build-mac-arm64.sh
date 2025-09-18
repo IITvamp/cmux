@@ -76,6 +76,75 @@ sanitize_id_like_env_var() {
   fi
 }
 
+prepare_apple_api_key_file() {
+  if [[ -z "${APPLE_API_KEY:-}" ]]; then
+    return
+  fi
+
+  if [[ -f "${APPLE_API_KEY}" ]]; then
+    return
+  fi
+
+  local tmp_dir
+  tmp_dir="$(mktemp -d)"
+  local key_path
+  key_path="$tmp_dir/AuthKey_${APPLE_API_KEY_ID:-api}.p8"
+
+  python3 - "$key_path" <<'PY'
+import base64
+import binascii
+import os
+import pathlib
+import sys
+
+raw = os.environ.get("APPLE_API_KEY", "")
+dest = pathlib.Path(sys.argv[1])
+
+if not raw:
+    sys.exit("APPLE_API_KEY is empty; cannot prepare .p8 file")
+
+
+def _convert_literal(value: str) -> str:
+    if "\\n" in value and "\n" not in value:
+        try:
+            value = value.encode("utf-8").decode("unicode_escape")
+        except UnicodeDecodeError:
+            pass
+    value = value.replace("\r\n", "\n").replace("\r", "\n")
+    return value
+
+
+literal = _convert_literal(raw)
+
+if "-----BEGIN" in literal:
+    normalized = literal
+else:
+    candidate = "".join(raw.split())
+    try:
+        decoded = base64.b64decode(candidate, validate=True)
+    except binascii.Error:
+        normalized = literal
+    else:
+        decoded_literal = _convert_literal(decoded.decode("utf-8", errors="ignore"))
+        if "-----BEGIN" in decoded_literal:
+            normalized = decoded_literal
+        else:
+            normalized = literal
+
+normalized = normalized.replace("\r\n", "\n").replace("\r", "\n")
+if not normalized.endswith("\n"):
+    normalized = normalized + "\n"
+
+dest.write_text(normalized, encoding="utf-8")
+try:
+    os.chmod(dest, 0o600)
+except PermissionError:
+    pass
+PY
+
+  export APPLE_API_KEY="$key_path"
+}
+
 # Preconditions
 if [[ "$(uname)" != "Darwin" ]]; then
   echo "This script must run on macOS." >&2
@@ -164,14 +233,7 @@ if [[ "$HAS_SIGNING" == "true" ]]; then
   export CSC_KEY_PASSWORD="${CSC_KEY_PASSWORD:-$MAC_CERT_PASSWORD}"
 
   # Prepare Apple API key for notarytool: ensure APPLE_API_KEY is a readable file path
-  if [[ -f "${APPLE_API_KEY}" ]]; then
-    : # already a file path
-  else
-    TMPDIR_APIKEY="$(mktemp -d)"
-    API_KEY_PATH="$TMPDIR_APIKEY/AuthKey_${APPLE_API_KEY_ID:-api}.p8"
-    printf "%s" "${APPLE_API_KEY}" | perl -0777 -pe 's/\r\n|\r|\n/\n/g' > "$API_KEY_PATH"
-    export APPLE_API_KEY="$API_KEY_PATH"
-  fi
+  prepare_apple_api_key_file
 
   echo "==> Packaging (signed; built-in notarize disabled due to macOS 15 notarytool JSON issue)"
   export DEBUG="${DEBUG:-electron-osx-sign*,electron-notarize*}"
