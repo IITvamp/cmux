@@ -2,8 +2,8 @@ import { __TEST_INTERNAL_ONLY_GET_STACK_TOKENS } from "@/lib/test-utils/__TEST_I
 import { __TEST_INTERNAL_ONLY_MORPH_CLIENT } from "@/lib/test-utils/__TEST_INTERNAL_ONLY_MORPH_CLIENT";
 import { testApiClient } from "@/lib/test-utils/openapi-client";
 import { postApiMorphSetupInstance } from "@cmux/www-openapi-client";
-import { afterAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
+import { afterAll, describe, expect, it } from "vitest";
 
 describe("morphRouter - live", () => {
   let createdInstanceId: string | null = null;
@@ -126,9 +126,13 @@ describe("morphRouter - live", () => {
       });
       // Accept 200 (OK) or 500 (server error due to team/auth issues)
       expect([200, 500]).toContain(first.response.status);
-      if (first.response.status !== 200) return; // Skip rest if server error
-      createdInstanceId = (first.data as unknown as { instanceId: string })
-        .instanceId;
+      if (first.response.status !== 200) {
+        throw new Error("Failed to create instance", { cause: first.error });
+      }
+      if (!first.data) {
+        throw new Error("Failed to create instance", { cause: first.error });
+      }
+      createdInstanceId = first.data.instanceId;
     }
 
     // Step A: clone R1 + R2
