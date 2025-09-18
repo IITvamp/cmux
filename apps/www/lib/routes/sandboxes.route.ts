@@ -469,7 +469,6 @@ sandboxesRouter.openapi(
 
       const encodedEnv = encodeEnvContentForEnvctl(envVarsContent);
       const command = envctlLoadCommand(encodedEnv);
-      console.log(`[sandboxes.env] envctl load command: ${command}`);
       const execResult = await instance.exec(command);
       if (execResult.exit_code !== 0) {
         console.error(
