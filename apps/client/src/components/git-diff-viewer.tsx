@@ -15,6 +15,7 @@ import * as monaco from "monaco-editor";
 import { type editor } from "monaco-editor";
 import {
   memo,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -150,38 +151,44 @@ export function GitDiffViewer({
     prevFilesRef.current = nextPaths;
   }, [diffs]);
 
-  const toggleFile = (filePath: string) => {
-    setExpandedFiles((prev) => {
-      const newExpanded = new Set(prev);
-      const wasExpanded = newExpanded.has(filePath);
-      if (wasExpanded) newExpanded.delete(filePath);
-      else newExpanded.add(filePath);
-      try {
-        onFileToggle?.(filePath, !wasExpanded);
-      } catch {
-        // ignore
-      }
-      return newExpanded;
-    });
-  };
+  const toggleFile = useCallback(
+    (filePath: string) => {
+      setExpandedFiles((prev) => {
+        const newExpanded = new Set(prev);
+        const wasExpanded = newExpanded.has(filePath);
+        if (wasExpanded) newExpanded.delete(filePath);
+        else newExpanded.add(filePath);
+        try {
+          onFileToggle?.(filePath, !wasExpanded);
+        } catch {
+          // ignore
+        }
+        return newExpanded;
+      });
+    },
+    [onFileToggle]
+  );
 
-  const expandAll = () => {
+  const expandAll = useCallback(() => {
     setExpandedFiles(new Set(fileGroups.map((f) => f.filePath)));
-  };
+  }, [fileGroups]);
 
-  const collapseAll = () => {
+  const collapseAll = useCallback(() => {
     setExpandedFiles(new Set());
-  };
+  }, []);
 
   // No per-run cache in refs mode
 
-  const calculateEditorHeight = (oldContent: string, newContent: string) => {
-    const oldLines = oldContent.split("\n").length;
-    const newLines = newContent.split("\n").length;
-    const maxLines = Math.max(oldLines, newLines);
-    // approximate using compact line height of 18px + small padding
-    return Math.max(100, maxLines * 18 + 24);
-  };
+  const calculateEditorHeight = useCallback(
+    (oldContent: string, newContent: string) => {
+      const oldLines = oldContent.split("\n").length;
+      const newLines = newContent.split("\n").length;
+      const maxLines = Math.max(oldLines, newLines);
+      // approximate using compact line height of 18px + small padding
+      return Math.max(100, maxLines * 18 + 24);
+    },
+    []
+  );
 
   // Compute totals consistently before any conditional early-returns
   const totalAdditions = diffs.reduce((sum, d) => sum + d.additions, 0);
@@ -207,30 +214,41 @@ export function GitDiffViewer({
       totalAdditions,
       totalDeletions,
     });
-    // Totals update when diffs change; avoid including function identities
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [totalAdditions, totalDeletions, diffs.length]);
+  }, [collapseAll, expandAll, totalAdditions, totalDeletions, diffs.length]);
+
+  const diffRowProps = useMemo(
+    () =>
+      fileGroups.map((file) => {
+        const diffKey = `refs:${file.filePath}`;
+        return {
+          file,
+          diffKey,
+          onToggle: () => toggleFile(file.filePath),
+          setEditorRef: (ed: editor.IStandaloneDiffEditor | null) => {
+            if (ed) {
+              editorRefs.current[diffKey] = ed;
+            } else {
+              delete editorRefs.current[diffKey];
+            }
+          },
+        };
+      }),
+    [editorRefs, fileGroups, toggleFile]
+  );
 
   return (
     <div className="grow bg-white dark:bg-neutral-900">
       {/* Diff sections */}
       <div className="">
-        {fileGroups.map((file) => (
+        {diffRowProps.map(({ file, diffKey, onToggle, setEditorRef }) => (
           <MemoFileDiffRow
-            key={`refs:${file.filePath}`}
+            key={diffKey}
             file={file}
             isExpanded={expandedFiles.has(file.filePath)}
-            onToggle={() => toggleFile(file.filePath)}
+            onToggle={onToggle}
             theme={theme}
             calculateEditorHeight={calculateEditorHeight}
-            setEditorRef={(ed) => {
-              const key = `refs:${file.filePath}`;
-              if (ed) {
-                editorRefs.current[key] = ed;
-              } else {
-                delete editorRefs.current[key];
-              }
-            }}
+            setEditorRef={setEditorRef}
             classNames={classNames?.fileDiffRow}
           />
         ))}
