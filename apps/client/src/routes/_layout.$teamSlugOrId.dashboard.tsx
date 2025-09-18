@@ -404,16 +404,31 @@ function DashboardComponent() {
 
   const projectOptions = useMemo(() => {
     // Repo options as objects with GitHub icon
-    const repoValues = Array.from(
-      new Set(
-        Object.entries(reposByOrg || {}).flatMap(([, repos]) =>
-          repos.map((repo) => repo.fullName)
-        )
-      )
-    );
-    const repoOptions = repoValues.map((fullName) => ({
-      label: fullName,
-      value: fullName,
+    const repoDocs = Object.values(reposByOrg || {}).flatMap((repos) => repos);
+    const uniqueRepos = repoDocs.reduce((acc, repo) => {
+      const existing = acc.get(repo.fullName);
+      if (!existing) {
+        acc.set(repo.fullName, repo);
+        return acc;
+      }
+      const existingActivity = existing.lastPushedAt ?? Number.NEGATIVE_INFINITY;
+      const candidateActivity = repo.lastPushedAt ?? Number.NEGATIVE_INFINITY;
+      if (candidateActivity > existingActivity) {
+        acc.set(repo.fullName, repo);
+      }
+      return acc;
+    }, new Map<string, Doc<"repos">>());
+    const sortedRepos = Array.from(uniqueRepos.values()).sort((a, b) => {
+      const aPushedAt = a.lastPushedAt ?? Number.NEGATIVE_INFINITY;
+      const bPushedAt = b.lastPushedAt ?? Number.NEGATIVE_INFINITY;
+      if (aPushedAt !== bPushedAt) {
+        return bPushedAt - aPushedAt;
+      }
+      return a.fullName.localeCompare(b.fullName);
+    });
+    const repoOptions = sortedRepos.map((repo) => ({
+      label: repo.fullName,
+      value: repo.fullName,
       icon: (
         <GitHubIcon className="w-4 h-4 text-neutral-600 dark:text-neutral-300" />
       ),

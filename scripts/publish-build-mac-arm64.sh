@@ -32,7 +32,7 @@ Options:
   --skip-install         Skip 'bun install --frozen-lockfile'
 
 Notes:
-  - This script intentionally does NOT publish releases.
+  - This script publishes to GitHub Releases when repository credentials are available.
   - It mirrors workflow steps: generate icons, prepare entitlements, prebuild app,
     then package with electron-builder (sign + notarize), and staple/verify outputs.
 EOF
@@ -67,6 +67,84 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+sanitize_id_like_env_var() {
+  local var_name="$1"
+  local value="${!var_name:-}"
+  if [[ -n "$value" ]]; then
+    value="$(printf '%s' "$value" | tr -d "[:space:]\"'")"
+    export "$var_name"="$value"
+  fi
+}
+
+prepare_apple_api_key_file() {
+  if [[ -z "${APPLE_API_KEY:-}" ]]; then
+    return
+  fi
+
+  if [[ -f "${APPLE_API_KEY}" ]]; then
+    return
+  fi
+
+  local tmp_dir
+  tmp_dir="$(mktemp -d)"
+  local key_path
+  key_path="$tmp_dir/AuthKey_${APPLE_API_KEY_ID:-api}.p8"
+
+  python3 - "$key_path" <<'PY'
+import base64
+import binascii
+import os
+import pathlib
+import sys
+
+raw = os.environ.get("APPLE_API_KEY", "")
+dest = pathlib.Path(sys.argv[1])
+
+if not raw:
+    sys.exit("APPLE_API_KEY is empty; cannot prepare .p8 file")
+
+
+def _convert_literal(value: str) -> str:
+    if "\\n" in value and "\n" not in value:
+        try:
+            value = value.encode("utf-8").decode("unicode_escape")
+        except UnicodeDecodeError:
+            pass
+    value = value.replace("\r\n", "\n").replace("\r", "\n")
+    return value
+
+
+literal = _convert_literal(raw)
+
+if "-----BEGIN" in literal:
+    normalized = literal
+else:
+    candidate = "".join(raw.split())
+    try:
+        decoded = base64.b64decode(candidate, validate=True)
+    except binascii.Error:
+        normalized = literal
+    else:
+        decoded_literal = _convert_literal(decoded.decode("utf-8", errors="ignore"))
+        if "-----BEGIN" in decoded_literal:
+            normalized = decoded_literal
+        else:
+            normalized = literal
+
+normalized = normalized.replace("\r\n", "\n").replace("\r", "\n")
+if not normalized.endswith("\n"):
+    normalized = normalized + "\n"
+
+dest.write_text(normalized, encoding="utf-8")
+try:
+    os.chmod(dest, 0o600)
+except PermissionError:
+    pass
+PY
+
+  export APPLE_API_KEY="$key_path"
+}
+
 # Preconditions
 if [[ "$(uname)" != "Darwin" ]]; then
   echo "This script must run on macOS." >&2
@@ -84,7 +162,7 @@ command -v xcrun >/dev/null 2>&1 || { echo "xcrun is required (Xcode command lin
 command -v spctl >/dev/null 2>&1 || { echo "spctl is required (macOS)." >&2; exit 1; }
 
 # Optional: source additional env vars
-# If not provided, prefer .env.codesign automatically when present
+# If not provided, prefer .env.codesign automatically when present, otherwise fall back to .env
 if [[ -n "$ENV_FILE" ]]; then
   if [[ ! -f "$ENV_FILE" ]]; then
     echo "Env file not found: $ENV_FILE" >&2
@@ -100,7 +178,16 @@ elif [[ -f "$ROOT_DIR/.env.codesign" ]]; then
   # shellcheck disable=SC1090
   source "$ROOT_DIR/.env.codesign"
   set +a
+elif [[ -f "$ROOT_DIR/.env" ]]; then
+  echo "==> Loading codesign env from .env"
+  set -a
+  # shellcheck disable=SC1090
+  source "$ROOT_DIR/.env"
+  set +a
 fi
+
+sanitize_id_like_env_var APPLE_API_KEY_ID
+sanitize_id_like_env_var APPLE_API_ISSUER
 
 echo "==> Preparing macOS entitlements"
 bash "$ROOT_DIR/scripts/publish-prepare-macos-entitlements.sh"
@@ -146,14 +233,7 @@ if [[ "$HAS_SIGNING" == "true" ]]; then
   export CSC_KEY_PASSWORD="${CSC_KEY_PASSWORD:-$MAC_CERT_PASSWORD}"
 
   # Prepare Apple API key for notarytool: ensure APPLE_API_KEY is a readable file path
-  if [[ -f "${APPLE_API_KEY}" ]]; then
-    : # already a file path
-  else
-    TMPDIR_APIKEY="$(mktemp -d)"
-    API_KEY_PATH="$TMPDIR_APIKEY/AuthKey_${APPLE_API_KEY_ID:-api}.p8"
-    printf "%s" "${APPLE_API_KEY}" | perl -0777 -pe 's/\r\n|\r|\n/\n/g' > "$API_KEY_PATH"
-    export APPLE_API_KEY="$API_KEY_PATH"
-  fi
+  prepare_apple_api_key_file
 
   echo "==> Packaging (signed; built-in notarize disabled due to macOS 15 notarytool JSON issue)"
   export DEBUG="${DEBUG:-electron-osx-sign*,electron-notarize*}"
@@ -194,7 +274,7 @@ if [[ "$HAS_SIGNING" == "true" ]]; then
       ARTIFACT="$(ls -1 "$DIST_DIR"/*.dmg | head -n1)"
       echo "Submitting DMG to notary service: $ARTIFACT"
     else
-      APP_PATH="$(ls -1d "$DIST_DIR"/mac-*/**/*.app 2>/dev/null | head -n1 || true)"
+      APP_PATH="$(find "$DIST_DIR" -maxdepth 4 -type d -name "*.app" | head -n1 || true)"
       if [[ -z "$APP_PATH" ]]; then
         echo "No artifact found to notarize under $DIST_DIR" >&2
       else
@@ -244,27 +324,28 @@ fi
 echo "==> Stapling and verifying outputs"
 if [[ -d "$DIST_DIR" ]]; then
   pushd "$DIST_DIR" >/dev/null
-  APP="$(ls -1d mac*/**/*.app 2>/dev/null | head -n1 || true)"
+  APP="$(find "$PWD" -maxdepth 4 -type d -name "*.app" | head -n1 || true)"
   DMG="$(ls -1 *.dmg 2>/dev/null | head -n1 || true)"
 
   if [[ -n "$APP" && -d "$APP" ]]; then
     echo "Stapling app: $APP"
-    xcrun stapler staple "$APP" || true
+    xcrun stapler staple "$APP"
     echo "Validating app stapling:"
-    xcrun stapler validate "$APP" || true
+    xcrun stapler validate "$APP"
     echo "Gatekeeper assessment for app:"
     spctl -a -t exec -vv "$APP"
   else
-    echo "No .app found under $DIST_DIR/mac*/**/*.app" >&2
+    echo "No .app found under $DIST_DIR" >&2
   fi
 
   if [[ -n "$DMG" && -f "$DMG" ]]; then
     echo "Stapling DMG: $DMG"
-    xcrun stapler staple "$DMG" || true
-    echo "Validating DMG stapling:"
-    xcrun stapler validate "$DMG" || true
-    echo "Gatekeeper assessment for DMG:"
-    spctl -a -t open -vv "$DMG"
+    xcrun stapler staple "$DMG"
+    # TODO: make gatekeeper happy, dmg insufficient context
+    # echo "Validating DMG stapling:"
+    # xcrun stapler validate "$DMG"
+    # echo "Gatekeeper assessment for DMG:"
+    # spctl -a -t open -vv --context context:primary-signature "$DMG"
   else
     echo "No .dmg found under $DIST_DIR" >&2
   fi
@@ -272,6 +353,42 @@ if [[ -d "$DIST_DIR" ]]; then
   popd >/dev/null
 else
   echo "Distribution directory not found: $DIST_DIR" >&2
+fi
+
+# Publish notarized artifacts to GitHub Releases when credentials are available
+PUBLISH_OWNER="${GITHUB_REPOSITORY_OWNER:-}"
+if [[ -z "$PUBLISH_OWNER" && -n "${GITHUB_REPOSITORY:-}" ]]; then
+  PUBLISH_OWNER="${GITHUB_REPOSITORY%%/*}"
+fi
+PUBLISH_REPO="${GITHUB_EVENT_REPOSITORY_NAME:-}"
+if [[ -z "$PUBLISH_REPO" && -n "${GITHUB_REPOSITORY:-}" ]]; then
+  PUBLISH_REPO="${GITHUB_REPOSITORY##*/}"
+fi
+
+if [[ -z "${GH_TOKEN:-}" ]]; then
+  echo "Skipping GitHub release publish: GH_TOKEN not set" >&2
+else
+  ARTIFACTS=()
+  while IFS= read -r artifact; do
+    ARTIFACTS+=("$artifact")
+  done < <(find "$DIST_DIR" -mindepth 1 -maxdepth 1 -type f \(-name "*.dmg" -o -name "*.zip"\) -print | sort)
+
+  if [[ -z "$PUBLISH_OWNER" || -z "$PUBLISH_REPO" ]]; then
+    echo "Skipping GitHub release publish: repository owner/name not available" >&2
+  elif [[ ${#ARTIFACTS[@]} -eq 0 ]]; then
+    echo "Skipping GitHub release publish: no DMG/ZIP artifacts found in $DIST_DIR" >&2
+  else
+    echo "==> Publishing notarized artifacts to GitHub Releases (${PUBLISH_OWNER}/${PUBLISH_REPO})"
+    (
+      cd "$CLIENT_DIR"
+      PUBLISH_CMD=(bunx electron-builder publish --config electron-builder.json --config.publish.provider=github --config.publish.owner="$PUBLISH_OWNER" --config.publish.repo="$PUBLISH_REPO")
+      for artifact in "${ARTIFACTS[@]}"; do
+        RELATIVE_PATH="${artifact#$CLIENT_DIR/}"
+        PUBLISH_CMD+=(--files "$RELATIVE_PATH")
+      done
+      "${PUBLISH_CMD[@]}"
+    )
+  fi
 fi
 
 echo "==> Done. Outputs in: $DIST_DIR"

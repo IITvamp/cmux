@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Local macOS x64 build + sign + notarize for Electron app
-# Mirrors the steps in .github/workflows/release-updates.yml (mac-x64 job)
+# CI macOS x64 build + sign + notarize for Electron app
+# Mirrors the steps in .github/workflows/release-updates.yml (mac-x64 job) without reusing local scripts
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 CLIENT_DIR="$ROOT_DIR/apps/client"
@@ -32,7 +32,7 @@ Options:
   --skip-install         Skip 'bun install --frozen-lockfile'
 
 Notes:
-  - This script intentionally does NOT publish releases.
+  - This script publishes to GitHub Releases when repository credentials are available.
   - It mirrors workflow steps: generate icons, prepare entitlements, prebuild app,
     then package with electron-builder (sign + notarize), and staple/verify outputs.
 EOF
@@ -66,6 +66,84 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+sanitize_id_like_env_var() {
+  local var_name="$1"
+  local value="${!var_name:-}"
+  if [[ -n "$value" ]]; then
+    value="$(printf '%s' "$value" | tr -d "[:space:]\"'")"
+    export "$var_name"="$value"
+  fi
+}
+
+prepare_apple_api_key_file() {
+  if [[ -z "${APPLE_API_KEY:-}" ]]; then
+    return
+  fi
+
+  if [[ -f "${APPLE_API_KEY}" ]]; then
+    return
+  fi
+
+  local tmp_dir
+  tmp_dir="$(mktemp -d)"
+  local key_path
+  key_path="$tmp_dir/AuthKey_${APPLE_API_KEY_ID:-api}.p8"
+
+  python3 - "$key_path" <<'PY'
+import base64
+import binascii
+import os
+import pathlib
+import sys
+
+raw = os.environ.get("APPLE_API_KEY", "")
+dest = pathlib.Path(sys.argv[1])
+
+if not raw:
+    sys.exit("APPLE_API_KEY is empty; cannot prepare .p8 file")
+
+
+def _convert_literal(value: str) -> str:
+    if "\\n" in value and "\n" not in value:
+        try:
+            value = value.encode("utf-8").decode("unicode_escape")
+        except UnicodeDecodeError:
+            pass
+    value = value.replace("\r\n", "\n").replace("\r", "\n")
+    return value
+
+
+literal = _convert_literal(raw)
+
+if "-----BEGIN" in literal:
+    normalized = literal
+else:
+    candidate = "".join(raw.split())
+    try:
+        decoded = base64.b64decode(candidate, validate=True)
+    except binascii.Error:
+        normalized = literal
+    else:
+        decoded_literal = _convert_literal(decoded.decode("utf-8", errors="ignore"))
+        if "-----BEGIN" in decoded_literal:
+            normalized = decoded_literal
+        else:
+            normalized = literal
+
+normalized = normalized.replace("\r\n", "\n").replace("\r", "\n")
+if not normalized.endswith("\n"):
+    normalized = normalized + "\n"
+
+dest.write_text(normalized, encoding="utf-8")
+try:
+    os.chmod(dest, 0o600)
+except PermissionError:
+    pass
+PY
+
+  export APPLE_API_KEY="$key_path"
+}
 
 # Preconditions
 if [[ "$(uname)" != "Darwin" ]]; then
@@ -108,8 +186,11 @@ elif [[ -f "$ROOT_DIR/.env" ]]; then
   set +a
 fi
 
+sanitize_id_like_env_var APPLE_API_KEY_ID
+sanitize_id_like_env_var APPLE_API_ISSUER
+
 echo "==> Preparing macOS entitlements"
-bash "$ROOT_DIR/scripts/prepare-macos-entitlements.sh"
+bash "$ROOT_DIR/scripts/publish-prepare-macos-entitlements.sh"
 
 echo "==> Generating icons"
 (cd "$CLIENT_DIR" && bun run ./scripts/generate-icons.mjs)
@@ -122,14 +203,19 @@ fi
 if [[ "$SKIP_INSTALL" != "true" ]]; then
   echo "==> Installing dependencies (bun install --frozen-lockfile)"
   (cd "$ROOT_DIR" && bun install --frozen-lockfile)
+else
+  if [[ ! -d "$ROOT_DIR/node_modules" || ! -d "$CLIENT_DIR/node_modules" ]]; then
+    echo "==> node_modules missing; installing dependencies despite --skip-install"
+    (cd "$ROOT_DIR" && bun install --frozen-lockfile)
+  fi
 fi
 
 echo "==> Prebuilding mac app via prod script (workaround)"
-bash "$ROOT_DIR/scripts/build-electron-prod.sh"
+bash "$ROOT_DIR/scripts/publish-build-electron-prod.sh"
 
 # The workaround script cleans the client's build directory; recreate entitlements after
 echo "==> Re-preparing macOS entitlements (after prebuild)"
-bash "$ROOT_DIR/scripts/prepare-macos-entitlements.sh" || true
+bash "$ROOT_DIR/scripts/publish-prepare-macos-entitlements.sh" || true
 
 # Detect presence of signing + notarization secrets (mirror GH workflow)
 echo "==> Detecting signing environment"
@@ -147,14 +233,7 @@ if [[ "$HAS_SIGNING" == "true" ]]; then
   export CSC_KEY_PASSWORD="${CSC_KEY_PASSWORD:-$MAC_CERT_PASSWORD}"
 
   # Prepare Apple API key for notarytool: ensure APPLE_API_KEY is a readable file path
-  if [[ -f "${APPLE_API_KEY}" ]]; then
-    : # already a file path
-  else
-    TMPDIR_APIKEY="$(mktemp -d)"
-    API_KEY_PATH="$TMPDIR_APIKEY/AuthKey_${APPLE_API_KEY_ID:-api}.p8"
-    printf "%s" "${APPLE_API_KEY}" | perl -0777 -pe 's/\r\n|\r|\n/\n/g' > "$API_KEY_PATH"
-    export APPLE_API_KEY="$API_KEY_PATH"
-  fi
+  prepare_apple_api_key_file
 
   echo "==> Packaging (signed; built-in notarize disabled due to macOS 15 notarytool JSON issue)"
   export DEBUG="${DEBUG:-electron-osx-sign*,electron-notarize*}"
@@ -229,7 +308,7 @@ if [[ "$HAS_SIGNING" == "true" ]]; then
     fi
   fi
 else
-  echo "==> No signing secrets; building unsigned"
+  echo "==> No signing secrets; building unsigned like the commented GH path"
   # Avoid any auto identity discovery and explicitly disable signing
   export CSC_IDENTITY_AUTO_DISCOVERY=false
   # Ensure entitlements exist right before packaging
@@ -274,6 +353,42 @@ if [[ -d "$DIST_DIR" ]]; then
   popd >/dev/null
 else
   echo "Distribution directory not found: $DIST_DIR" >&2
+fi
+
+# Publish notarized artifacts to GitHub Releases when credentials are available
+PUBLISH_OWNER="${GITHUB_REPOSITORY_OWNER:-}"
+if [[ -z "$PUBLISH_OWNER" && -n "${GITHUB_REPOSITORY:-}" ]]; then
+  PUBLISH_OWNER="${GITHUB_REPOSITORY%%/*}"
+fi
+PUBLISH_REPO="${GITHUB_EVENT_REPOSITORY_NAME:-}"
+if [[ -z "$PUBLISH_REPO" && -n "${GITHUB_REPOSITORY:-}" ]]; then
+  PUBLISH_REPO="${GITHUB_REPOSITORY##*/}"
+fi
+
+if [[ -z "${GH_TOKEN:-}" ]]; then
+  echo "Skipping GitHub release publish: GH_TOKEN not set" >&2
+else
+  ARTIFACTS=()
+  while IFS= read -r artifact; do
+    ARTIFACTS+=("$artifact")
+  done < <(find "$DIST_DIR" -mindepth 1 -maxdepth 1 -type f \(-name "*.dmg" -o -name "*.zip"\) -print | sort)
+
+  if [[ -z "$PUBLISH_OWNER" || -z "$PUBLISH_REPO" ]]; then
+    echo "Skipping GitHub release publish: repository owner/name not available" >&2
+  elif [[ ${#ARTIFACTS[@]} -eq 0 ]]; then
+    echo "Skipping GitHub release publish: no DMG/ZIP artifacts found in $DIST_DIR" >&2
+  else
+    echo "==> Publishing notarized artifacts to GitHub Releases (${PUBLISH_OWNER}/${PUBLISH_REPO})"
+    (
+      cd "$CLIENT_DIR"
+      PUBLISH_CMD=(bunx electron-builder publish --config electron-builder.json --config.publish.provider=github --config.publish.owner="$PUBLISH_OWNER" --config.publish.repo="$PUBLISH_REPO")
+      for artifact in "${ARTIFACTS[@]}"; do
+        RELATIVE_PATH="${artifact#$CLIENT_DIR/}"
+        PUBLISH_CMD+=(--files "$RELATIVE_PATH")
+      done
+      "${PUBLISH_CMD[@]}"
+    )
+  fi
 fi
 
 echo "==> Done. Outputs in: $DIST_DIR"
