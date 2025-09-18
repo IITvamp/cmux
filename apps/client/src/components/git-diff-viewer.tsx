@@ -277,6 +277,17 @@ function FileDiffRow({
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const revealedRef = useRef<boolean>(false);
 
+  const renameIncludesChanges =
+    file.status === "renamed" &&
+    (file.additions > 0 ||
+      file.deletions > 0 ||
+      (typeof file.patch === "string" && /(^|\n)@@/m.test(file.patch)));
+
+  const shouldRenderDiff =
+    !file.isBinary &&
+    file.status !== "deleted" &&
+    (file.status !== "renamed" || renameIncludesChanges);
+
   // Set an initial height before paint to reduce flicker
   useLayoutEffect(() => {
     const initial = calculateEditorHeight(file.oldContent, file.newContent);
@@ -329,7 +340,7 @@ function FileDiffRow({
 
       {isExpanded && (
         <div className="border-t border-neutral-200 dark:border-neutral-800 overflow-hidden">
-          {file.status === "renamed" ? (
+          {file.status === "renamed" && (
             <div className="px-3 py-6 text-center text-neutral-500 dark:text-neutral-400 text-xs bg-neutral-50 dark:bg-neutral-900/50">
               {file.oldPath ? (
                 <span className="inline-flex flex-wrap items-center justify-center gap-1">
@@ -346,15 +357,9 @@ function FileDiffRow({
                 "File was renamed"
               )}
             </div>
-          ) : file.isBinary ? (
-            <div className="px-3 py-6 text-center text-neutral-500 dark:text-neutral-400 text-xs bg-neutral-50 dark:bg-neutral-900/50">
-              Binary file not shown
-            </div>
-          ) : file.status === "deleted" ? (
-            <div className="px-3 py-6 text-center text-neutral-500 dark:text-neutral-400 text-xs bg-neutral-50 dark:bg-neutral-900/50">
-              File was deleted
-            </div>
-          ) : (
+          )}
+
+          {shouldRenderDiff ? (
             <div ref={containerRef}>
               <DiffEditor
                 key={`${runId ?? "_"}:${theme ?? "_"}:${file.filePath}`}
@@ -561,7 +566,15 @@ function FileDiffRow({
                 }}
               />
             </div>
-          )}
+          ) : file.isBinary ? (
+            <div className="px-3 py-6 text-center text-neutral-500 dark:text-neutral-400 text-xs bg-neutral-50 dark:bg-neutral-900/50">
+              Binary file not shown
+            </div>
+          ) : file.status === "deleted" ? (
+            <div className="px-3 py-6 text-center text-neutral-500 dark:text-neutral-400 text-xs bg-neutral-50 dark:bg-neutral-900/50">
+              File was deleted
+            </div>
+          ) : null}
         </div>
       )}
     </div>
