@@ -374,6 +374,15 @@ export type StartSandboxBody = {
     depth?: number;
 };
 
+export type UpdateSandboxEnvResponse = {
+    applied: true;
+};
+
+export type UpdateSandboxEnvBody = {
+    teamSlugOrId: string;
+    envVarsContent: string;
+};
+
 export type GetApiHealthData = {
     body?: never;
     path?: never;
@@ -1338,6 +1347,43 @@ export type PostApiSandboxesStartResponses = {
 };
 
 export type PostApiSandboxesStartResponse = PostApiSandboxesStartResponses[keyof PostApiSandboxesStartResponses];
+
+export type PostApiSandboxesByIdEnvData = {
+    body: UpdateSandboxEnvBody;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/api/sandboxes/{id}/env';
+};
+
+export type PostApiSandboxesByIdEnvErrors = {
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Forbidden
+     */
+    403: unknown;
+    /**
+     * Sandbox not found
+     */
+    404: unknown;
+    /**
+     * Failed to apply environment variables
+     */
+    500: unknown;
+};
+
+export type PostApiSandboxesByIdEnvResponses = {
+    /**
+     * Environment variables applied
+     */
+    200: UpdateSandboxEnvResponse;
+};
+
+export type PostApiSandboxesByIdEnvResponse = PostApiSandboxesByIdEnvResponses[keyof PostApiSandboxesByIdEnvResponses];
 
 export type PostApiSandboxesByIdStopData = {
     body?: never;
