@@ -224,7 +224,10 @@ RUN CMUX_ENV_VERSION=0.0.7 curl https://raw.githubusercontent.com/lawrencecchen/
     envctl --version && \
     envctl install-hook bash && \
     echo '[ -f ~/.bashrc ] && . ~/.bashrc' > /root/.profile && \
-    echo '[ -f ~/.bashrc ] && . ~/.bashrc' > /root/.bash_profile
+    echo '[ -f ~/.bashrc ] && . ~/.bashrc' > /root/.bash_profile && \
+    mkdir -p /run/user/0 && \
+    chmod 700 /run/user/0 && \
+    echo 'export XDG_RUNTIME_DIR=/run/user/0' >> /root/.bashrc
 
 # Install tmux configuration for better mouse scrolling behavior
 COPY configs/tmux.conf /etc/tmux.conf
