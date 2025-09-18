@@ -257,6 +257,7 @@ const convexSchema = defineSchema({
     defaultBranch: v.optional(v.string()),
     connectionId: v.optional(v.id("providerConnections")),
     lastSyncedAt: v.optional(v.number()),
+    lastPushedAt: v.optional(v.number()),
   })
     .index("by_org", ["org"])
     .index("by_gitRemote", ["gitRemote"])
