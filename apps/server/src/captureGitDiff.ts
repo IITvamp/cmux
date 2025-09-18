@@ -27,7 +27,7 @@ export async function captureGitDiff(
     const { stdout, stderr, exitCode } = await workerExec({
       workerSocket,
       command: "/bin/bash",
-      args: ["-c", `bash ${DIFF_SCRIPT}`],
+      args: [DIFF_SCRIPT],
       cwd: WORKSPACE_ROOT,
       env: {},
       timeout: 30000,
