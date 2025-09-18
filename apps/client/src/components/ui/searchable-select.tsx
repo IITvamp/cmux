@@ -21,6 +21,7 @@ import {
   ChevronDown,
   Loader2,
   OctagonAlert,
+  X,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
@@ -519,6 +520,53 @@ export function SearchableSelect({
           {footer ? (
             <div className="border-t border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950">
               {footer}
+            </div>
+          ) : null}
+          {!singleSelect && value.length > 0 ? (
+            <div className="border-t border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900 p-2">
+              <div className="flex flex-wrap gap-1">
+                {value.map((val) => {
+                  const opt = valueToOption.get(val);
+                  if (!opt) return null;
+                  return (
+                    <div
+                      key={val}
+                      className={clsx(
+                        "inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full",
+                        "bg-neutral-200 dark:bg-neutral-800",
+                        "text-neutral-700 dark:text-neutral-300",
+                        "text-xs font-medium",
+                        "group hover:bg-neutral-300 dark:hover:bg-neutral-700",
+                        "transition-colors"
+                      )}
+                    >
+                      {opt.icon ? (
+                        <span className="inline-flex items-center justify-center h-3.5 w-3.5">
+                          {opt.icon}
+                        </span>
+                      ) : null}
+                      <span className="select-none">{opt.label}</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSelectValue(val);
+                        }}
+                        className={clsx(
+                          "inline-flex items-center justify-center",
+                          "h-3 w-3 rounded-full",
+                          "hover:bg-neutral-400 dark:hover:bg-neutral-600",
+                          "transition-colors",
+                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-500 focus-visible:ring-offset-1"
+                        )}
+                        aria-label={`Remove ${opt.label}`}
+                      >
+                        <X className="h-2.5 w-2.5" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           ) : null}
         </Popover.Content>
