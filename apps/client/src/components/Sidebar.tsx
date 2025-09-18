@@ -141,7 +141,7 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
       >
         {isElectron && <div className="w-[80px]"></div>}
         <Link
-          to="/$teamSlugOrId/dashboard"
+          to="/$teamSlugOrId"
           params={{ teamSlugOrId }}
           className="flex items-center gap-2 select-none cursor-pointer"
           style={{ WebkitAppRegion: "no-drag" } as CSSProperties}
@@ -151,7 +151,7 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
         </Link>
         <div className="grow"></div>
         <Link
-          to="/$teamSlugOrId/dashboard"
+          to="/$teamSlugOrId"
           params={{ teamSlugOrId }}
           className="w-[25px] h-[25px] border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-900 rounded-lg flex items-center justify-center transition-colors cursor-default"
           title="New task"

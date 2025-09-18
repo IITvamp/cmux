@@ -6,7 +6,6 @@ import { DashboardInputControls } from "@/components/dashboard/DashboardInputCon
 import { DashboardInputFooter } from "@/components/dashboard/DashboardInputFooter";
 import { DashboardStartTaskButton } from "@/components/dashboard/DashboardStartTaskButton";
 import { TaskList } from "@/components/dashboard/TaskList";
-import { FloatingPane } from "@/components/floating-pane";
 import { GitHubIcon } from "@/components/icons/github";
 import { useTheme } from "@/components/theme/use-theme";
 import { TitleBar } from "@/components/TitleBar";
@@ -25,20 +24,23 @@ import type { Doc } from "@cmux/convex/dataModel";
 import type { ProviderStatusResponse } from "@cmux/shared";
 import { convexQuery } from "@convex-dev/react-query";
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useMutation } from "convex/react";
 import { Server as ServerIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
-export const Route = createFileRoute("/_layout/$teamSlugOrId/dashboard")({
-  component: DashboardComponent,
-});
+interface DashboardContentProps {
+  teamSlugOrId: string;
+  environmentId?: string;
+  showTitleBar?: boolean;
+}
 
-function DashboardComponent() {
-  const { teamSlugOrId } = Route.useParams();
-  const searchParams = Route.useSearch() as { environmentId?: string };
+export function DashboardContent({
+  teamSlugOrId,
+  environmentId,
+  showTitleBar = false,
+}: DashboardContentProps) {
   const { socket } = useSocket();
   const { theme } = useTheme();
   const { addTaskToExpand } = useExpandTasks();
@@ -67,14 +69,14 @@ function DashboardComponent() {
 
   // Preselect environment if provided in URL search params
   useEffect(() => {
-    if (searchParams?.environmentId) {
-      const val = `env:${searchParams.environmentId}`;
+    if (environmentId) {
+      const val = `env:${environmentId}`;
       setSelectedProject([val]);
       localStorage.setItem("selectedProject", JSON.stringify([val]));
       setIsCloudMode(true);
       localStorage.setItem("isCloudMode", JSON.stringify(true));
     }
-  }, [searchParams?.environmentId]);
+  }, [environmentId]);
 
   // Callback for task description changes
   const handleTaskDescriptionChange = useCallback((value: string) => {
@@ -137,9 +139,6 @@ function DashboardComponent() {
     () => reposByOrgQuery.data || {},
     [reposByOrgQuery.data]
   );
-
-  // Socket-based functions to fetch data from GitHub
-  // Removed unused fetchRepos function - functionality is handled by Convex queries
 
   const checkProviderStatus = useCallback(() => {
     if (!socket) return;
@@ -370,13 +369,6 @@ function DashboardComponent() {
     generateUploadUrl,
   ]);
 
-  // Fetch repos on mount if none exist
-  // useEffect(() => {
-  //   if (Object.keys(reposByOrg).length === 0) {
-  //     fetchRepos();
-  //   }
-  // }, [reposByOrg, fetchRepos]);
-
   // Check provider status on mount and keep it fresh without page refresh
   useEffect(() => {
     // Initial check
@@ -495,8 +487,6 @@ function DashboardComponent() {
       provider: string;
     }) => {
       console.log("VSCode spawned:", data);
-      // Open in new tab
-      // window.open(data.workspaceUrl, "_blank");
     };
 
     socket.on("vscode-spawned", handleVSCodeSpawned);
@@ -605,8 +595,6 @@ function DashboardComponent() {
     };
   }, []);
 
-  // Do not pre-disable UI on Docker status; handle fresh check on submit
-
   // Handle Command+Enter keyboard shortcut
   const handleSubmit = useCallback(() => {
     if (selectedProject[0] && taskDescription.trim()) {
@@ -641,59 +629,58 @@ function DashboardComponent() {
   ]);
 
   return (
-    <FloatingPane header={<TitleBar title="cmux" />}>
-      <div className="flex flex-col grow overflow-y-auto">
-        {/* Main content area */}
-        <div className="flex-1 flex justify-center px-4 pt-60 pb-4">
-          <div className="w-full max-w-4xl min-w-0">
-            <div
-              className={clsx(
-                "relative bg-white dark:bg-neutral-700/50 border border-neutral-200 dark:border-neutral-500/15 rounded-2xl transition-all"
-              )}
-            >
-              {/* Editor Input */}
-              <DashboardInput
-                ref={editorApiRef}
-                onTaskDescriptionChange={handleTaskDescriptionChange}
-                onSubmit={handleSubmit}
-                repoUrl={lexicalRepoUrl}
-                branch={lexicalBranch}
-                persistenceKey="dashboard-task-description"
-                maxHeight="300px"
+    <div className="flex flex-col grow min-h-0 h-full overflow-y-auto">
+      {showTitleBar ? <TitleBar title="cmux" /> : null}
+      {/* Main content area */}
+      <div className="flex-1 flex justify-center px-4 pt-60 pb-4">
+        <div className="w-full max-w-4xl min-w-0">
+          <div
+            className={clsx(
+              "relative bg-white dark:bg-neutral-700/50 border border-neutral-200 dark:border-neutral-500/15 rounded-2xl transition-all"
+            )}
+          >
+            {/* Editor Input */}
+            <DashboardInput
+              ref={editorApiRef}
+              onTaskDescriptionChange={handleTaskDescriptionChange}
+              onSubmit={handleSubmit}
+              repoUrl={lexicalRepoUrl}
+              branch={lexicalBranch}
+              persistenceKey="dashboard-task-description"
+              maxHeight="300px"
+            />
+
+            {/* Bottom bar: controls + submit button */}
+            <DashboardInputFooter>
+              <DashboardInputControls
+                projectOptions={projectOptions}
+                selectedProject={selectedProject}
+                onProjectChange={handleProjectChange}
+                branchOptions={branchOptions}
+                selectedBranch={effectiveSelectedBranch}
+                onBranchChange={handleBranchChange}
+                selectedAgents={selectedAgents}
+                onAgentChange={handleAgentChange}
+                isCloudMode={isCloudMode}
+                onCloudModeToggle={handleCloudModeToggle}
+                isLoadingProjects={reposByOrgQuery.isLoading}
+                isLoadingBranches={branchesQuery.isPending}
+                teamSlugOrId={teamSlugOrId}
+                cloudToggleDisabled={isEnvSelected}
+                branchDisabled={isEnvSelected || !selectedProject[0]}
+                providerStatus={providerStatus}
               />
-
-              {/* Bottom bar: controls + submit button */}
-              <DashboardInputFooter>
-                <DashboardInputControls
-                  projectOptions={projectOptions}
-                  selectedProject={selectedProject}
-                  onProjectChange={handleProjectChange}
-                  branchOptions={branchOptions}
-                  selectedBranch={effectiveSelectedBranch}
-                  onBranchChange={handleBranchChange}
-                  selectedAgents={selectedAgents}
-                  onAgentChange={handleAgentChange}
-                  isCloudMode={isCloudMode}
-                  onCloudModeToggle={handleCloudModeToggle}
-                  isLoadingProjects={reposByOrgQuery.isLoading}
-                  isLoadingBranches={branchesQuery.isPending}
-                  teamSlugOrId={teamSlugOrId}
-                  cloudToggleDisabled={isEnvSelected}
-                  branchDisabled={isEnvSelected || !selectedProject[0]}
-                  providerStatus={providerStatus}
-                />
-                <DashboardStartTaskButton
-                  canSubmit={canSubmit}
-                  onStartTask={handleStartTask}
-                />
-              </DashboardInputFooter>
-            </div>
-
-            {/* Task List */}
-            <TaskList teamSlugOrId={teamSlugOrId} />
+              <DashboardStartTaskButton
+                canSubmit={canSubmit}
+                onStartTask={handleStartTask}
+              />
+            </DashboardInputFooter>
           </div>
+
+          {/* Task List */}
+          <TaskList teamSlugOrId={teamSlugOrId} />
         </div>
       </div>
-    </FloatingPane>
+    </div>
   );
 }
