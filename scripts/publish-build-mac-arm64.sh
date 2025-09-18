@@ -93,7 +93,7 @@ command -v xcrun >/dev/null 2>&1 || { echo "xcrun is required (Xcode command lin
 command -v spctl >/dev/null 2>&1 || { echo "spctl is required (macOS)." >&2; exit 1; }
 
 # Optional: source additional env vars
-# If not provided, prefer .env.codesign automatically when present
+# If not provided, prefer .env.codesign automatically when present, otherwise fall back to .env
 if [[ -n "$ENV_FILE" ]]; then
   if [[ ! -f "$ENV_FILE" ]]; then
     echo "Env file not found: $ENV_FILE" >&2
@@ -108,6 +108,12 @@ elif [[ -f "$ROOT_DIR/.env.codesign" ]]; then
   set -a
   # shellcheck disable=SC1090
   source "$ROOT_DIR/.env.codesign"
+  set +a
+elif [[ -f "$ROOT_DIR/.env" ]]; then
+  echo "==> Loading codesign env from .env"
+  set -a
+  # shellcheck disable=SC1090
+  source "$ROOT_DIR/.env"
   set +a
 fi
 
