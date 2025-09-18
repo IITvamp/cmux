@@ -239,6 +239,9 @@ export function GitDiffViewer({
             classNames={classNames?.fileDiffRow}
           />
         ))}
+
+        <hr className="border-neutral-200 dark:border-neutral-800" />
+
         {/* End-of-diff message */}
         <div className="px-3 py-6 text-center">
           <span className="text-xs text-neutral-500 dark:text-neutral-400 select-none">
@@ -492,10 +495,7 @@ function FileDiffRow({
               Math.max(modifiedContentHeight, originalContentHeight) + 20
             );
 
-            const currentHeight = parseInt(
-              containerEl.style.height || "0",
-              10
-            );
+            const currentHeight = parseInt(containerEl.style.height || "0", 10);
             if (currentHeight !== newHeight) {
               containerEl.style.height = `${newHeight}px`;
             }
@@ -608,7 +608,7 @@ function FileDiffRow({
       <button
         onClick={onToggle}
         className={cn(
-          "w-full px-3 py-1.5 flex items-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors text-left group pt-1 bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800 sticky  z-[var(--z-sticky-low)]",
+          "w-full px-3 py-1.5 flex items-center gap-2 hover:bg-neutral-50 dark:hover:bg-neutral-800/50 transition-colors text-left group pt-1 bg-white dark:bg-neutral-900 border-t border-neutral-200 dark:border-neutral-800 sticky z-[var(--z-sticky-low)]",
           classNames?.button
         )}
       >
