@@ -115,6 +115,14 @@ export const crownEvaluate = httpAction(async (ctx, req) => {
   if (membership instanceof Response) return membership;
 
   try {
+    if (!env.ANTHROPIC_API_KEY) {
+      console.error("[convex.crown] Missing ANTHROPIC_API_KEY env");
+      return jsonResponse({
+        code: 503,
+        message: "Anthropic provider is not configured",
+      }, 503);
+    }
+
     const anthropic = createAnthropic({ apiKey: env.ANTHROPIC_API_KEY });
     const { object } = await generateObject({
       model: anthropic("claude-opus-4-1-20250805"),
@@ -155,6 +163,14 @@ export const crownSummarize = httpAction(async (ctx, req) => {
   }
 
   try {
+    if (!env.ANTHROPIC_API_KEY) {
+      console.error("[convex.crown] Missing ANTHROPIC_API_KEY env");
+      return jsonResponse({
+        code: 503,
+        message: "Anthropic provider is not configured",
+      }, 503);
+    }
+
     const anthropic = createAnthropic({ apiKey: env.ANTHROPIC_API_KEY });
     const { object } = await generateObject({
       model: anthropic("claude-opus-4-1-20250805"),

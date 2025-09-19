@@ -36,6 +36,7 @@
     "@cmux/server": "workspace:*",
     "@cmux/shared": "workspace:*",
     "@cmux/www-openapi-client": "workspace:*",
+    "@emotion/is-prop-valid": "^1.2.2",
     "@convex-dev/react-query": "^0.0.0-alpha.11",
     "@heroui/react": "^2.8.2",
     "@lexical/code": "^0.32.1",

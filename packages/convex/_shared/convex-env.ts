@@ -13,7 +13,7 @@ export const env = createEnv({
     INSTALL_STATE_SECRET: z.string().min(1).optional(),
     BASE_APP_URL: z.string().min(1),
     CMUX_TASK_RUN_JWT_SECRET: z.string().min(1),
-    ANTHROPIC_API_KEY: z.string().min(1),
+    ANTHROPIC_API_KEY: z.string().min(1).optional(),
   },
   runtimeEnv: process.env,
   emptyStringAsUndefined: true,
