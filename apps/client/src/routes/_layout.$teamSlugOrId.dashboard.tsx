@@ -410,7 +410,8 @@ function DashboardComponent() {
         acc.set(repo.fullName, repo);
         return acc;
       }
-      const existingActivity = existing.lastPushedAt ?? Number.NEGATIVE_INFINITY;
+      const existingActivity =
+        existing.lastPushedAt ?? Number.NEGATIVE_INFINITY;
       const candidateActivity = repo.lastPushedAt ?? Number.NEGATIVE_INFINITY;
       if (candidateActivity > existingActivity) {
         acc.set(repo.fullName, repo);

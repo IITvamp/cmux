@@ -6,6 +6,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useArchiveTask } from "@/hooks/useArchiveTask";
+import { isElectron } from "@/lib/electron";
 import { ContextMenu } from "@base-ui-components/react/context-menu";
 import { type Doc, type Id } from "@cmux/convex/dataModel";
 import { Link, useLocation } from "@tanstack/react-router";
@@ -621,7 +622,10 @@ function TaskRunTreeInner({
               <EllipsisVertical className="w-2.5 h-2.5" />
             </Dropdown.Trigger>
             <Dropdown.Portal>
-              <Dropdown.Positioner sideOffset={8}>
+              <Dropdown.Positioner
+                sideOffset={8}
+                side={isElectron ? "left" : "bottom"}
+              >
                 <Dropdown.Popup>
                   <Dropdown.Arrow />
                   <Dropdown.Item

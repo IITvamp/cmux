@@ -19,6 +19,38 @@ interface CmuxLogsAPI {
   copyAll: () => Promise<{ ok: boolean }>;
 }
 
+interface CmuxRectangle {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface CmuxWebContentsViewAPI {
+  create: (options: {
+    url: string;
+    bounds?: CmuxRectangle;
+    backgroundColor?: string;
+    borderRadius?: number;
+    persistKey?: string;
+  }) => Promise<
+    { id: number; webContentsId: number; restored: boolean }
+  >;
+  setBounds: (options: { id: number; bounds: CmuxRectangle; visible?: boolean }) => Promise<
+    { ok: boolean }
+  >;
+  loadURL: (id: number, url: string) => Promise<{ ok: boolean }>;
+  release: (options: { id: number; persist?: boolean }) => Promise<
+    { ok: boolean; suspended: boolean }
+  >;
+  destroy: (id: number) => Promise<{ ok: boolean }>;
+  updateStyle: (options: {
+    id: number;
+    backgroundColor?: string;
+    borderRadius?: number;
+  }) => Promise<{ ok: boolean }>;
+}
+
 interface CmuxAPI {
   register: (meta: { auth?: string; team?: string; auth_json?: string }) => Promise<unknown>;
   rpc: (event: string, ...args: unknown[]) => Promise<unknown>;
@@ -37,6 +69,7 @@ interface CmuxAPI {
   };
   socket: CmuxSocketAPI;
   logs: CmuxLogsAPI;
+  webContentsView: CmuxWebContentsViewAPI;
 }
 
 declare global {

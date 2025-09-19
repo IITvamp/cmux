@@ -17,6 +17,7 @@ import {
   type MenuItemConstructorOptions,
 } from "electron";
 import { startEmbeddedServer } from "./embedded-server";
+import { registerWebContentsViewHandlers } from "./web-contents-view";
 // Auto-updater
 import electronUpdater from "electron-updater";
 import {
@@ -38,6 +39,18 @@ import { env } from "./electron-main-env";
 // Use a cookieable HTTPS origin intercepted locally instead of a custom scheme.
 const PARTITION = "persist:cmux";
 const APP_HOST = "cmux.local";
+
+function resolveMaxSuspendedWebContents(): number | undefined {
+  const raw =
+    process.env.CMUX_ELECTRON_MAX_SUSPENDED_WEBVIEWS ??
+    process.env.CMUX_ELECTRON_MAX_SUSPENDED_WEB_CONTENTS;
+  if (!raw) return undefined;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || Number.isNaN(parsed) || parsed < 0) {
+    return undefined;
+  }
+  return parsed;
+}
 
 let rendererLoaded = false;
 let pendingProtocolUrl: string | null = null;
@@ -415,6 +428,14 @@ app.whenReady().then(async () => {
       log: mainLog,
       warn: mainWarn,
     },
+  });
+  registerWebContentsViewHandlers({
+    logger: {
+      log: mainLog,
+      warn: mainWarn,
+      error: mainError,
+    },
+    maxSuspendedEntries: resolveMaxSuspendedWebContents(),
   });
 
   // Ensure macOS menu and About panel use "cmux" instead of package.json name
