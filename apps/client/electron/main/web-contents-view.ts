@@ -1,4 +1,11 @@
-import { BrowserWindow, WebContentsView, ipcMain, type Rectangle, type WebContents } from "electron";
+import {
+  BrowserWindow,
+  WebContentsView,
+  ipcMain,
+  webContents,
+  type Rectangle,
+  type WebContents,
+} from "electron";
 
 interface Logger {
   log: (...args: unknown[]) => void;
@@ -49,6 +56,7 @@ interface Entry {
   persistKey?: string;
   suspended: boolean;
   ownerWebContentsDestroyed: boolean;
+  removeListeners?: () => void;
 }
 
 const viewEntries = new Map<number, Entry>();
@@ -193,6 +201,7 @@ function destroyView(id: number): boolean {
   const entry = viewEntries.get(id);
   if (!entry) return false;
   try {
+    entry.removeListeners?.();
     removeFromSuspended(entry);
     const win = BrowserWindow.fromId(entry.ownerWindowId);
     if (win && !win.isDestroyed()) {
@@ -319,6 +328,12 @@ export function registerWebContentsViewHandlers({
           candidate.ownerWebContentsId = sender.id;
           candidate.ownerWebContentsDestroyed = false;
 
+          if (!candidate.removeListeners) {
+            candidate.removeListeners = attachWebContentsObservers(candidate, logger);
+          }
+
+          sendWebContentsSnapshot(candidate, "reattach");
+
           logger.log("Reattached WebContentsView", {
             id: candidate.id,
             persistKey,
@@ -339,7 +354,14 @@ export function registerWebContentsViewHandlers({
             suspendEntriesForDestroyedOwner(win.id, senderId, logger);
           });
 
-          return { id: candidate.id, webContentsId: candidate.view.webContents.id, restored: true };
+          return {
+            id: candidate.id,
+            webContentsId: candidate.view.webContents.id,
+            restored: true,
+            url: safeGetUrl(candidate.view.webContents) ?? undefined,
+            title: safeGetTitle(candidate.view.webContents) ?? undefined,
+            isLoading: candidate.view.webContents.isLoading(),
+          };
         }
       }
 
@@ -367,13 +389,6 @@ export function registerWebContentsViewHandlers({
         logger.warn("Failed to set initial bounds for WebContentsView", error);
       }
 
-      const finalUrl = options.url ?? "about:blank";
-      void view.webContents
-        .loadURL(finalUrl)
-        .catch((error) =>
-          logger.warn("WebContentsView initial load failed", { url: finalUrl, error })
-        );
-
       const id = nextViewId++;
       const entry: Entry = {
         id,
@@ -385,6 +400,17 @@ export function registerWebContentsViewHandlers({
         ownerWebContentsDestroyed: false,
       };
       viewEntries.set(id, entry);
+
+      entry.removeListeners = attachWebContentsObservers(entry, logger);
+
+      const finalUrl = options.url ?? "about:blank";
+      void view.webContents
+        .loadURL(finalUrl)
+        .catch((error) =>
+          logger.warn("WebContentsView initial load failed", { url: finalUrl, error })
+        );
+
+      sendWebContentsSnapshot(entry, "create", finalUrl);
 
       if (!windowCleanupRegistered.has(win.id)) {
         windowCleanupRegistered.add(win.id);
@@ -407,7 +433,14 @@ export function registerWebContentsViewHandlers({
         persistKey,
       });
 
-      return { id, webContentsId: view.webContents.id, restored: false };
+      return {
+        id,
+        webContentsId: view.webContents.id,
+        restored: false,
+        url: finalUrl,
+        title: safeGetTitle(view.webContents) ?? undefined,
+        isLoading: view.webContents.isLoading(),
+      };
     } catch (error) {
       logger.error("webcontents-view:create failed", error);
       throw error;
@@ -447,6 +480,7 @@ export function registerWebContentsViewHandlers({
     }
     try {
       void entry.view.webContents.loadURL(url);
+      sendWebContentsSnapshot(entry, "load", url);
       return { ok: true };
     } catch (error) {
       return { ok: false, error: String(error) };
@@ -538,4 +572,270 @@ export function registerWebContentsViewHandlers({
     applyBorderRadius(entry.view, borderRadius);
     return { ok: true };
   });
+
+  ipcMain.handle(
+    "cmux:webcontents:get-state",
+    (event, options: { id?: number; persistKey?: string } | undefined) => {
+      const entry = resolveEntryForRequest(event.sender.id, options ?? {});
+      if (!entry) {
+        return { ok: false };
+      }
+
+      try {
+        const contents = entry.view.webContents;
+        return {
+          ok: true,
+          state: {
+            url: safeGetUrl(contents) ?? null,
+            title: safeGetTitle(contents) ?? null,
+            isLoading: contents.isLoading(),
+            canGoBack: contents.canGoBack(),
+            canGoForward: contents.canGoForward(),
+          },
+        };
+      } catch (error) {
+        return { ok: false, error: String(error) };
+      }
+    }
+  );
+
+  ipcMain.handle(
+    "cmux:webcontents:open-devtools",
+    (
+      event,
+      options:
+        | { id?: number; persistKey?: string; mode?: "right" | "bottom" | "left" | "detach" | "undocked" }
+        | undefined
+    ) => {
+      const entry = resolveEntryForRequest(event.sender.id, options ?? {});
+      if (!entry) {
+        return { ok: false };
+      }
+
+      try {
+        const mode = options?.mode;
+        if (mode) {
+          entry.view.webContents.openDevTools({ mode });
+        } else {
+          entry.view.webContents.openDevTools({ mode: "detach" });
+        }
+        return { ok: true };
+      } catch (error) {
+        return { ok: false, error: String(error) };
+      }
+    }
+  );
+}
+
+type WebContentsEventType =
+  | "did-attach"
+  | "did-start-loading"
+  | "did-stop-loading"
+  | "did-finish-load"
+  | "did-fail-load"
+  | "did-navigate"
+  | "did-navigate-in-page"
+  | "page-title-updated";
+
+interface WebContentsBridgeEvent {
+  type: WebContentsEventType;
+  url?: string;
+  title?: string;
+  isLoading?: boolean;
+  canGoBack?: boolean;
+  canGoForward?: boolean;
+  httpResponseCode?: number;
+  httpStatusText?: string;
+  errorCode?: number;
+  errorDescription?: string;
+  validatedURL?: string;
+  isMainFrame?: boolean;
+}
+
+function resolveEntryForRequest(
+  senderId: number,
+  options: { id?: number; persistKey?: string }
+): Entry | null {
+  if (typeof options.id === "number") {
+    const entry = viewEntries.get(options.id) ?? null;
+    if (!entry) return null;
+    if (entry.ownerWebContentsId !== senderId && !entry.ownerWebContentsDestroyed) {
+      return null;
+    }
+    return entry;
+  }
+
+  const persistKey =
+    typeof options.persistKey === "string" && options.persistKey.trim().length > 0
+      ? options.persistKey.trim()
+      : undefined;
+  if (!persistKey) {
+    return null;
+  }
+
+  for (const entry of viewEntries.values()) {
+    if (entry.persistKey === persistKey) {
+      if (entry.ownerWebContentsId === senderId || entry.ownerWebContentsDestroyed) {
+        return entry;
+      }
+    }
+  }
+  return null;
+}
+
+function emitWebContentsEvent(entry: Entry, payload: WebContentsBridgeEvent) {
+  const owner = webContents.fromId(entry.ownerWebContentsId);
+  if (!owner || owner.isDestroyed()) {
+    return;
+  }
+  owner.send("cmux:webcontents:event", {
+    id: entry.id,
+    persistKey: entry.persistKey,
+    ...payload,
+  });
+}
+
+function safeGetUrl(contents: WebContents): string | null {
+  try {
+    const url = contents.getURL();
+    return typeof url === "string" ? url : null;
+  } catch {
+    return null;
+  }
+}
+
+function safeGetTitle(contents: WebContents): string | null {
+  try {
+    const title = contents.getTitle();
+    return typeof title === "string" ? title : null;
+  } catch {
+    return null;
+  }
+}
+
+function sendWebContentsSnapshot(entry: Entry, reason: "create" | "reattach" | "load", pendingUrl?: string) {
+  const contents = entry.view.webContents;
+  const currentUrl = safeGetUrl(contents);
+  emitWebContentsEvent(entry, {
+    type: "did-attach",
+    url: currentUrl ?? pendingUrl,
+    title: safeGetTitle(contents) ?? undefined,
+    isLoading: contents.isLoading(),
+    canGoBack: contents.canGoBack(),
+    canGoForward: contents.canGoForward(),
+  });
+}
+
+function attachWebContentsObservers(entry: Entry, logger: Logger): () => void {
+  const { view } = entry;
+  const contents = view.webContents;
+  const disposers: Array<() => void> = [];
+
+  const handleDidStartLoading = () => {
+    emitWebContentsEvent(entry, {
+      type: "did-start-loading",
+      url: safeGetUrl(contents) ?? undefined,
+    });
+  };
+  contents.on("did-start-loading", handleDidStartLoading);
+  disposers.push(() => contents.removeListener("did-start-loading", handleDidStartLoading));
+
+  const handleDidStopLoading = () => {
+    emitWebContentsEvent(entry, {
+      type: "did-stop-loading",
+      url: safeGetUrl(contents) ?? undefined,
+      isLoading: contents.isLoading(),
+      canGoBack: contents.canGoBack(),
+      canGoForward: contents.canGoForward(),
+    });
+  };
+  contents.on("did-stop-loading", handleDidStopLoading);
+  disposers.push(() => contents.removeListener("did-stop-loading", handleDidStopLoading));
+
+  const handleDidFinishLoad = () => {
+    emitWebContentsEvent(entry, {
+      type: "did-finish-load",
+      url: safeGetUrl(contents) ?? undefined,
+      canGoBack: contents.canGoBack(),
+      canGoForward: contents.canGoForward(),
+    });
+  };
+  contents.on("did-finish-load", handleDidFinishLoad);
+  disposers.push(() => contents.removeListener("did-finish-load", handleDidFinishLoad));
+
+  const handleDidFailLoad = (
+    _event: Electron.Event,
+    errorCode: number,
+    errorDescription: string,
+    validatedURL: string,
+    isMainFrame: boolean
+  ) => {
+    emitWebContentsEvent(entry, {
+      type: "did-fail-load",
+      errorCode,
+      errorDescription,
+      validatedURL,
+      isMainFrame,
+    });
+  };
+  contents.on("did-fail-load", handleDidFailLoad);
+  disposers.push(() => contents.removeListener("did-fail-load", handleDidFailLoad));
+
+  const handleDidNavigate = (
+    _event: Electron.Event,
+    url: string,
+    httpResponseCode: number,
+    httpStatusText: string
+  ) => {
+    emitWebContentsEvent(entry, {
+      type: "did-navigate",
+      url,
+      title: safeGetTitle(contents) ?? undefined,
+      httpResponseCode,
+      httpStatusText,
+      canGoBack: contents.canGoBack(),
+      canGoForward: contents.canGoForward(),
+    });
+  };
+  contents.on("did-navigate", handleDidNavigate);
+  disposers.push(() => contents.removeListener("did-navigate", handleDidNavigate));
+
+  const handleDidNavigateInPage = (
+    _event: Electron.Event,
+    url: string,
+    isMainFrame: boolean
+  ) => {
+    emitWebContentsEvent(entry, {
+      type: "did-navigate-in-page",
+      url,
+      isMainFrame,
+      canGoBack: contents.canGoBack(),
+      canGoForward: contents.canGoForward(),
+    });
+  };
+  contents.on("did-navigate-in-page", handleDidNavigateInPage);
+  disposers.push(() => contents.removeListener("did-navigate-in-page", handleDidNavigateInPage));
+
+  const handlePageTitleUpdated = (
+    _event: Electron.Event,
+    title: string
+  ) => {
+    emitWebContentsEvent(entry, {
+      type: "page-title-updated",
+      title,
+      url: safeGetUrl(contents) ?? undefined,
+    });
+  };
+  contents.on("page-title-updated", handlePageTitleUpdated);
+  disposers.push(() => contents.removeListener("page-title-updated", handlePageTitleUpdated));
+
+  return () => {
+    for (const dispose of disposers) {
+      try {
+        dispose();
+      } catch (error) {
+        logger.warn("Failed to dispose WebContentsView listener", error);
+      }
+    }
+  };
 }

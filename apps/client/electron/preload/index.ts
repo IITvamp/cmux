@@ -17,6 +17,34 @@ type RectanglePayload = {
 type LogListener = (entry: ElectronMainLogMessage) => void;
 const mainLogListeners = new Set<LogListener>();
 
+type WebContentsEventPayload = {
+  id: number;
+  persistKey?: string;
+  type:
+    | "did-attach"
+    | "did-start-loading"
+    | "did-stop-loading"
+    | "did-finish-load"
+    | "did-fail-load"
+    | "did-navigate"
+    | "did-navigate-in-page"
+    | "page-title-updated";
+  url?: string | null;
+  title?: string | null;
+  isLoading?: boolean;
+  canGoBack?: boolean;
+  canGoForward?: boolean;
+  httpResponseCode?: number;
+  httpStatusText?: string;
+  errorCode?: number;
+  errorDescription?: string;
+  validatedURL?: string;
+  isMainFrame?: boolean;
+};
+
+type WebContentsEventListener = (event: WebContentsEventPayload) => void;
+const webContentsEventListeners = new Set<WebContentsEventListener>();
+
 // Cmux IPC API for Electron server communication
 const cmuxAPI = {
   // Register with the server (like socket connection)
@@ -137,7 +165,16 @@ const cmuxAPI = {
       ipcRenderer.invoke(
         "cmux:webcontents:create",
         options
-      ) as Promise<{ id: number; webContentsId: number; restored: boolean }>,
+      ) as Promise<
+        {
+          id: number;
+          webContentsId: number;
+          restored: boolean;
+          url?: string;
+          title?: string;
+          isLoading?: boolean;
+        }
+      >,
     setBounds: (options: { id: number; bounds: RectanglePayload; visible?: boolean }) =>
       ipcRenderer.invoke(
         "cmux:webcontents:set-bounds",
@@ -157,6 +194,34 @@ const cmuxAPI = {
         "cmux:webcontents:update-style",
         options
       ) as Promise<{ ok: boolean }>,
+    getState: (options: { id?: number; persistKey?: string }) =>
+      ipcRenderer.invoke("cmux:webcontents:get-state", options) as Promise<
+        {
+          ok: boolean;
+          state?: {
+            url: string | null;
+            title: string | null;
+            isLoading: boolean;
+            canGoBack: boolean;
+            canGoForward: boolean;
+          };
+          error?: string;
+        }
+      >,
+    onEvent: (listener: WebContentsEventListener) => {
+      webContentsEventListeners.add(listener);
+      return () => {
+        webContentsEventListeners.delete(listener);
+      };
+    },
+    openDevTools: (options: {
+      id?: number;
+      persistKey?: string;
+      mode?: "right" | "bottom" | "left" | "detach" | "undocked";
+    }) =>
+      ipcRenderer.invoke("cmux:webcontents:open-devtools", options) as Promise<
+        { ok: boolean; error?: string }
+      >,
   },
 };
 
@@ -191,3 +256,13 @@ ipcRenderer.on(
     }
   }
 );
+
+ipcRenderer.on("cmux:webcontents:event", (_event, payload: WebContentsEventPayload) => {
+  for (const listener of Array.from(webContentsEventListeners)) {
+    try {
+      listener(payload);
+    } catch {
+      // ignore listener errors so one bad subscriber doesn't break others
+    }
+  }
+});
