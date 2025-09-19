@@ -48,6 +48,7 @@ interface Entry {
   ownerWebContentsId: number;
   persistKey?: string;
   suspended: boolean;
+  ownerWebContentsDestroyed: boolean;
 }
 
 const viewEntries = new Map<number, Entry>();
@@ -56,7 +57,7 @@ const windowCleanupRegistered = new Set<number>();
 const suspendedQueue: number[] = [];
 const suspendedByKey = new Map<string, Entry>();
 let suspendedCount = 0;
-let maxSuspendedEntries = 50;
+let maxSuspendedEntries = 25;
 
 function setMaxSuspendedEntries(limit: number | undefined): number {
   if (
@@ -65,7 +66,7 @@ function setMaxSuspendedEntries(limit: number | undefined): number {
     !Number.isFinite(limit) ||
     limit < 0
   ) {
-    maxSuspendedEntries = 50;
+    maxSuspendedEntries = 25;
     return maxSuspendedEntries;
   }
   maxSuspendedEntries = Math.floor(limit);
@@ -124,6 +125,67 @@ function evictExcessSuspended(logger: Logger) {
       webContentsId: entry.view.webContents.id,
     });
     destroyView(entry.id);
+  }
+}
+
+function suspendEntriesForDestroyedOwner(
+  windowId: number,
+  webContentsId: number,
+  logger: Logger
+) {
+  logger.log("Renderer destroyed; evaluating owned WebContentsViews", {
+    windowId,
+    webContentsId,
+  });
+  let suspendedAny = false;
+  for (const entry of Array.from(viewEntries.values())) {
+    if (entry.ownerWindowId !== windowId || entry.ownerWebContentsId !== webContentsId) {
+      continue;
+    }
+
+    if (!entry.persistKey) {
+      logger.log("Renderer destroyed; dropping non-persistent WebContentsView", {
+        id: entry.id,
+        webContentsId: entry.view.webContents.id,
+      });
+      destroyView(entry.id);
+      suspendedAny = true;
+      continue;
+    }
+
+    logger.log("Renderer destroyed; suspending persistent WebContentsView", {
+      id: entry.id,
+      persistKey: entry.persistKey,
+      alreadySuspended: entry.suspended,
+    });
+    entry.ownerWebContentsDestroyed = true;
+
+    if (!entry.suspended) {
+      const win = BrowserWindow.fromId(entry.ownerWindowId);
+      if (win && !win.isDestroyed()) {
+        try {
+          win.contentView.removeChildView(entry.view);
+        } catch {
+          // ignore removal failures
+        }
+      }
+      try {
+        entry.view.setVisible(false);
+      } catch {
+        // ignore visibility toggles on unsupported platforms
+      }
+      markSuspended(entry);
+      suspendedAny = true;
+    }
+  }
+
+  if (suspendedAny) {
+    logger.log("Suspended WebContentsViews after renderer destroyed", {
+      windowId,
+      webContentsId,
+      suspendedCount,
+    });
+    evictExcessSuspended(logger);
   }
 }
 
@@ -223,7 +285,10 @@ export function registerWebContentsViewHandlers({
 
       if (persistKey) {
         const candidate = suspendedByKey.get(persistKey);
-        if (candidate && candidate.ownerWebContentsId === sender.id) {
+        const sameWindow = candidate?.ownerWindowId === win.id;
+        const sameSender = candidate?.ownerWebContentsId === sender.id;
+        const canAdopt = candidate?.ownerWebContentsDestroyed === true;
+        if (candidate && sameWindow && (sameSender || canAdopt)) {
           removeFromSuspended(candidate);
           try {
             win.contentView.addChildView(candidate.view);
@@ -252,6 +317,7 @@ export function registerWebContentsViewHandlers({
 
           candidate.ownerWindowId = win.id;
           candidate.ownerWebContentsId = sender.id;
+          candidate.ownerWebContentsDestroyed = false;
 
           logger.log("Reattached WebContentsView", {
             id: candidate.id,
@@ -268,8 +334,9 @@ export function registerWebContentsViewHandlers({
             });
           }
 
+          const senderId = sender.id;
           sender.once("destroyed", () => {
-            cleanupViewsForWindow(win.id);
+            suspendEntriesForDestroyedOwner(win.id, senderId, logger);
           });
 
           return { id: candidate.id, webContentsId: candidate.view.webContents.id, restored: true };
@@ -315,6 +382,7 @@ export function registerWebContentsViewHandlers({
         ownerWebContentsId: sender.id,
         persistKey,
         suspended: false,
+        ownerWebContentsDestroyed: false,
       };
       viewEntries.set(id, entry);
 
@@ -326,8 +394,9 @@ export function registerWebContentsViewHandlers({
         });
       }
 
+      const senderId = sender.id;
       sender.once("destroyed", () => {
-        cleanupViewsForWindow(win.id);
+        suspendEntriesForDestroyedOwner(win.id, senderId, logger);
       });
 
       logger.log("Created WebContentsView", {
@@ -427,6 +496,7 @@ export function registerWebContentsViewHandlers({
       // ignore
     }
 
+    entry.ownerWebContentsDestroyed = false;
     markSuspended(entry);
 
     logger.log("Suspended WebContentsView", {

@@ -33,6 +33,14 @@ function getWebContentsBridge() {
   return window.cmux?.webContentsView ?? null;
 }
 
+function debugLog(message: string, payload?: Record<string, unknown>) {
+  if (process.env.NODE_ENV === "development") {
+    console.log("[electron-web-contents-view]", message, payload ?? {});
+  } else {
+    console.log("[electron-web-contents-view]", message, payload ?? {});
+  }
+}
+
 function rectToBounds(rect: DOMRect): BoundsPayload {
   return {
     x: Math.round(rect.left),
@@ -41,6 +49,9 @@ function rectToBounds(rect: DOMRect): BoundsPayload {
     height: Math.max(0, Math.round(rect.height)),
   };
 }
+
+const pendingReleases = new Map<string, Promise<void>>();
+const pendingCreates = new Map<string, Promise<void>>();
 
 export function ElectronWebContentsView({
   src,
@@ -51,7 +62,7 @@ export function ElectronWebContentsView({
   borderRadius,
   suspended = false,
   persistKey,
-  retainOnUnmount,
+  retainOnUnmount: _retainOnUnmount,
 }: ElectronWebContentsViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewIdRef = useRef<number | null>(null);
@@ -119,10 +130,52 @@ export function ElectronWebContentsView({
   }, [syncBounds]);
 
   const persistKeyRef = useRef<string | undefined>(persistKey);
-  const retainPreferenceRef = useRef<boolean>(retainOnUnmount ?? persistKey !== undefined);
 
   persistKeyRef.current = persistKey;
-  retainPreferenceRef.current = retainOnUnmount ?? persistKey !== undefined;
+
+  const releaseNativeView = useCallback((id: number, key: string | undefined) => {
+    const bridge = getWebContentsBridge();
+    if (!bridge) return;
+
+    const persistKey = typeof key === "string" && key.length > 0 ? key : undefined;
+
+    debugLog("release-native-view", {
+      id,
+      persistKey,
+    });
+
+    const releaseTask = (async () => {
+      if (typeof bridge.release === "function") {
+        try {
+          debugLog("requesting-release", { id, persistKey });
+          await bridge.release({ id, persist: true });
+          debugLog("release-requested", { id, persistKey });
+          return;
+        } catch (err) {
+          console.warn("Failed to release WebContentsView", err);
+        }
+      }
+
+      try {
+        debugLog("destroying-native-view", { id, persistKey });
+        await bridge.destroy(id);
+      } catch (err) {
+        console.warn("Failed to destroy WebContentsView", err);
+      }
+    })();
+
+    if (persistKey) {
+      const tracked = releaseTask.finally(() => {
+        if (pendingReleases.get(persistKey) === tracked) {
+          pendingReleases.delete(persistKey);
+        }
+      });
+      pendingReleases.set(persistKey, tracked);
+      void tracked.catch(() => undefined);
+    } else {
+      void releaseTask.catch(() => undefined);
+    }
+  }, []);
 
   const releaseView = useCallback(() => {
     cancelScheduledSync();
@@ -131,23 +184,9 @@ export function ElectronWebContentsView({
     viewIdRef.current = null;
     lastSyncRef.current = null;
     lastLoadedSrcRef.current = null;
-    const bridge = getWebContentsBridge();
-    if (!bridge) return;
-
-    const shouldPersist = retainPreferenceRef.current && hasStableAttachmentRef.current;
     hasStableAttachmentRef.current = false;
-
-    if (shouldPersist && typeof bridge.release === "function") {
-      void bridge
-        .release({ id, persist: true })
-        .catch((err) => console.warn("Failed to release WebContentsView", err));
-    } else {
-      void bridge
-        .destroy(id)
-        .catch((err) => console.warn("Failed to destroy WebContentsView", err));
-    }
-
-  }, [cancelScheduledSync]);
+    releaseNativeView(id, persistKeyRef.current);
+  }, [cancelScheduledSync, releaseNativeView]);
 
   useEffect(() => {
     if (!isElectron) return undefined;
@@ -162,44 +201,103 @@ export function ElectronWebContentsView({
     const initialBounds = rectToBounds(container.getBoundingClientRect());
     const { backgroundColor: initialBackground, borderRadius: initialRadius } = latestStyleRef.current;
 
-    void bridge
-      .create({
-        url: latestSrcRef.current,
-        bounds: initialBounds,
-        backgroundColor: initialBackground,
-        borderRadius: initialRadius,
-        persistKey: persistKeyRef.current,
-      })
-      .then((result) => {
-        if (disposed) {
-          void bridge.destroy(result.id).catch(() => undefined);
-          return;
+    const key = persistKeyRef.current;
+    const pendingRelease = key ? pendingReleases.get(key) : undefined;
+    const pendingCreate = key ? pendingCreates.get(key) : undefined;
+
+    const performCreate = async () => {
+      if (pendingCreate) {
+        debugLog("awaiting-pending-create", { persistKey: key });
+        try {
+          await pendingCreate;
+        } catch {
+          // ignore failures from previous create attempts
         }
-        viewIdRef.current = result.id;
-        hasStableAttachmentRef.current = true;
-        const targetUrl = latestSrcRef.current;
-        if (!result.restored) {
-          void bridge
-            .loadURL(result.id, targetUrl)
-            .then(() => {
-              lastLoadedSrcRef.current = targetUrl;
-            })
-            .catch((err) => console.warn("Failed to load URL after create", err));
-        } else {
-          lastLoadedSrcRef.current = targetUrl;
+      }
+
+      if (pendingRelease) {
+        debugLog("awaiting-pending-release", { persistKey: key });
+        try {
+          await pendingRelease;
+        } catch {
+          // ignore pending release failures; we'll attempt to create regardless
         }
-        scheduleBoundsSync();
-      })
-      .catch((err) => {
-        console.error("Failed to create WebContentsView", err);
-        setErrorMessage("Unable to create Electron WebContentsView");
-      });
+      }
+
+      const createTask = (async () => {
+        try {
+          debugLog("creating-native-view", {
+            persistKey: key,
+            url: latestSrcRef.current,
+            bounds: initialBounds,
+          });
+          const result = await bridge.create({
+            url: latestSrcRef.current,
+            bounds: initialBounds,
+            backgroundColor: initialBackground,
+            borderRadius: initialRadius,
+            persistKey: key,
+          });
+
+          if (disposed) {
+            debugLog("create-result-after-dispose", { id: result.id, persistKey: key });
+            releaseNativeView(result.id, persistKeyRef.current);
+            return;
+          }
+          debugLog("create-result", {
+            id: result.id,
+            persistKey: key,
+            restored: result.restored,
+          });
+          viewIdRef.current = result.id;
+          hasStableAttachmentRef.current = true;
+          const targetUrl = latestSrcRef.current;
+          if (!result.restored) {
+            void bridge
+              .loadURL(result.id, targetUrl)
+              .then(() => {
+                debugLog("load-url-complete", {
+                  id: result.id,
+                  persistKey: key,
+                  url: targetUrl,
+                });
+                lastLoadedSrcRef.current = targetUrl;
+              })
+              .catch((err) => console.warn("Failed to load URL after create", err));
+          } else {
+            debugLog("restored-native-view", {
+              id: result.id,
+              persistKey: key,
+              url: targetUrl,
+            });
+            lastLoadedSrcRef.current = targetUrl;
+          }
+          scheduleBoundsSync();
+        } catch (err) {
+          console.error("Failed to create WebContentsView", err);
+          setErrorMessage("Unable to create Electron WebContentsView");
+        }
+      })();
+
+      if (key) {
+        const trackedCreate = createTask.finally(() => {
+          if (pendingCreates.get(key) === trackedCreate) {
+            pendingCreates.delete(key);
+          }
+        });
+        pendingCreates.set(key, trackedCreate);
+      }
+
+      await createTask;
+    };
+
+    void performCreate();
 
     return () => {
       disposed = true;
       releaseView();
     };
-  }, [persistKey, releaseView, scheduleBoundsSync]);
+  }, [persistKey, releaseNativeView, releaseView, scheduleBoundsSync]);
 
   useEffect(() => {
     if (!isElectron) return;
@@ -207,9 +305,15 @@ export function ElectronWebContentsView({
     const id = viewIdRef.current;
     if (!bridge || id === null) return;
     if (lastLoadedSrcRef.current === src) return;
+    debugLog("load-url-request", { id, url: src, persistKey: persistKeyRef.current });
     void bridge
       .loadURL(id, src)
       .then(() => {
+        debugLog("load-url-after-update", {
+          id,
+          persistKey: persistKeyRef.current,
+          url: src,
+        });
         lastLoadedSrcRef.current = src;
       })
       .catch((err) => console.warn("Failed to load URL in WebContentsView", err));

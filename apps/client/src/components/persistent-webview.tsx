@@ -35,14 +35,14 @@ export function PersistentWebView({
   iframeClassName,
   iframeStyle,
   suspended,
-  retainOnUnmount,
+  retainOnUnmount: _retainOnUnmount,
   backgroundColor,
   borderRadius,
   fallback,
   onLoad,
   onError,
 }: PersistentWebViewProps) {
-  const resolvedRetain = retainOnUnmount ?? true;
+  const resolvedRetain = true;
 
   if (isElectron) {
     return (

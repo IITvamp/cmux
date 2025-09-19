@@ -2,7 +2,7 @@ import { useTheme } from "@/components/theme/use-theme";
 import type { StackClientApp } from "@stackframe/react";
 import type { QueryClient } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
-import { createRootRouteWithContext, Outlet } from "@tanstack/react-router";
+import { createRootRouteWithContext, Outlet, useRouterState } from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { useEffect, useState } from "react";
 import { Toaster } from "sonner";
@@ -47,6 +47,19 @@ function DevTools() {
 }
 
 function RootComponent() {
+  const location = useRouterState({
+    select: (state) => state.location,
+  });
+
+  useEffect(() => {
+    console.log("[navigation] location-changed", {
+      pathname: location.pathname,
+      search: location.search,
+      hash: location.hash,
+      timestamp: new Date().toISOString(),
+    });
+  }, [location]);
+
   return (
     <>
       <Outlet />
