@@ -222,11 +222,8 @@ export const DashboardInputControls = memo(function DashboardInputControls({
     scheduleUpdate();
     node.addEventListener("scroll", scheduleUpdate);
 
-    let resizeObserver: ResizeObserver | null = null;
-    if (typeof ResizeObserver === "function") {
-      resizeObserver = new ResizeObserver(() => scheduleUpdate());
-      resizeObserver.observe(node);
-    }
+    const resizeObserver = new ResizeObserver(() => scheduleUpdate());
+    resizeObserver.observe(node);
 
     return () => {
       if (rafId !== null) {
