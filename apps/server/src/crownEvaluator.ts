@@ -5,17 +5,122 @@ import { serverLogger } from "./utils/fileLogger.js";
 import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
 import { workerExec } from "./utils/workerExec.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
-import { getWwwClient } from "./utils/wwwClient.js";
-import {
-  postApiCrownEvaluate,
-  postApiCrownSummarize,
-} from "@cmux/www-openapi-client";
+import { getAuthHeaderJson, getAuthToken } from "./utils/requestContext.js";
+import { env as serverEnv } from "./utils/server-env.js";
+import { z, type ZodTypeAny } from "zod";
 
 const UNKNOWN_AGENT_NAME = "unknown agent";
 
 function getAgentNameOrUnknown(agentName?: string | null): string {
   const trimmed = agentName?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : UNKNOWN_AGENT_NAME;
+}
+
+const CROWN_EVALUATE_PATH = "/api/crown/evaluate";
+const CROWN_SUMMARIZE_PATH = "/api/crown/summarize";
+
+const CrownEvaluationResponseSchema = z.object({
+  winner: z.number().int().min(0),
+  reason: z.string(),
+});
+
+const CrownSummarizationResponseSchema = z.object({
+  summary: z.string(),
+});
+
+async function callConvexCrownEndpoint<TSchema extends ZodTypeAny>(
+  path: string,
+  body: Record<string, unknown>,
+  schema: TSchema
+): Promise<z.infer<TSchema>> {
+  const authHeaderJson = getAuthHeaderJson();
+  if (!authHeaderJson) {
+    throw new Error("No auth header json found for crown endpoint request");
+  }
+
+  const authToken = getAuthToken();
+  if (!authToken) {
+    throw new Error("No auth token found for crown endpoint request");
+  }
+
+  const url = new URL(path, serverEnv.NEXT_PUBLIC_CONVEX_URL).toString();
+
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json",
+        "x-stack-auth": authHeaderJson,
+        Authorization: `Bearer ${authToken}`,
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (error) {
+    throw new Error(
+      `Failed to reach crown endpoint ${path}: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "");
+    throw new Error(
+      `Crown endpoint ${path} failed (${response.status}): ${errorText}`
+    );
+  }
+
+  let json: unknown;
+  try {
+    json = await response.json();
+  } catch (error) {
+    throw new Error(
+      `Failed to parse crown endpoint response from ${path}: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
+  }
+
+  const parsed = schema.safeParse(json);
+  if (!parsed.success) {
+    throw new Error(
+      `Invalid crown endpoint response from ${path}: ${parsed.error.message}`
+    );
+  }
+
+  return parsed.data;
+}
+
+async function callCrownEvaluate(options: {
+  prompt: string;
+  teamSlugOrId: string;
+}) {
+  return callConvexCrownEndpoint(
+    CROWN_EVALUATE_PATH,
+    {
+      prompt: options.prompt,
+      teamSlugOrId: options.teamSlugOrId,
+    },
+    CrownEvaluationResponseSchema
+  );
+}
+
+async function callCrownSummarize(options: {
+  prompt: string;
+  teamSlugOrId?: string;
+}) {
+  const body: Record<string, unknown> = { prompt: options.prompt };
+  if (options.teamSlugOrId) {
+    body.teamSlugOrId = options.teamSlugOrId;
+  }
+
+  return callConvexCrownEndpoint(
+    CROWN_SUMMARIZE_PATH,
+    body,
+    CrownSummarizationResponseSchema
+  );
 }
 
 // Auto PR behavior is controlled via workspace settings in Convex
@@ -409,25 +514,17 @@ export async function evaluateCrown({
 
         let commentText = "";
         try {
-          // Call the crown summarize endpoint
-          const res = await postApiCrownSummarize({
-            client: getWwwClient(),
-            body: {
-              prompt: summarizationPrompt,
-              teamSlugOrId,
-            },
+          const { summary } = await callCrownSummarize({
+            prompt: summarizationPrompt,
+            teamSlugOrId,
           });
-
-          if (!res.data) {
-            serverLogger.error(`[CrownEvaluator] Crown summarize failed`);
-            return;
-          }
-          commentText = res.data.summary;
+          commentText = summary;
         } catch (e) {
           serverLogger.error(
             `[CrownEvaluator] Failed to generate PR summary:`,
             e
           );
+          return;
         }
 
         if (commentText.length > 8000) {
@@ -639,98 +736,28 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
     } catch {
       /* empty */
     }
-    const res = await postApiCrownEvaluate({
-      client: getWwwClient(),
-      body: {
-        prompt: evaluationPrompt,
-        teamSlugOrId,
-      },
+    const evaluation = await callCrownEvaluate({
+      prompt: evaluationPrompt,
+      teamSlugOrId,
     });
 
-    if (!res.data) {
-      serverLogger.error(`[CrownEvaluator] Crown evaluate failed`);
-    }
-    const jsonResponse = res.data;
-
-    if (!jsonResponse) {
-      // Fallback: Pick the first completed run as winner
-      const fallbackWinner = candidateData[0];
-      await getConvex().mutation(api.crown.setCrownWinner, {
-        teamSlugOrId,
-        taskRunId: fallbackWinner.runId,
-        reason: "Selected as fallback winner (evaluation failed)",
-      });
-
-      await getConvex().mutation(api.tasks.updateCrownError, {
-        teamSlugOrId,
-        id: taskId,
-        crownEvaluationError: undefined,
-      });
-
-      serverLogger.info(
-        `[CrownEvaluator] Fallback winner selected: ${fallbackWinner.agentName}`
+    if (evaluation.winner >= candidateData.length) {
+      throw new Error(
+        `Invalid winner index ${evaluation.winner}; ${candidateData.length} candidates available`
       );
-      await generateSystemTaskComment(
-        fallbackWinner.runId,
-        fallbackWinner.gitDiff
-      );
-      await createPullRequestForWinner(
-        fallbackWinner.runId,
-        taskId,
-        githubToken || undefined,
-        teamSlugOrId
-      );
-      return;
     }
 
-    // Validate winner index
-    if (jsonResponse.winner >= candidateData.length) {
-      serverLogger.error(
-        `[CrownEvaluator] Invalid winner index ${jsonResponse.winner}, must be less than ${candidateData.length}`
-      );
-
-      // Fallback: Pick the first completed run as winner
-      const fallbackWinner = candidateData[0];
-      await getConvex().mutation(api.crown.setCrownWinner, {
-        teamSlugOrId,
-        taskRunId: fallbackWinner.runId,
-        reason:
-          "Selected as fallback winner (invalid winner index from evaluator)",
-      });
-
-      await getConvex().mutation(api.tasks.updateCrownError, {
-        teamSlugOrId,
-        id: taskId,
-        crownEvaluationError: undefined,
-      });
-
-      serverLogger.info(
-        `[CrownEvaluator] Fallback winner selected: ${fallbackWinner.agentName}`
-      );
-      await generateSystemTaskComment(
-        fallbackWinner.runId,
-        fallbackWinner.gitDiff
-      );
-      await createPullRequestForWinner(
-        fallbackWinner.runId,
-        taskId,
-        githubToken || undefined,
-        teamSlugOrId
-      );
-      return;
-    }
-
-    const winner = candidateData[jsonResponse.winner];
+    const winner = candidateData[evaluation.winner];
     serverLogger.info(
-      `[CrownEvaluator] WINNER SELECTED: ${winner.agentName} (index ${jsonResponse.winner})`
+      `[CrownEvaluator] WINNER SELECTED: ${winner.agentName} (index ${evaluation.winner})`
     );
-    serverLogger.info(`[CrownEvaluator] Reason: ${jsonResponse.reason}`);
+    serverLogger.info(`[CrownEvaluator] Reason: ${evaluation.reason}`);
 
     // Update the database
     await getConvex().mutation(api.crown.setCrownWinner, {
       teamSlugOrId,
       taskRunId: winner.runId,
-      reason: jsonResponse.reason,
+      reason: evaluation.reason,
     });
 
     // Clear any error

@@ -16,7 +16,6 @@ import {
   sandboxesRouter,
   morphRouter,
   usersRouter,
-  crownRouter,
 } from "@/lib/routes/index";
 import { stackServerApp } from "@/lib/utils/stack";
 import { swaggerUI } from "@hono/swagger-ui";
@@ -104,7 +103,6 @@ app.route("/", githubUserRouter);
 app.route("/", morphRouter);
 app.route("/", environmentsRouter);
 app.route("/", sandboxesRouter);
-app.route("/", crownRouter);
 
 // OpenAPI documentation
 app.doc("/doc", {
