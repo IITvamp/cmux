@@ -673,20 +673,6 @@ export const postApiSandboxesByIdEnv = <ThrowOnError extends boolean = false>(
 };
 
 /**
- * Apply environment variables to a running sandbox
- */
-export const postApiSandboxesByIdEnv = <ThrowOnError extends boolean = false>(options: Options<PostApiSandboxesByIdEnvData, ThrowOnError>) => {
-    return (options.client ?? _heyApiClient).post<PostApiSandboxesByIdEnvResponses, PostApiSandboxesByIdEnvErrors, ThrowOnError>({
-        url: '/api/sandboxes/{id}/env',
-        ...options,
-        headers: {
-            'Content-Type': 'application/json',
-            ...options.headers
-        }
-    });
-};
-
-/**
  * Stop or pause a sandbox instance
  */
 export const postApiSandboxesByIdStop = <ThrowOnError extends boolean = false>(
@@ -740,24 +726,3 @@ export const postApiSandboxesByIdPublishDevcontainer = <
   });
 };
 
-export const postApiCrownSummarize = <ThrowOnError extends boolean = false>(options: Options<PostApiCrownSummarizeData, ThrowOnError>) => {
-    return (options.client ?? _heyApiClient).post<PostApiCrownSummarizeResponses, PostApiCrownSummarizeErrors, ThrowOnError>({
-        url: '/api/crown/summarize',
-        ...options,
-        headers: {
-            'Content-Type': 'application/json',
-            ...options.headers
-        }
-    });
-};
-
-export const postApiCrownEvaluate = <ThrowOnError extends boolean = false>(options: Options<PostApiCrownEvaluateData, ThrowOnError>) => {
-    return (options.client ?? _heyApiClient).post<PostApiCrownEvaluateResponses, PostApiCrownEvaluateErrors, ThrowOnError>({
-        url: '/api/crown/evaluate',
-        ...options,
-        headers: {
-            'Content-Type': 'application/json',
-            ...options.headers
-        }
-    });
-};
