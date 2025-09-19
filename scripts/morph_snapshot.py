@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import atexit
+import hashlib
 import os
 import shlex
 import signal
@@ -20,7 +21,6 @@ from urllib.error import HTTPError, URLError
 
 import dotenv
 from morphcloud.api import MorphCloudClient, Snapshot
-import hashlib
 
 dotenv.load_dotenv()
 
@@ -627,7 +627,7 @@ def ensure_docker(snapshot: Snapshot) -> Snapshot:
     docker_plugin_cmds = [
         "mkdir -p /usr/local/lib/docker/cli-plugins",
         "arch=$(uname -m)",
-        f"[ \"$arch\" = \"{MORPH_EXPECTED_UNAME_ARCH}\" ] || (echo \"Morph snapshot architecture mismatch: expected {MORPH_EXPECTED_UNAME_ARCH} but got $arch\" >&2; exit 1)",
+        f'[ "$arch" = "{MORPH_EXPECTED_UNAME_ARCH}" ] || (echo "Morph snapshot architecture mismatch: expected {MORPH_EXPECTED_UNAME_ARCH} but got $arch" >&2; exit 1)',
         f"curl -fsSL https://github.com/docker/compose/releases/download/{DOCKER_COMPOSE_VERSION}/docker-compose-linux-{MORPH_EXPECTED_UNAME_ARCH} "
         f"-o /usr/local/lib/docker/cli-plugins/docker-compose",
         "chmod +x /usr/local/lib/docker/cli-plugins/docker-compose",
@@ -663,7 +663,7 @@ def build_snapshot(
     disk_size = 32768
     digest_prefix = "cmux"
     # Include lockfile hash to invalidate cache when dependencies change
-    lock_hash = _file_sha256_hex("pnpm-lock.yaml")[:16]
+    lock_hash = _file_sha256_hex("bun.lock")[:16]
     digest = f"{digest_prefix}_{vcpus}_{memory}_{disk_size}_{lock_hash}"
     snapshot = client.snapshots.create(
         vcpus=vcpus,

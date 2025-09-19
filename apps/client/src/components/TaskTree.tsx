@@ -110,6 +110,7 @@ function TaskTreeInner({
             to="/$teamSlugOrId/task/$taskId"
             params={{ teamSlugOrId, taskId: task._id }}
             search={{ runId: undefined }}
+            activeOptions={{ exact: true }}
             className={clsx(
               "flex items-center px-0.5 pt-[2.5px] pb-[3px] text-sm rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default",
               "[&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800"
@@ -405,6 +406,7 @@ function TaskRunTreeInner({
         <Link
           to="/$teamSlugOrId/task/$taskId/run/$runId/vscode"
           params={{ teamSlugOrId, taskId, runId: run._id }}
+          activeOptions={{ exact: true }}
           className={clsx(
             "flex items-center px-2 py-1 text-xs rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default mt-px",
             "[&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800"
@@ -548,6 +550,7 @@ function TaskRunTreeInner({
       <Link
         to="/$teamSlugOrId/task/$taskId/run/$runId/diff"
         params={{ teamSlugOrId, taskId, runId: run._id }}
+        activeOptions={{ exact: true }}
         className={clsx(
           "flex items-center px-2 py-1 text-xs rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default mt-px",
           "[&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800"
@@ -563,6 +566,7 @@ function TaskRunTreeInner({
         <Link
           to="/$teamSlugOrId/task/$taskId/run/$runId/pr"
           params={{ teamSlugOrId, taskId, runId: run._id }}
+          activeOptions={{ exact: true }}
           className={clsx(
             "flex items-center px-2 py-1 text-xs rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default mt-px",
             "[&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800"
@@ -582,6 +586,7 @@ function TaskRunTreeInner({
           <Link
             to="/$teamSlugOrId/task/$taskId/run/$runId/preview/$port"
             params={{ teamSlugOrId, taskId, runId: run._id, port: "5173" }}
+            activeOptions={{ exact: true }}
             className={clsx(
               "flex items-center px-2 pr-10 py-1 text-xs rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default",
               "[&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800"
