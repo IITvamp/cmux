@@ -19,7 +19,14 @@ import { Link, useRouter } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useMutation } from "convex/react";
 import { GitBranch, Image, Mic, Server, X } from "lucide-react";
-import { memo, useCallback, useMemo } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 interface DashboardInputControlsProps {
   projectOptions: SelectOption[];
@@ -184,6 +191,52 @@ export const DashboardInputControls = memo(function DashboardInputControls({
   // Determine OS for potential future UI tweaks
   // const isMac = navigator.userAgent.toUpperCase().indexOf("MAC") >= 0;
 
+  const pillboxScrollRef = useRef<HTMLDivElement | null>(null);
+  const [showPillboxFade, setShowPillboxFade] = useState(false);
+
+  useEffect(() => {
+    const node = pillboxScrollRef.current;
+    if (!node) {
+      setShowPillboxFade(false);
+      return;
+    }
+
+    let rafId: number | null = null;
+
+    const updateFade = () => {
+      rafId = null;
+      const { scrollTop, scrollHeight, clientHeight } = node;
+      const atBottom = scrollTop + clientHeight >= scrollHeight - 1;
+      const hasOverflow = scrollHeight > clientHeight + 1;
+      const shouldShow = hasOverflow && !atBottom;
+      setShowPillboxFade((previous) =>
+        previous === shouldShow ? previous : shouldShow
+      );
+    };
+
+    const scheduleUpdate = () => {
+      if (rafId !== null) return;
+      rafId = window.requestAnimationFrame(updateFade);
+    };
+
+    scheduleUpdate();
+    node.addEventListener("scroll", scheduleUpdate);
+
+    let resizeObserver: ResizeObserver | null = null;
+    if (typeof ResizeObserver === "function") {
+      resizeObserver = new ResizeObserver(() => scheduleUpdate());
+      resizeObserver.observe(node);
+    }
+
+    return () => {
+      if (rafId !== null) {
+        window.cancelAnimationFrame(rafId);
+      }
+      node.removeEventListener("scroll", scheduleUpdate);
+      resizeObserver?.disconnect();
+    };
+  }, [sortedSelectedAgents]);
+
   const handleImageClick = useCallback(() => {
     // Trigger the file select from ImagePlugin
     const lexicalWindow = window as Window & {
@@ -202,9 +255,9 @@ export const DashboardInputControls = memo(function DashboardInputControls({
   );
 
   const agentSelectionFooter = selectedAgents.length ? (
-    <div className="px-3 py-2 bg-neutral-50 dark:bg-neutral-900/70">
-      <div>
-        <div className="relative max-h-32 overflow-y-auto">
+    <div className="bg-neutral-50 dark:bg-neutral-900/70">
+      <div className="relative">
+        <div ref={pillboxScrollRef} className="max-h-32 overflow-y-auto py-2 px-2">
           <div className="flex flex-wrap gap-1">
             {sortedSelectedAgents.map((agent) => {
               const option = agentOptionsByValue.get(agent);
@@ -238,8 +291,10 @@ export const DashboardInputControls = memo(function DashboardInputControls({
               );
             })}
           </div>
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-4 bg-gradient-to-t from-neutral-50/80 via-neutral-50/30 to-transparent dark:from-neutral-900/70 dark:via-neutral-900/20" />
         </div>
+        {showPillboxFade ? (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-neutral-50/60 via-neutral-50/15 to-transparent dark:from-neutral-900/70 dark:via-neutral-900/20" />
+        ) : null}
       </div>
     </div>
   ) : (
