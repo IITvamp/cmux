@@ -139,6 +139,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     pigz \
     xz-utils \
     tmux \
+    htop \
     ripgrep \
     jq \
     && rm -rf /var/lib/apt/lists/*
