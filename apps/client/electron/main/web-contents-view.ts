@@ -201,10 +201,7 @@ export function registerWebContentsViewHandlers({
   logger,
   maxSuspendedEntries: providedMax,
 }: RegisterOptions): void {
-  const resolvedMax = setMaxSuspendedEntries(providedMax);
-  logger.log("Configured suspended WebContentsView limit", {
-    maxSuspendedEntries: resolvedMax,
-  });
+  setMaxSuspendedEntries(providedMax);
 
   ipcMain.handle("cmux:webcontents:create", async (event, rawOptions: CreateOptions) => {
     try {
@@ -266,13 +263,6 @@ export function registerWebContentsViewHandlers({
 
           sender.once("destroyed", () => {
             cleanupViewsForWindow(win.id);
-          });
-
-          logger.log("Restored WebContentsView", {
-            id: candidate.id,
-            windowId: win.id,
-            senderId: sender.id,
-            persistKey,
           });
 
           return { id: candidate.id, webContentsId: candidate.view.webContents.id, restored: true };
@@ -422,12 +412,6 @@ export function registerWebContentsViewHandlers({
     }
 
     markSuspended(entry);
-
-    logger.log("Suspended WebContentsView", {
-      id,
-      persistKey: entry.persistKey,
-      webContentsId: entry.view.webContents.id,
-    });
 
     evictExcessSuspended(logger);
 
