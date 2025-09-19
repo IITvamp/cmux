@@ -69,10 +69,14 @@ function TaskTreeInner({
 }: TaskTreeProps) {
   // Get the current route to determine if this task is selected
   const location = useLocation();
-  const isTaskSelected = useMemo(
-    () => location.pathname.includes(`/task/${task._id}`),
-    [location.pathname, task._id]
-  );
+  const selectedRunId = useMemo(() => {
+    const match = location.pathname.match(/run\/([^/]+)/);
+    return match?.[1] ?? null;
+  }, [location.pathname]);
+  const isTaskSelected = useMemo(() => {
+    if (selectedRunId) return false;
+    return location.pathname.includes(`/task/${task._id}`);
+  }, [location.pathname, task._id, selectedRunId]);
 
   // Default to collapsed unless this task is selected or flagged to expand
   const [isExpanded, setIsExpanded] = useState<boolean>(
@@ -111,15 +115,16 @@ function TaskTreeInner({
             params={{ teamSlugOrId, taskId: task._id }}
             search={{ runId: undefined }}
             className={clsx(
-              "flex items-center px-0.5 pt-[2.5px] pb-[3px] text-sm rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default",
-              "[&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800"
+              "flex items-center px-0.5 pt-[2.5px] pb-[3px] text-sm rounded-sm hover:bg-neutral-200/45 dark:hover:bg-neutral-800/45 cursor-default",
+              !selectedRunId &&
+                "[&.active]:bg-neutral-200/75 dark:[&.active]:bg-neutral-800/65"
             )}
             style={{ paddingLeft: `${4 + level * 16}px` }}
           >
             <button
               onClick={handleToggle}
               className={clsx(
-                "size-4.5 mr-1.5 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-[5px] grid place-content-center cursor-default",
+                "size-4.5 mr-1.5 grid place-content-center rounded cursor-default hover:bg-neutral-200/45 dark:hover:bg-neutral-800/45",
                 !hasRuns && "invisible"
               )}
               style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
@@ -282,6 +287,7 @@ function TaskRunTreeInner({
   branch,
   teamSlugOrId,
 }: TaskRunTreeProps) {
+  const location = useLocation();
   const [isExpanded, setIsExpanded] = useState(true);
   const hasChildren = run.children.length > 0;
 
@@ -345,14 +351,16 @@ function TaskRunTreeInner({
         )}
         <div
           className={clsx(
-            "group flex items-center px-2 pr-10 py-1 text-xs rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default"
+            "group flex items-center px-2 pr-10 py-1 text-xs rounded-sm hover:bg-neutral-200/45 dark:hover:bg-neutral-800/45 cursor-default",
+            location.pathname.includes(`/run/${run._id}`) &&
+              "bg-neutral-200/75 dark:bg-neutral-800/65"
           )}
           style={{ paddingLeft: `${8 + level * 16}px` }}
         >
           <button
             onClick={handleToggle}
             className={clsx(
-              "w-4 h-4 mr-1.5 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded cursor-default",
+              "w-4 h-4 mr-1.5 rounded cursor-default hover:bg-neutral-200/45 dark:hover:bg-neutral-800/45",
               !hasChildren && "invisible"
             )}
             style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
@@ -394,7 +402,7 @@ function TaskRunTreeInner({
             worktreePath={run.worktreePath}
             branch={run.newBranch}
             networking={run.networking}
-            className="bg-neutral-100/80 dark:bg-neutral-700/80 hover:bg-neutral-200/80 dark:hover:bg-neutral-600/80 text-neutral-600 dark:text-neutral-400"
+            className="bg-neutral-200/45 dark:bg-neutral-800/45 text-neutral-600 dark:text-neutral-400"
             iconClassName="w-2.5 h-2.5"
           />
         </div>
@@ -406,8 +414,9 @@ function TaskRunTreeInner({
           to="/$teamSlugOrId/task/$taskId/run/$runId/vscode"
           params={{ teamSlugOrId, taskId, runId: run._id }}
           className={clsx(
-            "flex items-center px-2 py-1 text-xs rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default mt-px",
-            "[&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800"
+            "flex items-center px-2 py-1 text-xs rounded-sm hover:bg-neutral-200/45 dark:hover:bg-neutral-800/45 cursor-default mt-px",
+            location.pathname.includes(`/run/${run._id}/vscode`) &&
+              "bg-neutral-200/75 dark:bg-neutral-800/65"
           )}
           style={{ paddingLeft: `${24 + (level + 1) * 16}px` }}
         >
@@ -547,11 +556,12 @@ function TaskRunTreeInner({
       {/* Diff link as a separate tree item */}
       <Link
         to="/$teamSlugOrId/task/$taskId/run/$runId/diff"
-        params={{ teamSlugOrId, taskId, runId: run._id }}
-        className={clsx(
-          "flex items-center px-2 py-1 text-xs rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default mt-px",
-          "[&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800"
-        )}
+          params={{ teamSlugOrId, taskId, runId: run._id }}
+          className={clsx(
+            "flex items-center px-2 py-1 text-xs rounded-sm hover:bg-neutral-200/45 dark:hover:bg-neutral-800/45 cursor-default mt-px",
+            location.pathname.includes(`/run/${run._id}/diff`) &&
+              "bg-neutral-200/75 dark:bg-neutral-800/65"
+          )}
         style={{ paddingLeft: `${24 + (level + 1) * 16}px` }}
       >
         <GitCompare className="w-3 h-3 mr-2 text-neutral-400" />
@@ -564,8 +574,9 @@ function TaskRunTreeInner({
           to="/$teamSlugOrId/task/$taskId/run/$runId/pr"
           params={{ teamSlugOrId, taskId, runId: run._id }}
           className={clsx(
-            "flex items-center px-2 py-1 text-xs rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default mt-px",
-            "[&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800"
+            "flex items-center px-2 py-1 text-xs rounded-sm hover:bg-neutral-200/45 dark:hover:bg-neutral-800/45 cursor-default mt-px",
+            location.pathname.includes(`/run/${run._id}/pr`) &&
+              "bg-neutral-200/75 dark:bg-neutral-800/65"
           )}
           style={{ paddingLeft: `${24 + (level + 1) * 16}px` }}
         >
@@ -583,8 +594,9 @@ function TaskRunTreeInner({
             to="/$teamSlugOrId/task/$taskId/run/$runId/preview/$port"
             params={{ teamSlugOrId, taskId, runId: run._id, port: "5173" }}
             className={clsx(
-              "flex items-center px-2 pr-10 py-1 text-xs rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default",
-              "[&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800"
+              "flex items-center px-2 pr-10 py-1 text-xs rounded-sm hover:bg-neutral-200/45 dark:hover:bg-neutral-800/45 cursor-default",
+              location.pathname.includes(`/run/${run._id}/preview`) &&
+                "bg-neutral-200/75 dark:bg-neutral-800/65"
             )}
             style={{ paddingLeft: `${24 + (level + 1) * 16}px` }}
             onClick={(e) => {
