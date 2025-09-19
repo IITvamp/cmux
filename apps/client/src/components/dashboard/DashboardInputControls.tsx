@@ -88,12 +88,40 @@ export const DashboardInputControls = memo(function DashboardInputControls({
       if (lower.startsWith("opencode/")) return "opencode";
       return "other";
     };
-    return AGENT_CONFIGS.map((agent) => {
+    const providerOrder = [
+      "claude",
+      "openai",
+      "gemini",
+      "opencode",
+      "amp",
+      "cursor",
+      "kimi",
+      "glm",
+      "grok",
+      "qwen",
+      "other",
+    ] as const;
+    const shortName = (label: string): string => {
+      const slashIndex = label.indexOf("/");
+      return slashIndex >= 0 ? label.slice(slashIndex + 1) : label;
+    };
+    const sortedAgents = [...AGENT_CONFIGS].sort((a, b) => {
+      const vendorA = vendorKey(a.name);
+      const vendorB = vendorKey(b.name);
+      const rankA = providerOrder.indexOf(vendorA as typeof providerOrder[number]);
+      const rankB = providerOrder.indexOf(vendorB as typeof providerOrder[number]);
+      const safeRankA = rankA === -1 ? providerOrder.length : rankA;
+      const safeRankB = rankB === -1 ? providerOrder.length : rankB;
+      if (safeRankA !== safeRankB) return safeRankA - safeRankB;
+      return a.name.localeCompare(b.name);
+    });
+    return sortedAgents.map((agent) => {
       const status = providerStatusMap.get(agent.name);
       const missingRequirements = status?.missingRequirements ?? [];
       const isAvailable = status?.isAvailable ?? true;
       return {
         label: agent.name,
+        displayLabel: shortName(agent.name),
         value: agent.name,
         icon: <AgentLogo agentName={agent.name} className="w-4 h-4" />,
         iconKey: vendorKey(agent.name),
@@ -128,12 +156,31 @@ export const DashboardInputControls = memo(function DashboardInputControls({
   }, [handleOpenSettings, providerStatusMap]);
 
   const agentOptionsByValue = useMemo(() => {
-    const map = new Map<string, SelectOptionObject>();
+    const map = new Map<string, SelectOptionObject & { displayLabel?: string }>();
     for (const option of agentOptions) {
       map.set(option.value, option);
     }
     return map;
   }, [agentOptions]);
+  const sortedSelectedAgents = useMemo(() => {
+    const vendorOrder = new Map<string, number>();
+    agentOptions.forEach((option, index) => {
+      const vendor = option.iconKey ?? "other";
+      if (!vendorOrder.has(vendor)) vendorOrder.set(vendor, index);
+    });
+    return [...selectedAgents].sort((a, b) => {
+      const optionA = agentOptionsByValue.get(a);
+      const optionB = agentOptionsByValue.get(b);
+      const vendorA = optionA?.iconKey ?? "other";
+      const vendorB = optionB?.iconKey ?? "other";
+      const rankA = vendorOrder.get(vendorA) ?? Number.MAX_SAFE_INTEGER;
+      const rankB = vendorOrder.get(vendorB) ?? Number.MAX_SAFE_INTEGER;
+      if (rankA !== rankB) return rankA - rankB;
+      const labelA = optionA?.displayLabel ?? optionA?.label ?? a;
+      const labelB = optionB?.displayLabel ?? optionB?.label ?? b;
+      return labelA.localeCompare(labelB);
+    });
+  }, [agentOptions, agentOptionsByValue, selectedAgents]);
   // Determine OS for potential future UI tweaks
   // const isMac = navigator.userAgent.toUpperCase().indexOf("MAC") >= 0;
 
@@ -156,32 +203,43 @@ export const DashboardInputControls = memo(function DashboardInputControls({
 
   const agentSelectionFooter = selectedAgents.length ? (
     <div className="px-3 py-2 bg-neutral-50 dark:bg-neutral-900/70">
-      <div className="flex flex-wrap gap-1.5">
-        {selectedAgents.map((agent) => {
-          const option = agentOptionsByValue.get(agent);
-          const label = option?.label ?? agent;
-          return (
-            <button
-              key={agent}
-              type="button"
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                handleAgentRemove(agent);
-              }}
-              className="inline-flex items-center gap-1 rounded-full bg-neutral-200 dark:bg-neutral-800/80 px-2 py-1 text-[12px] text-neutral-700 dark:text-neutral-200 hover:bg-neutral-300 dark:hover:bg-neutral-700 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60"
-            >
-              {option?.icon ? (
-                <span className="inline-flex h-3.5 w-3.5 items-center justify-center">
-                  {option.icon}
-                </span>
-              ) : null}
-              <span className="max-w-[140px] truncate text-left">{label}</span>
-              <X className="h-3 w-3" aria-hidden="true" />
-              <span className="sr-only">Remove {label}</span>
-            </button>
-          );
-        })}
+      <div>
+        <div className="relative max-h-32 overflow-y-auto">
+          <div className="flex flex-wrap gap-1">
+            {sortedSelectedAgents.map((agent) => {
+              const option = agentOptionsByValue.get(agent);
+              const label = option?.displayLabel ?? option?.label ?? agent;
+              return (
+                <div
+                  key={agent}
+                  className="inline-flex items-center gap-1 rounded-full bg-neutral-200 dark:bg-neutral-800/80 px-2 py-1 text-[11px] text-neutral-700 dark:text-neutral-200 transition-colors"
+                >
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      handleAgentRemove(agent);
+                    }}
+                    className="inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors hover:bg-neutral-300 dark:hover:bg-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60"
+                  >
+                    <X className="h-3 w-3" aria-hidden="true" />
+                    <span className="sr-only">Remove {label}</span>
+                  </button>
+                  {option?.icon ? (
+                    <span className="inline-flex h-3.5 w-3.5 items-center justify-center">
+                      {option.icon}
+                    </span>
+                  ) : null}
+                  <span className="max-w-[118px] truncate text-left select-none">
+                    {label}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-4 bg-gradient-to-t from-neutral-50/80 via-neutral-50/30 to-transparent dark:from-neutral-900/70 dark:via-neutral-900/20" />
+        </div>
       </div>
     </div>
   ) : (
