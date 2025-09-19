@@ -131,11 +131,13 @@ const cmuxAPI = {
       url: string;
       bounds?: RectanglePayload;
       backgroundColor?: string;
+      borderRadius?: number;
+      persistKey?: string;
     }) =>
       ipcRenderer.invoke(
         "cmux:webcontents:create",
         options
-      ) as Promise<{ id: number; webContentsId: number }>,
+      ) as Promise<{ id: number; webContentsId: number; restored: boolean }>,
     setBounds: (options: { id: number; bounds: RectanglePayload; visible?: boolean }) =>
       ipcRenderer.invoke(
         "cmux:webcontents:set-bounds",
@@ -143,6 +145,11 @@ const cmuxAPI = {
       ) as Promise<{ ok: boolean }>,
     loadURL: (id: number, url: string) =>
       ipcRenderer.invoke("cmux:webcontents:load-url", { id, url }) as Promise<{ ok: boolean }>,
+    release: (options: { id: number; persist?: boolean }) =>
+      ipcRenderer.invoke(
+        "cmux:webcontents:release",
+        options
+      ) as Promise<{ ok: boolean; suspended: boolean }>,
     destroy: (id: number) =>
       ipcRenderer.invoke("cmux:webcontents:destroy", id) as Promise<{ ok: boolean }>,
     updateStyle: (options: { id: number; backgroundColor?: string; borderRadius?: number }) =>

@@ -40,6 +40,18 @@ import { env } from "./electron-main-env";
 const PARTITION = "persist:cmux";
 const APP_HOST = "cmux.local";
 
+function resolveMaxSuspendedWebContents(): number | undefined {
+  const raw =
+    process.env.CMUX_ELECTRON_MAX_SUSPENDED_WEBVIEWS ??
+    process.env.CMUX_ELECTRON_MAX_SUSPENDED_WEB_CONTENTS;
+  if (!raw) return undefined;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || Number.isNaN(parsed) || parsed < 0) {
+    return undefined;
+  }
+  return parsed;
+}
+
 let rendererLoaded = false;
 let pendingProtocolUrl: string | null = null;
 let mainWindow: BrowserWindow | null = null;
@@ -423,6 +435,7 @@ app.whenReady().then(async () => {
       warn: mainWarn,
       error: mainError,
     },
+    maxSuspendedEntries: resolveMaxSuspendedWebContents(),
   });
 
   // Ensure macOS menu and About panel use "cmux" instead of package.json name

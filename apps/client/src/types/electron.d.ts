@@ -32,13 +32,17 @@ interface CmuxWebContentsViewAPI {
     bounds?: CmuxRectangle;
     backgroundColor?: string;
     borderRadius?: number;
+    persistKey?: string;
   }) => Promise<
-    { id: number; webContentsId: number }
+    { id: number; webContentsId: number; restored: boolean }
   >;
   setBounds: (options: { id: number; bounds: CmuxRectangle; visible?: boolean }) => Promise<
     { ok: boolean }
   >;
   loadURL: (id: number, url: string) => Promise<{ ok: boolean }>;
+  release: (options: { id: number; persist?: boolean }) => Promise<
+    { ok: boolean; suspended: boolean }
+  >;
   destroy: (id: number) => Promise<{ ok: boolean }>;
   updateStyle: (options: {
     id: number;

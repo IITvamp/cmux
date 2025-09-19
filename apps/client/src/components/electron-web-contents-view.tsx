@@ -12,6 +12,8 @@ interface ElectronWebContentsViewProps {
   fallback?: ReactNode;
   borderRadius?: number;
   suspended?: boolean;
+  persistKey?: string;
+  retainOnUnmount?: boolean;
 }
 
 interface BoundsPayload {
@@ -48,6 +50,8 @@ export function ElectronWebContentsView({
   fallback,
   borderRadius,
   suspended = false,
+  persistKey,
+  retainOnUnmount,
 }: ElectronWebContentsViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewIdRef = useRef<number | null>(null);
@@ -119,20 +123,52 @@ export function ElectronWebContentsView({
     });
   }, [syncBounds]);
 
-  const destroyView = useCallback(() => {
-    cancelScheduledSync();
-    const id = viewIdRef.current;
-    if (id === null) return;
-    viewIdRef.current = null;
-    lastSyncRef.current = null;
-    const bridge = getWebContentsBridge();
-    if (!bridge) return;
-    void bridge
-      .destroy(id)
-      .catch((err) => {
-        console.warn("Failed to destroy WebContentsView", err);
-      });
-  }, [cancelScheduledSync]);
+  const persistKeyRef = useRef<string | undefined>(persistKey);
+  const retainOnUnmountRef = useRef<boolean>(retainOnUnmount ?? persistKey !== undefined);
+  const skipInitialLoadRef = useRef<boolean>(false);
+
+  persistKeyRef.current = persistKey;
+  retainOnUnmountRef.current = retainOnUnmount ?? persistKey !== undefined;
+
+  const releaseView = useCallback(
+    (options?: { persist?: boolean }) => {
+      cancelScheduledSync();
+      const id = viewIdRef.current;
+      if (id === null) return;
+      viewIdRef.current = null;
+      lastSyncRef.current = null;
+      skipInitialLoadRef.current = false;
+      const bridge = getWebContentsBridge();
+      if (!bridge) return;
+      const persistFlag = options?.persist ?? retainOnUnmountRef.current;
+      const releaseFn = typeof bridge.release === "function" ? bridge.release : null;
+      if (releaseFn) {
+        void releaseFn({ id, persist: persistFlag }).catch((err) => {
+          console.warn(
+            persistFlag
+              ? "Failed to release WebContentsView"
+              : "Failed to dispose WebContentsView",
+            err
+          );
+        });
+        return;
+      }
+      if (!persistFlag) {
+        void bridge
+          .destroy(id)
+          .catch((err) => {
+            console.warn("Failed to destroy WebContentsView", err);
+          });
+        return;
+      }
+      void bridge
+        .destroy(id)
+        .catch((err) => {
+          console.warn("Failed to destroy WebContentsView", err);
+        });
+    },
+    [cancelScheduledSync]
+  );
 
   // Mount/unmount lifecycle for the native view.
   useEffect(() => {
@@ -155,6 +191,7 @@ export function ElectronWebContentsView({
         bounds: initialBounds,
         backgroundColor: initialBackground,
         borderRadius: initialRadius,
+        persistKey: persistKeyRef.current,
       })
       .then((result) => {
         if (disposed) {
@@ -162,6 +199,7 @@ export function ElectronWebContentsView({
           return;
         }
         viewIdRef.current = result.id;
+        skipInitialLoadRef.current = Boolean(result.restored);
         scheduleBoundsSync();
       })
       .catch((err) => {
@@ -171,9 +209,9 @@ export function ElectronWebContentsView({
 
     return () => {
       disposed = true;
-      destroyView();
+      releaseView();
     };
-  }, [destroyView, scheduleBoundsSync]);
+  }, [releaseView, scheduleBoundsSync]);
 
   // React to src changes without recreating the native view.
   useEffect(() => {
@@ -181,6 +219,10 @@ export function ElectronWebContentsView({
     const bridge = getWebContentsBridge();
     const id = viewIdRef.current;
     if (!bridge || id === null) return;
+    if (skipInitialLoadRef.current) {
+      skipInitialLoadRef.current = false;
+      return;
+    }
     void bridge
       .loadURL(id, src)
       .catch((err) => {

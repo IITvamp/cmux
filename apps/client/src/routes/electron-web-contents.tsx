@@ -127,6 +127,8 @@ function LayoutPlayground() {
                 className="h-full w-full"
                 backgroundColor="#ffffff"
                 borderRadius={borderRadius}
+                persistKey="layout-playground"
+                retainOnUnmount
               />
             </div>
           </div>
@@ -398,6 +400,8 @@ function MiniBrowser() {
                 key={tab.id}
                 src={tab.url}
                 suspended={!isActive}
+                persistKey={tab.id}
+                retainOnUnmount
                 className={cn(
                   "absolute inset-0 h-full w-full transition-opacity duration-200",
                   isActive ? "opacity-100" : "opacity-0"
