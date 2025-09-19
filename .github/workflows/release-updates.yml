@@ -89,16 +89,25 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          artifacts=(dist-electron/*.dmg dist-electron/*.zip dist-electron/latest-*.yml dist-electron/*.blockmap)
+          artifacts=(
+            dist-electron/*.dmg
+            dist-electron/*.zip
+            dist-electron/latest-*.yml
+            dist-electron/*.blockmap
+          )
           if [[ ${#artifacts[@]} -eq 0 ]]; then
             echo "No notarized macOS x64 artifacts found in dist-electron" >&2
             exit 1
           fi
-          cmd=(bunx electron-builder publish --config electron-builder.json --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}" --config.publish.draft=false)
+          release_tag="${{ github.event.release.tag_name }}"
+          if [[ -z "$release_tag" ]]; then
+            release_tag="${GITHUB_REF##*/}"
+          fi
+          repo="${{ github.repository }}"
           for artifact in "${artifacts[@]}"; do
-            cmd+=(--files "$artifact")
+            echo "Uploading $artifact to $repo@$release_tag"
+            gh release upload "$release_tag" "$artifact" --repo "$repo" --clobber
           done
-          "${cmd[@]}"
 
   mac-arm64:
     name: macOS arm64
@@ -167,16 +176,25 @@ jobs:
         run: |
           set -euo pipefail
           shopt -s nullglob
-          artifacts=(dist-electron/*.dmg dist-electron/*.zip dist-electron/latest-*.yml dist-electron/*.blockmap)
+          artifacts=(
+            dist-electron/*.dmg
+            dist-electron/*.zip
+            dist-electron/latest-*.yml
+            dist-electron/*.blockmap
+          )
           if [[ ${#artifacts[@]} -eq 0 ]]; then
             echo "No notarized macOS arm64 artifacts found in dist-electron" >&2
             exit 1
           fi
-          cmd=(bunx electron-builder publish --config electron-builder.json --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}" --config.publish.draft=false)
+          release_tag="${{ github.event.release.tag_name }}"
+          if [[ -z "$release_tag" ]]; then
+            release_tag="${GITHUB_REF##*/}"
+          fi
+          repo="${{ github.repository }}"
           for artifact in "${artifacts[@]}"; do
-            cmd+=(--files "$artifact")
+            echo "Uploading $artifact to $repo@$release_tag"
+            gh release upload "$release_tag" "$artifact" --repo "$repo" --clobber
           done
-          "${cmd[@]}"
 
   windows-x64:
     name: Windows x64
@@ -214,8 +232,12 @@ jobs:
       - name: Build & publish Windows x64 to GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
+          PUBLISH_FLAG: ${{ github.event_name == 'release' && 'always' || 'never' }}
         working-directory: apps/client
-        run: bunx electron-vite build -c electron.vite.config.ts && bunx electron-builder --config electron-builder.json --win --x64 --publish always --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
+        run: |
+          set -euo pipefail
+          bunx electron-vite build -c electron.vite.config.ts
+          bunx electron-builder --config electron-builder.json --win --x64 --publish "$PUBLISH_FLAG" --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
 
   linux-x64:
     name: Linux x64
@@ -250,5 +272,9 @@ jobs:
       - name: Build & publish Linux AppImage x64 to GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
+          PUBLISH_FLAG: ${{ github.event_name == 'release' && 'always' || 'never' }}
         working-directory: apps/client
-        run: bunx electron-vite build -c electron.vite.config.ts && bunx electron-builder --config electron-builder.json --linux AppImage --x64 --publish always --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
+        run: |
+          set -euo pipefail
+          bunx electron-vite build -c electron.vite.config.ts
+          bunx electron-builder --config electron-builder.json --linux AppImage --x64 --publish "$PUBLISH_FLAG" --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"

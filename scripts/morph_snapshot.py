@@ -598,6 +598,25 @@ WantedBy=multi-user.target
         )
 
 
+def ensure_docker_cli_plugins(snapshot: Snapshot) -> Snapshot:
+    """Install docker compose/buildx CLI plugins and verify versions."""
+
+    docker_plugin_cmds = [
+        "mkdir -p /usr/local/lib/docker/cli-plugins",
+        "arch=$(uname -m)",
+        f'[ "$arch" = "{MORPH_EXPECTED_UNAME_ARCH}" ] || (echo "Morph snapshot architecture mismatch: expected {MORPH_EXPECTED_UNAME_ARCH} but got $arch" >&2; exit 1)',
+        f"curl -fsSL https://github.com/docker/compose/releases/download/{DOCKER_COMPOSE_VERSION}/docker-compose-linux-{MORPH_EXPECTED_UNAME_ARCH} "
+        f"-o /usr/local/lib/docker/cli-plugins/docker-compose",
+        "chmod +x /usr/local/lib/docker/cli-plugins/docker-compose",
+        f"curl -fsSL https://github.com/docker/buildx/releases/download/{DOCKER_BUILDX_VERSION}/buildx-{DOCKER_BUILDX_VERSION}.linux-amd64 "
+        f"-o /usr/local/lib/docker/cli-plugins/docker-buildx",
+        "chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx",
+        "docker compose version",
+        "docker buildx version",
+    ]
+    return snapshot.exec(" && ".join(docker_plugin_cmds))
+
+
 def ensure_docker(snapshot: Snapshot) -> Snapshot:
     """Install Docker, docker compose, and enable BuildKit."""
     snapshot = snapshot.setup(
@@ -624,20 +643,7 @@ def ensure_docker(snapshot: Snapshot) -> Snapshot:
         "(docker compose version 2>/dev/null || echo 'docker compose plugin not available') && "
         "echo 'Docker commands verified'"
     )
-    docker_plugin_cmds = [
-        "mkdir -p /usr/local/lib/docker/cli-plugins",
-        "arch=$(uname -m)",
-        f'[ "$arch" = "{MORPH_EXPECTED_UNAME_ARCH}" ] || (echo "Morph snapshot architecture mismatch: expected {MORPH_EXPECTED_UNAME_ARCH} but got $arch" >&2; exit 1)',
-        f"curl -fsSL https://github.com/docker/compose/releases/download/{DOCKER_COMPOSE_VERSION}/docker-compose-linux-{MORPH_EXPECTED_UNAME_ARCH} "
-        f"-o /usr/local/lib/docker/cli-plugins/docker-compose",
-        "chmod +x /usr/local/lib/docker/cli-plugins/docker-compose",
-        f"curl -fsSL https://github.com/docker/buildx/releases/download/{DOCKER_BUILDX_VERSION}/buildx-{DOCKER_BUILDX_VERSION}.linux-amd64 "
-        f"-o /usr/local/lib/docker/cli-plugins/docker-buildx",
-        "chmod +x /usr/local/lib/docker/cli-plugins/docker-buildx",
-        "docker compose version",
-        "docker buildx version",
-    ]
-    snapshot = snapshot.exec(" && ".join(docker_plugin_cmds))
+    snapshot = ensure_docker_cli_plugins(snapshot)
     # Ensure IPv6 localhost resolution
     snapshot = snapshot.exec("echo '::1       localhost' >> /etc/hosts")
     return snapshot
@@ -676,6 +682,8 @@ def build_snapshot(
         parser = DockerfileParser(f.read())
     executor = MorphDockerfileExecutor(snapshot)
     final_snapshot = executor.execute(parser.parse())
+    # Ensure Morph-provisioned Docker CLI plugins are in place after Dockerfile commands.
+    final_snapshot = ensure_docker_cli_plugins(final_snapshot)
     return final_snapshot
 
 
