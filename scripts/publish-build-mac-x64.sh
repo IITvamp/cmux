@@ -219,106 +219,98 @@ bash "$ROOT_DIR/scripts/publish-prepare-macos-entitlements.sh" || true
 
 # Detect presence of signing + notarization secrets (mirror GH workflow)
 echo "==> Detecting signing environment"
-HAS_SIGNING=true
+declare -a MISSING_SIGNING_VARS=()
 for k in MAC_CERT_BASE64 MAC_CERT_PASSWORD APPLE_API_KEY APPLE_API_KEY_ID APPLE_API_ISSUER; do
-  if [[ -z "${!k:-}" ]]; then HAS_SIGNING=false; fi
+  if [[ -z "${!k:-}" ]]; then MISSING_SIGNING_VARS+=("$k"); fi
 done
 
-if [[ "$HAS_SIGNING" == "true" ]]; then
-  echo "==> Signing inputs detected; preparing certificate and Apple API key"
-  TMPDIR_CERT="$(mktemp -d)"
-  CERT_PATH="$TMPDIR_CERT/mac_signing_cert.p12"
-  node -e "process.stdout.write(Buffer.from(process.env.MAC_CERT_BASE64,'base64'))" > "$CERT_PATH"
-  export CSC_LINK="$CERT_PATH"
-  export CSC_KEY_PASSWORD="${CSC_KEY_PASSWORD:-$MAC_CERT_PASSWORD}"
+if (( ${#MISSING_SIGNING_VARS[@]} > 0 )); then
+  echo "Missing signing/notarization environment variables: ${MISSING_SIGNING_VARS[*]}" >&2
+  echo "All signing inputs are required; aborting." >&2
+  exit 1
+fi
 
-  # Prepare Apple API key for notarytool: ensure APPLE_API_KEY is a readable file path
-  prepare_apple_api_key_file
+echo "==> Signing inputs detected; preparing certificate and Apple API key"
+TMPDIR_CERT="$(mktemp -d)"
+CERT_PATH="$TMPDIR_CERT/mac_signing_cert.p12"
+node -e "process.stdout.write(Buffer.from(process.env.MAC_CERT_BASE64,'base64'))" > "$CERT_PATH"
+export CSC_LINK="$CERT_PATH"
+export CSC_KEY_PASSWORD="${CSC_KEY_PASSWORD:-$MAC_CERT_PASSWORD}"
 
-  echo "==> Packaging (signed; built-in notarize disabled due to macOS 15 notarytool JSON issue)"
-  export DEBUG="${DEBUG:-electron-osx-sign*,electron-notarize*}"
-  # Ensure entitlements exist right before packaging
-  (cd "$CLIENT_DIR" && \
-    bunx electron-builder \
-      --config electron-builder.json \
-      --mac dmg zip --x64 \
-      --publish never \
-      --config.mac.forceCodeSigning=true \
-      --config.mac.entitlements="$ENTITLEMENTS" \
-      --config.mac.entitlementsInherit="$ENTITLEMENTS" \
-      --config.mac.notarize=false)
-  echo "==> Manually notarizing with xcrun notarytool (workaround)"
-  # Build authentication args for notarytool
-  NOTARY_ARGS=( )
-  if [[ -n "${APPLE_API_KEY:-}" || -n "${APPLE_API_KEY_ID:-}" || -n "${APPLE_API_ISSUER:-}" ]]; then
-    # Ensure APPLE_API_KEY is a file path (prepared above)
-    NOTARY_ARGS+=( "--key" "${APPLE_API_KEY}" "--key-id" "${APPLE_API_KEY_ID}" "--issuer" "${APPLE_API_ISSUER}" )
-  elif [[ -n "${APPLE_ID:-}" || -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" || -n "${APPLE_TEAM_ID:-}" ]]; then
-    NOTARY_ARGS+=( "--apple-id" "${APPLE_ID}" "--password" "${APPLE_APP_SPECIFIC_PASSWORD}" "--team-id" "${APPLE_TEAM_ID}" )
-  elif [[ -n "${APPLE_KEYCHAIN_PROFILE:-}" ]]; then
-    if [[ -n "${APPLE_KEYCHAIN:-}" ]]; then
-      NOTARY_ARGS+=( "--keychain" "${APPLE_KEYCHAIN}" "--keychain-profile" "${APPLE_KEYCHAIN_PROFILE}" )
-    else
-      NOTARY_ARGS+=( "--keychain-profile" "${APPLE_KEYCHAIN_PROFILE}" )
-    fi
+# Prepare Apple API key for notarytool: ensure APPLE_API_KEY is a readable file path
+prepare_apple_api_key_file
+
+echo "==> Packaging (signed; built-in notarize disabled due to macOS 15 notarytool JSON issue)"
+export DEBUG="${DEBUG:-electron-osx-sign*,electron-notarize*}"
+# Ensure entitlements exist right before packaging
+(cd "$CLIENT_DIR" && \
+  bunx electron-builder \
+    --config electron-builder.json \
+    --mac dmg zip --x64 \
+    --publish never \
+    --config.mac.forceCodeSigning=true \
+    --config.mac.entitlements="$ENTITLEMENTS" \
+    --config.mac.entitlementsInherit="$ENTITLEMENTS" \
+    --config.mac.notarize=false)
+echo "==> Manually notarizing with xcrun notarytool (workaround)"
+# Build authentication args for notarytool
+NOTARY_ARGS=( )
+if [[ -n "${APPLE_API_KEY:-}" || -n "${APPLE_API_KEY_ID:-}" || -n "${APPLE_API_ISSUER:-}" ]]; then
+  # Ensure APPLE_API_KEY is a file path (prepared above)
+  NOTARY_ARGS+=( "--key" "${APPLE_API_KEY}" "--key-id" "${APPLE_API_KEY_ID}" "--issuer" "${APPLE_API_ISSUER}" )
+elif [[ -n "${APPLE_ID:-}" || -n "${APPLE_APP_SPECIFIC_PASSWORD:-}" || -n "${APPLE_TEAM_ID:-}" ]]; then
+  NOTARY_ARGS+=( "--apple-id" "${APPLE_ID}" "--password" "${APPLE_APP_SPECIFIC_PASSWORD}" "--team-id" "${APPLE_TEAM_ID}" )
+elif [[ -n "${APPLE_KEYCHAIN_PROFILE:-}" ]]; then
+  if [[ -n "${APPLE_KEYCHAIN:-}" ]]; then
+    NOTARY_ARGS+=( "--keychain" "${APPLE_KEYCHAIN}" "--keychain-profile" "${APPLE_KEYCHAIN_PROFILE}" )
   else
-    echo "No notarization credentials available; skipping manual notarization" >&2
-    NOTARY_ARGS=( )
-  fi
-
-  if [[ ${#NOTARY_ARGS[@]} -gt 0 ]]; then
-    echo "notarytool: $(xcrun notarytool --version 2>/dev/null || echo 'not found')"
-    # Choose artifact to submit: prefer DMG, else zip the .app with ditto
-    ARTIFACT=""
-    if compgen -G "$DIST_DIR/*.dmg" > /dev/null; then
-      ARTIFACT="$(ls -1 "$DIST_DIR"/*.dmg | head -n1)"
-      echo "Submitting DMG to notary service: $ARTIFACT"
-    else
-      APP_PATH="$(find "$DIST_DIR" -maxdepth 4 -type d -name "*.app" | head -n1 || true)"
-      if [[ -z "$APP_PATH" ]]; then
-        echo "No artifact found to notarize under $DIST_DIR" >&2
-      else
-        ARTIFACT="$DIST_DIR/$(basename "${APP_PATH%.app}").zip"
-        echo "Zipping .app for submission with ditto: $APP_PATH -> $ARTIFACT"
-        (cd "$(dirname "$APP_PATH")" && ditto -c -k --sequesterRsrc --keepParent "$(basename "$APP_PATH")" "$ARTIFACT")
-      fi
-    fi
-
-    if [[ -n "$ARTIFACT" && -e "$ARTIFACT" ]]; then
-      # Submit and wait; tolerate extra non-JSON noise in macOS 15 by grepping for Accepted
-      set +e
-      SUBMIT_OUT=$(xcrun notarytool submit "$ARTIFACT" --wait --output-format json "${NOTARY_ARGS[@]}" 2>&1)
-      SUBMIT_CODE=$?
-      set -e
-      echo "$SUBMIT_OUT" | sed -e 's/^/notarytool: /'
-
-      # Determine success robustly
-      if [[ $SUBMIT_CODE -eq 0 ]] && echo "$SUBMIT_OUT" | grep -qi '"status" *: *"Accepted"\|status: Accepted\|Accepted'; then
-        echo "==> Notarization accepted"
-      else
-        echo "==> Notarization did not report Accepted; attempting to extract log for diagnostics" >&2
-        # Try to extract an id field from JSON if present
-        SUBMISSION_ID=$(echo "$SUBMIT_OUT" | sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]\+\)".*/\1/p' | head -n1)
-        if [[ -n "$SUBMISSION_ID" ]]; then
-          xcrun notarytool log "$SUBMISSION_ID" "${NOTARY_ARGS[@]}" --output-format text || true
-        fi
-        echo "Manual notarization appears to have failed. See output above." >&2
-        exit 1
-      fi
-    fi
+    NOTARY_ARGS+=( "--keychain-profile" "${APPLE_KEYCHAIN_PROFILE}" )
   fi
 else
-  echo "==> No signing secrets; building unsigned like the commented GH path"
-  # Avoid any auto identity discovery and explicitly disable signing
-  export CSC_IDENTITY_AUTO_DISCOVERY=false
-  # Ensure entitlements exist right before packaging
-  (cd "$CLIENT_DIR" && \
-    bunx electron-builder \
-      --config electron-builder.json \
-      --mac dmg zip --x64 \
-      --publish never \
-      --config.mac.identity=null \
-      --config.dmg.sign=false)
+  echo "No notarization credentials available; skipping manual notarization" >&2
+  NOTARY_ARGS=( )
+fi
+
+if [[ ${#NOTARY_ARGS[@]} -gt 0 ]]; then
+  echo "notarytool: $(xcrun notarytool --version 2>/dev/null || echo 'not found')"
+  # Choose artifact to submit: prefer DMG, else zip the .app with ditto
+  ARTIFACT=""
+  if compgen -G "$DIST_DIR/*.dmg" > /dev/null; then
+    ARTIFACT="$(ls -1 "$DIST_DIR"/*.dmg | head -n1)"
+    echo "Submitting DMG to notary service: $ARTIFACT"
+  else
+    APP_PATH="$(find "$DIST_DIR" -maxdepth 4 -type d -name "*.app" | head -n1 || true)"
+    if [[ -z "$APP_PATH" ]]; then
+      echo "No artifact found to notarize under $DIST_DIR" >&2
+    else
+      ARTIFACT="$DIST_DIR/$(basename "${APP_PATH%.app}").zip"
+      echo "Zipping .app for submission with ditto: $APP_PATH -> $ARTIFACT"
+      (cd "$(dirname "$APP_PATH")" && ditto -c -k --sequesterRsrc --keepParent "$(basename "$APP_PATH")" "$ARTIFACT")
+    fi
+  fi
+
+  if [[ -n "$ARTIFACT" && -e "$ARTIFACT" ]]; then
+    # Submit and wait; tolerate extra non-JSON noise in macOS 15 by grepping for Accepted
+    set +e
+    SUBMIT_OUT=$(xcrun notarytool submit "$ARTIFACT" --wait --output-format json "${NOTARY_ARGS[@]}" 2>&1)
+    SUBMIT_CODE=$?
+    set -e
+    echo "$SUBMIT_OUT" | sed -e 's/^/notarytool: /'
+
+    # Determine success robustly
+    if [[ $SUBMIT_CODE -eq 0 ]] && echo "$SUBMIT_OUT" | grep -qi '"status" *: *"Accepted"\|status: Accepted\|Accepted'; then
+      echo "==> Notarization accepted"
+    else
+      echo "==> Notarization did not report Accepted; attempting to extract log for diagnostics" >&2
+      # Try to extract an id field from JSON if present
+      SUBMISSION_ID=$(echo "$SUBMIT_OUT" | sed -n 's/.*"id"[[:space:]]*:[[:space:]]*"\([^"]\+\)".*/\1/p' | head -n1)
+      if [[ -n "$SUBMISSION_ID" ]]; then
+        xcrun notarytool log "$SUBMISSION_ID" "${NOTARY_ARGS[@]}" --output-format text || true
+      fi
+      echo "Manual notarization appears to have failed. See output above." >&2
+      exit 1
+    fi
+  fi
 fi
 
 echo "==> Stapling and verifying outputs"
