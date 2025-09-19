@@ -432,7 +432,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
           className={clsx(
             "p-1.5 rounded-full",
             "bg-neutral-100 dark:bg-neutral-700",
-            "border border-neutral-200 dark:border-0",
+            "border border-neutral-200 dark:border-neutral-500/15",
             "text-neutral-600 dark:text-neutral-400",
             "hover:bg-neutral-200 dark:hover:bg-neutral-600",
             "transition-colors"
@@ -447,7 +447,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
           className={clsx(
             "p-1.5 rounded-full",
             "bg-neutral-100 dark:bg-neutral-700",
-            "border border-neutral-200 dark:border-0",
+            "border border-neutral-200 dark:border-neutral-500/15",
             "text-neutral-600 dark:text-neutral-400",
             "hover:bg-neutral-200 dark:hover:bg-neutral-600",
             "transition-colors"

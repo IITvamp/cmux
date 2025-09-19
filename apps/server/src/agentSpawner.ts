@@ -11,6 +11,8 @@ import type {
   WorkerTerminalFailed,
   WorkerTerminalIdle,
 } from "@cmux/shared/worker-schemas";
+import { getApiEnvironmentsByIdVars } from "@cmux/www-openapi-client";
+import { parse as parseDotenv } from "dotenv";
 import { handleTaskCompletion } from "./handle-task-completion.js";
 import { sanitizeTmuxSessionName } from "./sanitizeTmuxSessionName.js";
 import {
@@ -26,6 +28,7 @@ import {
   getAuthToken,
   runWithAuth,
 } from "./utils/requestContext.js";
+import { getWwwClient } from "./utils/wwwClient.js";
 import { CmuxVSCodeInstance } from "./vscode/CmuxVSCodeInstance.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
@@ -214,6 +217,44 @@ export async function spawnAgent(
       CMUX_TASK_RUN_JWT: taskRunJwt,
       PROMPT: processedTaskDescription,
     };
+
+    if (options.environmentId) {
+      try {
+        const envRes = await getApiEnvironmentsByIdVars({
+          client: getWwwClient(),
+          path: { id: String(options.environmentId) },
+          query: { teamSlugOrId },
+        });
+        const envContent = envRes.data?.envVarsContent;
+        if (envContent && envContent.trim().length > 0) {
+          const parsed = parseDotenv(envContent);
+          if (Object.keys(parsed).length > 0) {
+            const preserved = {
+              CMUX_PROMPT: envVars.CMUX_PROMPT,
+              CMUX_TASK_RUN_ID: envVars.CMUX_TASK_RUN_ID,
+              PROMPT: envVars.PROMPT,
+            };
+            envVars = {
+              ...envVars,
+              ...parsed,
+              ...preserved,
+            };
+            serverLogger.info(
+              `[AgentSpawner] Injected ${Object.keys(parsed).length} env vars from environment ${String(
+                options.environmentId
+              )}`
+            );
+          }
+        }
+      } catch (error) {
+        serverLogger.error(
+          `[AgentSpawner] Failed to load environment env vars for ${String(
+            options.environmentId
+          )}`,
+          error
+        );
+      }
+    }
 
     let authFiles: EnvironmentResult["files"] = [];
     let startupCommands: string[] = [];

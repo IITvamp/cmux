@@ -1,7 +1,7 @@
 import { env } from "@/lib/utils/www-env";
+import { verifyTaskRunToken } from "@/lib/utils/task-run-token";
+import type { TaskRunTokenPayload } from "@/lib/utils/task-run-token";
 import { NextRequest, NextResponse } from "next/server";
-import { jwtVerify } from "jose";
-import { z } from "zod";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
 
@@ -13,18 +13,6 @@ const allowedModels = new Set([
 
 const hardCodedApiKey = "sk_placeholder_cmux_anthropic_api_key";
 
-const taskRunJwtSecret = new TextEncoder().encode(
-  env.CMUX_TASK_RUN_JWT_SECRET
-);
-
-const TaskRunTokenPayloadSchema = z.object({
-  taskRunId: z.string().min(1),
-  teamId: z.string().min(1),
-  userId: z.string().min(1),
-});
-
-type TaskRunTokenPayload = z.infer<typeof TaskRunTokenPayloadSchema>;
-
 async function requireTaskRunToken(
   request: NextRequest
 ): Promise<TaskRunTokenPayload> {
@@ -33,13 +21,7 @@ async function requireTaskRunToken(
     throw new Error("Missing CMUX token");
   }
 
-  const verification = await jwtVerify(token, taskRunJwtSecret);
-  const parsed = TaskRunTokenPayloadSchema.safeParse(verification.payload);
-  if (!parsed.success) {
-    throw new Error("Invalid CMUX token payload");
-  }
-
-  return parsed.data;
+  return verifyTaskRunToken(token);
 }
 
 function getIsOAuthToken(token: string) {
