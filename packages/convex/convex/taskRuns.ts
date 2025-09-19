@@ -21,6 +21,12 @@ export const create = authMutation({
     const userId = ctx.identity.subject;
     const now = Date.now();
     const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
+    if (args.environmentId) {
+      const environment = await ctx.db.get(args.environmentId);
+      if (!environment || environment.teamId !== teamId) {
+        throw new Error("Environment not found");
+      }
+    }
     const taskRunId = await ctx.db.insert("taskRuns", {
       taskId: args.taskId,
       parentRunId: args.parentRunId,
