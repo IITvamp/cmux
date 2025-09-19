@@ -105,7 +105,8 @@ async function fetchInstallationAccountInfo(
   }
 
   try {
-    const jwt = await createGithubAppJwt(appId, privateKey);
+    const normalizedPrivateKey = privateKey.replace(/\\n/g, "\n");
+    const jwt = await createGithubAppJwt(appId, normalizedPrivateKey);
     const response = await fetch(
       `https://api.github.com/app/installations/${installationId}`,
       {
