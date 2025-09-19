@@ -5,8 +5,6 @@ import { serverLogger } from "./utils/fileLogger.js";
 import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
 import { workerExec } from "./utils/workerExec.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
-import { getAuthHeaderJson, getAuthToken } from "./utils/requestContext.js";
-import { env as serverEnv } from "./utils/server-env.js";
 import { z, type ZodTypeAny } from "zod";
 
 const UNKNOWN_AGENT_NAME = "unknown agent";
@@ -15,9 +13,6 @@ function getAgentNameOrUnknown(agentName?: string | null): string {
   const trimmed = agentName?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : UNKNOWN_AGENT_NAME;
 }
-
-const CROWN_EVALUATE_PATH = "/api/crown/evaluate";
-const CROWN_SUMMARIZE_PATH = "/api/crown/summarize";
 
 const CrownEvaluationResponseSchema = z.object({
   winner: z.number().int().min(0),
@@ -28,99 +23,65 @@ const CrownSummarizationResponseSchema = z.object({
   summary: z.string(),
 });
 
-async function callConvexCrownEndpoint<TSchema extends ZodTypeAny>(
-  path: string,
-  body: Record<string, unknown>,
-  schema: TSchema
-): Promise<z.infer<TSchema>> {
-  const authHeaderJson = getAuthHeaderJson();
-  if (!authHeaderJson) {
-    throw new Error("No auth header json found for crown endpoint request");
-  }
-
-  const authToken = getAuthToken();
-  if (!authToken) {
-    throw new Error("No auth token found for crown endpoint request");
-  }
-
-  const url = new URL(path, serverEnv.NEXT_PUBLIC_CONVEX_URL).toString();
-
-  let response: Response;
+async function callCrownEvaluate(options: {
+  prompt: string;
+  teamSlugOrId: string;
+}) {
+  let result: unknown;
   try {
-    response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        accept: "application/json",
-        "x-stack-auth": authHeaderJson,
-        Authorization: `Bearer ${authToken}`,
-      },
-      body: JSON.stringify(body),
+    result = await getConvex().action(api.crown.actions.evaluate, {
+      prompt: options.prompt,
+      teamSlugOrId: options.teamSlugOrId,
     });
   } catch (error) {
     throw new Error(
-      `Failed to reach crown endpoint ${path}: ${
+      `Crown evaluate action failed: ${
         error instanceof Error ? error.message : String(error)
       }`
     );
   }
 
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => "");
-    throw new Error(
-      `Crown endpoint ${path} failed (${response.status}): ${errorText}`
-    );
-  }
-
-  let json: unknown;
-  try {
-    json = await response.json();
-  } catch (error) {
-    throw new Error(
-      `Failed to parse crown endpoint response from ${path}: ${
-        error instanceof Error ? error.message : String(error)
-      }`
-    );
-  }
-
-  const parsed = schema.safeParse(json);
+  const parsed = CrownEvaluationResponseSchema.safeParse(result);
   if (!parsed.success) {
     throw new Error(
-      `Invalid crown endpoint response from ${path}: ${parsed.error.message}`
+      `Invalid crown evaluate response: ${parsed.error.message}`
     );
   }
 
   return parsed.data;
 }
 
-async function callCrownEvaluate(options: {
-  prompt: string;
-  teamSlugOrId: string;
-}) {
-  return callConvexCrownEndpoint(
-    CROWN_EVALUATE_PATH,
-    {
-      prompt: options.prompt,
-      teamSlugOrId: options.teamSlugOrId,
-    },
-    CrownEvaluationResponseSchema
-  );
-}
-
 async function callCrownSummarize(options: {
   prompt: string;
   teamSlugOrId?: string;
 }) {
-  const body: Record<string, unknown> = { prompt: options.prompt };
-  if (options.teamSlugOrId) {
-    body.teamSlugOrId = options.teamSlugOrId;
+  let result: unknown;
+  try {
+    const args: {
+      prompt: string;
+      teamSlugOrId?: string;
+    } = { prompt: options.prompt };
+    if (options.teamSlugOrId) {
+      args.teamSlugOrId = options.teamSlugOrId;
+    }
+
+    result = await getConvex().action(api.crown.actions.summarize, args);
+  } catch (error) {
+    throw new Error(
+      `Crown summarize action failed: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
   }
 
-  return callConvexCrownEndpoint(
-    CROWN_SUMMARIZE_PATH,
-    body,
-    CrownSummarizationResponseSchema
-  );
+  const parsed = CrownSummarizationResponseSchema.safeParse(result);
+  if (!parsed.success) {
+    throw new Error(
+      `Invalid crown summarize response: ${parsed.error.message}`
+    );
+  }
+
+  return parsed.data;
 }
 
 // Auto PR behavior is controlled via workspace settings in Convex

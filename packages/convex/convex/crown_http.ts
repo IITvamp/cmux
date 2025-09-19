@@ -1,12 +1,8 @@
-'use node';
-
-import { createAnthropic } from "@ai-sdk/anthropic";
-import { generateObject } from "ai";
 import { z } from "zod";
-import { env } from "../_shared/convex-env";
 import { api } from "./_generated/api";
 import { httpAction } from "./_generated/server";
 import type { ActionCtx } from "./_generated/server";
+import { performCrownEvaluation, performCrownSummarization } from "./crown/actions";
 
 const JSON_HEADERS = { "content-type": "application/json" } as const;
 
@@ -15,18 +11,9 @@ const CrownEvaluationRequestSchema = z.object({
   teamSlugOrId: z.string(),
 });
 
-const CrownEvaluationResponseSchema = z.object({
-  winner: z.number().int().min(0),
-  reason: z.string(),
-});
-
 const CrownSummarizationRequestSchema = z.object({
   prompt: z.string(),
   teamSlugOrId: z.string().optional(),
-});
-
-const CrownSummarizationResponseSchema = z.object({
-  summary: z.string(),
 });
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -115,26 +102,8 @@ export const crownEvaluate = httpAction(async (ctx, req) => {
   if (membership instanceof Response) return membership;
 
   try {
-    if (!env.ANTHROPIC_API_KEY) {
-      console.error("[convex.crown] Missing ANTHROPIC_API_KEY env");
-      return jsonResponse({
-        code: 503,
-        message: "Anthropic provider is not configured",
-      }, 503);
-    }
-
-    const anthropic = createAnthropic({ apiKey: env.ANTHROPIC_API_KEY });
-    const { object } = await generateObject({
-      model: anthropic("claude-opus-4-1-20250805"),
-      schema: CrownEvaluationResponseSchema,
-      system:
-        "You select the best implementation from structured diff inputs and explain briefly why.",
-      prompt: validation.data.prompt,
-      temperature: 0,
-      maxRetries: 2,
-    });
-
-    return jsonResponse(object);
+    const result = await performCrownEvaluation(validation.data.prompt);
+    return jsonResponse(result);
   } catch (error) {
     console.error("[convex.crown] Evaluation error", error);
     return jsonResponse({ code: 500, message: "Evaluation failed" }, 500);
@@ -163,26 +132,8 @@ export const crownSummarize = httpAction(async (ctx, req) => {
   }
 
   try {
-    if (!env.ANTHROPIC_API_KEY) {
-      console.error("[convex.crown] Missing ANTHROPIC_API_KEY env");
-      return jsonResponse({
-        code: 503,
-        message: "Anthropic provider is not configured",
-      }, 503);
-    }
-
-    const anthropic = createAnthropic({ apiKey: env.ANTHROPIC_API_KEY });
-    const { object } = await generateObject({
-      model: anthropic("claude-opus-4-1-20250805"),
-      schema: CrownSummarizationResponseSchema,
-      system:
-        "You are an expert reviewer summarizing pull requests. Provide a clear, concise summary following the requested format.",
-      prompt: validation.data.prompt,
-      temperature: 0,
-      maxRetries: 2,
-    });
-
-    return jsonResponse(object);
+    const result = await performCrownSummarization(validation.data.prompt);
+    return jsonResponse(result);
   } catch (error) {
     console.error("[convex.crown] Summarization error", error);
     return jsonResponse({ code: 500, message: "Summarization failed" }, 500);
