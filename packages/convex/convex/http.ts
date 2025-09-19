@@ -2,6 +2,7 @@ import { httpRouter } from "convex/server";
 import { githubWebhook } from "./github_webhook";
 import { stackWebhook } from "./stack_webhook";
 import { githubSetup } from "./github_setup";
+import { evaluate as crownEvaluate, summarize as crownSummarize } from "./crown_http";
 
 const http = httpRouter();
 
@@ -23,4 +24,16 @@ http.route({
   path: "/github_setup",
   method: "GET",
   handler: githubSetup,
+});
+
+http.route({
+  path: "/crown/evaluate",
+  method: "POST",
+  handler: crownEvaluate,
+});
+
+http.route({
+  path: "/crown/summarize",
+  method: "POST",
+  handler: crownSummarize,
 });

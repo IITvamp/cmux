@@ -5,11 +5,7 @@ import { serverLogger } from "./utils/fileLogger.js";
 import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
 import { workerExec } from "./utils/workerExec.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
-import { getWwwClient } from "./utils/wwwClient.js";
-import {
-  postApiCrownEvaluate,
-  postApiCrownSummarize,
-} from "@cmux/www-openapi-client";
+import { env } from "./utils/server-env.js";
 
 const UNKNOWN_AGENT_NAME = "unknown agent";
 
@@ -409,20 +405,26 @@ export async function evaluateCrown({
 
         let commentText = "";
         try {
-          // Call the crown summarize endpoint
-          const res = await postApiCrownSummarize({
-            client: getWwwClient(),
-            body: {
-              prompt: summarizationPrompt,
-              teamSlugOrId,
+          // Call Convex HTTP endpoint directly
+          const convexUrl = env.NEXT_PUBLIC_CONVEX_URL.replace('/api', '');
+          const response = await fetch(`${convexUrl}/crown/summarize`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'x-api-key': env.CROWN_API_KEY,
             },
+            body: JSON.stringify({
+              prompt: summarizationPrompt,
+            }),
           });
 
-          if (!res.data) {
-            serverLogger.error(`[CrownEvaluator] Crown summarize failed`);
+          if (!response.ok) {
+            serverLogger.error(`[CrownEvaluator] Crown summarize failed: ${response.status}`);
             return;
           }
-          commentText = res.data.summary;
+
+          const data = await response.json();
+          commentText = data.summary;
         } catch (e) {
           serverLogger.error(
             `[CrownEvaluator] Failed to generate PR summary:`,
@@ -639,18 +641,26 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
     } catch {
       /* empty */
     }
-    const res = await postApiCrownEvaluate({
-      client: getWwwClient(),
-      body: {
+    // Call Convex HTTP endpoint directly
+    const convexUrl = env.NEXT_PUBLIC_CONVEX_URL.replace('/api', '');
+    const res = await fetch(`${convexUrl}/crown/evaluate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': env.CROWN_API_KEY,
+      },
+      body: JSON.stringify({
         prompt: evaluationPrompt,
         teamSlugOrId,
-      },
+        taskId,
+      }),
     });
 
-    if (!res.data) {
-      serverLogger.error(`[CrownEvaluator] Crown evaluate failed`);
+    if (!res.ok) {
+      serverLogger.error(`[CrownEvaluator] Crown evaluate failed: ${res.status}`);
     }
-    const jsonResponse = res.data;
+
+    const jsonResponse = res.ok ? await res.json() : null;
 
     if (!jsonResponse) {
       // Fallback: Pick the first completed run as winner
