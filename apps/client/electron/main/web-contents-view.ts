@@ -253,6 +253,13 @@ export function registerWebContentsViewHandlers({
           candidate.ownerWindowId = win.id;
           candidate.ownerWebContentsId = sender.id;
 
+          logger.log("Reattached WebContentsView", {
+            id: candidate.id,
+            persistKey,
+            windowId: win.id,
+            senderId: sender.id,
+          });
+
           if (!windowCleanupRegistered.has(win.id)) {
             windowCleanupRegistered.add(win.id);
             win.once("closed", () => {
@@ -389,10 +396,19 @@ export function registerWebContentsViewHandlers({
     const shouldPersist = Boolean(persist) && typeof entry.persistKey === "string";
     if (!shouldPersist) {
       const ok = destroyView(id);
+      logger.log("Destroyed WebContentsView", {
+        id,
+        persistKey: entry.persistKey,
+        reason: "release-without-persist",
+      });
       return { ok, suspended: false };
     }
 
     if (entry.suspended) {
+      logger.log("Release skipped; already suspended", {
+        id,
+        persistKey: entry.persistKey,
+      });
       return { ok: true, suspended: true };
     }
 
@@ -413,6 +429,12 @@ export function registerWebContentsViewHandlers({
 
     markSuspended(entry);
 
+    logger.log("Suspended WebContentsView", {
+      id,
+      persistKey: entry.persistKey,
+      suspendedCount,
+    });
+
     evictExcessSuspended(logger);
 
     return { ok: true, suspended: true };
@@ -426,6 +448,11 @@ export function registerWebContentsViewHandlers({
       return { ok: false };
     }
     const ok = destroyView(id);
+    logger.log("Destroyed WebContentsView", {
+      id,
+      persistKey: entry.persistKey,
+      reason: "explicit-destroy",
+    });
     return { ok };
   });
 

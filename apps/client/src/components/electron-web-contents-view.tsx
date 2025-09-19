@@ -58,13 +58,14 @@ export function ElectronWebContentsView({
   const rafRef = useRef<number | null>(null);
   const lastSyncRef = useRef<SyncState | null>(null);
   const latestSrcRef = useRef(src);
+  const lastLoadedSrcRef = useRef<string | null>(null);
   const latestStyleRef = useRef<{ backgroundColor?: string; borderRadius?: number }>({
     backgroundColor,
     borderRadius,
   });
+  const hasStableAttachmentRef = useRef(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  // Keep latest src accessible without forcing effect recreation.
   useEffect(() => {
     latestSrcRef.current = src;
   }, [src]);
@@ -103,14 +104,8 @@ export function ElectronWebContentsView({
     }
 
     void bridge
-      .setBounds({
-        id,
-        bounds,
-        visible,
-      })
-      .catch((err) => {
-        console.warn("Failed to sync WebContentsView bounds", err);
-      });
+      .setBounds({ id, bounds, visible })
+      .catch((err) => console.warn("Failed to sync WebContentsView bounds", err));
     lastSyncRef.current = { bounds, visible };
   }, [suspended]);
 
@@ -124,53 +119,36 @@ export function ElectronWebContentsView({
   }, [syncBounds]);
 
   const persistKeyRef = useRef<string | undefined>(persistKey);
-  const retainOnUnmountRef = useRef<boolean>(retainOnUnmount ?? persistKey !== undefined);
-  const skipInitialLoadRef = useRef<boolean>(false);
+  const retainPreferenceRef = useRef<boolean>(retainOnUnmount ?? persistKey !== undefined);
 
   persistKeyRef.current = persistKey;
-  retainOnUnmountRef.current = retainOnUnmount ?? persistKey !== undefined;
+  retainPreferenceRef.current = retainOnUnmount ?? persistKey !== undefined;
 
-  const releaseView = useCallback(
-    (options?: { persist?: boolean }) => {
-      cancelScheduledSync();
-      const id = viewIdRef.current;
-      if (id === null) return;
-      viewIdRef.current = null;
-      lastSyncRef.current = null;
-      skipInitialLoadRef.current = false;
-      const bridge = getWebContentsBridge();
-      if (!bridge) return;
-      const persistFlag = options?.persist ?? retainOnUnmountRef.current;
-      const releaseFn = typeof bridge.release === "function" ? bridge.release : null;
-      if (releaseFn) {
-        void releaseFn({ id, persist: persistFlag }).catch((err) => {
-          console.warn(
-            persistFlag
-              ? "Failed to release WebContentsView"
-              : "Failed to dispose WebContentsView",
-            err
-          );
-        });
-        return;
-      }
-      if (!persistFlag) {
-        void bridge
-          .destroy(id)
-          .catch((err) => {
-            console.warn("Failed to destroy WebContentsView", err);
-          });
-        return;
-      }
+  const releaseView = useCallback(() => {
+    cancelScheduledSync();
+    const id = viewIdRef.current;
+    if (id === null) return;
+    viewIdRef.current = null;
+    lastSyncRef.current = null;
+    lastLoadedSrcRef.current = null;
+    const bridge = getWebContentsBridge();
+    if (!bridge) return;
+
+    const shouldPersist = retainPreferenceRef.current && hasStableAttachmentRef.current;
+    hasStableAttachmentRef.current = false;
+
+    if (shouldPersist && typeof bridge.release === "function") {
+      void bridge
+        .release({ id, persist: true })
+        .catch((err) => console.warn("Failed to release WebContentsView", err));
+    } else {
       void bridge
         .destroy(id)
-        .catch((err) => {
-          console.warn("Failed to destroy WebContentsView", err);
-        });
-    },
-    [cancelScheduledSync]
-  );
+        .catch((err) => console.warn("Failed to destroy WebContentsView", err));
+    }
 
-  // Mount/unmount lifecycle for the native view.
+  }, [cancelScheduledSync]);
+
   useEffect(() => {
     if (!isElectron) return undefined;
     const container = containerRef.current;
@@ -182,7 +160,6 @@ export function ElectronWebContentsView({
     setErrorMessage(null);
 
     const initialBounds = rectToBounds(container.getBoundingClientRect());
-
     const { backgroundColor: initialBackground, borderRadius: initialRadius } = latestStyleRef.current;
 
     void bridge
@@ -199,7 +176,18 @@ export function ElectronWebContentsView({
           return;
         }
         viewIdRef.current = result.id;
-        skipInitialLoadRef.current = Boolean(result.restored);
+        hasStableAttachmentRef.current = true;
+        const targetUrl = latestSrcRef.current;
+        if (!result.restored) {
+          void bridge
+            .loadURL(result.id, targetUrl)
+            .then(() => {
+              lastLoadedSrcRef.current = targetUrl;
+            })
+            .catch((err) => console.warn("Failed to load URL after create", err));
+        } else {
+          lastLoadedSrcRef.current = targetUrl;
+        }
         scheduleBoundsSync();
       })
       .catch((err) => {
@@ -211,23 +199,20 @@ export function ElectronWebContentsView({
       disposed = true;
       releaseView();
     };
-  }, [releaseView, scheduleBoundsSync]);
+  }, [persistKey, releaseView, scheduleBoundsSync]);
 
-  // React to src changes without recreating the native view.
   useEffect(() => {
     if (!isElectron) return;
     const bridge = getWebContentsBridge();
     const id = viewIdRef.current;
     if (!bridge || id === null) return;
-    if (skipInitialLoadRef.current) {
-      skipInitialLoadRef.current = false;
-      return;
-    }
+    if (lastLoadedSrcRef.current === src) return;
     void bridge
       .loadURL(id, src)
-      .catch((err) => {
-        console.warn("Failed to load URL in WebContentsView", err);
-      });
+      .then(() => {
+        lastLoadedSrcRef.current = src;
+      })
+      .catch((err) => console.warn("Failed to load URL in WebContentsView", err));
   }, [src]);
 
   useEffect(() => {
@@ -238,12 +223,9 @@ export function ElectronWebContentsView({
     if (backgroundColor === undefined && borderRadius === undefined) return;
     void bridge
       .updateStyle({ id, backgroundColor, borderRadius })
-      .catch((err) => {
-        console.warn("Failed to update WebContentsView style", err);
-      });
+      .catch((err) => console.warn("Failed to update WebContentsView style", err));
   }, [backgroundColor, borderRadius]);
 
-  // Keep bounds in sync on layout changes.
   useEffect(() => {
     if (!isElectron) return undefined;
     const container = containerRef.current;

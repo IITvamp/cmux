@@ -1,7 +1,7 @@
 import type { FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { ElectronWebContentsView } from "@/components/electron-web-contents-view";
+import { PersistentWebView } from "@/components/persistent-webview";
 import { isElectron } from "@/lib/electron";
 import { cn } from "@/lib/utils";
 import { createFileRoute } from "@tanstack/react-router";
@@ -122,12 +122,12 @@ function LayoutPlayground() {
               className="relative overflow-hidden border border-neutral-300 shadow-sm dark:border-neutral-700"
               style={{ width, height, borderRadius }}
             >
-              <ElectronWebContentsView
+              <PersistentWebView
+                persistKey="layout-playground"
                 src={url}
                 className="h-full w-full"
                 backgroundColor="#ffffff"
                 borderRadius={borderRadius}
-                persistKey="layout-playground"
                 retainOnUnmount
               />
             </div>
@@ -396,11 +396,11 @@ function MiniBrowser() {
           {tabs.map((tab) => {
             const isActive = tab.id === activeId;
             return (
-              <ElectronWebContentsView
+              <PersistentWebView
                 key={tab.id}
+                persistKey={tab.id}
                 src={tab.url}
                 suspended={!isActive}
-                persistKey={tab.id}
                 retainOnUnmount
                 className={cn(
                   "absolute inset-0 h-full w-full transition-opacity duration-200",
