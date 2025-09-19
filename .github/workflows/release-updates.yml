@@ -81,7 +81,6 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: bash scripts/publish-build-mac-x64.sh --skip-install
       - name: Publish notarized macOS x64 artifacts to GitHub Releases
-        if: ${{ github.event_name == 'release' }}
         env:
           GH_TOKEN: ${{ github.token }}
         working-directory: apps/client
@@ -168,7 +167,6 @@ jobs:
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: bash scripts/publish-build-mac-arm64.sh --skip-install
       - name: Publish notarized macOS arm64 artifacts to GitHub Releases
-        if: ${{ github.event_name == 'release' }}
         env:
           GH_TOKEN: ${{ github.token }}
         working-directory: apps/client
