@@ -33,7 +33,6 @@ export interface SelectOptionObject {
   label: string;
   value: string;
   isUnavailable?: boolean;
-  displayLabel?: string;
   // Optional icon element to render before the label
   icon?: ReactNode;
   // Stable key for the icon, used for de-duplication in stacked view
@@ -138,22 +137,11 @@ function OptionItem({
       </div>
     );
   }
-  const handleSelect = () => {
-    if (opt.isUnavailable) {
-      return;
-    }
-    onSelectValue(opt.value);
-  };
   return (
     <CommandItem
       value={`${opt.label} ${opt.value}`}
-      className={clsx(
-        "flex items-center justify-between gap-2 text-[13.5px] py-1.5 h-[32px]",
-        opt.isUnavailable
-          ? "cursor-not-allowed text-neutral-500 dark:text-neutral-500"
-          : null
-      )}
-      onSelect={handleSelect}
+      className="flex items-center justify-between gap-2 text-[13.5px] py-1.5 h-[32px]"
+      onSelect={() => onSelectValue(opt.value)}
     >
       <div className="flex items-center gap-2 min-w-0 flex-1">
         {opt.icon ? (
@@ -375,10 +363,6 @@ export function SearchableSelect({
   }, [open, rowVirtualizer]);
 
   const onSelectValue = (val: string): void => {
-    const selectedOption = valueToOption.get(val);
-    if (selectedOption?.isUnavailable) {
-      return;
-    }
     // Clear search input upon selecting a value (covers mouse and keyboard selection)
     setSearch("");
     if (singleSelect) {
@@ -432,7 +416,6 @@ export function SearchableSelect({
         <Popover.Content
           align="start"
           sideOffset={2}
-          collisionPadding={{ top: 12, bottom: 12 }}
           className={clsx(
             "z-[var(--z-modal)] rounded-md border overflow-hidden",
             "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950",
@@ -464,7 +447,7 @@ export function SearchableSelect({
             ) : (
               <CommandList
                 ref={listRef}
-                className="min-h-[6rem] max-h-[18rem] overflow-y-auto"
+                className="max-h-[38px] overflow-y-auto"
               >
                 {filteredOptions.length === 0 ? (
                   <CommandEmpty>

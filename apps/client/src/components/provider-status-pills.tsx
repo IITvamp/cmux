@@ -64,17 +64,7 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
         isVisible ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-2"
       )}
     >
-      <div
-        className="pointer-events-auto overflow-y-auto overflow-x-hidden px-1.5 py-1"
-        style={{ maxHeight: "min(20rem, calc(100vh - 6rem))" }}
-      >
-        <div
-          className="mx-auto grid w-full max-w-2xl gap-1"
-          style={{
-            gridTemplateColumns: "repeat(auto-fit, minmax(6.25rem, 1fr))",
-            gridAutoFlow: "row dense",
-          }}
-        >
+      <div className="flex items-center gap-2 pointer-events-auto">
           {/* Summary pill when there are issues */}
           <Tooltip>
             <TooltipTrigger asChild>
@@ -86,25 +76,22 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
                   })
                 }
                 className={clsx(
-                  "flex w-full flex-col items-start gap-0.5 rounded-md px-1.5 py-1",
+                  "flex items-center gap-2 px-3 py-1.5 rounded-lg",
                   "bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-600",
                   "text-neutral-800 dark:text-neutral-200",
-                  "text-[10px] font-medium cursor-default select-none leading-tight",
-                  "min-w-0"
+                  "text-xs font-medium cursor-default select-none"
                 )}
               >
+                <div className="w-2 h-2 rounded-full bg-red-500"></div>
+                <span>Setup required</span>
                 <div className="flex items-center gap-1">
-                  <div className="h-1.5 w-1.5 rounded-full bg-red-500"></div>
-                  <span className="truncate font-semibold">Setup</span>
-                </div>
-                <div className="flex items-center gap-1 text-[9px] text-neutral-600 dark:text-neutral-300">
                   {availableProviders > 0 && (
-                    <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                    <span className="text-emerald-600 dark:text-emerald-400 text-[10px] font-normal">
                       {availableProviders} ready
                     </span>
                   )}
                   {unavailableProviders.length > 0 && (
-                    <span className="text-amber-600 dark:text-amber-400 font-medium">
+                    <span className="text-amber-600 dark:text-amber-400 text-[10px] font-normal">
                       {unavailableProviders.length} pending
                     </span>
                   )}
@@ -142,15 +129,14 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
                     window.open("https://www.docker.com/products/docker-desktop/", "_blank");
                   }}
                   className={clsx(
-                    "flex w-full items-center gap-1 rounded-md px-1.5 py-1",
+                    "flex items-center gap-2 px-3 py-1.5 rounded-lg",
                     "bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-600",
                     "text-neutral-800 dark:text-neutral-200",
-                    "text-[10px] font-medium cursor-default select-none leading-tight",
-                    "min-w-0"
+                    "text-xs font-medium cursor-default select-none"
                   )}
                 >
-                  <div className="h-1.5 w-1.5 rounded-full bg-orange-500"></div>
-                  <span className="truncate font-medium">Docker</span>
+                  <div className="w-2 h-2 rounded-full bg-orange-500"></div>
+                  Docker required
                 </button>
               </TooltipTrigger>
               <TooltipContent>
@@ -172,19 +158,18 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
                     })
                   }
                   className={clsx(
-                    "flex w-full items-center gap-1 rounded-md px-1.5 py-1",
+                    "flex items-center gap-1.5 px-2.5 py-1 rounded-lg",
                     "bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-600",
                     "text-neutral-800 dark:text-neutral-200",
-                    "text-[10px] font-medium cursor-default select-none leading-tight",
-                    "min-w-0"
+                    "text-xs font-medium cursor-default select-none"
                   )}
                 >
                   {dockerImagePulling ? (
-                    <RefreshCw className="h-3 w-3 text-blue-500 animate-spin" />
+                    <RefreshCw className="w-3 h-3 text-blue-500 animate-spin" />
                   ) : (
-                    <div className="h-1.5 w-1.5 rounded-full bg-yellow-500"></div>
+                    <div className="w-1.5 h-1.5 rounded-full bg-yellow-500"></div>
                   )}
-                  <span className="truncate font-medium">Image</span>
+                  Image
                 </button>
               </TooltipTrigger>
               <TooltipContent>
@@ -199,6 +184,5 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
           )}
         </div>
       </div>
-    </div>
   );
 }

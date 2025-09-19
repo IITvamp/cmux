@@ -18,15 +18,8 @@ import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
 import { Link, useRouter } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useMutation } from "convex/react";
-import { GitBranch, Image, Mic, Server, X } from "lucide-react";
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { GitBranch, Image, Mic, Server } from "lucide-react";
+import { memo, useCallback, useMemo } from "react";
 
 interface DashboardInputControlsProps {
   projectOptions: SelectOption[];
@@ -95,40 +88,12 @@ export const DashboardInputControls = memo(function DashboardInputControls({
       if (lower.startsWith("opencode/")) return "opencode";
       return "other";
     };
-    const providerOrder = [
-      "claude",
-      "openai",
-      "gemini",
-      "opencode",
-      "amp",
-      "cursor",
-      "kimi",
-      "glm",
-      "grok",
-      "qwen",
-      "other",
-    ] as const;
-    const shortName = (label: string): string => {
-      const slashIndex = label.indexOf("/");
-      return slashIndex >= 0 ? label.slice(slashIndex + 1) : label;
-    };
-    const sortedAgents = [...AGENT_CONFIGS].sort((a, b) => {
-      const vendorA = vendorKey(a.name);
-      const vendorB = vendorKey(b.name);
-      const rankA = providerOrder.indexOf(vendorA as typeof providerOrder[number]);
-      const rankB = providerOrder.indexOf(vendorB as typeof providerOrder[number]);
-      const safeRankA = rankA === -1 ? providerOrder.length : rankA;
-      const safeRankB = rankB === -1 ? providerOrder.length : rankB;
-      if (safeRankA !== safeRankB) return safeRankA - safeRankB;
-      return a.name.localeCompare(b.name);
-    });
-    return sortedAgents.map((agent) => {
+    return AGENT_CONFIGS.map((agent) => {
       const status = providerStatusMap.get(agent.name);
       const missingRequirements = status?.missingRequirements ?? [];
       const isAvailable = status?.isAvailable ?? true;
       return {
         label: agent.name,
-        displayLabel: shortName(agent.name),
         value: agent.name,
         icon: <AgentLogo agentName={agent.name} className="w-4 h-4" />,
         iconKey: vendorKey(agent.name),
@@ -161,78 +126,8 @@ export const DashboardInputControls = memo(function DashboardInputControls({
       } satisfies SelectOptionObject;
     });
   }, [handleOpenSettings, providerStatusMap]);
-
-  const agentOptionsByValue = useMemo(() => {
-    const map = new Map<string, SelectOptionObject & { displayLabel?: string }>();
-    for (const option of agentOptions) {
-      map.set(option.value, option);
-    }
-    return map;
-  }, [agentOptions]);
-  const sortedSelectedAgents = useMemo(() => {
-    const vendorOrder = new Map<string, number>();
-    agentOptions.forEach((option, index) => {
-      const vendor = option.iconKey ?? "other";
-      if (!vendorOrder.has(vendor)) vendorOrder.set(vendor, index);
-    });
-    return [...selectedAgents].sort((a, b) => {
-      const optionA = agentOptionsByValue.get(a);
-      const optionB = agentOptionsByValue.get(b);
-      const vendorA = optionA?.iconKey ?? "other";
-      const vendorB = optionB?.iconKey ?? "other";
-      const rankA = vendorOrder.get(vendorA) ?? Number.MAX_SAFE_INTEGER;
-      const rankB = vendorOrder.get(vendorB) ?? Number.MAX_SAFE_INTEGER;
-      if (rankA !== rankB) return rankA - rankB;
-      const labelA = optionA?.displayLabel ?? optionA?.label ?? a;
-      const labelB = optionB?.displayLabel ?? optionB?.label ?? b;
-      return labelA.localeCompare(labelB);
-    });
-  }, [agentOptions, agentOptionsByValue, selectedAgents]);
   // Determine OS for potential future UI tweaks
   // const isMac = navigator.userAgent.toUpperCase().indexOf("MAC") >= 0;
-
-  const pillboxScrollRef = useRef<HTMLDivElement | null>(null);
-  const [showPillboxFade, setShowPillboxFade] = useState(false);
-
-  useEffect(() => {
-    const node = pillboxScrollRef.current;
-    if (!node) {
-      setShowPillboxFade(false);
-      return;
-    }
-
-    let rafId: number | null = null;
-
-    const updateFade = () => {
-      rafId = null;
-      const { scrollTop, scrollHeight, clientHeight } = node;
-      const atBottom = scrollTop + clientHeight >= scrollHeight - 1;
-      const hasOverflow = scrollHeight > clientHeight + 1;
-      const shouldShow = hasOverflow && !atBottom;
-      setShowPillboxFade((previous) =>
-        previous === shouldShow ? previous : shouldShow
-      );
-    };
-
-    const scheduleUpdate = () => {
-      if (rafId !== null) return;
-      rafId = window.requestAnimationFrame(updateFade);
-    };
-
-    scheduleUpdate();
-    node.addEventListener("scroll", scheduleUpdate);
-
-    const resizeObserver = new ResizeObserver(() => scheduleUpdate());
-    resizeObserver.observe(node);
-
-    return () => {
-      if (rafId !== null) {
-        window.cancelAnimationFrame(rafId);
-      }
-      node.removeEventListener("scroll", scheduleUpdate);
-      resizeObserver?.disconnect();
-    };
-  }, [sortedSelectedAgents]);
 
   const handleImageClick = useCallback(() => {
     // Trigger the file select from ImagePlugin
@@ -243,62 +138,6 @@ export const DashboardInputControls = memo(function DashboardInputControls({
       lexicalWindow.__lexicalImageFileSelect();
     }
   }, []);
-
-  const handleAgentRemove = useCallback(
-    (agent: string) => {
-      onAgentChange(selectedAgents.filter((value) => value !== agent));
-    },
-    [onAgentChange, selectedAgents]
-  );
-
-  const agentSelectionFooter = selectedAgents.length ? (
-    <div className="bg-neutral-50 dark:bg-neutral-900/70">
-      <div className="relative">
-        <div ref={pillboxScrollRef} className="max-h-32 overflow-y-auto py-2 px-2">
-          <div className="flex flex-wrap gap-1">
-            {sortedSelectedAgents.map((agent) => {
-              const option = agentOptionsByValue.get(agent);
-              const label = option?.displayLabel ?? option?.label ?? agent;
-              return (
-                <div
-                  key={agent}
-                  className="inline-flex items-center gap-1 rounded-full bg-neutral-200 dark:bg-neutral-800/80 px-2 py-1 text-[11px] text-neutral-700 dark:text-neutral-200 transition-colors"
-                >
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      handleAgentRemove(agent);
-                    }}
-                    className="inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors hover:bg-neutral-300 dark:hover:bg-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60"
-                  >
-                    <X className="h-3 w-3" aria-hidden="true" />
-                    <span className="sr-only">Remove {label}</span>
-                  </button>
-                  {option?.icon ? (
-                    <span className="inline-flex h-3.5 w-3.5 items-center justify-center">
-                      {option.icon}
-                    </span>
-                  ) : null}
-                  <span className="max-w-[118px] truncate text-left select-none">
-                    {label}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-        {showPillboxFade ? (
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-neutral-50/60 via-neutral-50/15 to-transparent dark:from-neutral-900/70 dark:via-neutral-900/20" />
-        ) : null}
-      </div>
-    </div>
-  ) : (
-    <div className="px-3 py-3 text-[12px] text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-900/70">
-      No agents selected yet.
-    </div>
-  );
 
   function openCenteredPopup(
     url: string,
@@ -467,7 +306,6 @@ export const DashboardInputControls = memo(function DashboardInputControls({
           className="rounded-2xl"
           showSearch
           countLabel="agents"
-          footer={agentSelectionFooter}
         />
       </div>
 
