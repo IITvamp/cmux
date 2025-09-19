@@ -7,6 +7,13 @@ import type {
 
 const api = {};
 
+type RectanglePayload = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+};
+
 type LogListener = (entry: ElectronMainLogMessage) => void;
 const mainLogListeners = new Set<LogListener>();
 
@@ -118,6 +125,31 @@ const cmuxAPI = {
       ipcRenderer.invoke("cmux:logs:read-all") as Promise<ElectronLogsPayload>,
     copyAll: () =>
       ipcRenderer.invoke("cmux:logs:copy-all") as Promise<{ ok: boolean }>,
+  },
+  webContentsView: {
+    create: (options: {
+      url: string;
+      bounds?: RectanglePayload;
+      backgroundColor?: string;
+    }) =>
+      ipcRenderer.invoke(
+        "cmux:webcontents:create",
+        options
+      ) as Promise<{ id: number; webContentsId: number }>,
+    setBounds: (options: { id: number; bounds: RectanglePayload; visible?: boolean }) =>
+      ipcRenderer.invoke(
+        "cmux:webcontents:set-bounds",
+        options
+      ) as Promise<{ ok: boolean }>,
+    loadURL: (id: number, url: string) =>
+      ipcRenderer.invoke("cmux:webcontents:load-url", { id, url }) as Promise<{ ok: boolean }>,
+    destroy: (id: number) =>
+      ipcRenderer.invoke("cmux:webcontents:destroy", id) as Promise<{ ok: boolean }>,
+    updateStyle: (options: { id: number; backgroundColor?: string; borderRadius?: number }) =>
+      ipcRenderer.invoke(
+        "cmux:webcontents:update-style",
+        options
+      ) as Promise<{ ok: boolean }>,
   },
 };
 

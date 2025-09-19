@@ -17,6 +17,7 @@ import {
   type MenuItemConstructorOptions,
 } from "electron";
 import { startEmbeddedServer } from "./embedded-server";
+import { registerWebContentsViewHandlers } from "./web-contents-view";
 // Auto-updater
 import electronUpdater from "electron-updater";
 import {
@@ -414,6 +415,13 @@ app.whenReady().then(async () => {
     logger: {
       log: mainLog,
       warn: mainWarn,
+    },
+  });
+  registerWebContentsViewHandlers({
+    logger: {
+      log: mainLog,
+      warn: mainWarn,
+      error: mainError,
     },
   });
 
