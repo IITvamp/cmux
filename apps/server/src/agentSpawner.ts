@@ -87,6 +87,9 @@ export async function spawnAgent(
         prompt: options.taskDescription,
         agentName: agent.name,
         newBranch,
+        environmentId: options.environmentId
+          ? (options.environmentId as Id<"environments">)
+          : undefined,
       }
     );
 

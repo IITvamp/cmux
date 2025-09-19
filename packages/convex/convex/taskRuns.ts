@@ -15,6 +15,7 @@ export const create = authMutation({
     prompt: v.string(),
     agentName: v.optional(v.string()),
     newBranch: v.optional(v.string()),
+    environmentId: v.optional(v.id("environments")),
   },
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
@@ -31,6 +32,7 @@ export const create = authMutation({
       updatedAt: now,
       userId,
       teamId,
+      environmentId: args.environmentId,
     });
     const jwt = await new SignJWT({
       taskRunId,
