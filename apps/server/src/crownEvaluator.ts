@@ -6,10 +6,7 @@ import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
 import { workerExec } from "./utils/workerExec.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWwwClient } from "./utils/wwwClient.js";
-import {
-  postApiCrownEvaluate,
-  postApiCrownSummarize,
-} from "@cmux/www-openapi-client";
+import { env } from "./utils/server-env.js";
 
 const UNKNOWN_AGENT_NAME = "unknown agent";
 
@@ -639,18 +636,30 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
     } catch {
       /* empty */
     }
-    const res = await postApiCrownEvaluate({
-      client: getWwwClient(),
-      body: {
-        prompt: evaluationPrompt,
-        teamSlugOrId,
-      },
+    // Obtain a task-run JWT to authorize the Convex HTTP evaluation endpoint
+    const tokenRes = await getConvex().mutation(api.taskRuns.issueToken, {
+      teamSlugOrId,
+      taskRunId: crownRunId,
     });
 
-    if (!res.data) {
-      serverLogger.error(`[CrownEvaluator] Crown evaluate failed`);
+    // Call Convex HTTPS endpoint directly for crown evaluation
+    const evalResp = await fetch(`${env.NEXT_PUBLIC_CONVEX_URL}/crown_evaluate`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${tokenRes.jwt}`,
+      },
+      body: JSON.stringify({ prompt: evaluationPrompt }),
+    });
+
+    if (!evalResp.ok) {
+      serverLogger.error(
+        `[CrownEvaluator] Crown evaluate failed via Convex: ${evalResp.status} ${evalResp.statusText}`
+      );
     }
-    const jsonResponse = res.data;
+    const jsonResponse = (await evalResp.json().catch(() => null)) as
+      | { winner: number; reason: string }
+      | null;
 
     if (!jsonResponse) {
       // Fallback: Pick the first completed run as winner

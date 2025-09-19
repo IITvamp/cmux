@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { resolveTeamIdLoose } from "../_shared/team";
 import { authMutation, authQuery } from "./users/utils";
+import { internalQuery } from "./_generated/server";
 
 export const getAll = authQuery({
   args: { teamSlugOrId: v.string() },
@@ -28,6 +29,24 @@ export const getByEnvVar = authQuery({
       .query("apiKeys")
       .withIndex("by_team_user", (q) =>
         q.eq("teamId", teamId).eq("userId", userId)
+      )
+      .filter((q) => q.eq(q.field("envVar"), args.envVar))
+      .first();
+  },
+});
+
+// Internal lookup by canonical teamId/userId without auth context
+export const internalGetByEnvVarForTeamUser = internalQuery({
+  args: {
+    teamId: v.string(),
+    userId: v.string(),
+    envVar: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("apiKeys")
+      .withIndex("by_team_user", (q) =>
+        q.eq("teamId", args.teamId).eq("userId", args.userId)
       )
       .filter((q) => q.eq(q.field("envVar"), args.envVar))
       .first();

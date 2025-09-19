@@ -46,6 +46,32 @@ export const create = authMutation({
   },
 });
 
+// Issue a fresh short-lived JWT for a task run (for worker/HTTP auth)
+export const issueToken = authMutation({
+  args: {
+    teamSlugOrId: v.string(),
+    taskRunId: v.id("taskRuns"),
+  },
+  handler: async (ctx, args) => {
+    const userId = ctx.identity.subject;
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
+    const run = await ctx.db.get(args.taskRunId);
+    if (!run || run.teamId !== teamId || run.userId !== userId) {
+      throw new Error("Task run not found or unauthorized");
+    }
+    const jwt = await new SignJWT({
+      taskRunId: args.taskRunId,
+      teamId,
+      userId,
+    })
+      .setProtectedHeader({ alg: "HS256" })
+      .setIssuedAt()
+      .setExpirationTime("12h")
+      .sign(new TextEncoder().encode(env.CMUX_TASK_RUN_JWT_SECRET));
+    return { jwt };
+  },
+});
+
 // Get all task runs for a task, organized in tree structure
 export const getByTask = authQuery({
   args: { teamSlugOrId: v.string(), taskId: v.id("tasks") },
