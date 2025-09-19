@@ -1,10 +1,11 @@
 import { FloatingPane } from "@/components/floating-pane";
+import { PersistentWebView } from "@/components/persistent-webview";
+import { getTaskRunPreviewPersistKey } from "@/lib/persistent-webview-keys";
 import { api } from "@cmux/convex/api";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { useMemo } from "react";
-import { ElectronWebViewOrIframe } from "@/components/electron-webview";
 import z from "zod";
 
 const paramsSchema = z.object({
@@ -53,15 +54,21 @@ function PreviewPage() {
     return service?.url;
   }, [selectedRun, port]);
 
+  const persistKey = useMemo(() => {
+    return getTaskRunPreviewPersistKey(runId, port);
+  }, [runId, port]);
+
+  const paneBorderRadius = 6;
+
   return (
     <FloatingPane>
       {previewUrl ? (
-        <ElectronWebViewOrIframe
+        <PersistentWebView
+          persistKey={persistKey}
           src={previewUrl}
           className="w-full h-full border-0"
-          title={`Preview on port ${port}`}
+          borderRadius={paneBorderRadius}
           sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-downloads"
-          allowPopups
         />
       ) : (
         <div className="flex items-center justify-center h-full bg-white dark:bg-neutral-950">
