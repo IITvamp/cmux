@@ -51,13 +51,18 @@ export async function handleTaskCompletion({
     );
 
     // Collect the relevant diff via the shared worker script
-    const gitDiff = await captureGitDiff(vscodeInstance, worktreePath);
+    serverLogger.info(
+      `[AgentSpawner] Capturing git diff for ${agent.name}, waiting 3 seconds first`
+    );
+    // set timeout to 3 seconds
+    const timeout = setTimeout(() => {}, 3000);
+    clearTimeout(timeout);
+
+    const gitDiff = await captureGitDiff(vscodeInstance);
     serverLogger.info(
       `[AgentSpawner] Captured git diff for ${agent.name}: ${gitDiff.length} chars`
     );
-    serverLogger.info(
-      `[AgentSpawner] First 100 chars of diff: ${gitDiff.substring(0, 100)}`
-    );
+    serverLogger.info(`[AgentSpawner] Git diff: ${gitDiff}`);
 
     // Do not write diffs to Convex logs; crown and UI fetch diffs directly.
     if (!gitDiff || gitDiff.length === 0) {

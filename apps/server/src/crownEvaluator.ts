@@ -5,7 +5,7 @@ import { serverLogger } from "./utils/fileLogger.js";
 import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
 import { workerExec } from "./utils/workerExec.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
-import { z, type ZodTypeAny } from "zod";
+import { z } from "zod";
 
 const UNKNOWN_AGENT_NAME = "unknown agent";
 
@@ -43,9 +43,7 @@ async function callCrownEvaluate(options: {
 
   const parsed = CrownEvaluationResponseSchema.safeParse(result);
   if (!parsed.success) {
-    throw new Error(
-      `Invalid crown evaluate response: ${parsed.error.message}`
-    );
+    throw new Error(`Invalid crown evaluate response: ${parsed.error.message}`);
   }
 
   return parsed.data;
@@ -368,7 +366,7 @@ type EvaluateCrownOptions = {
   taskId: Id<"tasks">;
   teamSlugOrId: string;
   crownRunId: Id<"taskRuns">;
-  precollectedDiff: string;
+  precollectedDiff?: string;
 };
 
 export async function evaluateCrown({
@@ -553,78 +551,18 @@ export async function evaluateCrown({
       return;
     }
 
-    // Helper to extract a relevant git diff using worker script when possible
-    const collectDiffViaWorker = async (
-      runId: Id<"taskRuns">
-    ): Promise<string | null> => {
-      try {
-        // Find a live VSCode instance for this run
-        const instances = VSCodeInstance.getInstances();
-        let instance: VSCodeInstance | undefined;
-        for (const [, inst] of instances) {
-          if (inst.getTaskRunId() === runId) {
-            instance = inst;
-            break;
-          }
-        }
-        if (!instance || !instance.isWorkerConnected()) {
-          serverLogger.info(
-            `[CrownEvaluator] No live worker for run ${runId}; unable to collect diff`
-          );
-          return null;
-        }
-        const workerSocket = instance.getWorkerSocket();
-        const { stdout } = await workerExec({
-          workerSocket,
-          command: "/bin/bash",
-          args: ["-c", "/usr/local/bin/cmux-collect-relevant-diff.sh"],
-          cwd: "/root/workspace",
-          env: {},
-          timeout: 30000,
-        });
-        const diff = stdout?.trim() || "";
-        if (diff.length === 0) {
-          serverLogger.info(
-            `[CrownEvaluator] Worker diff empty for run ${runId}`
-          );
-          return null;
-        }
-        serverLogger.info(
-          `[CrownEvaluator] Collected worker diff for ${runId} (${diff.length} chars)`
-        );
-        return diff;
-      } catch (err) {
-        serverLogger.error(
-          `[CrownEvaluator] Failed collecting worker diff for run ${runId}:`,
-          err
-        );
-        return null;
-      }
-    };
-
     const candidateData = await Promise.all(
       completedRuns.map(async (run, idx) => {
         const agentName = getAgentNameOrUnknown(run.agentName);
         // Try to collect diff via worker
-        const precollected =
+        const diff = (
           crownRunId && run._id === crownRunId
             ? (precollectedDiff?.trim() ?? "")
-            : "";
-        const workerDiff: string | null = precollected
-          ? precollected
-          : await collectDiffViaWorker(run._id);
-        let gitDiff: string =
-          workerDiff && workerDiff.length > 0
-            ? workerDiff
-            : "No changes detected";
-
-        // Limit to 5000 chars for the prompt
-        if (gitDiff.length > 5000) {
-          gitDiff = gitDiff.substring(0, 5000) + "\n... (truncated)";
-        }
+            : ""
+        ).trim();
 
         serverLogger.info(
-          `[CrownEvaluator] Implementation ${idx} (${agentName}): ${gitDiff.length} chars of diff`
+          `[CrownEvaluator] Implementation ${idx} (${agentName}): ${diff.length} chars of diff`
         );
 
         // Do not rely on logs; skip logging log tails.
@@ -634,7 +572,7 @@ export async function evaluateCrown({
           runId: run._id,
           agentName,
           exitCode: run.exitCode || 0,
-          gitDiff,
+          diff,
         };
       })
     );
@@ -643,7 +581,7 @@ export async function evaluateCrown({
     const evaluationData = {
       implementations: candidateData.map((candidate, idx) => ({
         modelName: candidate.agentName,
-        gitDiff: candidate.gitDiff,
+        gitDiff: candidate.diff,
         index: idx,
       })),
     };
@@ -740,7 +678,7 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
       teamSlugOrId
     );
     // After choosing a winner, generate and persist a task comment (by cmux)
-    await generateSystemTaskComment(winner.runId, winner.gitDiff);
+    await generateSystemTaskComment(winner.runId, winner.diff);
   } catch (error) {
     serverLogger.error(`[CrownEvaluator] Error during evaluation:`, error);
 

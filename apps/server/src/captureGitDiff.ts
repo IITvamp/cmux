@@ -3,23 +3,10 @@ import { workerExec } from "./utils/workerExec.js";
 import type { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 
 export async function captureGitDiff(
-  vscodeInstance: VSCodeInstance,
-  worktreePath: string
+  vscodeInstance: VSCodeInstance
 ): Promise<string> {
-  if (!vscodeInstance.isWorkerConnected()) {
-    serverLogger.warn(
-      `[AgentSpawner] Cannot capture git diff — worker not connected for ${worktreePath}`
-    );
-    throw new Error(
-      `[AgentSpawner] Cannot capture git diff — worker not connected for ${worktreePath}`
-    );
-  }
-
   try {
     const workerSocket = vscodeInstance.getWorkerSocket();
-    serverLogger.info(
-      `[AgentSpawner] Collecting relevant git diff for ${worktreePath}`
-    );
 
     const { stdout, stderr, exitCode } = await workerExec({
       workerSocket,
@@ -38,10 +25,10 @@ export async function captureGitDiff(
 
     const diff = stdout?.trim() ?? "";
     serverLogger.info(
-      `[AgentSpawner] Captured ${diff.length} chars of relevant diff for ${worktreePath}`
+      `[AgentSpawner] Captured ${diff.length} chars of relevant diff`
     );
 
-    return diff || "No changes detected";
+    return diff;
   } catch (error) {
     serverLogger.error(`[AgentSpawner] Error capturing git diff:`, error);
     throw new Error(`[AgentSpawner] Error capturing git diff`, {
