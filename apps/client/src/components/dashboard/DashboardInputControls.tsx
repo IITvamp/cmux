@@ -232,7 +232,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
       node.removeEventListener("scroll", scheduleUpdate);
       resizeObserver?.disconnect();
     };
-  }, [sortedSelectedAgents]);
+  }, []);
 
   const handleImageClick = useCallback(() => {
     // Trigger the file select from ImagePlugin
