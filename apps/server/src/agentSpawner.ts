@@ -52,7 +52,7 @@ export async function spawnAgent(
     branch?: string;
     taskDescription: string;
     isCloudMode?: boolean;
-    environmentId?: Id<"environments"> | string;
+    environmentId?: Id<"environments">;
     images?: Array<{
       src: string;
       fileName?: string;
@@ -341,7 +341,7 @@ export async function spawnAgent(
         repoUrl: options.repoUrl,
         branch: options.branch,
         newBranch,
-        environmentId: options.environmentId as Id<"environments"> | undefined,
+        environmentId: options.environmentId,
       });
 
       worktreePath = "/root/workspace";
@@ -941,7 +941,7 @@ export async function spawnAllAgents(
     prTitle?: string;
     selectedAgents?: string[];
     isCloudMode?: boolean;
-    environmentId?: Id<"environments"> | string;
+    environmentId?: Id<"environments">;
     images?: Array<{
       src: string;
       fileName?: string;
