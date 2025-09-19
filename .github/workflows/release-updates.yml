@@ -234,10 +234,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PUBLISH_FLAG: ${{ github.event_name == 'release' && 'always' || 'never' }}
         working-directory: apps/client
-        run: |
-          set -euo pipefail
-          bunx electron-vite build -c electron.vite.config.ts
-          bunx electron-builder --config electron-builder.json --win --x64 --publish "$PUBLISH_FLAG" --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
+        run: bunx electron-vite build -c electron.vite.config.ts && bunx electron-builder --config electron-builder.json --win --x64 --publish always --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
 
   linux-x64:
     name: Linux x64
@@ -274,7 +271,4 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PUBLISH_FLAG: ${{ github.event_name == 'release' && 'always' || 'never' }}
         working-directory: apps/client
-        run: |
-          set -euo pipefail
-          bunx electron-vite build -c electron.vite.config.ts
-          bunx electron-builder --config electron-builder.json --linux AppImage --x64 --publish "$PUBLISH_FLAG" --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
+        run: bunx electron-vite build -c electron.vite.config.ts && bunx electron-builder --config electron-builder.json --linux AppImage --x64 --publish always --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
