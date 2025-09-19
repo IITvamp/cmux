@@ -1,10 +1,11 @@
-import { BrowserWindow, WebContentsView, ipcMain, type Rectangle, type WebContents } from "electron";
-
-interface Logger {
-  log: (...args: unknown[]) => void;
-  warn: (...args: unknown[]) => void;
-  error: (...args: unknown[]) => void;
-}
+import {
+  BrowserWindow,
+  WebContentsView,
+  ipcMain,
+  type Rectangle,
+  type WebContents,
+} from "electron";
+import { applyChromeCamouflage, type Logger } from "./chrome-camouflage";
 
 interface RegisterOptions {
   logger: Logger;
@@ -50,6 +51,7 @@ interface Entry {
   suspended: boolean;
   ownerWebContentsDestroyed: boolean;
 }
+
 
 const viewEntries = new Map<number, Entry>();
 let nextViewId = 1;
@@ -298,6 +300,8 @@ export function registerWebContentsViewHandlers({
             throw error;
           }
 
+          applyChromeCamouflage(candidate.view, logger);
+
           try {
             candidate.view.setBounds(bounds);
             candidate.view.setVisible(desiredVisibility);
@@ -344,6 +348,8 @@ export function registerWebContentsViewHandlers({
       }
 
       const view = new WebContentsView();
+
+      applyChromeCamouflage(view, logger);
 
       applyBackgroundColor(view, options.backgroundColor);
       applyBorderRadius(view, options.borderRadius);
