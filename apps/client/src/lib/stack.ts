@@ -5,6 +5,7 @@ import { env } from "../client-env";
 import { signalConvexAuthReady } from "../contexts/convex/convex-auth-ready";
 import { convexQueryClient } from "../contexts/convex/convex-query-client";
 import { cachedGetUser } from "./cachedGetUser";
+import { WWW_ORIGIN } from "./wwwOrigin";
 
 export const stackClientApp = new StackClientApp({
   projectId: env.NEXT_PUBLIC_STACK_PROJECT_ID,
@@ -91,6 +92,6 @@ const fetchWithAuth = (async (request: Request) => {
 }) as typeof fetch; // TODO: remove when bun types dont conflict with node types
 
 wwwOpenAPIClient.setConfig({
-  baseUrl: env.NEXT_PUBLIC_WWW_ORIGIN,
+  baseUrl: WWW_ORIGIN,
   fetch: fetchWithAuth,
 });
