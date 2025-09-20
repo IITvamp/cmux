@@ -64,7 +64,8 @@ class PersistentIframeManager {
         width: 0;
         height: 0;
         pointer-events: none;
-        z-index: var(--z-overlay);
+        /* Keep VS Code/webviews beneath app overlays (tooltips, toasts, modals) */
+        z-index: var(--z-base);
       `;
       document.body.appendChild(this.container);
     };
