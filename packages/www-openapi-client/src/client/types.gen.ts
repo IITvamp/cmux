@@ -383,6 +383,45 @@ export type UpdateSandboxEnvBody = {
     envVarsContent: string;
 };
 
+export type CreateTeamResponse = {
+    /**
+     * Stack team ID
+     */
+    teamId: string;
+    /**
+     * Display name saved in Stack
+     */
+    displayName: string;
+    /**
+     * Slug stored in Convex
+     */
+    slug: string;
+    /**
+     * Number of invite emails sent
+     */
+    invitesSent: number;
+};
+
+export type CreateTeamErrorResponse = {
+    code: number;
+    message: string;
+};
+
+export type CreateTeamRequest = {
+    /**
+     * Human-friendly team name
+     */
+    displayName: string;
+    /**
+     * Slug used in URLs. Lowercase letters, numbers, and hyphens. Must start and end with a letter or number.
+     */
+    slug: string;
+    /**
+     * Optional list of teammate emails to invite
+     */
+    inviteEmails?: Array<string>;
+};
+
 export type GetApiHealthData = {
     body?: never;
     path?: never;
@@ -1556,6 +1595,47 @@ export type PostApiCrownEvaluateResponses = {
 };
 
 export type PostApiCrownEvaluateResponse = PostApiCrownEvaluateResponses[keyof PostApiCrownEvaluateResponses];
+
+export type PostApiTeamsData = {
+    body: CreateTeamRequest;
+    path?: never;
+    query?: never;
+    url: '/api/teams';
+};
+
+export type PostApiTeamsErrors = {
+    /**
+     * Invalid input
+     */
+    400: CreateTeamErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: CreateTeamErrorResponse;
+    /**
+     * Slug conflict
+     */
+    409: CreateTeamErrorResponse;
+    /**
+     * Failed to create team
+     */
+    500: CreateTeamErrorResponse;
+    /**
+     * Timed out while syncing
+     */
+    504: CreateTeamErrorResponse;
+};
+
+export type PostApiTeamsError = PostApiTeamsErrors[keyof PostApiTeamsErrors];
+
+export type PostApiTeamsResponses = {
+    /**
+     * Team created
+     */
+    201: CreateTeamResponse;
+};
+
+export type PostApiTeamsResponse = PostApiTeamsResponses[keyof PostApiTeamsResponses];
 
 export type ClientOptions = {
     baseUrl: `${string}://${string}` | (string & {});
