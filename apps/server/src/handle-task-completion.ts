@@ -173,7 +173,6 @@ export async function handleTaskCompletion({
               await evaluateCrown({
                 taskId: taskRunData.taskId,
                 teamSlugOrId,
-                crownRunId: taskRunId,
               });
 
               serverLogger.info(

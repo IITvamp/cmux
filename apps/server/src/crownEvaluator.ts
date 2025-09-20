@@ -440,13 +440,11 @@ Completed: ${new Date().toISOString()}`;
 type EvaluateCrownOptions = {
   taskId: Id<"tasks">;
   teamSlugOrId: string;
-  crownRunId: Id<"taskRuns">;
 };
 
 export async function evaluateCrown({
   taskId,
   teamSlugOrId,
-  crownRunId: _crownRunId,
 }: EvaluateCrownOptions): Promise<void> {
   serverLogger.info(
     `[CrownEvaluator] =================================================`
