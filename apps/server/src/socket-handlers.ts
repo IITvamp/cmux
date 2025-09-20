@@ -11,6 +11,7 @@ import {
   OpenInEditorSchema,
   SpawnFromCommentSchema,
   StartTaskSchema,
+  TaskRunFollowupSchema,
   type AvailableEditors,
   type FileInfo,
 } from "@cmux/shared";
@@ -51,6 +52,8 @@ import { refreshGitHubData } from "./utils/refreshGitHubData.js";
 import { runWithAuth, runWithAuthToken } from "./utils/requestContext.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { getProjectPaths } from "./workspace.js";
+import { sanitizeTmuxSessionName } from "./sanitizeTmuxSessionName.js";
+import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 
 const execAsync = promisify(exec);
 
@@ -1013,6 +1016,138 @@ export function setupSocketHandlers(
           ok: false,
           error: error instanceof Error ? error.message : "Unknown error",
           diffs: [],
+        });
+      }
+    });
+
+    socket.on("task-run-followup", async (data, callback) => {
+      try {
+        const { taskRunId, prompt } = TaskRunFollowupSchema.parse(data);
+        const run = await getConvex().query(api.taskRuns.get, {
+          teamSlugOrId: safeTeam,
+          id: taskRunId,
+        });
+
+        if (!run) {
+          callback?.({ ok: false, error: "Task run not found" });
+          return;
+        }
+
+        if (!run.agentName) {
+          callback?.({ ok: false, error: "Agent information missing for this run" });
+          return;
+        }
+
+        const sessionName = sanitizeTmuxSessionName(
+          `${run.agentName}-${String(taskRunId).slice(-8)}`
+        );
+        const bufferName = `cmux-followup-${sessionName}`;
+
+        const vscodeInstance = VSCodeInstance.getInstance(taskRunId);
+        if (!vscodeInstance) {
+          callback?.({ ok: false, error: "VS Code instance is not running for this run" });
+          return;
+        }
+
+        if (!vscodeInstance.isWorkerConnected()) {
+          callback?.({ ok: false, error: "Agent worker is not connected" });
+          return;
+        }
+
+        let workerSocket;
+        try {
+          workerSocket = vscodeInstance.getWorkerSocket();
+        } catch (error) {
+          serverLogger.error(
+            "task-run-followup: failed to acquire worker socket",
+            error
+          );
+          callback?.({ ok: false, error: "Unable to reach agent worker" });
+          return;
+        }
+
+        const promptBase64 = Buffer.from(prompt, "utf-8").toString("base64");
+        const script = `
+set -euo pipefail
+if ! tmux has-session -t ${sessionName} 2>/dev/null; then
+  echo "tmux session not found" >&2
+  exit 3
+fi
+buffer_name="${bufferName}"
+tmpfile="$(mktemp)"
+trap 'rm -f "$tmpfile"' EXIT
+printf "%s" "$CMUX_FOLLOWUP_B64" | base64 --decode > "$tmpfile"
+tmux load-buffer -b "$buffer_name" "$tmpfile"
+tmux paste-buffer -t ${sessionName} -b "$buffer_name"
+tmux delete-buffer -b "$buffer_name"
+tmux send-keys -t ${sessionName} C-m
+`.trim();
+
+        await new Promise<void>((resolve, reject) => {
+          try {
+            workerSocket
+              .timeout(15000)
+              .emit(
+                "worker:exec",
+                {
+                  command: "bash",
+                  args: ["-lc", script],
+                  cwd: "/root/workspace",
+                  env: { CMUX_FOLLOWUP_B64: promptBase64 },
+                },
+                (err, result) => {
+                  if (err) {
+                    reject(
+                      err instanceof Error
+                        ? err
+                        : new Error(String(err))
+                    );
+                    return;
+                  }
+                  if (!result) {
+                    reject(new Error("No response from worker"));
+                    return;
+                  }
+                  if (result.error) {
+                    reject(
+                      result.error instanceof Error
+                        ? result.error
+                        : new Error(String(result.error))
+                    );
+                    return;
+                  }
+                  const exitCode = result.data?.exitCode ?? 0;
+                  if (exitCode !== 0) {
+                    const stderr = result.data?.stderr?.trim();
+                    reject(
+                      new Error(
+                        `Failed to deliver follow-up (exit ${exitCode})${
+                          stderr ? `: ${stderr}` : ""
+                        }`
+                      )
+                    );
+                    return;
+                  }
+                  resolve();
+                }
+              );
+          } catch (error) {
+            reject(error instanceof Error ? error : new Error(String(error)));
+          }
+        });
+
+        serverLogger.info(
+          `[socket] Sent follow-up to ${run.agentName} (${String(taskRunId)})`
+        );
+        callback?.({ ok: true });
+      } catch (error) {
+        serverLogger.error("Error handling task-run-followup:", error);
+        callback?.({
+          ok: false,
+          error:
+            error instanceof Error
+              ? error.message
+              : "Failed to send follow-up prompt",
         });
       }
     });

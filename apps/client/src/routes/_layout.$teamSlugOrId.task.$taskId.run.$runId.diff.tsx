@@ -149,6 +149,8 @@ function RunDiffPage() {
                   ref2={ref2}
                   onControlsChange={setDiffControls}
                   classNames={gitDiffViewerClassNames}
+                  taskRunId={taskRunId}
+                  agentName={selectedRun.agentName ?? null}
                 />
               ) : (
                 <div className="p-6 text-sm text-neutral-600 dark:text-neutral-300">

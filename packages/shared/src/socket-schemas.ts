@@ -45,6 +45,11 @@ export const StartTaskSchema = z.object({
   environmentId: typedZid("environments").optional(),
 });
 
+export const TaskRunFollowupSchema = z.object({
+  taskRunId: typedZid("taskRuns"),
+  prompt: z.string().min(1).max(5000),
+});
+
 // Server to Client Events
 export const TerminalCreatedSchema = z.object({
   terminalId: z.string(),
@@ -430,6 +435,7 @@ export type ProviderStatusResponse = z.infer<
   typeof ProviderStatusResponseSchema
 >;
 export type DefaultRepo = z.infer<typeof DefaultRepoSchema>;
+export type TaskRunFollowup = z.infer<typeof TaskRunFollowupSchema>;
 
 // Socket.io event map types
 export interface ClientToServerEvents {
@@ -584,6 +590,10 @@ export interface ClientToServerEvents {
       vscodeUrl?: string;
       error?: string;
     }) => void
+  ) => void;
+  "task-run-followup": (
+    data: TaskRunFollowup,
+    callback: (response: { ok: boolean; error?: string }) => void
   ) => void;
 }
 

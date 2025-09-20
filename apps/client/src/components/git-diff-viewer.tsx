@@ -1,5 +1,6 @@
 import { useTheme } from "@/components/theme/use-theme";
-// No socket usage in refs-only viewer
+import { Button } from "@/components/ui/button";
+import { useSocket } from "@/contexts/socket/use-socket";
 import { cn } from "@/lib/utils";
 import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
 import { DiffEditor } from "@monaco-editor/react";
@@ -15,6 +16,8 @@ import {
 import { type editor } from "monaco-editor";
 import {
   memo,
+  type FormEvent,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -42,6 +45,8 @@ export interface GitDiffViewerProps {
   }) => void;
   classNames?: GitDiffViewerClassNames;
   onFileToggle?: (filePath: string, isExpanded: boolean) => void;
+  taskRunId?: string;
+  agentName?: string | null;
 }
 
 type FileGroup = {
@@ -92,6 +97,8 @@ export function GitDiffViewer({
   onControlsChange,
   classNames,
   onFileToggle,
+  taskRunId,
+  agentName,
 }: GitDiffViewerProps) {
   const { theme } = useTheme();
 
@@ -232,18 +239,146 @@ export function GitDiffViewer({
             classNames={classNames?.fileDiffRow}
           />
         ))}
-        {/* End-of-diff message */}
-        <div className="px-3 py-6 text-center">
-          <span className="text-xs text-neutral-500 dark:text-neutral-400 select-none">
-            You’ve reached the end of the diff!
-          </span>
-          <div className="grid place-content-center">
-            <pre className="text-[8px] text-left text-neutral-500 dark:text-neutral-400 select-none mt-2 pb-20 font-mono">
-              {kitty}
-            </pre>
+        {/* End-of-diff message and follow-up */}
+        <div className="px-3 py-6 space-y-6">
+          {taskRunId ? (
+            <FollowUpBox taskRunId={taskRunId} agentName={agentName} />
+          ) : null}
+          <div className="text-center">
+            <span className="text-xs text-neutral-500 dark:text-neutral-400 select-none">
+              You’ve reached the end of the diff!
+            </span>
+            <div className="grid place-content-center">
+              <pre className="text-[8px] text-left text-neutral-500 dark:text-neutral-400 select-none mt-2 pb-20 font-mono">
+                {kitty}
+              </pre>
+            </div>
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+type FollowUpStatus = "idle" | "sending" | "success" | "error";
+
+interface FollowUpBoxProps {
+  taskRunId: string;
+  agentName?: string | null;
+}
+
+function FollowUpBox({ taskRunId, agentName }: FollowUpBoxProps) {
+  const { socket, isConnected } = useSocket();
+  const [message, setMessage] = useState("");
+  const [status, setStatus] = useState<FollowUpStatus>("idle");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (status !== "success") return;
+    const timeoutId = window.setTimeout(() => {
+      setStatus("idle");
+    }, 2500);
+    return () => window.clearTimeout(timeoutId);
+  }, [status]);
+
+  const handleSubmit = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      if (!socket || !isConnected || status === "sending") return;
+      const trimmed = message.trim();
+      if (trimmed.length === 0) return;
+
+      setStatus("sending");
+      setErrorMessage(null);
+
+      try {
+        socket.emit(
+          "task-run-followup",
+          { taskRunId, prompt: trimmed },
+          (response?: { ok: boolean; error?: string }) => {
+            if (!response?.ok) {
+              setStatus("error");
+              setErrorMessage(response?.error ?? "Failed to send follow-up");
+              return;
+            }
+            setMessage("");
+            setStatus("success");
+          }
+        );
+      } catch (error) {
+        setStatus("error");
+        setErrorMessage(
+          error instanceof Error ? error.message : "Failed to send follow-up"
+        );
+      }
+    },
+    [socket, isConnected, status, message, taskRunId]
+  );
+
+  const trimmedMessage = message.trim();
+  const isSendDisabled =
+    !socket || !isConnected || trimmedMessage.length === 0 || status === "sending";
+
+  const connectionText = socket
+    ? isConnected
+      ? "Agent online"
+      : "Connecting to agent…"
+    : "Socket unavailable";
+
+  const feedbackMessage = (() => {
+    if (status === "sending") return "Sending…";
+    if (status === "success") return "Follow-up sent";
+    if (status === "error") return errorMessage ?? "Failed to send follow-up";
+    if (!socket || !isConnected) return "Follow-up will send when connected";
+    return "";
+  })();
+
+  const feedbackClass = (() => {
+    switch (status) {
+      case "success":
+        return "text-green-600 dark:text-green-400";
+      case "error":
+        return "text-red-600 dark:text-red-400";
+      default:
+        return "text-neutral-500 dark:text-neutral-400";
+    }
+  })();
+
+  return (
+    <div className="rounded-lg border border-neutral-200 dark:border-neutral-800 bg-neutral-50 dark:bg-neutral-900/50 p-4 shadow-sm">
+      <form className="flex flex-col gap-3" onSubmit={handleSubmit}>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-col">
+            <span className="text-xs font-semibold uppercase tracking-wide text-neutral-600 dark:text-neutral-300">
+              Follow up{agentName ? ` with ${agentName}` : ""}
+            </span>
+            <span className="text-xs text-neutral-500 dark:text-neutral-400">
+              Send a follow-up prompt directly to the agent’s VS Code session.
+            </span>
+          </div>
+          <span className="text-xs text-neutral-500 dark:text-neutral-400">
+            {connectionText}
+          </span>
+        </div>
+        <textarea
+          value={message}
+          onChange={(event) => {
+            setMessage(event.target.value);
+            if (status === "error") {
+              setStatus("idle");
+              setErrorMessage(null);
+            }
+          }}
+          placeholder="Ask the agent to continue or clarify their work…"
+          className="w-full min-h-[96px] resize-vertical rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-50 placeholder:text-neutral-400 dark:placeholder:text-neutral-500 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-700"
+        />
+        <div className="flex items-center justify-between gap-3">
+          <span className={cn("text-xs", feedbackClass)}>{feedbackMessage}</span>
+          <Button type="submit" size="sm" disabled={isSendDisabled}>
+            Send
+          </Button>
+        </div>
+      </form>
     </div>
   );
 }
