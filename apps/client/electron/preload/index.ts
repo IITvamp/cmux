@@ -1,6 +1,11 @@
 import { electronAPI } from "@electron-toolkit/preload";
 import { contextBridge, ipcRenderer } from "electron";
 import type {
+  ElectronDevToolsMode,
+  ElectronWebContentsEvent,
+  ElectronWebContentsState,
+} from "../../src/types/electron-webcontents";
+import type {
   ElectronLogsPayload,
   ElectronMainLogMessage,
 } from "../../src/lib/electron-logs/types";
@@ -157,6 +162,28 @@ const cmuxAPI = {
         "cmux:webcontents:update-style",
         options
       ) as Promise<{ ok: boolean }>,
+    onEvent: (id: number, callback: (event: ElectronWebContentsEvent) => void) => {
+      const channel = `cmux:webcontents:event:${id}`;
+      const listener = (_event: Electron.IpcRendererEvent, payload: ElectronWebContentsEvent) => {
+        callback(payload);
+      };
+      ipcRenderer.on(channel, listener);
+      return () => {
+        ipcRenderer.removeListener(channel, listener);
+      };
+    },
+    getState: (id: number) =>
+      ipcRenderer.invoke("cmux:webcontents:get-state", id) as Promise<{
+        ok: boolean;
+        state?: ElectronWebContentsState;
+      }>,
+    openDevTools: (id: number, options?: { mode?: ElectronDevToolsMode }) =>
+      ipcRenderer.invoke("cmux:webcontents:open-devtools", {
+        id,
+        mode: options?.mode,
+      }) as Promise<{ ok: boolean }>,
+    closeDevTools: (id: number) =>
+      ipcRenderer.invoke("cmux:webcontents:close-devtools", id) as Promise<{ ok: boolean }>,
   },
 };
 

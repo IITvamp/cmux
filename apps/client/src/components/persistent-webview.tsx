@@ -22,6 +22,12 @@ interface PersistentWebViewProps {
   fallback?: ReactNode;
   onLoad?: () => void;
   onError?: (error: Error) => void;
+  onElectronViewReady?: (info: {
+    id: number;
+    webContentsId: number;
+    restored: boolean;
+  }) => void;
+  onElectronViewDestroyed?: () => void;
 }
 
 export function PersistentWebView({
@@ -41,6 +47,8 @@ export function PersistentWebView({
   fallback,
   onLoad,
   onError,
+  onElectronViewReady,
+  onElectronViewDestroyed,
 }: PersistentWebViewProps) {
   const resolvedRetain = true;
 
@@ -56,6 +64,8 @@ export function PersistentWebView({
         persistKey={persistKey}
         retainOnUnmount={resolvedRetain}
         fallback={fallback}
+        onNativeViewReady={onElectronViewReady}
+        onNativeViewDestroyed={onElectronViewDestroyed}
       />
     );
   }

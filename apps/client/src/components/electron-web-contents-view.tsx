@@ -14,6 +14,12 @@ interface ElectronWebContentsViewProps {
   suspended?: boolean;
   persistKey?: string;
   retainOnUnmount?: boolean;
+  onNativeViewReady?: (info: {
+    id: number;
+    webContentsId: number;
+    restored: boolean;
+  }) => void;
+  onNativeViewDestroyed?: () => void;
 }
 
 interface BoundsPayload {
@@ -63,6 +69,8 @@ export function ElectronWebContentsView({
   suspended = false,
   persistKey,
   retainOnUnmount: _retainOnUnmount,
+  onNativeViewReady,
+  onNativeViewDestroyed,
 }: ElectronWebContentsViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const viewIdRef = useRef<number | null>(null);
@@ -186,7 +194,8 @@ export function ElectronWebContentsView({
     lastLoadedSrcRef.current = null;
     hasStableAttachmentRef.current = false;
     releaseNativeView(id, persistKeyRef.current);
-  }, [cancelScheduledSync, releaseNativeView]);
+    onNativeViewDestroyed?.();
+  }, [cancelScheduledSync, onNativeViewDestroyed, releaseNativeView]);
 
   useEffect(() => {
     if (!isElectron) return undefined;
@@ -251,6 +260,7 @@ export function ElectronWebContentsView({
           });
           viewIdRef.current = result.id;
           hasStableAttachmentRef.current = true;
+          onNativeViewReady?.(result);
           const targetUrl = latestSrcRef.current;
           if (!result.restored) {
             void bridge
@@ -276,6 +286,7 @@ export function ElectronWebContentsView({
         } catch (err) {
           console.error("Failed to create WebContentsView", err);
           setErrorMessage("Unable to create Electron WebContentsView");
+          onNativeViewDestroyed?.();
         }
       })();
 
@@ -297,7 +308,14 @@ export function ElectronWebContentsView({
       disposed = true;
       releaseView();
     };
-  }, [persistKey, releaseNativeView, releaseView, scheduleBoundsSync]);
+  }, [
+    persistKey,
+    releaseNativeView,
+    releaseView,
+    scheduleBoundsSync,
+    onNativeViewDestroyed,
+    onNativeViewReady,
+  ]);
 
   useEffect(() => {
     if (!isElectron) return;

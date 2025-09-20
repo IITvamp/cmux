@@ -1,4 +1,9 @@
 import { BrowserWindow, WebContentsView, ipcMain, type Rectangle, type WebContents } from "electron";
+import type {
+  ElectronDevToolsMode,
+  ElectronWebContentsEvent,
+  ElectronWebContentsState,
+} from "../../src/types/electron-webcontents";
 
 interface Logger {
   log: (...args: unknown[]) => void;
@@ -46,9 +51,12 @@ interface Entry {
   view: Electron.WebContentsView;
   ownerWindowId: number;
   ownerWebContentsId: number;
+  ownerSender: WebContents | null;
   persistKey?: string;
   suspended: boolean;
   ownerWebContentsDestroyed: boolean;
+  eventChannel: string;
+  eventCleanup: Array<() => void>;
 }
 
 const viewEntries = new Map<number, Entry>();
@@ -58,6 +66,153 @@ const suspendedQueue: number[] = [];
 const suspendedByKey = new Map<string, Entry>();
 let suspendedCount = 0;
 let maxSuspendedEntries = 25;
+
+const validDevToolsModes: ReadonlySet<ElectronDevToolsMode> = new Set([
+  "bottom",
+  "right",
+  "undocked",
+  "detach",
+]);
+
+function eventChannelFor(id: number): string {
+  return `cmux:webcontents:event:${id}`;
+}
+
+function sendEventToOwner(
+  entry: Entry,
+  payload: ElectronWebContentsEvent,
+  logger: Logger
+) {
+  const sender = entry.ownerSender;
+  if (!sender || sender.isDestroyed()) {
+    return;
+  }
+  try {
+    sender.send(entry.eventChannel, payload);
+  } catch (error) {
+    logger.warn("Failed to forward WebContentsView event", {
+      id: entry.id,
+      error,
+    });
+  }
+}
+
+function buildState(entry: Entry): ElectronWebContentsState | null {
+  const contents = entry.view.webContents;
+  try {
+    return {
+      id: entry.id,
+      webContentsId: contents.id,
+      url: contents.getURL(),
+      title: contents.getTitle(),
+      canGoBack: contents.canGoBack(),
+      canGoForward: contents.canGoForward(),
+      isLoading: contents.isLoading(),
+      isDevToolsOpened: contents.isDevToolsOpened(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function sendState(entry: Entry, logger: Logger, reason: string) {
+  const state = buildState(entry);
+  if (!state) return;
+  const payload: ElectronWebContentsEvent = {
+    type: "state",
+    state,
+    reason,
+  };
+  sendEventToOwner(entry, payload, logger);
+}
+
+function setupEventForwarders(entry: Entry, logger: Logger) {
+  if (entry.eventCleanup.length > 0) return;
+  const { webContents } = entry.view;
+  const cleanup: Array<() => void> = [];
+
+  const onDidStartLoading = () => {
+    sendState(entry, logger, "did-start-loading");
+  };
+  webContents.on("did-start-loading", onDidStartLoading);
+  cleanup.push(() => {
+    webContents.removeListener("did-start-loading", onDidStartLoading);
+  });
+
+  const onDidStopLoading = () => {
+    sendState(entry, logger, "did-stop-loading");
+  };
+  webContents.on("did-stop-loading", onDidStopLoading);
+  cleanup.push(() => {
+    webContents.removeListener("did-stop-loading", onDidStopLoading);
+  });
+
+  const onDidNavigate = () => {
+    sendState(entry, logger, "did-navigate");
+  };
+  webContents.on("did-navigate", onDidNavigate);
+  cleanup.push(() => {
+    webContents.removeListener("did-navigate", onDidNavigate);
+  });
+
+  const onDidNavigateInPage = () => {
+    sendState(entry, logger, "did-navigate-in-page");
+  };
+  webContents.on("did-navigate-in-page", onDidNavigateInPage);
+  cleanup.push(() => {
+    webContents.removeListener("did-navigate-in-page", onDidNavigateInPage);
+  });
+
+  const onPageTitleUpdated = () => {
+    sendState(entry, logger, "page-title-updated");
+  };
+  webContents.on("page-title-updated", onPageTitleUpdated);
+  cleanup.push(() => {
+    webContents.removeListener("page-title-updated", onPageTitleUpdated);
+  });
+
+  const onDevtoolsOpened = () => {
+    sendState(entry, logger, "devtools-opened");
+  };
+  webContents.on("devtools-opened", onDevtoolsOpened);
+  cleanup.push(() => {
+    webContents.removeListener("devtools-opened", onDevtoolsOpened);
+  });
+
+  const onDevtoolsClosed = () => {
+    sendState(entry, logger, "devtools-closed");
+  };
+  webContents.on("devtools-closed", onDevtoolsClosed);
+  cleanup.push(() => {
+    webContents.removeListener("devtools-closed", onDevtoolsClosed);
+  });
+
+  const onDidFailLoad = (
+    _event: Electron.Event,
+    errorCode: number,
+    errorDescription: string,
+    validatedURL: string,
+    isMainFrame: boolean
+  ) => {
+    const payload: ElectronWebContentsEvent = {
+      type: "load-failed",
+      id: entry.id,
+      errorCode,
+      errorDescription,
+      validatedURL,
+      isMainFrame: Boolean(isMainFrame),
+    };
+    sendEventToOwner(entry, payload, logger);
+    sendState(entry, logger, "did-fail-load");
+  };
+  webContents.on("did-fail-load", onDidFailLoad);
+  cleanup.push(() => {
+    webContents.removeListener("did-fail-load", onDidFailLoad);
+  });
+
+  entry.eventCleanup = cleanup;
+  sendState(entry, logger, "initialized");
+}
 
 function setMaxSuspendedEntries(limit: number | undefined): number {
   if (
@@ -159,6 +314,7 @@ function suspendEntriesForDestroyedOwner(
       alreadySuspended: entry.suspended,
     });
     entry.ownerWebContentsDestroyed = true;
+    entry.ownerSender = null;
 
     if (!entry.suspended) {
       const win = BrowserWindow.fromId(entry.ownerWindowId);
@@ -194,6 +350,15 @@ function destroyView(id: number): boolean {
   if (!entry) return false;
   try {
     removeFromSuspended(entry);
+    for (const cleanup of entry.eventCleanup) {
+      try {
+        cleanup();
+      } catch {
+        // ignore cleanup failures
+      }
+    }
+    entry.eventCleanup = [];
+    entry.ownerSender = null;
     const win = BrowserWindow.fromId(entry.ownerWindowId);
     if (win && !win.isDestroyed()) {
       try {
@@ -318,6 +483,14 @@ export function registerWebContentsViewHandlers({
           candidate.ownerWindowId = win.id;
           candidate.ownerWebContentsId = sender.id;
           candidate.ownerWebContentsDestroyed = false;
+          candidate.ownerSender = sender;
+          if (!candidate.eventChannel) {
+            candidate.eventChannel = eventChannelFor(candidate.id);
+          }
+          if (candidate.eventCleanup.length === 0) {
+            setupEventForwarders(candidate, logger);
+          }
+          sendState(candidate, logger, "reattached");
 
           logger.log("Reattached WebContentsView", {
             id: candidate.id,
@@ -380,11 +553,16 @@ export function registerWebContentsViewHandlers({
         view,
         ownerWindowId: win.id,
         ownerWebContentsId: sender.id,
+        ownerSender: sender,
         persistKey,
         suspended: false,
         ownerWebContentsDestroyed: false,
+        eventChannel: eventChannelFor(id),
+        eventCleanup: [],
       };
       viewEntries.set(id, entry);
+      setupEventForwarders(entry, logger);
+      sendState(entry, logger, "created");
 
       if (!windowCleanupRegistered.has(win.id)) {
         windowCleanupRegistered.add(win.id);
@@ -423,6 +601,7 @@ export function registerWebContentsViewHandlers({
     if (event.sender.id !== entry.ownerWebContentsId) {
       return { ok: false };
     }
+    entry.ownerSender = event.sender;
 
     const bounds = toBounds(rawBounds);
     try {
@@ -445,6 +624,7 @@ export function registerWebContentsViewHandlers({
     if (event.sender.id !== entry.ownerWebContentsId) {
       return { ok: false };
     }
+    entry.ownerSender = event.sender;
     try {
       void entry.view.webContents.loadURL(url);
       return { ok: true };
@@ -461,6 +641,7 @@ export function registerWebContentsViewHandlers({
     if (event.sender.id !== entry.ownerWebContentsId) {
       return { ok: false };
     }
+    entry.ownerSender = event.sender;
 
     const shouldPersist = Boolean(persist) && typeof entry.persistKey === "string";
     if (!shouldPersist) {
@@ -517,6 +698,7 @@ export function registerWebContentsViewHandlers({
     if (event.sender.id !== entry.ownerWebContentsId) {
       return { ok: false };
     }
+    entry.ownerSender = event.sender;
     const ok = destroyView(id);
     logger.log("Destroyed WebContentsView", {
       id,
@@ -534,8 +716,66 @@ export function registerWebContentsViewHandlers({
     if (event.sender.id !== entry.ownerWebContentsId) {
       return { ok: false };
     }
+    entry.ownerSender = event.sender;
     applyBackgroundColor(entry.view, backgroundColor);
     applyBorderRadius(entry.view, borderRadius);
     return { ok: true };
+  });
+
+  ipcMain.handle("cmux:webcontents:get-state", (event, id: number) => {
+    if (typeof id !== "number") return { ok: false };
+    const entry = viewEntries.get(id);
+    if (!entry) return { ok: false };
+    if (event.sender.id !== entry.ownerWebContentsId) {
+      return { ok: false };
+    }
+    entry.ownerSender = event.sender;
+    const state = buildState(entry);
+    if (!state) return { ok: false };
+    return { ok: true, state };
+  });
+
+  ipcMain.handle(
+    "cmux:webcontents:open-devtools",
+    (event, options: { id: number; mode?: ElectronDevToolsMode }) => {
+      const { id, mode } = options ?? {};
+      if (typeof id !== "number") return { ok: false };
+      const entry = viewEntries.get(id);
+      if (!entry) return { ok: false };
+      if (event.sender.id !== entry.ownerWebContentsId) {
+        return { ok: false };
+      }
+      entry.ownerSender = event.sender;
+      const requestedMode: ElectronDevToolsMode =
+        typeof mode === "string" && validDevToolsModes.has(mode as ElectronDevToolsMode)
+          ? (mode as ElectronDevToolsMode)
+          : "bottom";
+      try {
+        entry.view.webContents.openDevTools({ mode: requestedMode, activate: true });
+        sendState(entry, logger, "open-devtools-command");
+        return { ok: true };
+      } catch (error) {
+        logger.warn("Failed to open DevTools for WebContentsView", { id, error });
+        return { ok: false, error: String(error) };
+      }
+    }
+  );
+
+  ipcMain.handle("cmux:webcontents:close-devtools", (event, id: number) => {
+    if (typeof id !== "number") return { ok: false };
+    const entry = viewEntries.get(id);
+    if (!entry) return { ok: false };
+    if (event.sender.id !== entry.ownerWebContentsId) {
+      return { ok: false };
+    }
+    entry.ownerSender = event.sender;
+    try {
+      entry.view.webContents.closeDevTools();
+      sendState(entry, logger, "close-devtools-command");
+      return { ok: true };
+    } catch (error) {
+      logger.warn("Failed to close DevTools for WebContentsView", { id, error });
+      return { ok: false, error: String(error) };
+    }
   });
 }
