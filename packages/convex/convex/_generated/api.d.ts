@@ -15,6 +15,7 @@ import type * as containerSettings from "../containerSettings.js";
 import type * as crown_actions from "../crown/actions.js";
 import type * as crown from "../crown.js";
 import type * as crown_http from "../crown_http.js";
+import type * as crown_worker from "../crown_worker.js";
 import type * as environments from "../environments.js";
 import type * as github from "../github.js";
 import type * as github_app from "../github_app.js";
@@ -57,6 +58,7 @@ declare const fullApi: ApiFromModules<{
   "crown/actions": typeof crown_actions;
   crown: typeof crown;
   crown_http: typeof crown_http;
+  crown_worker: typeof crown_worker;
   environments: typeof environments;
   github: typeof github;
   github_app: typeof github_app;

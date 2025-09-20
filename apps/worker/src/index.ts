@@ -26,7 +26,7 @@ import {
 } from "node:child_process";
 import { promises as fs } from "node:fs";
 import { createServer } from "node:http";
-import { cpus, platform, totalmem } from "node:os";
+import { cpus, platform, totalmem, tmpdir } from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { Server, type Namespace, type Socket } from "socket.io";
@@ -40,6 +40,10 @@ import { log } from "./logger.js";
 const execAsync = promisify(exec);
 
 const Terminal = xtermHeadless.Terminal;
+
+const CONVEX_HTTP_URL = (process.env.CMUX_CONVEX_URL ?? process.env.NEXT_PUBLIC_CONVEX_URL ?? "").replace(/\/$/, "");
+const TASK_RUN_JWT = process.env.CMUX_TASK_RUN_JWT;
+const WORKSPACE_ROOT = process.env.CMUX_WORKSPACE_PATH ?? "/root/workspace";
 
 // Configuration
 const WORKER_ID = process.env.WORKER_ID || `worker-${Date.now()}`;
@@ -152,6 +156,39 @@ interface PendingEvent {
   timestamp: number;
 }
 const pendingEvents: PendingEvent[] = [];
+
+interface WorkerCrownRun {
+  id: string;
+  status: "pending" | "running" | "completed" | "failed";
+  agentName: string | null;
+  newBranch: string | null;
+  exitCode: number | null;
+  isCrowned: boolean;
+  completedAt: number | null;
+}
+
+interface WorkerCrownContext {
+  taskId: string;
+  teamId: string;
+  userId: string;
+  taskRunId: string;
+  task: {
+    text: string;
+    projectFullName: string | null;
+    crownEvaluationError: string | null;
+  };
+  runs: WorkerCrownRun[];
+  statistics: {
+    totalRuns: number;
+    completedRuns: number;
+    allFinished: boolean;
+  };
+}
+
+interface CrownEvaluateResponse {
+  winner: number;
+  reason: string;
+}
 
 /**
  * Emit an event to the main server, queuing it if not connected
@@ -802,6 +839,344 @@ vscodeIO.on("connection", (socket) => {
   });
 });
 
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function callConvex<T>(
+  endpoint: string,
+  body: Record<string, unknown> = {}
+): Promise<T> {
+  if (!CONVEX_HTTP_URL) {
+    throw new Error("CMUX_CONVEX_URL is not configured");
+  }
+  if (!TASK_RUN_JWT) {
+    throw new Error("CMUX_TASK_RUN_JWT is not configured");
+  }
+
+  const payload = { ...body };
+  if (!("taskRunJwt" in payload)) {
+    payload.taskRunJwt = TASK_RUN_JWT;
+  }
+
+  try {
+    const response = await fetch(`${CONVEX_HTTP_URL}${endpoint}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+
+    const text = await response.text();
+    let json: unknown;
+    try {
+      json = text ? JSON.parse(text) : {};
+    } catch {
+      json = { message: text };
+    }
+
+    if (!response.ok) {
+      const message =
+        typeof (json as { message?: string } | undefined)?.message === "string"
+          ? (json as { message: string }).message
+          : `HTTP ${response.status}`;
+      throw new Error(message);
+    }
+
+    return json as T;
+  } catch (error) {
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error(String(error));
+  }
+}
+
+async function determineBaseRef(repoPath: string): Promise<string | null> {
+  try {
+    const { stdout } = await execAsync(
+      "git symbolic-ref --quiet --short refs/remotes/origin/HEAD",
+      { cwd: repoPath }
+    );
+    const value = stdout.trim();
+    if (value) {
+      return value;
+    }
+  } catch {
+    // fall through
+  }
+
+  for (const candidate of ["origin/main", "origin/master"]) {
+    try {
+      await execAsync(`git rev-parse --verify ${candidate}`, { cwd: repoPath });
+      return candidate;
+    } catch {
+      // continue
+    }
+  }
+
+  return null;
+}
+
+async function ensureGitFetch(repoPath: string, ref: string): Promise<void> {
+  const normalized = ref.replace(/^origin\//, "");
+  try {
+    await execAsync(`git fetch --quiet origin ${normalized}`, { cwd: repoPath });
+  } catch (error) {
+    log(
+      "WARN",
+      `[crown] Failed to fetch ref ${normalized}: ${String(error)}`
+    );
+  }
+}
+
+async function collectDiffForBranch({
+  repoPath,
+  branch,
+  baseRef,
+}: {
+  repoPath: string;
+  branch: string;
+  baseRef: string;
+}): Promise<string> {
+  const remoteBranch = branch.startsWith("origin/") ? branch : `origin/${branch}`;
+  await ensureGitFetch(repoPath, remoteBranch);
+  await ensureGitFetch(repoPath, baseRef);
+
+  const worktreePath = await fs.mkdtemp(
+    path.join(tmpdir(), "cmux-crown-branch-")
+  );
+
+  try {
+    await execAsync(
+      `git worktree add --force --detach ${JSON.stringify(worktreePath)} ${remoteBranch}`,
+      { cwd: repoPath }
+    );
+
+    const env = {
+      ...process.env,
+      CMUX_DIFF_BASE: baseRef,
+    } as NodeJS.ProcessEnv;
+
+    let result: { stdout?: string } | null = null;
+    try {
+      result = await execAsync("/usr/local/bin/cmux-collect-relevant-diff.sh", {
+        cwd: worktreePath,
+        env,
+      });
+    } catch (error) {
+      const execError = error as { stdout?: string } | undefined;
+      if (execError?.stdout !== undefined) {
+        result = { stdout: execError.stdout };
+      } else {
+        throw error;
+      }
+    }
+
+    return (result?.stdout ?? "").trim();
+  } finally {
+    await execAsync(
+      `git worktree remove --force ${JSON.stringify(worktreePath)}`,
+      { cwd: repoPath }
+    ).catch(() => {
+      /* ignore */
+    });
+    await fs.rm(worktreePath, { recursive: true, force: true }).catch(() => {
+      /* ignore */
+    });
+  }
+}
+
+function buildEvaluationPrompt(
+  candidates: Array<{ index: number; agentName: string; gitDiff: string }>
+): string {
+  const evaluationData = {
+    implementations: candidates.map((candidate) => ({
+      modelName: candidate.agentName,
+      gitDiff: candidate.gitDiff,
+      index: candidate.index,
+    })),
+  };
+
+  return `You are evaluating code implementations from different AI models.\n\nHere are the implementations to evaluate:\n${JSON.stringify(evaluationData, null, 2)}\n\nNOTE: The git diffs shown contain only actual code changes. Lock files, build artifacts, and other non-essential files have been filtered out.\n\nAnalyze these implementations and select the best one based on:\n1. Code quality and correctness\n2. Completeness of the solution\n3. Following best practices\n4. Actually having meaningful code changes (if one has no changes, prefer the one with changes)\n\nRespond with a JSON object containing:\n- "winner": the index (0-based) of the best implementation\n- "reason": a brief explanation of why this implementation was chosen\n\nExample response:\n{"winner": 0, "reason": "Model claude/sonnet-4 provided a more complete implementation with better error handling and cleaner code structure."}\n\nIMPORTANT: Respond ONLY with the JSON object, no other text.`;
+}
+
+async function handleCrownEvaluation(
+  taskRunId: string,
+  agentModel?: string | null
+): Promise<void> {
+  if (!CONVEX_HTTP_URL || !TASK_RUN_JWT) {
+    return;
+  }
+
+  let evaluationContext: WorkerCrownContext | null = null;
+
+  try {
+    // Allow server to mark task run completed before evaluation kicks in.
+    await delay(4000);
+
+    evaluationContext = await callConvex<WorkerCrownContext>(
+      "/api/crown/worker/context"
+    );
+
+    if (!evaluationContext.statistics.allFinished) {
+      log("INFO", "[crown] Runs still in progress, skipping evaluation", {
+        taskRunId,
+        agentModel,
+      });
+      return;
+    }
+
+    const completedRuns = evaluationContext.runs.filter(
+      (run) => run.status === "completed"
+    );
+    if (completedRuns.length === 0) {
+      log("INFO", "[crown] No completed runs available", {
+        taskRunId,
+        agentModel,
+      });
+      return;
+    }
+
+    const beginResult = await callConvex<{ acquired: boolean }>(
+      "/api/crown/worker/begin",
+      { taskId: evaluationContext.taskId }
+    );
+
+    if (!beginResult.acquired) {
+      log("INFO", "[crown] Crown evaluation already in progress", {
+        taskRunId,
+      });
+      return;
+    }
+
+    const baseRef = await determineBaseRef(WORKSPACE_ROOT);
+    if (!baseRef) {
+      throw new Error("Unable to determine base reference for diff");
+    }
+
+    const candidateDiffs: Array<{
+      run: WorkerCrownRun;
+      gitDiff: string;
+      index: number;
+    }> = [];
+
+    for (const [index, run] of completedRuns.entries()) {
+      if (!run.newBranch) {
+        log("WARN", "[crown] Run missing branch information", {
+          runId: run.id,
+        });
+        continue;
+      }
+      try {
+        const diff = await collectDiffForBranch({
+          repoPath: WORKSPACE_ROOT,
+          branch: run.newBranch,
+          baseRef,
+        });
+        candidateDiffs.push({
+          run,
+          gitDiff: diff || "No changes detected",
+          index,
+        });
+      } catch (error) {
+        log("ERROR", "[crown] Failed to collect diff for run", {
+          runId: run.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    if (candidateDiffs.length === 0) {
+      throw new Error("Unable to collect diffs for any completed runs");
+    }
+
+    let winnerRunId: string | null = null;
+    let reason = "";
+
+    if (candidateDiffs.length === 1) {
+      const [soleCandidate] = candidateDiffs;
+      if (!soleCandidate) {
+        throw new Error("Expected a single candidate diff but none found");
+      }
+      winnerRunId = soleCandidate.run.id;
+      reason = "Only one model completed the task";
+    } else {
+      const prompt = buildEvaluationPrompt(
+        candidateDiffs.map((candidate) => ({
+          index: candidate.index,
+          agentName: candidate.run.agentName ?? `run-${candidate.index + 1}`,
+          gitDiff: candidate.gitDiff,
+        }))
+      );
+
+      const evaluation = await callConvex<CrownEvaluateResponse>(
+        "/api/crown/worker/evaluate",
+        { prompt }
+      );
+
+      const selected = candidateDiffs[evaluation.winner];
+      if (!selected) {
+        throw new Error(
+          `Crown evaluation returned invalid winner index ${evaluation.winner}`
+        );
+      }
+      winnerRunId = selected.run.id;
+      reason = evaluation.reason;
+    }
+
+    if (!winnerRunId) {
+      throw new Error("Failed to resolve crowned run");
+    }
+
+    const winnerCandidate = candidateDiffs.find(
+      (candidate) => candidate.run.id === winnerRunId
+    );
+
+    const context = evaluationContext;
+    if (!context) {
+      throw new Error("Missing evaluation context");
+    }
+
+    await callConvex<{ ok: boolean }>("/api/crown/worker/finalize", {
+      taskId: context.taskId,
+      winnerRunId,
+      reason,
+      candidateRunIds: candidateDiffs.map((candidate) => candidate.run.id),
+      winnerDiff: winnerCandidate?.gitDiff ?? "",
+      originalRequest: context.task.text ?? "",
+      baseRef,
+    });
+
+    log("INFO", "[crown] Crown evaluation completed", {
+      taskRunId,
+      winnerRunId,
+      reason,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    log("ERROR", "[crown] Crown evaluation failed", {
+      taskRunId,
+      error: message,
+    });
+
+    if (evaluationContext) {
+      try {
+        await callConvex<{ ok: boolean }>("/api/crown/worker/fail", {
+          taskId: evaluationContext.taskId,
+          errorMessage: `Failed: ${message}`,
+        });
+      } catch (failError) {
+        log("ERROR", "[crown] Failed to report evaluation error", {
+          taskRunId,
+          error: failError instanceof Error ? failError.message : String(failError),
+        });
+      }
+    }
+  }
+}
+
 // Create terminal helper function
 async function createTerminal(
   terminalId: string,
@@ -1012,6 +1387,7 @@ async function createTerminal(
             agentModel: options.agentModel,
             elapsedMs: Date.now() - processStartTime,
           });
+          void handleCrownEvaluation(options.taskRunId!, options.agentModel);
         })
         .catch((e) => {
           log(
@@ -1109,6 +1485,7 @@ async function createTerminal(
               taskRunId: options.taskRunId,
               elapsedMs,
             });
+            void handleCrownEvaluation(options.taskRunId, options.agentModel);
           }
         },
       }).catch((error) => {
