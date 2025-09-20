@@ -5,6 +5,10 @@ import {
   type Rectangle,
   type WebContents,
 } from "electron";
+import {
+  isCommandPaletteOpenForWindow,
+  onCommandPaletteOpenChange,
+} from "./ui-state";
 import type {
   ElectronDevToolsMode,
   ElectronWebContentsEvent,
@@ -443,6 +447,19 @@ export function registerWebContentsViewHandlers({
 }: RegisterOptions): void {
   setMaxSuspendedEntries(providedMax);
 
+  // React to Command Palette visibility changes by hiding/showing views
+  onCommandPaletteOpenChange((windowId, open) => {
+    for (const entry of Array.from(viewEntries.values())) {
+      if (entry.ownerWindowId !== windowId) continue;
+      try {
+        // If palette is open, force-hide; if closed, let it be visible again.
+        entry.view.setVisible(!open);
+      } catch {
+        // ignore platform-specific failures
+      }
+    }
+  });
+
   ipcMain.handle(
     "cmux:webcontents:create",
     async (event, rawOptions: CreateOptions) => {
@@ -462,7 +479,8 @@ export function registerWebContentsViewHandlers({
             : undefined;
 
         const bounds = toBounds(options.bounds);
-        const desiredVisibility = evaluateVisibility(bounds);
+        const desiredVisibility =
+          evaluateVisibility(bounds) && !isCommandPaletteOpenForWindow(win.id);
 
         if (persistKey) {
           const candidate = suspendedByKey.get(persistKey);
@@ -645,7 +663,10 @@ export function registerWebContentsViewHandlers({
       const bounds = toBounds(rawBounds);
       try {
         entry.view.setBounds(bounds);
-        entry.view.setVisible(evaluateVisibility(bounds, visible));
+        const gatedVisible =
+          evaluateVisibility(bounds, visible) &&
+          !isCommandPaletteOpenForWindow(entry.ownerWindowId);
+        entry.view.setVisible(gatedVisible);
         return { ok: true };
       } catch (error) {
         entry.view.setVisible(false);

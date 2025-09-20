@@ -7,6 +7,7 @@ import {
   webContents,
   webFrameMain,
 } from "electron";
+import { setCommandPaletteOpenForWindow } from "./ui-state";
 
 type Logger = {
   log: (...args: unknown[]) => void;
@@ -308,16 +309,24 @@ export function initCmdK(opts: {
 
   // Renderer reports when Command Palette opens/closes so we don't
   // overwrite previously captured focus while it's open.
-  ipcMain.handle("cmux:ui:set-command-palette-open", (_evt, isOpen: boolean) => {
-    try {
-      cmdkOpen = Boolean(isOpen);
-      keyDebug("cmdk-open-state", { open: cmdkOpen });
-      return { ok: true };
-    } catch (err) {
-      keyDebug("cmdk-open-state-error", { err: String(err) });
-      return { ok: false };
+  ipcMain.handle(
+    "cmux:ui:set-command-palette-open",
+    (evt, isOpen: boolean) => {
+      try {
+        const win = BrowserWindow.fromWebContents(evt.sender) ?? null;
+        const windowId = win?.id ?? null;
+        cmdkOpen = Boolean(isOpen);
+        if (typeof windowId === "number") {
+          setCommandPaletteOpenForWindow(windowId, cmdkOpen);
+        }
+        keyDebug("cmdk-open-state", { open: cmdkOpen, windowId });
+        return { ok: true };
+      } catch (err) {
+        keyDebug("cmdk-open-state-error", { err: String(err) });
+        return { ok: false };
+      }
     }
-  });
+  );
 
   // Simple restore using stored last focus info for this window
   ipcMain.handle("cmux:ui:restore-last-focus", async (evt) => {
