@@ -1,4 +1,5 @@
 import { useTheme } from "@/components/theme/use-theme";
+import { CreateTeamDialog, type CreateTeamFormValues } from "@/components/team/CreateTeamDialog";
 import { isElectron } from "@/lib/electron";
 import { copyAllElectronLogs } from "@/lib/electron-logs/electron-logs";
 import { api } from "@cmux/convex/api";
@@ -6,11 +7,14 @@ import type { Id } from "@cmux/convex/dataModel";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { Command } from "cmdk";
-import { useQuery } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { GitPullRequest, Monitor, Moon, Plus, Sun } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ElectronLogsCommandItems } from "./command-bar/ElectronLogsCommandItems";
+import { useStackApp, useUser, type Team } from "@stackframe/react";
+import { setLastTeamSlugOrId } from "@/lib/lastTeam";
+import { postApiTeams } from "@cmux/www-openapi-client";
 
 interface CommandBarProps {
   teamSlugOrId: string;
@@ -26,6 +30,11 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
   const navigate = useNavigate();
   const router = useRouter();
   const { setTheme } = useTheme();
+  const user = useUser({ or: "return-null" });
+  const app = useStackApp();
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const upsertTeamPublic = useMutation(api.stack.upsertTeamPublic);
+  const ensureMembershipPublic = useMutation(api.stack.ensureMembershipPublic);
 
   const allTasks = useQuery(api.tasks.getTasksWithTaskRuns, { teamSlugOrId });
 
@@ -190,6 +199,17 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
           to: "/$teamSlugOrId/dashboard",
           params: { teamSlugOrId },
         });
+      } else if (value === "create-team") {
+        if (!user) {
+          try {
+            await (window as unknown as { cmux?: { redirectToAccountSettings?: () => Promise<void> } }).cmux?.redirectToAccountSettings?.();
+          } catch {
+            const url = app.urls.accountSettings;
+            navigate({ to: url });
+          }
+        } else {
+          setCreateDialogOpen(true);
+        }
       } else if (value === "pull-requests") {
         navigate({
           to: "/$teamSlugOrId/prs",
@@ -259,79 +279,142 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
       setSearch("");
       setOpenedWithShift(false);
     },
-    [navigate, teamSlugOrId, setTheme, allTasks]
+    [navigate, teamSlugOrId, setTheme, allTasks, user, app.urls.accountSettings]
   );
 
-  if (!open) return null;
+  const handleCreateTeamSubmit = useCallback(
+    async (values: CreateTeamFormValues) => {
+      if (!user) {
+        try {
+          await (window as unknown as { cmux?: { redirectToAccountSettings?: () => Promise<void> } }).cmux?.redirectToAccountSettings?.();
+        } catch {
+          const url = app.urls.accountSettings;
+          navigate({ to: url });
+        }
+        throw new Error("You must be signed in to create a team.");
+      }
+
+      const { data } = await postApiTeams({
+        body: {
+          displayName: values.displayName,
+          slug: values.slug,
+          inviteEmails:
+            values.inviteEmails.length > 0 ? values.inviteEmails : undefined,
+        },
+        throwOnError: true,
+      });
+
+      await upsertTeamPublic({
+        id: data.teamId,
+        displayName: data.displayName,
+        profileImageUrl: undefined,
+        createdAtMillis: Date.now(),
+      });
+      await ensureMembershipPublic({ teamId: data.teamId, userId: user.id });
+
+      const teamSlugOrIdNext = data.slug ?? data.teamId;
+
+      let stackTeam: Team | null = null;
+      const timeoutAt = Date.now() + 15_000;
+      while (Date.now() < timeoutAt) {
+        stackTeam = await user.getTeam(data.teamId);
+        if (stackTeam) break;
+        await new Promise((resolve) => setTimeout(resolve, 400));
+      }
+      if (stackTeam) {
+        await user.setSelectedTeam(stackTeam);
+      }
+
+      setLastTeamSlugOrId(teamSlugOrIdNext);
+      await navigate({
+        to: "/$teamSlugOrId/dashboard",
+        params: { teamSlugOrId: teamSlugOrIdNext },
+      });
+    },
+    [app.urls.accountSettings, ensureMembershipPublic, navigate, upsertTeamPublic, user]
+  );
 
   return (
     <>
-      <div
-        className="fixed inset-0 z-[var(--z-commandbar)]"
-        onClick={() => {
-          setOpen(false);
-          setSearch("");
-          setOpenedWithShift(false);
-        }}
-      />
-      <Command.Dialog
-        open={open}
-        onOpenChange={setOpen}
-        label="Command Menu"
-        title="Command Menu"
-        loop
-        className="fixed inset-0 z-[var(--z-commandbar)] flex items-start justify-center pt-[20vh] pointer-events-none"
-        onKeyDown={(e) => {
-          if (e.key === "Escape") {
-            setOpen(false);
-            setSearch("");
-            setOpenedWithShift(false);
-          }
-        }}
-        onValueChange={handleHighlight}
-        defaultValue={openedWithShift ? "new-task" : undefined}
-      >
-        <Dialog.Title className="sr-only">Command Menu</Dialog.Title>
-
-        <div className="w-full max-w-2xl bg-white dark:bg-neutral-900 rounded-xl shadow-2xl border border-neutral-200 dark:border-neutral-700 overflow-hidden pointer-events-auto">
-          <Command.Input
-            value={search}
-            onValueChange={setSearch}
-            placeholder="Type a command or search..."
-            className="w-full px-4 py-3 text-sm bg-transparent border-b border-neutral-200 dark:border-neutral-700 outline-none placeholder:text-neutral-500 dark:placeholder:text-neutral-400"
+      {open ? (
+        <>
+          <div
+            className="fixed inset-0 z-[var(--z-commandbar)]"
+            onClick={() => {
+              setOpen(false);
+              setSearch("");
+              setOpenedWithShift(false);
+            }}
           />
-          <Command.List className="max-h-[400px] overflow-y-auto px-1 pb-2 flex flex-col gap-2">
-            <Command.Empty className="py-6 text-center text-sm text-neutral-500 dark:text-neutral-400">
-              No results found.
-            </Command.Empty>
+          <Command.Dialog
+            open={open}
+            onOpenChange={setOpen}
+            label="Command Menu"
+            title="Command Menu"
+            loop
+            className="fixed inset-0 z-[var(--z-commandbar)] flex items-start justify-center pt-[20vh] pointer-events-none"
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setOpen(false);
+                setSearch("");
+                setOpenedWithShift(false);
+              }
+            }}
+            onValueChange={handleHighlight}
+            defaultValue={openedWithShift ? "new-task" : undefined}
+          >
+            <Dialog.Title className="sr-only">Command Menu</Dialog.Title>
 
-            <Command.Group>
-              <div className="px-2 py-1.5 text-xs text-neutral-500 dark:text-neutral-400">
-                Actions
-              </div>
-              <Command.Item
-                value="new-task"
-                onSelect={() => handleSelect("new-task")}
-                className="flex items-center gap-2 px-3 py-2.5 mx-1 rounded-md cursor-pointer
-                hover:bg-neutral-100 dark:hover:bg-neutral-800
-                data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800
-                data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100"
-              >
-                <Plus className="h-4 w-4 text-neutral-500" />
-                <span className="text-sm">New Task</span>
-              </Command.Item>
-              <Command.Item
-                value="pull-requests"
-                onSelect={() => handleSelect("pull-requests")}
-                className="flex items-center gap-2 px-3 py-2.5 mx-1 rounded-md cursor-pointer
-                hover:bg-neutral-100 dark:hover:bg-neutral-800
-                data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800
-                data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100"
-              >
-                <GitPullRequest className="h-4 w-4 text-neutral-500" />
-                <span className="text-sm">Pull Requests</span>
-              </Command.Item>
-            </Command.Group>
+            <div className="w-full max-w-2xl bg-white dark:bg-neutral-900 rounded-xl shadow-2xl border border-neutral-200 dark:border-neutral-700 overflow-hidden pointer-events-auto">
+              <Command.Input
+                value={search}
+                onValueChange={setSearch}
+                placeholder="Type a command or search..."
+                className="w-full px-4 py-3 text-sm bg-transparent border-b border-neutral-200 dark:border-neutral-700 outline-none placeholder:text-neutral-500 dark:placeholder:text-neutral-400"
+              />
+              <Command.List className="max-h-[400px] overflow-y-auto px-1 pb-2 flex flex-col gap-2">
+                <Command.Empty className="py-6 text-center text-sm text-neutral-500 dark:text-neutral-400">
+                  No results found.
+                </Command.Empty>
+
+                <Command.Group>
+                  <div className="px-2 py-1.5 text-xs text-neutral-500 dark:text-neutral-400">
+                    Actions
+                  </div>
+                  <Command.Item
+                    value="new-task"
+                    onSelect={() => handleSelect("new-task")}
+                    className="flex items-center gap-2 px-3 py-2.5 mx-1 rounded-md cursor-pointer
+                    hover:bg-neutral-100 dark:hover:bg-neutral-800
+                    data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800
+                    data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100"
+                  >
+                    <Plus className="h-4 w-4 text-neutral-500" />
+                    <span className="text-sm">New Task</span>
+                  </Command.Item>
+                  <Command.Item
+                    value="pull-requests"
+                    onSelect={() => handleSelect("pull-requests")}
+                    className="flex items-center gap-2 px-3 py-2.5 mx-1 rounded-md cursor-pointer
+                    hover:bg-neutral-100 dark:hover:bg-neutral-800
+                    data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800
+                    data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100"
+                  >
+                    <GitPullRequest className="h-4 w-4 text-neutral-500" />
+                    <span className="text-sm">Pull Requests</span>
+                  </Command.Item>
+                  <Command.Item
+                    value="create-team"
+                    onSelect={() => handleSelect("create-team")}
+                    className="flex items-center gap-2 px-3 py-2.5 mx-1 rounded-md cursor-pointer
+                    hover:bg-neutral-100 dark:hover:bg-neutral-800
+                    data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800
+                    data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100"
+                  >
+                    <Plus className="h-4 w-4 text-neutral-500" />
+                    <span className="text-sm">Create Team</span>
+                  </Command.Item>
+                </Command.Group>
 
             <Command.Group>
               <div className="px-2 py-1.5 text-xs text-neutral-500 dark:text-neutral-400">
@@ -485,9 +568,17 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
             {isElectron ? (
               <ElectronLogsCommandItems onSelect={handleSelect} />
             ) : null}
-          </Command.List>
-        </div>
-      </Command.Dialog>
+              </Command.List>
+            </div>
+          </Command.Dialog>
+        </>
+      ) : null}
+
+      <CreateTeamDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+        onSubmit={handleCreateTeamSubmit}
+      />
     </>
   );
 }
