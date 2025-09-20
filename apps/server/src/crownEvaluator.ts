@@ -554,12 +554,51 @@ export async function evaluateCrown({
     const candidateData = await Promise.all(
       completedRuns.map(async (run, idx) => {
         const agentName = getAgentNameOrUnknown(run.agentName);
-        // Try to collect diff via worker
-        const diff = (
-          crownRunId && run._id === crownRunId
-            ? (precollectedDiff?.trim() ?? "")
-            : ""
-        ).trim();
+        let diff = "";
+        
+        // Use precollected diff if available for the triggering run
+        if (crownRunId && run._id === crownRunId && precollectedDiff) {
+          diff = precollectedDiff.trim();
+        } else if (run.newBranch) {
+          // Fetch diff from the pushed branch
+          serverLogger.info(
+            `[CrownEvaluator] Fetching diff from branch ${run.newBranch} for ${agentName}`
+          );
+          
+          // Try to get VSCode instance for any completed run
+          const instances = VSCodeInstance.getInstances();
+          let instance: VSCodeInstance | undefined;
+          for (const [, inst] of instances) {
+            if (inst.getTaskRunId() === run._id) {
+              instance = inst;
+              break;
+            }
+          }
+          
+          if (instance && instance.isWorkerConnected()) {
+            try {
+              const workerSocket = instance.getWorkerSocket();
+              // Fetch diff from the branch that was pushed
+              const { stdout } = await workerExec({
+                workerSocket,
+                command: "/bin/bash",
+                args: ["-c", `cd /root/workspace && git diff origin/main..origin/${run.newBranch} 2>/dev/null || git diff origin/main..HEAD`],
+                cwd: "/root/workspace",
+                env: {},
+                timeout: 30000,
+              });
+              diff = (stdout || "").trim();
+              serverLogger.info(
+                `[CrownEvaluator] Fetched ${diff.length} chars from branch ${run.newBranch}`
+              );
+            } catch (e) {
+              serverLogger.error(
+                `[CrownEvaluator] Failed to fetch diff from branch ${run.newBranch}:`,
+                e
+              );
+            }
+          }
+        }
 
         serverLogger.info(
           `[CrownEvaluator] Implementation ${idx} (${agentName}): ${diff.length} chars of diff`

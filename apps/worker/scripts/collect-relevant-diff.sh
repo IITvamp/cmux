@@ -134,8 +134,27 @@ if [[ -n "$base_ref" ]]; then
     exit 0
   fi
 
-  # Output the filtered diff against merge-base (includes staged + unstaged)
-  git --no-pager diff -M --no-color "$merge_base" -- "${filtered_files[@]}" || true
+  # Create a temporary index to stage untracked files for diffing
+  tmp_index=$(mktemp)
+  rm -f "$tmp_index" || true
+  trap 'rm -f "$tmp_index"' EXIT
+  export GIT_INDEX_FILE="$tmp_index"
+  
+  # Copy the current index
+  git read-tree HEAD
+  
+  # Add all filtered files (including untracked) to the temporary index
+  for f in "${filtered_files[@]}"; do
+    if [[ -f "$f" ]]; then
+      git add -- "$f" 2>/dev/null || true
+    fi
+  done
+  
+  # Output the diff including staged changes (which now includes untracked files)
+  git --no-pager diff --staged -M --no-color "$merge_base" || true
+  
+  # Clean up
+  unset GIT_INDEX_FILE
   exit 0
 fi
 
