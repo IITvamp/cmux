@@ -487,7 +487,10 @@ export const DashboardInputControls = memo(function DashboardInputControls({
             "border border-neutral-200 dark:border-neutral-500/15",
             "text-neutral-600 dark:text-neutral-400",
             "hover:bg-neutral-200 dark:hover:bg-neutral-600",
-            "transition-colors"
+            "transition-colors",
+            // Accessible focus ring to match searchable selects
+            "outline-none focus-visible:outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
+            "focus-visible:ring-offset-1 focus-visible:ring-offset-white dark:focus-visible:ring-offset-neutral-900"
           )}
           onClick={handleImageClick}
           title="Upload image"
@@ -502,7 +505,10 @@ export const DashboardInputControls = memo(function DashboardInputControls({
             "border border-neutral-200 dark:border-neutral-500/15",
             "text-neutral-600 dark:text-neutral-400",
             "hover:bg-neutral-200 dark:hover:bg-neutral-600",
-            "transition-colors"
+            "transition-colors",
+            // Accessible focus ring to match searchable selects
+            "outline-none focus-visible:outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
+            "focus-visible:ring-offset-1 focus-visible:ring-offset-white dark:focus-visible:ring-offset-neutral-900"
           )}
         >
           <Mic className="w-4 h-4" />
