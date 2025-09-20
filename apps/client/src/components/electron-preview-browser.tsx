@@ -1,10 +1,15 @@
-import { ChevronDown, Globe, Inspect, Loader2 } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Inspect,
+  Loader2,
+  RefreshCw,
+} from "lucide-react";
 import type { CSSProperties } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { PersistentWebView } from "@/components/persistent-webview";
 import { Button } from "@/components/ui/button";
-import { Dropdown } from "@/components/ui/dropdown";
 import {
   Tooltip,
   TooltipContent,
@@ -28,15 +33,6 @@ interface NativeViewHandle {
   webContentsId: number;
   restored: boolean;
 }
-
-const DEVTOOLS_DOCK_OPTIONS: Array<{
-  label: string;
-  mode: ElectronDevToolsMode;
-}> = [
-  { label: "Dock to bottom", mode: "bottom" },
-  { label: "Dock to right", mode: "right" },
-  { label: "Open in separate window", mode: "undocked" },
-];
 
 function normalizeUrl(raw: string): string {
   const trimmed = raw.trim();
@@ -95,9 +91,10 @@ export function ElectronPreviewBrowser({
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [devtoolsOpen, setDevtoolsOpen] = useState(false);
-  const [devtoolsMode, setDevtoolsMode] =
-    useState<ElectronDevToolsMode>("bottom");
+  const [devtoolsMode] = useState<ElectronDevToolsMode>("right");
   const [lastError, setLastError] = useState<string | null>(null);
+  const [canGoBack, setCanGoBack] = useState(false);
+  const [canGoForward, setCanGoForward] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   const { progress, visible } = useLoadingProgress(isLoading);
@@ -106,6 +103,8 @@ export function ElectronPreviewBrowser({
     setAddressValue(src);
     setCommittedUrl(src);
     setLastError(null);
+    setCanGoBack(false);
+    setCanGoForward(false);
   }, [src]);
 
   const applyState = useCallback(
@@ -116,6 +115,8 @@ export function ElectronPreviewBrowser({
       }
       setIsLoading(state.isLoading);
       setDevtoolsOpen(state.isDevToolsOpened);
+      setCanGoBack(Boolean(state.canGoBack));
+      setCanGoForward(Boolean(state.canGoForward));
       if (state.isLoading) {
         setLastError(null);
       }
@@ -173,6 +174,8 @@ export function ElectronPreviewBrowser({
     setViewHandle(null);
     setIsLoading(false);
     setDevtoolsOpen(false);
+    setCanGoBack(false);
+    setCanGoForward(false);
   }, []);
 
   const handleSubmit = useCallback(
@@ -204,10 +207,37 @@ export function ElectronPreviewBrowser({
     []
   );
 
-  const handleInputBlur = useCallback(() => {
-    setIsEditing(false);
-    setAddressValue(committedUrl);
-  }, [committedUrl]);
+  const handleInputBlur = useCallback(
+    (event: React.FocusEvent<HTMLInputElement>) => {
+      setIsEditing(false);
+      setAddressValue(committedUrl);
+      const input = event.currentTarget;
+      queueMicrotask(() => {
+        try {
+          const end = input.value.length;
+          input.setSelectionRange?.(end, end);
+          input.selectionStart = end;
+          input.selectionEnd = end;
+        } catch {
+          // Ignore selection errors on older browsers.
+        }
+        if (typeof window !== "undefined") {
+          window.getSelection?.()?.removeAllRanges?.();
+        }
+      });
+    },
+    [committedUrl]
+  );
+
+  const handleInputMouseUp = useCallback(
+    (event: React.MouseEvent<HTMLInputElement>) => {
+      if (document.activeElement !== event.currentTarget) {
+        return;
+      }
+      event.currentTarget.select();
+    },
+    []
+  );
 
   const handleInputKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -237,25 +267,21 @@ export function ElectronPreviewBrowser({
     }
   }, [devtoolsMode, devtoolsOpen, viewHandle]);
 
-  const handleOpenDevToolsWithMode = useCallback(
-    (mode: ElectronDevToolsMode) => {
-      if (!viewHandle) return;
-      setDevtoolsMode(mode);
-      void window.cmux?.webContentsView
-        ?.openDevTools(viewHandle.id, { mode })
-        .catch((error) => {
-          console.warn("Failed to open DevTools with mode", error);
-        });
-    },
-    [viewHandle]
-  );
-
-  const handleCloseDevTools = useCallback(() => {
+  const handleGoBack = useCallback(() => {
     if (!viewHandle) return;
     void window.cmux?.webContentsView
-      ?.closeDevTools(viewHandle.id)
+      ?.goBack?.(viewHandle.id)
       .catch((error) => {
-        console.warn("Failed to close DevTools", error);
+        console.warn("Failed to go back", error);
+      });
+  }, [viewHandle]);
+
+  const handleGoForward = useCallback(() => {
+    if (!viewHandle) return;
+    void window.cmux?.webContentsView
+      ?.goForward?.(viewHandle.id)
+      .catch((error) => {
+        console.warn("Failed to go forward", error);
       });
   }, [viewHandle]);
 
@@ -280,17 +306,77 @@ export function ElectronPreviewBrowser({
               "dark:border-neutral-800 dark:bg-neutral-900"
             )}
           >
-            {isLoading ? (
-              <Loader2 className="size-4 animate-spin text-primary" />
-            ) : (
-              <Globe className="size-4 text-neutral-400 dark:text-neutral-500" />
-            )}
+            <div className="flex items-center gap-1">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-7 rounded-full p-0 text-neutral-400 hover:text-neutral-800 disabled:opacity-30 disabled:hover:text-neutral-400 dark:text-neutral-500 dark:hover:text-neutral-100 dark:disabled:hover:text-neutral-500"
+                    onClick={handleGoBack}
+                    disabled={!viewHandle || !canGoBack}
+                    aria-label="Go back"
+                  >
+                    <ArrowLeft className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Back</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-7 rounded-full p-0 text-neutral-400 hover:text-neutral-800 disabled:opacity-30 disabled:hover:text-neutral-400 dark:text-neutral-500 dark:hover:text-neutral-100 dark:disabled:hover:text-neutral-500"
+                    onClick={handleGoForward}
+                    disabled={!viewHandle || !canGoForward}
+                    aria-label="Go forward"
+                  >
+                    <ArrowRight className="size-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Forward</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-7 rounded-full p-0 text-neutral-600 hover:text-neutral-800 disabled:opacity-30 disabled:hover:text-neutral-400 dark:text-neutral-500 dark:hover:text-neutral-100 dark:disabled:hover:text-neutral-500"
+                    onClick={() => {
+                      if (!viewHandle) return;
+                      void window.cmux?.webContentsView
+                        ?.reload?.(viewHandle.id)
+                        .catch((error) => {
+                          console.warn(
+                            "Failed to reload WebContentsView",
+                            error
+                          );
+                        });
+                    }}
+                    disabled={!viewHandle}
+                    aria-label="Refresh page"
+                  >
+                    {isLoading ? (
+                      <Loader2 className="size-4 animate-spin text-primary" />
+                    ) : (
+                      <RefreshCw className="size-4" />
+                    )}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">Refresh</TooltipContent>
+              </Tooltip>
+            </div>
             <input
               ref={inputRef}
               value={addressValue}
               onChange={(event) => setAddressValue(event.target.value)}
               onFocus={handleInputFocus}
               onBlur={handleInputBlur}
+              onMouseUp={handleInputMouseUp}
               onKeyDown={handleInputKeyDown}
               className="flex-1 bg-transparent text-[11px] text-neutral-900 outline-none placeholder:text-neutral-400 disabled:cursor-not-allowed disabled:text-neutral-400 dark:text-neutral-100 dark:placeholder:text-neutral-600"
               placeholder="Enter a URL"
@@ -321,51 +407,9 @@ export function ElectronPreviewBrowser({
                   {devtoolsTooltipLabel}
                 </TooltipContent>
               </Tooltip>
-              <Dropdown.Root>
-                <Dropdown.Trigger
-                  className={cn(
-                    "flex size-9 items-center justify-center rounded-full text-neutral-500 transition-colors",
-                    "hover:bg-neutral-100 hover:text-neutral-800 focus-visible:ring-2 focus-visible:ring-primary/20",
-                    "dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100",
-                    !viewHandle && "cursor-not-allowed opacity-50"
-                  )}
-                  disabled={!viewHandle}
-                  aria-label="DevTools docking options"
-                >
-                  <ChevronDown className="size-4" />
-                </Dropdown.Trigger>
-                <Dropdown.Portal>
-                  <Dropdown.Positioner sideOffset={6}>
-                    <Dropdown.Popup>
-                      <Dropdown.Arrow />
-                      {DEVTOOLS_DOCK_OPTIONS.map((option) => (
-                        <Dropdown.Item
-                          key={option.mode}
-                          onClick={(event) => {
-                            event.preventDefault();
-                            handleOpenDevToolsWithMode(option.mode);
-                          }}
-                        >
-                          {option.label}
-                        </Dropdown.Item>
-                      ))}
-                      <Dropdown.Item
-                        onClick={(event) => {
-                          event.preventDefault();
-                          handleCloseDevTools();
-                        }}
-                        disabled={!devtoolsOpen}
-                        className="text-neutral-500 dark:text-neutral-400"
-                      >
-                        Close DevTools
-                      </Dropdown.Item>
-                    </Dropdown.Popup>
-                  </Dropdown.Positioner>
-                </Dropdown.Portal>
-              </Dropdown.Root>
             </div>
             <div
-              className="pointer-events-none absolute inset-x-0 top-0 h-[2px] overflow-hidden rounded-full bg-neutral-200/70 transition-opacity dark:bg-neutral-800/80"
+              className="pointer-events-none absolute inset-x-0 -top-px h-[2px] overflow-hidden bg-neutral-200/70 transition-opacity dark:bg-neutral-800/80"
               style={{ opacity: visible ? 1 : 0 }}
             >
               <div
