@@ -769,6 +769,85 @@ export async function spawnAgent(
     // );
 
     // Create image files if any
+    // Heuristic: after environment is up, refresh any repos under /root/workspaces
+    // This scans subdirs and runs a safe fast-forward pull where possible.
+    try {
+      serverLogger.info(
+        "[AgentSpawner] Scanning /root/workspaces for git repos to pull"
+      );
+      await new Promise<void>((resolve) => {
+        try {
+          workerSocket
+            .timeout(30000)
+            .emit(
+              "worker:exec",
+              {
+                command: "bash",
+                args: [
+                  "-lc",
+                  [
+                    "set -euo pipefail",
+                    'if [ -d "/root/workspaces" ]; then',
+                    '  echo "Scanning /root/workspaces"',
+                    '  for d in /root/workspaces/*; do',
+                    '    [ -d "$d" ] || continue',
+                    '    if [ -d "$d/.git" ] || (cd "$d" && git rev-parse --is-inside-work-tree >/dev/null 2>&1); then',
+                    '      echo "Pulling $d"',
+                    '      (cd "$d" && git fetch --all --prune && git pull --ff-only) || echo "Pull failed in $d"',
+                    "    fi",
+                    "  done",
+                    "else",
+                    '  echo "/root/workspaces not found; skipping."',
+                    "fi",
+                  ].join(" && "),
+                ],
+                cwd: "/root",
+                env: {},
+              },
+              (timeoutError, result) => {
+                if (timeoutError) {
+                  if (
+                    timeoutError instanceof Error &&
+                    timeoutError.message === "operation has timed out"
+                  ) {
+                    serverLogger.warn(
+                      "[AgentSpawner] Timeout while pulling repos under /root/workspaces"
+                    );
+                  } else {
+                    serverLogger.warn(
+                      "[AgentSpawner] Error during git pull scan under /root/workspaces",
+                      timeoutError
+                    );
+                  }
+                } else if (result?.error) {
+                  serverLogger.warn(
+                    "[AgentSpawner] worker:exec error during /root/workspaces git pull scan",
+                    result.error
+                  );
+                } else {
+                  serverLogger.info(
+                    "[AgentSpawner] Completed git pull scan under /root/workspaces"
+                  );
+                }
+                resolve();
+              }
+            );
+        } catch (err) {
+          serverLogger.warn(
+            "[AgentSpawner] Failed to initiate /root/workspaces git pull scan",
+            err
+          );
+          resolve();
+        }
+      });
+    } catch (err) {
+      serverLogger.warn(
+        "[AgentSpawner] Error running /root/workspaces git pull scan",
+        err
+      );
+    }
+
+    // Create image files if any
     if (imageFiles.length > 0) {
       serverLogger.info(
         `[AgentSpawner] Creating ${imageFiles.length} image files...`
