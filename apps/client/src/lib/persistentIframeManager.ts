@@ -188,45 +188,51 @@ class PersistentIframeManager {
 
     // Then make visible after a microtask to ensure position is set
     requestAnimationFrame(() => {
-      if (options?.style) {
-        // Convert React.CSSProperties to CSS string, preserving existing fixed positioning
-        const styleEntries = Object.entries(options.style);
-        const additionalStyles = styleEntries
-          .map(([key, value]) => {
-            // Convert camelCase to kebab-case
-            const cssKey = key.replace(
-              /[A-Z]/g,
-              (match) => `-${match.toLowerCase()}`
-            );
-            return `${cssKey}: ${value}`;
-          })
-          .join("; ");
+      // Important: Do NOT overwrite width/height/transform that were set by syncIframePosition.
+      // Set only the properties needed for visibility and stacking, preserving geometry.
+      const s = entry.wrapper.style;
 
-        // Preserve core positioning while adding custom styles
-        entry.wrapper.style.cssText = `
-          position: fixed;
-          top: 0;
-          right: 0;
-          left: 0;
-          bottom: 0;
-          visibility: visible;
-          pointer-events: auto;
-          overflow: hidden;
-          ${additionalStyles}
-        `;
-      } else {
-        // Default styles
-        entry.wrapper.style.cssText = `
-          position: fixed;
-          top: 0;
-          right: 0;
-          left: 0;
-          bottom: 0;
-          visibility: visible;
-          pointer-events: auto;
-          overflow: hidden;
-        `;
+      // Core positioning to anchor transform at the viewport origin
+      s.position = "fixed";
+      s.top = "0";
+      s.left = "0";
+      // Clear constraints that force full-viewport sizing which created gaps
+      s.right = "";
+      s.bottom = "";
+
+      // Make interactive and visible, without affecting size/transform
+      s.visibility = "visible";
+      s.pointerEvents = "auto";
+      s.overflow = "hidden";
+
+      // Apply any additional custom styles without clobbering transform/size
+      if (options?.style) {
+        for (const [k, v] of Object.entries(options.style)) {
+          // Skip geometry keys we manage
+          if (
+            k === "position" ||
+            k === "top" ||
+            k === "left" ||
+            k === "right" ||
+            k === "bottom" ||
+            k === "width" ||
+            k === "height" ||
+            k === "transform" ||
+            k === "visibility" ||
+            k === "pointerEvents" ||
+            k === "overflow"
+          ) {
+            continue;
+          }
+
+          // Convert camelCase to kebab-case for setProperty
+          const cssKey = k.replace(/[A-Z]/g, (m) => `-${m.toLowerCase()}`);
+          entry.wrapper.style.setProperty(cssKey, String(v));
+        }
       }
+
+      // Ensure geometry is correct after any style changes
+      this.syncIframePosition(key);
 
       entry.isVisible = true;
       this.activeIframeKey = key;
