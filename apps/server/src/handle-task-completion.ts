@@ -161,6 +161,15 @@ export async function handleTaskCompletion({
                 `[AgentSpawner] Crown evaluation already in progress for task ${taskRunData.taskId}`
               );
             } else {
+              await autoCommitPromise.catch((error) => {
+                serverLogger.warn(
+                  `[AgentSpawner] Auto-commit did not complete before crown evaluation; proceeding with available repository state`,
+                  {
+                    error:
+                      error instanceof Error ? error.message : String(error),
+                  }
+                );
+              });
               await evaluateCrown({
                 taskId: taskRunData.taskId,
                 teamSlugOrId,

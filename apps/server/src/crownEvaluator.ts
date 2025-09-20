@@ -1,21 +1,225 @@
+import { spawn } from "node:child_process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
 import { getConvex } from "./utils/convexClient.js";
 import { serverLogger } from "./utils/fileLogger.js";
 import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
-import { workerExec } from "./utils/workerExec.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { getWwwClient } from "./utils/wwwClient.js";
+import { ensureRunWorktreeAndBranch } from "./utils/ensureRunWorktree.js";
+import { RepositoryManager } from "./repositoryManager.js";
 import {
   postApiCrownEvaluate,
   postApiCrownSummarize,
 } from "@cmux/www-openapi-client";
+
+const moduleFilename = fileURLToPath(import.meta.url);
+const moduleDirname = path.dirname(moduleFilename);
+const COLLECT_DIFF_SCRIPT_PATH = path.resolve(
+  moduleDirname,
+  "../../worker/scripts/collect-relevant-diff.sh"
+);
 
 const UNKNOWN_AGENT_NAME = "unknown agent";
 
 function getAgentNameOrUnknown(agentName?: string | null): string {
   const trimmed = agentName?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : UNKNOWN_AGENT_NAME;
+}
+
+const gitDiffCache = new Map<string, string>();
+const repoDefaultBranchCache = new Map<string, string>();
+
+async function fetchRepoDefaultBranch(
+  teamSlugOrId: string,
+  fullName?: string | null
+): Promise<string | null> {
+  if (!fullName) {
+    return null;
+  }
+  const cacheKey = `${teamSlugOrId}:${fullName}`;
+  const cached = repoDefaultBranchCache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+  try {
+    const repo = await getConvex().query(api.github.getRepoByFullName, {
+      teamSlugOrId,
+      fullName,
+    });
+    const defaultBranch = repo?.defaultBranch ?? null;
+    if (defaultBranch) {
+      repoDefaultBranchCache.set(cacheKey, defaultBranch);
+    }
+    return defaultBranch;
+  } catch (error) {
+    serverLogger.warn(
+      `[CrownEvaluator] Failed to fetch repo by full name for crown diff`,
+      {
+        teamSlugOrId,
+        fullName,
+        error: error instanceof Error ? error.message : String(error),
+      }
+    );
+    return null;
+  }
+}
+
+function resolveBaseBranch(baseBranch?: string | null): string | null {
+  if (!baseBranch) {
+    return null;
+  }
+  return baseBranch.startsWith("origin/")
+    ? baseBranch.slice("origin/".length)
+    : baseBranch;
+}
+
+async function syncWorktreeWithRemote(
+  worktreePath: string,
+  branchName: string,
+  baseBranch?: string | null
+): Promise<void> {
+  const repoMgr = RepositoryManager.getInstance();
+
+  try {
+    await repoMgr.executeGitCommand(`git fetch origin ${branchName}`, {
+      cwd: worktreePath,
+    });
+  } catch (error) {
+    serverLogger.warn(
+      `[CrownEvaluator] Failed to fetch branch ${branchName} for diff: ${
+        (error as Error).message ?? String(error)
+      }`
+    );
+  }
+
+  const normalizedBase = resolveBaseBranch(baseBranch);
+  if (normalizedBase) {
+    try {
+      await repoMgr.executeGitCommand(`git fetch origin ${normalizedBase}`, {
+        cwd: worktreePath,
+        suppressErrorLogging: true,
+      });
+    } catch (error) {
+      serverLogger.warn(
+        `[CrownEvaluator] Failed to fetch base branch ${normalizedBase}: ${
+          (error as Error).message ?? String(error)
+        }`
+      );
+    }
+  }
+
+  try {
+    await repoMgr.executeGitCommand(`git checkout ${branchName}`, {
+      cwd: worktreePath,
+    });
+  } catch (error) {
+    serverLogger.warn(
+      `[CrownEvaluator] Failed to checkout branch ${branchName} before diff: ${
+        (error as Error).message ?? String(error)
+      }`
+    );
+  }
+
+  try {
+    await repoMgr.executeGitCommand(`git reset --hard origin/${branchName}`, {
+      cwd: worktreePath,
+    });
+  } catch (error) {
+    serverLogger.warn(
+      `[CrownEvaluator] Failed to reset branch ${branchName} before diff: ${
+        (error as Error).message ?? String(error)
+      }`
+    );
+  }
+}
+
+async function runCollectRelevantDiff(
+  worktreePath: string,
+  baseBranch?: string | null
+): Promise<string> {
+  const env = {
+    ...process.env,
+  } as NodeJS.ProcessEnv;
+
+  if (baseBranch) {
+    const normalizedBase = resolveBaseBranch(baseBranch);
+    const diffBase = normalizedBase ? `origin/${normalizedBase}` : baseBranch;
+    env.CMUX_DIFF_BASE = diffBase;
+  }
+
+  return await new Promise<string>((resolve, reject) => {
+    const child = spawn(COLLECT_DIFF_SCRIPT_PATH, {
+      cwd: worktreePath,
+      env,
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
+
+    child.stdout?.on("data", (chunk: string) => {
+      stdout += chunk;
+    });
+
+    child.stderr?.on("data", (chunk: string) => {
+      stderr += chunk;
+    });
+
+    child.on("error", (error) => {
+      reject(error);
+    });
+
+    child.on("close", (code) => {
+      if (code !== 0) {
+        reject(
+          new Error(
+            `collect-relevant-diff exited with code ${code}: ${stderr.trim()}`
+          )
+        );
+        return;
+      }
+      resolve(stdout.trim());
+    });
+  });
+}
+
+async function collectGitDiffForRun(
+  runId: Id<"taskRuns">,
+  teamSlugOrId: string
+): Promise<string> {
+  const cacheKey = String(runId);
+  if (gitDiffCache.has(cacheKey)) {
+    return gitDiffCache.get(cacheKey) ?? "";
+  }
+
+  const ensureResult = await ensureRunWorktreeAndBranch(runId, teamSlugOrId);
+  const repoDefaultBranch = await fetchRepoDefaultBranch(
+    teamSlugOrId,
+    ensureResult.task.projectFullName
+  );
+  const baseBranch =
+    ensureResult.baseBranch ||
+    repoDefaultBranch ||
+    ensureResult.task.baseBranch;
+
+  await syncWorktreeWithRemote(
+    ensureResult.worktreePath,
+    ensureResult.branchName,
+    baseBranch
+  );
+
+  const diff = await runCollectRelevantDiff(
+    ensureResult.worktreePath,
+    baseBranch
+  );
+
+  gitDiffCache.set(cacheKey, diff);
+  return diff;
 }
 
 // Auto PR behavior is controlled via workspace settings in Convex
@@ -302,7 +506,7 @@ type EvaluateCrownOptions = {
   taskId: Id<"tasks">;
   teamSlugOrId: string;
   crownRunId: Id<"taskRuns">;
-  precollectedDiff: string;
+  precollectedDiff?: string;
 };
 
 export async function evaluateCrown({
@@ -345,9 +549,13 @@ export async function evaluateCrown({
     const githubToken = await getGitHubTokenFromKeychain();
 
     // Helper: generate and persist a system task comment summarizing the winner
+    const precollected = precollectedDiff?.trim() ?? "";
+    if (precollected.length > 0) {
+      gitDiffCache.set(String(crownRunId), precollected);
+    }
+
     const generateSystemTaskComment = async (
-      winnerRunId: Id<"taskRuns">,
-      fallbackGitDiff: string
+      winnerRunId: Id<"taskRuns">
     ) => {
       try {
         // Skip if a system comment already exists for this task
@@ -362,36 +570,10 @@ export async function evaluateCrown({
           return;
         }
 
-        // Try to collect worker diff for the winner; fall back to provided diff
-        let effectiveDiff = fallbackGitDiff || "";
-        const instances = VSCodeInstance.getInstances();
-        let instance: VSCodeInstance | undefined;
-        for (const [, inst] of instances) {
-          if (inst.getTaskRunId() === winnerRunId) {
-            instance = inst;
-            break;
-          }
-        }
-        if (instance && instance.isWorkerConnected()) {
-          try {
-            const workerSocket = instance.getWorkerSocket();
-            const { stdout } = await workerExec({
-              workerSocket,
-              command: "/bin/bash",
-              args: ["-c", "/usr/local/bin/cmux-collect-relevant-diff.sh"],
-              cwd: "/root/workspace",
-              env: {},
-              timeout: 30000,
-            });
-            const diff = (stdout || "").trim();
-            if (diff.length > 0) effectiveDiff = diff;
-          } catch (e) {
-            serverLogger.error(
-              `[CrownEvaluator] Failed to collect diff for task comment:`,
-              e
-            );
-          }
-        }
+        const effectiveDiff = await collectGitDiffForRun(
+          winnerRunId,
+          teamSlugOrId
+        );
 
         // Pull original request text for context
         const task = await getConvex().query(api.tasks.getById, {
@@ -495,69 +677,17 @@ export async function evaluateCrown({
       return;
     }
 
-    // Helper to extract a relevant git diff using worker script when possible
-    const collectDiffViaWorker = async (
-      runId: Id<"taskRuns">
-    ): Promise<string | null> => {
-      try {
-        // Find a live VSCode instance for this run
-        const instances = VSCodeInstance.getInstances();
-        let instance: VSCodeInstance | undefined;
-        for (const [, inst] of instances) {
-          if (inst.getTaskRunId() === runId) {
-            instance = inst;
-            break;
-          }
-        }
-        if (!instance || !instance.isWorkerConnected()) {
-          serverLogger.info(
-            `[CrownEvaluator] No live worker for run ${runId}; unable to collect diff`
-          );
-          return null;
-        }
-        const workerSocket = instance.getWorkerSocket();
-        const { stdout } = await workerExec({
-          workerSocket,
-          command: "/bin/bash",
-          args: ["-c", "/usr/local/bin/cmux-collect-relevant-diff.sh"],
-          cwd: "/root/workspace",
-          env: {},
-          timeout: 30000,
-        });
-        const diff = stdout?.trim() || "";
-        if (diff.length === 0) {
-          serverLogger.info(
-            `[CrownEvaluator] Worker diff empty for run ${runId}`
-          );
-          return null;
-        }
-        serverLogger.info(
-          `[CrownEvaluator] Collected worker diff for ${runId} (${diff.length} chars)`
-        );
-        return diff;
-      } catch (err) {
-        serverLogger.error(
-          `[CrownEvaluator] Failed collecting worker diff for run ${runId}:`,
-          err
-        );
-        return null;
-      }
-    };
-
     const candidateData = await Promise.all(
       completedRuns.map(async (run, idx) => {
         const agentName = getAgentNameOrUnknown(run.agentName);
-        // Try to collect diff via worker
-        const precollected =
-          crownRunId && run._id === crownRunId
-            ? (precollectedDiff?.trim() ?? "")
-            : "";
-        const workerDiff: string | null = precollected
-          ? precollected
-          : await collectDiffViaWorker(run._id);
-        let gitDiff: string =
-          workerDiff && workerDiff.length > 0
-            ? workerDiff
+        const gitDiffRaw = await collectGitDiffForRun(
+          run._id,
+          teamSlugOrId
+        );
+
+        let gitDiff =
+          gitDiffRaw && gitDiffRaw.length > 0
+            ? gitDiffRaw
             : "No changes detected";
 
         // Limit to 5000 chars for the prompt
@@ -648,76 +778,18 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
     });
 
     if (!res.data) {
-      serverLogger.error(`[CrownEvaluator] Crown evaluate failed`);
+      throw new Error("Crown evaluate response missing data");
     }
     const jsonResponse = res.data;
 
-    if (!jsonResponse) {
-      // Fallback: Pick the first completed run as winner
-      const fallbackWinner = candidateData[0];
-      await getConvex().mutation(api.crown.setCrownWinner, {
-        teamSlugOrId,
-        taskRunId: fallbackWinner.runId,
-        reason: "Selected as fallback winner (evaluation failed)",
-      });
-
-      await getConvex().mutation(api.tasks.updateCrownError, {
-        teamSlugOrId,
-        id: taskId,
-        crownEvaluationError: undefined,
-      });
-
-      serverLogger.info(
-        `[CrownEvaluator] Fallback winner selected: ${fallbackWinner.agentName}`
+    if (
+      typeof jsonResponse.winner !== "number" ||
+      jsonResponse.winner < 0 ||
+      jsonResponse.winner >= candidateData.length
+    ) {
+      throw new Error(
+        `Crown evaluate returned invalid winner index ${jsonResponse.winner}`
       );
-      await generateSystemTaskComment(
-        fallbackWinner.runId,
-        fallbackWinner.gitDiff
-      );
-      await createPullRequestForWinner(
-        fallbackWinner.runId,
-        taskId,
-        githubToken || undefined,
-        teamSlugOrId
-      );
-      return;
-    }
-
-    // Validate winner index
-    if (jsonResponse.winner >= candidateData.length) {
-      serverLogger.error(
-        `[CrownEvaluator] Invalid winner index ${jsonResponse.winner}, must be less than ${candidateData.length}`
-      );
-
-      // Fallback: Pick the first completed run as winner
-      const fallbackWinner = candidateData[0];
-      await getConvex().mutation(api.crown.setCrownWinner, {
-        teamSlugOrId,
-        taskRunId: fallbackWinner.runId,
-        reason:
-          "Selected as fallback winner (invalid winner index from evaluator)",
-      });
-
-      await getConvex().mutation(api.tasks.updateCrownError, {
-        teamSlugOrId,
-        id: taskId,
-        crownEvaluationError: undefined,
-      });
-
-      serverLogger.info(
-        `[CrownEvaluator] Fallback winner selected: ${fallbackWinner.agentName}`
-      );
-      await generateSystemTaskComment(
-        fallbackWinner.runId,
-        fallbackWinner.gitDiff
-      );
-      await createPullRequestForWinner(
-        fallbackWinner.runId,
-        taskId,
-        githubToken || undefined,
-        teamSlugOrId
-      );
-      return;
     }
 
     const winner = candidateData[jsonResponse.winner];
@@ -752,7 +824,7 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
       teamSlugOrId
     );
     // After choosing a winner, generate and persist a task comment (by cmux)
-    await generateSystemTaskComment(winner.runId, winner.gitDiff);
+    await generateSystemTaskComment(winner.runId);
   } catch (error) {
     serverLogger.error(`[CrownEvaluator] Error during evaluation:`, error);
 
