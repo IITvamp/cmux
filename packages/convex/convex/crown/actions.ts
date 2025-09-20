@@ -1,11 +1,11 @@
-'use node';
+"use node";
 
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { generateObject } from "ai";
 import { ConvexError, v } from "convex/values";
 import { z } from "zod";
-import { api } from "../_generated/api";
-import { action, type ActionCtx } from "../_generated/server";
+import { env } from "../../_shared/convex-env";
+import { action } from "../_generated/server";
 
 const MODEL_NAME = "claude-3-5-sonnet-20241022";
 
@@ -25,23 +25,6 @@ export const CrownSummarizationResponseSchema = z.object({
 export type CrownSummarizationResponse = z.infer<
   typeof CrownSummarizationResponseSchema
 >;
-
-async function getAnthropicApiKey(
-  ctx: ActionCtx,
-  teamSlugOrId: string
-): Promise<string> {
-  // Get API keys from team settings
-  const apiKeys = await ctx.runQuery(api.apiKeys.getAllForAgents, {
-    teamSlugOrId,
-  });
-  
-  if (!apiKeys.ANTHROPIC_API_KEY) {
-    console.error("[convex.crown] Missing ANTHROPIC_API_KEY for team", { teamSlugOrId });
-    throw new ConvexError("Anthropic provider is not configured for this team");
-  }
-  
-  return apiKeys.ANTHROPIC_API_KEY;
-}
 
 export async function performCrownEvaluation(
   apiKey: string,
@@ -96,10 +79,10 @@ export const evaluate = action({
     prompt: v.string(),
     teamSlugOrId: v.string(),
   },
-  handler: async (ctx, args) => {
+  handler: async (_ctx, args) => {
     // Get the API key for this team
-    const apiKey = await getAnthropicApiKey(ctx, args.teamSlugOrId);
-    
+    const apiKey = env.ANTHROPIC_API_KEY;
+
     // Perform the evaluation
     return performCrownEvaluation(apiKey, args.prompt);
   },
@@ -110,10 +93,10 @@ export const summarize = action({
     prompt: v.string(),
     teamSlugOrId: v.string(),
   },
-  handler: async (ctx, args) => {
+  handler: async (_ctx, args) => {
     // Get the API key for this team
-    const apiKey = await getAnthropicApiKey(ctx, args.teamSlugOrId);
-    
+    const apiKey = env.ANTHROPIC_API_KEY;
+
     // Perform the summarization
     return performCrownSummarization(apiKey, args.prompt);
   },
