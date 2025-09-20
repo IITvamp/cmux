@@ -22,8 +22,6 @@ interface CreateTeamDialogProps {
   onSubmit: (values: CreateTeamFormValues) => Promise<void>;
 }
 
-const emailSchema = z.string().email();
-
 function slugify(input: string): string {
   return input
     .trim()
@@ -137,7 +135,7 @@ export function CreateTeamDialog({
 
       const inviteEmails = parseInviteInput(inviteInput);
       for (const email of inviteEmails) {
-        const result = emailSchema.safeParse(email);
+        const result = z.email().safeParse(email);
         if (!result.success) {
           setError(`Invalid invite email: ${email}`);
           return;
@@ -157,10 +155,13 @@ export function CreateTeamDialog({
           typeof err === "string"
             ? err
             : err instanceof Error
-            ? err.message
-            : err && typeof err === "object" && "message" in err && typeof (err as { message?: unknown }).message === "string"
-            ? ((err as { message: string }).message)
-            : "Failed to create team";
+              ? err.message
+              : err &&
+                  typeof err === "object" &&
+                  "message" in err &&
+                  typeof (err as { message?: unknown }).message === "string"
+                ? (err as { message: string }).message
+                : "Failed to create team";
         setError(message);
       } finally {
         setIsSubmitting(false);
@@ -190,7 +191,8 @@ export function CreateTeamDialog({
                 Create a team
               </Dialog.Title>
               <Dialog.Description className="mt-1 text-sm text-neutral-600 dark:text-neutral-400">
-                Give your team a name and a unique slug. You can invite teammates now or later.
+                Give your team a name and a unique slug. You can invite
+                teammates now or later.
               </Dialog.Description>
             </div>
             <Dialog.Close asChild>
@@ -207,7 +209,10 @@ export function CreateTeamDialog({
 
           <form className="mt-6 space-y-5" onSubmit={handleSubmit}>
             <div className="space-y-2">
-              <label className="text-sm font-medium text-neutral-800 dark:text-neutral-200" htmlFor="team-name">
+              <label
+                className="text-sm font-medium text-neutral-800 dark:text-neutral-200"
+                htmlFor="team-name"
+              >
                 Team name
               </label>
               <input
@@ -224,11 +229,16 @@ export function CreateTeamDialog({
 
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="text-sm font-medium text-neutral-800 dark:text-neutral-200" htmlFor="team-slug">
+                <label
+                  className="text-sm font-medium text-neutral-800 dark:text-neutral-200"
+                  htmlFor="team-slug"
+                >
                   Team slug
                 </label>
                 {slugHint ? (
-                  <span className="text-xs text-neutral-500 dark:text-neutral-400">{slugHint}</span>
+                  <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                    {slugHint}
+                  </span>
                 ) : null}
               </div>
               <input
@@ -241,12 +251,16 @@ export function CreateTeamDialog({
                 disabled={isSubmitting}
               />
               <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                Lowercase letters, numbers, and hyphens. This appears in the URL.
+                Lowercase letters, numbers, and hyphens. This appears in the
+                URL.
               </p>
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-neutral-800 dark:text-neutral-200" htmlFor="team-invites">
+              <label
+                className="text-sm font-medium text-neutral-800 dark:text-neutral-200"
+                htmlFor="team-invites"
+              >
                 Invite teammates (optional)
               </label>
               <textarea
