@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { getTeamId } from "../_shared/team";
 import type { Doc } from "./_generated/dataModel";
-import { internalMutation, internalQuery } from "./_generated/server";
+import { internalMutation } from "./_generated/server";
 import { authMutation, authQuery } from "./users/utils";
 
 export const getReposByOrg = authQuery({
@@ -49,10 +49,7 @@ export const getBranches = authQuery({
     // 2) Most recent activity desc (undefined last)
     // 3) Creation time desc
     // 4) Name asc (stable, deterministic tie-breaker)
-    const pinnedOrder = new Map<
-      string,
-      number
-    >([
+    const pinnedOrder = new Map<string, number>([
       ["main", 0],
       ["dev", 1],
       ["master", 2],
@@ -92,31 +89,13 @@ export const getAllRepos = authQuery({
 });
 
 export const getRepoByFullName = authQuery({
-  args: { 
+  args: {
     teamSlugOrId: v.string(),
-    fullName: v.string() 
+    fullName: v.string(),
   },
   handler: async (ctx, { teamSlugOrId, fullName }) => {
     const userId = ctx.identity.subject;
     const teamId = await getTeamId(ctx, teamSlugOrId);
-    return await ctx.db
-      .query("repos")
-      .withIndex("by_team_user", (q) =>
-        q.eq("teamId", teamId).eq("userId", userId)
-      )
-      .filter((q) => q.eq(q.field("fullName"), fullName))
-      .first();
-  },
-});
-
-// Internal query to get repo by fullName when you already have teamId and userId
-export const getRepoByFullNameInternal = internalQuery({
-  args: {
-    teamId: v.string(),
-    userId: v.string(),
-    fullName: v.string()
-  },
-  handler: async (ctx, { teamId, userId, fullName }) => {
     return await ctx.db
       .query("repos")
       .withIndex("by_team_user", (q) =>
