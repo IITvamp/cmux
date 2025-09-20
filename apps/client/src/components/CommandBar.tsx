@@ -1,13 +1,14 @@
 import { useTheme } from "@/components/theme/use-theme";
 import { isElectron } from "@/lib/electron";
 import { copyAllElectronLogs } from "@/lib/electron-logs/electron-logs";
+import { setLastTeamSlugOrId } from "@/lib/lastTeam";
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { Command } from "cmdk";
 import { useQuery } from "convex/react";
-import { GitPullRequest, Monitor, Moon, Plus, Sun } from "lucide-react";
+import { GitPullRequest, Monitor, Moon, Plus, Sun, Users, ArrowLeft } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ElectronLogsCommandItems } from "./command-bar/ElectronLogsCommandItems";
@@ -21,6 +22,9 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
   const [search, setSearch] = useState("");
   const [openedWithShift, setOpenedWithShift] = useState(false);
   const openRef = useRef<boolean>(false);
+  // Multi-step command flow: stack of view IDs, root when empty
+  const [viewStack, setViewStack] = useState<string[]>([]);
+  const currentView = viewStack[viewStack.length - 1] ?? "root";
   // Used only in non-Electron fallback
   const prevFocusedElRef = useRef<HTMLElement | null>(null);
   const navigate = useNavigate();
@@ -28,6 +32,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
   const { setTheme } = useTheme();
 
   const allTasks = useQuery(api.tasks.getTasksWithTaskRuns, { teamSlugOrId });
+  const teamMemberships = useQuery(api.teams.listTeamMemberships, {});
 
   useEffect(() => {
     openRef.current = open;
@@ -43,6 +48,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
           // About to CLOSE via toggle: normalize state like Esc path
           setSearch("");
           setOpenedWithShift(false);
+          setViewStack([]);
         }
         setOpen((cur) => !cur);
       });
@@ -66,6 +72,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
         if (openRef.current) {
           setOpenedWithShift(false);
           setSearch("");
+          setViewStack([]);
         } else {
           setOpenedWithShift(false);
           // Capture the currently focused element before opening (web only)
@@ -185,6 +192,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
 
   const handleSelect = useCallback(
     async (value: string) => {
+      let shouldClose = true;
       if (value === "new-task") {
         navigate({
           to: "/$teamSlugOrId/dashboard",
@@ -195,6 +203,22 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
           to: "/$teamSlugOrId/prs",
           params: { teamSlugOrId },
         });
+      } else if (value === "flow:switch-team") {
+        // Enter switch-team view (multi-step)
+        setViewStack((s) => [...s, "switch-team"]);
+        setSearch("");
+        setOpenedWithShift(false);
+        shouldClose = false;
+      } else if (value.startsWith("team:")) {
+        const target = value.slice("team:".length);
+        // Navigate to target team's dashboard
+        try {
+          setLastTeamSlugOrId(target);
+          await navigate({ to: "/$teamSlugOrId/dashboard", params: { teamSlugOrId: target } });
+        } finally {
+          // Always reset the view stack on terminal action
+          setViewStack([]);
+        }
       } else if (value === "logs:view") {
         navigate({ to: "/$teamSlugOrId/logs", params: { teamSlugOrId } });
       } else if (value === "logs:copy") {
@@ -255,9 +279,12 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
           }
         }
       }
-      setOpen(false);
-      setSearch("");
-      setOpenedWithShift(false);
+      if (shouldClose) {
+        setOpen(false);
+        setSearch("");
+        setOpenedWithShift(false);
+        setViewStack([]);
+      }
     },
     [navigate, teamSlugOrId, setTheme, allTasks]
   );
@@ -272,6 +299,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
           setOpen(false);
           setSearch("");
           setOpenedWithShift(false);
+          setViewStack([]);
         }}
       />
       <Command.Dialog
@@ -286,6 +314,11 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
             setOpen(false);
             setSearch("");
             setOpenedWithShift(false);
+            setViewStack([]);
+          }
+          if (e.key === "Backspace" && search.length === 0 && viewStack.length > 0) {
+            e.stopPropagation();
+            setViewStack((stack) => stack.slice(0, -1));
           }
         }}
         onValueChange={handleHighlight}
@@ -297,7 +330,13 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
           <Command.Input
             value={search}
             onValueChange={setSearch}
-            placeholder="Type a command or search..."
+            placeholder={
+              currentView === "root"
+                ? "Type a command or search..."
+                : currentView === "switch-team"
+                ? "Search teams..."
+                : "Search..."
+            }
             className="w-full px-4 py-3 text-sm bg-transparent border-b border-neutral-200 dark:border-neutral-700 outline-none placeholder:text-neutral-500 dark:placeholder:text-neutral-400"
           />
           <Command.List className="max-h-[400px] overflow-y-auto px-1 pb-2 flex flex-col gap-2">
@@ -331,7 +370,64 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
                 <GitPullRequest className="h-4 w-4 text-neutral-500" />
                 <span className="text-sm">Pull Requests</span>
               </Command.Item>
+              <Command.Item
+                value="flow:switch-team"
+                onSelect={() => handleSelect("flow:switch-team")}
+                className="flex items-center gap-2 px-3 py-2.5 mx-1 rounded-md cursor-pointer
+                hover:bg-neutral-100 dark:hover:bg-neutral-800
+                data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800
+                data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100"
+              >
+                <Users className="h-4 w-4 text-neutral-500" />
+                <span className="text-sm">Switch Team</span>
+              </Command.Item>
             </Command.Group>
+
+            {currentView === "switch-team" ? (
+              <Command.Group>
+                <div className="px-2 py-1.5 text-xs text-neutral-500 dark:text-neutral-400 flex items-center gap-2">
+                  Switch Team
+                </div>
+                <Command.Item
+                  value="flow:back"
+                  onSelect={() => setViewStack((s) => s.slice(0, -1))}
+                  className="flex items-center gap-2 px-3 py-2.5 mx-1 rounded-md cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-800 data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800 data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100"
+                >
+                  <ArrowLeft className="h-4 w-4 text-neutral-500" />
+                  <span className="text-sm">Back</span>
+                </Command.Item>
+
+                {(teamMemberships ?? []).map((m) => {
+                  const t = m.team as unknown as {
+                    teamId: string;
+                    slug?: string | null;
+                    displayName?: string | null;
+                    name?: string | null;
+                  };
+                  const slugOrId = t.slug ?? t.teamId;
+                  const isCurrent = slugOrId === teamSlugOrId || t.teamId === teamSlugOrId;
+                  const label = t.displayName?.trim() || t.name?.trim() || slugOrId;
+                  return (
+                    <Command.Item
+                      key={`team-${slugOrId}`}
+                      value={`team:${slugOrId}`}
+                      onSelect={() => handleSelect(`team:${slugOrId}`)}
+                      className="flex items-center gap-3 px-3 py-2.5 mx-1 rounded-md cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-800 data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800 data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100 group"
+                    >
+                      <span className="flex h-5 w-8 items-center justify-center rounded text-xs font-semibold bg-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300 group-data-[selected=true]:bg-neutral-300 dark:group-data-[selected=true]:bg-neutral-600">
+                        T
+                      </span>
+                      <span className="flex-1 truncate text-sm">{label}</span>
+                      {isCurrent ? (
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
+                          current
+                        </span>
+                      ) : null}
+                    </Command.Item>
+                  );
+                })}
+              </Command.Group>
+            ) : null}
 
             <Command.Group>
               <div className="px-2 py-1.5 text-xs text-neutral-500 dark:text-neutral-400">
@@ -369,7 +465,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
               </Command.Item>
             </Command.Group>
 
-            {allTasks && allTasks.length > 0 && (
+            {currentView === "root" && allTasks && allTasks.length > 0 && (
               <Command.Group>
                 <div className="px-2 py-1.5 text-xs text-neutral-500 dark:text-neutral-400">
                   Tasks
@@ -482,7 +578,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
               </Command.Group>
             )}
 
-            {isElectron ? (
+            {currentView === "root" && isElectron ? (
               <ElectronLogsCommandItems onSelect={handleSelect} />
             ) : null}
           </Command.List>
