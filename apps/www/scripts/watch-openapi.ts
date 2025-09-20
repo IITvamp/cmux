@@ -1,6 +1,5 @@
 import { app } from "@/lib/hono-app";
 import { createClient } from "@hey-api/openapi-ts";
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -45,13 +44,6 @@ await createClient({
   ],
 });
 console.timeEnd("generate client");
-
-console.time("build www-openapi-client");
-execFileSync("bun", ["run", "build"], {
-  cwd: path.join(__dirname, "../../../packages/www-openapi-client"),
-  stdio: "inherit",
-});
-console.timeEnd("build www-openapi-client");
 
 try {
   fs.unlinkSync(tmpFile);
