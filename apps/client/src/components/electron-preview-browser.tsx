@@ -136,7 +136,7 @@ export function ElectronPreviewBrowser({
           applyState(result.state);
         }
       })
-      .catch((error) => {
+      .catch((error: unknown) => {
         console.warn("Failed to get WebContentsView state", error);
       });
     return () => {
@@ -192,7 +192,7 @@ export function ElectronPreviewBrowser({
       inputRef.current?.blur();
       void window.cmux?.webContentsView
         ?.loadURL(viewHandle.id, target)
-        .catch((error) => {
+        .catch((error: unknown) => {
           console.warn("Failed to navigate WebContentsView", error);
         });
     },
@@ -255,13 +255,13 @@ export function ElectronPreviewBrowser({
     if (devtoolsOpen) {
       void window.cmux?.webContentsView
         ?.closeDevTools(viewHandle.id)
-        .catch((error) => {
+        .catch((error: unknown) => {
           console.warn("Failed to close DevTools", error);
         });
     } else {
       void window.cmux?.webContentsView
         ?.openDevTools(viewHandle.id, { mode: devtoolsMode })
-        .catch((error) => {
+        .catch((error: unknown) => {
           console.warn("Failed to open DevTools", error);
         });
     }
@@ -271,7 +271,7 @@ export function ElectronPreviewBrowser({
     if (!viewHandle) return;
     void window.cmux?.webContentsView
       ?.goBack?.(viewHandle.id)
-      .catch((error) => {
+      .catch((error: unknown) => {
         console.warn("Failed to go back", error);
       });
   }, [viewHandle]);
@@ -280,7 +280,7 @@ export function ElectronPreviewBrowser({
     if (!viewHandle) return;
     void window.cmux?.webContentsView
       ?.goForward?.(viewHandle.id)
-      .catch((error) => {
+      .catch((error: unknown) => {
         console.warn("Failed to go forward", error);
       });
   }, [viewHandle]);
@@ -350,7 +350,7 @@ export function ElectronPreviewBrowser({
                       if (!viewHandle) return;
                       void window.cmux?.webContentsView
                         ?.reload?.(viewHandle.id)
-                        .catch((error) => {
+                        .catch((error: unknown) => {
                           console.warn(
                             "Failed to reload WebContentsView",
                             error

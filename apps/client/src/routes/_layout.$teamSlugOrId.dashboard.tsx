@@ -91,7 +91,7 @@ function DashboardComponent() {
       teamSlugOrId,
       repoFullName: selectedProject[0] || "",
     }),
-    enabled: !!selectedProject[0],
+    enabled: !!selectedProject[0] && !isEnvSelected,
   });
   const branches = useMemo(
     () => branchesQuery.data || [],
