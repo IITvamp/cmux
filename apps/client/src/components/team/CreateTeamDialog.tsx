@@ -20,6 +20,7 @@ interface CreateTeamDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSubmit: (values: CreateTeamFormValues) => Promise<void>;
+  initialValues?: Partial<CreateTeamFormValues>;
 }
 
 function slugify(input: string): string {
@@ -64,6 +65,7 @@ export function CreateTeamDialog({
   open,
   onOpenChange,
   onSubmit,
+  initialValues,
 }: CreateTeamDialogProps) {
   const [displayName, setDisplayName] = useState("");
   const [slug, setSlug] = useState("");
@@ -80,8 +82,30 @@ export function CreateTeamDialog({
       setSlugEdited(false);
       setError(null);
       setIsSubmitting(false);
+      return;
     }
-  }, [open]);
+
+    const initialName = initialValues?.displayName ?? "";
+    const normalizedInitialSlug = initialValues?.slug
+      ? normalizeSlugInput(initialValues.slug)
+      : "";
+    const initialInvites = initialValues?.inviteEmails
+      ? initialValues.inviteEmails.join(", ")
+      : "";
+
+    setDisplayName(initialName);
+    if (initialValues?.slug) {
+      setSlug(normalizedInitialSlug);
+      setSlugEdited(true);
+    } else {
+      const autoSlug = initialName ? slugify(initialName) : "";
+      setSlug(autoSlug);
+      setSlugEdited(false);
+    }
+    setInviteInput(initialInvites);
+    setError(null);
+    setIsSubmitting(false);
+  }, [initialValues, open]);
 
   const slugHint = useMemo(() => {
     if (!slug) return "";

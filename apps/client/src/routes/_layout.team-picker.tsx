@@ -1,4 +1,4 @@
-import { CreateTeamDialog, type CreateTeamFormValues } from "@/components/team/CreateTeamDialog";
+import { useCreateTeamDialog } from "@/components/team/CreateTeamDialogProvider";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -7,16 +7,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { stackClientApp } from "@/lib/stack";
 import { isElectron } from "@/lib/electron";
 import { api } from "@cmux/convex/api";
-import { postApiTeams } from "@cmux/www-openapi-client";
 import { Skeleton } from "@heroui/react";
-import { useStackApp, useUser, type Team } from "@stackframe/react";
-import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useUser, type Team } from "@stackframe/react";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { setLastTeamSlugOrId } from "@/lib/lastTeam";
-import { useQuery as useConvexQuery, useMutation } from "convex/react";
-import { useCallback, useState } from "react";
+import { useQuery as useConvexQuery } from "convex/react";
+import { useCallback } from "react";
 import type React from "react";
 
 export const Route = createFileRoute("/_layout/team-picker")({
@@ -24,101 +22,19 @@ export const Route = createFileRoute("/_layout/team-picker")({
 });
 
 function TeamPicker() {
-  const app = useStackApp();
   const user = useUser({ or: "return-null" });
-  const navigate = useNavigate();
+  const { open: openCreateTeamDialog } = useCreateTeamDialog();
   // Call the Stack teams hook at the top level (no memo to satisfy hook rules)
   const teams: Team[] = user?.useTeams() ?? [];
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
-  // Convex helpers to immediately reflect team creation/membership locally
-  const upsertTeamPublic = useMutation(api.stack.upsertTeamPublic);
-  const ensureMembershipPublic = useMutation(api.stack.ensureMembershipPublic);
-
-  const getClientSlug = (meta: unknown): string | undefined => {
+  const getClientSlug = useCallback((meta: unknown): string | undefined => {
     if (meta && typeof meta === "object" && meta !== null) {
       const maybe = meta as Record<string, unknown>;
       const val = maybe.slug;
       if (typeof val === "string" && val.trim().length > 0) return val;
     }
     return undefined;
-  };
-
-  const openCreateTeamDialog = useCallback(() => {
-    if (!user) {
-      void stackClientApp.redirectToAccountSettings?.().catch(() => {
-        const url = app.urls.accountSettings;
-        void navigate({ to: url });
-      });
-      return;
-    }
-    setCreateDialogOpen(true);
-  }, [app.urls.accountSettings, navigate, user]);
-
-  const handleCreateTeamSubmit = useCallback(
-    async (values: CreateTeamFormValues) => {
-      if (!user) {
-        await stackClientApp.redirectToAccountSettings?.().catch(() => {
-          const url = app.urls.accountSettings;
-          void navigate({ to: url });
-        });
-        throw new Error("You must be signed in to create a team.");
-      }
-
-      try {
-        const { data } = await postApiTeams({
-          body: {
-            displayName: values.displayName,
-            slug: values.slug,
-            inviteEmails:
-              values.inviteEmails.length > 0 ? values.inviteEmails : undefined,
-          },
-          throwOnError: true,
-        });
-
-        await upsertTeamPublic({
-          id: data.teamId,
-          displayName: data.displayName,
-          profileImageUrl: undefined,
-          createdAtMillis: Date.now(),
-        });
-        await ensureMembershipPublic({ teamId: data.teamId, userId: user.id });
-
-        const teamSlugOrId = data.slug ?? data.teamId;
-
-        let stackTeam: Team | null = null;
-        const timeoutAt = Date.now() + 15_000;
-        while (Date.now() < timeoutAt) {
-          stackTeam = await user.getTeam(data.teamId);
-          if (stackTeam) break;
-          await new Promise((resolve) => setTimeout(resolve, 400));
-        }
-        if (stackTeam) {
-          await user.setSelectedTeam(stackTeam);
-        }
-
-        setLastTeamSlugOrId(teamSlugOrId);
-        await navigate({
-          to: "/$teamSlugOrId/dashboard",
-          params: { teamSlugOrId },
-        });
-      } catch (error) {
-        const message =
-          typeof error === "string"
-            ? error
-            : error instanceof Error
-            ? error.message
-            : error &&
-              typeof error === "object" &&
-              "message" in error &&
-              typeof (error as { message?: unknown }).message === "string"
-            ? ((error as { message: string }).message)
-            : "Failed to create team";
-        throw new Error(message);
-      }
-    },
-    [ensureMembershipPublic, navigate, upsertTeamPublic, user, app.urls.accountSettings]
-  );
+  }, []);
 
   return (
     <div className="min-h-dvh w-full bg-neutral-50 dark:bg-neutral-950 flex items-center justify-center p-6">
@@ -179,11 +95,6 @@ function TeamPicker() {
           </CardContent>
         </Card>
       </div>
-      <CreateTeamDialog
-        open={createDialogOpen}
-        onOpenChange={setCreateDialogOpen}
-        onSubmit={handleCreateTeamSubmit}
-      />
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { CreateTeamDialogProvider } from "@/components/team/CreateTeamDialogProvider";
 import { convexAuthReadyPromise } from "@/contexts/convex/convex-auth-ready";
 import { ConvexClientProvider } from "@/contexts/convex/convex-client-provider";
 import { RealSocketProvider } from "@/contexts/socket/real-socket-provider";
@@ -15,7 +16,9 @@ function Layout() {
   return (
     <ConvexClientProvider>
       <RealSocketProvider>
-        <Outlet />
+        <CreateTeamDialogProvider>
+          <Outlet />
+        </CreateTeamDialogProvider>
       </RealSocketProvider>
     </ConvexClientProvider>
   );
