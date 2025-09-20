@@ -276,6 +276,15 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+/* Ensure global toasts and notifications render above persistent VSCode iframes */
+.sonner-toaster {
+  z-index: var(--z-floating-high) !important;
+}
+
+.sonner-toast {
+  pointer-events: auto;
+}
+
 @layer base {
   html {
     color-scheme: light;

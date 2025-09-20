@@ -64,7 +64,7 @@ class PersistentIframeManager {
         width: 0;
         height: 0;
         pointer-events: none;
-        z-index: var(--z-overlay);
+        z-index: var(--z-base);
       `;
       document.body.appendChild(this.container);
     };
@@ -105,6 +105,7 @@ class PersistentIframeManager {
       pointer-events: none;
       overflow: hidden;
       transform: translate(0px, 0px);
+      z-index: var(--z-base);
     `;
     wrapper.setAttribute("data-iframe-key", key);
 
@@ -212,6 +213,7 @@ class PersistentIframeManager {
           visibility: visible;
           pointer-events: auto;
           overflow: hidden;
+          z-index: var(--z-base);
           ${additionalStyles}
         `;
       } else {
@@ -225,6 +227,7 @@ class PersistentIframeManager {
           visibility: visible;
           pointer-events: auto;
           overflow: hidden;
+          z-index: var(--z-base);
         `;
       }
 
