@@ -555,17 +555,12 @@ export async function evaluateCrown({
       completedRuns.map(async (run, idx) => {
         const agentName = getAgentNameOrUnknown(run.agentName);
         let diff = "";
-        
+
         // Use precollected diff if available for the triggering run
         if (crownRunId && run._id === crownRunId && precollectedDiff) {
           diff = precollectedDiff.trim();
-        } else if (run.newBranch) {
-          // Fetch diff from the pushed branch
-          serverLogger.info(
-            `[CrownEvaluator] Fetching diff from branch ${run.newBranch} for ${agentName}`
-          );
-          
-          // Try to get VSCode instance for any completed run
+        } else {
+          // Try to collect diff from the VSCode instance (before it was committed)
           const instances = VSCodeInstance.getInstances();
           let instance: VSCodeInstance | undefined;
           for (const [, inst] of instances) {
@@ -574,29 +569,37 @@ export async function evaluateCrown({
               break;
             }
           }
-          
+
           if (instance && instance.isWorkerConnected()) {
             try {
+              serverLogger.info(
+                `[CrownEvaluator] Collecting diff for ${agentName} from VSCode instance`
+              );
               const workerSocket = instance.getWorkerSocket();
-              // Fetch diff from the branch that was pushed
+
+              // Use the collect-relevant-diff.sh script to get filtered diff
               const { stdout } = await workerExec({
                 workerSocket,
                 command: "/bin/bash",
-                args: ["-c", `cd /root/workspace && git diff origin/main..origin/${run.newBranch} 2>/dev/null || git diff origin/main..HEAD`],
+                args: ["-c", "/usr/local/bin/cmux-collect-relevant-diff.sh"],
                 cwd: "/root/workspace",
                 env: {},
                 timeout: 30000,
               });
               diff = (stdout || "").trim();
               serverLogger.info(
-                `[CrownEvaluator] Fetched ${diff.length} chars from branch ${run.newBranch}`
+                `[CrownEvaluator] Collected ${diff.length} chars of diff for ${agentName}`
               );
             } catch (e) {
               serverLogger.error(
-                `[CrownEvaluator] Failed to fetch diff from branch ${run.newBranch}:`,
+                `[CrownEvaluator] Failed to collect diff for ${agentName}:`,
                 e
               );
             }
+          } else {
+            serverLogger.warn(
+              `[CrownEvaluator] No VSCode instance available for ${agentName} (run ${run._id})`
+            );
           }
         }
 

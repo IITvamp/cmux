@@ -61,7 +61,6 @@ export async function handleTaskCompletion({
     serverLogger.info(
       `[AgentSpawner] Captured git diff for ${agent.name}: ${gitDiff.length} chars`
     );
-    serverLogger.info(`[AgentSpawner] Git diff: ${gitDiff}`);
 
     // Do not write diffs to Convex logs; crown and UI fetch diffs directly.
     if (!gitDiff || gitDiff.length === 0) {
