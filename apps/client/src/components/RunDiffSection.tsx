@@ -7,12 +7,13 @@ export interface RunDiffSectionProps {
   repoFullName: string;
   ref1: string;
   ref2: string;
+  taskRunId?: string;
   classNames?: ComponentProps<typeof GitDiffViewer>["classNames"];
   onControlsChange?: ComponentProps<typeof GitDiffViewer>["onControlsChange"];
 }
 
 export function RunDiffSection(props: RunDiffSectionProps) {
-  const { repoFullName, ref1, ref2, classNames, onControlsChange } = props;
+  const { repoFullName, ref1, ref2, classNames, onControlsChange, taskRunId } = props;
   const diffsQuery = useRQ(
     repoFullName && ref1 && ref2
       ? diffSmartQueryOptions({ repoFullName, baseRef: ref1, headRef: ref2 })
@@ -55,6 +56,7 @@ export function RunDiffSection(props: RunDiffSectionProps) {
       key={`${repoFullName}:${ref1}:${ref2}`}
       diffs={diffsQuery.data}
       onControlsChange={onControlsChange}
+      taskRunId={taskRunId}
       classNames={classNames}
     />
   );

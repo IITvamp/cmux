@@ -1,5 +1,5 @@
 import { useTheme } from "@/components/theme/use-theme";
-// No socket usage in refs-only viewer
+import { useSocket } from "@/contexts/socket/use-socket";
 import { cn } from "@/lib/utils";
 import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
 import { DiffEditor } from "@monaco-editor/react";
@@ -42,6 +42,8 @@ export interface GitDiffViewerProps {
   }) => void;
   classNames?: GitDiffViewerClassNames;
   onFileToggle?: (filePath: string, isExpanded: boolean) => void;
+  // Optional: when provided, enables the Follow up chat box
+  taskRunId?: string;
 }
 
 type FileGroup = {
@@ -92,8 +94,12 @@ export function GitDiffViewer({
   onControlsChange,
   classNames,
   onFileToggle,
+  taskRunId,
 }: GitDiffViewerProps) {
   const { theme } = useTheme();
+  const { socket } = useSocket();
+  const [followup, setFollowup] = useState<string>("");
+  const [sending, setSending] = useState<boolean>(false);
 
   const kitty = useMemo(() => {
     return kitties[Math.floor(Math.random() * kitties.length)];
@@ -232,6 +238,54 @@ export function GitDiffViewer({
             classNames={classNames?.fileDiffRow}
           />
         ))}
+        {taskRunId ? (
+          <div className="px-3 pt-3">
+            <div className="border border-neutral-200 dark:border-neutral-800 rounded-md bg-neutral-50 dark:bg-neutral-900 p-2">
+              <div className="text-[11px] text-neutral-600 dark:text-neutral-300 mb-1 select-none">
+                Follow up
+              </div>
+              <div className="flex items-start gap-2">
+                <textarea
+                  value={followup}
+                  onChange={(e) => setFollowup(e.currentTarget.value)}
+                  placeholder="Write a follow-up prompt..."
+                  className="flex-1 resize-y min-h-[44px] max-h-[160px] text-sm px-2 py-2 rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 dark:placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-neutral-300 dark:focus:ring-neutral-700"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const p = followup.trim();
+                    if (!p || !socket) return;
+                    setSending(true);
+                    socket.emit(
+                      "send-followup",
+                      { taskRunId, prompt: p },
+                      (resp: { success: boolean; error?: string }) => {
+                        setSending(false);
+                        if (resp?.success) {
+                          setFollowup("");
+                        } else {
+                          // eslint-disable-next-line no-console
+                          console.error("Follow-up failed:", resp?.error);
+                        }
+                      }
+                    );
+                  }}
+                  disabled={sending || !followup.trim()}
+                  className={cn(
+                    "inline-flex items-center whitespace-nowrap rounded-md px-3 py-2 text-xs font-medium",
+                    "border border-neutral-300 dark:border-neutral-700",
+                    sending || !followup.trim()
+                      ? "bg-neutral-200 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 cursor-not-allowed"
+                      : "bg-neutral-100 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 hover:bg-neutral-200 dark:hover:bg-neutral-800"
+                  )}
+                >
+                  {sending ? "Sending..." : "Follow up"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
         {/* End-of-diff message */}
         <div className="px-3 py-6 text-center">
           <span className="text-xs text-neutral-500 dark:text-neutral-400 select-none">

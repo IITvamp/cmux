@@ -927,6 +927,80 @@ export function setupSocketHandlers(
       }
     });
 
+    // Send a follow-up prompt to the agent's VSCode terminal for a given task run
+    socket.on(
+      "send-followup",
+      async (
+        data: { taskRunId?: string; prompt?: string },
+        callback?: (resp: { success: boolean; error?: string }) => void
+      ) => {
+        try {
+          const taskRunId = String(data?.taskRunId || "").trim();
+          const prompt = String(data?.prompt || "").trim();
+          if (!taskRunId || !prompt) {
+            callback?.({ success: false, error: "Missing taskRunId or prompt" });
+            return;
+          }
+
+          // Look up VSCode instance for this run
+          const { VSCodeInstance } = await import("./vscode/VSCodeInstance.js");
+          const vscodeInstance = VSCodeInstance.getInstance(
+            taskRunId as any
+          );
+          if (!vscodeInstance || !vscodeInstance.isWorkerConnected()) {
+            callback?.({
+              success: false,
+              error: "VSCode worker not connected for this run",
+            });
+            return;
+          }
+
+          // Determine terminalId used when creating the tmux session
+          // Follows the same scheme as spawnAgent: `${agentName}-${taskRunId.slice(-8)}` then sanitized
+          // Use existing imports for Convex client and API
+          const { sanitizeTmuxSessionName } = await import(
+            "./sanitizeTmuxSessionName.js"
+          );
+
+          // Try to obtain agentName from DB (fallback to instance config if needed)
+          let agentName: string = "agent";
+          try {
+            const run = await getConvex().query(api.taskRuns.get, {
+              teamSlugOrId: safeTeam,
+              id: taskRunId as any,
+            });
+            if (run?.agentName && typeof run.agentName === "string") {
+              agentName = run.agentName;
+            } else {
+              // @ts-expect-error internal config may not be exported in type
+              agentName = (vscodeInstance as any).config?.agentName || agentName;
+            }
+          } catch {
+            // ignore and use fallback
+            // @ts-expect-error internal config may not be exported in type
+            agentName = (vscodeInstance as any).config?.agentName || agentName;
+          }
+
+          const terminalId = sanitizeTmuxSessionName(
+            `${agentName}-${taskRunId.slice(-8)}`
+          );
+
+          const workerSocket = vscodeInstance.getWorkerSocket();
+          workerSocket.emit("worker:terminal-input", {
+            terminalId,
+            data: prompt + "\n",
+          });
+          callback?.({ success: true });
+        } catch (error) {
+          serverLogger.error("Error in send-followup:", error);
+          callback?.({
+            success: false,
+            error: error instanceof Error ? error.message : "Unknown error",
+          });
+        }
+      }
+    );
+
     // Continue with all other handlers...
     // (I'll include the rest of the handlers in the next message due to length)
 

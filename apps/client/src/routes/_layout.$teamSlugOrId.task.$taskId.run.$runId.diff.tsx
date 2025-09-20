@@ -147,6 +147,7 @@ function RunDiffPage() {
                   repoFullName={repoFullName}
                   ref1={ref1}
                   ref2={ref2}
+                  taskRunId={taskRunId}
                   onControlsChange={setDiffControls}
                   classNames={gitDiffViewerClassNames}
                 />
