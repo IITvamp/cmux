@@ -1,5 +1,3 @@
-import { exec } from "node:child_process";
-import { promisify } from "node:util";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import * as fs from "node:fs/promises";
@@ -9,11 +7,9 @@ import { getConvex } from "./utils/convexClient.js";
 import { serverLogger } from "./utils/fileLogger.js";
 import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
-import { workerExec } from "./utils/workerExec.js";
 import { RepositoryManager } from "./repositoryManager.js";
 import { getProjectPaths } from "./workspace.js";
-
-const execAsync = promisify(exec);
+import { collectRelevantDiff } from "./utils/collectRelevantDiff.js";
 
 const UNKNOWN_AGENT_NAME = "unknown agent";
 
@@ -22,9 +18,7 @@ function getAgentNameOrUnknown(agentName?: string | null): string {
   return trimmed && trimmed.length > 0 ? trimmed : UNKNOWN_AGENT_NAME;
 }
 
-const gitDiffCache = new Map<string, string>();
-
-// Get filtered git diff between two refs using the worker script
+// Collect a filtered git diff between two refs using the Node implementation
 async function getFilteredGitDiff(
   repoPath: string,
   baseRef: string,
@@ -65,17 +59,14 @@ async function getFilteredGitDiff(
       { cwd: repoPath }
     );
 
-    // Run the collect-relevant-diff.sh script in the worktree
-    const { stdout: diff } = await execAsync(
-      `/usr/local/bin/cmux-collect-relevant-diff.sh`,
-      {
-        cwd: worktreePath,
-        env: {
-          ...process.env,
-          CMUX_DIFF_BASE: `origin/${baseRef}`,
-        },
-      }
-    );
+    const resolvedBaseRef = baseRef.startsWith("origin/")
+      ? baseRef
+      : `origin/${baseRef}`;
+
+    const diff = await collectRelevantDiff({
+      repoPath: worktreePath,
+      baseRef: resolvedBaseRef,
+    });
 
     return diff.trim();
   } catch (error) {
@@ -105,56 +96,6 @@ async function getFilteredGitDiff(
       }
     }
   }
-}
-
-// Collect git diff for a run - try worker first, then fallback to worktree
-async function collectGitDiffForRun(
-  runId: Id<"taskRuns">,
-  branchName: string | null
-): Promise<string> {
-  const cacheKey = String(runId);
-  if (gitDiffCache.has(cacheKey)) {
-    return gitDiffCache.get(cacheKey) ?? "";
-  }
-
-  // Try to get diff from the running container first
-  const instances = VSCodeInstance.getInstances();
-  for (const [, instance] of instances) {
-    if (instance.getTaskRunId() === runId && instance.isWorkerConnected()) {
-      try {
-        serverLogger.info(
-          `[CrownEvaluator] Getting diff from running container for run ${runId}`
-        );
-        const workerSocket = instance.getWorkerSocket();
-        const { stdout } = await workerExec({
-          workerSocket,
-          command: "/bin/bash",
-          args: ["-c", "/usr/local/bin/cmux-collect-relevant-diff.sh"],
-          cwd: "/root/workspace",
-          env: {},
-          timeout: 30000,
-        });
-        const diff = (stdout || "").trim();
-        if (diff.length > 0) {
-          gitDiffCache.set(cacheKey, diff);
-          return diff;
-        }
-      } catch (e) {
-        serverLogger.error(
-          `[CrownEvaluator] Failed to collect diff from container:`,
-          e
-        );
-      }
-    }
-  }
-
-  // If no running container or it failed, we can't get the diff for this run
-  // (we'll use worktrees for branches that are already pushed in the main evaluation)
-  serverLogger.warn(
-    `[CrownEvaluator] No active container for run ${runId}, will use branch ${branchName} if available`
-  );
-
-  return "";
 }
 
 // Auto PR behavior is controlled via workspace settings in Convex
@@ -480,7 +421,11 @@ export async function evaluateCrown({
     const githubToken = await getGitHubTokenFromKeychain();
 
     // Helper: generate and persist a system task comment summarizing the winner
-    const generateSystemTaskComment = async (winnerRunId: Id<"taskRuns">) => {
+    const generateSystemTaskComment = async (
+      winnerRunId: Id<"taskRuns">,
+      originPath: string,
+      baseRef: string
+    ) => {
       try {
         // Skip if a system comment already exists for this task
         const existing = await getConvex().query(
@@ -500,10 +445,21 @@ export async function evaluateCrown({
           id: winnerRunId,
         });
         // Collect the diff for the winner
-        const effectiveDiff = await collectGitDiffForRun(
-          winnerRunId,
-          winnerRun?.newBranch || null
-        );
+        let effectiveDiff = "";
+        if (winnerRun?.newBranch && originPath) {
+          try {
+            effectiveDiff = await getFilteredGitDiff(
+              originPath,
+              baseRef,
+              winnerRun.newBranch
+            );
+          } catch (e) {
+            serverLogger.error(
+              `[CrownEvaluator] Failed to get diff for winner:`,
+              e
+            );
+          }
+        }
 
         // Pull original request text for context
         const task = await getConvex().query(api.tasks.getById, {
@@ -664,11 +620,8 @@ export async function evaluateCrown({
         const agentName = getAgentNameOrUnknown(run.agentName);
         let gitDiff = "";
 
-        // First try to get diff from active container
-        gitDiff = await collectGitDiffForRun(run._id, run.newBranch || null);
-
-        // If no diff from container and we have a branch, try worktree approach
-        if ((!gitDiff || gitDiff.length === 0) && run.newBranch && originPath) {
+        // Get diff from git branch if available
+        if (run.newBranch && originPath) {
           try {
             serverLogger.info(
               `[CrownEvaluator] Fetching diff from branch ${run.newBranch} for ${agentName}`
@@ -816,7 +769,7 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
       teamSlugOrId
     );
     // After choosing a winner, generate and persist a task comment (by cmux)
-    await generateSystemTaskComment(winner.runId);
+    await generateSystemTaskComment(winner.runId, originPath, baseRef);
   } catch (error) {
     serverLogger.error(`[CrownEvaluator] Error during evaluation:`, error);
 
