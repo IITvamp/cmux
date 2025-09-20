@@ -1,13 +1,27 @@
+import { execFile } from "node:child_process";
+import * as fs from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { promisify } from "node:util";
+
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
+import { z } from "zod";
+
+import { RepositoryManager } from "./repositoryManager.js";
 import { getConvex } from "./utils/convexClient.js";
 import { serverLogger } from "./utils/fileLogger.js";
 import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
 import { workerExec } from "./utils/workerExec.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
-import { z } from "zod";
 import { getProjectPaths } from "./workspace.js";
-import { RepositoryManager } from "./repositoryManager.js";
+
+const execFileAsync = promisify(execFile);
+
+const COLLECT_RELEVANT_DIFF_SCRIPT_PATH = fileURLToPath(
+  new URL("../../worker/scripts/collect-relevant-diff.sh", import.meta.url)
+);
 
 const UNKNOWN_AGENT_NAME = "unknown agent";
 
@@ -22,15 +36,16 @@ async function getFilteredGitDiff(
   baseRef: string,
   headRef: string
 ): Promise<string> {
-  try {
-    const repoManager = RepositoryManager.getInstance();
+  const repoManager = RepositoryManager.getInstance();
+  let worktreePath: string | null = null;
 
+  try {
     // First fetch both refs to ensure we have them
     serverLogger.info(
       `[CrownEvaluator] Fetching refs ${baseRef} and ${headRef} in ${repoPath}`
     );
 
-    // Fetch the branches from origin  
+    // Fetch the branches from origin
     try {
       await repoManager.executeGitCommand(
         `git fetch origin ${baseRef}:refs/remotes/origin/${baseRef} ${headRef}:refs/remotes/origin/${headRef}`,
@@ -42,62 +57,67 @@ async function getFilteredGitDiff(
       );
     }
 
-    // Get the diff with file name filtering using git pathspec
-    // This excludes common files we don't want in the diff
-    const excludePatterns = [
-      ':(exclude)*.lock',
-      ':(exclude)*-lock.yaml',
-      ':(exclude)*-lock.json',
-      ':(exclude)node_modules/**',
-      ':(exclude)dist/**',
-      ':(exclude)build/**',
-      ':(exclude).next/**',
-      ':(exclude)out/**',
-      ':(exclude).turbo/**',
-      ':(exclude)venv/**',
-      ':(exclude).venv/**',
-      ':(exclude)**/__pycache__/**',
-      ':(exclude)vendor/**',
-      ':(exclude)target/**',
-      ':(exclude)coverage/**',
-      ':(exclude).nyc_output/**',
-      ':(exclude)*.min.js',
-      ':(exclude)*.min.css',
-      ':(exclude)*.map',
-      ':(exclude)*.log',
-      ':(exclude)*.tmp',
-      ':(exclude)*.cache',
-      ':(exclude).DS_Store',
-      ':(exclude)*.png',
-      ':(exclude)*.jpg',
-      ':(exclude)*.jpeg',
-      ':(exclude)*.gif',
-      ':(exclude)*.svg',
-      ':(exclude)*.ico',
-      ':(exclude)*.webp',
-      ':(exclude)*.bmp',
-      ':(exclude)*.pdf',
-      ':(exclude)*.zip',
-      ':(exclude)*.tar',
-      ':(exclude)*.gz',
-      ':(exclude)*.xz',
-      ':(exclude)*.bz2',
-      ':(exclude)*.7z',
-      ':(exclude)*.mp4',
-      ':(exclude)*.mp3',
-      ':(exclude)*.avi'
-    ];
+    const sanitizedHeadRef = headRef.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const worktreePrefix = path.join(
+      tmpdir(),
+      `cmux-crown-${sanitizedHeadRef || "head"}-`
+    );
 
-    // Get the diff with exclusions
-    const { stdout: diff } = await repoManager.executeGitCommand(
-      `git diff -M --no-color origin/${baseRef}...origin/${headRef} -- . ${excludePatterns.join(' ')}`,
+    worktreePath = await fs.mkdtemp(worktreePrefix);
+
+    // Use a detached worktree for the agent branch so we can reuse the diff script
+    await repoManager.executeGitCommand(
+      `git worktree add --force --detach "${worktreePath}" origin/${headRef}`,
       { cwd: repoPath }
     );
 
-    return diff;
+    const { stdout, stderr } = await execFileAsync(
+      "bash",
+      [COLLECT_RELEVANT_DIFF_SCRIPT_PATH],
+      {
+        cwd: worktreePath,
+        env: {
+          ...process.env,
+          CMUX_DIFF_BASE: `origin/${baseRef}`,
+        },
+        encoding: "utf8",
+        maxBuffer: 10 * 1024 * 1024,
+      }
+    );
+
+    if (stderr && stderr.trim().length > 0) {
+      serverLogger.debug(
+        `[CrownEvaluator] collect-relevant-diff stderr for ${headRef}: ${stderr.slice(0, 500)}`
+      );
+    }
+
+    return stdout;
   } catch (error) {
     serverLogger.error(`[CrownEvaluator] Error getting filtered diff:`, error);
     throw error;
+  } finally {
+    if (worktreePath) {
+      try {
+        await repoManager.executeGitCommand(
+          `git worktree remove --force "${worktreePath}"`,
+          { cwd: repoPath }
+        );
+      } catch (cleanupError) {
+        serverLogger.warn(
+          `[CrownEvaluator] Failed to remove worktree at ${worktreePath}:`,
+          cleanupError
+        );
+      }
+
+      try {
+        await fs.rm(worktreePath, { recursive: true, force: true });
+      } catch (cleanupError) {
+        serverLogger.warn(
+          `[CrownEvaluator] Failed to delete temp diff directory ${worktreePath}:`,
+          cleanupError
+        );
+      }
+    }
   }
 }
 
