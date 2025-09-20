@@ -108,7 +108,7 @@ export default function LandingPage() {
             <div className="bg-blue-500 rounded-sm" aria-hidden="true"></div>
             <div>
               <h1 className="text-4xl sm:text-4xl md:text-4xl font-semibold mb-6">
-                Manage AI coding agents in parallel
+                10x your 10x engineers by managing AI coding agents in parallel
               </h1>
 
               <p className="text-lg text-neutral-300 mb-4 leading-relaxed">
