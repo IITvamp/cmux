@@ -174,7 +174,6 @@ export async function handleTaskCompletion({
                 taskId: taskRunData.taskId,
                 teamSlugOrId,
                 crownRunId: taskRunId,
-                precollectedDiff: gitDiff,
               });
 
               serverLogger.info(

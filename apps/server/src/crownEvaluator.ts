@@ -1,26 +1,19 @@
-import { spawn } from "node:child_process";
+import { exec } from "node:child_process";
+import { promisify } from "node:util";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { tmpdir } from "node:os";
+import * as fs from "node:fs/promises";
 import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
 import { getConvex } from "./utils/convexClient.js";
 import { serverLogger } from "./utils/fileLogger.js";
 import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
-import { getWwwClient } from "./utils/wwwClient.js";
-import { ensureRunWorktreeAndBranch } from "./utils/ensureRunWorktree.js";
+import { workerExec } from "./utils/workerExec.js";
 import { RepositoryManager } from "./repositoryManager.js";
-import {
-  postApiCrownEvaluate,
-  postApiCrownSummarize,
-} from "@cmux/www-openapi-client";
+import { getProjectPaths } from "./workspace.js";
 
-const moduleFilename = fileURLToPath(import.meta.url);
-const moduleDirname = path.dirname(moduleFilename);
-const COLLECT_DIFF_SCRIPT_PATH = path.resolve(
-  moduleDirname,
-  "../../worker/scripts/collect-relevant-diff.sh"
-);
+const execAsync = promisify(exec);
 
 const UNKNOWN_AGENT_NAME = "unknown agent";
 
@@ -30,196 +23,139 @@ function getAgentNameOrUnknown(agentName?: string | null): string {
 }
 
 const gitDiffCache = new Map<string, string>();
-const repoDefaultBranchCache = new Map<string, string>();
 
-async function fetchRepoDefaultBranch(
-  teamSlugOrId: string,
-  fullName?: string | null
-): Promise<string | null> {
-  if (!fullName) {
-    return null;
-  }
-  const cacheKey = `${teamSlugOrId}:${fullName}`;
-  const cached = repoDefaultBranchCache.get(cacheKey);
-  if (cached) {
-    return cached;
-  }
-  try {
-    const repo = await getConvex().query(api.github.getRepoByFullName, {
-      teamSlugOrId,
-      fullName,
-    });
-    const defaultBranch = repo?.defaultBranch ?? null;
-    if (defaultBranch) {
-      repoDefaultBranchCache.set(cacheKey, defaultBranch);
-    }
-    return defaultBranch;
-  } catch (error) {
-    serverLogger.warn(
-      `[CrownEvaluator] Failed to fetch repo by full name for crown diff`,
-      {
-        teamSlugOrId,
-        fullName,
-        error: error instanceof Error ? error.message : String(error),
-      }
-    );
-    return null;
-  }
-}
-
-function resolveBaseBranch(baseBranch?: string | null): string | null {
-  if (!baseBranch) {
-    return null;
-  }
-  return baseBranch.startsWith("origin/")
-    ? baseBranch.slice("origin/".length)
-    : baseBranch;
-}
-
-async function syncWorktreeWithRemote(
-  worktreePath: string,
-  branchName: string,
-  baseBranch?: string | null
-): Promise<void> {
-  const repoMgr = RepositoryManager.getInstance();
+// Get filtered git diff between two refs using the worker script
+async function getFilteredGitDiff(
+  repoPath: string,
+  baseRef: string,
+  headRef: string
+): Promise<string> {
+  const repoManager = RepositoryManager.getInstance();
+  let worktreePath: string | null = null;
 
   try {
-    await repoMgr.executeGitCommand(`git fetch origin ${branchName}`, {
-      cwd: worktreePath,
-    });
-  } catch (error) {
-    serverLogger.warn(
-      `[CrownEvaluator] Failed to fetch branch ${branchName} for diff: ${
-        (error as Error).message ?? String(error)
-      }`
+    // First fetch both refs to ensure we have them
+    serverLogger.info(
+      `[CrownEvaluator] Fetching refs ${baseRef} and ${headRef} in ${repoPath}`
     );
-  }
 
-  const normalizedBase = resolveBaseBranch(baseBranch);
-  if (normalizedBase) {
+    // Fetch the branches from origin
     try {
-      await repoMgr.executeGitCommand(`git fetch origin ${normalizedBase}`, {
-        cwd: worktreePath,
-        suppressErrorLogging: true,
-      });
-    } catch (error) {
+      await repoManager.executeGitCommand(
+        `git fetch origin ${baseRef}:refs/remotes/origin/${baseRef} ${headRef}:refs/remotes/origin/${headRef}`,
+        { cwd: repoPath }
+      );
+    } catch (e) {
       serverLogger.warn(
-        `[CrownEvaluator] Failed to fetch base branch ${normalizedBase}: ${
-          (error as Error).message ?? String(error)
-        }`
+        `[CrownEvaluator] Failed to fetch refs, continuing: ${e}`
       );
     }
-  }
 
-  try {
-    await repoMgr.executeGitCommand(`git checkout ${branchName}`, {
-      cwd: worktreePath,
-    });
-  } catch (error) {
-    serverLogger.warn(
-      `[CrownEvaluator] Failed to checkout branch ${branchName} before diff: ${
-        (error as Error).message ?? String(error)
-      }`
+    const sanitizedHeadRef = headRef.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const worktreePrefix = path.join(
+      tmpdir(),
+      `cmux-crown-${sanitizedHeadRef || "head"}-`
     );
-  }
 
-  try {
-    await repoMgr.executeGitCommand(`git reset --hard origin/${branchName}`, {
-      cwd: worktreePath,
-    });
-  } catch (error) {
-    serverLogger.warn(
-      `[CrownEvaluator] Failed to reset branch ${branchName} before diff: ${
-        (error as Error).message ?? String(error)
-      }`
+    worktreePath = await fs.mkdtemp(worktreePrefix);
+
+    // Use a detached worktree for the agent branch
+    await repoManager.executeGitCommand(
+      `git worktree add --force --detach "${worktreePath}" origin/${headRef}`,
+      { cwd: repoPath }
     );
-  }
-}
 
-async function runCollectRelevantDiff(
-  worktreePath: string,
-  baseBranch?: string | null
-): Promise<string> {
-  const env = {
-    ...process.env,
-  } as NodeJS.ProcessEnv;
-
-  if (baseBranch) {
-    const normalizedBase = resolveBaseBranch(baseBranch);
-    const diffBase = normalizedBase ? `origin/${normalizedBase}` : baseBranch;
-    env.CMUX_DIFF_BASE = diffBase;
-  }
-
-  return await new Promise<string>((resolve, reject) => {
-    const child = spawn(COLLECT_DIFF_SCRIPT_PATH, {
-      cwd: worktreePath,
-      env,
-    });
-
-    let stdout = "";
-    let stderr = "";
-
-    child.stdout?.setEncoding("utf8");
-    child.stderr?.setEncoding("utf8");
-
-    child.stdout?.on("data", (chunk: string) => {
-      stdout += chunk;
-    });
-
-    child.stderr?.on("data", (chunk: string) => {
-      stderr += chunk;
-    });
-
-    child.on("error", (error) => {
-      reject(error);
-    });
-
-    child.on("close", (code) => {
-      if (code !== 0) {
-        reject(
-          new Error(
-            `collect-relevant-diff exited with code ${code}: ${stderr.trim()}`
-          )
-        );
-        return;
+    // Run the collect-relevant-diff.sh script in the worktree
+    const { stdout: diff } = await execAsync(
+      `/usr/local/bin/cmux-collect-relevant-diff.sh`,
+      {
+        cwd: worktreePath,
+        maxBuffer: 10 * 1024 * 1024,
+        env: {
+          ...process.env,
+          CMUX_DIFF_BASE: `origin/${baseRef}`,
+        },
       }
-      resolve(stdout.trim());
-    });
-  });
+    );
+
+    return diff.trim();
+  } catch (error) {
+    serverLogger.error(`[CrownEvaluator] Error getting filtered diff:`, error);
+    return "";
+  } finally {
+    if (worktreePath) {
+      try {
+        await repoManager.executeGitCommand(
+          `git worktree remove --force "${worktreePath}"`,
+          { cwd: repoPath }
+        );
+      } catch (cleanupError) {
+        serverLogger.warn(
+          `[CrownEvaluator] Failed to remove worktree at ${worktreePath}:`,
+          cleanupError
+        );
+      }
+
+      try {
+        await fs.rm(worktreePath, { recursive: true, force: true });
+      } catch (cleanupError) {
+        serverLogger.warn(
+          `[CrownEvaluator] Failed to delete temp diff directory ${worktreePath}:`,
+          cleanupError
+        );
+      }
+    }
+  }
 }
 
+// Collect git diff for a run - try worker first, then fallback to worktree
 async function collectGitDiffForRun(
   runId: Id<"taskRuns">,
-  teamSlugOrId: string
+  branchName: string | null
 ): Promise<string> {
   const cacheKey = String(runId);
   if (gitDiffCache.has(cacheKey)) {
     return gitDiffCache.get(cacheKey) ?? "";
   }
 
-  const ensureResult = await ensureRunWorktreeAndBranch(runId, teamSlugOrId);
-  const repoDefaultBranch = await fetchRepoDefaultBranch(
-    teamSlugOrId,
-    ensureResult.task.projectFullName
-  );
-  const baseBranch =
-    ensureResult.baseBranch ||
-    repoDefaultBranch ||
-    ensureResult.task.baseBranch;
+  // Try to get diff from the running container first
+  const instances = VSCodeInstance.getInstances();
+  for (const [, instance] of instances) {
+    if (instance.getTaskRunId() === runId && instance.isWorkerConnected()) {
+      try {
+        serverLogger.info(
+          `[CrownEvaluator] Getting diff from running container for run ${runId}`
+        );
+        const workerSocket = instance.getWorkerSocket();
+        const { stdout } = await workerExec({
+          workerSocket,
+          command: "/bin/bash",
+          args: ["-c", "/usr/local/bin/cmux-collect-relevant-diff.sh"],
+          cwd: "/root/workspace",
+          env: {},
+          timeout: 30000,
+        });
+        const diff = (stdout || "").trim();
+        if (diff.length > 0) {
+          gitDiffCache.set(cacheKey, diff);
+          return diff;
+        }
+      } catch (e) {
+        serverLogger.error(
+          `[CrownEvaluator] Failed to collect diff from container:`,
+          e
+        );
+      }
+    }
+  }
 
-  await syncWorktreeWithRemote(
-    ensureResult.worktreePath,
-    ensureResult.branchName,
-    baseBranch
+  // If no running container or it failed, we can't get the diff for this run
+  // (we'll use worktrees for branches that are already pushed in the main evaluation)
+  serverLogger.warn(
+    `[CrownEvaluator] No active container for run ${runId}, will use branch ${branchName} if available`
   );
 
-  const diff = await runCollectRelevantDiff(
-    ensureResult.worktreePath,
-    baseBranch
-  );
-
-  gitDiffCache.set(cacheKey, diff);
-  return diff;
+  return "";
 }
 
 // Auto PR behavior is controlled via workspace settings in Convex
@@ -506,14 +442,12 @@ type EvaluateCrownOptions = {
   taskId: Id<"tasks">;
   teamSlugOrId: string;
   crownRunId: Id<"taskRuns">;
-  precollectedDiff?: string;
 };
 
 export async function evaluateCrown({
   taskId,
   teamSlugOrId,
-  crownRunId,
-  precollectedDiff,
+  crownRunId: _crownRunId,
 }: EvaluateCrownOptions): Promise<void> {
   serverLogger.info(
     `[CrownEvaluator] =================================================`
@@ -549,14 +483,7 @@ export async function evaluateCrown({
     const githubToken = await getGitHubTokenFromKeychain();
 
     // Helper: generate and persist a system task comment summarizing the winner
-    const precollected = precollectedDiff?.trim() ?? "";
-    if (precollected.length > 0) {
-      gitDiffCache.set(String(crownRunId), precollected);
-    }
-
-    const generateSystemTaskComment = async (
-      winnerRunId: Id<"taskRuns">
-    ) => {
+    const generateSystemTaskComment = async (winnerRunId: Id<"taskRuns">) => {
       try {
         // Skip if a system comment already exists for this task
         const existing = await getConvex().query(
@@ -570,9 +497,15 @@ export async function evaluateCrown({
           return;
         }
 
+        // Try to get the winner's branch name
+        const winnerRun = await getConvex().query(api.taskRuns.get, {
+          teamSlugOrId,
+          id: winnerRunId,
+        });
+        // Collect the diff for the winner
         const effectiveDiff = await collectGitDiffForRun(
           winnerRunId,
-          teamSlugOrId
+          winnerRun?.newBranch || null
         );
 
         // Pull original request text for context
@@ -591,25 +524,22 @@ export async function evaluateCrown({
 
         let commentText = "";
         try {
-          // Call the crown summarize endpoint
-          const res = await postApiCrownSummarize({
-            client: getWwwClient(),
-            body: {
+          // Call the Convex action for summarization - API key is handled securely in Convex
+          const result = await getConvex().action(
+            api.crown.actions.summarize,
+            // (api as any)["crown/actions"].summarize,
+            {
               prompt: summarizationPrompt,
               teamSlugOrId,
-            },
-          });
-
-          if (!res.data) {
-            serverLogger.error(`[CrownEvaluator] Crown summarize failed`);
-            return;
-          }
-          commentText = res.data.summary;
+            }
+          );
+          commentText = result.summary;
         } catch (e) {
           serverLogger.error(
             `[CrownEvaluator] Failed to generate PR summary:`,
             e
           );
+          return;
         }
 
         if (commentText.length > 8000) {
@@ -677,18 +607,91 @@ export async function evaluateCrown({
       return;
     }
 
+    // Get repository information for fetching diffs from pushed branches
+    const taskInfo = await getConvex().query(api.tasks.getById, {
+      teamSlugOrId,
+      id: taskId,
+    });
+
+    let originPath = "";
+    if (taskInfo?.projectFullName) {
+      const repo = await getConvex().query(api.github.getRepoByFullName, {
+        teamSlugOrId,
+        fullName: taskInfo.projectFullName,
+      });
+      if (repo?.gitRemote) {
+        const { originPath: repoPath } = await getProjectPaths(
+          repo.gitRemote,
+          teamSlugOrId
+        );
+        originPath = repoPath;
+      }
+    }
+
+    // Determine base branch for diffs
+    let baseRef = "main";
+    if (originPath) {
+      const repoManager = RepositoryManager.getInstance();
+      try {
+        const { stdout } = await repoManager.executeGitCommand(
+          "git symbolic-ref refs/remotes/origin/HEAD",
+          { cwd: originPath, suppressErrorLogging: true }
+        );
+        if (stdout && stdout.includes("refs/remotes/origin/")) {
+          baseRef = stdout.trim().replace("refs/remotes/origin/", "");
+        }
+      } catch {
+        // Try common defaults
+        try {
+          await repoManager.executeGitCommand(
+            "git rev-parse --verify origin/main",
+            { cwd: originPath, suppressErrorLogging: true }
+          );
+          baseRef = "main";
+        } catch {
+          try {
+            await repoManager.executeGitCommand(
+              "git rev-parse --verify origin/master",
+              { cwd: originPath, suppressErrorLogging: true }
+            );
+            baseRef = "master";
+          } catch {
+            // Keep default
+          }
+        }
+      }
+    }
+
     const candidateData = await Promise.all(
       completedRuns.map(async (run, idx) => {
         const agentName = getAgentNameOrUnknown(run.agentName);
-        const gitDiffRaw = await collectGitDiffForRun(
-          run._id,
-          teamSlugOrId
-        );
+        let gitDiff = "";
 
-        let gitDiff =
-          gitDiffRaw && gitDiffRaw.length > 0
-            ? gitDiffRaw
-            : "No changes detected";
+        // First try to get diff from active container
+        gitDiff = await collectGitDiffForRun(run._id, run.newBranch || null);
+
+        // If no diff from container and we have a branch, try worktree approach
+        if ((!gitDiff || gitDiff.length === 0) && run.newBranch && originPath) {
+          try {
+            serverLogger.info(
+              `[CrownEvaluator] Fetching diff from branch ${run.newBranch} for ${agentName}`
+            );
+            gitDiff = await getFilteredGitDiff(
+              originPath,
+              baseRef,
+              run.newBranch
+            );
+          } catch (e) {
+            serverLogger.error(
+              `[CrownEvaluator] Failed to fetch diff from branch ${run.newBranch}:`,
+              e
+            );
+          }
+        }
+
+        if (!gitDiff || gitDiff.length === 0) {
+          gitDiff = "No changes detected";
+        }
 
         // Limit to 5000 chars for the prompt
         if (gitDiff.length > 5000) {
@@ -698,8 +701,6 @@ export async function evaluateCrown({
         serverLogger.info(
           `[CrownEvaluator] Implementation ${idx} (${agentName}): ${gitDiff.length} chars of diff`
         );
-
-        // Do not rely on logs; skip logging log tails.
 
         return {
           index: idx,
@@ -769,18 +770,12 @@ IMPORTANT: Respond ONLY with the JSON object, no other text.`;
     } catch {
       /* empty */
     }
-    const res = await postApiCrownEvaluate({
-      client: getWwwClient(),
-      body: {
-        prompt: evaluationPrompt,
-        teamSlugOrId,
-      },
-    });
 
-    if (!res.data) {
-      throw new Error("Crown evaluate response missing data");
-    }
-    const jsonResponse = res.data;
+    // Use Convex action for evaluation - API key is handled securely in Convex
+    const jsonResponse = await getConvex().action(api.crown.actions.evaluate, {
+      prompt: evaluationPrompt,
+      teamSlugOrId,
+    });
 
     if (
       typeof jsonResponse.winner !== "number" ||

@@ -12,6 +12,7 @@ import type * as apiKeys from "../apiKeys.js";
 import type * as backfill from "../backfill.js";
 import type * as comments from "../comments.js";
 import type * as containerSettings from "../containerSettings.js";
+import type * as crown_actions from "../crown/actions.js";
 import type * as crown from "../crown.js";
 import type * as environments from "../environments.js";
 import type * as github from "../github.js";
@@ -52,6 +53,7 @@ declare const fullApi: ApiFromModules<{
   backfill: typeof backfill;
   comments: typeof comments;
   containerSettings: typeof containerSettings;
+  "crown/actions": typeof crown_actions;
   crown: typeof crown;
   environments: typeof environments;
   github: typeof github;
