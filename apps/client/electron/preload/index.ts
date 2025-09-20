@@ -82,9 +82,9 @@ const cmuxAPI = {
   // UI helpers
   ui: {
     focusWebContents: (id: number) => {
-      return ipcRenderer.invoke("cmux:ui:focus-webcontents", id) as Promise<
-        { ok: boolean }
-      >;
+      return ipcRenderer.invoke("cmux:ui:focus-webcontents", id) as Promise<{
+        ok: boolean;
+      }>;
     },
     restoreLastFocusInWebContents: (id: number) => {
       return ipcRenderer.invoke(
@@ -97,10 +97,11 @@ const cmuxAPI = {
       frameRoutingId: number,
       frameProcessId: number
     ) => {
-      return ipcRenderer.invoke(
-        "cmux:ui:frame-restore-last-focus",
-        { contentsId, frameRoutingId, frameProcessId }
-      ) as Promise<{ ok: boolean }>;
+      return ipcRenderer.invoke("cmux:ui:frame-restore-last-focus", {
+        contentsId,
+        frameRoutingId,
+        frameProcessId,
+      }) as Promise<{ ok: boolean }>;
     },
     setCommandPaletteOpen: (open: boolean) => {
       return ipcRenderer.invoke(
@@ -109,9 +110,9 @@ const cmuxAPI = {
       ) as Promise<{ ok: boolean }>;
     },
     restoreLastFocus: () => {
-      return ipcRenderer.invoke(
-        "cmux:ui:restore-last-focus"
-      ) as Promise<{ ok: boolean }>;
+      return ipcRenderer.invoke("cmux:ui:restore-last-focus") as Promise<{
+        ok: boolean;
+      }>;
     },
   },
   logs: {
@@ -126,6 +127,13 @@ const cmuxAPI = {
     copyAll: () =>
       ipcRenderer.invoke("cmux:logs:copy-all") as Promise<{ ok: boolean }>,
   },
+  autoUpdate: {
+    install: () =>
+      ipcRenderer.invoke("cmux:auto-update:install") as Promise<{
+        ok: boolean;
+        reason?: string;
+      }>,
+  },
   webContentsView: {
     create: (options: {
       url: string;
@@ -134,29 +142,40 @@ const cmuxAPI = {
       borderRadius?: number;
       persistKey?: string;
     }) =>
-      ipcRenderer.invoke(
-        "cmux:webcontents:create",
-        options
-      ) as Promise<{ id: number; webContentsId: number; restored: boolean }>,
-    setBounds: (options: { id: number; bounds: RectanglePayload; visible?: boolean }) =>
-      ipcRenderer.invoke(
-        "cmux:webcontents:set-bounds",
-        options
-      ) as Promise<{ ok: boolean }>,
+      ipcRenderer.invoke("cmux:webcontents:create", options) as Promise<{
+        id: number;
+        webContentsId: number;
+        restored: boolean;
+      }>,
+    setBounds: (options: {
+      id: number;
+      bounds: RectanglePayload;
+      visible?: boolean;
+    }) =>
+      ipcRenderer.invoke("cmux:webcontents:set-bounds", options) as Promise<{
+        ok: boolean;
+      }>,
     loadURL: (id: number, url: string) =>
-      ipcRenderer.invoke("cmux:webcontents:load-url", { id, url }) as Promise<{ ok: boolean }>,
+      ipcRenderer.invoke("cmux:webcontents:load-url", { id, url }) as Promise<{
+        ok: boolean;
+      }>,
     release: (options: { id: number; persist?: boolean }) =>
-      ipcRenderer.invoke(
-        "cmux:webcontents:release",
-        options
-      ) as Promise<{ ok: boolean; suspended: boolean }>,
+      ipcRenderer.invoke("cmux:webcontents:release", options) as Promise<{
+        ok: boolean;
+        suspended: boolean;
+      }>,
     destroy: (id: number) =>
-      ipcRenderer.invoke("cmux:webcontents:destroy", id) as Promise<{ ok: boolean }>,
-    updateStyle: (options: { id: number; backgroundColor?: string; borderRadius?: number }) =>
-      ipcRenderer.invoke(
-        "cmux:webcontents:update-style",
-        options
-      ) as Promise<{ ok: boolean }>,
+      ipcRenderer.invoke("cmux:webcontents:destroy", id) as Promise<{
+        ok: boolean;
+      }>,
+    updateStyle: (options: {
+      id: number;
+      backgroundColor?: string;
+      borderRadius?: number;
+    }) =>
+      ipcRenderer.invoke("cmux:webcontents:update-style", options) as Promise<{
+        ok: boolean;
+      }>,
   },
 };
 
@@ -171,7 +190,9 @@ ipcRenderer.on(
   (_event, payload: { level: "log" | "warn" | "error"; message: string }) => {
     const level = (payload?.level ?? "log") as ElectronMainLogMessage["level"];
     const message =
-      typeof payload?.message === "string" ? payload.message : String(payload?.message ?? "");
+      typeof payload?.message === "string"
+        ? payload.message
+        : String(payload?.message ?? "");
     const entry: ElectronMainLogMessage = { level, message };
 
     const fn = console[level] ?? console.log;
