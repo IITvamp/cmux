@@ -23,12 +23,12 @@ export function DashboardStartTaskButton({
         <span
           // Ensure tooltip can trigger even when the button is disabled
           tabIndex={0}
-          className="inline-flex"
+          className="inline-flex rounded-md focus-visible:outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-neutral-950"
         >
           <Button
             size="sm"
             variant="default"
-            className="!h-7"
+            className="!h-7 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-neutral-950"
             onClick={onStartTask}
             disabled={isDisabled}
           >

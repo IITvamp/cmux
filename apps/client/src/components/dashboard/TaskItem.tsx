@@ -18,6 +18,9 @@ interface TaskItemProps {
   teamSlugOrId: string;
 }
 
+const controlFocusRingClasses =
+  "outline-none focus-visible:outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-neutral-950";
+
 export const TaskItem = memo(function TaskItem({
   task,
   teamSlugOrId,
@@ -236,7 +239,8 @@ export const TaskItem = memo(function TaskItem({
                   "bg-neutral-100 dark:bg-neutral-700",
                   "text-neutral-600 dark:text-neutral-400",
                   "hover:bg-neutral-200 dark:hover:bg-neutral-600",
-                  "group-hover:opacity-100 opacity-0"
+                  "group-hover:opacity-100 opacity-0",
+                  controlFocusRingClasses
                 )}
                 title="Copy task description"
               >
@@ -274,7 +278,9 @@ export const TaskItem = memo(function TaskItem({
                       : "text-neutral-600 dark:text-neutral-400",
                     "hover:bg-neutral-200 dark:hover:bg-neutral-600",
                     "group-hover:opacity-100 opacity-0",
-                    "hidden" // TODO: show this button
+                    "hidden",
+                    controlFocusRingClasses
+                    // TODO: show this button
                   )}
                 >
                   <Pin className="w-3.5 h-3.5" />
@@ -299,7 +305,8 @@ export const TaskItem = memo(function TaskItem({
                     "bg-neutral-100 dark:bg-neutral-700",
                     "text-neutral-600 dark:text-neutral-400",
                     "hover:bg-neutral-200 dark:hover:bg-neutral-600",
-                    "group-hover:opacity-100 opacity-0"
+                    "group-hover:opacity-100 opacity-0",
+                    controlFocusRingClasses
                   )}
                   title="Unarchive task"
                 >
@@ -313,7 +320,8 @@ export const TaskItem = memo(function TaskItem({
                     "bg-neutral-100 dark:bg-neutral-700",
                     "text-neutral-600 dark:text-neutral-400",
                     "hover:bg-neutral-200 dark:hover:bg-neutral-600",
-                    "group-hover:opacity-100 opacity-0"
+                    "group-hover:opacity-100 opacity-0",
+                    controlFocusRingClasses
                   )}
                   title="Archive task"
                 >

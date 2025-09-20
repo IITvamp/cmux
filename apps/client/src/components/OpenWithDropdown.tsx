@@ -23,6 +23,9 @@ type MenuItem = {
   enabled: boolean;
 };
 
+const controlFocusRingClasses =
+  "outline-none focus-visible:outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-neutral-950";
+
 export function OpenWithDropdown({
   vscodeUrl,
   worktreePath,
@@ -175,6 +178,7 @@ export function OpenWithDropdown({
           "bg-neutral-100 dark:bg-neutral-700",
           "text-neutral-600 dark:text-neutral-400",
           "hover:bg-neutral-200 dark:hover:bg-neutral-600",
+          controlFocusRingClasses,
           className
         )}
         title="Open with"

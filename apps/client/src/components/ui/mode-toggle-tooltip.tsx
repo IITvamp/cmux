@@ -105,6 +105,9 @@ export function ModeToggleTooltip({
     };
   }, []);
 
+  const focusRingClasses =
+    "outline-none focus-visible:outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-neutral-950";
+
   return (
     <div className={cn("relative inline-flex items-center", className)}>
       <Switch
@@ -124,6 +127,7 @@ export function ModeToggleTooltip({
           )
         }
         classNames={{
+          base: cn(focusRingClasses, "transition-colors"),
           wrapper: cn(
             "group-data-[selected=true]:bg-blue-500",
             "group-data-[selected=true]:border-blue-500"

@@ -367,6 +367,9 @@ export const DashboardInputControls = memo(function DashboardInputControls({
     }, 600);
   }
 
+  const controlFocusRing =
+    "outline-none focus-visible:outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-neutral-950";
+
   return (
     <div className="flex items-end gap-1 grow">
       <div className="flex items-end gap-1">
@@ -392,7 +395,10 @@ export const DashboardInputControls = memo(function DashboardInputControls({
                   repoSearch: undefined,
                   instanceId: undefined,
                 }}
-                className="w-full px-2 h-8 flex items-center gap-2 text-[13.5px] text-neutral-800 dark:text-neutral-200 rounded-md hover:bg-neutral-50 dark:hover:bg-neutral-900 cursor-default"
+                className={clsx(
+                  "w-full px-2 h-8 flex items-center gap-2 text-[13.5px] text-neutral-800 dark:text-neutral-200 rounded-md hover:bg-neutral-50 dark:hover:bg-neutral-900 cursor-default",
+                  controlFocusRing
+                )}
               >
                 <Server className="w-4 h-4 text-neutral-600 dark:text-neutral-300" />
                 <span className="select-none">Create environment</span>
@@ -423,7 +429,10 @@ export const DashboardInputControls = memo(function DashboardInputControls({
                       alert("Failed to start installation. Please try again.");
                     }
                   }}
-                  className="w-full px-2 h-8 flex items-center gap-2 text-[13.5px] text-neutral-800 dark:text-neutral-200 rounded-md hover:bg-neutral-50 dark:hover:bg-neutral-900"
+                  className={clsx(
+                    "w-full px-2 h-8 flex items-center gap-2 text-[13.5px] text-neutral-800 dark:text-neutral-200 rounded-md hover:bg-neutral-50 dark:hover:bg-neutral-900",
+                    controlFocusRing
+                  )}
                 >
                   <GitHubIcon className="w-4 h-4 text-neutral-600 dark:text-neutral-300" />
                   <span className="select-none">Add GitHub account</span>
@@ -487,7 +496,8 @@ export const DashboardInputControls = memo(function DashboardInputControls({
             "border border-neutral-200 dark:border-neutral-500/15",
             "text-neutral-600 dark:text-neutral-400",
             "hover:bg-neutral-200 dark:hover:bg-neutral-600",
-            "transition-colors"
+            "transition-colors",
+            controlFocusRing
           )}
           onClick={handleImageClick}
           title="Upload image"
@@ -502,7 +512,8 @@ export const DashboardInputControls = memo(function DashboardInputControls({
             "border border-neutral-200 dark:border-neutral-500/15",
             "text-neutral-600 dark:text-neutral-400",
             "hover:bg-neutral-200 dark:hover:bg-neutral-600",
-            "transition-colors"
+            "transition-colors",
+            controlFocusRing
           )}
         >
           <Mic className="w-4 h-4" />

@@ -1,7 +1,11 @@
 import { api } from "@cmux/convex/api";
+import clsx from "clsx";
 import { useQuery } from "convex/react";
 import { memo, useState } from "react";
 import { TaskItem } from "./TaskItem";
+
+const tabFocusRingClasses =
+  "focus-visible:outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-neutral-950";
 
 export const TaskList = memo(function TaskList({
   teamSlugOrId,
@@ -21,24 +25,26 @@ export const TaskList = memo(function TaskList({
       <div className="mb-3">
         <div className="flex items-end gap-2.5 select-none">
           <button
-            className={
-              "text-sm font-medium transition-colors " +
-              (tab === "all"
+            className={clsx(
+              "rounded-md px-1.5 text-sm font-medium transition-colors",
+              tabFocusRingClasses,
+              tab === "all"
                 ? "text-neutral-900 dark:text-neutral-100"
-                : "text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200")
-            }
+                : "text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200"
+            )}
             onMouseDown={() => setTab("all")}
             onClick={() => setTab("all")}
           >
             Tasks
           </button>
           <button
-            className={
-              "text-sm font-medium transition-colors " +
-              (tab === "archived"
+            className={clsx(
+              "rounded-md px-1.5 text-sm font-medium transition-colors",
+              tabFocusRingClasses,
+              tab === "archived"
                 ? "text-neutral-900 dark:text-neutral-100"
-                : "text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200")
-            }
+                : "text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200"
+            )}
             onMouseDown={() => setTab("archived")}
             onClick={() => setTab("archived")}
           >
