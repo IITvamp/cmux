@@ -9,6 +9,7 @@ import { Command } from "cmdk";
 import { useQuery } from "convex/react";
 import { GitPullRequest, Monitor, Moon, Plus, Sun } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import { ElectronLogsCommandItems } from "./command-bar/ElectronLogsCommandItems";
 
@@ -23,6 +24,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
   const openRef = useRef<boolean>(false);
   // Used only in non-Electron fallback
   const prevFocusedElRef = useRef<HTMLElement | null>(null);
+  const [isMounted, setIsMounted] = useState(false);
   const navigate = useNavigate();
   const router = useRouter();
   const { setTheme } = useTheme();
@@ -32,6 +34,11 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
   useEffect(() => {
     openRef.current = open;
   }, [open]);
+
+  useEffect(() => {
+    setIsMounted(true);
+    return () => setIsMounted(false);
+  }, []);
 
   useEffect(() => {
     // In Electron, prefer global shortcut from main via cmux event.
@@ -262,9 +269,9 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
     [navigate, teamSlugOrId, setTheme, allTasks]
   );
 
-  if (!open) return null;
+  if (!isMounted || !open) return null;
 
-  return (
+  return createPortal(
     <>
       <div
         className="fixed inset-0 z-[var(--z-commandbar)]"
@@ -489,5 +496,5 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
         </div>
       </Command.Dialog>
     </>
-  );
+  , document.body);
 }
