@@ -539,6 +539,12 @@ function DashboardComponent() {
       const isEditor =
         activeElement?.getAttribute("data-cmux-input") === "true";
       const isCommentInput = activeElement?.id === "cmux-comments-root";
+      const isDropdownFocused =
+        activeElement instanceof HTMLElement &&
+        activeElement.closest('[data-cmux-skip-autofocus="true"]');
+      if (isDropdownFocused) {
+        return;
+      }
       if (
         !isEditor &&
         (activeElement?.tagName === "INPUT" ||

@@ -400,6 +400,7 @@ export function SearchableSelect({
             ref={triggerRef}
             type="button"
             disabled={disabled}
+            data-cmux-skip-autofocus="true"
             className={clsx(
               "relative inline-flex h-7 items-center rounded-md border",
               "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950",
@@ -433,6 +434,7 @@ export function SearchableSelect({
           align="start"
           sideOffset={2}
           collisionPadding={{ top: 12, bottom: 12 }}
+          data-cmux-skip-autofocus="true"
           className={clsx(
             "z-[var(--z-modal)] rounded-md border overflow-hidden",
             "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950",
