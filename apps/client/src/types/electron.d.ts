@@ -2,6 +2,11 @@ import type {
   ElectronLogsPayload,
   ElectronMainLogMessage,
 } from "../lib/electron-logs/types";
+import type {
+  ElectronDevToolsMode,
+  ElectronWebContentsEvent,
+  ElectronWebContentsState,
+} from "./electron-webcontents";
 
 interface CmuxSocketAPI {
   connect: (query: Record<string, string>) => Promise<{ socketId: string; connected: boolean }>;
@@ -49,6 +54,21 @@ interface CmuxWebContentsViewAPI {
     backgroundColor?: string;
     borderRadius?: number;
   }) => Promise<{ ok: boolean }>;
+  goBack: (id: number) => Promise<{ ok: boolean }>;
+  goForward: (id: number) => Promise<{ ok: boolean }>;
+  reload: (id: number) => Promise<{ ok: boolean }>;
+  onEvent: (
+    id: number,
+    callback: (event: ElectronWebContentsEvent) => void
+  ) => () => void;
+  getState: (
+    id: number
+  ) => Promise<{ ok: boolean; state?: ElectronWebContentsState }>;
+  openDevTools: (
+    id: number,
+    options?: { mode?: ElectronDevToolsMode }
+  ) => Promise<{ ok: boolean }>;
+  closeDevTools: (id: number) => Promise<{ ok: boolean }>;
 }
 
 interface CmuxAPI {
