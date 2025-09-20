@@ -4,17 +4,18 @@ import { useExpandTasks } from "@/contexts/expand-tasks/ExpandTasksContext";
 import { isElectron } from "@/lib/electron";
 import { type Doc } from "@cmux/convex/dataModel";
 import { Link } from "@tanstack/react-router";
-import clsx from "clsx";
 import { GitPullRequest, Home, Plus, Server } from "lucide-react";
 import {
   type CSSProperties,
-  type ReactNode,
+  type ComponentType,
   useCallback,
   useEffect,
   useRef,
   useState,
 } from "react";
 import CmuxLogo from "./logo/cmux-logo";
+import { SidebarNavLink, type SidebarLinkRecord } from "./sidebar/SidebarNavLink";
+import { SidebarSectionLink } from "./sidebar/SidebarSectionLink";
 
 interface SidebarProps {
   tasks: Doc<"tasks">[] | undefined;
@@ -25,21 +26,10 @@ interface SidebarProps {
 interface SidebarNavItem {
   label: string;
   to: string;
-  icon?: ReactNode;
+  icon?: ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
+  search?: SidebarLinkRecord;
+  exact?: boolean;
 }
-
-const NAV_ITEM_BASE_CLASSES =
-  "pointer-default cursor-default group mx-1 flex items-center gap-2 rounded-md px-2 py-1 text-sm font-medium text-neutral-700 select-none hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800";
-const NAV_ITEM_ACTIVE_CLASSES =
-  "bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100";
-const ICON_BASE_CLASSES =
-  "size-4 text-neutral-500 group-hover:text-neutral-800 dark:group-hover:text-neutral-100";
-const ICON_ACTIVE_CLASSES =
-  "group-data-[active=true]:text-neutral-900 dark:group-data-[active=true]:text-neutral-100";
-const WORKSPACES_LINK_BASE_CLASSES =
-  "pointer-default cursor-default mx-1 flex items-center rounded-md px-2 py-1 text-xs font-medium text-neutral-600 select-none hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800";
-const WORKSPACES_LINK_ACTIVE_CLASSES =
-  "bg-neutral-100 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100";
 
 export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
   const DEFAULT_WIDTH = 256;
@@ -63,16 +53,27 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
     {
       label: "Home",
       to: "/$teamSlugOrId",
-      icon: <Home className={clsx(ICON_BASE_CLASSES, ICON_ACTIVE_CLASSES)} />,
+      exact: true,
+      icon: Home,
     },
     {
       label: "Pull requests",
       to: "/$teamSlugOrId/prs",
-      icon: (
-        <GitPullRequest
-          className={clsx(ICON_BASE_CLASSES, ICON_ACTIVE_CLASSES)}
-        />
-      ),
+      exact: true,
+      icon: GitPullRequest,
+    },
+    {
+      label: "Environments",
+      to: "/$teamSlugOrId/environments",
+      search: {
+        step: undefined,
+        selectedRepos: undefined,
+        connectionLogin: undefined,
+        repoSearch: undefined,
+        instanceId: undefined,
+      },
+      exact: true,
+      icon: Server,
     },
   ];
 
@@ -208,41 +209,25 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
           <ul className="flex flex-col gap-0.5">
             {navItems.map((item) => (
               <li key={item.label}>
-                <Link
+                <SidebarNavLink
                   to={item.to}
                   params={{ teamSlugOrId }}
-                  activeOptions={{ exact: true }}
-                  className={NAV_ITEM_BASE_CLASSES}
-                  activeProps={{
-                    className: clsx(
-                      NAV_ITEM_BASE_CLASSES,
-                      NAV_ITEM_ACTIVE_CLASSES
-                    ),
-                    "data-active": "true",
-                  }}
-                >
-                  {item.icon}
-                  <span>{item.label}</span>
-                </Link>
+                  search={item.search}
+                  icon={item.icon}
+                  exact={item.exact}
+                  label={item.label}
+                />
               </li>
             ))}
           </ul>
           <div className="mt-2 flex flex-col gap-0.5">
-            <Link
+            <SidebarSectionLink
               to="/$teamSlugOrId/workspaces"
               params={{ teamSlugOrId }}
-              activeOptions={{ exact: true }}
-              className={WORKSPACES_LINK_BASE_CLASSES}
-              activeProps={{
-                className: clsx(
-                  WORKSPACES_LINK_BASE_CLASSES,
-                  WORKSPACES_LINK_ACTIVE_CLASSES
-                ),
-                "data-active": "true",
-              }}
+              exact
             >
               <span className="capitalize">Workspaces</span>
-            </Link>
+            </SidebarSectionLink>
           </div>
           <div className="px-2 pb-2">
             {tasks === undefined ? (
