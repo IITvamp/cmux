@@ -70,7 +70,6 @@ async function getFilteredGitDiff(
       `/usr/local/bin/cmux-collect-relevant-diff.sh`,
       {
         cwd: worktreePath,
-        maxBuffer: 10 * 1024 * 1024,
         env: {
           ...process.env,
           CMUX_DIFF_BASE: `origin/${baseRef}`,
