@@ -54,9 +54,9 @@ interface CmuxWebContentsViewAPI {
     backgroundColor?: string;
     borderRadius?: number;
   }) => Promise<{ ok: boolean }>;
-  goBack?: (id: number) => Promise<{ ok: boolean }>;
-  goForward?: (id: number) => Promise<{ ok: boolean }>;
-  reload?: (id: number) => Promise<{ ok: boolean }>;
+  goBack: (id: number) => Promise<{ ok: boolean }>;
+  goForward: (id: number) => Promise<{ ok: boolean }>;
+  reload: (id: number) => Promise<{ ok: boolean }>;
   onEvent: (
     id: number,
     callback: (event: ElectronWebContentsEvent) => void

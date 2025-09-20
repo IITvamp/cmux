@@ -270,7 +270,7 @@ export function ElectronPreviewBrowser({
   const handleGoBack = useCallback(() => {
     if (!viewHandle) return;
     void window.cmux?.webContentsView
-      ?.goBack?.(viewHandle.id)
+      ?.goBack(viewHandle.id)
       .catch((error: unknown) => {
         console.warn("Failed to go back", error);
       });
@@ -279,7 +279,7 @@ export function ElectronPreviewBrowser({
   const handleGoForward = useCallback(() => {
     if (!viewHandle) return;
     void window.cmux?.webContentsView
-      ?.goForward?.(viewHandle.id)
+      ?.goForward(viewHandle.id)
       .catch((error: unknown) => {
         console.warn("Failed to go forward", error);
       });
@@ -349,7 +349,7 @@ export function ElectronPreviewBrowser({
                     onClick={() => {
                       if (!viewHandle) return;
                       void window.cmux?.webContentsView
-                        ?.reload?.(viewHandle.id)
+                        ?.reload(viewHandle.id)
                         .catch((error: unknown) => {
                           console.warn(
                             "Failed to reload WebContentsView",

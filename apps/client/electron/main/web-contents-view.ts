@@ -639,6 +639,66 @@ export function registerWebContentsViewHandlers({
     }
   });
 
+  ipcMain.handle("cmux:webcontents:go-back", (event, id: number) => {
+    if (typeof id !== "number") return { ok: false };
+    const entry = viewEntries.get(id);
+    if (!entry) return { ok: false };
+    if (event.sender.id !== entry.ownerWebContentsId) {
+      return { ok: false };
+    }
+    entry.ownerSender = event.sender;
+    try {
+      if (!entry.view.webContents.canGoBack()) {
+        return { ok: false };
+      }
+      entry.view.webContents.goBack();
+      sendState(entry, logger, "go-back-command");
+      return { ok: true };
+    } catch (error) {
+      logger.warn("Failed to go back", { id, error });
+      return { ok: false, error: String(error) };
+    }
+  });
+
+  ipcMain.handle("cmux:webcontents:go-forward", (event, id: number) => {
+    if (typeof id !== "number") return { ok: false };
+    const entry = viewEntries.get(id);
+    if (!entry) return { ok: false };
+    if (event.sender.id !== entry.ownerWebContentsId) {
+      return { ok: false };
+    }
+    entry.ownerSender = event.sender;
+    try {
+      if (!entry.view.webContents.canGoForward()) {
+        return { ok: false };
+      }
+      entry.view.webContents.goForward();
+      sendState(entry, logger, "go-forward-command");
+      return { ok: true };
+    } catch (error) {
+      logger.warn("Failed to go forward", { id, error });
+      return { ok: false, error: String(error) };
+    }
+  });
+
+  ipcMain.handle("cmux:webcontents:reload", (event, id: number) => {
+    if (typeof id !== "number") return { ok: false };
+    const entry = viewEntries.get(id);
+    if (!entry) return { ok: false };
+    if (event.sender.id !== entry.ownerWebContentsId) {
+      return { ok: false };
+    }
+    entry.ownerSender = event.sender;
+    try {
+      entry.view.webContents.reload();
+      sendState(entry, logger, "reload-command");
+      return { ok: true };
+    } catch (error) {
+      logger.warn("Failed to reload WebContentsView", { id, error });
+      return { ok: false, error: String(error) };
+    }
+  });
+
   ipcMain.handle("cmux:webcontents:release", (event, options: ReleaseOptions) => {
     const { id, persist } = options ?? {};
     if (typeof id !== "number") return { ok: false };

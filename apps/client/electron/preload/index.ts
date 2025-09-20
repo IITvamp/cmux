@@ -162,6 +162,12 @@ const cmuxAPI = {
         "cmux:webcontents:update-style",
         options
       ) as Promise<{ ok: boolean }>,
+    goBack: (id: number) =>
+      ipcRenderer.invoke("cmux:webcontents:go-back", id) as Promise<{ ok: boolean }>,
+    goForward: (id: number) =>
+      ipcRenderer.invoke("cmux:webcontents:go-forward", id) as Promise<{ ok: boolean }>,
+    reload: (id: number) =>
+      ipcRenderer.invoke("cmux:webcontents:reload", id) as Promise<{ ok: boolean }>,
     onEvent: (id: number, callback: (event: ElectronWebContentsEvent) => void) => {
       const channel = `cmux:webcontents:event:${id}`;
       const listener = (_event: Electron.IpcRendererEvent, payload: ElectronWebContentsEvent) => {
