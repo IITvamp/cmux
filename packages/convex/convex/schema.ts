@@ -105,6 +105,7 @@ const convexSchema = defineSchema({
     updatedAt: v.optional(v.number()),
     userId: v.string(), // Link to user who created the task
     teamId: v.string(),
+    environmentId: v.optional(v.id("environments")),
     crownEvaluationError: v.optional(v.string()), // Error message if crown evaluation failed
     mergeStatus: v.optional(
       v.union(
@@ -154,6 +155,7 @@ const convexSchema = defineSchema({
     errorMessage: v.optional(v.string()), // Error message when run fails early
     userId: v.string(), // Link to user who created the run
     teamId: v.string(),
+    environmentId: v.optional(v.id("environments")),
     isCrowned: v.optional(v.boolean()), // Whether this run won the crown evaluation
     crownReason: v.optional(v.string()), // LLM's reasoning for why this run was crowned
     pullRequestUrl: v.optional(v.string()), // URL of the PR

@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 
 import "dotenv/config";
+import { normalizeOrigin } from "@cmux/shared";
 import { StackAdminApp } from "@stackframe/js";
 import { createClient } from "@cmux/www-openapi-client/client";
 import { postApiSandboxesStart } from "@cmux/www-openapi-client";
@@ -111,7 +112,8 @@ async function sleep(ms: number): Promise<void> {
 
 async function main(): Promise<void> {
   const options = parseArgs();
-  const baseUrl = process.env.NEXT_PUBLIC_WWW_ORIGIN ?? "http://localhost:9779";
+  const rawBaseUrl = process.env.NEXT_PUBLIC_WWW_ORIGIN ?? "http://localhost:9779";
+  const baseUrl = normalizeOrigin(rawBaseUrl);
   const client = createClient({ baseUrl });
 
   const authHeader = await getAuthHeader(options.userId);

@@ -21,7 +21,7 @@ import { useSocket } from "@/contexts/socket/use-socket";
 import { createFakeConvexId } from "@/lib/fakeConvexId";
 import { branchesQueryOptions } from "@/queries/branches";
 import { api } from "@cmux/convex/api";
-import type { Doc } from "@cmux/convex/dataModel";
+import type { Doc, Id } from "@cmux/convex/dataModel";
 import type { ProviderStatusResponse } from "@cmux/shared";
 import { convexQuery } from "@convex-dev/react-query";
 import { useQuery } from "@tanstack/react-query";
@@ -91,7 +91,7 @@ function DashboardComponent() {
       teamSlugOrId,
       repoFullName: selectedProject[0] || "",
     }),
-    enabled: !!selectedProject[0],
+    enabled: !!selectedProject[0] && !isEnvSelected,
   });
   const branches = useMemo(
     () => branchesQuery.data || [],
@@ -178,6 +178,7 @@ function DashboardComponent() {
           images: args.images,
           userId: "optimistic",
           teamId: teamSlugOrId,
+          environmentId: args.environmentId,
         };
 
         // Add the new task at the beginning (since we order by desc)
@@ -247,6 +248,9 @@ function DashboardComponent() {
     const branch = effectiveSelectedBranch[0];
     const projectFullName = selectedProject[0];
     const envSelected = projectFullName.startsWith("env:");
+    const environmentId = envSelected
+      ? (projectFullName.replace(/^env:/, "") as Id<"environments">)
+      : undefined;
 
     try {
       // Extract content including images from the editor
@@ -304,6 +308,7 @@ function DashboardComponent() {
         projectFullName: envSelected ? undefined : projectFullName,
         baseBranch: envSelected ? undefined : branch,
         images: uploadedImages.length > 0 ? uploadedImages : undefined,
+        environmentId,
       });
 
       // Hint the sidebar to auto-expand this task once it appears
@@ -325,16 +330,7 @@ function DashboardComponent() {
           selectedAgents:
             selectedAgents.length > 0 ? selectedAgents : undefined,
           isCloudMode: envSelected ? true : isCloudMode,
-          ...(envSelected
-            ? {
-                environmentId: projectFullName.replace(
-                  /^env:/,
-                  ""
-                ) as string & {
-                  __tableName: "environments";
-                },
-              }
-            : {}),
+          ...(environmentId ? { environmentId } : {}),
           images: images.length > 0 ? images : undefined,
           theme,
         },
@@ -410,7 +406,8 @@ function DashboardComponent() {
         acc.set(repo.fullName, repo);
         return acc;
       }
-      const existingActivity = existing.lastPushedAt ?? Number.NEGATIVE_INFINITY;
+      const existingActivity =
+        existing.lastPushedAt ?? Number.NEGATIVE_INFINITY;
       const candidateActivity = repo.lastPushedAt ?? Number.NEGATIVE_INFINITY;
       if (candidateActivity > existingActivity) {
         acc.set(repo.fullName, repo);
