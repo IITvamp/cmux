@@ -6,12 +6,99 @@ import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
 import { workerExec } from "./utils/workerExec.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 import { z } from "zod";
+import { getProjectPaths } from "./workspace.js";
+import { RepositoryManager } from "./repositoryManager.js";
 
 const UNKNOWN_AGENT_NAME = "unknown agent";
 
 function getAgentNameOrUnknown(agentName?: string | null): string {
   const trimmed = agentName?.trim();
   return trimmed && trimmed.length > 0 ? trimmed : UNKNOWN_AGENT_NAME;
+}
+
+// Get filtered git diff between two refs
+async function getFilteredGitDiff(
+  repoPath: string,
+  baseRef: string,
+  headRef: string
+): Promise<string> {
+  try {
+    const repoManager = RepositoryManager.getInstance();
+
+    // First fetch both refs to ensure we have them
+    serverLogger.info(
+      `[CrownEvaluator] Fetching refs ${baseRef} and ${headRef} in ${repoPath}`
+    );
+
+    // Fetch the branches from origin  
+    try {
+      await repoManager.executeGitCommand(
+        `git fetch origin ${baseRef}:refs/remotes/origin/${baseRef} ${headRef}:refs/remotes/origin/${headRef}`,
+        { cwd: repoPath }
+      );
+    } catch (e) {
+      serverLogger.warn(
+        `[CrownEvaluator] Failed to fetch refs, continuing: ${e}`
+      );
+    }
+
+    // Get the diff with file name filtering using git pathspec
+    // This excludes common files we don't want in the diff
+    const excludePatterns = [
+      ':(exclude)*.lock',
+      ':(exclude)*-lock.yaml',
+      ':(exclude)*-lock.json',
+      ':(exclude)node_modules/**',
+      ':(exclude)dist/**',
+      ':(exclude)build/**',
+      ':(exclude).next/**',
+      ':(exclude)out/**',
+      ':(exclude).turbo/**',
+      ':(exclude)venv/**',
+      ':(exclude).venv/**',
+      ':(exclude)**/__pycache__/**',
+      ':(exclude)vendor/**',
+      ':(exclude)target/**',
+      ':(exclude)coverage/**',
+      ':(exclude).nyc_output/**',
+      ':(exclude)*.min.js',
+      ':(exclude)*.min.css',
+      ':(exclude)*.map',
+      ':(exclude)*.log',
+      ':(exclude)*.tmp',
+      ':(exclude)*.cache',
+      ':(exclude).DS_Store',
+      ':(exclude)*.png',
+      ':(exclude)*.jpg',
+      ':(exclude)*.jpeg',
+      ':(exclude)*.gif',
+      ':(exclude)*.svg',
+      ':(exclude)*.ico',
+      ':(exclude)*.webp',
+      ':(exclude)*.bmp',
+      ':(exclude)*.pdf',
+      ':(exclude)*.zip',
+      ':(exclude)*.tar',
+      ':(exclude)*.gz',
+      ':(exclude)*.xz',
+      ':(exclude)*.bz2',
+      ':(exclude)*.7z',
+      ':(exclude)*.mp4',
+      ':(exclude)*.mp3',
+      ':(exclude)*.avi'
+    ];
+
+    // Get the diff with exclusions
+    const { stdout: diff } = await repoManager.executeGitCommand(
+      `git diff -M --no-color origin/${baseRef}...origin/${headRef} -- . ${excludePatterns.join(' ')}`,
+      { cwd: repoPath }
+    );
+
+    return diff;
+  } catch (error) {
+    serverLogger.error(`[CrownEvaluator] Error getting filtered diff:`, error);
+    throw error;
+  }
 }
 
 const CrownEvaluationResponseSchema = z.object({
@@ -551,6 +638,77 @@ export async function evaluateCrown({
       return;
     }
 
+    // Get repository information from the task
+    const taskInfo = await getConvex().query(api.tasks.getById, {
+      teamSlugOrId,
+      id: taskId,
+    });
+
+    if (!taskInfo) {
+      throw new Error(`Task ${taskId} not found`);
+    }
+
+    // Get repo URL from the projectFullName field
+    let repoUrl = "";
+    if (taskInfo.projectFullName) {
+      // Query the repository to get the gitRemote URL
+      const repo = await getConvex().query(api.github.getRepoByFullName, {
+        teamSlugOrId,
+        fullName: taskInfo.projectFullName,
+      });
+      if (repo) {
+        repoUrl = repo.gitRemote;
+      }
+    }
+
+    if (!repoUrl) {
+      throw new Error(
+        `No repository URL found for task ${taskId} with projectFullName: ${taskInfo.projectFullName}`
+      );
+    }
+
+    // Get the project paths to find the local repository
+    const { originPath } = await getProjectPaths(repoUrl, teamSlugOrId);
+
+    serverLogger.info(
+      `[CrownEvaluator] Using repository at ${originPath} to fetch diffs from ${completedRuns.length} branches`
+    );
+
+    // Determine the base branch (usually main or master)
+    const repoManager = RepositoryManager.getInstance();
+    let baseRef = "main"; // default
+    try {
+      // Try to detect the default branch
+      const { stdout } = await repoManager.executeGitCommand(
+        "git symbolic-ref refs/remotes/origin/HEAD",
+        { cwd: originPath, suppressErrorLogging: true }
+      );
+      if (stdout && stdout.includes("refs/remotes/origin/")) {
+        baseRef = stdout.trim().replace("refs/remotes/origin/", "");
+      }
+    } catch {
+      // Try common defaults
+      try {
+        await repoManager.executeGitCommand(
+          "git rev-parse --verify origin/main",
+          { cwd: originPath, suppressErrorLogging: true }
+        );
+        baseRef = "main";
+      } catch {
+        try {
+          await repoManager.executeGitCommand(
+            "git rev-parse --verify origin/master",
+            { cwd: originPath, suppressErrorLogging: true }
+          );
+          baseRef = "master";
+        } catch {
+          // Keep default
+        }
+      }
+    }
+
+    serverLogger.info(`[CrownEvaluator] Using base ref: ${baseRef}`);
+
     const candidateData = await Promise.all(
       completedRuns.map(async (run, idx) => {
         const agentName = getAgentNameOrUnknown(run.agentName);
@@ -559,55 +717,40 @@ export async function evaluateCrown({
         // Use precollected diff if available for the triggering run
         if (crownRunId && run._id === crownRunId && precollectedDiff) {
           diff = precollectedDiff.trim();
-        } else {
-          // Try to collect diff from the VSCode instance (before it was committed)
-          const instances = VSCodeInstance.getInstances();
-          let instance: VSCodeInstance | undefined;
-          for (const [, inst] of instances) {
-            if (inst.getTaskRunId() === run._id) {
-              instance = inst;
-              break;
-            }
-          }
+          serverLogger.info(
+            `[CrownEvaluator] Using precollected diff for ${agentName}: ${diff.length} chars`
+          );
+        } else if (run.newBranch) {
+          // Fetch diff from the pushed branch using git directly
+          try {
+            serverLogger.info(
+              `[CrownEvaluator] Fetching diff from branch ${run.newBranch} for ${agentName}`
+            );
 
-          if (instance && instance.isWorkerConnected()) {
-            try {
-              serverLogger.info(
-                `[CrownEvaluator] Collecting diff for ${agentName} from VSCode instance`
-              );
-              const workerSocket = instance.getWorkerSocket();
+            // Get filtered diff between base and the agent's branch
+            diff = await getFilteredGitDiff(originPath, baseRef, run.newBranch);
 
-              // Use the collect-relevant-diff.sh script to get filtered diff
-              const { stdout } = await workerExec({
-                workerSocket,
-                command: "/bin/bash",
-                args: ["-c", "/usr/local/bin/cmux-collect-relevant-diff.sh"],
-                cwd: "/root/workspace",
-                env: {},
-                timeout: 30000,
-              });
-              diff = (stdout || "").trim();
-              serverLogger.info(
-                `[CrownEvaluator] Collected ${diff.length} chars of diff for ${agentName}`
-              );
-            } catch (e) {
-              serverLogger.error(
-                `[CrownEvaluator] Failed to collect diff for ${agentName}:`,
-                e
-              );
-            }
-          } else {
-            serverLogger.warn(
-              `[CrownEvaluator] No VSCode instance available for ${agentName} (run ${run._id})`
+            serverLogger.info(
+              `[CrownEvaluator] Collected ${diff.length} chars of filtered diff for ${agentName} from branch ${run.newBranch}`
+            );
+          } catch (e) {
+            serverLogger.error(
+              `[CrownEvaluator] Failed to fetch diff from branch ${run.newBranch}:`,
+              e
+            );
+            throw new Error(
+              `Failed to fetch diff for ${agentName} from branch ${run.newBranch}: ${e}`
             );
           }
+        } else {
+          throw new Error(
+            `No branch name available for run ${run._id} (${agentName})`
+          );
         }
 
         serverLogger.info(
           `[CrownEvaluator] Implementation ${idx} (${agentName}): ${diff.length} chars of diff`
         );
-
-        // Do not rely on logs; skip logging log tails.
 
         return {
           index: idx,
