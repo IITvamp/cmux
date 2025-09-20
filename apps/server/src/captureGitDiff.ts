@@ -6,6 +6,15 @@ export async function captureGitDiff(
   vscodeInstance: VSCodeInstance
 ): Promise<string> {
   try {
+    if (!vscodeInstance.isWorkerConnected()) {
+      serverLogger.warn(
+        `[AgentSpawner] Cannot capture git diff — worker not connected`
+      );
+      throw new Error(
+        `[AgentSpawner] Cannot capture git diff — worker not connected`
+      );
+    }
+
     const workerSocket = vscodeInstance.getWorkerSocket();
 
     const { stdout, stderr, exitCode } = await workerExec({
