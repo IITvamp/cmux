@@ -1,5 +1,6 @@
-import { FloatingPane } from "@/components/floating-pane";
+import { ElectronPreviewBrowser } from "@/components/electron-preview-browser";
 import { PersistentWebView } from "@/components/persistent-webview";
+import { isElectron } from "@/lib/electron";
 import { getTaskRunPreviewPersistKey } from "@/lib/persistent-webview-keys";
 import { api } from "@cmux/convex/api";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
@@ -33,7 +34,6 @@ export const Route = createFileRoute(
 function PreviewPage() {
   const { taskId, teamSlugOrId, runId, port } = Route.useParams();
 
-
   const taskRuns = useQuery(api.taskRuns.getByTask, {
     teamSlugOrId,
     taskId,
@@ -61,15 +61,23 @@ function PreviewPage() {
   const paneBorderRadius = 6;
 
   return (
-    <FloatingPane>
+    <>
       {previewUrl ? (
-        <PersistentWebView
-          persistKey={persistKey}
-          src={previewUrl}
-          className="w-full h-full border-0"
-          borderRadius={paneBorderRadius}
-          sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-downloads"
-        />
+        isElectron ? (
+          <ElectronPreviewBrowser
+            persistKey={persistKey}
+            src={previewUrl}
+            borderRadius={paneBorderRadius}
+          />
+        ) : (
+          <PersistentWebView
+            persistKey={persistKey}
+            src={previewUrl}
+            className="w-full h-full border-0"
+            borderRadius={paneBorderRadius}
+            sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-downloads"
+          />
+        )
       ) : (
         <div className="flex items-center justify-center h-full bg-white dark:bg-neutral-950">
           <div className="text-center">
@@ -100,6 +108,6 @@ function PreviewPage() {
           </div>
         </div>
       )}
-    </FloatingPane>
+    </>
   );
 }
