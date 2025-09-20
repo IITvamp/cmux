@@ -84,7 +84,6 @@ function useLoadingProgress(isLoading: boolean) {
 export function ElectronPreviewBrowser({
   persistKey,
   src,
-  borderRadius,
 }: ElectronPreviewBrowserProps) {
   const [viewHandle, setViewHandle] = useState<NativeViewHandle | null>(null);
   const [addressValue, setAddressValue] = useState(src);
@@ -296,7 +295,6 @@ export function ElectronPreviewBrowser({
       opacity: visible ? 1 : 0,
     } satisfies CSSProperties;
   }, [progress, visible]);
-  console.log({ progress });
 
   return (
     <div className="flex h-full flex-col">
@@ -432,7 +430,7 @@ export function ElectronPreviewBrowser({
           persistKey={persistKey}
           src={src}
           className="h-full w-full border-0"
-          borderRadius={borderRadius}
+          borderRadius={0}
           sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-downloads"
           onElectronViewReady={handleViewReady}
           onElectronViewDestroyed={handleViewDestroyed}

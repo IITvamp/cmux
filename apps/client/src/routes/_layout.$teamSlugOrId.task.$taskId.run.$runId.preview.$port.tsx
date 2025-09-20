@@ -1,8 +1,7 @@
-import { FloatingPane } from "@/components/floating-pane";
 import { ElectronPreviewBrowser } from "@/components/electron-preview-browser";
 import { PersistentWebView } from "@/components/persistent-webview";
-import { getTaskRunPreviewPersistKey } from "@/lib/persistent-webview-keys";
 import { isElectron } from "@/lib/electron";
+import { getTaskRunPreviewPersistKey } from "@/lib/persistent-webview-keys";
 import { api } from "@cmux/convex/api";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { createFileRoute } from "@tanstack/react-router";
@@ -35,7 +34,6 @@ export const Route = createFileRoute(
 function PreviewPage() {
   const { taskId, teamSlugOrId, runId, port } = Route.useParams();
 
-
   const taskRuns = useQuery(api.taskRuns.getByTask, {
     teamSlugOrId,
     taskId,
@@ -63,7 +61,7 @@ function PreviewPage() {
   const paneBorderRadius = 6;
 
   return (
-    <FloatingPane>
+    <>
       {previewUrl ? (
         isElectron ? (
           <ElectronPreviewBrowser
@@ -110,6 +108,6 @@ function PreviewPage() {
           </div>
         </div>
       )}
-    </FloatingPane>
+    </>
   );
 }
