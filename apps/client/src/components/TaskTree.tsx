@@ -28,7 +28,15 @@ import {
   Loader2,
   XCircle,
 } from "lucide-react";
-import { Fragment, memo, useCallback, useMemo, useState } from "react";
+import {
+  Fragment,
+  createContext,
+  memo,
+  useCallback,
+  useContext,
+  useMemo,
+  useState,
+} from "react";
 import { SidebarToggleButton } from "./SidebarToggleButton";
 
 interface TaskRunWithChildren extends Doc<"taskRuns"> {
@@ -62,6 +70,28 @@ function getRunDisplayText(run: TaskRunWithChildren): string {
   return run.prompt.substring(0, 50) + "...";
 }
 
+type TaskRunExpansionState = Partial<Record<Id<"taskRuns">, boolean>>;
+
+interface TaskRunExpansionContextValue {
+  expandedRuns: TaskRunExpansionState;
+  setRunExpanded: (runId: Id<"taskRuns">, expanded: boolean) => void;
+}
+
+const TaskRunExpansionContext =
+  createContext<TaskRunExpansionContextValue | null>(null);
+
+function useTaskRunExpansionContext(): TaskRunExpansionContextValue {
+  const context = useContext(TaskRunExpansionContext);
+
+  if (!context) {
+    throw new Error(
+      "useTaskRunExpansionContext must be used within TaskRunExpansionContext"
+    );
+  }
+
+  return context;
+}
+
 function TaskTreeInner({
   task,
   level = 0,
@@ -73,6 +103,25 @@ function TaskTreeInner({
   const isTaskSelected = useMemo(
     () => location.pathname.includes(`/task/${task._id}`),
     [location.pathname, task._id]
+  );
+
+  const [expandedRuns, setExpandedRuns] = useState<TaskRunExpansionState>({});
+  const setRunExpanded = useCallback(
+    (runId: Id<"taskRuns">, expanded: boolean) => {
+      setExpandedRuns((prev) => {
+        if (prev[runId] === expanded) {
+          return prev;
+        }
+
+        return { ...prev, [runId]: expanded };
+      });
+    },
+    [setExpandedRuns]
+  );
+
+  const expansionContextValue = useMemo(
+    () => ({ expandedRuns, setRunExpanded }),
+    [expandedRuns, setRunExpanded]
   );
 
   // Default to collapsed unless this task is selected or flagged to expand
@@ -104,12 +153,13 @@ function TaskTreeInner({
   }, [unarchive, task._id]);
 
   return (
-    <div className="select-none flex flex-col">
-      <ContextMenu.Root>
-        <ContextMenu.Trigger>
-          <Link
-            to="/$teamSlugOrId/task/$taskId"
-            params={{ teamSlugOrId, taskId: task._id }}
+    <TaskRunExpansionContext.Provider value={expansionContextValue}>
+      <div className="select-none flex flex-col">
+        <ContextMenu.Root>
+          <ContextMenu.Trigger>
+            <Link
+              to="/$teamSlugOrId/task/$taskId"
+              params={{ teamSlugOrId, taskId: task._id }}
             search={{ runId: undefined }}
             activeOptions={{ exact: true }}
             className={clsx(
@@ -256,7 +306,8 @@ function TaskTreeInner({
           ))}
         </div>
       )}
-    </div>
+      </div>
+    </TaskRunExpansionContext.Provider>
   );
 }
 
@@ -275,7 +326,9 @@ function TaskRunTreeInner({
   branch,
   teamSlugOrId,
 }: TaskRunTreeProps) {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const { expandedRuns, setRunExpanded } = useTaskRunExpansionContext();
+  const defaultExpanded = Boolean(run.isCrowned);
+  const isExpanded = expandedRuns[run._id] ?? defaultExpanded;
   const hasChildren = run.children.length > 0;
 
   // Memoize the display text to avoid recalculating on every render
@@ -284,8 +337,8 @@ function TaskRunTreeInner({
   // Memoize the toggle handler
   const handleToggle = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
-    setIsExpanded((prev) => !prev);
-  }, []);
+    setRunExpanded(run._id, !isExpanded);
+  }, [isExpanded, run._id, setRunExpanded]);
 
   const statusIcon = {
     pending: <Circle className="w-3 h-3 text-neutral-400" />,
