@@ -182,11 +182,22 @@ const convexSchema = defineSchema({
           v.literal("other")
         ), // Extensible for future providers
         containerName: v.optional(v.string()), // For Docker provider
+        containerId: v.optional(v.string()), // Live Docker container ID if running
         status: v.union(
           v.literal("starting"),
           v.literal("running"),
           v.literal("stopped")
         ),
+        runState: v.optional(
+          v.union(
+            v.literal("active"), // container running
+            v.literal("warm"), // container stopped, volumes retained
+            v.literal("terminated") // container stopped and volumes removed
+          )
+        ),
+        // Per-session persistent volumes (optional in Docker mode)
+        workspaceVolume: v.optional(v.string()),
+        vscodeVolume: v.optional(v.string()),
         ports: v.optional(
           v.object({
             vscode: v.string(),
@@ -198,7 +209,8 @@ const convexSchema = defineSchema({
         workspaceUrl: v.optional(v.string()), // The workspace URL
         startedAt: v.optional(v.number()),
         stoppedAt: v.optional(v.number()),
-        lastAccessedAt: v.optional(v.number()), // Track when user last accessed the container
+        lastAccessedAt: v.optional(v.number()), // Track when user last accessed the container (UI ping)
+        lastActivityAt: v.optional(v.number()), // Track last observed activity for TTL
         keepAlive: v.optional(v.boolean()), // User requested to keep container running
         scheduledStopAt: v.optional(v.number()), // When container is scheduled to stop
       })

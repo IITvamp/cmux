@@ -18,6 +18,9 @@ export interface VSCodeInstanceConfig {
   newBranch?: string;
   // Optional: when starting from an environment
   environmentId?: Id<"environments"> | string;
+  // Optional: named Docker volumes for persistence
+  workspaceVolumeName?: string;
+  vscodeVolumeName?: string;
 }
 
 export interface VSCodeInstanceInfo {

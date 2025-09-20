@@ -300,6 +300,7 @@ export function createProxyApp({
             taskId: taskRun.taskId,
             workspacePath: taskRun.worktreePath,
             teamSlugOrId: teamParam || "default",
+            vscodeVolumeName: taskRun.vscode?.vscodeVolume || undefined,
           });
 
           // Start the container

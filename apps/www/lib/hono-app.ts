@@ -19,6 +19,7 @@ import {
   crownRouter,
   teamsRouter,
 } from "@/lib/routes/index";
+import { runsRouter } from "@/lib/routes/runs.route";
 import { stackServerApp } from "@/lib/utils/stack";
 import { swaggerUI } from "@hono/swagger-ui";
 import { OpenAPIHono } from "@hono/zod-openapi";
@@ -107,6 +108,7 @@ app.route("/", environmentsRouter);
 app.route("/", sandboxesRouter);
 app.route("/", crownRouter);
 app.route("/", teamsRouter);
+app.route("/", runsRouter);
 
 // OpenAPI documentation
 app.doc("/doc", {

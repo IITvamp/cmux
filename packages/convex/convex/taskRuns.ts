@@ -326,11 +326,21 @@ export const updateVSCodeInstance = authMutation({
         v.literal("other")
       ),
       containerName: v.optional(v.string()),
+      containerId: v.optional(v.string()),
       status: v.union(
         v.literal("starting"),
         v.literal("running"),
         v.literal("stopped")
       ),
+      runState: v.optional(
+        v.union(
+          v.literal("active"),
+          v.literal("warm"),
+          v.literal("terminated")
+        )
+      ),
+      workspaceVolume: v.optional(v.string()),
+      vscodeVolume: v.optional(v.string()),
       ports: v.optional(
         v.object({
           vscode: v.string(),
@@ -342,6 +352,7 @@ export const updateVSCodeInstance = authMutation({
       workspaceUrl: v.optional(v.string()),
       startedAt: v.optional(v.number()),
       stoppedAt: v.optional(v.number()),
+      lastActivityAt: v.optional(v.number()),
     }),
   },
   handler: async (ctx, args) => {
@@ -352,7 +363,7 @@ export const updateVSCodeInstance = authMutation({
       throw new Error("Task run not found or unauthorized");
     }
     await ctx.db.patch(args.id, {
-      vscode: args.vscode,
+      vscode: { ...(doc.vscode || {}), ...args.vscode },
       updatedAt: Date.now(),
     });
   },

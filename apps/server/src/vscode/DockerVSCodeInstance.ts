@@ -45,6 +45,8 @@ export class DockerVSCodeInstance extends VSCodeInstance {
   private imageName: string;
   private container: Docker.Container | null = null;
   private authToken: string | undefined;
+  private vscodeVolumeName?: string;
+  private workspaceVolumeName?: string;
   private portCache: {
     ports: { [key: string]: string } | null;
     timestamp: number;
@@ -69,6 +71,11 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     this.imageName = process.env.WORKER_IMAGE_NAME || "cmux-worker:0.0.1";
     dockerLogger.info(`WORKER_IMAGE_NAME: ${process.env.WORKER_IMAGE_NAME}`);
     dockerLogger.info(`this.imageName: ${this.imageName}`);
+    this.vscodeVolumeName =
+      config.vscodeVolumeName || `cmux_session_${this.taskRunId}_vscode`;
+    if (config.workspaceVolumeName) {
+      this.workspaceVolumeName = config.workspaceVolumeName;
+    }
     // Register this instance
     VSCodeInstance.getInstances().set(this.instanceId, this);
   }
@@ -220,6 +227,40 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       workspacePath: this.config.workspacePath,
     });
 
+    // Ensure named volumes exist (idempotent)
+    try {
+      if (this.vscodeVolumeName) {
+        await docker.createVolume({
+          Name: this.vscodeVolumeName,
+          Labels: {
+            cmux: "1",
+            type: "vscode",
+            taskRunId: String(this.taskRunId),
+            team: this.teamSlugOrId,
+          },
+        });
+        dockerLogger.info(
+          `Ensured volume exists: ${this.vscodeVolumeName} -> /root/.openvscode-server`
+        );
+      }
+      if (this.workspaceVolumeName) {
+        await docker.createVolume({
+          Name: this.workspaceVolumeName,
+          Labels: {
+            cmux: "1",
+            type: "workspace",
+            taskRunId: String(this.taskRunId),
+            team: this.teamSlugOrId,
+          },
+        });
+        dockerLogger.info(
+          `Ensured volume exists: ${this.workspaceVolumeName} -> /root/workspace`
+        );
+      }
+    } catch (e) {
+      dockerLogger.warn("createVolume returned error (may already exist)", e);
+    }
+
     // Stop and remove any existing container with same name
     try {
       const existingContainer = docker.getContainer(this.containerName);
@@ -288,6 +329,9 @@ export class DockerVSCodeInstance extends VSCodeInstance {
           // Mount the origin directory at the same absolute path to preserve git references
           `${originPath}:${originPath}:rw`, // Read-write mount for git operations
         ];
+        if (this.vscodeVolumeName) {
+          binds.push(`${this.vscodeVolumeName}:/root/.openvscode-server`);
+        }
 
         // Mount SSH directory for git authentication
         const sshDir = path.join(homeDir, ".ssh");
@@ -339,6 +383,9 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         const gitConfigPath = path.join(homeDir, ".gitconfig");
 
         const binds = [`${this.config.workspacePath}:/root/workspace`];
+        if (this.vscodeVolumeName) {
+          binds.push(`${this.vscodeVolumeName}:/root/.openvscode-server`);
+        }
 
         // Mount SSH directory for git authentication
         const sshDir = path.join(homeDir, ".ssh");
@@ -488,6 +535,14 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     const workspaceUrl = this.getWorkspaceUrl(baseUrl);
     const workerUrl = `http://localhost:${workerPort}`;
 
+    // Also compute stable proxy URLs that survive restarts
+    const proxyBaseUrl = `http://cmux-${this.taskRunId}.vscode.localhost:9776?team=${encodeURIComponent(
+      this.teamSlugOrId
+    )}`;
+    const proxyWorkspaceUrl = `${proxyBaseUrl}&folder=${encodeURIComponent(
+      "/root/workspace"
+    )}`;
+
     // Generate the proxy URL that clients will use
     dockerLogger.info(`Docker VSCode instance started:`);
     dockerLogger.info(`  VS Code URL: ${workspaceUrl}`);
@@ -525,9 +580,36 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       // Continue anyway - the instance is running even if we can't connect to the worker
     }
 
+    // Update Convex with containerId and volume info (best-effort)
+    try {
+      const inspect = await this.container.inspect();
+      await getConvex().mutation(api.taskRuns.updateVSCodeInstance, {
+        teamSlugOrId: this.teamSlugOrId,
+        id: this.taskRunId,
+        vscode: {
+          provider: "docker",
+          containerName: this.containerName,
+          containerId: inspect.Id,
+          status: "running",
+          runState: "active",
+          url: proxyBaseUrl,
+          workspaceUrl: proxyWorkspaceUrl,
+          startedAt: Date.now(),
+          ...(this.vscodeVolumeName
+            ? { vscodeVolume: this.vscodeVolumeName }
+            : {}),
+          ...(this.workspaceVolumeName
+            ? { workspaceVolume: this.workspaceVolumeName }
+            : {}),
+        },
+      });
+    } catch (e) {
+      dockerLogger.warn("Failed to update Convex with container metadata", e);
+    }
+
     return {
-      url: baseUrl, // Store the actual localhost URL
-      workspaceUrl: workspaceUrl, // Store the actual localhost workspace URL
+      url: proxyBaseUrl,
+      workspaceUrl: proxyWorkspaceUrl,
       instanceId: this.instanceId,
       taskRunId: this.taskRunId,
       provider: "docker",
@@ -1311,6 +1393,15 @@ export class DockerVSCodeInstance extends VSCodeInstance {
               `[performContainerCleanup] Stopping container ${taskRun.vscode.containerName} due to TTL expiry`
             );
             await instance.stop();
+            // Remove named volumes if present for TTL expiry
+            try {
+              await DockerVSCodeInstance.removeVolumesForRun(taskRun);
+            } catch (e) {
+              dockerLogger.warn(
+                `[performContainerCleanup] Failed to remove volumes for ${taskRun._id}:`,
+                e
+              );
+            }
           }
         }
       }
@@ -1353,6 +1444,38 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         "[performContainerCleanup] Error during cleanup:",
         error
       );
+    }
+  }
+
+  // Remove per-run named volumes if they exist
+  private static async removeVolumesForRun(
+    taskRun: {
+      _id: string;
+      vscode?: {
+        vscodeVolume?: string;
+        workspaceVolume?: string;
+      } | null;
+    }
+  ): Promise<void> {
+    try {
+      const docker = DockerVSCodeInstance.getDocker();
+      const volumes: string[] = [];
+      if (taskRun?.vscode?.vscodeVolume) volumes.push(taskRun.vscode.vscodeVolume);
+      if (taskRun?.vscode?.workspaceVolume)
+        volumes.push(taskRun.vscode.workspaceVolume);
+      for (const name of volumes) {
+        try {
+          await docker.getVolume(name).remove({ force: true });
+          dockerLogger.info(`[removeVolumesForRun] Removed volume ${name}`);
+        } catch (e) {
+          dockerLogger.warn(
+            `[removeVolumesForRun] Failed to remove volume ${name}:`,
+            e
+          );
+        }
+      }
+    } catch (e) {
+      dockerLogger.warn("[removeVolumesForRun] Unexpected error", e);
     }
   }
 }
