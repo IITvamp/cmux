@@ -400,6 +400,7 @@ export function SearchableSelect({
             ref={triggerRef}
             type="button"
             disabled={disabled}
+            data-cmux-select-trigger="true"
             className={clsx(
               "relative inline-flex h-7 items-center rounded-md border",
               "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950",
@@ -439,6 +440,7 @@ export function SearchableSelect({
             // Fade out on close; open remains instant
             "p-0 drop-shadow-xs outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0"
           )}
+          data-cmux-select-content="true"
           style={{ width: 300 }}
         >
           <Command loop shouldFilter={false} className="text-[13.5px]">

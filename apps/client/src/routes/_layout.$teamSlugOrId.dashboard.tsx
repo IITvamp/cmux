@@ -536,6 +536,19 @@ function DashboardComponent() {
     const handleGlobalKeyDown = (e: KeyboardEvent) => {
       // Skip if already focused on an input, textarea, or contenteditable that's NOT the editor
       const activeElement = document.activeElement;
+      // If focus is on a SearchableSelect trigger or within its popover content, don't steal focus
+      const isWithinSelectTrigger =
+        activeElement instanceof Element &&
+        !!activeElement.closest('[data-cmux-select-trigger="true"]');
+      const isWithinSelectContent =
+        activeElement instanceof Element &&
+        !!activeElement.closest('[data-cmux-select-content="true"]');
+      const anyOpenSelect = !!document.querySelector(
+        '[data-cmux-select-content="true"]'
+      );
+      if (isWithinSelectTrigger || isWithinSelectContent || anyOpenSelect) {
+        return;
+      }
       const isEditor =
         activeElement?.getAttribute("data-cmux-input") === "true";
       const isCommentInput = activeElement?.id === "cmux-comments-root";
