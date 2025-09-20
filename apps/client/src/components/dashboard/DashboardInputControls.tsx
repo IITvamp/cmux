@@ -262,7 +262,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
               return (
                 <div
                   key={agent}
-                  className="inline-flex items-center gap-1 rounded-full bg-neutral-200 dark:bg-neutral-800/80 px-2 py-1 text-[11px] text-neutral-700 dark:text-neutral-200 transition-colors"
+                  className="inline-flex items-center gap-1 rounded-full bg-neutral-200 dark:bg-neutral-800/80 pl-1 pr-2 py-1 text-[11px] text-neutral-700 dark:text-neutral-200 transition-colors"
                 >
                   <button
                     type="button"
