@@ -5,12 +5,12 @@ import {
   type Rectangle,
   type WebContents,
 } from "electron";
-import { applyChromeCamouflage, type Logger } from "./chrome-camouflage";
 import type {
   ElectronDevToolsMode,
   ElectronWebContentsEvent,
   ElectronWebContentsState,
 } from "../../src/types/electron-webcontents";
+import { applyChromeCamouflage, type Logger } from "./chrome-camouflage";
 
 interface RegisterOptions {
   logger: Logger;
@@ -60,7 +60,6 @@ interface Entry {
   eventCleanup: Array<() => void>;
 }
 
-
 const viewEntries = new Map<number, Entry>();
 let nextViewId = 1;
 const windowCleanupRegistered = new Set<number>();
@@ -107,8 +106,8 @@ function buildState(entry: Entry): ElectronWebContentsState | null {
       webContentsId: contents.id,
       url: contents.getURL(),
       title: contents.getTitle(),
-      canGoBack: contents.canGoBack(),
-      canGoForward: contents.canGoForward(),
+      canGoBack: contents.navigationHistory.canGoBack(),
+      canGoForward: contents.navigationHistory.canGoForward(),
       isLoading: contents.isLoading(),
       isDevToolsOpened: contents.isDevToolsOpened(),
     };
@@ -296,15 +295,21 @@ function suspendEntriesForDestroyedOwner(
   });
   let suspendedAny = false;
   for (const entry of Array.from(viewEntries.values())) {
-    if (entry.ownerWindowId !== windowId || entry.ownerWebContentsId !== webContentsId) {
+    if (
+      entry.ownerWindowId !== windowId ||
+      entry.ownerWebContentsId !== webContentsId
+    ) {
       continue;
     }
 
     if (!entry.persistKey) {
-      logger.log("Renderer destroyed; dropping non-persistent WebContentsView", {
-        id: entry.id,
-        webContentsId: entry.view.webContents.id,
-      });
+      logger.log(
+        "Renderer destroyed; dropping non-persistent WebContentsView",
+        {
+          id: entry.id,
+          webContentsId: entry.view.webContents.id,
+        }
+      );
       destroyView(entry.id);
       suspendedAny = true;
       continue;
@@ -395,7 +400,10 @@ function evaluateVisibility(bounds: Rectangle, explicit?: boolean): boolean {
   return bounds.width > 0 && bounds.height > 0;
 }
 
-function applyBackgroundColor(view: Electron.WebContentsView, color: string | undefined) {
+function applyBackgroundColor(
+  view: Electron.WebContentsView,
+  color: string | undefined
+) {
   if (!color) return;
   try {
     view.setBackgroundColor(color);
@@ -404,7 +412,10 @@ function applyBackgroundColor(view: Electron.WebContentsView, color: string | un
   }
 }
 
-function applyBorderRadius(view: Electron.WebContentsView, radius: number | undefined) {
+function applyBorderRadius(
+  view: Electron.WebContentsView,
+  radius: number | undefined
+) {
   if (typeof radius !== "number" || Number.isNaN(radius)) return;
   const safe = Math.max(0, Math.round(radius));
   try {
@@ -432,212 +443,242 @@ export function registerWebContentsViewHandlers({
 }: RegisterOptions): void {
   setMaxSuspendedEntries(providedMax);
 
-  ipcMain.handle("cmux:webcontents:create", async (event, rawOptions: CreateOptions) => {
-    try {
-      const sender = event.sender;
-      const win = BrowserWindow.fromWebContents(sender);
-      if (!win) {
-        logger.warn("webcontents-view:create with no owning window");
-        throw new Error("No owning window for web contents view");
-      }
-
-      const options = rawOptions ?? { url: "about:blank" };
-      const persistKey =
-        typeof options.persistKey === "string" && options.persistKey.trim().length > 0
-          ? options.persistKey.trim()
-          : undefined;
-
-      const bounds = toBounds(options.bounds);
-      const desiredVisibility = evaluateVisibility(bounds);
-
-      if (persistKey) {
-        const candidate = suspendedByKey.get(persistKey);
-        const sameWindow = candidate?.ownerWindowId === win.id;
-        const sameSender = candidate?.ownerWebContentsId === sender.id;
-        const canAdopt = candidate?.ownerWebContentsDestroyed === true;
-        if (candidate && sameWindow && (sameSender || canAdopt)) {
-          removeFromSuspended(candidate);
-          try {
-            win.contentView.addChildView(candidate.view);
-          } catch (error) {
-            logger.error("Failed to reattach suspended WebContentsView", error);
-            destroyView(candidate.id);
-            throw error;
-          }
-
-          applyChromeCamouflage(candidate.view, logger);
-
-          try {
-            candidate.view.setBounds(bounds);
-            candidate.view.setVisible(desiredVisibility);
-          } catch (error) {
-            logger.warn("Failed to update bounds for restored WebContentsView", {
-              error,
-              id: candidate.id,
-            });
-          }
-
-          if (options.backgroundColor !== undefined) {
-            applyBackgroundColor(candidate.view, options.backgroundColor);
-          }
-          if (options.borderRadius !== undefined) {
-            applyBorderRadius(candidate.view, options.borderRadius);
-          }
-
-          candidate.ownerWindowId = win.id;
-          candidate.ownerWebContentsId = sender.id;
-          candidate.ownerWebContentsDestroyed = false;
-          candidate.ownerSender = sender;
-          if (!candidate.eventChannel) {
-            candidate.eventChannel = eventChannelFor(candidate.id);
-          }
-          if (candidate.eventCleanup.length === 0) {
-            setupEventForwarders(candidate, logger);
-          }
-          sendState(candidate, logger, "reattached");
-
-          logger.log("Reattached WebContentsView", {
-            id: candidate.id,
-            persistKey,
-            windowId: win.id,
-            senderId: sender.id,
-          });
-
-          if (!windowCleanupRegistered.has(win.id)) {
-            windowCleanupRegistered.add(win.id);
-            win.once("closed", () => {
-              cleanupViewsForWindow(win.id);
-              windowCleanupRegistered.delete(win.id);
-            });
-          }
-
-          const senderId = sender.id;
-          sender.once("destroyed", () => {
-            suspendEntriesForDestroyedOwner(win.id, senderId, logger);
-          });
-
-          return { id: candidate.id, webContentsId: candidate.view.webContents.id, restored: true };
-        }
-      }
-
-      const view = new WebContentsView();
-
-      applyChromeCamouflage(view, logger);
-
-      applyBackgroundColor(view, options.backgroundColor);
-      applyBorderRadius(view, options.borderRadius);
-
+  ipcMain.handle(
+    "cmux:webcontents:create",
+    async (event, rawOptions: CreateOptions) => {
       try {
-        win.contentView.addChildView(view);
-      } catch (error) {
-        logger.error("Failed to add WebContentsView to window", error);
-        try {
-          destroyWebContents(view.webContents);
-        } catch {
-          // ignore
+        const sender = event.sender;
+        const win = BrowserWindow.fromWebContents(sender);
+        if (!win) {
+          logger.warn("webcontents-view:create with no owning window");
+          throw new Error("No owning window for web contents view");
         }
+
+        const options = rawOptions ?? { url: "about:blank" };
+        const persistKey =
+          typeof options.persistKey === "string" &&
+          options.persistKey.trim().length > 0
+            ? options.persistKey.trim()
+            : undefined;
+
+        const bounds = toBounds(options.bounds);
+        const desiredVisibility = evaluateVisibility(bounds);
+
+        if (persistKey) {
+          const candidate = suspendedByKey.get(persistKey);
+          const sameWindow = candidate?.ownerWindowId === win.id;
+          const sameSender = candidate?.ownerWebContentsId === sender.id;
+          const canAdopt = candidate?.ownerWebContentsDestroyed === true;
+          if (candidate && sameWindow && (sameSender || canAdopt)) {
+            removeFromSuspended(candidate);
+            try {
+              win.contentView.addChildView(candidate.view);
+            } catch (error) {
+              logger.error(
+                "Failed to reattach suspended WebContentsView",
+                error
+              );
+              destroyView(candidate.id);
+              throw error;
+            }
+
+            applyChromeCamouflage(candidate.view, logger);
+
+            try {
+              candidate.view.setBounds(bounds);
+              candidate.view.setVisible(desiredVisibility);
+            } catch (error) {
+              logger.warn(
+                "Failed to update bounds for restored WebContentsView",
+                {
+                  error,
+                  id: candidate.id,
+                }
+              );
+            }
+
+            if (options.backgroundColor !== undefined) {
+              applyBackgroundColor(candidate.view, options.backgroundColor);
+            }
+            if (options.borderRadius !== undefined) {
+              applyBorderRadius(candidate.view, options.borderRadius);
+            }
+
+            candidate.ownerWindowId = win.id;
+            candidate.ownerWebContentsId = sender.id;
+            candidate.ownerWebContentsDestroyed = false;
+            candidate.ownerSender = sender;
+            if (!candidate.eventChannel) {
+              candidate.eventChannel = eventChannelFor(candidate.id);
+            }
+            if (candidate.eventCleanup.length === 0) {
+              setupEventForwarders(candidate, logger);
+            }
+            sendState(candidate, logger, "reattached");
+
+            logger.log("Reattached WebContentsView", {
+              id: candidate.id,
+              persistKey,
+              windowId: win.id,
+              senderId: sender.id,
+            });
+
+            if (!windowCleanupRegistered.has(win.id)) {
+              windowCleanupRegistered.add(win.id);
+              win.once("closed", () => {
+                cleanupViewsForWindow(win.id);
+                windowCleanupRegistered.delete(win.id);
+              });
+            }
+
+            const senderId = sender.id;
+            sender.once("destroyed", () => {
+              suspendEntriesForDestroyedOwner(win.id, senderId, logger);
+            });
+
+            return {
+              id: candidate.id,
+              webContentsId: candidate.view.webContents.id,
+              restored: true,
+            };
+          }
+        }
+
+        const view = new WebContentsView();
+
+        applyChromeCamouflage(view, logger);
+
+        applyBackgroundColor(view, options.backgroundColor);
+        applyBorderRadius(view, options.borderRadius);
+
+        try {
+          win.contentView.addChildView(view);
+        } catch (error) {
+          logger.error("Failed to add WebContentsView to window", error);
+          try {
+            destroyWebContents(view.webContents);
+          } catch {
+            // ignore
+          }
+          throw error;
+        }
+
+        try {
+          view.setBounds(bounds);
+          view.setVisible(desiredVisibility);
+        } catch (error) {
+          logger.warn(
+            "Failed to set initial bounds for WebContentsView",
+            error
+          );
+        }
+
+        const finalUrl = options.url ?? "about:blank";
+        void view.webContents
+          .loadURL(finalUrl)
+          .catch((error) =>
+            logger.warn("WebContentsView initial load failed", {
+              url: finalUrl,
+              error,
+            })
+          );
+
+        const id = nextViewId++;
+        const entry: Entry = {
+          id,
+          view,
+          ownerWindowId: win.id,
+          ownerWebContentsId: sender.id,
+          ownerSender: sender,
+          persistKey,
+          suspended: false,
+          ownerWebContentsDestroyed: false,
+          eventChannel: eventChannelFor(id),
+          eventCleanup: [],
+        };
+        viewEntries.set(id, entry);
+        setupEventForwarders(entry, logger);
+        sendState(entry, logger, "created");
+
+        if (!windowCleanupRegistered.has(win.id)) {
+          windowCleanupRegistered.add(win.id);
+          win.once("closed", () => {
+            cleanupViewsForWindow(win.id);
+            windowCleanupRegistered.delete(win.id);
+          });
+        }
+
+        const senderId = sender.id;
+        sender.once("destroyed", () => {
+          suspendEntriesForDestroyedOwner(win.id, senderId, logger);
+        });
+
+        logger.log("Created WebContentsView", {
+          id,
+          windowId: win.id,
+          senderId: sender.id,
+          url: finalUrl,
+          persistKey,
+        });
+
+        return { id, webContentsId: view.webContents.id, restored: false };
+      } catch (error) {
+        logger.error("webcontents-view:create failed", error);
         throw error;
       }
+    }
+  );
 
+  ipcMain.handle(
+    "cmux:webcontents:set-bounds",
+    (event, payload: SetBoundsOptions) => {
+      const { id, bounds: rawBounds, visible } = payload ?? {};
+      if (typeof id !== "number") return { ok: false };
+
+      const entry = viewEntries.get(id);
+      if (!entry) return { ok: false };
+      if (event.sender.id !== entry.ownerWebContentsId) {
+        return { ok: false };
+      }
+      entry.ownerSender = event.sender;
+
+      const bounds = toBounds(rawBounds);
       try {
-        view.setBounds(bounds);
-        view.setVisible(desiredVisibility);
+        entry.view.setBounds(bounds);
+        entry.view.setVisible(evaluateVisibility(bounds, visible));
+        return { ok: true };
       } catch (error) {
-        logger.warn("Failed to set initial bounds for WebContentsView", error);
+        entry.view.setVisible(false);
+        return { ok: false, error: String(error) };
       }
+    }
+  );
 
-      const finalUrl = options.url ?? "about:blank";
-      void view.webContents
-        .loadURL(finalUrl)
-        .catch((error) =>
-          logger.warn("WebContentsView initial load failed", { url: finalUrl, error })
-        );
-
-      const id = nextViewId++;
-      const entry: Entry = {
-        id,
-        view,
-        ownerWindowId: win.id,
-        ownerWebContentsId: sender.id,
-        ownerSender: sender,
-        persistKey,
-        suspended: false,
-        ownerWebContentsDestroyed: false,
-        eventChannel: eventChannelFor(id),
-        eventCleanup: [],
-      };
-      viewEntries.set(id, entry);
-      setupEventForwarders(entry, logger);
-      sendState(entry, logger, "created");
-
-      if (!windowCleanupRegistered.has(win.id)) {
-        windowCleanupRegistered.add(win.id);
-        win.once("closed", () => {
-          cleanupViewsForWindow(win.id);
-          windowCleanupRegistered.delete(win.id);
-        });
+  ipcMain.handle(
+    "cmux:webcontents:load-url",
+    (event, options: LoadUrlOptions) => {
+      const { id, url } = options ?? {};
+      if (
+        typeof id !== "number" ||
+        typeof url !== "string" ||
+        url.length === 0
+      ) {
+        return { ok: false };
       }
-
-      const senderId = sender.id;
-      sender.once("destroyed", () => {
-        suspendEntriesForDestroyedOwner(win.id, senderId, logger);
-      });
-
-      logger.log("Created WebContentsView", {
-        id,
-        windowId: win.id,
-        senderId: sender.id,
-        url: finalUrl,
-        persistKey,
-      });
-
-      return { id, webContentsId: view.webContents.id, restored: false };
-    } catch (error) {
-      logger.error("webcontents-view:create failed", error);
-      throw error;
+      const entry = viewEntries.get(id);
+      if (!entry) return { ok: false };
+      if (event.sender.id !== entry.ownerWebContentsId) {
+        return { ok: false };
+      }
+      entry.ownerSender = event.sender;
+      try {
+        void entry.view.webContents.loadURL(url);
+        return { ok: true };
+      } catch (error) {
+        return { ok: false, error: String(error) };
+      }
     }
-  });
-
-  ipcMain.handle("cmux:webcontents:set-bounds", (event, payload: SetBoundsOptions) => {
-    const { id, bounds: rawBounds, visible } = payload ?? {};
-    if (typeof id !== "number") return { ok: false };
-
-    const entry = viewEntries.get(id);
-    if (!entry) return { ok: false };
-    if (event.sender.id !== entry.ownerWebContentsId) {
-      return { ok: false };
-    }
-    entry.ownerSender = event.sender;
-
-    const bounds = toBounds(rawBounds);
-    try {
-      entry.view.setBounds(bounds);
-      entry.view.setVisible(evaluateVisibility(bounds, visible));
-      return { ok: true };
-    } catch (error) {
-      entry.view.setVisible(false);
-      return { ok: false, error: String(error) };
-    }
-  });
-
-  ipcMain.handle("cmux:webcontents:load-url", (event, options: LoadUrlOptions) => {
-    const { id, url } = options ?? {};
-    if (typeof id !== "number" || typeof url !== "string" || url.length === 0) {
-      return { ok: false };
-    }
-    const entry = viewEntries.get(id);
-    if (!entry) return { ok: false };
-    if (event.sender.id !== entry.ownerWebContentsId) {
-      return { ok: false };
-    }
-    entry.ownerSender = event.sender;
-    try {
-      void entry.view.webContents.loadURL(url);
-      return { ok: true };
-    } catch (error) {
-      return { ok: false, error: String(error) };
-    }
-  });
+  );
 
   ipcMain.handle("cmux:webcontents:go-back", (event, id: number) => {
     if (typeof id !== "number") return { ok: false };
@@ -699,63 +740,67 @@ export function registerWebContentsViewHandlers({
     }
   });
 
-  ipcMain.handle("cmux:webcontents:release", (event, options: ReleaseOptions) => {
-    const { id, persist } = options ?? {};
-    if (typeof id !== "number") return { ok: false };
-    const entry = viewEntries.get(id);
-    if (!entry) return { ok: false };
-    if (event.sender.id !== entry.ownerWebContentsId) {
-      return { ok: false };
-    }
-    entry.ownerSender = event.sender;
+  ipcMain.handle(
+    "cmux:webcontents:release",
+    (event, options: ReleaseOptions) => {
+      const { id, persist } = options ?? {};
+      if (typeof id !== "number") return { ok: false };
+      const entry = viewEntries.get(id);
+      if (!entry) return { ok: false };
+      if (event.sender.id !== entry.ownerWebContentsId) {
+        return { ok: false };
+      }
+      entry.ownerSender = event.sender;
 
-    const shouldPersist = Boolean(persist) && typeof entry.persistKey === "string";
-    if (!shouldPersist) {
-      const ok = destroyView(id);
-      logger.log("Destroyed WebContentsView", {
-        id,
-        persistKey: entry.persistKey,
-        reason: "release-without-persist",
-      });
-      return { ok, suspended: false };
-    }
+      const shouldPersist =
+        Boolean(persist) && typeof entry.persistKey === "string";
+      if (!shouldPersist) {
+        const ok = destroyView(id);
+        logger.log("Destroyed WebContentsView", {
+          id,
+          persistKey: entry.persistKey,
+          reason: "release-without-persist",
+        });
+        return { ok, suspended: false };
+      }
 
-    if (entry.suspended) {
-      logger.log("Release skipped; already suspended", {
-        id,
-        persistKey: entry.persistKey,
-      });
-      return { ok: true, suspended: true };
-    }
+      if (entry.suspended) {
+        logger.log("Release skipped; already suspended", {
+          id,
+          persistKey: entry.persistKey,
+        });
+        return { ok: true, suspended: true };
+      }
 
-    const win = BrowserWindow.fromId(entry.ownerWindowId);
-    if (win && !win.isDestroyed()) {
+      const win = BrowserWindow.fromId(entry.ownerWindowId);
+      if (win && !win.isDestroyed()) {
+        try {
+          win.contentView.removeChildView(entry.view);
+        } catch {
+          // ignore
+        }
+      }
+
       try {
-        win.contentView.removeChildView(entry.view);
+        entry.view.setVisible(false);
       } catch {
         // ignore
       }
+
+      entry.ownerWebContentsDestroyed = false;
+      markSuspended(entry);
+
+      logger.log("Suspended WebContentsView", {
+        id,
+        persistKey: entry.persistKey,
+        suspendedCount,
+      });
+
+      evictExcessSuspended(logger);
+
+      return { ok: true, suspended: true };
     }
-
-    try {
-      entry.view.setVisible(false);
-    } catch {
-      // ignore
-    }
-
-    entry.ownerWebContentsDestroyed = false;
-    markSuspended(entry);
-
-    logger.log("Suspended WebContentsView", {
-      id,
-      persistKey: entry.persistKey,
-      suspendedCount,
-    });
-
-    evictExcessSuspended(logger);
-
-    return { ok: true, suspended: true };
-  });
+  );
 
   ipcMain.handle("cmux:webcontents:destroy", (event, id: number) => {
     if (typeof id !== "number") return { ok: false };
@@ -774,19 +819,22 @@ export function registerWebContentsViewHandlers({
     return { ok };
   });
 
-  ipcMain.handle("cmux:webcontents:update-style", (event, options: UpdateStyleOptions) => {
-    const { id, backgroundColor, borderRadius } = options ?? {};
-    if (typeof id !== "number") return { ok: false };
-    const entry = viewEntries.get(id);
-    if (!entry) return { ok: false };
-    if (event.sender.id !== entry.ownerWebContentsId) {
-      return { ok: false };
+  ipcMain.handle(
+    "cmux:webcontents:update-style",
+    (event, options: UpdateStyleOptions) => {
+      const { id, backgroundColor, borderRadius } = options ?? {};
+      if (typeof id !== "number") return { ok: false };
+      const entry = viewEntries.get(id);
+      if (!entry) return { ok: false };
+      if (event.sender.id !== entry.ownerWebContentsId) {
+        return { ok: false };
+      }
+      entry.ownerSender = event.sender;
+      applyBackgroundColor(entry.view, backgroundColor);
+      applyBorderRadius(entry.view, borderRadius);
+      return { ok: true };
     }
-    entry.ownerSender = event.sender;
-    applyBackgroundColor(entry.view, backgroundColor);
-    applyBorderRadius(entry.view, borderRadius);
-    return { ok: true };
-  });
+  );
 
   ipcMain.handle("cmux:webcontents:get-state", (event, id: number) => {
     if (typeof id !== "number") return { ok: false };
@@ -813,15 +861,22 @@ export function registerWebContentsViewHandlers({
       }
       entry.ownerSender = event.sender;
       const requestedMode: ElectronDevToolsMode =
-        typeof mode === "string" && validDevToolsModes.has(mode as ElectronDevToolsMode)
+        typeof mode === "string" &&
+        validDevToolsModes.has(mode as ElectronDevToolsMode)
           ? (mode as ElectronDevToolsMode)
           : "bottom";
       try {
-        entry.view.webContents.openDevTools({ mode: requestedMode, activate: true });
+        entry.view.webContents.openDevTools({
+          mode: requestedMode,
+          activate: true,
+        });
         sendState(entry, logger, "open-devtools-command");
         return { ok: true };
       } catch (error) {
-        logger.warn("Failed to open DevTools for WebContentsView", { id, error });
+        logger.warn("Failed to open DevTools for WebContentsView", {
+          id,
+          error,
+        });
         return { ok: false, error: String(error) };
       }
     }
@@ -840,7 +895,10 @@ export function registerWebContentsViewHandlers({
       sendState(entry, logger, "close-devtools-command");
       return { ok: true };
     } catch (error) {
-      logger.warn("Failed to close DevTools for WebContentsView", { id, error });
+      logger.warn("Failed to close DevTools for WebContentsView", {
+        id,
+        error,
+      });
       return { ok: false, error: String(error) };
     }
   });
