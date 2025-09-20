@@ -14,7 +14,6 @@ import {
   Archive as ArchiveIcon,
   ArchiveRestore as ArchiveRestoreIcon,
   CheckCircle,
-  ChevronRight,
   Circle,
   Copy as CopyIcon,
   Crown,
@@ -29,6 +28,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { Fragment, memo, useCallback, useMemo, useState } from "react";
+import { SidebarToggleButton } from "./SidebarToggleButton";
 
 interface TaskRunWithChildren extends Doc<"taskRuns"> {
   children: TaskRunWithChildren[];
@@ -117,21 +117,12 @@ function TaskTreeInner({
             )}
             style={{ paddingLeft: `${4 + level * 16}px` }}
           >
-            <button
+            <SidebarToggleButton
               onClick={handleToggle}
-              className={clsx(
-                "size-4.5 mr-1.5 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-[5px] grid place-content-center cursor-default",
-                !hasRuns && "invisible"
-              )}
-              style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-            >
-              <ChevronRight
-                className={clsx(
-                  "w-3 h-3 transition-transform",
-                  isExpanded && "rotate-90"
-                )}
-              />
-            </button>
+              isExpanded={isExpanded}
+              isVisible={hasRuns}
+              className="size-4.5 mr-1.5 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded-[5px]"
+            />
 
             <div className="mr-2 flex-shrink-0">
               {(() => {
@@ -317,91 +308,19 @@ function TaskRunTreeInner({
     );
   }, [run.networking]);
 
-  return (
+  const shouldRenderDiffLink = true;
+  const shouldRenderPullRequestLink =
+    run.pullRequestUrl && run.pullRequestUrl !== "pending";
+  const shouldRenderPreviewLink = Boolean(port5173);
+  const hasCollapsibleContent =
+    hasChildren ||
+    hasActiveVSCode ||
+    shouldRenderDiffLink ||
+    shouldRenderPullRequestLink ||
+    shouldRenderPreviewLink;
+
+  const runDetails = isExpanded ? (
     <Fragment>
-      <div className="mt-px relative group">
-        {/* Crown icon shown before status icon, with tooltip */}
-        {run.isCrowned && (
-          <div className="flex-shrink-0 absolute left-0 pt-[5.5px] pl-[26px]">
-            <Tooltip delayDuration={0}>
-              <TooltipTrigger asChild>
-                <Crown className="w-3 h-3 text-yellow-500" />
-              </TooltipTrigger>
-              {run.crownReason && (
-                <TooltipContent
-                  side="right"
-                  sideOffset={6}
-                  className="max-w-sm p-3 z-[var(--z-overlay)]"
-                >
-                  <div className="space-y-1.5">
-                    <p className="font-medium text-sm">Evaluation Reason</p>
-                    <p className="text-xs text-muted-foreground">
-                      {run.crownReason}
-                    </p>
-                  </div>
-                </TooltipContent>
-              )}
-            </Tooltip>
-          </div>
-        )}
-        <div
-          className={clsx(
-            "group flex items-center px-2 pr-10 py-1 text-xs rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default"
-          )}
-          style={{ paddingLeft: `${8 + level * 16}px` }}
-        >
-          <button
-            onClick={handleToggle}
-            className={clsx(
-              "w-4 h-4 mr-1.5 hover:bg-neutral-200 dark:hover:bg-neutral-700 rounded cursor-default",
-              !hasChildren && "invisible"
-            )}
-            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-          >
-            <ChevronRight
-              className={clsx(
-                "w-3 h-3 transition-transform",
-                isExpanded && "rotate-90"
-              )}
-            />
-          </button>
-
-          {run.status === "failed" && run.errorMessage ? (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <div className="mr-2 flex-shrink-0">{statusIcon}</div>
-              </TooltipTrigger>
-              <TooltipContent
-                side="right"
-                className="max-w-xs whitespace-pre-wrap break-words"
-              >
-                {run.errorMessage}
-              </TooltipContent>
-            </Tooltip>
-          ) : (
-            <div className="mr-2 flex-shrink-0">{statusIcon}</div>
-          )}
-
-          <div className="flex-1 min-w-0 flex items-center gap-1">
-            <span className="truncate text-neutral-700 dark:text-neutral-300">
-              {displayText}
-            </span>
-          </div>
-        </div>
-
-        <div className="absolute right-2 top-1/2 -translate-y-1/2">
-          <OpenWithDropdown
-            vscodeUrl={vscodeUrl}
-            worktreePath={run.worktreePath}
-            branch={run.newBranch}
-            networking={run.networking}
-            className="bg-neutral-100/80 dark:bg-neutral-700/80 hover:bg-neutral-200/80 dark:hover:bg-neutral-600/80 text-neutral-600 dark:text-neutral-400"
-            iconClassName="w-2.5 h-2.5"
-          />
-        </div>
-      </div>
-
-      {/* VSCode link as a separate tree item */}
       {hasActiveVSCode && (
         <Link
           to="/$teamSlugOrId/task/$taskId/run/$runId/vscode"
@@ -483,7 +402,7 @@ function TaskRunTreeInner({
                   values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.25 0"
                 />
                 <feBlend
-                  mode="overlay"
+                  mode="normal"
                   in2="BackgroundImageFix"
                   result="effect1_dropShadow"
                 />
@@ -496,10 +415,10 @@ function TaskRunTreeInner({
               </filter>
               <filter
                 id="filter1_d"
-                x="60.4167"
-                y="-8.07558"
-                width="47.9167"
-                height="116.151"
+                x="66.6666"
+                y="-8.33333"
+                width="41.6667"
+                height="116.667"
                 filterUnits="userSpaceOnUse"
                 colorInterpolationFilters="sRGB"
               >
@@ -507,16 +426,10 @@ function TaskRunTreeInner({
                 <feColorMatrix
                   in="SourceAlpha"
                   type="matrix"
-                  values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 127 0"
-                />
-                <feOffset />
-                <feGaussianBlur stdDeviation="4.16667" />
-                <feColorMatrix
-                  type="matrix"
                   values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.25 0"
                 />
                 <feBlend
-                  mode="overlay"
+                  mode="normal"
                   in2="BackgroundImageFix"
                   result="effect1_dropShadow"
                 />
@@ -529,10 +442,10 @@ function TaskRunTreeInner({
               </filter>
               <linearGradient
                 id="paint0_linear"
-                x1="49.9392"
-                y1="0.257812"
-                x2="49.9392"
-                y2="99.7423"
+                x1="6.82062"
+                y1="0.874534"
+                x2="45.5753"
+                y2="38.2241"
                 gradientUnits="userSpaceOnUse"
               >
                 <stop stopColor="white" />
@@ -546,23 +459,25 @@ function TaskRunTreeInner({
         </Link>
       )}
 
-      {/* Diff link as a separate tree item */}
-      <Link
-        to="/$teamSlugOrId/task/$taskId/run/$runId/diff"
-        params={{ teamSlugOrId, taskId, runId: run._id }}
-        activeOptions={{ exact: true }}
-        className={clsx(
-          "flex items-center px-2 py-1 text-xs rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default mt-px",
-          "[&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800"
-        )}
-        style={{ paddingLeft: `${24 + (level + 1) * 16}px` }}
-      >
-        <GitCompare className="w-3 h-3 mr-2 text-neutral-400" />
-        <span className="text-neutral-600 dark:text-neutral-400">Git diff</span>
-      </Link>
+      {shouldRenderDiffLink && (
+        <Link
+          to="/$teamSlugOrId/task/$taskId/run/$runId/diff"
+          params={{ teamSlugOrId, taskId, runId: run._id }}
+          activeOptions={{ exact: true }}
+          className={clsx(
+            "flex items-center px-2 py-1 text-xs rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default mt-px",
+            "[&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800"
+          )}
+          style={{ paddingLeft: `${24 + (level + 1) * 16}px` }}
+        >
+          <GitCompare className="w-3 h-3 mr-2 text-neutral-400" />
+          <span className="text-neutral-600 dark:text-neutral-400">
+            Git diff
+          </span>
+        </Link>
+      )}
 
-      {/* Pull Request link as a separate tree item */}
-      {run.pullRequestUrl && run.pullRequestUrl !== "pending" && (
+      {shouldRenderPullRequestLink && (
         <Link
           to="/$teamSlugOrId/task/$taskId/run/$runId/pr"
           params={{ teamSlugOrId, taskId, runId: run._id }}
@@ -580,12 +495,16 @@ function TaskRunTreeInner({
         </Link>
       )}
 
-      {/* Preview link for port 5173 if available */}
-      {port5173 && (
+      {shouldRenderPreviewLink && port5173 && (
         <div className="relative group mt-px">
           <Link
             to="/$teamSlugOrId/task/$taskId/run/$runId/preview/$port"
-            params={{ teamSlugOrId, taskId, runId: run._id, port: "5173" }}
+            params={{
+              teamSlugOrId,
+              taskId,
+              runId: run._id,
+              port: "5173",
+            }}
             activeOptions={{ exact: true }}
             className={clsx(
               "flex items-center px-2 pr-10 py-1 text-xs rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default",
@@ -644,7 +563,7 @@ function TaskRunTreeInner({
         </div>
       )}
 
-      {isExpanded && hasChildren && (
+      {hasChildren && (
         <div className="flex flex-col">
           {run.children.map((childRun) => (
             <TaskRunTree
@@ -658,6 +577,85 @@ function TaskRunTreeInner({
           ))}
         </div>
       )}
+    </Fragment>
+  ) : null;
+
+  return (
+    <Fragment>
+      <div className="mt-px relative group">
+        {/* Crown icon shown before status icon, with tooltip */}
+        {run.isCrowned && (
+          <div className="flex-shrink-0 absolute left-0 pt-[5.5px] pl-[8px]">
+            <Tooltip delayDuration={0}>
+              <TooltipTrigger asChild>
+                <Crown className="w-3 h-3 text-yellow-500" />
+              </TooltipTrigger>
+              {run.crownReason && (
+                <TooltipContent
+                  side="right"
+                  sideOffset={6}
+                  className="max-w-sm p-3 z-[var(--z-overlay)]"
+                >
+                  <div className="space-y-1.5">
+                    <p className="font-medium text-sm">Evaluation Reason</p>
+                    <p className="text-xs text-muted-foreground">
+                      {run.crownReason}
+                    </p>
+                  </div>
+                </TooltipContent>
+              )}
+            </Tooltip>
+          </div>
+        )}
+        <div
+          className={clsx(
+            "group flex items-center px-2 pr-10 py-1 text-xs rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default"
+          )}
+          style={{ paddingLeft: `${8 + level * 16}px` }}
+        >
+          <SidebarToggleButton
+            onClick={handleToggle}
+            isExpanded={isExpanded}
+            isVisible={hasCollapsibleContent}
+            className="w-4 h-4 mr-1.5 hover:bg-neutral-200 dark:hover:bg-neutral-700"
+          />
+
+          {run.status === "failed" && run.errorMessage ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="mr-2 flex-shrink-0">{statusIcon}</div>
+              </TooltipTrigger>
+              <TooltipContent
+                side="right"
+                className="max-w-xs whitespace-pre-wrap break-words"
+              >
+                {run.errorMessage}
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            <div className="mr-2 flex-shrink-0">{statusIcon}</div>
+          )}
+
+          <div className="flex-1 min-w-0 flex items-center gap-1">
+            <span className="truncate text-neutral-700 dark:text-neutral-300">
+              {displayText}
+            </span>
+          </div>
+        </div>
+
+        <div className="absolute right-2 top-1/2 -translate-y-1/2">
+          <OpenWithDropdown
+            vscodeUrl={vscodeUrl}
+            worktreePath={run.worktreePath}
+            branch={run.newBranch}
+            networking={run.networking}
+            className="bg-neutral-100/80 dark:bg-neutral-700/80 hover:bg-neutral-200/80 dark:hover:bg-neutral-600/80 text-neutral-600 dark:text-neutral-400"
+            iconClassName="w-2.5 h-2.5"
+          />
+        </div>
+      </div>
+
+      {runDetails}
     </Fragment>
   );
 }
