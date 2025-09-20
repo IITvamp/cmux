@@ -54,8 +54,6 @@ export async function handleTaskCompletion({
     serverLogger.info(
       `[AgentSpawner] Capturing git diff for ${agent.name}, waiting 3 seconds first`
     );
-    // set a 3 second delay
-    await new Promise((resolve) => setTimeout(resolve, 3000));
 
     const gitDiff = await captureGitDiff(vscodeInstance);
     serverLogger.info(
