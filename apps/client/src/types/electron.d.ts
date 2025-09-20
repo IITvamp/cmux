@@ -90,6 +90,9 @@ interface CmuxAPI {
   socket: CmuxSocketAPI;
   logs: CmuxLogsAPI;
   webContentsView: CmuxWebContentsViewAPI;
+  autoUpdate?: {
+    install: () => Promise<{ ok: boolean; reason?: string }>;
+  };
 }
 
 declare global {
