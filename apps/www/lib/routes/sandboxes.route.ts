@@ -389,7 +389,7 @@ sandboxesRouter.openapi(
 
       try {
         const gitPullRes = await instance.exec(
-          `bash -lc 'if [ -d /root/workspaces ]; then for dir in /root/workspaces/*; do [ -d "$dir" ] || continue; if [ -d "$dir/.git" ]; then echo "[sandboxes.start] git pull in $dir"; (cd "$dir" && git pull --ff-only || true) & else echo "[sandboxes.start] skipping $dir (no git repo)"; fi; done; wait; else echo "[sandboxes.start] /root/workspaces missing"; fi'`
+          `bash -lc 'if [ -d /root/workspace ]; then for dir in /root/workspace/*; do [ -d "$dir" ] || continue; if [ -d "$dir/.git" ]; then echo "[sandboxes.start] git pull in $dir"; (cd "$dir" && git pull --ff-only || true) & else echo "[sandboxes.start] skipping $dir (no git repo)"; fi; done; wait; else echo "[sandboxes.start] /root/workspace missing"; fi'`
         );
         const trimmedStdout = (gitPullRes.stdout || "").slice(0, 500);
         if (trimmedStdout) {
