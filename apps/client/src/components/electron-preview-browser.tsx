@@ -277,7 +277,6 @@ export function ElectronPreviewBrowser({
           <div
             className={cn(
               "relative flex items-center gap-2 border border-neutral-200 bg-white px-3 font-mono",
-              "focus-within:ring-2 focus-within:ring-primary/15",
               "dark:border-neutral-800 dark:bg-neutral-900"
             )}
           >
@@ -366,7 +365,7 @@ export function ElectronPreviewBrowser({
               </Dropdown.Root>
             </div>
             <div
-              className="pointer-events-none absolute inset-x-2 top-0 h-[3px] overflow-hidden rounded-full bg-neutral-200/70 transition-opacity dark:bg-neutral-800/80"
+              className="pointer-events-none absolute inset-x-0 top-0 h-[2px] overflow-hidden rounded-full bg-neutral-200/70 transition-opacity dark:bg-neutral-800/80"
               style={{ opacity: visible ? 1 : 0 }}
             >
               <div
