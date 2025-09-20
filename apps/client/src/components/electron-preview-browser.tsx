@@ -21,6 +21,7 @@ import type {
   ElectronWebContentsEvent,
   ElectronWebContentsState,
 } from "@/types/electron-webcontents";
+import clsx from "clsx";
 
 interface ElectronPreviewBrowserProps {
   persistKey: string;
@@ -126,7 +127,7 @@ export function ElectronPreviewBrowser({
 
   useEffect(() => {
     if (!viewHandle) return;
-    const getState = window.cmux?.webContentsView?.getState;
+    const getState = window.cmux.webContentsView.getState;
     if (!getState) return;
     let disposed = false;
     void getState(viewHandle.id)
@@ -295,6 +296,7 @@ export function ElectronPreviewBrowser({
       opacity: visible ? 1 : 0,
     } satisfies CSSProperties;
   }, [progress, visible]);
+  console.log({ progress });
 
   return (
     <div className="flex h-full flex-col">
@@ -313,7 +315,7 @@ export function ElectronPreviewBrowser({
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="size-7 rounded-full p-0 text-neutral-400 hover:text-neutral-800 disabled:opacity-30 disabled:hover:text-neutral-400 dark:text-neutral-500 dark:hover:text-neutral-100 dark:disabled:hover:text-neutral-500"
+                    className="size-7 rounded-full p-0 text-neutral-600 hover:text-neutral-800 disabled:opacity-30 disabled:hover:text-neutral-400 dark:text-neutral-500 dark:hover:text-neutral-100 dark:disabled:hover:text-neutral-500"
                     onClick={handleGoBack}
                     disabled={!viewHandle || !canGoBack}
                     aria-label="Go back"
@@ -329,7 +331,7 @@ export function ElectronPreviewBrowser({
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="size-7 rounded-full p-0 text-neutral-400 hover:text-neutral-800 disabled:opacity-30 disabled:hover:text-neutral-400 dark:text-neutral-500 dark:hover:text-neutral-100 dark:disabled:hover:text-neutral-500"
+                    className="size-7 rounded-full p-0 text-neutral-600 hover:text-neutral-800 disabled:opacity-30 disabled:hover:text-neutral-400 dark:text-neutral-500 dark:hover:text-neutral-100 dark:disabled:hover:text-neutral-500"
                     onClick={handleGoForward}
                     disabled={!viewHandle || !canGoForward}
                     aria-label="Go forward"
@@ -392,8 +394,8 @@ export function ElectronPreviewBrowser({
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className={cn(
-                      "size-9 rounded-full text-neutral-500 hover:text-neutral-800 dark:text-neutral-400 dark:hover:text-neutral-100",
+                    className={clsx(
+                      "size-7 rounded-full p-0 text-neutral-600 hover:text-neutral-800 disabled:opacity-30 disabled:hover:text-neutral-400 dark:text-neutral-500 dark:hover:text-neutral-100 dark:disabled:hover:text-neutral-500",
                       devtoolsOpen && "text-primary hover:text-primary"
                     )}
                     onClick={handleToggleDevTools}
@@ -409,7 +411,7 @@ export function ElectronPreviewBrowser({
               </Tooltip>
             </div>
             <div
-              className="pointer-events-none absolute inset-x-0 -top-px h-[2px] overflow-hidden bg-neutral-200/70 transition-opacity dark:bg-neutral-800/80"
+              className="pointer-events-none absolute inset-x-0 -top-px h-[2px] overflow-hidden bg-neutral-200/70 transition-opacity duration-500 dark:bg-neutral-800/80"
               style={{ opacity: visible ? 1 : 0 }}
             >
               <div
