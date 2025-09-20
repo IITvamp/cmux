@@ -1,11 +1,15 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties } from "react";
 import { ChevronDown, Globe, Inspect, Loader2 } from "lucide-react";
+import type { CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { PersistentWebView } from "@/components/persistent-webview";
 import { Button } from "@/components/ui/button";
 import { Dropdown } from "@/components/ui/dropdown";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type {
   ElectronDevToolsMode,
@@ -91,7 +95,8 @@ export function ElectronPreviewBrowser({
   const [isEditing, setIsEditing] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [devtoolsOpen, setDevtoolsOpen] = useState(false);
-  const [devtoolsMode, setDevtoolsMode] = useState<ElectronDevToolsMode>("bottom");
+  const [devtoolsMode, setDevtoolsMode] =
+    useState<ElectronDevToolsMode>("bottom");
   const [lastError, setLastError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
@@ -142,15 +147,18 @@ export function ElectronPreviewBrowser({
     if (!viewHandle) return;
     const subscribe = window.cmux?.webContentsView?.onEvent;
     if (!subscribe) return;
-    const unsubscribe = subscribe(viewHandle.id, (event: ElectronWebContentsEvent) => {
-      if (event.type === "state") {
-        applyState(event.state);
-        return;
+    const unsubscribe = subscribe(
+      viewHandle.id,
+      (event: ElectronWebContentsEvent) => {
+        if (event.type === "state") {
+          applyState(event.state);
+          return;
+        }
+        if (event.type === "load-failed" && event.isMainFrame) {
+          setLastError(event.errorDescription || "Failed to load page");
+        }
       }
-      if (event.type === "load-failed" && event.isMainFrame) {
-        setLastError(event.errorDescription || "Failed to load page");
-      }
-    });
+    );
     return () => {
       unsubscribe?.();
     };
@@ -179,17 +187,22 @@ export function ElectronPreviewBrowser({
       setLastError(null);
       setIsEditing(false);
       inputRef.current?.blur();
-      void window.cmux?.webContentsView?.loadURL(viewHandle.id, target).catch((error) => {
-        console.warn("Failed to navigate WebContentsView", error);
-      });
+      void window.cmux?.webContentsView
+        ?.loadURL(viewHandle.id, target)
+        .catch((error) => {
+          console.warn("Failed to navigate WebContentsView", error);
+        });
     },
     [addressValue, viewHandle]
   );
 
-  const handleInputFocus = useCallback((event: React.FocusEvent<HTMLInputElement>) => {
-    setIsEditing(true);
-    event.currentTarget.select();
-  }, []);
+  const handleInputFocus = useCallback(
+    (event: React.FocusEvent<HTMLInputElement>) => {
+      setIsEditing(true);
+      event.currentTarget.select();
+    },
+    []
+  );
 
   const handleInputBlur = useCallback(() => {
     setIsEditing(false);
@@ -210,9 +223,11 @@ export function ElectronPreviewBrowser({
   const handleToggleDevTools = useCallback(() => {
     if (!viewHandle) return;
     if (devtoolsOpen) {
-      void window.cmux?.webContentsView?.closeDevTools(viewHandle.id).catch((error) => {
-        console.warn("Failed to close DevTools", error);
-      });
+      void window.cmux?.webContentsView
+        ?.closeDevTools(viewHandle.id)
+        .catch((error) => {
+          console.warn("Failed to close DevTools", error);
+        });
     } else {
       void window.cmux?.webContentsView
         ?.openDevTools(viewHandle.id, { mode: devtoolsMode })
@@ -237,12 +252,16 @@ export function ElectronPreviewBrowser({
 
   const handleCloseDevTools = useCallback(() => {
     if (!viewHandle) return;
-    void window.cmux?.webContentsView?.closeDevTools(viewHandle.id).catch((error) => {
-      console.warn("Failed to close DevTools", error);
-    });
+    void window.cmux?.webContentsView
+      ?.closeDevTools(viewHandle.id)
+      .catch((error) => {
+        console.warn("Failed to close DevTools", error);
+      });
   }, [viewHandle]);
 
-  const devtoolsTooltipLabel = devtoolsOpen ? "Close DevTools" : "Open DevTools";
+  const devtoolsTooltipLabel = devtoolsOpen
+    ? "Close DevTools"
+    : "Open DevTools";
 
   const progressStyles = useMemo(() => {
     return {
@@ -253,12 +272,12 @@ export function ElectronPreviewBrowser({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="px-4 pt-4 pb-3">
+      <div className="">
         <form onSubmit={handleSubmit} className="flex flex-col gap-2">
           <div
             className={cn(
-              "relative flex items-center gap-2 rounded-full border border-neutral-200 bg-white px-3 py-2 shadow-sm",
-              "transition-[border-color,box-shadow] focus-within:border-primary focus-within:shadow-sm focus-within:ring-2 focus-within:ring-primary/15",
+              "relative flex items-center gap-2 border border-neutral-200 bg-white px-3 font-mono",
+              "focus-within:ring-2 focus-within:ring-primary/15",
               "dark:border-neutral-800 dark:bg-neutral-900"
             )}
           >
@@ -274,7 +293,7 @@ export function ElectronPreviewBrowser({
               onFocus={handleInputFocus}
               onBlur={handleInputBlur}
               onKeyDown={handleInputKeyDown}
-              className="flex-1 bg-transparent text-sm text-neutral-900 outline-none placeholder:text-neutral-400 disabled:cursor-not-allowed disabled:text-neutral-400 dark:text-neutral-100 dark:placeholder:text-neutral-600"
+              className="flex-1 bg-transparent text-[11px] text-neutral-900 outline-none placeholder:text-neutral-400 disabled:cursor-not-allowed disabled:text-neutral-400 dark:text-neutral-100 dark:placeholder:text-neutral-600"
               placeholder="Enter a URL"
               spellCheck={false}
               autoCapitalize="none"
@@ -347,7 +366,7 @@ export function ElectronPreviewBrowser({
               </Dropdown.Root>
             </div>
             <div
-              className="pointer-events-none absolute inset-x-2 top-1.5 h-[3px] overflow-hidden rounded-full bg-neutral-200/70 transition-opacity dark:bg-neutral-800/80"
+              className="pointer-events-none absolute inset-x-2 top-0 h-[3px] overflow-hidden rounded-full bg-neutral-200/70 transition-opacity dark:bg-neutral-800/80"
               style={{ opacity: visible ? 1 : 0 }}
             >
               <div
