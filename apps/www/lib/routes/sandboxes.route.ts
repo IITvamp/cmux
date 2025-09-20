@@ -387,6 +387,26 @@ sandboxesRouter.openapi(
         }
       }
 
+      try {
+        const gitPullRes = await instance.exec(
+          `bash -lc 'if [ -d /root/workspace ]; then for dir in /root/workspace/*; do [ -d "$dir" ] || continue; if [ -d "$dir/.git" ]; then echo "[sandboxes.start] git pull in $dir"; (cd "$dir" && git pull --ff-only || true) & else echo "[sandboxes.start] skipping $dir (no git repo)"; fi; done; wait; else echo "[sandboxes.start] /root/workspace missing"; fi'`
+        );
+        const trimmedStdout = (gitPullRes.stdout || "").slice(0, 500);
+        if (trimmedStdout) {
+          console.log(
+            `[sandboxes.start] workspace git pull stdout:\n${trimmedStdout}`
+          );
+        }
+        console.log(
+          `[sandboxes.start] workspace git pull exit=${gitPullRes.exit_code} stderr=${(gitPullRes.stderr || "").slice(0, 200)}`
+        );
+      } catch (error) {
+        console.error(
+          "[sandboxes.start] Failed to refresh workspaces via git pull",
+          error
+        );
+      }
+
       return c.json({
         instanceId: instance.id,
         vscodeUrl: vscodeService.url,
