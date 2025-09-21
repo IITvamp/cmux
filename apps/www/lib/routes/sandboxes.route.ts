@@ -18,6 +18,197 @@ import {
   encodeEnvContentForEnvctl,
   envctlLoadCommand,
 } from "./utils/ensure-env-vars";
+import { runBackgroundTask } from "./utils/run-background-task";
+
+const WORKSPACE_PATH = "/root/workspace" as const;
+
+const shellQuote = (value: string): string =>
+  `'${value.replace(/'/g, `'"'"'`)}'`;
+
+const maskSensitiveValue = (
+  input: string | undefined | null,
+  secret: string | null
+): string => {
+  if (!input) return "";
+  if (!secret) return input;
+  return input.split(secret).join("***");
+};
+
+type RepoScriptOptions = {
+  repoFull: string;
+  githubToken: string;
+  depth: number;
+  baseBranch: string;
+  newBranch?: string;
+};
+
+const buildPrimaryRepoScript = ({
+  repoFull,
+  githubToken,
+  depth,
+  baseBranch,
+  newBranch,
+}: RepoScriptOptions): string => {
+  const credentialUrl = `https://x-access-token:${githubToken}@github.com`;
+  const cloneUrl = `https://x-access-token:${githubToken}@github.com/${repoFull}.git`;
+  const repoRemote = `https://github.com/${repoFull}.git`;
+
+  const lines: string[] = [
+    "set -euo pipefail",
+    `workspace=${shellQuote(WORKSPACE_PATH)}`,
+    'mkdir -p "$workspace"',
+    "git config --global credential.helper store",
+    `printf '%s\\n' ${shellQuote(credentialUrl)} > /root/.git-credentials`,
+    "chmod 600 /root/.git-credentials 2>/dev/null || true",
+    `repo_remote=${shellQuote(repoRemote)}`,
+    `clone_url=${shellQuote(cloneUrl)}`,
+    'if [ ! -d "$workspace/.git" ]; then',
+    '  find "$workspace" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true',
+    `  git clone --depth ${depth} "$clone_url" "$workspace"`,
+    "else",
+    '  existing_remote=$(git -C "$workspace" remote get-url origin 2>/dev/null || echo "")',
+    '  if [ "$existing_remote" != "$repo_remote" ]; then',
+    '    find "$workspace" -mindepth 1 -maxdepth 1 -exec rm -rf {} + 2>/dev/null || true',
+    `    git clone --depth ${depth} "$clone_url" "$workspace"`,
+    "  else",
+    '    git -C "$workspace" remote set-url origin "$repo_remote"',
+    "  fi",
+    "fi",
+    'if [ ! -d "$workspace/.git" ]; then',
+    '  echo "[sandboxes.start] Repository clone failed" >&2',
+    "  exit 1",
+    "fi",
+    'git -C "$workspace" remote set-url origin "$repo_remote"',
+    'unset clone_url',
+    'git -C "$workspace" fetch --tags --prune --prune-tags origin',
+    `base_branch=${shellQuote(baseBranch)}`,
+    'if git -C "$workspace" show-ref --verify --quiet "refs/heads/$base_branch"; then',
+    '  git -C "$workspace" checkout "$base_branch"',
+    'elif git -C "$workspace" show-ref --verify --quiet "refs/remotes/origin/$base_branch"; then',
+    '  git -C "$workspace" checkout -B "$base_branch" "origin/$base_branch"',
+    "else",
+    '  git -C "$workspace" checkout -B "$base_branch"',
+    "fi",
+    'if git -C "$workspace" rev-parse --verify --quiet "origin/$base_branch"; then',
+    '  git -C "$workspace" pull --ff-only origin "$base_branch"',
+    "fi",
+  ];
+
+  if (newBranch) {
+    lines.push(`new_branch=${shellQuote(newBranch)}`);
+    lines.push('git -C "$workspace" switch -C "$new_branch"');
+  }
+
+  lines.push("exit 0");
+
+  return lines.join("\n");
+};
+
+type GitIdentity = {
+  name: string;
+  email: string;
+};
+
+const buildWorkspaceRefreshCommand = (): string =>
+  [
+    `if [ -d ${shellQuote(WORKSPACE_PATH)} ]; then`,
+    `  for dir in ${shellQuote(WORKSPACE_PATH)}/*; do`,
+    '    [ -d "$dir" ] || continue',
+    '    if [ -d "$dir/.git" ]; then',
+    '      echo "[sandboxes.start] git pull in $dir"',
+    '      (cd "$dir" && git pull --ff-only || true) &',
+    '    else',
+    '      echo "[sandboxes.start] skipping $dir (no git repo)"',
+    '    fi',
+    "  done",
+    '  wait || true',
+    "else",
+    `  echo "[sandboxes.start] ${WORKSPACE_PATH} missing"`,
+    "fi",
+  ].join("\n");
+
+type BackgroundScriptOptions = {
+  envctlEncoded?: string | null;
+  githubToken?: string | null;
+  gitIdentity?: GitIdentity | null;
+};
+
+const buildBackgroundScript = ({
+  envctlEncoded,
+  githubToken,
+  gitIdentity,
+}: BackgroundScriptOptions): string | null => {
+  const tasks: Array<{ description: string; command: string }> = [];
+
+  if (envctlEncoded) {
+    tasks.push({
+      description: "apply environment env vars",
+      command: envctlLoadCommand(envctlEncoded),
+    });
+  }
+
+  if (githubToken) {
+    tasks.push({
+      description: "envctl set GITHUB_TOKEN",
+      command: `envctl set GITHUB_TOKEN=${shellQuote(githubToken)}`,
+    });
+    tasks.push({
+      description: "gh auth login",
+      command: `printf '%s\\n' ${shellQuote(githubToken)} | gh auth login --with-token >/dev/null 2>&1`,
+    });
+  }
+
+  if (gitIdentity) {
+    tasks.push({
+      description: "configure git identity",
+      command: `git config --global user.name ${shellQuote(gitIdentity.name)} && git config --global user.email ${shellQuote(gitIdentity.email)} && git config --global init.defaultBranch main`,
+    });
+  }
+
+  tasks.push({
+    description: "refresh workspace git repositories",
+    command: buildWorkspaceRefreshCommand(),
+  });
+
+  if (tasks.length === 0) {
+    return null;
+  }
+
+  const lines: string[] = [
+    "set -euo pipefail",
+    'pids=()'
+  ];
+
+  lines.push(
+    'run_task() {',
+    '  local desc="$1"',
+    '  local cmd="$2"',
+    '  (',
+    '    set -euo pipefail',
+    '    if bash -lc "$cmd"; then',
+    '      echo "[sandboxes.start] ${desc} completed"',
+    '    else',
+    '      status=$?',
+    '      echo "[sandboxes.start] ${desc} failed (exit=${status})" >&2',
+    '    fi',
+    '  ) &',
+    '  pids+=("$!")',
+    '}'
+  );
+
+  for (const task of tasks) {
+    lines.push(
+      `run_task ${shellQuote(task.description)} ${shellQuote(task.command)}`
+    );
+  }
+
+  lines.push('if [ "${#pids[@]}" -gt 0 ]; then');
+  lines.push('  wait "${pids[@]}" || true');
+  lines.push("fi");
+  lines.push("exit 0");
+
+  return lines.join("\n");
+};
 
 export const sandboxesRouter = new OpenAPIHono();
 
@@ -121,6 +312,8 @@ sandboxesRouter.openapi(
 
       let resolvedSnapshotId: string | null = null;
       let environmentDataVaultKey: string | undefined;
+      let environmentEnvVarsContentPromise: Promise<string | null> =
+        Promise.resolve(null);
 
       if (body.environmentId) {
         const environmentId = typedZid("environments").parse(
@@ -154,45 +347,66 @@ sandboxesRouter.openapi(
         resolvedSnapshotId = DEFAULT_MORPH_SNAPSHOT_ID;
       }
 
-      let environmentEnvVarsContent: string | null = null;
       if (environmentDataVaultKey) {
-        try {
-          const store =
-            await stackServerAppJs.getDataVaultStore("cmux-snapshot-envs");
-          environmentEnvVarsContent = await store.getValue(
-            environmentDataVaultKey,
-            {
-              secret: env.STACK_DATA_VAULT_SECRET,
-            }
-          );
+        environmentEnvVarsContentPromise = (async () => {
           try {
-            const length = environmentEnvVarsContent?.length ?? 0;
-            console.log(
-              `[sandboxes.start] Loaded environment env vars (chars=${length})`
+            const store =
+              await stackServerAppJs.getDataVaultStore("cmux-snapshot-envs");
+            const content = await store.getValue(environmentDataVaultKey!, {
+              secret: env.STACK_DATA_VAULT_SECRET,
+            });
+            try {
+              const length = content?.length ?? 0;
+              console.log(
+                `[sandboxes.start] Loaded environment env vars (chars=${length})`
+              );
+            } catch {
+              /* noop */
+            }
+            return content ?? null;
+          } catch (error) {
+            console.error(
+              "[sandboxes.start] Failed to fetch environment env vars",
+              error
             );
-          } catch {
-            /* noop */
+            return null;
           }
-        } catch (error) {
-          console.error(
-            "[sandboxes.start] Failed to fetch environment env vars",
-            error
-          );
-        }
+        })();
       }
 
+      const gitIdentityDataPromise = accessToken
+        ? (async () => {
+            try {
+              const [who, gh] = await Promise.all([
+                convex.query(api.users.getCurrentBasic, {}),
+                fetchGithubUserInfoForRequest(c.req.raw),
+              ]);
+              return selectGitIdentity(who, gh);
+            } catch (error) {
+              console.log(
+                `[sandboxes.start] Failed to load git identity information`,
+                error
+              );
+              return null;
+            }
+          })()
+        : null;
+
       const client = new MorphCloudClient({ apiKey: env.MORPH_API_KEY });
-      const instance = await client.instances.start({
-        snapshotId: resolvedSnapshotId,
-        ttlSeconds: body.ttlSeconds ?? 20 * 60,
-        ttlAction: "pause",
-        metadata: {
-          app: "cmux",
-          teamId: team.uuid,
-          ...(body.environmentId ? { environmentId: body.environmentId } : {}),
-          ...(body.metadata || {}),
-        },
-      });
+      const [instance, environmentEnvVarsContent] = await Promise.all([
+        client.instances.start({
+          snapshotId: resolvedSnapshotId,
+          ttlSeconds: body.ttlSeconds ?? 20 * 60,
+          ttlAction: "pause",
+          metadata: {
+            app: "cmux",
+            teamId: team.uuid,
+            ...(body.environmentId ? { environmentId: body.environmentId } : {}),
+            ...(body.metadata || {}),
+          },
+        }),
+        environmentEnvVarsContentPromise,
+      ]);
 
       const exposed = instance.networking.httpServices;
       const vscodeService = exposed.find((s) => s.port === 39378);
@@ -202,210 +416,142 @@ sandboxesRouter.openapi(
         return c.text("VSCode or worker service not found", 500);
       }
 
-      if (
+      const envctlEncoded =
         environmentEnvVarsContent &&
         environmentEnvVarsContent.trim().length > 0
-      ) {
-        try {
-          const encodedEnv = encodeEnvContentForEnvctl(
-            environmentEnvVarsContent
-          );
-          const loadRes = await instance.exec(envctlLoadCommand(encodedEnv));
-          if (loadRes.exit_code === 0) {
-            console.log(
-              `[sandboxes.start] Applied environment env vars via envctl`
-            );
-          } else {
-            console.error(
-              `[sandboxes.start] Env var bootstrap failed exit=${loadRes.exit_code} stderr=${(loadRes.stderr || "").slice(0, 200)}`
-            );
-          }
-        } catch (error) {
-          console.error(
-            "[sandboxes.start] Failed to apply environment env vars",
-            error
-          );
-        }
-      }
+          ? encodeEnvContentForEnvctl(environmentEnvVarsContent)
+          : null;
 
-      // Configure git identity from Convex + GitHub user info so commits don't fail
-      try {
-        const accessToken = await getAccessTokenFromRequest(c.req.raw);
-        if (accessToken) {
-          const convex = getConvex({ accessToken });
-          const [who, gh] = await Promise.all([
-            convex.query(api.users.getCurrentBasic, {}),
-            fetchGithubUserInfoForRequest(c.req.raw),
-          ]);
+      let githubToken: string | null = null;
+      let repoFull: string | null = null;
 
-          const { name, email } = selectGitIdentity(who, gh);
-
-          // Safe single-quote for shell (we'll wrap the whole -lc string in double quotes)
-          const shq = (v: string) => `'${v.replace(/'/g, "\\'")}'`;
-
-          const gitCfgRes = await instance.exec(
-            `bash -lc "git config --global user.name ${shq(name)} && git config --global user.email ${shq(email)} && git config --global init.defaultBranch main && echo NAME:$(git config --global --get user.name) && echo EMAIL:$(git config --global --get user.email) || true"`
-          );
-          console.log(
-            `[sandboxes.start] git identity configured exit=${gitCfgRes.exit_code} (${name} <${email}>)`
-          );
-        } else {
-          console.log(
-            `[sandboxes.start] No access token; skipping git identity configuration`
-          );
-        }
-      } catch (e) {
-        console.log(
-          `[sandboxes.start] Failed to configure git identity; continuing...`,
-          e
-        );
-      }
-
-      // Optional: Hydrate repo inside the sandbox
       if (body.repoUrl) {
         console.log(`[sandboxes.start] Hydrating repo for ${instance.id}`);
         const match = body.repoUrl.match(
           /github\.com\/?([^\s/]+)\/([^\s/.]+)(?:\.git)?/i
         );
         if (!match) {
+          await instance.stop().catch(() => {});
           return c.text("Unsupported repo URL; expected GitHub URL", 400);
         }
+
         const owner = match[1]!;
         const repo = match[2]!;
-        const repoFull = `${owner}/${repo}`;
+        repoFull = `${owner}/${repo}`;
         console.log(`[sandboxes.start] Parsed owner/repo: ${repoFull}`);
 
-        try {
-          const installationId = await getInstallationForRepo(repoFull);
-          if (!installationId) {
-            return c.text(
-              `No GitHub App installation found for ${owner}. Install the app for this org/user.`,
-              400
-            );
-          }
-          console.log(`[sandboxes.start] installationId: ${installationId}`);
-          const githubToken = await generateGitHubInstallationToken({
-            installationId,
-            repositories: [repoFull],
-          });
+        const installationId = await getInstallationForRepo(repoFull);
+        if (!installationId) {
+          await instance.stop().catch(() => {});
+          return c.text(
+            `No GitHub App installation found for ${owner}. Install the app for this org/user.`,
+            400
+          );
+        }
+        console.log(`[sandboxes.start] installationId: ${installationId}`);
+
+        githubToken = await generateGitHubInstallationToken({
+          installationId,
+          repositories: [repoFull],
+        });
+        console.log(
+          `[sandboxes.start] Generated GitHub token (len=${githubToken.length})`
+        );
+
+        const maskedCloneUrl = `https://x-access-token:***@github.com/${repoFull}.git`;
+        console.log(
+          `[sandboxes.start] Running repo setup script depth=${body.depth ?? 1} -> ${maskedCloneUrl}`
+        );
+
+        const primaryScript = buildPrimaryRepoScript({
+          repoFull,
+          githubToken,
+          depth: body.depth ?? 1,
+          baseBranch: body.branch || "main",
+          newBranch: body.newBranch,
+        });
+
+        const primaryResult = await instance.exec(
+          `bash -lc ${shellQuote(primaryScript)}`
+        );
+
+        const maskedStdout = maskSensitiveValue(primaryResult.stdout, githubToken);
+        const maskedStderr = maskSensitiveValue(primaryResult.stderr, githubToken);
+
+        if (maskedStdout) {
           console.log(
-            `[sandboxes.start] Generated GitHub token (len=${githubToken.length})`
+            `[sandboxes.start] repo setup stdout:\n${maskedStdout.slice(0, 4000)}`
           );
+        }
 
-          // Best-effort envctl for compatibility with gh and other tools
-          try {
-            const envctlRes = await instance.exec(
-              `envctl set GITHUB_TOKEN=${githubToken}`
-            );
-            console.log(
-              `[sandboxes.start] envctl set exit=${envctlRes.exit_code} stderr=${(envctlRes.stderr || "").slice(0, 200)}`
-            );
-          } catch (_e) {
-            console.log(
-              `[sandboxes.start] envctl not available; continuing without it`
-            );
-          }
-
-          // gh auth for CLI tools
-          const ghRes = await instance.exec(
-            `bash -lc "echo '${githubToken}' | gh auth login --with-token 2>&1 || true"`
+        if (primaryResult.exit_code !== 0) {
+          console.error(
+            `[sandboxes.start] repo setup failed exit=${primaryResult.exit_code} stderr=${maskedStderr.slice(0, 4000)}`
           );
-          console.log(
-            `[sandboxes.start] gh auth login exit=${ghRes.exit_code} stderr=${(ghRes.stderr || "").slice(0, 200)}`
-          );
-
-          // Git credential store for HTTPS operations
-          const credRes = await instance.exec(
-            `bash -lc "git config --global credential.helper store && printf '%s\\n' 'https://x-access-token:${githubToken}@github.com' > /root/.git-credentials && (git config --global --get credential.helper || true) && (test -f /root/.git-credentials && wc -c /root/.git-credentials || true)"`
-          );
-          console.log(
-            `[sandboxes.start] git creds configured exit=${credRes.exit_code} out=${(credRes.stdout || "").replace(/:[^@]*@/g, ":***@").slice(0, 200)}`
-          );
-
-          const depth = body.depth ?? 1;
-          const workspace = "/root/workspace";
-          await instance.exec(`mkdir -p ${workspace}`);
-
-          // Check remote
-          const remoteRes = await instance.exec(
-            `bash -lc "cd ${workspace} && test -d .git && git remote get-url origin || echo 'no-remote'"`
-          );
-          const remoteUrl = (remoteRes.stdout || "").trim();
-
-          if (!remoteUrl || !remoteUrl.includes(`${owner}/${repo}`)) {
-            await instance.exec(
-              `bash -lc "rm -rf ${workspace}/* ${workspace}/.[!.]* ${workspace}/..?* 2>/dev/null || true"`
-            );
-            const maskedUrl = `https://x-access-token:***@github.com/${owner}/${repo}.git`;
-            console.log(
-              `[sandboxes.start] Cloning ${maskedUrl} depth=${depth} -> ${workspace}`
-            );
-            const cloneRes = await instance.exec(
-              `bash -lc "git clone --depth ${depth} https://x-access-token:${githubToken}@github.com/${owner}/${repo}.git ${workspace}"`
-            );
-            console.log(
-              `[sandboxes.start] clone exit=${cloneRes.exit_code} stderr=${(cloneRes.stderr || "").slice(0, 300)}`
-            );
-            if (cloneRes.exit_code !== 0) {
-              return c.text("Failed to clone repository", 500);
-            }
-          } else {
-            const fetchRes = await instance.exec(
-              `bash -lc "cd ${workspace} && git fetch --all --prune"`
-            );
-            console.log(
-              `[sandboxes.start] fetch exit=${fetchRes.exit_code} stderr=${(fetchRes.stderr || "").slice(0, 200)}`
-            );
-          }
-
-          const baseBranch = body.branch || "main";
-          const coRes = await instance.exec(
-            `bash -lc "cd ${workspace} && (git checkout ${baseBranch} || git checkout -b ${baseBranch} origin/${baseBranch}) && git pull --ff-only || true"`
-          );
-          console.log(
-            `[sandboxes.start] checkout ${baseBranch} exit=${coRes.exit_code} stderr=${(coRes.stderr || "").slice(0, 200)}`
-          );
-          if (body.newBranch) {
-            const nbRes = await instance.exec(
-              `bash -lc "cd ${workspace} && git switch -C ${body.newBranch}"`
-            );
-            console.log(
-              `[sandboxes.start] switch -C ${body.newBranch} exit=${nbRes.exit_code} stderr=${(nbRes.stderr || "").slice(0, 200)}`
-            );
-          }
-
-          const lsRes = await instance.exec(
-            `bash -lc "ls -la ${workspace} | head -50"`
-          );
-          console.log(
-            `[sandboxes.start] workspace listing:\n${lsRes.stdout || ""}`
-          );
-        } catch (e) {
-          console.error(`[sandboxes.start] Hydration failed:`, e);
           await instance.stop().catch(() => {});
           return c.text("Failed to hydrate sandbox", 500);
         }
-      }
 
-      try {
-        const gitPullRes = await instance.exec(
-          `bash -lc 'if [ -d /root/workspace ]; then for dir in /root/workspace/*; do [ -d "$dir" ] || continue; if [ -d "$dir/.git" ]; then echo "[sandboxes.start] git pull in $dir"; (cd "$dir" && git pull --ff-only || true) & else echo "[sandboxes.start] skipping $dir (no git repo)"; fi; done; wait; else echo "[sandboxes.start] /root/workspace missing"; fi'`
-        );
-        const trimmedStdout = (gitPullRes.stdout || "").slice(0, 500);
-        if (trimmedStdout) {
+        if (maskedStderr) {
           console.log(
-            `[sandboxes.start] workspace git pull stdout:\n${trimmedStdout}`
+            `[sandboxes.start] repo setup stderr:\n${maskedStderr.slice(0, 4000)}`
           );
         }
+
         console.log(
-          `[sandboxes.start] workspace git pull exit=${gitPullRes.exit_code} stderr=${(gitPullRes.stderr || "").slice(0, 200)}`
-        );
-      } catch (error) {
-        console.error(
-          "[sandboxes.start] Failed to refresh workspaces via git pull",
-          error
+          `[sandboxes.start] repo setup completed exit=${primaryResult.exit_code}`
         );
       }
+
+      runBackgroundTask("post-start setup", async () => {
+        const identity = gitIdentityDataPromise
+          ? await gitIdentityDataPromise
+          : null;
+
+        const backgroundScript = buildBackgroundScript({
+          envctlEncoded,
+          githubToken,
+          gitIdentity: identity,
+        });
+
+        if (!backgroundScript) {
+          return;
+        }
+
+        const backgroundResult = await instance.exec(
+          `bash -lc ${shellQuote(backgroundScript)}`
+        );
+
+        const maskedStdout = maskSensitiveValue(
+          backgroundResult.stdout,
+          githubToken
+        );
+        const maskedStderr = maskSensitiveValue(
+          backgroundResult.stderr,
+          githubToken
+        );
+
+        if (maskedStdout) {
+          console.log(
+            `[sandboxes.start] post-start script stdout:\n${maskedStdout.slice(0, 4000)}`
+          );
+        }
+
+        if (backgroundResult.exit_code !== 0) {
+          console.error(
+            `[sandboxes.start] post-start script exit=${backgroundResult.exit_code} stderr=${maskedStderr.slice(0, 4000)}`
+          );
+          throw new Error(
+            `post-start script failed with exit ${backgroundResult.exit_code}`
+          );
+        }
+
+        if (maskedStderr) {
+          console.log(
+            `[sandboxes.start] post-start script stderr:\n${maskedStderr.slice(0, 4000)}`
+          );
+        }
+      });
 
       return c.json({
         instanceId: instance.id,
