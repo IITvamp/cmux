@@ -3,22 +3,55 @@ import { TaskTreeSkeleton } from "@/components/TaskTreeSkeleton";
 import { useExpandTasks } from "@/contexts/expand-tasks/ExpandTasksContext";
 import { isElectron } from "@/lib/electron";
 import { type Doc } from "@cmux/convex/dataModel";
+import type { LinkProps } from "@tanstack/react-router";
 import { Link } from "@tanstack/react-router";
-import { Plus, ServerIcon } from "lucide-react";
+import { Home, Plus, Server, ServerIcon } from "lucide-react";
 import {
-  type CSSProperties,
   useCallback,
   useEffect,
   useRef,
   useState,
+  type ComponentType,
+  type CSSProperties,
 } from "react";
 import CmuxLogo from "./logo/cmux-logo";
+import { SidebarNavLink } from "./sidebar/SidebarNavLink";
+import { SidebarSectionLink } from "./sidebar/SidebarSectionLink";
 
 interface SidebarProps {
   tasks: Doc<"tasks">[] | undefined;
   tasksWithRuns: TaskWithRuns[];
   teamSlugOrId: string;
 }
+
+interface SidebarNavItem {
+  label: string;
+  to: LinkProps["to"];
+  icon?: ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
+  search?: LinkProps["search"];
+  exact?: boolean;
+}
+const navItems: SidebarNavItem[] = [
+  {
+    label: "Home",
+    to: "/$teamSlugOrId/dashboard",
+    exact: true,
+    icon: Home,
+  },
+  {
+    label: "Environments",
+    to: "/$teamSlugOrId/environments",
+    search: {
+      step: undefined,
+      selectedRepos: undefined,
+      connectionLogin: undefined,
+      repoSearch: undefined,
+      instanceId: undefined,
+    },
+    exact: true,
+    icon: Server,
+  },
+];
 
 export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
   const DEFAULT_WIDTH = 256;
@@ -167,12 +200,47 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
       </div>
       <nav className="grow flex flex-col overflow-hidden">
         <div className="flex-1 overflow-y-auto">
-          <div className="pl-3 py-1">
-            <div className="flex items-center px-1 py-1">
+          <ul className="flex flex-col gap-px">
+            {navItems.map((item) => (
+              <li key={item.label}>
+                <SidebarNavLink
+                  to={item.to}
+                  params={{ teamSlugOrId }}
+                  search={item.search}
+                  icon={item.icon}
+                  exact={item.exact}
+                  label={item.label}
+                />
+              </li>
+            ))}
+          </ul>
+
+          <div className="mt-4 flex flex-col gap-0.5">
+            <SidebarSectionLink
+              to="/$teamSlugOrId/prs"
+              params={{ teamSlugOrId }}
+              exact
+            >
+              Pull requests
+            </SidebarSectionLink>
+          </div>
+
+          <div className="mt-2 flex flex-col gap-0.5">
+            <SidebarSectionLink
+              to="/$teamSlugOrId/workspaces"
+              params={{ teamSlugOrId }}
+              exact
+            >
+              Workspaces
+            </SidebarSectionLink>
+          </div>
+
+          <div className="ml-2 pt-0.5 pr-1">
+            {/* <div className="flex items-center px-1 py-1">
               <span className="text-[10px] font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-[-0.005em] select-none">
-                Tasks
+                Draft tasks
               </span>
-            </div>
+            </div> */}
             <div className="space-y-px">
               {tasks === undefined ? (
                 <TaskTreeSkeleton count={5} />
