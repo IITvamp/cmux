@@ -4,7 +4,7 @@ import { useExpandTasks } from "@/contexts/expand-tasks/ExpandTasksContext";
 import { isElectron } from "@/lib/electron";
 import { type Doc } from "@cmux/convex/dataModel";
 import { Link } from "@tanstack/react-router";
-import { Plus, ServerIcon } from "lucide-react";
+import { Plus, ServerIcon, Clock } from "lucide-react";
 import {
   type CSSProperties,
   useCallback,
@@ -35,12 +35,20 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
     return Math.min(Math.max(parsed, MIN_WIDTH), MAX_WIDTH);
   });
   const [isResizing, setIsResizing] = useState(false);
+  const [currentTime, setCurrentTime] = useState(new Date());
 
   const { expandTaskIds } = useExpandTasks();
 
   useEffect(() => {
     localStorage.setItem("sidebarWidth", String(width));
   }, [width]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   const onMouseMove = useCallback((e: MouseEvent) => {
     // Batch width updates to once per animation frame to reduce layout thrash
@@ -151,6 +159,10 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
           <CmuxLogo height={32} />
         </Link>
         <div className="grow"></div>
+        <div className="flex items-center gap-1 px-2 text-xs text-neutral-600 dark:text-neutral-400">
+          <Clock className="w-3 h-3" />
+          <span>{currentTime.toLocaleTimeString()}</span>
+        </div>
         <Link
           to="/$teamSlugOrId/dashboard"
           params={{ teamSlugOrId }}
