@@ -21,6 +21,7 @@ import {
   ChevronDown,
   Loader2,
   OctagonAlert,
+  Plus,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
@@ -62,6 +63,8 @@ export interface SearchableSelectProps {
   leftIcon?: ReactNode;
   // Optional footer rendered below the scroll container
   footer?: ReactNode;
+  // Allow adding multiple instances of the same item
+  allowDuplicates?: boolean;
 }
 
 interface WarningIndicatorProps {
@@ -116,15 +119,21 @@ function normalizeOptions(options: SelectOption[]): SelectOptionObject[] {
 interface OptionItemProps {
   opt: SelectOptionObject;
   isSelected: boolean;
+  selectedCount?: number;
   onSelectValue: (val: string) => void;
+  onAddDuplicate?: (val: string) => void;
   onWarningAction?: () => void;
+  allowDuplicates?: boolean;
 }
 
 function OptionItem({
   opt,
   isSelected,
+  selectedCount = 0,
   onSelectValue,
+  onAddDuplicate,
   onWarningAction,
+  allowDuplicates = false,
 }: OptionItemProps) {
   if (opt.heading) {
     return (
@@ -171,14 +180,35 @@ function OptionItem({
           <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
         ) : null}
       </div>
-      <Check
-        className={clsx(
-          "h-4 w-4 shrink-0 transition-opacity",
-          isSelected
-            ? "opacity-100 text-neutral-700 dark:text-neutral-300"
-            : "opacity-0"
-        )}
-      />
+      <div className="flex items-center gap-1">
+        {allowDuplicates && isSelected ? (
+          <>
+            <span className="text-[11px] text-neutral-500 dark:text-neutral-400">
+              ({selectedCount})
+            </span>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onAddDuplicate?.(opt.value);
+              }}
+              className="inline-flex h-4 w-4 items-center justify-center rounded transition-colors hover:bg-neutral-200 dark:hover:bg-neutral-700"
+              title="Add another instance"
+            >
+              <Plus className="h-3 w-3" />
+            </button>
+          </>
+        ) : null}
+        <Check
+          className={clsx(
+            "h-4 w-4 shrink-0 transition-opacity",
+            isSelected
+              ? "opacity-100 text-neutral-700 dark:text-neutral-300"
+              : "opacity-0"
+          )}
+        />
+      </div>
     </CommandItem>
   );
 }
@@ -197,6 +227,7 @@ export function SearchableSelect({
   countLabel = "selected",
   leftIcon,
   footer,
+  allowDuplicates = false,
 }: SearchableSelectProps) {
   const normOptions = useMemo(() => normalizeOptions(options), [options]);
   const valueToOption = useMemo(
@@ -209,7 +240,21 @@ export function SearchableSelect({
   const [_recalcTick, setRecalcTick] = useState(0);
   // Popover width is fixed; no need to track trigger width
 
-  const selectedSet = useMemo(() => new Set(value), [value]);
+  // For duplicate support, track base names and counts
+  const selectedInfo = useMemo(() => {
+    const baseNames = new Set<string>();
+    const counts = new Map<string, number>();
+
+    value.forEach(v => {
+      const baseName = v.includes('#') ? v.split('#')[0] : v;
+      baseNames.add(baseName);
+      counts.set(baseName, (counts.get(baseName) || 0) + 1);
+    });
+
+    return { baseNames, counts };
+  }, [value]);
+
+  const selectedSet = useMemo(() => selectedInfo.baseNames, [selectedInfo]);
   const selectedLabels = useMemo(() => {
     const byValue = new Map(
       normOptions.map((o) => [o.value, o.label] as const)
@@ -386,10 +431,38 @@ export function SearchableSelect({
       setOpen(false);
       return;
     }
-    const next = new Set(value);
-    if (next.has(val)) next.delete(val);
-    else next.add(val);
-    onChange(Array.from(next));
+
+    if (!allowDuplicates) {
+      const next = new Set(value);
+      if (next.has(val)) next.delete(val);
+      else next.add(val);
+      onChange(Array.from(next));
+    } else {
+      // For duplicates, check if any instance exists
+      const existingInstances = value.filter(
+        v => (v.includes('#') ? v.split('#')[0] : v) === val
+      );
+
+      if (existingInstances.length > 0) {
+        // Remove all instances
+        onChange(value.filter(
+          v => (v.includes('#') ? v.split('#')[0] : v) !== val
+        ));
+      } else {
+        // Add first instance
+        onChange([...value, `${val}#1`]);
+      }
+    }
+  };
+
+  const onAddDuplicate = (val: string): void => {
+    if (!allowDuplicates) return;
+
+    const existingInstances = value.filter(
+      v => (v.includes('#') ? v.split('#')[0] : v) === val
+    );
+    const nextInstance = existingInstances.length + 1;
+    onChange([...value, `${val}#${nextInstance}`]);
   };
 
   return (
@@ -480,13 +553,17 @@ export function SearchableSelect({
                           <div>
                             {fallback.map((opt) => {
                               const isSelected = selectedSet.has(opt.value);
+                              const selectedCount = selectedInfo.counts.get(opt.value) || 0;
                               return (
                                 <OptionItem
                                   key={`fallback-${opt.value}`}
                                   opt={opt}
                                   isSelected={isSelected}
+                                  selectedCount={selectedCount}
                                   onSelectValue={onSelectValue}
+                                  onAddDuplicate={onAddDuplicate}
                                   onWarningAction={() => setOpen(false)}
+                                  allowDuplicates={allowDuplicates}
                                 />
                               );
                             })}
@@ -503,6 +580,7 @@ export function SearchableSelect({
                           {vItems.map((vr) => {
                             const opt = filteredOptions[vr.index]!;
                             const isSelected = selectedSet.has(opt.value);
+                            const selectedCount = selectedInfo.counts.get(opt.value) || 0;
                             return (
                               <div
                                 key={opt.value}
@@ -519,8 +597,11 @@ export function SearchableSelect({
                                 <OptionItem
                                   opt={opt}
                                   isSelected={isSelected}
+                                  selectedCount={selectedCount}
                                   onSelectValue={onSelectValue}
+                                  onAddDuplicate={onAddDuplicate}
                                   onWarningAction={() => setOpen(false)}
+                                  allowDuplicates={allowDuplicates}
                                 />
                               </div>
                             );

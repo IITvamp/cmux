@@ -47,6 +47,7 @@ function DashboardComponent() {
     return stored ? JSON.parse(stored) : [];
   });
   const [selectedBranch, setSelectedBranch] = useState<string[]>([]);
+  // Now store agent instances with unique IDs to support duplicates
   const [selectedAgents, setSelectedAgents] = useState<string[]>(() => {
     const stored = localStorage.getItem("selectedAgents");
     return stored ? JSON.parse(stored) : ["claude/opus-4.1", "codex/gpt-5"];

@@ -169,6 +169,41 @@ export const DashboardInputControls = memo(function DashboardInputControls({
     }
     return map;
   }, [agentOptions]);
+
+  // Helper to count agent instances and format display labels
+  const agentInstanceCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    selectedAgents.forEach((agentId) => {
+      const baseName = agentId.includes('#') ? agentId.split('#')[0] : agentId;
+      counts.set(baseName, (counts.get(baseName) || 0) + 1);
+    });
+    return counts;
+  }, [selectedAgents]);
+
+  const getAgentDisplayLabel = useCallback((agentId: string, index?: number) => {
+    const baseName = agentId.includes('#') ? agentId.split('#')[0] : agentId;
+    const option = agentOptionsByValue.get(baseName);
+    const baseLabel = option?.displayLabel ?? option?.label ?? baseName;
+
+    // Determine if this agent has multiple instances
+    const instanceCount = agentInstanceCounts.get(baseName) || 0;
+    if (instanceCount <= 1) return baseLabel;
+
+    // Find instance number for this particular agent ID
+    let instanceNum = 1;
+    if (agentId.includes('#')) {
+      // Extract instance number from ID
+      instanceNum = parseInt(agentId.split('#')[1]) || 1;
+    } else if (index !== undefined) {
+      // Calculate instance number based on position
+      const sameAgentsBefore = selectedAgents.slice(0, index).filter(
+        id => (id.includes('#') ? id.split('#')[0] : id) === baseName
+      ).length;
+      instanceNum = sameAgentsBefore + 1;
+    }
+
+    return `${baseLabel} (${instanceNum})`;
+  }, [agentOptionsByValue, agentInstanceCounts, selectedAgents]);
   const sortedSelectedAgents = useMemo(() => {
     const vendorOrder = new Map<string, number>();
     agentOptions.forEach((option, index) => {
@@ -176,16 +211,23 @@ export const DashboardInputControls = memo(function DashboardInputControls({
       if (!vendorOrder.has(vendor)) vendorOrder.set(vendor, index);
     });
     return [...selectedAgents].sort((a, b) => {
-      const optionA = agentOptionsByValue.get(a);
-      const optionB = agentOptionsByValue.get(b);
+      const baseA = a.includes('#') ? a.split('#')[0] : a;
+      const baseB = b.includes('#') ? b.split('#')[0] : b;
+      const optionA = agentOptionsByValue.get(baseA);
+      const optionB = agentOptionsByValue.get(baseB);
       const vendorA = optionA?.iconKey ?? "other";
       const vendorB = optionB?.iconKey ?? "other";
       const rankA = vendorOrder.get(vendorA) ?? Number.MAX_SAFE_INTEGER;
       const rankB = vendorOrder.get(vendorB) ?? Number.MAX_SAFE_INTEGER;
       if (rankA !== rankB) return rankA - rankB;
-      const labelA = optionA?.displayLabel ?? optionA?.label ?? a;
-      const labelB = optionB?.displayLabel ?? optionB?.label ?? b;
-      return labelA.localeCompare(labelB);
+      const labelA = optionA?.displayLabel ?? optionA?.label ?? baseA;
+      const labelB = optionB?.displayLabel ?? optionB?.label ?? baseB;
+      const comparison = labelA.localeCompare(labelB);
+      if (comparison !== 0) return comparison;
+      // If same agent, sort by instance number
+      const instanceA = a.includes('#') ? parseInt(a.split('#')[1]) || 1 : 1;
+      const instanceB = b.includes('#') ? parseInt(b.split('#')[1]) || 1 : 1;
+      return instanceA - instanceB;
     });
   }, [agentOptions, agentOptionsByValue, selectedAgents]);
   // Determine OS for potential future UI tweaks
@@ -251,14 +293,29 @@ export const DashboardInputControls = memo(function DashboardInputControls({
     [onAgentChange, selectedAgents]
   );
 
+  // Add handler for adding another instance of an agent
+  const handleAddAgentInstance = useCallback(
+    (agentName: string) => {
+      // Find how many instances we already have
+      const existingInstances = selectedAgents.filter(
+        id => (id.includes('#') ? id.split('#')[0] : id) === agentName
+      );
+      const nextInstance = existingInstances.length + 1;
+      const newAgentId = `${agentName}#${nextInstance}`;
+      onAgentChange([...selectedAgents, newAgentId]);
+    },
+    [onAgentChange, selectedAgents]
+  );
+
   const agentSelectionFooter = selectedAgents.length ? (
     <div className="bg-neutral-50 dark:bg-neutral-900/70">
       <div className="relative">
         <div ref={pillboxScrollRef} className="max-h-32 overflow-y-auto py-2 px-2">
           <div className="flex flex-wrap gap-1">
-            {sortedSelectedAgents.map((agent) => {
-              const option = agentOptionsByValue.get(agent);
-              const label = option?.displayLabel ?? option?.label ?? agent;
+            {sortedSelectedAgents.map((agent, index) => {
+              const baseName = agent.includes('#') ? agent.split('#')[0] : agent;
+              const option = agentOptionsByValue.get(baseName);
+              const label = getAgentDisplayLabel(agent, index);
               return (
                 <div
                   key={agent}
@@ -468,6 +525,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
           showSearch
           countLabel="agents"
           footer={agentSelectionFooter}
+          allowDuplicates
         />
       </div>
 
