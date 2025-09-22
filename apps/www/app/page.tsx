@@ -1,5 +1,7 @@
 "use client";
 
+import clientPackageJson from "../../client/package.json" assert { type: "json" };
+
 import { ClientIcon } from "@/components/client-icon";
 import CmuxLogo from "@/components/logo/cmux-logo";
 import { Cloud, GitBranch, GitPullRequest, Star, Terminal, Users, Zap } from "lucide-react";
@@ -8,9 +10,41 @@ import Link from "next/link";
 import cmuxDemo0 from "@/docs/assets/cmux-demo-0.png";
 import cmuxDemo1 from "@/docs/assets/cmux-demo-1.png";
 import cmuxDemo5 from "@/docs/assets/cmux-demo-5.png";
- 
+
+const RELEASE_PAGE_URL = "https://github.com/manaflow-ai/cmux/releases/latest";
+
+const normalizeVersion = (tag: string): string => (tag.startsWith("v") ? tag.slice(1) : tag);
+
+const ensureTagPrefix = (value: string): string => (value.startsWith("v") ? value : `v${value}`);
+
+type ReleaseInfo = {
+  latestVersion: string | null;
+  macDownloadUrl: string;
+};
+
+const deriveReleaseInfo = (): ReleaseInfo => {
+  const versionValue = clientPackageJson.version;
+
+  if (typeof versionValue !== "string" || versionValue.trim() === "") {
+    return {
+      latestVersion: null,
+      macDownloadUrl: RELEASE_PAGE_URL,
+    };
+  }
+
+  const normalizedVersion = normalizeVersion(versionValue);
+  const releaseTag = ensureTagPrefix(versionValue);
+
+  return {
+    latestVersion: normalizedVersion,
+    macDownloadUrl: `https://github.com/manaflow-ai/cmux/releases/download/${releaseTag}/cmux-${normalizedVersion}-arm64.dmg`,
+  };
+};
+
+const RELEASE_INFO = deriveReleaseInfo();
 
 export default function LandingPage() {
+  const { macDownloadUrl, latestVersion } = RELEASE_INFO;
 
   return (
     <div className="min-h-dvh bg-background text-foreground overflow-y-auto">
@@ -31,7 +65,7 @@ export default function LandingPage() {
         <span className="whitespace-nowrap ml-2">
           <a
             href="#requirements"
-          className="whitespace-nowrap bg-black px-2 py-0.5 rounded-sm font-semibold text-blue-300 hover:text-blue-200"
+            className="whitespace-nowrap bg-black px-2 py-0.5 rounded-sm font-semibold text-blue-300 hover:text-blue-200"
           >
             See requirements
           </a>
@@ -148,10 +182,8 @@ export default function LandingPage() {
 
               <div className="mt-10 flex flex-col sm:flex-row items-center gap-4">
                 <a
-                  href="https://github.com/manaflow-ai/cmux/releases/download/v1.0.35/cmux-1.0.35-arm64.dmg"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title="Requires macOS"
+                  href={macDownloadUrl}
+                  title={latestVersion ? `Download cmux v${latestVersion} for macOS arm64` : "Requires macOS"}
                   className="inline-flex h-12 items-center gap-2 text-base font-medium text-black bg-white hover:bg-neutral-50 border border-neutral-800 rounded-lg px-4 transition-all whitespace-nowrap"
                 >
                   <svg
@@ -167,6 +199,7 @@ export default function LandingPage() {
                     ></path>
                   </svg>
                   Download for Mac
+                  {latestVersion ? ` (v${latestVersion})` : null}
                 </a>
                 <a
                   href="https://github.com/manaflow-ai/cmux"
