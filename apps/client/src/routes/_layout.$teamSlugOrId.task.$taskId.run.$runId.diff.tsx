@@ -2,6 +2,9 @@ import { FloatingPane } from "@/components/floating-pane";
 import { type GitDiffViewerProps } from "@/components/git-diff-viewer";
 import { RunDiffSection } from "@/components/RunDiffSection";
 import { TaskDetailHeader } from "@/components/task-detail-header";
+import { useExpandTasks } from "@/contexts/expand-tasks/ExpandTasksContext";
+import { useSocket } from "@/contexts/socket/use-socket";
+import { useTheme } from "@/components/theme/use-theme";
 import { refWithOrigin } from "@/lib/refWithOrigin";
 import { diffSmartQueryOptions } from "@/queries/diff-smart";
 // Refs mode: no run-diffs prefetch
@@ -9,8 +12,10 @@ import { api } from "@cmux/convex/api";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { convexQuery } from "@convex-dev/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "convex/react";
-import { Suspense, useMemo, useState } from "react";
+import { useMutation, useQuery } from "convex/react";
+import { Suspense, useCallback, useMemo, useState } from "react";
+import TextareaAutosize from "react-textarea-autosize";
+import { toast } from "sonner";
 import z from "zod";
 
 const paramsSchema = z.object({
@@ -23,6 +28,8 @@ const gitDiffViewerClassNames: GitDiffViewerProps["classNames"] = {
     button: "top-[96px] md:top-[56px]",
   },
 };
+
+const DEFAULT_RESTART_AGENTS = ["claude/sonnet-4", "codex/gpt-5"] as const;
 
 export const Route = createFileRoute(
   "/_layout/$teamSlugOrId/task/$taskId/run/$runId/diff"
@@ -72,6 +79,10 @@ export const Route = createFileRoute(
 
 function RunDiffPage() {
   const { taskId, teamSlugOrId, runId } = Route.useParams();
+  const { socket } = useSocket();
+  const { theme } = useTheme();
+  const { addTaskToExpand } = useExpandTasks();
+  const createTask = useMutation(api.tasks.create);
   const [isCreatingPr, setIsCreatingPr] = useState(false);
   const [diffControls, setDiffControls] = useState<{
     expandAll: () => void;
@@ -79,6 +90,8 @@ function RunDiffPage() {
     totalAdditions: number;
     totalDeletions: number;
   } | null>(null);
+  const [followUpText, setFollowUpText] = useState("");
+  const [isRestartingTask, setIsRestartingTask] = useState(false);
   const task = useQuery(api.tasks.getById, {
     teamSlugOrId,
     id: taskId,
@@ -101,6 +114,108 @@ function RunDiffPage() {
   }
 
   const taskRunId = selectedRun._id;
+
+  const handleRestartTask = useCallback(async () => {
+    if (!task) {
+      toast.error("Task data is still loading. Try again in a moment.");
+      return;
+    }
+    if (!socket) {
+      toast.error("Socket not connected. Refresh or try again later.");
+      return;
+    }
+
+    const followUp = followUpText.trim();
+    if (!followUp) {
+      toast.error("Add follow-up context before restarting.");
+      return;
+    }
+
+    const originalPrompt = task.text ?? "";
+    const combinedPrompt = originalPrompt
+      ? `${originalPrompt}\n\n${followUp}`
+      : followUp;
+
+    const projectFullNameForSocket =
+      task.projectFullName ??
+      (task.environmentId ? `env:${task.environmentId}` : undefined);
+
+    if (!projectFullNameForSocket) {
+      toast.error("Missing repository or environment for this task.");
+      return;
+    }
+
+    setIsRestartingTask(true);
+
+    try {
+      const imagesPayload =
+        task.images && task.images.length > 0
+          ? task.images.map((image) => ({
+              storageId: image.storageId,
+              fileName: image.fileName,
+              altText: image.altText,
+            }))
+          : undefined;
+
+      const newTaskId = await createTask({
+        teamSlugOrId,
+        text: combinedPrompt,
+        projectFullName: task.projectFullName ?? undefined,
+        baseBranch: task.baseBranch ?? undefined,
+        images: imagesPayload,
+        environmentId: task.environmentId ?? undefined,
+      });
+
+      addTaskToExpand(newTaskId);
+
+      const isEnvTask = projectFullNameForSocket.startsWith("env:");
+      const repoUrl = !isEnvTask
+        ? `https://github.com/${projectFullNameForSocket}.git`
+        : undefined;
+
+      await new Promise<void>((resolve) => {
+        socket.emit(
+          "start-task",
+          {
+            ...(repoUrl ? { repoUrl } : {}),
+            ...(task.baseBranch ? { branch: task.baseBranch } : {}),
+            taskDescription: combinedPrompt,
+            projectFullName: projectFullNameForSocket,
+            taskId: newTaskId,
+            selectedAgents: [...DEFAULT_RESTART_AGENTS],
+            isCloudMode: isEnvTask || Boolean(task.environmentId),
+            ...(task.environmentId ? { environmentId: task.environmentId } : {}),
+            theme,
+          },
+          (response) => {
+            if ("error" in response) {
+              toast.error(`Task restart error: ${response.error}`);
+            } else {
+              setFollowUpText("");
+              toast.success("Started follow-up task");
+            }
+            resolve();
+          }
+        );
+      });
+    } catch (error) {
+      console.error("Failed to restart task", error);
+      toast.error("Failed to start follow-up task");
+    } finally {
+      setIsRestartingTask(false);
+    }
+  }, [
+    addTaskToExpand,
+    createTask,
+    followUpText,
+    socket,
+    task,
+    teamSlugOrId,
+    theme,
+  ]);
+
+  const isRestartDisabled =
+    isRestartingTask || !followUpText.trim() || !socket || !task;
 
   // Compute refs for diff: base branch vs run branch
   const repoFullName = task?.projectFullName || "";
@@ -156,6 +271,44 @@ function RunDiffPage() {
                 </div>
               )}
             </Suspense>
+            <div className="border-t border-neutral-200 bg-neutral-50 px-4 py-4 dark:border-neutral-800 dark:bg-neutral-950">
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void handleRestartTask();
+                }}
+                className="flex flex-col gap-3"
+              >
+                <div className="flex flex-col gap-1">
+                  <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
+                    Restart task with new follow-up
+                  </span>
+                  <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                    We will prepend the original prompt before launching agents.
+                  </span>
+                </div>
+                <TextareaAutosize
+                  value={followUpText}
+                  onChange={(event) => setFollowUpText(event.target.value)}
+                  minRows={3}
+                  maxRows={8}
+                  placeholder="Add updated instructions or context..."
+                  className="w-full resize-none rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none transition-colors placeholder:text-neutral-500 focus:border-neutral-400 focus:ring-2 focus:ring-neutral-400/40 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:placeholder:text-neutral-400 dark:focus:border-neutral-500 dark:focus:ring-neutral-500/40"
+                />
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                    {task?.text ? "Original prompt is included automatically." : "This follow-up will become the new task prompt."}
+                  </span>
+                  <button
+                    type="submit"
+                    disabled={isRestartDisabled}
+                    className="inline-flex items-center justify-center rounded-md bg-neutral-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
+                  >
+                    {isRestartingTask ? "Starting..." : "Start follow-up task"}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       </div>
