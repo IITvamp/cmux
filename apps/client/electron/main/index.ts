@@ -20,7 +20,10 @@ import {
 import { startEmbeddedServer } from "./embedded-server";
 import { registerWebContentsViewHandlers } from "./web-contents-view";
 // Auto-updater
-import electronUpdater, { type UpdateInfo } from "electron-updater";
+import electronUpdater, {
+  type UpdateCheckResult,
+  type UpdateInfo,
+} from "electron-updater";
 import {
   createRemoteJWKSet,
   decodeJwt,
@@ -222,6 +225,30 @@ function queueAutoUpdateToast(payload: AutoUpdateToastPayload): void {
   emitAutoUpdateToastIfPossible();
 }
 
+function logUpdateCheckResult(
+  context: string,
+  result: UpdateCheckResult | null | undefined
+): void {
+  if (!result) {
+    mainLog(`${context} completed`, { updateAvailable: false });
+    return;
+  }
+
+  const info = result.updateInfo;
+  const summary = {
+    updateAvailable: true,
+    version: info?.version ?? null,
+    releaseDate: info?.releaseDate ?? null,
+    fileCount: info?.files?.length ?? 0,
+    stagingPercentage:
+      typeof info?.stagingPercentage === "number"
+        ? info.stagingPercentage
+        : null,
+  };
+
+  mainLog(`${context} completed`, summary);
+}
+
 function registerLogIpcHandlers(): void {
   ipcMain.handle("cmux:logs:read-all", async () => {
     try {
@@ -303,6 +330,12 @@ function setupAutoUpdates(): void {
     return;
   }
 
+  mainLog("Setting up auto-updates", {
+    appVersion: app.getVersion(),
+    platform: process.platform,
+    arch: process.arch,
+  });
+
   try {
     // Wire logs to our logger
     (autoUpdater as unknown as { logger: unknown }).logger = {
@@ -326,6 +359,13 @@ function setupAutoUpdates(): void {
         });
       }
     }
+
+    mainLog("Auto-updater configuration complete", {
+      autoDownload: autoUpdater.autoDownload,
+      autoInstallOnAppQuit: autoUpdater.autoInstallOnAppQuit,
+      allowPrerelease: autoUpdater.allowPrerelease,
+      channel: autoUpdater.channel ?? null,
+    });
   } catch (e) {
     mainWarn("Failed to initialize autoUpdater", e);
     return;
@@ -357,16 +397,21 @@ function setupAutoUpdates(): void {
   });
 
   // Initial check and periodic re-checks
+  mainLog("Starting initial auto-update check");
   autoUpdater
     .checkForUpdatesAndNotify()
+    .then((result) => logUpdateCheckResult("Initial checkForUpdatesAndNotify", result))
     .catch((e) => mainWarn("checkForUpdatesAndNotify failed", e));
+  const CHECK_INTERVAL_MS = 30 * 60 * 1000;
   setInterval(
     () => {
+      mainLog("Starting scheduled auto-update check");
       autoUpdater
         .checkForUpdates()
+        .then((result) => logUpdateCheckResult("Scheduled checkForUpdates", result))
         .catch((e) => mainWarn("Periodic checkForUpdates failed", e));
     },
-    30 * 60 * 1000
+    CHECK_INTERVAL_MS
   ); // 30 minutes
 }
 
