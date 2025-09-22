@@ -11,6 +11,8 @@ import type {
   WorkerTerminalFailed,
   WorkerTerminalIdle,
 } from "@cmux/shared/worker-schemas";
+import { getApiEnvironmentsByIdVars } from "@cmux/www-openapi-client";
+import { parse as parseDotenv } from "dotenv";
 import { handleTaskCompletion } from "./handle-task-completion.js";
 import { sanitizeTmuxSessionName } from "./sanitizeTmuxSessionName.js";
 import {
@@ -26,6 +28,7 @@ import {
   getAuthToken,
   runWithAuth,
 } from "./utils/requestContext.js";
+import { getWwwClient } from "./utils/wwwClient.js";
 import { CmuxVSCodeInstance } from "./vscode/CmuxVSCodeInstance.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
@@ -49,7 +52,7 @@ export async function spawnAgent(
     branch?: string;
     taskDescription: string;
     isCloudMode?: boolean;
-    environmentId?: Id<"environments"> | string;
+    environmentId?: Id<"environments">;
     images?: Array<{
       src: string;
       fileName?: string;
@@ -84,6 +87,7 @@ export async function spawnAgent(
         prompt: options.taskDescription,
         agentName: agent.name,
         newBranch,
+        environmentId: options.environmentId,
       }
     );
 
@@ -215,6 +219,44 @@ export async function spawnAgent(
       PROMPT: processedTaskDescription,
     };
 
+    if (options.environmentId) {
+      try {
+        const envRes = await getApiEnvironmentsByIdVars({
+          client: getWwwClient(),
+          path: { id: String(options.environmentId) },
+          query: { teamSlugOrId },
+        });
+        const envContent = envRes.data?.envVarsContent;
+        if (envContent && envContent.trim().length > 0) {
+          const parsed = parseDotenv(envContent);
+          if (Object.keys(parsed).length > 0) {
+            const preserved = {
+              CMUX_PROMPT: envVars.CMUX_PROMPT,
+              CMUX_TASK_RUN_ID: envVars.CMUX_TASK_RUN_ID,
+              PROMPT: envVars.PROMPT,
+            };
+            envVars = {
+              ...envVars,
+              ...parsed,
+              ...preserved,
+            };
+            serverLogger.info(
+              `[AgentSpawner] Injected ${Object.keys(parsed).length} env vars from environment ${String(
+                options.environmentId
+              )}`
+            );
+          }
+        }
+      } catch (error) {
+        serverLogger.error(
+          `[AgentSpawner] Failed to load environment env vars for ${String(
+            options.environmentId
+          )}`,
+          error
+        );
+      }
+    }
+
     let authFiles: EnvironmentResult["files"] = [];
     let startupCommands: string[] = [];
 
@@ -297,7 +339,7 @@ export async function spawnAgent(
         repoUrl: options.repoUrl,
         branch: options.branch,
         newBranch,
-        environmentId: options.environmentId as Id<"environments"> | undefined,
+        environmentId: options.environmentId,
       });
 
       worktreePath = "/root/workspace";
@@ -402,12 +444,6 @@ export async function spawnAgent(
           );
           return;
         }
-        // CRITICAL: Add a delay to ensure changes are written to disk
-        serverLogger.info(
-          `[AgentSpawner] Waiting 3 seconds for file system to settle before capturing git diff...`
-        );
-        await new Promise((resolve) => setTimeout(resolve, 3000));
-
         await runWithAuth(capturedAuthToken, capturedAuthHeaderJson, async () =>
           handleTaskCompletion({
             taskRunId,
@@ -457,12 +493,6 @@ export async function spawnAgent(
         serverLogger.info(
           `[AgentSpawner] Task ID matched! Marking task as complete for ${agent.name}`
         );
-        // CRITICAL: Add a delay to ensure changes are written to disk
-        serverLogger.info(
-          `[AgentSpawner] Waiting 3 seconds for file system to settle before capturing git diff...`
-        );
-        await new Promise((resolve) => setTimeout(resolve, 3000));
-
         await runWithAuth(capturedAuthToken, capturedAuthHeaderJson, async () =>
           handleTaskCompletion({
             taskRunId,
@@ -909,7 +939,7 @@ export async function spawnAllAgents(
     prTitle?: string;
     selectedAgents?: string[];
     isCloudMode?: boolean;
-    environmentId?: Id<"environments"> | string;
+    environmentId?: Id<"environments">;
     images?: Array<{
       src: string;
       fileName?: string;

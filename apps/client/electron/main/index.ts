@@ -17,8 +17,9 @@ import {
   type MenuItemConstructorOptions,
 } from "electron";
 import { startEmbeddedServer } from "./embedded-server";
+import { registerWebContentsViewHandlers } from "./web-contents-view";
 // Auto-updater
-import electronUpdater from "electron-updater";
+import electronUpdater, { type UpdateInfo } from "electron-updater";
 import {
   createRemoteJWKSet,
   decodeJwt,
@@ -26,7 +27,10 @@ import {
   type JWTPayload,
 } from "jose";
 import { promises as fs } from "node:fs";
-import { appendLogWithRotation, type LogRotationOptions } from "./log-management/log-rotation";
+import {
+  appendLogWithRotation,
+  type LogRotationOptions,
+} from "./log-management/log-rotation";
 import { ensureLogDirectory } from "./log-management/log-paths";
 import { collectAllLogs } from "./log-management/collect-logs";
 const { autoUpdater } = electronUpdater;
@@ -39,9 +43,27 @@ import { env } from "./electron-main-env";
 const PARTITION = "persist:cmux";
 const APP_HOST = "cmux.local";
 
+function resolveMaxSuspendedWebContents(): number | undefined {
+  const raw =
+    process.env.CMUX_ELECTRON_MAX_SUSPENDED_WEBVIEWS ??
+    process.env.CMUX_ELECTRON_MAX_SUSPENDED_WEB_CONTENTS;
+  if (!raw) return undefined;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || Number.isNaN(parsed) || parsed < 0) {
+    return undefined;
+  }
+  return parsed;
+}
+
 let rendererLoaded = false;
 let pendingProtocolUrl: string | null = null;
 let mainWindow: BrowserWindow | null = null;
+
+type AutoUpdateToastPayload = {
+  version: string | null;
+};
+
+let queuedAutoUpdateToast: AutoUpdateToastPayload | null = null;
 
 // Persistent log files
 let logsDir: string | null = null;
@@ -180,6 +202,25 @@ export function mainError(...args: unknown[]) {
   emitToRenderer("error", `[MAIN] ${line}`);
 }
 
+function emitAutoUpdateToastIfPossible(): void {
+  if (!queuedAutoUpdateToast) return;
+  if (!mainWindow || mainWindow.isDestroyed() || !rendererLoaded) return;
+  try {
+    mainWindow.webContents.send(
+      "cmux:event:auto-update:ready",
+      queuedAutoUpdateToast
+    );
+    queuedAutoUpdateToast = null;
+  } catch (error) {
+    mainWarn("Failed to send auto-update toast to renderer", error);
+  }
+}
+
+function queueAutoUpdateToast(payload: AutoUpdateToastPayload): void {
+  queuedAutoUpdateToast = payload;
+  emitAutoUpdateToastIfPossible();
+}
+
 function registerLogIpcHandlers(): void {
   ipcMain.handle("cmux:logs:read-all", async () => {
     try {
@@ -198,6 +239,27 @@ function registerLogIpcHandlers(): void {
       return { ok: true };
     } catch (error) {
       mainWarn("Failed to copy logs for renderer", error);
+      const err = error instanceof Error ? error : new Error(String(error));
+      throw err;
+    }
+  });
+}
+
+function registerAutoUpdateIpcHandlers(): void {
+  ipcMain.handle("cmux:auto-update:install", async () => {
+    if (!app.isPackaged) {
+      mainLog(
+        "Auto-update install requested while app is not packaged; ignoring request"
+      );
+      return { ok: false, reason: "not-packaged" as const };
+    }
+
+    try {
+      queuedAutoUpdateToast = null;
+      autoUpdater.quitAndInstall();
+      return { ok: true } as const;
+    } catch (error) {
+      mainWarn("Failed to trigger quitAndInstall", error);
       const err = error instanceof Error ? error : new Error(String(error));
       throw err;
     }
@@ -251,6 +313,15 @@ function setupAutoUpdates(): void {
     autoUpdater.autoDownload = true;
     autoUpdater.autoInstallOnAppQuit = true;
     autoUpdater.allowPrerelease = false;
+
+    if (process.platform === "darwin") {
+      const suffix = process.arch === "arm64" ? "arm64" : "x64";
+      const channel = `latest-${suffix}`;
+      if (autoUpdater.channel !== channel) {
+        autoUpdater.channel = channel;
+        mainLog("Configured autoUpdater channel", { channel, arch: process.arch });
+      }
+    }
   } catch (e) {
     mainWarn("Failed to initialize autoUpdater", e);
     return;
@@ -268,31 +339,17 @@ function setupAutoUpdates(): void {
       `${p.percent?.toFixed?.(1) ?? 0}% (${p.transferred}/${p.total})`
     )
   );
-  autoUpdater.on("update-downloaded", async () => {
-    if (!mainWindow) {
-      mainLog("No main window; skipping update prompt");
-      return;
-    }
+  autoUpdater.on("update-downloaded", (_event, info?: UpdateInfo) => {
+    const version =
+      info &&
+      typeof info === "object" &&
+      "version" in info &&
+      typeof info.version === "string"
+        ? info.version
+        : null;
 
-    try {
-      const res = await dialog.showMessageBox(mainWindow, {
-        type: "info",
-        buttons: ["Restart Now", "Later"],
-        defaultId: 0,
-        cancelId: 1,
-        message: "An update is ready to install.",
-        detail: "Restart Cmux to apply the latest version.",
-      });
-      if (res.response === 0) {
-        mainLog("User accepted update; quitting and installing");
-        autoUpdater.quitAndInstall();
-      } else {
-        mainLog("User deferred update installation");
-      }
-    } catch (e) {
-      mainWarn("Failed to prompt for installing update", e);
-      autoUpdater.quitAndInstall();
-    }
+    mainLog("Update downloaded; notifying renderer", { version });
+    queueAutoUpdateToast({ version });
   });
 
   // Initial check and periodic re-checks
@@ -378,6 +435,7 @@ function createWindow(): void {
       void handleProtocolUrl(pendingProtocolUrl);
       pendingProtocolUrl = null;
     }
+    emitAutoUpdateToastIfPossible();
   });
 
   mainWindow.webContents.on("did-navigate", (_e, url) => {
@@ -409,12 +467,21 @@ app.whenReady().then(async () => {
   ensureLogFiles();
   setupConsoleFileMirrors();
   registerLogIpcHandlers();
+  registerAutoUpdateIpcHandlers();
   initCmdK({
     getMainWindow: () => mainWindow,
     logger: {
       log: mainLog,
       warn: mainWarn,
     },
+  });
+  registerWebContentsViewHandlers({
+    logger: {
+      log: mainLog,
+      warn: mainWarn,
+      error: mainError,
+    },
+    maxSuspendedEntries: resolveMaxSuspendedWebContents(),
   });
 
   // Ensure macOS menu and About panel use "cmux" instead of package.json name

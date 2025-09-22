@@ -4,6 +4,12 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - package.json
+      - apps/client/package.json
 
 concurrency:
   group: release-${{ github.ref }}
@@ -16,8 +22,80 @@ env:
   NODE_VERSION: "24"
 
 jobs:
+  prepare-release:
+    name: Prepare Release
+    runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.resolve.outputs.tag }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Resolve release tag
+        id: resolve
+        env:
+          EVENT_RELEASE_TAG: ${{ github.event.release.tag_name }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          release_tag="${EVENT_RELEASE_TAG:-}"
+          repo="${GITHUB_REPOSITORY}"
+
+          version="$(node -p "require('./apps/client/package.json').version")"
+          if [[ -z "$version" ]]; then
+            echo "Unable to determine app version from apps/client/package.json" >&2
+            exit 1
+          fi
+
+          declare -a candidates
+          candidates=()
+
+          if [[ -n "$release_tag" ]]; then
+            candidates+=("$release_tag")
+          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            candidates+=("$GITHUB_REF_NAME")
+          fi
+
+          candidates+=("v$version" "$version")
+
+          resolved_tag=""
+          for tag in "${candidates[@]}"; do
+            if [[ -z "$tag" ]]; then
+              continue
+            fi
+            if gh release view "$tag" --repo "$repo" >/dev/null 2>&1; then
+              resolved_tag="$tag"
+              break
+            fi
+          done
+
+          if [[ -z "$resolved_tag" ]]; then
+            resolved_tag="${candidates[0]}"
+            if [[ -z "$resolved_tag" ]]; then
+              echo "Unable to resolve a release tag candidate" >&2
+              exit 1
+            fi
+            echo "Creating draft release $resolved_tag"
+            gh release create "$resolved_tag" \
+              --repo "$repo" \
+              --draft \
+              --title "$resolved_tag" \
+              --notes ""
+          fi
+
+          echo "Resolved release tag: $resolved_tag"
+          printf 'tag=%s\n' "$resolved_tag" >> "$GITHUB_OUTPUT"
+
   mac-x64:
     name: macOS x64
+    needs: prepare-release
     environment: electron
     runs-on: ${{ (vars.USE_LARGE_RUNNERS == 'true' && 'macos-13-large') || 'macos-13' }}
     defaults:
@@ -26,7 +104,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -74,9 +152,40 @@ jobs:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: bash scripts/publish-build-mac-x64.sh --skip-install
+      - name: Publish notarized macOS x64 artifacts to GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.prepare-release.outputs.release_tag }}
+          REPO: ${{ github.repository }}
+        working-directory: apps/client
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          artifacts=(
+            dist-electron/*.dmg
+            dist-electron/*.zip
+            dist-electron/latest-*.yml
+            dist-electron/*.blockmap
+          )
+          if [[ ${#artifacts[@]} -eq 0 ]]; then
+            echo "No notarized macOS x64 artifacts found in dist-electron" >&2
+            exit 1
+          fi
+          release_tag="${RELEASE_TAG:-}"
+          if [[ -z "$release_tag" ]]; then
+            echo "Release tag not provided" >&2
+            exit 1
+          fi
+          repo="${REPO}"
+          for artifact in "${artifacts[@]}"; do
+            echo "Uploading $artifact to $repo@$release_tag"
+            gh release upload "$release_tag" "$artifact" --repo "$repo" --clobber
+          done
 
   mac-arm64:
     name: macOS arm64
+    needs: prepare-release
     environment: electron
     runs-on: ${{ (vars.USE_LARGE_RUNNERS == 'true' && 'macos-14-xlarge') || 'macos-14' }}
     defaults:
@@ -85,7 +194,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -133,9 +242,40 @@ jobs:
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
         run: bash scripts/publish-build-mac-arm64.sh --skip-install
+      - name: Publish notarized macOS arm64 artifacts to GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.prepare-release.outputs.release_tag }}
+          REPO: ${{ github.repository }}
+        working-directory: apps/client
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          artifacts=(
+            dist-electron/*.dmg
+            dist-electron/*.zip
+            dist-electron/latest-*.yml
+            dist-electron/*.blockmap
+          )
+          if [[ ${#artifacts[@]} -eq 0 ]]; then
+            echo "No notarized macOS arm64 artifacts found in dist-electron" >&2
+            exit 1
+          fi
+          release_tag="${RELEASE_TAG:-}"
+          if [[ -z "$release_tag" ]]; then
+            echo "Release tag not provided" >&2
+            exit 1
+          fi
+          repo="${REPO}"
+          for artifact in "${artifacts[@]}"; do
+            echo "Uploading $artifact to $repo@$release_tag"
+            gh release upload "$release_tag" "$artifact" --repo "$repo" --clobber
+          done
 
   windows-x64:
     name: Windows x64
+    needs: prepare-release
     environment: electron
     runs-on: windows-latest
     defaults:
@@ -144,7 +284,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -170,17 +310,19 @@ jobs:
       - name: Build & publish Windows x64 to GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
+          PUBLISH_FLAG: ${{ github.event_name == 'release' && 'always' || 'never' }}
         working-directory: apps/client
         run: bunx electron-vite build -c electron.vite.config.ts && bunx electron-builder --config electron-builder.json --win --x64 --publish always --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"
 
   linux-x64:
     name: Linux x64
+    needs: prepare-release
     environment: electron
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.release.tag_name }}
+          ref: ${{ github.event_name == 'release' && github.event.release.tag_name || github.ref }}
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
@@ -206,5 +348,6 @@ jobs:
       - name: Build & publish Linux AppImage x64 to GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
+          PUBLISH_FLAG: ${{ github.event_name == 'release' && 'always' || 'never' }}
         working-directory: apps/client
         run: bunx electron-vite build -c electron.vite.config.ts && bunx electron-builder --config electron-builder.json --linux AppImage --x64 --publish always --config.publish.provider=github --config.publish.owner="${{ github.repository_owner }}" --config.publish.repo="${{ github.event.repository.name }}"

@@ -1,6 +1,7 @@
 import { CmuxComments } from "@/components/cmux-comments";
 import { CommandBar } from "@/components/CommandBar";
 import { Sidebar } from "@/components/Sidebar";
+import type { TaskWithRuns } from "@/components/TaskTree";
 import { convexQueryClient } from "@/contexts/convex/convex-query-client";
 import { ExpandTasksProvider } from "@/contexts/expand-tasks/ExpandTasksProvider";
 import { isFakeConvexId } from "@/lib/fakeConvexId";
@@ -11,6 +12,34 @@ import { convexQuery } from "@convex-dev/react-query";
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
 import { useQueries, useQuery } from "convex/react";
 import { Suspense, useEffect, useMemo } from "react";
+
+type TaskRunWithChildren = TaskWithRuns["runs"][number];
+
+function sortRunsForSidebar(
+  runs: readonly TaskRunWithChildren[] | undefined
+): TaskRunWithChildren[] {
+  if (!runs) {
+    return [];
+  }
+
+  const runsWithSortedChildren = runs.map((run) => ({
+    ...run,
+    children: sortRunsForSidebar(run.children),
+  }));
+
+  runsWithSortedChildren.sort((a, b) => {
+    const aCrowned = a.isCrowned === true;
+    const bCrowned = b.isCrowned === true;
+
+    if (aCrowned !== bCrowned) {
+      return aCrowned ? -1 : 1;
+    }
+
+    return (a.createdAt ?? 0) - (b.createdAt ?? 0);
+  });
+
+  return runsWithSortedChildren;
+}
 
 export const Route = createFileRoute("/_layout/$teamSlugOrId")({
   component: LayoutComponentWrapper,
@@ -83,12 +112,14 @@ function LayoutComponent() {
     taskRunQueries as Parameters<typeof useQueries>[0]
   );
 
-  // Map tasks with their respective runs
+  // Map tasks with their respective runs, ensuring crowned runs appear first
   const tasksWithRuns = useMemo(
     () =>
       recentTasks.map((task) => ({
         ...task,
-        runs: taskRunResults[task._id] || [],
+        runs: sortRunsForSidebar(
+          taskRunResults[task._id] as TaskRunWithChildren[] | undefined
+        ),
       })),
     [recentTasks, taskRunResults]
   );

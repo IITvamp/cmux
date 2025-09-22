@@ -9,6 +9,7 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as ElectronWebContentsRouteImport } from './routes/electron-web-contents'
 import { Route as DebugIconRouteImport } from './routes/debug-icon'
 import { Route as LayoutRouteImport } from './routes/_layout'
 import { Route as IndexRouteImport } from './routes/index'
@@ -36,6 +37,11 @@ import { Route as LayoutTeamSlugOrIdTaskTaskIdRunRunIdPrRouteImport } from './ro
 import { Route as LayoutTeamSlugOrIdTaskTaskIdRunRunIdDiffRouteImport } from './routes/_layout.$teamSlugOrId.task.$taskId.run.$runId.diff'
 import { Route as LayoutTeamSlugOrIdTaskTaskIdRunRunIdPreviewPortRouteImport } from './routes/_layout.$teamSlugOrId.task.$taskId.run.$runId.preview.$port'
 
+const ElectronWebContentsRoute = ElectronWebContentsRouteImport.update({
+  id: '/electron-web-contents',
+  path: '/electron-web-contents',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const DebugIconRoute = DebugIconRouteImport.update({
   id: '/debug-icon',
   path: '/debug-icon',
@@ -184,6 +190,7 @@ const LayoutTeamSlugOrIdTaskTaskIdRunRunIdPreviewPortRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/debug-icon': typeof DebugIconRoute
+  '/electron-web-contents': typeof ElectronWebContentsRoute
   '/$teamSlugOrId': typeof LayoutTeamSlugOrIdRouteWithChildren
   '/debug': typeof LayoutDebugRoute
   '/profile': typeof LayoutProfileRoute
@@ -211,6 +218,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/debug-icon': typeof DebugIconRoute
+  '/electron-web-contents': typeof ElectronWebContentsRoute
   '/$teamSlugOrId': typeof LayoutTeamSlugOrIdRouteWithChildren
   '/debug': typeof LayoutDebugRoute
   '/profile': typeof LayoutProfileRoute
@@ -238,6 +246,7 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/_layout': typeof LayoutRouteWithChildren
   '/debug-icon': typeof DebugIconRoute
+  '/electron-web-contents': typeof ElectronWebContentsRoute
   '/_layout/$teamSlugOrId': typeof LayoutTeamSlugOrIdRouteWithChildren
   '/_layout/debug': typeof LayoutDebugRoute
   '/_layout/profile': typeof LayoutProfileRoute
@@ -267,6 +276,7 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/debug-icon'
+    | '/electron-web-contents'
     | '/$teamSlugOrId'
     | '/debug'
     | '/profile'
@@ -294,6 +304,7 @@ export interface FileRouteTypes {
   to:
     | '/'
     | '/debug-icon'
+    | '/electron-web-contents'
     | '/$teamSlugOrId'
     | '/debug'
     | '/profile'
@@ -320,6 +331,7 @@ export interface FileRouteTypes {
     | '/'
     | '/_layout'
     | '/debug-icon'
+    | '/electron-web-contents'
     | '/_layout/$teamSlugOrId'
     | '/_layout/debug'
     | '/_layout/profile'
@@ -349,11 +361,19 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LayoutRoute: typeof LayoutRouteWithChildren
   DebugIconRoute: typeof DebugIconRoute
+  ElectronWebContentsRoute: typeof ElectronWebContentsRoute
   HandlerSplatRoute: typeof HandlerSplatRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/electron-web-contents': {
+      id: '/electron-web-contents'
+      path: '/electron-web-contents'
+      fullPath: '/electron-web-contents'
+      preLoaderRoute: typeof ElectronWebContentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/debug-icon': {
       id: '/debug-icon'
       path: '/debug-icon'
@@ -653,6 +673,7 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LayoutRoute: LayoutRouteWithChildren,
   DebugIconRoute: DebugIconRoute,
+  ElectronWebContentsRoute: ElectronWebContentsRoute,
   HandlerSplatRoute: HandlerSplatRoute,
 }
 export const routeTree = rootRouteImport

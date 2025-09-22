@@ -108,14 +108,17 @@ export default function LandingPage() {
             <div className="bg-blue-500 rounded-sm" aria-hidden="true"></div>
             <div>
               <h1 className="text-4xl sm:text-4xl md:text-4xl font-semibold mb-6">
-                Manage AI coding agents in parallel
+                Universal AI coding agent manager for 10x engineers
               </h1>
 
               <p className="text-lg text-neutral-300 mb-4 leading-relaxed">
-                cmux spawns Claude Code, Codex, Gemini CLI, Amp, Opencode, and
-                other coding agent CLIs in parallel across multiple tasks. For
-                each run, cmux spawns an isolated VS Code instance via Docker
-                with the git diff UI and terminal.
+                cmux is a universal AI coding agent manager that supports Claude Code, Codex, Gemini CLI, Amp,
+                Opencode, and other coding CLIs. We give 10x engineers an interface to manage AI coding tasks in
+                parallel, context switch fast, and verify AI-generated code to stay actually productive with AI.
+              </p>
+              <p className="text-lg text-neutral-300 mb-4 leading-relaxed">
+                Every run spins up an isolated VS Code instances via Docker with the git diff UI and terminal so parallel
+                agent work stays verifiable, fast, and ready to ship.
               </p>
               <p className="text-lg text-neutral-300 leading-relaxed">
                 Learn more about the{" "}
@@ -145,7 +148,7 @@ export default function LandingPage() {
 
               <div className="mt-10 flex flex-col sm:flex-row items-center gap-4">
                 <a
-                  href="https://github.com/manaflow-ai/cmux/releases/download/v1.0.17/cmux-1.0.17-arm64.dmg"
+                  href="https://github.com/manaflow-ai/cmux/releases/download/v1.0.35/cmux-1.0.35-arm64.dmg"
                   target="_blank"
                   rel="noopener noreferrer"
                   title="Requires macOS"

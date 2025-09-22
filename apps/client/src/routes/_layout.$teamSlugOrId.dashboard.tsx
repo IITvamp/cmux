@@ -21,12 +21,11 @@ import { useSocket } from "@/contexts/socket/use-socket";
 import { createFakeConvexId } from "@/lib/fakeConvexId";
 import { branchesQueryOptions } from "@/queries/branches";
 import { api } from "@cmux/convex/api";
-import type { Doc } from "@cmux/convex/dataModel";
+import type { Doc, Id } from "@cmux/convex/dataModel";
 import type { ProviderStatusResponse } from "@cmux/shared";
 import { convexQuery } from "@convex-dev/react-query";
 import { useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import clsx from "clsx";
 import { useMutation } from "convex/react";
 import { Server as ServerIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -92,13 +91,12 @@ function DashboardComponent() {
       teamSlugOrId,
       repoFullName: selectedProject[0] || "",
     }),
-    enabled: !!selectedProject[0],
+    enabled: !!selectedProject[0] && !isEnvSelected,
   });
   const branches = useMemo(
     () => branchesQuery.data || [],
     [branchesQuery.data]
   );
-
   // Callback for project selection changes
   const handleProjectChange = useCallback(
     (newProjects: string[]) => {
@@ -180,6 +178,7 @@ function DashboardComponent() {
           images: args.images,
           userId: "optimistic",
           teamId: teamSlugOrId,
+          environmentId: args.environmentId,
         };
 
         // Add the new task at the beginning (since we order by desc)
@@ -249,6 +248,9 @@ function DashboardComponent() {
     const branch = effectiveSelectedBranch[0];
     const projectFullName = selectedProject[0];
     const envSelected = projectFullName.startsWith("env:");
+    const environmentId = envSelected
+      ? (projectFullName.replace(/^env:/, "") as Id<"environments">)
+      : undefined;
 
     try {
       // Extract content including images from the editor
@@ -306,6 +308,7 @@ function DashboardComponent() {
         projectFullName: envSelected ? undefined : projectFullName,
         baseBranch: envSelected ? undefined : branch,
         images: uploadedImages.length > 0 ? uploadedImages : undefined,
+        environmentId,
       });
 
       // Hint the sidebar to auto-expand this task once it appears
@@ -327,16 +330,7 @@ function DashboardComponent() {
           selectedAgents:
             selectedAgents.length > 0 ? selectedAgents : undefined,
           isCloudMode: envSelected ? true : isCloudMode,
-          ...(envSelected
-            ? {
-                environmentId: projectFullName.replace(
-                  /^env:/,
-                  ""
-                ) as string & {
-                  __tableName: "environments";
-                },
-              }
-            : {}),
+          ...(environmentId ? { environmentId } : {}),
           images: images.length > 0 ? images : undefined,
           theme,
         },
@@ -412,7 +406,8 @@ function DashboardComponent() {
         acc.set(repo.fullName, repo);
         return acc;
       }
-      const existingActivity = existing.lastPushedAt ?? Number.NEGATIVE_INFINITY;
+      const existingActivity =
+        existing.lastPushedAt ?? Number.NEGATIVE_INFINITY;
       const candidateActivity = repo.lastPushedAt ?? Number.NEGATIVE_INFINITY;
       if (candidateActivity > existingActivity) {
         acc.set(repo.fullName, repo);
@@ -646,48 +641,31 @@ function DashboardComponent() {
         {/* Main content area */}
         <div className="flex-1 flex justify-center px-4 pt-60 pb-4">
           <div className="w-full max-w-4xl min-w-0">
-            <div
-              className={clsx(
-                "relative bg-white dark:bg-neutral-700/50 border border-neutral-200 dark:border-neutral-500/15 rounded-2xl transition-all"
-              )}
-            >
-              {/* Editor Input */}
-              <DashboardInput
-                ref={editorApiRef}
-                onTaskDescriptionChange={handleTaskDescriptionChange}
-                onSubmit={handleSubmit}
-                repoUrl={lexicalRepoUrl}
-                branch={lexicalBranch}
-                persistenceKey="dashboard-task-description"
-                maxHeight="300px"
-              />
-
-              {/* Bottom bar: controls + submit button */}
-              <DashboardInputFooter>
-                <DashboardInputControls
-                  projectOptions={projectOptions}
-                  selectedProject={selectedProject}
-                  onProjectChange={handleProjectChange}
-                  branchOptions={branchOptions}
-                  selectedBranch={effectiveSelectedBranch}
-                  onBranchChange={handleBranchChange}
-                  selectedAgents={selectedAgents}
-                  onAgentChange={handleAgentChange}
-                  isCloudMode={isCloudMode}
-                  onCloudModeToggle={handleCloudModeToggle}
-                  isLoadingProjects={reposByOrgQuery.isLoading}
-                  isLoadingBranches={branchesQuery.isPending}
-                  teamSlugOrId={teamSlugOrId}
-                  cloudToggleDisabled={isEnvSelected}
-                  branchDisabled={isEnvSelected || !selectedProject[0]}
-                  providerStatus={providerStatus}
-                />
-                <DashboardStartTaskButton
-                  canSubmit={canSubmit}
-                  onStartTask={handleStartTask}
-                />
-              </DashboardInputFooter>
-            </div>
+            <DashboardMainCard
+              editorApiRef={editorApiRef}
+              onTaskDescriptionChange={handleTaskDescriptionChange}
+              onSubmit={handleSubmit}
+              lexicalRepoUrl={lexicalRepoUrl}
+              lexicalBranch={lexicalBranch}
+              projectOptions={projectOptions}
+              selectedProject={selectedProject}
+              onProjectChange={handleProjectChange}
+              branchOptions={branchOptions}
+              selectedBranch={effectiveSelectedBranch}
+              onBranchChange={handleBranchChange}
+              selectedAgents={selectedAgents}
+              onAgentChange={handleAgentChange}
+              isCloudMode={isCloudMode}
+              onCloudModeToggle={handleCloudModeToggle}
+              isLoadingProjects={reposByOrgQuery.isLoading}
+              isLoadingBranches={branchesQuery.isPending}
+              teamSlugOrId={teamSlugOrId}
+              cloudToggleDisabled={isEnvSelected}
+              branchDisabled={isEnvSelected || !selectedProject[0]}
+              providerStatus={providerStatus}
+              canSubmit={canSubmit}
+              onStartTask={handleStartTask}
+            />
 
             {/* Task List */}
             <TaskList teamSlugOrId={teamSlugOrId} />
@@ -695,5 +673,96 @@ function DashboardComponent() {
         </div>
       </div>
     </FloatingPane>
+  );
+}
+
+type DashboardMainCardProps = {
+  editorApiRef: React.MutableRefObject<EditorApi | null>;
+  onTaskDescriptionChange: (value: string) => void;
+  onSubmit: () => void;
+  lexicalRepoUrl?: string;
+  lexicalBranch?: string;
+  projectOptions: SelectOption[];
+  selectedProject: string[];
+  onProjectChange: (newProjects: string[]) => void;
+  branchOptions: string[];
+  selectedBranch: string[];
+  onBranchChange: (newBranches: string[]) => void;
+  selectedAgents: string[];
+  onAgentChange: (newAgents: string[]) => void;
+  isCloudMode: boolean;
+  onCloudModeToggle: () => void;
+  isLoadingProjects: boolean;
+  isLoadingBranches: boolean;
+  teamSlugOrId: string;
+  cloudToggleDisabled: boolean;
+  branchDisabled: boolean;
+  providerStatus: ProviderStatusResponse | null;
+  canSubmit: boolean;
+  onStartTask: () => void;
+};
+
+function DashboardMainCard({
+  editorApiRef,
+  onTaskDescriptionChange,
+  onSubmit,
+  lexicalRepoUrl,
+  lexicalBranch,
+  projectOptions,
+  selectedProject,
+  onProjectChange,
+  branchOptions,
+  selectedBranch,
+  onBranchChange,
+  selectedAgents,
+  onAgentChange,
+  isCloudMode,
+  onCloudModeToggle,
+  isLoadingProjects,
+  isLoadingBranches,
+  teamSlugOrId,
+  cloudToggleDisabled,
+  branchDisabled,
+  providerStatus,
+  canSubmit,
+  onStartTask,
+}: DashboardMainCardProps) {
+  return (
+    <div className="relative bg-white dark:bg-neutral-700/50 border border-neutral-500/15 dark:border-neutral-500/15 rounded-2xl transition-all">
+      <DashboardInput
+        ref={editorApiRef}
+        onTaskDescriptionChange={onTaskDescriptionChange}
+        onSubmit={onSubmit}
+        repoUrl={lexicalRepoUrl}
+        branch={lexicalBranch}
+        persistenceKey="dashboard-task-description"
+        maxHeight="300px"
+      />
+
+      <DashboardInputFooter>
+        <DashboardInputControls
+          projectOptions={projectOptions}
+          selectedProject={selectedProject}
+          onProjectChange={onProjectChange}
+          branchOptions={branchOptions}
+          selectedBranch={selectedBranch}
+          onBranchChange={onBranchChange}
+          selectedAgents={selectedAgents}
+          onAgentChange={onAgentChange}
+          isCloudMode={isCloudMode}
+          onCloudModeToggle={onCloudModeToggle}
+          isLoadingProjects={isLoadingProjects}
+          isLoadingBranches={isLoadingBranches}
+          teamSlugOrId={teamSlugOrId}
+          cloudToggleDisabled={cloudToggleDisabled}
+          branchDisabled={branchDisabled}
+          providerStatus={providerStatus}
+        />
+        <DashboardStartTaskButton
+          canSubmit={canSubmit}
+          onStartTask={onStartTask}
+        />
+      </DashboardInputFooter>
+    </div>
   );
 }

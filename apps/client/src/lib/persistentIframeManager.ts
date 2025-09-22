@@ -20,6 +20,51 @@ interface MountOptions {
   sandbox?: string;
 }
 
+const UNITLESS_CSS_PROPERTIES = new Set<string>([
+  "animation-iteration-count",
+  "border-image-outset",
+  "border-image-slice",
+  "border-image-width",
+  "box-flex",
+  "box-flex-group",
+  "box-ordinal-group",
+  "column-count",
+  "columns",
+  "flex",
+  "flex-grow",
+  "flex-negative",
+  "flex-order",
+  "flex-positive",
+  "flex-shrink",
+  "grid-area",
+  "grid-column",
+  "grid-column-end",
+  "grid-column-span",
+  "grid-column-start",
+  "grid-row",
+  "grid-row-end",
+  "grid-row-span",
+  "grid-row-start",
+  "font-weight",
+  "line-clamp",
+  "line-height",
+  "opacity",
+  "order",
+  "orphans",
+  "tab-size",
+  "widows",
+  "z-index",
+  "zoom",
+  "fill-opacity",
+  "flood-opacity",
+  "stop-opacity",
+  "stroke-dasharray",
+  "stroke-dashoffset",
+  "stroke-miterlimit",
+  "stroke-opacity",
+  "stroke-width",
+]);
+
 /**
  * PersistentIframeManager uses a different approach:
  * - All iframes stay in a persistent container
@@ -188,45 +233,37 @@ class PersistentIframeManager {
 
     // Then make visible after a microtask to ensure position is set
     requestAnimationFrame(() => {
-      if (options?.style) {
-        // Convert React.CSSProperties to CSS string, preserving existing fixed positioning
-        const styleEntries = Object.entries(options.style);
-        const additionalStyles = styleEntries
-          .map(([key, value]) => {
-            // Convert camelCase to kebab-case
-            const cssKey = key.replace(
-              /[A-Z]/g,
-              (match) => `-${match.toLowerCase()}`
-            );
-            return `${cssKey}: ${value}`;
-          })
-          .join("; ");
+      // Apply base styles without clobbering layout-related properties (width/height/transform)
+      entry.wrapper.style.position = "fixed";
+      entry.wrapper.style.top = "0";
+      entry.wrapper.style.left = "0";
+      entry.wrapper.style.right = "";
+      entry.wrapper.style.bottom = "";
+      entry.wrapper.style.visibility = "visible";
+      entry.wrapper.style.pointerEvents = "auto";
+      entry.wrapper.style.overflow = "hidden";
 
-        // Preserve core positioning while adding custom styles
-        entry.wrapper.style.cssText = `
-          position: fixed;
-          top: 0;
-          right: 0;
-          left: 0;
-          bottom: 0;
-          visibility: visible;
-          pointer-events: auto;
-          overflow: hidden;
-          ${additionalStyles}
-        `;
-      } else {
-        // Default styles
-        entry.wrapper.style.cssText = `
-          position: fixed;
-          top: 0;
-          right: 0;
-          left: 0;
-          bottom: 0;
-          visibility: visible;
-          pointer-events: auto;
-          overflow: hidden;
-        `;
+      if (options?.style) {
+        for (const [styleKey, styleValue] of Object.entries(options.style)) {
+          if (styleValue === undefined || styleValue === null) {
+            continue;
+          }
+
+          const cssKey = styleKey.replace(
+            /[A-Z]/g,
+            (match) => `-${match.toLowerCase()}`
+          );
+          const cssValue =
+            typeof styleValue === "number" &&
+            !UNITLESS_CSS_PROPERTIES.has(cssKey)
+              ? `${styleValue}px`
+              : String(styleValue);
+          entry.wrapper.style.setProperty(cssKey, cssValue);
+        }
       }
+
+      // Ensure the iframe wrapper reflects any layout changes triggered by new styles
+      this.syncIframePosition(key);
 
       entry.isVisible = true;
       this.activeIframeKey = key;
@@ -285,11 +322,20 @@ class PersistentIframeManager {
     if (!targetElement || !(targetElement instanceof HTMLElement)) return;
 
     const rect = targetElement.getBoundingClientRect();
+    const computedStyle = window.getComputedStyle(targetElement);
 
-    // Update wrapper position using transform
-    entry.wrapper.style.transform = `translate(${rect.left}px, ${rect.top}px)`;
-    entry.wrapper.style.width = `${rect.width}px`;
-    entry.wrapper.style.height = `${rect.height}px`;
+    const borderLeft = parseFloat(computedStyle.borderLeftWidth) || 0;
+    const borderRight = parseFloat(computedStyle.borderRightWidth) || 0;
+    const borderTop = parseFloat(computedStyle.borderTopWidth) || 0;
+    const borderBottom = parseFloat(computedStyle.borderBottomWidth) || 0;
+
+    const width = Math.max(0, rect.width - borderLeft - borderRight);
+    const height = Math.max(0, rect.height - borderTop - borderBottom);
+
+    // Update wrapper position using transform, keeping resize handles unobstructed
+    entry.wrapper.style.transform = `translate(${rect.left + borderLeft}px, ${rect.top + borderTop}px)`;
+    entry.wrapper.style.width = `${width}px`;
+    entry.wrapper.style.height = `${height}px`;
   }
 
   /**
