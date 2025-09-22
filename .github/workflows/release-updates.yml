@@ -108,6 +108,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+      - name: Setup Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -198,6 +200,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+      - name: Setup Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -288,6 +292,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+      - name: Setup Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -304,6 +310,10 @@ jobs:
           NEXT_PUBLIC_WWW_ORIGIN=${{ secrets.NEXT_PUBLIC_WWW_ORIGIN }}
           NEXT_PUBLIC_GITHUB_APP_SLUG=${{ secrets.NEXT_PUBLIC_GITHUB_APP_SLUG }}
           EOF
+      - name: Build native Rust addon (@cmux/native-core)
+        shell: bash
+        working-directory: apps/server/native/core
+        run: bunx --bun @napi-rs/cli build --platform --release
       - name: Generate icons
         working-directory: apps/client
         run: bun run ./scripts/generate-icons.mjs
@@ -326,6 +336,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
+      - name: Setup Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
         with:
@@ -342,6 +354,9 @@ jobs:
           NEXT_PUBLIC_WWW_ORIGIN=${{ secrets.NEXT_PUBLIC_WWW_ORIGIN }}
           NEXT_PUBLIC_GITHUB_APP_SLUG=${{ secrets.NEXT_PUBLIC_GITHUB_APP_SLUG }}
           EOF
+      - name: Build native Rust addon (@cmux/native-core)
+        working-directory: apps/server/native/core
+        run: bunx --bun @napi-rs/cli build --platform --release
       - name: Generate icons
         working-directory: apps/client
         run: bun run ./scripts/generate-icons.mjs
