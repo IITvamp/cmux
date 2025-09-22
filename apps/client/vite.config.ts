@@ -34,16 +34,23 @@ export default defineConfig({
     rollupOptions: {
       output: {
         assetFileNames: (assetInfo) => {
-          const name = assetInfo.name ?? "";
+          const [firstOriginal] = assetInfo.originalFileNames ?? [];
+          const [firstName] = assetInfo.names ?? [];
+
+          const preferredName = firstOriginal ?? firstName ?? "";
+          const normalizedName = preferredName
+            .replace(/^.*node_modules\//, "node_modules/")
+            .replace(/^\.\/?/, "");
+
           const nodeModulesPrefix = "node_modules/monaco-editor/min/vs/";
           const monacoPrefix = "monaco-editor/min/vs/";
 
-          if (name.startsWith(nodeModulesPrefix)) {
-            return name.slice("node_modules/".length);
+          if (normalizedName.startsWith(nodeModulesPrefix)) {
+            return normalizedName.slice("node_modules/".length);
           }
 
-          if (name.startsWith(monacoPrefix)) {
-            return name;
+          if (normalizedName.startsWith(monacoPrefix)) {
+            return normalizedName;
           }
 
           return "assets/[name]-[hash][extname]";
