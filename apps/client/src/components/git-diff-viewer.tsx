@@ -11,8 +11,8 @@ import {
   FilePlus,
   FileText,
 } from "lucide-react";
+import * as monaco from "monaco-editor";
 import { type editor } from "monaco-editor";
-import monacoLoaderAssetUrl from "monaco-editor/min/vs/loader.js?url";
 import {
   memo,
   useCallback,
@@ -24,28 +24,12 @@ import {
 } from "react";
 import { kitties } from "./kitties";
 
-const monacoAssets = import.meta.glob(
-  "../../node_modules/monaco-editor/min/vs/**/*.{js,css,json,ttf,wasm}",
-  {
-    as: "url",
-    eager: true,
-  }
-);
-
-// Ensure Vite emits the Monaco asset graph instead of falling back to CDN.
-void monacoAssets;
-
-const monacoBasePath = monacoLoaderAssetUrl
-  .replace(/loader\.js(?:\?.*)?$/, "")
-  .replace(/\/$/, "");
-
-if (typeof window !== "undefined") {
-  loader.config({
-    paths: {
-      vs: monacoBasePath,
-    },
-  });
-}
+loader.config({
+  monaco,
+});
+const loaderInitPromise = new Promise<typeof monaco>((resolve) => {
+  loader.init().then(resolve);
+});
 
 type FileDiffRowClassNames = {
   button?: string;
@@ -398,7 +382,7 @@ function FileDiffRow({
 
     const initializeEditor = async () => {
       try {
-        const monaco = await loader.init();
+        const monaco = await loaderInitPromise;
         if (cancelled || !containerRef.current) {
           return;
         }
