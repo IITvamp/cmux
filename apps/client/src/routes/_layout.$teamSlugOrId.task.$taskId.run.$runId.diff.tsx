@@ -5,8 +5,10 @@ import { TaskDetailHeader } from "@/components/task-detail-header";
 import { useExpandTasks } from "@/contexts/expand-tasks/ExpandTasksContext";
 import { useSocket } from "@/contexts/socket/use-socket";
 import { useTheme } from "@/components/theme/use-theme";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Switch } from "@heroui/react";
 import { refWithOrigin } from "@/lib/refWithOrigin";
 import { diffSmartQueryOptions } from "@/queries/diff-smart";
 // Refs mode: no run-diffs prefetch
@@ -28,7 +30,7 @@ import {
 import TextareaAutosize from "react-textarea-autosize";
 import { toast } from "sonner";
 import z from "zod";
-import { Command } from "lucide-react";
+import { Command, FileText } from "lucide-react";
 
 const paramsSchema = z.object({
   taskId: typedZid("tasks"),
@@ -135,6 +137,7 @@ function RunDiffPage() {
   } | null>(null);
   const [followUpText, setFollowUpText] = useState("");
   const [isRestartingTask, setIsRestartingTask] = useState(false);
+  const [overridePrompt, setOverridePrompt] = useState(false);
   const task = useQuery(api.tasks.getById, {
     teamSlugOrId,
     id: taskId,
@@ -172,7 +175,11 @@ function RunDiffPage() {
     }
 
     const followUp = followUpText.trim();
-    if (!followUp) {
+    if (!followUp && overridePrompt) {
+      toast.error("Add new instructions when overriding the prompt.");
+      return;
+    }
+    if (!followUp && !task.text) {
       toast.error("Add follow-up context before restarting.");
       return;
     }
@@ -185,8 +192,12 @@ function RunDiffPage() {
     }
 
     const originalPrompt = task.text ?? "";
-    const combinedPrompt = originalPrompt
-      ? `${originalPrompt}\n\n${followUp}`
+    const combinedPrompt = overridePrompt
+      ? followUp
+      : originalPrompt
+      ? followUp
+        ? `${originalPrompt}\n\n${followUp}`
+        : originalPrompt
       : followUp;
 
     const projectFullNameForSocket =
@@ -261,6 +272,7 @@ function RunDiffPage() {
     addTaskToExpand,
     createTask,
     followUpText,
+    overridePrompt,
     socket,
     task,
     teamSlugOrId,
@@ -278,7 +290,10 @@ function RunDiffPage() {
 
   const trimmedFollowUp = followUpText.trim();
   const isRestartDisabled =
-    isRestartingTask || !trimmedFollowUp || !socket || !task;
+    isRestartingTask ||
+    (overridePrompt ? !trimmedFollowUp : !trimmedFollowUp && !task?.text) ||
+    !socket ||
+    !task;
   const isMac =
     typeof navigator !== "undefined" &&
     navigator.userAgent.toUpperCase().includes("MAC");
@@ -292,11 +307,14 @@ function RunDiffPage() {
     if (!socket) {
       return "Socket not connected";
     }
-    if (!trimmedFollowUp) {
+    if (overridePrompt && !trimmedFollowUp) {
+      return "Add new instructions";
+    }
+    if (!trimmedFollowUp && !task?.text) {
       return "Add follow-up context";
     }
     return undefined;
-  }, [isRestartingTask, socket, task, trimmedFollowUp]);
+  }, [isRestartingTask, overridePrompt, socket, task, trimmedFollowUp]);
 
   const handleFollowUpKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -373,28 +391,56 @@ function RunDiffPage() {
                 </div>
               )}
             </Suspense>
-            <div className="sticky bottom-0 z-10 border-t border-transparent px-4 pb-3 pt-2">
+            <div className="sticky bottom-0 z-10 border-t border-transparent px-3.5 pb-3 pt-2">
               <form
                 onSubmit={handleFormSubmit}
                 className="mx-auto w-full max-w-2xl overflow-hidden rounded-2xl border border-neutral-500/15 bg-white dark:border-neutral-500/15 dark:bg-neutral-950"
               >
-                <div className="px-4 pt-4 sm:px-5">
+                <div className="px-4 pt-3.5 sm:px-5">
                   <TextareaAutosize
                     value={followUpText}
                     onChange={(event) => setFollowUpText(event.target.value)}
                     onKeyDown={handleFollowUpKeyDown}
                     minRows={1}
                     maxRows={2}
-                    placeholder="Add updated instructions or context..."
+                    placeholder={overridePrompt ? "Enter new task instructions..." : "Add updated instructions or context..."}
                     className="w-full max-h-24 resize-none overflow-y-auto border-none bg-transparent p-0 text-[15px] leading-relaxed text-neutral-900 outline-none placeholder:text-neutral-400 focus:outline-none dark:text-neutral-100 dark:placeholder:text-neutral-500"
                   />
                 </div>
-                <div className="flex items-center justify-between gap-2 pl-5 pb-3 pt-2 sm:pl-5 sm:pr-3">
-                  <span className="text-xs leading-tight text-neutral-500 dark:text-neutral-400">
-                    {task?.text
-                      ? "Original prompt is included automatically."
-                      : "This follow-up becomes the new task prompt."}
-                  </span>
+                <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-2 sm:px-5">
+                  <div className="flex items-center gap-2.5">
+                    <Switch
+                      isSelected={overridePrompt}
+                      onValueChange={(value) => {
+                        setOverridePrompt(value);
+                        if (value && task?.text && !followUpText) {
+                          setFollowUpText(task.text);
+                        } else if (!value && followUpText === task?.text) {
+                          setFollowUpText("");
+                        }
+                      }}
+                      size="sm"
+                      aria-label="Override prompt"
+                      thumbIcon={({ className }) => (
+                        <FileText className={cn(className, "size-3")} />
+                      )}
+                      classNames={{
+                        wrapper: cn(
+                          "group-data-[selected=true]:bg-neutral-600",
+                          "group-data-[selected=true]:border-neutral-600",
+                          "dark:group-data-[selected=true]:bg-neutral-500",
+                          "dark:group-data-[selected=true]:border-neutral-500"
+                        ),
+                      }}
+                    />
+                    <span className="text-xs leading-tight text-neutral-500 dark:text-neutral-400">
+                      {overridePrompt
+                        ? "Override initial prompt"
+                        : task?.text
+                        ? "Original prompt included"
+                        : "New task prompt"}
+                    </span>
+                  </div>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <span tabIndex={0} className="inline-flex">
