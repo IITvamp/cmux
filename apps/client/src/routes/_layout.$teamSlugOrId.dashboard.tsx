@@ -2,7 +2,10 @@ import {
   DashboardInput,
   type EditorApi,
 } from "@/components/dashboard/DashboardInput";
-import { DashboardInputControls } from "@/components/dashboard/DashboardInputControls";
+import {
+  DashboardInputControls,
+  type AgentInstanceMap,
+} from "@/components/dashboard/DashboardInputControls";
 import { DashboardInputFooter } from "@/components/dashboard/DashboardInputFooter";
 import { DashboardStartTaskButton } from "@/components/dashboard/DashboardStartTaskButton";
 import { TaskList } from "@/components/dashboard/TaskList";
@@ -51,6 +54,20 @@ function DashboardComponent() {
     const stored = localStorage.getItem("selectedAgents");
     return stored ? JSON.parse(stored) : ["claude/opus-4.1", "codex/gpt-5"];
   });
+  const [agentInstances, setAgentInstances] = useState<AgentInstanceMap>(
+    () => {
+      const stored = localStorage.getItem("agentInstances");
+      if (stored) {
+        return new Map(JSON.parse(stored));
+      }
+      // Initialize with 1 instance for each default agent
+      const defaultInstances = new Map();
+      ["claude/opus-4.1", "codex/gpt-5"].forEach((agent) => {
+        defaultInstances.set(agent, 1);
+      });
+      return defaultInstances;
+    }
+  );
   const [taskDescription, setTaskDescription] = useState<string>("");
   const [isCloudMode, setIsCloudMode] = useState<boolean>(() => {
     const stored = localStorage.getItem("isCloudMode");
@@ -123,7 +140,37 @@ function DashboardComponent() {
   const handleAgentChange = useCallback((newAgents: string[]) => {
     setSelectedAgents(newAgents);
     localStorage.setItem("selectedAgents", JSON.stringify(newAgents));
-  }, []);
+    // Initialize instances for new agents
+    const newInstances = new Map(agentInstances);
+    newAgents.forEach((agent) => {
+      if (!newInstances.has(agent)) {
+        newInstances.set(agent, 1);
+      }
+    });
+    // Remove instances for deselected agents
+    Array.from(newInstances.keys()).forEach((agent) => {
+      if (!newAgents.includes(agent)) {
+        newInstances.delete(agent);
+      }
+    });
+    setAgentInstances(newInstances);
+    localStorage.setItem(
+      "agentInstances",
+      JSON.stringify(Array.from(newInstances.entries()))
+    );
+  }, [agentInstances]);
+
+  // Callback for agent instances changes
+  const handleAgentInstancesChange = useCallback(
+    (newInstances: AgentInstanceMap) => {
+      setAgentInstances(newInstances);
+      localStorage.setItem(
+        "agentInstances",
+        JSON.stringify(Array.from(newInstances.entries()))
+      );
+    },
+    []
+  );
 
   // Fetch repos from Convex
   const reposByOrgQuery = useQuery({
@@ -319,6 +366,15 @@ function DashboardComponent() {
         : `https://github.com/${projectFullName}.git`;
 
       // For socket.io, we need to send the content text (which includes image references) and the images
+      // Build the agent list with instances
+      const agentsToSpawn: string[] = [];
+      selectedAgents.forEach((agent) => {
+        const count = agentInstances.get(agent) || 1;
+        for (let i = 0; i < count; i++) {
+          agentsToSpawn.push(agent);
+        }
+      });
+
       socket.emit(
         "start-task",
         {
@@ -328,7 +384,7 @@ function DashboardComponent() {
           projectFullName,
           taskId,
           selectedAgents:
-            selectedAgents.length > 0 ? selectedAgents : undefined,
+            agentsToSpawn.length > 0 ? agentsToSpawn : undefined,
           isCloudMode: envSelected ? true : isCloudMode,
           ...(environmentId ? { environmentId } : {}),
           images: images.length > 0 ? images : undefined,
@@ -357,6 +413,7 @@ function DashboardComponent() {
     teamSlugOrId,
     addTaskToExpand,
     selectedAgents,
+    agentInstances,
     isCloudMode,
     isEnvSelected,
     dockerReady,
@@ -655,6 +712,8 @@ function DashboardComponent() {
               onBranchChange={handleBranchChange}
               selectedAgents={selectedAgents}
               onAgentChange={handleAgentChange}
+              agentInstances={agentInstances}
+              onAgentInstancesChange={handleAgentInstancesChange}
               isCloudMode={isCloudMode}
               onCloudModeToggle={handleCloudModeToggle}
               isLoadingProjects={reposByOrgQuery.isLoading}
@@ -690,6 +749,8 @@ type DashboardMainCardProps = {
   onBranchChange: (newBranches: string[]) => void;
   selectedAgents: string[];
   onAgentChange: (newAgents: string[]) => void;
+  agentInstances: AgentInstanceMap;
+  onAgentInstancesChange: (instances: AgentInstanceMap) => void;
   isCloudMode: boolean;
   onCloudModeToggle: () => void;
   isLoadingProjects: boolean;
@@ -716,6 +777,8 @@ function DashboardMainCard({
   onBranchChange,
   selectedAgents,
   onAgentChange,
+  agentInstances,
+  onAgentInstancesChange,
   isCloudMode,
   onCloudModeToggle,
   isLoadingProjects,
@@ -749,6 +812,8 @@ function DashboardMainCard({
           onBranchChange={onBranchChange}
           selectedAgents={selectedAgents}
           onAgentChange={onAgentChange}
+          agentInstances={agentInstances}
+          onAgentInstancesChange={onAgentInstancesChange}
           isCloudMode={isCloudMode}
           onCloudModeToggle={onCloudModeToggle}
           isLoadingProjects={isLoadingProjects}

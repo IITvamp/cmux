@@ -92,9 +92,18 @@ interface TaskTreeProps {
 }
 
 // Extract the display text logic to avoid re-creating it on every render
-function getRunDisplayText(run: TaskRunWithChildren): string {
+function getRunDisplayText(run: TaskRunWithChildren, allRuns: TaskRunWithChildren[]): string {
   const fromRun = run.agentName?.trim();
   if (fromRun && fromRun.length > 0) {
+    // Count instances of the same agent in the same parent context
+    const sameAgentRuns = allRuns.filter(r => r.agentName === run.agentName);
+    if (sameAgentRuns.length > 1) {
+      // Find the index of this run among runs with the same agent name
+      const instanceIndex = sameAgentRuns.findIndex(r => r._id === run._id);
+      if (instanceIndex !== -1) {
+        return `${fromRun} (${instanceIndex + 1})`;
+      }
+    }
     return fromRun;
   }
 
@@ -350,6 +359,7 @@ function TaskTreeInner({
                 level={level + 1}
                 taskId={task._id}
                 teamSlugOrId={teamSlugOrId}
+                allRuns={task.runs}
               />
             ))}
           </div>
@@ -364,6 +374,7 @@ interface TaskRunTreeProps {
   level: number;
   taskId: Id<"tasks">;
   teamSlugOrId: string;
+  allRuns?: TaskRunWithChildren[];
 }
 
 function TaskRunTreeInner({
@@ -371,6 +382,7 @@ function TaskRunTreeInner({
   level,
   taskId,
   teamSlugOrId,
+  allRuns = [],
 }: TaskRunTreeProps) {
   const { expandedRuns, setRunExpanded } = useTaskRunExpansionContext();
   const defaultExpanded = Boolean(run.isCrowned);
@@ -378,7 +390,7 @@ function TaskRunTreeInner({
   const hasChildren = run.children.length > 0;
 
   // Memoize the display text to avoid recalculating on every render
-  const displayText = useMemo(() => getRunDisplayText(run), [run]);
+  const displayText = useMemo(() => getRunDisplayText(run, allRuns), [run, allRuns]);
 
   // Memoize the toggle handler
   const handleToggle = useCallback(
@@ -754,6 +766,7 @@ function TaskRunDetails({
               level={level + 1}
               taskId={taskId}
               teamSlugOrId={teamSlugOrId}
+              allRuns={run.children}
             />
           ))}
         </div>

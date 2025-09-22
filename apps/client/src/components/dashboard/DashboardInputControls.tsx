@@ -28,6 +28,9 @@ import {
   useState,
 } from "react";
 
+// Track agent instances with a map from agent name to instance count
+export type AgentInstanceMap = Map<string, number>;
+
 interface DashboardInputControlsProps {
   projectOptions: SelectOption[];
   selectedProject: string[];
@@ -37,6 +40,8 @@ interface DashboardInputControlsProps {
   onBranchChange: (branches: string[]) => void;
   selectedAgents: string[];
   onAgentChange: (agents: string[]) => void;
+  agentInstances: AgentInstanceMap;
+  onAgentInstancesChange: (instances: AgentInstanceMap) => void;
   isCloudMode: boolean;
   onCloudModeToggle: () => void;
   isLoadingProjects: boolean;
@@ -56,6 +61,8 @@ export const DashboardInputControls = memo(function DashboardInputControls({
   onBranchChange,
   selectedAgents,
   onAgentChange,
+  agentInstances,
+  onAgentInstancesChange,
   isCloudMode,
   onCloudModeToggle,
   isLoadingProjects,
@@ -247,8 +254,38 @@ export const DashboardInputControls = memo(function DashboardInputControls({
   const handleAgentRemove = useCallback(
     (agent: string) => {
       onAgentChange(selectedAgents.filter((value) => value !== agent));
+      // Remove from instances map
+      const newInstances = new Map(agentInstances);
+      newInstances.delete(agent);
+      onAgentInstancesChange(newInstances);
     },
-    [onAgentChange, selectedAgents]
+    [onAgentChange, selectedAgents, agentInstances, onAgentInstancesChange]
+  );
+
+  const handleAgentAdd = useCallback(
+    (agent: string) => {
+      const currentCount = agentInstances.get(agent) || 0;
+      const newInstances = new Map(agentInstances);
+      newInstances.set(agent, currentCount + 1);
+      onAgentInstancesChange(newInstances);
+      // If agent wasn't selected, add it
+      if (!selectedAgents.includes(agent)) {
+        onAgentChange([...selectedAgents, agent]);
+      }
+    },
+    [agentInstances, onAgentInstancesChange, selectedAgents, onAgentChange]
+  );
+
+  const handleAgentDecrement = useCallback(
+    (agent: string) => {
+      const currentCount = agentInstances.get(agent) || 1;
+      if (currentCount > 1) {
+        const newInstances = new Map(agentInstances);
+        newInstances.set(agent, currentCount - 1);
+        onAgentInstancesChange(newInstances);
+      }
+    },
+    [agentInstances, onAgentInstancesChange]
   );
 
   const agentSelectionFooter = selectedAgents.length ? (
@@ -259,10 +296,11 @@ export const DashboardInputControls = memo(function DashboardInputControls({
             {sortedSelectedAgents.map((agent) => {
               const option = agentOptionsByValue.get(agent);
               const label = option?.displayLabel ?? option?.label ?? agent;
+              const instanceCount = agentInstances.get(agent) || 1;
               return (
                 <div
                   key={agent}
-                  className="inline-flex items-center gap-1 rounded-full bg-neutral-200 dark:bg-neutral-800/80 pl-1.5 pr-2.5 py-1 text-[11px] text-neutral-700 dark:text-neutral-200 transition-colors"
+                  className="inline-flex items-center gap-1 rounded-full bg-neutral-200 dark:bg-neutral-800/80 pl-1.5 pr-1.5 py-1 text-[11px] text-neutral-700 dark:text-neutral-200 transition-colors"
                 >
                   <button
                     type="button"
@@ -281,9 +319,42 @@ export const DashboardInputControls = memo(function DashboardInputControls({
                       {option.icon}
                     </span>
                   ) : null}
-                  <span className="max-w-[118px] truncate text-left select-none">
+                  <span className="max-w-[100px] truncate text-left select-none">
                     {label}
                   </span>
+                  {instanceCount > 1 && (
+                    <span className="text-[10px] font-medium text-neutral-600 dark:text-neutral-300 mx-0.5">
+                      ×{instanceCount}
+                    </span>
+                  )}
+                  <div className="inline-flex items-center gap-0.5 ml-0.5">
+                    {instanceCount > 1 && (
+                      <button
+                        type="button"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          handleAgentDecrement(agent);
+                        }}
+                        className="inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors hover:bg-neutral-300 dark:hover:bg-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60 text-neutral-600 dark:text-neutral-300"
+                      >
+                        <span className="text-[12px] leading-none">−</span>
+                        <span className="sr-only">Decrease {label} instances</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        handleAgentAdd(agent);
+                      }}
+                      className="inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors hover:bg-neutral-300 dark:hover:bg-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60 text-neutral-600 dark:text-neutral-300"
+                    >
+                      <span className="text-[12px] leading-none">+</span>
+                      <span className="sr-only">Add {label} instance</span>
+                    </button>
+                  </div>
                 </div>
               );
             })}
