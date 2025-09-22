@@ -122,21 +122,33 @@ export function GitDiffViewer({
   const editorRefs = useRef<Record<string, editor.IStandaloneDiffEditor>>({});
 
   // Group diffs by file
-  const fileGroups: FileGroup[] = useMemo(
-    () =>
-      (diffs || []).map((diff) => ({
-        filePath: diff.filePath,
-        oldPath: diff.oldPath,
-        status: diff.status,
-        additions: diff.additions,
-        deletions: diff.deletions,
-        oldContent: diff.oldContent || "",
-        newContent: diff.newContent || "",
-        patch: diff.patch,
-        isBinary: diff.isBinary,
-      })),
-    [diffs]
-  );
+  const fileGroups: FileGroup[] = useMemo(() => {
+    const groups = (diffs || []).map((diff, idx) => ({
+      filePath: diff.filePath,
+      oldPath: diff.oldPath,
+      status: diff.status,
+      additions: diff.additions,
+      deletions: diff.deletions,
+      oldContent: diff.oldContent || "",
+      newContent: diff.newContent || "",
+      patch: diff.patch,
+      isBinary: diff.isBinary,
+      // carry original index to guarantee stable ordering on ties
+      __i: idx,
+    }));
+
+    // Stable, deterministic sort by file path (case-insensitive, numeric aware)
+    groups.sort((a, b) => {
+      const cmp = a.filePath.localeCompare(b.filePath, undefined, {
+        sensitivity: "base",
+        numeric: true,
+      });
+      return cmp !== 0 ? cmp : a.__i - b.__i;
+    });
+
+    // Drop helper index before exposing to UI
+    return groups.map(({ __i: _i, ...rest }) => rest);
+  }, [diffs]);
 
   // Maintain expansion state across refreshes:
   // - On first load: expand all
