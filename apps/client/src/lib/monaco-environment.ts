@@ -1,11 +1,12 @@
-import loader from "@monaco-editor/loader";
+import * as monaco from "monaco-editor";
+
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import cssWorker from "monaco-editor/esm/vs/language/css/css.worker?worker";
 import htmlWorker from "monaco-editor/esm/vs/language/html/html.worker?worker";
 import jsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker";
 import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker";
 
-import * as monaco from "monaco-editor";
+import { loader } from "@monaco-editor/react";
 
 self.MonacoEnvironment = {
   getWorker(_, label) {
@@ -25,9 +26,13 @@ self.MonacoEnvironment = {
   },
 };
 
+console.log("set up loader!");
+console.log("monaco", monaco);
 loader.config({
   monaco,
 });
 export const loaderInitPromise = new Promise<typeof monaco>((resolve) => {
+  console.log("loader initting...");
   loader.init().then(resolve);
+  console.log("loader initted!");
 });
