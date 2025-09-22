@@ -5,7 +5,7 @@ import { isElectron } from "@/lib/electron";
 import { type Doc } from "@cmux/convex/dataModel";
 import type { LinkProps } from "@tanstack/react-router";
 import { Link } from "@tanstack/react-router";
-import { Home, Plus, Server } from "lucide-react";
+import { Home, Plus, Server, Settings as SettingsIcon } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -51,6 +51,12 @@ const navItems: SidebarNavItem[] = [
     },
     exact: true,
     icon: Server,
+  },
+  {
+    label: "Settings",
+    to: "/$teamSlugOrId/settings",
+    exact: true,
+    icon: SettingsIcon,
   },
 ];
 
