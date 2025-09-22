@@ -40,7 +40,7 @@ export function SidebarListItem({
   const toggleVisible = toggle?.visible ?? Boolean(toggle);
   const effectivePaddingLeft = Math.max(
     0,
-    toggleVisible ? paddingLeft - 4 : paddingLeft
+    toggle ? paddingLeft - 4 : paddingLeft
   );
 
   return (
@@ -56,7 +56,7 @@ export function SidebarListItem({
         style={{ paddingLeft: `${effectivePaddingLeft}px` }}
       >
         {toggle ? (
-          <div className="pr-1 -ml-0.5">
+          <div className="pr-1 -ml-0.5 w-5 h-4 flex-shrink-0">
             <SidebarToggleButton
               onClick={(event) => {
                 event.preventDefault();
@@ -65,7 +65,7 @@ export function SidebarListItem({
               }}
               isExpanded={toggle.expanded}
               isVisible={toggleVisible}
-              className={clsx("size-4", toggle.className)}
+              className={toggle.className}
               iconClassName={toggle.iconClassName}
             />
           </div>

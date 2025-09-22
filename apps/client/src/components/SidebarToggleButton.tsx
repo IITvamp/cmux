@@ -21,7 +21,7 @@ export function SidebarToggleButton({
     <button
       onClick={onClick}
       className={clsx(
-        "grid place-content-center rounded cursor-default transition-colors",
+        "grid place-content-center rounded cursor-default transition-colors w-5 h-4",
         !isVisible && "invisible",
         className
       )}
