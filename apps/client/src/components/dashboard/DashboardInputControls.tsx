@@ -271,7 +271,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
                       event.stopPropagation();
                       handleAgentRemove(agent);
                     }}
-                    className="inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors hover:bg-neutral-300 dark:hover:bg-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60"
+                    className="inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors hover:bg-neutral-300 dark:hover:bg-neutral-700 outline-none focus:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
                   >
                     <X className="h-3 w-3" aria-hidden="true" />
                     <span className="sr-only">Remove {label}</span>
@@ -487,7 +487,8 @@ export const DashboardInputControls = memo(function DashboardInputControls({
             "border border-neutral-200 dark:border-neutral-500/15",
             "text-neutral-600 dark:text-neutral-400",
             "hover:bg-neutral-200 dark:hover:bg-neutral-600",
-            "transition-colors"
+            "transition-colors",
+            "outline-none focus:outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
           )}
           onClick={handleImageClick}
           title="Upload image"
@@ -502,7 +503,8 @@ export const DashboardInputControls = memo(function DashboardInputControls({
             "border border-neutral-200 dark:border-neutral-500/15",
             "text-neutral-600 dark:text-neutral-400",
             "hover:bg-neutral-200 dark:hover:bg-neutral-600",
-            "transition-colors"
+            "transition-colors",
+            "outline-none focus:outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]"
           )}
         >
           <Mic className="w-4 h-4" />
