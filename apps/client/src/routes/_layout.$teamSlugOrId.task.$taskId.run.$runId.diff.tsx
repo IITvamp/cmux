@@ -22,7 +22,7 @@ import { convexQuery } from "@convex-dev/react-query";
 import { Switch } from "@heroui/react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
-import { Command, FileText } from "lucide-react";
+import { Command } from "lucide-react";
 import {
   Suspense,
   useCallback,
@@ -381,7 +381,8 @@ function RunDiffPage() {
   const [primaryRepo, ...additionalRepos] = repoFullNames;
   const baseRef = normalizeGitRef(task?.baseBranch || "main");
   const headRef = normalizeGitRef(selectedRun.newBranch);
-  const hasDiffSources = Boolean(primaryRepo) && Boolean(baseRef) && Boolean(headRef);
+  const hasDiffSources =
+    Boolean(primaryRepo) && Boolean(baseRef) && Boolean(headRef);
   const shouldPrefixDiffs = repoFullNames.length > 1;
 
   return (
@@ -489,9 +490,6 @@ function RunDiffPage() {
                       }}
                       size="sm"
                       aria-label="Override prompt"
-                      thumbIcon={({ className }) => (
-                        <FileText className={cn(className, "size-3")} />
-                      )}
                       classNames={{
                         wrapper: cn(
                           "group-data-[selected=true]:bg-neutral-600",
