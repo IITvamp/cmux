@@ -342,6 +342,12 @@ if [[ -d "$DIST_DIR" ]]; then
     echo "No .dmg found under $DIST_DIR" >&2
   fi
 
+  if [[ -f "latest-mac.yml" ]]; then
+    echo "Renaming update manifest to latest-x64-mac.yml"
+    rm -f "latest-x64-mac.yml"
+    mv "latest-mac.yml" "latest-x64-mac.yml"
+  fi
+
   popd >/dev/null
 else
   echo "Distribution directory not found: $DIST_DIR" >&2

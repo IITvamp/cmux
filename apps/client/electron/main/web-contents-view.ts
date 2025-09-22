@@ -574,14 +574,12 @@ export function registerWebContentsViewHandlers({
         }
 
         const finalUrl = options.url ?? "about:blank";
-        void view.webContents
-          .loadURL(finalUrl)
-          .catch((error) =>
-            logger.warn("WebContentsView initial load failed", {
-              url: finalUrl,
-              error,
-            })
-          );
+        void view.webContents.loadURL(finalUrl).catch((error) =>
+          logger.warn("WebContentsView initial load failed", {
+            url: finalUrl,
+            error,
+          })
+        );
 
         const id = nextViewId++;
         const entry: Entry = {
@@ -675,6 +673,7 @@ export function registerWebContentsViewHandlers({
         void entry.view.webContents.loadURL(url);
         return { ok: true };
       } catch (error) {
+        logger.warn("Failed to load URL", { id, url, error });
         return { ok: false, error: String(error) };
       }
     }
@@ -689,10 +688,10 @@ export function registerWebContentsViewHandlers({
     }
     entry.ownerSender = event.sender;
     try {
-      if (!entry.view.webContents.canGoBack()) {
+      if (!entry.view.webContents.navigationHistory.canGoBack()) {
         return { ok: false };
       }
-      entry.view.webContents.goBack();
+      entry.view.webContents.navigationHistory.goBack();
       sendState(entry, logger, "go-back-command");
       return { ok: true };
     } catch (error) {
@@ -710,10 +709,10 @@ export function registerWebContentsViewHandlers({
     }
     entry.ownerSender = event.sender;
     try {
-      if (!entry.view.webContents.canGoForward()) {
+      if (!entry.view.webContents.navigationHistory.canGoForward()) {
         return { ok: false };
       }
-      entry.view.webContents.goForward();
+      entry.view.webContents.navigationHistory.goForward();
       sendState(entry, logger, "go-forward-command");
       return { ok: true };
     } catch (error) {
