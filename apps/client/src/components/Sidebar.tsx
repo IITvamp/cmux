@@ -224,7 +224,7 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
             >
               Pull requests
             </SidebarSectionLink>
-            <div className="ml-2 pr-1">
+            <div className="ml-2 pr-0.5">
               <SidebarPullRequestList teamSlugOrId={teamSlugOrId} />
             </div>
           </div>
