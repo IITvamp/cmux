@@ -312,7 +312,7 @@ export async function spawnAgent(
 
     // Build the tmux session command that will be sent via socket.io
     const tmuxSessionName = sanitizeTmuxSessionName(
-      `${agent.name}-${taskRunId.slice(-8)}`
+      `${agent.name}-${taskRunId}`
     );
 
     serverLogger.info(

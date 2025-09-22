@@ -14,11 +14,12 @@ import {
 import { Skeleton } from "@heroui/react";
 import * as Popover from "@radix-ui/react-popover";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import clsx from "clsx";
+import { clsx } from "clsx";
 import {
   AlertTriangle,
-  Check,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   Loader2,
   OctagonAlert,
 } from "lucide-react";
@@ -62,6 +63,8 @@ export interface SearchableSelectProps {
   leftIcon?: ReactNode;
   // Optional footer rendered below the scroll container
   footer?: ReactNode;
+  // Optional maximum per-option count when duplicates are allowed
+  maxCountPerOption?: number;
 }
 
 interface WarningIndicatorProps {
@@ -116,15 +119,23 @@ function normalizeOptions(options: SelectOption[]): SelectOptionObject[] {
 interface OptionItemProps {
   opt: SelectOptionObject;
   isSelected: boolean;
+  count: number;
+  maxCount: number;
   onSelectValue: (val: string) => void;
   onWarningAction?: () => void;
+  onIncrement?: () => void;
+  onDecrement?: () => void;
 }
 
 function OptionItem({
   opt,
-  isSelected,
+  isSelected: _isSelected,
+  count,
+  maxCount,
   onSelectValue,
   onWarningAction,
+  onIncrement,
+  onDecrement,
 }: OptionItemProps) {
   if (opt.heading) {
     return (
@@ -147,12 +158,11 @@ function OptionItem({
   return (
     <CommandItem
       value={`${opt.label} ${opt.value}`}
-      className={clsx(
-        "flex items-center justify-between gap-2 text-[13.5px] py-1.5 h-[32px]",
+      className={`flex items-center justify-between gap-2 text-[13.5px] py-1.5 h-[32px] ${
         opt.isUnavailable
           ? "cursor-not-allowed text-neutral-500 dark:text-neutral-500"
-          : null
-      )}
+          : ""
+      }`}
       onSelect={handleSelect}
     >
       <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -171,14 +181,45 @@ function OptionItem({
           <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
         ) : null}
       </div>
-      <Check
-        className={clsx(
-          "h-4 w-4 shrink-0 transition-opacity",
-          isSelected
-            ? "opacity-100 text-neutral-700 dark:text-neutral-300"
-            : "opacity-0"
-        )}
-      />
+      <div className="flex items-center">
+        {count > 0 ? (
+          <div className="flex items-center">
+            <button
+              type="button"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                onDecrement?.();
+              }}
+              disabled={Boolean(opt.isUnavailable || count <= 0)}
+              className="inline-flex h-5 w-5 items-center justify-center rounded-sm text-neutral-600 transition-colors hover:text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-neutral-300 dark:hover:text-neutral-50 dark:focus-visible:ring-neutral-500/40"
+            >
+              <span className="sr-only">Decrease {opt.label}</span>
+              <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+            <span className="inline-flex h-5 min-w-[1rem] items-center justify-center text-sm font-semibold text-neutral-700 dark:text-neutral-200">
+              {count}
+            </span>
+            <button
+              type="button"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (Number.isFinite(maxCount) && count >= maxCount) return;
+                onIncrement?.();
+              }}
+              disabled={Boolean(
+                opt.isUnavailable ||
+                  (Number.isFinite(maxCount) && count >= maxCount)
+              )}
+              className="inline-flex h-5 w-5 items-center justify-center rounded-sm text-neutral-600 transition-colors hover:text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-neutral-300 dark:hover:text-neutral-50 dark:focus-visible:ring-neutral-500/40"
+            >
+              <span className="sr-only">Increase {opt.label}</span>
+              <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+            </button>
+          </div>
+        ) : null}
+      </div>
     </CommandItem>
   );
 }
@@ -197,6 +238,7 @@ export function SearchableSelect({
   countLabel = "selected",
   leftIcon,
   footer,
+  maxCountPerOption,
 }: SearchableSelectProps) {
   const normOptions = useMemo(() => normalizeOptions(options), [options]);
   const valueToOption = useMemo(
@@ -209,7 +251,13 @@ export function SearchableSelect({
   const [_recalcTick, setRecalcTick] = useState(0);
   // Popover width is fixed; no need to track trigger width
 
-  const selectedSet = useMemo(() => new Set(value), [value]);
+  const countByValue = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const val of value) {
+      map.set(val, (map.get(val) ?? 0) + 1);
+    }
+    return map;
+  }, [value]);
   const selectedLabels = useMemo(() => {
     const byValue = new Map(
       normOptions.map((o) => [o.value, o.label] as const)
@@ -290,9 +338,7 @@ export function SearchableSelect({
             {uniqueIcons.slice(0, maxIcons).map((ico, i) => (
               <span
                 key={i}
-                className={clsx(
-                  "inline-flex h-4 w-4 items-center justify-center overflow-hidden"
-                )}
+                className="inline-flex h-4 w-4 items-center justify-center overflow-hidden"
               >
                 {ico}
               </span>
@@ -374,6 +420,20 @@ export function SearchableSelect({
     }
   }, [open, rowVirtualizer]);
 
+  const maxPerOption = maxCountPerOption ?? Infinity;
+
+  const updateValueCount = (val: string, nextCount: number) => {
+    const normalized = Number.isFinite(nextCount)
+      ? Math.round(nextCount)
+      : 0;
+    const clamped = Math.max(0, Math.min(normalized, maxPerOption));
+    const current = countByValue.get(val) ?? 0;
+    if (clamped === current) return;
+    const withoutVal = value.filter((existing) => existing !== val);
+    const additions = Array.from({ length: clamped }, () => val);
+    onChange([...withoutVal, ...additions]);
+  };
+
   const onSelectValue = (val: string): void => {
     const selectedOption = valueToOption.get(val);
     if (selectedOption?.isUnavailable) {
@@ -386,32 +446,26 @@ export function SearchableSelect({
       setOpen(false);
       return;
     }
-    // Multi-select: always append another instance to allow duplicates
-    onChange([...value, val]);
+    const currentCount = countByValue.get(val) ?? 0;
+    if (currentCount === 0) {
+      if (maxPerOption <= 0) {
+        return;
+      }
+      updateValueCount(val, 1);
+    } else {
+      updateValueCount(val, 0);
+    }
   };
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
-      <div className={clsx("inline-flex items-center")}>
+      <div className="inline-flex items-center">
         <Popover.Trigger asChild>
           <button
             ref={triggerRef}
             type="button"
             disabled={disabled}
-            className={clsx(
-              "relative inline-flex h-7 items-center rounded-md border",
-              "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950",
-              // Dim background when popover is open via aria-expanded
-              "aria-expanded:bg-neutral-50 dark:aria-expanded:bg-neutral-900",
-              // Smooth color change on hover/open
-              "transition-colors",
-              "px-2.5 pr-6 text-sm text-neutral-900 dark:text-neutral-100",
-              // Focus-visible ring for accessibility
-              "outline-none focus:outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
-              "disabled:cursor-not-allowed disabled:opacity-60",
-              "w-auto",
-              className
-            )}
+            className={`relative inline-flex h-7 items-center rounded-md border border-neutral-200 bg-white px-2.5 pr-6 text-sm text-neutral-900 transition-colors outline-none focus:outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 aria-expanded:bg-neutral-50 dark:aria-expanded:bg-neutral-900 w-auto ${className ?? ""}`}
           >
             <span className="flex-1 min-w-0 text-left text-[13.5px] inline-flex items-center gap-1.5 pr-1">
               {leftIcon ? (
@@ -431,12 +485,7 @@ export function SearchableSelect({
           align="start"
           sideOffset={2}
           collisionPadding={{ top: 12, bottom: 12 }}
-          className={clsx(
-            "z-[var(--z-modal)] rounded-md border overflow-hidden",
-            "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950",
-            // Fade out on close; open remains instant
-            "p-0 drop-shadow-xs outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0"
-          )}
+          className="z-[var(--z-modal)] rounded-md border overflow-hidden border-neutral-200 bg-white p-0 drop-shadow-xs outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 dark:border-neutral-800 dark:bg-neutral-950"
           style={{ width: 300 }}
         >
           <Command loop shouldFilter={false} className="text-[13.5px]">
@@ -473,24 +522,33 @@ export function SearchableSelect({
                     {(() => {
                       const vItems = rowVirtualizer.getVirtualItems();
                       if (vItems.length === 0 && filteredOptions.length > 0) {
-                        const fallback = filteredOptions.slice(0, 12);
-                        return (
-                          <div>
-                            {fallback.map((opt) => {
-                              const isSelected = selectedSet.has(opt.value);
-                              return (
-                                <OptionItem
-                                  key={`fallback-${opt.value}`}
-                                  opt={opt}
-                                  isSelected={isSelected}
-                                  onSelectValue={onSelectValue}
-                                  onWarningAction={() => setOpen(false)}
-                                />
-                              );
-                            })}
-                          </div>
-                        );
-                      }
+                    const fallback = filteredOptions.slice(0, 12);
+                    return (
+                      <div>
+                        {fallback.map((opt) => {
+                          const count = countByValue.get(opt.value) ?? 0;
+                          const isSelected = count > 0;
+                          return (
+                            <OptionItem
+                              key={`fallback-${opt.value}`}
+                              opt={opt}
+                              isSelected={isSelected}
+                              count={count}
+                              maxCount={maxPerOption}
+                              onSelectValue={onSelectValue}
+                              onWarningAction={() => setOpen(false)}
+                              onIncrement={() =>
+                                updateValueCount(opt.value, count + 1)
+                              }
+                              onDecrement={() =>
+                                updateValueCount(opt.value, count - 1)
+                              }
+                            />
+                          );
+                        })}
+                      </div>
+                    );
+                  }
                       return (
                         <div
                           style={{
@@ -500,7 +558,8 @@ export function SearchableSelect({
                         >
                           {vItems.map((vr) => {
                             const opt = filteredOptions[vr.index]!;
-                            const isSelected = selectedSet.has(opt.value);
+                            const count = countByValue.get(opt.value) ?? 0;
+                            const isSelected = count > 0;
                             return (
                               <div
                                 key={opt.value}
@@ -514,12 +573,20 @@ export function SearchableSelect({
                                   transform: `translateY(${vr.start}px)`,
                                 }}
                               >
-                                <OptionItem
-                                  opt={opt}
-                                  isSelected={isSelected}
-                                  onSelectValue={onSelectValue}
-                                  onWarningAction={() => setOpen(false)}
-                                />
+                              <OptionItem
+                                opt={opt}
+                                isSelected={isSelected}
+                                count={count}
+                                maxCount={maxPerOption}
+                                onSelectValue={onSelectValue}
+                                onWarningAction={() => setOpen(false)}
+                                onIncrement={() =>
+                                  updateValueCount(opt.value, count + 1)
+                                }
+                                onDecrement={() =>
+                                  updateValueCount(opt.value, count - 1)
+                                }
+                              />
                               </div>
                             );
                           })}
