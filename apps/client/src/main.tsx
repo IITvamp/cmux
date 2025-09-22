@@ -1,5 +1,6 @@
 import { StrictMode } from "react";
 import ReactDOM from "react-dom/client";
+import { setupMonacoWorkers } from "./monaco-workers";
 import { App } from "./app";
 
 import "./antd-overrides.css";
@@ -16,6 +17,9 @@ if (typeof window !== "undefined") {
     console.error("[UnhandledRejection]", event.reason ?? "Unknown rejection");
   });
 }
+
+// Configure Monaco web workers (before any editors are created)
+setupMonacoWorkers();
 
 const rootElement = document.getElementById("root")!;
 if (!rootElement.innerHTML) {
