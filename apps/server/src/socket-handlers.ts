@@ -370,7 +370,19 @@ export function setupSocketHandlers(
     })();
 
     socket.on("start-task", async (data, callback) => {
-      const taskData = StartTaskSchema.parse(data);
+      const taskDataParseResult = StartTaskSchema.safeParse(data);
+      if (!taskDataParseResult.success) {
+        serverLogger.error(
+          "Task data failed schema validation:",
+          taskDataParseResult.error
+        );
+        callback({
+          taskId: data.taskId,
+          error: "Task data failed schema validation",
+        });
+        return;
+      }
+      const taskData = taskDataParseResult.data;
       serverLogger.info("starting task!", taskData);
       const taskId = taskData.taskId;
       try {

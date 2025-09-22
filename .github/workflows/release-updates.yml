@@ -1,8 +1,6 @@
 name: Build & Publish Electron Updates (GitHub Releases)
 
 on:
-  release:
-    types: [published]
   workflow_dispatch:
   push:
     branches:

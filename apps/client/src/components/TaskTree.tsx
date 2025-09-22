@@ -485,6 +485,11 @@ function TaskRunTreeInner({
     run.pullRequestUrl && run.pullRequestUrl !== "pending"
   );
   const shouldRenderPreviewLink = previewServices.length > 0;
+  const hasOpenWithActions = openWithActions.length > 0;
+  const hasPortActions = portActions.length > 0;
+  const canCopyBranch = Boolean(copyRunBranch);
+  const shouldShowCopyDivider = canCopyBranch && (hasOpenWithActions || hasPortActions);
+  const shouldShowOpenWithDivider = hasOpenWithActions && hasPortActions;
   const hasCollapsibleContent =
     hasChildren ||
     hasActiveVSCode ||
@@ -521,7 +526,21 @@ function TaskRunTreeInner({
         <ContextMenu.Portal>
           <ContextMenu.Positioner className="outline-none z-[var(--z-context-menu)]">
             <ContextMenu.Popup className="origin-[var(--transform-origin)] rounded-md bg-white dark:bg-neutral-800 py-1 text-neutral-900 dark:text-neutral-100 shadow-lg shadow-gray-200 outline-1 outline-neutral-200 transition-[opacity] data-[ending-style]:opacity-0 dark:shadow-none dark:-outline-offset-1 dark:outline-neutral-700">
-              {openWithActions.length > 0 ? (
+              {canCopyBranch ? (
+                <>
+                  <ContextMenu.Item
+                    className="flex items-center gap-2 cursor-default py-1.5 pr-8 pl-3 text-[13px] leading-5 outline-none select-none data-[highlighted]:relative data-[highlighted]:z-0 data-[highlighted]:text-white data-[highlighted]:before:absolute data-[highlighted]:before:inset-x-1 data-[highlighted]:before:inset-y-0 data-[highlighted]:before:z-[-1] data-[highlighted]:before:rounded-sm data-[highlighted]:before:bg-neutral-900 dark:data-[highlighted]:before:bg-neutral-700"
+                    onClick={copyRunBranch}
+                  >
+                    <GitBranch className="w-3.5 h-3.5" />
+                    Copy branch name
+                  </ContextMenu.Item>
+                  {shouldShowCopyDivider ? (
+                    <div className="my-1 h-px bg-neutral-200 dark:bg-neutral-700" />
+                  ) : null}
+                </>
+              ) : null}
+              {hasOpenWithActions ? (
                 <>
                   <div className="px-3 py-1 text-[11px] font-medium text-neutral-500 dark:text-neutral-400 select-none">
                     Open with
@@ -539,26 +558,12 @@ function TaskRunTreeInner({
                       </ContextMenu.Item>
                     );
                   })}
-                  {(copyRunBranch || portActions.length > 0) && (
+                  {shouldShowOpenWithDivider ? (
                     <div className="my-1 h-px bg-neutral-200 dark:bg-neutral-700" />
-                  )}
+                  ) : null}
                 </>
               ) : null}
-              {copyRunBranch ? (
-                <>
-                  <ContextMenu.Item
-                    className="flex items-center gap-2 cursor-default py-1.5 pr-8 pl-3 text-[13px] leading-5 outline-none select-none data-[highlighted]:relative data-[highlighted]:z-0 data-[highlighted]:text-white data-[highlighted]:before:absolute data-[highlighted]:before:inset-x-1 data-[highlighted]:before:inset-y-0 data-[highlighted]:before:z-[-1] data-[highlighted]:before:rounded-sm data-[highlighted]:before:bg-neutral-900 dark:data-[highlighted]:before:bg-neutral-700"
-                    onClick={copyRunBranch}
-                  >
-                    <GitBranch className="w-3.5 h-3.5" />
-                    Copy branch name
-                  </ContextMenu.Item>
-                  {portActions.length > 0 && (
-                    <div className="my-1 h-px bg-neutral-200 dark:bg-neutral-700" />
-                  )}
-                </>
-              ) : null}
-              {portActions.length > 0 ? (
+              {hasPortActions ? (
                 <>
                   <div className="px-3 py-1 text-[11px] font-medium text-neutral-500 dark:text-neutral-400 select-none">
                     Forwarded ports
