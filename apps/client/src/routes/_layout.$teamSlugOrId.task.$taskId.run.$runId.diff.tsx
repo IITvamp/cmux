@@ -2,15 +2,19 @@ import { FloatingPane } from "@/components/floating-pane";
 import { type GitDiffViewerProps } from "@/components/git-diff-viewer";
 import { RunDiffSection } from "@/components/RunDiffSection";
 import { TaskDetailHeader } from "@/components/task-detail-header";
+import { useTheme } from "@/components/theme/use-theme";
+import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useExpandTasks } from "@/contexts/expand-tasks/ExpandTasksContext";
 import { useSocket } from "@/contexts/socket/use-socket";
-import { useTheme } from "@/components/theme/use-theme";
-import { cn } from "@/lib/utils";
-import { Button } from "@/components/ui/button";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { Switch } from "@heroui/react";
 import { refWithOrigin } from "@/lib/refWithOrigin";
+import { cn } from "@/lib/utils";
 import { diffSmartQueryOptions } from "@/queries/diff-smart";
+import { Switch } from "@heroui/react";
 // Refs mode: no run-diffs prefetch
 import { api } from "@cmux/convex/api";
 import type { Doc } from "@cmux/convex/dataModel";
@@ -19,18 +23,18 @@ import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { convexQuery } from "@convex-dev/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
+import { Command } from "lucide-react";
 import {
   Suspense,
-  type FormEvent,
-  type KeyboardEvent,
   useCallback,
   useMemo,
   useState,
+  type FormEvent,
+  type KeyboardEvent,
 } from "react";
 import TextareaAutosize from "react-textarea-autosize";
 import { toast } from "sonner";
 import z from "zod";
-import { Command, FileText } from "lucide-react";
 
 const paramsSchema = z.object({
   taskId: typedZid("tasks"),
@@ -47,9 +51,7 @@ type TaskRunWithChildren = Doc<"taskRuns"> & {
   children: TaskRunWithChildren[];
 };
 
-const AVAILABLE_AGENT_NAMES = new Set(
-  AGENT_CONFIGS.map((agent) => agent.name)
-);
+const AVAILABLE_AGENT_NAMES = new Set(AGENT_CONFIGS.map((agent) => agent.name));
 
 function collectAgentNamesFromRuns(
   runs: TaskRunWithChildren[] | undefined
@@ -195,10 +197,10 @@ function RunDiffPage() {
     const combinedPrompt = overridePrompt
       ? followUp
       : originalPrompt
-      ? followUp
-        ? `${originalPrompt}\n\n${followUp}`
-        : originalPrompt
-      : followUp;
+        ? followUp
+          ? `${originalPrompt}\n\n${followUp}`
+          : originalPrompt
+        : followUp;
 
     const projectFullNameForSocket =
       task.projectFullName ??
@@ -248,7 +250,9 @@ function RunDiffPage() {
             taskId: newTaskId,
             selectedAgents: [...restartAgents],
             isCloudMode: isEnvTask || Boolean(task.environmentId),
-            ...(task.environmentId ? { environmentId: task.environmentId } : {}),
+            ...(task.environmentId
+              ? { environmentId: task.environmentId }
+              : {}),
             theme,
           },
           (response) => {
@@ -403,7 +407,11 @@ function RunDiffPage() {
                     onKeyDown={handleFollowUpKeyDown}
                     minRows={1}
                     maxRows={2}
-                    placeholder={overridePrompt ? "Edit original task instructions..." : "Add updated instructions or context..."}
+                    placeholder={
+                      overridePrompt
+                        ? "Edit original task instructions..."
+                        : "Add updated instructions or context..."
+                    }
                     className="w-full max-h-24 resize-none overflow-y-auto border-none bg-transparent p-0 text-[15px] leading-relaxed text-neutral-900 outline-none placeholder:text-neutral-400 focus:outline-none dark:text-neutral-100 dark:placeholder:text-neutral-500"
                   />
                 </div>
@@ -433,9 +441,6 @@ function RunDiffPage() {
                       }}
                       size="sm"
                       aria-label="Override prompt"
-                      thumbIcon={({ className }) => (
-                        <FileText className={cn(className, "size-3")} />
-                      )}
                       classNames={{
                         wrapper: cn(
                           "group-data-[selected=true]:bg-neutral-600",
@@ -449,8 +454,8 @@ function RunDiffPage() {
                       {overridePrompt
                         ? "Override initial prompt"
                         : task?.text
-                        ? "Original prompt included"
-                        : "New task prompt"}
+                          ? "Original prompt included"
+                          : "New task prompt"}
                     </span>
                   </div>
                   <Tooltip>
