@@ -386,10 +386,8 @@ export function SearchableSelect({
       setOpen(false);
       return;
     }
-    const next = new Set(value);
-    if (next.has(val)) next.delete(val);
-    else next.add(val);
-    onChange(Array.from(next));
+    // Multi-select: always append another instance to allow duplicates
+    onChange([...value, val]);
   };
 
   return (

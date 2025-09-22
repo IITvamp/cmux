@@ -949,11 +949,11 @@ export async function spawnAllAgents(
   },
   teamSlugOrId: string
 ): Promise<AgentSpawnResult[]> {
-  // If selectedAgents is provided, filter AGENT_CONFIGS to only include selected agents
+  // If selectedAgents is provided, map each entry to an AgentConfig to preserve duplicates
   const agentsToSpawn = options.selectedAgents
-    ? AGENT_CONFIGS.filter((agent) =>
-        options.selectedAgents!.includes(agent.name)
-      )
+    ? options.selectedAgents
+        .map((name) => AGENT_CONFIGS.find((agent) => agent.name === name))
+        .filter((a): a is AgentConfig => Boolean(a))
     : AGENT_CONFIGS;
 
   // Generate unique branch names for all agents at once to ensure no collisions

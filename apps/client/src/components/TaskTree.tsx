@@ -270,8 +270,14 @@ function TaskTreeInner({
     );
   })();
 
+  const agentOrdinalData = useMemo(
+    () => computeAgentOrdinals(task.runs),
+    [task.runs]
+  );
+
   return (
     <TaskRunExpansionContext.Provider value={expansionContextValue}>
+      <AgentOrdinalContext.Provider value={agentOrdinalData}>
       <div className="select-none flex flex-col">
         <ContextMenu.Root>
           <ContextMenu.Trigger>
@@ -355,6 +361,7 @@ function TaskTreeInner({
           </div>
         )}
       </div>
+      </AgentOrdinalContext.Provider>
     </TaskRunExpansionContext.Provider>
   );
 }
@@ -372,13 +379,21 @@ function TaskRunTreeInner({
   taskId,
   teamSlugOrId,
 }: TaskRunTreeProps) {
+  const { ordinalByRunId, duplicateAgents } = useContext(AgentOrdinalContext);
   const { expandedRuns, setRunExpanded } = useTaskRunExpansionContext();
   const defaultExpanded = Boolean(run.isCrowned);
   const isExpanded = expandedRuns[run._id] ?? defaultExpanded;
   const hasChildren = run.children.length > 0;
 
   // Memoize the display text to avoid recalculating on every render
-  const displayText = useMemo(() => getRunDisplayText(run), [run]);
+  const displayText = useMemo(() => {
+    const base = getRunDisplayText(run);
+    const name = run.agentName?.trim();
+    if (!name) return base;
+    const ordinal = ordinalByRunId.get(run._id);
+    const showOrdinal = duplicateAgents.has(name);
+    return showOrdinal && ordinal ? `${base} (${ordinal})` : base;
+  }, [ordinalByRunId, duplicateAgents, run]);
 
   // Memoize the toggle handler
   const handleToggle = useCallback(
@@ -769,3 +784,54 @@ export interface VSCodeIconProps {
 // Prevent unnecessary re-renders of large trees during unrelated state changes
 export const TaskTree = memo(TaskTreeInner);
 const TaskRunTree = memo(TaskRunTreeInner);
+
+// Context for per-run ordinal labels for duplicate agent names
+type AgentOrdinalContextValue = {
+  ordinalByRunId: Map<Id<"taskRuns">, number>;
+  duplicateAgents: Set<string>;
+};
+
+const AgentOrdinalContext = createContext<AgentOrdinalContextValue>({
+  ordinalByRunId: new Map(),
+  duplicateAgents: new Set(),
+});
+
+function computeAgentOrdinals(runs: TaskRunWithChildren[]): AgentOrdinalContextValue {
+  const counts = new Map<string, number>();
+  const totals = new Map<string, number>();
+  const ordinalByRunId = new Map<Id<"taskRuns">, number>();
+
+  // First pass to get totals per agent name
+  const firstPass = (arr: TaskRunWithChildren[]) => {
+    for (const r of arr) {
+      const name = r.agentName?.trim();
+      if (name) {
+        totals.set(name, (totals.get(name) ?? 0) + 1);
+      }
+      if (r.children?.length) firstPass(r.children);
+    }
+  };
+  firstPass(runs);
+
+  // Second pass to assign ordinals by DFS order
+  const secondPass = (arr: TaskRunWithChildren[]) => {
+    for (const r of arr) {
+      const name = r.agentName?.trim();
+      if (name) {
+        const next = (counts.get(name) ?? 0) + 1;
+        counts.set(name, next);
+        ordinalByRunId.set(r._id, next);
+      }
+      if (r.children?.length) secondPass(r.children);
+    }
+  };
+  secondPass(runs);
+
+  const duplicateAgents = new Set<string>(
+    Array.from(totals.entries())
+      .filter(([, n]) => n > 1)
+      .map(([name]) => name)
+  );
+
+  return { ordinalByRunId, duplicateAgents };
+}
