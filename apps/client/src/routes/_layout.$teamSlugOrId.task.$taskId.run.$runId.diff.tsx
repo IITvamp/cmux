@@ -5,6 +5,8 @@ import { TaskDetailHeader } from "@/components/task-detail-header";
 import { useExpandTasks } from "@/contexts/expand-tasks/ExpandTasksContext";
 import { useSocket } from "@/contexts/socket/use-socket";
 import { useTheme } from "@/components/theme/use-theme";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { refWithOrigin } from "@/lib/refWithOrigin";
 import { diffSmartQueryOptions } from "@/queries/diff-smart";
 // Refs mode: no run-diffs prefetch
@@ -26,6 +28,7 @@ import {
 import TextareaAutosize from "react-textarea-autosize";
 import { toast } from "sonner";
 import z from "zod";
+import { Command } from "lucide-react";
 
 const paramsSchema = z.object({
   taskId: typedZid("tasks"),
@@ -275,8 +278,27 @@ function RunDiffPage() {
     [handleRestartTask]
   );
 
+  const trimmedFollowUp = followUpText.trim();
   const isRestartDisabled =
-    isRestartingTask || !followUpText.trim() || !socket || !task;
+    isRestartingTask || !trimmedFollowUp || !socket || !task;
+  const isMac =
+    typeof navigator !== "undefined" &&
+    navigator.userAgent.toUpperCase().includes("MAC");
+  const restartDisabledReason = useMemo(() => {
+    if (isRestartingTask) {
+      return "Starting follow-up...";
+    }
+    if (!task) {
+      return "Task data loading...";
+    }
+    if (!socket) {
+      return "Socket not connected";
+    }
+    if (!trimmedFollowUp) {
+      return "Add follow-up context";
+    }
+    return undefined;
+  }, [isRestartingTask, socket, task, trimmedFollowUp]);
 
   const handleFollowUpKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -353,39 +375,58 @@ function RunDiffPage() {
                 </div>
               )}
             </Suspense>
-            <div className="border-t border-neutral-200 bg-neutral-50 px-4 py-4 dark:border-neutral-800 dark:bg-neutral-950">
+            <div className="sticky bottom-0 z-10 border-t border-transparent px-4 pb-3 pt-2">
               <form
                 onSubmit={handleFormSubmit}
-                className="flex flex-col gap-3"
+                className="mx-auto w-full max-w-4xl rounded-2xl border border-neutral-500/15 bg-white px-5 py-4 shadow-sm transition focus-within:border-neutral-300 focus-within:ring-2 focus-within:ring-neutral-200/60 dark:border-neutral-500/15 dark:bg-neutral-900 dark:focus-within:border-neutral-600 dark:focus-within:ring-neutral-700/40 sm:px-6"
               >
-                <div className="flex flex-col gap-1">
-                  <span className="text-sm font-medium text-neutral-800 dark:text-neutral-200">
-                    Restart task with new follow-up
-                  </span>
-                  <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                    We will prepend the original prompt before launching agents.
-                  </span>
-                </div>
                 <TextareaAutosize
                   value={followUpText}
                   onChange={(event) => setFollowUpText(event.target.value)}
                   onKeyDown={handleFollowUpKeyDown}
                   minRows={3}
-                  maxRows={8}
+                  maxRows={4}
                   placeholder="Add updated instructions or context..."
-                  className="w-full resize-none rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm text-neutral-900 outline-none transition-colors placeholder:text-neutral-500 focus:border-neutral-400 focus:ring-2 focus:ring-neutral-400/40 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100 dark:placeholder:text-neutral-400 dark:focus:border-neutral-500 dark:focus:ring-neutral-500/40"
+                  className="w-full max-h-24 resize-none overflow-y-auto border-none bg-transparent px-0 text-[15px] leading-relaxed text-neutral-900 outline-none placeholder:text-neutral-400 focus:outline-none dark:text-neutral-100 dark:placeholder:text-neutral-500"
                 />
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                    {task?.text ? "Original prompt is included automatically." : "This follow-up will become the new task prompt."}
+                <div className="mt-2 flex items-center justify-between gap-2 px-1.5">
+                  <span className="text-xs leading-tight text-neutral-500 dark:text-neutral-400">
+                    {task?.text
+                      ? "Original prompt is included automatically."
+                      : "This follow-up becomes the new task prompt."}
                   </span>
-                  <button
-                    type="submit"
-                    disabled={isRestartDisabled}
-                    className="inline-flex items-center justify-center rounded-md bg-neutral-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-neutral-800 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
-                  >
-                    {isRestartingTask ? "Starting..." : "Start follow-up task"}
-                  </button>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span tabIndex={0} className="inline-flex">
+                        <Button
+                          type="submit"
+                          size="sm"
+                          variant="default"
+                          className="!h-7 px-4"
+                          disabled={isRestartDisabled}
+                        >
+                          {isRestartingTask ? "Starting..." : "Restart task"}
+                        </Button>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent
+                      side="bottom"
+                      className="flex items-center gap-1 border-black bg-black text-white [&>*:last-child]:bg-black [&>*:last-child]:fill-black"
+                    >
+                      {restartDisabledReason ? (
+                        <span className="text-xs">{restartDisabledReason}</span>
+                      ) : (
+                        <>
+                          {isMac ? (
+                            <Command className="h-3 w-3" />
+                          ) : (
+                            <span className="text-xs">Ctrl</span>
+                          )}
+                          <span>+ Enter</span>
+                        </>
+                      )}
+                    </TooltipContent>
+                  </Tooltip>
                 </div>
               </form>
             </div>
