@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 import { ClientIcon } from "@/components/client-icon";
 import CmuxLogo from "@/components/logo/cmux-logo";
 import { Cloud, GitBranch, GitPullRequest, Star, Terminal, Users, Zap } from "lucide-react";
@@ -8,9 +10,108 @@ import Link from "next/link";
 import cmuxDemo0 from "@/docs/assets/cmux-demo-0.png";
 import cmuxDemo1 from "@/docs/assets/cmux-demo-1.png";
 import cmuxDemo5 from "@/docs/assets/cmux-demo-5.png";
- 
+
+const GITHUB_LATEST_RELEASE_URL = "https://api.github.com/repos/manaflow-ai/cmux/releases/latest";
+const GITHUB_RELEASE_PAGE_URL = "https://github.com/manaflow-ai/cmux/releases/latest";
+
+type GitHubReleaseAsset = {
+  browser_download_url: string;
+  name: string;
+};
+
+type GitHubReleaseResponse = {
+  assets: GitHubReleaseAsset[];
+  html_url: string;
+  tag_name: string;
+};
+
+const isGitHubReleaseAsset = (value: unknown): value is GitHubReleaseAsset => {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+  return typeof record.name === "string" && typeof record.browser_download_url === "string";
+};
+
+const isGitHubReleaseResponse = (value: unknown): value is GitHubReleaseResponse => {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+  if (typeof record.tag_name !== "string" || typeof record.html_url !== "string") {
+    return false;
+  }
+
+  if (!Array.isArray(record.assets) || !record.assets.every(isGitHubReleaseAsset)) {
+    return false;
+  }
+
+  return true;
+};
+
+const MAC_ASSET_KEYWORDS = ["mac", "macos", "darwin", "osx", ".dmg"];
+
+const findMacArm64Asset = (assets: GitHubReleaseAsset[]): GitHubReleaseAsset | undefined =>
+  assets.find(({ name }) => {
+    const normalizedName = name.toLowerCase();
+    return normalizedName.includes("arm64") && MAC_ASSET_KEYWORDS.some((keyword) => normalizedName.includes(keyword));
+  });
+
+const normalizeVersion = (tag: string): string => (tag.startsWith("v") ? tag.slice(1) : tag);
+
 
 export default function LandingPage() {
+  const [macDownloadUrl, setMacDownloadUrl] = useState<string>(GITHUB_RELEASE_PAGE_URL);
+  const [latestVersion, setLatestVersion] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchLatestRelease = async () => {
+      try {
+        const response = await fetch(GITHUB_LATEST_RELEASE_URL, {
+          headers: {
+            Accept: "application/vnd.github+json",
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch release (${response.status})`);
+        }
+
+        const payload = await response.json();
+
+        if (!isGitHubReleaseResponse(payload) || !isMounted) {
+          return;
+        }
+
+        const asset = findMacArm64Asset(payload.assets);
+        const releaseVersion = normalizeVersion(payload.tag_name);
+
+        if (asset) {
+          setMacDownloadUrl(asset.browser_download_url);
+        } else {
+          setMacDownloadUrl(payload.html_url);
+        }
+
+        setLatestVersion(releaseVersion);
+      } catch (_error) {
+        if (!isMounted) {
+          return;
+        }
+
+        setMacDownloadUrl(GITHUB_RELEASE_PAGE_URL);
+      }
+    };
+
+    void fetchLatestRelease();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   return (
     <div className="min-h-dvh bg-background text-foreground overflow-y-auto">
@@ -148,10 +249,8 @@ export default function LandingPage() {
 
               <div className="mt-10 flex flex-col sm:flex-row items-center gap-4">
                 <a
-                  href="https://github.com/manaflow-ai/cmux/releases/download/v1.0.35/cmux-1.0.35-arm64.dmg"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title="Requires macOS"
+                  href={macDownloadUrl}
+                  title={latestVersion ? `Download cmux v${latestVersion} for macOS arm64` : "Requires macOS"}
                   className="inline-flex h-12 items-center gap-2 text-base font-medium text-black bg-white hover:bg-neutral-50 border border-neutral-800 rounded-lg px-4 transition-all whitespace-nowrap"
                 >
                   <svg
@@ -167,6 +266,7 @@ export default function LandingPage() {
                     ></path>
                   </svg>
                   Download for Mac
+                  {latestVersion ? ` (v${latestVersion})` : null}
                 </a>
                 <a
                   href="https://github.com/manaflow-ai/cmux"
