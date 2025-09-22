@@ -262,6 +262,19 @@ function createIPCRealtimeServer(): RealtimeServer {
           toSerializableError(new Error("Invalid RPC payload"))
         );
       }
+
+      // Handle special built-in RPC commands
+      if (eventName === "openExternal") {
+        const url = args[0];
+        if (typeof url === "string") {
+          const { shell } = await import("electron");
+          await shell.openExternal(url);
+          return { success: true };
+        }
+        return Promise.reject(
+          toSerializableError(new Error("Invalid URL for openExternal"))
+        );
+      }
       const socketId = webContentsToSocketId.get(event.sender.id);
       if (!socketId)
         return Promise.reject(

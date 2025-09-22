@@ -234,3 +234,98 @@ githubPrsRouter.openapi(
     }
   }
 );
+
+// Close PR endpoint
+const ClosePRBody = z
+  .object({
+    team: z.string().min(1).describe("Team slug or UUID"),
+    owner: z.string().min(1).describe("GitHub owner/org"),
+    repo: z.string().min(1).describe("GitHub repo name"),
+    number: z.coerce.number().min(1).describe("PR number"),
+  })
+  .openapi("ClosePRBody");
+
+githubPrsRouter.openapi(
+  createRoute({
+    method: "post" as const,
+    path: "/integrations/github/prs/close",
+    tags: ["Integrations"],
+    summary: "Close a pull request",
+    request: {
+      body: {
+        content: {
+          "application/json": {
+            schema: ClosePRBody,
+          },
+        },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        description: "OK",
+        content: {
+          "application/json": {
+            schema: z.object({
+              success: z.boolean(),
+              message: z.string().optional(),
+            }),
+          },
+        },
+      },
+      401: { description: "Unauthorized" },
+      403: { description: "Forbidden" },
+      404: { description: "Not found" },
+    },
+  }),
+  async (c) => {
+    const accessToken = await getAccessTokenFromRequest(c.req.raw);
+    if (!accessToken) return c.text("Unauthorized", 401);
+
+    const { team, owner, repo, number } = c.req.valid("json");
+
+    // Get installation for this team/owner
+    const convex = getConvex({ accessToken });
+    const connections = await convex.query(api.github.listProviderConnections, {
+      teamSlugOrId: team,
+    });
+
+    type Conn = {
+      installationId: number;
+      accountLogin?: string | null;
+      isActive?: boolean | null;
+    };
+
+    const target = (connections as Conn[]).find(
+      (co) => (co.isActive ?? true) && (co.accountLogin ?? "").toLowerCase() === owner.toLowerCase()
+    );
+
+    if (!target) return c.json({ success: false, message: "Installation not found for owner" }, 404);
+
+    const octokit = new Octokit({
+      authStrategy: createAppAuth,
+      auth: {
+        appId: env.CMUX_GITHUB_APP_ID,
+        privateKey: githubPrivateKey,
+        installationId: target.installationId,
+      },
+    });
+
+    try {
+      await octokit.request("PATCH /repos/{owner}/{repo}/pulls/{pull_number}", {
+        owner,
+        repo,
+        pull_number: number,
+        state: "closed",
+      });
+
+      return c.json({ success: true });
+    } catch (error) {
+      console.error(`Failed to close PR ${owner}/${repo}#${number}:`, error);
+      return c.json({
+        success: false,
+        message: error instanceof Error ? error.message : "Failed to close PR",
+      }, 403);
+    }
+  }
+);

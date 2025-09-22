@@ -2,7 +2,12 @@ import { api } from "@cmux/convex/api";
 import { Link } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useQuery as useConvexQuery } from "convex/react";
-import { useMemo } from "react";
+import { useMemo, useState, useCallback } from "react";
+import { DropdownParts } from "@/components/ui/dropdown.parts";
+import { X, ExternalLink, GitPullRequest } from "lucide-react";
+import { isElectron } from "@/lib/electron";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 
 type Connection = {
   installationId: number;
@@ -49,6 +54,8 @@ export function PullRequestListPanel({
   onStateChange: (s: "open" | "closed" | "all") => void;
   selectedKey: string | null;
 }) {
+  const queryClient = useQueryClient();
+  const [closingPRs, setClosingPRs] = useState<Set<string>>(new Set());
   const prs = useConvexQuery(api.github_prs.listPullRequests, {
     teamSlugOrId,
     state,
@@ -62,6 +69,58 @@ export function PullRequestListPanel({
     }
     return rows;
   }, [prs, installationId]);
+
+  const handleClosePR = useCallback(
+    async (owner: string, repo: string, number: number) => {
+      const key = `${owner}/${repo}#${number}`;
+      setClosingPRs((prev) => new Set(prev).add(key));
+
+      try {
+        const response = await fetch("/api/integrations/github/prs/close", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+          body: JSON.stringify({
+            team: teamSlugOrId,
+            owner,
+            repo,
+            number,
+          }),
+        });
+
+        const data = await response.json();
+        if (data.success) {
+          toast.success(`Closed PR #${number}`);
+          // Refetch the PR list
+          queryClient.invalidateQueries();
+        } else {
+          toast.error(data.message || "Failed to close PR");
+        }
+      } catch (error) {
+        toast.error("Failed to close PR");
+        console.error("Error closing PR:", error);
+      } finally {
+        setClosingPRs((prev) => {
+          const next = new Set(prev);
+          next.delete(key);
+          return next;
+        });
+      }
+    },
+    [teamSlugOrId, queryClient]
+  );
+
+  const handleOpenInGitHub = useCallback((url: string) => {
+    if (isElectron && window.cmux?.rpc) {
+      // Use Electron's shell.openExternal through IPC
+      window.cmux.rpc("openExternal", url);
+    } else {
+      // Fallback to window.open for web
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
+  }, []);
 
   return (
     <div className="flex flex-col min-h-0 h-full">
@@ -106,33 +165,80 @@ export function PullRequestListPanel({
               const [owner, repo] = pr.repoFullName.split("/", 2);
               const isSelected =
                 selectedKey === `${pr.repoFullName}#${pr.number}`;
+              const prKey = `${owner}/${repo}#${pr.number}`;
+              const isClosing = closingPRs.has(prKey);
+              const githubUrl = `https://github.com/${owner}/${repo}/pull/${pr.number}`;
+
               return (
                 <li key={`${pr.repoFullName}#${pr.number}`} className="">
-                  <Link
-                    to="/$teamSlugOrId/prs/$owner/$repo/$number"
-                    params={{
-                      teamSlugOrId,
-                      owner: owner || "",
-                      repo: repo || "",
-                      number: String(pr.number),
-                    }}
-                    className={clsx("block px-1 cursor-default")}
-                  >
-                    <div
-                      className={clsx(
-                        "hover:bg-neutral-200/50 dark:hover:bg-neutral-700/50 dark:bg-neutral-800/50 px-4 py-2 rounded-md",
-                        isSelected && "bg-neutral-200/50 dark:bg-neutral-800/50"
-                      )}
-                    >
-                      <div className="text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate">
-                        {pr.title}
+                  <DropdownParts.Root>
+                    <DropdownParts.Trigger asChild>
+                      <div className="block px-1">
+                        <Link
+                          to="/$teamSlugOrId/prs/$owner/$repo/$number"
+                          params={{
+                            teamSlugOrId,
+                            owner: owner || "",
+                            repo: repo || "",
+                            number: String(pr.number),
+                          }}
+                          className="block cursor-default"
+                          onContextMenu={(e) => {
+                            e.preventDefault();
+                            // Trigger the dropdown menu
+                            const trigger = e.currentTarget.parentElement as HTMLElement;
+                            trigger?.click();
+                          }}
+                        >
+                          <div
+                            className={clsx(
+                              "hover:bg-neutral-200/50 dark:hover:bg-neutral-700/50 dark:bg-neutral-800/50 px-4 py-2 rounded-md",
+                              isSelected && "bg-neutral-200/50 dark:bg-neutral-800/50",
+                              isClosing && "opacity-50"
+                            )}
+                          >
+                            <div className="flex items-center gap-2">
+                              <GitPullRequest className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400 flex-shrink-0" />
+                              <div className="text-sm font-medium text-neutral-900 dark:text-neutral-100 truncate">
+                                {pr.title}
+                              </div>
+                            </div>
+                            <div className="text-xs text-neutral-600 dark:text-neutral-400 mt-0.5 pl-5">
+                              {pr.repoFullName}#{pr.number} • {pr.authorLogin || ""} •{" "}
+                              {formatTimeAgo(pr.updatedAt)}
+                            </div>
+                          </div>
+                        </Link>
                       </div>
-                      <div className="text-xs text-neutral-600 dark:text-neutral-400 mt-0.5">
-                        {pr.repoFullName}#{pr.number} • {pr.authorLogin || ""} •{" "}
-                        {formatTimeAgo(pr.updatedAt)}
-                      </div>
-                    </div>
-                  </Link>
+                    </DropdownParts.Trigger>
+                    <DropdownParts.Portal>
+                      <DropdownParts.Positioner>
+                        <DropdownParts.Popup>
+                          <DropdownParts.Item
+                            onClick={() => handleOpenInGitHub(githubUrl)}
+                            className="flex items-center gap-2"
+                          >
+                            <ExternalLink className="w-4 h-4" />
+                            <span>Open in GitHub</span>
+                          </DropdownParts.Item>
+                          {pr.state === "open" && (
+                            <DropdownParts.Item
+                              onClick={() => {
+                                if (owner && repo) {
+                                  handleClosePR(owner, repo, pr.number);
+                                }
+                              }}
+                              disabled={isClosing}
+                              className="flex items-center gap-2"
+                            >
+                              <X className="w-4 h-4" />
+                              <span>{isClosing ? "Closing..." : "Close PR"}</span>
+                            </DropdownParts.Item>
+                          )}
+                        </DropdownParts.Popup>
+                      </DropdownParts.Positioner>
+                    </DropdownParts.Portal>
+                  </DropdownParts.Root>
                 </li>
               );
             })}
