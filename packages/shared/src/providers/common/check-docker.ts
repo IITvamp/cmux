@@ -12,15 +12,34 @@ export async function checkDockerStatus(): Promise<{
   const { promisify } = await import("node:util");
   const execAsync = promisify(exec);
 
+  // Helper to execute with timeout
+  const execWithTimeout = async (command: string, timeoutMs = 3000) => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+
+    try {
+      const result = await execAsync(command, { signal: controller.signal });
+      clearTimeout(timeout);
+      return result;
+    } catch (error: any) {
+      clearTimeout(timeout);
+      if (error.name === 'AbortError' || error.code === 'ABORT_ERR') {
+        throw new Error(`Command timed out after ${timeoutMs}ms: ${command}`);
+      }
+      throw error;
+    }
+  };
+
   try {
-    // Check if Docker is running
-    const { stdout: versionOutput } = await execAsync(
-      "docker version --format '{{.Server.Version}}'"
+    // Check if Docker is running with timeout
+    const { stdout: versionOutput } = await execWithTimeout(
+      "docker version --format '{{.Server.Version}}'",
+      3000
     );
     const version = versionOutput.trim();
 
-    // Check if Docker daemon is accessible
-    await execAsync("docker ps");
+    // Check if Docker daemon is accessible with timeout
+    await execWithTimeout("docker ps", 3000);
 
     const result: {
       isRunning: boolean;
@@ -71,12 +90,24 @@ export async function checkDockerStatus(): Promise<{
 
     return result;
   } catch (error) {
+    // More specific error handling
+    let errorMessage = "Docker is not running or not installed";
+
+    if (error instanceof Error) {
+      if (error.message.includes("timed out")) {
+        errorMessage = "Docker is not responding (may be restarting)";
+      } else if (error.message.includes("Cannot connect to the Docker daemon")) {
+        errorMessage = "Docker daemon is not running";
+      } else if (error.message.includes("command not found") || error.message.includes("'docker' is not recognized")) {
+        errorMessage = "Docker is not installed";
+      } else {
+        errorMessage = error.message;
+      }
+    }
+
     return {
       isRunning: false,
-      error:
-        error instanceof Error
-          ? error.message
-          : "Docker is not running or not installed",
+      error: errorMessage,
     };
   }
 }

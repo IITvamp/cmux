@@ -24,12 +24,18 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
     });
   }, [socket]);
 
-  // Check status on mount and every 5 seconds so UI updates quickly
+  // Check status on mount and periodically
+  // When Docker is not ready, check more frequently to detect when it comes back
   useEffect(() => {
     checkProviderStatus();
-    const interval = setInterval(checkProviderStatus, 5000);
+
+    // Use shorter interval when Docker is not ready (2s instead of 5s)
+    const dockerNotReady = status && !status.dockerStatus?.isRunning;
+    const checkInterval = dockerNotReady ? 2000 : 5000;
+
+    const interval = setInterval(checkProviderStatus, checkInterval);
     return () => clearInterval(interval);
-  }, [checkProviderStatus]);
+  }, [checkProviderStatus, status]);
 
   if (!status) return null;
 
@@ -114,7 +120,13 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
             <TooltipContent className="max-w-xs">
               <p className="font-medium mb-1">Configuration Needed</p>
               <div className="text-xs space-y-1">
-                {dockerNotReady && <p>• Docker needs to be running</p>}
+                {dockerNotReady && (
+                  <p>
+                    • {status.dockerStatus?.error?.includes("restarting")
+                      ? "Docker is restarting"
+                      : "Docker needs to be running"}
+                  </p>
+                )}
                 {dockerImageNotReady && !dockerImagePulling && (
                   <p>
                     • Docker image {status.dockerStatus?.workerImage?.name} not
@@ -156,7 +168,9 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
               <TooltipContent>
                 <p className="font-medium">Docker Required</p>
                 <p className="text-xs opacity-90">
-                  Start Docker to enable containerized development environments
+                  {status.dockerStatus?.error?.includes("restarting")
+                    ? "Docker appears to be restarting. Please wait..."
+                    : "Start Docker to enable containerized development environments"}
                 </p>
               </TooltipContent>
             </Tooltip>
