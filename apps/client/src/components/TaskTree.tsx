@@ -343,13 +343,15 @@ function TaskTreeInner({
 
         {isExpanded && hasRuns && (
           <div className="flex flex-col">
-            {task.runs.map((run) => (
+            {task.runs.map((run, idx) => (
               <TaskRunTree
                 key={run._id}
                 run={run}
                 level={level + 1}
                 taskId={task._id}
                 teamSlugOrId={teamSlugOrId}
+                siblings={task.runs}
+                siblingIndex={idx}
               />
             ))}
           </div>
@@ -364,6 +366,9 @@ interface TaskRunTreeProps {
   level: number;
   taskId: Id<"tasks">;
   teamSlugOrId: string;
+  // Sibling context for numbering duplicate agents
+  siblings: TaskRunWithChildren[];
+  siblingIndex: number;
 }
 
 function TaskRunTreeInner({
@@ -371,14 +376,29 @@ function TaskRunTreeInner({
   level,
   taskId,
   teamSlugOrId,
+  siblings,
+  siblingIndex,
 }: TaskRunTreeProps) {
   const { expandedRuns, setRunExpanded } = useTaskRunExpansionContext();
   const defaultExpanded = Boolean(run.isCrowned);
   const isExpanded = expandedRuns[run._id] ?? defaultExpanded;
   const hasChildren = run.children.length > 0;
 
-  // Memoize the display text to avoid recalculating on every render
-  const displayText = useMemo(() => getRunDisplayText(run), [run]);
+  // Compute display text, appending (n) for duplicate agents among siblings
+  const displayText = useMemo(() => {
+    const base = getRunDisplayText(run);
+    const agent = run.agentName?.trim();
+    if (!agent) return base;
+    // Count how many siblings share this agent name
+    const total = siblings.filter((r) => r.agentName?.trim() === agent).length;
+    if (total <= 1) return base;
+    // Find index for this run among same-agent siblings (1-based)
+    let position = 0;
+    for (let i = 0; i <= siblingIndex; i++) {
+      if (siblings[i]?.agentName?.trim() === agent) position++;
+    }
+    return `${agent} (${position})`;
+  }, [run, siblings, siblingIndex]);
 
   // Memoize the toggle handler
   const handleToggle = useCallback(
@@ -747,13 +767,15 @@ function TaskRunDetails({
 
       {hasChildren ? (
         <div className="flex flex-col">
-          {run.children.map((childRun) => (
+          {run.children.map((childRun, idx) => (
             <TaskRunTree
               key={childRun._id}
               run={childRun}
               level={level + 1}
               taskId={taskId}
               teamSlugOrId={teamSlugOrId}
+              siblings={run.children}
+              siblingIndex={idx}
             />
           ))}
         </div>

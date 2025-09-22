@@ -246,7 +246,15 @@ export const DashboardInputControls = memo(function DashboardInputControls({
 
   const handleAgentRemove = useCallback(
     (agent: string) => {
+      // Remove all occurrences of the agent for simplicity
       onAgentChange(selectedAgents.filter((value) => value !== agent));
+    },
+    [onAgentChange, selectedAgents]
+  );
+
+  const handleAgentAddOne = useCallback(
+    (agent: string) => {
+      onAgentChange([...selectedAgents, agent]);
     },
     [onAgentChange, selectedAgents]
   );
@@ -256,37 +264,64 @@ export const DashboardInputControls = memo(function DashboardInputControls({
       <div className="relative">
         <div ref={pillboxScrollRef} className="max-h-32 overflow-y-auto py-2 px-2">
           <div className="flex flex-wrap gap-1">
-            {sortedSelectedAgents.map((agent) => {
-              const option = agentOptionsByValue.get(agent);
-              const label = option?.displayLabel ?? option?.label ?? agent;
-              return (
-                <div
-                  key={agent}
-                  className="inline-flex items-center gap-1 rounded-full bg-neutral-200 dark:bg-neutral-800/80 pl-1.5 pr-2.5 py-1 text-[11px] text-neutral-700 dark:text-neutral-200 transition-colors"
-                >
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      handleAgentRemove(agent);
-                    }}
-                    className="inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors hover:bg-neutral-300 dark:hover:bg-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60"
+            {(() => {
+              // Count occurrences and render unique agents with counts
+              const counts = new Map<string, number>();
+              for (const a of sortedSelectedAgents) {
+                counts.set(a, (counts.get(a) ?? 0) + 1);
+              }
+              const rendered = new Set<string>();
+              const uniqueInOrder = sortedSelectedAgents.filter((a) => {
+                if (rendered.has(a)) return false;
+                rendered.add(a);
+                return true;
+              });
+              return uniqueInOrder.map((agent, index) => {
+                const option = agentOptionsByValue.get(agent);
+                const label = option?.displayLabel ?? option?.label ?? agent;
+                const count = counts.get(agent) ?? 1;
+                return (
+                  <div
+                    key={`${agent}-${index}`}
+                    className="inline-flex items-center gap-1 rounded-full bg-neutral-200 dark:bg-neutral-800/80 pl-1 py-1 pr-1.5 text-[11px] text-neutral-700 dark:text-neutral-200 transition-colors"
                   >
-                    <X className="h-3 w-3" aria-hidden="true" />
-                    <span className="sr-only">Remove {label}</span>
-                  </button>
-                  {option?.icon ? (
-                    <span className="inline-flex h-3.5 w-3.5 items-center justify-center">
-                      {option.icon}
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        handleAgentRemove(agent);
+                      }}
+                      className="inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors hover:bg-neutral-300 dark:hover:bg-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60 ml-0.5"
+                    >
+                      <X className="h-3 w-3" aria-hidden="true" />
+                      <span className="sr-only">Remove {label}</span>
+                    </button>
+                    {option?.icon ? (
+                      <span className="inline-flex h-3.5 w-3.5 items-center justify-center ml-0.5">
+                        {option.icon}
+                      </span>
+                    ) : null}
+                    <span className="max-w-[118px] truncate text-left select-none ml-0.5">
+                      {label}
+                      {count > 1 ? <span className="ml-1">×{count}</span> : null}
                     </span>
-                  ) : null}
-                  <span className="max-w-[118px] truncate text-left select-none">
-                    {label}
-                  </span>
-                </div>
-              );
-            })}
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        handleAgentAddOne(agent);
+                      }}
+                      className="ml-1 inline-flex h-4 px-1 items-center justify-center rounded-full transition-colors bg-neutral-300 dark:bg-neutral-700 hover:bg-neutral-400 dark:hover:bg-neutral-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60"
+                      title={`Add another ${label}`}
+                    >
+                      +1
+                    </button>
+                  </div>
+                );
+              });
+            })()}
           </div>
         </div>
         {showPillboxFade ? (
