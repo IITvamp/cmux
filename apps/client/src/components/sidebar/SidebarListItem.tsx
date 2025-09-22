@@ -44,7 +44,7 @@ export function SidebarListItem({
   );
 
   return (
-    <div className={clsx("relative group", containerClassName)}>
+    <div className={clsx("relative group select-none", containerClassName)}>
       <div
         className={clsx(
           "flex items-center rounded-sm pr-2 py-[3px] text-xs",

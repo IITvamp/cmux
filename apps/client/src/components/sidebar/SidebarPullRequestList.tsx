@@ -110,7 +110,7 @@ export function SidebarPullRequestList({
         };
 
         return (
-          <li key={key} className="rounded-md">
+          <li key={key} className="rounded-md select-none">
             <Link
               to="/$teamSlugOrId/prs-only/$owner/$repo/$number"
               params={{
