@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { resolveTeamIdLoose } from "../_shared/team";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { internalMutation } from "./_generated/server";
 import { authMutation, authQuery } from "./users/utils";
 
 export const get = authQuery({
@@ -291,6 +292,20 @@ export const updateCrownError = authMutation({
     }
     await ctx.db.patch(id, {
       ...updates,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+// Internal mutation: mark task as completed (no auth wrapper; used by worker http)
+export const setCompletedInternal = internalMutation({
+  args: {
+    id: v.id("tasks"),
+    isCompleted: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.id, {
+      isCompleted: args.isCompleted,
       updatedAt: Date.now(),
     });
   },

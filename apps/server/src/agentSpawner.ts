@@ -219,6 +219,14 @@ export async function spawnAgent(
       PROMPT: processedTaskDescription,
     };
 
+    // Provide Convex URL to the worker for direct HTTP calls
+    if (process.env.NEXT_PUBLIC_CONVEX_URL) {
+      envVars.NEXT_PUBLIC_CONVEX_URL = process.env.NEXT_PUBLIC_CONVEX_URL;
+    }
+    if (process.env.CONVEX_URL && !envVars.NEXT_PUBLIC_CONVEX_URL) {
+      envVars.CONVEX_URL = process.env.CONVEX_URL;
+    }
+
     if (options.environmentId) {
       try {
         const envRes = await getApiEnvironmentsByIdVars({

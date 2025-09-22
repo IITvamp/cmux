@@ -252,6 +252,23 @@ export const getById = internalQuery({
   },
 });
 
+// Internal query: list task runs for a task within a specific team/user
+export const listByTaskForTeam = internalQuery({
+  args: {
+    taskId: v.id("tasks"),
+    teamId: v.string(),
+    userId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const runs = await ctx.db
+      .query("taskRuns")
+      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+      .collect();
+    // Extra safety scope to the team/user from token
+    return runs.filter((r) => r.teamId === args.teamId && r.userId === args.userId);
+  },
+});
+
 export const updateStatusPublic = authMutation({
   args: {
     teamSlugOrId: v.string(),

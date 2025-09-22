@@ -73,6 +73,66 @@ const upload = multer({
   storage: multer.memoryStorage(),
 });
 
+// Map taskRunId -> task run JWT for Convex HTTP calls
+const taskRunTokens = new Map<string, string>();
+
+// Convex HTTP base URL (prefer explicit worker env; fallback to common vars or localhost)
+const CONVEX_HTTP_URL =
+  process.env.CMUX_CONVEX_URL ||
+  process.env.NEXT_PUBLIC_CONVEX_URL ||
+  process.env.CONVEX_URL ||
+  "http://localhost:9777";
+
+async function postCompleteAndCheck(taskRunId?: string, exitCode: number = 0) {
+  if (!taskRunId) return;
+  const token = taskRunTokens.get(taskRunId) || process.env.CMUX_TASK_RUN_JWT;
+  if (!token) {
+    log(
+      "WARNING",
+      `[Worker] Missing CMUX task run token; cannot call complete-and-check for ${taskRunId}`
+    );
+    return;
+  }
+
+  const url = `${CONVEX_HTTP_URL}/api/worker/task-runs/complete-and-check`;
+
+  const maxAttempts = 5;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-cmux-token": token,
+        },
+        body: JSON.stringify({ taskRunId, exitCode }),
+      });
+      const text = await res.text();
+      const body = (() => {
+        try {
+          return JSON.parse(text);
+        } catch {
+          return { raw: text } as unknown;
+        }
+      })();
+      if (!res.ok) {
+        throw new Error(
+          `HTTP ${res.status}: ${typeof body === "object" ? JSON.stringify(body) : String(body)}`
+        );
+      }
+      log("INFO", `[Worker] complete-and-check result`, { taskRunId, body });
+      break;
+    } catch (err) {
+      if (attempt === maxAttempts - 1) {
+        log("ERROR", `[Worker] Failed complete-and-check after retries`, err);
+        break;
+      }
+      const delay = Math.min(1000, 50 * Math.pow(2, attempt)) + Math.random() * 150;
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+}
+
 // File upload endpoint
 app.post("/upload-image", upload.single("image"), async (req, res) => {
   try {
@@ -954,6 +1014,11 @@ async function createTerminal(
       COLUMNS: cols.toString(),
     };
 
+    // Capture task run token for this run to allow worker -> Convex HTTP
+    if (options.taskRunId && processEnv.CMUX_TASK_RUN_JWT) {
+      taskRunTokens.set(options.taskRunId, processEnv.CMUX_TASK_RUN_JWT);
+    }
+
     childProcess = spawn(spawnCommand, spawnArgs, {
       cwd,
       env: processEnv,
@@ -1012,6 +1077,8 @@ async function createTerminal(
             agentModel: options.agentModel,
             elapsedMs: Date.now() - processStartTime,
           });
+          // Also call Convex HTTP to mark completion and check crown readiness
+          void postCompleteAndCheck(options.taskRunId, 0);
         })
         .catch((e) => {
           log(
@@ -1063,6 +1130,8 @@ async function createTerminal(
       terminalId,
       exitCode: code ?? 0,
     });
+    // Inform Convex directly on exit
+    void postCompleteAndCheck(options.taskRunId, code ?? 0);
   });
 
   childProcess.on("error", (error) => {
@@ -1109,6 +1178,8 @@ async function createTerminal(
               taskRunId: options.taskRunId,
               elapsedMs,
             });
+            // Also mark completion via Convex HTTP for idle-detected completion
+            void postCompleteAndCheck(options.taskRunId, 0);
           }
         },
       }).catch((error) => {
