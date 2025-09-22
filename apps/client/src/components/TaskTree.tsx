@@ -277,7 +277,7 @@ function TaskTreeInner({
               className="group block"
             >
               <SidebarListItem
-                paddingLeft={10 + level * 16}
+                paddingLeft={10 + level * 4}
                 toggle={{
                   expanded: isExpanded,
                   onToggle: handleToggle,

@@ -45,7 +45,7 @@ export function SidebarListItem({
     <div className={clsx("relative group", containerClassName)}>
       <div
         className={clsx(
-          "flex items-center rounded-md pr-2 py-0.5 text-xs transition-colors",
+          "flex items-center rounded-md pr-2 py-0.5 text-xs",
           "hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default",
           "group-[.active]:bg-neutral-100 dark:group-[.active]:bg-neutral-800",
           className
@@ -53,7 +53,7 @@ export function SidebarListItem({
         style={{ paddingLeft: `${effectivePaddingLeft}px` }}
       >
         {toggle ? (
-          <div className="self-start pr-1.5 pt-0.5">
+          <div className="pr-1.5 -ml-0.5">
             <SidebarToggleButton
               onClick={(event) => {
                 event.preventDefault();
@@ -73,7 +73,7 @@ export function SidebarListItem({
 
         {leading ? <div className="mr-2 flex-shrink-0">{leading}</div> : null}
 
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 gap-px">
           <div className="flex items-center gap-2 min-w-0">
             <span
               className={clsx(
@@ -90,7 +90,7 @@ export function SidebarListItem({
           {secondary ? (
             <div
               className={clsx(
-                "mt-0.5 truncate text-[10px] text-neutral-600 dark:text-neutral-400",
+                "truncate text-[10px] text-neutral-600 dark:text-neutral-400",
                 secondaryClassName
               )}
             >
