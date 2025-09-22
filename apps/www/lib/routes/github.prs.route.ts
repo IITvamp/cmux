@@ -234,3 +234,180 @@ githubPrsRouter.openapi(
     }
   }
 );
+
+// Close a pull request
+const ClosePrBody = z
+  .object({
+    team: z.string().min(1).openapi({ description: "Team slug or UUID" }),
+    owner: z.string().min(1),
+    repo: z.string().min(1),
+    number: z.coerce.number().int().positive(),
+  })
+  .openapi("GithubClosePrBody");
+
+githubPrsRouter.openapi(
+  createRoute({
+    method: "post" as const,
+    path: "/integrations/github/prs/close",
+    tags: ["Integrations"],
+    summary: "Close a pull request via GitHub API",
+    request: {
+      body: {
+        content: {
+          "application/json": {
+            schema: ClosePrBody,
+          },
+        },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        description: "PR closed",
+        content: {
+          "application/json": {
+            schema: z.object({ ok: z.literal(true) }),
+          },
+        },
+      },
+      400: { description: "Bad request" },
+      401: { description: "Unauthorized" },
+      404: { description: "Installation not found for owner" },
+      500: { description: "GitHub API error" },
+    },
+  }),
+  async (c) => {
+    const accessToken = await getAccessTokenFromRequest(c.req.raw);
+    if (!accessToken) return c.text("Unauthorized", 401);
+
+    const { team, owner, repo, number } = c.req.valid("json");
+
+    // Fetch provider connections for this team using Convex (enforces membership)
+    const convex = getConvex({ accessToken });
+    const connections = await convex.query(api.github.listProviderConnections, {
+      teamSlugOrId: team,
+    });
+
+    type Conn = {
+      installationId: number;
+      isActive?: boolean | null;
+      accountLogin?: string | null;
+      accountType?: "Organization" | "User" | null;
+    };
+
+    // Find installation matching repo owner
+    const target = (connections as Conn[]).find(
+      (co) => co.isActive !== false && co.accountLogin?.toLowerCase() === owner.toLowerCase()
+    );
+
+    if (!target) {
+      return c.text("Installation not found for owner", 404);
+    }
+
+    const octokit = new Octokit({
+      authStrategy: createAppAuth,
+      auth: {
+        appId: env.CMUX_GITHUB_APP_ID,
+        privateKey: githubPrivateKey,
+        installationId: target.installationId,
+      },
+    });
+
+    try {
+      // Close PR
+      await octokit.request("PATCH /repos/{owner}/{repo}/pulls/{pull_number}", {
+        owner,
+        repo,
+        pull_number: number,
+        state: "closed",
+      });
+
+      // Fetch latest PR details and upsert into Convex for fast UI refresh
+      const prRes = await octokit.request(
+        "GET /repos/{owner}/{repo}/pulls/{pull_number}",
+        {
+          owner,
+          repo,
+          pull_number: number,
+        }
+      );
+
+      const pr = prRes?.data as unknown as {
+        id?: number;
+        number?: number;
+        title?: string;
+        state?: string;
+        merged?: boolean;
+        draft?: boolean;
+        user?: { login?: string; id?: number };
+        html_url?: string;
+        base?: { ref?: string; sha?: string; repo?: { id?: number } };
+        head?: { ref?: string; sha?: string };
+        created_at?: string | null;
+        updated_at?: string | null;
+        closed_at?: string | null;
+        merged_at?: string | null;
+        comments?: number;
+        review_comments?: number;
+        commits?: number;
+        additions?: number;
+        deletions?: number;
+        changed_files?: number;
+      };
+
+      const ts = (s: unknown) =>
+        typeof s === "string" && Number.isFinite(Date.parse(s))
+          ? Date.parse(s)
+          : undefined;
+
+      await convex.mutation(api.github_prs.upsertFromServer, {
+        teamSlugOrId: team,
+        installationId: target.installationId,
+        repoFullName: `${owner}/${repo}`,
+        number: number,
+        record: {
+          providerPrId: typeof pr?.id === "number" ? pr.id : undefined,
+          repositoryId:
+            typeof pr?.base?.repo?.id === "number" ? pr.base.repo.id : undefined,
+          title: typeof pr?.title === "string" ? pr.title : "",
+          state: pr?.state === "closed" ? "closed" : "open",
+          merged: Boolean(pr?.merged),
+          draft: Boolean(pr?.draft),
+          authorLogin:
+            typeof pr?.user?.login === "string" ? pr.user.login : undefined,
+          authorId: typeof pr?.user?.id === "number" ? pr.user.id : undefined,
+          htmlUrl:
+            typeof pr?.html_url === "string" ? pr.html_url : undefined,
+          baseRef: typeof pr?.base?.ref === "string" ? pr.base.ref : undefined,
+          headRef: typeof pr?.head?.ref === "string" ? pr.head.ref : undefined,
+          baseSha: typeof pr?.base?.sha === "string" ? pr.base.sha : undefined,
+          headSha: typeof pr?.head?.sha === "string" ? pr.head.sha : undefined,
+          createdAt: ts(pr?.created_at ?? undefined),
+          updatedAt: ts(pr?.updated_at ?? undefined),
+          closedAt: ts(pr?.closed_at ?? undefined),
+          mergedAt: ts(pr?.merged_at ?? undefined),
+          commentsCount:
+            typeof pr?.comments === "number" ? pr.comments : undefined,
+          reviewCommentsCount:
+            typeof pr?.review_comments === "number"
+              ? pr.review_comments
+              : undefined,
+          commitsCount:
+            typeof pr?.commits === "number" ? pr.commits : undefined,
+          additions: typeof pr?.additions === "number" ? pr.additions : undefined,
+          deletions: typeof pr?.deletions === "number" ? pr.deletions : undefined,
+          changedFiles:
+            typeof pr?.changed_files === "number" ? pr.changed_files : undefined,
+        },
+      });
+
+      return c.json({ ok: true as const });
+    } catch (err) {
+      console.error(
+        `GitHub PR close failed for ${owner}/${repo}#${number}:`,
+        err instanceof Error ? err.message : err
+      );
+      return c.text("Failed to close PR", 500);
+    }
+  }
+);
