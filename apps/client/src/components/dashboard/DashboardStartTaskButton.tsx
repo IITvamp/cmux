@@ -28,7 +28,7 @@ export function DashboardStartTaskButton({
           <Button
             size="sm"
             variant="default"
-            className="!h-7"
+            className="!h-7 focus-visible:outline-none focus-visible:ring-offset-1 focus-visible:ring-offset-white dark:focus-visible:ring-offset-neutral-900"
             onClick={onStartTask}
             disabled={isDisabled}
           >
