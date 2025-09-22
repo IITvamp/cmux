@@ -86,19 +86,23 @@ export function SidebarPullRequestList({
           {
             key: "vscode",
             label: "VS Code",
-            icon: <Code2 className="w-3 h-3" aria-hidden="true" />,
+            icon: <Code2 className="w-3 h-3 mr-2 text-neutral-400" aria-hidden="true" />,
+            type: "button" as const,
           },
           {
             key: "preview",
             label: "Preview",
-            icon: <Monitor className="w-3 h-3" aria-hidden="true" />,
+            icon: <Monitor className="w-3 h-3 mr-2 text-neutral-400" aria-hidden="true" />,
+            type: "button" as const,
           },
           {
             key: "github",
             label: "GitHub",
-            icon: <ExternalLink className="w-3 h-3" aria-hidden="true" />,
+            icon: <ExternalLink className="w-3 h-3 mr-2 text-neutral-400" aria-hidden="true" />,
+            type: "link" as const,
+            href: pr.htmlUrl,
           },
-        ] as const;
+        ];
 
         const handleToggle = (
           _event?: MouseEvent<HTMLButtonElement | HTMLAnchorElement>
@@ -147,24 +151,46 @@ export function SidebarPullRequestList({
               />
             </Link>
             {isExpanded ? (
-              <div
-                className="mt-1 flex flex-wrap gap-1.5"
-                style={{ paddingLeft: "32px" }}
-              >
-                {actionButtons.map((action) => (
-                  <button
-                    key={action.key}
-                    type="button"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                    }}
-                    className="inline-flex items-center gap-1 rounded-md border border-neutral-200 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 px-2 py-1 text-[10px] font-medium text-neutral-700 dark:text-neutral-200 transition-colors hover:bg-neutral-200 dark:hover:bg-neutral-700"
-                  >
-                    {action.icon}
-                    <span>{action.label}</span>
-                  </button>
-                ))}
+              <div className="mt-1 flex flex-col" style={{ paddingLeft: "32px" }}>
+                {actionButtons.map((action) => {
+                  const content = (
+                    <div
+                      className="flex items-center px-2 py-1 text-xs rounded-md hover:bg-neutral-200/45 dark:hover:bg-neutral-800/45 cursor-default mt-px"
+                      onClick={(event) => {
+                        // Prevent toggling the parent link
+                        event.preventDefault();
+                        event.stopPropagation();
+                      }}
+                    >
+                      {action.icon}
+                      <span className="text-neutral-600 dark:text-neutral-400">{action.label}</span>
+                    </div>
+                  );
+
+                  if (action.type === "link" && action.href) {
+                    return (
+                      <a
+                        key={action.key}
+                        href={action.href}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="block"
+                        onClick={(event) => {
+                          // Allow opening in new tab normally but avoid toggling the PR row
+                          event.stopPropagation();
+                        }}
+                      >
+                        {content}
+                      </a>
+                    );
+                  }
+
+                  return (
+                    <button key={action.key} type="button" className="block w-full">
+                      {content}
+                    </button>
+                  );
+                })}
               </div>
             ) : null}
           </li>
