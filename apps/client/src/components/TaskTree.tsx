@@ -95,6 +95,14 @@ interface TaskTreeProps {
 function getRunDisplayText(run: TaskRunWithChildren): string {
   const fromRun = run.agentName?.trim();
   if (fromRun && fromRun.length > 0) {
+    // Parse agent instance format: "agentName" or "agentName:instanceNumber"
+    const parts = fromRun.split(':');
+    if (parts.length === 2) {
+      const instance = parseInt(parts[1], 10);
+      if (!isNaN(instance) && instance > 1) {
+        return `${parts[0]} (${instance})`;
+      }
+    }
     return fromRun;
   }
 

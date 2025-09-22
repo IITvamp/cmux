@@ -169,6 +169,33 @@ export const DashboardInputControls = memo(function DashboardInputControls({
     }
     return map;
   }, [agentOptions]);
+  // Parse agent instance format: "agentName" or "agentName:instanceNumber"
+  const parseAgentInstance = useCallback((value: string): { name: string; instance: number } => {
+    const parts = value.split(':');
+    if (parts.length === 2) {
+      const instance = parseInt(parts[1], 10);
+      if (!isNaN(instance)) {
+        return { name: parts[0], instance };
+      }
+    }
+    return { name: value, instance: 1 };
+  }, []);
+
+  // Create agent instance string
+  const createAgentInstance = useCallback((name: string, instance: number): string => {
+    return instance === 1 ? name : `${name}:${instance}`;
+  }, []);
+
+  // Count instances of each agent
+  const agentInstanceCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    selectedAgents.forEach(agent => {
+      const { name } = parseAgentInstance(agent);
+      counts.set(name, (counts.get(name) || 0) + 1);
+    });
+    return counts;
+  }, [selectedAgents, parseAgentInstance]);
+
   const sortedSelectedAgents = useMemo(() => {
     const vendorOrder = new Map<string, number>();
     agentOptions.forEach((option, index) => {
@@ -176,18 +203,23 @@ export const DashboardInputControls = memo(function DashboardInputControls({
       if (!vendorOrder.has(vendor)) vendorOrder.set(vendor, index);
     });
     return [...selectedAgents].sort((a, b) => {
-      const optionA = agentOptionsByValue.get(a);
-      const optionB = agentOptionsByValue.get(b);
+      const parsedA = parseAgentInstance(a);
+      const parsedB = parseAgentInstance(b);
+      const optionA = agentOptionsByValue.get(parsedA.name);
+      const optionB = agentOptionsByValue.get(parsedB.name);
       const vendorA = optionA?.iconKey ?? "other";
       const vendorB = optionB?.iconKey ?? "other";
       const rankA = vendorOrder.get(vendorA) ?? Number.MAX_SAFE_INTEGER;
       const rankB = vendorOrder.get(vendorB) ?? Number.MAX_SAFE_INTEGER;
       if (rankA !== rankB) return rankA - rankB;
-      const labelA = optionA?.displayLabel ?? optionA?.label ?? a;
-      const labelB = optionB?.displayLabel ?? optionB?.label ?? b;
-      return labelA.localeCompare(labelB);
+      const labelA = optionA?.displayLabel ?? optionA?.label ?? parsedA.name;
+      const labelB = optionB?.displayLabel ?? optionB?.label ?? parsedB.name;
+      const nameCompare = labelA.localeCompare(labelB);
+      if (nameCompare !== 0) return nameCompare;
+      // Sort by instance number if same agent
+      return parsedA.instance - parsedB.instance;
     });
-  }, [agentOptions, agentOptionsByValue, selectedAgents]);
+  }, [agentOptions, agentOptionsByValue, selectedAgents, parseAgentInstance]);
   // Determine OS for potential future UI tweaks
   // const isMac = navigator.userAgent.toUpperCase().indexOf("MAC") >= 0;
 
@@ -251,14 +283,35 @@ export const DashboardInputControls = memo(function DashboardInputControls({
     [onAgentChange, selectedAgents]
   );
 
+  const handleAgentAdd = useCallback(
+    (agentName: string) => {
+      // Find the highest instance number for this agent
+      let maxInstance = 0;
+      selectedAgents.forEach(agent => {
+        const parsed = parseAgentInstance(agent);
+        if (parsed.name === agentName) {
+          maxInstance = Math.max(maxInstance, parsed.instance);
+        }
+      });
+      const newInstance = createAgentInstance(agentName, maxInstance + 1);
+      onAgentChange([...selectedAgents, newInstance]);
+    },
+    [onAgentChange, selectedAgents, parseAgentInstance, createAgentInstance]
+  );
+
   const agentSelectionFooter = selectedAgents.length ? (
     <div className="bg-neutral-50 dark:bg-neutral-900/70">
       <div className="relative">
         <div ref={pillboxScrollRef} className="max-h-32 overflow-y-auto py-2 px-2">
           <div className="flex flex-wrap gap-1">
             {sortedSelectedAgents.map((agent) => {
-              const option = agentOptionsByValue.get(agent);
-              const label = option?.displayLabel ?? option?.label ?? agent;
+              const parsed = parseAgentInstance(agent);
+              const option = agentOptionsByValue.get(parsed.name);
+              const baseLabel = option?.displayLabel ?? option?.label ?? parsed.name;
+              const label = parsed.instance > 1 ? `${baseLabel} (${parsed.instance})` : baseLabel;
+              const instanceCount = agentInstanceCounts.get(parsed.name) || 0;
+              const canAddMore = instanceCount > 0;
+
               return (
                 <div
                   key={agent}
@@ -284,6 +337,20 @@ export const DashboardInputControls = memo(function DashboardInputControls({
                   <span className="max-w-[118px] truncate text-left select-none">
                     {label}
                   </span>
+                  {parsed.instance === 1 && canAddMore && (
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        handleAgentAdd(parsed.name);
+                      }}
+                      className="inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors hover:bg-neutral-300 dark:hover:bg-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60 ml-0.5 text-neutral-600 dark:text-neutral-400"
+                      title={`Add another ${baseLabel} instance`}
+                    >
+                      <span className="text-[10px] font-bold">+1</span>
+                    </button>
+                  )}
                 </div>
               );
             })}
@@ -459,8 +526,36 @@ export const DashboardInputControls = memo(function DashboardInputControls({
 
         <SearchableSelect
           options={agentOptions}
-          value={selectedAgents}
-          onChange={onAgentChange}
+          value={selectedAgents.map(agent => {
+            // Convert instance format back to base agent name for the select component
+            const parsed = parseAgentInstance(agent);
+            return parsed.name;
+          }).filter((name, index, self) => self.indexOf(name) === index)} // Remove duplicates
+          onChange={(newAgents: string[]) => {
+            // Handle agent selection changes
+            const currentAgentNames = new Map<string, string[]>();
+            selectedAgents.forEach(agent => {
+              const parsed = parseAgentInstance(agent);
+              if (!currentAgentNames.has(parsed.name)) {
+                currentAgentNames.set(parsed.name, []);
+              }
+              currentAgentNames.get(parsed.name)!.push(agent);
+            });
+
+            const newSelection: string[] = [];
+            newAgents.forEach(agentName => {
+              const existing = currentAgentNames.get(agentName);
+              if (existing) {
+                // Keep existing instances
+                newSelection.push(...existing);
+              } else {
+                // Add new agent with instance 1
+                newSelection.push(agentName);
+              }
+            });
+
+            onAgentChange(newSelection);
+          }}
           placeholder="Select agents"
           singleSelect={false}
           maxTagCount={1}
