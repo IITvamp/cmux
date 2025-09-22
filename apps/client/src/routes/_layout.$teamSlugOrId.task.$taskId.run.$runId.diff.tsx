@@ -2,6 +2,7 @@ import { FloatingPane } from "@/components/floating-pane";
 import { type GitDiffViewerProps } from "@/components/git-diff-viewer";
 import { RunDiffSection } from "@/components/RunDiffSection";
 import { TaskDetailHeader } from "@/components/task-detail-header";
+import { TaskCommentInput } from "@/components/task-comment-input";
 import { refWithOrigin } from "@/lib/refWithOrigin";
 import { diffSmartQueryOptions } from "@/queries/diff-smart";
 // Refs mode: no run-diffs prefetch
@@ -156,6 +157,13 @@ function RunDiffPage() {
                 </div>
               )}
             </Suspense>
+            <TaskCommentInput
+              originalPrompt={task?.text || ""}
+              taskId={taskId}
+              teamSlugOrId={teamSlugOrId}
+              projectFullName={task?.projectFullName || ""}
+              selectedAgents={selectedRun?.agentName ? [selectedRun.agentName] : []}
+            />
           </div>
         </div>
       </div>
