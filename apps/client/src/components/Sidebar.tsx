@@ -224,7 +224,7 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
             >
               Pull requests
             </SidebarSectionLink>
-            <div className="ml-2 pr-0.5">
+            <div className="ml-2 pt-px">
               <SidebarPullRequestList teamSlugOrId={teamSlugOrId} />
             </div>
           </div>
@@ -239,12 +239,7 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
             </SidebarSectionLink>
           </div>
 
-          <div className="ml-2 pt-0.5 pr-1">
-            {/* <div className="flex items-center px-1 py-1">
-              <span className="text-[10px] font-medium text-neutral-500 dark:text-neutral-500 uppercase tracking-[-0.005em] select-none">
-                Draft tasks
-              </span>
-            </div> */}
+          <div className="ml-2 pt-px">
             <div className="space-y-px">
               {tasks === undefined ? (
                 <TaskTreeSkeleton count={5} />

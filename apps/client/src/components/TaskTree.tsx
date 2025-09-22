@@ -490,7 +490,6 @@ function TaskRunTreeInner({
           >
             <SidebarListItem
               containerClassName="mt-px"
-              className="pr-2.5"
               paddingLeft={10 + level * 16}
               toggle={{
                 expanded: isExpanded,
@@ -612,8 +611,9 @@ function TaskRunDetailLink({
       params={params}
       activeOptions={{ exact: true }}
       className={clsx(
-        "flex items-center px-2 py-1 text-xs rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default mt-px",
-        "[&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800",
+        "flex items-center px-2 py-1 text-xs rounded-md hover:bg-neutral-200/45 dark:hover:bg-neutral-800/45 cursor-default mt-px",
+        "[&.active]:bg-neutral-200/75 dark:[&.active]:bg-neutral-800/65",
+        "[&.active]:hover:bg-neutral-200/75 dark:[&.active]:hover:bg-neutral-800/65",
         className
       )}
       style={{ paddingLeft: `${24 + indentLevel * 8}px` }}
@@ -730,11 +730,7 @@ function TaskRunDetails({
                   <Dropdown.Arrow />
                   <Dropdown.Item
                     onClick={() => {
-                      window.open(
-                        service.url,
-                        "_blank",
-                        "noopener,noreferrer"
-                      );
+                      window.open(service.url, "_blank", "noopener,noreferrer");
                     }}
                     className="flex items-center gap-2"
                   >
@@ -836,8 +832,17 @@ function VSCodeIcon({ className }: VSCodeIconProps) {
             type="matrix"
             values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.25 0"
           />
-          <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow" />
-          <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow" result="shape" />
+          <feBlend
+            mode="normal"
+            in2="BackgroundImageFix"
+            result="effect1_dropShadow"
+          />
+          <feBlend
+            mode="normal"
+            in="SourceGraphic"
+            in2="effect1_dropShadow"
+            result="shape"
+          />
         </filter>
         <filter
           id="filter1_d"
@@ -854,8 +859,17 @@ function VSCodeIcon({ className }: VSCodeIconProps) {
             type="matrix"
             values="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.25 0"
           />
-          <feBlend mode="normal" in2="BackgroundImageFix" result="effect1_dropShadow" />
-          <feBlend mode="normal" in="SourceGraphic" in2="effect1_dropShadow" result="shape" />
+          <feBlend
+            mode="normal"
+            in2="BackgroundImageFix"
+            result="effect1_dropShadow"
+          />
+          <feBlend
+            mode="normal"
+            in="SourceGraphic"
+            in2="effect1_dropShadow"
+            result="shape"
+          />
         </filter>
         <linearGradient
           id="paint0_linear"

@@ -47,9 +47,10 @@ export function SidebarListItem({
     <div className={clsx("relative group", containerClassName)}>
       <div
         className={clsx(
-          "flex items-center rounded-md pr-2 py-[3px] text-xs",
-          "hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default",
-          "group-[.active]:bg-neutral-100 dark:group-[.active]:bg-neutral-800",
+          "flex items-center rounded-sm pr-2 py-[3px] text-xs",
+          "hover:bg-neutral-200/45 dark:hover:bg-neutral-800/45 cursor-default",
+          "group-[.active]:bg-neutral-200/75 dark:group-[.active]:bg-neutral-800/65",
+          "group-[.active]:hover:bg-neutral-200/75 dark:group-[.active]:hover:bg-neutral-800/65",
           className
         )}
         style={{ paddingLeft: `${effectivePaddingLeft}px` }}

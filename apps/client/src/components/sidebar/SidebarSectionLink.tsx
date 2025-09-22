@@ -5,7 +5,7 @@ import { type ReactNode } from "react";
 import { type SidebarLinkRecord } from "./SidebarNavLink";
 
 const BASE_CLASSES =
-  "pointer-default cursor-default mx-1 flex items-center rounded-sm pl-2 ml-2 pr-3 py-0.5 text-[12px] font-medium text-neutral-600 select-none hover:bg-neutral-200/45 dark:text-neutral-300 dark:hover:bg-neutral-800/45";
+  "pointer-default cursor-default flex items-center rounded-sm pl-2 ml-2 pr-3 py-0.5 text-[12px] font-medium text-neutral-600 select-none hover:bg-neutral-200/45 dark:text-neutral-300 dark:hover:bg-neutral-800/45";
 const ACTIVE_CLASSES =
   "bg-neutral-200/75 text-neutral-900 dark:bg-neutral-800/65 dark:text-neutral-100";
 

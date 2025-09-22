@@ -54,7 +54,7 @@ export function SidebarPullRequestList({
   }
 
   return (
-    <ul className="mt-px flex flex-col gap-px">
+    <ul className="flex flex-col gap-px">
       {list.map((pr) => {
         const [owner = "", repo = ""] = pr.repoFullName?.split("/", 2) ?? [
           "",
@@ -62,10 +62,7 @@ export function SidebarPullRequestList({
         ];
         const key = `${pr.repoFullName}#${pr.number}`;
         const isExpanded = expanded[key] ?? false;
-        const branchLabel =
-          pr.headRef && pr.baseRef
-            ? `${pr.headRef} → ${pr.baseRef}`
-            : (pr.headRef ?? pr.baseRef ?? null);
+        const branchLabel = pr.headRef;
 
         const secondaryParts = [
           branchLabel,
