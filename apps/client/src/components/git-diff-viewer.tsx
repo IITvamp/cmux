@@ -1,4 +1,5 @@
 import { useTheme } from "@/components/theme/use-theme";
+import "@/lib/monaco-environment";
 import { cn } from "@/lib/utils";
 import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
 import loader from "@monaco-editor/loader";
