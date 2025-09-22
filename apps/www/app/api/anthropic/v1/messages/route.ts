@@ -63,16 +63,17 @@ export async function POST(request: NextRequest) {
     }
 
     // Build headers
-    const headers: Record<string, string> = useOriginalApiKey
-      ? (() => {
-          const filtered = new Headers(request.headers);
-          return Object.fromEntries(filtered);
-        })()
-      : {
-          "Content-Type": "application/json",
-          "x-api-key": env.ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01",
-        };
+    const headers: Record<string, string> =
+      useOriginalApiKey && !TEMPORARY_DISABLE_AUTH
+        ? (() => {
+            const filtered = new Headers(request.headers);
+            return Object.fromEntries(filtered);
+          })()
+        : {
+            "Content-Type": "application/json",
+            "x-api-key": env.ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+          };
 
     // Add beta header if beta param is present
     if (!useOriginalApiKey) {
