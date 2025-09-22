@@ -662,6 +662,15 @@ export async function spawnAgent(
       });
     }
 
+    // In cloud mode, add a small delay after connection to ensure worker is ready
+    // This prevents the "error invoking task rpc" issue
+    if (options.isCloudMode && vscodeInstance.isWorkerConnected()) {
+      serverLogger.info(
+        `[AgentSpawner] Cloud mode: waiting for worker to be fully ready...`
+      );
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+    }
+
     // Get the worker socket
     const workerSocket = vscodeInstance.getWorkerSocket();
     if (!workerSocket) {
@@ -868,7 +877,7 @@ export async function spawnAgent(
       }
     }
 
-    // Send the terminal creation command
+    // Send the terminal creation command with retry logic for cloud mode
     serverLogger.info(
       `[AgentSpawner] About to emit worker:create-terminal at ${new Date().toISOString()}`
     );
@@ -878,36 +887,73 @@ export async function spawnAgent(
     );
     serverLogger.info(`[AgentSpawner] Socket id:`, workerSocket.id);
 
-    await new Promise((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        serverLogger.error(
-          `[AgentSpawner] Timeout waiting for terminal creation response after 30s`
-        );
-        reject(new Error("Timeout waiting for terminal creation"));
-      }, 30000);
+    // Retry logic for terminal creation (especially for cloud mode)
+    const maxRetries = options.isCloudMode ? 3 : 1;
+    let lastError: unknown = null;
 
-      workerSocket.emit(
-        "worker:create-terminal",
-        terminalCreationCommand,
-        (result) => {
-          clearTimeout(timeout);
-          serverLogger.info(
-            `[AgentSpawner] Got response from worker:create-terminal at ${new Date().toISOString()}:`,
-            result
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        await new Promise((resolve, reject) => {
+          const timeout = setTimeout(() => {
+            serverLogger.error(
+              `[AgentSpawner] Timeout waiting for terminal creation response after 30s (attempt ${attempt}/${maxRetries})`
+            );
+            reject(new Error("Timeout waiting for terminal creation"));
+          }, 30000);
+
+          workerSocket.emit(
+            "worker:create-terminal",
+            terminalCreationCommand,
+            (result: { error?: unknown; data?: unknown }) => {
+              clearTimeout(timeout);
+              serverLogger.info(
+                `[AgentSpawner] Got response from worker:create-terminal at ${new Date().toISOString()} (attempt ${attempt}/${maxRetries}):`,
+                result
+              );
+              if (result?.error) {
+                // Check if it's the RPC error that we can retry
+                const errorMessage = typeof result.error === 'string'
+                  ? result.error
+                  : (result.error as { message?: string })?.message || String(result.error);
+                if (
+                  options.isCloudMode &&
+                  attempt < maxRetries &&
+                  (errorMessage.includes("rpc") || errorMessage.includes("invoking"))
+                ) {
+                  serverLogger.warn(
+                    `[AgentSpawner] RPC error on attempt ${attempt}/${maxRetries}, will retry: ${errorMessage}`
+                  );
+                  reject(new Error(`RPC error: ${errorMessage}`));
+                } else {
+                  reject(result.error);
+                }
+                return;
+              } else {
+                serverLogger.info("Terminal created successfully", result);
+                resolve(result?.data);
+              }
+            }
           );
-          if (result.error) {
-            reject(result.error);
-            return;
-          } else {
-            serverLogger.info("Terminal created successfully", result);
-            resolve(result.data);
-          }
+          serverLogger.info(
+            `[AgentSpawner] Emitted worker:create-terminal at ${new Date().toISOString()} (attempt ${attempt}/${maxRetries})`
+          );
+        });
+
+        // If we reach here, terminal was created successfully
+        break;
+      } catch (error) {
+        lastError = error;
+        if (attempt < maxRetries) {
+          serverLogger.warn(
+            `[AgentSpawner] Terminal creation failed on attempt ${attempt}/${maxRetries}, retrying in 2s...`,
+            error
+          );
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+        } else {
+          throw lastError;
         }
-      );
-      serverLogger.info(
-        `[AgentSpawner] Emitted worker:create-terminal at ${new Date().toISOString()}`
-      );
-    });
+      }
+    }
 
     return {
       agentName: agent.name,
