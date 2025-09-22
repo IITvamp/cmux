@@ -5,9 +5,18 @@ import { api } from "@cmux/convex/api";
 import type { Id } from "@cmux/convex/dataModel";
 import * as Dialog from "@radix-ui/react-dialog";
 import { useNavigate, useRouter } from "@tanstack/react-router";
+import { useStackApp } from "@stackframe/react";
 import { Command } from "cmdk";
 import { useQuery } from "convex/react";
-import { GitPullRequest, Monitor, Moon, Plus, Sun } from "lucide-react";
+import {
+  GitPullRequest,
+  Home as HomeIcon,
+  LogOut,
+  Monitor,
+  Moon,
+  Plus,
+  Sun,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ElectronLogsCommandItems } from "./command-bar/ElectronLogsCommandItems";
@@ -26,6 +35,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
   const navigate = useNavigate();
   const router = useRouter();
   const { setTheme } = useTheme();
+  const stackApp = useStackApp();
 
   const allTasks = useQuery(api.tasks.getTasksWithTaskRuns, { teamSlugOrId });
 
@@ -126,6 +136,15 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
         } catch {
           // ignore preload errors
         }
+      } else if (value === "home") {
+        try {
+          await router.preloadRoute({
+            to: "/$teamSlugOrId/dashboard",
+            params: { teamSlugOrId },
+          });
+        } catch {
+          // ignore preload errors
+        }
       } else if (value?.startsWith("task:")) {
         const parts = value.slice(5).split(":");
         const taskId = parts[0];
@@ -190,6 +209,11 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
           to: "/$teamSlugOrId/dashboard",
           params: { teamSlugOrId },
         });
+      } else if (value === "home") {
+        navigate({
+          to: "/$teamSlugOrId/dashboard",
+          params: { teamSlugOrId },
+        });
       } else if (value === "pull-requests") {
         navigate({
           to: "/$teamSlugOrId/prs",
@@ -214,6 +238,13 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
         setTheme("dark");
       } else if (value === "theme-system") {
         setTheme("system");
+      } else if (value === "sign-out") {
+        try {
+          await stackApp.redirectToSignOut();
+        } catch (error) {
+          console.error("Failed to sign out", error);
+          toast.error("Failed to sign out. Please try again.");
+        }
       } else if (value.startsWith("task:")) {
         const parts = value.slice(5).split(":");
         const taskId = parts[0] as Id<"tasks">;
@@ -259,7 +290,7 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
       setSearch("");
       setOpenedWithShift(false);
     },
-    [navigate, teamSlugOrId, setTheme, allTasks]
+    [navigate, teamSlugOrId, setTheme, stackApp, allTasks]
   );
 
   if (!open) return null;
@@ -310,6 +341,17 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
                 Actions
               </div>
               <Command.Item
+                value="home"
+                onSelect={() => handleSelect("home")}
+                className="flex items-center gap-2 px-3 py-2.5 mx-1 rounded-md cursor-pointer
+                hover:bg-neutral-100 dark:hover:bg-neutral-800
+                data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800
+                data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100"
+              >
+                <HomeIcon className="h-4 w-4 text-neutral-500" />
+                <span className="text-sm">Home</span>
+              </Command.Item>
+              <Command.Item
                 value="new-task"
                 onSelect={() => handleSelect("new-task")}
                 className="flex items-center gap-2 px-3 py-2.5 mx-1 rounded-md cursor-pointer
@@ -330,6 +372,17 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
               >
                 <GitPullRequest className="h-4 w-4 text-neutral-500" />
                 <span className="text-sm">Pull Requests</span>
+              </Command.Item>
+              <Command.Item
+                value="sign-out"
+                onSelect={() => handleSelect("sign-out")}
+                className="flex items-center gap-2 px-3 py-2.5 mx-1 rounded-md cursor-pointer
+                hover:bg-neutral-100 dark:hover:bg-neutral-800
+                data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800
+                data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100"
+              >
+                <LogOut className="h-4 w-4 text-neutral-500" />
+                <span className="text-sm">Sign Out</span>
               </Command.Item>
             </Command.Group>
 
