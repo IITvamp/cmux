@@ -487,6 +487,8 @@ export const DashboardInputControls = memo(function DashboardInputControls({
             "border border-neutral-200 dark:border-neutral-500/15",
             "text-neutral-600 dark:text-neutral-400",
             "hover:bg-neutral-200 dark:hover:bg-neutral-600",
+            // Apply consistent focus ring like searchable selects
+            "outline-none focus:outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
             "transition-colors"
           )}
           onClick={handleImageClick}
@@ -502,6 +504,8 @@ export const DashboardInputControls = memo(function DashboardInputControls({
             "border border-neutral-200 dark:border-neutral-500/15",
             "text-neutral-600 dark:text-neutral-400",
             "hover:bg-neutral-200 dark:hover:bg-neutral-600",
+            // Apply consistent focus ring like searchable selects
+            "outline-none focus:outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
             "transition-colors"
           )}
         >

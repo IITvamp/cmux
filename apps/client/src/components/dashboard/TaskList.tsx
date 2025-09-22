@@ -22,7 +22,7 @@ export const TaskList = memo(function TaskList({
         <div className="flex items-end gap-2.5 select-none">
           <button
             className={
-              "text-sm font-medium transition-colors " +
+              "text-sm font-medium transition-colors rounded-md outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] " +
               (tab === "all"
                 ? "text-neutral-900 dark:text-neutral-100"
                 : "text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200")
@@ -34,7 +34,7 @@ export const TaskList = memo(function TaskList({
           </button>
           <button
             className={
-              "text-sm font-medium transition-colors " +
+              "text-sm font-medium transition-colors rounded-md outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] " +
               (tab === "archived"
                 ? "text-neutral-900 dark:text-neutral-100"
                 : "text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200")
