@@ -400,19 +400,20 @@ function setupAutoUpdates(): void {
   mainLog("Starting initial auto-update check");
   autoUpdater
     .checkForUpdatesAndNotify()
-    .then((result) => logUpdateCheckResult("Initial checkForUpdatesAndNotify", result))
+    .then((result) =>
+      logUpdateCheckResult("Initial checkForUpdatesAndNotify", result)
+    )
     .catch((e) => mainWarn("checkForUpdatesAndNotify failed", e));
   const CHECK_INTERVAL_MS = 30 * 60 * 1000;
-  setInterval(
-    () => {
-      mainLog("Starting scheduled auto-update check");
-      autoUpdater
-        .checkForUpdates()
-        .then((result) => logUpdateCheckResult("Scheduled checkForUpdates", result))
-        .catch((e) => mainWarn("Periodic checkForUpdates failed", e));
-    },
-    CHECK_INTERVAL_MS
-  ); // 30 minutes
+  setInterval(() => {
+    mainLog("Starting scheduled auto-update check");
+    autoUpdater
+      .checkForUpdates()
+      .then((result) =>
+        logUpdateCheckResult("Scheduled checkForUpdates", result)
+      )
+      .catch((e) => mainWarn("Periodic checkForUpdates failed", e));
+  }, CHECK_INTERVAL_MS); // 30 minutes
 }
 
 async function handleOrQueueProtocolUrl(url: string) {
@@ -440,6 +441,7 @@ function createWindow(): void {
       nodeIntegration: false,
       webviewTag: true,
       partition: PARTITION,
+      allowRunningInsecureContent: true,
     },
   };
 
