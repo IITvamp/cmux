@@ -5,7 +5,7 @@ import { isElectron } from "@/lib/electron";
 import { type Doc } from "@cmux/convex/dataModel";
 import type { LinkProps } from "@tanstack/react-router";
 import { Link } from "@tanstack/react-router";
-import { Home, Plus, Server } from "lucide-react";
+import { Home, Plus, Server, Settings as SettingsIcon } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -32,7 +32,7 @@ interface SidebarNavItem {
   search?: LinkProps["search"];
   exact?: boolean;
 }
-const navItems: SidebarNavItem[] = [
+const baseNavItems: SidebarNavItem[] = [
   {
     label: "Home",
     to: "/$teamSlugOrId/dashboard",
@@ -157,6 +157,17 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
   }, [onMouseMove, stopResizing]);
 
   const resetWidth = useCallback(() => setWidth(DEFAULT_WIDTH), []);
+  const navItems = isElectron
+    ? [
+        ...baseNavItems,
+        {
+          label: "Settings",
+          to: "/$teamSlugOrId/settings",
+          exact: true,
+          icon: SettingsIcon,
+        } satisfies SidebarNavItem,
+      ]
+    : baseNavItems;
 
   return (
     <div
