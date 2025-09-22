@@ -30,32 +30,4 @@ export default defineConfig({
   server: {
     allowedHosts: true,
   },
-  build: {
-    rollupOptions: {
-      output: {
-        assetFileNames: (assetInfo) => {
-          const [firstOriginal] = assetInfo.originalFileNames ?? [];
-          const [firstName] = assetInfo.names ?? [];
-
-          const preferredName = firstOriginal ?? firstName ?? "";
-          const normalizedName = preferredName
-            .replace(/^.*node_modules\//, "node_modules/")
-            .replace(/^\.\/?/, "");
-
-          const nodeModulesPrefix = "node_modules/monaco-editor/min/vs/";
-          const monacoPrefix = "monaco-editor/min/vs/";
-
-          if (normalizedName.startsWith(nodeModulesPrefix)) {
-            return normalizedName.slice("node_modules/".length);
-          }
-
-          if (normalizedName.startsWith(monacoPrefix)) {
-            return normalizedName;
-          }
-
-          return "assets/[name]-[hash][extname]";
-        },
-      },
-    },
-  },
 });
