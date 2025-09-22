@@ -274,16 +274,14 @@ function TaskTreeInner({
               params={{ teamSlugOrId, taskId: task._id }}
               search={{ runId: undefined }}
               activeOptions={{ exact: true }}
-              className="group block px-0.5"
+              className="group block"
             >
               <SidebarListItem
-                paddingLeft={8 + level * 16}
+                paddingLeft={10 + level * 16}
                 toggle={{
                   expanded: isExpanded,
                   onToggle: handleToggle,
                   visible: canExpand,
-                  className:
-                    "size-4.5 mr-1.5 rounded-[5px] hover:bg-neutral-200 dark:hover:bg-neutral-700",
                 }}
                 title={task.pullRequestTitle || task.text}
                 titleClassName="text-[13px] text-neutral-900 dark:text-neutral-100"

@@ -36,33 +36,39 @@ export function SidebarListItem({
   toggle,
 }: SidebarListItemProps) {
   const toggleVisible = toggle?.visible ?? Boolean(toggle);
+  const effectivePaddingLeft = Math.max(
+    0,
+    toggleVisible ? paddingLeft - 4 : paddingLeft
+  );
 
   return (
     <div className={clsx("relative group", containerClassName)}>
       <div
         className={clsx(
-          "flex items-center rounded-md pr-2 py-1 text-xs transition-colors",
+          "flex items-center rounded-md pr-2 py-0.5 text-xs transition-colors",
           "hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default",
           "group-[.active]:bg-neutral-100 dark:group-[.active]:bg-neutral-800",
           className
         )}
-        style={{ paddingLeft: `${paddingLeft}px` }}
+        style={{ paddingLeft: `${effectivePaddingLeft}px` }}
       >
         {toggle ? (
-          <SidebarToggleButton
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              toggle.onToggle(event);
-            }}
-            isExpanded={toggle.expanded}
-            isVisible={toggleVisible}
-            className={clsx(
-              "w-4 h-4 mr-1.5 hover:bg-neutral-200 dark:hover:bg-neutral-700",
-              toggle.className
-            )}
-            iconClassName={toggle.iconClassName}
-          />
+          <div className="self-start pr-1.5 pt-0.5">
+            <SidebarToggleButton
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                toggle.onToggle(event);
+              }}
+              isExpanded={toggle.expanded}
+              isVisible={toggleVisible}
+              className={clsx(
+                "w-4 h-4 hover:bg-neutral-200 dark:hover:bg-neutral-700",
+                toggle.className
+              )}
+              iconClassName={toggle.iconClassName}
+            />
+          </div>
         ) : null}
 
         {leading ? <div className="mr-2 flex-shrink-0">{leading}</div> : null}
