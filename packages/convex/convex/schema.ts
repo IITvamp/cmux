@@ -315,6 +315,12 @@ const convexSchema = defineSchema({
     candidateRunIds: v.array(v.id("taskRuns")),
     evaluationPrompt: v.string(),
     evaluationResponse: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("in_progress"),
+      v.literal("completed"),
+      v.literal("failed")
+    ),
     createdAt: v.number(),
     userId: v.string(),
     teamId: v.string(),

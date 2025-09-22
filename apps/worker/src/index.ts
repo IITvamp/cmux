@@ -36,6 +36,10 @@ import { detectTerminalIdle } from "./detectTerminalIdle.js";
 import { runWorkerExec } from "./execRunner.js";
 import { FileWatcher, computeGitDiff, getFileWithDiff } from "./fileWatcher.js";
 import { log } from "./logger.js";
+import { ConvexHttpClient } from "convex/browser";
+import { api } from "@cmux/convex/api";
+import type { Id } from "@cmux/convex/dataModel";
+import { retryOnOptimisticConcurrency } from "./utils/convexRetry.js";
 
 const execAsync = promisify(exec);
 
@@ -141,6 +145,116 @@ let mainServerSocket: Socket<
   ServerToWorkerEvents,
   WorkerToServerEvents
 > | null = null;
+
+// Per-taskRun context for calling Convex and Crown HTTP
+type TaskRunContext = {
+  teamSlugOrId?: string;
+  taskId?: Id<"tasks"> | string;
+  stackAccessToken?: string;
+  stackAuthJson?: string;
+  convexUrl?: string;
+};
+const taskRunContexts = new Map<string, TaskRunContext>();
+
+function getConvexClientForContext(ctx: TaskRunContext): ConvexHttpClient | null {
+  if (!ctx.convexUrl || !ctx.stackAccessToken) return null;
+  const client = new ConvexHttpClient(ctx.convexUrl);
+  client.setAuth(ctx.stackAccessToken);
+  return client;
+}
+
+async function handleTaskRunCompletion(taskRunId: string, exitCode: number): Promise<void> {
+  const ctx = taskRunContexts.get(taskRunId);
+  if (!ctx) {
+    log("WARN", `No taskRun context found for ${taskRunId}; falling back to mainServer events`);
+    emitToMainServer("worker:task-complete", {
+      workerId: WORKER_ID,
+      terminalId: taskRunId,
+      taskRunId,
+      elapsedMs: 0,
+    });
+    return;
+  }
+  if (!ctx.teamSlugOrId || !ctx.taskId) {
+    log("WARN", `Missing teamSlugOrId or taskId for ${taskRunId}; skipping direct Convex updates`);
+    emitToMainServer("worker:task-complete", {
+      workerId: WORKER_ID,
+      terminalId: taskRunId,
+      taskRunId,
+      elapsedMs: 0,
+    });
+    return;
+  }
+
+  try {
+    const convex = getConvexClientForContext(ctx);
+    if (!convex) throw new Error("Convex client not available in worker context");
+
+    // Mark taskRun complete with OCC retries
+    await retryOnOptimisticConcurrency(() =>
+      convex.mutation(api.taskRuns.complete, {
+        teamSlugOrId: ctx.teamSlugOrId!,
+        id: taskRunId as Id<"taskRuns">,
+        exitCode,
+      })
+    );
+
+    // Check if all runs are complete
+    const completion = await convex.query(api.tasks.areAllTaskRunsComplete, {
+      teamSlugOrId: ctx.teamSlugOrId!,
+      taskId: ctx.taskId as Id<"tasks">,
+    });
+
+    if (!completion.allComplete) {
+      log("INFO", `Not all taskRuns complete for task ${String(ctx.taskId)} yet`, completion);
+      return;
+    }
+
+    // Concurrency gate: only one worker should proceed to start crown
+    const gate = await retryOnOptimisticConcurrency(() =>
+      convex.mutation(api.tasks.tryBeginCrownEvaluation, {
+        teamSlugOrId: ctx.teamSlugOrId!,
+        taskId: ctx.taskId as Id<"tasks">,
+      })
+    );
+
+    if (!gate.proceed) {
+      log("INFO", `Crown evaluation already pending or not eligible: ${gate.reason ?? "unknown"}`);
+      return;
+    }
+
+    // Fire crown HTTP evaluate (Convex HTTP route) with stack auth
+    if (!ctx.convexUrl || !ctx.stackAuthJson) {
+      log("WARN", "Missing convexUrl or stackAuthJson; cannot call crown HTTP directly");
+      return;
+    }
+
+    const crownUrl = `${ctx.convexUrl.replace(/\/$/, "")}/api/crown/evaluate`;
+    const prompt = `Evaluate crown for task ${String(
+      ctx.taskId
+    )}. Select best implementation based on code diffs and quality.`;
+
+    const res = await fetch(crownUrl, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-stack-auth": ctx.stackAuthJson,
+      },
+      body: JSON.stringify({ prompt, teamSlugOrId: ctx.teamSlugOrId }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      log("ERROR", `Crown HTTP evaluate failed: ${res.status} ${text}`);
+      return;
+    }
+    const data = await res.json();
+    log("INFO", `Crown HTTP evaluate started/completed`, data);
+  } catch (e) {
+    log("ERROR", `Error during worker-side completion/crown flow for ${taskRunId}`, e);
+  }
+}
+
 
 // Track active file watchers by taskRunId
 const activeFileWatchers: Map<string, FileWatcher> = new Map();
@@ -371,6 +485,17 @@ managementIO.on("connection", (socket) => {
         },
         WORKER_ID
       );
+
+      // Store context for later worker->Convex/Crown operations
+      if (validated.taskRunId) {
+        taskRunContexts.set(validated.taskRunId as string, {
+          teamSlugOrId: validated.teamSlugOrId,
+          taskId: validated.taskId as Id<"tasks"> | undefined,
+          stackAccessToken: validated.stackAccessToken,
+          stackAuthJson: validated.stackAuthJson,
+          convexUrl: validated.convexUrl,
+        });
+      }
 
       await createTerminal(validated.terminalId, {
         cols: validated.cols,
@@ -1005,12 +1130,16 @@ async function createTerminal(
       void agentConfig
         .completionDetector(options.taskRunId)
         .then(() => {
+          const elapsed = Date.now() - processStartTime;
+          // New: direct Convex/Crown flow from worker
+          void handleTaskRunCompletion(options.taskRunId!, 0);
+          // Legacy: still emit to main server for backward compatibility
           emitToMainServer("worker:task-complete", {
             workerId: WORKER_ID,
             terminalId,
             taskRunId: options.taskRunId!,
             agentModel: options.agentModel,
-            elapsedMs: Date.now() - processStartTime,
+            elapsedMs: elapsed,
           });
         })
         .catch((e) => {

@@ -63,6 +63,11 @@ export const WorkerCreateTerminalSchema = z.object({
   args: z.array(z.string()).optional(),
   taskId: typedZid("tasks").optional(),
   taskRunId: typedZid("taskRuns").optional(),
+  teamSlugOrId: z.string().optional(),
+  // For worker->Convex auth and HTTP crown calls
+  stackAccessToken: z.string().optional(),
+  stackAuthJson: z.string().optional(),
+  convexUrl: z.string().optional(),
   // Preferred: validated against AgentConfig names at runtime (browser-safe)
   agentModel: z
     .string()

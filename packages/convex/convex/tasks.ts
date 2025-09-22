@@ -234,6 +234,70 @@ export const getById = authQuery({
   },
 });
 
+// Check if all task runs for a task are completed or failed
+export const areAllTaskRunsComplete = authQuery({
+  args: { teamSlugOrId: v.string(), taskId: v.id("tasks") },
+  handler: async (ctx, args) => {
+    const userId = ctx.identity.subject;
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
+
+    const runs = await ctx.db
+      .query("taskRuns")
+      .withIndex("by_team_user", (q) => q.eq("teamId", teamId).eq("userId", userId))
+      .filter((q) => q.eq(q.field("taskId"), args.taskId))
+      .collect();
+
+    const total = runs.length;
+    const completed = runs.filter((r) => r.status === "completed" || r.status === "failed").length;
+    const allComplete = total > 0 && completed === total;
+
+    return { allComplete, total, completed } as const;
+  },
+});
+
+// Atomically mark a task as ready for crown evaluation once all runs are complete
+// Returns { proceed: true } only for exactly one caller in concurrent scenarios
+export const tryBeginCrownEvaluation = authMutation({
+  args: { teamSlugOrId: v.string(), taskId: v.id("tasks") },
+  handler: async (ctx, args) => {
+    const userId = ctx.identity.subject;
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
+
+    const task = await ctx.db.get(args.taskId);
+    if (!task || task.teamId !== teamId || task.userId !== userId) {
+      throw new Error("Task not found or unauthorized");
+    }
+
+    // Ensure all task runs are complete
+    const runs = await ctx.db
+      .query("taskRuns")
+      .withIndex("by_team_user", (q) => q.eq("teamId", teamId).eq("userId", userId))
+      .filter((q) => q.eq(q.field("taskId"), args.taskId))
+      .collect();
+
+    const allComplete = runs.every((r) => r.status === "completed" || r.status === "failed");
+    if (!allComplete) {
+      return { proceed: false as const, reason: "not_all_complete" as const };
+    }
+
+    // If already pending/in_progress, do not proceed
+    if (
+      task.crownEvaluationError === "pending_evaluation" ||
+      task.crownEvaluationError === "in_progress"
+    ) {
+      return { proceed: false as const, reason: "already_pending" as const };
+    }
+
+    // Mark as in_progress to gate other contenders
+    await ctx.db.patch(args.taskId, {
+      crownEvaluationError: "in_progress",
+      updatedAt: Date.now(),
+    });
+
+    return { proceed: true as const };
+  },
+});
+
 export const getVersions = authQuery({
   args: { teamSlugOrId: v.string(), taskId: v.id("tasks") },
   handler: async (ctx, args) => {

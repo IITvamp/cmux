@@ -162,6 +162,7 @@ export const setCrownWinner = authMutation({
       candidateRunIds: taskRuns.map((r) => r._id),
       evaluationPrompt: "Evaluated by Claude Code",
       evaluationResponse: args.reason,
+      status: "completed",
       createdAt: Date.now(),
       userId,
       teamId,
