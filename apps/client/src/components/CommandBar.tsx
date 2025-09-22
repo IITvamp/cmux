@@ -7,10 +7,11 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { Command } from "cmdk";
 import { useQuery } from "convex/react";
-import { GitPullRequest, Monitor, Moon, Plus, Sun } from "lucide-react";
+import { GitPullRequest, Monitor, Moon, Plus, Sun, Home as HomeIcon, LogOut } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ElectronLogsCommandItems } from "./command-bar/ElectronLogsCommandItems";
+import { WWW_ORIGIN } from "@/lib/wwwOrigin";
 
 interface CommandBarProps {
   teamSlugOrId: string;
@@ -117,7 +118,16 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
 
   const handleHighlight = useCallback(
     async (value: string) => {
-      if (value === "logs:view") {
+      if (value === "home") {
+        try {
+          await router.preloadRoute({
+            to: "/$teamSlugOrId/dashboard",
+            params: { teamSlugOrId },
+          });
+        } catch {
+          // ignore preload errors
+        }
+      } else if (value === "logs:view") {
         try {
           await router.preloadRoute({
             to: "/$teamSlugOrId/logs",
@@ -185,7 +195,12 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
 
   const handleSelect = useCallback(
     async (value: string) => {
-      if (value === "new-task") {
+      if (value === "home") {
+        navigate({
+          to: "/$teamSlugOrId/dashboard",
+          params: { teamSlugOrId },
+        });
+      } else if (value === "new-task") {
         navigate({
           to: "/$teamSlugOrId/dashboard",
           params: { teamSlugOrId },
@@ -207,6 +222,17 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
           }
         } catch {
           toast.error("Unable to copy logs");
+        }
+      } else if (value === "sign-out") {
+        try {
+          if (isElectron) {
+            const url = `${WWW_ORIGIN}/handler/sign-out/`;
+            window.open(url, "_blank", "noopener,noreferrer");
+          } else {
+            navigate({ to: "/handler/sign-out/" });
+          }
+        } catch {
+          // ignore; navigation should handle sign-out flow
         }
       } else if (value === "theme-light") {
         setTheme("light");
@@ -304,6 +330,23 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
             <Command.Empty className="py-6 text-center text-sm text-neutral-500 dark:text-neutral-400">
               No results found.
             </Command.Empty>
+
+            <Command.Group>
+              <div className="px-2 py-1.5 text-xs text-neutral-500 dark:text-neutral-400">
+                Navigation
+              </div>
+              <Command.Item
+                value="home"
+                onSelect={() => handleSelect("home")}
+                className="flex items-center gap-2 px-3 py-2.5 mx-1 rounded-md cursor-pointer
+                hover:bg-neutral-100 dark:hover:bg-neutral-800
+                data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800
+                data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100"
+              >
+                <HomeIcon className="h-4 w-4 text-neutral-500" />
+                <span className="text-sm">Home</span>
+              </Command.Item>
+            </Command.Group>
 
             <Command.Group>
               <div className="px-2 py-1.5 text-xs text-neutral-500 dark:text-neutral-400">
@@ -485,6 +528,23 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
             {isElectron ? (
               <ElectronLogsCommandItems onSelect={handleSelect} />
             ) : null}
+
+            <Command.Group>
+              <div className="px-2 py-1.5 text-xs text-neutral-500 dark:text-neutral-400">
+                Account
+              </div>
+              <Command.Item
+                value="sign-out"
+                onSelect={() => handleSelect("sign-out")}
+                className="flex items-center gap-2 px-3 py-2.5 mx-1 rounded-md cursor-pointer
+                hover:bg-neutral-100 dark:hover:bg-neutral-800
+                data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800
+                data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100"
+              >
+                <LogOut className="h-4 w-4 text-neutral-500" />
+                <span className="text-sm">Sign out</span>
+              </Command.Item>
+            </Command.Group>
           </Command.List>
         </div>
       </Command.Dialog>
