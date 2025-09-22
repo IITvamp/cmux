@@ -1,9 +1,7 @@
 import { useTheme } from "@/components/theme/use-theme";
-// No socket usage in refs-only viewer
 import { cn } from "@/lib/utils";
 import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
 import loader from "@monaco-editor/loader";
-import monacoLoaderAssetUrl from "monaco-editor/min/vs/loader.js?url";
 import {
   ChevronDown,
   ChevronRight,
@@ -14,6 +12,7 @@ import {
   FileText,
 } from "lucide-react";
 import { type editor } from "monaco-editor";
+import monacoLoaderAssetUrl from "monaco-editor/min/vs/loader.js?url";
 import {
   memo,
   useCallback,
