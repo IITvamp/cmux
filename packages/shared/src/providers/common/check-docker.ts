@@ -12,15 +12,55 @@ export async function checkDockerStatus(): Promise<{
   const { promisify } = await import("node:util");
   const execAsync = promisify(exec);
 
-  try {
-    // Check if Docker is running
-    const { stdout: versionOutput } = await execAsync(
-      "docker version --format '{{.Server.Version}}'"
-    );
-    const version = versionOutput.trim();
+  // Lightweight readiness probe that survives Docker Desktop restarts.
+  // Pings the Docker daemon via the Unix socket instead of relying on the CLI.
+  async function pingDockerSocket(timeoutMs = 1000): Promise<boolean> {
+    try {
+      const net = await import("node:net");
+      return await new Promise<boolean>((resolve) => {
+        let settled = false;
+        const done = (ok: boolean) => {
+          if (settled) return;
+          settled = true;
+          try {
+            socket.destroy();
+          } catch {}
+          resolve(ok);
+        };
 
-    // Check if Docker daemon is accessible
-    await execAsync("docker ps");
+        const socket = net.createConnection({ path: "/var/run/docker.sock" });
+        socket.setTimeout(timeoutMs, () => done(false));
+        socket.on("error", () => done(false));
+        socket.on("connect", () => {
+          // Minimal HTTP request to the Docker ping endpoint
+          socket.write(
+            "GET /_ping HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
+          );
+        });
+        let buffer = "";
+        socket.on("data", (chunk: Buffer) => {
+          buffer += chunk.toString();
+          // Look for HTTP 200 status; Docker responds with "OK" body
+          if (buffer.startsWith("HTTP/1.1 200") || buffer.startsWith("HTTP/1.0 200")) {
+            done(true);
+          }
+        });
+        socket.on("end", () => done(false));
+      });
+    } catch {
+      return false;
+    }
+  }
+
+  try {
+    // Prefer socket ping to determine daemon readiness (works even if CLI path/env is borked)
+    const socketReady = await pingDockerSocket(1000);
+    if (!socketReady) {
+      return {
+        isRunning: false,
+        error: "Docker daemon is not reachable via /var/run/docker.sock",
+      };
+    }
 
     const result: {
       isRunning: boolean;
@@ -32,40 +72,42 @@ export async function checkDockerStatus(): Promise<{
       };
     } = {
       isRunning: true,
-      version,
     };
+
+    // Try to obtain version info via CLI, but don't fail readiness if it errors
+    try {
+      const { stdout: versionOutput } = await execAsync(
+        "docker version --format '{{.Server.Version}}'",
+        { timeout: 3000, maxBuffer: 1024 * 1024 }
+      );
+      const version = versionOutput.trim();
+      if (version) {
+        result.version = version;
+      }
+    } catch {
+      // Ignore version errors; daemon is reachable as verified above
+    }
 
     // Check for worker image (use same default as DockerVSCodeInstance)
     const imageName = process.env.WORKER_IMAGE_NAME || "cmux-worker:0.0.1";
     if (imageName) {
       try {
-        // Check if image exists locally
-        await execAsync(`docker image inspect ${imageName}`);
+        await execAsync(`docker image inspect ${imageName}`, {
+          timeout: 3000,
+          maxBuffer: 1024 * 1024,
+        });
         result.workerImage = {
           name: imageName,
           isAvailable: true,
         };
       } catch {
-        // Image doesn't exist locally
-        // Check if a pull is in progress
-        try {
-          const { stdout: psOutput } = await execAsync(
-            "docker ps -a --format '{{.Command}}'"
-          );
-          const isPulling = psOutput.includes(`pull ${imageName}`);
-
-          result.workerImage = {
-            name: imageName,
-            isAvailable: false,
-            isPulling,
-          };
-        } catch {
-          result.workerImage = {
-            name: imageName,
-            isAvailable: false,
-            isPulling: false,
-          };
-        }
+        // Image doesn't exist locally; we do not attempt to detect "pulling" as it is
+        // not represented as a container. Leave isPulling undefined/false.
+        result.workerImage = {
+          name: imageName,
+          isAvailable: false,
+          isPulling: false,
+        };
       }
     }
 
