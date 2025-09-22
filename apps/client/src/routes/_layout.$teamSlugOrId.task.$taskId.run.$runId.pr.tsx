@@ -14,36 +14,36 @@ const paramsSchema = z.object({
   runId: typedZid("taskRuns"),
 });
 
-export const Route = createFileRoute("/_layout/$teamSlugOrId/task/$taskId/run/$runId/pr")(
-  {
-    component: RunPullRequestPage,
-    params: {
-      parse: paramsSchema.parse,
-      stringify: (params) => {
-        return {
-          taskId: params.taskId,
-          runId: params.runId,
-        };
-      },
+export const Route = createFileRoute(
+  "/_layout/$teamSlugOrId/task/$taskId/run/$runId/pr"
+)({
+  component: RunPullRequestPage,
+  params: {
+    parse: paramsSchema.parse,
+    stringify: (params) => {
+      return {
+        taskId: params.taskId,
+        runId: params.runId,
+      };
     },
-    loader: async (opts) => {
-      await Promise.all([
-        opts.context.queryClient.ensureQueryData(
-          convexQuery(api.taskRuns.getByTask, {
-            teamSlugOrId: opts.params.teamSlugOrId,
-            taskId: opts.params.taskId,
-          })
-        ),
-        opts.context.queryClient.ensureQueryData(
-          convexQuery(api.tasks.getById, {
-            teamSlugOrId: opts.params.teamSlugOrId,
-            id: opts.params.taskId,
-          })
-        ),
-      ]);
-    },
-  }
-);
+  },
+  loader: async (opts) => {
+    await Promise.all([
+      opts.context.queryClient.ensureQueryData(
+        convexQuery(api.taskRuns.getByTask, {
+          teamSlugOrId: opts.params.teamSlugOrId,
+          taskId: opts.params.taskId,
+        })
+      ),
+      opts.context.queryClient.ensureQueryData(
+        convexQuery(api.tasks.getById, {
+          teamSlugOrId: opts.params.teamSlugOrId,
+          id: opts.params.taskId,
+        })
+      ),
+    ]);
+  },
+});
 
 function RunPullRequestPage() {
   const { taskId, teamSlugOrId, runId } = Route.useParams();
@@ -137,6 +137,7 @@ function RunPullRequestPage() {
                 src={pullRequestUrl}
                 className="w-full h-full border-0"
                 borderRadius={paneBorderRadius}
+                forceWebContentsViewIfElectron
               />
             ) : (
               <div className="flex flex-col items-center justify-center h-full text-neutral-500 dark:text-neutral-400">
@@ -154,7 +155,9 @@ function RunPullRequestPage() {
                   />
                 </svg>
                 <p className="text-sm font-medium mb-1">No pull request</p>
-                <p className="text-xs">This run doesn't have an associated pull request</p>
+                <p className="text-xs">
+                  This run doesn't have an associated pull request
+                </p>
               </div>
             )}
           </div>

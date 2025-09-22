@@ -20,6 +20,7 @@ interface PersistentWebViewProps {
   backgroundColor?: string;
   borderRadius?: number;
   fallback?: ReactNode;
+  forceWebContentsViewIfElectron?: boolean;
   onLoad?: () => void;
   onError?: (error: Error) => void;
   onElectronViewReady?: (info: {
@@ -47,6 +48,7 @@ export function PersistentWebView({
   backgroundColor,
   borderRadius,
   fallback,
+  forceWebContentsViewIfElectron,
   onLoad,
   onError,
   onElectronViewReady,
@@ -54,7 +56,10 @@ export function PersistentWebView({
 }: PersistentWebViewProps) {
   const resolvedRetain = true;
 
-  if (isElectron && !DISABLE_WEBCONTENTSVIEW) {
+  if (
+    isElectron &&
+    (forceWebContentsViewIfElectron || !DISABLE_WEBCONTENTSVIEW)
+  ) {
     return (
       <ElectronWebContentsView
         src={src}
