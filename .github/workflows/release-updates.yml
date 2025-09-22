@@ -112,6 +112,10 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.2.21
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
       - name: Install dependencies (bun)
         run: bun install --frozen-lockfile
       - name: Install app deps in apps/client (bun)
@@ -144,6 +148,9 @@ jobs:
           NEXT_PUBLIC_WWW_ORIGIN=${{ secrets.NEXT_PUBLIC_WWW_ORIGIN }}
           NEXT_PUBLIC_GITHUB_APP_SLUG=${{ secrets.NEXT_PUBLIC_GITHUB_APP_SLUG }}
           EOF
+      - name: Build native Rust module (x64)
+        working-directory: apps/server/native/core
+        run: bunx --bun @napi-rs/cli build --platform --release
       - name: Build, sign, and notarize (x64) via publish script
         env:
           MAC_CERT_BASE64: ${{ secrets.MAC_CERT_BASE64 }}
@@ -202,6 +209,10 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.2.21
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
       - name: Install dependencies (bun)
         run: bun install --frozen-lockfile
       - name: Install app deps in apps/client (bun)
@@ -234,6 +245,9 @@ jobs:
           NEXT_PUBLIC_WWW_ORIGIN=${{ secrets.NEXT_PUBLIC_WWW_ORIGIN }}
           NEXT_PUBLIC_GITHUB_APP_SLUG=${{ secrets.NEXT_PUBLIC_GITHUB_APP_SLUG }}
           EOF
+      - name: Build native Rust module (arm64)
+        working-directory: apps/server/native/core
+        run: bunx --bun @napi-rs/cli build --platform --release
       - name: Build, sign, and notarize (arm64) via publish script
         env:
           MAC_CERT_BASE64: ${{ secrets.MAC_CERT_BASE64 }}
@@ -292,6 +306,10 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.2.21
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
       - name: Install dependencies (bun)
         run: bun install --frozen-lockfile
       - name: Write .env for build
@@ -304,6 +322,9 @@ jobs:
           NEXT_PUBLIC_WWW_ORIGIN=${{ secrets.NEXT_PUBLIC_WWW_ORIGIN }}
           NEXT_PUBLIC_GITHUB_APP_SLUG=${{ secrets.NEXT_PUBLIC_GITHUB_APP_SLUG }}
           EOF
+      - name: Build native Rust module (Windows x64)
+        working-directory: apps/server/native/core
+        run: bunx --bun @napi-rs/cli build --platform --release
       - name: Generate icons
         working-directory: apps/client
         run: bun run ./scripts/generate-icons.mjs
@@ -330,6 +351,10 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.2.21
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
       - name: Install dependencies (bun)
         run: bun install --frozen-lockfile
       - name: Write .env for build
@@ -342,6 +367,9 @@ jobs:
           NEXT_PUBLIC_WWW_ORIGIN=${{ secrets.NEXT_PUBLIC_WWW_ORIGIN }}
           NEXT_PUBLIC_GITHUB_APP_SLUG=${{ secrets.NEXT_PUBLIC_GITHUB_APP_SLUG }}
           EOF
+      - name: Build native Rust module (Linux x64)
+        working-directory: apps/server/native/core
+        run: bunx --bun @napi-rs/cli build --platform --release
       - name: Generate icons
         working-directory: apps/client
         run: bun run ./scripts/generate-icons.mjs
