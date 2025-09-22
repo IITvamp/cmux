@@ -164,6 +164,32 @@ function TaskTreeInner({
   );
   const hasRuns = task.runs && task.runs.length > 0;
 
+  // Compute numbered labels for duplicate root-level agent runs (Agent (1), Agent (2), ...)
+  const rootRunDisplayLabels = useMemo(() => {
+    const labels: Record<string, string> = {};
+    const runs = task.runs || [];
+    const freq = new Map<string, number>();
+    for (const r of runs) {
+      const name = r.agentName?.trim();
+      if (!name) continue;
+      freq.set(name, (freq.get(name) ?? 0) + 1);
+    }
+    const index = new Map<string, number>();
+    for (const r of runs) {
+      const name = r.agentName?.trim();
+      if (!name) continue;
+      const count = freq.get(name) ?? 0;
+      if (count > 1) {
+        const next = (index.get(name) ?? 0) + 1;
+        index.set(name, next);
+        labels[r._id as string] = `${name} (${next})`;
+      } else {
+        labels[r._id as string] = name;
+      }
+    }
+    return labels;
+  }, [task.runs]);
+
   // Memoize the toggle handler
   const handleToggle = useCallback(
     (_event?: MouseEvent<HTMLButtonElement | HTMLAnchorElement>) => {
@@ -349,6 +375,7 @@ function TaskTreeInner({
                 level={level + 1}
                 taskId={task._id}
                 teamSlugOrId={teamSlugOrId}
+                rootDisplayLabels={rootRunDisplayLabels}
               />
             ))}
           </div>
@@ -363,6 +390,7 @@ interface TaskRunTreeProps {
   level: number;
   taskId: Id<"tasks">;
   teamSlugOrId: string;
+  rootDisplayLabels?: Record<string, string>;
 }
 
 function TaskRunTreeInner({
@@ -370,6 +398,7 @@ function TaskRunTreeInner({
   level,
   taskId,
   teamSlugOrId,
+  rootDisplayLabels,
 }: TaskRunTreeProps) {
   const { expandedRuns, setRunExpanded } = useTaskRunExpansionContext();
   const defaultExpanded = Boolean(run.isCrowned);
@@ -377,7 +406,10 @@ function TaskRunTreeInner({
   const hasChildren = run.children.length > 0;
 
   // Memoize the display text to avoid recalculating on every render
-  const displayText = useMemo(() => getRunDisplayText(run), [run]);
+  const displayText = useMemo(() => {
+    const mapped = rootDisplayLabels?.[run._id as string];
+    return mapped ?? getRunDisplayText(run);
+  }, [run, rootDisplayLabels]);
 
   // Memoize the toggle handler
   const handleToggle = useCallback(
