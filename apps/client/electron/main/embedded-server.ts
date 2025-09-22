@@ -303,8 +303,18 @@ function createIPCRealtimeServer(): RealtimeServer {
           reject(toSerializableError(err));
         };
 
-        // Safety timeout so invoke doesn't hang forever if ack is never called
-        const timeoutMs = 30_000;
+        // Safety timeout so invoke doesn't hang forever if ack is never called.
+        // Some operations (e.g., start-task in cloud mode) legitimately take longer
+        // while instances boot and connect. Use an event-specific timeout.
+        const timeoutMs = (() => {
+          switch (eventName) {
+            case "start-task":
+              // Allow more time for cloud sandbox start + worker connect
+              return 180_000; // 3 minutes
+            default:
+              return 30_000; // default
+          }
+        })();
         const timer = setTimeout(() => {
           rejectOnce(new Error(`RPC '${eventName}' timed out waiting for ack`));
         }, timeoutMs);
