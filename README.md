@@ -43,3 +43,5 @@ cmux upgrade
 ```bash
 cmux uninstall
 ```
+
+**cmux uninstall**
