@@ -18,6 +18,7 @@ import {
   usersRouter,
   crownRouter,
   teamsRouter,
+  downloadsRouter,
 } from "@/lib/routes/index";
 import { stackServerApp } from "@/lib/utils/stack";
 import { swaggerUI } from "@hono/swagger-ui";
@@ -107,6 +108,7 @@ app.route("/", environmentsRouter);
 app.route("/", sandboxesRouter);
 app.route("/", crownRouter);
 app.route("/", teamsRouter);
+app.route("/", downloadsRouter);
 
 // OpenAPI documentation
 app.doc("/doc", {

@@ -148,9 +148,7 @@ export default function LandingPage() {
 
               <div className="mt-10 flex flex-col sm:flex-row items-center gap-4">
                 <a
-                  href="https://github.com/manaflow-ai/cmux/releases/download/v1.0.35/cmux-1.0.35-arm64.dmg"
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  href="/api/downloads/mac"
                   title="Requires macOS"
                   className="inline-flex h-12 items-center gap-2 text-base font-medium text-black bg-white hover:bg-neutral-50 border border-neutral-800 rounded-lg px-4 transition-all whitespace-nowrap"
                 >

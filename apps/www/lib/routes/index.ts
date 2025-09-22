@@ -16,3 +16,4 @@ export { githubPrsFilesRouter } from "./github.prs.files.route";
 export { githubPrsFileContentsRouter } from "./github.prs.file-contents.route";
 export { githubPrsFileContentsBatchRouter } from "./github.prs.file-contents-batch.route";
 export { teamsRouter } from "./teams.route";
+export { downloadsRouter } from "./downloads.route";
