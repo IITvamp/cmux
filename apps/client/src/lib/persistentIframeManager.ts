@@ -149,7 +149,9 @@ class PersistentIframeManager {
       visibility: hidden;
       pointer-events: none;
       overflow: hidden;
-      transform: translate(0px, 0px);
+      transform: translate(-100vw, -100vh);
+      width: 100vw;
+      height: 100vh;
     `;
     wrapper.setAttribute("data-iframe-key", key);
 
@@ -188,6 +190,7 @@ class PersistentIframeManager {
     };
 
     this.iframes.set(key, entry);
+    this.moveIframeOffscreen(entry);
     this.cleanupOldIframes();
 
     return iframe;
@@ -319,7 +322,10 @@ class PersistentIframeManager {
     const targetElement = document.querySelector(
       `[data-iframe-target="${key}"]`
     );
-    if (!targetElement || !(targetElement instanceof HTMLElement)) return;
+    if (!targetElement || !(targetElement instanceof HTMLElement)) {
+      this.moveIframeOffscreen(entry);
+      return;
+    }
 
     const rect = targetElement.getBoundingClientRect();
     const computedStyle = window.getComputedStyle(targetElement);
@@ -331,6 +337,11 @@ class PersistentIframeManager {
 
     const width = Math.max(0, rect.width - borderLeft - borderRight);
     const height = Math.max(0, rect.height - borderTop - borderBottom);
+
+    if (width < 1 || height < 1) {
+      this.moveIframeOffscreen(entry);
+      return;
+    }
 
     // Update wrapper position using transform, keeping resize handles unobstructed
     entry.wrapper.style.transform = `translate(${rect.left + borderLeft}px, ${rect.top + borderTop}px)`;
@@ -375,6 +386,7 @@ class PersistentIframeManager {
 
     entry.wrapper.style.visibility = "hidden";
     entry.wrapper.style.pointerEvents = "none";
+    this.moveIframeOffscreen(entry);
     entry.isVisible = false;
 
     if (this.activeIframeKey === key) {
@@ -488,6 +500,27 @@ class PersistentIframeManager {
    */
   setDebugMode(enabled: boolean): void {
     this.debugMode = enabled;
+  }
+
+  private moveIframeOffscreen(entry: IframeEntry): void {
+    if (typeof window === "undefined" || typeof document === "undefined") {
+      return;
+    }
+
+    const viewportWidth = Math.max(
+      1,
+      window.innerWidth || 0,
+      document.documentElement?.clientWidth ?? 0
+    );
+    const viewportHeight = Math.max(
+      1,
+      window.innerHeight || 0,
+      document.documentElement?.clientHeight ?? 0
+    );
+
+    entry.wrapper.style.width = `${viewportWidth}px`;
+    entry.wrapper.style.height = `${viewportHeight}px`;
+    entry.wrapper.style.transform = `translate(-${viewportWidth}px, -${viewportHeight}px)`;
   }
 }
 
