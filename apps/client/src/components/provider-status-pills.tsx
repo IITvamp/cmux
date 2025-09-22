@@ -38,6 +38,7 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
     status.providers?.filter((p: ProviderStatus) => !p.isAvailable) ?? [];
 
   const dockerNotReady = !status.dockerStatus?.isRunning;
+  const dockerIsStarting = status.dockerStatus?.isStarting;
   const dockerImageNotReady =
     status.dockerStatus?.workerImage &&
     !status.dockerStatus.workerImage.isAvailable;
@@ -114,7 +115,8 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
             <TooltipContent className="max-w-xs">
               <p className="font-medium mb-1">Configuration Needed</p>
               <div className="text-xs space-y-1">
-                {dockerNotReady && <p>• Docker needs to be running</p>}
+                {dockerNotReady && !dockerIsStarting && <p>• Docker needs to be running</p>}
+                {dockerIsStarting && <p>• Docker is starting up...</p>}
                 {dockerImageNotReady && !dockerImagePulling && (
                   <p>
                     • Docker image {status.dockerStatus?.workerImage?.name} not
@@ -139,7 +141,9 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
               <TooltipTrigger asChild>
                 <button
                   onClick={() => {
-                    window.open("https://www.docker.com/products/docker-desktop/", "_blank");
+                    if (!dockerIsStarting) {
+                      window.open("https://www.docker.com/products/docker-desktop/", "_blank");
+                    }
                   }}
                   className={clsx(
                     "flex w-full items-center gap-1 rounded-md px-1.5 py-1",
@@ -149,14 +153,22 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
                     "min-w-0"
                   )}
                 >
-                  <div className="h-1.5 w-1.5 rounded-full bg-orange-500"></div>
+                  {dockerIsStarting ? (
+                    <RefreshCw className="h-3 w-3 text-blue-500 animate-spin" />
+                  ) : (
+                    <div className="h-1.5 w-1.5 rounded-full bg-orange-500"></div>
+                  )}
                   <span className="truncate font-medium">Docker</span>
                 </button>
               </TooltipTrigger>
               <TooltipContent>
-                <p className="font-medium">Docker Required</p>
+                <p className="font-medium">
+                  {dockerIsStarting ? "Docker is Starting" : "Docker Required"}
+                </p>
                 <p className="text-xs opacity-90">
-                  Start Docker to enable containerized development environments
+                  {dockerIsStarting
+                    ? "Docker Desktop is starting up, please wait..."
+                    : "Start Docker to enable containerized development environments"}
                 </p>
               </TooltipContent>
             </Tooltip>

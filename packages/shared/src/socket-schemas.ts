@@ -337,6 +337,7 @@ export const DockerStatusSchema = z.object({
   isRunning: z.boolean(),
   version: z.string().optional(),
   error: z.string().optional(),
+  isStarting: z.boolean().optional(),
   workerImage: z
     .object({
       name: z.string(),

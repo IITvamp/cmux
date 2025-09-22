@@ -52,7 +52,7 @@ import {
   QWEN_OPENROUTER_CODER_FREE_CONFIG,
 } from "./providers/qwen/configs.js";
 
-export { checkDockerStatus } from "./providers/common/check-docker.js";
+export { checkDockerStatus, invalidateDockerStatusCache } from "./providers/common/check-docker.js";
 export { checkGitStatus } from "./providers/common/check-git.js";
 
 export { type EnvironmentResult };
