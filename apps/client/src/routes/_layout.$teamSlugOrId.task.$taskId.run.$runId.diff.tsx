@@ -29,6 +29,7 @@ import TextareaAutosize from "react-textarea-autosize";
 import { toast } from "sonner";
 import z from "zod";
 import { Command } from "lucide-react";
+import { Switch } from "@heroui/react";
 
 const paramsSchema = z.object({
   taskId: typedZid("tasks"),
@@ -135,6 +136,7 @@ function RunDiffPage() {
   } | null>(null);
   const [followUpText, setFollowUpText] = useState("");
   const [isRestartingTask, setIsRestartingTask] = useState(false);
+  const [overrideInitialPrompt, setOverrideInitialPrompt] = useState(false);
   const task = useQuery(api.tasks.getById, {
     teamSlugOrId,
     id: taskId,
@@ -185,9 +187,11 @@ function RunDiffPage() {
     }
 
     const originalPrompt = task.text ?? "";
-    const combinedPrompt = originalPrompt
-      ? `${originalPrompt}\n\n${followUp}`
-      : followUp;
+    const combinedPrompt = overrideInitialPrompt
+      ? followUp
+      : originalPrompt
+        ? `${originalPrompt}\n\n${followUp}`
+        : followUp;
 
     const projectFullNameForSocket =
       task.projectFullName ??
@@ -266,6 +270,7 @@ function RunDiffPage() {
     teamSlugOrId,
     theme,
     restartAgents,
+    overrideInitialPrompt,
   ]);
 
   const handleFormSubmit = useCallback(
@@ -309,6 +314,20 @@ function RunDiffPage() {
     },
     [handleRestartTask, isRestartDisabled]
   );
+
+  const handleToggleOverride = useCallback(() => {
+    setOverrideInitialPrompt((prev) => {
+      const next = !prev;
+      if (
+        next &&
+        followUpText.trim().length === 0 &&
+        (task?.text?.trim().length ?? 0) > 0
+      ) {
+        setFollowUpText(task?.text ?? "");
+      }
+      return next;
+    });
+  }, [followUpText, task?.text]);
 
   // 404 if selected run is missing
   if (!selectedRun) {
@@ -389,12 +408,41 @@ function RunDiffPage() {
                     className="w-full max-h-24 resize-none overflow-y-auto border-none bg-transparent p-0 text-[15px] leading-relaxed text-neutral-900 outline-none placeholder:text-neutral-400 focus:outline-none dark:text-neutral-100 dark:placeholder:text-neutral-500"
                   />
                 </div>
-                <div className="flex items-center justify-between gap-2 pl-5 pb-3 pt-2 sm:pl-5 sm:pr-3">
-                  <span className="text-xs leading-tight text-neutral-500 dark:text-neutral-400">
-                    {task?.text
-                      ? "Original prompt is included automatically."
-                      : "This follow-up becomes the new task prompt."}
-                  </span>
+                <div className="flex items-center justify-between gap-3 px-4 pb-3 pt-2 sm:px-5">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <span className="text-xs leading-tight text-neutral-500 dark:text-neutral-400 truncate">
+                      {overrideInitialPrompt
+                        ? "Override enabled: editing full prompt."
+                        : task?.text
+                          ? "Original prompt is included automatically."
+                          : "This follow-up becomes the new task prompt."}
+                    </span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={handleToggleOverride}
+                        className="text-xs text-neutral-600 hover:text-neutral-800 dark:text-neutral-300 dark:hover:text-neutral-100"
+                        aria-pressed={overrideInitialPrompt}
+                      >
+                        Override initial prompt
+                      </button>
+                      {/* Neutral switch (not blue like cloud mode) */}
+                      <span className="inline-flex">
+                        {/* Using heroui Switch for consistency with cloud toggle, but neutral color */}
+                        <Switch
+                          isSelected={overrideInitialPrompt}
+                          onValueChange={handleToggleOverride}
+                          color="default"
+                          size="sm"
+                          aria-label={
+                            overrideInitialPrompt
+                              ? "Override initial prompt: on"
+                              : "Override initial prompt: off"
+                          }
+                        />
+                      </span>
+                    </div>
+                  </div>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <span tabIndex={0} className="inline-flex">
