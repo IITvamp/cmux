@@ -1,12 +1,12 @@
-import { convexQueryClient } from "@/contexts/convex/convex-query-client";
 import { FloatingPane } from "@/components/floating-pane";
 import { TitleBar } from "@/components/TitleBar";
+import { convexQueryClient } from "@/contexts/convex/convex-query-client";
 import { api } from "@cmux/convex/api";
 import { convexQuery } from "@convex-dev/react-query";
 import { useSuspenseQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { formatDistanceToNow } from "date-fns";
-import { Plus, Server, Calendar, GitBranch, Play, Eye } from "lucide-react";
+import { Calendar, Eye, GitBranch, Play, Plus, Server } from "lucide-react";
 
 export const Route = createFileRoute("/_layout/$teamSlugOrId/environments/")({
   loader: async ({ params }) => {
@@ -21,7 +21,7 @@ export const Route = createFileRoute("/_layout/$teamSlugOrId/environments/")({
 
 function EnvironmentsListPage() {
   const { teamSlugOrId } = Route.useParams();
-  
+
   const { data: environments } = useSuspenseQuery(
     convexQuery(api.environments.list, {
       teamSlugOrId,
@@ -29,7 +29,7 @@ function EnvironmentsListPage() {
   );
 
   return (
-    <FloatingPane header={<TitleBar title="Environments" /> }>
+    <FloatingPane header={<TitleBar title="Environments" />}>
       <div className="p-6">
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-lg font-semibold text-neutral-900 dark:text-neutral-100">
@@ -56,53 +56,55 @@ function EnvironmentsListPage() {
             {environments.map((env) => (
               <div
                 key={env._id}
-                className="group relative rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 p-4 hover:shadow-md transition-shadow"
+                className="group relative rounded-lg border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 p-4 hover:shadow-md transition-shadow flex flex-col"
               >
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <Server className="w-5 h-5 text-neutral-600 dark:text-neutral-400" />
-                    <h3 className="font-medium text-neutral-900 dark:text-neutral-100">
-                      {env.name}
-                    </h3>
-                  </div>
-                </div>
-
-                {env.description && (
-                  <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-3 line-clamp-2">
-                    {env.description}
-                  </p>
-                )}
-
-                {env.selectedRepos && env.selectedRepos.length > 0 && (
-                  <div className="mb-3">
-                    <div className="flex items-center gap-1 text-xs text-neutral-500 dark:text-neutral-500 mb-1">
-                      <GitBranch className="w-3 h-3" />
-                      Repositories
-                    </div>
-                    <div className="flex flex-wrap gap-1">
-                      {env.selectedRepos.slice(0, 3).map((repo) => (
-                        <span
-                          key={repo}
-                          className="inline-flex items-center rounded-full bg-neutral-100 dark:bg-neutral-900 px-2 py-0.5 text-xs text-neutral-700 dark:text-neutral-300"
-                        >
-                          {repo.split("/")[1] || repo}
-                        </span>
-                      ))}
-                      {env.selectedRepos.length > 3 && (
-                        <span className="inline-flex items-center rounded-full bg-neutral-100 dark:bg-neutral-900 px-2 py-0.5 text-xs text-neutral-700 dark:text-neutral-300">
-                          +{env.selectedRepos.length - 3}
-                        </span>
-                      )}
+                <div className="flex flex-col grow">
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Server className="w-5 h-5 text-neutral-600 dark:text-neutral-400" />
+                      <h3 className="font-medium text-neutral-900 dark:text-neutral-100">
+                        {env.name}
+                      </h3>
                     </div>
                   </div>
-                )}
 
-                <div className="flex items-center gap-3 text-xs text-neutral-500 dark:text-neutral-500">
-                  <div className="flex items-center gap-1">
-                    <Calendar className="w-3 h-3" />
-                    {formatDistanceToNow(new Date(env.createdAt), {
-                      addSuffix: true,
-                    })}
+                  {env.description && (
+                    <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-3 line-clamp-2">
+                      {env.description}
+                    </p>
+                  )}
+
+                  {env.selectedRepos && env.selectedRepos.length > 0 && (
+                    <div className="mb-3">
+                      <div className="flex items-center gap-1 text-xs text-neutral-500 dark:text-neutral-500 mb-1">
+                        <GitBranch className="w-3 h-3" />
+                        Repositories
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {env.selectedRepos.slice(0, 3).map((repo) => (
+                          <span
+                            key={repo}
+                            className="inline-flex items-center rounded-full bg-neutral-100 dark:bg-neutral-900 px-2 py-0.5 text-xs text-neutral-700 dark:text-neutral-300"
+                          >
+                            {repo.split("/")[1] || repo}
+                          </span>
+                        ))}
+                        {env.selectedRepos.length > 3 && (
+                          <span className="inline-flex items-center rounded-full bg-neutral-100 dark:bg-neutral-900 px-2 py-0.5 text-xs text-neutral-700 dark:text-neutral-300">
+                            +{env.selectedRepos.length - 3}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-3 text-xs text-neutral-500 dark:text-neutral-500">
+                    <div className="flex items-center gap-1">
+                      <Calendar className="w-3 h-3" />
+                      {formatDistanceToNow(new Date(env.createdAt), {
+                        addSuffix: true,
+                      })}
+                    </div>
                   </div>
                 </div>
 
@@ -149,8 +151,8 @@ function EnvironmentsListPage() {
               No environments yet
             </h3>
             <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-6 max-w-md mx-auto">
-              Create your first environment to save and reuse development configurations
-              across your team.
+              Create your first environment to save and reuse development
+              configurations across your team.
             </p>
             <Link
               to="/$teamSlugOrId/environments/new"
