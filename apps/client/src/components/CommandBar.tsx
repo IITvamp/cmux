@@ -7,7 +7,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { useNavigate, useRouter } from "@tanstack/react-router";
 import { Command } from "cmdk";
 import { useQuery } from "convex/react";
-import { GitPullRequest, Monitor, Moon, Plus, Sun } from "lucide-react";
+import { GitPullRequest, Home, Monitor, Moon, Plus, Server, Settings, Sun } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { ElectronLogsCommandItems } from "./command-bar/ElectronLogsCommandItems";
@@ -15,6 +15,14 @@ import { ElectronLogsCommandItems } from "./command-bar/ElectronLogsCommandItems
 interface CommandBarProps {
   teamSlugOrId: string;
 }
+
+const environmentSearchDefaults = {
+  step: undefined,
+  selectedRepos: undefined,
+  connectionLogin: undefined,
+  repoSearch: undefined,
+  instanceId: undefined,
+} as const;
 
 export function CommandBar({ teamSlugOrId }: CommandBarProps) {
   const [open, setOpen] = useState(false);
@@ -126,6 +134,34 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
         } catch {
           // ignore preload errors
         }
+      } else if (value === "home") {
+        try {
+          await router.preloadRoute({
+            to: "/$teamSlugOrId/dashboard",
+            params: { teamSlugOrId },
+          });
+        } catch {
+          // ignore preload errors
+        }
+      } else if (value === "environments") {
+        try {
+          await router.preloadRoute({
+            to: "/$teamSlugOrId/environments",
+            params: { teamSlugOrId },
+            search: { ...environmentSearchDefaults },
+          });
+        } catch {
+          // ignore preload errors
+        }
+      } else if (value === "settings") {
+        try {
+          await router.preloadRoute({
+            to: "/$teamSlugOrId/settings",
+            params: { teamSlugOrId },
+          });
+        } catch {
+          // ignore preload errors
+        }
       } else if (value?.startsWith("task:")) {
         const parts = value.slice(5).split(":");
         const taskId = parts[0];
@@ -214,6 +250,22 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
         setTheme("dark");
       } else if (value === "theme-system") {
         setTheme("system");
+      } else if (value === "home") {
+        navigate({
+          to: "/$teamSlugOrId/dashboard",
+          params: { teamSlugOrId },
+        });
+      } else if (value === "environments") {
+        navigate({
+          to: "/$teamSlugOrId/environments",
+          params: { teamSlugOrId },
+          search: { ...environmentSearchDefaults },
+        });
+      } else if (value === "settings") {
+        navigate({
+          to: "/$teamSlugOrId/settings",
+          params: { teamSlugOrId },
+        });
       } else if (value.startsWith("task:")) {
         const parts = value.slice(5).split(":");
         const taskId = parts[0] as Id<"tasks">;
@@ -330,6 +382,45 @@ export function CommandBar({ teamSlugOrId }: CommandBarProps) {
               >
                 <GitPullRequest className="h-4 w-4 text-neutral-500" />
                 <span className="text-sm">Pull Requests</span>
+              </Command.Item>
+            </Command.Group>
+
+            <Command.Group>
+              <div className="px-2 py-1.5 text-xs text-neutral-500 dark:text-neutral-400">
+                Navigation
+              </div>
+              <Command.Item
+                value="home"
+                onSelect={() => handleSelect("home")}
+                className="flex items-center gap-2 px-3 py-2.5 mx-1 rounded-md cursor-pointer
+                hover:bg-neutral-100 dark:hover:bg-neutral-800
+                data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800
+                data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100"
+              >
+                <Home className="h-4 w-4 text-neutral-500" />
+                <span className="text-sm">Home</span>
+              </Command.Item>
+              <Command.Item
+                value="environments"
+                onSelect={() => handleSelect("environments")}
+                className="flex items-center gap-2 px-3 py-2.5 mx-1 rounded-md cursor-pointer
+                hover:bg-neutral-100 dark:hover:bg-neutral-800
+                data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800
+                data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100"
+              >
+                <Server className="h-4 w-4 text-neutral-500" />
+                <span className="text-sm">Environments</span>
+              </Command.Item>
+              <Command.Item
+                value="settings"
+                onSelect={() => handleSelect("settings")}
+                className="flex items-center gap-2 px-3 py-2.5 mx-1 rounded-md cursor-pointer
+                hover:bg-neutral-100 dark:hover:bg-neutral-800
+                data-[selected=true]:bg-neutral-100 dark:data-[selected=true]:bg-neutral-800
+                data-[selected=true]:text-neutral-900 dark:data-[selected=true]:text-neutral-100"
+              >
+                <Settings className="h-4 w-4 text-neutral-500" />
+                <span className="text-sm">Settings</span>
               </Command.Item>
             </Command.Group>
 
