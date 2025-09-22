@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import clientPackageJson from "../../client/package.json" assert { type: "json" };
 
 import { ClientIcon } from "@/components/client-icon";
 import CmuxLogo from "@/components/logo/cmux-logo";
@@ -11,107 +11,40 @@ import cmuxDemo0 from "@/docs/assets/cmux-demo-0.png";
 import cmuxDemo1 from "@/docs/assets/cmux-demo-1.png";
 import cmuxDemo5 from "@/docs/assets/cmux-demo-5.png";
 
-const GITHUB_LATEST_RELEASE_URL = "https://api.github.com/repos/manaflow-ai/cmux/releases/latest";
-const GITHUB_RELEASE_PAGE_URL = "https://github.com/manaflow-ai/cmux/releases/latest";
-
-type GitHubReleaseAsset = {
-  browser_download_url: string;
-  name: string;
-};
-
-type GitHubReleaseResponse = {
-  assets: GitHubReleaseAsset[];
-  html_url: string;
-  tag_name: string;
-};
-
-const isGitHubReleaseAsset = (value: unknown): value is GitHubReleaseAsset => {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-
-  const record = value as Record<string, unknown>;
-  return typeof record.name === "string" && typeof record.browser_download_url === "string";
-};
-
-const isGitHubReleaseResponse = (value: unknown): value is GitHubReleaseResponse => {
-  if (typeof value !== "object" || value === null) {
-    return false;
-  }
-
-  const record = value as Record<string, unknown>;
-  if (typeof record.tag_name !== "string" || typeof record.html_url !== "string") {
-    return false;
-  }
-
-  if (!Array.isArray(record.assets) || !record.assets.every(isGitHubReleaseAsset)) {
-    return false;
-  }
-
-  return true;
-};
-
-const MAC_ASSET_KEYWORDS = ["mac", "macos", "darwin", "osx", ".dmg"];
-
-const findMacArm64Asset = (assets: GitHubReleaseAsset[]): GitHubReleaseAsset | undefined =>
-  assets.find(({ name }) => {
-    const normalizedName = name.toLowerCase();
-    return normalizedName.includes("arm64") && MAC_ASSET_KEYWORDS.some((keyword) => normalizedName.includes(keyword));
-  });
+const RELEASE_PAGE_URL = "https://github.com/manaflow-ai/cmux/releases/latest";
 
 const normalizeVersion = (tag: string): string => (tag.startsWith("v") ? tag.slice(1) : tag);
 
+const ensureTagPrefix = (value: string): string => (value.startsWith("v") ? value : `v${value}`);
+
+type ReleaseInfo = {
+  latestVersion: string | null;
+  macDownloadUrl: string;
+};
+
+const deriveReleaseInfo = (): ReleaseInfo => {
+  const versionValue = (clientPackageJson as { version?: unknown }).version;
+
+  if (typeof versionValue !== "string" || versionValue.trim() === "") {
+    return {
+      latestVersion: null,
+      macDownloadUrl: RELEASE_PAGE_URL,
+    };
+  }
+
+  const normalizedVersion = normalizeVersion(versionValue);
+  const releaseTag = ensureTagPrefix(versionValue);
+
+  return {
+    latestVersion: normalizedVersion,
+    macDownloadUrl: `https://github.com/manaflow-ai/cmux/releases/download/${releaseTag}/cmux-${normalizedVersion}-arm64.dmg`,
+  };
+};
+
+const RELEASE_INFO = deriveReleaseInfo();
 
 export default function LandingPage() {
-  const [macDownloadUrl, setMacDownloadUrl] = useState<string>(GITHUB_RELEASE_PAGE_URL);
-  const [latestVersion, setLatestVersion] = useState<string | null>(null);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const fetchLatestRelease = async () => {
-      try {
-        const response = await fetch(GITHUB_LATEST_RELEASE_URL, {
-          headers: {
-            Accept: "application/vnd.github+json",
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error(`Failed to fetch release (${response.status})`);
-        }
-
-        const payload = await response.json();
-
-        if (!isGitHubReleaseResponse(payload) || !isMounted) {
-          return;
-        }
-
-        const asset = findMacArm64Asset(payload.assets);
-        const releaseVersion = normalizeVersion(payload.tag_name);
-
-        if (asset) {
-          setMacDownloadUrl(asset.browser_download_url);
-        } else {
-          setMacDownloadUrl(payload.html_url);
-        }
-
-        setLatestVersion(releaseVersion);
-      } catch (_error) {
-        if (!isMounted) {
-          return;
-        }
-
-        setMacDownloadUrl(GITHUB_RELEASE_PAGE_URL);
-      }
-    };
-
-    void fetchLatestRelease();
-
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+  const { macDownloadUrl, latestVersion } = RELEASE_INFO;
 
   return (
     <div className="min-h-dvh bg-background text-foreground overflow-y-auto">
@@ -132,7 +65,7 @@ export default function LandingPage() {
         <span className="whitespace-nowrap ml-2">
           <a
             href="#requirements"
-          className="whitespace-nowrap bg-black px-2 py-0.5 rounded-sm font-semibold text-blue-300 hover:text-blue-200"
+            className="whitespace-nowrap bg-black px-2 py-0.5 rounded-sm font-semibold text-blue-300 hover:text-blue-200"
           >
             See requirements
           </a>
