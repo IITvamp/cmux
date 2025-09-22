@@ -391,31 +391,43 @@ function RunDiffPage() {
                 </div>
               )}
             </Suspense>
-            <div className="sticky bottom-0 z-10 border-t border-transparent px-3.5 pb-3 pt-2">
+            <div className="sticky bottom-0 z-10 border-t border-transparent px-3.5 pb-3.5 pt-2">
               <form
                 onSubmit={handleFormSubmit}
                 className="mx-auto w-full max-w-2xl overflow-hidden rounded-2xl border border-neutral-500/15 bg-white dark:border-neutral-500/15 dark:bg-neutral-950"
               >
-                <div className="px-4 pt-3.5 sm:px-5">
+                <div className="px-3.5 pt-3.5">
                   <TextareaAutosize
                     value={followUpText}
                     onChange={(event) => setFollowUpText(event.target.value)}
                     onKeyDown={handleFollowUpKeyDown}
                     minRows={1}
                     maxRows={2}
-                    placeholder={overridePrompt ? "Enter new task instructions..." : "Add updated instructions or context..."}
+                    placeholder={overridePrompt ? "Edit original task instructions..." : "Add updated instructions or context..."}
                     className="w-full max-h-24 resize-none overflow-y-auto border-none bg-transparent p-0 text-[15px] leading-relaxed text-neutral-900 outline-none placeholder:text-neutral-400 focus:outline-none dark:text-neutral-100 dark:placeholder:text-neutral-500"
                   />
                 </div>
-                <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-2 sm:px-5">
+                <div className="flex items-center justify-between gap-2 px-3.5 pb-3 pt-2">
                   <div className="flex items-center gap-2.5">
                     <Switch
                       isSelected={overridePrompt}
                       onValueChange={(value) => {
                         setOverridePrompt(value);
-                        if (value && task?.text && !followUpText) {
-                          setFollowUpText(task.text);
-                        } else if (!value && followUpText === task?.text) {
+                        if (value) {
+                          if (!task?.text) {
+                            return;
+                          }
+                          const promptText = task.text;
+                          setFollowUpText((current) => {
+                            if (!current) {
+                              return promptText;
+                            }
+                            if (current.includes(promptText)) {
+                              return current;
+                            }
+                            return `${current}${promptText}`;
+                          });
+                        } else {
                           setFollowUpText("");
                         }
                       }}
