@@ -280,6 +280,20 @@ export async function spawnAgent(
       teamSlugOrId,
     });
 
+    // In cloud mode for Claude Code agents, prioritize user's API key
+    // This ensures we use the user's key instead of any repository API key
+    if (options.isCloudMode && agent.name.startsWith("claude/")) {
+      // For Claude Code in cloud mode, we need to ensure the user's API key is used
+      // First, remove any existing ANTHROPIC_API_KEY from environment variables
+      // that might have been set from the environment
+      if (envVars.ANTHROPIC_API_KEY) {
+        delete envVars.ANTHROPIC_API_KEY;
+        serverLogger.info(
+          `[AgentSpawner] Removed repository ANTHROPIC_API_KEY for Claude Code in cloud mode`
+        );
+      }
+    }
+
     // Apply API keys: prefer agent-provided hook if present; otherwise default env injection
     if (typeof agent.applyApiKeys === "function") {
       const applied = await agent.applyApiKeys(apiKeys);
@@ -290,6 +304,13 @@ export async function spawnAgent(
       if (applied.startupCommands && applied.startupCommands.length > 0) {
         startupCommands.push(...applied.startupCommands);
       }
+
+      // Log when using user's API key for Claude Code in cloud mode
+      if (options.isCloudMode && agent.name.startsWith("claude/") && apiKeys.ANTHROPIC_API_KEY) {
+        serverLogger.info(
+          `[AgentSpawner] Using user's ANTHROPIC_API_KEY for Claude Code in cloud mode`
+        );
+      }
     } else if (agent.apiKeys) {
       for (const keyConfig of agent.apiKeys) {
         const key = apiKeys[keyConfig.envVar];
@@ -298,6 +319,14 @@ export async function spawnAgent(
           envVars[injectName] = key;
         }
       }
+    }
+
+    // Final safety check: ensure ANTHROPIC_API_KEY is not in envVars for Claude Code in cloud mode
+    if (options.isCloudMode && agent.name.startsWith("claude/") && envVars.ANTHROPIC_API_KEY) {
+      delete envVars.ANTHROPIC_API_KEY;
+      serverLogger.warn(
+        `[AgentSpawner] Final safety: Removed ANTHROPIC_API_KEY from environment for Claude Code in cloud mode`
+      );
     }
 
     // Replace $PROMPT placeholders in args with $CMUX_PROMPT token for shell-time expansion
