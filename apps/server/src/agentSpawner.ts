@@ -79,13 +79,18 @@ export async function spawnAgent(
     );
 
     // Create a task run for this specific agent
+    // If this agent has an instance number, append it to the name
+    const agentWithInstance = (agent as any).instanceNumber
+      ? `${agent.name} (${(agent as any).instanceNumber})`
+      : agent.name;
+
     const { taskRunId, jwt: taskRunJwt } = await getConvex().mutation(
       api.taskRuns.create,
       {
         teamSlugOrId,
         taskId: taskId,
         prompt: options.taskDescription,
-        agentName: agent.name,
+        agentName: agentWithInstance,
         newBranch,
         environmentId: options.environmentId,
       }
@@ -949,12 +954,45 @@ export async function spawnAllAgents(
   },
   teamSlugOrId: string
 ): Promise<AgentSpawnResult[]> {
-  // If selectedAgents is provided, filter AGENT_CONFIGS to only include selected agents
-  const agentsToSpawn = options.selectedAgents
-    ? AGENT_CONFIGS.filter((agent) =>
-        options.selectedAgents!.includes(agent.name)
-      )
-    : AGENT_CONFIGS;
+  // If selectedAgents is provided, create agent configs for each selected agent
+  // This allows for multiple instances of the same agent
+  let agentsToSpawn: Array<AgentConfig & { instanceNumber?: number }> = [];
+
+  if (options.selectedAgents) {
+    // Count occurrences of each agent name
+    const agentCounts = new Map<string, number>();
+    options.selectedAgents.forEach(agentName => {
+      agentCounts.set(agentName, (agentCounts.get(agentName) || 0) + 1);
+    });
+
+    // Current instance number for each agent type
+    const agentInstanceNumbers = new Map<string, number>();
+
+    // Create agent configs with instance numbers
+    const agentMappings = options.selectedAgents.map(agentName => {
+      const config = AGENT_CONFIGS.find(a => a.name === agentName);
+      if (!config) {
+        serverLogger.warn(`Agent config not found for: ${agentName}`);
+        return null;
+      }
+
+      // Get current instance number for this agent
+      const currentInstance = (agentInstanceNumbers.get(agentName) || 0) + 1;
+      agentInstanceNumbers.set(agentName, currentInstance);
+
+      // Only add instance number if there are multiple instances
+      const totalCount = agentCounts.get(agentName) || 1;
+
+      return {
+        ...config,
+        instanceNumber: totalCount > 1 ? currentInstance : undefined,
+      };
+    });
+
+    agentsToSpawn = agentMappings.filter((agent) => agent !== null) as Array<AgentConfig & { instanceNumber?: number }>;
+  } else {
+    agentsToSpawn = AGENT_CONFIGS;
+  }
 
   // Generate unique branch names for all agents at once to ensure no collisions
   const branchNames = options.prTitle
@@ -971,8 +1009,9 @@ export async function spawnAllAgents(
 
   // Spawn all agents in parallel with their pre-generated branch names
   const results = await Promise.all(
-    agentsToSpawn.map((agent, index) =>
-      spawnAgent(
+    agentsToSpawn.map((agent, index) => {
+      // Pass the agent with its instance number to spawnAgent
+      return spawnAgent(
         agent,
         taskId,
         {
@@ -980,8 +1019,8 @@ export async function spawnAllAgents(
           newBranch: branchNames[index],
         },
         teamSlugOrId
-      )
-    )
+      );
+    })
   );
 
   return results;

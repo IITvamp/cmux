@@ -2,7 +2,10 @@ import {
   DashboardInput,
   type EditorApi,
 } from "@/components/dashboard/DashboardInput";
-import { DashboardInputControls } from "@/components/dashboard/DashboardInputControls";
+import {
+  DashboardInputControls,
+  type AgentInstance,
+} from "@/components/dashboard/DashboardInputControls";
 import { DashboardInputFooter } from "@/components/dashboard/DashboardInputFooter";
 import { DashboardStartTaskButton } from "@/components/dashboard/DashboardStartTaskButton";
 import { TaskList } from "@/components/dashboard/TaskList";
@@ -47,9 +50,33 @@ function DashboardComponent() {
     return stored ? JSON.parse(stored) : [];
   });
   const [selectedBranch, setSelectedBranch] = useState<string[]>([]);
-  const [selectedAgents, setSelectedAgents] = useState<string[]>(() => {
+  const [selectedAgents, setSelectedAgents] = useState<AgentInstance[]>(() => {
     const stored = localStorage.getItem("selectedAgents");
-    return stored ? JSON.parse(stored) : ["claude/opus-4.1", "codex/gpt-5"];
+    if (stored) {
+      try {
+        const parsed = JSON.parse(stored);
+        // Handle migration from old string[] format to AgentInstance[] format
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          if (typeof parsed[0] === 'string') {
+            // Old format - migrate to new format
+            return parsed.map((agentName: string, index: number) => ({
+              id: `${agentName}-migration-${index}`,
+              agentName,
+              instanceNumber: 1,
+            }));
+          }
+          // New format - use as is
+          return parsed;
+        }
+      } catch (e) {
+        console.error('Failed to parse stored agents:', e);
+      }
+    }
+    // Default agents
+    return [
+      { id: 'claude-opus-default-1', agentName: 'claude/opus-4.1', instanceNumber: 1 },
+      { id: 'codex-gpt5-default-1', agentName: 'codex/gpt-5', instanceNumber: 1 },
+    ];
   });
   const [taskDescription, setTaskDescription] = useState<string>("");
   const [isCloudMode, setIsCloudMode] = useState<boolean>(() => {
@@ -120,7 +147,7 @@ function DashboardComponent() {
   }, []);
 
   // Callback for agent selection changes
-  const handleAgentChange = useCallback((newAgents: string[]) => {
+  const handleAgentChange = useCallback((newAgents: AgentInstance[]) => {
     setSelectedAgents(newAgents);
     localStorage.setItem("selectedAgents", JSON.stringify(newAgents));
   }, []);
@@ -328,7 +355,7 @@ function DashboardComponent() {
           projectFullName,
           taskId,
           selectedAgents:
-            selectedAgents.length > 0 ? selectedAgents : undefined,
+            selectedAgents.length > 0 ? selectedAgents.map(inst => inst.agentName) : undefined,
           isCloudMode: envSelected ? true : isCloudMode,
           ...(environmentId ? { environmentId } : {}),
           images: images.length > 0 ? images : undefined,
@@ -688,8 +715,8 @@ type DashboardMainCardProps = {
   branchOptions: string[];
   selectedBranch: string[];
   onBranchChange: (newBranches: string[]) => void;
-  selectedAgents: string[];
-  onAgentChange: (newAgents: string[]) => void;
+  selectedAgents: AgentInstance[];
+  onAgentChange: (newAgents: AgentInstance[]) => void;
   isCloudMode: boolean;
   onCloudModeToggle: () => void;
   isLoadingProjects: boolean;
