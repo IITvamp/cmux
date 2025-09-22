@@ -12,4 +12,6 @@ if [[ ! -f "$ENV_FILE" ]]; then
   ENV_FILE="$ROOT_DIR/.env"
 fi
 
+echo "==> Using env file: $ENV_FILE"
+
 (cd "$CLIENT_DIR" && bun run --env-file "$ENV_FILE" build:mac:workaround)
