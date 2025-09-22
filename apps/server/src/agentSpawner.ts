@@ -644,7 +644,7 @@ export async function spawnAgent(
       `[AgentSpawner] Preparing to send terminal creation command for ${agent.name}`
     );
 
-    // Wait for worker connection if not already connected
+    // Wait for worker connection if not already connected (cloud workers can take longer)
     if (!vscodeInstance.isWorkerConnected()) {
       serverLogger.info(`[AgentSpawner] Waiting for worker connection...`);
       await new Promise<void>((resolve) => {
@@ -653,7 +653,7 @@ export async function spawnAgent(
             `[AgentSpawner] Timeout waiting for worker connection`
           );
           resolve();
-        }, 30000); // 30 second timeout
+        }, 60000); // 60 second timeout (cloud can be slow)
 
         vscodeInstance.once("worker-connected", () => {
           clearTimeout(timeout);
@@ -881,10 +881,10 @@ export async function spawnAgent(
     await new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         serverLogger.error(
-          `[AgentSpawner] Timeout waiting for terminal creation response after 30s`
+          `[AgentSpawner] Timeout waiting for terminal creation response after 60s`
         );
         reject(new Error("Timeout waiting for terminal creation"));
-      }, 30000);
+      }, 60000);
 
       workerSocket.emit(
         "worker:create-terminal",

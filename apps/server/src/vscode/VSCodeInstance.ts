@@ -78,7 +78,7 @@ export abstract class VSCodeInstance extends EventEmitter {
       `[VSCodeInstance ${this.instanceId}] Connecting to worker at ${workerUrl}`
     );
 
-    return new Promise((resolve, reject) => {
+    return new Promise((resolve) => {
       this.workerSocket = connectToWorkerManagement({
         url: workerUrl,
         timeoutMs: 30_000,
@@ -108,10 +108,8 @@ export abstract class VSCodeInstance extends EventEmitter {
           `[VSCodeInstance ${this.instanceId}] Worker connection error:`,
           error.message
         );
-        // Don't reject on connection errors after initial connection
-        if (!this.workerConnected) {
-          reject(error);
-        }
+        // Do not reject here. Rely on socket.io's reconnection to eventually connect.
+        // The caller awaits the first successful 'connect' event.
       });
 
       // Set up worker event handlers

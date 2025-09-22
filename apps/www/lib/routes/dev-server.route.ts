@@ -186,8 +186,9 @@ devServerRouter.openapi(startDevServerRoute, async (c) => {
     const clientSocket: Socket<WorkerToServerEvents, ServerToWorkerEvents> =
       connectToWorkerManagement({
         url: workerService.url,
-        timeoutMs: 10_000,
-        reconnectionAttempts: 3,
+        // Allow more time for cloud workers to become ready
+        timeoutMs: 30_000,
+        reconnectionAttempts: 10,
       });
 
     let terminalCreated = false;
@@ -197,7 +198,7 @@ devServerRouter.openapi(startDevServerRoute, async (c) => {
       const timeout = setTimeout(() => {
         clientSocket.disconnect();
         reject(new Error("Connection timeout"));
-      }, 15000);
+      }, 30000);
 
       clientSocket.on("connect", () => {
         console.log("Connected to worker");
