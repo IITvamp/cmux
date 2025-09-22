@@ -17,6 +17,7 @@ import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
 import { startAmpProxy } from "@cmux/shared/src/providers/amp/start-amp-proxy.ts";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import * as xtermHeadless from "@xterm/headless";
+import { markTaskRunComplete, checkAllTaskRunsComplete, triggerCrownEvaluation } from "./convexService.js";
 import express from "express";
 import multer from "multer";
 import {
@@ -380,8 +381,12 @@ managementIO.on("connection", (socket) => {
         command: validated.command,
         args: validated.args,
         taskRunId: validated.taskRunId,
+        taskId: validated.taskId,
         agentModel: validated.agentModel,
         startupCommands: validated.startupCommands,
+        convexUrl: validated.convexUrl,
+        convexAuthToken: validated.convexAuthToken,
+        teamSlugOrId: validated.teamSlugOrId,
       });
 
       callback({
@@ -813,8 +818,12 @@ async function createTerminal(
     command?: string;
     args?: string[];
     taskRunId?: string;
+    taskId?: string;
     agentModel?: string;
     startupCommands?: string[];
+    convexUrl?: string;
+    convexAuthToken?: string;
+    teamSlugOrId?: string;
   } = {}
 ): Promise<void> {
   const {
@@ -1004,14 +1013,69 @@ async function createTerminal(
     try {
       void agentConfig
         .completionDetector(options.taskRunId)
-        .then(() => {
+        .then(async () => {
+          const elapsedMs = Date.now() - processStartTime;
+
+          // First emit to mainServer for backward compatibility
           emitToMainServer("worker:task-complete", {
             workerId: WORKER_ID,
             terminalId,
             taskRunId: options.taskRunId!,
             agentModel: options.agentModel,
-            elapsedMs: Date.now() - processStartTime,
+            elapsedMs,
           });
+
+          // If we have Convex connection details, handle completion directly
+          if (options.convexUrl && options.convexAuthToken && options.teamSlugOrId && options.taskId) {
+            log("INFO", `[Worker] Handling task completion directly for ${options.taskRunId}`);
+
+            try {
+              const convexOptions = {
+                url: options.convexUrl,
+                authToken: options.convexAuthToken,
+                teamSlugOrId: options.teamSlugOrId,
+              };
+
+              // Mark task run as complete
+              const { alreadyCompleted } = await markTaskRunComplete(
+                convexOptions,
+                {
+                  taskRunId: options.taskRunId!,
+                  exitCode: 0,
+                  taskId: options.taskId,
+                }
+              );
+
+              if (!alreadyCompleted) {
+                log("INFO", `[Worker] Task run ${options.taskRunId} marked as complete`);
+
+                // Check if all runs are complete and trigger crown evaluation if needed
+                const completionStatus = await checkAllTaskRunsComplete(
+                  convexOptions,
+                  options.taskId
+                );
+
+                if (completionStatus.allComplete && completionStatus.totalRuns >= 2) {
+                  log("INFO", `[Worker] All ${completionStatus.totalRuns} runs complete, triggering crown evaluation`);
+
+                  await triggerCrownEvaluation(
+                    convexOptions,
+                    {
+                      taskId: options.taskId,
+                      teamSlugOrId: options.teamSlugOrId,
+                    }
+                  );
+                } else {
+                  log("INFO", `[Worker] ${completionStatus.completedRuns}/${completionStatus.totalRuns} runs complete, waiting for others`);
+                }
+              } else {
+                log("INFO", `[Worker] Task run ${options.taskRunId} was already completed`);
+              }
+            } catch (error) {
+              log("ERROR", `[Worker] Failed to handle task completion directly:`, error);
+              // Fall back to mainServer handling via the emitted event
+            }
+          }
         })
         .catch((e) => {
           log(

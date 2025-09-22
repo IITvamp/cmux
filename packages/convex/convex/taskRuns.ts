@@ -397,6 +397,77 @@ export const updateVSCodeStatus = authMutation({
   },
 });
 
+// Mark task run as complete with retry logic for workers
+export const markTaskRunComplete = authMutation({
+  args: {
+    teamSlugOrId: v.string(),
+    taskRunId: v.id("taskRuns"),
+    exitCode: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const userId = ctx.identity.subject;
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
+    const taskRun = await ctx.db.get(args.taskRunId);
+
+    if (!taskRun || taskRun.teamId !== teamId || taskRun.userId !== userId) {
+      throw new Error("Task run not found or unauthorized");
+    }
+
+    // Check if already completed
+    if (taskRun.status === "completed") {
+      return { alreadyCompleted: true };
+    }
+
+    const now = Date.now();
+    await ctx.db.patch(args.taskRunId, {
+      status: "completed",
+      exitCode: args.exitCode ?? 0,
+      completedAt: now,
+      updatedAt: now,
+    });
+
+    return { alreadyCompleted: false };
+  },
+});
+
+// Check if all task runs for a task are complete
+export const checkAllTaskRunsComplete = authQuery({
+  args: {
+    teamSlugOrId: v.string(),
+    taskId: v.id("tasks"),
+  },
+  handler: async (ctx, args) => {
+    const userId = ctx.identity.subject;
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
+
+    const taskRuns = await ctx.db
+      .query("taskRuns")
+      .withIndex("by_team_user", (q) =>
+        q.eq("teamId", teamId).eq("userId", userId)
+      )
+      .filter((q) => q.eq(q.field("taskId"), args.taskId))
+      .collect();
+
+    if (taskRuns.length === 0) {
+      return { allComplete: false, totalRuns: 0, completedRuns: 0 };
+    }
+
+    const completedRuns = taskRuns.filter(run => run.status === "completed").length;
+    const allComplete = completedRuns === taskRuns.length;
+
+    return {
+      allComplete,
+      totalRuns: taskRuns.length,
+      completedRuns,
+      taskRuns: taskRuns.map(run => ({
+        id: run._id,
+        status: run.status,
+        agentName: run.agentName,
+      })),
+    };
+  },
+});
+
 // Update VSCode instance ports
 export const updateVSCodePorts = authMutation({
   args: {

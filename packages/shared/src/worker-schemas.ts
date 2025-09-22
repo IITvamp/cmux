@@ -73,6 +73,10 @@ export const WorkerCreateTerminalSchema = z.object({
     ),
   authFiles: z.array(AuthFileSchema).optional(),
   startupCommands: z.array(z.string()).optional(),
+  // Convex connection details for direct worker->convex communication
+  convexUrl: z.string().optional(),
+  convexAuthToken: z.string().optional(),
+  teamSlugOrId: z.string().optional(),
 });
 
 export const WorkerTerminalInputSchema = z.object({

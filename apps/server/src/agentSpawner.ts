@@ -23,6 +23,7 @@ import {
 import { getConvex } from "./utils/convexClient.js";
 import { retryOnOptimisticConcurrency } from "./utils/convexRetry.js";
 import { serverLogger } from "./utils/fileLogger.js";
+import { env } from "./utils/server-env.js";
 import {
   getAuthHeaderJson,
   getAuthToken,
@@ -744,10 +745,15 @@ export async function spawnAgent(
       rows: 74,
       env: envVars,
       taskRunId,
+      taskId,
       agentModel: agent.name,
       authFiles,
       startupCommands,
       cwd: "/root/workspace",
+      // Pass Convex connection details for direct worker->convex communication
+      convexUrl: env.NEXT_PUBLIC_CONVEX_URL,
+      convexAuthToken: capturedAuthToken || undefined,
+      teamSlugOrId: options.teamSlugOrId,
     };
 
     serverLogger.info(
