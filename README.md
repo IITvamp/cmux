@@ -43,3 +43,5 @@ cmux upgrade
 ```bash
 cmux uninstall
 ```
+
+**cmux lets you spawn Claude Code, Codex CLI, Cursor CLI, Gemini CLI, Amp, Opencode, and other coding agent CLIs in parallel across multiple tasks.**
