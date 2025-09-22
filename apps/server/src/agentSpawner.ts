@@ -401,13 +401,45 @@ export async function spawnAgent(
 
     serverLogger.info(`Starting VSCode instance for agent ${agent.name}...`);
 
-    // Start the VSCode instance
-    const vscodeInfo = await vscodeInstance.start();
-    const vscodeUrl = vscodeInfo.workspaceUrl;
+    // Start the VSCode instance with better error handling
+    let vscodeInfo;
+    let vscodeUrl;
+    try {
+      vscodeInfo = await vscodeInstance.start();
+      vscodeUrl = vscodeInfo.workspaceUrl;
 
-    serverLogger.info(
-      `VSCode instance spawned for agent ${agent.name}: ${vscodeUrl}`
-    );
+      serverLogger.info(
+        `VSCode instance spawned for agent ${agent.name}: ${vscodeUrl}`
+      );
+    } catch (error) {
+      serverLogger.error(
+        `Failed to start VSCode instance for agent ${agent.name}:`,
+        error
+      );
+
+      // Provide a more user-friendly error message
+      let errorMessage = "Failed to start VSCode instance";
+      if (error instanceof Error) {
+        if (error.message.includes('quota')) {
+          errorMessage = "Sandbox quota exceeded. Please try again later or switch to local mode.";
+        } else if (error.message.includes('authentication')) {
+          errorMessage = "Sandbox authentication failed. Please check your configuration.";
+        } else if (error.message.includes('timeout')) {
+          errorMessage = "Sandbox service timeout. Please try again.";
+        } else {
+          errorMessage = error.message;
+        }
+      }
+
+      return {
+        agentName: agent.name,
+        terminalId: "",
+        taskRunId,
+        worktreePath: "",
+        success: false,
+        error: errorMessage,
+      };
+    }
 
     if (options.isCloudMode && vscodeInstance instanceof CmuxVSCodeInstance) {
       console.log("[AgentSpawner] [isCloudMode] Setting up devcontainer");

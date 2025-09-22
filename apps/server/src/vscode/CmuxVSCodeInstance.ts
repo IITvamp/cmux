@@ -40,37 +40,67 @@ export class CmuxVSCodeInstance extends VSCodeInstance {
     dockerLogger.info(
       `[CmuxVSCodeInstance ${this.instanceId}] Requesting sandbox start via www API`
     );
-    const startRes = await postApiSandboxesStart({
-      client: getWwwClient(),
-      body: {
-        teamSlugOrId: this.teamSlugOrId,
-        ttlSeconds: 20 * 60,
-        metadata: {
-          instance: `cmux-${this.taskRunId}`,
-          taskRunId: String(this.taskRunId),
-          agentName: this.config.agentName || "",
+
+    try {
+      const startRes = await postApiSandboxesStart({
+        client: getWwwClient(),
+        body: {
+          teamSlugOrId: this.teamSlugOrId,
+          ttlSeconds: 20 * 60,
+          metadata: {
+            instance: `cmux-${this.taskRunId}`,
+            taskRunId: String(this.taskRunId),
+            agentName: this.config.agentName || "",
+          },
+          ...(this.environmentId ? { environmentId: this.environmentId } : {}),
+          ...(this.repoUrl
+            ? {
+                repoUrl: this.repoUrl,
+                branch: this.branch,
+                newBranch: this.newBranch,
+                depth: 1,
+              }
+            : {}),
         },
-        ...(this.environmentId ? { environmentId: this.environmentId } : {}),
-        ...(this.repoUrl
-          ? {
-              repoUrl: this.repoUrl,
-              branch: this.branch,
-              newBranch: this.newBranch,
-              depth: 1,
-            }
-          : {}),
-      },
-    });
-    console.log("startRes", startRes);
-    const data = startRes.data;
-    if (!data) {
-      throw new Error("Failed to start sandbox");
+      });
+
+      console.log("startRes", startRes);
+      const data = startRes.data;
+
+      if (!data) {
+        // Check if response contains error information
+        const errorData = startRes.error as any;
+        if (errorData?.error) {
+          throw new Error(errorData.error);
+        }
+        throw new Error("Failed to start sandbox: No response data");
+      }
+
+      // Store the instance data
+      this.sandboxId = data.instanceId;
+      this.vscodeBaseUrl = data.vscodeUrl;
+      this.workerUrl = data.workerUrl;
+      this.provider = data.provider || "morph";
+    } catch (error) {
+      dockerLogger.error(
+        `[CmuxVSCodeInstance ${this.instanceId}] Failed to start sandbox:`,
+        error
+      );
+
+      // Enhance error message for better debugging
+      if (error instanceof Error) {
+        if (error.message.includes('fetch failed')) {
+          throw new Error('Unable to connect to sandbox service. Please check your connection.');
+        } else if (error.message.includes('401') || error.message.includes('authentication')) {
+          throw new Error('Sandbox authentication failed. Please check your credentials.');
+        } else if (error.message.includes('429') || error.message.includes('quota')) {
+          throw new Error('Sandbox quota exceeded. Please try again later.');
+        }
+      }
+      throw error;
     }
 
-    this.sandboxId = data.instanceId;
-    this.vscodeBaseUrl = data.vscodeUrl;
-    this.workerUrl = data.workerUrl;
-    this.provider = data.provider || "morph";
+    // Note: sandboxId, vscodeBaseUrl, workerUrl, and provider are now set in the try block above
 
     const workspaceUrl = this.getWorkspaceUrl(this.vscodeBaseUrl);
     dockerLogger.info(`[CmuxVSCodeInstance] VS Code URL: ${workspaceUrl}`);

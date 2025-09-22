@@ -181,18 +181,60 @@ sandboxesRouter.openapi(
         }
       }
 
+      // Validate Morph API key
+      if (!env.MORPH_API_KEY) {
+        console.error("[sandboxes.start] MORPH_API_KEY is not configured");
+        return c.json({ error: "Sandbox service is not configured. Please contact support." }, 503);
+      }
+
       const client = new MorphCloudClient({ apiKey: env.MORPH_API_KEY });
-      const instance = await client.instances.start({
-        snapshotId: resolvedSnapshotId,
-        ttlSeconds: body.ttlSeconds ?? 20 * 60,
-        ttlAction: "pause",
-        metadata: {
-          app: "cmux",
-          teamId: team.uuid,
-          ...(body.environmentId ? { environmentId: body.environmentId } : {}),
-          ...(body.metadata || {}),
-        },
-      });
+
+      // Retry logic for transient failures
+      let instance;
+      let lastError;
+      const maxRetries = 3;
+
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          console.log(`[sandboxes.start] Attempting to start instance (attempt ${attempt}/${maxRetries})`);
+          instance = await client.instances.start({
+            snapshotId: resolvedSnapshotId,
+            ttlSeconds: body.ttlSeconds ?? 20 * 60,
+            ttlAction: "pause",
+            metadata: {
+              app: "cmux",
+              teamId: team.uuid,
+              ...(body.environmentId ? { environmentId: body.environmentId } : {}),
+              ...(body.metadata || {}),
+            },
+          });
+          console.log(`[sandboxes.start] Instance started successfully on attempt ${attempt}`);
+          break; // Success, exit retry loop
+        } catch (error) {
+          lastError = error;
+          console.error(`[sandboxes.start] Attempt ${attempt} failed:`, error);
+
+          // Check if error is retryable
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          const isRetryable = errorMessage.includes('timeout') ||
+                              errorMessage.includes('ETIMEDOUT') ||
+                              errorMessage.includes('ECONNRESET') ||
+                              errorMessage.includes('temporarily unavailable');
+
+          if (!isRetryable || attempt === maxRetries) {
+            throw error; // Not retryable or last attempt
+          }
+
+          // Wait before retrying (exponential backoff)
+          const waitTime = Math.min(1000 * Math.pow(2, attempt - 1), 4000);
+          console.log(`[sandboxes.start] Waiting ${waitTime}ms before retry`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+        }
+      }
+
+      if (!instance) {
+        throw lastError || new Error('Failed to start instance after retries');
+      }
 
       const exposed = instance.networking.httpServices;
       const vscodeService = exposed.find((s) => s.port === 39378);
@@ -415,7 +457,35 @@ sandboxesRouter.openapi(
       });
     } catch (error) {
       console.error("Failed to start sandbox:", error);
-      return c.text("Failed to start sandbox", 500);
+
+      // Extract meaningful error message
+      let errorMessage = "Failed to start sandbox";
+      let statusCode = 500;
+
+      if (error instanceof Error) {
+        errorMessage = error.message;
+
+        // Check for specific error types
+        if (errorMessage.includes('authentication') || errorMessage.includes('unauthorized')) {
+          errorMessage = "Authentication failed with Morph API. Please check API credentials.";
+          statusCode = 401;
+        } else if (errorMessage.includes('quota') || errorMessage.includes('limit')) {
+          errorMessage = "Sandbox quota exceeded. Please try again later or contact support.";
+          statusCode = 429;
+        } else if (errorMessage.includes('not found')) {
+          errorMessage = "Sandbox snapshot not found. Please check environment configuration.";
+          statusCode = 404;
+        } else if (errorMessage.includes('timeout')) {
+          errorMessage = "Request to Morph API timed out. Please try again.";
+          statusCode = 504;
+        } else {
+          // Include the original error for better debugging
+          errorMessage = `Failed to start sandbox: ${errorMessage}`;
+        }
+      }
+
+      // Return JSON error response for better client handling
+      return c.json({ error: errorMessage }, statusCode);
     }
   }
 );
