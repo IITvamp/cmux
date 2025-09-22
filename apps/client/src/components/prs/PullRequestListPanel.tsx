@@ -116,11 +116,11 @@ export function PullRequestListPanel({
                       repo: repo || "",
                       number: String(pr.number),
                     }}
-                    className={clsx("block px-1")}
+                    className={clsx("block px-1 cursor-default")}
                   >
                     <div
                       className={clsx(
-                        "hover:bg-neutral-200/50 dark:bg-neutral-800/50 px-4 py-2 rounded-md",
+                        "hover:bg-neutral-200/50 dark:hover:bg-neutral-700/50 dark:bg-neutral-800/50 px-4 py-2 rounded-md",
                         isSelected && "bg-neutral-200/50 dark:bg-neutral-800/50"
                       )}
                     >
