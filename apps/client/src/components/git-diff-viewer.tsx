@@ -121,20 +121,22 @@ export function GitDiffViewer({
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set());
   const editorRefs = useRef<Record<string, editor.IStandaloneDiffEditor>>({});
 
-  // Group diffs by file
+  // Group diffs by file and sort alphabetically for stable ordering
   const fileGroups: FileGroup[] = useMemo(
     () =>
-      (diffs || []).map((diff) => ({
-        filePath: diff.filePath,
-        oldPath: diff.oldPath,
-        status: diff.status,
-        additions: diff.additions,
-        deletions: diff.deletions,
-        oldContent: diff.oldContent || "",
-        newContent: diff.newContent || "",
-        patch: diff.patch,
-        isBinary: diff.isBinary,
-      })),
+      (diffs || [])
+        .map((diff) => ({
+          filePath: diff.filePath,
+          oldPath: diff.oldPath,
+          status: diff.status,
+          additions: diff.additions,
+          deletions: diff.deletions,
+          oldContent: diff.oldContent || "",
+          newContent: diff.newContent || "",
+          patch: diff.patch,
+          isBinary: diff.isBinary,
+        }))
+        .sort((a, b) => a.filePath.localeCompare(b.filePath)),
     [diffs]
   );
 
