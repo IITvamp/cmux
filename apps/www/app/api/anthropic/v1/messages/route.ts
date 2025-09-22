@@ -1,9 +1,10 @@
-import { env } from "@/lib/utils/www-env";
-import { verifyTaskRunToken } from "@/lib/utils/task-run-token";
 import type { TaskRunTokenPayload } from "@/lib/utils/task-run-token";
+import { verifyTaskRunToken } from "@/lib/utils/task-run-token";
+import { env } from "@/lib/utils/www-env";
 import { NextRequest, NextResponse } from "next/server";
 
 const ANTHROPIC_API_URL = "https://api.anthropic.com/v1/messages";
+const TEMPORARY_DISABLE_AUTH = true;
 
 const allowedModels = new Set([
   "claude-3-5-haiku-20241022",
@@ -29,12 +30,13 @@ function getIsOAuthToken(token: string) {
 }
 
 export async function POST(request: NextRequest) {
-  let taskRunToken: TaskRunTokenPayload;
-  try {
-    taskRunToken = await requireTaskRunToken(request);
-  } catch (authError) {
-    console.error("[anthropic proxy] Auth error:", authError);
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!TEMPORARY_DISABLE_AUTH) {
+    try {
+      await requireTaskRunToken(request);
+    } catch (authError) {
+      console.error("[anthropic proxy] Auth error:", authError);
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
   }
 
   try {
@@ -64,15 +66,12 @@ export async function POST(request: NextRequest) {
     const headers: Record<string, string> = useOriginalApiKey
       ? (() => {
           const filtered = new Headers(request.headers);
-          filtered.delete("x-cmux-token");
-          filtered.set("x-cmux-task-run-id", taskRunToken.taskRunId);
           return Object.fromEntries(filtered);
         })()
       : {
           "Content-Type": "application/json",
           "x-api-key": env.ANTHROPIC_API_KEY,
           "anthropic-version": "2023-06-01",
-          "x-cmux-task-run-id": taskRunToken.taskRunId,
         };
 
     // Add beta header if beta param is present
