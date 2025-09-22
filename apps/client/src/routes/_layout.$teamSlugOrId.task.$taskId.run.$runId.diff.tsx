@@ -29,6 +29,7 @@ import TextareaAutosize from "react-textarea-autosize";
 import { toast } from "sonner";
 import z from "zod";
 import { Command } from "lucide-react";
+import { Switch } from "@heroui/react";
 
 const paramsSchema = z.object({
   taskId: typedZid("tasks"),
@@ -134,6 +135,8 @@ function RunDiffPage() {
     totalDeletions: number;
   } | null>(null);
   const [followUpText, setFollowUpText] = useState("");
+  // Toggle to include the original task prompt when restarting (default off)
+  const [includeOriginalPrompt, setIncludeOriginalPrompt] = useState(false);
   const [isRestartingTask, setIsRestartingTask] = useState(false);
   const task = useQuery(api.tasks.getById, {
     teamSlugOrId,
@@ -185,8 +188,14 @@ function RunDiffPage() {
     }
 
     const originalPrompt = task.text ?? "";
-    const combinedPrompt = originalPrompt
-      ? `${originalPrompt}\n\n${followUp}`
+    const includesOriginalAlready =
+      includeOriginalPrompt &&
+      originalPrompt.length > 0 &&
+      followUp.startsWith(originalPrompt);
+    const combinedPrompt = includeOriginalPrompt && originalPrompt
+      ? includesOriginalAlready
+        ? followUp
+        : `${originalPrompt}\n\n${followUp}`
       : followUp;
 
     const projectFullNameForSocket =
@@ -266,6 +275,7 @@ function RunDiffPage() {
     teamSlugOrId,
     theme,
     restartAgents,
+    includeOriginalPrompt,
   ]);
 
   const handleFormSubmit = useCallback(
@@ -373,12 +383,12 @@ function RunDiffPage() {
                 </div>
               )}
             </Suspense>
-            <div className="sticky bottom-0 z-10 border-t border-transparent px-4 pb-3 pt-2">
+            <div className="sticky bottom-0 z-10 border-t border-transparent px-3.5 pb-3 pt-2">
               <form
                 onSubmit={handleFormSubmit}
                 className="mx-auto w-full max-w-2xl overflow-hidden rounded-2xl border border-neutral-500/15 bg-white dark:border-neutral-500/15 dark:bg-neutral-950"
               >
-                <div className="px-4 pt-4 sm:px-5">
+                <div className="px-4 pt-4">
                   <TextareaAutosize
                     value={followUpText}
                     onChange={(event) => setFollowUpText(event.target.value)}
@@ -389,12 +399,42 @@ function RunDiffPage() {
                     className="w-full max-h-24 resize-none overflow-y-auto border-none bg-transparent p-0 text-[15px] leading-relaxed text-neutral-900 outline-none placeholder:text-neutral-400 focus:outline-none dark:text-neutral-100 dark:placeholder:text-neutral-500"
                   />
                 </div>
-                <div className="flex items-center justify-between gap-2 pl-5 pb-3 pt-2 sm:pl-5 sm:pr-3">
-                  <span className="text-xs leading-tight text-neutral-500 dark:text-neutral-400">
-                    {task?.text
-                      ? "Original prompt is included automatically."
-                      : "This follow-up becomes the new task prompt."}
-                  </span>
+                <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-2">
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      isSelected={includeOriginalPrompt}
+                      onValueChange={(val) => {
+                        setIncludeOriginalPrompt(val);
+                        if (
+                          val &&
+                          !followUpText.trim() &&
+                          task?.text &&
+                          task.text.length > 0
+                        ) {
+                          setFollowUpText(task.text);
+                        }
+                      }}
+                      color="default"
+                      size="sm"
+                      isDisabled={!Boolean(task?.text)}
+                      aria-label={
+                        includeOriginalPrompt
+                          ? "Include original prompt"
+                          : "Exclude original prompt"
+                      }
+                      classNames={{
+                        wrapper:
+                          "group-data-[selected=true]:bg-neutral-600 group-data-[selected=true]:border-neutral-600 dark:group-data-[selected=true]:bg-neutral-500 dark:group-data-[selected=true]:border-neutral-500",
+                      }}
+                    />
+                    <span className="text-xs leading-tight text-neutral-600 dark:text-neutral-300 select-none">
+                      {task?.text
+                        ? includeOriginalPrompt
+                          ? "Include original prompt"
+                          : "Exclude original prompt"
+                        : "No original prompt"}
+                    </span>
+                  </div>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <span tabIndex={0} className="inline-flex">
