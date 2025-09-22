@@ -162,10 +162,12 @@ function TaskTreeInner({
   const hasRuns = task.runs && task.runs.length > 0;
 
   // Memoize the toggle handler
-  const handleToggle = useCallback((e: MouseEvent<HTMLButtonElement>) => {
-    e.preventDefault();
-    setIsExpanded((prev) => !prev);
-  }, []);
+  const handleToggle = useCallback(
+    (_event?: MouseEvent<HTMLButtonElement | HTMLAnchorElement>) => {
+      setIsExpanded((prev) => !prev);
+    },
+    []
+  );
 
   const { archiveWithUndo, unarchive } = useArchiveTask(teamSlugOrId);
 
@@ -275,6 +277,19 @@ function TaskTreeInner({
               search={{ runId: undefined }}
               activeOptions={{ exact: true }}
               className="group block"
+              onClick={(event) => {
+                if (
+                  !canExpand ||
+                  event.defaultPrevented ||
+                  event.metaKey ||
+                  event.ctrlKey ||
+                  event.shiftKey ||
+                  event.altKey
+                ) {
+                  return;
+                }
+                handleToggle(event);
+              }}
             >
               <SidebarListItem
                 paddingLeft={10 + level * 4}
@@ -363,8 +378,7 @@ function TaskRunTreeInner({
 
   // Memoize the toggle handler
   const handleToggle = useCallback(
-    (e: MouseEvent<HTMLButtonElement>) => {
-      e.preventDefault();
+    (_event?: MouseEvent<HTMLButtonElement | HTMLAnchorElement>) => {
       setRunExpanded(run._id, !isExpanded);
     },
     [isExpanded, run._id, setRunExpanded]
@@ -471,7 +485,7 @@ function TaskRunTreeInner({
             "flex items-center px-2 py-1 text-xs rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default mt-px",
             "[&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800"
           )}
-          style={{ paddingLeft: `${24 + (level + 1) * 16}px` }}
+          style={{ paddingLeft: `${24 + (level + 1) * 8}px` }}
         >
           <svg
             className="w-3 h-3 mr-2 text-neutral-400 grayscale opacity-60"
@@ -609,7 +623,7 @@ function TaskRunTreeInner({
             "flex items-center px-2 py-1 text-xs rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default mt-px",
             "[&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800"
           )}
-          style={{ paddingLeft: `${24 + (level + 1) * 16}px` }}
+          style={{ paddingLeft: `${24 + (level + 1) * 8}px` }}
         >
           <GitCompare className="w-3 h-3 mr-2 text-neutral-400" />
           <span className="text-neutral-600 dark:text-neutral-400">
@@ -627,7 +641,7 @@ function TaskRunTreeInner({
             "flex items-center px-2 py-1 text-xs rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default mt-px",
             "[&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800"
           )}
-          style={{ paddingLeft: `${24 + (level + 1) * 16}px` }}
+          style={{ paddingLeft: `${24 + (level + 1) * 8}px` }}
         >
           <GitPullRequest className="w-3 h-3 mr-2 text-neutral-400" />
           <span className="text-neutral-600 dark:text-neutral-400">
@@ -651,7 +665,7 @@ function TaskRunTreeInner({
               "flex items-center px-2 pr-10 py-1 text-xs rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800 cursor-default",
               "[&.active]:bg-neutral-100 dark:[&.active]:bg-neutral-800"
             )}
-            style={{ paddingLeft: `${24 + (level + 1) * 16}px` }}
+            style={{ paddingLeft: `${24 + (level + 1) * 8}px` }}
             onClick={(e) => {
               // Handle cmd/ctrl click to open in new tab
               if (e.metaKey || e.ctrlKey) {
@@ -727,17 +741,22 @@ function TaskRunTreeInner({
     <Fragment>
       <ContextMenu.Root>
         <ContextMenu.Trigger>
-          <div>
+          <div
+            onClick={() => {
+              if (!hasCollapsibleContent) {
+                return;
+              }
+              handleToggle();
+            }}
+          >
             <SidebarListItem
               containerClassName="mt-px"
               className="pr-2.5"
-              paddingLeft={8 + level * 16}
+              paddingLeft={10 + level * 16}
               toggle={{
                 expanded: isExpanded,
                 onToggle: handleToggle,
                 visible: hasCollapsibleContent,
-                className:
-                  "w-4 h-4 mr-1.5 hover:bg-neutral-200 dark:hover:bg-neutral-700",
               }}
               title={displayText}
               titleClassName="text-[13px] text-neutral-700 dark:text-neutral-300"

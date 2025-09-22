@@ -103,8 +103,9 @@ export function SidebarPullRequestList({
           },
         ] as const;
 
-        const handleToggle = (event: MouseEvent<HTMLButtonElement>) => {
-          event.preventDefault();
+        const handleToggle = (
+          _event?: MouseEvent<HTMLButtonElement | HTMLAnchorElement>
+        ) => {
           setExpanded((prev) => ({
             ...prev,
             [key]: !isExpanded,
@@ -122,6 +123,18 @@ export function SidebarPullRequestList({
                 number: String(pr.number),
               }}
               className="group block"
+              onClick={(event) => {
+                if (
+                  event.defaultPrevented ||
+                  event.metaKey ||
+                  event.ctrlKey ||
+                  event.shiftKey ||
+                  event.altKey
+                ) {
+                  return;
+                }
+                handleToggle(event);
+              }}
             >
               <SidebarListItem
                 paddingLeft={10}
@@ -131,7 +144,7 @@ export function SidebarPullRequestList({
                   visible: true,
                 }}
                 title={pr.title}
-                titleClassName="text-[13px] text-neutral-900 dark:text-neutral-100"
+                titleClassName="text-[13px] text-neutral-950 dark:text-neutral-100"
                 secondary={secondary || undefined}
                 meta={leadingIcon}
               />

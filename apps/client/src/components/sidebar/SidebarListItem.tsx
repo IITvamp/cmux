@@ -15,7 +15,9 @@ interface SidebarListItemProps {
   containerClassName?: string;
   toggle?: {
     expanded: boolean;
-    onToggle: (event: MouseEvent<HTMLButtonElement>) => void;
+    onToggle: (
+      event?: MouseEvent<HTMLButtonElement | HTMLAnchorElement>
+    ) => void;
     visible?: boolean;
     className?: string;
     iconClassName?: string;
@@ -53,7 +55,7 @@ export function SidebarListItem({
         style={{ paddingLeft: `${effectivePaddingLeft}px` }}
       >
         {toggle ? (
-          <div className="pr-1.5 -ml-0.5">
+          <div className="pr-1 -ml-0.5">
             <SidebarToggleButton
               onClick={(event) => {
                 event.preventDefault();
@@ -62,10 +64,7 @@ export function SidebarListItem({
               }}
               isExpanded={toggle.expanded}
               isVisible={toggleVisible}
-              className={clsx(
-                "w-4 h-4 hover:bg-neutral-200 dark:hover:bg-neutral-700",
-                toggle.className
-              )}
+              className={clsx("size-4", toggle.className)}
               iconClassName={toggle.iconClassName}
             />
           </div>
