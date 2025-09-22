@@ -37,11 +37,9 @@ export function SidebarListItem({
   containerClassName,
   toggle,
 }: SidebarListItemProps) {
-  const toggleVisible = toggle?.visible ?? Boolean(toggle);
-  const effectivePaddingLeft = Math.max(
-    0,
-    toggleVisible ? paddingLeft - 4 : paddingLeft
-  );
+  const hasToggle = Boolean(toggle);
+  const toggleVisible = toggle?.visible ?? hasToggle;
+  const effectivePaddingLeft = Math.max(0, hasToggle ? paddingLeft - 4 : paddingLeft);
 
   return (
     <div className={clsx("relative group select-none", containerClassName)}>
@@ -65,7 +63,7 @@ export function SidebarListItem({
               }}
               isExpanded={toggle.expanded}
               isVisible={toggleVisible}
-              className={clsx("size-4", toggle.className)}
+              className={clsx("w-[20px] h-4", toggle.className)}
               iconClassName={toggle.iconClassName}
             />
           </div>
