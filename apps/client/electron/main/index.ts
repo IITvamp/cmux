@@ -313,6 +313,15 @@ function setupAutoUpdates(): void {
     autoUpdater.autoDownload = true;
     autoUpdater.autoInstallOnAppQuit = true;
     autoUpdater.allowPrerelease = false;
+
+    if (process.platform === "darwin") {
+      const suffix = process.arch === "arm64" ? "arm64" : "x64";
+      const channel = `latest-${suffix}`;
+      if (autoUpdater.channel !== channel) {
+        autoUpdater.channel = channel;
+        mainLog("Configured autoUpdater channel", { channel, arch: process.arch });
+      }
+    }
   } catch (e) {
     mainWarn("Failed to initialize autoUpdater", e);
     return;
