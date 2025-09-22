@@ -15,7 +15,15 @@ import {
   FileText,
 } from "lucide-react";
 import { type editor } from "monaco-editor";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { kitties } from "./kitties";
 
 type FileDiffRowClassNames = {
@@ -325,11 +333,30 @@ function FileDiffRow({
     filePathRef.current = file.filePath;
   }, [file.filePath]);
 
-  useEffect(() => {
-    setEditorHeight(
-      Math.max(120, calculateEditorHeight(file.oldContent, file.newContent))
+  const shouldRenderEditor =
+    isExpanded &&
+    !file.isBinary &&
+    file.status !== "deleted" &&
+    file.status !== "renamed";
+
+  useLayoutEffect(() => {
+    if (!shouldRenderEditor) {
+      return;
+    }
+    const nextHeight = Math.max(
+      120,
+      calculateEditorHeight(file.oldContent, file.newContent)
     );
-  }, [file.oldContent, file.newContent, calculateEditorHeight]);
+    setEditorHeight((prev) => (prev === nextHeight ? prev : nextHeight));
+    if (containerRef.current) {
+      containerRef.current.style.height = `${nextHeight}px`;
+    }
+  }, [
+    shouldRenderEditor,
+    file.oldContent,
+    file.newContent,
+    calculateEditorHeight,
+  ]);
 
   const clearDisposables = useCallback(() => {
     for (const disposable of disposablesRef.current) {
@@ -346,43 +373,38 @@ function FileDiffRow({
     }
   }, []);
 
-  const cleanupEditor = useCallback(() => {
-    const hadEditor =
-      diffEditorRef.current !== null ||
-      disposablesRef.current.length > 0 ||
-      resizeObserverRef.current !== null;
+  const cleanupEditor = useCallback(
+    ({
+      skipVisibilityReset = false,
+    }: { skipVisibilityReset?: boolean } = {}) => {
+      const hadEditor =
+        diffEditorRef.current !== null ||
+        disposablesRef.current.length > 0 ||
+        resizeObserverRef.current !== null;
 
-    clearDisposables();
-    diffEditorRef.current = null;
-    try {
-      setEditorRefRef.current?.(null);
-    } catch {
-      // ignore
-    }
-    setIsEditorVisible(false);
+      clearDisposables();
+      diffEditorRef.current = null;
+      try {
+        setEditorRefRef.current?.(null);
+      } catch {
+        // ignore
+      }
+      if (!skipVisibilityReset) {
+        setIsEditorVisible(false);
+      }
 
-    if (hadEditor) {
-      debugGitDiffViewerLog("diff editor cleaned up", {
-        filePath: filePathRef.current,
-      });
-    }
-  }, [clearDisposables]);
-
-  const shouldRenderEditor =
-    isExpanded &&
-    !file.isBinary &&
-    file.status !== "deleted" &&
-    file.status !== "renamed";
-
-  useEffect(() => {
-    if (!shouldRenderEditor) {
-      cleanupEditor();
-    }
-  }, [shouldRenderEditor, cleanupEditor]);
+      if (hadEditor) {
+        debugGitDiffViewerLog("diff editor cleaned up", {
+          filePath: filePathRef.current,
+        });
+      }
+    },
+    [clearDisposables]
+  );
 
   useEffect(
     () => () => {
-      cleanupEditor();
+      cleanupEditor({ skipVisibilityReset: true });
     },
     [cleanupEditor]
   );
@@ -471,6 +493,9 @@ function FileDiffRow({
       const layoutEditor = (height: number) => {
         const containerEl = containerRef.current;
         if (!containerEl) {
+          if (!editorInstance.getContainerDomNode()) {
+            return;
+          }
           editorInstance.layout();
           return;
         }
@@ -483,6 +508,19 @@ function FileDiffRow({
       };
 
       const measure = () => {
+        if (diffEditorRef.current !== editorInstance) {
+          return;
+        }
+        const modifiedModel = modifiedEditor.getModel();
+        const originalModel = originalEditor.getModel();
+        if (
+          !modifiedModel ||
+          !originalModel ||
+          modifiedModel.isDisposed() ||
+          originalModel.isDisposed()
+        ) {
+          return;
+        }
         const modifiedHeight = modifiedEditor.getContentHeight();
         const originalHeight = originalEditor.getContentHeight();
         const nextHeight = Math.max(
@@ -606,6 +644,8 @@ function FileDiffRow({
                 height="100%"
                 width="100%"
                 onMount={handleEditorMount}
+                keepCurrentOriginalModel={true}
+                keepCurrentModifiedModel={true}
               />
             </div>
           )}
