@@ -23,7 +23,7 @@ type ReleaseInfo = {
 };
 
 const deriveReleaseInfo = (): ReleaseInfo => {
-  const versionValue = (clientPackageJson as { version?: unknown }).version;
+  const versionValue = clientPackageJson.version;
 
   if (typeof versionValue !== "string" || versionValue.trim() === "") {
     return {
