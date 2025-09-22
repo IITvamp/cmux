@@ -7,8 +7,7 @@ describe("buildAutoCommitPushCommand", () => {
     const message = "Fix bugs\nAdd features \"quoted\" and $pecial chars";
     const cmd = buildAutoCommitPushCommand({ branchName: branch, commitMessage: message });
 
-    // Begins with add/checkout/prepare temp file
-    expect(cmd.startsWith("git add -A && ")).toBe(true);
+    expect(cmd.startsWith("set -e\n")).toBe(true);
 
     // Branch names are JSON-quoted where used in commands
     expect(cmd).toContain(`git checkout -b ${JSON.stringify(branch)}`);
@@ -29,6 +28,13 @@ describe("buildAutoCommitPushCommand", () => {
 
     // Script contains newlines for heredoc
     expect(cmd.includes("\n")).toBe(true);
+
+    // Script supports running against current repo and nested repos in parallel
+    expect(cmd).toContain("repos+=(.)");
+    expect(cmd).toContain("find . -mindepth 1 -maxdepth 1 -type d -print0");
+    expect(cmd).toContain("run_repo \"$repo\" &");
+    expect(cmd).toContain("pids+=($!)");
+    expect(cmd).toContain("if ! wait \"$pid\"; then");
   });
 
   it("handles odd characters by leaving quoting to JSON", () => {
