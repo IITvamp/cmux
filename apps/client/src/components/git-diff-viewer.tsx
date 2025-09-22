@@ -1,7 +1,9 @@
+import "@/lib/monaco-environment";
+
 import { useTheme } from "@/components/theme/use-theme";
+import { loaderInitPromise } from "@/lib/monaco-environment";
 import { cn } from "@/lib/utils";
 import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
-import loader from "@monaco-editor/loader";
 import {
   ChevronDown,
   ChevronRight,
@@ -11,7 +13,6 @@ import {
   FilePlus,
   FileText,
 } from "lucide-react";
-import * as monaco from "monaco-editor";
 import { type editor } from "monaco-editor";
 import {
   memo,
@@ -23,13 +24,6 @@ import {
   useState,
 } from "react";
 import { kitties } from "./kitties";
-
-loader.config({
-  monaco,
-});
-const loaderInitPromise = new Promise<typeof monaco>((resolve) => {
-  loader.init().then(resolve);
-});
 
 type FileDiffRowClassNames = {
   button?: string;
