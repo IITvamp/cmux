@@ -6,6 +6,7 @@ import { useExpandTasks } from "@/contexts/expand-tasks/ExpandTasksContext";
 import { useSocket } from "@/contexts/socket/use-socket";
 import { useTheme } from "@/components/theme/use-theme";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@heroui/react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { refWithOrigin } from "@/lib/refWithOrigin";
 import { diffSmartQueryOptions } from "@/queries/diff-smart";
@@ -22,6 +23,7 @@ import {
   type FormEvent,
   type KeyboardEvent,
   useCallback,
+  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -135,6 +137,19 @@ function RunDiffPage() {
   } | null>(null);
   const [followUpText, setFollowUpText] = useState("");
   const [isRestartingTask, setIsRestartingTask] = useState(false);
+  const [overridePrompt, setOverridePrompt] = useState(false);
+
+  // Effect to handle toggle changes
+  useEffect(() => {
+    if (overridePrompt && task?.text) {
+      // When toggle is turned ON, populate with original prompt
+      setFollowUpText(task.text);
+    } else if (!overridePrompt && followUpText === task?.text) {
+      // When toggle is turned OFF and text hasn't changed, clear it
+      setFollowUpText("");
+    }
+    // Don't clear if user has edited the text
+  }, [overridePrompt]); // eslint-disable-line react-hooks/exhaustive-deps
   const task = useQuery(api.tasks.getById, {
     teamSlugOrId,
     id: taskId,
@@ -185,7 +200,9 @@ function RunDiffPage() {
     }
 
     const originalPrompt = task.text ?? "";
-    const combinedPrompt = originalPrompt
+    const combinedPrompt = overridePrompt
+      ? followUp
+      : originalPrompt
       ? `${originalPrompt}\n\n${followUp}`
       : followUp;
 
@@ -261,6 +278,7 @@ function RunDiffPage() {
     addTaskToExpand,
     createTask,
     followUpText,
+    overridePrompt,
     socket,
     task,
     teamSlugOrId,
@@ -373,7 +391,7 @@ function RunDiffPage() {
                 </div>
               )}
             </Suspense>
-            <div className="sticky bottom-0 z-10 border-t border-transparent px-4 pb-3 pt-2">
+            <div className="sticky bottom-0 z-10 border-t border-transparent pb-3 pt-2">
               <form
                 onSubmit={handleFormSubmit}
                 className="mx-auto w-full max-w-2xl overflow-hidden rounded-2xl border border-neutral-500/15 bg-white dark:border-neutral-500/15 dark:bg-neutral-950"
@@ -385,16 +403,30 @@ function RunDiffPage() {
                     onKeyDown={handleFollowUpKeyDown}
                     minRows={1}
                     maxRows={2}
-                    placeholder="Add updated instructions or context..."
+                    placeholder={overridePrompt ? "Enter new task prompt..." : "Add updated instructions or context..."}
                     className="w-full max-h-24 resize-none overflow-y-auto border-none bg-transparent p-0 text-[15px] leading-relaxed text-neutral-900 outline-none placeholder:text-neutral-400 focus:outline-none dark:text-neutral-100 dark:placeholder:text-neutral-500"
                   />
                 </div>
-                <div className="flex items-center justify-between gap-2 pl-5 pb-3 pt-2 sm:pl-5 sm:pr-3">
-                  <span className="text-xs leading-tight text-neutral-500 dark:text-neutral-400">
-                    {task?.text
-                      ? "Original prompt is included automatically."
-                      : "This follow-up becomes the new task prompt."}
-                  </span>
+                <div className="flex items-center justify-between gap-2 px-4 pb-3 pt-2 sm:px-5">
+                  <div className="flex items-center gap-3">
+                    <Switch
+                      isSelected={overridePrompt}
+                      onValueChange={setOverridePrompt}
+                      size="sm"
+                      aria-label={overridePrompt ? "Override prompt" : "Append to prompt"}
+                      classNames={{
+                        wrapper: "group-data-[selected=true]:bg-neutral-600 group-data-[selected=true]:border-neutral-600",
+                        thumb: "group-data-[selected=true]:ml-4",
+                      }}
+                    />
+                    <span className="text-xs leading-tight text-neutral-500 dark:text-neutral-400">
+                      {overridePrompt
+                        ? "Replace original prompt"
+                        : task?.text
+                        ? "Append to original prompt"
+                        : "This becomes the new task prompt"}
+                    </span>
+                  </div>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <span tabIndex={0} className="inline-flex">
