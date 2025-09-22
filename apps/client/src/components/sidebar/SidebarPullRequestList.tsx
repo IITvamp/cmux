@@ -1,14 +1,14 @@
+import { VSCodeIcon } from "@/components/icons/VSCodeIcon";
+import { GitHubIcon } from "@/components/icons/github";
 import { api } from "@cmux/convex/api";
 import { Link } from "@tanstack/react-router";
 import { useQuery as useConvexQuery } from "convex/react";
 import {
-  Code2,
   ExternalLink,
   GitMerge,
   GitPullRequest,
   GitPullRequestClosed,
   GitPullRequestDraft,
-  Monitor,
 } from "lucide-react";
 import { useMemo, useState, type ComponentType, type MouseEvent } from "react";
 import { SidebarListItem } from "./SidebarListItem";
@@ -90,17 +90,17 @@ export function SidebarPullRequestList({
           {
             key: "vscode",
             label: "VS Code",
-            icon: Code2,
+            icon: VSCodeIcon,
           },
           {
             key: "preview",
             label: "Preview",
-            icon: Monitor,
+            icon: ExternalLink,
           },
           {
             key: "github",
             label: "GitHub",
-            icon: ExternalLink,
+            icon: GitHubIcon,
           },
         ];
 
@@ -151,7 +151,7 @@ export function SidebarPullRequestList({
               />
             </Link>
             {isExpanded ? (
-              <div className="mt-1 flex flex-col" role="group">
+              <div className="mt-px flex flex-col" role="group">
                 {actionButtons.map((action) => {
                   const Icon = action.icon;
                   return (
@@ -166,7 +166,7 @@ export function SidebarPullRequestList({
                       style={{ paddingLeft: "32px" }}
                     >
                       <Icon
-                        className="mr-2 h-3 w-3 text-neutral-400"
+                        className="mr-2 h-3 w-3 text-neutral-400 grayscale opacity-60"
                         aria-hidden
                       />
                       <span className="text-neutral-600 dark:text-neutral-400">
