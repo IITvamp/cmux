@@ -104,6 +104,43 @@ function getRunDisplayText(run: TaskRunWithChildren): string {
   return run.prompt.substring(0, 50) + "...";
 }
 
+// Build a map of runId -> decorated agent name with (1), (2), ... suffixes
+// for sibling groups that contain duplicates of the same agent.
+function buildDecoratedAgentNameMap(
+  runs: TaskRunWithChildren[]
+): Map<Id<"taskRuns">, string> {
+  const map = new Map<Id<"taskRuns">, string>();
+
+  const visitSiblings = (siblings: TaskRunWithChildren[]): void => {
+    // Compute total counts per agent name for this sibling group
+    const totals = new Map<string, number>();
+    for (const r of siblings) {
+      const name = r.agentName?.trim();
+      if (!name) continue;
+      totals.set(name, (totals.get(name) ?? 0) + 1);
+    }
+    // Now, assign indices for any agent name that appears more than once
+    const seen = new Map<string, number>();
+    for (const r of siblings) {
+      const name = r.agentName?.trim();
+      if (name) {
+        const total = totals.get(name) ?? 0;
+        if (total > 1) {
+          const current = (seen.get(name) ?? 0) + 1;
+          seen.set(name, current);
+          map.set(r._id, `${name} (${current})`);
+        }
+      }
+      if (r.children && r.children.length > 0) {
+        visitSiblings(r.children);
+      }
+    }
+  };
+
+  visitSiblings(runs);
+  return map;
+}
+
 type TaskRunExpansionState = Partial<Record<Id<"taskRuns">, boolean>>;
 
 interface TaskRunExpansionContextValue {
@@ -199,6 +236,12 @@ function TaskTreeInner({
   const taskSecondary = taskSecondaryParts.join(" • ");
 
   const canExpand = hasRuns;
+
+  // Precompute decorated agent names with indices for the entire tree
+  const decoratedAgentNames = useMemo(
+    () => buildDecoratedAgentNameMap(task.runs),
+    [task.runs]
+  );
 
   const taskLeadingIcon = (() => {
     if (task.mergeStatus && task.mergeStatus !== "none") {
@@ -349,6 +392,7 @@ function TaskTreeInner({
                 level={level + 1}
                 taskId={task._id}
                 teamSlugOrId={teamSlugOrId}
+                decoratedAgentNames={decoratedAgentNames}
               />
             ))}
           </div>
@@ -363,6 +407,7 @@ interface TaskRunTreeProps {
   level: number;
   taskId: Id<"tasks">;
   teamSlugOrId: string;
+  decoratedAgentNames: Map<Id<"taskRuns">, string>;
 }
 
 function TaskRunTreeInner({
@@ -370,14 +415,19 @@ function TaskRunTreeInner({
   level,
   taskId,
   teamSlugOrId,
+  decoratedAgentNames,
 }: TaskRunTreeProps) {
   const { expandedRuns, setRunExpanded } = useTaskRunExpansionContext();
   const defaultExpanded = Boolean(run.isCrowned);
   const isExpanded = expandedRuns[run._id] ?? defaultExpanded;
   const hasChildren = run.children.length > 0;
 
-  // Memoize the display text to avoid recalculating on every render
-  const displayText = useMemo(() => getRunDisplayText(run), [run]);
+  // Memoize the display text; prefer decorated agent name if present
+  const displayText = useMemo(() => {
+    const decorated = decoratedAgentNames.get(run._id);
+    if (decorated) return decorated;
+    return getRunDisplayText(run);
+  }, [decoratedAgentNames, run]);
 
   // Memoize the toggle handler
   const handleToggle = useCallback(
@@ -753,6 +803,7 @@ function TaskRunDetails({
               level={level + 1}
               taskId={taskId}
               teamSlugOrId={teamSlugOrId}
+              decoratedAgentNames={decoratedAgentNames}
             />
           ))}
         </div>

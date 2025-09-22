@@ -51,6 +51,9 @@ export interface SearchableSelectProps {
   onChange: (value: string[]) => void;
   placeholder?: string;
   singleSelect?: boolean;
+  // When true in multi-select mode, selecting an already-selected option
+  // appends another copy instead of toggling it off.
+  allowDuplicates?: boolean;
   className?: string;
   loading?: boolean;
   maxTagCount?: number;
@@ -189,6 +192,7 @@ export function SearchableSelect({
   onChange,
   placeholder = "Select",
   singleSelect = false,
+  allowDuplicates = false,
   className,
   loading = false,
   maxTagCount: _maxTagCount,
@@ -384,6 +388,11 @@ export function SearchableSelect({
     if (singleSelect) {
       onChange([val]);
       setOpen(false);
+      return;
+    }
+    if (allowDuplicates) {
+      // Append another copy; removal should be handled by explicit remove controls
+      onChange([...value, val]);
       return;
     }
     const next = new Set(value);

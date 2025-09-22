@@ -18,7 +18,7 @@ import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
 import { Link, useRouter } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useMutation } from "convex/react";
-import { GitBranch, Image, Mic, Server, X } from "lucide-react";
+import { GitBranch, Image, Mic, Server, X, Plus } from "lucide-react";
 import {
   memo,
   useCallback,
@@ -169,25 +169,8 @@ export const DashboardInputControls = memo(function DashboardInputControls({
     }
     return map;
   }, [agentOptions]);
-  const sortedSelectedAgents = useMemo(() => {
-    const vendorOrder = new Map<string, number>();
-    agentOptions.forEach((option, index) => {
-      const vendor = option.iconKey ?? "other";
-      if (!vendorOrder.has(vendor)) vendorOrder.set(vendor, index);
-    });
-    return [...selectedAgents].sort((a, b) => {
-      const optionA = agentOptionsByValue.get(a);
-      const optionB = agentOptionsByValue.get(b);
-      const vendorA = optionA?.iconKey ?? "other";
-      const vendorB = optionB?.iconKey ?? "other";
-      const rankA = vendorOrder.get(vendorA) ?? Number.MAX_SAFE_INTEGER;
-      const rankB = vendorOrder.get(vendorB) ?? Number.MAX_SAFE_INTEGER;
-      if (rankA !== rankB) return rankA - rankB;
-      const labelA = optionA?.displayLabel ?? optionA?.label ?? a;
-      const labelB = optionB?.displayLabel ?? optionB?.label ?? b;
-      return labelA.localeCompare(labelB);
-    });
-  }, [agentOptions, agentOptionsByValue, selectedAgents]);
+  // Keep the pillbox order stable; duplicates should render as multiple pills
+  // so avoid sorting for the pill footer.
   // Determine OS for potential future UI tweaks
   // const isMac = navigator.userAgent.toUpperCase().indexOf("MAC") >= 0;
 
@@ -244,9 +227,18 @@ export const DashboardInputControls = memo(function DashboardInputControls({
     }
   }, []);
 
-  const handleAgentRemove = useCallback(
+  const handleAgentRemoveAt = useCallback(
+    (index: number) => {
+      const next = selectedAgents.slice();
+      next.splice(index, 1);
+      onAgentChange(next);
+    },
+    [onAgentChange, selectedAgents]
+  );
+
+  const handleAgentAddDuplicate = useCallback(
     (agent: string) => {
-      onAgentChange(selectedAgents.filter((value) => value !== agent));
+      onAgentChange([...selectedAgents, agent]);
     },
     [onAgentChange, selectedAgents]
   );
@@ -256,12 +248,12 @@ export const DashboardInputControls = memo(function DashboardInputControls({
       <div className="relative">
         <div ref={pillboxScrollRef} className="max-h-32 overflow-y-auto py-2 px-2">
           <div className="flex flex-wrap gap-1">
-            {sortedSelectedAgents.map((agent) => {
+            {selectedAgents.map((agent, idx) => {
               const option = agentOptionsByValue.get(agent);
               const label = option?.displayLabel ?? option?.label ?? agent;
               return (
                 <div
-                  key={agent}
+                  key={`${agent}-${idx}`}
                   className="inline-flex items-center gap-1 rounded-full bg-neutral-200 dark:bg-neutral-800/80 pl-1.5 pr-2.5 py-1 text-[11px] text-neutral-700 dark:text-neutral-200 transition-colors"
                 >
                   <button
@@ -269,12 +261,25 @@ export const DashboardInputControls = memo(function DashboardInputControls({
                     onClick={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
-                      handleAgentRemove(agent);
+                      handleAgentRemoveAt(idx);
                     }}
                     className="inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors hover:bg-neutral-300 dark:hover:bg-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60"
                   >
                     <X className="h-3 w-3" aria-hidden="true" />
                     <span className="sr-only">Remove {label}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      handleAgentAddDuplicate(agent);
+                    }}
+                    className="inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors hover:bg-neutral-300 dark:hover:bg-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60"
+                    title="Add another"
+                  >
+                    <Plus className="h-3 w-3" aria-hidden="true" />
+                    <span className="sr-only">Add another {label}</span>
                   </button>
                   {option?.icon ? (
                     <span className="inline-flex h-3.5 w-3.5 items-center justify-center">
@@ -463,6 +468,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
           onChange={onAgentChange}
           placeholder="Select agents"
           singleSelect={false}
+          allowDuplicates
           maxTagCount={1}
           className="rounded-2xl"
           showSearch
