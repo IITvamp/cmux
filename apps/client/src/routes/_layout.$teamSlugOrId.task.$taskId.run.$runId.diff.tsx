@@ -351,7 +351,7 @@ function RunDiffPage() {
               </div>
             </div>
           )}
-          <div className="bg-white dark:bg-neutral-950 grow flex flex-col">
+          <div className="bg-white dark:bg-neutral-900 grow flex flex-col">
             <Suspense
               fallback={
                 <div className="flex items-center justify-center h-full">
