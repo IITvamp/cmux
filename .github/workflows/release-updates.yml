@@ -292,8 +292,15 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.2.21
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
       - name: Install dependencies (bun)
         run: bun install --frozen-lockfile
+      - name: Build @cmux/native-core (Rust, Windows)
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd apps/server/native/core && bunx --bun @napi-rs/cli build --release)
       - name: Write .env for build
         shell: bash
         run: |
@@ -330,8 +337,15 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.2.21
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
       - name: Install dependencies (bun)
         run: bun install --frozen-lockfile
+      - name: Build @cmux/native-core (Rust, Linux)
+        shell: bash
+        run: |
+          set -euo pipefail
+          (cd apps/server/native/core && bunx --bun @napi-rs/cli build --release)
       - name: Write .env for build
         shell: bash
         run: |
