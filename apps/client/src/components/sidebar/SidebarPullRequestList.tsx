@@ -1,16 +1,16 @@
+import { VSCodeIcon } from "@/components/icons/VSCodeIcon";
+import { GitHubIcon } from "@/components/icons/github";
 import { api } from "@cmux/convex/api";
 import { Link } from "@tanstack/react-router";
 import { useQuery as useConvexQuery } from "convex/react";
 import {
-  Code2,
   ExternalLink,
   GitMerge,
   GitPullRequest,
   GitPullRequestClosed,
   GitPullRequestDraft,
-  Monitor,
 } from "lucide-react";
-import { useMemo, useState, type MouseEvent } from "react";
+import { useMemo, useState, type ComponentType, type MouseEvent } from "react";
 import { SidebarListItem } from "./SidebarListItem";
 import { SIDEBAR_PRS_DEFAULT_LIMIT } from "./const";
 
@@ -82,23 +82,27 @@ export function SidebarPullRequestList({
           <GitPullRequest className="w-3 h-3 text-[#1f883d] dark:text-[#238636]" />
         );
 
-        const actionButtons = [
+        const actionButtons: ReadonlyArray<{
+          key: "vscode" | "preview" | "github";
+          label: string;
+          icon: ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
+        }> = [
           {
             key: "vscode",
             label: "VS Code",
-            icon: <Code2 className="w-3 h-3" aria-hidden="true" />,
+            icon: VSCodeIcon,
           },
           {
             key: "preview",
             label: "Preview",
-            icon: <Monitor className="w-3 h-3" aria-hidden="true" />,
+            icon: ExternalLink,
           },
           {
             key: "github",
             label: "GitHub",
-            icon: <ExternalLink className="w-3 h-3" aria-hidden="true" />,
+            icon: GitHubIcon,
           },
-        ] as const;
+        ];
 
         const handleToggle = (
           _event?: MouseEvent<HTMLButtonElement | HTMLAnchorElement>
@@ -147,24 +151,30 @@ export function SidebarPullRequestList({
               />
             </Link>
             {isExpanded ? (
-              <div
-                className="mt-1 flex flex-wrap gap-1.5"
-                style={{ paddingLeft: "32px" }}
-              >
-                {actionButtons.map((action) => (
-                  <button
-                    key={action.key}
-                    type="button"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                    }}
-                    className="inline-flex items-center gap-1 rounded-md border border-neutral-200 dark:border-neutral-700 bg-neutral-100 dark:bg-neutral-800 px-2 py-1 text-[10px] font-medium text-neutral-700 dark:text-neutral-200 transition-colors hover:bg-neutral-200 dark:hover:bg-neutral-700"
-                  >
-                    {action.icon}
-                    <span>{action.label}</span>
-                  </button>
-                ))}
+              <div className="mt-px flex flex-col" role="group">
+                {actionButtons.map((action) => {
+                  const Icon = action.icon;
+                  return (
+                    <button
+                      key={action.key}
+                      type="button"
+                      onClick={(event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                      }}
+                      className="mt-px flex w-full items-center rounded-md pr-2 py-1 text-xs transition-colors hover:bg-neutral-200/45 dark:hover:bg-neutral-800/45 cursor-default"
+                      style={{ paddingLeft: "32px" }}
+                    >
+                      <Icon
+                        className="mr-2 h-3 w-3 text-neutral-400 grayscale opacity-60"
+                        aria-hidden
+                      />
+                      <span className="text-neutral-600 dark:text-neutral-400">
+                        {action.label}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             ) : null}
           </li>
