@@ -46,5 +46,16 @@ export const dropTeamsUuid = migrations.define({
   },
 });
 
+// Remove deprecated CLI output logs retained on historical task runs
+export const clearTaskRunsLog = migrations.define({
+  table: "taskRuns",
+  migrateOne: (_ctx, doc) => {
+    if (doc.log === undefined) {
+      return;
+    }
+    return { log: undefined };
+  },
+});
+
 // Generic runner; choose migrations from CLI or dashboard when invoking
 export const run = migrations.runner();
