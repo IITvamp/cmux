@@ -30,6 +30,8 @@ interface PersistentWebViewProps {
   onElectronViewDestroyed?: () => void;
 }
 
+const DISABLE_WEBCONTENTSVIEW = true;
+
 export function PersistentWebView({
   persistKey,
   src,
@@ -52,7 +54,7 @@ export function PersistentWebView({
 }: PersistentWebViewProps) {
   const resolvedRetain = true;
 
-  if (isElectron) {
+  if (isElectron && !DISABLE_WEBCONTENTSVIEW) {
     return (
       <ElectronWebContentsView
         src={src}
