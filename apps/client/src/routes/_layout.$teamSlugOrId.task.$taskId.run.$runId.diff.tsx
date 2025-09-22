@@ -376,15 +376,15 @@ function RunDiffPage() {
             <div className="sticky bottom-0 z-10 border-t border-transparent px-4 pb-3 pt-2">
               <form
                 onSubmit={handleFormSubmit}
-                className="mx-auto w-full max-w-4xl overflow-hidden rounded-2xl border border-neutral-500/15 bg-white dark:border-neutral-500/15 dark:bg-neutral-950"
+                className="mx-auto w-full max-w-2xl overflow-hidden rounded-2xl border border-neutral-500/15 bg-white dark:border-neutral-500/15 dark:bg-neutral-950"
               >
                 <div className="px-4 pt-4 sm:px-5">
                   <TextareaAutosize
                     value={followUpText}
                     onChange={(event) => setFollowUpText(event.target.value)}
                     onKeyDown={handleFollowUpKeyDown}
-                    minRows={2}
-                    maxRows={3}
+                    minRows={1}
+                    maxRows={2}
                     placeholder="Add updated instructions or context..."
                     className="w-full max-h-24 resize-none overflow-y-auto border-none bg-transparent p-0 text-[15px] leading-relaxed text-neutral-900 outline-none placeholder:text-neutral-400 focus:outline-none dark:text-neutral-100 dark:placeholder:text-neutral-500"
                   />

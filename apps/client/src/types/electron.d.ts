@@ -9,17 +9,24 @@ import type {
 } from "./electron-webcontents";
 
 interface CmuxSocketAPI {
-  connect: (query: Record<string, string>) => Promise<{ socketId: string; connected: boolean }>;
+  connect: (
+    query: Record<string, string>
+  ) => Promise<{ socketId: string; connected: boolean }>;
   disconnect: (socketId: string) => Promise<{ disconnected: boolean }>;
-  emit: (socketId: string, eventName: string, ...args: unknown[]) => Promise<{ success: boolean }>;
+  emit: (
+    socketId: string,
+    eventName: string,
+    ...args: unknown[]
+  ) => Promise<{ success: boolean }>;
   on: (socketId: string, eventName: string) => Promise<{ success: boolean }>;
-  onEvent: (socketId: string, callback: (eventName: string, ...args: unknown[]) => void) => void;
+  onEvent: (
+    socketId: string,
+    callback: (eventName: string, ...args: unknown[]) => void
+  ) => void;
 }
 
 interface CmuxLogsAPI {
-  onMainLog: (
-    callback: (entry: ElectronMainLogMessage) => void
-  ) => () => void;
+  onMainLog: (callback: (entry: ElectronMainLogMessage) => void) => () => void;
   readAll: () => Promise<ElectronLogsPayload>;
   copyAll: () => Promise<{ ok: boolean }>;
 }
@@ -38,16 +45,17 @@ interface CmuxWebContentsViewAPI {
     backgroundColor?: string;
     borderRadius?: number;
     persistKey?: string;
-  }) => Promise<
-    { id: number; webContentsId: number; restored: boolean }
-  >;
-  setBounds: (options: { id: number; bounds: CmuxRectangle; visible?: boolean }) => Promise<
-    { ok: boolean }
-  >;
+  }) => Promise<{ id: number; webContentsId: number; restored: boolean }>;
+  setBounds: (options: {
+    id: number;
+    bounds: CmuxRectangle;
+    visible?: boolean;
+  }) => Promise<{ ok: boolean }>;
   loadURL: (id: number, url: string) => Promise<{ ok: boolean }>;
-  release: (options: { id: number; persist?: boolean }) => Promise<
-    { ok: boolean; suspended: boolean }
-  >;
+  release: (options: {
+    id: number;
+    persist?: boolean;
+  }) => Promise<{ ok: boolean; suspended: boolean }>;
   destroy: (id: number) => Promise<{ ok: boolean }>;
   updateStyle: (options: {
     id: number;
@@ -72,7 +80,11 @@ interface CmuxWebContentsViewAPI {
 }
 
 interface CmuxAPI {
-  register: (meta: { auth?: string; team?: string; auth_json?: string }) => Promise<unknown>;
+  register: (meta: {
+    auth?: string;
+    team?: string;
+    auth_json?: string;
+  }) => Promise<unknown>;
   rpc: (event: string, ...args: unknown[]) => Promise<unknown>;
   on: (event: string, callback: (...args: unknown[]) => void) => () => void;
   off: (event: string, callback?: (...args: unknown[]) => void) => void;
@@ -90,7 +102,7 @@ interface CmuxAPI {
   socket: CmuxSocketAPI;
   logs: CmuxLogsAPI;
   webContentsView: CmuxWebContentsViewAPI;
-  autoUpdate?: {
+  autoUpdate: {
     install: () => Promise<{ ok: boolean; reason?: string }>;
   };
 }

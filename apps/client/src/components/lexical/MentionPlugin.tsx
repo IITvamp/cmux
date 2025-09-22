@@ -214,25 +214,48 @@ export function MentionPlugin({ repoUrl, branch }: MentionPluginProps) {
 
   const selectFile = useCallback(
     (file: FileInfo) => {
-      // Store the trigger node before it gets cleared
       const currentTriggerNode = triggerNodeRef.current;
 
       editor.update(() => {
         const selection = $getSelection();
 
-        if ($isRangeSelection(selection) && currentTriggerNode) {
-          const triggerText = currentTriggerNode.getTextContent();
-          const mentionStartIndex = triggerText.lastIndexOf(MENTION_TRIGGER);
+        if (!$isRangeSelection(selection) || !currentTriggerNode) {
+          return;
+        }
 
-          if (mentionStartIndex !== -1) {
-            // Replace @ and search text with @filename and a space
-            currentTriggerNode.spliceText(
-              mentionStartIndex,
-              triggerText.length - mentionStartIndex,
-              `@${file.relativePath} `,
-              true
-            );
+        const anchorNode = selection.anchor.getNode();
+        if (!anchorNode || anchorNode.getKey() !== currentTriggerNode.getKey()) {
+          return;
+        }
+
+        const triggerText = currentTriggerNode.getTextContent();
+        const anchorOffset = selection.anchor.offset;
+
+        let mentionStartIndex = -1;
+        for (let i = anchorOffset - 1; i >= 0; i -= 1) {
+          const char = triggerText[i];
+          if (char === MENTION_TRIGGER) {
+            mentionStartIndex = i;
+            break;
           }
+          if (/\s/.test(char)) {
+            break;
+          }
+        }
+
+        if (mentionStartIndex === -1) {
+          return;
+        }
+
+        const deleteCount = Math.max(anchorOffset - mentionStartIndex, 0);
+
+        if (deleteCount > 0) {
+          currentTriggerNode.spliceText(
+            mentionStartIndex,
+            deleteCount,
+            `@${file.relativePath} `,
+            true
+          );
         }
       });
       hideMenu();
