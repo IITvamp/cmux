@@ -15,7 +15,14 @@ import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { convexQuery } from "@convex-dev/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
-import { Suspense, useCallback, useMemo, useState } from "react";
+import {
+  Suspense,
+  type FormEvent,
+  type KeyboardEvent,
+  useCallback,
+  useMemo,
+  useState,
+} from "react";
 import TextareaAutosize from "react-textarea-autosize";
 import { toast } from "sonner";
 import z from "zod";
@@ -260,6 +267,29 @@ function RunDiffPage() {
     restartAgents,
   ]);
 
+  const handleFormSubmit = useCallback(
+    (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      void handleRestartTask();
+    },
+    [handleRestartTask]
+  );
+
+  const isRestartDisabled =
+    isRestartingTask || !followUpText.trim() || !socket || !task;
+
+  const handleFollowUpKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLTextAreaElement>) => {
+      if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+        event.preventDefault();
+        if (!isRestartDisabled) {
+          void handleRestartTask();
+        }
+      }
+    },
+    [handleRestartTask, isRestartDisabled]
+  );
+
   // 404 if selected run is missing
   if (!selectedRun) {
     return (
@@ -268,9 +298,6 @@ function RunDiffPage() {
       </div>
     );
   }
-
-  const isRestartDisabled =
-    isRestartingTask || !followUpText.trim() || !socket || !task;
 
   // Compute refs for diff: base branch vs run branch
   const repoFullName = task?.projectFullName || "";
@@ -328,10 +355,7 @@ function RunDiffPage() {
             </Suspense>
             <div className="border-t border-neutral-200 bg-neutral-50 px-4 py-4 dark:border-neutral-800 dark:bg-neutral-950">
               <form
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void handleRestartTask();
-                }}
+                onSubmit={handleFormSubmit}
                 className="flex flex-col gap-3"
               >
                 <div className="flex flex-col gap-1">
@@ -345,6 +369,7 @@ function RunDiffPage() {
                 <TextareaAutosize
                   value={followUpText}
                   onChange={(event) => setFollowUpText(event.target.value)}
+                  onKeyDown={handleFollowUpKeyDown}
                   minRows={3}
                   maxRows={8}
                   placeholder="Add updated instructions or context..."
