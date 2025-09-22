@@ -337,7 +337,7 @@ function DashboardComponent() {
         (response) => {
           if ("error" in response) {
             console.error("Task start error:", response.error);
-            toast.error(`Task start error: ${response.error}`);
+            toast.error(`Task start error: ${JSON.stringify(response.error)}`);
           } else {
             console.log("Task started:", response);
           }
