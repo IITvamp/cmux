@@ -9,6 +9,8 @@ import { refWithOrigin } from "@/lib/refWithOrigin";
 import { diffSmartQueryOptions } from "@/queries/diff-smart";
 // Refs mode: no run-diffs prefetch
 import { api } from "@cmux/convex/api";
+import type { Doc } from "@cmux/convex/dataModel";
+import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { convexQuery } from "@convex-dev/react-query";
 import { createFileRoute } from "@tanstack/react-router";
@@ -29,7 +31,38 @@ const gitDiffViewerClassNames: GitDiffViewerProps["classNames"] = {
   },
 };
 
-const DEFAULT_RESTART_AGENTS = ["claude/sonnet-4", "codex/gpt-5"] as const;
+type TaskRunWithChildren = Doc<"taskRuns"> & {
+  children: TaskRunWithChildren[];
+};
+
+const AVAILABLE_AGENT_NAMES = new Set(
+  AGENT_CONFIGS.map((agent) => agent.name)
+);
+
+function collectAgentNamesFromRuns(
+  runs: TaskRunWithChildren[] | undefined
+): string[] {
+  if (!runs) return [];
+
+  const seen = new Set<string>();
+  const ordered: string[] = [];
+
+  const traverse = (items: TaskRunWithChildren[]) => {
+    for (const run of items) {
+      const trimmed = run.agentName?.trim();
+      if (trimmed && AVAILABLE_AGENT_NAMES.has(trimmed) && !seen.has(trimmed)) {
+        seen.add(trimmed);
+        ordered.push(trimmed);
+      }
+      if (run.children && run.children.length > 0) {
+        traverse(run.children);
+      }
+    }
+  };
+
+  traverse(runs);
+  return ordered;
+}
 
 export const Route = createFileRoute(
   "/_layout/$teamSlugOrId/task/$taskId/run/$runId/diff"
@@ -104,16 +137,21 @@ function RunDiffPage() {
     return taskRuns?.find((run) => run._id === runId);
   }, [runId, taskRuns]);
 
-  // 404 if selected run is missing
-  if (!selectedRun) {
-    return (
-      <div className="p-6 text-sm text-neutral-600 dark:text-neutral-300">
-        404 – Run not found
-      </div>
-    );
-  }
+  const restartAgents = useMemo(() => {
+    const previousAgents = collectAgentNamesFromRuns(taskRuns as
+      | TaskRunWithChildren[]
+      | undefined);
+    if (previousAgents.length > 0) {
+      return previousAgents;
+    }
+    const fallback = selectedRun?.agentName?.trim();
+    if (fallback && AVAILABLE_AGENT_NAMES.has(fallback)) {
+      return [fallback];
+    }
+    return [];
+  }, [selectedRun?.agentName, taskRuns]);
 
-  const taskRunId = selectedRun._id;
+  const taskRunId = selectedRun?._id ?? runId;
 
   const handleRestartTask = useCallback(async () => {
     if (!task) {
@@ -128,6 +166,13 @@ function RunDiffPage() {
     const followUp = followUpText.trim();
     if (!followUp) {
       toast.error("Add follow-up context before restarting.");
+      return;
+    }
+
+    if (restartAgents.length === 0) {
+      toast.error(
+        "No previous agents found for this task. Start a new run from the dashboard."
+      );
       return;
     }
 
@@ -182,7 +227,7 @@ function RunDiffPage() {
             taskDescription: combinedPrompt,
             projectFullName: projectFullNameForSocket,
             taskId: newTaskId,
-            selectedAgents: [...DEFAULT_RESTART_AGENTS],
+            selectedAgents: [...restartAgents],
             isCloudMode: isEnvTask || Boolean(task.environmentId),
             ...(task.environmentId ? { environmentId: task.environmentId } : {}),
             theme,
@@ -212,7 +257,17 @@ function RunDiffPage() {
     task,
     teamSlugOrId,
     theme,
+    restartAgents,
   ]);
+
+  // 404 if selected run is missing
+  if (!selectedRun) {
+    return (
+      <div className="p-6 text-sm text-neutral-600 dark:text-neutral-300">
+        404 – Run not found
+      </div>
+    );
+  }
 
   const isRestartDisabled =
     isRestartingTask || !followUpText.trim() || !socket || !task;
