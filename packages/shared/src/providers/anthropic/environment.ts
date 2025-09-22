@@ -16,8 +16,11 @@ export async function getClaudeEnvironment(
 
   const files: EnvironmentResult["files"] = [];
   const env: Record<string, string> = {
-    ANTHROPIC_BASE_URL: "https://www.cmux.dev/api/anthropic",
-    ANTHROPIC_CUSTOM_HEADERS: `x-cmux-token:${ctx.taskRunJwt}`,
+    // Signal proxy to require user key via query too, in case header parsing differs
+    ANTHROPIC_BASE_URL: "https://www.cmux.dev/api/anthropic?requireUserKey=true",
+    // Include a flag header to require user-provided key on the proxy
+    // Multiple headers are comma-separated: key:value,key:value
+    ANTHROPIC_CUSTOM_HEADERS: `x-cmux-token:${ctx.taskRunJwt},x-cmux-require-user-key:true`,
   };
   const startupCommands: string[] = [];
 

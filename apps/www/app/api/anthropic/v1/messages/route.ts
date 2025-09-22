@@ -44,13 +44,30 @@ export async function POST(request: NextRequest) {
 
     const xApiKeyHeader = request.headers.get("x-api-key");
     const authorizationHeader = request.headers.get("authorization");
+    const requireUserKey =
+      (request.headers.get("x-cmux-require-user-key") || "").toLowerCase() ===
+        "true" ||
+      (searchParams.get("requireUserKey") || "").toLowerCase() === "true";
     const isOAuthToken = getIsOAuthToken(
       xApiKeyHeader || authorizationHeader || ""
     );
-    const useOriginalApiKey =
+    // Determine if the incoming request includes a real user API key
+    const hasUserProvidedKey =
       !isOAuthToken &&
+      !!(xApiKeyHeader || authorizationHeader) &&
       xApiKeyHeader !== hardCodedApiKey &&
       authorizationHeader !== hardCodedApiKey;
+    // If Claude Code signaled this request, force using the user key and disallow server fallback
+    if (requireUserKey && !hasUserProvidedKey) {
+      return NextResponse.json(
+        {
+          error:
+            "Missing user Anthropic API key. Please provide your Anthropic key in settings.",
+        },
+        { status: 401 }
+      );
+    }
+    const useOriginalApiKey = hasUserProvidedKey;
     const body = await request.json();
     const model = body.model;
     if (!useOriginalApiKey && !allowedModels.has(model)) {
@@ -65,6 +82,7 @@ export async function POST(request: NextRequest) {
       ? (() => {
           const filtered = new Headers(request.headers);
           filtered.delete("x-cmux-token");
+          filtered.delete("x-cmux-require-user-key");
           filtered.set("x-cmux-task-run-id", taskRunToken.taskRunId);
           return Object.fromEntries(filtered);
         })()
