@@ -169,13 +169,13 @@ export const DashboardInputControls = memo(function DashboardInputControls({
     }
     return map;
   }, [agentOptions]);
-  const sortedSelectedAgents = useMemo(() => {
+  const sortedSelectedAgentEntries = useMemo(() => {
     const vendorOrder = new Map<string, number>();
     agentOptions.forEach((option, index) => {
       const vendor = option.iconKey ?? "other";
       if (!vendorOrder.has(vendor)) vendorOrder.set(vendor, index);
     });
-    return [...selectedAgents].sort((a, b) => {
+    const sortedValues = [...selectedAgents].sort((a, b) => {
       const optionA = agentOptionsByValue.get(a);
       const optionB = agentOptionsByValue.get(b);
       const vendorA = optionA?.iconKey ?? "other";
@@ -186,6 +186,20 @@ export const DashboardInputControls = memo(function DashboardInputControls({
       const labelA = optionA?.displayLabel ?? optionA?.label ?? a;
       const labelB = optionB?.displayLabel ?? optionB?.label ?? b;
       return labelA.localeCompare(labelB);
+    });
+    const occurrenceMap = new Map<string, number>();
+    return sortedValues.map((value) => {
+      const option = agentOptionsByValue.get(value);
+      const baseLabel = option?.displayLabel ?? option?.label ?? value;
+      const occurrence = (occurrenceMap.get(value) ?? 0) + 1;
+      occurrenceMap.set(value, occurrence);
+      return {
+        key: `${value}#${occurrence}`,
+        value,
+        option,
+        occurrence,
+        displayLabel: `${baseLabel} (${occurrence})`,
+      };
     });
   }, [agentOptions, agentOptionsByValue, selectedAgents]);
   // Determine OS for potential future UI tweaks
@@ -245,8 +259,21 @@ export const DashboardInputControls = memo(function DashboardInputControls({
   }, []);
 
   const handleAgentRemove = useCallback(
-    (agent: string) => {
-      onAgentChange(selectedAgents.filter((value) => value !== agent));
+    (agent: string, occurrence: number) => {
+      let seen = 0;
+      const next: string[] = [];
+      for (const value of selectedAgents) {
+        if (value === agent) {
+          seen += 1;
+          if (seen === occurrence) {
+            continue;
+          }
+        }
+        next.push(value);
+      }
+      if (seen > 0) {
+        onAgentChange(next);
+      }
     },
     [onAgentChange, selectedAgents]
   );
@@ -256,12 +283,12 @@ export const DashboardInputControls = memo(function DashboardInputControls({
       <div className="relative">
         <div ref={pillboxScrollRef} className="max-h-32 overflow-y-auto py-2 px-2">
           <div className="flex flex-wrap gap-1">
-            {sortedSelectedAgents.map((agent) => {
-              const option = agentOptionsByValue.get(agent);
-              const label = option?.displayLabel ?? option?.label ?? agent;
+            {sortedSelectedAgentEntries.map((entry) => {
+              const option = entry.option;
+              const label = entry.displayLabel;
               return (
                 <div
-                  key={agent}
+                  key={entry.key}
                   className="inline-flex items-center gap-1 rounded-full bg-neutral-200 dark:bg-neutral-800/80 pl-1.5 pr-2.5 py-1 text-[11px] text-neutral-700 dark:text-neutral-200 transition-colors"
                 >
                   <button
@@ -269,7 +296,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
                     onClick={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
-                      handleAgentRemove(agent);
+                      handleAgentRemove(entry.value, entry.occurrence);
                     }}
                     className="inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors hover:bg-neutral-300 dark:hover:bg-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60"
                   >

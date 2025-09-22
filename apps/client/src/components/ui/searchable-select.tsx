@@ -17,12 +17,18 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import clsx from "clsx";
 import {
   AlertTriangle,
-  Check,
   ChevronDown,
   Loader2,
   OctagonAlert,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+  type ReactNode,
+} from "react";
 
 interface OptionWarning {
   tooltip: ReactNode;
@@ -115,15 +121,17 @@ function normalizeOptions(options: SelectOption[]): SelectOptionObject[] {
 
 interface OptionItemProps {
   opt: SelectOptionObject;
-  isSelected: boolean;
+  count: number;
   onSelectValue: (val: string) => void;
+  onRemoveValue?: (val: string) => void;
   onWarningAction?: () => void;
 }
 
 function OptionItem({
   opt,
-  isSelected,
+  count,
   onSelectValue,
+  onRemoveValue,
   onWarningAction,
 }: OptionItemProps) {
   if (opt.heading) {
@@ -144,6 +152,25 @@ function OptionItem({
     }
     onSelectValue(opt.value);
   };
+  const handleAddClick = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (opt.isUnavailable) {
+      return;
+    }
+    onSelectValue(opt.value);
+  };
+  const handleRemoveClick = (event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (opt.isUnavailable) {
+      return;
+    }
+    onRemoveValue?.(opt.value);
+  };
+  const instanceBadges = count > 0
+    ? Array.from({ length: Math.min(count, 3) }, (_, idx) => idx + 1)
+    : [];
   return (
     <CommandItem
       value={`${opt.label} ${opt.value}`}
@@ -151,7 +178,9 @@ function OptionItem({
         "flex items-center justify-between gap-2 text-[13.5px] py-1.5 h-[32px]",
         opt.isUnavailable
           ? "cursor-not-allowed text-neutral-500 dark:text-neutral-500"
-          : null
+          : count > 0
+            ? "bg-neutral-100/70 dark:bg-neutral-900/40"
+            : null
       )}
       onSelect={handleSelect}
     >
@@ -171,14 +200,44 @@ function OptionItem({
           <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
         ) : null}
       </div>
-      <Check
-        className={clsx(
-          "h-4 w-4 shrink-0 transition-opacity",
-          isSelected
-            ? "opacity-100 text-neutral-700 dark:text-neutral-300"
-            : "opacity-0"
-        )}
-      />
+      <div className="flex items-center gap-1 shrink-0">
+        {instanceBadges.length > 0 ? (
+          <div className="flex items-center gap-0.5">
+            {instanceBadges.map((badge) => (
+              <span
+                key={`${opt.value}-badge-${badge}`}
+                className="inline-flex items-center justify-center rounded-sm border border-neutral-300 bg-neutral-100 px-1 text-[10px] font-medium leading-none text-neutral-600 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200"
+              >
+                ({badge})
+              </span>
+            ))}
+            {count > instanceBadges.length ? (
+              <span className="inline-flex items-center justify-center rounded-sm border border-neutral-300 bg-neutral-100 px-1 text-[10px] font-medium leading-none text-neutral-600 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200">
+                +{count - instanceBadges.length}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+        {opt.isUnavailable ? null : count > 0 ? (
+          <button
+            type="button"
+            onClick={handleRemoveClick}
+            className="inline-flex h-6 items-center justify-center rounded-sm border border-neutral-300 bg-white px-1.5 text-[11px] font-medium text-neutral-600 transition-colors hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800"
+            aria-label={`Remove one ${opt.label}`}
+          >
+            -1
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onClick={handleAddClick}
+          className="inline-flex h-6 items-center justify-center rounded-sm border border-neutral-300 bg-white px-1.5 text-[11px] font-medium text-neutral-600 transition-colors hover:bg-neutral-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60 disabled:cursor-not-allowed disabled:opacity-40 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800"
+          aria-label={`Add ${opt.label}`}
+          disabled={opt.isUnavailable}
+        >
+          +1
+        </button>
+      </div>
     </CommandItem>
   );
 }
@@ -203,13 +262,19 @@ export function SearchableSelect({
     () => new Map(normOptions.map((o) => [o.value, o])),
     [normOptions]
   );
+  const selectionCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const item of value) {
+      counts.set(item, (counts.get(item) ?? 0) + 1);
+    }
+    return counts;
+  }, [value]);
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const [search, setSearch] = useState("");
   const [_recalcTick, setRecalcTick] = useState(0);
   // Popover width is fixed; no need to track trigger width
 
-  const selectedSet = useMemo(() => new Set(value), [value]);
   const selectedLabels = useMemo(() => {
     const byValue = new Map(
       normOptions.map((o) => [o.value, o.label] as const)
@@ -386,10 +451,23 @@ export function SearchableSelect({
       setOpen(false);
       return;
     }
-    const next = new Set(value);
-    if (next.has(val)) next.delete(val);
-    else next.add(val);
-    onChange(Array.from(next));
+    const next = [...value, val];
+    onChange(next);
+  };
+
+  const onRemoveValue = (val: string): void => {
+    let removed = false;
+    const next: string[] = [];
+    for (const current of value) {
+      if (!removed && current === val) {
+        removed = true;
+        continue;
+      }
+      next.push(current);
+    }
+    if (removed) {
+      onChange(next);
+    }
   };
 
   return (
@@ -479,13 +557,14 @@ export function SearchableSelect({
                         return (
                           <div>
                             {fallback.map((opt) => {
-                              const isSelected = selectedSet.has(opt.value);
+                              const count = selectionCounts.get(opt.value) ?? 0;
                               return (
                                 <OptionItem
                                   key={`fallback-${opt.value}`}
                                   opt={opt}
-                                  isSelected={isSelected}
                                   onSelectValue={onSelectValue}
+                                  count={count}
+                                  onRemoveValue={onRemoveValue}
                                   onWarningAction={() => setOpen(false)}
                                 />
                               );
@@ -502,7 +581,7 @@ export function SearchableSelect({
                         >
                           {vItems.map((vr) => {
                             const opt = filteredOptions[vr.index]!;
-                            const isSelected = selectedSet.has(opt.value);
+                            const count = selectionCounts.get(opt.value) ?? 0;
                             return (
                               <div
                                 key={opt.value}
@@ -518,8 +597,9 @@ export function SearchableSelect({
                               >
                                 <OptionItem
                                   opt={opt}
-                                  isSelected={isSelected}
+                                  count={count}
                                   onSelectValue={onSelectValue}
+                                  onRemoveValue={onRemoveValue}
                                   onWarningAction={() => setOpen(false)}
                                 />
                               </div>
