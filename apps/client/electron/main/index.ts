@@ -441,7 +441,7 @@ function createWindow(): void {
       nodeIntegration: false,
       webviewTag: true,
       partition: PARTITION,
-      allowRunningInsecureContent: true,
+      allowRunningInsecureContent: true, // TODO: remove this
     },
   };
 
