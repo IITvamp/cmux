@@ -378,18 +378,18 @@ function RunDiffPage() {
             <div className="sticky bottom-0 z-10 border-t border-transparent px-4 pb-3 pt-2">
               <form
                 onSubmit={handleFormSubmit}
-                className="mx-auto w-full max-w-4xl rounded-2xl border border-neutral-500/15 bg-white px-5 py-4 shadow-sm transition focus-within:border-neutral-300 focus-within:ring-2 focus-within:ring-neutral-200/60 dark:border-neutral-500/15 dark:bg-neutral-900 dark:focus-within:border-neutral-600 dark:focus-within:ring-neutral-700/40 sm:px-6"
+                className="mx-auto w-full max-w-4xl rounded-2xl border border-neutral-500/15 bg-white px-5 py-4 dark:border-neutral-500/15 dark:bg-neutral-950 sm:px-6"
               >
                 <TextareaAutosize
                   value={followUpText}
                   onChange={(event) => setFollowUpText(event.target.value)}
                   onKeyDown={handleFollowUpKeyDown}
-                  minRows={3}
-                  maxRows={4}
+                  minRows={2}
+                  maxRows={3}
                   placeholder="Add updated instructions or context..."
                   className="w-full max-h-24 resize-none overflow-y-auto border-none bg-transparent px-0 text-[15px] leading-relaxed text-neutral-900 outline-none placeholder:text-neutral-400 focus:outline-none dark:text-neutral-100 dark:placeholder:text-neutral-500"
                 />
-                <div className="mt-2 flex items-center justify-between gap-2 px-1.5">
+                <div className="mt-2 flex items-center justify-between gap-2">
                   <span className="text-xs leading-tight text-neutral-500 dark:text-neutral-400">
                     {task?.text
                       ? "Original prompt is included automatically."
