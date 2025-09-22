@@ -221,7 +221,19 @@ COPY --from=builder /cmux/apps/worker/scripts/collect-relevant-diff.sh /usr/loca
 RUN chmod +x /usr/local/bin/cmux-collect-relevant-diff.sh
 
 # Install envctl/envd into runtime
-RUN CMUX_ENV_VERSION=0.0.7 curl https://raw.githubusercontent.com/lawrencecchen/cmux-env/refs/heads/main/scripts/install.sh | bash && \
+# Using direct download URL to avoid GitHub API rate limits
+RUN CMUX_ENV_VERSION=0.0.8 && \
+    arch="$(uname -m)" && \
+    case "$arch" in \
+        x86_64) arch_name="x86_64" ;; \
+        aarch64|arm64) arch_name="aarch64" ;; \
+        *) echo "Unsupported architecture: $arch" >&2; exit 1 ;; \
+    esac && \
+    curl -fsSL "https://github.com/lawrencecchen/cmux-env/releases/download/v${CMUX_ENV_VERSION}/cmux-env-${CMUX_ENV_VERSION}-${arch_name}-unknown-linux-musl.tar.gz" | tar -xz -C /tmp && \
+    mv /tmp/cmux-env-${CMUX_ENV_VERSION}-${arch_name}-unknown-linux-musl/envctl /usr/local/bin/envctl && \
+    mv /tmp/cmux-env-${CMUX_ENV_VERSION}-${arch_name}-unknown-linux-musl/envd /usr/local/bin/envd && \
+    rm -rf /tmp/cmux-env-${CMUX_ENV_VERSION}-${arch_name}-unknown-linux-musl && \
+    chmod +x /usr/local/bin/envctl /usr/local/bin/envd && \
     envctl --version && \
     envctl install-hook bash && \
     echo '[ -f ~/.bashrc ] && . ~/.bashrc' > /root/.profile && \
