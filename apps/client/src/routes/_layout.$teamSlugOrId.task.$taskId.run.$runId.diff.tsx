@@ -7,6 +7,7 @@ import { useSocket } from "@/contexts/socket/use-socket";
 import { useTheme } from "@/components/theme/use-theme";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Switch } from "@heroui/react";
 import { refWithOrigin } from "@/lib/refWithOrigin";
 import { diffSmartQueryOptions } from "@/queries/diff-smart";
 // Refs mode: no run-diffs prefetch
@@ -19,16 +20,18 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
 import {
   Suspense,
+  type ChangeEvent,
   type FormEvent,
   type KeyboardEvent,
   useCallback,
+  useEffect,
   useMemo,
   useState,
 } from "react";
 import TextareaAutosize from "react-textarea-autosize";
 import { toast } from "sonner";
 import z from "zod";
-import { Command } from "lucide-react";
+import { Command, FileText, Pencil } from "lucide-react";
 
 const paramsSchema = z.object({
   taskId: typedZid("tasks"),
@@ -134,6 +137,8 @@ function RunDiffPage() {
     totalDeletions: number;
   } | null>(null);
   const [followUpText, setFollowUpText] = useState("");
+  const [overrideInitialPrompt, setOverrideInitialPrompt] = useState(false);
+  const [overridePromptText, setOverridePromptText] = useState("");
   const [isRestartingTask, setIsRestartingTask] = useState(false);
   const task = useQuery(api.tasks.getById, {
     teamSlugOrId,
@@ -160,6 +165,34 @@ function RunDiffPage() {
   }, [selectedRun?.agentName, taskRuns]);
 
   const taskRunId = selectedRun?._id ?? runId;
+  const originalTaskPrompt = task?.text ?? "";
+
+  useEffect(() => {
+    if (!overrideInitialPrompt) {
+      return;
+    }
+
+    setOverridePromptText((current) => {
+      const basePrompt = originalTaskPrompt;
+      const trimmedCurrent = current.trim();
+
+      if (trimmedCurrent.length > 0 && trimmedCurrent !== basePrompt.trim()) {
+        return current;
+      }
+
+      const followUp = followUpText.trim();
+
+      if (basePrompt && followUp) {
+        return `${basePrompt}\n\n${followUp}`;
+      }
+
+      if (basePrompt) {
+        return basePrompt;
+      }
+
+      return followUp;
+    });
+  }, [followUpText, originalTaskPrompt, overrideInitialPrompt]);
 
   const handleRestartTask = useCallback(async () => {
     if (!task) {
@@ -171,8 +204,11 @@ function RunDiffPage() {
       return;
     }
 
-    const followUp = followUpText.trim();
-    if (!followUp) {
+    const promptInput = overrideInitialPrompt
+      ? overridePromptText.trim()
+      : followUpText.trim();
+
+    if (!promptInput) {
       toast.error("Add follow-up context before restarting.");
       return;
     }
@@ -184,10 +220,11 @@ function RunDiffPage() {
       return;
     }
 
-    const originalPrompt = task.text ?? "";
-    const combinedPrompt = originalPrompt
-      ? `${originalPrompt}\n\n${followUp}`
-      : followUp;
+    const combinedPrompt = overrideInitialPrompt
+      ? promptInput
+      : originalTaskPrompt
+        ? `${originalTaskPrompt}\n\n${promptInput}`
+        : promptInput;
 
     const projectFullNameForSocket =
       task.projectFullName ??
@@ -245,11 +282,14 @@ function RunDiffPage() {
               toast.error(`Task restart error: ${response.error}`);
             } else {
               setFollowUpText("");
+              if (overrideInitialPrompt) {
+                setOverridePromptText(originalTaskPrompt);
+              }
               toast.success("Started follow-up task");
             }
-            resolve();
-          }
-        );
+          resolve();
+        }
+      );
       });
     } catch (error) {
       console.error("Failed to restart task", error);
@@ -261,6 +301,9 @@ function RunDiffPage() {
     addTaskToExpand,
     createTask,
     followUpText,
+    originalTaskPrompt,
+    overrideInitialPrompt,
+    overridePromptText,
     socket,
     task,
     teamSlugOrId,
@@ -276,9 +319,12 @@ function RunDiffPage() {
     [handleRestartTask]
   );
 
-  const trimmedFollowUp = followUpText.trim();
+  const currentPromptInput = overrideInitialPrompt
+    ? overridePromptText
+    : followUpText;
+  const trimmedPromptInput = currentPromptInput.trim();
   const isRestartDisabled =
-    isRestartingTask || !trimmedFollowUp || !socket || !task;
+    isRestartingTask || !trimmedPromptInput || !socket || !task;
   const isMac =
     typeof navigator !== "undefined" &&
     navigator.userAgent.toUpperCase().includes("MAC");
@@ -292,13 +338,19 @@ function RunDiffPage() {
     if (!socket) {
       return "Socket not connected";
     }
-    if (!trimmedFollowUp) {
+    if (!trimmedPromptInput) {
       return "Add follow-up context";
     }
     return undefined;
-  }, [isRestartingTask, socket, task, trimmedFollowUp]);
+  }, [isRestartingTask, socket, task, trimmedPromptInput]);
 
-  const handleFollowUpKeyDown = useCallback(
+  const helperMessage = overrideInitialPrompt
+    ? "Override and send a full prompt."
+    : task?.text
+      ? "Original prompt is included automatically."
+      : "This follow-up becomes the new task prompt.";
+
+  const handlePromptKeyDown = useCallback(
     (event: KeyboardEvent<HTMLTextAreaElement>) => {
       if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
@@ -308,6 +360,18 @@ function RunDiffPage() {
       }
     },
     [handleRestartTask, isRestartDisabled]
+  );
+
+  const handlePromptChange = useCallback(
+    (event: ChangeEvent<HTMLTextAreaElement>) => {
+      const { value } = event.target;
+      if (overrideInitialPrompt) {
+        setOverridePromptText(value);
+        return;
+      }
+      setFollowUpText(value);
+    },
+    [overrideInitialPrompt]
   );
 
   // 404 if selected run is missing
@@ -373,60 +437,85 @@ function RunDiffPage() {
                 </div>
               )}
             </Suspense>
-            <div className="sticky bottom-0 z-10 border-t border-transparent px-4 pb-3 pt-2">
+            <div className="sticky bottom-0 z-10 border-t border-transparent px-4 pb-4 pt-3">
               <form
                 onSubmit={handleFormSubmit}
                 className="mx-auto w-full max-w-2xl overflow-hidden rounded-2xl border border-neutral-500/15 bg-white dark:border-neutral-500/15 dark:bg-neutral-950"
               >
-                <div className="px-4 pt-4 sm:px-5">
+                <div className="flex flex-col gap-3 px-4 py-4 sm:px-5 sm:py-4">
                   <TextareaAutosize
-                    value={followUpText}
-                    onChange={(event) => setFollowUpText(event.target.value)}
-                    onKeyDown={handleFollowUpKeyDown}
+                    value={currentPromptInput}
+                    onChange={handlePromptChange}
+                    onKeyDown={handlePromptKeyDown}
                     minRows={1}
                     maxRows={2}
-                    placeholder="Add updated instructions or context..."
+                    placeholder={
+                      overrideInitialPrompt
+                        ? "Edit or replace the entire task prompt..."
+                        : "Add updated instructions or context..."
+                    }
                     className="w-full max-h-24 resize-none overflow-y-auto border-none bg-transparent p-0 text-[15px] leading-relaxed text-neutral-900 outline-none placeholder:text-neutral-400 focus:outline-none dark:text-neutral-100 dark:placeholder:text-neutral-500"
                   />
-                </div>
-                <div className="flex items-center justify-between gap-2 pl-5 pb-3 pt-2 sm:pl-5 sm:pr-3">
-                  <span className="text-xs leading-tight text-neutral-500 dark:text-neutral-400">
-                    {task?.text
-                      ? "Original prompt is included automatically."
-                      : "This follow-up becomes the new task prompt."}
-                  </span>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span tabIndex={0} className="inline-flex">
-                        <Button
-                          type="submit"
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex flex-1 flex-col gap-2 text-xs leading-tight text-neutral-500 dark:text-neutral-400 sm:flex-row sm:items-center sm:gap-3">
+                      <label className="flex items-center gap-2 text-xs font-medium text-neutral-700 dark:text-neutral-200">
+                        <Switch
+                          isSelected={overrideInitialPrompt}
+                          onValueChange={setOverrideInitialPrompt}
                           size="sm"
-                          variant="default"
-                          className="!h-7"
-                          disabled={isRestartDisabled}
-                        >
-                          {isRestartingTask ? "Starting..." : "Restart task"}
-                        </Button>
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent
-                      side="bottom"
-                      className="flex items-center gap-1 border-black bg-black text-white [&>*:last-child]:bg-black [&>*:last-child]:fill-black"
-                    >
-                      {restartDisabledReason ? (
-                        <span className="text-xs">{restartDisabledReason}</span>
-                      ) : (
-                        <>
-                          {isMac ? (
-                            <Command className="h-3 w-3" />
-                          ) : (
-                            <span className="text-xs">Ctrl</span>
-                          )}
-                          <span>+ Enter</span>
-                        </>
-                      )}
-                    </TooltipContent>
-                  </Tooltip>
+                          aria-label="Override original prompt"
+                          thumbIcon={({ isSelected, className }) => {
+                            const iconClassName = className
+                              ? `${className} size-3`
+                              : "size-3";
+                            return isSelected ? (
+                              <FileText className={iconClassName} />
+                            ) : (
+                              <Pencil className={iconClassName} />
+                            );
+                          }}
+                          classNames={{
+                            wrapper:
+                              "group-data-[selected=true]:bg-neutral-900 group-data-[selected=true]:border-neutral-900 group-data-[selected=false]:bg-neutral-200 group-data-[selected=false]:border-neutral-300 dark:group-data-[selected=true]:bg-neutral-100 dark:group-data-[selected=true]:border-neutral-100 dark:group-data-[selected=false]:bg-neutral-700/70 dark:group-data-[selected=false]:border-neutral-600 group-data-[focus-visible=true]:ring-2 group-data-[focus-visible=true]:ring-neutral-400/70 group-data-[focus-visible=true]:ring-offset-2 group-data-[focus-visible=true]:ring-offset-white dark:group-data-[focus-visible=true]:ring-offset-neutral-900",
+                          }}
+                        />
+                        <span>Override original prompt</span>
+                      </label>
+                      <span>{helperMessage}</span>
+                    </div>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <span tabIndex={0} className="inline-flex">
+                          <Button
+                            type="submit"
+                            size="sm"
+                            variant="default"
+                            className="!h-7"
+                            disabled={isRestartDisabled}
+                          >
+                            {isRestartingTask ? "Starting..." : "Restart task"}
+                          </Button>
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent
+                        side="bottom"
+                        className="flex items-center gap-1 border-black bg-black text-white [&>*:last-child]:bg-black [&>*:last-child]:fill-black"
+                      >
+                        {restartDisabledReason ? (
+                          <span className="text-xs">{restartDisabledReason}</span>
+                        ) : (
+                          <>
+                            {isMac ? (
+                              <Command className="h-3 w-3" />
+                            ) : (
+                              <span className="text-xs">Ctrl</span>
+                            )}
+                            <span>+ Enter</span>
+                          </>
+                        )}
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
                 </div>
               </form>
             </div>
