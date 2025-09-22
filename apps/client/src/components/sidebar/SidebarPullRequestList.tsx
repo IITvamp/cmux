@@ -40,7 +40,7 @@ export function SidebarPullRequestList({
   }
 
   return (
-    <ul className="mt-1 flex flex-col gap-0.5">
+    <ul className="mt-px flex flex-col gap-0.5">
       {prs.map((pr) => {
         const [owner = "", repo = ""] = pr.repoFullName?.split("/", 2) ?? [
           "",
@@ -62,11 +62,11 @@ export function SidebarPullRequestList({
               )}
             >
               <div className="flex items-center gap-2">
-                <div className="text-[12px] font-medium text-neutral-900 dark:text-neutral-100 truncate">
+                <div className="text-[12px] text-neutral-900 dark:text-neutral-100 truncate">
                   {pr.title}
                 </div>
               </div>
-              <div className="mt-0.5 text-[10px] text-neutral-600 dark:text-neutral-400 truncate">
+              <div className="pt-px text-[10px] text-neutral-600 dark:text-neutral-400 truncate">
                 {[branchLabel, `${pr.repoFullName}#${pr.number}`]
                   .filter(Boolean)
                   .join(" • ")}
