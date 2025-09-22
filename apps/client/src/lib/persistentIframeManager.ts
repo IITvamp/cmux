@@ -329,11 +329,36 @@ class PersistentIframeManager {
     const borderTop = parseFloat(computedStyle.borderTopWidth) || 0;
     const borderBottom = parseFloat(computedStyle.borderBottomWidth) || 0;
 
-    const width = Math.max(0, rect.width - borderLeft - borderRight);
-    const height = Math.max(0, rect.height - borderTop - borderBottom);
+    // Compute target size from element box
+    let width = Math.max(0, rect.width - borderLeft - borderRight);
+    let height = Math.max(0, rect.height - borderTop - borderBottom);
+
+    // Default translation aligns wrapper with target element
+    let translateX = rect.left + borderLeft;
+    let translateY = rect.top + borderTop;
+
+    // If target resolves to 0x0 (hidden/collapsed), avoid shrinking the iframe.
+    // Instead, size it to the current viewport and move it off-screen.
+    if (width < 1 || height < 1) {
+      const viewportWidth = Math.max(
+        1,
+        window.innerWidth || document.documentElement.clientWidth || 1
+      );
+      const viewportHeight = Math.max(
+        1,
+        window.innerHeight || document.documentElement.clientHeight || 1
+      );
+
+      width = viewportWidth;
+      height = viewportHeight;
+
+      // Position far outside the visible viewport to keep it non-obstructive
+      translateX = -(viewportWidth + 100);
+      translateY = -(viewportHeight + 100);
+    }
 
     // Update wrapper position using transform, keeping resize handles unobstructed
-    entry.wrapper.style.transform = `translate(${rect.left + borderLeft}px, ${rect.top + borderTop}px)`;
+    entry.wrapper.style.transform = `translate(${translateX}px, ${translateY}px)`;
     entry.wrapper.style.width = `${width}px`;
     entry.wrapper.style.height = `${height}px`;
   }
