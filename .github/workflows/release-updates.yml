@@ -112,8 +112,15 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.2.21
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
       - name: Install dependencies (bun)
         run: bun install --frozen-lockfile
+      - name: Build Rust native addon
+        working-directory: apps/server/native/core
+        run: bunx --bun @napi-rs/cli build --platform --release
       - name: Install app deps in apps/client (bun)
         working-directory: apps/client
         run: bun install --frozen-lockfile
@@ -202,8 +209,15 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.2.21
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
       - name: Install dependencies (bun)
         run: bun install --frozen-lockfile
+      - name: Build Rust native addon
+        working-directory: apps/server/native/core
+        run: bunx --bun @napi-rs/cli build --platform --release
       - name: Install app deps in apps/client (bun)
         working-directory: apps/client
         run: bun install --frozen-lockfile
@@ -292,8 +306,15 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.2.21
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
       - name: Install dependencies (bun)
         run: bun install --frozen-lockfile
+      - name: Build Rust native addon
+        working-directory: apps/server/native/core
+        run: bunx --bun @napi-rs/cli build --platform --release
       - name: Write .env for build
         shell: bash
         run: |
@@ -330,8 +351,15 @@ jobs:
         uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.2.21
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
       - name: Install dependencies (bun)
         run: bun install --frozen-lockfile
+      - name: Build Rust native addon
+        working-directory: apps/server/native/core
+        run: bunx --bun @napi-rs/cli build --platform --release
       - name: Write .env for build
         shell: bash
         run: |
