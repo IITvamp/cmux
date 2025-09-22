@@ -60,6 +60,7 @@ export async function spawnAgent(
     }>;
     theme?: "dark" | "light" | "system";
     newBranch?: string; // Optional pre-generated branch name
+    displayName?: string;
   },
   teamSlugOrId: string
 ): Promise<AgentSpawnResult> {
@@ -72,6 +73,7 @@ export async function spawnAgent(
     const newBranch =
       options.newBranch ||
       (await generateNewBranchName(options.taskDescription, teamSlugOrId));
+    const agentDisplayName = options.displayName ?? agent.name;
     serverLogger.info(
       `[AgentSpawner] New Branch: ${newBranch}, Base Branch: ${
         options.branch ?? "(auto)"
@@ -85,7 +87,7 @@ export async function spawnAgent(
         teamSlugOrId,
         taskId: taskId,
         prompt: options.taskDescription,
-        agentName: agent.name,
+        agentName: agentDisplayName,
         newBranch,
         environmentId: options.environmentId,
       }
@@ -331,7 +333,7 @@ export async function spawnAgent(
     if (options.isCloudMode) {
       // For remote sandboxes (Morph-backed via www API)
       vscodeInstance = new CmuxVSCodeInstance({
-        agentName: agent.name,
+        agentName: agentDisplayName,
         taskRunId,
         taskId,
         theme: options.theme,
@@ -363,7 +365,7 @@ export async function spawnAgent(
 
       if (!workspaceResult.success || !workspaceResult.worktreePath) {
         return {
-          agentName: agent.name,
+          agentName: agentDisplayName,
           terminalId: "",
           taskRunId,
           worktreePath: "",
@@ -379,7 +381,7 @@ export async function spawnAgent(
       );
       vscodeInstance = new DockerVSCodeInstance({
         workspacePath: worktreePath,
-        agentName: agent.name,
+        agentName: agentDisplayName,
         taskRunId,
         taskId,
         theme: options.theme,
@@ -669,7 +671,7 @@ export async function spawnAgent(
         `[AgentSpawner] No worker socket available for ${agent.name}`
       );
       return {
-        agentName: agent.name,
+        agentName: agentDisplayName,
         terminalId,
         taskRunId,
         worktreePath,
@@ -910,7 +912,7 @@ export async function spawnAgent(
     });
 
     return {
-      agentName: agent.name,
+      agentName: agentDisplayName,
       terminalId,
       taskRunId,
       worktreePath,
@@ -920,7 +922,7 @@ export async function spawnAgent(
   } catch (error) {
     serverLogger.error("Error spawning agent", error);
     return {
-      agentName: agent.name,
+      agentName: agentDisplayName,
       terminalId: "",
       taskRunId: "",
       worktreePath: "",
@@ -949,12 +951,41 @@ export async function spawnAllAgents(
   },
   teamSlugOrId: string
 ): Promise<AgentSpawnResult[]> {
-  // If selectedAgents is provided, filter AGENT_CONFIGS to only include selected agents
-  const agentsToSpawn = options.selectedAgents
-    ? AGENT_CONFIGS.filter((agent) =>
-        options.selectedAgents!.includes(agent.name)
-      )
-    : AGENT_CONFIGS;
+  type SpawnableAgent = { config: AgentConfig; displayName: string };
+  let agentsToSpawn: SpawnableAgent[] = [];
+
+  if (options.selectedAgents && options.selectedAgents.length > 0) {
+    const totalCounts = new Map<string, number>();
+    for (const name of options.selectedAgents) {
+      totalCounts.set(name, (totalCounts.get(name) ?? 0) + 1);
+    }
+
+    const runningCounts = new Map<string, number>();
+    agentsToSpawn = options.selectedAgents
+      .map((name, index) => {
+        const config = AGENT_CONFIGS.find((agent) => agent.name === name);
+        if (!config) {
+          serverLogger.warn(
+            `[AgentSpawner] Unknown agent selection "${name}" at index ${index}`
+          );
+          return null;
+        }
+        const instanceNumber = (runningCounts.get(name) ?? 0) + 1;
+        runningCounts.set(name, instanceNumber);
+        const totalForAgent = totalCounts.get(name) ?? 1;
+        const displayName =
+          totalForAgent > 1 ? `${config.name} (${instanceNumber})` : config.name;
+        return { config, displayName } satisfies SpawnableAgent;
+      })
+      .filter((value): value is SpawnableAgent => value !== null);
+  }
+
+  if (agentsToSpawn.length === 0) {
+    agentsToSpawn = AGENT_CONFIGS.map((config) => ({
+      config,
+      displayName: config.name,
+    }));
+  }
 
   // Generate unique branch names for all agents at once to ensure no collisions
   const branchNames = options.prTitle
@@ -971,13 +1002,14 @@ export async function spawnAllAgents(
 
   // Spawn all agents in parallel with their pre-generated branch names
   const results = await Promise.all(
-    agentsToSpawn.map((agent, index) =>
+    agentsToSpawn.map(({ config, displayName }, index) =>
       spawnAgent(
-        agent,
+        config,
         taskId,
         {
           ...options,
           newBranch: branchNames[index],
+          displayName,
         },
         teamSlugOrId
       )

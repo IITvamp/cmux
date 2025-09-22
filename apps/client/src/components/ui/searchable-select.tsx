@@ -51,6 +51,7 @@ export interface SearchableSelectProps {
   onChange: (value: string[]) => void;
   placeholder?: string;
   singleSelect?: boolean;
+  allowDuplicates?: boolean;
   className?: string;
   loading?: boolean;
   maxTagCount?: number;
@@ -116,6 +117,8 @@ function normalizeOptions(options: SelectOption[]): SelectOptionObject[] {
 interface OptionItemProps {
   opt: SelectOptionObject;
   isSelected: boolean;
+  allowDuplicates: boolean;
+  selectedCount?: number;
   onSelectValue: (val: string) => void;
   onWarningAction?: () => void;
 }
@@ -123,6 +126,8 @@ interface OptionItemProps {
 function OptionItem({
   opt,
   isSelected,
+  allowDuplicates,
+  selectedCount = 0,
   onSelectValue,
   onWarningAction,
 }: OptionItemProps) {
@@ -134,7 +139,14 @@ function OptionItem({
             {opt.icon}
           </span>
         ) : null}
-        <span className="truncate select-none">{opt.label}</span>
+        <span className="truncate select-none">
+          {opt.label}
+          {allowDuplicates && selectedCount > 1 ? (
+            <span className="ml-1 text-[11px] text-neutral-500 dark:text-neutral-400">
+              ({selectedCount})
+            </span>
+          ) : null}
+        </span>
       </div>
     );
   }
@@ -189,6 +201,7 @@ export function SearchableSelect({
   onChange,
   placeholder = "Select",
   singleSelect = false,
+  allowDuplicates = false,
   className,
   loading = false,
   maxTagCount: _maxTagCount,
@@ -209,7 +222,17 @@ export function SearchableSelect({
   const [_recalcTick, setRecalcTick] = useState(0);
   // Popover width is fixed; no need to track trigger width
 
-  const selectedSet = useMemo(() => new Set(value), [value]);
+  const selectedCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const val of value) {
+      counts.set(val, (counts.get(val) ?? 0) + 1);
+    }
+    return counts;
+  }, [value]);
+  const selectedSet = useMemo(
+    () => new Set(selectedCounts.keys()),
+    [selectedCounts]
+  );
   const selectedLabels = useMemo(() => {
     const byValue = new Map(
       normOptions.map((o) => [o.value, o.label] as const)
@@ -386,6 +409,10 @@ export function SearchableSelect({
       setOpen(false);
       return;
     }
+    if (allowDuplicates) {
+      onChange([...value, val]);
+      return;
+    }
     const next = new Set(value);
     if (next.has(val)) next.delete(val);
     else next.add(val);
@@ -485,6 +512,8 @@ export function SearchableSelect({
                                   key={`fallback-${opt.value}`}
                                   opt={opt}
                                   isSelected={isSelected}
+                                  allowDuplicates={allowDuplicates}
+                                  selectedCount={selectedCounts.get(opt.value)}
                                   onSelectValue={onSelectValue}
                                   onWarningAction={() => setOpen(false)}
                                 />
@@ -519,6 +548,8 @@ export function SearchableSelect({
                                 <OptionItem
                                   opt={opt}
                                   isSelected={isSelected}
+                                  allowDuplicates={allowDuplicates}
+                                  selectedCount={selectedCounts.get(opt.value)}
                                   onSelectValue={onSelectValue}
                                   onWarningAction={() => setOpen(false)}
                                 />
