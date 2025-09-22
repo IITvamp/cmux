@@ -8,9 +8,49 @@ import Link from "next/link";
 import cmuxDemo0 from "@/docs/assets/cmux-demo-0.png";
 import cmuxDemo1 from "@/docs/assets/cmux-demo-1.png";
 import cmuxDemo5 from "@/docs/assets/cmux-demo-5.png";
- 
+import { useEffect, useState } from "react";
+
+interface GitHubRelease {
+  tag_name: string;
+  assets: Array<{
+    name: string;
+    browser_download_url: string;
+  }>;
+}
 
 export default function LandingPage() {
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const [isLoadingDownload, setIsLoadingDownload] = useState(true);
+
+  useEffect(() => {
+    const fetchLatestRelease = async () => {
+      try {
+        const response = await fetch("https://api.github.com/repos/manaflow-ai/cmux/releases/latest");
+        if (!response.ok) throw new Error("Failed to fetch release");
+
+        const release: GitHubRelease = await response.json();
+
+        // Look for macOS arm64 zip file
+        const macAsset = release.assets.find(asset =>
+          asset.name.includes("arm64") &&
+          asset.name.includes("mac") &&
+          asset.name.endsWith(".zip")
+        );
+
+        if (macAsset) {
+          setDownloadUrl(macAsset.browser_download_url);
+        }
+      } catch (error) {
+        console.error("Error fetching latest release:", error);
+        // Fallback to a known release if API fails
+        setDownloadUrl("https://github.com/manaflow-ai/cmux/releases/latest");
+      } finally {
+        setIsLoadingDownload(false);
+      }
+    };
+
+    fetchLatestRelease();
+  }, []);
 
   return (
     <div className="min-h-dvh bg-background text-foreground overflow-y-auto">
@@ -147,27 +187,48 @@ export default function LandingPage() {
               </p>
 
               <div className="mt-10 flex flex-col sm:flex-row items-center gap-4">
-                <a
-                  href="https://github.com/manaflow-ai/cmux/releases/download/v1.0.35/cmux-1.0.35-arm64.dmg"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  title="Requires macOS"
-                  className="inline-flex h-12 items-center gap-2 text-base font-medium text-black bg-white hover:bg-neutral-50 border border-neutral-800 rounded-lg px-4 transition-all whitespace-nowrap"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none"
-                    viewBox="0 0 16 16"
-                    className="h-5 w-5"
-                    aria-hidden="true"
+                {isLoadingDownload ? (
+                  <button
+                    disabled
+                    className="inline-flex h-12 items-center gap-2 text-base font-medium text-black bg-white/80 border border-neutral-800 rounded-lg px-4 cursor-not-allowed opacity-75 whitespace-nowrap"
                   >
-                    <path
-                      fill="currentColor"
-                      d="M12.665 15.358c-.905.844-1.893.711-2.843.311-1.006-.409-1.93-.427-2.991 0-1.33.551-2.03.391-2.825-.31C-.498 10.886.166 4.078 5.28 3.83c1.246.062 2.114.657 2.843.71 1.09-.213 2.133-.826 3.296-.746 1.393.107 2.446.64 3.138 1.6-2.88 1.662-2.197 5.315.443 6.337-.526 1.333-1.21 2.657-2.345 3.635zM8.03 3.778C7.892 1.794 9.563.16 11.483 0c.268 2.293-2.16 4-3.452 3.777"
-                    ></path>
-                  </svg>
-                  Download for Mac
-                </a>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 16 16"
+                      className="h-5 w-5"
+                      aria-hidden="true"
+                    >
+                      <path
+                        fill="currentColor"
+                        d="M12.665 15.358c-.905.844-1.893.711-2.843.311-1.006-.409-1.93-.427-2.991 0-1.33.551-2.03.391-2.825-.31C-.498 10.886.166 4.078 5.28 3.83c1.246.062 2.114.657 2.843.71 1.09-.213 2.133-.826 3.296-.746 1.393.107 2.446.64 3.138 1.6-2.88 1.662-2.197 5.315.443 6.337-.526 1.333-1.21 2.657-2.345 3.635zM8.03 3.778C7.892 1.794 9.563.16 11.483 0c.268 2.293-2.16 4-3.452 3.777"
+                      ></path>
+                    </svg>
+                    Loading...
+                  </button>
+                ) : (
+                  <a
+                    href={downloadUrl || "https://github.com/manaflow-ai/cmux/releases/latest"}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title="Requires macOS"
+                    className="inline-flex h-12 items-center gap-2 text-base font-medium text-black bg-white hover:bg-neutral-50 border border-neutral-800 rounded-lg px-4 transition-all whitespace-nowrap"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      fill="none"
+                      viewBox="0 0 16 16"
+                      className="h-5 w-5"
+                      aria-hidden="true"
+                    >
+                      <path
+                        fill="currentColor"
+                        d="M12.665 15.358c-.905.844-1.893.711-2.843.311-1.006-.409-1.93-.427-2.991 0-1.33.551-2.03.391-2.825-.31C-.498 10.886.166 4.078 5.28 3.83c1.246.062 2.114.657 2.843.71 1.09-.213 2.133-.826 3.296-.746 1.393.107 2.446.64 3.138 1.6-2.88 1.662-2.197 5.315.443 6.337-.526 1.333-1.21 2.657-2.345 3.635zM8.03 3.778C7.892 1.794 9.563.16 11.483 0c.268 2.293-2.16 4-3.452 3.777"
+                      ></path>
+                    </svg>
+                    Download for Mac
+                  </a>
+                )}
                 <a
                   href="https://github.com/manaflow-ai/cmux"
                   target="_blank"
