@@ -59,7 +59,6 @@ function PRsPage() {
             maxLeft={720}
             separatorWidth={6}
             className="flex-1 min-h-0 h-full w-full bg-white dark:bg-neutral-900"
-            separatorClassName="bg-neutral-100 dark:bg-neutral-900 hover:bg-neutral-200 dark:hover:bg-neutral-800 active:bg-neutral-300 dark:active:bg-neutral-700"
             left={
               <PullRequestListPanel
                 teamSlugOrId={teamSlugOrId}
