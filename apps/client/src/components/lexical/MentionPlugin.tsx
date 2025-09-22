@@ -222,13 +222,37 @@ export function MentionPlugin({ repoUrl, branch }: MentionPluginProps) {
 
         if ($isRangeSelection(selection) && currentTriggerNode) {
           const triggerText = currentTriggerNode.getTextContent();
-          const mentionStartIndex = triggerText.lastIndexOf(MENTION_TRIGGER);
+          const anchor = selection.anchor;
+          const isSameNode = anchor.getNode() === currentTriggerNode;
+
+          // Prefer computing the trigger index relative to the caret
+          let mentionStartIndex = -1;
+          if (isSameNode) {
+            for (let i = anchor.offset - 1; i >= 0; i--) {
+              const ch = triggerText[i];
+              if (ch === MENTION_TRIGGER) {
+                mentionStartIndex = i;
+                break;
+              }
+              if (/\s/.test(ch)) {
+                break;
+              }
+            }
+          }
+          // Fallback for safety
+          if (mentionStartIndex === -1) {
+            mentionStartIndex = triggerText.lastIndexOf(MENTION_TRIGGER);
+          }
 
           if (mentionStartIndex !== -1) {
-            // Replace @ and search text with @filename and a space
+            // Only replace from the '@' trigger up to the current cursor position,
+            // preserving any text after the cursor on the same line/node.
+            const endIndex = isSameNode ? anchor.offset : triggerText.length;
+            const deleteCount = Math.max(0, endIndex - mentionStartIndex);
+
             currentTriggerNode.spliceText(
               mentionStartIndex,
-              triggerText.length - mentionStartIndex,
+              deleteCount,
               `@${file.relativePath} `,
               true
             );
