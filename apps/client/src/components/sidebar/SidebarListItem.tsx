@@ -19,6 +19,7 @@ interface SidebarListItemProps {
       event?: MouseEvent<HTMLButtonElement | HTMLAnchorElement>
     ) => void;
     visible?: boolean;
+    disabled?: boolean;
     className?: string;
     iconClassName?: string;
   };
@@ -65,7 +66,8 @@ export function SidebarListItem({
               }}
               isExpanded={toggle.expanded}
               isVisible={toggleVisible}
-              className={clsx("size-4", toggle.className)}
+              disabled={toggle.disabled}
+              className={toggle.className}
               iconClassName={toggle.iconClassName}
             />
           </div>

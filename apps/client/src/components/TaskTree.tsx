@@ -168,9 +168,12 @@ function TaskTreeInner({
   // Memoize the toggle handler
   const handleToggle = useCallback(
     (_event?: MouseEvent<HTMLButtonElement | HTMLAnchorElement>) => {
+      if (!canExpand) {
+        return;
+      }
       setIsExpanded((prev) => !prev);
     },
-    []
+    [canExpand]
   );
 
   const { archiveWithUndo, unarchive } = useArchiveTask(teamSlugOrId);
@@ -300,7 +303,8 @@ function TaskTreeInner({
                 toggle={{
                   expanded: isExpanded,
                   onToggle: handleToggle,
-                  visible: canExpand,
+                  visible: true,
+                  disabled: !canExpand,
                 }}
                 title={task.pullRequestTitle || task.text}
                 titleClassName="text-[13px] text-neutral-900 dark:text-neutral-100"
@@ -501,6 +505,7 @@ function TaskRunTreeInner({
                 expanded: isExpanded,
                 onToggle: handleToggle,
                 visible: hasCollapsibleContent,
+                disabled: !hasCollapsibleContent,
               }}
               title={displayText}
               titleClassName="text-[13px] text-neutral-700 dark:text-neutral-300"
