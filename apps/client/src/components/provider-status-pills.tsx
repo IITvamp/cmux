@@ -24,12 +24,25 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
     });
   }, [socket]);
 
-  // Check status on mount and every 5 seconds so UI updates quickly
+  // Initial check + subscribe to server push updates
   useEffect(() => {
+    if (!socket) return;
+    // Initial fetch
     checkProviderStatus();
-    const interval = setInterval(checkProviderStatus, 5000);
-    return () => clearInterval(interval);
-  }, [checkProviderStatus]);
+    // Subscribe to push updates
+    const handler = (response: ProviderStatusResponse) => {
+      if (response?.success) {
+        setStatus(response);
+      }
+    };
+    socket.on("provider-status-updated", handler);
+    // Low-frequency fallback refresh in case socket drops
+    const interval = setInterval(checkProviderStatus, 60000);
+    return () => {
+      clearInterval(interval);
+      socket.off("provider-status-updated", handler);
+    };
+  }, [socket, checkProviderStatus]);
 
   if (!status) return null;
 

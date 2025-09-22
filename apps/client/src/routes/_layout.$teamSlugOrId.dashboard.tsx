@@ -371,25 +371,34 @@ function DashboardComponent() {
   //   }
   // }, [reposByOrg, fetchRepos]);
 
-  // Check provider status on mount and keep it fresh without page refresh
+  // Provider status: initial fetch + socket push updates + light fallback
   useEffect(() => {
+    if (!socket) return;
+
     // Initial check
     checkProviderStatus();
 
-    // Poll while the dashboard is open so Docker state updates live
-    const interval = setInterval(() => {
-      checkProviderStatus();
-    }, 5000);
+    // Push updates from server
+    const handler = (response: ProviderStatusResponse) => {
+      setProviderStatus(response);
+      const isRunning = response?.dockerStatus?.isRunning;
+      if (typeof isRunning === "boolean") setDockerReady(isRunning);
+    };
+    socket.on("provider-status-updated", handler);
 
-    // Also refresh on window focus to catch recent changes quickly
+    // Also refresh on window focus to catch recent changes
     const handleFocus = () => checkProviderStatus();
     window.addEventListener("focus", handleFocus);
+
+    // Low-frequency fallback in case socket drops silently
+    const interval = setInterval(checkProviderStatus, 60000);
 
     return () => {
       clearInterval(interval);
       window.removeEventListener("focus", handleFocus);
+      socket.off("provider-status-updated", handler);
     };
-  }, [checkProviderStatus]);
+  }, [socket, checkProviderStatus]);
 
   // Format repos for multiselect
   // Fetch environments

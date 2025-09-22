@@ -600,6 +600,8 @@ export interface ServerToClientEvents {
   "vscode-error": (data: VSCodeError) => void;
   "default-repo": (data: DefaultRepo) => void;
   "available-editors": (data: AvailableEditors) => void;
+  // Broadcast when provider/Docker readiness changes
+  "provider-status-updated": (data: ProviderStatusResponse) => void;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type

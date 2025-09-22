@@ -22,12 +22,20 @@ export function ProviderStatusSettings() {
     });
   }, [socket]);
 
-  // Check status on mount and every 5 seconds
+  // Initial check + subscribe to server push updates
   useEffect(() => {
+    if (!socket) return;
     checkProviderStatus();
-    const interval = setInterval(checkProviderStatus, 5000);
-    return () => clearInterval(interval);
-  }, [checkProviderStatus]);
+    const handler = (response: ProviderStatusResponse) => {
+      if (response.success) setStatus(response);
+    };
+    socket.on("provider-status-updated", handler);
+    const interval = setInterval(checkProviderStatus, 60000);
+    return () => {
+      clearInterval(interval);
+      socket.off("provider-status-updated", handler);
+    };
+  }, [socket, checkProviderStatus]);
 
   // Skeleton loader
   if (loading && !status) {

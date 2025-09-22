@@ -51,6 +51,7 @@ import { refreshGitHubData } from "./utils/refreshGitHubData.js";
 import { runWithAuth, runWithAuthToken } from "./utils/requestContext.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { getProjectPaths } from "./workspace.js";
+import { startDockerReadinessWatcher } from "./utils/dockerWatcher.js";
 
 const execAsync = promisify(exec);
 
@@ -155,6 +156,8 @@ export function setupSocketHandlers(
             "Starting Docker container state sync after authenticated connect"
           );
           DockerVSCodeInstance.startContainerStateSync();
+          // Also start readiness watcher that pushes provider status updates
+          startDockerReadinessWatcher(rt);
         });
       }
     } else if (!initialToken) {
