@@ -13,6 +13,7 @@ import {
   net,
   session,
   shell,
+  webFrameMain,
   type BrowserWindowConstructorOptions,
   type MenuItemConstructorOptions,
 } from "electron";
@@ -27,12 +28,12 @@ import {
   type JWTPayload,
 } from "jose";
 import { promises as fs } from "node:fs";
+import { collectAllLogs } from "./log-management/collect-logs";
+import { ensureLogDirectory } from "./log-management/log-paths";
 import {
   appendLogWithRotation,
   type LogRotationOptions,
 } from "./log-management/log-rotation";
-import { ensureLogDirectory } from "./log-management/log-paths";
-import { collectAllLogs } from "./log-management/collect-logs";
 const { autoUpdater } = electronUpdater;
 
 import util from "node:util";
@@ -319,7 +320,10 @@ function setupAutoUpdates(): void {
       const channel = `latest-${suffix}`;
       if (autoUpdater.channel !== channel) {
         autoUpdater.channel = channel;
-        mainLog("Configured autoUpdater channel", { channel, arch: process.arch });
+        mainLog("Configured autoUpdater channel", {
+          channel,
+          arch: process.arch,
+        });
       }
     }
   } catch (e) {
@@ -437,6 +441,47 @@ function createWindow(): void {
     }
     emitAutoUpdateToastIfPossible();
   });
+
+  mainWindow.webContents.on(
+    "did-fail-load",
+    (
+      _event,
+      errorCode,
+      errorDescription,
+      validatedURL,
+      isMainFrame,
+      frameProcessId,
+      frameRoutingId
+    ) => {
+      mainWarn("did-fail-load", {
+        errorCode,
+        errorDescription,
+        validatedURL,
+        isMainFrame,
+        frameProcessId,
+        frameRoutingId,
+      });
+    }
+  );
+
+  mainWindow.webContents.on(
+    "did-frame-finish-load",
+    (_event, isMainFrame, frameProcessId, frameRoutingId) => {
+      let frameUrl: string | null = null;
+      try {
+        frameUrl =
+          webFrameMain.fromId(frameProcessId, frameRoutingId)?.url ?? null;
+      } catch (error) {
+        frameUrl = `lookup-failed:${String(error)}`;
+      }
+      mainLog("did-frame-finish-load", {
+        isMainFrame,
+        frameProcessId,
+        frameRoutingId,
+        frameUrl,
+      });
+    }
+  );
 
   mainWindow.webContents.on("did-navigate", (_e, url) => {
     mainLog("did-navigate", { url });
