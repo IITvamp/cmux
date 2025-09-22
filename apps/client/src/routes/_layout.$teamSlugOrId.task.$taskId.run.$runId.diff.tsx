@@ -148,9 +148,7 @@ function RunDiffPage() {
   }, [runId, taskRuns]);
 
   const restartAgents = useMemo(() => {
-    const previousAgents = collectAgentNamesFromRuns(taskRuns as
-      | TaskRunWithChildren[]
-      | undefined);
+    const previousAgents = collectAgentNamesFromRuns(taskRuns);
     if (previousAgents.length > 0) {
       return previousAgents;
     }
