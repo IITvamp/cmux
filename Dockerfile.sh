@@ -463,11 +463,11 @@ fi
 if [ "$EXECUTE" = "1" ] && [ "$ALLOW_DANGEROUS" = "1" ]; then
   bash -euo pipefail <<'__CMUX_RUN__'
 cd "${DESTDIR}${CURRENT_WORKDIR}"
-CMUX_ENV_VERSION=0.0.7 curl https://raw.githubusercontent.com/lawrencecchen/cmux-env/refs/heads/main/scripts/install.sh | bash && envctl --version && envctl install-hook bash && echo [ -f ~/.bashrc ] && . ~/.bashrc > /root/.profile && echo [ -f ~/.bashrc ] && . ~/.bashrc > /root/.bash_profile && echo [ -f ~/.bashrc ] && . ~/.bashrc >> /app/openvscode-server/out/vs/workbench/contrib/terminal/common/scripts/shellIntegration-bash.sh
+CMUX_ENV_VERSION=0.0.7 curl https://raw.githubusercontent.com/lawrencecchen/cmux-env/main/scripts/install.sh | bash && envctl --version && envctl install-hook bash && echo [ -f ~/.bashrc ] && . ~/.bashrc > /root/.profile && echo [ -f ~/.bashrc ] && . ~/.bashrc > /root/.bash_profile && echo [ -f ~/.bashrc ] && . ~/.bashrc >> /app/openvscode-server/out/vs/workbench/contrib/terminal/common/scripts/shellIntegration-bash.sh
 __CMUX_RUN__
 else
   cat <<'__CMUX_SHOW__'
-CMUX_ENV_VERSION=0.0.7 curl https://raw.githubusercontent.com/lawrencecchen/cmux-env/refs/heads/main/scripts/install.sh | bash && envctl --version && envctl install-hook bash && echo [ -f ~/.bashrc ] && . ~/.bashrc > /root/.profile && echo [ -f ~/.bashrc ] && . ~/.bashrc > /root/.bash_profile && echo [ -f ~/.bashrc ] && . ~/.bashrc >> /app/openvscode-server/out/vs/workbench/contrib/terminal/common/scripts/shellIntegration-bash.sh
+CMUX_ENV_VERSION=0.0.7 curl https://raw.githubusercontent.com/lawrencecchen/cmux-env/main/scripts/install.sh | bash && envctl --version && envctl install-hook bash && echo [ -f ~/.bashrc ] && . ~/.bashrc > /root/.profile && echo [ -f ~/.bashrc ] && . ~/.bashrc > /root/.bash_profile && echo [ -f ~/.bashrc ] && . ~/.bashrc >> /app/openvscode-server/out/vs/workbench/contrib/terminal/common/scripts/shellIntegration-bash.sh
 __CMUX_SHOW__
 fi
 
