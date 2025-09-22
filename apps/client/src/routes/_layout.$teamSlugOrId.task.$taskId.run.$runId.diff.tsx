@@ -378,18 +378,20 @@ function RunDiffPage() {
             <div className="sticky bottom-0 z-10 border-t border-transparent px-4 pb-3 pt-2">
               <form
                 onSubmit={handleFormSubmit}
-                className="mx-auto w-full max-w-4xl rounded-2xl border border-neutral-500/15 bg-white px-5 py-4 dark:border-neutral-500/15 dark:bg-neutral-950 sm:px-6"
+                className="mx-auto w-full max-w-4xl overflow-hidden rounded-2xl border border-neutral-500/15 bg-white dark:border-neutral-500/15 dark:bg-neutral-950"
               >
-                <TextareaAutosize
-                  value={followUpText}
-                  onChange={(event) => setFollowUpText(event.target.value)}
-                  onKeyDown={handleFollowUpKeyDown}
-                  minRows={2}
-                  maxRows={3}
-                  placeholder="Add updated instructions or context..."
-                  className="w-full max-h-24 resize-none overflow-y-auto border-none bg-transparent px-0 text-[15px] leading-relaxed text-neutral-900 outline-none placeholder:text-neutral-400 focus:outline-none dark:text-neutral-100 dark:placeholder:text-neutral-500"
-                />
-                <div className="mt-2 flex items-center justify-between gap-2">
+                <div className="px-4 pt-4 sm:px-5">
+                  <TextareaAutosize
+                    value={followUpText}
+                    onChange={(event) => setFollowUpText(event.target.value)}
+                    onKeyDown={handleFollowUpKeyDown}
+                    minRows={2}
+                    maxRows={3}
+                    placeholder="Add updated instructions or context..."
+                    className="w-full max-h-24 resize-none overflow-y-auto border-none bg-transparent p-0 text-[15px] leading-relaxed text-neutral-900 outline-none placeholder:text-neutral-400 focus:outline-none dark:text-neutral-100 dark:placeholder:text-neutral-500"
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-2 pl-5 pb-3 pt-2 sm:pl-5 sm:pr-3">
                   <span className="text-xs leading-tight text-neutral-500 dark:text-neutral-400">
                     {task?.text
                       ? "Original prompt is included automatically."
@@ -402,7 +404,7 @@ function RunDiffPage() {
                           type="submit"
                           size="sm"
                           variant="default"
-                          className="!h-7 px-4"
+                          className="!h-7"
                           disabled={isRestartDisabled}
                         >
                           {isRestartingTask ? "Starting..." : "Restart task"}
