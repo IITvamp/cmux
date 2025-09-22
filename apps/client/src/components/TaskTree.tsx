@@ -41,6 +41,7 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
+import { SmoothCollapse } from "./SmoothCollapse";
 import { SidebarListItem } from "./sidebar/SidebarListItem";
 
 interface TaskRunWithChildren extends Doc<"taskRuns"> {
@@ -340,8 +341,12 @@ function TaskTreeInner({
           </ContextMenu.Portal>
         </ContextMenu.Root>
 
-        {isExpanded && hasRuns && (
-          <div className="flex flex-col">
+        {hasRuns ? (
+          <SmoothCollapse
+            isOpen={isExpanded}
+            className="flex flex-col"
+            unmountOnExit
+          >
             {task.runs.map((run) => (
               <TaskRunTree
                 key={run._id}
@@ -351,8 +356,8 @@ function TaskTreeInner({
                 teamSlugOrId={teamSlugOrId}
               />
             ))}
-          </div>
-        )}
+          </SmoothCollapse>
+        ) : null}
       </div>
     </TaskRunExpansionContext.Provider>
   );
@@ -571,17 +576,22 @@ function TaskRunTreeInner({
         </ContextMenu.Portal>
       </ContextMenu.Root>
 
-      <TaskRunDetails
-        run={run}
-        level={level}
-        taskId={taskId}
-        teamSlugOrId={teamSlugOrId}
-        isExpanded={isExpanded}
-        hasActiveVSCode={hasActiveVSCode}
-        hasChildren={hasChildren}
-        shouldRenderPullRequestLink={shouldRenderPullRequestLink}
-        previewServices={previewServices}
-      />
+      <SmoothCollapse
+        isOpen={isExpanded}
+        className="flex flex-col"
+        unmountOnExit
+      >
+        <TaskRunDetails
+          run={run}
+          level={level}
+          taskId={taskId}
+          teamSlugOrId={teamSlugOrId}
+          hasActiveVSCode={hasActiveVSCode}
+          hasChildren={hasChildren}
+          shouldRenderPullRequestLink={shouldRenderPullRequestLink}
+          previewServices={previewServices}
+        />
+      </SmoothCollapse>
     </Fragment>
   );
 }
@@ -630,7 +640,6 @@ interface TaskRunDetailsProps {
   level: number;
   taskId: Id<"tasks">;
   teamSlugOrId: string;
-  isExpanded: boolean;
   hasActiveVSCode: boolean;
   hasChildren: boolean;
   shouldRenderPullRequestLink: boolean;
@@ -642,16 +651,11 @@ function TaskRunDetails({
   level,
   taskId,
   teamSlugOrId,
-  isExpanded,
   hasActiveVSCode,
   hasChildren,
   shouldRenderPullRequestLink,
   previewServices,
 }: TaskRunDetailsProps) {
-  if (!isExpanded) {
-    return null;
-  }
-
   const indentLevel = level + 1;
 
   return (

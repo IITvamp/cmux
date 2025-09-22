@@ -11,6 +11,7 @@ import {
   Monitor,
 } from "lucide-react";
 import { useMemo, useState, type MouseEvent } from "react";
+import { SmoothCollapse } from "../SmoothCollapse";
 import { SidebarListItem } from "./SidebarListItem";
 import { SIDEBAR_PRS_DEFAULT_LIMIT } from "./const";
 
@@ -146,9 +147,13 @@ export function SidebarPullRequestList({
                 meta={leadingIcon}
               />
             </Link>
-            {isExpanded ? (
+            <SmoothCollapse
+              isOpen={isExpanded}
+              className="mt-1"
+              unmountOnExit
+            >
               <div
-                className="mt-1 flex flex-wrap gap-1.5"
+                className="flex flex-wrap gap-1.5"
                 style={{ paddingLeft: "32px" }}
               >
                 {actionButtons.map((action) => (
@@ -166,7 +171,7 @@ export function SidebarPullRequestList({
                   </button>
                 ))}
               </div>
-            ) : null}
+            </SmoothCollapse>
           </li>
         );
       })}
