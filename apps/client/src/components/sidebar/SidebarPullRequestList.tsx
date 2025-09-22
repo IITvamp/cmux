@@ -1,3 +1,4 @@
+import { AnimatedHeight } from "@/components/AnimatedHeight";
 import { api } from "@cmux/convex/api";
 import { Link } from "@tanstack/react-router";
 import { useQuery as useConvexQuery } from "convex/react";
@@ -146,7 +147,7 @@ export function SidebarPullRequestList({
                 meta={leadingIcon}
               />
             </Link>
-            {isExpanded ? (
+            <AnimatedHeight isExpanded={isExpanded}>
               <div
                 className="mt-1 flex flex-wrap gap-1.5"
                 style={{ paddingLeft: "32px" }}
@@ -166,7 +167,7 @@ export function SidebarPullRequestList({
                   </button>
                 ))}
               </div>
-            ) : null}
+            </AnimatedHeight>
           </li>
         );
       })}

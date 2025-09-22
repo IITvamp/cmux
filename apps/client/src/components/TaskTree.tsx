@@ -1,3 +1,4 @@
+import { AnimatedHeight } from "@/components/AnimatedHeight";
 import { Dropdown } from "@/components/ui/dropdown";
 import {
   Tooltip,
@@ -340,7 +341,7 @@ function TaskTreeInner({
           </ContextMenu.Portal>
         </ContextMenu.Root>
 
-        {isExpanded && hasRuns && (
+        <AnimatedHeight isExpanded={isExpanded && hasRuns}>
           <div className="flex flex-col">
             {task.runs.map((run) => (
               <TaskRunTree
@@ -352,7 +353,7 @@ function TaskTreeInner({
               />
             ))}
           </div>
-        )}
+        </AnimatedHeight>
       </div>
     </TaskRunExpansionContext.Provider>
   );
@@ -648,116 +649,114 @@ function TaskRunDetails({
   shouldRenderPullRequestLink,
   previewServices,
 }: TaskRunDetailsProps) {
-  if (!isExpanded) {
-    return null;
-  }
-
   const indentLevel = level + 1;
 
   return (
-    <Fragment>
-      {hasActiveVSCode && (
-        <TaskRunDetailLink
-          to="/$teamSlugOrId/task/$taskId/run/$runId/vscode"
-          params={{ teamSlugOrId, taskId, runId: run._id }}
-          icon={
-            <VSCodeIcon className="w-3 h-3 mr-2 text-neutral-400 grayscale opacity-60" />
-          }
-          label="VS Code"
-          indentLevel={indentLevel}
-        />
-      )}
-
-      <TaskRunDetailLink
-        to="/$teamSlugOrId/task/$taskId/run/$runId/diff"
-        params={{ teamSlugOrId, taskId, runId: run._id }}
-        icon={<GitCompare className="w-3 h-3 mr-2 text-neutral-400" />}
-        label="Git diff"
-        indentLevel={indentLevel}
-      />
-
-      {shouldRenderPullRequestLink ? (
-        <TaskRunDetailLink
-          to="/$teamSlugOrId/task/$taskId/run/$runId/pr"
-          params={{ teamSlugOrId, taskId, runId: run._id }}
-          icon={<GitPullRequest className="w-3 h-3 mr-2 text-neutral-400" />}
-          label="Pull Request"
-          indentLevel={indentLevel}
-        />
-      ) : null}
-
-      {previewServices.map((service) => (
-        <div key={service.port} className="relative group mt-px">
+    <AnimatedHeight isExpanded={isExpanded}>
+      <Fragment>
+        {hasActiveVSCode && (
           <TaskRunDetailLink
-            to="/$teamSlugOrId/task/$taskId/run/$runId/preview/$port"
-            params={{
-              teamSlugOrId,
-              taskId,
-              runId: run._id,
-              port: `${service.port}`,
-            }}
-            icon={<ExternalLink className="w-3 h-3 mr-2 text-neutral-400" />}
-            label={`Preview (port ${service.port})`}
+            to="/$teamSlugOrId/task/$taskId/run/$runId/vscode"
+            params={{ teamSlugOrId, taskId, runId: run._id }}
+            icon={
+              <VSCodeIcon className="w-3 h-3 mr-2 text-neutral-400 grayscale opacity-60" />
+            }
+            label="VS Code"
             indentLevel={indentLevel}
-            className="pr-10"
-            onClick={(event) => {
-              if (event.metaKey || event.ctrlKey) {
-                event.preventDefault();
-                window.open(service.url, "_blank", "noopener,noreferrer");
-              }
-            }}
           />
+        )}
 
-          <Dropdown.Root>
-            <Dropdown.Trigger
-              onClick={(event) => event.stopPropagation()}
-              className={clsx(
-                "absolute right-2 top-1/2 -translate-y-1/2",
-                "p-1 rounded flex items-center gap-1",
-                "bg-neutral-100/80 dark:bg-neutral-700/80",
-                "hover:bg-neutral-200/80 dark:hover:bg-neutral-600/80",
-                "text-neutral-600 dark:text-neutral-400"
-              )}
-            >
-              <EllipsisVertical className="w-2.5 h-2.5" />
-            </Dropdown.Trigger>
-            <Dropdown.Portal>
-              <Dropdown.Positioner
-                sideOffset={8}
-                side={isElectron ? "left" : "bottom"}
-              >
-                <Dropdown.Popup>
-                  <Dropdown.Arrow />
-                  <Dropdown.Item
-                    onClick={() => {
-                      window.open(service.url, "_blank", "noopener,noreferrer");
-                    }}
-                    className="flex items-center gap-2"
-                  >
-                    <ExternalLink className="w-3.5 h-3.5" />
-                    Open in new tab
-                  </Dropdown.Item>
-                </Dropdown.Popup>
-              </Dropdown.Positioner>
-            </Dropdown.Portal>
-          </Dropdown.Root>
-        </div>
-      ))}
+        <TaskRunDetailLink
+          to="/$teamSlugOrId/task/$taskId/run/$runId/diff"
+          params={{ teamSlugOrId, taskId, runId: run._id }}
+          icon={<GitCompare className="w-3 h-3 mr-2 text-neutral-400" />}
+          label="Git diff"
+          indentLevel={indentLevel}
+        />
 
-      {hasChildren ? (
-        <div className="flex flex-col">
-          {run.children.map((childRun) => (
-            <TaskRunTree
-              key={childRun._id}
-              run={childRun}
-              level={level + 1}
-              taskId={taskId}
-              teamSlugOrId={teamSlugOrId}
+        {shouldRenderPullRequestLink ? (
+          <TaskRunDetailLink
+            to="/$teamSlugOrId/task/$taskId/run/$runId/pr"
+            params={{ teamSlugOrId, taskId, runId: run._id }}
+            icon={<GitPullRequest className="w-3 h-3 mr-2 text-neutral-400" />}
+            label="Pull Request"
+            indentLevel={indentLevel}
+          />
+        ) : null}
+
+        {previewServices.map((service) => (
+          <div key={service.port} className="relative group mt-px">
+            <TaskRunDetailLink
+              to="/$teamSlugOrId/task/$taskId/run/$runId/preview/$port"
+              params={{
+                teamSlugOrId,
+                taskId,
+                runId: run._id,
+                port: `${service.port}`,
+              }}
+              icon={<ExternalLink className="w-3 h-3 mr-2 text-neutral-400" />}
+              label={`Preview (port ${service.port})`}
+              indentLevel={indentLevel}
+              className="pr-10"
+              onClick={(event) => {
+                if (event.metaKey || event.ctrlKey) {
+                  event.preventDefault();
+                  window.open(service.url, "_blank", "noopener,noreferrer");
+                }
+              }}
             />
-          ))}
-        </div>
-      ) : null}
-    </Fragment>
+
+            <Dropdown.Root>
+              <Dropdown.Trigger
+                onClick={(event) => event.stopPropagation()}
+                className={clsx(
+                  "absolute right-2 top-1/2 -translate-y-1/2",
+                  "p-1 rounded flex items-center gap-1",
+                  "bg-neutral-100/80 dark:bg-neutral-700/80",
+                  "hover:bg-neutral-200/80 dark:hover:bg-neutral-600/80",
+                  "text-neutral-600 dark:text-neutral-400"
+                )}
+              >
+                <EllipsisVertical className="w-2.5 h-2.5" />
+              </Dropdown.Trigger>
+              <Dropdown.Portal>
+                <Dropdown.Positioner
+                  sideOffset={8}
+                  side={isElectron ? "left" : "bottom"}
+                >
+                  <Dropdown.Popup>
+                    <Dropdown.Arrow />
+                    <Dropdown.Item
+                      onClick={() => {
+                        window.open(service.url, "_blank", "noopener,noreferrer");
+                      }}
+                      className="flex items-center gap-2"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      Open in new tab
+                    </Dropdown.Item>
+                  </Dropdown.Popup>
+                </Dropdown.Positioner>
+              </Dropdown.Portal>
+            </Dropdown.Root>
+          </div>
+        ))}
+
+        {hasChildren ? (
+          <div className="flex flex-col">
+            {run.children.map((childRun) => (
+              <TaskRunTree
+                key={childRun._id}
+                run={childRun}
+                level={level + 1}
+                taskId={taskId}
+                teamSlugOrId={teamSlugOrId}
+              />
+            ))}
+          </div>
+        ) : null}
+      </Fragment>
+    </AnimatedHeight>
   );
 }
 
