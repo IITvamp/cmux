@@ -2,10 +2,14 @@ import { useTheme } from "@/components/theme/use-theme";
 import type { StackClientApp } from "@stackframe/react";
 import type { QueryClient } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
-import { createRootRouteWithContext, Outlet, useRouterState } from "@tanstack/react-router";
+import {
+  createRootRouteWithContext,
+  Outlet,
+  useRouterState,
+} from "@tanstack/react-router";
 import { TanStackRouterDevtools } from "@tanstack/react-router-devtools";
 import { useEffect, useState } from "react";
-import { Toaster, toast } from "sonner";
+import { toast, Toaster } from "sonner";
 
 const AUTO_UPDATE_TOAST_ID = "auto-update-toast";
 
@@ -60,12 +64,13 @@ function useAutoUpdateNotifications() {
         id: AUTO_UPDATE_TOAST_ID,
         duration: 30000,
         description: `Restart cmux to apply the latest version${versionLabel}.`,
+        className: "select-none",
         action: cmux?.autoUpdate
           ? {
               label: "Restart now",
               onClick: () => {
                 void cmux.autoUpdate
-                  ?.install()
+                  .install()
                   .then((result) => {
                     if (result && !result.ok) {
                       const reason =
@@ -76,7 +81,10 @@ function useAutoUpdateNotifications() {
                     }
                   })
                   .catch((error) => {
-                    console.error("Failed to trigger auto-update install", error);
+                    console.error(
+                      "Failed to trigger auto-update install",
+                      error
+                    );
                     toast.error("Couldn't restart. Try again from the menu.");
                   });
               },
@@ -90,9 +98,9 @@ function useAutoUpdateNotifications() {
     const handler = (payload: unknown) => {
       const version =
         payload && typeof payload === "object" && "version" in payload
-          ? (typeof (payload as { version?: unknown }).version === "string"
-              ? (payload as { version: string }).version
-              : null)
+          ? typeof (payload as { version?: unknown }).version === "string"
+            ? (payload as { version: string }).version
+            : null
           : null;
 
       showToast(version);
