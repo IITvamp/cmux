@@ -18,7 +18,7 @@ import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
 import { Link, useRouter } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useMutation } from "convex/react";
-import { GitBranch, Image, Mic, Server, X } from "lucide-react";
+import { GitBranch, Image, Mic, Plus, Server, X } from "lucide-react";
 import {
   memo,
   useCallback,
@@ -175,17 +175,28 @@ export const DashboardInputControls = memo(function DashboardInputControls({
       const vendor = option.iconKey ?? "other";
       if (!vendorOrder.has(vendor)) vendorOrder.set(vendor, index);
     });
-    return [...selectedAgents].sort((a, b) => {
-      const optionA = agentOptionsByValue.get(a);
-      const optionB = agentOptionsByValue.get(b);
-      const vendorA = optionA?.iconKey ?? "other";
-      const vendorB = optionB?.iconKey ?? "other";
+    const occurrenceCounts = new Map<string, number>();
+    const entries = selectedAgents.map((value, index) => {
+      const option = agentOptionsByValue.get(value);
+      const label = option?.displayLabel ?? option?.label ?? value;
+      const occurrence = (occurrenceCounts.get(value) ?? 0) + 1;
+      occurrenceCounts.set(value, occurrence);
+      return {
+        value,
+        option,
+        label,
+        occurrence,
+        originalIndex: index,
+      };
+    });
+    return entries.sort((a, b) => {
+      const vendorA = a.option?.iconKey ?? "other";
+      const vendorB = b.option?.iconKey ?? "other";
       const rankA = vendorOrder.get(vendorA) ?? Number.MAX_SAFE_INTEGER;
       const rankB = vendorOrder.get(vendorB) ?? Number.MAX_SAFE_INTEGER;
       if (rankA !== rankB) return rankA - rankB;
-      const labelA = optionA?.displayLabel ?? optionA?.label ?? a;
-      const labelB = optionB?.displayLabel ?? optionB?.label ?? b;
-      return labelA.localeCompare(labelB);
+      if (a.label !== b.label) return a.label.localeCompare(b.label);
+      return a.occurrence - b.occurrence;
     });
   }, [agentOptions, agentOptionsByValue, selectedAgents]);
   // Determine OS for potential future UI tweaks
@@ -245,8 +256,19 @@ export const DashboardInputControls = memo(function DashboardInputControls({
   }, []);
 
   const handleAgentRemove = useCallback(
-    (agent: string) => {
-      onAgentChange(selectedAgents.filter((value) => value !== agent));
+    (indexToRemove: number) => {
+      onAgentChange(
+        selectedAgents.filter((_, index) => index !== indexToRemove)
+      );
+    },
+    [onAgentChange, selectedAgents]
+  );
+
+  const handleAgentIncrement = useCallback(
+    (indexToDuplicate: number) => {
+      const target = selectedAgents[indexToDuplicate];
+      if (!target) return;
+      onAgentChange([...selectedAgents, target]);
     },
     [onAgentChange, selectedAgents]
   );
@@ -257,11 +279,12 @@ export const DashboardInputControls = memo(function DashboardInputControls({
         <div ref={pillboxScrollRef} className="max-h-32 overflow-y-auto py-2 px-2">
           <div className="flex flex-wrap gap-1">
             {sortedSelectedAgents.map((agent) => {
-              const option = agentOptionsByValue.get(agent);
-              const label = option?.displayLabel ?? option?.label ?? agent;
+              const option = agent.option;
+              const baseLabel = agent.label;
+              const label = `${baseLabel} (${agent.occurrence})`;
               return (
                 <div
-                  key={agent}
+                  key={`${agent.value}-${agent.originalIndex}`}
                   className="inline-flex items-center gap-1 rounded-full bg-neutral-200 dark:bg-neutral-800/80 pl-1.5 pr-2.5 py-1 text-[11px] text-neutral-700 dark:text-neutral-200 transition-colors"
                 >
                   <button
@@ -269,7 +292,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
                     onClick={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
-                      handleAgentRemove(agent);
+                      handleAgentRemove(agent.originalIndex);
                     }}
                     className="inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors hover:bg-neutral-300 dark:hover:bg-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60"
                   >
@@ -284,6 +307,18 @@ export const DashboardInputControls = memo(function DashboardInputControls({
                   <span className="max-w-[118px] truncate text-left select-none">
                     {label}
                   </span>
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      handleAgentIncrement(agent.originalIndex);
+                    }}
+                    className="inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors hover:bg-neutral-300 dark:hover:bg-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60"
+                  >
+                    <Plus className="h-3 w-3" aria-hidden="true" />
+                    <span className="sr-only">Add another {baseLabel}</span>
+                  </button>
                 </div>
               );
             })}
@@ -463,6 +498,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
           onChange={onAgentChange}
           placeholder="Select agents"
           singleSelect={false}
+          allowDuplicateSelections
           maxTagCount={1}
           className="rounded-2xl"
           showSearch

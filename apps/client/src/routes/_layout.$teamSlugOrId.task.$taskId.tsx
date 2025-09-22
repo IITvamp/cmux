@@ -11,7 +11,11 @@ import {
   useNavigate,
 } from "@tanstack/react-router";
 import clsx from "clsx";
-import { Suspense, useEffect } from "react";
+import { Suspense, useEffect, useMemo } from "react";
+import {
+  computeAgentInstanceMap,
+  formatAgentNameWithInstance,
+} from "@/lib/agent-instance-labels";
 
 export const Route = createFileRoute("/_layout/$teamSlugOrId/task/$taskId")({
   component: TaskDetailPage,
@@ -87,6 +91,10 @@ function TaskDetailPage() {
   };
 
   const flatRuns = flattenRuns(taskRuns || []);
+  const agentInstanceMap = useMemo(
+    () => computeAgentInstanceMap(flatRuns),
+    [flatRuns]
+  );
 
   const handleCopyTaskText = () => {
     if (task?.text) {
@@ -195,7 +203,11 @@ function TaskDetailPage() {
                 <span style={{ paddingLeft: `${run.depth * 12}px` }}>
                   {(() => {
                     const name = run.agentName?.trim();
-                    if (name && name.length > 0) return name;
+                    if (name && name.length > 0)
+                      return formatAgentNameWithInstance(
+                        name,
+                        agentInstanceMap.get(run._id)
+                      );
                     const summary = run.summary?.trim();
                     if (summary && summary.length > 0) return summary;
                     return `Run ${index + 1}`;

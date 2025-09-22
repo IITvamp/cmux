@@ -949,12 +949,26 @@ export async function spawnAllAgents(
   },
   teamSlugOrId: string
 ): Promise<AgentSpawnResult[]> {
-  // If selectedAgents is provided, filter AGENT_CONFIGS to only include selected agents
+  // If selectedAgents is provided, project the list onto configured agents (preserving duplicates)
   const agentsToSpawn = options.selectedAgents
-    ? AGENT_CONFIGS.filter((agent) =>
-        options.selectedAgents!.includes(agent.name)
-      )
+    ? options.selectedAgents
+        .map((requestedName) =>
+          AGENT_CONFIGS.find((agent) => agent.name === requestedName)
+        )
+        .filter((agent): agent is AgentConfig => agent !== undefined)
     : AGENT_CONFIGS;
+
+  if (options.selectedAgents) {
+    const missingAgents = options.selectedAgents.filter(
+      (requestedName) =>
+        !AGENT_CONFIGS.some((agent) => agent.name === requestedName)
+    );
+    if (missingAgents.length > 0) {
+      serverLogger.warn(
+        `[AgentSpawner] Ignoring unknown agents: ${missingAgents.join(", ")}`
+      );
+    }
+  }
 
   // Generate unique branch names for all agents at once to ensure no collisions
   const branchNames = options.prTitle

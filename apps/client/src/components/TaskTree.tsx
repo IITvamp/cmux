@@ -7,6 +7,11 @@ import {
 import { useArchiveTask } from "@/hooks/useArchiveTask";
 import { useOpenWithActions } from "@/hooks/useOpenWithActions";
 import { isElectron } from "@/lib/electron";
+import {
+  computeAgentInstanceMap,
+  formatAgentNameWithInstance,
+  type AgentInstanceInfo,
+} from "@/lib/agent-instance-labels";
 import { ContextMenu } from "@base-ui-components/react/context-menu";
 import { type Doc, type Id } from "@cmux/convex/dataModel";
 import { Link, useLocation } from "@tanstack/react-router";
@@ -92,10 +97,13 @@ interface TaskTreeProps {
 }
 
 // Extract the display text logic to avoid re-creating it on every render
-function getRunDisplayText(run: TaskRunWithChildren): string {
+function getRunDisplayText(
+  run: TaskRunWithChildren,
+  instance?: AgentInstanceInfo
+): string {
   const fromRun = run.agentName?.trim();
   if (fromRun && fromRun.length > 0) {
-    return fromRun;
+    return formatAgentNameWithInstance(fromRun, instance);
   }
 
   if (run.summary) {
@@ -198,6 +206,25 @@ function TaskTreeInner({
     taskSecondaryParts.push(task.projectFullName);
   }
   const taskSecondary = taskSecondaryParts.join(" • ");
+
+  const flattenedRuns = useMemo(() => {
+    const collected: Array<{ _id: Id<"taskRuns">; agentName?: string | null }> = [];
+    const traverse = (runs: TaskRunWithChildren[]) => {
+      for (const run of runs) {
+        collected.push({ _id: run._id, agentName: run.agentName });
+        if (run.children.length > 0) {
+          traverse(run.children);
+        }
+      }
+    };
+    traverse(task.runs);
+    return collected;
+  }, [task.runs]);
+
+  const agentInstanceMap = useMemo(
+    () => computeAgentInstanceMap(flattenedRuns),
+    [flattenedRuns]
+  );
 
   const canExpand = hasRuns;
 
@@ -350,6 +377,7 @@ function TaskTreeInner({
                 level={level + 1}
                 taskId={task._id}
                 teamSlugOrId={teamSlugOrId}
+                agentInstanceMap={agentInstanceMap}
               />
             ))}
           </div>
@@ -364,6 +392,7 @@ interface TaskRunTreeProps {
   level: number;
   taskId: Id<"tasks">;
   teamSlugOrId: string;
+  agentInstanceMap: Map<Id<"taskRuns">, AgentInstanceInfo>;
 }
 
 function TaskRunTreeInner({
@@ -371,6 +400,7 @@ function TaskRunTreeInner({
   level,
   taskId,
   teamSlugOrId,
+  agentInstanceMap,
 }: TaskRunTreeProps) {
   const { expandedRuns, setRunExpanded } = useTaskRunExpansionContext();
   const defaultExpanded = Boolean(run.isCrowned);
@@ -378,7 +408,10 @@ function TaskRunTreeInner({
   const hasChildren = run.children.length > 0;
 
   // Memoize the display text to avoid recalculating on every render
-  const displayText = useMemo(() => getRunDisplayText(run), [run]);
+  const displayText = useMemo(
+    () => getRunDisplayText(run, agentInstanceMap.get(run._id)),
+    [agentInstanceMap, run]
+  );
 
   // Memoize the toggle handler
   const handleToggle = useCallback(
@@ -754,6 +787,7 @@ function TaskRunDetails({
               level={level + 1}
               taskId={taskId}
               teamSlugOrId={teamSlugOrId}
+              agentInstanceMap={agentInstanceMap}
             />
           ))}
         </div>

@@ -3,6 +3,10 @@ import { Dropdown } from "@/components/ui/dropdown";
 import { MergeButton, type MergeMethod } from "@/components/ui/merge-button";
 import { useSocketSuspense } from "@/contexts/socket/use-socket";
 import { isElectron } from "@/lib/electron";
+import {
+  computeAgentInstanceMap,
+  formatAgentNameWithInstance,
+} from "@/lib/agent-instance-labels";
 import { diffSmartQueryOptions } from "@/queries/diff-smart";
 import type { Doc, Id } from "@cmux/convex/dataModel";
 import { Skeleton } from "@heroui/react";
@@ -129,6 +133,18 @@ export function TaskDetailHeader({
   const handleAgentOpenChange = useCallback((open: boolean) => {
     setAgentMenuOpen(open);
   }, []);
+  const agentInstanceMap = useMemo(
+    () => computeAgentInstanceMap(taskRuns ?? []),
+    [taskRuns]
+  );
+  const selectedAgentLabel = useMemo(() => {
+    const baseName = selectedRun?.agentName?.trim();
+    if (!baseName) return "Unknown agent";
+    return formatAgentNameWithInstance(
+      baseName,
+      agentInstanceMap.get(selectedRun._id)
+    );
+  }, [agentInstanceMap, selectedRun]);
   const taskTitle = task?.pullRequestTitle || task?.text;
   const handleCopyBranch = () => {
     if (selectedRun?.newBranch) {
@@ -318,9 +334,7 @@ export function TaskDetailHeader({
                     onOpenChange={handleAgentOpenChange}
                   >
                     <Dropdown.Trigger className="flex items-center gap-1 text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white transition-colors text-xs select-none truncate min-w-0 max-w-full">
-                      <span className="truncate">
-                        {selectedRun?.agentName || "Unknown agent"}
-                      </span>
+                      <span className="truncate">{selectedAgentLabel}</span>
                       <ChevronDown className="w-3 h-3 shrink-0" />
                     </Dropdown.Trigger>
 
@@ -333,7 +347,10 @@ export function TaskDetailHeader({
                             const summary = run.summary?.trim();
                             const agentName =
                               trimmedAgentName && trimmedAgentName.length > 0
-                                ? trimmedAgentName
+                                ? formatAgentNameWithInstance(
+                                    trimmedAgentName,
+                                    agentInstanceMap.get(run._id)
+                                  )
                                 : summary && summary.length > 0
                                   ? summary
                                   : "unknown agent";
