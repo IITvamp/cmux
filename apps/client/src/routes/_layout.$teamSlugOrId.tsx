@@ -1,6 +1,7 @@
 import { CmuxComments } from "@/components/cmux-comments";
 import { CommandBar } from "@/components/CommandBar";
 import { Sidebar } from "@/components/Sidebar";
+import { SIDEBAR_PRS_DEFAULT_LIMIT } from "@/components/sidebar/const";
 import type { TaskWithRuns } from "@/components/TaskTree";
 import { convexQueryClient } from "@/contexts/convex/convex-query-client";
 import { ExpandTasksProvider } from "@/contexts/expand-tasks/ExpandTasksProvider";
@@ -63,6 +64,13 @@ export const Route = createFileRoute("/_layout/$teamSlugOrId")({
   loader: async ({ params }) => {
     void convexQueryClient.queryClient.ensureQueryData(
       convexQuery(api.tasks.get, { teamSlugOrId: params.teamSlugOrId })
+    );
+    void convexQueryClient.queryClient.ensureQueryData(
+      convexQuery(api.github_prs.listPullRequests, {
+        teamSlugOrId: params.teamSlugOrId,
+        state: "open",
+        limit: SIDEBAR_PRS_DEFAULT_LIMIT,
+      })
     );
   },
 });
