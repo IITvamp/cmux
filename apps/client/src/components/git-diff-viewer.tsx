@@ -3,6 +3,7 @@ import { useTheme } from "@/components/theme/use-theme";
 import { cn } from "@/lib/utils";
 import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
 import loader from "@monaco-editor/loader";
+import monacoLoaderAssetUrl from "monaco-editor/min/vs/loader.js?url";
 import {
   ChevronDown,
   ChevronRight,
@@ -23,6 +24,29 @@ import {
   useState,
 } from "react";
 import { kitties } from "./kitties";
+
+const monacoAssets = import.meta.glob(
+  "../../node_modules/monaco-editor/min/vs/**/*.{js,css,json,ttf,wasm}",
+  {
+    as: "url",
+    eager: true,
+  }
+);
+
+// Ensure Vite emits the Monaco asset graph instead of falling back to CDN.
+void monacoAssets;
+
+const monacoBasePath = monacoLoaderAssetUrl
+  .replace(/loader\.js(?:\?.*)?$/, "")
+  .replace(/\/$/, "");
+
+if (typeof window !== "undefined") {
+  loader.config({
+    paths: {
+      vs: monacoBasePath,
+    },
+  });
+}
 
 type FileDiffRowClassNames = {
   button?: string;
