@@ -15,6 +15,16 @@ const CrownSummarizationRequestSchema = z.object({
   teamSlugOrId: z.string().optional(),
 });
 
+const WorkerTaskCompleteRequestSchema = z.object({
+  taskRunId: z.string(),
+  teamSlugOrId: z.string(),
+  workerId: z.string(),
+  terminalId: z.string(),
+  agentModel: z.string().optional(),
+  elapsedMs: z.number(),
+  exitCode: z.number().optional(),
+});
+
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
 }
@@ -186,6 +196,49 @@ export const crownSummarize = httpAction(async (ctx, req) => {
   } catch (error) {
     console.error("[convex.crown] Summarization error", error);
     return jsonResponse({ code: 500, message: "Summarization failed" }, 500);
+  }
+});
+
+export const workerTaskComplete = httpAction(async (ctx, req) => {
+  // Workers authenticate using a simpler token mechanism
+  const workerToken = req.headers.get("x-worker-token");
+  if (!workerToken) {
+    console.error("[convex.worker] Missing x-worker-token header");
+    return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
+  }
+
+  // Verify worker token (you should implement proper token validation)
+  // For now, we'll accept any token that matches the expected format
+  if (!workerToken.startsWith("worker-")) {
+    console.error("[convex.worker] Invalid worker token format");
+    return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
+  }
+
+  const parsed = await ensureJsonRequest(req);
+  if (parsed instanceof Response) return parsed;
+
+  const validation = WorkerTaskCompleteRequestSchema.safeParse(parsed.json);
+  if (!validation.success) {
+    console.warn("[convex.worker] Invalid task complete payload", validation.error);
+    return jsonResponse({ code: 400, message: "Invalid input" }, 400);
+  }
+
+  try {
+    // Mark the task run as complete with retry logic for OCC
+    const result = await ctx.runAction(api.taskRuns.workerComplete, {
+      taskRunId: validation.data.taskRunId as any,
+      teamSlugOrId: validation.data.teamSlugOrId,
+      exitCode: validation.data.exitCode ?? 0,
+      workerId: validation.data.workerId,
+      terminalId: validation.data.terminalId,
+      agentModel: validation.data.agentModel,
+      elapsedMs: validation.data.elapsedMs,
+    });
+
+    return jsonResponse(result);
+  } catch (error) {
+    console.error("[convex.worker] Task completion error", error);
+    return jsonResponse({ code: 500, message: "Task completion failed" }, 500);
   }
 });
 

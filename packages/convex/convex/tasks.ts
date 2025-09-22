@@ -3,6 +3,7 @@ import { resolveTeamIdLoose } from "../_shared/team";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { authMutation, authQuery } from "./users/utils";
+import { internalQuery } from "./_generated/server";
 
 export const get = authQuery({
   args: {
@@ -230,6 +231,17 @@ export const getById = authQuery({
       };
     }
 
+    return task;
+  },
+});
+
+// Internal query to get task without auth
+export const getByIdInternal = internalQuery({
+  args: { id: v.id("tasks"), teamSlugOrId: v.string() },
+  handler: async (ctx, args) => {
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
+    const task = await ctx.db.get(args.id);
+    if (!task || task.teamId !== teamId) return null;
     return task;
   },
 });

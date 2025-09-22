@@ -2,9 +2,10 @@ import { v } from "convex/values";
 import { SignJWT } from "jose";
 import { env } from "../_shared/convex-env";
 import { resolveTeamIdLoose } from "../_shared/team";
-import type { Doc } from "./_generated/dataModel";
-import { internalMutation, internalQuery } from "./_generated/server";
+import type { Doc, Id } from "./_generated/dataModel";
+import { internalMutation, internalQuery, action } from "./_generated/server";
 import { authMutation, authQuery } from "./users/utils";
+import { api } from "./_generated/api";
 
 // Create a new task run
 export const create = authMutation({
@@ -842,5 +843,123 @@ export const getRunningContainersByCleanupPriority = authQuery({
       prioritizedForCleanup: [...reviewContainers, ...activeContainers],
       protectedCount: containersToKeepIds.size,
     };
+  },
+});
+
+// Worker completes a task run with retry logic for OCC
+export const workerComplete = action({
+  args: {
+    taskRunId: v.id("taskRuns"),
+    teamSlugOrId: v.string(),
+    exitCode: v.number(),
+    workerId: v.string(),
+    terminalId: v.string(),
+    agentModel: v.optional(v.string()),
+    elapsedMs: v.number(),
+  },
+  handler: async (ctx, args): Promise<{
+    success: boolean;
+    taskRunId: Id<"taskRuns">;
+    crownEvaluationTriggered: boolean;
+  }> => {
+    const MAX_RETRIES = 5;
+    const RETRY_DELAY_MS = 1000;
+
+    // Helper function to retry on optimistic concurrency control errors
+    async function retryWithBackoff<T>(
+      fn: () => Promise<T>,
+      retries = MAX_RETRIES
+    ): Promise<T> {
+      try {
+        return await fn();
+      } catch (error: any) {
+        if (retries > 0 && error?.message?.includes("OptimisticConcurrencyControl")) {
+          // Exponential backoff with jitter
+          const delay = RETRY_DELAY_MS * Math.pow(2, MAX_RETRIES - retries) * (0.5 + Math.random() * 0.5);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          return retryWithBackoff(fn, retries - 1);
+        }
+        throw error;
+      }
+    }
+
+    // Mark the task run as complete with retry logic
+    await retryWithBackoff(async () => {
+      await ctx.runMutation(api.taskRuns.completeInternal, {
+        id: args.taskRunId,
+        teamSlugOrId: args.teamSlugOrId,
+        exitCode: args.exitCode,
+      });
+    });
+
+    // Check if all runs are complete and trigger crown evaluation
+    const shouldEvaluate: Id<"taskRuns"> | "pending" | null = await retryWithBackoff(async () => {
+      return await ctx.runMutation(api.tasks.checkAndEvaluateCrown, {
+        teamSlugOrId: args.teamSlugOrId,
+        taskId: (await ctx.runQuery(api.taskRuns.getInternal, {
+          id: args.taskRunId,
+          teamSlugOrId: args.teamSlugOrId,
+        }))!.taskId,
+      });
+    });
+
+    if (shouldEvaluate === "pending") {
+      // Trigger crown evaluation
+      await ctx.runAction(api.crown.actions.evaluate, {
+        prompt: (await ctx.runQuery(api.tasks.getByIdInternal, {
+          id: (await ctx.runQuery(api.taskRuns.getInternal, {
+            id: args.taskRunId,
+            teamSlugOrId: args.teamSlugOrId,
+          }))!.taskId,
+          teamSlugOrId: args.teamSlugOrId,
+        }))!.text,
+        teamSlugOrId: args.teamSlugOrId,
+      });
+    }
+
+    return {
+      success: true,
+      taskRunId: args.taskRunId,
+      crownEvaluationTriggered: shouldEvaluate === "pending",
+    };
+  },
+});
+
+// Internal mutation for completing task run without auth
+export const completeInternal = internalMutation({
+  args: {
+    id: v.id("taskRuns"),
+    teamSlugOrId: v.string(),
+    exitCode: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
+    const doc = await ctx.db.get(args.id);
+    if (!doc || doc.teamId !== teamId) {
+      throw new Error("Task run not found or unauthorized");
+    }
+    const now = Date.now();
+    await ctx.db.patch(args.id, {
+      status: "completed",
+      exitCode: args.exitCode,
+      completedAt: now,
+      updatedAt: now,
+    });
+  },
+});
+
+// Internal query to get task run without auth
+export const getInternal = internalQuery({
+  args: {
+    id: v.id("taskRuns"),
+    teamSlugOrId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
+    const doc = await ctx.db.get(args.id);
+    if (!doc || doc.teamId !== teamId) {
+      return null;
+    }
+    return doc;
   },
 });

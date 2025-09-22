@@ -145,6 +145,91 @@ let mainServerSocket: Socket<
 // Track active file watchers by taskRunId
 const activeFileWatchers: Map<string, FileWatcher> = new Map();
 
+// Helper function to call crown HTTP endpoint with retry logic
+async function callCrownTaskComplete(params: {
+  workerId: string;
+  terminalId: string;
+  taskRunId: string;
+  teamSlugOrId: string;
+  agentModel?: string;
+  elapsedMs: number;
+  exitCode: number;
+}): Promise<void> {
+  const MAX_RETRIES = 5;
+  const INITIAL_DELAY_MS = 1000;
+  const CONVEX_URL = process.env.CONVEX_URL || "https://charming-parakeet-172.convex.cloud";
+
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      const response = await fetch(`${CONVEX_URL}/api/worker/task-complete`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-worker-token": `worker-${params.workerId}`,
+        },
+        body: JSON.stringify({
+          taskRunId: params.taskRunId,
+          teamSlugOrId: params.teamSlugOrId,
+          workerId: params.workerId,
+          terminalId: params.terminalId,
+          agentModel: params.agentModel,
+          elapsedMs: params.elapsedMs,
+          exitCode: params.exitCode,
+        }),
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        log("INFO", `Successfully reported task completion to crown`, {
+          taskRunId: params.taskRunId,
+          crownEvaluationTriggered: result.crownEvaluationTriggered,
+        });
+        return;
+      }
+
+      // Don't retry on client errors (4xx)
+      if (response.status >= 400 && response.status < 500) {
+        const error = await response.text();
+        log("ERROR", `Crown task complete failed with client error`, {
+          status: response.status,
+          error,
+          taskRunId: params.taskRunId,
+        });
+        return;
+      }
+
+      throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+    } catch (error) {
+      const isLastAttempt = attempt === MAX_RETRIES - 1;
+
+      if (isLastAttempt) {
+        log("ERROR", `Failed to report task completion to crown after ${MAX_RETRIES} attempts`, {
+          error: error instanceof Error ? error.message : String(error),
+          taskRunId: params.taskRunId,
+        });
+        // Fall back to emitting to main server as a last resort
+        emitToMainServer("worker:task-complete", {
+          workerId: params.workerId,
+          terminalId: params.terminalId,
+          taskRunId: params.taskRunId,
+          agentModel: params.agentModel,
+          elapsedMs: params.elapsedMs,
+        });
+        return;
+      }
+
+      // Exponential backoff with jitter
+      const delay = INITIAL_DELAY_MS * Math.pow(2, attempt) * (0.5 + Math.random() * 0.5);
+      log("WARNING", `Crown task complete attempt ${attempt + 1} failed, retrying in ${delay}ms`, {
+        error: error instanceof Error ? error.message : String(error),
+        taskRunId: params.taskRunId,
+      });
+
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+}
+
 // Queue for pending events when mainServerSocket is not connected
 interface PendingEvent {
   event: string;
@@ -815,6 +900,7 @@ async function createTerminal(
     taskRunId?: string;
     agentModel?: string;
     startupCommands?: string[];
+    teamSlugOrId?: string;
   } = {}
 ): Promise<void> {
   const {
@@ -1004,13 +1090,40 @@ async function createTerminal(
     try {
       void agentConfig
         .completionDetector(options.taskRunId)
-        .then(() => {
-          emitToMainServer("worker:task-complete", {
+        .then(async () => {
+          // Extract teamSlugOrId from JWT if not provided directly
+          let teamSlugOrId = options.teamSlugOrId;
+          if (!teamSlugOrId) {
+            // Try to get from JWT in environment (passed via env property)
+            const jwt = env?.CMUX_TASK_RUN_JWT;
+            if (jwt) {
+              try {
+                // Parse JWT payload (base64 decode the middle part)
+                const parts = jwt.split('.');
+                if (parts.length === 3) {
+                  const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
+                  teamSlugOrId = payload.teamId;
+                }
+              } catch (e) {
+                log("ERROR", `Failed to parse JWT for teamSlugOrId: ${e}`);
+              }
+            }
+          }
+
+          if (!teamSlugOrId) {
+            log("ERROR", "No teamSlugOrId available for crown task completion");
+            return;
+          }
+
+          // Call crown HTTP endpoint directly instead of emitting to main server
+          await callCrownTaskComplete({
             workerId: WORKER_ID,
             terminalId,
             taskRunId: options.taskRunId!,
+            teamSlugOrId,
             agentModel: options.agentModel,
             elapsedMs: Date.now() - processStartTime,
+            exitCode: 0,
           });
         })
         .catch((e) => {
@@ -1100,15 +1213,48 @@ async function createTerminal(
       detectTerminalIdle({
         sessionName: sessionName || terminalId,
         idleTimeoutMs: 15000,
-        onIdle: () => {
+        onIdle: async () => {
           const elapsedMs = Date.now() - processStartTime;
           if (options.taskRunId) {
-            emitToMainServer("worker:terminal-idle", {
-              workerId: WORKER_ID,
-              terminalId,
-              taskRunId: options.taskRunId,
-              elapsedMs,
-            });
+            // Extract teamSlugOrId from JWT if not provided directly
+            let teamSlugOrId = options.teamSlugOrId;
+            if (!teamSlugOrId) {
+              // Try to get from JWT in environment (passed via env property)
+              const jwt = env?.CMUX_TASK_RUN_JWT;
+              if (jwt) {
+                try {
+                  // Parse JWT payload (base64 decode the middle part)
+                  const parts = jwt.split('.');
+                  if (parts.length === 3) {
+                    const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
+                    teamSlugOrId = payload.teamId;
+                  }
+                } catch (e) {
+                  log("ERROR", `Failed to parse JWT for teamSlugOrId in idle handler: ${e}`);
+                }
+              }
+            }
+
+            if (teamSlugOrId) {
+              // Call crown HTTP endpoint directly
+              await callCrownTaskComplete({
+                workerId: WORKER_ID,
+                terminalId,
+                taskRunId: options.taskRunId,
+                teamSlugOrId,
+                agentModel: options.agentModel,
+                elapsedMs,
+                exitCode: 0,
+              });
+            } else {
+              // Fallback to old method if teamSlugOrId not available
+              emitToMainServer("worker:terminal-idle", {
+                workerId: WORKER_ID,
+                terminalId,
+                taskRunId: options.taskRunId,
+                elapsedMs,
+              });
+            }
           }
         },
       }).catch((error) => {
