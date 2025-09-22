@@ -1,9 +1,10 @@
 import "@/lib/monaco-environment";
 
 import { useTheme } from "@/components/theme/use-theme";
-import { loaderInitPromise } from "@/lib/monaco-environment";
+import { isElectron } from "@/lib/electron";
 import { cn } from "@/lib/utils";
 import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
+import { DiffEditor, type MonacoDiffEditor } from "@monaco-editor/react";
 import {
   ChevronDown,
   ChevronRight,
@@ -59,6 +60,20 @@ type FileGroup = {
 };
 
 type Disposable = { dispose: () => void };
+
+function debugGitDiffViewerLog(
+  message: string,
+  payload?: Record<string, unknown>
+) {
+  if (!isElectron && import.meta.env.PROD) {
+    return;
+  }
+  if (payload) {
+    console.info("[git-diff-viewer]", message, payload);
+  } else {
+    console.info("[git-diff-viewer]", message);
+  }
+}
 
 function getStatusColor(status: ReplaceDiffEntry["status"]) {
   switch (status) {
@@ -123,11 +138,6 @@ export function GitDiffViewer({
     [diffs]
   );
 
-  // Maintain minimal reactivity; no debug logging in production
-  useEffect(() => {
-    // No-op effect to keep hook ordering consistent if needed later
-  }, [diffs]);
-
   // Maintain expansion state across refreshes:
   // - On first load: expand all
   // - On subsequent diffs changes: preserve existing expansions, expand only truly new files
@@ -136,9 +146,16 @@ export function GitDiffViewer({
   useEffect(() => {
     const nextPathsArr = diffs.map((d) => d.filePath);
     const nextPaths = new Set(nextPathsArr);
+    debugGitDiffViewerLog("recomputing expanded files", {
+      incomingCount: nextPaths.size,
+      previousCount: prevFilesRef.current?.size ?? 0,
+    });
     setExpandedFiles((prev) => {
       // First load: expand everything
       if (prevFilesRef.current == null) {
+        debugGitDiffViewerLog("initial expansion state", {
+          expandedCount: nextPaths.size,
+        });
         return new Set(nextPaths);
       }
       const next = new Set<string>();
@@ -150,6 +167,9 @@ export function GitDiffViewer({
       for (const p of nextPaths) {
         if (!prevFilesRef.current.has(p)) next.add(p);
       }
+      debugGitDiffViewerLog("updated expansion state", {
+        expandedCount: next.size,
+      });
       return next;
     });
     // Update the seen file set after computing the next expansion state
@@ -162,6 +182,10 @@ export function GitDiffViewer({
       const wasExpanded = newExpanded.has(filePath);
       if (wasExpanded) newExpanded.delete(filePath);
       else newExpanded.add(filePath);
+      debugGitDiffViewerLog("toggled file", {
+        filePath,
+        expanded: !wasExpanded,
+      });
       try {
         onFileToggle?.(filePath, !wasExpanded);
       } catch {
@@ -172,10 +196,16 @@ export function GitDiffViewer({
   };
 
   const expandAll = () => {
+    debugGitDiffViewerLog("expandAll invoked", {
+      fileCount: fileGroups.length,
+    });
     setExpandedFiles(new Set(fileGroups.map((f) => f.filePath)));
   };
 
   const collapseAll = () => {
+    debugGitDiffViewerLog("collapseAll invoked", {
+      fileCount: fileGroups.length,
+    });
     setExpandedFiles(new Set());
   };
 
@@ -284,18 +314,51 @@ function FileDiffRow({
   classNames,
 }: FileDiffRowProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const rafIdRef = useRef<number | null>(null);
-  const resizeObserverRef = useRef<ResizeObserver | null>(null);
-  const revealedRef = useRef<boolean>(false);
-  const diffEditorRef = useRef<editor.IStandaloneDiffEditor | null>(null);
+  const diffEditorRef = useRef<MonacoDiffEditor | null>(null);
   const disposablesRef = useRef<Disposable[]>([]);
-  const originalModelRef = useRef<editor.ITextModel | null>(null);
-  const modifiedModelRef = useRef<editor.ITextModel | null>(null);
-  const monacoRef = useRef<typeof import("monaco-editor") | null>(null);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const setEditorRefRef = useRef(setEditorRef);
-  const themeRef = useRef(theme);
+  const filePathRef = useRef(file.filePath);
 
-  const disposeEditor = useCallback(() => {
+  const [editorHeight, setEditorHeight] = useState(() =>
+    Math.max(120, calculateEditorHeight(file.oldContent, file.newContent))
+  );
+  const [isEditorVisible, setIsEditorVisible] = useState(false);
+
+  useEffect(() => {
+    setEditorRefRef.current = setEditorRef;
+  }, [setEditorRef]);
+
+  useEffect(() => {
+    filePathRef.current = file.filePath;
+  }, [file.filePath]);
+
+  const shouldRenderEditor =
+    isExpanded &&
+    !file.isBinary &&
+    file.status !== "deleted" &&
+    file.status !== "renamed";
+
+  useLayoutEffect(() => {
+    if (!shouldRenderEditor) {
+      return;
+    }
+    const nextHeight = Math.max(
+      120,
+      calculateEditorHeight(file.oldContent, file.newContent)
+    );
+    setEditorHeight((prev) => (prev === nextHeight ? prev : nextHeight));
+    if (containerRef.current) {
+      containerRef.current.style.height = `${nextHeight}px`;
+    }
+  }, [
+    shouldRenderEditor,
+    file.oldContent,
+    file.newContent,
+    calculateEditorHeight,
+  ]);
+
+  const clearDisposables = useCallback(() => {
     for (const disposable of disposablesRef.current) {
       try {
         disposable.dispose();
@@ -304,305 +367,202 @@ function FileDiffRow({
       }
     }
     disposablesRef.current = [];
-    if (rafIdRef.current != null) {
-      cancelAnimationFrame(rafIdRef.current);
-      rafIdRef.current = null;
-    }
     if (resizeObserverRef.current) {
       resizeObserverRef.current.disconnect();
       resizeObserverRef.current = null;
     }
-    if (diffEditorRef.current) {
-      diffEditorRef.current.dispose();
-      diffEditorRef.current = null;
-    }
-    if (originalModelRef.current) {
-      originalModelRef.current.dispose();
-      originalModelRef.current = null;
-    }
-    if (modifiedModelRef.current) {
-      modifiedModelRef.current.dispose();
-      modifiedModelRef.current = null;
-    }
-    const container = containerRef.current;
-    if (container) {
-      try {
-        container.replaceChildren();
-      } catch {
-        container.textContent = "";
-      }
-      container.style.visibility = "hidden";
-    }
-    revealedRef.current = false;
-    try {
-      setEditorRefRef.current?.(null);
-    } catch {
-      // ignore
-    }
   }, []);
 
-  useEffect(() => {
-    setEditorRefRef.current = setEditorRef;
-  }, [setEditorRef]);
+  const cleanupEditor = useCallback(
+    ({
+      skipVisibilityReset = false,
+    }: { skipVisibilityReset?: boolean } = {}) => {
+      const hadEditor =
+        diffEditorRef.current !== null ||
+        disposablesRef.current.length > 0 ||
+        resizeObserverRef.current !== null;
 
-  useEffect(() => {
-    themeRef.current = theme;
-  }, [theme]);
-
-  // Set an initial height before paint to reduce flicker
-  useLayoutEffect(() => {
-    const initial = calculateEditorHeight(file.oldContent, file.newContent);
-    if (containerRef.current) {
-      containerRef.current.style.height = `${Math.max(120, initial)}px`;
-    }
-    // Only depend on file contents used for initial sizing
-  }, [file.oldContent, file.newContent, calculateEditorHeight]);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    if (!isExpanded || file.isBinary || file.status === "deleted") {
-      disposeEditor();
-      return () => {
-        cancelled = true;
-        disposeEditor();
-      };
-    }
-
-    if (containerRef.current) {
-      containerRef.current.style.visibility = "hidden";
-    }
-    revealedRef.current = false;
-
-    const initializeEditor = async () => {
+      clearDisposables();
+      diffEditorRef.current = null;
       try {
-        const monaco = await loaderInitPromise;
-        if (cancelled || !containerRef.current) {
+        setEditorRefRef.current?.(null);
+      } catch {
+        // ignore
+      }
+      if (!skipVisibilityReset) {
+        setIsEditorVisible(false);
+      }
+
+      if (hadEditor) {
+        debugGitDiffViewerLog("diff editor cleaned up", {
+          filePath: filePathRef.current,
+        });
+      }
+    },
+    [clearDisposables]
+  );
+
+  useEffect(
+    () => () => {
+      cleanupEditor({ skipVisibilityReset: true });
+    },
+    [cleanupEditor]
+  );
+
+  const resolvedTheme = theme === "dark" ? "vs-dark" : "light";
+
+  const diffEditorOptions = useMemo<editor.IDiffEditorConstructionOptions>(
+    () => ({
+      readOnly: true,
+      renderSideBySide: true,
+      minimap: { enabled: false },
+      scrollBeyondLastLine: false,
+      fontSize: 12,
+      lineHeight: 18,
+      fontFamily:
+        "'JetBrains Mono', 'SF Mono', Monaco, 'Courier New', monospace",
+      wordWrap: "on",
+      automaticLayout: false,
+      renderOverviewRuler: false,
+      scrollbar: {
+        vertical: "hidden",
+        horizontal: "auto",
+        verticalScrollbarSize: 8,
+        horizontalScrollbarSize: 8,
+        handleMouseWheel: true,
+        alwaysConsumeMouseWheel: false,
+      },
+      lineNumbers: "on",
+      renderLineHighlight: "none",
+      hideCursorInOverviewRuler: true,
+      overviewRulerBorder: false,
+      overviewRulerLanes: 0,
+      renderValidationDecorations: "off",
+      diffWordWrap: "on",
+      renderIndicators: true,
+      renderMarginRevertIcon: false,
+      lineDecorationsWidth: 12,
+      lineNumbersMinChars: 4,
+      glyphMargin: false,
+      folding: false,
+      contextmenu: false,
+      renderWhitespace: "selection",
+      guides: {
+        indentation: false,
+      },
+      padding: { top: 2, bottom: 2 },
+      hideUnchangedRegions: {
+        enabled: true,
+        revealLineCount: 3,
+        minimumLineCount: 50,
+        contextLineCount: 3,
+      },
+    }),
+    []
+  );
+
+  const { originalModelPath, modifiedModelPath } = useMemo(() => {
+    const encodedPath = encodeURIComponent(file.filePath);
+    const baseUri = `inmemory://diff/${runId ?? "_"}/${encodedPath}`;
+    return {
+      originalModelPath: `${baseUri}?side=original`,
+      modifiedModelPath: `${baseUri}?side=modified`,
+    };
+  }, [file.filePath, runId]);
+
+  const language = useMemo(
+    () => getLanguageFromPath(file.filePath),
+    [file.filePath]
+  );
+
+  const handleEditorMount = useCallback(
+    (editorInstance: MonacoDiffEditor) => {
+      setIsEditorVisible(false);
+      diffEditorRef.current = editorInstance;
+      try {
+        setEditorRefRef.current?.(editorInstance);
+      } catch {
+        // ignore
+      }
+
+      clearDisposables();
+
+      const modifiedEditor = editorInstance.getModifiedEditor();
+      const originalEditor = editorInstance.getOriginalEditor();
+
+      const layoutEditor = (height: number) => {
+        const containerEl = containerRef.current;
+        if (!containerEl) {
+          if (!editorInstance.getContainerDomNode()) {
+            return;
+          }
+          editorInstance.layout();
           return;
         }
-
-        monacoRef.current = monaco;
-
-        const resolvedTheme = themeRef.current === "dark" ? "vs-dark" : "vs";
-        try {
-          monaco.editor.setTheme(resolvedTheme);
-        } catch {
-          // ignore if Monaco theme cannot be set
+        const width = containerEl.clientWidth;
+        if (width > 0) {
+          editorInstance.layout({ width, height });
+        } else {
+          editorInstance.layout();
         }
+      };
 
-        const options: editor.IDiffEditorConstructionOptions = {
-          readOnly: true,
-          renderSideBySide: true,
-          minimap: { enabled: false },
-          scrollBeyondLastLine: false,
-          fontSize: 12,
-          lineHeight: 18,
-          fontFamily:
-            "'JetBrains Mono', 'SF Mono', Monaco, 'Courier New', monospace",
-          wordWrap: "on",
-          automaticLayout: false,
-          renderOverviewRuler: false,
-          scrollbar: {
-            vertical: "hidden",
-            horizontal: "auto",
-            verticalScrollbarSize: 8,
-            horizontalScrollbarSize: 8,
-            handleMouseWheel: true,
-            alwaysConsumeMouseWheel: false,
-          },
-          lineNumbers: "on",
-          renderLineHighlight: "none",
-          hideCursorInOverviewRuler: true,
-          overviewRulerBorder: false,
-          overviewRulerLanes: 0,
-          renderValidationDecorations: "off",
-          diffWordWrap: "on",
-          renderIndicators: true,
-          renderMarginRevertIcon: false,
-          lineDecorationsWidth: 12,
-          lineNumbersMinChars: 4,
-          glyphMargin: false,
-          folding: false,
-          contextmenu: false,
-          renderWhitespace: "selection",
-          guides: {
-            indentation: false,
-          },
-          padding: { top: 2, bottom: 2 },
-          hideUnchangedRegions: {
-            enabled: true,
-            revealLineCount: 3,
-            minimumLineCount: 50,
-            contextLineCount: 3,
-          },
-        };
-
-        const diffEditor = monaco.editor.createDiffEditor(
-          containerRef.current,
-          options
-        );
-        diffEditorRef.current = diffEditor;
-        setEditorRefRef.current?.(diffEditor);
-
-        const language = getLanguageFromPath(file.filePath);
-        const encodedPath = encodeURIComponent(file.filePath);
-        const baseUri = `inmemory://diff/${runId ?? "_"}/${encodedPath}`;
-        const originalUri = monaco.Uri.parse(`${baseUri}?side=original`);
-        const modifiedUri = monaco.Uri.parse(`${baseUri}?side=modified`);
-
-        monaco.editor.getModel(originalUri)?.dispose();
-        monaco.editor.getModel(modifiedUri)?.dispose();
-
-        const originalModel = monaco.editor.createModel(
-          file.oldContent,
-          language,
-          originalUri
-        );
-        const modifiedModel = monaco.editor.createModel(
-          file.newContent,
-          language,
-          modifiedUri
+      const measure = () => {
+        if (diffEditorRef.current !== editorInstance) {
+          return;
+        }
+        const modifiedModel = modifiedEditor.getModel();
+        const originalModel = originalEditor.getModel();
+        if (
+          !modifiedModel ||
+          !originalModel ||
+          modifiedModel.isDisposed() ||
+          originalModel.isDisposed()
+        ) {
+          return;
+        }
+        const modifiedHeight = modifiedEditor.getContentHeight();
+        const originalHeight = originalEditor.getContentHeight();
+        const nextHeight = Math.max(
+          120,
+          Math.max(modifiedHeight, originalHeight) + 20
         );
 
-        originalModelRef.current = originalModel;
-        modifiedModelRef.current = modifiedModel;
+        setEditorHeight((prev) => (prev === nextHeight ? prev : nextHeight));
+        setIsEditorVisible((prev) => (prev ? prev : true));
+        layoutEditor(nextHeight);
+      };
 
-        diffEditor.setModel({
-          original: originalModel,
-          modified: modifiedModel,
-        });
+      measure();
 
-        const scheduleMeasureAndLayout = () => {
-          if (rafIdRef.current != null) {
-            cancelAnimationFrame(rafIdRef.current);
-            rafIdRef.current = null;
-          }
-          rafIdRef.current = requestAnimationFrame(() => {
-            rafIdRef.current = null;
-            if (cancelled) {
-              return;
-            }
-            const containerEl = containerRef.current;
-            if (!containerEl) {
-              return;
-            }
-
-            const modifiedEditor = diffEditor.getModifiedEditor();
-            const originalEditor = diffEditor.getOriginalEditor();
-            const modifiedContentHeight = modifiedEditor.getContentHeight();
-            const originalContentHeight = originalEditor.getContentHeight();
-            const newHeight = Math.max(
-              120,
-              Math.max(modifiedContentHeight, originalContentHeight) + 20
-            );
-
-            const currentHeight = parseInt(containerEl.style.height || "0", 10);
-            if (currentHeight !== newHeight) {
-              containerEl.style.height = `${newHeight}px`;
-            }
-
-            const reveal = () => {
-              const el = containerRef.current;
-              if (el && !revealedRef.current) {
-                el.style.visibility = "visible";
-                revealedRef.current = true;
-              }
-            };
-
-            const width = containerEl.clientWidth || undefined;
-            if (typeof width === "number") {
-              diffEditor.layout({ width, height: newHeight });
-              requestAnimationFrame(() => {
-                if (cancelled) {
-                  return;
-                }
-                diffEditor.layout({ width, height: newHeight });
-                reveal();
-              });
-            } else {
-              diffEditor.layout();
-              requestAnimationFrame(() => {
-                if (cancelled) {
-                  return;
-                }
-                diffEditor.layout();
-                reveal();
-              });
-            }
-          });
-        };
-
-        const modifiedEditor = diffEditor.getModifiedEditor();
-        const originalEditor = diffEditor.getOriginalEditor();
-        const disposables: Disposable[] = [
-          modifiedEditor.onDidContentSizeChange(scheduleMeasureAndLayout),
-          originalEditor.onDidContentSizeChange(scheduleMeasureAndLayout),
-          modifiedEditor.onDidChangeHiddenAreas(scheduleMeasureAndLayout),
-          originalEditor.onDidChangeHiddenAreas(scheduleMeasureAndLayout),
-        ];
-        const diffDisposable = diffEditor.onDidUpdateDiff?.(
-          scheduleMeasureAndLayout
-        );
-        if (diffDisposable) {
-          disposables.push(diffDisposable);
-        }
-        disposablesRef.current = disposables;
-
-        if (resizeObserverRef.current) {
-          resizeObserverRef.current.disconnect();
-          resizeObserverRef.current = null;
-        }
-        if (containerRef.current) {
-          const observer = new ResizeObserver(() => {
-            scheduleMeasureAndLayout();
-          });
-          observer.observe(containerRef.current);
-          resizeObserverRef.current = observer;
-        }
-
-        requestAnimationFrame(() => {
-          if (!cancelled) {
-            scheduleMeasureAndLayout();
-          }
-        });
-      } catch {
-        // ignore if monaco fails to load
+      const disposables: Disposable[] = [
+        modifiedEditor.onDidContentSizeChange(measure),
+        originalEditor.onDidContentSizeChange(measure),
+        modifiedEditor.onDidChangeHiddenAreas(measure),
+        originalEditor.onDidChangeHiddenAreas(measure),
+      ];
+      const diffDisposable = editorInstance.onDidUpdateDiff?.(measure);
+      if (diffDisposable) {
+        disposables.push(diffDisposable);
       }
-    };
+      disposablesRef.current = disposables;
 
-    initializeEditor();
+      if (containerRef.current) {
+        const observer = new ResizeObserver(() => {
+          measure();
+        });
+        observer.observe(containerRef.current);
+        resizeObserverRef.current = observer;
+      }
 
-    return () => {
-      cancelled = true;
-      disposeEditor();
-    };
-  }, [
-    isExpanded,
-    file.filePath,
-    file.oldContent,
-    file.newContent,
-    file.isBinary,
-    file.status,
-    runId,
-    disposeEditor,
-  ]);
-
-  useEffect(() => {
-    if (!monacoRef.current) {
-      return;
-    }
-    const resolvedTheme = theme === "dark" ? "vs-dark" : "vs";
-    try {
-      monacoRef.current.editor.setTheme(resolvedTheme);
-    } catch {
-      // ignore
-    }
-  }, [theme]);
-
-  // No debug logs in production
-  useEffect(() => {
-    // noop
-  }, [isExpanded, file.filePath]);
+      debugGitDiffViewerLog("diff editor mounted", {
+        filePath: file.filePath,
+        renderSideBySide: diffEditorOptions.renderSideBySide,
+        hideUnchangedRegions: diffEditorOptions.hideUnchangedRegions?.enabled,
+      });
+    },
+    [clearDisposables, diffEditorOptions, file.filePath]
+  );
 
   return (
     <div className={cn("bg-white dark:bg-neutral-900", classNames?.container)}>
@@ -665,7 +625,29 @@ function FileDiffRow({
               File was deleted
             </div>
           ) : (
-            <div ref={containerRef} className="relative" />
+            <div
+              ref={containerRef}
+              className="relative"
+              style={{
+                height: editorHeight,
+                visibility: isEditorVisible ? "visible" : "hidden",
+              }}
+            >
+              <DiffEditor
+                original={file.oldContent}
+                modified={file.newContent}
+                language={language}
+                originalModelPath={originalModelPath}
+                modifiedModelPath={modifiedModelPath}
+                options={diffEditorOptions}
+                theme={resolvedTheme}
+                height="100%"
+                width="100%"
+                onMount={handleEditorMount}
+                keepCurrentOriginalModel={true}
+                keepCurrentModifiedModel={true}
+              />
+            </div>
           )}
         </div>
       )}
@@ -679,6 +661,7 @@ const MemoFileDiffRow = memo(FileDiffRow, (prev, next) => {
   return (
     prev.isExpanded === next.isExpanded &&
     prev.theme === next.theme &&
+    prev.runId === next.runId &&
     a.filePath === b.filePath &&
     a.oldPath === b.oldPath &&
     a.status === b.status &&
