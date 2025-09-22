@@ -4,6 +4,7 @@ import { useTheme } from "@/components/theme/use-theme";
 import { isElectron } from "@/lib/electron";
 import { cn } from "@/lib/utils";
 import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
+import { DiffEditor, type MonacoDiffEditor } from "@monaco-editor/react";
 import {
   ChevronDown,
   ChevronRight,
@@ -13,16 +14,8 @@ import {
   FilePlus,
   FileText,
 } from "lucide-react";
-import { DiffEditor, type MonacoDiffEditor } from "@monaco-editor/react";
 import { type editor } from "monaco-editor";
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { kitties } from "./kitties";
 
 type FileDiffRowClassNames = {
@@ -60,7 +53,10 @@ type FileGroup = {
 
 type Disposable = { dispose: () => void };
 
-function debugLog(message: string, payload?: Record<string, unknown>) {
+function debugGitDiffViewerLog(
+  message: string,
+  payload?: Record<string, unknown>
+) {
   if (!isElectron && import.meta.env.PROD) {
     return;
   }
@@ -110,13 +106,6 @@ export function GitDiffViewer({
 }: GitDiffViewerProps) {
   const { theme } = useTheme();
 
-  useEffect(() => {
-    debugLog("diffs updated", {
-      diffCount: diffs.length,
-      samplePaths: diffs.slice(0, 5).map((d) => d.filePath),
-    });
-  }, [diffs]);
-
   const kitty = useMemo(() => {
     return kitties[Math.floor(Math.random() * kitties.length)];
   }, []);
@@ -141,11 +130,6 @@ export function GitDiffViewer({
     [diffs]
   );
 
-  // Maintain minimal reactivity; no debug logging in production
-  useEffect(() => {
-    // No-op effect to keep hook ordering consistent if needed later
-  }, [diffs]);
-
   // Maintain expansion state across refreshes:
   // - On first load: expand all
   // - On subsequent diffs changes: preserve existing expansions, expand only truly new files
@@ -154,14 +138,14 @@ export function GitDiffViewer({
   useEffect(() => {
     const nextPathsArr = diffs.map((d) => d.filePath);
     const nextPaths = new Set(nextPathsArr);
-    debugLog("recomputing expanded files", {
+    debugGitDiffViewerLog("recomputing expanded files", {
       incomingCount: nextPaths.size,
       previousCount: prevFilesRef.current?.size ?? 0,
     });
     setExpandedFiles((prev) => {
       // First load: expand everything
       if (prevFilesRef.current == null) {
-        debugLog("initial expansion state", {
+        debugGitDiffViewerLog("initial expansion state", {
           expandedCount: nextPaths.size,
         });
         return new Set(nextPaths);
@@ -175,7 +159,7 @@ export function GitDiffViewer({
       for (const p of nextPaths) {
         if (!prevFilesRef.current.has(p)) next.add(p);
       }
-      debugLog("updated expansion state", {
+      debugGitDiffViewerLog("updated expansion state", {
         expandedCount: next.size,
       });
       return next;
@@ -190,7 +174,7 @@ export function GitDiffViewer({
       const wasExpanded = newExpanded.has(filePath);
       if (wasExpanded) newExpanded.delete(filePath);
       else newExpanded.add(filePath);
-      debugLog("toggled file", {
+      debugGitDiffViewerLog("toggled file", {
         filePath,
         expanded: !wasExpanded,
       });
@@ -204,14 +188,14 @@ export function GitDiffViewer({
   };
 
   const expandAll = () => {
-    debugLog("expandAll invoked", {
+    debugGitDiffViewerLog("expandAll invoked", {
       fileCount: fileGroups.length,
     });
     setExpandedFiles(new Set(fileGroups.map((f) => f.filePath)));
   };
 
   const collapseAll = () => {
-    debugLog("collapseAll invoked", {
+    debugGitDiffViewerLog("collapseAll invoked", {
       fileCount: fileGroups.length,
     });
     setExpandedFiles(new Set());
@@ -378,7 +362,7 @@ function FileDiffRow({
     setIsEditorVisible(false);
 
     if (hadEditor) {
-      debugLog("diff editor cleaned up", {
+      debugGitDiffViewerLog("diff editor cleaned up", {
         filePath: filePathRef.current,
       });
     }
@@ -396,9 +380,12 @@ function FileDiffRow({
     }
   }, [shouldRenderEditor, cleanupEditor]);
 
-  useEffect(() => () => {
-    cleanupEditor();
-  }, [cleanupEditor]);
+  useEffect(
+    () => () => {
+      cleanupEditor();
+    },
+    [cleanupEditor]
+  );
 
   const resolvedTheme = theme === "dark" ? "vs-dark" : "light";
 
@@ -530,7 +517,7 @@ function FileDiffRow({
         resizeObserverRef.current = observer;
       }
 
-      debugLog("diff editor mounted", {
+      debugGitDiffViewerLog("diff editor mounted", {
         filePath: file.filePath,
         renderSideBySide: diffEditorOptions.renderSideBySide,
         hideUnchangedRegions: diffEditorOptions.hideUnchangedRegions?.enabled,
