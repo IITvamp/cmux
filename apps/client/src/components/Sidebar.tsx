@@ -9,10 +9,12 @@ import { Home, Plus, Server } from "lucide-react";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type ComponentType,
   type CSSProperties,
+  type PropsWithChildren,
 } from "react";
 import CmuxLogo from "./logo/cmux-logo";
 import { SidebarNavLink } from "./sidebar/SidebarNavLink";
@@ -224,9 +226,9 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
             >
               Pull requests
             </SidebarSectionLink>
-            <div className="ml-2 pt-px">
+            <SmoothHeight className="ml-2 pt-px">
               <SidebarPullRequestList teamSlugOrId={teamSlugOrId} />
-            </div>
+            </SmoothHeight>
           </div>
 
           <div className="mt-2 flex flex-col gap-0.5">
@@ -239,7 +241,7 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
             </SidebarSectionLink>
           </div>
 
-          <div className="ml-2 pt-px">
+          <SmoothHeight className="ml-2 pt-px">
             <div className="space-y-px">
               {tasks === undefined ? (
                 <TaskTreeSkeleton count={5} />
@@ -258,7 +260,7 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
                 </p>
               )}
             </div>
-          </div>
+          </SmoothHeight>
         </div>
       </nav>
 
@@ -282,6 +284,108 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
           } as CSSProperties
         }
       />
+    </div>
+  );
+}
+
+// Smoothly animates height changes of its children using ResizeObserver and FLIP.
+// This ensures all nested expand/collapse actions in the sidebar feel responsive.
+function SmoothHeight({
+  children,
+  className,
+  durationMs = 280,
+  easing = "cubic-bezier(0.2, 0, 0, 1)",
+}: PropsWithChildren<{
+  className?: string;
+  durationMs?: number;
+  easing?: string;
+}>) {
+  const outerRef = useRef<HTMLDivElement | null>(null);
+  const innerRef = useRef<HTMLDivElement | null>(null);
+  const roRef = useRef<ResizeObserver | null>(null);
+  const animatingRef = useRef(false);
+
+  // Respect reduced motion
+  const prefersReducedMotion = (() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return false;
+    }
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  })();
+
+  useLayoutEffect(() => {
+    const outer = outerRef.current;
+    const inner = innerRef.current;
+    if (!outer || !inner) return;
+
+    // Ensure a clean base state
+    outer.style.height = "auto";
+    outer.style.overflow = "visible";
+    outer.style.transitionProperty = "none";
+    outer.style.willChange = "auto";
+
+    if (prefersReducedMotion) {
+      return;
+    }
+
+    const onTransitionEnd = (ev: TransitionEvent) => {
+      if (ev.propertyName !== "height") return;
+      const el = outerRef.current;
+      if (!el) return;
+      animatingRef.current = false;
+      el.style.transitionProperty = "none";
+      el.style.height = "auto";
+      el.style.overflow = "visible";
+      el.style.willChange = "auto";
+    };
+
+    outer.addEventListener("transitionend", onTransitionEnd);
+
+    // Observe child size changes and animate outer height
+    const ro = new ResizeObserver(() => {
+      const el = outerRef.current;
+      const content = innerRef.current;
+      if (!el || !content) return;
+
+      const next = content.offsetHeight;
+      const rect = el.getBoundingClientRect();
+      const current = Math.max(0, Math.round(rect.height));
+      if (next === current) return;
+
+      // Prepare for FLIP
+      animatingRef.current = true;
+      el.style.transitionProperty = "none";
+      el.style.overflow = "hidden";
+      el.style.willChange = "height";
+      el.style.height = `${current}px`;
+
+      // Next frame: animate to new height
+      requestAnimationFrame(() => {
+        const el2 = outerRef.current;
+        const content2 = innerRef.current;
+        if (!el2 || !content2) return;
+        const newHeight = content2.offsetHeight;
+        el2.style.transitionProperty = "height";
+        el2.style.transitionDuration = `${durationMs}ms`;
+        el2.style.transitionTimingFunction = easing;
+        el2.style.height = `${newHeight}px`;
+      });
+    });
+
+    ro.observe(inner);
+    roRef.current = ro;
+
+    return () => {
+      outer.removeEventListener("transitionend", onTransitionEnd);
+      ro.disconnect();
+      roRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [durationMs, easing, prefersReducedMotion]);
+
+  return (
+    <div ref={outerRef} className={className} style={{ contain: "layout" } as CSSProperties}>
+      <div ref={innerRef}>{children}</div>
     </div>
   );
 }
