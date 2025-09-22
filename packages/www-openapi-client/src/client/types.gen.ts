@@ -124,6 +124,41 @@ export type GithubPullRequestsResponse = {
     pullRequests: Array<GithubPullRequestItem>;
 };
 
+export type GithubPrCloseResponse = {
+    ok: true;
+    pullRequest: {
+        repoFullName: string;
+        number: number;
+        state: 'closed';
+        merged?: boolean;
+        draft?: boolean;
+        title: string;
+        updatedAt?: string;
+        closedAt?: string;
+        htmlUrl?: string;
+        authorLogin?: string;
+    };
+};
+
+export type GithubPrCloseBody = {
+    /**
+     * Team slug or UUID
+     */
+    team: string;
+    /**
+     * GitHub repository owner
+     */
+    owner: string;
+    /**
+     * GitHub repository name
+     */
+    repo: string;
+    /**
+     * Pull request number
+     */
+    number: number;
+};
+
 export type GithubPrsBackfillBody = {
     /**
      * Team slug or UUID
@@ -878,6 +913,45 @@ export type GetApiIntegrationsGithubPrsResponses = {
 };
 
 export type GetApiIntegrationsGithubPrsResponse = GetApiIntegrationsGithubPrsResponses[keyof GetApiIntegrationsGithubPrsResponses];
+
+export type PostApiIntegrationsGithubPrsCloseData = {
+    body: GithubPrCloseBody;
+    path?: never;
+    query?: never;
+    url: '/api/integrations/github/prs/close';
+};
+
+export type PostApiIntegrationsGithubPrsCloseErrors = {
+    /**
+     * Bad request
+     */
+    400: unknown;
+    /**
+     * Unauthorized
+     */
+    401: unknown;
+    /**
+     * Forbidden
+     */
+    403: unknown;
+    /**
+     * Not found
+     */
+    404: unknown;
+    /**
+     * GitHub API error
+     */
+    500: unknown;
+};
+
+export type PostApiIntegrationsGithubPrsCloseResponses = {
+    /**
+     * Pull request closed
+     */
+    200: GithubPrCloseResponse;
+};
+
+export type PostApiIntegrationsGithubPrsCloseResponse = PostApiIntegrationsGithubPrsCloseResponses[keyof PostApiIntegrationsGithubPrsCloseResponses];
 
 export type PostApiIntegrationsGithubPrsBackfillData = {
     body: GithubPrsBackfillBody;

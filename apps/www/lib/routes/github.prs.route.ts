@@ -3,9 +3,105 @@ import { env } from "@/lib/utils/www-env";
 import { api } from "@cmux/convex/api";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { createAppAuth } from "@octokit/auth-app";
+import { RequestError } from "@octokit/request-error";
 import { Octokit } from "octokit";
 import { getConvex } from "../utils/get-convex";
 import { githubPrivateKey } from "../utils/githubPrivateKey";
+
+type GithubProviderConnection = {
+  installationId: number;
+  accountLogin?: string | null;
+  accountType?: "Organization" | "User" | null;
+  isActive?: boolean | null;
+};
+
+type GithubPullRequest = {
+  id?: number | null;
+  number: number;
+  title: string;
+  state: string;
+  merged?: boolean | null;
+  draft?: boolean | null;
+  user?: { login?: string | null; id?: number | null } | null;
+  html_url?: string | null;
+  base?: {
+    ref?: string | null;
+    sha?: string | null;
+    repo?: { id?: number | null } | null;
+  } | null;
+  head?: { ref?: string | null; sha?: string | null } | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+  closed_at?: string | null;
+  merged_at?: string | null;
+  comments?: number | null;
+  review_comments?: number | null;
+  commits?: number | null;
+  additions?: number | null;
+  deletions?: number | null;
+  changed_files?: number | null;
+};
+
+const toNumberOrUndefined = (value: number | null | undefined) =>
+  typeof value === "number" && Number.isFinite(value) ? value : undefined;
+
+const toStringOrUndefined = (value: string | null | undefined) =>
+  typeof value === "string" && value.length > 0 ? value : undefined;
+
+const toTimestampOrUndefined = (value: string | null | undefined) => {
+  if (typeof value !== "string") return undefined;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : undefined;
+};
+
+const mapPullRequestForConvex = (pr: GithubPullRequest) => {
+  const normalizedState: "open" | "closed" =
+    toStringOrUndefined(pr.state)?.toLowerCase() === "closed"
+      ? "closed"
+      : "open";
+
+  return {
+    providerPrId: toNumberOrUndefined(pr.id ?? undefined),
+    repositoryId: toNumberOrUndefined(pr.base?.repo?.id ?? undefined),
+    title: toStringOrUndefined(pr.title) ?? "",
+    state: normalizedState,
+    merged: typeof pr.merged === "boolean" ? pr.merged : undefined,
+    draft: typeof pr.draft === "boolean" ? pr.draft : undefined,
+    authorLogin: toStringOrUndefined(pr.user?.login ?? undefined),
+    authorId: toNumberOrUndefined(pr.user?.id ?? undefined),
+    htmlUrl: toStringOrUndefined(pr.html_url ?? undefined),
+    baseRef: toStringOrUndefined(pr.base?.ref ?? undefined),
+    headRef: toStringOrUndefined(pr.head?.ref ?? undefined),
+    baseSha: toStringOrUndefined(pr.base?.sha ?? undefined),
+    headSha: toStringOrUndefined(pr.head?.sha ?? undefined),
+    createdAt: toTimestampOrUndefined(pr.created_at ?? undefined),
+    updatedAt: toTimestampOrUndefined(pr.updated_at ?? undefined),
+    closedAt: toTimestampOrUndefined(pr.closed_at ?? undefined),
+    mergedAt: toTimestampOrUndefined(pr.merged_at ?? undefined),
+    commentsCount: toNumberOrUndefined(pr.comments ?? undefined),
+    reviewCommentsCount: toNumberOrUndefined(pr.review_comments ?? undefined),
+    commitsCount: toNumberOrUndefined(pr.commits ?? undefined),
+    additions: toNumberOrUndefined(pr.additions ?? undefined),
+    deletions: toNumberOrUndefined(pr.deletions ?? undefined),
+    changedFiles: toNumberOrUndefined(pr.changed_files ?? undefined),
+  };
+};
+
+const buildCloseResponse = (owner: string, repo: string, pr: GithubPullRequest) => ({
+  ok: true as const,
+  pullRequest: {
+    repoFullName: `${owner}/${repo}`,
+    number: pr.number,
+    state: "closed" as const,
+    merged: typeof pr.merged === "boolean" ? pr.merged : undefined,
+    draft: typeof pr.draft === "boolean" ? pr.draft : undefined,
+    title: toStringOrUndefined(pr.title) ?? "",
+    updatedAt: toStringOrUndefined(pr.updated_at ?? undefined),
+    closedAt: toStringOrUndefined(pr.closed_at ?? undefined),
+    htmlUrl: toStringOrUndefined(pr.html_url ?? undefined),
+    authorLogin: toStringOrUndefined(pr.user?.login ?? undefined),
+  },
+});
 
 export const githubPrsRouter = new OpenAPIHono();
 
@@ -71,6 +167,36 @@ const PullRequestsResponse = z
   })
   .openapi("GithubPullRequestsResponse");
 
+const CloseBody = z
+  .object({
+    team: z.string().min(1).openapi({ description: "Team slug or UUID" }),
+    owner: z.string().min(1).openapi({ description: "GitHub repository owner" }),
+    repo: z.string().min(1).openapi({ description: "GitHub repository name" }),
+    number: z.coerce
+      .number()
+      .min(1)
+      .openapi({ description: "Pull request number" }),
+  })
+  .openapi("GithubPrCloseBody");
+
+const CloseResponse = z
+  .object({
+    ok: z.literal(true),
+    pullRequest: z.object({
+      repoFullName: z.string(),
+      number: z.number(),
+      state: z.literal("closed"),
+      merged: z.boolean().optional(),
+      draft: z.boolean().optional(),
+      title: z.string(),
+      updatedAt: z.string().optional(),
+      closedAt: z.string().optional(),
+      htmlUrl: z.string().url().optional(),
+      authorLogin: z.string().optional(),
+    }),
+  })
+  .openapi("GithubPrCloseResponse");
+
 githubPrsRouter.openapi(
   createRoute({
     method: "get" as const,
@@ -106,14 +232,9 @@ githubPrsRouter.openapi(
     });
 
     // Determine which installation to query
-    type Conn = {
-      installationId: number;
-      isActive?: boolean | null;
-      accountLogin?: string | null;
-      accountType?: "Organization" | "User" | null;
-    };
-    const target = (connections as Conn[]).find(
-      (co: Conn) => co.isActive !== false && (!installationId || co.installationId === installationId)
+    const target = (connections as GithubProviderConnection[]).find(
+      (co: GithubProviderConnection) =>
+        co.isActive !== false && (!installationId || co.installationId === installationId)
     );
 
     if (!target) {
@@ -231,6 +352,104 @@ githubPrsRouter.openapi(
         err instanceof Error ? err.message : err
       );
       return c.json({ total_count: 0, pullRequests: [] });
+    }
+  }
+);
+
+githubPrsRouter.openapi(
+  createRoute({
+    method: "post" as const,
+    path: "/integrations/github/prs/close",
+    tags: ["Integrations"],
+    summary: "Close a GitHub pull request",
+    request: {
+      body: {
+        content: {
+          "application/json": {
+            schema: CloseBody,
+          },
+        },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        description: "Pull request closed",
+        content: {
+          "application/json": {
+            schema: CloseResponse,
+          },
+        },
+      },
+      400: { description: "Bad request" },
+      401: { description: "Unauthorized" },
+      403: { description: "Forbidden" },
+      404: { description: "Not found" },
+      500: { description: "GitHub API error" },
+    },
+  }),
+  async (c) => {
+    const accessToken = await getAccessTokenFromRequest(c.req.raw);
+    if (!accessToken) return c.text("Unauthorized", 401);
+
+    const { team, owner, repo, number } = c.req.valid("json");
+    const convex = getConvex({ accessToken });
+    const connections = await convex.query(api.github.listProviderConnections, {
+      teamSlugOrId: team,
+    });
+
+    const target = (connections as GithubProviderConnection[]).find(
+      (co: GithubProviderConnection) =>
+        (co.isActive ?? true) &&
+        (co.accountLogin ?? "").toLowerCase() === owner.toLowerCase()
+    );
+    if (!target) {
+      return c.json({ message: "Installation not found for owner" }, 404);
+    }
+
+    const octokit = new Octokit({
+      authStrategy: createAppAuth,
+      auth: {
+        appId: env.CMUX_GITHUB_APP_ID,
+        privateKey: githubPrivateKey,
+        installationId: target.installationId,
+      },
+    });
+
+    try {
+      const response = await octokit.request(
+        "PATCH /repos/{owner}/{repo}/pulls/{pull_number}",
+        {
+          owner,
+          repo,
+          pull_number: number,
+          state: "closed",
+        }
+      );
+
+      const pr = response.data as GithubPullRequest;
+
+      await convex.mutation(api.github_prs.upsertFromServer, {
+        teamSlugOrId: team,
+        installationId: target.installationId,
+        repoFullName: `${owner}/${repo}`,
+        number,
+        record: mapPullRequestForConvex(pr),
+      });
+
+      return c.json(buildCloseResponse(owner, repo, pr));
+    } catch (error: unknown) {
+      if (error instanceof RequestError) {
+        if (error.status === 404) {
+          return c.json({ message: "Pull request not found" }, 404);
+        }
+        if (error.status === 403) {
+          return c.json({ message: "Forbidden" }, 403);
+        }
+        return c.json({ message: error.message }, 500);
+      }
+      console.error("[github.prs.close] Unexpected error", error);
+      return c.json({ message: "Failed to close pull request" }, 500);
     }
   }
 );
