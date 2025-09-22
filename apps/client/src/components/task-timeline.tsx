@@ -1,5 +1,6 @@
 import { api } from "@cmux/convex/api";
 import { type Doc, type Id } from "@cmux/convex/dataModel";
+import type { RunEnvironmentSummary } from "@/types/task";
 import { useUser } from "@stackframe/react";
 import { Link, useParams } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
@@ -40,6 +41,7 @@ interface TimelineEvent {
 
 type TaskRunWithChildren = Doc<"taskRuns"> & {
   children?: TaskRunWithChildren[];
+  environment?: RunEnvironmentSummary | null;
 };
 
 interface TaskTimelineProps {

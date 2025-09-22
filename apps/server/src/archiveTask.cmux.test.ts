@@ -66,6 +66,7 @@ describe("stopContainersForRunsFromTree - cmux sandbox path", () => {
           status: "running",
           containerName: instanceId,
         },
+        environment: null,
         children: [],
       },
     ] satisfies FunctionReturnType<typeof api.taskRuns.getByTask>;

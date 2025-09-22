@@ -8,6 +8,7 @@ import { useTheme } from "@/components/theme/use-theme";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { refWithOrigin } from "@/lib/refWithOrigin";
+import { cn } from "@/lib/utils";
 import { diffSmartQueryOptions } from "@/queries/diff-smart";
 // Refs mode: no run-diffs prefetch
 import { api } from "@cmux/convex/api";
@@ -22,6 +23,7 @@ import {
   type FormEvent,
   type KeyboardEvent,
   useCallback,
+  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -41,8 +43,18 @@ const gitDiffViewerClassNames: GitDiffViewerProps["classNames"] = {
   },
 };
 
+type DiffControls = Parameters<
+  NonNullable<GitDiffViewerProps["onControlsChange"]>
+>[0];
+
+type RunEnvironmentSummary = Pick<
+  Doc<"environments">,
+  "_id" | "name" | "selectedRepos"
+>;
+
 type TaskRunWithChildren = Doc<"taskRuns"> & {
   children: TaskRunWithChildren[];
+  environment: RunEnvironmentSummary | null;
 };
 
 const AVAILABLE_AGENT_NAMES = new Set(
@@ -127,12 +139,9 @@ function RunDiffPage() {
   const { addTaskToExpand } = useExpandTasks();
   const createTask = useMutation(api.tasks.create);
   const [isCreatingPr, setIsCreatingPr] = useState(false);
-  const [diffControls, setDiffControls] = useState<{
-    expandAll: () => void;
-    collapseAll: () => void;
-    totalAdditions: number;
-    totalDeletions: number;
-  } | null>(null);
+  const [diffControls, setDiffControls] = useState<DiffControls | null>(null);
+  const [selectedEnvironmentRepo, setSelectedEnvironmentRepo] =
+    useState<string | null>(null);
   const [followUpText, setFollowUpText] = useState("");
   const [isRestartingTask, setIsRestartingTask] = useState(false);
   const task = useQuery(api.tasks.getById, {
@@ -146,6 +155,26 @@ function RunDiffPage() {
   const selectedRun = useMemo(() => {
     return taskRuns?.find((run) => run._id === runId);
   }, [runId, taskRuns]);
+
+  const environmentRepos = useMemo(() => {
+    const repos = selectedRun?.environment?.selectedRepos ?? [];
+    return repos.filter(
+      (repo): repo is string => typeof repo === "string" && repo.length > 0
+    );
+  }, [selectedRun]);
+
+  useEffect(() => {
+    if (!environmentRepos || environmentRepos.length === 0) {
+      setSelectedEnvironmentRepo(null);
+      return;
+    }
+    setSelectedEnvironmentRepo((prev) => {
+      if (prev && environmentRepos.includes(prev)) {
+        return prev;
+      }
+      return environmentRepos[0];
+    });
+  }, [environmentRepos]);
 
   const restartAgents = useMemo(() => {
     const previousAgents = collectAgentNamesFromRuns(taskRuns);
@@ -320,9 +349,18 @@ function RunDiffPage() {
   }
 
   // Compute refs for diff: base branch vs run branch
-  const repoFullName = task?.projectFullName || "";
+  const repoFullName =
+    task?.projectFullName ||
+    selectedEnvironmentRepo ||
+    (environmentRepos.length > 0 ? environmentRepos[0] : "");
   const ref1 = refWithOrigin(task?.baseBranch || "main");
   const ref2 = refWithOrigin(selectedRun.newBranch || "");
+
+  const showEnvironmentRepoSelector =
+    !task?.projectFullName && environmentRepos.length > 1;
+
+  const activeEnvironmentRepo =
+    selectedEnvironmentRepo || environmentRepos[0] || null;
 
   return (
     <FloatingPane>
@@ -350,6 +388,29 @@ function RunDiffPage() {
             </div>
           )}
           <div className="bg-white dark:bg-neutral-900 grow flex flex-col">
+            {showEnvironmentRepoSelector ? (
+              <div className="px-3.5 pt-3 pb-2 border-b border-neutral-200 dark:border-neutral-800 flex flex-wrap gap-2">
+                {environmentRepos.map((repo) => {
+                  const isActive = repo === activeEnvironmentRepo;
+                  return (
+                    <button
+                      key={repo}
+                      type="button"
+                      onClick={() => setSelectedEnvironmentRepo(repo)}
+                      className={cn(
+                        "rounded-full px-3 py-1 text-xs font-medium transition-colors",
+                        "border border-transparent",
+                        isActive
+                          ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
+                          : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                      )}
+                    >
+                      {repo}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
             <Suspense
               fallback={
                 <div className="flex items-center justify-center h-full">

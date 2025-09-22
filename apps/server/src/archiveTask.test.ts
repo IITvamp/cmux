@@ -84,6 +84,7 @@ describeDockerTests("stopContainersForRuns (docker E2E)", () => {
         userId: "test-user",
         teamId: "default",
         vscode: { provider: "docker", status: "running", containerName: runA },
+        environment: null,
         children: [
           {
             _id: zidRun.parse("r2"),
@@ -101,6 +102,7 @@ describeDockerTests("stopContainersForRuns (docker E2E)", () => {
               status: "stopped",
               containerName: alreadyExited,
             },
+            environment: null,
             children: [],
           },
         ],
@@ -117,6 +119,7 @@ describeDockerTests("stopContainersForRuns (docker E2E)", () => {
         userId: "test-user",
         teamId: "default",
         vscode: { provider: "docker", status: "running", containerName: runB },
+        environment: null,
         children: [],
       },
     ] satisfies FunctionReturnType<typeof api.taskRuns.getByTask>;
@@ -153,6 +156,7 @@ describeDockerTests("stopContainersForRuns (docker E2E)", () => {
         userId: "test-user",
         teamId: "default",
         vscode: { provider: "docker", status: "running", containerName: missing },
+        environment: null,
         children: [],
       },
     ] satisfies FunctionReturnType<typeof api.taskRuns.getByTask>;
@@ -185,6 +189,7 @@ describeDockerTests("stopContainersForRuns (docker E2E)", () => {
         userId: "test-user",
         teamId: "default",
         vscode: { provider: "docker", status: "running", containerName: dbStoredName },
+        environment: null,
         children: [],
       },
     ] satisfies FunctionReturnType<typeof api.taskRuns.getByTask>;
@@ -221,6 +226,7 @@ describeDockerTests("stopContainersForRuns (docker E2E)", () => {
         userId: "test-user",
         teamId: "default",
         vscode: { provider: "docker", status: "running", containerName: containerName },
+        environment: null,
         children: [],
       },
     ] satisfies FunctionReturnType<typeof api.taskRuns.getByTask>;

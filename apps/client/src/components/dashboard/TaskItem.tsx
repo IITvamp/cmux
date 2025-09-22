@@ -5,6 +5,7 @@ import { isFakeConvexId } from "@/lib/fakeConvexId";
 import { ContextMenu } from "@base-ui-components/react/context-menu";
 import { api } from "@cmux/convex/api";
 import type { Doc } from "@cmux/convex/dataModel";
+import type { RunEnvironmentSummary } from "@/types/task";
 import { useClipboard } from "@mantine/hooks";
 import { useNavigate } from "@tanstack/react-router";
 import clsx from "clsx";
@@ -42,6 +43,7 @@ export const TaskItem = memo(function TaskItem({
     // Define task run type with nested structure
     interface TaskRunWithChildren extends Doc<"taskRuns"> {
       children?: TaskRunWithChildren[];
+      environment?: RunEnvironmentSummary | null;
     }
 
     // Flatten all task runs (including children)

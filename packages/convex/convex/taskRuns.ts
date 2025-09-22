@@ -68,9 +68,37 @@ export const getByTask = authQuery({
       .filter((q) => q.eq(q.field("taskId"), args.taskId))
       .collect();
 
+    type EnvironmentId = NonNullable<Doc<"taskRuns">["environmentId"]>;
+    type EnvironmentSummary = Pick<Doc<"environments">, "_id" | "name" | "selectedRepos">;
+
+    const environmentSummaries = new Map<EnvironmentId, EnvironmentSummary>();
+    const environmentIds = Array.from(
+      new Set(
+        runs
+          .map((run) => run.environmentId)
+          .filter((id): id is EnvironmentId => id !== undefined)
+      )
+    );
+
+    if (environmentIds.length > 0) {
+      const environmentDocs = await Promise.all(
+        environmentIds.map((environmentId) => ctx.db.get(environmentId))
+      );
+
+      for (const environment of environmentDocs) {
+        if (!environment || environment.teamId !== teamId) continue;
+        environmentSummaries.set(environment._id, {
+          _id: environment._id,
+          name: environment.name,
+          selectedRepos: environment.selectedRepos,
+        });
+      }
+    }
+
     // Build tree structure
     type TaskRunWithChildren = Doc<"taskRuns"> & {
       children: TaskRunWithChildren[];
+      environment: EnvironmentSummary | null;
     };
     const runMap = new Map<string, TaskRunWithChildren>();
     const rootRuns: TaskRunWithChildren[] = [];
@@ -83,6 +111,9 @@ export const getByTask = authQuery({
         ...run,
         log: "",
         children: [],
+        environment: run.environmentId
+          ? environmentSummaries.get(run.environmentId) ?? null
+          : null,
       });
     });
 

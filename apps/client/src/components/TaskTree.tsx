@@ -8,7 +8,7 @@ import { useArchiveTask } from "@/hooks/useArchiveTask";
 import { useOpenWithActions } from "@/hooks/useOpenWithActions";
 import { isElectron } from "@/lib/electron";
 import { ContextMenu } from "@base-ui-components/react/context-menu";
-import { type Doc, type Id } from "@cmux/convex/dataModel";
+import { type Id } from "@cmux/convex/dataModel";
 import { Link, useLocation } from "@tanstack/react-router";
 import clsx from "clsx";
 import {
@@ -41,18 +41,12 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
+import type { TaskRunWithChildren, TaskWithRuns } from "@/types/task";
+export type { TaskWithRuns };
 import { VSCodeIcon } from "./icons/VSCodeIcon";
 import { SidebarListItem } from "./sidebar/SidebarListItem";
 
-interface TaskRunWithChildren extends Doc<"taskRuns"> {
-  children: TaskRunWithChildren[];
-}
-
 type PreviewService = NonNullable<TaskRunWithChildren["networking"]>[number];
-
-export interface TaskWithRuns extends Doc<"tasks"> {
-  runs: TaskRunWithChildren[];
-}
 
 function sanitizeBranchName(input?: string | null): string | null {
   if (!input) return null;
