@@ -1,7 +1,7 @@
 import { FloatingPane } from "@/components/floating-pane";
 import { PullRequestDetailView } from "@/components/prs/PullRequestDetailView";
 import { createFileRoute } from "@tanstack/react-router";
-import { preloadPullRequestDetail } from "./helpers/preloadPullRequestDetail";
+import { preloadPullRequestDetail } from "../lib/preloadPullRequestDetail";
 
 export const Route = createFileRoute(
   "/_layout/$teamSlugOrId/prs-only/$owner/$repo/$number"

@@ -1,6 +1,6 @@
 import { PullRequestDetailView } from "@/components/prs/PullRequestDetailView";
-import { preloadPullRequestDetail } from "./helpers/preloadPullRequestDetail";
 import { createFileRoute } from "@tanstack/react-router";
+import { preloadPullRequestDetail } from "../lib/preloadPullRequestDetail";
 
 export const Route = createFileRoute(
   "/_layout/$teamSlugOrId/prs/$owner/$repo/$number"
