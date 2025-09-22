@@ -26,7 +26,6 @@ import { Command, FileText } from "lucide-react";
 import {
   Suspense,
   useCallback,
-  useEffect,
   useMemo,
   useState,
   type FormEvent,
@@ -88,6 +87,24 @@ function collectAgentNamesFromRuns(
   return ordered;
 }
 
+function normalizeGitRef(ref?: string | null): string {
+  if (!ref) {
+    return "";
+  }
+  const trimmed = ref.trim();
+  if (!trimmed) {
+    return "";
+  }
+  const deduped = trimmed.replace(/^origin\/(origin\/)+/, "origin/");
+  if (deduped.startsWith("refs/")) {
+    return deduped;
+  }
+  if (deduped.startsWith("origin/")) {
+    return deduped;
+  }
+  return refWithOrigin(deduped);
+}
+
 export const Route = createFileRoute(
   "/_layout/$teamSlugOrId/task/$taskId/run/$runId/diff"
 )({
@@ -142,9 +159,6 @@ function RunDiffPage() {
   const createTask = useMutation(api.tasks.create);
   const [isCreatingPr, setIsCreatingPr] = useState(false);
   const [diffControls, setDiffControls] = useState<DiffControls | null>(null);
-  const [selectedEnvironmentRepo, setSelectedEnvironmentRepo] = useState<
-    string | null
-  >(null);
   const [followUpText, setFollowUpText] = useState("");
   const [isRestartingTask, setIsRestartingTask] = useState(false);
   const [overridePrompt, setOverridePrompt] = useState(false);
@@ -162,23 +176,18 @@ function RunDiffPage() {
 
   const environmentRepos = useMemo(() => {
     const repos = selectedRun?.environment?.selectedRepos ?? [];
-    return repos.filter(
-      (repo): repo is string => typeof repo === "string" && repo.length > 0
-    );
+    const trimmed = repos
+      .map((repo) => repo?.trim())
+      .filter((repo): repo is string => Boolean(repo));
+    return Array.from(new Set(trimmed));
   }, [selectedRun]);
 
-  useEffect(() => {
-    if (!environmentRepos || environmentRepos.length === 0) {
-      setSelectedEnvironmentRepo(null);
-      return;
+  const repoFullNames = useMemo(() => {
+    if (task?.projectFullName) {
+      return [task.projectFullName];
     }
-    setSelectedEnvironmentRepo((prev) => {
-      if (prev && environmentRepos.includes(prev)) {
-        return prev;
-      }
-      return environmentRepos[0];
-    });
-  }, [environmentRepos]);
+    return environmentRepos;
+  }, [task?.projectFullName, environmentRepos]);
 
   const restartAgents = useMemo(() => {
     const previousAgents = collectAgentNamesFromRuns(taskRuns);
@@ -369,19 +378,11 @@ function RunDiffPage() {
     );
   }
 
-  // Compute refs for diff: base branch vs run branch
-  const repoFullName =
-    task?.projectFullName ||
-    selectedEnvironmentRepo ||
-    (environmentRepos.length > 0 ? environmentRepos[0] : "");
-  const ref1 = refWithOrigin(task?.baseBranch || "main");
-  const ref2 = refWithOrigin(selectedRun.newBranch || "");
-
-  const showEnvironmentRepoSelector =
-    !task?.projectFullName && environmentRepos.length > 1;
-
-  const activeEnvironmentRepo =
-    selectedEnvironmentRepo || environmentRepos[0] || null;
+  const [primaryRepo, ...additionalRepos] = repoFullNames;
+  const baseRef = normalizeGitRef(task?.baseBranch || "main");
+  const headRef = normalizeGitRef(selectedRun.newBranch);
+  const hasDiffSources = Boolean(primaryRepo) && Boolean(baseRef) && Boolean(headRef);
+  const shouldPrefixDiffs = repoFullNames.length > 1;
 
   return (
     <FloatingPane>
@@ -409,27 +410,12 @@ function RunDiffPage() {
             </div>
           )}
           <div className="bg-white dark:bg-neutral-900 grow flex flex-col">
-            {showEnvironmentRepoSelector ? (
-              <div className="px-3.5 pt-3 pb-2 border-b border-neutral-200 dark:border-neutral-800 flex flex-wrap gap-2">
-                {environmentRepos.map((repo) => {
-                  const isActive = repo === activeEnvironmentRepo;
-                  return (
-                    <button
-                      key={repo}
-                      type="button"
-                      onClick={() => setSelectedEnvironmentRepo(repo)}
-                      className={cn(
-                        "rounded-full px-3 py-1 text-xs font-medium transition-colors",
-                        "border border-transparent",
-                        isActive
-                          ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
-                          : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800"
-                      )}
-                    >
-                      {repo}
-                    </button>
-                  );
-                })}
+            {shouldPrefixDiffs ? (
+              <div className="px-3.5 pt-3 pb-2 border-b border-neutral-200 dark:border-neutral-800 text-xs text-neutral-600 dark:text-neutral-300">
+                Showing diffs across {repoFullNames.length} repositories:
+                <span className="ml-1 font-medium text-neutral-700 dark:text-neutral-200">
+                  {repoFullNames.join(", ")}
+                </span>
               </div>
             ) : null}
             <Suspense
@@ -441,11 +427,13 @@ function RunDiffPage() {
                 </div>
               }
             >
-              {repoFullName && ref1 && ref2 ? (
+              {hasDiffSources ? (
                 <RunDiffSection
-                  repoFullName={repoFullName}
-                  ref1={ref1}
-                  ref2={ref2}
+                  repoFullName={primaryRepo as string}
+                  additionalRepoFullNames={additionalRepos}
+                  withRepoPrefix={shouldPrefixDiffs}
+                  ref1={baseRef}
+                  ref2={headRef}
                   onControlsChange={setDiffControls}
                   classNames={gitDiffViewerClassNames}
                 />
