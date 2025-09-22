@@ -294,16 +294,39 @@ function TaskTreeInner({
 
       {isExpanded && hasRuns && (
         <div className="flex flex-col">
-          {task.runs.map((run) => (
-            <TaskRunTree
-              key={run._id}
-              run={run}
-              level={level + 1}
-              taskId={task._id}
-              branch={task.baseBranch}
-              teamSlugOrId={teamSlugOrId}
-            />
-          ))}
+          {(() => {
+            // Compute numbering for duplicate agent runs at the root level
+            const totalByAgent = new Map<string, number>();
+            for (const r of task.runs) {
+              const name = (r.agentName || "").trim();
+              if (!name) continue;
+              totalByAgent.set(name, (totalByAgent.get(name) || 0) + 1);
+            }
+            const seenByAgent = new Map<string, number>();
+            return task.runs.map((run) => {
+              const base = (run.agentName || "").trim();
+              let labelOverride: string | undefined;
+              if (base) {
+                const total = totalByAgent.get(base) || 0;
+                if (total > 1) {
+                  const nextIndex = (seenByAgent.get(base) || 0) + 1;
+                  seenByAgent.set(base, nextIndex);
+                  labelOverride = `${base} (${nextIndex})`;
+                }
+              }
+              return (
+                <TaskRunTree
+                  key={run._id}
+                  run={run}
+                  level={level + 1}
+                  taskId={task._id}
+                  branch={task.baseBranch}
+                  teamSlugOrId={teamSlugOrId}
+                  overrideLabel={labelOverride}
+                />
+              );
+            });
+          })()}
         </div>
       )}
       </div>
@@ -317,6 +340,8 @@ interface TaskRunTreeProps {
   taskId: Id<"tasks">;
   branch?: string;
   teamSlugOrId: string;
+  // Optional override for displayed label (e.g., add (1),(2) for duplicates)
+  overrideLabel?: string;
 }
 
 function TaskRunTreeInner({
@@ -325,6 +350,7 @@ function TaskRunTreeInner({
   taskId,
   branch,
   teamSlugOrId,
+  overrideLabel,
 }: TaskRunTreeProps) {
   const { expandedRuns, setRunExpanded } = useTaskRunExpansionContext();
   const defaultExpanded = Boolean(run.isCrowned);
@@ -332,7 +358,10 @@ function TaskRunTreeInner({
   const hasChildren = run.children.length > 0;
 
   // Memoize the display text to avoid recalculating on every render
-  const displayText = useMemo(() => getRunDisplayText(run), [run]);
+  const displayText = useMemo(() => {
+    if (overrideLabel && overrideLabel.length > 0) return overrideLabel;
+    return getRunDisplayText(run);
+  }, [overrideLabel, run]);
 
   // Memoize the toggle handler
   const handleToggle = useCallback((e: React.MouseEvent) => {

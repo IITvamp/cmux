@@ -145,6 +145,36 @@ export function TaskDetailHeader({
     ? ({ WebkitAppRegion: "drag" } as CSSProperties)
     : undefined;
 
+  // Compute duplicate indices for top-level runs so we can display (1),(2),(3)
+  const runLabelById = useMemo(() => {
+    const map = new Map<string, string>();
+    if (!taskRuns || taskRuns.length === 0) return map;
+    const totals = new Map<string, number>();
+    for (const r of taskRuns) {
+      const name = (r.agentName || "").trim();
+      if (!name) continue;
+      totals.set(name, (totals.get(name) || 0) + 1);
+    }
+    const seen = new Map<string, number>();
+    for (const r of taskRuns) {
+      const base = (r.agentName || "").trim();
+      const summary = (r.summary || "").trim();
+      if (base) {
+        const total = totals.get(base) || 0;
+        if (total > 1) {
+          const idx = (seen.get(base) || 0) + 1;
+          seen.set(base, idx);
+          map.set(r._id, `${base} (${idx})`);
+        } else {
+          map.set(r._id, base);
+        }
+      } else if (summary) {
+        map.set(r._id, summary);
+      }
+    }
+    return map;
+  }, [taskRuns]);
+
   return (
     <div
       className="bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white px-3.5 sticky top-0 z-[var(--z-sticky)] py-2"
@@ -319,7 +349,11 @@ export function TaskDetailHeader({
                   >
                     <Dropdown.Trigger className="flex items-center gap-1 text-neutral-600 dark:text-neutral-300 hover:text-neutral-900 dark:hover:text-white transition-colors text-xs select-none truncate min-w-0 max-w-full">
                       <span className="truncate">
-                        {selectedRun?.agentName || "Unknown agent"}
+                        {selectedRun
+                          ? runLabelById.get(selectedRun._id) ||
+                            selectedRun.agentName ||
+                            "Unknown agent"
+                          : "Unknown agent"}
                       </span>
                       <ChevronDown className="w-3 h-3 shrink-0" />
                     </Dropdown.Trigger>
@@ -329,14 +363,11 @@ export function TaskDetailHeader({
                         <Dropdown.Popup className="min-w-[200px]">
                           <Dropdown.Arrow />
                           {taskRuns?.map((run) => {
-                            const trimmedAgentName = run.agentName?.trim();
-                            const summary = run.summary?.trim();
                             const agentName =
-                              trimmedAgentName && trimmedAgentName.length > 0
-                                ? trimmedAgentName
-                                : summary && summary.length > 0
-                                  ? summary
-                                  : "unknown agent";
+                              runLabelById.get(run._id) ||
+                              run.agentName?.trim() ||
+                              run.summary?.trim() ||
+                              "unknown agent";
                             const isSelected = run._id === selectedRun?._id;
                             return (
                               <Dropdown.CheckboxItem

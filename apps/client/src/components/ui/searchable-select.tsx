@@ -62,6 +62,8 @@ export interface SearchableSelectProps {
   leftIcon?: ReactNode;
   // Optional footer rendered below the scroll container
   footer?: ReactNode;
+  // When true, allow selecting the same value multiple times
+  allowDuplicates?: boolean;
 }
 
 interface WarningIndicatorProps {
@@ -197,6 +199,7 @@ export function SearchableSelect({
   countLabel = "selected",
   leftIcon,
   footer,
+  allowDuplicates = false,
 }: SearchableSelectProps) {
   const normOptions = useMemo(() => normalizeOptions(options), [options]);
   const valueToOption = useMemo(
@@ -386,6 +389,12 @@ export function SearchableSelect({
       setOpen(false);
       return;
     }
+    if (allowDuplicates) {
+      // Append another instance of the value
+      onChange([...value, val]);
+      return;
+    }
+    // Default: toggle selection
     const next = new Set(value);
     if (next.has(val)) next.delete(val);
     else next.add(val);

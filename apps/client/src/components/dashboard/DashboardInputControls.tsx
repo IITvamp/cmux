@@ -246,7 +246,12 @@ export const DashboardInputControls = memo(function DashboardInputControls({
 
   const handleAgentRemove = useCallback(
     (agent: string) => {
-      onAgentChange(selectedAgents.filter((value) => value !== agent));
+      // Remove only one occurrence of the agent
+      const idx = selectedAgents.indexOf(agent);
+      if (idx === -1) return;
+      const next = [...selectedAgents];
+      next.splice(idx, 1);
+      onAgentChange(next);
     },
     [onAgentChange, selectedAgents]
   );
@@ -256,12 +261,12 @@ export const DashboardInputControls = memo(function DashboardInputControls({
       <div className="relative">
         <div ref={pillboxScrollRef} className="max-h-32 overflow-y-auto py-2 px-2">
           <div className="flex flex-wrap gap-1">
-            {sortedSelectedAgents.map((agent) => {
+            {sortedSelectedAgents.map((agent, i) => {
               const option = agentOptionsByValue.get(agent);
               const label = option?.displayLabel ?? option?.label ?? agent;
               return (
                 <div
-                  key={agent}
+                  key={`${agent}-${i}`}
                   className="inline-flex items-center gap-1 rounded-full bg-neutral-200 dark:bg-neutral-800/80 pl-1.5 pr-2.5 py-1 text-[11px] text-neutral-700 dark:text-neutral-200 transition-colors"
                 >
                   <button
@@ -467,6 +472,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
           className="rounded-2xl"
           showSearch
           countLabel="agents"
+          allowDuplicates
           footer={agentSelectionFooter}
         />
       </div>
