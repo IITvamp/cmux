@@ -167,7 +167,7 @@ export function SidebarPullRequestList({
                     >
                       <Icon
                         className="mr-2 h-3 w-3 text-neutral-400"
-                        aria-hidden="true"
+                        aria-hidden
                       />
                       <span className="text-neutral-600 dark:text-neutral-400">
                         {action.label}
