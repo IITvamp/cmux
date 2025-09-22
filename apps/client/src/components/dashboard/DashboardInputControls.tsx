@@ -28,6 +28,13 @@ import {
   useState,
 } from "react";
 
+// Agent instance type to support multiple instances of the same agent
+export interface AgentInstance {
+  id: string; // Unique instance ID
+  agentName: string; // Base agent name (e.g., "claude/opus-4.1")
+  instanceNumber?: number; // Instance number for display (1, 2, 3, etc.)
+}
+
 interface DashboardInputControlsProps {
   projectOptions: SelectOption[];
   selectedProject: string[];
@@ -169,25 +176,6 @@ export const DashboardInputControls = memo(function DashboardInputControls({
     }
     return map;
   }, [agentOptions]);
-  const sortedSelectedAgents = useMemo(() => {
-    const vendorOrder = new Map<string, number>();
-    agentOptions.forEach((option, index) => {
-      const vendor = option.iconKey ?? "other";
-      if (!vendorOrder.has(vendor)) vendorOrder.set(vendor, index);
-    });
-    return [...selectedAgents].sort((a, b) => {
-      const optionA = agentOptionsByValue.get(a);
-      const optionB = agentOptionsByValue.get(b);
-      const vendorA = optionA?.iconKey ?? "other";
-      const vendorB = optionB?.iconKey ?? "other";
-      const rankA = vendorOrder.get(vendorA) ?? Number.MAX_SAFE_INTEGER;
-      const rankB = vendorOrder.get(vendorB) ?? Number.MAX_SAFE_INTEGER;
-      if (rankA !== rankB) return rankA - rankB;
-      const labelA = optionA?.displayLabel ?? optionA?.label ?? a;
-      const labelB = optionB?.displayLabel ?? optionB?.label ?? b;
-      return labelA.localeCompare(labelB);
-    });
-  }, [agentOptions, agentOptionsByValue, selectedAgents]);
   // Determine OS for potential future UI tweaks
   // const isMac = navigator.userAgent.toUpperCase().indexOf("MAC") >= 0;
 
@@ -244,11 +232,85 @@ export const DashboardInputControls = memo(function DashboardInputControls({
     }
   }, []);
 
-  const handleAgentRemove = useCallback(
-    (agent: string) => {
-      onAgentChange(selectedAgents.filter((value) => value !== agent));
+
+  // Convert selectedAgents array to AgentInstance array for display
+  const agentInstances = useMemo(() => {
+    const instanceCount = new Map<string, number>();
+    const instances: AgentInstance[] = [];
+
+    for (const agent of selectedAgents) {
+      const count = (instanceCount.get(agent) ?? 0) + 1;
+      instanceCount.set(agent, count);
+
+      instances.push({
+        id: `${agent}-${count}`,
+        agentName: agent,
+        instanceNumber: instanceCount.get(agent)! > 1 ? count : undefined,
+      });
+    }
+
+    return instances;
+  }, [selectedAgents]);
+
+  // Sort agent instances by vendor and name, preserving instance order
+  const sortedAgentInstances = useMemo(() => {
+    const vendorOrder = new Map<string, number>();
+    agentOptions.forEach((option, index) => {
+      const vendor = option.iconKey ?? "other";
+      if (!vendorOrder.has(vendor)) vendorOrder.set(vendor, index);
+    });
+
+    return [...agentInstances].sort((a, b) => {
+      const optionA = agentOptionsByValue.get(a.agentName);
+      const optionB = agentOptionsByValue.get(b.agentName);
+      const vendorA = optionA?.iconKey ?? "other";
+      const vendorB = optionB?.iconKey ?? "other";
+      const rankA = vendorOrder.get(vendorA) ?? Number.MAX_SAFE_INTEGER;
+      const rankB = vendorOrder.get(vendorB) ?? Number.MAX_SAFE_INTEGER;
+      if (rankA !== rankB) return rankA - rankB;
+
+      // If same agent, sort by instance number
+      if (a.agentName === b.agentName) {
+        return (a.instanceNumber ?? 0) - (b.instanceNumber ?? 0);
+      }
+
+      const labelA = optionA?.displayLabel ?? optionA?.label ?? a.agentName;
+      const labelB = optionB?.displayLabel ?? optionB?.label ?? b.agentName;
+      return labelA.localeCompare(labelB);
+    });
+  }, [agentInstances, agentOptions, agentOptionsByValue]);
+
+  // Add a new instance of an agent
+  const handleAddAgentInstance = useCallback(
+    (agentName: string) => {
+      onAgentChange([...selectedAgents, agentName]);
     },
     [onAgentChange, selectedAgents]
+  );
+
+  // Remove a specific instance
+  const handleRemoveAgentInstance = useCallback(
+    (instanceId: string) => {
+      const instance = agentInstances.find(inst => inst.id === instanceId);
+      if (!instance) return;
+
+      // Find the index of this specific instance
+      let instanceCount = 0;
+      const indexToRemove = selectedAgents.findIndex((agent) => {
+        if (agent === instance.agentName) {
+          instanceCount++;
+          return instanceCount === (instance.instanceNumber ?? 1);
+        }
+        return false;
+      });
+
+      if (indexToRemove !== -1) {
+        const newAgents = [...selectedAgents];
+        newAgents.splice(indexToRemove, 1);
+        onAgentChange(newAgents);
+      }
+    },
+    [agentInstances, onAgentChange, selectedAgents]
   );
 
   const agentSelectionFooter = selectedAgents.length ? (
@@ -256,25 +318,29 @@ export const DashboardInputControls = memo(function DashboardInputControls({
       <div className="relative">
         <div ref={pillboxScrollRef} className="max-h-32 overflow-y-auto py-2 px-2">
           <div className="flex flex-wrap gap-1">
-            {sortedSelectedAgents.map((agent) => {
-              const option = agentOptionsByValue.get(agent);
-              const label = option?.displayLabel ?? option?.label ?? agent;
+            {sortedAgentInstances.map((instance) => {
+              const option = agentOptionsByValue.get(instance.agentName);
+              const label = option?.displayLabel ?? option?.label ?? instance.agentName;
+              const displayLabel = instance.instanceNumber
+                ? `${label} (${instance.instanceNumber})`
+                : label;
+
               return (
                 <div
-                  key={agent}
-                  className="inline-flex items-center gap-1 rounded-full bg-neutral-200 dark:bg-neutral-800/80 pl-1.5 pr-2.5 py-1 text-[11px] text-neutral-700 dark:text-neutral-200 transition-colors"
+                  key={instance.id}
+                  className="inline-flex items-center gap-1 rounded-full bg-neutral-200 dark:bg-neutral-800/80 pl-1.5 pr-2.5 py-1 text-[11px] text-neutral-700 dark:text-neutral-200 transition-colors group/pill"
                 >
                   <button
                     type="button"
                     onClick={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
-                      handleAgentRemove(agent);
+                      handleRemoveAgentInstance(instance.id);
                     }}
                     className="inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors hover:bg-neutral-300 dark:hover:bg-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60"
                   >
                     <X className="h-3 w-3" aria-hidden="true" />
-                    <span className="sr-only">Remove {label}</span>
+                    <span className="sr-only">Remove {displayLabel}</span>
                   </button>
                   {option?.icon ? (
                     <span className="inline-flex h-3.5 w-3.5 items-center justify-center">
@@ -282,8 +348,21 @@ export const DashboardInputControls = memo(function DashboardInputControls({
                     </span>
                   ) : null}
                   <span className="max-w-[118px] truncate text-left select-none">
-                    {label}
+                    {displayLabel}
                   </span>
+                  {/* Add +1 button that appears on hover */}
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      handleAddAgentInstance(instance.agentName);
+                    }}
+                    className="ml-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-neutral-300 dark:bg-neutral-700 opacity-0 group-hover/pill:opacity-100 transition-all hover:bg-neutral-400 dark:hover:bg-neutral-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60"
+                    title={`Add another ${label}`}
+                  >
+                    <span className="text-[10px] font-semibold">+1</span>
+                  </button>
                 </div>
               );
             })}

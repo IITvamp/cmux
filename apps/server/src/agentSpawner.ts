@@ -949,29 +949,47 @@ export async function spawnAllAgents(
   },
   teamSlugOrId: string
 ): Promise<AgentSpawnResult[]> {
-  // If selectedAgents is provided, filter AGENT_CONFIGS to only include selected agents
-  const agentsToSpawn = options.selectedAgents
-    ? AGENT_CONFIGS.filter((agent) =>
-        options.selectedAgents!.includes(agent.name)
-      )
-    : AGENT_CONFIGS;
+  // If selectedAgents is provided, create agent instances (allowing duplicates)
+  // Each entry in selectedAgents spawns a separate instance, even if it's the same agent
+  const agentInstances: AgentConfig[] = [];
 
-  // Generate unique branch names for all agents at once to ensure no collisions
+  if (options.selectedAgents) {
+    // Create an instance for each selected agent (allowing duplicates)
+    for (const agentName of options.selectedAgents) {
+      const agentConfig = AGENT_CONFIGS.find((agent) => agent.name === agentName);
+      if (agentConfig) {
+        agentInstances.push(agentConfig);
+      }
+    }
+  } else {
+    // Default to all agents (once each)
+    agentInstances.push(...AGENT_CONFIGS);
+  }
+
+  // Generate unique branch names for all agent instances at once to ensure no collisions
   const branchNames = options.prTitle
-    ? generateUniqueBranchNamesFromTitle(options.prTitle!, agentsToSpawn.length)
+    ? generateUniqueBranchNamesFromTitle(options.prTitle!, agentInstances.length)
     : await generateUniqueBranchNames(
         options.taskDescription,
-        agentsToSpawn.length,
+        agentInstances.length,
         teamSlugOrId
       );
 
   serverLogger.info(
-    `[AgentSpawner] Generated ${branchNames.length} unique branch names for agents`
+    `[AgentSpawner] Generated ${branchNames.length} unique branch names for ${agentInstances.length} agent instances`
   );
 
-  // Spawn all agents in parallel with their pre-generated branch names
+  // Count instances for numbering in the sidebar
+  const instanceCounts = new Map<string, number>();
+  const agentInstancesWithNumbers = agentInstances.map((agent) => {
+    const count = (instanceCounts.get(agent.name) ?? 0) + 1;
+    instanceCounts.set(agent.name, count);
+    return { ...agent, instanceNumber: instanceCounts.get(agent.name)! > 1 ? count : undefined };
+  });
+
+  // Spawn all agent instances in parallel with their pre-generated branch names
   const results = await Promise.all(
-    agentsToSpawn.map((agent, index) =>
+    agentInstancesWithNumbers.map((agent, index) =>
       spawnAgent(
         agent,
         taskId,
