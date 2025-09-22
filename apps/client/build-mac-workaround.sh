@@ -1,6 +1,10 @@
 #!/bin/bash
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+cd "$SCRIPT_DIR"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
 # remove existing build artifacts; keep build/ to preserve entitlements between steps
 rm -rf dist-electron
 rm -rf out
@@ -10,9 +14,9 @@ rm -rf out
 # Build the Electron app first with environment variables loaded
 echo "Building Electron app..."
 # Load environment variables from .env.production if present; otherwise .env
-ENV_FILE="../../.env.production"
+ENV_FILE="$ROOT_DIR/.env.production"
 if [ ! -f "$ENV_FILE" ]; then
-  ENV_FILE="../../.env"
+  ENV_FILE="$ROOT_DIR/.env"
 fi
 echo "Using env file: $ENV_FILE"
 set -a  # Mark all new variables for export
@@ -20,16 +24,54 @@ set -a  # Mark all new variables for export
 source "$ENV_FILE"
 set +a  # Turn off auto-export
 
-# Build native Rust addon (required)
-echo "Building native Rust addon for packaging (release)..."
-(cd ../../apps/server/native/core && bunx --bun @napi-rs/cli build --platform --release)
+ensure_native_core_built() {
+  local native_dir="$ROOT_DIR/apps/server/native/core"
+  echo "Ensuring native Rust addon (.node) is built..."
+  if ls "$native_dir"/*.node >/dev/null 2>&1; then
+    echo "Existing native binary detected; rebuilding for consistency..."
+  else
+    echo "Native binary missing; building @cmux/native-core..."
+  fi
+
+  (
+    cd "$native_dir"
+    bunx --bun @napi-rs/cli build --platform --release
+  )
+
+  local host_arch
+  host_arch="$(uname -m)"
+  local expected_patterns=("cmux_native_core.darwin-*.node")
+
+  case "$host_arch" in
+    arm64)
+      expected_patterns=("cmux_native_core.darwin-arm64.node")
+      ;;
+    x86_64)
+      expected_patterns=("cmux_native_core.darwin-x64.node" "cmux_native_core.darwin-x86_64.node")
+      ;;
+  esac
+
+  local found=0
+  for pattern in "${expected_patterns[@]}"; do
+    if ls "$native_dir"/$pattern >/dev/null 2>&1; then
+      found=1
+      break
+    fi
+  done
+
+  if [ "$found" -eq 0 ]; then
+    echo "ERROR: Native addon build did not produce an expected .node binary." >&2
+    exit 1
+  fi
+}
+
+ensure_native_core_built
 
 # Generate icons using the shared script (unified with standard builds)
 echo "Generating icons via scripts/generate-icons.mjs..."
 node ./scripts/generate-icons.mjs
 
 # Ensure macOS entitlements file exists after the cleanup above
-ROOT_DIR="$(cd "$(dirname "$0")/../.." && pwd)"
 bash "$ROOT_DIR/scripts/prepare-macos-entitlements.sh" || true
 
 # Build electron bundles using Bun (avoids npm/npx ESM bin issues)
@@ -147,7 +189,7 @@ mv "$APP_DIR/Contents/MacOS/Electron" "$APP_DIR/Contents/MacOS/$APP_NAME"
 
 # Bundle native Rust addon (.node) into Resources so runtime loader can find it
 echo "Bundling native Rust addon (.node) into Resources..."
-NATIVE_SRC_DIR="$(pwd)/../../apps/server/native/core"
+NATIVE_SRC_DIR="$ROOT_DIR/apps/server/native/core"
 NATIVE_DST_DIR="$RESOURCES_DIR/native/core"
 mkdir -p "$NATIVE_DST_DIR"
 shopt -s nullglob
