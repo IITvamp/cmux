@@ -8,10 +8,6 @@ const TEAM_SLUG = process.env.DEBUG_TEAM_SLUG ?? "manaflow";
 const ENVIRONMENT_ID =
   process.env.DEBUG_ENVIRONMENT_ID ?? "mn71ep1paqg13wdxr1zfxv3pws7r3r4t";
 const TTL_SECONDS = Number(process.env.DEBUG_SANDBOX_TTL_SECONDS ?? "300");
-const BRANCH_NAME =
-  process.env.DEBUG_BRANCH_NAME ?? `cmux/debug-${Date.now().toString(36)}`;
-const COMMIT_MESSAGE =
-  process.env.DEBUG_COMMIT_MESSAGE ?? "cmux debug auto-commit";
 
 async function main() {
   const tokens = await __TEST_INTERNAL_ONLY_GET_STACK_TOKENS();
@@ -27,12 +23,19 @@ async function main() {
   });
 
   if (startRes.response.status !== 200 || !startRes.data) {
-    console.error("Failed to start sandbox", startRes.response.status, startRes.error);
+    console.error(
+      "Failed to start sandbox",
+      startRes.response.status,
+      startRes.error
+    );
     process.exit(1);
   }
 
   const instanceId = startRes.data.instanceId;
-  console.log("Sandbox started", { instanceId, workerUrl: startRes.data.workerUrl });
+  console.log("Sandbox started", {
+    instanceId,
+    workerUrl: startRes.data.workerUrl,
+  });
 
   const instance = await __TEST_INTERNAL_ONLY_MORPH_CLIENT.instances.get({
     instanceId,
@@ -56,8 +59,8 @@ async function main() {
       "cd /root/workspace && pwd",
       "cd /root/workspace && ls -a",
       "cd /root/workspace && find . -maxdepth 3 -name .git -print",
-      "cd /root/workspace && for repo in workspace/*; do if [ -f \"$repo/.git\" ]; then echo \"=== $repo/.git ===\"; cat \"$repo/.git\"; fi; done",
-      "cd /root/workspace && for repo in workspace/*; do if [ -d \"$repo/.git\" ]; then echo \"=== $repo ===\"; ls -a \"$repo/.git\"; fi; done",
+      'cd /root/workspace && for repo in workspace/*; do if [ -f "$repo/.git" ]; then echo "=== $repo/.git ==="; cat "$repo/.git"; fi; done',
+      'cd /root/workspace && for repo in workspace/*; do if [ -d "$repo/.git" ]; then echo "=== $repo ==="; ls -a "$repo/.git"; fi; done',
       "cd /root/workspace && git -C workspace/cmux rev-parse --is-inside-work-tree",
       "cd /root/workspace && git -C workspace/cmux-env rev-parse --is-inside-work-tree",
       "env | grep ^GIT || true",
@@ -74,13 +77,16 @@ async function main() {
       await run(["bash", "-lc", command]);
     }
 
-    const autoCommitScript = buildAutoCommitPushCommand({
-      branchName: BRANCH_NAME,
-      commitMessage: COMMIT_MESSAGE,
-    });
+    const autoCommitScript = buildAutoCommitPushCommand();
 
     // Write the bun script to a temp file and execute it
-    await run(["bash", "-c", "cd /root/workspace && cat > /tmp/auto-commit.ts << 'EOF'\n" + autoCommitScript + "\nEOF"]);
+    await run([
+      "bash",
+      "-c",
+      "cd /root/workspace && cat > /tmp/auto-commit.ts << 'EOF'\n" +
+        autoCommitScript +
+        "\nEOF",
+    ]);
     await run(["bash", "-lc", "cd /root/workspace && bun /tmp/auto-commit.ts"]);
   } finally {
     try {
