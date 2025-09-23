@@ -13,6 +13,7 @@ import type * as backfill from "../backfill.js";
 import type * as comments from "../comments.js";
 import type * as containerSettings from "../containerSettings.js";
 import type * as crown_actions from "../crown/actions.js";
+import type * as crown_mutations from "../crown/mutations.js";
 import type * as crown from "../crown.js";
 import type * as crown_http from "../crown_http.js";
 import type * as environments from "../environments.js";
@@ -55,6 +56,7 @@ declare const fullApi: ApiFromModules<{
   comments: typeof comments;
   containerSettings: typeof containerSettings;
   "crown/actions": typeof crown_actions;
+  "crown/mutations": typeof crown_mutations;
   crown: typeof crown;
   crown_http: typeof crown_http;
   environments: typeof environments;
