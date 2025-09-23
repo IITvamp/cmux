@@ -2,7 +2,6 @@ import { env } from "@/client-env";
 import { AgentLogo } from "@/components/icons/agent-logos";
 import { GitHubIcon } from "@/components/icons/github";
 import { ModeToggleTooltip } from "@/components/ui/mode-toggle-tooltip";
-import { AgentCommandItem } from "./AgentCommandItem";
 import SearchableSelect, {
   type SearchableSelectHandle,
   type SelectOption,
@@ -21,7 +20,6 @@ import { Link, useRouter } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useMutation } from "convex/react";
 import { GitBranch, Image, Mic, Server, X } from "lucide-react";
-import { MAX_AGENT_COMMAND_COUNT } from "./AgentCommandItem";
 import {
   memo,
   useCallback,
@@ -30,6 +28,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { AgentCommandItem, MAX_AGENT_COMMAND_COUNT } from "./AgentCommandItem";
 
 interface DashboardInputControlsProps {
   projectOptions: SelectOption[];
@@ -49,6 +48,8 @@ interface DashboardInputControlsProps {
   branchDisabled?: boolean;
   providerStatus?: ProviderStatusResponse | null;
 }
+
+type AgentOption = SelectOptionObject & { displayLabel: string };
 
 export const DashboardInputControls = memo(function DashboardInputControls({
   projectOptions,
@@ -84,7 +85,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
       params: { teamSlugOrId },
     });
   }, [router, teamSlugOrId]);
-  const agentOptions = useMemo(() => {
+  const agentOptions = useMemo<AgentOption[]>(() => {
     const vendorKey = (name: string): string => {
       const lower = name.toLowerCase();
       if (lower.startsWith("codex/")) return "openai";
@@ -162,12 +163,12 @@ export const DashboardInputControls = memo(function DashboardInputControls({
               onClick: handleOpenSettings,
             }
           : undefined,
-      } satisfies SelectOptionObject;
+      } satisfies AgentOption;
     });
   }, [handleOpenSettings, providerStatusMap]);
 
   const agentOptionsByValue = useMemo(() => {
-    const map = new Map<string, SelectOptionObject & { displayLabel?: string }>();
+    const map = new Map<string, AgentOption>();
     for (const option of agentOptions) {
       map.set(option.value, option);
     }
@@ -208,7 +209,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
     return map;
   }, [agentInstances]);
 
-  const sortedAgentInstances = useMemo(() => {
+  const sortedAgentSelections = useMemo(() => {
     const vendorOrder = new Map<string, number>();
     agentOptions.forEach((option, index) => {
       const vendor = option.iconKey ?? "other";
@@ -216,20 +217,30 @@ export const DashboardInputControls = memo(function DashboardInputControls({
     });
 
     return agentInstances
-      .map((instance) => instance)
+      .map((instance) => {
+        const option = agentOptionsByValue.get(instance.agent);
+        if (!option) return null;
+        return { instance, option };
+      })
+      .filter(
+        (
+          entry
+        ): entry is {
+          instance: AgentSelectionInstance;
+          option: AgentOption;
+        } => entry !== null
+      )
       .sort((a, b) => {
-        const optionA = agentOptionsByValue.get(a.agent);
-        const optionB = agentOptionsByValue.get(b.agent);
-        const vendorA = optionA?.iconKey ?? "other";
-        const vendorB = optionB?.iconKey ?? "other";
+        const vendorA = a.option.iconKey ?? "other";
+        const vendorB = b.option.iconKey ?? "other";
         const rankA = vendorOrder.get(vendorA) ?? Number.MAX_SAFE_INTEGER;
         const rankB = vendorOrder.get(vendorB) ?? Number.MAX_SAFE_INTEGER;
         if (rankA !== rankB) return rankA - rankB;
-        const labelA = optionA?.displayLabel ?? optionA?.label ?? a.agent;
-        const labelB = optionB?.displayLabel ?? optionB?.label ?? b.agent;
-        const labelComparison = labelA.localeCompare(labelB);
+        const labelComparison = a.option.displayLabel.localeCompare(
+          b.option.displayLabel
+        );
         if (labelComparison !== 0) return labelComparison;
-        return a.id.localeCompare(b.id);
+        return a.instance.id.localeCompare(b.instance.id);
       });
   }, [agentInstances, agentOptions, agentOptionsByValue]);
 
@@ -307,9 +318,8 @@ export const DashboardInputControls = memo(function DashboardInputControls({
       <div className="relative">
         <div ref={pillboxScrollRef} className="max-h-32 overflow-y-auto py-2 px-2">
           <div className="flex flex-wrap gap-1">
-            {sortedAgentInstances.map((instance) => {
-              const option = agentOptionsByValue.get(instance.agent);
-              const label = option?.displayLabel ?? option?.label ?? instance.agent;
+            {sortedAgentSelections.map(({ instance, option }) => {
+              const label = option.displayLabel;
               return (
                 <div
                   key={instance.id}
@@ -337,7 +347,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
                     <X className="h-3 w-3" aria-hidden="true" />
                     <span className="sr-only">Remove {label}</span>
                   </button>
-                  {option?.icon ? (
+                  {option.icon ? (
                     <span className="inline-flex h-3.5 w-3.5 items-center justify-center">
                       {option.icon}
                     </span>
