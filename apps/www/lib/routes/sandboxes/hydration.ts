@@ -1,5 +1,8 @@
-import { maskSensitive, singleQuote } from "./shell";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { MorphInstance } from "./git";
+import { maskSensitive, singleQuote } from "./shell";
 
 export interface HydrateRepoConfig {
   owner: string;
@@ -14,82 +17,10 @@ export interface HydrateRepoConfig {
 
 const MORPH_WORKSPACE_PATH = "/root/workspace";
 
-export const createHydrateScript = ({
-  workspacePath,
-  repo,
-}: {
-  workspacePath: string;
-  repo?: HydrateRepoConfig;
-}): string => {
-  const lines: string[] = [
-    "set -euo pipefail",
-    "",
-    `WORKSPACE=${singleQuote(workspacePath)}`,
-    "",
-    'mkdir -p "$WORKSPACE"',
-    "",
-  ];
-
-  if (repo) {
-    lines.push(
-      `OWNER=${singleQuote(repo.owner)}`,
-      `REPO=${singleQuote(repo.name)}`,
-      `REPO_FULL=${singleQuote(repo.repoFull)}`,
-      `CLONE_URL=${singleQuote(repo.cloneUrl)}`,
-      `MASKED_CLONE_URL=${singleQuote(repo.maskedCloneUrl)}`,
-      `BASE_BRANCH=${singleQuote(repo.baseBranch)}`,
-      `NEW_BRANCH=${singleQuote(repo.newBranch)}`,
-      `DEPTH=${repo.depth}`,
-      "",
-      'REMOTE=""',
-      'if [ -d "$WORKSPACE/.git" ]; then',
-      '  REMOTE=$(cd "$WORKSPACE" && git remote get-url origin || echo "")',
-      "fi",
-      "",
-      'if [ -n "$REMOTE" ] && ! printf \'%s\' "$REMOTE" | grep -q "$OWNER/$REPO"; then',
-      '  echo "[sandboxes.start] remote mismatch; clearing workspace"',
-      '  rm -rf "$WORKSPACE"/* "$WORKSPACE"/.[!.]* "$WORKSPACE"/..?* 2>/dev/null || true',
-      "fi",
-      "",
-      'if [ ! -d "$WORKSPACE/.git" ]; then',
-      '  echo "[sandboxes.start] Cloning $MASKED_CLONE_URL depth=$DEPTH -> $WORKSPACE"',
-      '  git clone --depth $DEPTH "$CLONE_URL" "$WORKSPACE"',
-      "else",
-      '  echo "[sandboxes.start] Fetching updates for $REPO_FULL"',
-      '  (cd "$WORKSPACE" && git fetch --all --prune || true)',
-      "fi",
-      "",
-      "(",
-      '  cd "$WORKSPACE"',
-      '  (git checkout "$BASE_BRANCH" || git checkout -b "$BASE_BRANCH" "origin/$BASE_BRANCH") && git pull --ff-only || true',
-      '  if [ -n "$NEW_BRANCH" ]; then',
-      '    git switch -C "$NEW_BRANCH" || true',
-      "  fi",
-      "  ls -la | head -50",
-      ")",
-      ""
-    );
-  }
-
-  lines.push(
-    'if [ -d "$WORKSPACE" ]; then',
-    '  for dir in "$WORKSPACE"/*; do',
-    '    if [ -d "$dir" ]; then',
-    '      if [ -d "$dir/.git" ]; then',
-    '        echo "[sandboxes.start] git pull in $dir"',
-    '        (cd "$dir" && git pull --ff-only || true) &',
-    "      else",
-    '        echo "[sandboxes.start] skipping $dir (no git repo)"',
-    "      fi",
-    "    fi",
-    "  done",
-    "  wait || true",
-    "else",
-    '  echo "[sandboxes.start] $WORKSPACE missing"',
-    "fi"
-  );
-
-  return lines.join("\n");
+const getHydrateScript = (): string => {
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  const scriptPath = join(__dirname, "hydrateRepoScript.ts");
+  return readFileSync(scriptPath, "utf-8");
 };
 
 export const hydrateWorkspace = async ({
@@ -99,23 +30,66 @@ export const hydrateWorkspace = async ({
   instance: MorphInstance;
   repo?: HydrateRepoConfig;
 }): Promise<void> => {
-  const script = createHydrateScript({
-    workspacePath: MORPH_WORKSPACE_PATH,
-    repo,
-  });
+  const hydrateScript = getHydrateScript();
 
-  const hydrateRes = await instance.exec(`bash -lc ${singleQuote(script)}`);
-  const maskedStdout = maskSensitive(hydrateRes.stdout || "").slice(0, 500);
-  if (maskedStdout) {
-    console.log(`[sandboxes.start] hydration stdout:\n${maskedStdout}`);
+  // Create a temporary script file path
+  const scriptPath = `/tmp/cmux-hydrate-${Date.now()}.ts`;
+
+  // Build environment variables
+  const envVars: Record<string, string> = {
+    CMUX_WORKSPACE_PATH: MORPH_WORKSPACE_PATH,
+    CMUX_DEPTH: String(repo?.depth || 1),
+  };
+
+  if (repo) {
+    envVars.CMUX_OWNER = repo.owner;
+    envVars.CMUX_REPO = repo.name;
+    envVars.CMUX_REPO_FULL = repo.repoFull;
+    envVars.CMUX_CLONE_URL = repo.cloneUrl;
+    envVars.CMUX_MASKED_CLONE_URL = repo.maskedCloneUrl;
+    envVars.CMUX_BASE_BRANCH = repo.baseBranch;
+    envVars.CMUX_NEW_BRANCH = repo.newBranch;
   }
-  console.log(
-    `[sandboxes.start] hydration exit=${hydrateRes.exit_code} stderr=${maskSensitive(
-      hydrateRes.stderr || ""
-    ).slice(0, 200)}`
-  );
+
+  // Build the command to write and execute the script
+  const envString = Object.entries(envVars)
+    .map(([key, value]) => `export ${key}=${singleQuote(value)}`)
+    .join("\n");
+
+  const command = `
+set -e
+${envString}
+cat > ${scriptPath} << 'CMUX_HYDRATE_EOF'
+${hydrateScript}
+CMUX_HYDRATE_EOF
+bun run ${scriptPath}
+EXIT_CODE=$?
+rm -f ${scriptPath}
+exit $EXIT_CODE
+`;
+
+  console.log("[sandboxes.start] Starting hydration with Bun script");
+  const hydrateRes = await instance.exec(`bash -c ${singleQuote(command)}`);
+
+  // Log the full output for debugging
+  const maskedStdout = maskSensitive(hydrateRes.stdout || "");
+  const maskedStderr = maskSensitive(hydrateRes.stderr || "");
+
+  if (maskedStdout) {
+    console.log(
+      `[sandboxes.start] hydration stdout:\n${maskedStdout.slice(0, 2000)}`
+    );
+  }
+
+  if (maskedStderr) {
+    console.log(
+      `[sandboxes.start] hydration stderr:\n${maskedStderr.slice(0, 1000)}`
+    );
+  }
+
+  console.log(`[sandboxes.start] hydration exit code: ${hydrateRes.exit_code}`);
 
   if (hydrateRes.exit_code !== 0) {
-    throw new Error("Hydration failed");
+    throw new Error(`Hydration failed with exit code ${hydrateRes.exit_code}`);
   }
 };
