@@ -44,3 +44,9 @@ cmux upgrade
 ```bash
 cmux uninstall
 ```
+
+---
+
+Code flows like a stream,  
+Agents dance in parallel,  
+Wisdom in each line.

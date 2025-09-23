@@ -51,3 +51,9 @@ cmux is part of the cmux project. See the main repository for development instru
 ## License
 
 MIT
+
+---
+
+Code flows like a stream,  
+Agents dance in parallel,  
+Wisdom in each line.
