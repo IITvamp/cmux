@@ -2,7 +2,9 @@ import { env } from "@/client-env";
 import { AgentLogo } from "@/components/icons/agent-logos";
 import { GitHubIcon } from "@/components/icons/github";
 import { ModeToggleTooltip } from "@/components/ui/mode-toggle-tooltip";
+import { AgentCommandItem } from "./AgentCommandItem";
 import SearchableSelect, {
+  type SearchableSelectHandle,
   type SelectOption,
   type SelectOptionObject,
 } from "@/components/ui/searchable-select";
@@ -18,7 +20,7 @@ import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
 import { Link, useRouter } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useMutation } from "convex/react";
-import { GitBranch, Image, Mic, Server, X, Plus } from "lucide-react";
+import { GitBranch, Image, Mic, Server, X } from "lucide-react";
 import {
   memo,
   useCallback,
@@ -66,6 +68,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
   providerStatus = null,
 }: DashboardInputControlsProps) {
   const router = useRouter();
+  const agentSelectRef = useRef<SearchableSelectHandle | null>(null);
   const mintState = useMutation(api.github_app.mintInstallState);
   const providerStatusMap = useMemo(() => {
     const map = new Map<string, ProviderStatus>();
@@ -169,13 +172,6 @@ export const DashboardInputControls = memo(function DashboardInputControls({
     }
     return map;
   }, [agentOptions]);
-  const agentCountByValue = useMemo(() => {
-    const counts = new Map<string, number>();
-    selectedAgents.forEach((agent) => {
-      counts.set(agent, (counts.get(agent) ?? 0) + 1);
-    });
-    return counts;
-  }, [selectedAgents]);
   const sortedSelectedAgents = useMemo(() => {
     const vendorOrder = new Map<string, number>();
     agentOptions.forEach((option, index) => {
@@ -262,16 +258,9 @@ export const DashboardInputControls = memo(function DashboardInputControls({
     [onAgentChange, selectedAgents]
   );
 
-  const handleAgentAddOne = useCallback(
-    (agent: string) => {
-      const currentCount = agentCountByValue.get(agent) ?? 0;
-      if (currentCount >= 3) {
-        return;
-      }
-      onAgentChange([...selectedAgents, agent]);
-    },
-    [agentCountByValue, onAgentChange, selectedAgents]
-  );
+  const handleFocusAgentOption = useCallback((agent: string) => {
+    agentSelectRef.current?.open({ focusValue: agent });
+  }, []);
 
   const agentSelectionFooter = selectedAgents.length ? (
     <div className="bg-neutral-50 dark:bg-neutral-900/70">
@@ -281,12 +270,20 @@ export const DashboardInputControls = memo(function DashboardInputControls({
             {sortedSelectedAgents.map((agent, idx) => {
               const option = agentOptionsByValue.get(agent);
               const label = option?.displayLabel ?? option?.label ?? agent;
-              const currentCount = agentCountByValue.get(agent) ?? 0;
-              const canAddMore = currentCount < 3;
               return (
                 <div
                   key={`${agent}-${idx}`}
-                  className="inline-flex items-center gap-1 rounded-full bg-neutral-200 dark:bg-neutral-800/80 pl-1.5 pr-2 py-1 text-[11px] text-neutral-700 dark:text-neutral-200 transition-colors"
+                  className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-neutral-200 dark:bg-neutral-800/80 pl-1.5 pr-2 py-1 text-[11px] text-neutral-700 dark:text-neutral-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => handleFocusAgentOption(agent)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      handleFocusAgentOption(agent);
+                    }
+                  }}
+                  aria-label={`Focus selection for ${label}`}
                 >
                   <button
                     type="button"
@@ -308,20 +305,6 @@ export const DashboardInputControls = memo(function DashboardInputControls({
                   <span className="max-w-[118px] truncate text-left select-none">
                     {label}
                   </span>
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      handleAgentAddOne(agent);
-                    }}
-                    className="ml-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors hover:bg-neutral-300 dark:hover:bg-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:dark:hover:bg-transparent"
-                    title={canAddMore ? "Add one more" : "Limit reached"}
-                    disabled={!canAddMore}
-                  >
-                    <Plus className="h-3 w-3" aria-hidden="true" />
-                    <span className="sr-only">Add one more {label}</span>
-                  </button>
                 </div>
               );
             })}
@@ -496,6 +479,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
         )}
 
         <SearchableSelect
+          ref={agentSelectRef}
           options={agentOptions}
           value={selectedAgents}
           onChange={onAgentChange}
@@ -506,6 +490,8 @@ export const DashboardInputControls = memo(function DashboardInputControls({
           showSearch
           countLabel="agents"
           footer={agentSelectionFooter}
+          itemVariant="compact"
+          optionItemComponent={AgentCommandItem}
         />
       </div>
 
