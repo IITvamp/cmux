@@ -1,16 +1,14 @@
 import { env } from "@/lib/utils/www-env";
 import { StackAdminApp } from "@stackframe/js";
 
-type StackAdminAppType = import("@stackframe/js").StackAdminApp;
-
 export type Tokens = { accessToken: string; refreshToken?: string };
 
 // Default test user for local/CI integration tests
 const DEFAULT_TEST_USER_ID = "487b5ddc-0da0-4f12-8834-f452863a83f5";
 
-let adminApp: StackAdminAppType | null = null;
+let adminApp: StackAdminApp | null = null;
 
-function getAdmin(): StackAdminAppType {
+function getAdmin(): StackAdminApp {
   if (!adminApp) {
     adminApp = new StackAdminApp({
       projectId: env.NEXT_PUBLIC_STACK_PROJECT_ID,
@@ -23,7 +21,9 @@ function getAdmin(): StackAdminAppType {
   return adminApp;
 }
 
-export async function __TEST_INTERNAL_ONLY_GET_STACK_TOKENS(userId: string = DEFAULT_TEST_USER_ID): Promise<Tokens> {
+export async function __TEST_INTERNAL_ONLY_GET_STACK_TOKENS(
+  userId: string = DEFAULT_TEST_USER_ID
+): Promise<Tokens> {
   const admin = getAdmin();
   const user = await admin.getUser(userId);
   if (!user) throw new Error("Test user not found");
