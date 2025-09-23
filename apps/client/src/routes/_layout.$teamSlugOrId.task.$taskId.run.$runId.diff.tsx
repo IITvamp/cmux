@@ -173,7 +173,6 @@ function RunDiffPage() {
   const selectedRun = useMemo(() => {
     return taskRuns?.find((run) => run._id === runId);
   }, [runId, taskRuns]);
-
   const environmentRepos = useMemo(() => {
     const repos = selectedRun?.environment?.selectedRepos ?? [];
     const trimmed = repos

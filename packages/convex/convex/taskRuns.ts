@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { SignJWT } from "jose";
 import { env } from "../_shared/convex-env";
 import { resolveTeamIdLoose } from "../_shared/team";
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authMutation, authQuery } from "./users/utils";
 
@@ -58,25 +58,32 @@ export const create = authMutation({
 export const getByTask = authQuery({
   args: { teamSlugOrId: v.string(), taskId: v.id("tasks") },
   handler: async (ctx, args) => {
+    console.log("skibidi");
     const userId = ctx.identity.subject;
     const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
     const runs = await ctx.db
       .query("taskRuns")
-      .withIndex("by_team_user", (q) =>
-        q.eq("teamId", teamId).eq("userId", userId)
+      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+      .filter(
+        (q) =>
+          q.eq(q.field("teamId"), teamId) && q.eq(q.field("userId"), userId)
       )
-      .filter((q) => q.eq(q.field("taskId"), args.taskId))
       .collect();
 
-    type EnvironmentId = NonNullable<Doc<"taskRuns">["environmentId"]>;
-    type EnvironmentSummary = Pick<Doc<"environments">, "_id" | "name" | "selectedRepos">;
+    type EnvironmentSummary = Pick<
+      Doc<"environments">,
+      "_id" | "name" | "selectedRepos"
+    >;
 
-    const environmentSummaries = new Map<EnvironmentId, EnvironmentSummary>();
+    const environmentSummaries = new Map<
+      Id<"environments">,
+      EnvironmentSummary
+    >();
     const environmentIds = Array.from(
       new Set(
         runs
           .map((run) => run.environmentId)
-          .filter((id): id is EnvironmentId => id !== undefined)
+          .filter((id): id is Id<"environments"> => id !== undefined)
       )
     );
 
@@ -112,7 +119,7 @@ export const getByTask = authQuery({
         log: "",
         children: [],
         environment: run.environmentId
-          ? environmentSummaries.get(run.environmentId) ?? null
+          ? (environmentSummaries.get(run.environmentId) ?? null)
           : null,
       });
     });
