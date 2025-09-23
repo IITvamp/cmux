@@ -4,6 +4,7 @@ import {
   CommandGroup,
   CommandInput,
   CommandItem,
+  CommandItemCompact,
   CommandList,
 } from "@/components/ui/command";
 import {
@@ -17,13 +18,22 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { clsx } from "clsx";
 import {
   AlertTriangle,
+  Check,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   Loader2,
   OctagonAlert,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentType,
+  type ReactNode,
+} from "react";
 
 interface OptionWarning {
   tooltip: ReactNode;
@@ -46,6 +56,11 @@ export interface SelectOptionObject {
 
 export type SelectOption = string | SelectOptionObject;
 
+export type SearchableSelectHandle = {
+  open: (options?: { focusValue?: string }) => void;
+  close: () => void;
+};
+
 export interface SearchableSelectProps {
   options: SelectOption[];
   value: string[];
@@ -63,8 +78,8 @@ export interface SearchableSelectProps {
   leftIcon?: ReactNode;
   // Optional footer rendered below the scroll container
   footer?: ReactNode;
-  // Optional maximum per-option count when duplicates are allowed
-  maxCountPerOption?: number;
+  itemVariant?: "default" | "compact";
+  optionItemComponent?: ComponentType<OptionItemRenderProps>;
 }
 
 interface WarningIndicatorProps {
@@ -73,7 +88,7 @@ interface WarningIndicatorProps {
   className?: string;
 }
 
-function WarningIndicator({
+export function WarningIndicator({
   warning,
   onActivate,
   className,
@@ -116,39 +131,40 @@ function normalizeOptions(options: SelectOption[]): SelectOptionObject[] {
   );
 }
 
-interface OptionItemProps {
+function HeadingRow({ option }: { option: SelectOptionObject }) {
+  return (
+    <div className="flex items-center gap-2 min-w-0 flex-1 pl-1 pr-3 py-1 h-[28px] text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">
+      {option.icon ? (
+        <span className="shrink-0 inline-flex items-center justify-center">
+          {option.icon}
+        </span>
+      ) : null}
+      <span className="truncate select-none">{option.label}</span>
+    </div>
+  );
+}
+
+export interface OptionItemRenderProps {
   opt: SelectOptionObject;
   isSelected: boolean;
   count: number;
-  maxCount: number;
   onSelectValue: (val: string) => void;
   onWarningAction?: () => void;
   onIncrement?: () => void;
   onDecrement?: () => void;
+  itemComponent: typeof CommandItem;
 }
 
-function OptionItem({
+function DefaultOptionItem({
   opt,
-  isSelected: _isSelected,
-  count,
-  maxCount,
+  isSelected,
+  count: _count,
   onSelectValue,
   onWarningAction,
-  onIncrement,
-  onDecrement,
-}: OptionItemProps) {
-  if (opt.heading) {
-    return (
-      <div className="flex items-center gap-2 min-w-0 flex-1 pl-1 pr-3 py-1 h-[28px] text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">
-        {opt.icon ? (
-          <span className="shrink-0 inline-flex items-center justify-center">
-            {opt.icon}
-          </span>
-        ) : null}
-        <span className="truncate select-none">{opt.label}</span>
-      </div>
-    );
-  }
+  onIncrement: _onIncrement,
+  onDecrement: _onDecrement,
+  itemComponent: ItemComponent,
+}: OptionItemRenderProps) {
   const handleSelect = () => {
     if (opt.isUnavailable) {
       return;
@@ -156,13 +172,14 @@ function OptionItem({
     onSelectValue(opt.value);
   };
   return (
-    <CommandItem
+    <ItemComponent
       value={`${opt.label} ${opt.value}`}
-      className={`flex items-center justify-between gap-2 text-[13.5px] py-1.5 h-[32px] ${
+      className={clsx(
+        "flex items-center justify-between gap-2 text-[13.5px] py-1.5 h-[32px]",
         opt.isUnavailable
           ? "cursor-not-allowed text-neutral-500 dark:text-neutral-500"
-          : ""
-      }`}
+          : null
+      )}
       onSelect={handleSelect}
     >
       <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -181,75 +198,49 @@ function OptionItem({
           <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
         ) : null}
       </div>
-      <div className="flex items-center">
-        {count > 0 ? (
-          <div className="flex items-center">
-            <button
-              type="button"
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                onDecrement?.();
-              }}
-              disabled={Boolean(opt.isUnavailable || count <= 0)}
-              className="inline-flex h-5 w-5 items-center justify-center rounded-sm text-neutral-600 transition-colors hover:text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-neutral-300 dark:hover:text-neutral-50 dark:focus-visible:ring-neutral-500/40"
-            >
-              <span className="sr-only">Decrease {opt.label}</span>
-              <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
-            </button>
-            <span className="inline-flex h-5 min-w-[1rem] items-center justify-center text-sm font-semibold text-neutral-700 dark:text-neutral-200">
-              {count}
-            </span>
-            <button
-              type="button"
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                if (Number.isFinite(maxCount) && count >= maxCount) return;
-                onIncrement?.();
-              }}
-              disabled={Boolean(
-                opt.isUnavailable ||
-                  (Number.isFinite(maxCount) && count >= maxCount)
-              )}
-              className="inline-flex h-5 w-5 items-center justify-center rounded-sm text-neutral-600 transition-colors hover:text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-neutral-300 dark:hover:text-neutral-50 dark:focus-visible:ring-neutral-500/40"
-            >
-              <span className="sr-only">Increase {opt.label}</span>
-              <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
-            </button>
-          </div>
-        ) : null}
-      </div>
-    </CommandItem>
+      {isSelected ? (
+        <Check className="h-4 w-4 text-neutral-900 dark:text-neutral-100" />
+      ) : null}
+    </ItemComponent>
   );
 }
 
-export function SearchableSelect({
-  options,
-  value,
-  onChange,
-  placeholder = "Select",
-  singleSelect = false,
-  className,
-  loading = false,
-  maxTagCount: _maxTagCount,
-  showSearch = true,
-  disabled = false,
-  countLabel = "selected",
-  leftIcon,
-  footer,
-  maxCountPerOption,
-}: SearchableSelectProps) {
+const SearchableSelect = forwardRef<SearchableSelectHandle, SearchableSelectProps>(
+  function SearchableSelect(
+    {
+      options,
+      value,
+      onChange,
+      placeholder = "Select",
+      singleSelect = false,
+      className,
+      loading = false,
+      maxTagCount: _maxTagCount,
+      showSearch = true,
+      disabled = false,
+      countLabel = "selected",
+      leftIcon,
+      footer,
+      itemVariant = "default",
+      optionItemComponent,
+    },
+    ref
+  ) {
   const normOptions = useMemo(() => normalizeOptions(options), [options]);
   const valueToOption = useMemo(
     () => new Map(normOptions.map((o) => [o.value, o])),
     [normOptions]
   );
+  const ItemComponent =
+    itemVariant === "compact" ? CommandItemCompact : CommandItem;
+  const OptionComponent: ComponentType<OptionItemRenderProps> =
+    optionItemComponent ?? DefaultOptionItem;
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const [search, setSearch] = useState("");
   const [_recalcTick, setRecalcTick] = useState(0);
   // Popover width is fixed; no need to track trigger width
+  const pendingFocusRef = useRef<string | null>(null);
 
   const countByValue = useMemo(() => {
     const map = new Map<string, number>();
@@ -420,13 +411,64 @@ export function SearchableSelect({
     }
   }, [open, rowVirtualizer]);
 
-  const maxPerOption = maxCountPerOption ?? Infinity;
+  const scrollToOption = useCallback(
+    (val: string) => {
+      const index = filteredOptions.findIndex((opt) => opt.value === val);
+      if (index === -1) return;
+      requestAnimationFrame(() => {
+        try {
+          rowVirtualizer.scrollToIndex(index, {
+            align: "center",
+            behavior: "auto",
+          });
+        } catch {
+          /* noop */
+        }
+      });
+    },
+    [filteredOptions, rowVirtualizer]
+  );
+
+  useEffect(() => {
+    if (!open) return;
+    const focusValue = pendingFocusRef.current;
+    if (!focusValue) return;
+    scrollToOption(focusValue);
+    pendingFocusRef.current = null;
+  }, [open, scrollToOption]);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      open: ({ focusValue } = {}) => {
+        if (focusValue) {
+          pendingFocusRef.current = focusValue;
+        } else {
+          pendingFocusRef.current = null;
+        }
+        setSearch("");
+        setOpen(true);
+        requestAnimationFrame(() => {
+          if (focusValue && open) {
+            scrollToOption(focusValue);
+            pendingFocusRef.current = null;
+          }
+          triggerRef.current?.focus({ preventScroll: true });
+        });
+      },
+      close: () => {
+        pendingFocusRef.current = null;
+        setOpen(false);
+      },
+    }),
+    [open, scrollToOption]
+  );
 
   const updateValueCount = (val: string, nextCount: number) => {
     const normalized = Number.isFinite(nextCount)
       ? Math.round(nextCount)
       : 0;
-    const clamped = Math.max(0, Math.min(normalized, maxPerOption));
+    const clamped = Math.max(0, Math.min(normalized, 3));
     const current = countByValue.get(val) ?? 0;
     if (clamped === current) return;
     const withoutVal = value.filter((existing) => existing !== val);
@@ -448,9 +490,6 @@ export function SearchableSelect({
     }
     const currentCount = countByValue.get(val) ?? 0;
     if (currentCount === 0) {
-      if (maxPerOption <= 0) {
-        return;
-      }
       updateValueCount(val, 1);
     } else {
       updateValueCount(val, 0);
@@ -522,33 +561,42 @@ export function SearchableSelect({
                     {(() => {
                       const vItems = rowVirtualizer.getVirtualItems();
                       if (vItems.length === 0 && filteredOptions.length > 0) {
-                    const fallback = filteredOptions.slice(0, 12);
-                    return (
-                      <div>
-                        {fallback.map((opt) => {
-                          const count = countByValue.get(opt.value) ?? 0;
-                          const isSelected = count > 0;
-                          return (
-                            <OptionItem
-                              key={`fallback-${opt.value}`}
-                              opt={opt}
-                              isSelected={isSelected}
-                              count={count}
-                              maxCount={maxPerOption}
-                              onSelectValue={onSelectValue}
-                              onWarningAction={() => setOpen(false)}
-                              onIncrement={() =>
-                                updateValueCount(opt.value, count + 1)
+                        const fallback = filteredOptions.slice(0, 12);
+                        return (
+                          <div>
+                            {fallback.map((opt) => {
+                              const count = countByValue.get(opt.value) ?? 0;
+                              const isSelected = count > 0;
+                              if (opt.heading) {
+                                return (
+                                  <div
+                                    key={`fallback-${opt.value ?? opt.label}`}
+                                  >
+                                    <HeadingRow option={opt} />
+                                  </div>
+                                );
                               }
-                              onDecrement={() =>
-                                updateValueCount(opt.value, count - 1)
-                              }
-                            />
-                          );
-                        })}
-                      </div>
-                    );
-                  }
+                              return (
+                                <OptionComponent
+                                  key={`fallback-${opt.value ?? opt.label}`}
+                                  opt={opt}
+                                  isSelected={isSelected}
+                                  count={count}
+                                  onSelectValue={onSelectValue}
+                                  onWarningAction={() => setOpen(false)}
+                                  onIncrement={() =>
+                                    updateValueCount(opt.value, count + 1)
+                                  }
+                                  onDecrement={() =>
+                                    updateValueCount(opt.value, count - 1)
+                                  }
+                                  itemComponent={ItemComponent}
+                                />
+                              );
+                            })}
+                          </div>
+                        );
+                      }
                       return (
                         <div
                           style={{
@@ -562,7 +610,7 @@ export function SearchableSelect({
                             const isSelected = count > 0;
                             return (
                               <div
-                                key={opt.value}
+                                key={opt.value ?? `${vr.index}`}
                                 data-index={vr.index}
                                 ref={rowVirtualizer.measureElement}
                                 style={{
@@ -573,20 +621,24 @@ export function SearchableSelect({
                                   transform: `translateY(${vr.start}px)`,
                                 }}
                               >
-                              <OptionItem
-                                opt={opt}
-                                isSelected={isSelected}
-                                count={count}
-                                maxCount={maxPerOption}
-                                onSelectValue={onSelectValue}
-                                onWarningAction={() => setOpen(false)}
-                                onIncrement={() =>
-                                  updateValueCount(opt.value, count + 1)
-                                }
-                                onDecrement={() =>
-                                  updateValueCount(opt.value, count - 1)
-                                }
-                              />
+                                {opt.heading ? (
+                                  <HeadingRow option={opt} />
+                                ) : (
+                                  <OptionComponent
+                                    opt={opt}
+                                    isSelected={isSelected}
+                                    count={count}
+                                    onSelectValue={onSelectValue}
+                                    onWarningAction={() => setOpen(false)}
+                                    onIncrement={() =>
+                                      updateValueCount(opt.value, count + 1)
+                                    }
+                                    onDecrement={() =>
+                                      updateValueCount(opt.value, count - 1)
+                                    }
+                                    itemComponent={ItemComponent}
+                                  />
+                                )}
                               </div>
                             );
                           })}
@@ -607,6 +659,7 @@ export function SearchableSelect({
       </Popover.Portal>
     </Popover.Root>
   );
-}
+});
 
+export { SearchableSelect };
 export default SearchableSelect;
