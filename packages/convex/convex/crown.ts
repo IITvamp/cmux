@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { getTeamId } from "../_shared/team";
 import { authMutation, authQuery } from "./users/utils";
+import { internalQuery } from "./_generated/server";
 
 export const evaluateAndCrownWinner = authMutation({
   args: {
@@ -217,6 +218,25 @@ export const getCrownEvaluation = authQuery({
       .filter((q) => q.eq(q.field("taskId"), args.taskId))
       .first();
 
+    return evaluation;
+  },
+});
+
+// Internal: get a crown evaluation record by task for a team+user
+export const internalGetEvaluationByTask = internalQuery({
+  args: {
+    taskId: v.id("tasks"),
+    teamId: v.string(),
+    userId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const evaluation = await ctx.db
+      .query("crownEvaluations")
+      .withIndex("by_team_user", (q) =>
+        q.eq("teamId", args.teamId).eq("userId", args.userId)
+      )
+      .filter((q) => q.eq(q.field("taskId"), args.taskId))
+      .first();
     return evaluation;
   },
 });

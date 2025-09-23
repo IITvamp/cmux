@@ -29,6 +29,7 @@ import {
   runWithAuth,
 } from "./utils/requestContext.js";
 import { getWwwClient } from "./utils/wwwClient.js";
+import { env as serverEnv } from "./utils/server-env.js";
 import { CmuxVSCodeInstance } from "./vscode/CmuxVSCodeInstance.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
@@ -744,6 +745,8 @@ export async function spawnAgent(
       rows: 74,
       env: envVars,
       taskRunId,
+      taskRunJwt,
+      convexUrl: serverEnv.NEXT_PUBLIC_CONVEX_URL,
       agentModel: agent.name,
       authFiles,
       startupCommands,

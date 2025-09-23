@@ -3,6 +3,7 @@ import { resolveTeamIdLoose } from "../_shared/team";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { authMutation, authQuery } from "./users/utils";
+import { internalMutation } from "./_generated/server";
 
 export const get = authQuery({
   args: {
@@ -611,5 +612,38 @@ export const checkAndEvaluateCrown = authMutation({
     console.log(`[CheckCrown] Marked task ${args.taskId} as completed`);
 
     return winnerId;
+  },
+});
+
+// Internal: mark a task as completed (idempotent), restricted by team/user
+export const internalMarkTaskCompleted = internalMutation({
+  args: { id: v.id("tasks"), teamId: v.string(), userId: v.string() },
+  handler: async (ctx, args) => {
+    const task = await ctx.db.get(args.id);
+    if (!task || task.teamId !== args.teamId || task.userId !== args.userId) {
+      throw new Error("Task not found or unauthorized");
+    }
+    if (task.isCompleted) return;
+    await ctx.db.patch(args.id, { isCompleted: true, updatedAt: Date.now() });
+  },
+});
+
+// Internal: set crownEvaluationError to pending_evaluation unless already pending/in_progress
+export const internalMarkCrownPending = internalMutation({
+  args: { id: v.id("tasks"), teamId: v.string(), userId: v.string() },
+  handler: async (ctx, args) => {
+    const task = await ctx.db.get(args.id);
+    if (!task || task.teamId !== args.teamId || task.userId !== args.userId) {
+      throw new Error("Task not found or unauthorized");
+    }
+    const state = task.crownEvaluationError;
+    if (state === "pending_evaluation" || state === "in_progress") {
+      return state;
+    }
+    await ctx.db.patch(args.id, {
+      crownEvaluationError: "pending_evaluation",
+      updatedAt: Date.now(),
+    });
+    return "pending_evaluation";
   },
 });

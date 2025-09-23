@@ -380,6 +380,8 @@ managementIO.on("connection", (socket) => {
         command: validated.command,
         args: validated.args,
         taskRunId: validated.taskRunId,
+        taskRunJwt: validated.taskRunJwt,
+        convexUrl: validated.convexUrl,
         agentModel: validated.agentModel,
         startupCommands: validated.startupCommands,
       });
@@ -813,6 +815,8 @@ async function createTerminal(
     command?: string;
     args?: string[];
     taskRunId?: string;
+    taskRunJwt?: string;
+    convexUrl?: string;
     agentModel?: string;
     startupCommands?: string[];
   } = {}
@@ -1012,6 +1016,8 @@ async function createTerminal(
             agentModel: options.agentModel,
             elapsedMs: Date.now() - processStartTime,
           });
+          // Notify Convex directly
+          void notifyComplete(0);
         })
         .catch((e) => {
           log(
@@ -1063,6 +1069,8 @@ async function createTerminal(
       terminalId,
       exitCode: code ?? 0,
     });
+    // Best-effort notify Convex as well on process exit (idempotent)
+    void notifyComplete(code ?? 0);
   });
 
   childProcess.on("error", (error) => {
@@ -1078,6 +1086,65 @@ async function createTerminal(
 
   log("INFO", "command=", command);
   log("INFO", "args=", args);
+
+  // Helper: robustly notify Convex directly when a run completes
+  const notifyComplete = async (exitCode: number) => {
+    try {
+      if (!options.taskRunId || !options.taskRunJwt || !options.convexUrl) {
+        log(
+          "WARNING",
+          "Missing taskRunId/taskRunJwt/convexUrl; cannot notify Convex directly",
+          {
+            hasTaskRunId: Boolean(options.taskRunId),
+            hasTaskRunJwt: Boolean(options.taskRunJwt),
+            hasConvexUrl: Boolean(options.convexUrl),
+          }
+        );
+        return;
+      }
+      const url = `${options.convexUrl.replace(/\/$/, "")}/api/crown/notify-complete`;
+      const body = {
+        taskRunId: options.taskRunId,
+        exitCode,
+      };
+      // Retry with backoff (5 attempts)
+      const maxAttempts = 5;
+      let attempt = 0;
+      let lastErr: unknown = null;
+      while (attempt < maxAttempts) {
+        attempt++;
+        try {
+          const res = await fetch(url, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "x-cmux-token": options.taskRunJwt,
+            },
+            body: JSON.stringify(body),
+          });
+          if (!res.ok) {
+            const txt = await res.text().catch(() => "");
+            throw new Error(`HTTP ${res.status} ${txt}`);
+          }
+          const json = await res.json().catch(() => ({ status: "ok" }));
+          log("INFO", "[notifyComplete] success", json);
+          return;
+        } catch (e) {
+          lastErr = e;
+          const backoff = Math.min(2000 * attempt, 8000);
+          log(
+            "WARNING",
+            `[notifyComplete] attempt ${attempt} failed; retrying in ${backoff}ms`,
+            String(e)
+          );
+          await new Promise((r) => setTimeout(r, backoff));
+        }
+      }
+      log("ERROR", "[notifyComplete] all attempts failed", lastErr);
+    } catch (e) {
+      log("ERROR", "[notifyComplete] unexpected error", e);
+    }
+  };
 
   // detect idle - check if we're using tmux (either directly or as wrapper)
   if (spawnCommand === "tmux" && spawnArgs.length > 0) {
@@ -1109,6 +1176,8 @@ async function createTerminal(
               taskRunId: options.taskRunId,
               elapsedMs,
             });
+            // Also notify Convex directly
+            void notifyComplete(0);
           }
         },
       }).catch((error) => {

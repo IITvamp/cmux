@@ -63,6 +63,8 @@ export const WorkerCreateTerminalSchema = z.object({
   args: z.array(z.string()).optional(),
   taskId: typedZid("tasks").optional(),
   taskRunId: typedZid("taskRuns").optional(),
+  taskRunJwt: z.string().optional(),
+  convexUrl: z.string().url().optional(),
   // Preferred: validated against AgentConfig names at runtime (browser-safe)
   agentModel: z
     .string()
