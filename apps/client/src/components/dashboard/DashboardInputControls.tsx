@@ -173,15 +173,50 @@ export const DashboardInputControls = memo(function DashboardInputControls({
     }
     return map;
   }, [agentOptions]);
-  const sortedSelectedAgents = useMemo(() => {
+  type AgentSelectionInstance = {
+    agent: string;
+    id: string;
+  };
+
+  const generateInstanceId = () => crypto.randomUUID();
+
+  const agentInstancesRef = useRef<AgentSelectionInstance[]>([]);
+
+  const agentInstances = useMemo(() => {
+    const previous = agentInstancesRef.current;
+    const remaining = [...previous];
+    const next: AgentSelectionInstance[] = [];
+
+    for (const agent of selectedAgents) {
+      const matchIndex = remaining.findIndex((instance) => instance.agent === agent);
+      if (matchIndex !== -1) {
+        next.push(remaining.splice(matchIndex, 1)[0]);
+      } else {
+        next.push({ agent, id: generateInstanceId() });
+      }
+    }
+
+    agentInstancesRef.current = next;
+    return next;
+  }, [selectedAgents]);
+
+  const instanceIndexMap = useMemo(() => {
+    const map = new Map<string, number>();
+    agentInstances.forEach((instance, index) => {
+      map.set(instance.id, index);
+    });
+    return map;
+  }, [agentInstances]);
+
+  const sortedAgentInstances = useMemo(() => {
     const vendorOrder = new Map<string, number>();
     agentOptions.forEach((option, index) => {
       const vendor = option.iconKey ?? "other";
       if (!vendorOrder.has(vendor)) vendorOrder.set(vendor, index);
     });
 
-    return selectedAgents
-      .map((agent, originalIndex) => ({ agent, originalIndex }))
+    return agentInstances
+      .map((instance) => instance)
       .sort((a, b) => {
         const optionA = agentOptionsByValue.get(a.agent);
         const optionB = agentOptionsByValue.get(b.agent);
@@ -192,11 +227,11 @@ export const DashboardInputControls = memo(function DashboardInputControls({
         if (rankA !== rankB) return rankA - rankB;
         const labelA = optionA?.displayLabel ?? optionA?.label ?? a.agent;
         const labelB = optionB?.displayLabel ?? optionB?.label ?? b.agent;
-        return labelA.localeCompare(labelB);
+        const labelComparison = labelA.localeCompare(labelB);
+        if (labelComparison !== 0) return labelComparison;
+        return a.id.localeCompare(b.id);
       });
-  }, [agentOptions, agentOptionsByValue, selectedAgents]);
-  // Determine OS for potential future UI tweaks
-  // const isMac = navigator.userAgent.toUpperCase().indexOf("MAC") >= 0;
+  }, [agentInstances, agentOptions, agentOptionsByValue]);
 
   const pillboxScrollRef = useRef<HTMLDivElement | null>(null);
   const [showPillboxFade, setShowPillboxFade] = useState(false);
@@ -252,15 +287,15 @@ export const DashboardInputControls = memo(function DashboardInputControls({
   }, []);
 
   const handleAgentRemove = useCallback(
-    (agentIndex: number) => {
-      if (agentIndex < 0 || agentIndex >= selectedAgents.length) {
+    (instanceId: string) => {
+      const instanceIndex = instanceIndexMap.get(instanceId);
+      if (instanceIndex === undefined) {
         return;
       }
-      const next = [...selectedAgents];
-      next.splice(agentIndex, 1);
+      const next = selectedAgents.filter((_, index) => index !== instanceIndex);
       onAgentChange(next);
     },
-    [onAgentChange, selectedAgents]
+    [instanceIndexMap, onAgentChange, selectedAgents]
   );
 
   const handleFocusAgentOption = useCallback((agent: string) => {
@@ -272,20 +307,20 @@ export const DashboardInputControls = memo(function DashboardInputControls({
       <div className="relative">
         <div ref={pillboxScrollRef} className="max-h-32 overflow-y-auto py-2 px-2">
           <div className="flex flex-wrap gap-1">
-            {sortedSelectedAgents.map(({ agent, originalIndex }) => {
-              const option = agentOptionsByValue.get(agent);
-              const label = option?.displayLabel ?? option?.label ?? agent;
+            {sortedAgentInstances.map((instance) => {
+              const option = agentOptionsByValue.get(instance.agent);
+              const label = option?.displayLabel ?? option?.label ?? instance.agent;
               return (
                 <div
-                  key={`${agent}-${originalIndex}`}
+                  key={instance.id}
                   className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-neutral-200 dark:bg-neutral-800/80 pl-1.5 pr-2 py-1 text-[11px] text-neutral-700 dark:text-neutral-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60"
                   role="button"
                   tabIndex={0}
-                  onClick={() => handleFocusAgentOption(agent)}
+                  onClick={() => handleFocusAgentOption(instance.agent)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
-                      handleFocusAgentOption(agent);
+                      handleFocusAgentOption(instance.agent);
                     }
                   }}
                   aria-label={`Focus selection for ${label}`}
@@ -295,7 +330,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
                     onClick={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
-                      handleAgentRemove(originalIndex);
+                      handleAgentRemove(instance.id);
                     }}
                     className="inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors hover:bg-neutral-300 dark:hover:bg-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60"
                   >
