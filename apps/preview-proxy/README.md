@@ -19,3 +19,7 @@ bun start
 ```
 
 This project was created using `bun init` in bun v1.2.20. [Bun](https://bun.com) is a fast all-in-one JavaScript runtime.
+
+Silent code whispers
+Bugs lurk in the shadows deep
+Debug with keen sight
