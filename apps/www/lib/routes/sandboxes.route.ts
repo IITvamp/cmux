@@ -5,13 +5,9 @@ import { stackServerAppJs } from "@/lib/utils/stack";
 import { verifyTeamAccess } from "@/lib/utils/team-verification";
 import { env } from "@/lib/utils/www-env";
 import { api } from "@cmux/convex/api";
-import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { HTTPException } from "hono/http-exception";
 import { MorphCloudClient } from "morphcloud";
-import {
-  encodeEnvContentForEnvctl,
-  envctlLoadCommand,
-} from "./utils/ensure-env-vars";
 import { loadEnvironmentEnvVars } from "./sandboxes/environment";
 import {
   configureGithubAccess,
@@ -21,6 +17,10 @@ import {
 import type { HydrateRepoConfig } from "./sandboxes/hydration";
 import { hydrateWorkspace } from "./sandboxes/hydration";
 import { resolveTeamAndSnapshot } from "./sandboxes/snapshot";
+import {
+  encodeEnvContentForEnvctl,
+  envctlLoadCommand,
+} from "./utils/ensure-env-vars";
 
 export const sandboxesRouter = new OpenAPIHono();
 
@@ -63,7 +63,6 @@ const UpdateSandboxEnvResponse = z
     applied: z.literal(true),
   })
   .openapi("UpdateSandboxEnvResponse");
-
 
 // Start a new sandbox (currently Morph-backed)
 sandboxesRouter.openapi(
@@ -252,8 +251,8 @@ sandboxesRouter.openapi(
           owner,
           name,
           repoFull,
-          cloneUrl: `https://x-access-token:${githubAccessToken}@github.com/${owner}/${name}.git`,
-          maskedCloneUrl: `https://x-access-token:***@github.com/${owner}/${name}.git`,
+          cloneUrl: `https://github.com/${owner}/${name}.git`,
+          maskedCloneUrl: `https://github.com/${owner}/${name}.git`,
           depth: Math.max(1, Math.floor(body.depth ?? 1)),
           baseBranch: body.branch || "main",
           newBranch: body.newBranch ?? "",
