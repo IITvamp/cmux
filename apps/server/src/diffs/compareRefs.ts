@@ -1,6 +1,24 @@
 import type { ReplaceDiffEntry } from "@cmux/shared/diff-types";
 import { loadNativeGit } from "../native/git.js";
 
+function toErrorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  if (typeof error === "string") {
+    return error;
+  }
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "message" in error &&
+    typeof (error as { message?: unknown }).message === "string"
+  ) {
+    return (error as { message: string }).message;
+  }
+  return String(error);
+}
+
 export interface CompareRefsArgs {
   ref1: string;
   ref2: string;
@@ -32,10 +50,7 @@ export async function compareRefsForRepo(
       includeContents: true,
     });
   } catch (e) {
-    // fallthrough to JS
-    throw new Error(
-      "Native gitDiffRefs not available; rebuild @cmux/native-core",
-      { cause: e }
-    );
+    const message = toErrorMessage(e);
+    throw new Error(`Native gitDiffRefs failed: ${message}`, { cause: e });
   }
 }
