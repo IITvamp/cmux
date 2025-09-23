@@ -6,9 +6,11 @@ import { AlertTriangle, Minus, Plus } from "lucide-react";
 import { clsx } from "clsx";
 import type { MouseEvent } from "react";
 
+export const MAX_AGENT_COMMAND_COUNT = 6;
+
 export function AgentCommandItem({
   opt,
-  count,
+  count = 0,
   onSelectValue,
   onWarningAction,
   onIncrement,
@@ -35,22 +37,37 @@ export function AgentCommandItem({
     onSelectValue(opt.value);
   };
 
+  const currentCount = count ?? 0;
+  const canAdjustCount = Boolean(onIncrement && onDecrement);
+
   const handleDecrement = (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
-    if (opt.isUnavailable || count <= 0) return;
+    if (!canAdjustCount || opt.isUnavailable || currentCount <= 0) return;
     onDecrement?.();
   };
 
   const handleIncrement = (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
-    if (opt.isUnavailable || count >= 3) return;
+    if (
+      !canAdjustCount ||
+      opt.isUnavailable ||
+      currentCount >= MAX_AGENT_COMMAND_COUNT
+    ) {
+      return;
+    }
     onIncrement?.();
   };
 
-  const disableDecrease = Boolean(opt.isUnavailable || count <= 0);
-  const disableIncrease = Boolean(opt.isUnavailable || count >= 3);
+  const disableDecrease = Boolean(
+    !canAdjustCount || opt.isUnavailable || currentCount <= 0
+  );
+  const disableIncrease = Boolean(
+    !canAdjustCount ||
+      opt.isUnavailable ||
+      currentCount >= MAX_AGENT_COMMAND_COUNT
+  );
 
   return (
     <ItemComponent
@@ -77,7 +94,7 @@ export function AgentCommandItem({
         ) : null}
       </div>
       <div className="flex items-center">
-        {count > 0 ? (
+        {canAdjustCount && currentCount > 0 ? (
           <div className="flex items-center">
             <button
               type="button"
@@ -89,7 +106,7 @@ export function AgentCommandItem({
               <Minus className="h-3.5 w-3.5 mt-0.5" aria-hidden="true" />
             </button>
             <span className="inline-flex h-5 min-w-[1rem] items-center justify-center text-sm font-semibold text-neutral-700 dark:text-neutral-200">
-              {count}
+              {currentCount}
             </span>
             <button
               type="button"

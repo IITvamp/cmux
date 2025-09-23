@@ -21,6 +21,7 @@ import { Link, useRouter } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useMutation } from "convex/react";
 import { GitBranch, Image, Mic, Server, X } from "lucide-react";
+import { MAX_AGENT_COMMAND_COUNT } from "./AgentCommandItem";
 import {
   memo,
   useCallback,
@@ -492,6 +493,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
           footer={agentSelectionFooter}
           itemVariant="compact"
           optionItemComponent={AgentCommandItem}
+          maxCountPerValue={MAX_AGENT_COMMAND_COUNT}
         />
       </div>
 

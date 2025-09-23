@@ -80,6 +80,7 @@ export interface SearchableSelectProps {
   footer?: ReactNode;
   itemVariant?: "default" | "compact";
   optionItemComponent?: ComponentType<OptionItemRenderProps>;
+  maxCountPerValue?: number;
 }
 
 interface WarningIndicatorProps {
@@ -147,7 +148,7 @@ function HeadingRow({ option }: { option: SelectOptionObject }) {
 export interface OptionItemRenderProps {
   opt: SelectOptionObject;
   isSelected: boolean;
-  count: number;
+  count?: number;
   onSelectValue: (val: string) => void;
   onWarningAction?: () => void;
   onIncrement?: () => void;
@@ -158,11 +159,8 @@ export interface OptionItemRenderProps {
 function DefaultOptionItem({
   opt,
   isSelected,
-  count: _count,
   onSelectValue,
   onWarningAction,
-  onIncrement: _onIncrement,
-  onDecrement: _onDecrement,
   itemComponent: ItemComponent,
 }: OptionItemRenderProps) {
   const handleSelect = () => {
@@ -223,6 +221,7 @@ const SearchableSelect = forwardRef<SearchableSelectHandle, SearchableSelectProp
       footer,
       itemVariant = "default",
       optionItemComponent,
+      maxCountPerValue = 6,
     },
     ref
   ) {
@@ -235,6 +234,11 @@ const SearchableSelect = forwardRef<SearchableSelectHandle, SearchableSelectProp
     itemVariant === "compact" ? CommandItemCompact : CommandItem;
   const OptionComponent: ComponentType<OptionItemRenderProps> =
     optionItemComponent ?? DefaultOptionItem;
+  const resolvedMaxPerValue = Number.isFinite(maxCountPerValue)
+    ? Math.max(1, Math.floor(maxCountPerValue))
+    : 1;
+  const allowValueCountAdjustments =
+    !singleSelect && resolvedMaxPerValue > 1;
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const [search, setSearch] = useState("");
@@ -468,7 +472,7 @@ const SearchableSelect = forwardRef<SearchableSelectHandle, SearchableSelectProp
     const normalized = Number.isFinite(nextCount)
       ? Math.round(nextCount)
       : 0;
-    const clamped = Math.max(0, Math.min(normalized, 3));
+    const clamped = Math.max(0, Math.min(normalized, resolvedMaxPerValue));
     const current = countByValue.get(val) ?? 0;
     if (clamped === current) return;
     const withoutVal = value.filter((existing) => existing !== val);
@@ -567,6 +571,12 @@ const SearchableSelect = forwardRef<SearchableSelectHandle, SearchableSelectProp
                             {fallback.map((opt) => {
                               const count = countByValue.get(opt.value) ?? 0;
                               const isSelected = count > 0;
+                              const increment = allowValueCountAdjustments
+                                ? () => updateValueCount(opt.value, count + 1)
+                                : undefined;
+                              const decrement = allowValueCountAdjustments
+                                ? () => updateValueCount(opt.value, count - 1)
+                                : undefined;
                               if (opt.heading) {
                                 return (
                                   <div
@@ -581,15 +591,15 @@ const SearchableSelect = forwardRef<SearchableSelectHandle, SearchableSelectProp
                                   key={`fallback-${opt.value ?? opt.label}`}
                                   opt={opt}
                                   isSelected={isSelected}
-                                  count={count}
+                                  count={
+                                    allowValueCountAdjustments
+                                      ? count
+                                      : undefined
+                                  }
                                   onSelectValue={onSelectValue}
                                   onWarningAction={() => setOpen(false)}
-                                  onIncrement={() =>
-                                    updateValueCount(opt.value, count + 1)
-                                  }
-                                  onDecrement={() =>
-                                    updateValueCount(opt.value, count - 1)
-                                  }
+                                  onIncrement={increment}
+                                  onDecrement={decrement}
                                   itemComponent={ItemComponent}
                                 />
                               );
@@ -608,6 +618,12 @@ const SearchableSelect = forwardRef<SearchableSelectHandle, SearchableSelectProp
                             const opt = filteredOptions[vr.index]!;
                             const count = countByValue.get(opt.value) ?? 0;
                             const isSelected = count > 0;
+                            const increment = allowValueCountAdjustments
+                              ? () => updateValueCount(opt.value, count + 1)
+                              : undefined;
+                            const decrement = allowValueCountAdjustments
+                              ? () => updateValueCount(opt.value, count - 1)
+                              : undefined;
                             return (
                               <div
                                 key={opt.value ?? `${vr.index}`}
@@ -627,15 +643,15 @@ const SearchableSelect = forwardRef<SearchableSelectHandle, SearchableSelectProp
                                   <OptionComponent
                                     opt={opt}
                                     isSelected={isSelected}
-                                    count={count}
+                                    count={
+                                      allowValueCountAdjustments
+                                        ? count
+                                        : undefined
+                                    }
                                     onSelectValue={onSelectValue}
                                     onWarningAction={() => setOpen(false)}
-                                    onIncrement={() =>
-                                      updateValueCount(opt.value, count + 1)
-                                    }
-                                    onDecrement={() =>
-                                      updateValueCount(opt.value, count - 1)
-                                    }
+                                    onIncrement={increment}
+                                    onDecrement={decrement}
                                     itemComponent={ItemComponent}
                                   />
                                 )}
