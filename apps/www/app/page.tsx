@@ -7,9 +7,10 @@ import CmuxLogo from "@/components/logo/cmux-logo";
 import { Cloud, GitBranch, GitPullRequest, Star, Terminal, Users, Zap } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import cmuxDemo0 from "@/docs/assets/cmux-demo-0.png";
-import cmuxDemo1 from "@/docs/assets/cmux-demo-1.png";
-import cmuxDemo5 from "@/docs/assets/cmux-demo-5.png";
+import cmuxDemo0 from "@/docs/assets/cmux-demo-00.png";
+import cmuxDemo1 from "@/docs/assets/cmux-demo-10.png";
+import cmuxDemo2 from "@/docs/assets/cmux-demo-20.png";
+import cmuxDemo3 from "@/docs/assets/cmux-demo-30.png";
 
 const RELEASE_PAGE_URL = "https://github.com/manaflow-ai/cmux/releases/latest";
 
@@ -223,7 +224,7 @@ export default function LandingPage() {
           {/* First demo image combined with hero */}
           <div className="mt-16 mb-8 relative overflow-hidden rounded-lg">
             <Image
-              src={cmuxDemo1}
+              src={cmuxDemo0}
               alt="cmux dashboard showing task management for AI agents"
               width={3248}
               height={2112}
@@ -308,7 +309,7 @@ export default function LandingPage() {
           </div>
           <div className="mt-16 mb-8 relative overflow-hidden rounded-lg">
             <Image
-              src={cmuxDemo0}
+              src={cmuxDemo1}
               alt="cmux dashboard showing task management for AI agents"
               width={3248}
               height={2112}
@@ -429,7 +430,7 @@ export default function LandingPage() {
           </div>
           <div className="mt-8 relative overflow-hidden rounded-lg">
             <Image
-              src={cmuxDemo5}
+              src={cmuxDemo2}
               alt="cmux vscode instances showing diffs"
               width={3248}
               height={2112}
@@ -516,6 +517,18 @@ export default function LandingPage() {
                 them 100x by removing the verification bottleneck entirely.
               </p>
             </div>
+          </div>
+          <div className="mt-8 relative overflow-hidden rounded-lg">
+            <Image
+              src={cmuxDemo3}
+              alt="cmux vscode instances showing diffs"
+              width={3248}
+              height={2112}
+              sizes="(min-width: 1024px) 1024px, 100vw"
+              quality={100}
+              className="w-full h-auto"
+            loading="lazy"
+            />
           </div>
         </div>
       </section>
