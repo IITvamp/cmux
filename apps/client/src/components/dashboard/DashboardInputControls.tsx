@@ -179,18 +179,21 @@ export const DashboardInputControls = memo(function DashboardInputControls({
       const vendor = option.iconKey ?? "other";
       if (!vendorOrder.has(vendor)) vendorOrder.set(vendor, index);
     });
-    return [...selectedAgents].sort((a, b) => {
-      const optionA = agentOptionsByValue.get(a);
-      const optionB = agentOptionsByValue.get(b);
-      const vendorA = optionA?.iconKey ?? "other";
-      const vendorB = optionB?.iconKey ?? "other";
-      const rankA = vendorOrder.get(vendorA) ?? Number.MAX_SAFE_INTEGER;
-      const rankB = vendorOrder.get(vendorB) ?? Number.MAX_SAFE_INTEGER;
-      if (rankA !== rankB) return rankA - rankB;
-      const labelA = optionA?.displayLabel ?? optionA?.label ?? a;
-      const labelB = optionB?.displayLabel ?? optionB?.label ?? b;
-      return labelA.localeCompare(labelB);
-    });
+
+    return selectedAgents
+      .map((agent, originalIndex) => ({ agent, originalIndex }))
+      .sort((a, b) => {
+        const optionA = agentOptionsByValue.get(a.agent);
+        const optionB = agentOptionsByValue.get(b.agent);
+        const vendorA = optionA?.iconKey ?? "other";
+        const vendorB = optionB?.iconKey ?? "other";
+        const rankA = vendorOrder.get(vendorA) ?? Number.MAX_SAFE_INTEGER;
+        const rankB = vendorOrder.get(vendorB) ?? Number.MAX_SAFE_INTEGER;
+        if (rankA !== rankB) return rankA - rankB;
+        const labelA = optionA?.displayLabel ?? optionA?.label ?? a.agent;
+        const labelB = optionB?.displayLabel ?? optionB?.label ?? b.agent;
+        return labelA.localeCompare(labelB);
+      });
   }, [agentOptions, agentOptionsByValue, selectedAgents]);
   // Determine OS for potential future UI tweaks
   // const isMac = navigator.userAgent.toUpperCase().indexOf("MAC") >= 0;
@@ -249,11 +252,12 @@ export const DashboardInputControls = memo(function DashboardInputControls({
   }, []);
 
   const handleAgentRemove = useCallback(
-    (agent: string) => {
-      const idx = selectedAgents.findIndex((v) => v === agent);
-      if (idx === -1) return;
+    (agentIndex: number) => {
+      if (agentIndex < 0 || agentIndex >= selectedAgents.length) {
+        return;
+      }
       const next = [...selectedAgents];
-      next.splice(idx, 1);
+      next.splice(agentIndex, 1);
       onAgentChange(next);
     },
     [onAgentChange, selectedAgents]
@@ -268,12 +272,12 @@ export const DashboardInputControls = memo(function DashboardInputControls({
       <div className="relative">
         <div ref={pillboxScrollRef} className="max-h-32 overflow-y-auto py-2 px-2">
           <div className="flex flex-wrap gap-1">
-            {sortedSelectedAgents.map((agent) => {
+            {sortedSelectedAgents.map(({ agent, originalIndex }) => {
               const option = agentOptionsByValue.get(agent);
               const label = option?.displayLabel ?? option?.label ?? agent;
               return (
                 <div
-                  key={`${agent}-${option?.value}`}
+                  key={`${agent}-${originalIndex}`}
                   className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-neutral-200 dark:bg-neutral-800/80 pl-1.5 pr-2 py-1 text-[11px] text-neutral-700 dark:text-neutral-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60"
                   role="button"
                   tabIndex={0}
@@ -291,7 +295,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
                     onClick={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
-                      handleAgentRemove(agent);
+                      handleAgentRemove(originalIndex);
                     }}
                     className="inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors hover:bg-neutral-300 dark:hover:bg-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60"
                   >
