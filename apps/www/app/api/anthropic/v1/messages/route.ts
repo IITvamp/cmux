@@ -30,6 +30,8 @@ function getIsOAuthToken(token: string) {
 }
 
 export async function POST(request: NextRequest) {
+  // When TEMPORARY_DISABLE_AUTH is true we skip JWT auth, but we should
+  // still prefer and forward a user-provided Anthropic key if present.
   if (!TEMPORARY_DISABLE_AUTH) {
     try {
       await requireTaskRunToken(request);
@@ -63,23 +65,29 @@ export async function POST(request: NextRequest) {
     }
 
     // Build headers
-    const headers: Record<string, string> =
-      useOriginalApiKey && !TEMPORARY_DISABLE_AUTH
-        ? (() => {
-            const filtered = new Headers(request.headers);
-            return Object.fromEntries(filtered);
-          })()
-        : {
-            "Content-Type": "application/json",
-            "x-api-key": env.ANTHROPIC_API_KEY,
-            "anthropic-version": "2023-06-01",
-          };
+    // If the caller supplied an API key (user key), forward their headers.
+    // Otherwise, fall back to the server key.
+    const headers: Record<string, string> = useOriginalApiKey
+      ? (() => {
+          const forwarded = new Headers(request.headers);
+          // Ensure required headers are present when forwarding
+          if (!forwarded.get("content-type")) {
+            forwarded.set("content-type", "application/json");
+          }
+          if (!forwarded.get("anthropic-version")) {
+            forwarded.set("anthropic-version", "2023-06-01");
+          }
+          return Object.fromEntries(forwarded);
+        })()
+      : {
+          "Content-Type": "application/json",
+          "x-api-key": env.ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
+        };
 
     // Add beta header if beta param is present
-    if (!useOriginalApiKey) {
-      if (beta === "true") {
-        headers["anthropic-beta"] = "messages-2023-12-15";
-      }
+    if (!useOriginalApiKey && beta === "true") {
+      headers["anthropic-beta"] = "messages-2023-12-15";
     }
 
     const response = await fetch(ANTHROPIC_API_URL, {
