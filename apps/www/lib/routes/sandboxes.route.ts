@@ -159,10 +159,13 @@ const loadEnvironmentEnvVars = async (
   }
 };
 
-const fetchGitIdentityInputs = (convex: ConvexClient, req: Request) =>
+const fetchGitIdentityInputs = (
+  convex: ConvexClient,
+  githubAccessToken: string
+) =>
   Promise.all([
     convex.query(api.users.getCurrentBasic, {}),
-    fetchGithubUserInfoForRequest(req),
+    fetchGithubUserInfoForRequest(githubAccessToken),
   ] as const);
 
 const configureGitIdentity = async (
@@ -408,7 +411,14 @@ sandboxesRouter.openapi(
         ? loadEnvironmentEnvVars(environmentDataVaultKey)
         : Promise.resolve<string | null>(null);
 
-      const gitIdentityPromise = fetchGitIdentityInputs(convex, c.req.raw);
+      const gitIdentityPromise = githubAccessTokenPromise.then(
+        ({ githubAccessToken }) => {
+          if (!githubAccessToken) {
+            throw new Error("GitHub access token not found");
+          }
+          return fetchGitIdentityInputs(convex, githubAccessToken);
+        }
+      );
 
       const client = new MorphCloudClient({ apiKey: env.MORPH_API_KEY });
       const instance = await client.instances.start({
