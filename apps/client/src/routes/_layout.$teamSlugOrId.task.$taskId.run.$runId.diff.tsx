@@ -410,14 +410,6 @@ function RunDiffPage() {
             </div>
           )}
           <div className="bg-white dark:bg-neutral-900 grow flex flex-col">
-            {shouldPrefixDiffs ? (
-              <div className="px-3.5 pt-3 pb-2 border-b border-neutral-200 dark:border-neutral-800 text-xs text-neutral-600 dark:text-neutral-300">
-                Showing diffs across {repoFullNames.length} repositories:
-                <span className="ml-1 font-medium text-neutral-700 dark:text-neutral-200">
-                  {repoFullNames.join(", ")}
-                </span>
-              </div>
-            ) : null}
             <Suspense
               fallback={
                 <div className="flex items-center justify-center h-full">
