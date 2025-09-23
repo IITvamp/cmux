@@ -28,6 +28,8 @@ import {
   useState,
 } from "react";
 
+const MAX_DUPLICATE_AGENTS = 3;
+
 interface DashboardInputControlsProps {
   projectOptions: SelectOption[];
   selectedProject: string[];
@@ -169,6 +171,13 @@ export const DashboardInputControls = memo(function DashboardInputControls({
     }
     return map;
   }, [agentOptions]);
+  const agentCountByValue = useMemo(() => {
+    const counts = new Map<string, number>();
+    selectedAgents.forEach((agent) => {
+      counts.set(agent, (counts.get(agent) ?? 0) + 1);
+    });
+    return counts;
+  }, [selectedAgents]);
   const sortedSelectedAgents = useMemo(() => {
     const vendorOrder = new Map<string, number>();
     agentOptions.forEach((option, index) => {
@@ -257,9 +266,13 @@ export const DashboardInputControls = memo(function DashboardInputControls({
 
   const handleAgentAddOne = useCallback(
     (agent: string) => {
+      const currentCount = agentCountByValue.get(agent) ?? 0;
+      if (currentCount >= MAX_DUPLICATE_AGENTS) {
+        return;
+      }
       onAgentChange([...selectedAgents, agent]);
     },
-    [onAgentChange, selectedAgents]
+    [agentCountByValue, onAgentChange, selectedAgents]
   );
 
   const agentSelectionFooter = selectedAgents.length ? (
@@ -270,6 +283,8 @@ export const DashboardInputControls = memo(function DashboardInputControls({
             {sortedSelectedAgents.map((agent, idx) => {
               const option = agentOptionsByValue.get(agent);
               const label = option?.displayLabel ?? option?.label ?? agent;
+              const currentCount = agentCountByValue.get(agent) ?? 0;
+              const canAddMore = currentCount < MAX_DUPLICATE_AGENTS;
               return (
                 <div
                   key={`${agent}-${idx}`}
@@ -302,8 +317,9 @@ export const DashboardInputControls = memo(function DashboardInputControls({
                       event.stopPropagation();
                       handleAgentAddOne(agent);
                     }}
-                    className="ml-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors hover:bg-neutral-300 dark:hover:bg-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60"
-                    title="Add one more"
+                    className="ml-0.5 inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors hover:bg-neutral-300 dark:hover:bg-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:dark:hover:bg-transparent"
+                    title={canAddMore ? "Add one more" : "Limit reached"}
+                    disabled={!canAddMore}
                   >
                     <Plus className="h-3 w-3" aria-hidden="true" />
                     <span className="sr-only">Add one more {label}</span>
@@ -491,6 +507,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
           className="rounded-2xl"
           showSearch
           countLabel="agents"
+          maxCountPerOption={MAX_DUPLICATE_AGENTS}
           footer={agentSelectionFooter}
         />
       </div>

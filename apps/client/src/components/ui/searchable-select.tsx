@@ -18,10 +18,10 @@ import { clsx } from "clsx";
 import {
   AlertTriangle,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   Loader2,
+  Minus,
   OctagonAlert,
+  Plus,
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
@@ -195,7 +195,7 @@ function OptionItem({
               className="inline-flex h-5 w-5 items-center justify-center rounded-sm text-neutral-600 transition-colors hover:text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-neutral-300 dark:hover:text-neutral-50 dark:focus-visible:ring-neutral-500/40"
             >
               <span className="sr-only">Decrease {opt.label}</span>
-              <ChevronLeft className="h-3.5 w-3.5" aria-hidden="true" />
+              <Minus className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
             <span className="inline-flex h-5 min-w-[1rem] items-center justify-center text-sm font-semibold text-neutral-700 dark:text-neutral-200">
               {count}
@@ -215,7 +215,7 @@ function OptionItem({
               className="inline-flex h-5 w-5 items-center justify-center rounded-sm text-neutral-600 transition-colors hover:text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-neutral-300 dark:hover:text-neutral-50 dark:focus-visible:ring-neutral-500/40"
             >
               <span className="sr-only">Increase {opt.label}</span>
-              <ChevronRight className="h-3.5 w-3.5" aria-hidden="true" />
+              <Plus className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
           </div>
         ) : null}
