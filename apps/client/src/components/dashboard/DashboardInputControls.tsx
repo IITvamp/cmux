@@ -21,6 +21,7 @@ import { Link, useRouter } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useMutation } from "convex/react";
 import { GitBranch, Image, Mic, Server, X } from "lucide-react";
+import { MAX_AGENT_COMMAND_COUNT } from "./AgentCommandItem";
 import {
   memo,
   useCallback,
@@ -48,8 +49,6 @@ interface DashboardInputControlsProps {
   branchDisabled?: boolean;
   providerStatus?: ProviderStatusResponse | null;
 }
-
-const MAX_AGENT_COMMAND_COUNT = 6;
 
 export const DashboardInputControls = memo(function DashboardInputControls({
   projectOptions,
