@@ -2,8 +2,9 @@ import { v } from "convex/values";
 import { SignJWT } from "jose";
 import { env } from "../_shared/convex-env";
 import { resolveTeamIdLoose } from "../_shared/team";
+import { api } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
-import { internalMutation, internalQuery } from "./_generated/server";
+import { internalMutation, internalQuery, mutation } from "./_generated/server";
 import { authMutation, authQuery } from "./users/utils";
 
 // Create a new task run
@@ -842,5 +843,164 @@ export const getRunningContainersByCleanupPriority = authQuery({
       prioritizedForCleanup: [...reviewContainers, ...activeContainers],
       protectedCount: containersToKeepIds.size,
     };
+  },
+});
+
+// Direct mutation from worker to update task run status (no auth required)
+export const updateStatusFromWorker = mutation({
+  args: {
+    taskRunId: v.id("taskRuns"),
+    status: v.union(
+      v.literal("completed"),
+      v.literal("failed"),
+      v.literal("running")
+    ),
+    exitCode: v.optional(v.number()),
+    errorMessage: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const taskRun = await ctx.db.get(args.taskRunId);
+    if (!taskRun) {
+      throw new Error(`TaskRun ${args.taskRunId} not found`);
+    }
+
+    const updates: {
+      status: typeof args.status;
+      updatedAt: number;
+      completedAt?: number;
+      exitCode?: number;
+      errorMessage?: string;
+    } = {
+      status: args.status,
+      updatedAt: Date.now(),
+    };
+
+    if (args.status === "completed" || args.status === "failed") {
+      updates.completedAt = Date.now();
+    }
+
+    if (args.exitCode !== undefined) {
+      updates.exitCode = args.exitCode;
+    }
+
+    if (args.errorMessage !== undefined) {
+      updates.errorMessage = args.errorMessage;
+    }
+
+    await ctx.db.patch(args.taskRunId, updates);
+
+    // Check if we need to trigger crown evaluation
+    if (args.status === "completed" || args.status === "failed") {
+      await ctx.scheduler.runAfter(0, api.taskRuns.checkCrownEvaluationNeeded, {
+        taskRunId: args.taskRunId,
+      });
+    }
+
+    return { success: true };
+  },
+});
+
+// Internal mutation to check if crown evaluation is needed after a task run completes
+export const checkCrownEvaluationNeeded = mutation({
+  args: {
+    taskRunId: v.id("taskRuns"),
+  },
+  handler: async (ctx, args) => {
+    const taskRun = await ctx.db.get(args.taskRunId);
+    if (!taskRun) {
+      console.error(`TaskRun ${args.taskRunId} not found`);
+      return;
+    }
+
+    const task = await ctx.db.get(taskRun.taskId);
+    if (!task) {
+      console.error(`Task ${taskRun.taskId} not found`);
+      return;
+    }
+
+    // Get all runs for this task
+    const allRuns = await ctx.db
+      .query("taskRuns")
+      .withIndex("by_task", (q) => q.eq("taskId", taskRun.taskId))
+      .collect();
+
+    console.log(
+      `[CheckCrownEvaluation] Task ${taskRun.taskId} has ${allRuns.length} runs`
+    );
+
+    // Check if all runs are completed or failed
+    const allCompleted = allRuns.every(
+      (run) => run.status === "completed" || run.status === "failed"
+    );
+
+    if (!allCompleted) {
+      console.log(`[CheckCrownEvaluation] Not all runs completed yet`);
+      return;
+    }
+
+    // Special handling for single agent scenario
+    if (allRuns.length === 1) {
+      console.log(
+        `[CheckCrownEvaluation] Single agent scenario - marking task complete`
+      );
+      await ctx.db.patch(taskRun.taskId, {
+        isCompleted: true,
+        updatedAt: Date.now(),
+      });
+      return;
+    }
+
+    // Check if we've already evaluated crown for this task
+    const existingEvaluation = await ctx.db
+      .query("crownEvaluations")
+      .withIndex("by_task", (q) => q.eq("taskId", taskRun.taskId))
+      .first();
+
+    if (existingEvaluation) {
+      console.log(
+        `[CheckCrownEvaluation] Crown already evaluated for task ${taskRun.taskId}`
+      );
+      return;
+    }
+
+    // Check if crown evaluation is already pending or in progress
+    if (
+      task.crownEvaluationError === "pending_evaluation" ||
+      task.crownEvaluationError === "in_progress"
+    ) {
+      console.log(
+        `[CheckCrownEvaluation] Crown evaluation already ${task.crownEvaluationError}`
+      );
+      return;
+    }
+
+    // Only evaluate if we have at least 2 completed runs
+    const completedRuns = allRuns.filter((run) => run.status === "completed");
+    if (completedRuns.length < 2) {
+      console.log(
+        `[CheckCrownEvaluation] Not enough completed runs (${completedRuns.length} < 2)`
+      );
+      // Mark task as completed if no successful runs in multi-agent scenario
+      await ctx.db.patch(taskRun.taskId, {
+        isCompleted: true,
+        updatedAt: Date.now(),
+      });
+      return;
+    }
+
+    // Mark that crown evaluation is needed
+    console.log(
+      `[CheckCrownEvaluation] Marking task for crown evaluation`
+    );
+    await ctx.db.patch(taskRun.taskId, {
+      crownEvaluationError: "pending_evaluation",
+      updatedAt: Date.now(),
+    });
+
+    // Schedule the actual crown evaluation
+    await ctx.scheduler.runAfter(0, api.crown.evaluateAndCrownWinner, {
+      teamSlugOrId: task.teamId,
+      taskId: taskRun.taskId,
+    });
   },
 });

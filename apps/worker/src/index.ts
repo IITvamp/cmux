@@ -145,6 +145,9 @@ let mainServerSocket: Socket<
 // Track active file watchers by taskRunId
 const activeFileWatchers: Map<string, FileWatcher> = new Map();
 
+// Add Convex client setup
+const CONVEX_URL = process.env.CONVEX_URL || "https://keen-moose-913.convex.cloud";
+
 // Queue for pending events when mainServerSocket is not connected
 interface PendingEvent {
   event: string;
@@ -1004,7 +1007,49 @@ async function createTerminal(
     try {
       void agentConfig
         .completionDetector(options.taskRunId)
-        .then(() => {
+        .then(async () => {
+          // Call Convex directly to update task run status
+          const taskRunId = options.taskRunId!;
+          console.log(`[Worker] Task complete, updating Convex for taskRun ${taskRunId}`);
+
+          // Retry logic for Convex mutation
+          let retries = 3;
+          let success = false;
+          while (retries > 0 && !success) {
+            try {
+              const response = await fetch(`${CONVEX_URL}/api/mutation`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  path: "taskRuns:updateStatusFromWorker",
+                  args: {
+                    taskRunId,
+                    status: "completed",
+                    exitCode: 0,
+                  },
+                  format: "json",
+                }),
+              });
+
+              if (!response.ok) {
+                throw new Error(`Convex mutation failed: ${response.status}`);
+              }
+
+              const result = await response.json();
+              console.log(`[Worker] Successfully updated Convex for taskRun ${taskRunId}`, result);
+              success = true;
+            } catch (error) {
+              retries--;
+              console.error(`[Worker] Failed to update Convex (${retries} retries left):`, error);
+              if (retries > 0) {
+                await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s before retry
+              }
+            }
+          }
+
+          // Still emit to main server as fallback
           emitToMainServer("worker:task-complete", {
             workerId: WORKER_ID,
             terminalId,
@@ -1046,7 +1091,7 @@ async function createTerminal(
   });
 
   // Handle process exit
-  childProcess.on("exit", (code, signal) => {
+  childProcess.on("exit", async (code, signal) => {
     const runtime = Date.now() - processStartTime;
     log("INFO", `Process exited for terminal ${terminalId}`, {
       code,
@@ -1056,6 +1101,49 @@ async function createTerminal(
       command: spawnCommand,
       args: spawnArgs.slice(0, 5), // Log first 5 args for debugging
     });
+
+    // Update Convex when process exits if this is a task run
+    if (options.taskRunId && code !== null) {
+      const taskRunId = options.taskRunId;
+      console.log(`[Worker] Process exited with code ${code}, updating Convex for taskRun ${taskRunId}`);
+
+      // Retry logic for Convex mutation
+      let retries = 3;
+      let success = false;
+      while (retries > 0 && !success) {
+        try {
+          const response = await fetch(`${CONVEX_URL}/api/mutation`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              path: "taskRuns:updateStatusFromWorker",
+              args: {
+                taskRunId,
+                status: code === 0 ? "completed" : "failed",
+                exitCode: code,
+              },
+              format: "json",
+            }),
+          });
+
+          if (!response.ok) {
+            throw new Error(`Convex mutation failed: ${response.status}`);
+          }
+
+          const result = await response.json();
+          console.log(`[Worker] Successfully updated Convex for taskRun ${taskRunId} exit`, result);
+          success = true;
+        } catch (error) {
+          retries--;
+          console.error(`[Worker] Failed to update Convex (${retries} retries left):`, error);
+          if (retries > 0) {
+            await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s before retry
+          }
+        }
+      }
+    }
 
     // Notify via management socket
     emitToMainServer("worker:terminal-exit", {
@@ -1111,10 +1199,55 @@ async function createTerminal(
             });
           }
         },
-      }).catch((error) => {
+      }).catch(async (error) => {
         const errMsg =
           (initialStderrBuffer && initialStderrBuffer.trim()) ||
           (error instanceof Error ? error.message : String(error));
+        // Call Convex directly to update task run status as failed
+        if (options.taskRunId) {
+          const taskRunId = options.taskRunId;
+          console.log(`[Worker] Task failed, updating Convex for taskRun ${taskRunId}`);
+
+          // Retry logic for Convex mutation
+          let retries = 3;
+          let success = false;
+          while (retries > 0 && !success) {
+            try {
+              const response = await fetch(`${CONVEX_URL}/api/mutation`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                  path: "taskRuns:updateStatusFromWorker",
+                  args: {
+                    taskRunId,
+                    status: "failed",
+                    exitCode: 1,
+                    errorMessage: errMsg,
+                  },
+                  format: "json",
+                }),
+              });
+
+              if (!response.ok) {
+                throw new Error(`Convex mutation failed: ${response.status}`);
+              }
+
+              const result = await response.json();
+              console.log(`[Worker] Successfully updated Convex for failed taskRun ${taskRunId}`, result);
+              success = true;
+            } catch (error) {
+              retries--;
+              console.error(`[Worker] Failed to update Convex (${retries} retries left):`, error);
+              if (retries > 0) {
+                await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s before retry
+              }
+            }
+          }
+        }
+
+        // Still emit to main server as fallback
         emitToMainServer("worker:terminal-failed", {
           workerId: WORKER_ID,
           terminalId,
