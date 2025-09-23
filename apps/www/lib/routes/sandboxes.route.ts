@@ -1,9 +1,5 @@
 import { getAccessTokenFromRequest } from "@/lib/utils/auth";
 import { getConvex } from "@/lib/utils/get-convex";
-import {
-  generateGitHubInstallationToken,
-  getInstallationForRepo,
-} from "@/lib/utils/github-app-token";
 import { fetchGithubUserInfoForRequest } from "@/lib/utils/githubUserInfo";
 import { selectGitIdentity } from "@/lib/utils/gitIdentity";
 import { DEFAULT_MORPH_SNAPSHOT_ID } from "@/lib/utils/morph-defaults";
@@ -94,7 +90,19 @@ sandboxesRouter.openapi(
   async (c) => {
     // Require authentication (via access token header/cookie)
     const accessToken = await getAccessTokenFromRequest(c.req.raw);
-    if (!accessToken) return c.text("Unauthorized", 401);
+    if (!accessToken) {
+      return c.text("Unauthorized", 401);
+    }
+
+    const user = await stackServerAppJs.getUser({ tokenStore: c.req.raw });
+    if (!user) {
+      return c.text("Unauthorized", 401);
+    }
+    const githubAccount = await user.getConnectedAccount("github");
+    if (!githubAccount) {
+      return c.text("Unauthorized", 401);
+    }
+    const githubGetAccessTokenResult = await githubAccount.getAccessToken();
 
     const body = c.req.valid("json");
     try {
@@ -261,6 +269,21 @@ sandboxesRouter.openapi(
         );
       }
 
+      const githubToken = githubGetAccessTokenResult.accessToken;
+
+      try {
+        const envctlRes = await instance.exec(
+          `envctl set GITHUB_TOKEN=${githubToken} && gh auth setup-git`
+        );
+        console.log(
+          `[sandboxes.start] envctl set exit=${envctlRes.exit_code} stderr=${(envctlRes.stderr || "").slice(0, 200)}`
+        );
+      } catch (_e) {
+        console.log(
+          `[sandboxes.start] envctl not available; continuing without it`
+        );
+      }
+
       // Optional: Hydrate repo inside the sandbox
       if (body.repoUrl) {
         console.log(`[sandboxes.start] Hydrating repo for ${instance.id}`);
@@ -276,21 +299,22 @@ sandboxesRouter.openapi(
         console.log(`[sandboxes.start] Parsed owner/repo: ${repoFull}`);
 
         try {
-          const installationId = await getInstallationForRepo(repoFull);
-          if (!installationId) {
-            return c.text(
-              `No GitHub App installation found for ${owner}. Install the app for this org/user.`,
-              400
-            );
-          }
-          console.log(`[sandboxes.start] installationId: ${installationId}`);
-          const githubToken = await generateGitHubInstallationToken({
-            installationId,
-            repositories: [repoFull],
-          });
-          console.log(
-            `[sandboxes.start] Generated GitHub token (len=${githubToken.length})`
-          );
+          // const installationId = await getInstallationForRepo(repoFull);
+          // if (!installationId) {
+          //   return c.text(
+          //     `No GitHub App installation found for ${owner}. Install the app for this org/user.`,
+          //     400
+          //   );
+          // }
+          // console.log(`[sandboxes.start] installationId: ${installationId}`);
+          // const githubToken = await generateGitHubInstallationToken({
+          //   installationId,
+          //   repositories: [repoFull],
+          // });
+          // console.log(
+          //   `[sandboxes.start] Generated GitHub token (len=${githubToken.length})`
+          // );
+          const githubToken = githubGetAccessTokenResult.accessToken;
 
           // Best-effort envctl for compatibility with gh and other tools
           try {
