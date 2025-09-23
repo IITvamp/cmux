@@ -187,7 +187,7 @@ function DashboardDiffPage() {
         <SearchableSelect
           options={projectOptions}
           value={selectedProject ? [selectedProject] : []}
-          onChange={(vals: string[]) => {
+          onChange={(vals) => {
             const v = vals[0];
             setSelectedProject(v ?? null);
             localStorage.setItem(
