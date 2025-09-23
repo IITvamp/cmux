@@ -51,3 +51,7 @@ cmux is part of the cmux project. See the main repository for development instru
 ## License
 
 MIT
+
+Cmux spawns agents  
+In Docker sandboxes they code  
+Parallel progress

@@ -43,4 +43,8 @@ cmux upgrade
 
 ```bash
 cmux uninstall
+
+Cmux spawns agents
+In Docker sandboxes they code
+Parallel progress
 ```
