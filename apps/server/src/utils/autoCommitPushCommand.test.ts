@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildAutoCommitPushCommand } from "./autoCommitPushCommand";
 
 describe("buildAutoCommitPushCommand", () => {
-  it("builds a single command with safe quoting and heredoc", () => {
+  it("builds a bun script with proper escaping", () => {
     const branch = "feat/new-branch";
     const message = 'Fix bugs\nAdd features "quoted" and $pecial chars';
     const cmd = buildAutoCommitPushCommand({
@@ -10,74 +10,68 @@ describe("buildAutoCommitPushCommand", () => {
       commitMessage: message,
     });
 
-    expect(cmd.startsWith("set -euo pipefail\n")).toBe(true);
-    expect(cmd).toContain("script start cwd=$(pwd)");
-    expect(cmd).toContain("gh auth status");
-    expect(cmd).toContain("error line $LINENO exit=$?");
+    // Verify it's a Bun script
+    expect(cmd.startsWith("#!/usr/bin/env bun")).toBe(true);
+    expect(cmd).toContain('import { $ } from "bun"');
 
-    // Branch names are JSON-quoted where used in commands
-    expect(cmd).toContain(`git checkout -b ${JSON.stringify(branch)}`);
-    expect(cmd).toContain(`git checkout ${JSON.stringify(branch)}`);
-    // Uses heredoc to write commit message and -F to preserve newlines
-    expect(cmd).toContain(`cat <<'CMUX_EOF' > "$CMUX_MSG"`);
-    expect(cmd).toContain(`git -C "$repo" commit -F "$CMUX_MSG"`);
-    // Commit body appears verbatim in the script
-    expect(cmd).toContain(message);
+    // Verify branch name is properly included
+    expect(cmd).toContain(`const branchName = '${branch}'`);
 
-    // Remote detection and pull --rebase logic are present
-    expect(cmd).toContain(
-      `if git -C "$repo" ls-remote --heads origin ${JSON.stringify(branch)} | grep -q .; then`
-    );
-    expect(cmd).toContain(
-      `git -C "$repo" pull --rebase origin ${JSON.stringify(branch)}`
-    );
-    expect(cmd).toContain(
-      `repo=$repo remote branch missing; skip pull --rebase`
-    );
+    // Verify commit message is properly escaped with newlines converted to \n
+    expect(cmd).toContain("const commitMessage = 'Fix bugs\\nAdd features");
+    expect(cmd).toContain(".replace(/\\\\n/g, '\\n')");
 
-    // Push with upstream
-    expect(cmd).toContain(
-      `git -C "$repo" push -u origin ${JSON.stringify(branch)}`
-    );
+    // Verify key git operations
+    expect(cmd).toContain("git add -A");
+    expect(cmd).toContain("await $`git -C ${repoPath} commit -m ${commitMessage}`");
+    expect(cmd).toContain("await $`git -C ${repoPath} push -u origin ${branchName}`");
 
-    // Script contains newlines for heredoc
-    expect(cmd.includes("\n")).toBe(true);
-
-    // Script supports running against current repo and nested repos in parallel
-    expect(cmd).toContain("repos+=(.)");
-    expect(cmd).not.toContain("is_repo_seen()");
-    expect(cmd).toMatch(
-      /find \. -mindepth 1 -maxdepth 6 .* -name \.git -print0/
-    );
-    expect(cmd).toContain('run_repo "$repo"');
-    expect(cmd).toContain("scanning repos from $(pwd)");
-    expect(cmd).toContain("repo=$repo -> enter directory");
-    expect(cmd).toContain("repo=$repo -> pwd=$repo_path");
-    expect(cmd).toContain("repo=$repo -> origin=$origin_url");
-    expect(cmd).toContain('git -C "$repo" status --short');
-    expect(cmd).toContain("detecting repositories");
-    expect(cmd).toContain("scanning repos from $(pwd)");
-    expect(cmd).toContain("filtered_repos=()");
-    expect(cmd).toContain('repos=("${filtered_repos[@]-}")');
-    expect(cmd).toContain("trap - ERR");
-    expect(cmd).toContain(
-      "trap 'echo \"[cmux auto-commit] error line $LINENO exit=$?\" >&2' ERR"
-    );
-    expect(cmd).toContain("[cmux auto-commit] discovered ${#repos[@]} repos");
-    expect(cmd).toContain("repo candidate: $repo");
-    expect(cmd).not.toContain('wait "$pid"');
+    // Verify error handling
+    expect(cmd).toContain("console.error");
+    expect(cmd).toContain("process.exit(1)");
   });
 
-  it("handles odd characters by leaving quoting to JSON", () => {
-    const branch = "weird\nbranch name '$(rm -rf /)'";
-    const message = `multi-line\nmessage with 'quotes' and \n newlines`;
+  it("handles multi-line commit messages properly", () => {
+    const branch = "fix-branch";
+    const message = `docs(readme): add haiku on environment variables
+
+This is a multi-line commit message
+with 'quotes' and special chars`;
     const cmd = buildAutoCommitPushCommand({
       branchName: branch,
       commitMessage: message,
     });
 
-    // Ensure the JSON-quoted branch appears, and raw message is present
-    expect(cmd).toContain(JSON.stringify(branch));
-    expect(cmd).toContain(message);
+    // Verify multi-line message is escaped properly
+    expect(cmd).toContain("docs(readme): add haiku on environment variables\\n\\nThis is a multi-line commit message\\nwith ");
+    expect(cmd).toContain(".replace(/\\\\n/g, '\\n')");
+
+    // Verify the generated script doesn't have unterminated strings
+    // Check that newlines are properly escaped
+    const lines = cmd.split('\n');
+    const commitMessageLine = lines.find(line => line.includes("const commitMessage = '"));
+    expect(commitMessageLine).toBeDefined();
+    // Should not contain raw newlines in the string literal
+    expect(commitMessageLine).not.toMatch(/const commitMessage = '[^']*\n[^']*'/);
+  });
+
+  it("handles single quotes in commit messages", () => {
+    const branch = "fix-quotes";
+    const message = "Fix 'single quotes' and other's apostrophes";
+    const cmd = buildAutoCommitPushCommand({
+      branchName: branch,
+      commitMessage: message,
+    });
+
+    // Verify single quotes are escaped properly
+    expect(cmd).toContain("Fix '\\''single quotes'\\'' and other'\\''s apostrophes");
+
+    // Verify no raw newlines in string literal
+    const lines = cmd.split('\n');
+    const commitMessageLine = lines.find(line => line.includes("const commitMessage = '"));
+    expect(commitMessageLine).toBeDefined();
+    expect(commitMessageLine).not.toMatch(/const commitMessage = '[^']*\n[^']*'/);
+    // Verify escaped single quotes are correct
+    expect(commitMessageLine).toContain("'\\''single quotes'\\''");
   });
 });

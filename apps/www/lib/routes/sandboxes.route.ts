@@ -185,18 +185,12 @@ const configureGithubAccess = async (
   token: string
 ) => {
   try {
-    const [envctlRes, ghAuthRes] = await Promise.all([
-      instance.exec(`envctl set GITHUB_TOKEN=${token}`),
+    const [ghAuthRes] = await Promise.all([
       instance.exec(
         `bash -lc "printf %s ${singleQuote(token)} | gh auth login --with-token && gh auth setup-git 2>&1 || true"`
       ),
     ]);
 
-    console.log(
-      `[sandboxes.start] envctl set exit=${envctlRes.exit_code} stderr=${maskSensitive(
-        envctlRes.stderr || ""
-      ).slice(0, 200)}`
-    );
     console.log(
       `[sandboxes.start] gh auth exit=${ghAuthRes.exit_code} stderr=${maskSensitive(
         ghAuthRes.stderr || ""

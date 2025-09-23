@@ -2,11 +2,11 @@ import {
   generateGitHubInstallationToken,
   getInstallationForRepo,
 } from "@/lib/utils/github-app-token";
+import { DEFAULT_MORPH_SNAPSHOT_ID } from "@/lib/utils/morph-defaults";
 import { verifyTeamAccess } from "@/lib/utils/team-verification";
 import { env } from "@/lib/utils/www-env";
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import { MorphCloudClient } from "morphcloud";
-import { DEFAULT_MORPH_SNAPSHOT_ID } from "@/lib/utils/morph-defaults";
 import { stackServerAppJs } from "../utils/stack";
 
 export const morphRouter = new OpenAPIHono();
@@ -228,15 +228,6 @@ morphRouter.openapi(
             repositories: repos,
           });
 
-          // Set GitHub token via envctl for this batch
-          console.log("Setting GitHub token via envctl for owner", owner);
-          const setTokenCmd = await instance.exec(
-            `envctl set GITHUB_TOKEN=${githubToken}`
-          );
-          if (setTokenCmd.exit_code !== 0) {
-            console.error(`Failed to set GitHub token: ${setTokenCmd.stderr}`);
-          }
-
           // Clone new repos for this owner
           for (const repo of repos) {
             const repoName = repo.split("/").pop()!;
@@ -247,7 +238,7 @@ morphRouter.openapi(
               await instance.exec("mkdir -p /root/workspace");
 
               const cloneCmd = await instance.exec(
-                `cd /root/workspace && git clone https://\${GITHUB_TOKEN}@github.com/${repo}.git ${repoName}`
+                `cd /root/workspace && git clone https://${githubToken}@github.com/${repo}.git ${repoName} && cd ${repoName} && git remote set-url origin https://github.com/${repo}.git`
               );
 
               if (cloneCmd.exit_code === 0) {

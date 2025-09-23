@@ -1,23 +1,21 @@
 /**
  * Build a bun script to stage, commit, pull --rebase (if remote exists), and push.
  */
-export function buildAutoCommitPushCommand(options: {
-  branchName: string;
-  commitMessage: string;
-}): string {
-  const { branchName, commitMessage } = options;
-
-  // Escape the commit message for embedding in the script
-  const escapedMessage = commitMessage.replace(/'/g, "'\\''");
-
+export function buildAutoCommitPushCommand(): string {
   return `#!/usr/bin/env bun
 
 import { $ } from "bun";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 
-const branchName = '${branchName}';
-const commitMessage = '${escapedMessage}';
+const branchName = process.env.CMUX_BRANCH_NAME;
+const commitMessage = process.env.CMUX_COMMIT_MESSAGE;
+if (!branchName || !commitMessage) {
+  console.error('[cmux auto-commit] missing branch name or commit message');
+  console.error('[cmux auto-commit] branch name:', branchName);
+  console.error('[cmux auto-commit] commit message:', commitMessage);
+  process.exit(1);
+}
 
 async function runRepo(repoPath: string) {
   console.error(\`[cmux auto-commit] repo=\${repoPath} -> enter directory\`);
@@ -91,10 +89,11 @@ async function main() {
   } catch {}
 
   console.error('[cmux auto-commit] detecting repositories');
-  console.error(\`[cmux auto-commit] scanning repos from \${process.cwd()}\`);
 
-  // Find repos only 1 level deep in workspace
-  const workspaceDir = 'workspace';
+  // Always scan from /root/workspace regardless of current directory
+  const workspaceDir = '/root/workspace';
+  console.error(\`[cmux auto-commit] scanning repos from \${workspaceDir}\`);
+
   const repoPaths: string[] = [];
 
   if (existsSync(workspaceDir)) {
