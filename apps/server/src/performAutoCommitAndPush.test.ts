@@ -122,6 +122,20 @@ async function createWorkspaceWithSingleRepo(): Promise<{
   return { workspacePath, remotePath };
 }
 
+async function createWorkspaceWithNestedRepo(): Promise<{
+  workspacePath: string;
+  repoPath: string;
+  remotePath: string;
+}> {
+  const workspacePath = await mkdtemp(join(tmpdir(), "cmux-perform-nested-"));
+  const repoPath = join(workspacePath, "cmux");
+  await mkdir(repoPath, { recursive: true });
+  const remotePath = await createBareRemote("nested-remote");
+  await initRepoWithRemote(repoPath, remotePath);
+  await writeFile(join(repoPath, "nested-change.txt"), `change nested ${Date.now()}\n`);
+  return { workspacePath, repoPath, remotePath };
+}
+
 async function createWorkspaceWithMultipleRepos(): Promise<{
   workspacePath: string;
   repos: Array<{
@@ -243,12 +257,17 @@ describe.sequential("performAutoCommitAndPush", () => {
     expect(firstQuery?.[1]).toEqual({ teamSlugOrId: "team", id: taskRunId });
     expect(getWorkerSocket).toHaveBeenCalledTimes(1);
     expect(isWorkerConnected).toHaveBeenCalledTimes(1);
-    expect(workerExecMock).toHaveBeenCalledTimes(1);
-    const workerCall = workerExecMock.mock.calls[0][0];
-    expect(workerCall.command).toBe("bash");
-    expect(workerCall.cwd).toBe("/root/workspace");
-    expect(workerCall.args[0]).toBe("-c");
-    expect(workerCall.args[1]).toContain("set -o pipefail;");
+    expect(workerExecMock).toHaveBeenCalledTimes(2);
+    const detectionCall = workerExecMock.mock.calls[0]?.[0];
+    const commitCall = workerExecMock.mock.calls[1]?.[0];
+    expect(detectionCall?.command).toBe("bash");
+    expect(detectionCall?.cwd).toBe("/root/workspace");
+    expect(detectionCall?.args[0]).toBe("-lc");
+    expect(detectionCall?.args[1]).toContain("find \"$current_dir\"");
+    expect(commitCall?.command).toBe("bash");
+    expect(commitCall?.cwd).toBe(workspacePath);
+    expect(commitCall?.args[0]).toBe("-c");
+    expect(commitCall?.args[1]).toContain("set -o pipefail;");
 
     const { stdout: logOutput } = await runGitBare(remotePath, "log", branchName, "-1", "--pretty=%B");
     expect(logOutput.trim()).toBe(commitMessage);
@@ -257,6 +276,63 @@ describe.sequential("performAutoCommitAndPush", () => {
     expect(treeOutput).toContain("change.txt");
 
     expect(serverLogger.error).not.toHaveBeenCalled();
+  }, 120_000);
+
+  it("resolves nested git repositories inside the workspace", async () => {
+    const { workspacePath, repoPath, remotePath } = await createWorkspaceWithNestedRepo();
+    cleanupTargets.push(repoPath, remotePath, workspacePath);
+
+    const branchName = "feature/nested-repo";
+    const commitMessage = "Auto commit nested repo";
+    const taskRunId = "taskRun_nested123" as Id<"taskRuns">;
+    const taskId = "task_nested456" as Id<"tasks">;
+
+    configureWorkerExec(workspacePath);
+    generateCommitMessageFromDiffMock.mockResolvedValue(commitMessage);
+
+    const taskRunRecord = {
+      _id: taskRunId,
+      taskId,
+      isCrowned: false,
+      newBranch: branchName,
+      crownReason: null,
+      completedAt: Date.now(),
+    };
+
+    queryMock.mockResolvedValueOnce(taskRunRecord);
+    queryMock.mockResolvedValue(null);
+
+    const getWorkerSocket = vi.fn(() => ({}));
+    const isWorkerConnected = vi.fn(() => true);
+    const vscodeInstance = {
+      getWorkerSocket,
+      isWorkerConnected,
+    } as unknown as VSCodeInstance;
+
+    const agent: AgentConfig = {
+      name: "TestAgent",
+      command: "run",
+      args: [],
+    };
+
+    await performAutoCommitAndPush(
+      vscodeInstance,
+      agent,
+      taskRunId,
+      "Implement nested feature",
+      "team",
+      "diff content"
+    );
+
+    expect(workerExecMock).toHaveBeenCalledTimes(2);
+    const commitCall = workerExecMock.mock.calls[1]?.[0];
+    expect(commitCall?.cwd).toBe(repoPath);
+
+    const { stdout: logOutput } = await runGitBare(remotePath, "log", branchName, "-1", "--pretty=%B");
+    expect(logOutput.trim()).toBe(commitMessage);
+
+    const { stdout: treeOutput } = await runGitBare(remotePath, "ls-tree", branchName, "nested-change.txt");
+    expect(treeOutput).toContain("nested-change.txt");
   }, 120_000);
 
   it("commits and pushes changes for each repo inside the workspace", async () => {
@@ -314,7 +390,12 @@ describe.sequential("performAutoCommitAndPush", () => {
     expect(firstQuery?.[1]).toEqual({ teamSlugOrId: "team", id: taskRunId });
     expect(getWorkerSocket).toHaveBeenCalledTimes(1);
     expect(isWorkerConnected).toHaveBeenCalledTimes(1);
-    expect(workerExecMock).toHaveBeenCalledTimes(1);
+    expect(workerExecMock).toHaveBeenCalledTimes(2);
+    const detectionCall = workerExecMock.mock.calls[0]?.[0];
+    const commitCall = workerExecMock.mock.calls[1]?.[0];
+    expect(detectionCall?.command).toBe("bash");
+    expect(detectionCall?.cwd).toBe("/root/workspace");
+    expect(commitCall?.cwd).toBe("/root/workspace");
 
     for (const repo of repos) {
       const { stdout: logOutput } = await runGitBare(repo.remotePath, "log", branchName, "-1", "--pretty=%B");

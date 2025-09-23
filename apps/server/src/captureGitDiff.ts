@@ -1,5 +1,6 @@
 import { serverLogger } from "./utils/fileLogger.js";
 import { workerExec } from "./utils/workerExec.js";
+import { resolveWorkerRepoPath } from "./utils/resolveWorkerRepoPath.js";
 import type { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 
 export async function captureGitDiff(
@@ -21,11 +22,20 @@ export async function captureGitDiff(
       `[AgentSpawner] Collecting relevant git diff for ${worktreePath}`
     );
 
+    const repoCwd = await resolveWorkerRepoPath({
+      workerSocket,
+      initialCwd: "/root/workspace",
+      fallbackCwd: "/root/workspace",
+    });
+    serverLogger.info(
+      `[AgentSpawner] Running diff script from ${repoCwd}`
+    );
+
     const { stdout, stderr, exitCode } = await workerExec({
       workerSocket,
       command: "/bin/bash",
       args: ["-c", "/usr/local/bin/cmux-collect-relevant-diff.sh"],
-      cwd: "/root/workspace",
+      cwd: repoCwd,
       env: {},
       timeout: 30000,
     });

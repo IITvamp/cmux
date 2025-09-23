@@ -61,7 +61,6 @@ export class CmuxVSCodeInstance extends VSCodeInstance {
           : {}),
       },
     });
-    console.log("startRes", startRes);
     const data = startRes.data;
     if (!data) {
       throw new Error("Failed to start sandbox");

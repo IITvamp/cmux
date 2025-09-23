@@ -7,6 +7,7 @@ import { getConvex } from "./utils/convexClient";
 import { serverLogger } from "./utils/fileLogger";
 import { workerExec } from "./utils/workerExec";
 import { VSCodeInstance } from "./vscode/VSCodeInstance";
+import { resolveWorkerRepoPath } from "./utils/resolveWorkerRepoPath";
 
 /**
  * Automatically commit and push changes when a task completes
@@ -87,6 +88,12 @@ export default async function performAutoCommitAndPush(
       return;
     }
 
+    const repoCwd = await resolveWorkerRepoPath({
+      workerSocket,
+      initialCwd: "/root/workspace",
+      fallbackCwd: "/root/workspace",
+    });
+
     const autoCommitScript = buildAutoCommitPushCommand({
       branchName,
       commitMessage,
@@ -97,7 +104,7 @@ export default async function performAutoCommitAndPush(
         workerSocket,
         command: "bash",
         args: ["-c", `set -o pipefail; ${autoCommitScript}`],
-        cwd: "/root/workspace",
+        cwd: repoCwd,
         env: {},
         timeout: 60000,
       });

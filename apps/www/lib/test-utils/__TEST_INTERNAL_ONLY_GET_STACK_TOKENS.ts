@@ -1,14 +1,30 @@
 import { env } from "@/lib/utils/www-env";
-import { StackAdminApp } from "@stackframe/js";
+import StackframePkg from "@stackframe/js";
+
+type StackModule = {
+  StackAdminApp?: typeof import("@stackframe/js").StackAdminApp;
+  default?: { StackAdminApp?: typeof import("@stackframe/js").StackAdminApp };
+};
+
+const stackModule = StackframePkg as StackModule;
+const StackAdminAppCtor =
+  stackModule.StackAdminApp ?? stackModule.default?.StackAdminApp;
+
+if (!StackAdminAppCtor) {
+  throw new Error("StackAdminApp export not found in @stackframe/js");
+}
+
+const StackAdminApp = StackAdminAppCtor;
+type StackAdminAppType = import("@stackframe/js").StackAdminApp;
 
 export type Tokens = { accessToken: string; refreshToken?: string };
 
 // Default test user for local/CI integration tests
 const DEFAULT_TEST_USER_ID = "487b5ddc-0da0-4f12-8834-f452863a83f5";
 
-let adminApp: StackAdminApp | null = null;
+let adminApp: StackAdminAppType | null = null;
 
-function getAdmin(): StackAdminApp {
+function getAdmin(): StackAdminAppType {
   if (!adminApp) {
     adminApp = new StackAdminApp({
       projectId: env.NEXT_PUBLIC_STACK_PROJECT_ID,
