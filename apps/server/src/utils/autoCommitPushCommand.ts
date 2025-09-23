@@ -79,15 +79,6 @@ async function runRepo(repoPath: string) {
 async function main() {
   console.error(\`[cmux auto-commit] script start cwd=\${process.cwd()}\`);
 
-  // Check gh auth status if available
-  try {
-    const ghExists = await $\`command -v gh\`.quiet();
-    if (ghExists.exitCode === 0) {
-      console.error('[cmux auto-commit] gh auth status:');
-      await $\`gh auth status\`.nothrow();
-    }
-  } catch {}
-
   console.error('[cmux auto-commit] detecting repositories');
 
   // Always scan from /root/workspace regardless of current directory
@@ -97,22 +88,42 @@ async function main() {
   const repoPaths: string[] = [];
 
   if (existsSync(workspaceDir)) {
-    const repos = await $\`ls -d \${workspaceDir}/*/\`.text().catch(() => '');
+    // First check if /root/workspace itself is a git repo
+    const workspaceGitPath = join(workspaceDir, '.git');
 
-    for (const repoDir of repos.trim().split('\\n').filter(Boolean)) {
-      const gitPath = join(repoDir, '.git');
+    if (existsSync(workspaceGitPath)) {
+      // /root/workspace is itself a git repo
+      try {
+        await $\`git -C \${workspaceDir} rev-parse --is-inside-work-tree\`.quiet();
+        const fullPath = await $\`cd \${workspaceDir} && pwd\`.text();
+        const repoPath = fullPath.trim();
 
-      if (existsSync(gitPath)) {
-        // Verify it's a git repo
-        try {
-          await $\`git -C \${repoDir} rev-parse --is-inside-work-tree\`.quiet();
-          const fullPath = await $\`cd \${repoDir} && pwd\`.text();
-          const repoPath = fullPath.trim();
+        console.error(\`[cmux auto-commit] /root/workspace is a git repo: \${repoPath}\`);
+        repoPaths.push(repoPath);
+      } catch {
+        console.error('[cmux auto-commit] /root/workspace has .git but is not a valid repo');
+      }
+    } else {
+      // /root/workspace is not a git repo, check for sub-repos
+      console.error('[cmux auto-commit] /root/workspace is not a git repo, checking for sub-repos');
 
-          console.error(\`[cmux auto-commit] found repo: \${repoPath}\`);
-          repoPaths.push(repoPath);
-        } catch {
-          // Not a valid git repo, skip
+      const repos = await $\`ls -d \${workspaceDir}/*/\`.text().catch(() => '');
+
+      for (const repoDir of repos.trim().split('\\n').filter(Boolean)) {
+        const gitPath = join(repoDir, '.git');
+
+        if (existsSync(gitPath)) {
+          // Verify it's a git repo
+          try {
+            await $\`git -C \${repoDir} rev-parse --is-inside-work-tree\`.quiet();
+            const fullPath = await $\`cd \${repoDir} && pwd\`.text();
+            const repoPath = fullPath.trim();
+
+            console.error(\`[cmux auto-commit] found sub-repo: \${repoPath}\`);
+            repoPaths.push(repoPath);
+          } catch {
+            // Not a valid git repo, skip
+          }
         }
       }
     }
