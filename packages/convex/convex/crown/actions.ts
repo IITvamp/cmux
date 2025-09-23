@@ -88,6 +88,75 @@ export const evaluate = action({
   },
 });
 
+export const evaluateRuns = action({
+  args: {
+    taskId: v.id("tasks"),
+    taskPrompt: v.string(),
+    runs: v.array(
+      v.object({
+        id: v.string(),
+        agentName: v.string(),
+        summary: v.string(),
+        diff: v.string(),
+      })
+    ),
+  },
+  handler: async (_ctx, args) => {
+    const apiKey = env.ANTHROPIC_API_KEY;
+
+    // Build evaluation prompt
+    const evaluationPrompt = `You are evaluating multiple implementations of the following task:
+
+Task Prompt:
+${args.taskPrompt}
+
+${args.runs.map((run, idx) => `
+=== Implementation ${idx} (${run.agentName}) ===
+ID: ${run.id}
+Summary: ${run.summary}
+
+Diff:
+${run.diff}
+`).join('\n')}
+
+Select the best implementation based on:
+1. Correctness and completeness of the solution
+2. Code quality and best practices
+3. How well it addresses the original task requirements
+
+Return the index (0-based) of the best implementation.`;
+
+    try {
+      const result = await performCrownEvaluation(apiKey, evaluationPrompt);
+
+      // Map index to run ID
+      const winnerRun = args.runs[result.winner];
+      if (!winnerRun) {
+        throw new ConvexError(`Invalid winner index: ${result.winner}`);
+      }
+
+      return {
+        winnerId: winnerRun.id,
+        reason: result.reason,
+        evaluationPrompt,
+        evaluationResponse: JSON.stringify(result),
+        llmReasoningTrace: {
+          model: MODEL_NAME,
+          winner: result.winner,
+          reason: result.reason,
+        },
+      };
+    } catch (error) {
+      console.error("[convex.crown] Evaluation failed", error);
+      return {
+        winnerId: null,
+        error: error instanceof Error ? error.message : "Unknown error",
+        evaluationPrompt,
+      };
+    }
+  },
+});
+
 export const summarize = action({
   args: {
     prompt: v.string(),

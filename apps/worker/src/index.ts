@@ -17,6 +17,7 @@ import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
 import { startAmpProxy } from "@cmux/shared/src/providers/amp/start-amp-proxy.ts";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import * as xtermHeadless from "@xterm/headless";
+import { ConvexHttpClient } from "convex/browser";
 import express from "express";
 import multer from "multer";
 import {
@@ -46,6 +47,13 @@ const WORKER_ID = process.env.WORKER_ID || `worker-${Date.now()}`;
 const WORKER_PORT = parseInt(process.env.WORKER_PORT || "39377", 10);
 const CONTAINER_IMAGE = process.env.CONTAINER_IMAGE || "cmux-worker";
 const CONTAINER_VERSION = process.env.CONTAINER_VERSION || "0.0.1";
+
+// Initialize Convex client
+const CONVEX_URL = process.env.CONVEX_URL || process.env.NEXT_PUBLIC_CONVEX_URL;
+if (!CONVEX_URL) {
+  log("ERROR", "CONVEX_URL or NEXT_PUBLIC_CONVEX_URL must be set");
+}
+const convexClient = CONVEX_URL ? new ConvexHttpClient(CONVEX_URL) : null;
 
 // Create Express app
 const app = express();
@@ -1004,14 +1012,48 @@ async function createTerminal(
     try {
       void agentConfig
         .completionDetector(options.taskRunId)
-        .then(() => {
-          emitToMainServer("worker:task-complete", {
-            workerId: WORKER_ID,
-            terminalId,
-            taskRunId: options.taskRunId!,
-            agentModel: options.agentModel,
-            elapsedMs: Date.now() - processStartTime,
-          });
+        .then(async () => {
+          // Directly call Convex mutation instead of emitting to main server
+          if (convexClient && options.taskRunId) {
+            try {
+              const result = await convexClient.mutation(
+                "crown_workflow:markTaskRunCompleteWithRetry",
+                {
+                  taskRunId: options.taskRunId as any,
+                  exitCode: 0,
+                }
+              );
+
+              log("INFO", `TaskRun ${options.taskRunId} marked as complete in Convex`, {
+                shouldEvaluate: result.shouldEvaluate,
+                taskId: result.taskId,
+              });
+
+              // If crown evaluation is needed, trigger it
+              if (result.shouldEvaluate) {
+                await triggerCrownEvaluation(result.taskId);
+              }
+            } catch (error) {
+              log("ERROR", `Failed to mark task run complete in Convex: ${String(error)}`);
+              // Fallback to emitting event to main server
+              emitToMainServer("worker:task-complete", {
+                workerId: WORKER_ID,
+                terminalId,
+                taskRunId: options.taskRunId!,
+                agentModel: options.agentModel,
+                elapsedMs: Date.now() - processStartTime,
+              });
+            }
+          } else {
+            // Fallback if Convex client not available
+            emitToMainServer("worker:task-complete", {
+              workerId: WORKER_ID,
+              terminalId,
+              taskRunId: options.taskRunId!,
+              agentModel: options.agentModel,
+              elapsedMs: Date.now() - processStartTime,
+            });
+          }
         })
         .catch((e) => {
           log(
@@ -1100,28 +1142,88 @@ async function createTerminal(
       detectTerminalIdle({
         sessionName: sessionName || terminalId,
         idleTimeoutMs: 15000,
-        onIdle: () => {
+        onIdle: async () => {
           const elapsedMs = Date.now() - processStartTime;
           if (options.taskRunId) {
-            emitToMainServer("worker:terminal-idle", {
-              workerId: WORKER_ID,
-              terminalId,
-              taskRunId: options.taskRunId,
-              elapsedMs,
-            });
+            // Directly call Convex mutation for legacy idle detection
+            if (convexClient) {
+              try {
+                const result = await convexClient.mutation(
+                  "crown_workflow:markTaskRunCompleteWithRetry",
+                  {
+                    taskRunId: options.taskRunId as any,
+                    exitCode: 0,
+                  }
+                );
+
+                log("INFO", `TaskRun ${options.taskRunId} marked as complete (idle) in Convex`, {
+                  shouldEvaluate: result.shouldEvaluate,
+                  taskId: result.taskId,
+                });
+
+                // If crown evaluation is needed, trigger it
+                if (result.shouldEvaluate) {
+                  await triggerCrownEvaluation(result.taskId);
+                }
+              } catch (error) {
+                log("ERROR", `Failed to mark task run complete (idle) in Convex: ${String(error)}`);
+                // Fallback to emitting event
+                emitToMainServer("worker:terminal-idle", {
+                  workerId: WORKER_ID,
+                  terminalId,
+                  taskRunId: options.taskRunId,
+                  elapsedMs,
+                });
+              }
+            } else {
+              emitToMainServer("worker:terminal-idle", {
+                workerId: WORKER_ID,
+                terminalId,
+                taskRunId: options.taskRunId,
+                elapsedMs,
+              });
+            }
           }
         },
-      }).catch((error) => {
+      }).catch(async (error) => {
         const errMsg =
           (initialStderrBuffer && initialStderrBuffer.trim()) ||
           (error instanceof Error ? error.message : String(error));
-        emitToMainServer("worker:terminal-failed", {
-          workerId: WORKER_ID,
-          terminalId,
-          taskRunId: options.taskRunId,
-          errorMessage: errMsg,
-          elapsedMs: Date.now() - processStartTime,
-        });
+
+        if (options.taskRunId) {
+          // Mark as failed in Convex
+          if (convexClient) {
+            try {
+              await convexClient.mutation(
+                "crown_workflow:markTaskRunCompleteWithRetry",
+                {
+                  taskRunId: options.taskRunId as any,
+                  exitCode: 1,
+                  errorMessage: errMsg,
+                }
+              );
+              log("INFO", `TaskRun ${options.taskRunId} marked as failed in Convex`);
+            } catch (convexError) {
+              log("ERROR", `Failed to mark task run as failed in Convex: ${String(convexError)}`);
+              // Fallback to emitting event
+              emitToMainServer("worker:terminal-failed", {
+                workerId: WORKER_ID,
+                terminalId,
+                taskRunId: options.taskRunId,
+                errorMessage: errMsg,
+                elapsedMs: Date.now() - processStartTime,
+              });
+            }
+          } else {
+            emitToMainServer("worker:terminal-failed", {
+              workerId: WORKER_ID,
+              terminalId,
+              taskRunId: options.taskRunId,
+              errorMessage: errMsg,
+              elapsedMs: Date.now() - processStartTime,
+            });
+          }
+        }
       });
     }
   }
@@ -1170,6 +1272,64 @@ httpServer.listen(WORKER_PORT, () => {
     WORKER_ID
   );
 });
+
+// Helper function to trigger crown evaluation
+async function triggerCrownEvaluation(taskId: string) {
+  try {
+    log("INFO", `Triggering crown evaluation for task ${taskId}`);
+
+    if (!convexClient) {
+      log("ERROR", "Convex client not available for crown evaluation");
+      return;
+    }
+
+    // First, try to acquire the evaluation lock
+    const lockResult = await convexClient.mutation(
+      "crown_workflow:tryBeginCrownEvaluation",
+      { taskId: taskId as any }
+    );
+
+    if (!lockResult.acquired) {
+      log("INFO", `Crown evaluation already in progress for task ${taskId}: ${lockResult.reason}`);
+      return;
+    }
+
+    // Get task details to trigger evaluation
+    const taskStatus = await convexClient.query(
+      "crown_workflow:getAllTaskRunsStatus",
+      { taskId: taskId as any }
+    );
+
+    if (!taskStatus.needsEvaluation) {
+      log("INFO", `Task ${taskId} does not need crown evaluation`);
+      return;
+    }
+
+    // Call the crown HTTP endpoint to trigger evaluation
+    const convexUrl = CONVEX_URL!.replace('/api', '');
+    const response = await fetch(`${convexUrl}/crown/evaluate`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-stack-auth': JSON.stringify({ accessToken: process.env.STACK_ACCESS_TOKEN || 'worker-token' }),
+      },
+      body: JSON.stringify({
+        taskId,
+        completedRunIds: lockResult.completedRunIds,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Crown evaluation request failed: ${response.status}`);
+    }
+
+    const result = await response.json();
+    log("INFO", `Crown evaluation triggered successfully`, result);
+  } catch (error) {
+    log("ERROR", `Failed to trigger crown evaluation: ${String(error)}`);
+    // Don't throw - crown evaluation failure shouldn't break task completion
+  }
+}
 
 // Start AMP proxy via shared provider module
 startAmpProxy({

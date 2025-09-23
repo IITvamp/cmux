@@ -1,5 +1,6 @@
 import { httpRouter } from "convex/server";
 import { crownEvaluate, crownSummarize } from "./crown_http";
+import { directCrownEvaluate } from "./crown_direct";
 import { githubSetup } from "./github_setup";
 import { githubWebhook } from "./github_webhook";
 import { stackWebhook } from "./stack_webhook";
@@ -28,6 +29,12 @@ http.route({
   path: "/api/crown/summarize",
   method: "POST",
   handler: crownSummarize,
+});
+
+http.route({
+  path: "/crown/evaluate",
+  method: "POST",
+  handler: directCrownEvaluate,
 });
 
 http.route({
