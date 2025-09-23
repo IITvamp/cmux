@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { SignJWT } from "jose";
 import { env } from "../_shared/convex-env";
 import { resolveTeamIdLoose } from "../_shared/team";
+import { api } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authMutation, authQuery } from "./users/utils";
@@ -842,5 +843,153 @@ export const getRunningContainersByCleanupPriority = authQuery({
       prioritizedForCleanup: [...reviewContainers, ...activeContainers],
       protectedCount: containersToKeepIds.size,
     };
+  },
+});
+
+// Internal mutation to mark task run as complete from worker
+export const markCompletedFromWorker = internalMutation({
+  args: {
+    taskRunId: v.id("taskRuns"),
+    exitCode: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY_MS = 200;
+
+    let retryCount = 0;
+    while (retryCount < MAX_RETRIES) {
+      try {
+        // Get the task run
+        const taskRun = await ctx.db.get(args.taskRunId);
+        if (!taskRun) {
+          throw new Error(`TaskRun ${args.taskRunId} not found`);
+        }
+
+        // Update the task run status to completed
+        await ctx.db.patch(args.taskRunId, {
+          status: "completed",
+          completedAt: Date.now(),
+          updatedAt: Date.now(),
+          exitCode: args.exitCode ?? 0,
+        });
+
+        // Check if all task runs for this task are completed
+        const allTaskRuns = await ctx.db
+          .query("taskRuns")
+          .withIndex("by_task", q => q.eq("taskId", taskRun.taskId))
+          .collect();
+
+        const allCompleted = allTaskRuns.every(
+          run => run.status === "completed" || run.status === "failed"
+        );
+
+        if (allCompleted) {
+          // Get the task to get teamSlugOrId
+          const task = await ctx.db.get(taskRun.taskId);
+          if (!task) {
+            console.error(`Task ${taskRun.taskId} not found for crown evaluation`);
+            return { success: true, crownTriggered: false };
+          }
+
+          // Check if at least one succeeded
+          const hasSuccessful = allTaskRuns.some(run => run.status === "completed");
+          if (hasSuccessful) {
+            // Trigger crown evaluation asynchronously
+            await ctx.scheduler.runAfter(500, api.crown.actions.evaluateTask, {
+              taskId: taskRun.taskId,
+              teamSlugOrId: task.teamId,
+            });
+            return { success: true, crownTriggered: true };
+          }
+        }
+
+        return { success: true, crownTriggered: false };
+      } catch (error) {
+        retryCount++;
+        if (retryCount >= MAX_RETRIES) {
+          throw error;
+        }
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * retryCount));
+      }
+    }
+
+    throw new Error("Failed to mark task run as completed after retries");
+  },
+});
+
+// Internal mutation to mark task run as failed from worker
+export const markFailedFromWorker = internalMutation({
+  args: {
+    taskRunId: v.id("taskRuns"),
+    errorMessage: v.string(),
+    exitCode: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY_MS = 200;
+
+    let retryCount = 0;
+    while (retryCount < MAX_RETRIES) {
+      try {
+        // Get the task run
+        const taskRun = await ctx.db.get(args.taskRunId);
+        if (!taskRun) {
+          throw new Error(`TaskRun ${args.taskRunId} not found`);
+        }
+
+        // Update the task run status to failed
+        await ctx.db.patch(args.taskRunId, {
+          status: "failed",
+          completedAt: Date.now(),
+          updatedAt: Date.now(),
+          errorMessage: args.errorMessage,
+          exitCode: args.exitCode ?? 1,
+        });
+
+        // Check if all task runs for this task are completed or failed
+        const allTaskRuns = await ctx.db
+          .query("taskRuns")
+          .withIndex("by_task", q => q.eq("taskId", taskRun.taskId))
+          .collect();
+
+        const allFinished = allTaskRuns.every(
+          run => run.status === "completed" || run.status === "failed"
+        );
+
+        if (allFinished) {
+          // Check if at least one succeeded
+          const hasSuccessful = allTaskRuns.some(run => run.status === "completed");
+
+          if (hasSuccessful) {
+            // Get the task to get teamSlugOrId
+            const task = await ctx.db.get(taskRun.taskId);
+            if (!task) {
+              console.error(`Task ${taskRun.taskId} not found for crown evaluation`);
+              return { success: true, crownTriggered: false };
+            }
+
+            // Trigger crown evaluation even if some failed
+            await ctx.scheduler.runAfter(500, api.crown.actions.evaluateTask, {
+              taskId: taskRun.taskId,
+              teamSlugOrId: task.teamId,
+            });
+
+            return { success: true, crownTriggered: true };
+          }
+        }
+
+        return { success: true, crownTriggered: false };
+      } catch (error) {
+        retryCount++;
+        if (retryCount >= MAX_RETRIES) {
+          throw error;
+        }
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * retryCount));
+      }
+    }
+
+    throw new Error("Failed to mark task run as failed after retries");
   },
 });

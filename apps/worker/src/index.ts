@@ -13,6 +13,8 @@ import {
   type WorkerToServerEvents,
 } from "@cmux/shared";
 import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
+import { ConvexHttpClient } from "convex/browser";
+import { api } from "@cmux/convex/_generated/api";
 
 import { startAmpProxy } from "@cmux/shared/src/providers/amp/start-amp-proxy.ts";
 import { SerializeAddon } from "@xterm/addon-serialize";
@@ -46,6 +48,19 @@ const WORKER_ID = process.env.WORKER_ID || `worker-${Date.now()}`;
 const WORKER_PORT = parseInt(process.env.WORKER_PORT || "39377", 10);
 const CONTAINER_IMAGE = process.env.CONTAINER_IMAGE || "cmux-worker";
 const CONTAINER_VERSION = process.env.CONTAINER_VERSION || "0.0.1";
+const CONVEX_URL = process.env.NEXT_PUBLIC_CONVEX_URL;
+const CONVEX_DEPLOY_KEY = process.env.CONVEX_DEPLOY_KEY;
+
+// Initialize Convex client
+let convexClient: ConvexHttpClient | null = null;
+if (CONVEX_URL && CONVEX_DEPLOY_KEY) {
+  convexClient = new ConvexHttpClient(CONVEX_URL);
+  // Use deploy key for internal mutations
+  convexClient.setAuth(CONVEX_DEPLOY_KEY);
+  log("INFO", "Convex client initialized", { url: CONVEX_URL });
+} else {
+  log("WARNING", "Convex client not initialized - missing CONVEX_URL or CONVEX_DEPLOY_KEY");
+}
 
 // Create Express app
 const app = express();
@@ -1004,20 +1019,57 @@ async function createTerminal(
     try {
       void agentConfig
         .completionDetector(options.taskRunId)
-        .then(() => {
+        .then(async () => {
+          const elapsedMs = Date.now() - processStartTime;
+
+          // Notify Convex directly if client is available
+          if (convexClient) {
+            try {
+              const result = await convexClient.mutation(
+                api.taskRuns.markCompletedFromWorker,
+                {
+                  taskRunId: options.taskRunId as any,
+                  exitCode: 0,
+                }
+              );
+              log("INFO", `Task run ${options.taskRunId} marked as completed in Convex`, {
+                crownTriggered: result.crownTriggered,
+              });
+            } catch (error) {
+              log("ERROR", `Failed to mark task run as completed in Convex`, error);
+            }
+          }
+
+          // Still emit to main server for backward compatibility
           emitToMainServer("worker:task-complete", {
             workerId: WORKER_ID,
             terminalId,
             taskRunId: options.taskRunId!,
             agentModel: options.agentModel,
-            elapsedMs: Date.now() - processStartTime,
+            elapsedMs,
           });
         })
-        .catch((e) => {
+        .catch(async (e) => {
           log(
             "ERROR",
             `Completion detector error for ${options.agentModel}: ${String(e)}`
           );
+
+          // Mark as failed in Convex
+          if (convexClient && options.taskRunId) {
+            try {
+              await convexClient.mutation(
+                api.taskRuns.markFailedFromWorker,
+                {
+                  taskRunId: options.taskRunId as any,
+                  errorMessage: String(e),
+                  exitCode: 1,
+                }
+              );
+            } catch (error) {
+              log("ERROR", `Failed to mark task run as failed in Convex`, error);
+            }
+          }
         });
     } catch (e) {
       log(
@@ -1111,10 +1163,29 @@ async function createTerminal(
             });
           }
         },
-      }).catch((error) => {
+      }).catch(async (error) => {
         const errMsg =
           (initialStderrBuffer && initialStderrBuffer.trim()) ||
           (error instanceof Error ? error.message : String(error));
+
+        // Mark as failed in Convex if available
+        if (convexClient && options.taskRunId) {
+          try {
+            await convexClient.mutation(
+              api.taskRuns.markFailedFromWorker,
+              {
+                taskRunId: options.taskRunId as any,
+                errorMessage: errMsg,
+                exitCode: 1,
+              }
+            );
+            log("INFO", `Task run ${options.taskRunId} marked as failed in Convex`);
+          } catch (convexError) {
+            log("ERROR", `Failed to mark task run as failed in Convex`, convexError);
+          }
+        }
+
+        // Still emit to main server for backward compatibility
         emitToMainServer("worker:terminal-failed", {
           workerId: WORKER_ID,
           terminalId,
