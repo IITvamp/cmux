@@ -10,4 +10,5 @@ export type EnvironmentContext = {
   taskRunId: string;
   prompt: string;
   taskRunJwt: string;
+  isCloudMode?: boolean;
 };

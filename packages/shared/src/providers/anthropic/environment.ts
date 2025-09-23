@@ -15,10 +15,15 @@ export async function getClaudeEnvironment(
   const execAsync = promisify(exec);
 
   const files: EnvironmentResult["files"] = [];
-  const env: Record<string, string> = {
-    ANTHROPIC_BASE_URL: "https://www.cmux.dev/api/anthropic",
-    ANTHROPIC_CUSTOM_HEADERS: `x-cmux-token:${ctx.taskRunJwt}`,
-  };
+  const isCloudMode = ctx.isCloudMode ?? false;
+  const env: Record<string, string> = {};
+
+  if (isCloudMode) {
+    env.ANTHROPIC_BASE_URL = "https://api.anthropic.com";
+  } else {
+    env.ANTHROPIC_BASE_URL = "https://www.cmux.dev/api/anthropic";
+    env.ANTHROPIC_CUSTOM_HEADERS = `x-cmux-token:${ctx.taskRunJwt}`;
+  }
   const startupCommands: string[] = [];
 
   // Prepare .claude.json

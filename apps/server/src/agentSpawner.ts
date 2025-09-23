@@ -266,6 +266,7 @@ export async function spawnAgent(
         taskRunId: taskRunId,
         prompt: processedTaskDescription,
         taskRunJwt,
+        isCloudMode: Boolean(options.isCloudMode),
       });
       envVars = {
         ...envVars,
