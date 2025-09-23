@@ -275,33 +275,6 @@ export type GithubPrsFileContentsBatchBody = {
     maxFileBytes?: number;
 };
 
-export type GithubUserInfo = {
-    /**
-     * GitHub numeric user id
-     */
-    id: number;
-    /**
-     * GitHub login
-     */
-    login: string;
-    /**
-     * <id>+<login>@users.noreply.github.com
-     */
-    derivedNoreply: string;
-    /**
-     * Known emails
-     */
-    emails: Array<string>;
-    /**
-     * Primary email, if available
-     */
-    primaryEmail: string | null;
-    /**
-     * Whether user:email scope allowed /user/emails
-     */
-    canReadEmails: boolean;
-};
-
 export type SetupInstanceResponse = {
     instanceId: string;
     vscodeUrl: string;
@@ -1148,29 +1121,6 @@ export type PostApiIntegrationsGithubPrsFileContentsBatchResponses = {
 };
 
 export type PostApiIntegrationsGithubPrsFileContentsBatchResponse = PostApiIntegrationsGithubPrsFileContentsBatchResponses[keyof PostApiIntegrationsGithubPrsFileContentsBatchResponses];
-
-export type GetApiIntegrationsGithubUserData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/integrations/github/user';
-};
-
-export type GetApiIntegrationsGithubUserErrors = {
-    /**
-     * Unauthorized
-     */
-    401: unknown;
-};
-
-export type GetApiIntegrationsGithubUserResponses = {
-    /**
-     * OK
-     */
-    200: GithubUserInfo;
-};
-
-export type GetApiIntegrationsGithubUserResponse = GetApiIntegrationsGithubUserResponses[keyof GetApiIntegrationsGithubUserResponses];
 
 export type PostApiMorphSetupInstanceData = {
     body: SetupInstanceBody;
