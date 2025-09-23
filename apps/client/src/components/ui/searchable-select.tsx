@@ -245,7 +245,7 @@ const SearchableSelect = forwardRef<SearchableSelectHandle, SearchableSelectProp
   const [_recalcTick, setRecalcTick] = useState(0);
   // Popover width is fixed; no need to track trigger width
   const pendingFocusRef = useRef<string | null>(null);
-
+  
   const countByValue = useMemo(() => {
     const map = new Map<string, number>();
     for (const val of value) {
@@ -415,10 +415,17 @@ const SearchableSelect = forwardRef<SearchableSelectHandle, SearchableSelectProp
     }
   }, [open, rowVirtualizer]);
 
-  const scrollToOption = useCallback(
-    (val: string) => {
-      const index = filteredOptions.findIndex((opt) => opt.value === val);
-      if (index === -1) return;
+  const handleOpenAutoFocus = useCallback(
+    (_event: Event) => {
+      const focusValue = pendingFocusRef.current;
+      if (!focusValue) {
+        return;
+      }
+      pendingFocusRef.current = null;
+      const index = filteredOptions.findIndex((opt) => opt.value === focusValue);
+      if (index === -1) {
+        return;
+      }
       requestAnimationFrame(() => {
         try {
           rowVirtualizer.scrollToIndex(index, {
@@ -433,14 +440,6 @@ const SearchableSelect = forwardRef<SearchableSelectHandle, SearchableSelectProp
     [filteredOptions, rowVirtualizer]
   );
 
-  useEffect(() => {
-    if (!open) return;
-    const focusValue = pendingFocusRef.current;
-    if (!focusValue) return;
-    scrollToOption(focusValue);
-    pendingFocusRef.current = null;
-  }, [open, scrollToOption]);
-
   useImperativeHandle(
     ref,
     () => ({
@@ -454,8 +453,20 @@ const SearchableSelect = forwardRef<SearchableSelectHandle, SearchableSelectProp
         setOpen(true);
         requestAnimationFrame(() => {
           if (focusValue && open) {
-            scrollToOption(focusValue);
+            const index = filteredOptions.findIndex(
+              (opt) => opt.value === focusValue
+            );
             pendingFocusRef.current = null;
+            if (index !== -1) {
+              try {
+                rowVirtualizer.scrollToIndex(index, {
+                  align: "center",
+                  behavior: "auto",
+                });
+              } catch {
+                /* noop */
+              }
+            }
           }
           triggerRef.current?.focus({ preventScroll: true });
         });
@@ -465,7 +476,7 @@ const SearchableSelect = forwardRef<SearchableSelectHandle, SearchableSelectProp
         setOpen(false);
       },
     }),
-    [open, scrollToOption]
+    [filteredOptions, open, rowVirtualizer]
   );
 
   const updateValueCount = (val: string, nextCount: number) => {
@@ -528,6 +539,7 @@ const SearchableSelect = forwardRef<SearchableSelectHandle, SearchableSelectProp
           align="start"
           sideOffset={2}
           collisionPadding={{ top: 12, bottom: 12 }}
+          onOpenAutoFocus={handleOpenAutoFocus}
           className="z-[var(--z-modal)] rounded-md border overflow-hidden border-neutral-200 bg-white p-0 drop-shadow-xs outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 dark:border-neutral-800 dark:bg-neutral-950"
           style={{ width: 300 }}
         >
