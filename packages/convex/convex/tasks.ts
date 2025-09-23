@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { resolveTeamIdLoose } from "../_shared/team";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { internalMutation, internalQuery } from "./_generated/server";
 import { authMutation, authQuery } from "./users/utils";
 
 export const get = authQuery({
@@ -359,6 +360,28 @@ export const setPullRequestTitle = authMutation({
     }
     await ctx.db.patch(id, {
       pullRequestTitle,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+// Internal query to get task by ID (for internal use)
+export const getByIdInternal = internalQuery({
+  args: { id: v.id("tasks") },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.id);
+  },
+});
+
+// Internal mutation to update crown evaluation error
+export const updateCrownEvaluationError = internalMutation({
+  args: {
+    taskId: v.id("tasks"),
+    error: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.taskId, {
+      crownEvaluationError: args.error,
       updatedAt: Date.now(),
     });
   },

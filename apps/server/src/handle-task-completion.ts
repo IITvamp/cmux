@@ -27,12 +27,10 @@ export async function handleTaskCompletion({
   teamSlugOrId: string;
 }) {
   try {
-    // Mark task as complete (retry on OCC)
-    await retryOnOptimisticConcurrency(() =>
-      getConvex().mutation(api.taskRuns.complete, {
-        teamSlugOrId,
-        id: taskRunId,
-        exitCode,
+    // Mark task as complete and check if all tasks are done (retry on OCC)
+    const { allCompleted, taskId } = await retryOnOptimisticConcurrency(() =>
+      getConvex().mutation(api.taskRuns.markCompleteFromWorker, {
+        taskRunId,
       })
     );
 
@@ -67,10 +65,32 @@ export async function handleTaskCompletion({
     }
 
     serverLogger.info(
-      `[AgentSpawner] Updated taskRun ${taskRunId} as completed with exit code ${exitCode}`
+      `[AgentSpawner] Updated taskRun ${taskRunId} as completed`
     );
 
-    // Check if all runs are complete and evaluate crown
+    if (allCompleted) {
+      serverLogger.info(
+        `[AgentSpawner] All task runs complete for task ${taskId}. Triggering crown evaluation.`
+      );
+
+      // Trigger crown evaluation immediately
+      try {
+        await evaluateCrown({
+          taskId,
+          teamSlugOrId,
+        });
+        serverLogger.info(
+          `[AgentSpawner] Crown evaluation completed for task ${taskId}`
+        );
+      } catch (error) {
+        serverLogger.error(
+          `[AgentSpawner] Crown evaluation failed for task ${taskId}:`,
+          error
+        );
+      }
+    }
+
+    // Get task run data for auto-commit
     const taskRunData = await getConvex().query(api.taskRuns.get, {
       teamSlugOrId,
       id: taskRunId,
@@ -118,141 +138,62 @@ export async function handleTaskCompletion({
         }
       })();
 
-      const crownEvaluationPromise: Promise<void> = (async () => {
-        serverLogger.info(
-          `[AgentSpawner] Calling checkAndEvaluateCrown for task ${taskRunData.taskId}`
-        );
+      // Crown evaluation is now handled automatically by Convex when all tasks are complete
+      // Just wait for auto-commit to complete
+      await autoCommitPromise;
 
-        const winnerId = await getConvex().mutation(
-          api.tasks.checkAndEvaluateCrown,
-          {
+      // Check if this run won the crown (after evaluation completes)
+      const crownCheckPromise: Promise<void> = (async () => {
+        // Wait a bit for crown evaluation to potentially complete
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+
+        const updatedTaskRun = await getConvex().query(api.taskRuns.get, {
+          teamSlugOrId,
+          id: taskRunId,
+        });
+
+        if (updatedTaskRun?.isCrowned) {
+          serverLogger.info(
+            `[AgentSpawner] 🏆 This task run won the crown! ${agent.name} is the winner!`
+          );
+
+          // Check if auto-PR is enabled for the crowned run
+          const ws = await getConvex().query(api.workspaceSettings.get, {
             teamSlugOrId,
-            taskId: taskRunData.taskId,
-          }
-        );
-
-        serverLogger.info(
-          `[AgentSpawner] checkAndEvaluateCrown returned: ${winnerId}`
-        );
-
-        if (winnerId === "pending") {
-          serverLogger.info(
-            `[AgentSpawner] ==========================================`
-          );
-          serverLogger.info(
-            `[AgentSpawner] CROWN EVALUATION NEEDED - TRIGGERING NOW`
-          );
-          serverLogger.info(`[AgentSpawner] Task ID: ${taskRunData.taskId}`);
-          serverLogger.info(
-            `[AgentSpawner] ==========================================`
-          );
-
-          serverLogger.info(
-            `[AgentSpawner] Triggering immediate crown evaluation`
-          );
-
-          try {
-            const latestTask = await getConvex().query(api.tasks.getById, {
-              teamSlugOrId,
-              id: taskRunData.taskId,
-            });
-            if (latestTask?.crownEvaluationError === "in_progress") {
-              serverLogger.info(
-                `[AgentSpawner] Crown evaluation already in progress for task ${taskRunData.taskId}`
-              );
-            } else {
-              await autoCommitPromise.catch((error) => {
-                serverLogger.warn(
-                  `[AgentSpawner] Auto-commit did not complete before crown evaluation; proceeding with available repository state`,
-                  {
-                    error:
-                      error instanceof Error ? error.message : String(error),
-                  }
-                );
-              });
-              await evaluateCrown({
-                taskId: taskRunData.taskId,
-                teamSlugOrId,
-              });
-
-              serverLogger.info(
-                `[AgentSpawner] Crown evaluation completed successfully`
-              );
-
-              const updatedTaskRun = await getConvex().query(api.taskRuns.get, {
-                teamSlugOrId,
-                id: taskRunId,
-              });
-
-              if (updatedTaskRun?.isCrowned) {
-                serverLogger.info(
-                  `[AgentSpawner] 🏆 This task run won the crown! ${agent.name} is the winner!`
-                );
-              }
-            }
-          } catch (error) {
-            serverLogger.error(
-              `[AgentSpawner] Crown evaluation failed:`,
-              error
-            );
-          }
-        } else if (winnerId) {
-          serverLogger.info(
-            `[AgentSpawner] Task completed with winner: ${winnerId}`
-          );
-
-          const taskRuns = await getConvex().query(api.taskRuns.getByTask, {
-            teamSlugOrId,
-            taskId: taskRunData.taskId,
           });
+          const autoPrEnabled = ws?.autoPrEnabled ?? false;
 
-          if (taskRuns.length === 1) {
+          if (autoPrEnabled) {
             serverLogger.info(
-              `[AgentSpawner] Single agent scenario - checking auto-PR settings`
+              `[AgentSpawner] Triggering auto-PR for crowned winner`
             );
 
-            const ws = await getConvex().query(api.workspaceSettings.get, {
-              teamSlugOrId,
-            });
-            const autoPrEnabled = ws?.autoPrEnabled ?? false;
+            const githubToken = await getGitHubTokenFromKeychain();
 
-            if (autoPrEnabled) {
-              serverLogger.info(
-                `[AgentSpawner] Triggering auto-PR for single agent completion`
+            try {
+              await createPullRequestForWinner(
+                taskRunId,
+                taskRunData.taskId,
+                githubToken || undefined,
+                teamSlugOrId
               );
-
-              const githubToken = await getGitHubTokenFromKeychain();
-
-              try {
-                await createPullRequestForWinner(
-                  winnerId,
-                  taskRunData.taskId,
-                  githubToken || undefined,
-                  teamSlugOrId
-                );
-                serverLogger.info(
-                  `[AgentSpawner] Auto-PR completed for single agent`
-                );
-              } catch (error) {
-                serverLogger.error(
-                  `[AgentSpawner] Auto-PR failed for single agent:`,
-                  error
-                );
-              }
-            } else {
               serverLogger.info(
-                `[AgentSpawner] Auto-PR disabled or not applicable for single agent`
+                `[AgentSpawner] Auto-PR completed for crowned winner`
+              );
+            } catch (error) {
+              serverLogger.error(
+                `[AgentSpawner] Auto-PR failed for crowned winner:`,
+                error
               );
             }
           }
-        } else {
-          serverLogger.info(
-            `[AgentSpawner] No crown evaluation needed (winnerId: ${winnerId})`
-          );
         }
       })();
 
-      await Promise.all([autoCommitPromise, crownEvaluationPromise]);
+      // Don't wait for crown check as it's non-critical
+      crownCheckPromise.catch((error) => {
+        serverLogger.warn(`[AgentSpawner] Error checking crown status:`, error);
+      });
     }
 
     // Schedule container stop based on settings

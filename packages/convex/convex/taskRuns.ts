@@ -766,6 +766,81 @@ export const getContainersToStop = authQuery({
   },
 });
 
+// Mark task run complete from worker and check if all runs are done
+export const markCompleteFromWorker = internalMutation({
+  args: {
+    taskRunId: v.id("taskRuns"),
+  },
+  handler: async (ctx, args) => {
+    const taskRun = await ctx.db.get(args.taskRunId);
+    if (!taskRun) {
+      throw new Error("Task run not found");
+    }
+
+    // Update status to completed
+    const now = Date.now();
+    await ctx.db.patch(args.taskRunId, {
+      status: "completed",
+      completedAt: now,
+      updatedAt: now,
+    });
+
+    // Check if all sibling runs for this task are complete
+    const allRuns = await ctx.db
+      .query("taskRuns")
+      .withIndex("by_task", (q) => q.eq("taskId", taskRun.taskId))
+      .collect();
+
+    const allCompleted = allRuns.every(
+      (run) => run.status === "completed" || run.status === "failed"
+    );
+
+    if (allCompleted) {
+      // Get completed runs (excluding failed)
+      const completedRuns = allRuns.filter((run) => run.status === "completed");
+
+      if (completedRuns.length > 0) {
+        // Mark task for crown evaluation
+        const task = await ctx.db.get(taskRun.taskId);
+        if (task && !task.crownEvaluationError) {
+          await ctx.db.patch(taskRun.taskId, {
+            crownEvaluationError: "pending_evaluation",
+            updatedAt: Date.now(),
+          });
+        }
+      }
+    }
+
+    return { allCompleted, taskId: taskRun.taskId };
+  },
+});
+
+// Internal query to get all task runs for a task
+export const getAllTaskRunsForTask = internalQuery({
+  args: { taskId: v.id("tasks") },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("taskRuns")
+      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+      .collect();
+  },
+});
+
+// Set crown winner for a task run
+export const setCrownWinner = internalMutation({
+  args: {
+    taskRunId: v.id("taskRuns"),
+    reason: v.string(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.taskRunId, {
+      isCrowned: true,
+      crownReason: args.reason,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
 // Get running containers sorted by priority for cleanup
 export const getRunningContainersByCleanupPriority = authQuery({
   args: { teamSlugOrId: v.string() },

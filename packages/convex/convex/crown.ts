@@ -1,6 +1,34 @@
 import { v } from "convex/values";
 import { getTeamId } from "../_shared/team";
+import { internalMutation } from "./_generated/server";
 import { authMutation, authQuery } from "./users/utils";
+
+// Store crown evaluation result
+export const storeEvaluation = internalMutation({
+  args: {
+    taskId: v.id("tasks"),
+    winnerRunId: v.id("taskRuns"),
+    candidateRunIds: v.array(v.id("taskRuns")),
+    evaluationPrompt: v.string(),
+    evaluationResponse: v.string(),
+    teamId: v.string(),
+    userId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+    await ctx.db.insert("crownEvaluations", {
+      taskId: args.taskId,
+      evaluatedAt: now,
+      winnerRunId: args.winnerRunId,
+      candidateRunIds: args.candidateRunIds,
+      evaluationPrompt: args.evaluationPrompt,
+      evaluationResponse: args.evaluationResponse,
+      createdAt: now,
+      userId: args.userId,
+      teamId: args.teamId,
+    });
+  },
+});
 
 export const evaluateAndCrownWinner = authMutation({
   args: {
