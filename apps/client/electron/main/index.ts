@@ -788,9 +788,9 @@ async function handleProtocolUrl(url: string): Promise<void> {
       return;
     }
 
-    // Check for the full URL parameter
-    const stackRefresh = encodeURIComponent(rawStackRefresh);
-    const stackAccess = encodeURIComponent(rawStackAccess);
+    // The tokens are already URL-encoded from the after-sign-in page
+    const stackRefresh = rawStackRefresh;
+    const stackAccess = rawStackAccess;
 
     // Verify tokens with Stack JWKS and extract exp for cookie expiry.
     const [refreshPayload, accessPayload] = await Promise.all([
