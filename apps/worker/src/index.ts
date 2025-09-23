@@ -36,6 +36,7 @@ import { detectTerminalIdle } from "./detectTerminalIdle.js";
 import { runWorkerExec } from "./execRunner.js";
 import { FileWatcher, computeGitDiff, getFileWithDiff } from "./fileWatcher.js";
 import { log } from "./logger.js";
+import { markTaskRunComplete, markTaskRunFailed } from "./convexClient.js";
 
 const execAsync = promisify(exec);
 
@@ -1004,14 +1005,22 @@ async function createTerminal(
     try {
       void agentConfig
         .completionDetector(options.taskRunId)
-        .then(() => {
-          emitToMainServer("worker:task-complete", {
-            workerId: WORKER_ID,
-            terminalId,
-            taskRunId: options.taskRunId!,
-            agentModel: options.agentModel,
-            elapsedMs: Date.now() - processStartTime,
-          });
+        .then(async () => {
+          // Mark taskRun as complete in Convex directly
+          try {
+            await markTaskRunComplete(options.taskRunId!, 0);
+            log("INFO", `Successfully marked taskRun ${options.taskRunId} as complete`);
+          } catch (error) {
+            log("ERROR", `Failed to mark taskRun as complete in Convex`, error);
+            // Fallback to emitting event to main server
+            emitToMainServer("worker:task-complete", {
+              workerId: WORKER_ID,
+              terminalId,
+              taskRunId: options.taskRunId!,
+              agentModel: options.agentModel,
+              elapsedMs: Date.now() - processStartTime,
+            });
+          }
         })
         .catch((e) => {
           log(
@@ -1100,28 +1109,47 @@ async function createTerminal(
       detectTerminalIdle({
         sessionName: sessionName || terminalId,
         idleTimeoutMs: 15000,
-        onIdle: () => {
+        onIdle: async () => {
           const elapsedMs = Date.now() - processStartTime;
           if (options.taskRunId) {
-            emitToMainServer("worker:terminal-idle", {
-              workerId: WORKER_ID,
-              terminalId,
-              taskRunId: options.taskRunId,
-              elapsedMs,
-            });
+            // Mark taskRun as complete in Convex directly (idle completion)
+            try {
+              await markTaskRunComplete(options.taskRunId, 0);
+              log("INFO", `Successfully marked taskRun ${options.taskRunId} as complete (idle)`);
+            } catch (error) {
+              log("ERROR", `Failed to mark taskRun as complete in Convex`, error);
+              // Fallback to emitting event to main server
+              emitToMainServer("worker:terminal-idle", {
+                workerId: WORKER_ID,
+                terminalId,
+                taskRunId: options.taskRunId,
+                elapsedMs,
+              });
+            }
           }
         },
-      }).catch((error) => {
+      }).catch(async (error) => {
         const errMsg =
           (initialStderrBuffer && initialStderrBuffer.trim()) ||
           (error instanceof Error ? error.message : String(error));
-        emitToMainServer("worker:terminal-failed", {
-          workerId: WORKER_ID,
-          terminalId,
-          taskRunId: options.taskRunId,
-          errorMessage: errMsg,
-          elapsedMs: Date.now() - processStartTime,
-        });
+
+        // Mark taskRun as failed in Convex directly
+        if (options.taskRunId) {
+          try {
+            await markTaskRunFailed(options.taskRunId, errMsg, 1);
+            log("INFO", `Successfully marked taskRun ${options.taskRunId} as failed`);
+          } catch (convexError) {
+            log("ERROR", `Failed to mark taskRun as failed in Convex`, convexError);
+            // Fallback to emitting event to main server
+            emitToMainServer("worker:terminal-failed", {
+              workerId: WORKER_ID,
+              terminalId,
+              taskRunId: options.taskRunId,
+              errorMessage: errMsg,
+              elapsedMs: Date.now() - processStartTime,
+            });
+          }
+        }
       });
     }
   }

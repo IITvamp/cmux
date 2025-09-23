@@ -74,7 +74,7 @@ async function ensureTeamMembership(
   }
 
   const memberships = await ctx.runQuery(api.teams.listTeamMemberships, {});
-  const hasMembership = memberships.some((membership) => {
+  const hasMembership = memberships.some((membership: any) => {
     return membership.teamId === team.uuid;
   });
 

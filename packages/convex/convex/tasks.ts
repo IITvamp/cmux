@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { resolveTeamIdLoose } from "../_shared/team";
 import { api } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { mutation } from "./_generated/server";
 import { authMutation, authQuery } from "./users/utils";
 
 export const get = authQuery({
@@ -611,5 +612,23 @@ export const checkAndEvaluateCrown = authMutation({
     console.log(`[CheckCrown] Marked task ${args.taskId} as completed`);
 
     return winnerId;
+  },
+});
+
+// Mutation to update crown evaluation error (called from actions without auth)
+export const updateCrownEvaluationError = mutation({
+  args: {
+    taskId: v.id("tasks"),
+    error: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const task = await ctx.db.get(args.taskId);
+    if (!task) {
+      throw new Error("Task not found");
+    }
+    await ctx.db.patch(args.taskId, {
+      crownEvaluationError: args.error,
+      updatedAt: Date.now(),
+    });
   },
 });

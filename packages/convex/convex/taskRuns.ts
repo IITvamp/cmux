@@ -2,8 +2,9 @@ import { v } from "convex/values";
 import { SignJWT } from "jose";
 import { env } from "../_shared/convex-env";
 import { resolveTeamIdLoose } from "../_shared/team";
+import { api } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
-import { internalMutation, internalQuery } from "./_generated/server";
+import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { authMutation, authQuery } from "./users/utils";
 
 // Create a new task run
@@ -841,6 +842,155 @@ export const getRunningContainersByCleanupPriority = authQuery({
       activeContainers,
       prioritizedForCleanup: [...reviewContainers, ...activeContainers],
       protectedCount: containersToKeepIds.size,
+    };
+  },
+});
+
+// Worker mutations - called directly from the worker to mark taskRun completion
+export const workerMarkComplete = mutation({
+  args: {
+    taskRunId: v.id("taskRuns"),
+    exitCode: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const taskRun = await ctx.db.get(args.taskRunId);
+    if (!taskRun) {
+      throw new Error(`TaskRun not found: ${args.taskRunId}`);
+    }
+
+    // Update the taskRun status to completed
+    await ctx.db.patch(args.taskRunId, {
+      status: "completed",
+      completedAt: Date.now(),
+      updatedAt: Date.now(),
+      ...(args.exitCode !== undefined && { exitCode: args.exitCode }),
+    });
+
+    // Check if all taskRuns for this task are complete
+    const allTaskRuns = await ctx.db
+      .query("taskRuns")
+      .filter((q) => q.eq(q.field("taskId"), taskRun.taskId))
+      .collect();
+
+    const allComplete = allTaskRuns.every(
+      (tr) => tr.status === "completed" || tr.status === "failed"
+    );
+
+    if (allComplete) {
+      // Check if at least one run completed successfully
+      const hasSuccessful = allTaskRuns.some((tr) => tr.status === "completed");
+
+      if (hasSuccessful) {
+        // Get the task details
+        const task = await ctx.db.get(taskRun.taskId);
+        if (!task) {
+          throw new Error(`Task not found: ${taskRun.taskId}`);
+        }
+
+        // Trigger crown evaluation
+        try {
+          await ctx.scheduler.runAfter(0, api.crown.actions.evaluateTaskRuns, {
+            taskId: taskRun.taskId,
+            teamSlugOrId: task.teamId,
+          });
+        } catch (error) {
+          console.error("Failed to schedule crown evaluation:", error);
+          // Don't fail the mutation if crown scheduling fails
+        }
+      }
+    }
+
+    return { success: true, allComplete };
+  },
+});
+
+// Worker mutation to mark a taskRun as failed
+export const workerMarkFailed = mutation({
+  args: {
+    taskRunId: v.id("taskRuns"),
+    errorMessage: v.string(),
+    exitCode: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const taskRun = await ctx.db.get(args.taskRunId);
+    if (!taskRun) {
+      throw new Error(`TaskRun not found: ${args.taskRunId}`);
+    }
+
+    // Update the taskRun status to failed
+    await ctx.db.patch(args.taskRunId, {
+      status: "failed",
+      errorMessage: args.errorMessage,
+      completedAt: Date.now(),
+      updatedAt: Date.now(),
+      ...(args.exitCode !== undefined && { exitCode: args.exitCode }),
+    });
+
+    // Check if all taskRuns for this task are complete or failed
+    const allTaskRuns = await ctx.db
+      .query("taskRuns")
+      .filter((q) => q.eq(q.field("taskId"), taskRun.taskId))
+      .collect();
+
+    const allDone = allTaskRuns.every(
+      (tr) => tr.status === "completed" || tr.status === "failed"
+    );
+
+    if (allDone) {
+      // Check if at least one run completed successfully
+      const hasSuccessful = allTaskRuns.some((tr) => tr.status === "completed");
+
+      if (hasSuccessful) {
+        // Get the task details
+        const task = await ctx.db.get(taskRun.taskId);
+        if (!task) {
+          throw new Error(`Task not found: ${taskRun.taskId}`);
+        }
+
+        // Trigger crown evaluation only if we have at least one successful run
+        try {
+          await ctx.scheduler.runAfter(0, api.crown.actions.evaluateTaskRuns, {
+            taskId: taskRun.taskId,
+            teamSlugOrId: task.teamId,
+          });
+        } catch (error) {
+          console.error("Failed to schedule crown evaluation:", error);
+        }
+      }
+    }
+
+    return { success: true, allDone };
+  },
+});
+
+// Query to check if all taskRuns for a task are complete
+export const checkAllTaskRunsComplete = query({
+  args: {
+    taskId: v.id("tasks"),
+  },
+  handler: async (ctx, args) => {
+    const taskRuns = await ctx.db
+      .query("taskRuns")
+      .filter((q) => q.eq(q.field("taskId"), args.taskId))
+      .collect();
+
+    if (taskRuns.length === 0) {
+      return { allComplete: false, hasRuns: false };
+    }
+
+    const allComplete = taskRuns.every(
+      (tr) => tr.status === "completed" || tr.status === "failed"
+    );
+
+    const hasSuccessful = taskRuns.some((tr) => tr.status === "completed");
+
+    return {
+      allComplete,
+      hasRuns: true,
+      hasSuccessful,
+      totalRuns: taskRuns.length,
+      completedCount: taskRuns.filter((tr) => tr.status === "completed").length,
+      failedCount: taskRuns.filter((tr) => tr.status === "failed").length,
     };
   },
 });
