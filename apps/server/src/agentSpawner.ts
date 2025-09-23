@@ -219,6 +219,12 @@ export async function spawnAgent(
       PROMPT: processedTaskDescription,
     };
 
+    // Pass auth context and team to the worker/agent environment for direct HTTP calls when needed
+    if (capturedAuthHeaderJson) {
+      envVars["CMUX_STACK_AUTH"] = capturedAuthHeaderJson;
+    }
+    envVars["CMUX_TEAM_SLUG_OR_ID"] = teamSlugOrId;
+
     if (options.environmentId) {
       try {
         const envRes = await getApiEnvironmentsByIdVars({

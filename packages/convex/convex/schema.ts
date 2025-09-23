@@ -93,6 +93,10 @@ const convexSchema = defineSchema({
     .index("by_selected_team", ["selectedTeamId"]),
   tasks: defineTable({
     text: v.string(),
+    // Optional status for overall task lifecycle in addition to isCompleted for backward compatibility
+    status: v.optional(
+      v.union(v.literal("pending"), v.literal("running"), v.literal("complete"))
+    ),
     isCompleted: v.boolean(),
     isArchived: v.optional(v.boolean()),
     description: v.optional(v.string()),

@@ -134,6 +134,7 @@ export const create = authMutation({
       projectFullName: args.projectFullName,
       baseBranch: args.baseBranch,
       worktreePath: args.worktreePath,
+      status: "pending",
       isCompleted: false,
       createdAt: now,
       updatedAt: now,
@@ -187,6 +188,7 @@ export const setCompleted = authMutation({
       throw new Error("Task not found");
     }
     await ctx.db.patch(args.id, {
+      status: args.isCompleted ? "complete" : "running",
       isCompleted: args.isCompleted,
       updatedAt: Date.now(),
     });
@@ -516,6 +518,7 @@ export const checkAndEvaluateCrown = authMutation({
       // Mark the task as completed
       await ctx.db.patch(args.taskId, {
         isCompleted: true,
+        status: "complete",
         updatedAt: Date.now(),
       });
 
@@ -606,6 +609,7 @@ export const checkAndEvaluateCrown = authMutation({
     // Mark the task as completed since all runs are done
     await ctx.db.patch(args.taskId, {
       isCompleted: true,
+      status: "complete",
       updatedAt: Date.now(),
     });
     console.log(`[CheckCrown] Marked task ${args.taskId} as completed`);

@@ -175,6 +175,74 @@ function emitToMainServer(event: string, data: any) {
 }
 
 /**
+ * Notify Convex directly that a task run completed and let Convex decide
+ * whether crown evaluation should be triggered.
+ */
+async function notifyConvexTaskComplete(opts: {
+  taskRunId: string;
+  exitCode: number;
+  cmuxToken?: string;
+  teamSlugOrId?: string;
+}): Promise<void> {
+  try {
+    const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
+    if (!convexUrl) {
+      log(
+        "WARN",
+        "NEXT_PUBLIC_CONVEX_URL not set; skipping direct Convex notify"
+      );
+      return;
+    }
+    if (!opts.cmuxToken) {
+      log("WARN", "CMUX task run token missing; skipping direct Convex notify");
+      return;
+    }
+
+    const url = `${convexUrl.replace(/\/$/, "")}/api/worker/task-complete`;
+    const body = {
+      taskRunId: opts.taskRunId,
+      exitCode: opts.exitCode,
+      teamSlugOrId: opts.teamSlugOrId,
+    };
+
+    // lightweight retry for race-y completion updates
+    let lastErr: unknown = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-cmux-token": opts.cmuxToken,
+          },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const text = await res.text().catch(() => "");
+          throw new Error(`HTTP ${res.status}: ${text}`);
+        }
+        const data = (await res.json()) as unknown as {
+          ok: boolean;
+          allCompleted: boolean;
+          shouldEvaluateCrown: boolean;
+          completedCount: number;
+          totalRuns: number;
+          taskId: string;
+        };
+        log("INFO", "Convex task-complete ack", data);
+        return;
+      } catch (e) {
+        lastErr = e;
+        await new Promise((r) => setTimeout(r, 50));
+      }
+    }
+    log("ERROR", "Failed notifying Convex of completion", lastErr);
+  } catch (e) {
+    log("ERROR", "notifyConvexTaskComplete error", e);
+  }
+}
+
+/**
  * Send all pending events to the main server
  */
 function sendPendingEvents() {
@@ -1011,6 +1079,14 @@ async function createTerminal(
             taskRunId: options.taskRunId!,
             agentModel: options.agentModel,
             elapsedMs: Date.now() - processStartTime,
+          });
+
+          // Also notify Convex directly for robust completion tracking
+          void notifyConvexTaskComplete({
+            taskRunId: options.taskRunId!,
+            exitCode: 0,
+            cmuxToken: process.env.CMUX_TASK_RUN_JWT,
+            teamSlugOrId: process.env.CMUX_TEAM_SLUG_OR_ID,
           });
         })
         .catch((e) => {
