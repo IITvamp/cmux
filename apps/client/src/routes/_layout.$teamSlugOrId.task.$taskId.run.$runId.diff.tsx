@@ -395,7 +395,7 @@ function RunDiffPage() {
                 </div>
               )}
             </Suspense>
-            <div className="sticky bottom-0 z-10 border-t border-transparent px-3.5 pb-3.5 pt-2">
+            <div className="sticky bottom-0 z-[var(--z-popover)] border-t border-transparent px-3.5 pb-3.5 pt-2">
               <form
                 onSubmit={handleFormSubmit}
                 className="mx-auto w-full max-w-2xl overflow-hidden rounded-2xl border border-neutral-500/15 bg-white dark:border-neutral-500/15 dark:bg-neutral-950"
