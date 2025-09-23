@@ -1,7 +1,9 @@
 import { z } from "zod";
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { httpAction } from "./_generated/server";
 import type { ActionCtx } from "./_generated/server";
+import { jwtVerify } from "jose";
+import { env } from "../_shared/convex-env";
 
 const JSON_HEADERS = { "content-type": "application/json" } as const;
 
@@ -189,3 +191,84 @@ export const crownSummarize = httpAction(async (ctx, req) => {
   }
 });
 
+// Verify task run token from worker/agent
+type TaskRunTokenPayload = {
+  taskRunId: string;
+  teamId: string;
+  userId: string;
+  iat?: number;
+  exp?: number;
+};
+
+async function verifyTaskRunToken(token: string): Promise<TaskRunTokenPayload> {
+  const secret = new TextEncoder().encode(env.CMUX_TASK_RUN_JWT_SECRET);
+  const { payload } = await jwtVerify(token, secret);
+  const { taskRunId, teamId, userId } = payload as Record<string, unknown>;
+  if (
+    typeof taskRunId !== "string" ||
+    typeof teamId !== "string" ||
+    typeof userId !== "string"
+  ) {
+    throw new Error("Invalid task run token payload");
+  }
+  return { taskRunId, teamId, userId };
+}
+
+// Worker callback: mark a run complete and check/flag crown evaluation
+export const onTaskRunComplete = httpAction(async (ctx, req) => {
+  // Content-Type enforcement
+  const parsed = await ensureJsonRequest(req);
+  if (parsed instanceof Response) return parsed;
+
+  // Accept x-cmux-token (preferred) or x-stack-auth (not required here)
+  const cmuxToken = req.headers.get("x-cmux-token");
+  if (!cmuxToken) {
+    return jsonResponse({ code: 401, message: "Missing x-cmux-token" }, 401);
+  }
+
+  let tokenPayload: TaskRunTokenPayload;
+  try {
+    tokenPayload = await verifyTaskRunToken(cmuxToken);
+  } catch (e) {
+    console.error("[convex.crown] Invalid x-cmux-token", e);
+    return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
+  }
+
+  const body = parsed.json as { exitCode?: number };
+  const exitCode =
+    typeof body?.exitCode === "number" ? (body.exitCode as number) : undefined;
+
+  // Single internal mutation handles status + crown flagging (retry light)
+  const maxAttempts = 3;
+  let attempt = 0;
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    try {
+      const result = await ctx.runMutation(
+        // Cast to any to avoid type drift until convex codegen runs
+        (internal as any).tasks.onTaskRunCompleteInternal,
+        {
+          taskRunId: tokenPayload.taskRunId,
+          teamId: tokenPayload.teamId,
+          userId: tokenPayload.userId,
+          exitCode,
+        }
+      );
+      return jsonResponse({ ok: true, ...result });
+    } catch (error) {
+      attempt += 1;
+      if (attempt >= maxAttempts) {
+        console.error(
+          "[convex.crown] onTaskRunComplete failed after retries",
+          error
+        );
+        return jsonResponse(
+          { code: 500, message: "Failed to update run status" },
+          500
+        );
+      }
+      // Exponential backoff (50ms, 100ms)
+      await new Promise((r) => setTimeout(r, 50 * attempt));
+    }
+  }
+});

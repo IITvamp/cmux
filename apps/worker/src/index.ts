@@ -1005,6 +1005,68 @@ async function createTerminal(
       void agentConfig
         .completionDetector(options.taskRunId)
         .then(() => {
+          // Fire-and-forget: notify Convex directly that the task run completed.
+          // Use worker-side call straight to convex crown_http to avoid server hop.
+          const convexUrl =
+            process.env.NEXT_PUBLIC_CONVEX_URL || process.env.CONVEX_URL;
+          const taskRunJwt = (env?.CMUX_TASK_RUN_JWT as string) || "";
+          if (convexUrl && taskRunJwt) {
+            const url = `${convexUrl.replace(/\/$/, "")}/api/crown/task_run_complete`;
+            const payload = { exitCode: undefined as number | undefined };
+            const doPost = async () =>
+              fetch(url, {
+                method: "POST",
+                headers: {
+                  "content-type": "application/json",
+                  "x-cmux-token": taskRunJwt,
+                },
+                body: JSON.stringify(payload),
+              }).then(async (res) => {
+                const text = await res.text();
+                const body = (() => {
+                  try {
+                    return JSON.parse(text);
+                  } catch {
+                    return text;
+                  }
+                })();
+                if (!res.ok) {
+                  log("WARN", `Convex onTaskRunComplete failed`, {
+                    status: res.status,
+                    body,
+                  });
+                } else {
+                  log("INFO", `Convex onTaskRunComplete ok`, { body });
+                }
+              });
+            (async () => {
+              let attempt = 0;
+              const max = 3;
+              while (attempt < max) {
+                try {
+                  await doPost();
+                  break;
+                } catch (e) {
+                  attempt += 1;
+                  if (attempt >= max) break;
+                  await new Promise((r) => setTimeout(r, attempt * 50));
+                }
+              }
+            })().catch(() => {
+              /* ignore */
+            });
+          } else {
+            log(
+              "WARN",
+              "Missing Convex URL or task run token; skipping direct crown callback",
+              {
+                hasConvexUrl: !!(
+                  process.env.NEXT_PUBLIC_CONVEX_URL || process.env.CONVEX_URL
+                ),
+                hasToken: !!(env?.CMUX_TASK_RUN_JWT as string),
+              }
+            );
+          }
           emitToMainServer("worker:task-complete", {
             workerId: WORKER_ID,
             terminalId,

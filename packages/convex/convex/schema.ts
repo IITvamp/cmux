@@ -94,6 +94,10 @@ const convexSchema = defineSchema({
   tasks: defineTable({
     text: v.string(),
     isCompleted: v.boolean(),
+    // High-level task lifecycle status for multi-agent orchestration
+    status: v.optional(
+      v.union(v.literal("pending"), v.literal("in_progress"), v.literal("complete"))
+    ),
     isArchived: v.optional(v.boolean()),
     description: v.optional(v.string()),
     pullRequestTitle: v.optional(v.string()),

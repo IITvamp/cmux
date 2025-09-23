@@ -135,6 +135,7 @@ export const create = authMutation({
       baseBranch: args.baseBranch,
       worktreePath: args.worktreePath,
       isCompleted: false,
+      status: "pending",
       createdAt: now,
       updatedAt: now,
       images: args.images,
@@ -144,6 +145,99 @@ export const create = authMutation({
     });
 
     return taskId;
+  },
+});
+
+// Internal mutation invoked by worker via crown_http to mark a run completed
+// and, if all runs for the task are finalized, mark the task as complete and
+// flag crown evaluation if needed.
+import { internalMutation } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
+
+export const onTaskRunCompleteInternal = internalMutation({
+  args: {
+    taskRunId: v.id("taskRuns"),
+    teamId: v.string(),
+    userId: v.string(),
+    exitCode: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const now = Date.now();
+
+    const run = await ctx.db.get(args.taskRunId);
+    if (!run) throw new Error("Task run not found");
+    if (run.teamId !== args.teamId || run.userId !== args.userId) {
+      throw new Error("Unauthorized run context");
+    }
+
+    // Update run status to completed (idempotent)
+    const updates: {
+      status: "completed";
+      updatedAt: number;
+      completedAt?: number;
+      exitCode?: number;
+    } = { status: "completed", updatedAt: now, completedAt: now };
+    if (args.exitCode !== undefined) updates.exitCode = args.exitCode;
+    await ctx.db.patch(args.taskRunId, updates);
+
+    // Fetch all runs for the same task
+    const taskRuns = await ctx.db
+      .query("taskRuns")
+      .withIndex("by_team_user", (q) =>
+        q.eq("teamId", args.teamId).eq("userId", args.userId)
+      )
+      .filter((q) => q.eq(q.field("taskId"), run.taskId))
+      .collect();
+
+    // If not all done yet, mark task in_progress and exit
+    const allFinal = taskRuns.every(
+      (r) => r.status === "completed" || r.status === "failed"
+    );
+
+    // Mark task in progress if at least one run finished
+    const task = await ctx.db.get(run.taskId);
+    if (task && task.status !== "complete") {
+      await ctx.db.patch(run.taskId, {
+        status: allFinal ? ("complete" as const) : ("in_progress" as const),
+        updatedAt: now,
+      });
+    }
+
+    if (!allFinal) {
+      return { allCompleted: false as const };
+    }
+
+    // All runs completed/failed; decide next step
+    const completedRuns = taskRuns.filter((r) => r.status === "completed");
+
+    // Single-run fast path: mark task as completed; return winner when success
+    if (taskRuns.length === 1) {
+      await ctx.db.patch(run.taskId, {
+        isCompleted: true,
+        updatedAt: now,
+      });
+      if (completedRuns.length === 1) {
+        return {
+          allCompleted: true as const,
+          winnerId: completedRuns[0]._id as Id<"taskRuns">,
+        };
+      }
+      return { allCompleted: true as const };
+    }
+
+    // Multiple runs: ensure at least two completed before crown; otherwise nothing to do
+    if (completedRuns.length < 2) {
+      return { allCompleted: true as const };
+    }
+
+    // Flag for crown evaluation; main server will perform heavy evaluation.
+    await ctx.db.patch(run.taskId, {
+      crownEvaluationError: "pending_evaluation",
+      isCompleted: true,
+      updatedAt: now,
+    });
+
+    return { allCompleted: true as const, pendingEvaluation: true as const };
   },
 });
 
