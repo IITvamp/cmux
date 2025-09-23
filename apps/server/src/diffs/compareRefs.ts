@@ -11,14 +11,14 @@ export interface CompareRefsArgs {
 }
 
 export async function compareRefsForRepo(
-  args: CompareRefsArgs
+  args: CompareRefsArgs,
 ): Promise<ReplaceDiffEntry[]> {
   const { ref1, ref2 } = args;
 
   const native = loadNativeGit();
   if (!native?.gitDiffRefs) {
     throw new Error(
-      "Native gitDiffRefs not available; rebuild @cmux/native-core"
+      "Native gitDiffRefs not available; rebuild @cmux/native-core",
     );
   }
   try {
@@ -34,8 +34,8 @@ export async function compareRefsForRepo(
   } catch (e) {
     // fallthrough to JS
     throw new Error(
-      "Native gitDiffRefs not available; rebuild @cmux/native-core",
-      { cause: e }
+      `Failed to compare refs: ${e instanceof Error ? e.message : String(e)}`,
+      { cause: e },
     );
   }
 }
