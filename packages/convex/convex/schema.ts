@@ -322,6 +322,18 @@ const convexSchema = defineSchema({
     .index("by_task", ["taskId"])
     .index("by_winner", ["winnerRunId"])
     .index("by_team_user", ["teamId", "userId"]),
+  crownRunStatuses: defineTable({
+    taskId: v.id("tasks"),
+    taskRunId: v.id("taskRuns"),
+    status: v.union(v.literal("complete"), v.literal("failed")),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    userId: v.string(),
+    teamId: v.string(),
+  })
+    .index("by_task", ["taskId"])
+    .index("by_taskRun", ["taskRunId"])
+    .index("by_team_user", ["teamId", "userId"]),
   containerSettings: defineTable({
     maxRunningContainers: v.optional(v.number()), // Max containers to keep running (default: 5)
     reviewPeriodMinutes: v.optional(v.number()), // Minutes to keep container after task completion (default: 60)

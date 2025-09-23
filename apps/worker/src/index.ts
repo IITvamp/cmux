@@ -153,6 +153,141 @@ interface PendingEvent {
 }
 const pendingEvents: PendingEvent[] = [];
 
+const taskRunTokens: Map<string, string> = new Map();
+let cachedCrownStatusUrl: string | null | undefined;
+
+interface CrownStatusResponse {
+  taskId: string;
+  allComplete: boolean;
+  requiresEvaluation: boolean;
+  completedRunIds: string[];
+  failedRunIds: string[];
+  totalRuns: number;
+}
+
+function resolveCrownStatusUrl(): string | null {
+  if (cachedCrownStatusUrl !== undefined) {
+    return cachedCrownStatusUrl;
+  }
+
+  const baseUrl =
+    process.env.NEXT_PUBLIC_CONVEX_URL || process.env.CONVEX_URL || null;
+
+  if (!baseUrl) {
+    log(
+      "ERROR",
+      "[Crown] Missing NEXT_PUBLIC_CONVEX_URL/CONVEX_URL for status reporting"
+    );
+    cachedCrownStatusUrl = null;
+    return cachedCrownStatusUrl;
+  }
+
+  try {
+    cachedCrownStatusUrl = new URL(
+      "/api/crown/task-run-status",
+      baseUrl
+    ).toString();
+  } catch (error) {
+    log("ERROR", "[Crown] Failed to construct crown status URL", error);
+    cachedCrownStatusUrl = null;
+  }
+
+  return cachedCrownStatusUrl;
+}
+
+async function postCrownStatus(
+  taskRunId: string,
+  token: string,
+  status: "complete" | "failed"
+): Promise<{ success: true; data: CrownStatusResponse } | { success: false }> {
+  const url = resolveCrownStatusUrl();
+  if (!url) {
+    return { success: false };
+  }
+
+  const payload = JSON.stringify({ taskRunId, status });
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-cmux-token": token,
+        },
+        body: payload,
+      });
+
+      if (response.ok) {
+        const json = (await response.json()) as CrownStatusResponse;
+        return { success: true, data: json };
+      }
+
+      const errorBody = await response.text();
+      log(
+        "WARNING",
+        `[Crown] Status update failed (attempt ${attempt})`,
+        {
+          status: response.status,
+          taskRunId,
+          body: errorBody.slice(0, 2000),
+        }
+      );
+    } catch (error) {
+      log(
+        "ERROR",
+        `[Crown] Error posting status update (attempt ${attempt})`,
+        error
+      );
+    }
+
+    if (attempt < 3) {
+      await new Promise((resolve) => setTimeout(resolve, attempt * 200));
+    }
+  }
+
+  return { success: false };
+}
+
+function scheduleCrownStatusUpdate(
+  taskRunId: string,
+  status: "complete" | "failed"
+) {
+  if (!taskRunId) {
+    return;
+  }
+
+  const token = taskRunTokens.get(taskRunId);
+  if (!token) {
+    log("WARNING", `[Crown] No task run token for ${taskRunId}`);
+    return;
+  }
+
+  void (async () => {
+    const result = await postCrownStatus(taskRunId, token, status);
+    if (!result.success) {
+      return;
+    }
+
+    if (result.data.allComplete) {
+      emitToMainServer("worker:crown-ready", {
+        workerId: WORKER_ID,
+        taskRunId,
+        taskId: result.data.taskId,
+        allComplete: result.data.allComplete,
+        requiresEvaluation: result.data.requiresEvaluation,
+        completedRunIds: result.data.completedRunIds,
+        failedRunIds: result.data.failedRunIds,
+        totalRuns: result.data.totalRuns,
+      });
+    }
+
+    if (status === "complete" || status === "failed") {
+      taskRunTokens.delete(taskRunId);
+    }
+  })();
+}
+
 /**
  * Emit an event to the main server, queuing it if not connected
  */
@@ -1000,11 +1135,16 @@ async function createTerminal(
     return;
   }
 
+  if (options.taskRunId && options.env?.CMUX_TASK_RUN_JWT) {
+    taskRunTokens.set(options.taskRunId, options.env.CMUX_TASK_RUN_JWT);
+  }
+
   if (options.taskRunId && agentConfig?.completionDetector) {
     try {
       void agentConfig
         .completionDetector(options.taskRunId)
         .then(() => {
+          scheduleCrownStatusUpdate(options.taskRunId!, "complete");
           emitToMainServer("worker:task-complete", {
             workerId: WORKER_ID,
             terminalId,
@@ -1103,6 +1243,7 @@ async function createTerminal(
         onIdle: () => {
           const elapsedMs = Date.now() - processStartTime;
           if (options.taskRunId) {
+            scheduleCrownStatusUpdate(options.taskRunId, "complete");
             emitToMainServer("worker:terminal-idle", {
               workerId: WORKER_ID,
               terminalId,
@@ -1115,6 +1256,9 @@ async function createTerminal(
         const errMsg =
           (initialStderrBuffer && initialStderrBuffer.trim()) ||
           (error instanceof Error ? error.message : String(error));
+        if (options.taskRunId) {
+          scheduleCrownStatusUpdate(options.taskRunId, "failed");
+        }
         emitToMainServer("worker:terminal-failed", {
           workerId: WORKER_ID,
           terminalId,

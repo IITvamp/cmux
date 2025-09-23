@@ -7,13 +7,17 @@ import {
 } from "@cmux/shared/agentConfig";
 import type {
   WorkerCreateTerminal,
+  WorkerCrownReady,
   WorkerTerminalExit,
   WorkerTerminalFailed,
   WorkerTerminalIdle,
 } from "@cmux/shared/worker-schemas";
 import { getApiEnvironmentsByIdVars } from "@cmux/www-openapi-client";
 import { parse as parseDotenv } from "dotenv";
-import { handleTaskCompletion } from "./handle-task-completion.js";
+import {
+  handleTaskCompletion,
+  processCrownReadyEvent,
+} from "./handle-task-completion.js";
 import { sanitizeTmuxSessionName } from "./sanitizeTmuxSessionName.js";
 import {
   generateNewBranchName,
@@ -508,6 +512,32 @@ export async function spawnAgent(
           `[AgentSpawner] Task ID did not match, ignoring task complete event`
         );
       }
+    });
+
+    vscodeInstance.on("crown-ready", async (data: WorkerCrownReady) => {
+      serverLogger.info(
+        `[AgentSpawner] Crown ready detected for ${agent.name}:`,
+        data
+      );
+
+      if (data.taskId !== taskId) {
+        serverLogger.warn(
+          `[AgentSpawner] Crown ready task mismatch (expected ${taskId}, received ${data.taskId})`
+        );
+        return;
+      }
+
+      await runWithAuth(capturedAuthToken, capturedAuthHeaderJson, async () =>
+        processCrownReadyEvent({
+          taskRunId: data.taskRunId,
+          taskId: data.taskId,
+          teamSlugOrId,
+          completedRunIds: data.completedRunIds,
+          failedRunIds: data.failedRunIds,
+          requiresEvaluation: data.requiresEvaluation,
+          totalRuns: data.totalRuns,
+        })
+      );
     });
 
     // Set up terminal-idle event handler (legacy; ignore for deterministic agents like OpenCode)

@@ -1,7 +1,9 @@
 import { z } from "zod";
 import { api } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import { httpAction } from "./_generated/server";
 import type { ActionCtx } from "./_generated/server";
+import { verifyTaskRunToken } from "../_shared/taskRunToken";
 
 const JSON_HEADERS = { "content-type": "application/json" } as const;
 
@@ -13,6 +15,11 @@ const CrownEvaluationRequestSchema = z.object({
 const CrownSummarizationRequestSchema = z.object({
   prompt: z.string(),
   teamSlugOrId: z.string().optional(),
+});
+
+const CrownTaskRunStatusSchema = z.object({
+  taskRunId: z.string(),
+  status: z.union(z.literal("complete"), z.literal("failed")).default("complete"),
 });
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -189,3 +196,64 @@ export const crownSummarize = httpAction(async (ctx, req) => {
   }
 });
 
+export const crownUpdateTaskRunStatus = httpAction(async (ctx, req) => {
+  const token = req.headers.get("x-cmux-token");
+  if (!token) {
+    return jsonResponse({ code: 401, message: "Missing task run token" }, 401);
+  }
+
+  let payload: { taskRunId: string; teamId: string; userId: string };
+  try {
+    payload = await verifyTaskRunToken(token);
+  } catch (error) {
+    console.error("[convex.crown] Invalid task run token", error);
+    return jsonResponse({ code: 401, message: "Unauthorized" }, 401);
+  }
+
+  const parsed = await ensureJsonRequest(req);
+  if (parsed instanceof Response) return parsed;
+
+  const validation = CrownTaskRunStatusSchema.safeParse(parsed.json);
+  if (!validation.success) {
+    console.warn(
+      "[convex.crown] Invalid task run status payload",
+      validation.error
+    );
+    return jsonResponse({ code: 400, message: "Invalid input" }, 400);
+  }
+
+  if (validation.data.taskRunId !== payload.taskRunId) {
+    console.warn("[convex.crown] Task run token mismatch", {
+      tokenTaskRunId: payload.taskRunId,
+      bodyTaskRunId: validation.data.taskRunId,
+    });
+    return jsonResponse({ code: 403, message: "Forbidden" }, 403);
+  }
+
+  try {
+    const result = await ctx.runMutation(
+      api.crown_worker.updateTaskRunStatusFromWorker,
+      {
+        taskRunId: validation.data.taskRunId as Id<"taskRuns">,
+        status: validation.data.status,
+        teamId: payload.teamId,
+        userId: payload.userId,
+      }
+    );
+
+    return jsonResponse({
+      taskId: result.taskId,
+      allComplete: result.allComplete,
+      requiresEvaluation: result.requiresEvaluation,
+      completedRunIds: result.completedRunIds,
+      failedRunIds: result.failedRunIds,
+      totalRuns: result.totalRuns,
+    });
+  } catch (error) {
+    console.error("[convex.crown] Failed to update task run status", error);
+    return jsonResponse(
+      { code: 500, message: "Failed to update task run status" },
+      500
+    );
+  }
+});

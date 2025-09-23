@@ -151,6 +151,14 @@ export abstract class VSCodeInstance extends EventEmitter {
         this.emit("task-complete", data);
       });
 
+      this.workerSocket.on("worker:crown-ready", (data) => {
+        dockerLogger.info(
+          `[VSCodeInstance ${this.instanceId}] Crown ready detected:`,
+          data
+        );
+        this.emit("crown-ready", data);
+      });
+
       this.workerSocket.on("worker:terminal-failed", (data) => {
         dockerLogger.error(
           `[VSCodeInstance ${this.instanceId}] Terminal failed:`,

@@ -281,6 +281,17 @@ export interface WorkerFileDiff {
   patch: string;
 }
 
+export interface WorkerCrownReady {
+  workerId: string;
+  taskRunId: Id<"taskRuns">;
+  taskId: Id<"tasks">;
+  allComplete: boolean;
+  requiresEvaluation: boolean;
+  completedRunIds: Id<"taskRuns">[];
+  failedRunIds: Id<"taskRuns">[];
+  totalRuns: number;
+}
+
 export interface WorkerToServerEvents {
   // Registration and health
   "worker:register": (data: WorkerRegister) => void;
@@ -294,6 +305,7 @@ export interface WorkerToServerEvents {
   "worker:terminal-idle": (data: WorkerTerminalIdle) => void;
   "worker:task-complete": (data: WorkerTaskComplete) => void;
   "worker:terminal-failed": (data: WorkerTerminalFailed) => void;
+  "worker:crown-ready": (data: WorkerCrownReady) => void;
 
   // File change events
   "worker:file-changes": (data: {
