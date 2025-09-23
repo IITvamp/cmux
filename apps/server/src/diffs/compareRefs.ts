@@ -32,9 +32,23 @@ export async function compareRefsForRepo(
       includeContents: true,
     });
   } catch (e) {
-    // fallthrough to JS
+    // Check if the error is related to repository not found
+    const errorMessage = e instanceof Error ? e.message : String(e);
+    const causeMessage = e instanceof Error && e.cause instanceof Error ? e.cause.message : "";
+
+    if (errorMessage.includes("repository") && errorMessage.includes("not found") ||
+        causeMessage.includes("repository") && causeMessage.includes("not found") ||
+        errorMessage.includes("Not Found") ||
+        causeMessage.includes("Not Found")) {
+      throw new Error(
+        `Failed to access repository: ${args.repoUrl || args.repoFullName || "unknown"}`,
+        { cause: e }
+      );
+    }
+
+    // Generic fallback for other errors
     throw new Error(
-      "Native gitDiffRefs not available; rebuild @cmux/native-core",
+      "Failed to generate diff using native git",
       { cause: e }
     );
   }
