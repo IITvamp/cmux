@@ -4,7 +4,6 @@ import {
   CommandGroup,
   CommandInput,
   CommandItem,
-  CommandItemCompact,
   CommandList,
 } from "@/components/ui/command";
 import {
@@ -78,7 +77,7 @@ export interface SearchableSelectProps {
   leftIcon?: ReactNode;
   // Optional footer rendered below the scroll container
   footer?: ReactNode;
-  itemVariant?: "default" | "compact";
+  itemVariant?: "default" | "agent";
   optionItemComponent?: ComponentType<OptionItemRenderProps>;
   maxCountPerValue?: number;
 }
@@ -154,6 +153,7 @@ export interface OptionItemRenderProps {
   onIncrement?: () => void;
   onDecrement?: () => void;
   itemComponent: typeof CommandItem;
+  itemVariant: "default" | "agent";
 }
 
 function DefaultOptionItem({
@@ -162,6 +162,7 @@ function DefaultOptionItem({
   onSelectValue,
   onWarningAction,
   itemComponent: ItemComponent,
+  itemVariant,
 }: OptionItemRenderProps) {
   const handleSelect = () => {
     if (opt.isUnavailable) {
@@ -171,6 +172,7 @@ function DefaultOptionItem({
   };
   return (
     <ItemComponent
+      variant={itemVariant}
       value={`${opt.label} ${opt.value}`}
       className={clsx(
         "flex items-center justify-between gap-2 text-[13.5px] py-1.5 h-[32px]",
@@ -230,8 +232,7 @@ const SearchableSelect = forwardRef<SearchableSelectHandle, SearchableSelectProp
     () => new Map(normOptions.map((o) => [o.value, o])),
     [normOptions]
   );
-  const ItemComponent =
-    itemVariant === "compact" ? CommandItemCompact : CommandItem;
+  const ItemComponent = CommandItem;
   const OptionComponent: ComponentType<OptionItemRenderProps> =
     optionItemComponent ?? DefaultOptionItem;
   const resolvedMaxPerValue = Number.isFinite(maxCountPerValue)
@@ -613,6 +614,7 @@ const SearchableSelect = forwardRef<SearchableSelectHandle, SearchableSelectProp
                                   onIncrement={increment}
                                   onDecrement={decrement}
                                   itemComponent={ItemComponent}
+                                  itemVariant={itemVariant}
                                 />
                               );
                             })}
@@ -665,6 +667,7 @@ const SearchableSelect = forwardRef<SearchableSelectHandle, SearchableSelectProp
                                     onIncrement={increment}
                                     onDecrement={decrement}
                                     itemComponent={ItemComponent}
+                                    itemVariant={itemVariant}
                                   />
                                 )}
                               </div>

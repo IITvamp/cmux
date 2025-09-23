@@ -51,6 +51,11 @@ interface DashboardInputControlsProps {
 
 type AgentOption = SelectOptionObject & { displayLabel: string };
 
+type AgentSelectionInstance = {
+  agent: string;
+  id: string;
+};
+
 export const DashboardInputControls = memo(function DashboardInputControls({
   projectOptions,
   selectedProject,
@@ -174,10 +179,6 @@ export const DashboardInputControls = memo(function DashboardInputControls({
     }
     return map;
   }, [agentOptions]);
-  type AgentSelectionInstance = {
-    agent: string;
-    id: string;
-  };
 
   const generateInstanceId = () => crypto.randomUUID();
 
@@ -540,7 +541,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
           showSearch
           countLabel="agents"
           footer={agentSelectionFooter}
-          itemVariant="compact"
+          itemVariant="agent"
           optionItemComponent={AgentCommandItem}
           maxCountPerValue={MAX_AGENT_COMMAND_COUNT}
         />

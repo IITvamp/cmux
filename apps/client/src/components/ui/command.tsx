@@ -99,14 +99,23 @@ const CommandSeparator = React.forwardRef<
 ));
 CommandSeparator.displayName = CommandPrimitive.Separator.displayName;
 
+type CommandItemVariant = "default" | "agent";
+
+type CommandItemProps = React.ComponentPropsWithoutRef<
+  typeof CommandPrimitive.Item
+> & {
+  variant?: CommandItemVariant;
+};
+
 const CommandItem = React.forwardRef<
   React.ElementRef<typeof CommandPrimitive.Item>,
-  React.ComponentPropsWithoutRef<typeof CommandPrimitive.Item>
->(({ className, ...props }, ref) => (
+  CommandItemProps
+>(({ className, variant = "default", ...props }, ref) => (
   <CommandPrimitive.Item
     ref={ref}
     className={clsx(
-      "relative flex cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none",
+      "relative flex cursor-default select-none items-center rounded-sm py-1.5 text-sm outline-none",
+      variant === "agent" ? "pl-2 pr-1" : "px-2",
       "aria-selected:bg-neutral-100 dark:aria-selected:bg-neutral-800",
       "aria-disabled:pointer-events-none aria-disabled:opacity-50",
       className
@@ -115,23 +124,6 @@ const CommandItem = React.forwardRef<
   />
 ));
 CommandItem.displayName = CommandPrimitive.Item.displayName;
-
-const CommandItemCompact = React.forwardRef<
-  React.ElementRef<typeof CommandPrimitive.Item>,
-  React.ComponentPropsWithoutRef<typeof CommandPrimitive.Item>
->(({ className, ...props }, ref) => (
-  <CommandPrimitive.Item
-    ref={ref}
-    className={clsx(
-      "relative flex cursor-default select-none items-center rounded-sm pl-2 pr-1 py-1.5 text-sm outline-none",
-      "aria-selected:bg-neutral-100 dark:aria-selected:bg-neutral-800",
-      "aria-disabled:pointer-events-none aria-disabled:opacity-50",
-      className
-    )}
-    {...props}
-  />
-));
-CommandItemCompact.displayName = "CommandItemCompact";
 
 const CommandDialog = ({
   children,
@@ -163,7 +155,6 @@ export {
   CommandGroup,
   CommandInput,
   CommandItem,
-  CommandItemCompact,
   CommandList,
   CommandSeparator,
 };

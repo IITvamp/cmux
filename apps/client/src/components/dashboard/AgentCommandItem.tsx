@@ -16,6 +16,7 @@ export function AgentCommandItem({
   onIncrement,
   onDecrement,
   itemComponent: ItemComponent,
+  itemVariant,
 }: OptionItemRenderProps) {
   if (opt.heading) {
     return (
@@ -71,6 +72,7 @@ export function AgentCommandItem({
 
   return (
     <ItemComponent
+      variant={itemVariant}
       value={`${opt.label} ${opt.value}`}
       className={clsx(
         "flex items-center justify-between gap-2 text-[13.5px] py-1.5 h-[32px]",
