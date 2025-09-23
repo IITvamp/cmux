@@ -5,9 +5,16 @@ import {
 import { DEFAULT_MORPH_SNAPSHOT_ID } from "@/lib/utils/morph-defaults";
 import { verifyTeamAccess } from "@/lib/utils/team-verification";
 import { env } from "@/lib/utils/www-env";
-import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
+import { createRoute, OpenAPIHono, z } from "@hono/zod-openapi";
 import { MorphCloudClient } from "morphcloud";
+import { getConvex } from "../utils/get-convex";
+import { selectGitIdentity } from "../utils/gitIdentity";
 import { stackServerAppJs } from "../utils/stack";
+import {
+  configureGithubAccess,
+  configureGitIdentity,
+  fetchGitIdentityInputs,
+} from "./sandboxes/git";
 
 export const morphRouter = new OpenAPIHono();
 
@@ -72,8 +79,37 @@ morphRouter.openapi(
       ttlSeconds,
     } = c.req.valid("json");
 
+    const convex = getConvex({ accessToken });
+
     // Verify team access and get the team
     const team = await verifyTeamAccess({ req: c.req.raw, teamSlugOrId });
+    const githubAccessTokenPromise = (async () => {
+      const githubAccount = await user.getConnectedAccount("github");
+      if (!githubAccount) {
+        return {
+          githubAccessTokenError: "GitHub account not found",
+          githubAccessToken: null,
+        } as const;
+      }
+      const { accessToken: githubAccessToken } =
+        await githubAccount.getAccessToken();
+      if (!githubAccessToken) {
+        return {
+          githubAccessTokenError: "GitHub access token not found",
+          githubAccessToken: null,
+        } as const;
+      }
+
+      return { githubAccessTokenError: null, githubAccessToken } as const;
+    })();
+    const gitIdentityPromise = githubAccessTokenPromise.then(
+      ({ githubAccessToken }) => {
+        if (!githubAccessToken) {
+          throw new Error("GitHub access token not found");
+        }
+        return fetchGitIdentityInputs(convex, githubAccessToken);
+      }
+    );
 
     try {
       const client = new MorphCloudClient({
@@ -114,6 +150,18 @@ morphRouter.openapi(
         }
       }
 
+      void gitIdentityPromise
+        .then(([who, gh]) => {
+          const { name, email } = selectGitIdentity(who, gh);
+          return configureGitIdentity(instance, { name, email });
+        })
+        .catch((error) => {
+          console.log(
+            `[sandboxes.start] Failed to configure git identity; continuing...`,
+            error
+          );
+        });
+
       // Get VSCode URL
       const vscodeUrl = instance.networking.httpServices.find(
         (service) => service.port === 39378
@@ -122,6 +170,16 @@ morphRouter.openapi(
       if (!vscodeUrl) {
         throw new Error("VSCode URL not found");
       }
+
+      const { githubAccessToken, githubAccessTokenError } =
+        await githubAccessTokenPromise;
+      if (githubAccessTokenError) {
+        console.error(
+          `[sandboxes.start] GitHub access token error: ${githubAccessTokenError}`
+        );
+        return c.text("Failed to resolve GitHub credentials", 401);
+      }
+      await configureGithubAccess(instance, githubAccessToken);
 
       const url = `${vscodeUrl}/?folder=/root/workspace`;
 
