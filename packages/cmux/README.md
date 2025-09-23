@@ -51,3 +51,7 @@ cmux is part of the cmux project. See the main repository for development instru
 ## License
 
 MIT
+
+Autumn leaves falling,
+Code compiles without error,
+Joy in the console.
