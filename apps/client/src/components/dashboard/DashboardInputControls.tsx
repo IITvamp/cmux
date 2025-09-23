@@ -369,7 +369,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
       </div>
     </div>
   ) : (
-    <div className="px-3 py-3 text-[12px] text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-900/70">
+    <div className="px-3 py-3 flex items-center text-[12px] text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-900/70">
       No agents selected yet.
     </div>
   );

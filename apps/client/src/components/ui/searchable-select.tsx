@@ -205,28 +205,30 @@ function DefaultOptionItem({
   );
 }
 
-const SearchableSelect = forwardRef<SearchableSelectHandle, SearchableSelectProps>(
-  function SearchableSelect(
-    {
-      options,
-      value,
-      onChange,
-      placeholder = "Select",
-      singleSelect = false,
-      className,
-      loading = false,
-      maxTagCount: _maxTagCount,
-      showSearch = true,
-      disabled = false,
-      countLabel = "selected",
-      leftIcon,
-      footer,
-      itemVariant = "default",
-      optionItemComponent,
-      maxCountPerValue = 6,
-    },
-    ref
-  ) {
+const SearchableSelect = forwardRef<
+  SearchableSelectHandle,
+  SearchableSelectProps
+>(function SearchableSelect(
+  {
+    options,
+    value,
+    onChange,
+    placeholder = "Select",
+    singleSelect = false,
+    className,
+    loading = false,
+    maxTagCount: _maxTagCount,
+    showSearch = true,
+    disabled = false,
+    countLabel = "selected",
+    leftIcon,
+    footer,
+    itemVariant = "default",
+    optionItemComponent,
+    maxCountPerValue = 6,
+  },
+  ref
+) {
   const normOptions = useMemo(() => normalizeOptions(options), [options]);
   const valueToOption = useMemo(
     () => new Map(normOptions.map((o) => [o.value, o])),
@@ -238,15 +240,14 @@ const SearchableSelect = forwardRef<SearchableSelectHandle, SearchableSelectProp
   const resolvedMaxPerValue = Number.isFinite(maxCountPerValue)
     ? Math.max(1, Math.floor(maxCountPerValue))
     : 1;
-  const allowValueCountAdjustments =
-    !singleSelect && resolvedMaxPerValue > 1;
+  const allowValueCountAdjustments = !singleSelect && resolvedMaxPerValue > 1;
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const [search, setSearch] = useState("");
   const [_recalcTick, setRecalcTick] = useState(0);
   // Popover width is fixed; no need to track trigger width
   const pendingFocusRef = useRef<string | null>(null);
-  
+
   const countByValue = useMemo(() => {
     const map = new Map<string, number>();
     for (const val of value) {
@@ -423,7 +424,9 @@ const SearchableSelect = forwardRef<SearchableSelectHandle, SearchableSelectProp
         return;
       }
       pendingFocusRef.current = null;
-      const index = filteredOptions.findIndex((opt) => opt.value === focusValue);
+      const index = filteredOptions.findIndex(
+        (opt) => opt.value === focusValue
+      );
       if (index === -1) {
         return;
       }
@@ -481,9 +484,7 @@ const SearchableSelect = forwardRef<SearchableSelectHandle, SearchableSelectProp
   );
 
   const updateValueCount = (val: string, nextCount: number) => {
-    const normalized = Number.isFinite(nextCount)
-      ? Math.round(nextCount)
-      : 0;
+    const normalized = Number.isFinite(nextCount) ? Math.round(nextCount) : 0;
     const clamped = Math.max(0, Math.min(normalized, resolvedMaxPerValue));
     const current = countByValue.get(val) ?? 0;
     if (clamped === current) return;
@@ -567,7 +568,7 @@ const SearchableSelect = forwardRef<SearchableSelectHandle, SearchableSelectProp
             ) : (
               <CommandList
                 ref={listRef}
-                className="min-h-[6rem] max-h-[18rem] overflow-y-auto"
+                className="max-h-[18rem] overflow-y-auto"
               >
                 {filteredOptions.length === 0 ? (
                   <CommandEmpty>
@@ -682,7 +683,7 @@ const SearchableSelect = forwardRef<SearchableSelectHandle, SearchableSelectProp
             )}
           </Command>
           {footer ? (
-            <div className="border-t border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950">
+            <div className="border-t border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 min-h-11">
               {footer}
             </div>
           ) : null}
