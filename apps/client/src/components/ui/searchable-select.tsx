@@ -80,6 +80,7 @@ export interface SearchableSelectProps {
   footer?: ReactNode;
   itemVariant?: "default" | "compact";
   optionItemComponent?: ComponentType<OptionItemRenderProps>;
+  maxCountPerValue?: number;
 }
 
 interface WarningIndicatorProps {
@@ -223,6 +224,7 @@ const SearchableSelect = forwardRef<SearchableSelectHandle, SearchableSelectProp
       footer,
       itemVariant = "default",
       optionItemComponent,
+      maxCountPerValue = 3,
     },
     ref
   ) {
@@ -465,10 +467,13 @@ const SearchableSelect = forwardRef<SearchableSelectHandle, SearchableSelectProp
   );
 
   const updateValueCount = (val: string, nextCount: number) => {
+    const maxPerValue = Number.isFinite(maxCountPerValue)
+      ? Math.max(0, Math.floor(maxCountPerValue))
+      : 0;
     const normalized = Number.isFinite(nextCount)
       ? Math.round(nextCount)
       : 0;
-    const clamped = Math.max(0, Math.min(normalized, 3));
+    const clamped = Math.max(0, Math.min(normalized, maxPerValue));
     const current = countByValue.get(val) ?? 0;
     if (clamped === current) return;
     const withoutVal = value.filter((existing) => existing !== val);

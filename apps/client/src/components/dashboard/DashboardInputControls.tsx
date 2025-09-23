@@ -49,6 +49,8 @@ interface DashboardInputControlsProps {
   providerStatus?: ProviderStatusResponse | null;
 }
 
+const MAX_AGENT_COMMAND_COUNT = 6;
+
 export const DashboardInputControls = memo(function DashboardInputControls({
   projectOptions,
   selectedProject,
@@ -492,6 +494,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
           footer={agentSelectionFooter}
           itemVariant="compact"
           optionItemComponent={AgentCommandItem}
+          maxCountPerValue={MAX_AGENT_COMMAND_COUNT}
         />
       </div>
 

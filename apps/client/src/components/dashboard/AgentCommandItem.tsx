@@ -6,6 +6,8 @@ import { AlertTriangle, Minus, Plus } from "lucide-react";
 import { clsx } from "clsx";
 import type { MouseEvent } from "react";
 
+export const MAX_AGENT_COMMAND_COUNT = 6;
+
 export function AgentCommandItem({
   opt,
   count,
@@ -45,12 +47,14 @@ export function AgentCommandItem({
   const handleIncrement = (event: MouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     event.stopPropagation();
-    if (opt.isUnavailable || count >= 3) return;
+    if (opt.isUnavailable || count >= MAX_AGENT_COMMAND_COUNT) return;
     onIncrement?.();
   };
 
   const disableDecrease = Boolean(opt.isUnavailable || count <= 0);
-  const disableIncrease = Boolean(opt.isUnavailable || count >= 3);
+  const disableIncrease = Boolean(
+    opt.isUnavailable || count >= MAX_AGENT_COMMAND_COUNT
+  );
 
   return (
     <ItemComponent
