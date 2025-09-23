@@ -63,8 +63,6 @@ export interface SearchableSelectProps {
   leftIcon?: ReactNode;
   // Optional footer rendered below the scroll container
   footer?: ReactNode;
-  // Optional maximum per-option count when duplicates are allowed
-  maxCountPerOption?: number;
 }
 
 interface WarningIndicatorProps {
@@ -120,7 +118,6 @@ interface OptionItemProps {
   opt: SelectOptionObject;
   isSelected: boolean;
   count: number;
-  maxCount: number;
   onSelectValue: (val: string) => void;
   onWarningAction?: () => void;
   onIncrement?: () => void;
@@ -131,7 +128,6 @@ function OptionItem({
   opt,
   isSelected: _isSelected,
   count,
-  maxCount,
   onSelectValue,
   onWarningAction,
   onIncrement,
@@ -205,13 +201,10 @@ function OptionItem({
               onClick={(event) => {
                 event.preventDefault();
                 event.stopPropagation();
-                if (Number.isFinite(maxCount) && count >= maxCount) return;
+                if (count >= 3) return;
                 onIncrement?.();
               }}
-              disabled={Boolean(
-                opt.isUnavailable ||
-                  (Number.isFinite(maxCount) && count >= maxCount)
-              )}
+              disabled={Boolean(opt.isUnavailable || count >= 3)}
               className="inline-flex h-5 w-5 items-center justify-center rounded-sm text-neutral-600 transition-colors hover:text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-neutral-300 dark:hover:text-neutral-50 dark:focus-visible:ring-neutral-500/40"
             >
               <span className="sr-only">Increase {opt.label}</span>
@@ -238,7 +231,6 @@ export function SearchableSelect({
   countLabel = "selected",
   leftIcon,
   footer,
-  maxCountPerOption,
 }: SearchableSelectProps) {
   const normOptions = useMemo(() => normalizeOptions(options), [options]);
   const valueToOption = useMemo(
@@ -420,13 +412,11 @@ export function SearchableSelect({
     }
   }, [open, rowVirtualizer]);
 
-  const maxPerOption = maxCountPerOption ?? Infinity;
-
   const updateValueCount = (val: string, nextCount: number) => {
     const normalized = Number.isFinite(nextCount)
       ? Math.round(nextCount)
       : 0;
-    const clamped = Math.max(0, Math.min(normalized, maxPerOption));
+    const clamped = Math.max(0, Math.min(normalized, 3));
     const current = countByValue.get(val) ?? 0;
     if (clamped === current) return;
     const withoutVal = value.filter((existing) => existing !== val);
@@ -448,9 +438,6 @@ export function SearchableSelect({
     }
     const currentCount = countByValue.get(val) ?? 0;
     if (currentCount === 0) {
-      if (maxPerOption <= 0) {
-        return;
-      }
       updateValueCount(val, 1);
     } else {
       updateValueCount(val, 0);
@@ -534,7 +521,6 @@ export function SearchableSelect({
                               opt={opt}
                               isSelected={isSelected}
                               count={count}
-                              maxCount={maxPerOption}
                               onSelectValue={onSelectValue}
                               onWarningAction={() => setOpen(false)}
                               onIncrement={() =>
@@ -577,7 +563,6 @@ export function SearchableSelect({
                                 opt={opt}
                                 isSelected={isSelected}
                                 count={count}
-                                maxCount={maxPerOption}
                                 onSelectValue={onSelectValue}
                                 onWarningAction={() => setOpen(false)}
                                 onIncrement={() =>

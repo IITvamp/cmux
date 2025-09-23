@@ -28,8 +28,6 @@ import {
   useState,
 } from "react";
 
-const MAX_DUPLICATE_AGENTS = 3;
-
 interface DashboardInputControlsProps {
   projectOptions: SelectOption[];
   selectedProject: string[];
@@ -267,7 +265,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
   const handleAgentAddOne = useCallback(
     (agent: string) => {
       const currentCount = agentCountByValue.get(agent) ?? 0;
-      if (currentCount >= MAX_DUPLICATE_AGENTS) {
+      if (currentCount >= 3) {
         return;
       }
       onAgentChange([...selectedAgents, agent]);
@@ -284,7 +282,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
               const option = agentOptionsByValue.get(agent);
               const label = option?.displayLabel ?? option?.label ?? agent;
               const currentCount = agentCountByValue.get(agent) ?? 0;
-              const canAddMore = currentCount < MAX_DUPLICATE_AGENTS;
+              const canAddMore = currentCount < 3;
               return (
                 <div
                   key={`${agent}-${idx}`}
@@ -507,7 +505,6 @@ export const DashboardInputControls = memo(function DashboardInputControls({
           className="rounded-2xl"
           showSearch
           countLabel="agents"
-          maxCountPerOption={MAX_DUPLICATE_AGENTS}
           footer={agentSelectionFooter}
         />
       </div>
