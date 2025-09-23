@@ -44,3 +44,9 @@ cmux upgrade
 ```bash
 cmux uninstall
 ```
+
+---
+
+Code flows like a river  
+Bugs hide in the shadows deep  
+Debug with mindful eye
