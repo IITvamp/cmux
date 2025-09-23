@@ -7,6 +7,7 @@ import {
 import { useArchiveTask } from "@/hooks/useArchiveTask";
 import { useOpenWithActions } from "@/hooks/useOpenWithActions";
 import { isElectron } from "@/lib/electron";
+import type { TaskRunWithChildren, TaskWithRuns } from "@/types/task";
 import { ContextMenu } from "@base-ui-components/react/context-menu";
 import { type Id } from "@cmux/convex/dataModel";
 import { Link, useLocation } from "@tanstack/react-router";
@@ -41,10 +42,10 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
-import type { TaskRunWithChildren, TaskWithRuns } from "@/types/task";
-export type { TaskWithRuns };
 import { VSCodeIcon } from "./icons/VSCodeIcon";
 import { SidebarListItem } from "./sidebar/SidebarListItem";
+import { annotateAgentOrdinals } from "./task-tree/annotateAgentOrdinals";
+import { type AnnotatedTaskRun } from "./task-tree/types";
 
 type PreviewService = NonNullable<TaskRunWithChildren["networking"]>[number];
 
@@ -264,6 +265,11 @@ function TaskTreeInner({
     );
   })();
 
+  const annotatedRuns = useMemo(
+    () => annotateAgentOrdinals(task.runs),
+    [task.runs]
+  );
+
   return (
     <TaskRunExpansionContext.Provider value={expansionContextValue}>
       <div className="select-none flex flex-col">
@@ -337,7 +343,7 @@ function TaskTreeInner({
 
         {isExpanded && hasRuns && (
           <div className="flex flex-col">
-            {task.runs.map((run) => (
+            {annotatedRuns.map((run) => (
               <TaskRunTree
                 key={run._id}
                 run={run}
@@ -354,7 +360,7 @@ function TaskTreeInner({
 }
 
 interface TaskRunTreeProps {
-  run: TaskRunWithChildren;
+  run: AnnotatedTaskRun;
   level: number;
   taskId: Id<"tasks">;
   teamSlugOrId: string;
@@ -372,7 +378,14 @@ function TaskRunTreeInner({
   const hasChildren = run.children.length > 0;
 
   // Memoize the display text to avoid recalculating on every render
-  const displayText = useMemo(() => getRunDisplayText(run), [run]);
+  const displayText = useMemo(() => {
+    const base = getRunDisplayText(run);
+    if (!run.hasDuplicateAgentName) {
+      return base;
+    }
+    const ordinal = run.agentOrdinal;
+    return ordinal ? `${base} (${ordinal})` : base;
+  }, [run]);
 
   // Memoize the toggle handler
   const handleToggle = useCallback(
@@ -467,7 +480,8 @@ function TaskRunTreeInner({
   const hasOpenWithActions = openWithActions.length > 0;
   const hasPortActions = portActions.length > 0;
   const canCopyBranch = Boolean(copyRunBranch);
-  const shouldShowCopyDivider = canCopyBranch && (hasOpenWithActions || hasPortActions);
+  const shouldShowCopyDivider =
+    canCopyBranch && (hasOpenWithActions || hasPortActions);
   const shouldShowOpenWithDivider = hasOpenWithActions && hasPortActions;
   const hasCollapsibleContent =
     hasChildren ||
@@ -626,7 +640,7 @@ function TaskRunDetailLink({
 }
 
 interface TaskRunDetailsProps {
-  run: TaskRunWithChildren;
+  run: AnnotatedTaskRun;
   level: number;
   taskId: Id<"tasks">;
   teamSlugOrId: string;
@@ -768,3 +782,5 @@ export interface VSCodeIconProps {
 // Prevent unnecessary re-renders of large trees during unrelated state changes
 export const TaskTree = memo(TaskTreeInner);
 const TaskRunTree = memo(TaskRunTreeInner);
+
+export type { TaskWithRuns } from "./task-tree/types";

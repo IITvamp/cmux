@@ -14,7 +14,7 @@ import {
 import { Skeleton } from "@heroui/react";
 import * as Popover from "@radix-ui/react-popover";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import clsx from "clsx";
+import { clsx } from "clsx";
 import {
   AlertTriangle,
   Check,
@@ -22,7 +22,17 @@ import {
   Loader2,
   OctagonAlert,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentType,
+  type ReactNode,
+} from "react";
 
 interface OptionWarning {
   tooltip: ReactNode;
@@ -45,6 +55,11 @@ export interface SelectOptionObject {
 
 export type SelectOption = string | SelectOptionObject;
 
+export type SearchableSelectHandle = {
+  open: (options?: { focusValue?: string }) => void;
+  close: () => void;
+};
+
 export interface SearchableSelectProps {
   options: SelectOption[];
   value: string[];
@@ -62,6 +77,9 @@ export interface SearchableSelectProps {
   leftIcon?: ReactNode;
   // Optional footer rendered below the scroll container
   footer?: ReactNode;
+  itemVariant?: "default" | "agent";
+  optionItemComponent?: ComponentType<OptionItemRenderProps>;
+  maxCountPerValue?: number;
 }
 
 interface WarningIndicatorProps {
@@ -70,7 +88,7 @@ interface WarningIndicatorProps {
   className?: string;
 }
 
-function WarningIndicator({
+export function WarningIndicator({
   warning,
   onActivate,
   className,
@@ -113,31 +131,39 @@ function normalizeOptions(options: SelectOption[]): SelectOptionObject[] {
   );
 }
 
-interface OptionItemProps {
-  opt: SelectOptionObject;
-  isSelected: boolean;
-  onSelectValue: (val: string) => void;
-  onWarningAction?: () => void;
+function HeadingRow({ option }: { option: SelectOptionObject }) {
+  return (
+    <div className="flex items-center gap-2 min-w-0 flex-1 pl-1 pr-3 py-1 h-[28px] text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">
+      {option.icon ? (
+        <span className="shrink-0 inline-flex items-center justify-center">
+          {option.icon}
+        </span>
+      ) : null}
+      <span className="truncate select-none">{option.label}</span>
+    </div>
+  );
 }
 
-function OptionItem({
+export interface OptionItemRenderProps {
+  opt: SelectOptionObject;
+  isSelected: boolean;
+  count?: number;
+  onSelectValue: (val: string) => void;
+  onWarningAction?: () => void;
+  onIncrement?: () => void;
+  onDecrement?: () => void;
+  itemComponent: typeof CommandItem;
+  itemVariant: "default" | "agent";
+}
+
+function DefaultOptionItem({
   opt,
   isSelected,
   onSelectValue,
   onWarningAction,
-}: OptionItemProps) {
-  if (opt.heading) {
-    return (
-      <div className="flex items-center gap-2 min-w-0 flex-1 pl-1 pr-3 py-1 h-[28px] text-[11px] font-semibold text-neutral-500 dark:text-neutral-400">
-        {opt.icon ? (
-          <span className="shrink-0 inline-flex items-center justify-center">
-            {opt.icon}
-          </span>
-        ) : null}
-        <span className="truncate select-none">{opt.label}</span>
-      </div>
-    );
-  }
+  itemComponent: ItemComponent,
+  itemVariant,
+}: OptionItemRenderProps) {
   const handleSelect = () => {
     if (opt.isUnavailable) {
       return;
@@ -145,7 +171,8 @@ function OptionItem({
     onSelectValue(opt.value);
   };
   return (
-    <CommandItem
+    <ItemComponent
+      variant={itemVariant}
       value={`${opt.label} ${opt.value}`}
       className={clsx(
         "flex items-center justify-between gap-2 text-[13.5px] py-1.5 h-[32px]",
@@ -171,45 +198,62 @@ function OptionItem({
           <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
         ) : null}
       </div>
-      <Check
-        className={clsx(
-          "h-4 w-4 shrink-0 transition-opacity",
-          isSelected
-            ? "opacity-100 text-neutral-700 dark:text-neutral-300"
-            : "opacity-0"
-        )}
-      />
-    </CommandItem>
+      {isSelected ? (
+        <Check className="h-4 w-4 text-neutral-900 dark:text-neutral-100" />
+      ) : null}
+    </ItemComponent>
   );
 }
 
-export function SearchableSelect({
-  options,
-  value,
-  onChange,
-  placeholder = "Select",
-  singleSelect = false,
-  className,
-  loading = false,
-  maxTagCount: _maxTagCount,
-  showSearch = true,
-  disabled = false,
-  countLabel = "selected",
-  leftIcon,
-  footer,
-}: SearchableSelectProps) {
+const SearchableSelect = forwardRef<SearchableSelectHandle, SearchableSelectProps>(
+  function SearchableSelect(
+    {
+      options,
+      value,
+      onChange,
+      placeholder = "Select",
+      singleSelect = false,
+      className,
+      loading = false,
+      maxTagCount: _maxTagCount,
+      showSearch = true,
+      disabled = false,
+      countLabel = "selected",
+      leftIcon,
+      footer,
+      itemVariant = "default",
+      optionItemComponent,
+      maxCountPerValue = 6,
+    },
+    ref
+  ) {
   const normOptions = useMemo(() => normalizeOptions(options), [options]);
   const valueToOption = useMemo(
     () => new Map(normOptions.map((o) => [o.value, o])),
     [normOptions]
   );
+  const ItemComponent = CommandItem;
+  const OptionComponent: ComponentType<OptionItemRenderProps> =
+    optionItemComponent ?? DefaultOptionItem;
+  const resolvedMaxPerValue = Number.isFinite(maxCountPerValue)
+    ? Math.max(1, Math.floor(maxCountPerValue))
+    : 1;
+  const allowValueCountAdjustments =
+    !singleSelect && resolvedMaxPerValue > 1;
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const [search, setSearch] = useState("");
   const [_recalcTick, setRecalcTick] = useState(0);
   // Popover width is fixed; no need to track trigger width
-
-  const selectedSet = useMemo(() => new Set(value), [value]);
+  const pendingFocusRef = useRef<string | null>(null);
+  
+  const countByValue = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const val of value) {
+      map.set(val, (map.get(val) ?? 0) + 1);
+    }
+    return map;
+  }, [value]);
   const selectedLabels = useMemo(() => {
     const byValue = new Map(
       normOptions.map((o) => [o.value, o.label] as const)
@@ -290,9 +334,7 @@ export function SearchableSelect({
             {uniqueIcons.slice(0, maxIcons).map((ico, i) => (
               <span
                 key={i}
-                className={clsx(
-                  "inline-flex h-4 w-4 items-center justify-center overflow-hidden"
-                )}
+                className="inline-flex h-4 w-4 items-center justify-center overflow-hidden"
               >
                 {ico}
               </span>
@@ -374,6 +416,82 @@ export function SearchableSelect({
     }
   }, [open, rowVirtualizer]);
 
+  const handleOpenAutoFocus = useCallback(
+    (_event: Event) => {
+      const focusValue = pendingFocusRef.current;
+      if (!focusValue) {
+        return;
+      }
+      pendingFocusRef.current = null;
+      const index = filteredOptions.findIndex((opt) => opt.value === focusValue);
+      if (index === -1) {
+        return;
+      }
+      requestAnimationFrame(() => {
+        try {
+          rowVirtualizer.scrollToIndex(index, {
+            align: "center",
+            behavior: "auto",
+          });
+        } catch {
+          /* noop */
+        }
+      });
+    },
+    [filteredOptions, rowVirtualizer]
+  );
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      open: ({ focusValue } = {}) => {
+        if (focusValue) {
+          pendingFocusRef.current = focusValue;
+        } else {
+          pendingFocusRef.current = null;
+        }
+        setSearch("");
+        setOpen(true);
+        requestAnimationFrame(() => {
+          if (focusValue && open) {
+            const index = filteredOptions.findIndex(
+              (opt) => opt.value === focusValue
+            );
+            pendingFocusRef.current = null;
+            if (index !== -1) {
+              try {
+                rowVirtualizer.scrollToIndex(index, {
+                  align: "center",
+                  behavior: "auto",
+                });
+              } catch {
+                /* noop */
+              }
+            }
+          }
+          triggerRef.current?.focus({ preventScroll: true });
+        });
+      },
+      close: () => {
+        pendingFocusRef.current = null;
+        setOpen(false);
+      },
+    }),
+    [filteredOptions, open, rowVirtualizer]
+  );
+
+  const updateValueCount = (val: string, nextCount: number) => {
+    const normalized = Number.isFinite(nextCount)
+      ? Math.round(nextCount)
+      : 0;
+    const clamped = Math.max(0, Math.min(normalized, resolvedMaxPerValue));
+    const current = countByValue.get(val) ?? 0;
+    if (clamped === current) return;
+    const withoutVal = value.filter((existing) => existing !== val);
+    const additions = Array.from({ length: clamped }, () => val);
+    onChange([...withoutVal, ...additions]);
+  };
+
   const onSelectValue = (val: string): void => {
     const selectedOption = valueToOption.get(val);
     if (selectedOption?.isUnavailable) {
@@ -386,34 +504,23 @@ export function SearchableSelect({
       setOpen(false);
       return;
     }
-    const next = new Set(value);
-    if (next.has(val)) next.delete(val);
-    else next.add(val);
-    onChange(Array.from(next));
+    const currentCount = countByValue.get(val) ?? 0;
+    if (currentCount === 0) {
+      updateValueCount(val, 1);
+    } else {
+      updateValueCount(val, 0);
+    }
   };
 
   return (
     <Popover.Root open={open} onOpenChange={setOpen}>
-      <div className={clsx("inline-flex items-center")}>
+      <div className="inline-flex items-center">
         <Popover.Trigger asChild>
           <button
             ref={triggerRef}
             type="button"
             disabled={disabled}
-            className={clsx(
-              "relative inline-flex h-7 items-center rounded-md border",
-              "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950",
-              // Dim background when popover is open via aria-expanded
-              "aria-expanded:bg-neutral-50 dark:aria-expanded:bg-neutral-900",
-              // Smooth color change on hover/open
-              "transition-colors",
-              "px-2.5 pr-6 text-sm text-neutral-900 dark:text-neutral-100",
-              // Focus-visible ring for accessibility
-              "outline-none focus:outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
-              "disabled:cursor-not-allowed disabled:opacity-60",
-              "w-auto",
-              className
-            )}
+            className={`relative inline-flex h-7 items-center rounded-md border border-neutral-200 bg-white px-2.5 pr-6 text-sm text-neutral-900 transition-colors outline-none focus:outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 aria-expanded:bg-neutral-50 dark:aria-expanded:bg-neutral-900 w-auto ${className ?? ""}`}
           >
             <span className="flex-1 min-w-0 text-left text-[13.5px] inline-flex items-center gap-1.5 pr-1">
               {leftIcon ? (
@@ -433,12 +540,8 @@ export function SearchableSelect({
           align="start"
           sideOffset={2}
           collisionPadding={{ top: 12, bottom: 12 }}
-          className={clsx(
-            "z-[var(--z-modal)] rounded-md border overflow-hidden",
-            "border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950",
-            // Fade out on close; open remains instant
-            "p-0 drop-shadow-xs outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0"
-          )}
+          onOpenAutoFocus={handleOpenAutoFocus}
+          className="z-[var(--z-modal)] rounded-md border overflow-hidden border-neutral-200 bg-white p-0 drop-shadow-xs outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 dark:border-neutral-800 dark:bg-neutral-950"
           style={{ width: 300 }}
         >
           <Command loop shouldFilter={false} className="text-[13.5px]">
@@ -479,14 +582,39 @@ export function SearchableSelect({
                         return (
                           <div>
                             {fallback.map((opt) => {
-                              const isSelected = selectedSet.has(opt.value);
+                              const count = countByValue.get(opt.value) ?? 0;
+                              const isSelected = count > 0;
+                              const increment = allowValueCountAdjustments
+                                ? () => updateValueCount(opt.value, count + 1)
+                                : undefined;
+                              const decrement = allowValueCountAdjustments
+                                ? () => updateValueCount(opt.value, count - 1)
+                                : undefined;
+                              if (opt.heading) {
+                                return (
+                                  <div
+                                    key={`fallback-${opt.value ?? opt.label}`}
+                                  >
+                                    <HeadingRow option={opt} />
+                                  </div>
+                                );
+                              }
                               return (
-                                <OptionItem
-                                  key={`fallback-${opt.value}`}
+                                <OptionComponent
+                                  key={`fallback-${opt.value ?? opt.label}`}
                                   opt={opt}
                                   isSelected={isSelected}
+                                  count={
+                                    allowValueCountAdjustments
+                                      ? count
+                                      : undefined
+                                  }
                                   onSelectValue={onSelectValue}
                                   onWarningAction={() => setOpen(false)}
+                                  onIncrement={increment}
+                                  onDecrement={decrement}
+                                  itemComponent={ItemComponent}
+                                  itemVariant={itemVariant}
                                 />
                               );
                             })}
@@ -502,10 +630,17 @@ export function SearchableSelect({
                         >
                           {vItems.map((vr) => {
                             const opt = filteredOptions[vr.index]!;
-                            const isSelected = selectedSet.has(opt.value);
+                            const count = countByValue.get(opt.value) ?? 0;
+                            const isSelected = count > 0;
+                            const increment = allowValueCountAdjustments
+                              ? () => updateValueCount(opt.value, count + 1)
+                              : undefined;
+                            const decrement = allowValueCountAdjustments
+                              ? () => updateValueCount(opt.value, count - 1)
+                              : undefined;
                             return (
                               <div
-                                key={opt.value}
+                                key={opt.value ?? `${vr.index}`}
                                 data-index={vr.index}
                                 ref={rowVirtualizer.measureElement}
                                 style={{
@@ -516,12 +651,25 @@ export function SearchableSelect({
                                   transform: `translateY(${vr.start}px)`,
                                 }}
                               >
-                                <OptionItem
-                                  opt={opt}
-                                  isSelected={isSelected}
-                                  onSelectValue={onSelectValue}
-                                  onWarningAction={() => setOpen(false)}
-                                />
+                                {opt.heading ? (
+                                  <HeadingRow option={opt} />
+                                ) : (
+                                  <OptionComponent
+                                    opt={opt}
+                                    isSelected={isSelected}
+                                    count={
+                                      allowValueCountAdjustments
+                                        ? count
+                                        : undefined
+                                    }
+                                    onSelectValue={onSelectValue}
+                                    onWarningAction={() => setOpen(false)}
+                                    onIncrement={increment}
+                                    onDecrement={decrement}
+                                    itemComponent={ItemComponent}
+                                    itemVariant={itemVariant}
+                                  />
+                                )}
                               </div>
                             );
                           })}
@@ -542,6 +690,7 @@ export function SearchableSelect({
       </Popover.Portal>
     </Popover.Root>
   );
-}
+});
 
+export { SearchableSelect };
 export default SearchableSelect;

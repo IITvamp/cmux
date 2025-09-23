@@ -3,6 +3,7 @@ import { AgentLogo } from "@/components/icons/agent-logos";
 import { GitHubIcon } from "@/components/icons/github";
 import { ModeToggleTooltip } from "@/components/ui/mode-toggle-tooltip";
 import SearchableSelect, {
+  type SearchableSelectHandle,
   type SelectOption,
   type SelectOptionObject,
 } from "@/components/ui/searchable-select";
@@ -27,6 +28,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { AgentCommandItem, MAX_AGENT_COMMAND_COUNT } from "./AgentCommandItem";
 
 interface DashboardInputControlsProps {
   projectOptions: SelectOption[];
@@ -47,6 +49,13 @@ interface DashboardInputControlsProps {
   providerStatus?: ProviderStatusResponse | null;
 }
 
+type AgentOption = SelectOptionObject & { displayLabel: string };
+
+type AgentSelectionInstance = {
+  agent: string;
+  id: string;
+};
+
 export const DashboardInputControls = memo(function DashboardInputControls({
   projectOptions,
   selectedProject,
@@ -66,6 +75,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
   providerStatus = null,
 }: DashboardInputControlsProps) {
   const router = useRouter();
+  const agentSelectRef = useRef<SearchableSelectHandle | null>(null);
   const mintState = useMutation(api.github_app.mintInstallState);
   const providerStatusMap = useMemo(() => {
     const map = new Map<string, ProviderStatus>();
@@ -80,7 +90,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
       params: { teamSlugOrId },
     });
   }, [router, teamSlugOrId]);
-  const agentOptions = useMemo(() => {
+  const agentOptions = useMemo<AgentOption[]>(() => {
     const vendorKey = (name: string): string => {
       const lower = name.toLowerCase();
       if (lower.startsWith("codex/")) return "openai";
@@ -158,38 +168,82 @@ export const DashboardInputControls = memo(function DashboardInputControls({
               onClick: handleOpenSettings,
             }
           : undefined,
-      } satisfies SelectOptionObject;
+      } satisfies AgentOption;
     });
   }, [handleOpenSettings, providerStatusMap]);
 
   const agentOptionsByValue = useMemo(() => {
-    const map = new Map<string, SelectOptionObject & { displayLabel?: string }>();
+    const map = new Map<string, AgentOption>();
     for (const option of agentOptions) {
       map.set(option.value, option);
     }
     return map;
   }, [agentOptions]);
-  const sortedSelectedAgents = useMemo(() => {
+
+  const generateInstanceId = () => crypto.randomUUID();
+
+  const agentInstancesRef = useRef<AgentSelectionInstance[]>([]);
+
+  const agentInstances = useMemo(() => {
+    const previous = agentInstancesRef.current;
+    const remaining = [...previous];
+    const next: AgentSelectionInstance[] = [];
+
+    for (const agent of selectedAgents) {
+      const matchIndex = remaining.findIndex((instance) => instance.agent === agent);
+      if (matchIndex !== -1) {
+        next.push(remaining.splice(matchIndex, 1)[0]);
+      } else {
+        next.push({ agent, id: generateInstanceId() });
+      }
+    }
+
+    agentInstancesRef.current = next;
+    return next;
+  }, [selectedAgents]);
+
+  const instanceIndexMap = useMemo(() => {
+    const map = new Map<string, number>();
+    agentInstances.forEach((instance, index) => {
+      map.set(instance.id, index);
+    });
+    return map;
+  }, [agentInstances]);
+
+  const sortedAgentSelections = useMemo(() => {
     const vendorOrder = new Map<string, number>();
     agentOptions.forEach((option, index) => {
       const vendor = option.iconKey ?? "other";
       if (!vendorOrder.has(vendor)) vendorOrder.set(vendor, index);
     });
-    return [...selectedAgents].sort((a, b) => {
-      const optionA = agentOptionsByValue.get(a);
-      const optionB = agentOptionsByValue.get(b);
-      const vendorA = optionA?.iconKey ?? "other";
-      const vendorB = optionB?.iconKey ?? "other";
-      const rankA = vendorOrder.get(vendorA) ?? Number.MAX_SAFE_INTEGER;
-      const rankB = vendorOrder.get(vendorB) ?? Number.MAX_SAFE_INTEGER;
-      if (rankA !== rankB) return rankA - rankB;
-      const labelA = optionA?.displayLabel ?? optionA?.label ?? a;
-      const labelB = optionB?.displayLabel ?? optionB?.label ?? b;
-      return labelA.localeCompare(labelB);
-    });
-  }, [agentOptions, agentOptionsByValue, selectedAgents]);
-  // Determine OS for potential future UI tweaks
-  // const isMac = navigator.userAgent.toUpperCase().indexOf("MAC") >= 0;
+
+    return agentInstances
+      .map((instance) => {
+        const option = agentOptionsByValue.get(instance.agent);
+        if (!option) return null;
+        return { instance, option };
+      })
+      .filter(
+        (
+          entry
+        ): entry is {
+          instance: AgentSelectionInstance;
+          option: AgentOption;
+        } => entry !== null
+      )
+      .sort((a, b) => {
+        const vendorA = a.option.iconKey ?? "other";
+        const vendorB = b.option.iconKey ?? "other";
+        const rankA = vendorOrder.get(vendorA) ?? Number.MAX_SAFE_INTEGER;
+        const rankB = vendorOrder.get(vendorB) ?? Number.MAX_SAFE_INTEGER;
+        if (rankA !== rankB) return rankA - rankB;
+        const labelComparison = a.option.displayLabel.localeCompare(
+          b.option.displayLabel
+        );
+        if (labelComparison !== 0) return labelComparison;
+        return a.instance.id.localeCompare(b.instance.id);
+      });
+  }, [agentInstances, agentOptions, agentOptionsByValue]);
 
   const pillboxScrollRef = useRef<HTMLDivElement | null>(null);
   const [showPillboxFade, setShowPillboxFade] = useState(false);
@@ -245,38 +299,56 @@ export const DashboardInputControls = memo(function DashboardInputControls({
   }, []);
 
   const handleAgentRemove = useCallback(
-    (agent: string) => {
-      onAgentChange(selectedAgents.filter((value) => value !== agent));
+    (instanceId: string) => {
+      const instanceIndex = instanceIndexMap.get(instanceId);
+      if (instanceIndex === undefined) {
+        return;
+      }
+      const next = selectedAgents.filter((_, index) => index !== instanceIndex);
+      onAgentChange(next);
     },
-    [onAgentChange, selectedAgents]
+    [instanceIndexMap, onAgentChange, selectedAgents]
   );
+
+  const handleFocusAgentOption = useCallback((agent: string) => {
+    agentSelectRef.current?.open({ focusValue: agent });
+  }, []);
 
   const agentSelectionFooter = selectedAgents.length ? (
     <div className="bg-neutral-50 dark:bg-neutral-900/70">
       <div className="relative">
         <div ref={pillboxScrollRef} className="max-h-32 overflow-y-auto py-2 px-2">
           <div className="flex flex-wrap gap-1">
-            {sortedSelectedAgents.map((agent) => {
-              const option = agentOptionsByValue.get(agent);
-              const label = option?.displayLabel ?? option?.label ?? agent;
+            {sortedAgentSelections.map(({ instance, option }) => {
+              const label = option.displayLabel;
               return (
                 <div
-                  key={agent}
-                  className="inline-flex items-center gap-1 rounded-full bg-neutral-200 dark:bg-neutral-800/80 pl-1.5 pr-2.5 py-1 text-[11px] text-neutral-700 dark:text-neutral-200 transition-colors"
+                  key={instance.id}
+                  className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-neutral-200 dark:bg-neutral-800/80 pl-1.5 pr-2 py-1 text-[11px] text-neutral-700 dark:text-neutral-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60"
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => handleFocusAgentOption(instance.agent)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      handleFocusAgentOption(instance.agent);
+                    }
+                  }}
+                  aria-label={`Focus selection for ${label}`}
                 >
                   <button
                     type="button"
                     onClick={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
-                      handleAgentRemove(agent);
+                      handleAgentRemove(instance.id);
                     }}
                     className="inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors hover:bg-neutral-300 dark:hover:bg-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60"
                   >
                     <X className="h-3 w-3" aria-hidden="true" />
                     <span className="sr-only">Remove {label}</span>
                   </button>
-                  {option?.icon ? (
+                  {option.icon ? (
                     <span className="inline-flex h-3.5 w-3.5 items-center justify-center">
                       {option.icon}
                     </span>
@@ -458,6 +530,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
         )}
 
         <SearchableSelect
+          ref={agentSelectRef}
           options={agentOptions}
           value={selectedAgents}
           onChange={onAgentChange}
@@ -468,6 +541,9 @@ export const DashboardInputControls = memo(function DashboardInputControls({
           showSearch
           countLabel="agents"
           footer={agentSelectionFooter}
+          itemVariant="agent"
+          optionItemComponent={AgentCommandItem}
+          maxCountPerValue={MAX_AGENT_COMMAND_COUNT}
         />
       </div>
 
