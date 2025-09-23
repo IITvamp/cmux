@@ -58,7 +58,6 @@ export const create = authMutation({
 export const getByTask = authQuery({
   args: { teamSlugOrId: v.string(), taskId: v.id("tasks") },
   handler: async (ctx, args) => {
-    console.log("skibidi");
     const userId = ctx.identity.subject;
     const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
     const runs = await ctx.db
