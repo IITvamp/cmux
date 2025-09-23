@@ -53,6 +53,10 @@ export class DockerVSCodeInstance extends VSCodeInstance {
   private static eventsStream: NodeJS.ReadableStream | null = null;
   private static dockerInstance: Docker | null = null;
 
+  private getHostAddress(): string {
+    return process.env.CMUX_DOCKER_HOST ?? "127.0.0.1";
+  }
+
   // Get or create the Docker singleton
   static getDocker(): Docker {
     if (!DockerVSCodeInstance.dockerInstance) {
@@ -464,10 +468,12 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     const maxAttempts = 30; // 15 seconds max
     const delayMs = 500;
 
+    const hostAddress = this.getHostAddress();
+
     for (let i = 0; i < maxAttempts; i++) {
       try {
         const response = await fetch(
-          `http://localhost:${workerPort}/socket.io/?EIO=4&transport=polling`
+          `http://${hostAddress}:${workerPort}/socket.io/?EIO=4&transport=polling`
         );
         if (response.ok) {
           dockerLogger.info(`Worker is ready!`);
@@ -484,9 +490,9 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       }
     }
 
-    const baseUrl = `http://localhost:${vscodePort}`;
+    const baseUrl = `http://${hostAddress}:${vscodePort}`;
     const workspaceUrl = this.getWorkspaceUrl(baseUrl);
-    const workerUrl = `http://localhost:${workerPort}`;
+    const workerUrl = `http://${hostAddress}:${workerPort}`;
 
     // Generate the proxy URL that clients will use
     dockerLogger.info(`Docker VSCode instance started:`);
@@ -691,7 +697,8 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         const vscodePort = ports["39378/tcp"]?.[0]?.HostPort;
 
         if (vscodePort) {
-          const baseUrl = `http://localhost:${vscodePort}`;
+          const hostAddress = this.getHostAddress();
+          const baseUrl = `http://${hostAddress}:${vscodePort}`;
           const workspaceUrl = this.getWorkspaceUrl(baseUrl);
 
           return {

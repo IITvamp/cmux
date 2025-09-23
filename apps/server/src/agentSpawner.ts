@@ -841,7 +841,8 @@ export async function spawnAgent(
               ? (vscodeInstance as DockerVSCodeInstance).getPorts()?.worker
               : "39377";
 
-          const uploadUrl = `http://localhost:${workerPort}/upload-image`;
+          const workerHost = process.env.CMUX_DOCKER_HOST ?? "127.0.0.1";
+          const uploadUrl = `http://${workerHost}:${workerPort}/upload-image`;
 
           serverLogger.info(`[AgentSpawner] Uploading image to ${uploadUrl}`);
 
