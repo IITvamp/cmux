@@ -78,8 +78,10 @@ async function main() {
       branchName: BRANCH_NAME,
       commitMessage: COMMIT_MESSAGE,
     });
-    const launchScript = `cd /root/workspace && set -o pipefail; ${autoCommitScript}`;
-    await run(["bash", "-lc", launchScript]);
+
+    // Write the bun script to a temp file and execute it
+    await run(["bash", "-c", "cd /root/workspace && cat > /tmp/auto-commit.ts << 'EOF'\n" + autoCommitScript + "\nEOF"]);
+    await run(["bash", "-lc", "cd /root/workspace && bun /tmp/auto-commit.ts"]);
   } finally {
     try {
       await instance.stop();

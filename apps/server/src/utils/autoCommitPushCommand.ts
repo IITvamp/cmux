@@ -1,6 +1,5 @@
 /**
- * Build a single safe bash command to stage, commit, pull --rebase (if remote exists), and push.
- * Uses JSON.stringify to safely quote dynamic strings that may contain spaces/newlines/quotes.
+ * Build a bun script to stage, commit, pull --rebase (if remote exists), and push.
  */
 export function buildAutoCommitPushCommand(options: {
   branchName: string;
@@ -8,86 +7,155 @@ export function buildAutoCommitPushCommand(options: {
 }): string {
   const { branchName, commitMessage } = options;
 
-  // Use JSON to produce a double-quoted, escaped string safe for bash -c
-  const b = JSON.stringify(branchName);
+  // Escape the commit message for embedding in the script
+  const escapedMessage = commitMessage.replace(/'/g, "'\\''");
 
-  return [
-    "set -euo pipefail",
-    "CMUX_MSG=$(mktemp)",
-    'cleanup() { rm -f "$CMUX_MSG"; }',
-    "trap cleanup EXIT",
-    "trap 'echo \"[cmux auto-commit] error line $LINENO exit=$?\" >&2' ERR",
-    'echo "[cmux auto-commit] script start cwd=$(pwd)" >&2',
-    "if command -v gh >/dev/null 2>&1; then",
-    "  echo '[cmux auto-commit] gh auth status:' >&2",
-    "  gh auth status >&2 || true",
-    "fi",
-    `cat <<'CMUX_EOF' > "$CMUX_MSG"`,
-    commitMessage,
-    "CMUX_EOF",
-    "",
-    "run_repo() {",
-    '  local repo="$1"',
-    "  (",
-    '    echo "[cmux auto-commit] repo=$repo -> enter directory" >&2',
-    '    repo_path=$(cd "$repo" 2>/dev/null && pwd || true)',
-    '    echo "[cmux auto-commit] repo=$repo -> pwd=$repo_path" >&2',
-    '    origin_url=$(git -C "$repo" config --get remote.origin.url 2>/dev/null || true)',
-    '    echo "[cmux auto-commit] repo=$repo -> origin=$origin_url" >&2',
-    '    echo "[cmux auto-commit] repo=$repo -> git status --short" >&2',
-    '    git -C "$repo" status --short || { echo "[cmux auto-commit] repo=$repo git status failed" >&2; exit 1; }',
-    '    echo "[cmux auto-commit] repo=$repo -> git add -A" >&2',
-    '    git -C "$repo" add -A || { echo "[cmux auto-commit] repo=$repo git add failed" >&2; exit 1; }',
-    `    echo "[cmux auto-commit] repo=$repo -> checkout ${branchName}" >&2`,
-    `    (git -C "$repo" checkout -b ${b} 2>/dev/null || git -C "$repo" checkout ${b}) || { echo "[cmux auto-commit] repo=$repo checkout ${branchName} failed" >&2; exit 1; }`,
-    '    echo "[cmux auto-commit] repo=$repo -> git commit" >&2',
-    `    if git -C "$repo" commit -F "$CMUX_MSG"; then`,
-    `      echo "[cmux auto-commit] repo=$repo commit created"`,
-    "    else",
-    "      commit_exit=$?",
-    `      if git -C "$repo" status --short | grep -q .; then`,
-    `        echo "[cmux auto-commit] repo=$repo commit failed (exit $commit_exit) with pending changes" >&2`,
-    "        exit $commit_exit",
-    "      else",
-    `        echo "[cmux auto-commit] repo=$repo nothing to commit" >&2`,
-    "      fi",
-    "    fi",
-    // If remote branch exists, integrate updates before pushing
-    `    if git -C "$repo" ls-remote --heads origin ${b} | grep -q .; then`,
-    `      echo "[cmux auto-commit] repo=$repo -> git pull --rebase origin ${branchName}" >&2`,
-    `      git -C "$repo" pull --rebase origin ${b} || { echo "[cmux auto-commit] repo=$repo pull --rebase failed" >&2; exit 1; }`,
-    "    else",
-    `      echo "[cmux auto-commit] repo=$repo remote branch missing; skip pull --rebase" >&2`,
-    "    fi",
-    `    echo "[cmux auto-commit] repo=$repo -> git push -u origin ${branchName}" >&2`,
-    `    git -C "$repo" push -u origin ${b} || { echo "[cmux auto-commit] repo=$repo push failed" >&2; exit 1; }`,
-    "  )",
-    "}",
-    "",
-    "repos=()",
-    "trap - ERR",
-    "echo '[cmux auto-commit] detecting repositories' >&2",
-    'echo "[cmux auto-commit] scanning repos from $(pwd)" >&2',
-    "while IFS= read -r -d '' git_entry; do",
-    '  repo_dir_raw="$(dirname "$git_entry")"',
-    '  repo_dir="$(cd "$repo_dir_raw" 2>/dev/null && pwd || true)"',
-    '  if [ -z "$repo_dir" ]; then',
-    "    continue",
-    "  fi",
-    '  if git -C "$repo_dir" rev-parse --is-inside-work-tree >/dev/null 2>&1; then',
-    '    repos+=("$repo_dir")',
-    "  fi",
-    "done < <(find . -mindepth 1 -maxdepth 6 \\( -type d -o -type f \\) -name .git -print0 2>/dev/null || true)",
-    "",
-    'echo "[cmux auto-commit] discovered ${#repos[@]} repos" >&2',
-    "trap 'echo \"[cmux auto-commit] error line $LINENO exit=$?\" >&2' ERR",
-    'if [ "${#repos[@]}" -eq 0 ]; then',
-    "  echo '[cmux auto-commit] No git repositories found for auto-commit' >&2",
-    "else",
-    '  for repo in "${repos[@]}"; do',
-    '    echo "[cmux auto-commit] repo candidate: $repo" >&2',
-    '    run_repo "$repo"',
-    "  done",
-    "fi",
-  ].join("\n");
+  return `#!/usr/bin/env bun
+
+import { $ } from "bun";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+
+const branchName = '${branchName}';
+const commitMessage = '${escapedMessage}';
+
+async function runRepo(repoPath: string) {
+  console.error(\`[cmux auto-commit] repo=\${repoPath} -> enter directory\`);
+
+  try {
+    // Get repo info
+    const origin = await $\`git -C \${repoPath} config --get remote.origin.url\`.text().catch(() => '');
+    console.error(\`[cmux auto-commit] repo=\${repoPath} -> origin=\${origin.trim()}\`);
+
+    // Check status
+    console.error(\`[cmux auto-commit] repo=\${repoPath} -> git status --short\`);
+    const status = await $\`git -C \${repoPath} status --short\`.text();
+
+    // Add all changes
+    console.error(\`[cmux auto-commit] repo=\${repoPath} -> git add -A\`);
+    await $\`git -C \${repoPath} add -A\`;
+
+    // Checkout branch
+    console.error(\`[cmux auto-commit] repo=\${repoPath} -> checkout \${branchName}\`);
+    try {
+      await $\`git -C \${repoPath} checkout -b \${branchName}\`.quiet();
+    } catch {
+      await $\`git -C \${repoPath} checkout \${branchName}\`;
+    }
+
+    // Commit
+    console.error(\`[cmux auto-commit] repo=\${repoPath} -> git commit\`);
+    try {
+      await $\`git -C \${repoPath} commit -m \${commitMessage}\`;
+      console.error(\`[cmux auto-commit] repo=\${repoPath} commit created\`);
+    } catch (e: any) {
+      const hasChanges = await $\`git -C \${repoPath} status --short\`.text();
+      if (hasChanges.trim()) {
+        console.error(\`[cmux auto-commit] repo=\${repoPath} commit failed with pending changes\`);
+        throw e;
+      } else {
+        console.error(\`[cmux auto-commit] repo=\${repoPath} nothing to commit\`);
+      }
+    }
+
+    // Check if remote branch exists
+    const remoteBranch = await $\`git -C \${repoPath} ls-remote --heads origin \${branchName}\`.text().catch(() => '');
+
+    if (remoteBranch.trim()) {
+      console.error(\`[cmux auto-commit] repo=\${repoPath} -> git pull --rebase origin \${branchName}\`);
+      await $\`git -C \${repoPath} pull --rebase origin \${branchName}\`;
+    } else {
+      console.error(\`[cmux auto-commit] repo=\${repoPath} remote branch missing; skip pull --rebase\`);
+    }
+
+    // Push
+    console.error(\`[cmux auto-commit] repo=\${repoPath} -> git push -u origin \${branchName}\`);
+    await $\`git -C \${repoPath} push -u origin \${branchName}\`;
+
+  } catch (error: any) {
+    console.error(\`[cmux auto-commit] repo=\${repoPath} failed:\`, error.message);
+    throw error; // Will be caught by Promise.allSettled
+  }
+}
+
+async function main() {
+  console.error(\`[cmux auto-commit] script start cwd=\${process.cwd()}\`);
+
+  // Check gh auth status if available
+  try {
+    const ghExists = await $\`command -v gh\`.quiet();
+    if (ghExists.exitCode === 0) {
+      console.error('[cmux auto-commit] gh auth status:');
+      await $\`gh auth status\`.nothrow();
+    }
+  } catch {}
+
+  console.error('[cmux auto-commit] detecting repositories');
+  console.error(\`[cmux auto-commit] scanning repos from \${process.cwd()}\`);
+
+  // Find repos only 1 level deep in workspace
+  const workspaceDir = 'workspace';
+  const repoPaths: string[] = [];
+
+  if (existsSync(workspaceDir)) {
+    const repos = await $\`ls -d \${workspaceDir}/*/\`.text().catch(() => '');
+
+    for (const repoDir of repos.trim().split('\\n').filter(Boolean)) {
+      const gitPath = join(repoDir, '.git');
+
+      if (existsSync(gitPath)) {
+        // Verify it's a git repo
+        try {
+          await $\`git -C \${repoDir} rev-parse --is-inside-work-tree\`.quiet();
+          const fullPath = await $\`cd \${repoDir} && pwd\`.text();
+          const repoPath = fullPath.trim();
+
+          console.error(\`[cmux auto-commit] found repo: \${repoPath}\`);
+          repoPaths.push(repoPath);
+        } catch {
+          // Not a valid git repo, skip
+        }
+      }
+    }
+  }
+
+  if (repoPaths.length === 0) {
+    console.error('[cmux auto-commit] No git repositories found for auto-commit');
+  } else {
+    console.error(\`[cmux auto-commit] processing \${repoPaths.length} repos in parallel\`);
+
+    // Process all repos in parallel
+    const results = await Promise.allSettled(
+      repoPaths.map(repoPath => runRepo(repoPath))
+    );
+
+    // Report results
+    let successCount = 0;
+    let failCount = 0;
+
+    results.forEach((result, index) => {
+      const repoPath = repoPaths[index];
+      if (result.status === 'fulfilled') {
+        successCount++;
+        console.error(\`[cmux auto-commit] ✓ \${repoPath} succeeded\`);
+      } else {
+        failCount++;
+        console.error(\`[cmux auto-commit] ✗ \${repoPath} failed: \${result.reason}\`);
+      }
+    });
+
+    console.error(\`[cmux auto-commit] completed: \${successCount} succeeded, \${failCount} failed\`);
+
+    // Exit with error if any repos failed
+    if (failCount > 0) {
+      process.exit(1);
+    }
+  }
+}
+
+await main().catch((error) => {
+  console.error('[cmux auto-commit] Fatal error:', error);
+  process.exit(1);
+});
+`;
 }

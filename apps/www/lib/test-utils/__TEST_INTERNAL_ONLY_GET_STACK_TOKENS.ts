@@ -1,20 +1,6 @@
 import { env } from "@/lib/utils/www-env";
-import StackframePkg from "@stackframe/js";
+import { StackAdminApp } from "@stackframe/js";
 
-type StackModule = {
-  StackAdminApp?: typeof import("@stackframe/js").StackAdminApp;
-  default?: { StackAdminApp?: typeof import("@stackframe/js").StackAdminApp };
-};
-
-const stackModule = StackframePkg as StackModule;
-const StackAdminAppCtor =
-  stackModule.StackAdminApp ?? stackModule.default?.StackAdminApp;
-
-if (!StackAdminAppCtor) {
-  throw new Error("StackAdminApp export not found in @stackframe/js");
-}
-
-const StackAdminApp = StackAdminAppCtor;
 type StackAdminAppType = import("@stackframe/js").StackAdminApp;
 
 export type Tokens = { accessToken: string; refreshToken?: string };

@@ -5,9 +5,9 @@ import { buildAutoCommitPushCommand } from "./utils/autoCommitPushCommand";
 import { generateCommitMessageFromDiff } from "./utils/commitMessageGenerator";
 import { getConvex } from "./utils/convexClient";
 import { serverLogger } from "./utils/fileLogger";
+import { resolveWorkerRepoPath } from "./utils/resolveWorkerRepoPath";
 import { workerExec } from "./utils/workerExec";
 import { VSCodeInstance } from "./vscode/VSCodeInstance";
-import { resolveWorkerRepoPath } from "./utils/resolveWorkerRepoPath";
 
 /**
  * Automatically commit and push changes when a task completes
@@ -99,11 +99,25 @@ export default async function performAutoCommitAndPush(
       commitMessage,
     });
     serverLogger.info(`[AgentSpawner] Executing auto-commit script...`);
+
+    // Create a single bash command that writes and executes the bun script
+    const scriptPath = `/tmp/cmux-auto-commit-${Date.now()}.ts`;
+    const combinedCommand = `
+set -e
+cat > ${scriptPath} << 'CMUX_SCRIPT_EOF'
+${autoCommitScript}
+CMUX_SCRIPT_EOF
+bun ${scriptPath}
+EXIT_CODE=$?
+rm -f ${scriptPath}
+exit $EXIT_CODE
+`;
+
     try {
       const { stdout, stderr, exitCode } = await workerExec({
         workerSocket,
         command: "bash",
-        args: ["-c", `set -o pipefail; ${autoCommitScript}`],
+        args: ["-c", combinedCommand],
         cwd: repoCwd,
         env: {},
         timeout: 60000,
@@ -113,12 +127,14 @@ export default async function performAutoCommitAndPush(
         stdout: stdout?.slice(0, 2000),
         stderr: stderr?.slice(0, 2000),
       });
+
       if (exitCode !== 0) {
         const errMsg = `[AgentSpawner] Auto-commit script failed with exit code ${exitCode}`;
         serverLogger.error(errMsg);
         throw new Error(errMsg);
       }
     } catch (err) {
+
       serverLogger.error(
         `[AgentSpawner] Error executing auto-commit script`,
         err
