@@ -87,18 +87,32 @@ export default async function performAutoCommitAndPush(
       return;
     }
 
-    const autoCommitScript = buildAutoCommitPushCommand({
-      branchName,
-      commitMessage,
-    });
+    const autoCommitScript = buildAutoCommitPushCommand();
     serverLogger.info(`[AgentSpawner] Executing auto-commit script...`);
+
+    // Create a single bash command that writes and executes the bun script
+    const scriptPath = `/tmp/cmux-auto-commit-${Date.now()}.ts`;
+    const combinedCommand = `
+set -e
+cat > ${scriptPath} << 'CMUX_SCRIPT_EOF'
+${autoCommitScript}
+CMUX_SCRIPT_EOF
+bun run ${scriptPath}
+EXIT_CODE=$?
+rm -f ${scriptPath}
+exit $EXIT_CODE
+`;
+
     try {
       const { stdout, stderr, exitCode } = await workerExec({
         workerSocket,
         command: "bash",
-        args: ["-c", `set -o pipefail; ${autoCommitScript}`],
+        args: ["-c", combinedCommand],
         cwd: "/root/workspace",
-        env: {},
+        env: {
+          CMUX_COMMIT_MESSAGE: commitMessage,
+          CMUX_BRANCH_NAME: branchName,
+        },
         timeout: 60000,
       });
       serverLogger.info(`[AgentSpawner] Auto-commit script output:`, {
@@ -106,6 +120,7 @@ export default async function performAutoCommitAndPush(
         stdout: stdout?.slice(0, 2000),
         stderr: stderr?.slice(0, 2000),
       });
+
       if (exitCode !== 0) {
         const errMsg = `[AgentSpawner] Auto-commit script failed with exit code ${exitCode}`;
         serverLogger.error(errMsg);

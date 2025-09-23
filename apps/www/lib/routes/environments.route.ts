@@ -115,20 +115,30 @@ environmentsRouter.openapi(
         return c.text("Forbidden: Instance does not belong to this team", 403);
       }
 
+      const persistDataVaultPromise = (async () => {
+        const dataVaultKey = `env_${randomBytes(16).toString("hex")}`;
+        const store =
+          await stackServerAppJs.getDataVaultStore("cmux-snapshot-envs");
+        await store.setValue(dataVaultKey, body.envVarsContent, {
+          secret: env.STACK_DATA_VAULT_SECRET,
+        });
+        return { dataVaultKey };
+      })();
+
+      await instance.exec(
+        [
+          "git config --global --unset user.name 2>/dev/null || true",
+          "git config --global --unset user.email 2>/dev/null || true",
+          "git config --global --unset credential.helper 2>/dev/null || true",
+          "git credential-cache exit 2>/dev/null || true",
+          "gh auth logout 2>/dev/null || true",
+        ].join(" && ")
+      );
+
       const snapshot = await instance.snapshot();
 
-      // Generate a unique key for this environment's data vault entry
-      const dataVaultKey = `env_${randomBytes(16).toString("hex")}`;
-
-      // Store environment variables in StackAuth DataBook
-      const store =
-        await stackServerAppJs.getDataVaultStore("cmux-snapshot-envs");
-      await store.setValue(dataVaultKey, body.envVarsContent, {
-        secret: env.STACK_DATA_VAULT_SECRET,
-      });
-
-      // Create environment record in Convex
       const convexClient = getConvex({ accessToken });
+      const { dataVaultKey } = await persistDataVaultPromise;
       const environmentId = await convexClient.mutation(
         api.environments.create,
         {

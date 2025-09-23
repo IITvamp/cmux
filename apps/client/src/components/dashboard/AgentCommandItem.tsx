@@ -2,8 +2,8 @@ import {
   type OptionItemRenderProps,
   WarningIndicator,
 } from "@/components/ui/searchable-select";
-import { AlertTriangle, Minus, Plus } from "lucide-react";
 import { clsx } from "clsx";
+import { AlertTriangle, Minus, Plus } from "lucide-react";
 import type { MouseEvent } from "react";
 
 export const MAX_AGENT_COMMAND_COUNT = 6;
@@ -90,7 +90,10 @@ export function AgentCommandItem({
         ) : null}
         <span className="truncate select-none">{opt.label}</span>
         {opt.warning ? (
-          <WarningIndicator warning={opt.warning} onActivate={onWarningAction} />
+          <WarningIndicator
+            warning={opt.warning}
+            onActivate={onWarningAction}
+          />
         ) : opt.isUnavailable ? (
           <AlertTriangle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
         ) : null}
@@ -102,22 +105,22 @@ export function AgentCommandItem({
               type="button"
               onClick={handleDecrement}
               disabled={disableDecrease}
-              className="inline-flex h-5 w-5 items-center justify-center rounded-sm text-neutral-600 transition-colors hover:text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-neutral-300 dark:hover:text-neutral-50 dark:focus-visible:ring-neutral-500/40"
+              className="inline-flex h-5 w-5 items-center justify-center text-neutral-500 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-neutral-300 dark:focus-visible:ring-neutral-500/40 hover:bg-neutral-200 rounded-full transform translate-y-[1px]"
             >
               <span className="sr-only">Decrease {opt.label}</span>
-              <Minus className="h-3.5 w-3.5 mt-0.5" aria-hidden="true" />
+              <Minus className="size-3" aria-hidden="true" />
             </button>
-            <span className="inline-flex h-5 min-w-[1rem] items-center justify-center text-sm font-semibold text-neutral-700 dark:text-neutral-200">
+            <span className="inline-flex h-5 min-w-[1rem] items-center justify-center text-[12.5px] font-medium text-neutral-600 dark:text-neutral-200">
               {currentCount}
             </span>
             <button
               type="button"
               onClick={handleIncrement}
               disabled={disableIncrease}
-              className="inline-flex h-5 w-5 items-center justify-center rounded-sm text-neutral-600 transition-colors hover:text-neutral-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-neutral-300 dark:hover:text-neutral-50 dark:focus-visible:ring-neutral-500/40"
+              className="inline-flex h-5 w-5 items-center justify-center text-neutral-500 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-neutral-300 dark:focus-visible:ring-neutral-500/40 hover:bg-neutral-200 rounded-full transform translate-y-[1px]"
             >
               <span className="sr-only">Increase {opt.label}</span>
-              <Plus className="h-3.5 w-3.5 mt-0.5" aria-hidden="true" />
+              <Plus className="size-3" aria-hidden="true" />
             </button>
           </div>
         ) : null}

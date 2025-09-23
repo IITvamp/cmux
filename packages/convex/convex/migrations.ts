@@ -1,3 +1,6 @@
+// To run migrations:
+// bunx convex run migrations:run '{fn: "migrations:setDefaultValue"}'
+
 import { Migrations } from "@convex-dev/migrations";
 import { components } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";

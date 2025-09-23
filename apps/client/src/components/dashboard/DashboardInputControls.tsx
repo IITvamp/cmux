@@ -20,14 +20,7 @@ import { Link, useRouter } from "@tanstack/react-router";
 import clsx from "clsx";
 import { useMutation } from "convex/react";
 import { GitBranch, Image, Mic, Server, X } from "lucide-react";
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AgentCommandItem, MAX_AGENT_COMMAND_COUNT } from "./AgentCommandItem";
 
 interface DashboardInputControlsProps {
@@ -125,8 +118,12 @@ export const DashboardInputControls = memo(function DashboardInputControls({
     const sortedAgents = [...AGENT_CONFIGS].sort((a, b) => {
       const vendorA = vendorKey(a.name);
       const vendorB = vendorKey(b.name);
-      const rankA = providerOrder.indexOf(vendorA as typeof providerOrder[number]);
-      const rankB = providerOrder.indexOf(vendorB as typeof providerOrder[number]);
+      const rankA = providerOrder.indexOf(
+        vendorA as (typeof providerOrder)[number]
+      );
+      const rankB = providerOrder.indexOf(
+        vendorB as (typeof providerOrder)[number]
+      );
       const safeRankA = rankA === -1 ? providerOrder.length : rankA;
       const safeRankB = rankB === -1 ? providerOrder.length : rankB;
       if (safeRankA !== safeRankB) return safeRankA - safeRankB;
@@ -190,7 +187,9 @@ export const DashboardInputControls = memo(function DashboardInputControls({
     const next: AgentSelectionInstance[] = [];
 
     for (const agent of selectedAgents) {
-      const matchIndex = remaining.findIndex((instance) => instance.agent === agent);
+      const matchIndex = remaining.findIndex(
+        (instance) => instance.agent === agent
+      );
       if (matchIndex !== -1) {
         next.push(remaining.splice(matchIndex, 1)[0]);
       } else {
@@ -317,14 +316,17 @@ export const DashboardInputControls = memo(function DashboardInputControls({
   const agentSelectionFooter = selectedAgents.length ? (
     <div className="bg-neutral-50 dark:bg-neutral-900/70">
       <div className="relative">
-        <div ref={pillboxScrollRef} className="max-h-32 overflow-y-auto py-2 px-2">
+        <div
+          ref={pillboxScrollRef}
+          className="max-h-32 overflow-y-auto py-2 px-2"
+        >
           <div className="flex flex-wrap gap-1">
             {sortedAgentSelections.map(({ instance, option }) => {
               const label = option.displayLabel;
               return (
                 <div
                   key={instance.id}
-                  className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-neutral-200 dark:bg-neutral-800/80 pl-1.5 pr-2 py-1 text-[11px] text-neutral-700 dark:text-neutral-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60"
+                  className="inline-flex cursor-default items-center gap-1 rounded-full bg-neutral-200 dark:bg-neutral-800/80 pl-1.5 pr-2 py-1 text-[11px] text-neutral-700 dark:text-neutral-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60 hover:bg-neutral-300 dark:hover:bg-neutral-700/80"
                   role="button"
                   tabIndex={0}
                   onClick={() => handleFocusAgentOption(instance.agent)}
@@ -343,7 +345,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
                       event.stopPropagation();
                       handleAgentRemove(instance.id);
                     }}
-                    className="inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors hover:bg-neutral-300 dark:hover:bg-neutral-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60"
+                    className="inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors hover:bg-neutral-400/40 dark:hover:bg-neutral-500/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60"
                   >
                     <X className="h-3 w-3" aria-hidden="true" />
                     <span className="sr-only">Remove {label}</span>
@@ -367,7 +369,7 @@ export const DashboardInputControls = memo(function DashboardInputControls({
       </div>
     </div>
   ) : (
-    <div className="px-3 py-3 text-[12px] text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-900/70">
+    <div className="px-3 py-3 flex items-center text-[12px] text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-900/70">
       No agents selected yet.
     </div>
   );

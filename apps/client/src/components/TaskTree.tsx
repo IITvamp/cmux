@@ -7,6 +7,7 @@ import {
 import { useArchiveTask } from "@/hooks/useArchiveTask";
 import { useOpenWithActions } from "@/hooks/useOpenWithActions";
 import { isElectron } from "@/lib/electron";
+import type { TaskRunWithChildren, TaskWithRuns } from "@/types/task";
 import { ContextMenu } from "@base-ui-components/react/context-menu";
 import { type Id } from "@cmux/convex/dataModel";
 import { Link, useLocation } from "@tanstack/react-router";
@@ -43,12 +44,8 @@ import {
 } from "react";
 import { VSCodeIcon } from "./icons/VSCodeIcon";
 import { SidebarListItem } from "./sidebar/SidebarListItem";
-import {
-  type AnnotatedTaskRun,
-  type TaskRunWithChildren,
-  type TaskWithRuns,
-} from "./task-tree/types";
 import { annotateAgentOrdinals } from "./task-tree/annotateAgentOrdinals";
+import { type AnnotatedTaskRun } from "./task-tree/types";
 
 type PreviewService = NonNullable<TaskRunWithChildren["networking"]>[number];
 
@@ -483,7 +480,8 @@ function TaskRunTreeInner({
   const hasOpenWithActions = openWithActions.length > 0;
   const hasPortActions = portActions.length > 0;
   const canCopyBranch = Boolean(copyRunBranch);
-  const shouldShowCopyDivider = canCopyBranch && (hasOpenWithActions || hasPortActions);
+  const shouldShowCopyDivider =
+    canCopyBranch && (hasOpenWithActions || hasPortActions);
   const shouldShowOpenWithDivider = hasOpenWithActions && hasPortActions;
   const hasCollapsibleContent =
     hasChildren ||

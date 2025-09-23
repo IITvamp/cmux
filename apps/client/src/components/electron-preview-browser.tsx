@@ -434,6 +434,7 @@ export function ElectronPreviewBrowser({
           sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-downloads"
           onElectronViewReady={handleViewReady}
           onElectronViewDestroyed={handleViewDestroyed}
+          forceWebContentsViewIfElectron
         />
       </div>
     </div>
