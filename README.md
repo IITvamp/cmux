@@ -44,3 +44,7 @@ cmux upgrade
 ```bash
 cmux uninstall
 ```
+
+Code agents unite,
+Parallel worlds in containers,
+Innovation blooms.

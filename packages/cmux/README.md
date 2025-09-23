@@ -51,3 +51,7 @@ cmux is part of the cmux project. See the main repository for development instru
 ## License
 
 MIT
+
+Code agents unite,
+Parallel worlds in containers,
+Innovation blooms.
