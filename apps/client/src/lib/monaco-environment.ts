@@ -26,13 +26,9 @@ self.MonacoEnvironment = {
   },
 };
 
-console.log("set up loader!");
-console.log("monaco", monaco);
 loader.config({
   monaco,
 });
 export const loaderInitPromise = new Promise<typeof monaco>((resolve) => {
-  console.log("loader initting...");
   loader.init().then(resolve);
-  console.log("loader initted!");
 });

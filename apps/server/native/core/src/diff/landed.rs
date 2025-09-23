@@ -23,6 +23,39 @@ fn oid_from_rev_parse(repo: &Repository, rev: &str) -> anyhow::Result<ObjectId> 
   Err(anyhow::anyhow!("could not resolve rev '{}'", rev))
 }
 
+fn fallback_origin_ref(name: &str) -> Option<String> {
+  let trimmed = name.trim();
+  if trimmed.is_empty() || trimmed == "origin" || trimmed.starts_with("refs/") {
+    return None;
+  }
+  let mut without = trimmed;
+  while let Some(stripped) = without.strip_prefix("origin/") {
+    without = stripped;
+  }
+  let candidate = format!("origin/{}", without);
+  if candidate == trimmed {
+    None
+  } else {
+    Some(candidate)
+  }
+}
+
+fn resolve_ref_with_origin(repo: &Repository, name: &str) -> anyhow::Result<ObjectId> {
+  match oid_from_rev_parse(repo, name) {
+    Ok(oid) => Ok(oid),
+    Err(orig_err) => {
+      if let Some(fallback) = fallback_origin_ref(name) {
+        match oid_from_rev_parse(repo, &fallback) {
+          Ok(oid) => Ok(oid),
+          Err(_) => Err(orig_err),
+        }
+      } else {
+        Err(orig_err)
+      }
+    }
+  }
+}
+
 fn is_ancestor(repo: &Repository, anc: ObjectId, desc: ObjectId) -> bool {
   // ancestor if merge-base(desc, anc) == anc
   match crate::merge_base::merge_base("", repo, desc, anc, crate::merge_base::MergeBaseStrategy::Bfs) {
@@ -156,10 +189,8 @@ pub fn landed_diff(opts: GitDiffLandedOptions) -> Result<Vec<DiffEntry>> {
 
   // Prefer origin/<ref> if plain ref fails
   let t_resolve = Instant::now();
-  let b_tip = oid_from_rev_parse(&repo, &opts.baseRef)
-    .or_else(|_| oid_from_rev_parse(&repo, &format!("origin/{}", opts.baseRef)))?;
-  let h_tip = oid_from_rev_parse(&repo, &opts.headRef)
-    .or_else(|_| oid_from_rev_parse(&repo, &format!("origin/{}", opts.headRef)))?;
+  let b_tip = resolve_ref_with_origin(&repo, &opts.baseRef)?;
+  let h_tip = resolve_ref_with_origin(&repo, &opts.headRef)?;
   let _d_resolve = t_resolve.elapsed();
   #[cfg(debug_assertions)]
   println!("[native.landed] resolved base_tip={} head_tip={}", b_tip, h_tip);
@@ -190,7 +221,7 @@ pub fn landed_diff(opts: GitDiffLandedOptions) -> Result<Vec<DiffEntry>> {
   let head_is_ancestor_of_base = is_ancestor(&repo, h_tip, b_tip);
 
   let pair: Option<(String, String)> = if let Some(b0s) = &opts.b0Ref {
-    let b0 = oid_from_rev_parse(&repo, b0s)?;
+    let b0 = resolve_ref_with_origin(&repo, b0s)?;
     if let Some(c1) = first_commit_after_b0_on_first_parent(&repo, b_tip, b0) {
       let c1_commit = repo.find_object(c1)?.try_into_commit()?;
       let mut parents = c1_commit.parent_ids();

@@ -18,3 +18,8 @@ export interface TaskVersion extends Doc<"taskVersions"> {
   task: Doc<"tasks">;
   version: number;
 }
+
+export type RunEnvironmentSummary = Pick<
+  Doc<"environments">,
+  "_id" | "name" | "selectedRepos"
+>;

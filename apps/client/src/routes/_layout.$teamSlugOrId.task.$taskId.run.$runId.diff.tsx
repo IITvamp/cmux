@@ -14,13 +14,12 @@ import { useSocket } from "@/contexts/socket/use-socket";
 import { refWithOrigin } from "@/lib/refWithOrigin";
 import { cn } from "@/lib/utils";
 import { diffSmartQueryOptions } from "@/queries/diff-smart";
-import { Switch } from "@heroui/react";
-// Refs mode: no run-diffs prefetch
 import { api } from "@cmux/convex/api";
 import type { Doc } from "@cmux/convex/dataModel";
 import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { convexQuery } from "@convex-dev/react-query";
+import { Switch } from "@heroui/react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery } from "convex/react";
 import { Command } from "lucide-react";
@@ -47,8 +46,18 @@ const gitDiffViewerClassNames: GitDiffViewerProps["classNames"] = {
   },
 };
 
+type DiffControls = Parameters<
+  NonNullable<GitDiffViewerProps["onControlsChange"]>
+>[0];
+
+type RunEnvironmentSummary = Pick<
+  Doc<"environments">,
+  "_id" | "name" | "selectedRepos"
+>;
+
 type TaskRunWithChildren = Doc<"taskRuns"> & {
   children: TaskRunWithChildren[];
+  environment: RunEnvironmentSummary | null;
 };
 
 const AVAILABLE_AGENT_NAMES = new Set(AGENT_CONFIGS.map((agent) => agent.name));
@@ -76,6 +85,24 @@ function collectAgentNamesFromRuns(
 
   traverse(runs);
   return ordered;
+}
+
+function normalizeGitRef(ref?: string | null): string {
+  if (!ref) {
+    return "";
+  }
+  const trimmed = ref.trim();
+  if (!trimmed) {
+    return "";
+  }
+  const deduped = trimmed.replace(/^origin\/(origin\/)+/, "origin/");
+  if (deduped.startsWith("refs/")) {
+    return deduped;
+  }
+  if (deduped.startsWith("origin/")) {
+    return deduped;
+  }
+  return refWithOrigin(deduped);
 }
 
 export const Route = createFileRoute(
@@ -131,12 +158,7 @@ function RunDiffPage() {
   const { addTaskToExpand } = useExpandTasks();
   const createTask = useMutation(api.tasks.create);
   const [isCreatingPr, setIsCreatingPr] = useState(false);
-  const [diffControls, setDiffControls] = useState<{
-    expandAll: () => void;
-    collapseAll: () => void;
-    totalAdditions: number;
-    totalDeletions: number;
-  } | null>(null);
+  const [diffControls, setDiffControls] = useState<DiffControls | null>(null);
   const [followUpText, setFollowUpText] = useState("");
   const [isRestartingTask, setIsRestartingTask] = useState(false);
   const [overridePrompt, setOverridePrompt] = useState(false);
@@ -151,6 +173,20 @@ function RunDiffPage() {
   const selectedRun = useMemo(() => {
     return taskRuns?.find((run) => run._id === runId);
   }, [runId, taskRuns]);
+  const environmentRepos = useMemo(() => {
+    const repos = selectedRun?.environment?.selectedRepos ?? [];
+    const trimmed = repos
+      .map((repo) => repo?.trim())
+      .filter((repo): repo is string => Boolean(repo));
+    return Array.from(new Set(trimmed));
+  }, [selectedRun]);
+
+  const repoFullNames = useMemo(() => {
+    if (task?.projectFullName) {
+      return [task.projectFullName];
+    }
+    return environmentRepos;
+  }, [task?.projectFullName, environmentRepos]);
 
   const restartAgents = useMemo(() => {
     const previousAgents = collectAgentNamesFromRuns(taskRuns);
@@ -341,10 +377,12 @@ function RunDiffPage() {
     );
   }
 
-  // Compute refs for diff: base branch vs run branch
-  const repoFullName = task?.projectFullName || "";
-  const ref1 = refWithOrigin(task?.baseBranch || "main");
-  const ref2 = refWithOrigin(selectedRun.newBranch || "");
+  const [primaryRepo, ...additionalRepos] = repoFullNames;
+  const baseRef = normalizeGitRef(task?.baseBranch || "main");
+  const headRef = normalizeGitRef(selectedRun.newBranch);
+  const hasDiffSources =
+    Boolean(primaryRepo) && Boolean(baseRef) && Boolean(headRef);
+  const shouldPrefixDiffs = repoFullNames.length > 1;
 
   return (
     <FloatingPane>
@@ -381,11 +419,13 @@ function RunDiffPage() {
                 </div>
               }
             >
-              {repoFullName && ref1 && ref2 ? (
+              {hasDiffSources ? (
                 <RunDiffSection
-                  repoFullName={repoFullName}
-                  ref1={ref1}
-                  ref2={ref2}
+                  repoFullName={primaryRepo as string}
+                  additionalRepoFullNames={additionalRepos}
+                  withRepoPrefix={shouldPrefixDiffs}
+                  ref1={baseRef}
+                  ref2={headRef}
                   onControlsChange={setDiffControls}
                   classNames={gitDiffViewerClassNames}
                 />

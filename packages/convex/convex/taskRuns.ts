@@ -2,7 +2,7 @@ import { v } from "convex/values";
 import { SignJWT } from "jose";
 import { env } from "../_shared/convex-env";
 import { resolveTeamIdLoose } from "../_shared/team";
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authMutation, authQuery } from "./users/utils";
 
@@ -62,15 +62,49 @@ export const getByTask = authQuery({
     const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
     const runs = await ctx.db
       .query("taskRuns")
-      .withIndex("by_team_user", (q) =>
-        q.eq("teamId", teamId).eq("userId", userId)
+      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+      .filter(
+        (q) =>
+          q.eq(q.field("teamId"), teamId) && q.eq(q.field("userId"), userId)
       )
-      .filter((q) => q.eq(q.field("taskId"), args.taskId))
       .collect();
+
+    type EnvironmentSummary = Pick<
+      Doc<"environments">,
+      "_id" | "name" | "selectedRepos"
+    >;
+
+    const environmentSummaries = new Map<
+      Id<"environments">,
+      EnvironmentSummary
+    >();
+    const environmentIds = Array.from(
+      new Set(
+        runs
+          .map((run) => run.environmentId)
+          .filter((id): id is Id<"environments"> => id !== undefined)
+      )
+    );
+
+    if (environmentIds.length > 0) {
+      const environmentDocs = await Promise.all(
+        environmentIds.map((environmentId) => ctx.db.get(environmentId))
+      );
+
+      for (const environment of environmentDocs) {
+        if (!environment || environment.teamId !== teamId) continue;
+        environmentSummaries.set(environment._id, {
+          _id: environment._id,
+          name: environment.name,
+          selectedRepos: environment.selectedRepos,
+        });
+      }
+    }
 
     // Build tree structure
     type TaskRunWithChildren = Doc<"taskRuns"> & {
       children: TaskRunWithChildren[];
+      environment: EnvironmentSummary | null;
     };
     const runMap = new Map<string, TaskRunWithChildren>();
     const rootRuns: TaskRunWithChildren[] = [];
@@ -83,6 +117,9 @@ export const getByTask = authQuery({
         ...run,
         log: "",
         children: [],
+        environment: run.environmentId
+          ? (environmentSummaries.get(run.environmentId) ?? null)
+          : null,
       });
     });
 
