@@ -1,7 +1,3 @@
-import {
-  generateGitHubInstallationToken,
-  getInstallationForRepo,
-} from "@/lib/utils/github-app-token";
 import { DEFAULT_MORPH_SNAPSHOT_ID } from "@/lib/utils/morph-defaults";
 import { verifyTeamAccess } from "@/lib/utils/team-verification";
 import { env } from "@/lib/utils/www-env";
@@ -265,45 +261,21 @@ morphRouter.openapi(
         }
 
         // For each owner group, mint a token and clone that owner's repos
-        for (const [owner, repos] of reposByOwner) {
-          // Resolve installation for this owner via any repo under it
-          const firstRepoForOwner = repos[0];
-          const installationId =
-            await getInstallationForRepo(firstRepoForOwner);
-          if (!installationId) {
-            return c.text(
-              `No GitHub App installation found for ${owner}. Please install the GitHub App for this organization/user.`,
-              400
-            );
-          }
-
-          console.log(
-            `Generating GitHub App token for installation ${installationId} with repos: ${repos.join(", ")}`
-          );
-
-          const githubToken = await generateGitHubInstallationToken({
-            installationId,
-            repositories: repos,
-          });
-
+        for (const [, repos] of reposByOwner) {
           // Clone new repos for this owner
           for (const repo of repos) {
             const repoName = repo.split("/").pop()!;
             if (!existingRepos.has(repoName)) {
               console.log(`Cloning repository: ${repo}`);
 
-              // Ensure workspace directory exists
-              await instance.exec("mkdir -p /root/workspace");
-
               const cloneCmd = await instance.exec(
-                `cd /root/workspace && git clone https://${githubToken}@github.com/${repo}.git ${repoName} && cd ${repoName} && git remote set-url origin https://github.com/${repo}.git`
+                `mkdir -p /root/workspace && cd /root/workspace && git clone https://github.com/${repo}.git ${repoName}`
               );
 
               if (cloneCmd.exit_code === 0) {
                 clonedRepos.push(repo);
               } else {
                 console.error(`Failed to clone ${repo}: ${cloneCmd.stderr}`);
-                // Continue with other repos instead of failing entire request
               }
             } else {
               console.log(
