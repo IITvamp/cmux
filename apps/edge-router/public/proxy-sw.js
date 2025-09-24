@@ -26,18 +26,27 @@ self.addEventListener('fetch', (event) => {
 
       console.log('Service worker redirecting:', event.request.url, '->', redirectUrl);
 
-      // Create new request with same method, headers, and body
-      event.respondWith(
-        fetch(redirectUrl, {
-          method: event.request.method,
-          headers: event.request.headers,
-          body: event.request.method !== 'GET' && event.request.method !== 'HEAD'
-            ? event.request.body
-            : undefined,
-          mode: 'cors',
-          credentials: event.request.credentials,
-        })
-      );
+      // Create new headers, but let the browser handle Host header
+      const headers = new Headers(event.request.headers);
+      // Remove headers that might cause issues with proxying
+      headers.delete('Host'); // Browser will set this correctly
+      headers.delete('X-Forwarded-Host');
+      headers.delete('X-Forwarded-For');
+      headers.delete('X-Real-IP');
+
+      // Create a completely new request to avoid any caching or DNS issues
+      const newRequest = new Request(redirectUrl, {
+        method: event.request.method,
+        headers: headers,
+        body: event.request.method !== 'GET' && event.request.method !== 'HEAD'
+          ? event.request.body
+          : undefined,
+        mode: 'cors',
+        credentials: event.request.credentials,
+        redirect: 'follow',
+      });
+
+      event.respondWith(fetch(newRequest));
       return;
     }
   }

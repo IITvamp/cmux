@@ -27,18 +27,28 @@ self.addEventListener('fetch', (event) => {
 
       console.log('Service worker redirecting:', event.request.url, '->', redirectUrl);
 
-      // Create new request with same method, headers, and body
-      event.respondWith(
-        fetch(redirectUrl, {
-          method: event.request.method,
-          headers: event.request.headers,
-          body: event.request.method !== 'GET' && event.request.method !== 'HEAD'
-            ? event.request.body
-            : undefined,
-          mode: 'cors',
-          credentials: event.request.credentials,
-        })
-      );
+      // Create new headers, but let the browser handle Host header
+      const headers = new Headers(event.request.headers);
+      // Remove headers that might cause issues with proxying
+      headers.delete('Host'); // Browser will set this correctly
+      headers.set('Host', 'cmux.sh');
+      headers.delete('X-Forwarded-Host');
+      headers.delete('X-Forwarded-For');
+      headers.delete('X-Real-IP');
+
+      // Create a completely new request to avoid any caching or DNS issues
+      const newRequest = new Request(redirectUrl, {
+        method: event.request.method,
+        headers: headers,
+        body: event.request.method !== 'GET' && event.request.method !== 'HEAD'
+          ? event.request.body
+          : undefined,
+        mode: 'cors',
+        credentials: event.request.credentials,
+        redirect: 'follow',
+      });
+
+      event.respondWith(fetch(newRequest));
       return;
     }
   }
@@ -83,7 +93,7 @@ function rewriteJavaScript(code: string, isExternalFile: boolean = false): strin
 ` : '';
 
   // Replace various patterns of location access - keep it simple
-  let modified = code
+  const modified = code
     // Replace window.location
     .replace(/\bwindow\.location\b/g, 'window.__cmuxLocation')
     // Replace document.location
@@ -476,6 +486,12 @@ export default {
 
       // Check if subdomain starts with "port-" (hacky heuristic for Morph routing)
       if (sub.startsWith("port-")) {
+        // Prevent infinite loops - check if we're already proxying
+        const isAlreadyProxied = request.headers.get("X-Cmux-Proxied") === "true";
+        if (isAlreadyProxied) {
+          return new Response("Loop detected in proxy", { status: 508 });
+        }
+
         // Format: port-<port>-<vmSlug> -> port-<port>-morphvm-<vmSlug>
         // Example: port-8101-j2z9smmu.cmux.sh -> port-8101-morphvm-j2z9smmu.http.cloud.morph.so
         const parts = sub.split("-");
@@ -484,9 +500,13 @@ export default {
           const morphSubdomain = `${parts[0]}-${parts[1]}-morphvm-${parts.slice(2).join("-")}`;
           const target = new URL(url.pathname + url.search, `https://${morphSubdomain}.http.cloud.morph.so`);
 
+          // Add header to prevent loops
+          const headers = new Headers(request.headers);
+          headers.set("X-Cmux-Proxied", "true");
+
           const outbound = new Request(target, {
             method: request.method,
-            headers: request.headers,
+            headers: headers,
             body: request.body,
           });
 
@@ -524,6 +544,12 @@ export default {
         return new Response("Invalid cmux subdomain", { status: 400 });
       }
 
+      // Prevent infinite loops
+      const isAlreadyProxied = request.headers.get("X-Cmux-Proxied") === "true";
+      if (isAlreadyProxied) {
+        return new Response("Loop detected in proxy", { status: 508 });
+      }
+
       const vmSlug = parts[parts.length - 1];
       const port = parts[parts.length - 2];
       const workspace = parts.slice(0, -2).join("-");
@@ -541,6 +567,7 @@ export default {
       const headers = new Headers(request.headers);
       headers.set("X-Cmux-Workspace-Internal", workspace);
       headers.set("X-Cmux-Port-Internal", port);
+      headers.set("X-Cmux-Proxied", "true"); // Prevent loops
 
       const outbound = new Request(target, {
         method: request.method,
