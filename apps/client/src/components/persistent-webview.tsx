@@ -32,7 +32,6 @@ interface PersistentWebViewProps {
 }
 
 const DISABLE_WEBCONTENTSVIEW = true;
-const USE_WEBVIEW_TAG = true;
 
 export function PersistentWebView({
   persistKey,
@@ -56,12 +55,6 @@ export function PersistentWebView({
   onElectronViewDestroyed,
 }: PersistentWebViewProps) {
   const resolvedRetain = true;
-
-  if (USE_WEBVIEW_TAG) {
-    return (
-      <webview src={src} className={className} style={style} allowpopups />
-    );
-  }
 
   if (
     isElectron &&
