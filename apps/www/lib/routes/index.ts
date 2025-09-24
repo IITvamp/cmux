@@ -13,5 +13,6 @@ export { githubPrsRouter } from "./github.prs.route";
 export { healthRouter } from "./health.route";
 export { morphRouter } from "./morph.route";
 export { sandboxesRouter } from "./sandboxes.route";
+export { taskRunsRouter } from "./task-runs.route";
 export { teamsRouter } from "./teams.route";
 export { usersRouter } from "./users.route";

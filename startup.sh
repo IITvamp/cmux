@@ -7,6 +7,15 @@ export PATH="/usr/local/bin:$PATH"
 # Create log dir early
 mkdir -p /var/log/cmux || true
 
+# Detect if this is a resume or first run
+if [ "$CMUX_RESUME" = "true" ]; then
+    echo "[Startup] Resuming container with existing volumes" > /var/log/cmux/startup.log
+    IS_RESUME=true
+else
+    echo "[Startup] Starting fresh container" > /var/log/cmux/startup.log
+    IS_RESUME=false
+fi
+
 # Start supervisor to manage dockerd (in background, but with -n for proper signal handling)
 /usr/bin/supervisord -n >> /dev/null 2>&1 &
 
@@ -157,18 +166,34 @@ else
 fi
 
 # Start OpenVSCode server on port 39378 without authentication
-echo "[Startup] Starting OpenVSCode server..." >> /var/log/cmux/startup.log
-/app/openvscode-server/bin/openvscode-server \
-  --host 0.0.0.0 \
-  --port 39378 \
-  --without-connection-token \
-  --disable-workspace-trust \
-  --disable-telemetry \
-  --disable-updates \
-  --profile default-profile \
-  --verbose \
-  /root/workspace \
-  > /var/log/cmux/server.log 2>&1 &
+if [ "$IS_RESUME" = "true" ]; then
+    echo "[Startup] Starting OpenVSCode server (resume mode)..." >> /var/log/cmux/startup.log
+    # When resuming, OpenVSCode should restore previous session from the mounted data volume
+    /app/openvscode-server/bin/openvscode-server \
+      --host 0.0.0.0 \
+      --port 39378 \
+      --without-connection-token \
+      --disable-workspace-trust \
+      --disable-telemetry \
+      --disable-updates \
+      --profile default-profile \
+      --verbose \
+      /root/workspace \
+      > /var/log/cmux/server.log 2>&1 &
+else
+    echo "[Startup] Starting OpenVSCode server (fresh start)..." >> /var/log/cmux/startup.log
+    /app/openvscode-server/bin/openvscode-server \
+      --host 0.0.0.0 \
+      --port 39378 \
+      --without-connection-token \
+      --disable-workspace-trust \
+      --disable-telemetry \
+      --disable-updates \
+      --profile default-profile \
+      --verbose \
+      /root/workspace \
+      > /var/log/cmux/server.log 2>&1 &
+fi
 
 echo "[Startup] OpenVSCode server started, logs available at /var/log/cmux/server.log" >> /var/log/cmux/startup.log
 

@@ -185,7 +185,8 @@ const convexSchema = defineSchema({
         status: v.union(
           v.literal("starting"),
           v.literal("running"),
-          v.literal("stopped")
+          v.literal("stopped"),
+          v.literal("warm") // Container is stopped but volumes are retained
         ),
         ports: v.optional(
           v.object({
@@ -201,6 +202,12 @@ const convexSchema = defineSchema({
         lastAccessedAt: v.optional(v.number()), // Track when user last accessed the container
         keepAlive: v.optional(v.boolean()), // User requested to keep container running
         scheduledStopAt: v.optional(v.number()), // When container is scheduled to stop
+        // Volume persistence fields
+        workspaceVolumeName: v.optional(v.string()), // Named volume for /root/workspace
+        vscodeDataVolumeName: v.optional(v.string()), // Named volume for /root/.openvscode-server
+        volumesCreatedAt: v.optional(v.number()), // When volumes were first created
+        lastResumedAt: v.optional(v.number()), // When container was last resumed from volumes
+        isFirstRun: v.optional(v.boolean()), // True if this is the first run with these volumes
       })
     ),
     networking: v.optional(

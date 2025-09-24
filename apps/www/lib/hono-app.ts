@@ -15,6 +15,7 @@ import {
   healthRouter,
   morphRouter,
   sandboxesRouter,
+  taskRunsRouter,
   teamsRouter,
   usersRouter,
 } from "@/lib/routes/index";
@@ -103,6 +104,7 @@ app.route("/", githubPrsFileContentsBatchRouter);
 app.route("/", morphRouter);
 app.route("/", environmentsRouter);
 app.route("/", sandboxesRouter);
+app.route("/", taskRunsRouter);
 app.route("/", crownRouter);
 app.route("/", teamsRouter);
 

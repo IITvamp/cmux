@@ -52,6 +52,9 @@ export class DockerVSCodeInstance extends VSCodeInstance {
   private static readonly PORT_CACHE_DURATION = 2000; // 2 seconds
   private static eventsStream: NodeJS.ReadableStream | null = null;
   private static dockerInstance: Docker | null = null;
+  private workspaceVolumeName: string | null = null;
+  private vscodeDataVolumeName: string | null = null;
+  private isResuming: boolean = false;
 
   // Get or create the Docker singleton
   static getDocker(): Docker {
@@ -206,8 +209,14 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     // Check if image exists and pull if missing
     await this.ensureImageExists(docker);
 
+    // Check if we have existing volumes for this run
+    await this.checkForExistingVolumes();
+
     // Capture current auth token for this instance and mapping
     this.authToken = getAuthToken();
+
+    // Create or reuse named volumes
+    await this.ensureVolumes();
 
     // Set initial mapping status
     containerMappings.set(this.containerName, {
@@ -240,6 +249,13 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       envVars.push(`VSCODE_THEME=${this.config.theme}`);
     }
 
+    // Add environment variable to indicate if this is a resume
+    if (this.isResuming) {
+      envVars.push("CMUX_RESUME=true");
+    } else {
+      envVars.push("CMUX_RESUME=false");
+    }
+
     // Create container configuration
     const createOptions: Docker.ContainerCreateOptions = {
       name: this.containerName,
@@ -264,8 +280,21 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       `Container create options: ${JSON.stringify(createOptions)}`
     );
 
-    // Add volume mount if workspace path is provided
-    if (this.config.workspacePath) {
+    // Configure volume mounts
+    const mounts: string[] = [];
+
+    // Mount named volumes
+    if (this.workspaceVolumeName) {
+      mounts.push(`${this.workspaceVolumeName}:/root/workspace`);
+      dockerLogger.info(`  Workspace volume mount: ${this.workspaceVolumeName} -> /root/workspace`);
+    }
+    if (this.vscodeDataVolumeName) {
+      mounts.push(`${this.vscodeDataVolumeName}:/root/.openvscode-server`);
+      dockerLogger.info(`  VSCode data volume mount: ${this.vscodeDataVolumeName} -> /root/.openvscode-server`);
+    }
+
+    // Add host path mounts if workspace path is provided and we're not resuming
+    if (this.config.workspacePath && !this.isResuming) {
       // Extract the origin path from the workspace path
       // Workspace path is like: ~/cmux/<repoName>/worktrees/<branchName>
       // Origin path is: ~/cmux/<repoName>/origin
@@ -328,7 +357,8 @@ export class DockerVSCodeInstance extends VSCodeInstance {
           dockerLogger.info(`  No git config found at ${gitConfigPath}`);
         }
 
-        createOptions.HostConfig!.Binds = binds;
+        // Merge volume mounts with host binds
+        createOptions.HostConfig!.Binds = [...mounts, ...binds];
 
         dockerLogger.info(
           `  Origin mount: ${originPath} -> ${originPath} (read-write)`
@@ -391,8 +421,12 @@ export class DockerVSCodeInstance extends VSCodeInstance {
           dockerLogger.info(`  No git config found at ${gitConfigPath}`);
         }
 
-        createOptions.HostConfig!.Binds = binds;
+        // Merge volume mounts with host binds
+        createOptions.HostConfig!.Binds = [...mounts, ...binds];
       }
+    } else if (mounts.length > 0) {
+      // Just use volume mounts if no workspace path
+      createOptions.HostConfig!.Binds = mounts;
     }
 
     dockerLogger.info(`Creating container...`);
@@ -608,8 +642,9 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     }
   }
 
-  async stop(): Promise<void> {
+  async stop(options?: { preserveVolumes?: boolean }): Promise<void> {
     dockerLogger.info(`Stopping Docker VSCode instance: ${this.containerName}`);
+    const preserveVolumes = options?.preserveVolumes ?? true; // Default to preserving volumes
 
     // Update mapping status
     const mapping = containerMappings.get(this.containerName);
@@ -617,13 +652,13 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       mapping.status = "stopped";
     }
 
-    // Update VSCode status in Convex
+    // Update VSCode status in Convex - mark as "warm" if preserving volumes
     try {
       await runWithAuthToken(this.authToken, async () =>
         getConvex().mutation(api.taskRuns.updateVSCodeStatus, {
           teamSlugOrId: this.teamSlugOrId,
           id: this.taskRunId,
-          status: "stopped",
+          status: preserveVolumes ? "warm" : "stopped",
           stoppedAt: Date.now(),
         })
       );
@@ -662,8 +697,64 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     // Clean up git credentials file if we created one
     await cleanupGitCredentials(this.instanceId);
 
+    // If not preserving volumes, clean them up
+    if (!preserveVolumes) {
+      await this.cleanupVolumes();
+    }
+
     // Call base stop to disconnect from worker and remove from registry
     await this.baseStop();
+  }
+
+  async cleanupVolumes(): Promise<void> {
+    if (!this.workspaceVolumeName && !this.vscodeDataVolumeName) {
+      // Try to get volume names from Convex if not in memory
+      try {
+        const taskRun = await getConvex().query(api.taskRuns.get, {
+          teamSlugOrId: this.teamSlugOrId,
+          id: this.taskRunId,
+        });
+        if (taskRun?.vscode) {
+          this.workspaceVolumeName = taskRun.vscode.workspaceVolumeName || null;
+          this.vscodeDataVolumeName = taskRun.vscode.vscodeDataVolumeName || null;
+        }
+      } catch (error) {
+        dockerLogger.error("Failed to retrieve volume names from Convex:", error);
+      }
+    }
+
+    const docker = DockerVSCodeInstance.getDocker();
+
+    // Remove volumes
+    if (this.workspaceVolumeName) {
+      try {
+        const volume = docker.getVolume(this.workspaceVolumeName);
+        await volume.remove();
+        dockerLogger.info(`Removed workspace volume: ${this.workspaceVolumeName}`);
+      } catch (error) {
+        dockerLogger.warn(`Failed to remove workspace volume: ${this.workspaceVolumeName}`, error);
+      }
+    }
+
+    if (this.vscodeDataVolumeName) {
+      try {
+        const volume = docker.getVolume(this.vscodeDataVolumeName);
+        await volume.remove();
+        dockerLogger.info(`Removed VSCode data volume: ${this.vscodeDataVolumeName}`);
+      } catch (error) {
+        dockerLogger.warn(`Failed to remove VSCode data volume: ${this.vscodeDataVolumeName}`, error);
+      }
+    }
+
+    // Clear volume names in Convex
+    try {
+      await getConvex().mutation(api.taskRuns.clearVSCodeVolumes, {
+        teamSlugOrId: this.teamSlugOrId,
+        id: this.taskRunId,
+      });
+    } catch (error) {
+      dockerLogger.error("Failed to clear volume names in Convex:", error);
+    }
   }
 
   async getStatus(): Promise<{ running: boolean; info?: VSCodeInstanceInfo }> {
@@ -901,6 +992,85 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         `Devcontainer bootstrap error for ${this.containerName}:`,
         error
       );
+    }
+  }
+
+  private async checkForExistingVolumes(): Promise<void> {
+    try {
+      // Query Convex to see if we have existing volumes for this run
+      const convex = getConvex();
+      const taskRun = await convex.query(api.taskRuns.get, {
+        teamSlugOrId: this.teamSlugOrId,
+        id: this.taskRunId,
+      });
+
+      if (taskRun?.vscode?.workspaceVolumeName && taskRun?.vscode?.vscodeDataVolumeName) {
+        this.workspaceVolumeName = taskRun.vscode.workspaceVolumeName;
+        this.vscodeDataVolumeName = taskRun.vscode.vscodeDataVolumeName;
+        this.isResuming = true;
+        dockerLogger.info(`Found existing volumes for run ${this.taskRunId}:`);
+        dockerLogger.info(`  Workspace volume: ${this.workspaceVolumeName}`);
+        dockerLogger.info(`  VSCode data volume: ${this.vscodeDataVolumeName}`);
+      }
+    } catch (error) {
+      dockerLogger.warn(`Failed to check for existing volumes:`, error);
+    }
+  }
+
+  private async ensureVolumes(): Promise<void> {
+    const docker = DockerVSCodeInstance.getDocker();
+
+    if (!this.workspaceVolumeName) {
+      // Create new named volumes
+      this.workspaceVolumeName = `cmux_session_${this.taskRunId}_workspace`;
+      this.vscodeDataVolumeName = `cmux_session_${this.taskRunId}_vscode`;
+
+      dockerLogger.info(`Creating new volumes for run ${this.taskRunId}`);
+
+      try {
+        // Create workspace volume
+        await docker.createVolume({
+          Name: this.workspaceVolumeName,
+          Labels: {
+            'cmux.session': this.taskRunId,
+            'cmux.type': 'workspace',
+            'cmux.created': new Date().toISOString(),
+          },
+        });
+        dockerLogger.info(`  Created workspace volume: ${this.workspaceVolumeName}`);
+      } catch (error) {
+        // Volume might already exist, which is fine
+        dockerLogger.info(`  Workspace volume already exists: ${this.workspaceVolumeName}`);
+      }
+
+      try {
+        // Create VSCode data volume
+        await docker.createVolume({
+          Name: this.vscodeDataVolumeName,
+          Labels: {
+            'cmux.session': this.taskRunId,
+            'cmux.type': 'vscode-data',
+            'cmux.created': new Date().toISOString(),
+          },
+        });
+        dockerLogger.info(`  Created VSCode data volume: ${this.vscodeDataVolumeName}`);
+      } catch (error) {
+        // Volume might already exist, which is fine
+        dockerLogger.info(`  VSCode data volume already exists: ${this.vscodeDataVolumeName}`);
+      }
+
+      // Store volume names in Convex
+      try {
+        await getConvex().mutation(api.taskRuns.updateVSCodeVolumes, {
+          teamSlugOrId: this.teamSlugOrId,
+          id: this.taskRunId,
+          workspaceVolumeName: this.workspaceVolumeName,
+          vscodeDataVolumeName: this.vscodeDataVolumeName,
+          isFirstRun: !this.isResuming,
+        });
+      } catch (error) {
+        dockerLogger.error("Failed to store volume names in Convex:", error);
+      }
     }
   }
 

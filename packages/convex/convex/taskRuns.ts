@@ -403,7 +403,8 @@ export const updateVSCodeStatus = authMutation({
     status: v.union(
       v.literal("starting"),
       v.literal("running"),
-      v.literal("stopped")
+      v.literal("stopped"),
+      v.literal("warm")
     ),
     stoppedAt: v.optional(v.number()),
   },
@@ -879,5 +880,153 @@ export const getRunningContainersByCleanupPriority = authQuery({
       prioritizedForCleanup: [...reviewContainers, ...activeContainers],
       protectedCount: containersToKeepIds.size,
     };
+  },
+});
+
+// Update VSCode volume information
+export const updateVSCodeVolumes = authMutation({
+  args: {
+    teamSlugOrId: v.string(),
+    id: v.id("taskRuns"),
+    workspaceVolumeName: v.string(),
+    vscodeDataVolumeName: v.string(),
+    isFirstRun: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const userId = ctx.identity.subject;
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
+    const run = await ctx.db.get(args.id);
+    if (!run) {
+      throw new Error("Task run not found");
+    }
+    if (run.teamId !== teamId || run.userId !== userId) {
+      throw new Error("Unauthorized");
+    }
+
+    const vscode = run.vscode || {
+      provider: "docker" as const,
+      status: "starting" as const,
+    };
+
+    const now = Date.now();
+    await ctx.db.patch(args.id, {
+      vscode: {
+        ...vscode,
+        workspaceVolumeName: args.workspaceVolumeName,
+        vscodeDataVolumeName: args.vscodeDataVolumeName,
+        volumesCreatedAt: args.isFirstRun ? now : vscode.volumesCreatedAt,
+        lastResumedAt: args.isFirstRun ? undefined : now,
+        isFirstRun: args.isFirstRun,
+      },
+      updatedAt: now,
+    });
+  },
+});
+
+// Clear VSCode volume information (for permanent cleanup)
+export const clearVSCodeVolumes = authMutation({
+  args: {
+    teamSlugOrId: v.string(),
+    id: v.id("taskRuns"),
+  },
+  handler: async (ctx, args) => {
+    const userId = ctx.identity.subject;
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
+    const run = await ctx.db.get(args.id);
+    if (!run) {
+      throw new Error("Task run not found");
+    }
+    if (run.teamId !== teamId || run.userId !== userId) {
+      throw new Error("Unauthorized");
+    }
+
+    if (!run.vscode) {
+      return; // Nothing to clear
+    }
+
+    await ctx.db.patch(args.id, {
+      vscode: {
+        ...run.vscode,
+        workspaceVolumeName: undefined,
+        vscodeDataVolumeName: undefined,
+        volumesCreatedAt: undefined,
+        lastResumedAt: undefined,
+        isFirstRun: undefined,
+        status: "stopped" as const,
+      },
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+// Get warm task runs (stopped but with volumes preserved)
+export const getWarmRuns = authQuery({
+  args: { teamSlugOrId: v.string() },
+  handler: async (ctx, args) => {
+    const userId = ctx.identity.subject;
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
+    const runs = await ctx.db
+      .query("taskRuns")
+      .withIndex("by_team_user", (q) =>
+        q.eq("teamId", teamId).eq("userId", userId)
+      )
+      .collect();
+
+    return runs.filter(
+      (run) =>
+        run.vscode &&
+        run.vscode.status === "warm" &&
+        run.vscode.workspaceVolumeName &&
+        run.vscode.vscodeDataVolumeName
+    );
+  },
+});
+
+// Get warm runs that have exceeded TTL and should have volumes cleaned up
+export const getExpiredWarmRuns = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const VOLUME_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours default
+
+    const runs = await ctx.db
+      .query("taskRuns")
+      .collect();
+
+    return runs.filter(
+      (run) =>
+        run.vscode &&
+        run.vscode.status === "warm" &&
+        run.vscode.workspaceVolumeName &&
+        run.vscode.vscodeDataVolumeName &&
+        run.vscode.stoppedAt &&
+        now - run.vscode.stoppedAt > VOLUME_TTL_MS
+    );
+  },
+});
+
+// Internal mutation to mark expired volumes for cleanup
+export const markVolumesForCleanup = internalMutation({
+  args: {
+    runIds: v.array(v.id("taskRuns")),
+  },
+  handler: async (ctx, args) => {
+    for (const runId of args.runIds) {
+      const run = await ctx.db.get(runId);
+      if (!run || !run.vscode) continue;
+
+      await ctx.db.patch(runId, {
+        vscode: {
+          ...run.vscode,
+          status: "stopped" as const,
+          workspaceVolumeName: undefined,
+          vscodeDataVolumeName: undefined,
+          volumesCreatedAt: undefined,
+          lastResumedAt: undefined,
+          isFirstRun: undefined,
+        },
+        updatedAt: Date.now(),
+      });
+    }
   },
 });
