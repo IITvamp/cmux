@@ -45,10 +45,9 @@ export const getChunks = authQuery({
     const teamId = await getTeamId(ctx, args.teamSlugOrId);
     const chunks = await ctx.db
       .query("taskRunLogChunks")
-      .withIndex("by_team_user", (q) =>
-        q.eq("teamId", teamId).eq("userId", userId)
-      )
-      .filter((q) => q.eq(q.field("taskRunId"), args.taskRunId))
+      .withIndex("by_taskRun", (q) => q.eq("taskRunId", args.taskRunId))
+      .filter((q) => q.eq(q.field("teamId"), teamId))
+      .filter((q) => q.eq(q.field("userId"), userId))
       .collect();
 
     return chunks;

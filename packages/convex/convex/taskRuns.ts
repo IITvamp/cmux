@@ -549,26 +549,31 @@ export const getByContainerName = authQuery({
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
     const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
-    const runs = await ctx.db
-      .query("taskRuns")
-      .withIndex("by_team_user", (q) =>
-        q.eq("teamId", teamId).eq("userId", userId)
-      )
-      .filter((q) => q.eq(q.field("vscode.containerName"), args.containerName))
-      .collect();
-    const result =
-      runs.find((run) => run.vscode?.containerName === args.containerName) ??
-      null;
-    if (result?.networking) {
+    const run =
+      (await ctx.db
+        .query("taskRuns")
+        .withIndex("by_vscode_container_name", (q) =>
+          q.eq("vscode.containerName", args.containerName)
+        )
+        .filter((q) => q.eq(q.field("teamId"), teamId))
+        .filter((q) => q.eq(q.field("userId"), userId))
+        .first()) ?? null;
+
+    if (!run) {
+      return null;
+    }
+
+    if (run.networking) {
       return {
-        ...result,
-        networking: result.networking.map((item) => ({
+        ...run,
+        networking: run.networking.map((item) => ({
           ...item,
           url: rewriteMorphUrl(item.url),
         })),
       };
     }
-    return result;
+
+    return run;
   },
 });
 

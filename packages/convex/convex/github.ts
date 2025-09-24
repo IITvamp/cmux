@@ -39,10 +39,9 @@ export const getBranches = authQuery({
     const teamId = await getTeamId(ctx, teamSlugOrId);
     const branches = await ctx.db
       .query("branches")
-      .withIndex("by_team_user", (q) =>
-        q.eq("teamId", teamId).eq("userId", userId)
-      )
-      .filter((q) => q.eq(q.field("repo"), repo))
+      .withIndex("by_repo", (q) => q.eq("repo", repo))
+      .filter((q) => q.eq(q.field("teamId"), teamId))
+      .filter((q) => q.eq(q.field("userId"), userId))
       .collect();
     // Single-pass deterministic sort:
     // 1) Pin common branches first: main, dev, master, develop
@@ -112,10 +111,9 @@ export const getBranchesByRepo = authQuery({
     const teamId = await getTeamId(ctx, teamSlugOrId);
     return await ctx.db
       .query("branches")
-      .withIndex("by_team_user", (q) =>
-        q.eq("teamId", teamId).eq("userId", userId)
-      )
-      .filter((q) => q.eq(q.field("repo"), repo))
+      .withIndex("by_repo", (q) => q.eq("repo", repo))
+      .filter((q) => q.eq(q.field("teamId"), teamId))
+      .filter((q) => q.eq(q.field("userId"), userId))
       .collect();
   },
 });
@@ -276,10 +274,11 @@ export const upsertRepo = authMutation({
     // Check if repo already exists
     const existing = await ctx.db
       .query("repos")
-      .withIndex("by_team_user", (q) =>
-        q.eq("teamId", teamId).eq("userId", userId)
+      .withIndex("by_gitRemote", (q) =>
+        q.eq("gitRemote", args.gitRemote)
       )
-      .filter((q) => q.eq(q.field("gitRemote"), args.gitRemote))
+      .filter((q) => q.eq(q.field("teamId"), teamId))
+      .filter((q) => q.eq(q.field("userId"), userId))
       .first();
 
     if (existing) {
@@ -395,10 +394,9 @@ export const bulkInsertBranches = authMutation({
     // Get existing branches for this repo
     const existingBranches = await ctx.db
       .query("branches")
-      .withIndex("by_team_user", (q) =>
-        q.eq("teamId", teamId).eq("userId", userId)
-      )
-      .filter((q) => q.eq(q.field("repo"), repo))
+      .withIndex("by_repo", (q) => q.eq("repo", repo))
+      .filter((q) => q.eq(q.field("teamId"), teamId))
+      .filter((q) => q.eq(q.field("userId"), userId))
       .collect();
     const existingBranchNames = new Set(existingBranches.map((b) => b.name));
 
@@ -435,10 +433,9 @@ export const bulkUpsertBranchesWithActivity = authMutation({
 
     const existing = await ctx.db
       .query("branches")
-      .withIndex("by_team_user", (q) =>
-        q.eq("teamId", teamId).eq("userId", userId)
-      )
-      .filter((q) => q.eq(q.field("repo"), repo))
+      .withIndex("by_repo", (q) => q.eq("repo", repo))
+      .filter((q) => q.eq(q.field("teamId"), teamId))
+      .filter((q) => q.eq(q.field("userId"), userId))
       .collect();
     const byName = new Map(existing.map((b) => [b.name, b] as const));
 
