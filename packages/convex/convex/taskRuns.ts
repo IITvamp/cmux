@@ -7,19 +7,28 @@ import { internalMutation, internalQuery } from "./_generated/server";
 import { authMutation, authQuery } from "./users/utils";
 
 function rewriteMorphUrl(url: string): string {
+  // do not rewrite ports 39376 39377 39378
+  if (
+    url.includes("http.cloud.morph.so") &&
+    (url.startsWith("https://port-39376-") ||
+      url.startsWith("https://port-39377-") ||
+      url.startsWith("https://port-39378-"))
+  ) {
+    return url;
+  }
+
   // Transform morph URLs to cmux.sh format
   // https://port-8101-morphvm-jrtutqa3.http.cloud.morph.so/handler/sign-in -> https://port-8101-jrtutqa3.cmux.sh/handler/sign-in
-  if (url.includes('http.cloud.morph.so')) {
-    return url
-      .replace('morphvm-', '')
-      .replace('http.cloud.morph.so', 'cmux.sh');
+  if (url.includes("http.cloud.morph.so")) {
+    const result = url
+      .replace("morphvm-", "")
+      .replace("http.cloud.morph.so", "cmux.sh");
+    return result;
   }
   return url;
 }
 
-function deriveGeneratedBranchName(
-  branch?: string | null
-): string | undefined {
+function deriveGeneratedBranchName(branch?: string | null): string | undefined {
   if (!branch) return undefined;
   const trimmed = branch.trim();
   if (!trimmed) return undefined;
@@ -150,9 +159,9 @@ export const getByTask = authQuery({
       // Strip heavy/deprecated log field from payload to reduce bandwidth
       // Send empty string to avoid large payloads and keep type compatibility.
       // Rewrite morph URLs in networking field
-      const networking = run.networking?.map(item => ({
+      const networking = run.networking?.map((item) => ({
         ...item,
-        url: rewriteMorphUrl(item.url)
+        url: rewriteMorphUrl(item.url),
       }));
 
       runMap.set(run._id, {
@@ -275,10 +284,10 @@ export const get = authQuery({
     if (doc.networking) {
       return {
         ...doc,
-        networking: doc.networking.map(item => ({
+        networking: doc.networking.map((item) => ({
           ...item,
-          url: rewriteMorphUrl(item.url)
-        }))
+          url: rewriteMorphUrl(item.url),
+        })),
       };
     }
     return doc;
@@ -299,10 +308,10 @@ export const subscribe = authQuery({
     if (doc.networking) {
       return {
         ...doc,
-        networking: doc.networking.map(item => ({
+        networking: doc.networking.map((item) => ({
           ...item,
-          url: rewriteMorphUrl(item.url)
-        }))
+          url: rewriteMorphUrl(item.url),
+        })),
       };
     }
     return doc;
@@ -547,14 +556,16 @@ export const getByContainerName = authQuery({
       )
       .filter((q) => q.eq(q.field("vscode.containerName"), args.containerName))
       .collect();
-    const result = runs.find((run) => run.vscode?.containerName === args.containerName) ?? null;
+    const result =
+      runs.find((run) => run.vscode?.containerName === args.containerName) ??
+      null;
     if (result?.networking) {
       return {
         ...result,
-        networking: result.networking.map(item => ({
+        networking: result.networking.map((item) => ({
           ...item,
-          url: rewriteMorphUrl(item.url)
-        }))
+          url: rewriteMorphUrl(item.url),
+        })),
       };
     }
     return result;
@@ -629,14 +640,14 @@ export const getActiveVSCodeInstances = authQuery({
           run.vscode &&
           (run.vscode.status === "starting" || run.vscode.status === "running")
       )
-      .map(run => {
+      .map((run) => {
         if (run.networking) {
           return {
             ...run,
-            networking: run.networking.map(item => ({
+            networking: run.networking.map((item) => ({
               ...item,
-              url: rewriteMorphUrl(item.url)
-            }))
+              url: rewriteMorphUrl(item.url),
+            })),
           };
         }
         return run;
@@ -882,14 +893,14 @@ export const getContainersToStop = authQuery({
           run.vscode!.scheduledStopAt <= now &&
           !containersToKeepIds.has(run._id)
       )
-      .map(run => {
+      .map((run) => {
         if (run.networking) {
           return {
             ...run,
-            networking: run.networking.map(item => ({
+            networking: run.networking.map((item) => ({
               ...item,
-              url: rewriteMorphUrl(item.url)
-            }))
+              url: rewriteMorphUrl(item.url),
+            })),
           };
         }
         return run;
@@ -966,22 +977,30 @@ export const getRunningContainersByCleanupPriority = authQuery({
     });
 
     // Helper to rewrite networking URLs
-    const rewriteContainerNetworking = <T extends typeof eligibleForCleanup[number]>(container: T): T => {
+    const rewriteContainerNetworking = <
+      T extends (typeof eligibleForCleanup)[number],
+    >(
+      container: T
+    ): T => {
       if (container.networking) {
         return {
           ...container,
-          networking: container.networking.map(item => ({
+          networking: container.networking.map((item) => ({
             ...item,
-            url: rewriteMorphUrl(item.url)
-          }))
+            url: rewriteMorphUrl(item.url),
+          })),
         };
       }
       return container;
     };
 
     // Rewrite networking URLs in all containers
-    const reviewContainersWithRewrittenUrls = reviewContainers.map(rewriteContainerNetworking);
-    const activeContainersWithRewrittenUrls = activeContainers.map(rewriteContainerNetworking);
+    const reviewContainersWithRewrittenUrls = reviewContainers.map(
+      rewriteContainerNetworking
+    );
+    const activeContainersWithRewrittenUrls = activeContainers.map(
+      rewriteContainerNetworking
+    );
 
     // Return containers in cleanup priority order:
     // 1. Review period containers (oldest scheduled first)
@@ -990,7 +1009,10 @@ export const getRunningContainersByCleanupPriority = authQuery({
       total: runningContainers.length,
       reviewContainers: reviewContainersWithRewrittenUrls,
       activeContainers: activeContainersWithRewrittenUrls,
-      prioritizedForCleanup: [...reviewContainersWithRewrittenUrls, ...activeContainersWithRewrittenUrls],
+      prioritizedForCleanup: [
+        ...reviewContainersWithRewrittenUrls,
+        ...activeContainersWithRewrittenUrls,
+      ],
       protectedCount: containersToKeepIds.size,
     };
   },

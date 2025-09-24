@@ -15,6 +15,7 @@ import { api } from "@cmux/convex/api";
 import { type Doc, type Id } from "@cmux/convex/dataModel";
 import { Link, useLocation } from "@tanstack/react-router";
 import clsx from "clsx";
+import { useQuery as useConvexQuery } from "convex/react";
 import {
   Archive as ArchiveIcon,
   ArchiveRestore as ArchiveRestoreIcon,
@@ -46,7 +47,6 @@ import {
   type MouseEvent,
   type ReactNode,
 } from "react";
-import { useQuery as useConvexQuery } from "convex/react";
 import { VSCodeIcon } from "./icons/VSCodeIcon";
 import { SidebarListItem } from "./sidebar/SidebarListItem";
 import { annotateAgentOrdinals } from "./task-tree/annotateAgentOrdinals";
