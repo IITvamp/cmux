@@ -1,6 +1,22 @@
 // Service worker content
 const SERVICE_WORKER_JS = `console.log('Service worker loaded');
 
+function isLoopbackHostname(hostname) {
+  if (!hostname) {
+    return false;
+  }
+
+  if (hostname === 'localhost' || hostname === '0.0.0.0') {
+    return true;
+  }
+
+  if (hostname === '::1' || hostname === '[::1]' || hostname === '::') {
+    return true;
+  }
+
+  return /^127(?:\.\d{1,3}){3}$/.test(hostname);
+}
+
 self.addEventListener('install', (event) => {
   console.log('Service worker installing');
   self.skipWaiting();
@@ -14,8 +30,8 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Check if request is to localhost with a port
-  if (url.hostname === 'localhost' && url.port) {
+  // Check if request is to localhost or a loopback IP with a port
+  if (isLoopbackHostname(url.hostname) && url.port) {
     // Get the morph ID from the current page's subdomain
     const currentHost = self.location.hostname;
     const morphIdMatch = currentHost.match(/port-\\d+-(.*)\\.cmux\\.sh/);
@@ -142,11 +158,28 @@ window.cmuxConfig = {
 // Store the real location object (before any rewriting happens)
 const __realLocation = window.location;
 
-// Function to replace localhost URLs with cmux.sh proxy
+// Determine if a hostname should be treated as loopback/local
+function isLoopbackHostname(hostname) {
+  if (!hostname) {
+    return false;
+  }
+
+  if (hostname === 'localhost' || hostname === '0.0.0.0') {
+    return true;
+  }
+
+  if (hostname === '::1' || hostname === '[::1]' || hostname === '::') {
+    return true;
+  }
+
+  return /^127(?:\.\d{1,3}){3}$/.test(hostname);
+}
+
+// Function to replace loopback URLs with cmux.sh proxy
 function replaceLocalhostUrl(url) {
   try {
     const urlObj = new URL(url, __realLocation.href);
-    if (urlObj.hostname === 'localhost' && urlObj.port) {
+    if (isLoopbackHostname(urlObj.hostname) && urlObj.port) {
       const currentHost = __realLocation.hostname;
       const morphIdMatch = currentHost.match(/port-\\d+-(.*)\\.cmux\\.sh/);
 
@@ -457,6 +490,71 @@ if ('serviceWorker' in navigator) {
   }
 }
 
+const LOOPBACK_V4_REGEX = /^127(?:\.\d{1,3}){3}$/;
+
+function isLoopbackHostnameValue(hostname: string | null | undefined): boolean {
+  if (!hostname) {
+    return false;
+  }
+
+  const normalized = hostname.toLowerCase();
+
+  if (normalized === "localhost" || normalized === "0.0.0.0") {
+    return true;
+  }
+
+  if (normalized === "::1" || normalized === "[::1]" || normalized === "::") {
+    return true;
+  }
+
+  return LOOPBACK_V4_REGEX.test(normalized);
+}
+
+function rewriteLoopbackRedirect(
+  response: Response,
+  buildProxyHost: (port: string) => string | null
+): Response {
+  const location = response.headers.get("location");
+  if (!location) {
+    return response;
+  }
+
+  let parsed: URL;
+  try {
+    parsed = new URL(location);
+  } catch {
+    return response; // relative URL or invalid — nothing to rewrite
+  }
+
+  if (!isLoopbackHostnameValue(parsed.hostname)) {
+    return response;
+  }
+
+  const port = parsed.port;
+  const proxyHost = buildProxyHost(port);
+  if (!proxyHost) {
+    return response;
+  }
+
+  parsed.protocol = "https:";
+  parsed.hostname = proxyHost;
+  parsed.port = ""; // ensure host has no explicit port
+
+  const rewritten = parsed.toString();
+  if (rewritten === location) {
+    return response;
+  }
+
+  const headers = new Headers(response.headers);
+  headers.set("location", rewritten);
+
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
 export default {
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
@@ -497,7 +595,8 @@ export default {
         const parts = sub.split("-");
         if (parts.length >= 3) {
           // Insert "morphvm" after the port number
-          const morphSubdomain = `${parts[0]}-${parts[1]}-morphvm-${parts.slice(2).join("-")}`;
+          const morphId = parts.slice(2).join("-");
+          const morphSubdomain = `${parts[0]}-${parts[1]}-morphvm-${morphId}`;
           const target = new URL(url.pathname + url.search, `https://${morphSubdomain}.http.cloud.morph.so`);
 
           // Add header to prevent loops
@@ -508,9 +607,17 @@ export default {
             method: request.method,
             headers: headers,
             body: request.body,
+            redirect: "manual",
           });
 
-          const response = await fetch(outbound);
+          let response = await fetch(outbound);
+          response = rewriteLoopbackRedirect(response, (redirectPort) => {
+            if (!redirectPort || !/^\d+$/.test(redirectPort)) {
+              return null;
+            }
+            return `port-${redirectPort}-${morphId}.cmux.sh`;
+          });
+
           const contentType = response.headers.get("content-type") || "";
 
           // Apply HTMLRewriter to HTML responses
@@ -574,9 +681,18 @@ export default {
         headers,
         body: request.body,
         // Cloudflare runtime keeps upgrades when using fetch(outbound)
+        redirect: "manual",
       });
 
-      const response = await fetch(outbound);
+      let response = await fetch(outbound);
+      response = rewriteLoopbackRedirect(response, (redirectPort) => {
+        if (!redirectPort || !/^\d+$/.test(redirectPort)) {
+          return null;
+        }
+
+        return `${workspace}-${redirectPort}-${vmSlug}.cmux.sh`;
+      });
+
       const contentType = response.headers.get("content-type") || "";
 
       // Apply HTMLRewriter to HTML responses
@@ -605,4 +721,3 @@ export default {
     return fetch(request);
   },
 };
-
