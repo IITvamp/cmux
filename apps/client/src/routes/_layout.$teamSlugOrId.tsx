@@ -2,45 +2,14 @@ import { CmuxComments } from "@/components/cmux-comments";
 import { CommandBar } from "@/components/CommandBar";
 import { Sidebar } from "@/components/Sidebar";
 import { SIDEBAR_PRS_DEFAULT_LIMIT } from "@/components/sidebar/const";
-import type { TaskWithRuns } from "@/components/TaskTree";
 import { convexQueryClient } from "@/contexts/convex/convex-query-client";
 import { ExpandTasksProvider } from "@/contexts/expand-tasks/ExpandTasksProvider";
-import { isFakeConvexId } from "@/lib/fakeConvexId";
 import { setLastTeamSlugOrId } from "@/lib/lastTeam";
 import { api } from "@cmux/convex/api";
-import { type Id } from "@cmux/convex/dataModel";
 import { convexQuery } from "@convex-dev/react-query";
 import { createFileRoute, Outlet, redirect } from "@tanstack/react-router";
-import { useQueries, useQuery } from "convex/react";
+import { useQuery } from "convex/react";
 import { Suspense, useEffect, useMemo } from "react";
-
-type TaskRunWithChildren = TaskWithRuns["runs"][number];
-
-function sortRunsForSidebar(
-  runs: readonly TaskRunWithChildren[] | undefined
-): TaskRunWithChildren[] {
-  if (!runs) {
-    return [];
-  }
-
-  const runsWithSortedChildren = runs.map((run) => ({
-    ...run,
-    children: sortRunsForSidebar(run.children),
-  }));
-
-  runsWithSortedChildren.sort((a, b) => {
-    const aCrowned = a.isCrowned === true;
-    const bCrowned = b.isCrowned === true;
-
-    if (aCrowned !== bCrowned) {
-      return aCrowned ? -1 : 1;
-    }
-
-    return (a.createdAt ?? 0) - (b.createdAt ?? 0);
-  });
-
-  return runsWithSortedChildren;
-}
 
 export const Route = createFileRoute("/_layout/$teamSlugOrId")({
   component: LayoutComponentWrapper,
@@ -88,49 +57,7 @@ function LayoutComponent() {
     );
   }, [tasks]);
 
-  // Create queries object for all recent tasks with memoization, filtering out fake IDs
-  const taskRunQueries = useMemo(() => {
-    return recentTasks
-      .filter((task) => !isFakeConvexId(task._id))
-      .reduce(
-        (acc, task) => ({
-          ...acc,
-          [task._id]: {
-            query: api.taskRuns.getByTask,
-            args: { teamSlugOrId, taskId: task._id },
-          },
-        }),
-        {} as Record<
-          Id<"tasks">,
-          {
-            query: typeof api.taskRuns.getByTask;
-            args:
-              | ((d: { params: { teamSlugOrId: string } }) => {
-                  teamSlugOrId: string;
-                  taskId: Id<"tasks">;
-                })
-              | { teamSlugOrId: string; taskId: Id<"tasks"> };
-          }
-        >
-      );
-  }, [recentTasks, teamSlugOrId]);
-
-  // Fetch task runs for all recent tasks using useQueries
-  const taskRunResults = useQueries(
-    taskRunQueries as Parameters<typeof useQueries>[0]
-  );
-
-  // Map tasks with their respective runs, ensuring crowned runs appear first
-  const tasksWithRuns = useMemo(
-    () =>
-      recentTasks.map((task) => ({
-        ...task,
-        runs: sortRunsForSidebar(
-          taskRunResults[task._id] as TaskRunWithChildren[] | undefined
-        ),
-      })),
-    [recentTasks, taskRunResults]
-  );
+  const displayTasks = tasks === undefined ? undefined : recentTasks;
 
   return (
     <>
@@ -139,8 +66,7 @@ function LayoutComponent() {
       <ExpandTasksProvider>
         <div className="flex flex-row grow min-h-0 bg-white dark:bg-black">
           <Sidebar
-            tasks={tasks}
-            tasksWithRuns={tasksWithRuns}
+            tasks={displayTasks}
             teamSlugOrId={teamSlugOrId}
           />
 

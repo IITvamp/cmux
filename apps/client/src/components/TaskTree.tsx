@@ -4,12 +4,15 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { convexQueryClient } from "@/contexts/convex/convex-query-client";
 import { useArchiveTask } from "@/hooks/useArchiveTask";
 import { useOpenWithActions } from "@/hooks/useOpenWithActions";
 import { isElectron } from "@/lib/electron";
-import type { TaskRunWithChildren, TaskWithRuns } from "@/types/task";
+import { isFakeConvexId } from "@/lib/fakeConvexId";
+import type { AnnotatedTaskRun, TaskRunWithChildren } from "@/types/task";
 import { ContextMenu } from "@base-ui-components/react/context-menu";
-import { type Id } from "@cmux/convex/dataModel";
+import { api } from "@cmux/convex/api";
+import { type Doc, type Id } from "@cmux/convex/dataModel";
 import { Link, useLocation } from "@tanstack/react-router";
 import clsx from "clsx";
 import {
@@ -38,16 +41,21 @@ import {
   useCallback,
   useContext,
   useMemo,
+  useRef,
   useState,
   type MouseEvent,
   type ReactNode,
 } from "react";
+import { useQuery as useConvexQuery } from "convex/react";
 import { VSCodeIcon } from "./icons/VSCodeIcon";
 import { SidebarListItem } from "./sidebar/SidebarListItem";
 import { annotateAgentOrdinals } from "./task-tree/annotateAgentOrdinals";
-import { type AnnotatedTaskRun } from "./task-tree/types";
 
 type PreviewService = NonNullable<TaskRunWithChildren["networking"]>[number];
+
+type TaskWithGeneratedBranch = Doc<"tasks"> & {
+  generatedBranchName?: string | null;
+};
 
 function sanitizeBranchName(input?: string | null): string | null {
   if (!input) return null;
@@ -59,27 +67,16 @@ function sanitizeBranchName(input?: string | null): string | null {
   return candidate || trimmed;
 }
 
-function inferTaskBranch(task: TaskWithRuns): string | null {
-  const fromTask = sanitizeBranchName(task.baseBranch);
-  if (fromTask) return fromTask;
-
-  const queue: TaskRunWithChildren[] = [...task.runs];
-  while (queue.length > 0) {
-    const current = queue.shift()!;
-    const sanitized = sanitizeBranchName(current.newBranch);
-    if (sanitized) {
-      return sanitized;
-    }
-    if (current.children.length > 0) {
-      queue.push(...current.children);
-    }
+function getTaskBranch(task: TaskWithGeneratedBranch): string | null {
+  const fromGenerated = sanitizeBranchName(task.generatedBranchName);
+  if (fromGenerated) {
+    return fromGenerated;
   }
-
-  return null;
+  return sanitizeBranchName(task.baseBranch);
 }
 
 interface TaskTreeProps {
-  task: TaskWithRuns;
+  task: TaskWithGeneratedBranch;
   level?: number;
   // When true, expand the task node on initial mount
   defaultExpanded?: boolean;
@@ -158,15 +155,35 @@ function TaskTreeInner({
   const [isExpanded, setIsExpanded] = useState<boolean>(
     isTaskSelected || defaultExpanded
   );
-  const hasRuns = task.runs && task.runs.length > 0;
+  const prefetched = useRef(false);
+  const prefetchTaskRuns = useCallback(() => {
+    if (prefetched.current || isFakeConvexId(task._id)) {
+      return;
+    }
+    prefetched.current = true;
+    void convexQueryClient.convexClient.prewarmQuery({
+      query: api.taskRuns.getByTask,
+      args: { teamSlugOrId, taskId: task._id },
+    });
+  }, [task._id, teamSlugOrId]);
 
   // Memoize the toggle handler
   const handleToggle = useCallback(
     (_event?: MouseEvent<HTMLButtonElement | HTMLAnchorElement>) => {
-      setIsExpanded((prev) => !prev);
+      setIsExpanded((prev) => {
+        const next = !prev;
+        if (next) {
+          prefetchTaskRuns();
+        }
+        return next;
+      });
     },
-    []
+    [prefetchTaskRuns]
   );
+
+  const handlePrefetch = useCallback(() => {
+    prefetchTaskRuns();
+  }, [prefetchTaskRuns]);
 
   const { archiveWithUndo, unarchive } = useArchiveTask(teamSlugOrId);
 
@@ -184,7 +201,7 @@ function TaskTreeInner({
     unarchive(task._id);
   }, [unarchive, task._id]);
 
-  const inferredBranch = inferTaskBranch(task);
+  const inferredBranch = getTaskBranch(task);
   const taskSecondaryParts: string[] = [];
   if (inferredBranch) {
     taskSecondaryParts.push(inferredBranch);
@@ -194,7 +211,7 @@ function TaskTreeInner({
   }
   const taskSecondary = taskSecondaryParts.join(" • ");
 
-  const canExpand = hasRuns;
+  const canExpand = true;
 
   const taskLeadingIcon = (() => {
     if (task.mergeStatus && task.mergeStatus !== "none") {
@@ -265,11 +282,6 @@ function TaskTreeInner({
     );
   })();
 
-  const annotatedRuns = useMemo(
-    () => annotateAgentOrdinals(task.runs),
-    [task.runs]
-  );
-
   return (
     <TaskRunExpansionContext.Provider value={expansionContextValue}>
       <div className="select-none flex flex-col">
@@ -281,9 +293,10 @@ function TaskTreeInner({
               search={{ runId: undefined }}
               activeOptions={{ exact: true }}
               className="group block"
+              onMouseEnter={handlePrefetch}
+              onFocus={handlePrefetch}
               onClick={(event) => {
                 if (
-                  !canExpand ||
                   event.defaultPrevented ||
                   event.metaKey ||
                   event.ctrlKey ||
@@ -341,21 +354,95 @@ function TaskTreeInner({
           </ContextMenu.Portal>
         </ContextMenu.Root>
 
-        {isExpanded && hasRuns && (
-          <div className="flex flex-col">
-            {annotatedRuns.map((run) => (
-              <TaskRunTree
-                key={run._id}
-                run={run}
-                level={level + 1}
-                taskId={task._id}
-                teamSlugOrId={teamSlugOrId}
-              />
-            ))}
-          </div>
-        )}
+        {isExpanded ? (
+          <TaskRunsContent
+            taskId={task._id}
+            teamSlugOrId={teamSlugOrId}
+            level={level}
+          />
+        ) : null}
       </div>
     </TaskRunExpansionContext.Provider>
+  );
+}
+
+interface TaskRunsContentProps {
+  taskId: Id<"tasks">;
+  teamSlugOrId: string;
+  level: number;
+}
+
+function TaskRunsContent({
+  taskId,
+  teamSlugOrId,
+  level,
+}: TaskRunsContentProps) {
+  const optimisticTask = isFakeConvexId(taskId);
+  const runs = useConvexQuery(
+    api.taskRuns.getByTask,
+    optimisticTask ? "skip" : { teamSlugOrId, taskId }
+  );
+
+  const annotatedRuns = useMemo(
+    () => (runs && runs.length > 0 ? annotateAgentOrdinals(runs) : []),
+    [runs]
+  );
+
+  if (optimisticTask) {
+    return (
+      <TaskRunsMessage level={level}>
+        <span className="italic">No task runs yet</span>
+      </TaskRunsMessage>
+    );
+  }
+
+  if (runs === undefined) {
+    return (
+      <TaskRunsMessage level={level}>
+        <Loader2 className="w-3 h-3 animate-spin text-neutral-400" />
+        <span>Loading task runs…</span>
+      </TaskRunsMessage>
+    );
+  }
+
+  if (annotatedRuns.length === 0) {
+    return (
+      <TaskRunsMessage level={level}>
+        <span className="italic">No task runs yet</span>
+      </TaskRunsMessage>
+    );
+  }
+
+  return (
+    <div className="flex flex-col">
+      {annotatedRuns.map((run) => (
+        <TaskRunTree
+          key={run._id}
+          run={run}
+          level={level + 1}
+          taskId={taskId}
+          teamSlugOrId={teamSlugOrId}
+        />
+      ))}
+    </div>
+  );
+}
+
+function TaskRunsMessage({
+  level,
+  children,
+}: {
+  level: number;
+  children: ReactNode;
+}) {
+  const paddingLeft = 10 + (level + 1) * 16;
+  return (
+    <div
+      className="flex items-center gap-2 py-2 text-xs text-neutral-500 dark:text-neutral-400 select-none"
+      style={{ paddingLeft }}
+    >
+      {children}
+    </div>
   );
 }
 
@@ -783,4 +870,4 @@ export interface VSCodeIconProps {
 export const TaskTree = memo(TaskTreeInner);
 const TaskRunTree = memo(TaskRunTreeInner);
 
-export type { TaskWithRuns } from "./task-tree/types";
+export type { AnnotatedTaskRun, TaskRunWithChildren } from "./task-tree/types";
