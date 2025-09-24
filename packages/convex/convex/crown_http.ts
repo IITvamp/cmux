@@ -20,10 +20,11 @@ const CrownSummarizationRequestSchema = z.object({
   teamSlugOrId: z.string().optional(),
 })
 
-const WorkerStatusSchema = z.object({
-  taskRunId: z.string().optional(),
-  status: z.union([z.literal('pending'), z.literal('complete')]),
-})
+// Deprecated: Worker status schema no longer needed
+// const WorkerStatusSchema = z.object({
+//   taskRunId: z.string().optional(),
+//   status: z.union([z.literal('pending'), z.literal('complete')]),
+// })
 
 const WorkerCheckSchema = z.object({
   taskId: z.string().optional(),
@@ -339,42 +340,43 @@ export const crownSummarize = httpAction(async (ctx, req) => {
   }
 })
 
-export const crownWorkerStatus = httpAction(async (ctx, req) => {
-  const workerAuth = await ensureWorkerAuth(req)
-  if (workerAuth instanceof Response) return workerAuth
+// Deprecated: Worker status endpoint no longer needed
+// export const crownWorkerStatus = httpAction(async (ctx, req) => {
+//   const workerAuth = await ensureWorkerAuth(req)
+//   if (workerAuth instanceof Response) return workerAuth
 
-  const parsed = await ensureJsonRequest(req)
-  if (parsed instanceof Response) return parsed
+//   const parsed = await ensureJsonRequest(req)
+//   if (parsed instanceof Response) return parsed
 
-  const validation = WorkerStatusSchema.safeParse(parsed.json)
-  if (!validation.success) {
-    console.warn(
-      '[convex.crown] Invalid worker status payload',
-      validation.error
-    )
-    return jsonResponse({ code: 400, message: 'Invalid input' }, 400)
-  }
+//   const validation = WorkerStatusSchema.safeParse(parsed.json)
+//   if (!validation.success) {
+//     console.warn(
+//       '[convex.crown] Invalid worker status payload',
+//       validation.error
+//     )
+//     return jsonResponse({ code: 400, message: 'Invalid input' }, 400)
+//   }
 
-  const taskRun = await loadTaskRunForWorker(
-    ctx,
-    workerAuth,
-    validation.data.taskRunId
-  )
-  if (taskRun instanceof Response) return taskRun
+//   const taskRun = await loadTaskRunForWorker(
+//     ctx,
+//     workerAuth,
+//     validation.data.taskRunId
+//   )
+//   if (taskRun instanceof Response) return taskRun
 
-  await ctx.runMutation(internal.taskRuns.setWorkerStatusInternal, {
-    taskRunId: taskRun._id,
-    status: validation.data.status,
-  })
+//   await ctx.runMutation(internal.taskRuns.setWorkerStatusInternal, {
+//     taskRunId: taskRun._id,
+//     status: validation.data.status,
+//   })
 
-  return jsonResponse({
-    ok: true,
-    taskRunId: taskRun._id,
-    taskId: taskRun.taskId,
-    status: validation.data.status,
-    teamId: workerAuth.payload.teamId,
-  })
-})
+//   return jsonResponse({
+//     ok: true,
+//     taskRunId: taskRun._id,
+//     taskId: taskRun.taskId,
+//     status: validation.data.status,
+//     teamId: workerAuth.payload.teamId,
+//   })
+// })
 
 export const crownWorkerCheck = httpAction(async (ctx, req) => {
   console.log('[convex.crown] Worker check endpoint called', {

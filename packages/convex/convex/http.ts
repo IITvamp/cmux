@@ -4,7 +4,7 @@ import {
   crownSummarize,
   crownWorkerCheck,
   crownWorkerFinalize,
-  crownWorkerStatus,
+  // crownWorkerStatus, // Deprecated
   crownWorkerComplete,
   crownWorkerScheduleStop,
 } from "./crown_http";
@@ -38,11 +38,12 @@ http.route({
   handler: crownSummarize,
 });
 
-http.route({
-  path: "/api/crown/status",
-  method: "POST",
-  handler: crownWorkerStatus,
-});
+// Deprecated: Worker status endpoint no longer needed
+// http.route({
+//   path: "/api/crown/status",
+//   method: "POST",
+//   handler: crownWorkerStatus,
+// });
 
 http.route({
   path: "/api/crown/check",
