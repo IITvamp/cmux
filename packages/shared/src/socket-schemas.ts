@@ -45,6 +45,12 @@ export const StartTaskSchema = z.object({
   environmentId: typedZid("environments").optional(),
 });
 
+export const ResumeRunSchema = z.object({
+  teamSlugOrId: z.string(),
+  taskRunId: typedZid("taskRuns"),
+  theme: z.enum(["dark", "light", "system"]).optional(),
+});
+
 // Server to Client Events
 export const TerminalCreatedSchema = z.object({
   terminalId: z.string(),
@@ -381,6 +387,26 @@ export type TerminalInput = z.infer<typeof TerminalInputSchema>;
 export type Resize = z.infer<typeof ResizeSchema>;
 export type CloseTerminal = z.infer<typeof CloseTerminalSchema>;
 export type StartTask = z.infer<typeof StartTaskSchema>;
+export type ResumeRun = z.infer<typeof ResumeRunSchema>;
+
+export type VSCodePortMap = {
+  vscode?: string;
+  worker?: string;
+  extension?: string;
+};
+
+export type ResumeRunResponse =
+  | {
+      success: true;
+      workspaceUrl: string;
+      url: string;
+      ports?: VSCodePortMap | null;
+      provider: "docker" | "morph" | "daytona" | "other";
+    }
+  | {
+      success: false;
+      error: string;
+    };
 export type TerminalCreated = z.infer<typeof TerminalCreatedSchema>;
 export type TerminalOutput = z.infer<typeof TerminalOutputSchema>;
 export type TerminalExit = z.infer<typeof TerminalExitSchema>;
@@ -437,6 +463,10 @@ export interface ClientToServerEvents {
   "start-task": (
     data: StartTask,
     callback: (response: TaskStarted | TaskError) => void
+  ) => void;
+  "resume-run": (
+    data: ResumeRun,
+    callback: (response: ResumeRunResponse) => void
   ) => void;
   "git-diff-smart": (
     data: z.infer<typeof GitSmartRefsSchema>,

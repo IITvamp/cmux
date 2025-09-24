@@ -471,6 +471,83 @@ export const updateVSCodePorts = authMutation({
   },
 });
 
+export const updateSessionMetadata = authMutation({
+  args: {
+    teamSlugOrId: v.string(),
+    id: v.id("taskRuns"),
+    session: v.object({
+      workspaceVolume: v.optional(v.string()),
+      vscodeVolume: v.optional(v.string()),
+      containerId: v.optional(v.union(v.string(), v.null())),
+      lastActivityAt: v.optional(v.number()),
+      status: v.optional(
+        v.union(v.literal("active"), v.literal("warm"), v.literal("terminated"))
+      ),
+    }),
+  },
+  handler: async (ctx, args) => {
+    const userId = ctx.identity.subject;
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
+    const run = await ctx.db.get(args.id);
+    if (!run) {
+      throw new Error("Task run not found");
+    }
+    if (run.teamId !== teamId || run.userId !== userId) {
+      throw new Error("Unauthorized");
+    }
+
+    const existingSession = run.session ?? null;
+    const isCreating = existingSession === null;
+
+    if (
+      isCreating &&
+      (!args.session.workspaceVolume ||
+        !args.session.vscodeVolume ||
+        !args.session.status)
+    ) {
+      throw new Error(
+        "workspaceVolume, vscodeVolume, and status are required when creating session metadata"
+      );
+    }
+
+    const nextSession = {
+      ...(existingSession ?? {}),
+    } as NonNullable<typeof run.session>;
+
+    if (args.session.workspaceVolume !== undefined) {
+      nextSession.workspaceVolume = args.session.workspaceVolume;
+    }
+
+    if (args.session.vscodeVolume !== undefined) {
+      nextSession.vscodeVolume = args.session.vscodeVolume;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(args.session, "containerId")) {
+      const value = args.session.containerId;
+      if (value === null) {
+        delete nextSession.containerId;
+      } else if (value !== undefined) {
+        nextSession.containerId = value;
+      } else {
+        delete nextSession.containerId;
+      }
+    }
+
+    if (args.session.lastActivityAt !== undefined) {
+      nextSession.lastActivityAt = args.session.lastActivityAt;
+    }
+
+    if (args.session.status !== undefined) {
+      nextSession.status = args.session.status;
+    }
+
+    await ctx.db.patch(args.id, {
+      session: nextSession,
+      updatedAt: Date.now(),
+    });
+  },
+});
+
 // Get task run by VSCode container name
 export const getByContainerName = authQuery({
   args: { teamSlugOrId: v.string(), containerName: v.string() },
@@ -800,6 +877,43 @@ export const getContainersToStop = authQuery({
     );
 
     return containersToStop;
+  },
+});
+
+export const getWarmSessionsForTermination = authQuery({
+  args: {
+    teamSlugOrId: v.string(),
+    ttlMs: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const userId = ctx.identity.subject;
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
+    const now = Date.now();
+
+    const runs = await ctx.db
+      .query("taskRuns")
+      .withIndex("by_team_user", (q) =>
+        q.eq("teamId", teamId).eq("userId", userId)
+      )
+      .collect();
+
+    const expired = runs.filter((run) => {
+      if (!run.session || run.session.status !== "warm") {
+        return false;
+      }
+      const lastActivity =
+        run.session.lastActivityAt ?? run.vscode?.lastAccessedAt;
+      if (lastActivity === undefined) {
+        return false;
+      }
+      return now - lastActivity >= args.ttlMs;
+    });
+
+    return expired.map((run) => ({
+      _id: run._id,
+      session: run.session,
+      vscode: run.vscode,
+    }));
   },
 });
 

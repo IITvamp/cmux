@@ -32,6 +32,7 @@ import { getWwwClient } from "./utils/wwwClient.js";
 import { CmuxVSCodeInstance } from "./vscode/CmuxVSCodeInstance.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
+import { ensureRunWorktreeAndBranch } from "./utils/ensureRunWorktree.js";
 import { getWorktreePath, setupProjectWorkspace } from "./workspace.js";
 
 export interface AgentSpawnResult {
@@ -42,6 +43,125 @@ export interface AgentSpawnResult {
   vscodeUrl?: string;
   success: boolean;
   error?: string;
+}
+
+export interface ResumeRunResult {
+  vscodeUrl: string;
+  workspaceUrl: string;
+  worktreePath: string;
+  ports?: { vscode?: string; worker?: string; extension?: string } | null;
+}
+
+export async function resumeTaskRun({
+  taskRunId,
+  teamSlugOrId,
+  theme,
+}: {
+  taskRunId: Id<"taskRuns">;
+  teamSlugOrId: string;
+  theme?: "dark" | "light" | "system";
+}): Promise<ResumeRunResult> {
+  const { run, worktreePath } = await ensureRunWorktreeAndBranch(
+    taskRunId,
+    teamSlugOrId
+  );
+
+  if (!run.session) {
+    throw new Error("No persisted session metadata available for run");
+  }
+
+  if (!run.session.workspaceVolume || !run.session.vscodeVolume) {
+    throw new Error("Session metadata missing volume names for workspace resume");
+  }
+
+  if (run.session.status === "terminated") {
+    throw new Error("Run has been terminated and cannot be resumed");
+  }
+
+  const vscodeInstance = new DockerVSCodeInstance({
+    workspacePath,
+    agentName: run.agentName ?? "resume",
+    taskRunId,
+    taskId: run.taskId,
+    theme,
+    teamSlugOrId,
+    session: {
+      workspaceVolume: run.session.workspaceVolume,
+      vscodeVolume: run.session.vscodeVolume,
+      status: run.session.status,
+    },
+  });
+
+  const vscodeInfo = await vscodeInstance.start();
+  vscodeInstance.startFileWatch(worktreePath);
+
+  const ports =
+    vscodeInstance instanceof DockerVSCodeInstance
+      ? vscodeInstance.getPorts()
+      : null;
+
+  return {
+    vscodeUrl: vscodeInfo.url,
+    workspaceUrl: vscodeInfo.workspaceUrl,
+    worktreePath,
+    ports,
+  };
+}
+
+export async function terminateTaskRun({
+  taskRunId,
+  teamSlugOrId,
+}: {
+  taskRunId: Id<"taskRuns">;
+  teamSlugOrId: string;
+}): Promise<void> {
+  const containerName = `cmux-${taskRunId}`;
+  const instance = VSCodeInstance.getInstance(taskRunId);
+
+  if (instance) {
+    await instance.stop();
+  } else {
+    const docker = DockerVSCodeInstance.getDocker();
+    try {
+      const container = docker.getContainer(containerName);
+      await container.stop().catch(() => {});
+      await container.remove({ force: true }).catch(() => {});
+    } catch (error) {
+      serverLogger.warn(
+        `[AgentSpawner] Failed to stop existing container ${containerName}:`,
+        error
+      );
+    }
+  }
+
+  const { run } = await ensureRunWorktreeAndBranch(taskRunId, teamSlugOrId);
+
+  if (run.session) {
+    await DockerVSCodeInstance.removeSessionVolumes({
+      workspace: run.session.workspaceVolume,
+      vscode: run.session.vscodeVolume,
+    });
+
+    await getConvex().mutation(api.taskRuns.updateSessionMetadata, {
+      teamSlugOrId,
+      id: run._id,
+      session: {
+        status: "terminated",
+        containerId: null,
+        lastActivityAt: Date.now(),
+      },
+    });
+  }
+
+  await getConvex().mutation(api.taskRuns.updateVSCodeStatus, {
+    teamSlugOrId,
+    id: run._id,
+    status: "stopped",
+    stoppedAt: Date.now(),
+  });
+
+  containerMappings.delete(containerName);
+  VSCodeInstance.getInstances().delete(taskRunId);
 }
 
 export async function spawnAgent(

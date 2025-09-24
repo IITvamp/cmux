@@ -28,9 +28,22 @@ export interface ContainerMapping {
   };
   status: "starting" | "running" | "stopped";
   workspacePath?: string;
+  volumes?: {
+    workspace: string;
+    vscode: string;
+  };
+  containerId?: string;
 }
 
 export const containerMappings = new Map<string, ContainerMapping>();
+
+type SessionStatus = "active" | "warm" | "terminated";
+
+interface DockerSessionConfig {
+  workspaceVolume?: string;
+  vscodeVolume?: string;
+  status?: SessionStatus;
+}
 
 interface DockerEvent {
   status?: string;
@@ -52,6 +65,10 @@ export class DockerVSCodeInstance extends VSCodeInstance {
   private static readonly PORT_CACHE_DURATION = 2000; // 2 seconds
   private static eventsStream: NodeJS.ReadableStream | null = null;
   private static dockerInstance: Docker | null = null;
+  private workspaceVolumeName: string;
+  private vscodeVolumeName: string;
+  private sessionStatus: SessionStatus | undefined;
+  private readonly isWarmResume: boolean;
 
   // Get or create the Docker singleton
   static getDocker(): Docker {
@@ -63,6 +80,40 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     return DockerVSCodeInstance.dockerInstance;
   }
 
+  static workspaceVolumeNameFor(taskRunId: Id<"taskRuns">): string {
+    return `cmux_session_${taskRunId}_workspace`;
+  }
+
+  static vscodeVolumeNameFor(taskRunId: Id<"taskRuns">): string {
+    return `cmux_session_${taskRunId}_vscode`;
+  }
+
+  static async removeSessionVolumes(volumes: {
+    workspace?: string;
+    vscode?: string;
+  }): Promise<void> {
+    const docker = DockerVSCodeInstance.getDocker();
+
+    const removeVolume = async (name?: string) => {
+      if (!name) return;
+      try {
+        await docker.getVolume(name).remove({ force: true });
+        dockerLogger.info(`Removed volume ${name}`);
+      } catch (error) {
+        if ((error as { statusCode?: number }).statusCode === 404) {
+          dockerLogger.info(`Volume ${name} already removed`);
+          return;
+        }
+        dockerLogger.warn(`Failed to remove volume ${name}:`, error);
+      }
+    };
+
+    await Promise.all([
+      removeVolume(volumes.workspace),
+      removeVolume(volumes.vscode),
+    ]);
+  }
+
   constructor(config: VSCodeInstanceConfig) {
     super(config);
     this.containerName = `cmux-${this.taskRunId}`;
@@ -71,6 +122,15 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     dockerLogger.info(`this.imageName: ${this.imageName}`);
     // Register this instance
     VSCodeInstance.getInstances().set(this.instanceId, this);
+    const session = config.session as DockerSessionConfig | undefined;
+    this.sessionStatus = session?.status;
+    this.workspaceVolumeName =
+      session?.workspaceVolume ??
+      DockerVSCodeInstance.workspaceVolumeNameFor(this.taskRunId);
+    this.vscodeVolumeName =
+      session?.vscodeVolume ??
+      DockerVSCodeInstance.vscodeVolumeNameFor(this.taskRunId);
+    this.isWarmResume = session?.status === "warm";
   }
 
   private async ensureImageExists(docker: Docker): Promise<void> {
@@ -116,6 +176,113 @@ export class DockerVSCodeInstance extends VSCodeInstance {
           `Failed to pull Docker image ${this.imageName}: ${pullError}`
         );
       }
+    }
+  }
+
+  private buildVolumeLabels(type: "workspace" | "vscode"): Record<string, string> {
+    return {
+      "cmux.session": this.taskRunId,
+      "cmux.session.type": type,
+      "cmux.team": this.teamSlugOrId,
+    };
+  }
+
+  private async ensureVolumes(docker: Docker): Promise<void> {
+    const workspacePath = this.config.workspacePath;
+    if (!workspacePath) {
+      throw new Error(
+        "Workspace path is required to initialize Docker session volumes"
+      );
+    }
+
+    let sessionNeedsUpdate = false;
+
+    const workspaceVolume = docker.getVolume(this.workspaceVolumeName);
+    try {
+      const info = await workspaceVolume.inspect();
+      const devicePath =
+        (info.Options && (info.Options as Record<string, string>).device) ||
+        undefined;
+      if (devicePath && devicePath !== workspacePath) {
+        dockerLogger.warn(
+          `Workspace volume ${this.workspaceVolumeName} device mismatch (expected ${workspacePath}, actual ${devicePath})`
+        );
+      }
+    } catch {
+      dockerLogger.info(
+        `Creating workspace volume ${this.workspaceVolumeName} -> ${workspacePath}`
+      );
+      await docker.createVolume({
+        Name: this.workspaceVolumeName,
+        Driver: "local",
+        DriverOpts: {
+          type: "none",
+          o: "bind",
+          device: workspacePath,
+        },
+        Labels: this.buildVolumeLabels("workspace"),
+      });
+      sessionNeedsUpdate = true;
+    }
+
+    const vscodeVolume = docker.getVolume(this.vscodeVolumeName);
+    try {
+      await vscodeVolume.inspect();
+    } catch {
+      dockerLogger.info(
+        `Creating VSCode data volume ${this.vscodeVolumeName}`
+      );
+      await docker.createVolume({
+        Name: this.vscodeVolumeName,
+        Driver: "local",
+        Labels: this.buildVolumeLabels("vscode"),
+      });
+      sessionNeedsUpdate = true;
+    }
+
+    if (
+      sessionNeedsUpdate ||
+      !this.config.session?.workspaceVolume ||
+      !this.config.session?.vscodeVolume
+    ) {
+      await this.updateSessionMetadata({
+        workspaceVolume: this.workspaceVolumeName,
+        vscodeVolume: this.vscodeVolumeName,
+      });
+    }
+  }
+
+  private async updateSessionMetadata(patch: {
+    workspaceVolume?: string;
+    vscodeVolume?: string;
+    containerId?: string | null;
+    lastActivityAt?: number;
+    status?: SessionStatus;
+  }): Promise<void> {
+    if (patch.status) {
+      this.sessionStatus = patch.status;
+    }
+
+    if (!this.authToken) {
+      dockerLogger.warn(
+        `[DockerVSCodeInstance ${this.instanceId}] Missing auth token, cannot update session metadata`
+      );
+      return;
+    }
+
+    try {
+      await runWithAuthToken(this.authToken, async () =>
+        getConvex().mutation(api.taskRuns.updateSessionMetadata, {
+          teamSlugOrId: this.teamSlugOrId,
+          id: this.taskRunId,
+          session: patch,
+        })
+      );
+    } catch (error) {
+      dockerLogger.error(
+        `Failed to update session metadata for ${this.containerName}:`,
+        error
+      );
     }
   }
 
@@ -195,6 +362,14 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     }
   }
 
+  getWorkspaceVolume(): string {
+    return this.workspaceVolumeName;
+  }
+
+  getVSCodeVolume(): string {
+    return this.vscodeVolumeName;
+  }
+
   async start(): Promise<VSCodeInstanceInfo> {
     dockerLogger.info(`Starting Docker VSCode instance: ${this.containerName}`);
     dockerLogger.info(`  Image: ${this.imageName}`);
@@ -203,11 +378,18 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
     const docker = DockerVSCodeInstance.getDocker();
 
+    // Capture current auth token for this instance and mapping before we perform
+    // any Convex mutations that require authentication.
+    this.authToken = getAuthToken();
+
     // Check if image exists and pull if missing
     await this.ensureImageExists(docker);
 
-    // Capture current auth token for this instance and mapping
-    this.authToken = getAuthToken();
+    // Ensure session volumes exist and are associated with this task run
+    await this.ensureVolumes(docker);
+
+    dockerLogger.info(`  Workspace volume: ${this.workspaceVolumeName}`);
+    dockerLogger.info(`  VSCode volume: ${this.vscodeVolumeName}`);
 
     // Set initial mapping status
     containerMappings.set(this.containerName, {
@@ -218,6 +400,10 @@ export class DockerVSCodeInstance extends VSCodeInstance {
       ports: { vscode: "", worker: "" },
       status: "starting",
       workspacePath: this.config.workspacePath,
+      volumes: {
+        workspace: this.workspaceVolumeName,
+        vscode: this.vscodeVolumeName,
+      },
     });
 
     // Stop and remove any existing container with same name
@@ -234,6 +420,10 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     }
 
     const envVars = ["NODE_ENV=production", "WORKER_PORT=39377"];
+
+    envVars.push(
+      `CMUX_SESSION_MODE=${this.isWarmResume ? "resume" : "fresh"}`
+    );
 
     // Add theme environment variable if provided
     if (this.config.theme) {
@@ -260,139 +450,94 @@ export class DockerVSCodeInstance extends VSCodeInstance {
         "39376/tcp": {},
       },
     };
+
+    const mounts: Array<{
+      Type: "volume";
+      Source: string;
+      Target: string;
+    }> = [
+      {
+        Type: "volume",
+        Source: this.workspaceVolumeName,
+        Target: "/root/workspace",
+      },
+      {
+        Type: "volume",
+        Source: this.vscodeVolumeName,
+        Target: "/root/.openvscode-server",
+      },
+    ];
+
+    createOptions.HostConfig!.Mounts = mounts;
+
     dockerLogger.info(
       `Container create options: ${JSON.stringify(createOptions)}`
     );
 
-    // Add volume mount if workspace path is provided
+    const binds: string[] = [];
+
     if (this.config.workspacePath) {
-      // Extract the origin path from the workspace path
-      // Workspace path is like: ~/cmux/<repoName>/worktrees/<branchName>
-      // Origin path is: ~/cmux/<repoName>/origin
       const pathParts = this.config.workspacePath.split("/");
       const worktreesIndex = pathParts.lastIndexOf("worktrees");
-
       if (worktreesIndex > 0) {
-        // Build the origin path
         const originPath = [
           ...pathParts.slice(0, worktreesIndex),
           "origin",
         ].join("/");
-
-        // Get the user's home directory for git config
-        const homeDir = os.homedir();
-        const gitConfigPath = path.join(homeDir, ".gitconfig");
-
-        const binds = [
-          `${this.config.workspacePath}:/root/workspace`,
-          // Mount the origin directory at the same absolute path to preserve git references
-          `${originPath}:${originPath}:rw`, // Read-write mount for git operations
-        ];
-
-        // Mount SSH directory for git authentication
-        const sshDir = path.join(homeDir, ".ssh");
-        try {
-          await fs.promises.access(sshDir);
-          binds.push(`${sshDir}:/root/.ssh:ro`);
-          dockerLogger.info(`  SSH mount: ${sshDir} -> /root/.ssh (read-only)`);
-        } catch {
-          dockerLogger.info(`  No SSH directory found at ${sshDir}`);
-        }
-
-        // Mount git config if it exists
-        try {
-          await fs.promises.access(gitConfigPath);
-
-          // Read and filter the git config to remove macOS-specific settings
-          const gitConfigContent = await fs.promises.readFile(
-            gitConfigPath,
-            "utf8"
-          );
-          const filteredConfig = this.filterGitConfig(gitConfigContent);
-
-          // Write filtered config to a temporary location
-          const tempDir = path.join(os.tmpdir(), "cmux-git-configs");
-          await fs.promises.mkdir(tempDir, { recursive: true });
-          const tempGitConfigPath = path.join(
-            tempDir,
-            `gitconfig-${this.instanceId}`
-          );
-          await fs.promises.writeFile(tempGitConfigPath, filteredConfig);
-
-          binds.push(`${tempGitConfigPath}:/root/.gitconfig:ro`);
-          dockerLogger.info(
-            `  Git config mount: ${tempGitConfigPath} -> /root/.gitconfig (filtered, read-only)`
-          );
-        } catch {
-          // Git config doesn't exist, which is fine
-          dockerLogger.info(`  No git config found at ${gitConfigPath}`);
-        }
-
-        createOptions.HostConfig!.Binds = binds;
-
+        binds.push(`${originPath}:${originPath}:rw`);
         dockerLogger.info(
           `  Origin mount: ${originPath} -> ${originPath} (read-write)`
         );
-      } else {
-        // Fallback to just mounting the workspace
-        const homeDir = os.homedir();
-        const gitConfigPath = path.join(homeDir, ".gitconfig");
-
-        const binds = [`${this.config.workspacePath}:/root/workspace`];
-
-        // Mount SSH directory for git authentication
-        const sshDir = path.join(homeDir, ".ssh");
-        try {
-          await fs.promises.access(sshDir);
-          binds.push(`${sshDir}:/root/.ssh:ro`);
-          dockerLogger.info(`  SSH mount: ${sshDir} -> /root/.ssh (read-only)`);
-        } catch {
-          dockerLogger.info(`  No SSH directory found at ${sshDir}`);
-        }
-
-        // Mount GitHub CLI config for authentication
-        const ghConfigDir = path.join(homeDir, ".config", "gh");
-        try {
-          await fs.promises.access(ghConfigDir);
-          binds.push(`${ghConfigDir}:/root/.config/gh:rw`);
-          dockerLogger.info(
-            `  GitHub CLI config mount: ${ghConfigDir} -> /root/.config/gh (read-write)`
-          );
-        } catch {
-          dockerLogger.info(`  No GitHub CLI config found at ${ghConfigDir}`);
-        }
-
-        // Mount git config if it exists
-        try {
-          await fs.promises.access(gitConfigPath);
-
-          // Read and filter the git config to remove macOS-specific settings
-          const gitConfigContent = await fs.promises.readFile(
-            gitConfigPath,
-            "utf8"
-          );
-          const filteredConfig = this.filterGitConfig(gitConfigContent);
-
-          // Write filtered config to a temporary location
-          const tempDir = path.join(os.tmpdir(), "cmux-git-configs");
-          await fs.promises.mkdir(tempDir, { recursive: true });
-          const tempGitConfigPath = path.join(
-            tempDir,
-            `gitconfig-${this.instanceId}`
-          );
-          await fs.promises.writeFile(tempGitConfigPath, filteredConfig);
-
-          binds.push(`${tempGitConfigPath}:/root/.gitconfig:ro`);
-          dockerLogger.info(
-            `  Git config mount: ${tempGitConfigPath} -> /root/.gitconfig (filtered, read-only)`
-          );
-        } catch {
-          // Git config doesn't exist, which is fine
-          dockerLogger.info(`  No git config found at ${gitConfigPath}`);
-        }
-
-        createOptions.HostConfig!.Binds = binds;
       }
+    }
+
+    const homeDir = os.homedir();
+    const gitConfigPath = path.join(homeDir, ".gitconfig");
+
+    const sshDir = path.join(homeDir, ".ssh");
+    try {
+      await fs.promises.access(sshDir);
+      binds.push(`${sshDir}:/root/.ssh:ro`);
+      dockerLogger.info(`  SSH mount: ${sshDir} -> /root/.ssh (read-only)`);
+    } catch {
+      dockerLogger.info(`  No SSH directory found at ${sshDir}`);
+    }
+
+    const ghConfigDir = path.join(homeDir, ".config", "gh");
+    try {
+      await fs.promises.access(ghConfigDir);
+      binds.push(`${ghConfigDir}:/root/.config/gh:rw`);
+      dockerLogger.info(
+        `  GitHub CLI config mount: ${ghConfigDir} -> /root/.config/gh (read-write)`
+      );
+    } catch {
+      dockerLogger.info(`  No GitHub CLI config found at ${ghConfigDir}`);
+    }
+
+    try {
+      await fs.promises.access(gitConfigPath);
+
+      const gitConfigContent = await fs.promises.readFile(gitConfigPath, "utf8");
+      const filteredConfig = this.filterGitConfig(gitConfigContent);
+
+      const tempDir = path.join(os.tmpdir(), "cmux-git-configs");
+      await fs.promises.mkdir(tempDir, { recursive: true });
+      const tempGitConfigPath = path.join(
+        tempDir,
+        `gitconfig-${this.instanceId}`
+      );
+      await fs.promises.writeFile(tempGitConfigPath, filteredConfig);
+
+      binds.push(`${tempGitConfigPath}:/root/.gitconfig:ro`);
+      dockerLogger.info(
+        `  Git config mount: ${tempGitConfigPath} -> /root/.gitconfig (filtered, read-only)`
+      );
+    } catch {
+      dockerLogger.info(`  No git config found at ${gitConfigPath}`);
+    }
+
+    if (binds.length > 0) {
+      createOptions.HostConfig!.Binds = binds;
     }
 
     dockerLogger.info(`Creating container...`);
@@ -415,6 +560,18 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
     // Get container info including port mappings
     const containerInfo = await this.container.inspect();
+    const containerId = containerInfo.Id;
+    const mappingForId = containerMappings.get(this.containerName);
+    if (mappingForId) {
+      mappingForId.containerId = containerId;
+    }
+    await this.updateSessionMetadata({
+      containerId,
+      status: "active",
+      lastActivityAt: Date.now(),
+      workspaceVolume: this.workspaceVolumeName,
+      vscodeVolume: this.vscodeVolumeName,
+    });
     const ports = containerInfo.NetworkSettings.Ports;
 
     const vscodePort = ports["39378/tcp"]?.[0]?.HostPort;
@@ -615,7 +772,13 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     const mapping = containerMappings.get(this.containerName);
     if (mapping) {
       mapping.status = "stopped";
+      delete mapping.containerId;
     }
+
+    await this.updateSessionMetadata({
+      containerId: null,
+      status: this.sessionStatus === "terminated" ? "terminated" : "warm",
+    });
 
     // Update VSCode status in Convex
     try {
@@ -736,7 +899,13 @@ export class DockerVSCodeInstance extends VSCodeInstance {
     await this.bootstrapGitHubAuth();
 
     // Then, bootstrap devcontainer if present
-    await this.bootstrapDevcontainerIfPresent();
+    if (this.isWarmResume) {
+      dockerLogger.info(
+        `Skipping devcontainer bootstrap for resumed session ${this.containerName}`
+      );
+    } else {
+      await this.bootstrapDevcontainerIfPresent();
+    }
   }
 
   // Authenticate GitHub CLI using token from host
@@ -1347,6 +1516,55 @@ export class DockerVSCodeInstance extends VSCodeInstance {
 
       dockerLogger.info(
         "[performContainerCleanup] Container cleanup completed"
+      );
+
+      if (settings.reviewPeriodMinutes > 0) {
+        const ttlMs = settings.reviewPeriodMinutes * 60 * 1000;
+        const expiredSessions = await getConvex().query(
+          api.taskRuns.getWarmSessionsForTermination,
+          {
+            teamSlugOrId,
+            ttlMs,
+          }
+        );
+
+        for (const warmRun of expiredSessions) {
+          try {
+            await DockerVSCodeInstance.removeSessionVolumes({
+              workspace: warmRun.session?.workspaceVolume,
+              vscode: warmRun.session?.vscodeVolume,
+            });
+
+            const containerName = `cmux-${warmRun._id}`;
+            containerMappings.delete(containerName);
+
+            await getConvex().mutation(api.taskRuns.updateSessionMetadata, {
+              teamSlugOrId,
+              id: warmRun._id,
+              session: {
+                status: "terminated",
+                containerId: null,
+                lastActivityAt: Date.now(),
+              },
+            });
+
+            await getConvex().mutation(api.taskRuns.updateVSCodeStatus, {
+              teamSlugOrId,
+              id: warmRun._id,
+              status: "stopped",
+              stoppedAt: Date.now(),
+            });
+          } catch (error) {
+            dockerLogger.error(
+              `[performContainerCleanup] Failed to clean warm session ${warmRun._id}:`,
+              error
+            );
+          }
+        }
+      }
+
+      dockerLogger.info(
+        "[performContainerCleanup] Warm session cleanup completed"
       );
     } catch (error) {
       dockerLogger.error(

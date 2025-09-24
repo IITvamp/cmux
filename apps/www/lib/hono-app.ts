@@ -14,6 +14,7 @@ import {
   environmentsRouter,
   healthRouter,
   morphRouter,
+  runsRouter,
   sandboxesRouter,
   teamsRouter,
   usersRouter,
@@ -102,6 +103,7 @@ app.route("/", githubPrsFileContentsRouter);
 app.route("/", githubPrsFileContentsBatchRouter);
 app.route("/", morphRouter);
 app.route("/", environmentsRouter);
+app.route("/", runsRouter);
 app.route("/", sandboxesRouter);
 app.route("/", crownRouter);
 app.route("/", teamsRouter);

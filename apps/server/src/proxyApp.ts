@@ -1,4 +1,6 @@
 import { api } from "@cmux/convex/api";
+import type { Id } from "@cmux/convex/dataModel";
+import { ResumeRunSchema } from "@cmux/shared";
 import express from "express";
 import type { IncomingMessage, Server } from "http";
 import httpProxy from "http-proxy";
@@ -6,6 +8,8 @@ import { Buffer } from "node:buffer";
 import path from "node:path";
 import { getConvex } from "./utils/convexClient.js";
 import { serverLogger } from "./utils/fileLogger.js";
+import { runWithAuth } from "./utils/requestContext.js";
+import { resumeTaskRun } from "./agentSpawner.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
 import { VSCodeInstance } from "./vscode/VSCodeInstance.js";
 
@@ -181,6 +185,53 @@ export function createProxyApp({
   publicPath: string;
 }): express.Application {
   const app = express();
+
+  app.post(
+    "/api/runs/resume",
+    express.json(),
+    async (req: express.Request, res: express.Response) => {
+      const authToken = req.header("x-stack-auth");
+      const authHeaderJson = req.header("x-stack-auth-json");
+
+      if (!authToken) {
+        res.status(401).json({ success: false, error: "Unauthorized" });
+        return;
+      }
+
+      const parsed = ResumeRunSchema.safeParse(req.body);
+      if (!parsed.success) {
+        res.status(400).json({ success: false, error: "Invalid request body" });
+        return;
+      }
+
+      try {
+        const result = await runWithAuth(authToken, authHeaderJson, async () =>
+          resumeTaskRun({
+            taskRunId: parsed.data.taskRunId as Id<"taskRuns">,
+            teamSlugOrId: parsed.data.teamSlugOrId,
+            theme: parsed.data.theme,
+          })
+        );
+
+        res.json({
+          success: true,
+          workspaceUrl: result.workspaceUrl,
+          url: result.vscodeUrl,
+          ports: result.ports ?? null,
+          provider: "docker",
+        });
+      } catch (error) {
+        serverLogger.error("Failed to resume run via HTTP API:", error);
+        res.status(500).json({
+          success: false,
+          error:
+            error instanceof Error
+              ? error.message
+              : "Failed to resume run",
+        });
+      }
+    }
+  );
 
   // app.use(express.static(publicPath));
   const staticHandler = express.static(publicPath, {});

@@ -18,6 +18,11 @@ export interface VSCodeInstanceConfig {
   newBranch?: string;
   // Optional: when starting from an environment
   environmentId?: Id<"environments"> | string;
+  session?: {
+    workspaceVolume?: string;
+    vscodeVolume?: string;
+    status?: "active" | "warm" | "terminated";
+  };
 }
 
 export interface VSCodeInstanceInfo {

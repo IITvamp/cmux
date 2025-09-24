@@ -216,12 +216,26 @@ const convexSchema = defineSchema({
         })
       )
     ),
+    session: v.optional(
+      v.object({
+        workspaceVolume: v.string(),
+        vscodeVolume: v.string(),
+        containerId: v.optional(v.string()),
+        lastActivityAt: v.optional(v.number()),
+        status: v.union(
+          v.literal("active"),
+          v.literal("warm"),
+          v.literal("terminated")
+        ),
+      })
+    ),
   })
     .index("by_task", ["taskId", "createdAt"])
     .index("by_parent", ["parentRunId"])
     .index("by_status", ["status"])
     .index("by_vscode_status", ["vscode.status"])
     .index("by_vscode_container_name", ["vscode.containerName"])
+    .index("by_session_status", ["session.status"])
     .index("by_user", ["userId", "createdAt"])
     .index("by_team_user", ["teamId", "userId"]),
   taskVersions: defineTable({

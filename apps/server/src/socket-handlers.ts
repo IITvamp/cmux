@@ -1,4 +1,5 @@
 import { api } from "@cmux/convex/api";
+import type { Id } from "@cmux/convex/dataModel";
 import {
   ArchiveTaskSchema,
   GitCompareRefsSchema,
@@ -11,8 +12,10 @@ import {
   OpenInEditorSchema,
   SpawnFromCommentSchema,
   StartTaskSchema,
+  ResumeRunSchema,
   type AvailableEditors,
   type FileInfo,
+  type ResumeRunResponse,
 } from "@cmux/shared";
 import fuzzysort from "fuzzysort";
 import { minimatch } from "minimatch";
@@ -21,7 +24,7 @@ import { promises as fs } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
-import { spawnAllAgents } from "./agentSpawner.js";
+import { resumeTaskRun, spawnAllAgents } from "./agentSpawner.js";
 import { stopContainersForRuns } from "./archiveTask.js";
 import { compareRefsForRepo } from "./diffs/compareRefs.js";
 import { getRunDiffs } from "./diffs/getRunDiffs.js";
@@ -528,6 +531,72 @@ export function setupSocketHandlers(
           taskId,
           error: error instanceof Error ? error.message : "Unknown error",
         });
+      }
+    });
+
+    socket.on("resume-run", async (data, callback) => {
+      const parsed = ResumeRunSchema.safeParse(data);
+      if (!parsed.success) {
+        serverLogger.error(
+          "resume-run payload failed validation",
+          parsed.error
+        );
+        callback({ success: false, error: "Invalid resume request" });
+        return;
+      }
+
+      const { teamSlugOrId, taskRunId, theme } = parsed.data;
+
+      if (teamSlugOrId !== safeTeam) {
+        callback({ success: false, error: "Team mismatch" });
+        return;
+      }
+
+      try {
+        const resumeResult = await resumeTaskRun({
+          taskRunId: taskRunId as Id<"taskRuns">,
+          teamSlugOrId,
+          theme,
+        });
+
+        const response: ResumeRunResponse = {
+          success: true,
+          workspaceUrl: resumeResult.workspaceUrl,
+          url: resumeResult.vscodeUrl,
+          ports: resumeResult.ports ?? null,
+          provider: "docker",
+        };
+
+        callback(response);
+
+        try {
+          void gitDiffManager.watchWorkspace(
+            resumeResult.worktreePath,
+            (changedPath) => {
+              rt.emit("git-file-changed", {
+                workspacePath: resumeResult.worktreePath,
+                filePath: changedPath,
+              });
+            }
+          );
+        } catch (error) {
+          serverLogger.warn(
+            "Could not set up file watching for resumed workspace:",
+            error
+          );
+        }
+
+        rt.emit("vscode-spawned", {
+          instanceId: String(taskRunId),
+          url: resumeResult.vscodeUrl,
+          workspaceUrl: resumeResult.workspaceUrl,
+          provider: "docker",
+        });
+      } catch (error) {
+        serverLogger.error("Error resuming run:", error);
+        const message =
+          error instanceof Error ? error.message : "Failed to resume run";
+        callback({ success: false, error: message });
       }
     });
 
