@@ -1,4 +1,6 @@
-export async function checkOpenAIRequirements(): Promise<string[]> {
+export async function checkOpenAIRequirements(
+  apiKeys?: Record<string, string>
+): Promise<string[]> {
   const { access } = await import("node:fs/promises");
   const { homedir } = await import("node:os");
   const { join } = await import("node:path");

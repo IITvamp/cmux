@@ -1,8 +1,10 @@
-export async function checkAmpRequirements(): Promise<string[]> {
+export async function checkAmpRequirements(
+  apiKeys?: Record<string, string>
+): Promise<string[]> {
   const { access } = await import("node:fs/promises");
   const { homedir } = await import("node:os");
   const { join } = await import("node:path");
-  
+
   const missing: string[] = [];
 
   // Note: .config/amp/settings.json is optional - AMP creates a default if missing
@@ -14,8 +16,8 @@ export async function checkAmpRequirements(): Promise<string[]> {
     .then(() => true)
     .catch(() => false);
 
-  // Also check for AMP_API_KEY environment variable
-  if (!hasSecretsFile && !process.env.AMP_API_KEY) {
+  // Also check for AMP_API_KEY environment variable or in provided API keys
+  if (!hasSecretsFile && !apiKeys?.AMP_API_KEY && !process.env.AMP_API_KEY) {
     missing.push("AMP API key (no secrets.json or AMP_API_KEY env var)");
   }
 

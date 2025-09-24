@@ -1,8 +1,10 @@
-export async function checkGeminiRequirements(): Promise<string[]> {
+export async function checkGeminiRequirements(
+  apiKeys?: Record<string, string>
+): Promise<string[]> {
   const { access, readFile } = await import("node:fs/promises");
   const { homedir } = await import("node:os");
   const { join } = await import("node:path");
-  
+
   const missing: string[] = [];
   const geminiDir = join(homedir(), ".gemini");
 
@@ -45,6 +47,11 @@ export async function checkGeminiRequirements(): Promise<string[]> {
       } catch {
         // Continue checking
       }
+    }
+
+    // Check API keys from Convex storage (passed as parameter)
+    if (!hasApiKey && apiKeys?.GEMINI_API_KEY) {
+      hasApiKey = true;
     }
 
     if (!hasApiKey && !process.env.GEMINI_API_KEY) {

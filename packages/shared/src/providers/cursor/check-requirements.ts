@@ -1,4 +1,6 @@
-export async function checkCursorRequirements(): Promise<string[]> {
+export async function checkCursorRequirements(
+  apiKeys?: Record<string, string>
+): Promise<string[]> {
   // These must be lazy since configs are imported into the browser
   const { existsSync } = await import("node:fs");
   const { homedir } = await import("node:os");
@@ -36,8 +38,8 @@ export async function checkCursorRequirements(): Promise<string[]> {
     }
   }
   
-  // Check for CURSOR_API_KEY environment variable
-  if (!hasAuth && process.env.CURSOR_API_KEY) {
+  // Check for CURSOR_API_KEY environment variable or in provided API keys
+  if (!hasAuth && (apiKeys?.CURSOR_API_KEY || process.env.CURSOR_API_KEY)) {
     hasAuth = true;
   }
   
