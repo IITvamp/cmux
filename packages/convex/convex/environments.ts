@@ -70,29 +70,34 @@ export const update = authMutation({
     id: v.id("environments"),
     name: v.optional(v.string()),
     description: v.optional(v.string()),
+    exposedPorts: v.optional(v.array(v.number())),
   },
   handler: async (ctx, args) => {
     const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
     const environment = await ctx.db.get(args.id);
-    
+
     if (!environment || environment.teamId !== teamId) {
       throw new Error("Environment not found");
     }
-    
+
     const updates: Record<string, any> = {
       updatedAt: Date.now(),
     };
-    
+
     if (args.name !== undefined) {
       updates.name = args.name;
     }
-    
+
     if (args.description !== undefined) {
       updates.description = args.description;
     }
-    
+
+    if (args.exposedPorts !== undefined) {
+      updates.exposedPorts = args.exposedPorts;
+    }
+
     await ctx.db.patch(args.id, updates);
-    
+
     return args.id;
   },
 });

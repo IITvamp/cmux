@@ -12,14 +12,17 @@ import {
   ArrowLeft,
   Calendar,
   Code,
+  Edit,
   GitBranch,
   Package,
   Play,
+  Save,
   Server,
   Terminal,
   Trash2,
+  X,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute(
@@ -45,6 +48,9 @@ function EnvironmentDetailsPage() {
   const { teamSlugOrId, environmentId } = Route.useParams();
   const navigate = useNavigate({ from: Route.fullPath });
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isEditingPorts, setIsEditingPorts] = useState(false);
+  const [editingPorts, setEditingPorts] = useState<number[]>([]);
+  const [newPort, setNewPort] = useState("");
 
   const { data: environment } = useSuspenseQuery(
     convexQuery(api.environments.get, {
@@ -53,6 +59,14 @@ function EnvironmentDetailsPage() {
     })
   );
   const deleteEnvironment = useMutation(api.environments.remove);
+  const updateEnvironment = useMutation(api.environments.update);
+
+  // Initialize editing ports when environment data is loaded
+  useEffect(() => {
+    if (environment?.exposedPorts) {
+      setEditingPorts(environment.exposedPorts);
+    }
+  }, [environment?.exposedPorts]);
 
   const handleDelete = async () => {
     if (
@@ -95,6 +109,55 @@ function EnvironmentDetailsPage() {
       params: { teamSlugOrId },
       search: { environmentId },
     });
+  };
+
+  const handleEditPorts = () => {
+    setIsEditingPorts(true);
+    setEditingPorts(environment?.exposedPorts || []);
+  };
+
+  const handleCancelEditPorts = () => {
+    setIsEditingPorts(false);
+    setEditingPorts(environment?.exposedPorts || []);
+    setNewPort("");
+  };
+
+  const handleAddPort = () => {
+    const port = parseInt(newPort);
+    if (isNaN(port) || port < 1 || port > 65535) {
+      toast.error("Please enter a valid port number (1-65535)");
+      return;
+    }
+    if (editingPorts.includes(port)) {
+      toast.error("Port already exists");
+      return;
+    }
+    const reservedPorts = [39376, 39377, 39378];
+    if (reservedPorts.includes(port)) {
+      toast.error("Cannot expose reserved ports: 39376, 39377, 39378");
+      return;
+    }
+    setEditingPorts([...editingPorts, port].sort((a, b) => a - b));
+    setNewPort("");
+  };
+
+  const handleRemovePort = (port: number) => {
+    setEditingPorts(editingPorts.filter(p => p !== port));
+  };
+
+  const handleSavePorts = async () => {
+    try {
+      await updateEnvironment({
+        teamSlugOrId,
+        id: environmentId,
+        exposedPorts: editingPorts,
+      });
+      setIsEditingPorts(false);
+      toast.success("Exposed ports updated successfully");
+    } catch (error) {
+      toast.error("Failed to update exposed ports");
+      console.error(error);
+    }
   };
 
   return (
@@ -227,27 +290,100 @@ function EnvironmentDetailsPage() {
               </div>
 
               {/* Exposed Ports */}
-              {environment.exposedPorts &&
-                environment.exposedPorts.length > 0 && (
-                  <div>
-                    <div className="flex items-center gap-2 mb-3">
-                      <Package className="w-4 h-4 text-neutral-500" />
-                      <h3 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
-                        Exposed Ports
-                      </h3>
-                    </div>
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Package className="w-4 h-4 text-neutral-500" />
+                    <h3 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                      Exposed Ports
+                    </h3>
+                  </div>
+                  {!isEditingPorts && (
+                    <button
+                      onClick={handleEditPorts}
+                      className="inline-flex items-center gap-1.5 text-sm text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 transition-colors"
+                    >
+                      <Edit className="w-4 h-4" />
+                      Edit
+                    </button>
+                  )}
+                </div>
+
+                {isEditingPorts ? (
+                  <div className="space-y-3">
                     <div className="flex flex-wrap gap-2">
-                      {environment.exposedPorts.map((port: number) => (
+                      {editingPorts.map((port: number) => (
+                        <span
+                          key={port}
+                          className="inline-flex items-center gap-1 rounded-full bg-neutral-100 dark:bg-neutral-900 px-3 py-1 text-sm text-neutral-700 dark:text-neutral-300"
+                        >
+                          {port}
+                          <button
+                            onClick={() => handleRemovePort(port)}
+                            className="ml-1 hover:text-red-600 dark:hover:text-red-400"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        type="number"
+                        min="1"
+                        max="65535"
+                        value={newPort}
+                        onChange={(e) => setNewPort(e.target.value)}
+                        placeholder="Enter port number"
+                        className="flex-1 px-3 py-1 text-sm border border-neutral-300 dark:border-neutral-700 rounded-md bg-white dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 placeholder-neutral-500 dark:placeholder-neutral-400"
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            handleAddPort();
+                          }
+                        }}
+                      />
+                      <button
+                        onClick={handleAddPort}
+                        className="px-3 py-1 text-sm bg-neutral-900 text-white rounded-md hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200 transition-colors"
+                      >
+                        Add
+                      </button>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleSavePorts}
+                        className="inline-flex items-center gap-1.5 px-3 py-1 text-sm bg-neutral-900 text-white rounded-md hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200 transition-colors"
+                      >
+                        <Save className="w-4 h-4" />
+                        Save
+                      </button>
+                      <button
+                        onClick={handleCancelEditPorts}
+                        className="px-3 py-1 text-sm border border-neutral-300 dark:border-neutral-700 rounded-md bg-white dark:bg-neutral-900 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {environment.exposedPorts && environment.exposedPorts.length > 0 ? (
+                      environment.exposedPorts.map((port: number) => (
                         <span
                           key={port}
                           className="inline-flex items-center rounded-full bg-neutral-100 dark:bg-neutral-900 px-3 py-1 text-sm text-neutral-700 dark:text-neutral-300"
                         >
                           {port}
                         </span>
-                      ))}
-                    </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-neutral-500 dark:text-neutral-400">
+                        No ports exposed
+                      </p>
+                    )}
                   </div>
                 )}
+              </div>
 
               {/* Technical Details */}
               <div className="pt-4 border-t border-neutral-200 dark:border-neutral-800">

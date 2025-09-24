@@ -57,6 +57,15 @@ const GetEnvironmentVarsResponse = z
   })
   .openapi("GetEnvironmentVarsResponse");
 
+const UpdateEnvironmentBody = z
+  .object({
+    teamSlugOrId: z.string(),
+    name: z.string().optional(),
+    description: z.string().optional(),
+    exposedPorts: z.array(z.number()).optional(),
+  })
+  .openapi("UpdateEnvironmentBody");
+
 // Create a new environment
 environmentsRouter.openapi(
   createRoute({
@@ -360,6 +369,84 @@ environmentsRouter.openapi(
     } catch (error) {
       console.error("Failed to get environment variables:", error);
       return c.text("Failed to get environment variables", 500);
+    }
+  }
+);
+
+// Update an environment
+environmentsRouter.openapi(
+  createRoute({
+    method: "patch" as const,
+    path: "/environments/{id}",
+    tags: ["Environments"],
+    summary: "Update an environment",
+    request: {
+      params: z.object({
+        id: z.string(),
+      }),
+      body: {
+        content: {
+          "application/json": {
+            schema: UpdateEnvironmentBody,
+          },
+        },
+        required: true,
+      },
+    },
+    responses: {
+      200: {
+        content: {
+          "application/json": {
+            schema: z.object({
+              id: z.string(),
+            }),
+          },
+        },
+        description: "Environment updated successfully",
+      },
+      400: { description: "Invalid request - reserved ports cannot be exposed" },
+      401: { description: "Unauthorized" },
+      404: { description: "Environment not found" },
+      500: { description: "Failed to update environment" },
+    },
+  }),
+  async (c) => {
+    // Require authentication
+    const accessToken = await getAccessTokenFromRequest(c.req.raw);
+    if (!accessToken) return c.text("Unauthorized", 401);
+
+    const { id } = c.req.valid("param");
+    const body = c.req.valid("json");
+
+    try {
+      // Verify team access
+      await verifyTeamAccess({
+        req: c.req.raw,
+        teamSlugOrId: body.teamSlugOrId,
+      });
+
+      // Validate exposed ports - prevent reserved ports
+      const CMUX_PORTS = new Set([39376, 39377, 39378]);
+      if (body.exposedPorts) {
+        const invalidPorts = body.exposedPorts.filter(port => CMUX_PORTS.has(port));
+        if (invalidPorts.length > 0) {
+          return c.text(`Invalid request - reserved ports cannot be exposed: ${invalidPorts.join(', ')}`, 400);
+        }
+      }
+
+      const convexClient = getConvex({ accessToken });
+      const environmentId = await convexClient.mutation(api.environments.update, {
+        teamSlugOrId: body.teamSlugOrId,
+        id: id as string & { __tableName: "environments" },
+        name: body.name,
+        description: body.description,
+        exposedPorts: body.exposedPorts,
+      });
+
+      return c.json({ id: environmentId });
+    } catch (error) {
+      console.error("Failed to update environment:", error);
+      return c.text("Failed to update environment", 500);
     }
   }
 );
