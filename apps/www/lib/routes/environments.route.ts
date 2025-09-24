@@ -4,7 +4,6 @@ import { stackServerAppJs } from "@/lib/utils/stack";
 import { verifyTeamAccess } from "@/lib/utils/team-verification";
 import { env } from "@/lib/utils/www-env";
 import { api } from "@cmux/convex/api";
-import type { Doc } from "@cmux/convex/dataModel";
 import { RESERVED_CMUX_PORT_SET } from "@cmux/shared/utils/reserved-cmux-ports";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { validateExposedPorts } from "@cmux/shared/utils/validate-exposed-ports";
@@ -688,17 +687,15 @@ environmentsRouter.openapi(
         return c.text("Environment not found", 404);
       }
 
-      const mapped = versions.map(
-        (version: Doc<"environmentSnapshotVersions">) => ({
-          id: String(version._id),
-          version: version.version,
-          morphSnapshotId: version.morphSnapshotId,
-          createdAt: version.createdAt,
-          createdByUserId: version.createdByUserId,
-          label: version.label ?? undefined,
-          isActive: version.morphSnapshotId === environment.morphSnapshotId,
-        })
-      );
+      const mapped = versions.map((version) => ({
+        id: String(version._id),
+        version: version.version,
+        morphSnapshotId: version.morphSnapshotId,
+        createdAt: version.createdAt,
+        createdByUserId: version.createdByUserId,
+        label: version.label ?? undefined,
+        isActive: version.isActive,
+      }));
 
       return c.json(mapped);
     } catch (error) {

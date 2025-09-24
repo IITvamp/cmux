@@ -1,9 +1,16 @@
 import { FloatingPane } from "@/components/floating-pane";
 import { TitleBar } from "@/components/TitleBar";
 import { convexQueryClient } from "@/contexts/convex/convex-query-client";
+import { queryClient } from "@/query-client";
 import { api } from "@cmux/convex/api";
+import type { Id } from "@cmux/convex/dataModel";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
 import { validateExposedPorts } from "@cmux/shared/utils/validate-exposed-ports";
+import {
+  patchApiEnvironmentsByIdPortsMutation,
+  postApiEnvironmentsByIdSnapshotsBySnapshotVersionIdActivateMutation,
+  postApiSandboxesStartMutation,
+} from "@cmux/www-openapi-client/react-query";
 import { convexQuery } from "@convex-dev/react-query";
 import {
   useMutation as useRQMutation,
@@ -28,14 +35,6 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-
-import { queryClient } from "@/query-client";
-import {
-  getApiEnvironmentsByIdSnapshotsOptions,
-  patchApiEnvironmentsByIdPortsMutation,
-  postApiEnvironmentsByIdSnapshotsBySnapshotVersionIdActivateMutation,
-  postApiSandboxesStartMutation,
-} from "@cmux/www-openapi-client/react-query";
 
 export const Route = createFileRoute(
   "/_layout/$teamSlugOrId/environments/$environmentId"
@@ -63,12 +62,6 @@ export const Route = createFileRoute(
         id: params.environmentId,
       })
     );
-    void queryClient.ensureQueryData(
-      getApiEnvironmentsByIdSnapshotsOptions({
-        path: { id: String(params.environmentId) },
-        query: { teamSlugOrId: params.teamSlugOrId },
-      })
-    );
   },
   component: EnvironmentDetailsPage,
   validateSearch: () => ({}),
@@ -86,9 +79,9 @@ function EnvironmentDetailsPage() {
   if (!environment) {
     throw new Error("Environment not found");
   }
-  const snapshotsQuery = getApiEnvironmentsByIdSnapshotsOptions({
-    path: { id: String(environmentId) },
-    query: { teamSlugOrId },
+  const snapshotsQuery = convexQuery(api.environmentSnapshots.list, {
+    teamSlugOrId,
+    environmentId,
   });
   const { data: snapshotVersions } = useSuspenseQuery(snapshotsQuery);
   const deleteEnvironment = useMutation(api.environments.remove);
@@ -200,13 +193,16 @@ function EnvironmentDetailsPage() {
     );
   };
 
-  const handleActivateSnapshot = (versionId: string) => {
-    setActivatingVersionId(versionId);
+  const handleActivateSnapshot = (
+    versionId: Id<"environmentSnapshotVersions">
+  ) => {
+    const versionIdString = String(versionId);
+    setActivatingVersionId(versionIdString);
     activateSnapshotMutation.mutate(
       {
         path: {
           id: String(environmentId),
-          snapshotVersionId: versionId,
+          snapshotVersionId: versionIdString,
         },
         body: { teamSlugOrId },
       },
@@ -584,7 +580,7 @@ function EnvironmentDetailsPage() {
                   ) : (
                     snapshotVersions.map((version) => (
                       <div
-                        key={version.id}
+                        key={version._id}
                         className="rounded-md border border-neutral-200 p-3 dark:border-neutral-800"
                       >
                         <div className="flex items-center justify-between gap-3">
@@ -604,15 +600,17 @@ function EnvironmentDetailsPage() {
                           {!version.isActive && (
                             <button
                               type="button"
-                              onClick={() => handleActivateSnapshot(version.id)}
+                              onClick={() =>
+                                handleActivateSnapshot(version._id)
+                              }
                               disabled={
                                 activateSnapshotMutation.isPending &&
-                                activatingVersionId === version.id
+                                activatingVersionId === String(version._id)
                               }
                               className="inline-flex items-center rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-60 disabled:cursor-not-allowed dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
                             >
                               {activateSnapshotMutation.isPending &&
-                              activatingVersionId === version.id
+                              activatingVersionId === String(version._id)
                                 ? "Activating..."
                                 : "Activate"}
                             </button>

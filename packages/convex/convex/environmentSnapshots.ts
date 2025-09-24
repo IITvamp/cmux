@@ -14,13 +14,18 @@ export const list = authQuery({
       throw new Error("Environment not found");
     }
 
-    return await ctx.db
+    const versions = await ctx.db
       .query("environmentSnapshotVersions")
       .withIndex("by_environment_version", (q) =>
         q.eq("environmentId", args.environmentId)
       )
       .order("desc")
       .collect();
+
+    return versions.map((version) => ({
+      ...version,
+      isActive: version.morphSnapshotId === environment.morphSnapshotId,
+    }));
   },
 });
 
