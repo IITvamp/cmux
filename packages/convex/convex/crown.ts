@@ -29,10 +29,9 @@ export const evaluateAndCrownWinner = authMutation({
       // Get all completed runs for this task
       const taskRuns = await ctx.db
         .query("taskRuns")
-        .withIndex("by_team_user", (q) =>
-          q.eq("teamId", teamId).eq("userId", userId)
-        )
-        .filter((q) => q.eq(q.field("taskId"), args.taskId))
+        .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+        .filter((q) => q.eq(q.field("teamId"), teamId))
+        .filter((q) => q.eq(q.field("userId"), userId))
         .filter((q) => q.eq(q.field("status"), "completed"))
         .collect();
 
@@ -59,10 +58,9 @@ export const evaluateAndCrownWinner = authMutation({
       // Check if evaluation already exists or is pending
       const existingEvaluation = await ctx.db
         .query("crownEvaluations")
-        .withIndex("by_team_user", (q) =>
-          q.eq("teamId", teamId).eq("userId", userId)
-        )
-        .filter((q) => q.eq(q.field("taskId"), args.taskId))
+        .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+        .filter((q) => q.eq(q.field("teamId"), teamId))
+        .filter((q) => q.eq(q.field("userId"), userId))
         .first();
 
       if (existingEvaluation) {
@@ -128,10 +126,9 @@ export const setCrownWinner = authMutation({
     // Get all runs for this task
     const taskRuns = await ctx.db
       .query("taskRuns")
-      .withIndex("by_team_user", (q) =>
-        q.eq("teamId", teamId).eq("userId", userId)
-      )
-      .filter((q) => q.eq(q.field("taskId"), taskRun.taskId))
+      .withIndex("by_task", (q) => q.eq("taskId", taskRun.taskId))
+      .filter((q) => q.eq(q.field("teamId"), teamId))
+      .filter((q) => q.eq(q.field("userId"), userId))
       .collect();
 
     // Update the selected run as crowned
@@ -187,10 +184,9 @@ export const getCrownedRun = authQuery({
     const teamId = await getTeamId(ctx, args.teamSlugOrId);
     const crownedRun = await ctx.db
       .query("taskRuns")
-      .withIndex("by_team_user", (q) =>
-        q.eq("teamId", teamId).eq("userId", userId)
-      )
-      .filter((q) => q.eq(q.field("taskId"), args.taskId))
+      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+      .filter((q) => q.eq(q.field("teamId"), teamId))
+      .filter((q) => q.eq(q.field("userId"), userId))
       .filter((q) => q.eq(q.field("isCrowned"), true))
       .first();
 
@@ -212,10 +208,9 @@ export const getCrownEvaluation = authQuery({
     const teamId = await getTeamId(ctx, args.teamSlugOrId);
     const evaluation = await ctx.db
       .query("crownEvaluations")
-      .withIndex("by_team_user", (q) =>
-        q.eq("teamId", teamId).eq("userId", userId)
-      )
-      .filter((q) => q.eq(q.field("taskId"), args.taskId))
+      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+      .filter((q) => q.eq(q.field("teamId"), teamId))
+      .filter((q) => q.eq(q.field("userId"), userId))
       .first();
 
     return evaluation;

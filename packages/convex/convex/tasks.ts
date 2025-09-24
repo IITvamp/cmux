@@ -242,10 +242,9 @@ export const getVersions = authQuery({
     const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
     return await ctx.db
       .query("taskVersions")
-      .withIndex("by_team_user", (q) =>
-        q.eq("teamId", teamId).eq("userId", userId)
-      )
-      .filter((q) => q.eq(q.field("taskId"), args.taskId))
+      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+      .filter((q) => q.eq(q.field("teamId"), teamId))
+      .filter((q) => q.eq(q.field("userId"), userId))
       .collect();
   },
 });
@@ -383,10 +382,9 @@ export const createVersion = authMutation({
     const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
     const existingVersions = await ctx.db
       .query("taskVersions")
-      .withIndex("by_team_user", (q) =>
-        q.eq("teamId", teamId).eq("userId", userId)
-      )
-      .filter((q) => q.eq(q.field("taskId"), args.taskId))
+      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+      .filter((q) => q.eq(q.field("teamId"), teamId))
+      .filter((q) => q.eq(q.field("userId"), userId))
       .collect();
 
     const version = existingVersions.length + 1;
@@ -430,10 +428,9 @@ export const getTasksWithPendingCrownEvaluation = authQuery({
     for (const task of tasks) {
       const existingEvaluation = await ctx.db
         .query("crownEvaluations")
-        .withIndex("by_team_user", (q) =>
-          q.eq("teamId", teamId).eq("userId", userId)
-        )
-        .filter((q) => q.eq(q.field("taskId"), task._id))
+        .withIndex("by_task", (q) => q.eq("taskId", task._id))
+        .filter((q) => q.eq(q.field("teamId"), teamId))
+        .filter((q) => q.eq(q.field("userId"), userId))
         .first();
 
       if (!existingEvaluation) {
@@ -484,10 +481,9 @@ export const checkAndEvaluateCrown = authMutation({
     // Get all runs for this task
     const taskRuns = await ctx.db
       .query("taskRuns")
-      .withIndex("by_team_user", (q) =>
-        q.eq("teamId", teamId).eq("userId", userId)
-      )
-      .filter((q) => q.eq(q.field("taskId"), args.taskId))
+      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+      .filter((q) => q.eq(q.field("teamId"), teamId))
+      .filter((q) => q.eq(q.field("userId"), userId))
       .collect();
 
     console.log(`[CheckCrown] Task ${args.taskId} has ${taskRuns.length} runs`);
@@ -541,10 +537,9 @@ export const checkAndEvaluateCrown = authMutation({
     // Check if we've already evaluated crown for this task
     const existingEvaluation = await ctx.db
       .query("crownEvaluations")
-      .withIndex("by_team_user", (q) =>
-        q.eq("teamId", teamId).eq("userId", userId)
-      )
-      .filter((q) => q.eq(q.field("taskId"), args.taskId))
+      .withIndex("by_task", (q) => q.eq("taskId", args.taskId))
+      .filter((q) => q.eq(q.field("teamId"), teamId))
+      .filter((q) => q.eq(q.field("userId"), userId))
       .first();
 
     if (existingEvaluation) {

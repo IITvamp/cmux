@@ -105,7 +105,7 @@ export function AgentCommandItem({
               type="button"
               onClick={handleDecrement}
               disabled={disableDecrease}
-              className="inline-flex h-5 w-5 items-center justify-center text-neutral-500 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-neutral-300 dark:focus-visible:ring-neutral-500/40 hover:bg-neutral-200 rounded-full transform translate-y-[1px]"
+              className="inline-flex h-5 w-5 items-center justify-center text-neutral-500 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-neutral-300 dark:focus-visible:ring-neutral-500/40 hover:bg-neutral-200 dark:hover:bg-neutral-500/80 rounded-full transform translate-y-[1px]"
             >
               <span className="sr-only">Decrease {opt.label}</span>
               <Minus className="size-3" aria-hidden="true" />
@@ -117,7 +117,7 @@ export function AgentCommandItem({
               type="button"
               onClick={handleIncrement}
               disabled={disableIncrease}
-              className="inline-flex h-5 w-5 items-center justify-center text-neutral-500 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-neutral-300 dark:focus-visible:ring-neutral-500/40 hover:bg-neutral-200 rounded-full transform translate-y-[1px]"
+              className="inline-flex h-5 w-5 items-center justify-center text-neutral-500 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/50 disabled:cursor-not-allowed disabled:opacity-40 dark:text-neutral-300 dark:focus-visible:ring-neutral-500/40 hover:bg-neutral-200 dark:hover:bg-neutral-500/80 rounded-full transform translate-y-[1px]"
             >
               <span className="sr-only">Increase {opt.label}</span>
               <Plus className="size-3" aria-hidden="true" />
