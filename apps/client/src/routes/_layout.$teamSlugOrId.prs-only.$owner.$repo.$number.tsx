@@ -36,5 +36,3 @@ function PROnlyRoute() {
     </FloatingPane>
   );
 }
-
-export default PROnlyRoute;
