@@ -1,10 +1,15 @@
-export async function checkGeminiRequirements(): Promise<string[]> {
+import type { AgentRequirementOptions } from "../../agentConfig.js";
+
+export async function checkGeminiRequirements(
+  options?: AgentRequirementOptions
+): Promise<string[]> {
   const { access, readFile } = await import("node:fs/promises");
   const { homedir } = await import("node:os");
   const { join } = await import("node:path");
   
   const missing: string[] = [];
   const geminiDir = join(homedir(), ".gemini");
+  const providedApiKey = options?.apiKeys?.GEMINI_API_KEY?.trim();
 
   try {
     // Check for settings.json (required)
@@ -47,7 +52,18 @@ export async function checkGeminiRequirements(): Promise<string[]> {
       }
     }
 
-    if (!hasApiKey && !process.env.GEMINI_API_KEY) {
+    if (!hasApiKey) {
+      const envVarKey = process.env.GEMINI_API_KEY?.trim();
+      if (envVarKey && envVarKey.length > 0) {
+        hasApiKey = true;
+      }
+    }
+
+    if (!hasApiKey && providedApiKey && providedApiKey.length > 0) {
+      hasApiKey = true;
+    }
+
+    if (!hasApiKey) {
       missing.push("Gemini authentication (no OAuth or API key found)");
     }
   }
