@@ -219,9 +219,9 @@ function DashboardComponent() {
   const handleStartTask = useCallback(async () => {
     // For local mode, perform a fresh docker check right before starting
     if (!isEnvSelected && !isCloudMode) {
-      let ready = dockerReady;
-      if (!ready && socket) {
-        ready = await new Promise<boolean>((resolve) => {
+      // Always check Docker status when in local mode, regardless of current state
+      if (socket) {
+        const ready = await new Promise<boolean>((resolve) => {
           socket.emit("check-provider-status", (response) => {
             const isRunning = !!response?.dockerStatus?.isRunning;
             if (typeof isRunning === "boolean") {
@@ -230,9 +230,16 @@ function DashboardComponent() {
             resolve(isRunning);
           });
         });
-      }
-      if (!ready) {
-        toast.error("Docker is not running. Start Docker Desktop.");
+
+        // Only show the alert if Docker is actually not running after checking
+        if (!ready) {
+          toast.error("Docker is not running. Start Docker Desktop.");
+          return;
+        }
+      } else {
+        // If socket is not connected, we can't verify Docker status
+        console.error("Cannot verify Docker status: socket not connected");
+        toast.error("Cannot verify Docker status. Please ensure the server is running.");
         return;
       }
     }
