@@ -21,38 +21,59 @@ export const stackClientApp = new StackClientApp({
   },
 });
 
-cachedGetUser(stackClientApp).then(async (user) => {
-  if (!user) {
-    console.warn("[StackAuth] No user; convex auth not ready");
-    signalConvexAuthReady(false);
-    return;
-  }
-  const authJson = await user.getAuthJson();
-  if (!authJson.accessToken) {
-    console.warn("[StackAuth] No access token; convex auth not ready");
-    signalConvexAuthReady(false);
-    return;
-  }
-  let isFirstTime = true;
-  convexQueryClient.convexClient.setAuth(
-    async () => {
-      // First time we get the auth token, we use the cached one. In subsequent calls, we call stack to get the latest auth token.
-      if (isFirstTime) {
-        isFirstTime = false;
-        return authJson.accessToken;
-      }
-      const newAuthJson = await user.getAuthJson();
-      if (!newAuthJson.accessToken) {
-        console.warn("[StackAuth] No access token; convex auth not ready");
-        signalConvexAuthReady(false);
-        return;
-      }
-      return newAuthJson.accessToken;
-    },
-    (isAuthenticated) => {
-      signalConvexAuthReady(isAuthenticated);
+type ConvexAuthFetcher = Parameters<
+  typeof convexQueryClient.convexClient.setAuth
+>[0];
+
+type StackClientAppWithConvex = StackClientApp & {
+  getConvexClientAuth?: (options: {
+    tokenStore: "cookie" | "nextjs-cookie" | "memory" | null;
+  }) => ConvexAuthFetcher;
+};
+
+function buildLegacyConvexClientAuthFetcher(
+  app: StackClientApp
+): ConvexAuthFetcher {
+  let cachedAccessToken: string | null = null;
+  return async ({ forceRefreshToken }) => {
+    const user = await cachedGetUser(app);
+    if (!user) {
+      console.warn("[StackAuth] No user; convex auth not ready");
+      signalConvexAuthReady(false);
+      cachedAccessToken = null;
+      return null;
     }
-  );
+
+    if (!forceRefreshToken && cachedAccessToken) {
+      return cachedAccessToken;
+    }
+
+    const authJson = await user.getAuthJson();
+    const accessToken = authJson?.accessToken ?? null;
+    if (!accessToken) {
+      console.warn("[StackAuth] No access token; convex auth not ready");
+      signalConvexAuthReady(false);
+    }
+    cachedAccessToken = accessToken;
+    return accessToken;
+  };
+}
+
+const getConvexClientAuth =
+  (stackClientApp as StackClientAppWithConvex).getConvexClientAuth ??
+  ((options: { tokenStore: "cookie" | "nextjs-cookie" | "memory" | null }) => {
+    if (options.tokenStore && options.tokenStore !== "cookie") {
+      console.warn(
+        `[StackAuth] Unsupported tokenStore "${options.tokenStore}" for legacy Convex integration; defaulting to cookies.`
+      );
+    }
+    return buildLegacyConvexClientAuthFetcher(stackClientApp);
+  });
+
+const convexAuthFetcher = getConvexClientAuth({ tokenStore: "cookie" });
+
+convexQueryClient.convexClient.setAuth(convexAuthFetcher, (isAuthenticated) => {
+  signalConvexAuthReady(isAuthenticated);
 });
 
 const fetchWithAuth = (async (request: Request) => {

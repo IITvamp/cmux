@@ -2,24 +2,18 @@
 
 import { getRandomKitty } from "@/components/kitties";
 import CmuxLogoMarkAnimated from "@/components/logo/cmux-logo-mark-animated";
-import { cachedGetUser } from "@/lib/cachedGetUser";
 import { isElectron } from "@/lib/electron";
-import { stackClientApp } from "@/lib/stack";
 import { WWW_ORIGIN } from "@/lib/wwwOrigin";
 import { SignIn, useUser } from "@stackframe/react";
-import { useSuspenseQuery } from "@tanstack/react-query";
-import { Authenticated, ConvexProviderWithAuth } from "convex/react";
+import { Authenticated, ConvexProvider } from "convex/react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  Suspense,
   useCallback,
   useEffect,
-  useMemo,
   useState,
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { authJsonQueryOptions } from "./authJsonQueryOptions";
 import { signalConvexAuthReady } from "./convex-auth-ready";
 import { convexQueryClient } from "./convex-query-client";
 
@@ -29,44 +23,6 @@ function OnReadyComponent({ onReady }: { onReady: () => void }) {
     onReady();
   }, [onReady]);
   return null;
-}
-
-function useAuthFromStack() {
-  const user = useUser();
-  const authJsonQuery = useSuspenseQuery({
-    ...authJsonQueryOptions(),
-  });
-  const isLoading = false;
-  const accessToken = authJsonQuery.data?.accessToken ?? null;
-  // Only consider authenticated once an access token is available.
-  const isAuthenticated = useMemo(
-    () => Boolean(user && accessToken),
-    [user, accessToken]
-  );
-  // Important: keep this function identity stable unless auth context truly changes.
-  const fetchAccessToken = useCallback(
-    async (_opts: { forceRefreshToken: boolean }) => {
-      const cached = authJsonQuery.data;
-      if (cached?.accessToken) {
-        return cached.accessToken;
-      }
-      // Fallback: directly ask Stack for a fresh token in case the cache is stale
-      const u = await cachedGetUser(stackClientApp);
-      const fresh = await u?.getAuthJson();
-      return fresh?.accessToken ?? null;
-    },
-    [authJsonQuery.data]
-  );
-
-  const authResult = useMemo(
-    () => ({
-      isLoading,
-      isAuthenticated,
-      fetchAccessToken,
-    }),
-    [isAuthenticated, isLoading, fetchAccessToken]
-  );
-  return authResult;
 }
 
 function AuthenticatedOrSignIn({
@@ -161,16 +117,11 @@ export function ConvexClientProvider({ children }: { children: ReactNode }) {
           </motion.div>
         ) : null}
       </AnimatePresence>
-      <Suspense fallback={null}>
-        <ConvexProviderWithAuth
-          client={convexQueryClient.convexClient}
-          useAuth={useAuthFromStack}
-        >
-          <AuthenticatedOrSignIn onReady={onBootReady}>
-            {children}
-          </AuthenticatedOrSignIn>
-        </ConvexProviderWithAuth>
-      </Suspense>
+      <ConvexProvider client={convexQueryClient.convexClient}>
+        <AuthenticatedOrSignIn onReady={onBootReady}>
+          {children}
+        </AuthenticatedOrSignIn>
+      </ConvexProvider>
     </>
   );
 }
