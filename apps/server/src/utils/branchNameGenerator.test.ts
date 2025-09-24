@@ -1,18 +1,18 @@
-import { describe, expect, it, vi, beforeEach } from "vitest";
 import { generateObject, type GenerateObjectResult } from "ai";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  toKebabCase,
-  generateRandomId,
+  generateBranchBaseName,
   generateBranchName,
+  generateNewBranchName,
   generatePRInfo,
   generatePRTitle,
-  generateBranchBaseName,
-  generateUniqueBranchNamesFromTitle,
-  generateNewBranchName,
+  generateRandomId,
   generateUniqueBranchNames,
+  generateUniqueBranchNamesFromTitle,
   getPRTitleFromTaskDescription,
+  toKebabCase,
   type PRGeneration,
-} from "./branchNameGenerator.js";
+} from "./branchNameGenerator";
 
 vi.mock("ai", () => ({
   generateObject: vi.fn(),
@@ -38,7 +38,9 @@ vi.mock("./fileLogger.js", () => ({
 }));
 
 // Helper function to create a mock GenerateObjectResult
-function createMockGenerateObjectResult(object: PRGeneration): Partial<GenerateObjectResult<PRGeneration>> {
+function createMockGenerateObjectResult(
+  object: PRGeneration
+): Partial<GenerateObjectResult<PRGeneration>> {
   return {
     object,
     finishReason: "stop",
@@ -141,10 +143,14 @@ describe("branchNameGenerator", () => {
     });
 
     it("should handle the specific problematic case", () => {
-      const branchName = generateBranchName("add-llm-driven-auto-commit-and-push-for-completed-");
+      const branchName = generateBranchName(
+        "add-llm-driven-auto-commit-and-push-for-completed-"
+      );
       expect(branchName).not.toContain("--");
       // Should be truncated and cleaned up
-      expect(branchName).toMatch(/^cmux\/add-llm-driven-auto-commit-and-push-for-completed-[a-z0-9]{5}$/);
+      expect(branchName).toMatch(
+        /^cmux\/add-llm-driven-auto-commit-and-push-for-completed-[a-z0-9]{5}$/
+      );
     });
   });
 
@@ -159,10 +165,15 @@ describe("branchNameGenerator", () => {
         prTitle: "Fix authentication bug in login flow",
       };
       const mockResponse = createMockGenerateObjectResult(mockObject);
-      vi.mocked(generateObject).mockResolvedValueOnce(mockResponse as GenerateObjectResult<PRGeneration>);
+      vi.mocked(generateObject).mockResolvedValueOnce(
+        mockResponse as GenerateObjectResult<PRGeneration>
+      );
 
       const apiKeys = { OPENAI_API_KEY: "test-key" };
-      const result = await generatePRInfo("Fix the authentication bug", apiKeys);
+      const result = await generatePRInfo(
+        "Fix the authentication bug",
+        apiKeys
+      );
 
       expect(result).toEqual(mockObject);
       expect(generateObject).toHaveBeenCalledWith(
@@ -181,7 +192,9 @@ describe("branchNameGenerator", () => {
         prTitle: "Add user profile feature",
       };
       const mockResponse = createMockGenerateObjectResult(mockObject);
-      vi.mocked(generateObject).mockResolvedValueOnce(mockResponse as GenerateObjectResult<PRGeneration>);
+      vi.mocked(generateObject).mockResolvedValueOnce(
+        mockResponse as GenerateObjectResult<PRGeneration>
+      );
 
       const apiKeys = { GEMINI_API_KEY: "test-key" };
       const result = await generatePRInfo("Add user profile", apiKeys);
@@ -195,7 +208,9 @@ describe("branchNameGenerator", () => {
         prTitle: "Update project dependencies",
       };
       const mockResponse = createMockGenerateObjectResult(mockObject);
-      vi.mocked(generateObject).mockResolvedValueOnce(mockResponse as GenerateObjectResult<PRGeneration>);
+      vi.mocked(generateObject).mockResolvedValueOnce(
+        mockResponse as GenerateObjectResult<PRGeneration>
+      );
 
       const apiKeys = { ANTHROPIC_API_KEY: "test-key" };
       const result = await generatePRInfo("Update dependencies", apiKeys);
@@ -205,7 +220,10 @@ describe("branchNameGenerator", () => {
 
     it("should return fallback when no API keys are available", async () => {
       const apiKeys = {};
-      const result = await generatePRInfo("Fix the bug in authentication", apiKeys);
+      const result = await generatePRInfo(
+        "Fix the bug in authentication",
+        apiKeys
+      );
 
       expect(result).toEqual({
         branchName: "fix-the-bug-in-authentication",
@@ -232,9 +250,11 @@ describe("branchNameGenerator", () => {
         prTitle: "Test PR Title",
       };
       const mockResponse = createMockGenerateObjectResult(mockObject);
-      vi.mocked(generateObject).mockResolvedValueOnce(mockResponse as GenerateObjectResult<PRGeneration>);
+      vi.mocked(generateObject).mockResolvedValueOnce(
+        mockResponse as GenerateObjectResult<PRGeneration>
+      );
 
-      const apiKeys = { 
+      const apiKeys = {
         OPENAI_API_KEY: "openai-key",
         GEMINI_API_KEY: "gemini-key",
         ANTHROPIC_API_KEY: "anthropic-key",
@@ -258,7 +278,9 @@ describe("branchNameGenerator", () => {
         prTitle: "Fix critical bug",
       };
       const mockResponse = createMockGenerateObjectResult(mockObject);
-      vi.mocked(generateObject).mockResolvedValueOnce(mockResponse as GenerateObjectResult<PRGeneration>);
+      vi.mocked(generateObject).mockResolvedValueOnce(
+        mockResponse as GenerateObjectResult<PRGeneration>
+      );
 
       const apiKeys = { OPENAI_API_KEY: "test-key" };
       const title = await generatePRTitle("Fix bug", apiKeys);
@@ -277,29 +299,29 @@ describe("branchNameGenerator", () => {
   describe("generateUniqueBranchNamesFromTitle", () => {
     it("should generate the requested number of unique branch names", () => {
       const branches = generateUniqueBranchNamesFromTitle("Fix Bug", 5);
-      
+
       expect(branches).toHaveLength(5);
       expect(new Set(branches).size).toBe(5);
-      
-      branches.forEach(branch => {
+
+      branches.forEach((branch) => {
         expect(branch).toMatch(/^cmux\/fix-bug-[a-z0-9]{5}$/);
       });
     });
 
     it("should handle empty title", () => {
       const branches = generateUniqueBranchNamesFromTitle("", 3);
-      
+
       expect(branches).toHaveLength(3);
-      branches.forEach(branch => {
+      branches.forEach((branch) => {
         expect(branch).toMatch(/^cmux\/-[a-z0-9]{5}$/);
       });
     });
 
     it("should not create double hyphens with trailing hyphen titles", () => {
       const branches = generateUniqueBranchNamesFromTitle("fix-bug-", 3);
-      
+
       expect(branches).toHaveLength(3);
-      branches.forEach(branch => {
+      branches.forEach((branch) => {
         expect(branch).not.toContain("--");
         expect(branch).toMatch(/^cmux\/fix-bug-[a-z0-9]{5}$/);
       });
@@ -313,8 +335,8 @@ describe("branchNameGenerator", () => {
 
     it("should generate base name from API response", async () => {
       const mockConvex = await import("../utils/convexClient.js");
-      vi.mocked((mockConvex as any).__mockClient.query).mockResolvedValueOnce({ 
-        OPENAI_API_KEY: "test-key" 
+      vi.mocked((mockConvex as any).__mockClient.query).mockResolvedValueOnce({
+        OPENAI_API_KEY: "test-key",
       });
 
       const mockObject = {
@@ -322,7 +344,9 @@ describe("branchNameGenerator", () => {
         prTitle: "Add new feature",
       };
       const mockResponse = createMockGenerateObjectResult(mockObject);
-      vi.mocked(generateObject).mockResolvedValueOnce(mockResponse as GenerateObjectResult<PRGeneration>);
+      vi.mocked(generateObject).mockResolvedValueOnce(
+        mockResponse as GenerateObjectResult<PRGeneration>
+      );
 
       const baseName = await generateBranchBaseName(
         "Add new feature to the app",
@@ -333,7 +357,9 @@ describe("branchNameGenerator", () => {
 
     it("should use fallback when API fails", async () => {
       const mockConvex = await import("../utils/convexClient.js");
-      vi.mocked((mockConvex as any).__mockClient.query).mockResolvedValueOnce({});
+      vi.mocked((mockConvex as any).__mockClient.query).mockResolvedValueOnce(
+        {}
+      );
 
       const baseName = await generateBranchBaseName(
         "Test task description here",
@@ -346,7 +372,9 @@ describe("branchNameGenerator", () => {
   describe("generateNewBranchName", () => {
     it("should generate branch name with provided ID", async () => {
       const mockConvex = await import("../utils/convexClient.js");
-      vi.mocked((mockConvex as any).__mockClient.query).mockResolvedValueOnce({});
+      vi.mocked((mockConvex as any).__mockClient.query).mockResolvedValueOnce(
+        {}
+      );
 
       const branchName = await generateNewBranchName(
         "Fix bug",
@@ -358,7 +386,9 @@ describe("branchNameGenerator", () => {
 
     it("should generate branch name with random ID when not provided", async () => {
       const mockConvex = await import("../utils/convexClient.js");
-      vi.mocked((mockConvex as any).__mockClient.query).mockResolvedValueOnce({});
+      vi.mocked((mockConvex as any).__mockClient.query).mockResolvedValueOnce(
+        {}
+      );
 
       const branchName = await generateNewBranchName("Fix bug", "default");
       expect(branchName).toMatch(/^cmux\/fix-bug-[a-z0-9]{5}$/);
@@ -368,18 +398,20 @@ describe("branchNameGenerator", () => {
   describe("generateUniqueBranchNames", () => {
     it("should generate multiple unique branch names", async () => {
       const mockConvex = await import("../utils/convexClient.js");
-      vi.mocked((mockConvex as any).__mockClient.query).mockResolvedValueOnce({});
+      vi.mocked((mockConvex as any).__mockClient.query).mockResolvedValueOnce(
+        {}
+      );
 
       const branches = await generateUniqueBranchNames(
         "Add feature",
         3,
         "default"
       );
-      
+
       expect(branches).toHaveLength(3);
       expect(new Set(branches).size).toBe(3);
-      
-      branches.forEach(branch => {
+
+      branches.forEach((branch) => {
         expect(branch).toMatch(/^cmux\/add-feature-[a-z0-9]{5}$/);
       });
     });
@@ -388,8 +420,8 @@ describe("branchNameGenerator", () => {
   describe("getPRTitleFromTaskDescription", () => {
     it("should return PR title from API", async () => {
       const mockConvex = await import("../utils/convexClient.js");
-      vi.mocked((mockConvex as any).__mockClient.query).mockResolvedValueOnce({ 
-        OPENAI_API_KEY: "test-key" 
+      vi.mocked((mockConvex as any).__mockClient.query).mockResolvedValueOnce({
+        OPENAI_API_KEY: "test-key",
       });
 
       const mockObject = {
@@ -397,7 +429,9 @@ describe("branchNameGenerator", () => {
         prTitle: "Fix authentication bug",
       };
       const mockResponse = createMockGenerateObjectResult(mockObject);
-      vi.mocked(generateObject).mockResolvedValueOnce(mockResponse as GenerateObjectResult<PRGeneration>);
+      vi.mocked(generateObject).mockResolvedValueOnce(
+        mockResponse as GenerateObjectResult<PRGeneration>
+      );
 
       const title = await getPRTitleFromTaskDescription(
         "Fix the authentication bug",
@@ -408,7 +442,9 @@ describe("branchNameGenerator", () => {
 
     it("should return fallback title when API unavailable", async () => {
       const mockConvex = await import("../utils/convexClient.js");
-      vi.mocked((mockConvex as any).__mockClient.query).mockResolvedValueOnce({});
+      vi.mocked((mockConvex as any).__mockClient.query).mockResolvedValueOnce(
+        {}
+      );
 
       const title = await getPRTitleFromTaskDescription(
         "This is a long task description that should be truncated",

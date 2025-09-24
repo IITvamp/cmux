@@ -2,9 +2,9 @@ import { api } from "@cmux/convex/api";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
-import { RepositoryManager } from "./repositoryManager.js";
-import { getConvex } from "./utils/convexClient.js";
-import { serverLogger } from "./utils/fileLogger.js";
+import { RepositoryManager } from "./repositoryManager";
+import { getConvex } from "./utils/convexClient";
+import { serverLogger } from "./utils/fileLogger";
 
 interface WorkspaceResult {
   success: boolean;

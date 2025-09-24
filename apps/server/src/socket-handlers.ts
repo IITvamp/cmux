@@ -21,21 +21,21 @@ import { promises as fs } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
-import { spawnAllAgents } from "./agentSpawner.js";
-import { stopContainersForRuns } from "./archiveTask.js";
-import { compareRefsForRepo } from "./diffs/compareRefs.js";
-import { getRunDiffs } from "./diffs/getRunDiffs.js";
-import { execWithEnv } from "./execWithEnv.js";
-import { GitDiffManager } from "./gitDiff.js";
-import { getRustTime } from "./native/core.js";
-import type { RealtimeServer } from "./realtime.js";
-import { RepositoryManager } from "./repositoryManager.js";
-import type { GitRepoInfo } from "./server.js";
-import { getPRTitleFromTaskDescription } from "./utils/branchNameGenerator.js";
-import { getConvex } from "./utils/convexClient.js";
-import { ensureRunWorktreeAndBranch } from "./utils/ensureRunWorktree.js";
-import { serverLogger } from "./utils/fileLogger.js";
-import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken.js";
+import { spawnAllAgents } from "./agentSpawner";
+import { stopContainersForRuns } from "./archiveTask";
+import { compareRefsForRepo } from "./diffs/compareRefs";
+import { getRunDiffs } from "./diffs/getRunDiffs";
+import { execWithEnv } from "./execWithEnv";
+import { GitDiffManager } from "./gitDiff";
+import { getRustTime } from "./native/core";
+import type { RealtimeServer } from "./realtime";
+import { RepositoryManager } from "./repositoryManager";
+import type { GitRepoInfo } from "./server";
+import { getPRTitleFromTaskDescription } from "./utils/branchNameGenerator";
+import { getConvex } from "./utils/convexClient";
+import { ensureRunWorktreeAndBranch } from "./utils/ensureRunWorktree";
+import { serverLogger } from "./utils/fileLogger";
+import { getGitHubTokenFromKeychain } from "./utils/getGitHubToken";
 import {
   createReadyPr,
   fetchPrByHead,
@@ -44,13 +44,13 @@ import {
   mergePr,
   parseRepoFromUrl,
   reopenPr,
-} from "./utils/githubPr.js";
-import { getOctokit } from "./utils/octokit.js";
-import { checkAllProvidersStatus } from "./utils/providerStatus.js";
-import { refreshGitHubData } from "./utils/refreshGitHubData.js";
-import { runWithAuth, runWithAuthToken } from "./utils/requestContext.js";
-import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
-import { getProjectPaths } from "./workspace.js";
+} from "./utils/githubPr";
+import { getOctokit } from "./utils/octokit";
+import { checkAllProvidersStatus } from "./utils/providerStatus";
+import { refreshGitHubData } from "./utils/refreshGitHubData";
+import { runWithAuth, runWithAuthToken } from "./utils/requestContext";
+import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance";
+import { getProjectPaths } from "./workspace";
 
 const execAsync = promisify(exec);
 

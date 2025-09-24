@@ -2,13 +2,16 @@ import { GitHubIcon } from "@/components/icons/github";
 import { ResizableColumns } from "@/components/ResizableColumns";
 import { parseEnvBlock } from "@/lib/parseEnvBlock";
 import { formatEnvVarsContent } from "@cmux/shared/utils/format-env-vars-content";
+import { validateExposedPorts } from "@cmux/shared/utils/validate-exposed-ports";
 import {
   postApiEnvironmentsMutation,
   postApiSandboxesByIdEnvMutation,
+  postApiEnvironmentsByIdSnapshotsMutation,
 } from "@cmux/www-openapi-client/react-query";
 import { Accordion, AccordionItem } from "@heroui/react";
 import { useMutation as useRQMutation } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
+import type { Id } from "@cmux/convex/dataModel";
 import clsx from "clsx";
 import { ArrowLeft, Loader2, Minus, Plus, Settings, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -16,36 +19,101 @@ import TextareaAutosize from "react-textarea-autosize";
 
 export type EnvVar = { name: string; value: string; isSecret: boolean };
 
+const ensureInitialEnvVars = (initial?: EnvVar[]): EnvVar[] => {
+  const base = (initial ?? []).map((item) => ({
+    name: item.name,
+    value: item.value,
+    isSecret: item.isSecret ?? true,
+  }));
+  if (base.length === 0) {
+    return [{ name: "", value: "", isSecret: true }];
+  }
+  const last = base[base.length - 1];
+  if (!last || last.name.trim().length > 0 || last.value.trim().length > 0) {
+    base.push({ name: "", value: "", isSecret: true });
+  }
+  return base;
+};
+
 export function EnvironmentConfiguration({
   selectedRepos,
   teamSlugOrId,
   instanceId,
   vscodeUrl,
   isProvisioning,
+  mode = "new",
+  sourceEnvironmentId,
+  initialEnvName = "",
+  initialMaintenanceScript = "",
+  initialDevScript = "",
+  initialExposedPorts = "3000, 8080",
+  initialEnvVars,
 }: {
   selectedRepos: string[];
   teamSlugOrId: string;
   instanceId?: string;
   vscodeUrl?: string;
   isProvisioning: boolean;
+  mode?: "new" | "snapshot";
+  sourceEnvironmentId?: Id<"environments">;
+  initialEnvName?: string;
+  initialMaintenanceScript?: string;
+  initialDevScript?: string;
+  initialExposedPorts?: string;
+  initialEnvVars?: EnvVar[];
 }) {
   const navigate = useNavigate();
-  const search = useSearch({ from: "/_layout/$teamSlugOrId/environments/new" });
+  const searchRoute:
+    | "/_layout/$teamSlugOrId/environments/new"
+    | "/_layout/$teamSlugOrId/environments/new-version" =
+    mode === "snapshot"
+      ? "/_layout/$teamSlugOrId/environments/new-version"
+      : "/_layout/$teamSlugOrId/environments/new";
+  const search = useSearch({ from: searchRoute }) as {
+    step?: "select" | "configure";
+    selectedRepos?: string[];
+    connectionLogin?: string;
+    repoSearch?: string;
+    instanceId?: string;
+  };
   const [iframeLoaded, setIframeLoaded] = useState(false);
-  const [envName, setEnvName] = useState("");
-  const [envVars, setEnvVars] = useState<EnvVar[]>([
-    { name: "", value: "", isSecret: true },
-  ]);
-  const [maintenanceScript, setMaintenanceScript] = useState("");
-  const [devScript, setDevScript] = useState("");
-  const [exposedPorts, setExposedPorts] = useState("3000, 8080");
+  const [envName, setEnvName] = useState(() => initialEnvName);
+  const [envVars, setEnvVars] = useState<EnvVar[]>(() =>
+    ensureInitialEnvVars(initialEnvVars)
+  );
+  const [maintenanceScript, setMaintenanceScript] = useState(
+    () => initialMaintenanceScript
+  );
+  const [devScript, setDevScript] = useState(() => initialDevScript);
+  const [exposedPorts, setExposedPorts] = useState(
+    () => initialExposedPorts
+  );
+  const [portsError, setPortsError] = useState<string | null>(null);
   const keyInputRefs = useRef<Array<HTMLInputElement | null>>([]);
   const [pendingFocusIndex, setPendingFocusIndex] = useState<number | null>(
     null
   );
   const lastSubmittedEnvContent = useRef<string | null>(null);
+  const [localInstanceId, setLocalInstanceId] = useState<string | undefined>(
+    () => instanceId
+  );
+  const [localVscodeUrl, setLocalVscodeUrl] = useState<string | undefined>(
+    () => vscodeUrl
+  );
+
+  useEffect(() => {
+    setLocalInstanceId(instanceId);
+  }, [instanceId]);
+
+  useEffect(() => {
+    setLocalVscodeUrl(vscodeUrl);
+  }, [vscodeUrl]);
+  
   const createEnvironmentMutation = useRQMutation(
     postApiEnvironmentsMutation()
+  );
+  const createSnapshotMutation = useRQMutation(
+    postApiEnvironmentsByIdSnapshotsMutation()
   );
   const applySandboxEnvMutation = useRQMutation(
     postApiSandboxesByIdEnvMutation()
@@ -72,16 +140,16 @@ export function EnvironmentConfiguration({
   // Reset iframe loading state when URL changes
   useEffect(() => {
     setIframeLoaded(false);
-  }, [vscodeUrl]);
+  }, [localVscodeUrl]);
 
   // no-op placeholder removed; using onSnapshot instead
 
   useEffect(() => {
     lastSubmittedEnvContent.current = null;
-  }, [instanceId]);
+  }, [localInstanceId]);
 
   useEffect(() => {
-    if (!instanceId) {
+    if (!localInstanceId) {
       return;
     }
 
@@ -105,7 +173,7 @@ export function EnvironmentConfiguration({
     const timeoutId = window.setTimeout(() => {
       applySandboxEnv(
         {
-          path: { id: instanceId },
+          path: { id: localInstanceId },
           body: { teamSlugOrId, envVarsContent },
         },
         {
@@ -122,10 +190,10 @@ export function EnvironmentConfiguration({
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [envVars, instanceId, teamSlugOrId, applySandboxEnv]);
+  }, [envVars, localInstanceId, teamSlugOrId, applySandboxEnv]);
 
   const onSnapshot = async (): Promise<void> => {
-    if (!instanceId) {
+    if (!localInstanceId) {
       console.error("Missing instanceId for snapshot");
       return;
     }
@@ -140,90 +208,175 @@ export function EnvironmentConfiguration({
         .map((r) => ({ name: r.name, value: r.value }))
     );
 
-    const ports = exposedPorts
+    const parsedPorts = exposedPorts
       .split(",")
-      .map((p) => parseInt(p.trim(), 10))
-      .filter((n) => Number.isFinite(n) && n > 0);
+      .map((p) => Number.parseInt(p.trim(), 10))
+      .filter((n) => Number.isFinite(n));
 
-    createEnvironmentMutation.mutate(
-      {
-        body: {
-          teamSlugOrId,
-          name: envName.trim(),
-          morphInstanceId: instanceId,
-          envVarsContent,
-          selectedRepos,
-          maintenanceScript: maintenanceScript.trim() || undefined,
-          devScript: devScript.trim() || undefined,
-          exposedPorts: ports.length > 0 ? ports : undefined,
-          description: undefined,
+    const validation = validateExposedPorts(parsedPorts);
+    if (validation.reserved.length > 0) {
+      setPortsError(
+        `Reserved ports cannot be exposed: ${validation.reserved.join(", ")}`
+      );
+      return;
+    }
+    if (validation.invalid.length > 0) {
+      setPortsError("Ports must be positive integers.");
+      return;
+    }
+
+    setPortsError(null);
+    const ports = validation.sanitized;
+
+    if (mode === "snapshot" && sourceEnvironmentId) {
+      // Create a new snapshot version
+      createSnapshotMutation.mutate(
+        {
+          path: { id: sourceEnvironmentId },
+          body: {
+            teamSlugOrId,
+            morphInstanceId: localInstanceId,
+            label: envName.trim(),
+            activate: true,
+          },
         },
-      },
-      {
-        onSuccess: async () => {
-          await navigate({
-            to: "/$teamSlugOrId/environments",
-            params: { teamSlugOrId },
-            search: {
-              step: undefined,
-              selectedRepos: undefined,
-              connectionLogin: undefined,
-              repoSearch: undefined,
-              instanceId: undefined,
-            },
-          });
+        {
+          onSuccess: async () => {
+            await navigate({
+              to: "/$teamSlugOrId/environments/$environmentId",
+              params: {
+                teamSlugOrId,
+                environmentId: sourceEnvironmentId,
+              },
+              search: () => ({
+                step: undefined,
+                selectedRepos: undefined,
+                connectionLogin: undefined,
+                repoSearch: undefined,
+                instanceId: undefined,
+              }),
+            });
+          },
+          onError: (err) => {
+            console.error("Failed to create snapshot version:", err);
+          },
+        }
+      );
+    } else {
+      // Create a new environment
+      createEnvironmentMutation.mutate(
+        {
+          body: {
+            teamSlugOrId,
+            name: envName.trim(),
+            morphInstanceId: localInstanceId,
+            envVarsContent,
+            selectedRepos,
+            maintenanceScript: maintenanceScript.trim() || undefined,
+            devScript: devScript.trim() || undefined,
+            exposedPorts: ports.length > 0 ? ports : undefined,
+            description: undefined,
+          },
         },
-        onError: (err) => {
-          console.error("Failed to create environment:", err);
-        },
-      }
-    );
+        {
+          onSuccess: async () => {
+            await navigate({
+              to: "/$teamSlugOrId/environments",
+              params: { teamSlugOrId },
+              search: {
+                step: undefined,
+                selectedRepos: undefined,
+                connectionLogin: undefined,
+                repoSearch: undefined,
+                instanceId: undefined,
+              },
+            });
+          },
+          onError: (err) => {
+            console.error("Failed to create environment:", err);
+          },
+        }
+      );
+    }
   };
 
   const leftPane = (
     <div className="h-full p-6 overflow-y-auto">
       <div className="flex items-center gap-4 mb-4">
-        <button
-          onClick={async () => {
-            await navigate({
-              to: "/$teamSlugOrId/environments/new",
-              params: { teamSlugOrId },
-              search: (prev) => ({
-                ...prev,
-                step: "select",
-                selectedRepos:
-                  selectedRepos.length > 0 ? selectedRepos : undefined,
-                instanceId: search.instanceId,
-                connectionLogin: prev.connectionLogin,
-                repoSearch: prev.repoSearch,
-              }),
-            });
-          }}
-          className="inline-flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          Back to repository selection
-        </button>
+        {mode === "new" ? (
+          <button
+            onClick={async () => {
+              await navigate({
+                to: "/$teamSlugOrId/environments/new",
+                params: { teamSlugOrId },
+                search: {
+                  step: "select",
+                  selectedRepos:
+                    selectedRepos.length > 0 ? selectedRepos : undefined,
+                  instanceId: search.instanceId,
+                  connectionLogin: search.connectionLogin,
+                  repoSearch: search.repoSearch,
+                },
+              });
+            }}
+            className="inline-flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to repository selection
+          </button>
+        ) : sourceEnvironmentId ? (
+          <button
+            onClick={async () => {
+              await navigate({
+                to: "/$teamSlugOrId/environments/$environmentId",
+                params: {
+                  teamSlugOrId,
+                  environmentId: sourceEnvironmentId,
+                },
+                search: {
+                  step: search.step,
+                  selectedRepos: search.selectedRepos,
+                  connectionLogin: search.connectionLogin,
+                  repoSearch: search.repoSearch,
+                  instanceId: search.instanceId,
+                },
+              });
+            }}
+            className="inline-flex items-center gap-2 text-sm text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to environment
+          </button>
+        ) : null}
       </div>
 
       <h1 className="text-xl font-semibold text-neutral-900 dark:text-neutral-100">
-        Configure Environment
+        {mode === "snapshot" ? "Configure Snapshot Version" : "Configure Environment"}
       </h1>
       <p className="mt-1 text-sm text-neutral-500 dark:text-neutral-400">
-        Set up your environment name and variables.
+        {mode === "snapshot" 
+          ? "Update configuration for the new snapshot version."
+          : "Set up your environment name and variables."}
       </p>
 
       <div className="mt-6 space-y-4">
         <div className="space-y-2">
           <label className="block text-sm font-medium text-neutral-800 dark:text-neutral-200">
-            Environment name
+            {mode === "snapshot" ? "Snapshot label" : "Environment name"}
           </label>
           <input
             type="text"
             value={envName}
             onChange={(e) => setEnvName(e.target.value)}
-            placeholder="e.g. project-name"
-            className="w-full rounded-md border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 px-3 py-2 text-sm text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:focus:ring-neutral-700"
+            readOnly={mode === "snapshot"}
+            aria-readonly={mode === "snapshot"}
+            placeholder={mode === "snapshot" ? "Auto-generated from environment" : "e.g. project-name"}
+            className={clsx(
+              "w-full rounded-md border border-neutral-200 dark:border-neutral-800 px-3 py-2 text-sm placeholder:text-neutral-400 focus:outline-none focus:ring-2",
+              mode === "snapshot"
+                ? "bg-neutral-100 text-neutral-600 cursor-not-allowed focus:ring-neutral-300/0 dark:bg-neutral-900 dark:text-neutral-400 dark:focus:ring-neutral-700/0"
+                : "bg-white text-neutral-900 focus:ring-neutral-300 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:ring-neutral-700"
+            )}
           />
         </div>
 
@@ -489,6 +642,9 @@ etc.`}
                   Comma-separated list of ports that should be exposed from the
                   container for preview URLs.
                 </p>
+                {portsError && (
+                  <p className="text-xs text-red-500">{portsError}</p>
+                )}
               </div>
             </div>
           </AccordionItem>
@@ -498,16 +654,24 @@ etc.`}
           <button
             type="button"
             onClick={onSnapshot}
-            disabled={isProvisioning || createEnvironmentMutation.isPending}
+            disabled={
+              isProvisioning ||
+              createEnvironmentMutation.isPending ||
+              createSnapshotMutation.isPending
+            }
             className="inline-flex items-center rounded-md bg-neutral-900 text-white disabled:bg-neutral-300 dark:disabled:bg-neutral-700 disabled:cursor-not-allowed px-4 py-2 text-sm hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
           >
-            {isProvisioning || createEnvironmentMutation.isPending ? (
+            {isProvisioning ||
+            createEnvironmentMutation.isPending ||
+            createSnapshotMutation.isPending ? (
               <>
                 <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                {isProvisioning ? "Launching..." : "Creating environment..."}
+                {mode === "snapshot"
+                  ? "Creating snapshot..."
+                  : "Creating environment..."}
               </>
             ) : (
-              "Snapshot environment"
+              mode === "snapshot" ? "Create snapshot version" : "Snapshot environment"
             )}
           </button>
         </div>
@@ -527,12 +691,13 @@ etc.`}
               Launching Environment
             </h3>
             <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4">
-              Your development environment is launching. Once ready, VS Code
-              will appear here so you can configure and test your setup.
+              {mode === "snapshot"
+                ? "Creating instance from snapshot. Once ready, VS Code will appear here so you can test your changes."
+                : "Your development environment is launching. Once ready, VS Code will appear here so you can configure and test your setup."}
             </p>
           </div>
         </div>
-      ) : vscodeUrl ? (
+      ) : localVscodeUrl ? (
         <div className="relative h-full">
           <div
             aria-hidden={iframeLoaded}
@@ -552,7 +717,7 @@ etc.`}
             </div>
           </div>
           <iframe
-            src={vscodeUrl}
+            src={localVscodeUrl}
             className="w-full h-full border-0"
             title="VSCode Environment"
             allow="clipboard-read; clipboard-write"

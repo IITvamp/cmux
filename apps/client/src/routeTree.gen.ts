@@ -28,6 +28,7 @@ import { Route as LayoutTeamSlugOrIdDashboardRouteImport } from './routes/_layou
 import { Route as LayoutTeamSlugOrIdConnectCompleteRouteImport } from './routes/_layout.$teamSlugOrId.connect-complete'
 import { Route as LayoutTeamSlugOrIdEnvironmentsIndexRouteImport } from './routes/_layout.$teamSlugOrId.environments.index'
 import { Route as LayoutTeamSlugOrIdTaskTaskIdRouteImport } from './routes/_layout.$teamSlugOrId.task.$taskId'
+import { Route as LayoutTeamSlugOrIdEnvironmentsNewVersionRouteImport } from './routes/_layout.$teamSlugOrId.environments.new-version'
 import { Route as LayoutTeamSlugOrIdEnvironmentsNewRouteImport } from './routes/_layout.$teamSlugOrId.environments.new'
 import { Route as LayoutTeamSlugOrIdEnvironmentsEnvironmentIdRouteImport } from './routes/_layout.$teamSlugOrId.environments.$environmentId'
 import { Route as LayoutTeamSlugOrIdTaskTaskIdIndexRouteImport } from './routes/_layout.$teamSlugOrId.task.$taskId.index'
@@ -140,6 +141,12 @@ const LayoutTeamSlugOrIdTaskTaskIdRoute =
     path: '/task/$taskId',
     getParentRoute: () => LayoutTeamSlugOrIdRoute,
   } as any)
+const LayoutTeamSlugOrIdEnvironmentsNewVersionRoute =
+  LayoutTeamSlugOrIdEnvironmentsNewVersionRouteImport.update({
+    id: '/new-version',
+    path: '/new-version',
+    getParentRoute: () => LayoutTeamSlugOrIdEnvironmentsRoute,
+  } as any)
 const LayoutTeamSlugOrIdEnvironmentsNewRoute =
   LayoutTeamSlugOrIdEnvironmentsNewRouteImport.update({
     id: '/new',
@@ -220,6 +227,7 @@ export interface FileRoutesByFullPath {
   '/$teamSlugOrId/workspaces': typeof LayoutTeamSlugOrIdWorkspacesRoute
   '/$teamSlugOrId/environments/$environmentId': typeof LayoutTeamSlugOrIdEnvironmentsEnvironmentIdRoute
   '/$teamSlugOrId/environments/new': typeof LayoutTeamSlugOrIdEnvironmentsNewRoute
+  '/$teamSlugOrId/environments/new-version': typeof LayoutTeamSlugOrIdEnvironmentsNewVersionRoute
   '/$teamSlugOrId/task/$taskId': typeof LayoutTeamSlugOrIdTaskTaskIdRouteWithChildren
   '/$teamSlugOrId/environments/': typeof LayoutTeamSlugOrIdEnvironmentsIndexRoute
   '/$teamSlugOrId/task/$taskId/': typeof LayoutTeamSlugOrIdTaskTaskIdIndexRoute
@@ -249,6 +257,7 @@ export interface FileRoutesByTo {
   '/$teamSlugOrId/workspaces': typeof LayoutTeamSlugOrIdWorkspacesRoute
   '/$teamSlugOrId/environments/$environmentId': typeof LayoutTeamSlugOrIdEnvironmentsEnvironmentIdRoute
   '/$teamSlugOrId/environments/new': typeof LayoutTeamSlugOrIdEnvironmentsNewRoute
+  '/$teamSlugOrId/environments/new-version': typeof LayoutTeamSlugOrIdEnvironmentsNewVersionRoute
   '/$teamSlugOrId/environments': typeof LayoutTeamSlugOrIdEnvironmentsIndexRoute
   '/$teamSlugOrId/task/$taskId': typeof LayoutTeamSlugOrIdTaskTaskIdIndexRoute
   '/$teamSlugOrId/prs-only/$owner/$repo/$number': typeof LayoutTeamSlugOrIdPrsOnlyOwnerRepoNumberRoute
@@ -280,6 +289,7 @@ export interface FileRoutesById {
   '/_layout/$teamSlugOrId/workspaces': typeof LayoutTeamSlugOrIdWorkspacesRoute
   '/_layout/$teamSlugOrId/environments/$environmentId': typeof LayoutTeamSlugOrIdEnvironmentsEnvironmentIdRoute
   '/_layout/$teamSlugOrId/environments/new': typeof LayoutTeamSlugOrIdEnvironmentsNewRoute
+  '/_layout/$teamSlugOrId/environments/new-version': typeof LayoutTeamSlugOrIdEnvironmentsNewVersionRoute
   '/_layout/$teamSlugOrId/task/$taskId': typeof LayoutTeamSlugOrIdTaskTaskIdRouteWithChildren
   '/_layout/$teamSlugOrId/environments/': typeof LayoutTeamSlugOrIdEnvironmentsIndexRoute
   '/_layout/$teamSlugOrId/task/$taskId/': typeof LayoutTeamSlugOrIdTaskTaskIdIndexRoute
@@ -312,6 +322,7 @@ export interface FileRouteTypes {
     | '/$teamSlugOrId/workspaces'
     | '/$teamSlugOrId/environments/$environmentId'
     | '/$teamSlugOrId/environments/new'
+    | '/$teamSlugOrId/environments/new-version'
     | '/$teamSlugOrId/task/$taskId'
     | '/$teamSlugOrId/environments/'
     | '/$teamSlugOrId/task/$taskId/'
@@ -341,6 +352,7 @@ export interface FileRouteTypes {
     | '/$teamSlugOrId/workspaces'
     | '/$teamSlugOrId/environments/$environmentId'
     | '/$teamSlugOrId/environments/new'
+    | '/$teamSlugOrId/environments/new-version'
     | '/$teamSlugOrId/environments'
     | '/$teamSlugOrId/task/$taskId'
     | '/$teamSlugOrId/prs-only/$owner/$repo/$number'
@@ -371,6 +383,7 @@ export interface FileRouteTypes {
     | '/_layout/$teamSlugOrId/workspaces'
     | '/_layout/$teamSlugOrId/environments/$environmentId'
     | '/_layout/$teamSlugOrId/environments/new'
+    | '/_layout/$teamSlugOrId/environments/new-version'
     | '/_layout/$teamSlugOrId/task/$taskId'
     | '/_layout/$teamSlugOrId/environments/'
     | '/_layout/$teamSlugOrId/task/$taskId/'
@@ -526,6 +539,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutTeamSlugOrIdTaskTaskIdRouteImport
       parentRoute: typeof LayoutTeamSlugOrIdRoute
     }
+    '/_layout/$teamSlugOrId/environments/new-version': {
+      id: '/_layout/$teamSlugOrId/environments/new-version'
+      path: '/new-version'
+      fullPath: '/$teamSlugOrId/environments/new-version'
+      preLoaderRoute: typeof LayoutTeamSlugOrIdEnvironmentsNewVersionRouteImport
+      parentRoute: typeof LayoutTeamSlugOrIdEnvironmentsRoute
+    }
     '/_layout/$teamSlugOrId/environments/new': {
       id: '/_layout/$teamSlugOrId/environments/new'
       path: '/new'
@@ -602,6 +622,7 @@ declare module '@tanstack/react-router' {
 interface LayoutTeamSlugOrIdEnvironmentsRouteChildren {
   LayoutTeamSlugOrIdEnvironmentsEnvironmentIdRoute: typeof LayoutTeamSlugOrIdEnvironmentsEnvironmentIdRoute
   LayoutTeamSlugOrIdEnvironmentsNewRoute: typeof LayoutTeamSlugOrIdEnvironmentsNewRoute
+  LayoutTeamSlugOrIdEnvironmentsNewVersionRoute: typeof LayoutTeamSlugOrIdEnvironmentsNewVersionRoute
   LayoutTeamSlugOrIdEnvironmentsIndexRoute: typeof LayoutTeamSlugOrIdEnvironmentsIndexRoute
 }
 
@@ -611,6 +632,8 @@ const LayoutTeamSlugOrIdEnvironmentsRouteChildren: LayoutTeamSlugOrIdEnvironment
       LayoutTeamSlugOrIdEnvironmentsEnvironmentIdRoute,
     LayoutTeamSlugOrIdEnvironmentsNewRoute:
       LayoutTeamSlugOrIdEnvironmentsNewRoute,
+    LayoutTeamSlugOrIdEnvironmentsNewVersionRoute:
+      LayoutTeamSlugOrIdEnvironmentsNewVersionRoute,
     LayoutTeamSlugOrIdEnvironmentsIndexRoute:
       LayoutTeamSlugOrIdEnvironmentsIndexRoute,
   }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pinDefaultBranchFirst } from "./sortBranches.js";
+import { pinDefaultBranchFirst } from "./sortBranches";
 
 describe("pinDefaultBranchFirst", () => {
   it("moves default to front and preserves order of others", () => {
@@ -28,4 +28,3 @@ describe("pinDefaultBranchFirst", () => {
     expect(pinDefaultBranchFirst(input, null)).toEqual(["dev", "feature"]);
   });
 });
-

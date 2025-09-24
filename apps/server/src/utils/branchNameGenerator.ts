@@ -4,8 +4,8 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { api } from "@cmux/convex/api";
 import { generateObject, type LanguageModel } from "ai";
 import { z } from "zod";
-import { getConvex } from "../utils/convexClient.js";
-import { serverLogger } from "./fileLogger.js";
+import { getConvex } from "../utils/convexClient";
+import { serverLogger } from "./fileLogger";
 
 /**
  * Convert a string to kebab case and filter out suspicious characters

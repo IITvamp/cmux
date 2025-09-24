@@ -1,10 +1,20 @@
 import { FloatingPane } from "@/components/floating-pane";
 import { TitleBar } from "@/components/TitleBar";
-import { convexQueryClient } from "@/contexts/convex/convex-query-client";
+import { queryClient } from "@/query-client";
 import { api } from "@cmux/convex/api";
+import type { Id } from "@cmux/convex/dataModel";
 import { typedZid } from "@cmux/shared/utils/typed-zid";
+import { validateExposedPorts } from "@cmux/shared/utils/validate-exposed-ports";
+import {
+  patchApiEnvironmentsByIdPortsMutation,
+  postApiEnvironmentsByIdSnapshotsBySnapshotVersionIdActivateMutation,
+  postApiSandboxesStartMutation,
+} from "@cmux/www-openapi-client/react-query";
 import { convexQuery } from "@convex-dev/react-query";
-import { useSuspenseQuery } from "@tanstack/react-query";
+import {
+  useMutation as useRQMutation,
+  useSuspenseQuery,
+} from "@tanstack/react-query";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useMutation } from "convex/react";
 import { formatDistanceToNow } from "date-fns";
@@ -13,13 +23,16 @@ import {
   Calendar,
   Code,
   GitBranch,
+  Loader2,
   Package,
   Play,
+  Plus,
   Server,
   Terminal,
   Trash2,
+  X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 export const Route = createFileRoute(
@@ -30,7 +43,19 @@ export const Route = createFileRoute(
     environmentId: typedZid("environments").parse(params.environmentId),
   }),
   loader: async ({ params }) => {
-    await convexQueryClient.queryClient.ensureQueryData(
+    void queryClient.ensureQueryData(
+      convexQuery(api.environments.get, {
+        teamSlugOrId: params.teamSlugOrId,
+        id: params.environmentId,
+      })
+    );
+    void queryClient.ensureQueryData(
+      convexQuery(api.environmentSnapshots.list, {
+        teamSlugOrId: params.teamSlugOrId,
+        environmentId: params.environmentId,
+      })
+    );
+    void queryClient.ensureQueryData(
       convexQuery(api.environments.get, {
         teamSlugOrId: params.teamSlugOrId,
         id: params.environmentId,
@@ -45,14 +70,154 @@ function EnvironmentDetailsPage() {
   const { teamSlugOrId, environmentId } = Route.useParams();
   const navigate = useNavigate({ from: Route.fullPath });
   const [isDeleting, setIsDeleting] = useState(false);
-
-  const { data: environment } = useSuspenseQuery(
-    convexQuery(api.environments.get, {
-      teamSlugOrId,
-      id: environmentId,
-    })
-  );
+  const environmentQuery = convexQuery(api.environments.get, {
+    teamSlugOrId,
+    id: environmentId,
+  });
+  const { data: environment } = useSuspenseQuery(environmentQuery);
+  if (!environment) {
+    throw new Error("Environment not found");
+  }
+  const snapshotsQuery = convexQuery(api.environmentSnapshots.list, {
+    teamSlugOrId,
+    environmentId,
+  });
+  const { data: snapshotVersions } = useSuspenseQuery(snapshotsQuery);
   const deleteEnvironment = useMutation(api.environments.remove);
+  const updatePortsMutation = useRQMutation(
+    patchApiEnvironmentsByIdPortsMutation()
+  );
+  const activateSnapshotMutation = useRQMutation(
+    postApiEnvironmentsByIdSnapshotsBySnapshotVersionIdActivateMutation()
+  );
+  const startSandboxMutation = useRQMutation(postApiSandboxesStartMutation());
+  const [isEditingPorts, setIsEditingPorts] = useState(false);
+  const [portsDraft, setPortsDraft] = useState<number[]>(
+    environment.exposedPorts ?? []
+  );
+  const [portInput, setPortInput] = useState("");
+  const [portsError, setPortsError] = useState<string | null>(null);
+  const [activatingVersionId, setActivatingVersionId] = useState<string | null>(
+    null
+  );
+
+  useEffect(() => {
+    if (!isEditingPorts) {
+      setPortsDraft(environment.exposedPorts ?? []);
+    }
+  }, [environment.exposedPorts, isEditingPorts]);
+
+  const handleStartEditingPorts = () => {
+    setPortsDraft(environment.exposedPorts ?? []);
+    setPortInput("");
+    setPortsError(null);
+    setIsEditingPorts(true);
+  };
+
+  const handleCancelPorts = () => {
+    setIsEditingPorts(false);
+    setPortsDraft(environment.exposedPorts ?? []);
+    setPortInput("");
+    setPortsError(null);
+  };
+
+  const handleAddPort = () => {
+    if (portInput.trim().length === 0) {
+      setPortsError("Enter a port number.");
+      return;
+    }
+    const parsed = Number.parseInt(portInput.trim(), 10);
+    if (!Number.isFinite(parsed)) {
+      setPortsError("Enter a valid port number.");
+      return;
+    }
+
+    const validation = validateExposedPorts([...portsDraft, parsed]);
+    if (validation.reserved.length > 0) {
+      setPortsError(
+        `Reserved ports cannot be exposed: ${validation.reserved.join(", ")}`
+      );
+      return;
+    }
+    if (validation.invalid.length > 0) {
+      setPortsError("Ports must be positive integers.");
+      return;
+    }
+
+    setPortsDraft(validation.sanitized);
+    setPortInput("");
+    setPortsError(null);
+  };
+
+  const handleRemovePort = (port: number) => {
+    setPortsDraft((prev) => prev.filter((value) => value !== port));
+  };
+
+  const handleSavePorts = () => {
+    const validation = validateExposedPorts(portsDraft);
+    if (validation.reserved.length > 0) {
+      setPortsError(
+        `Reserved ports cannot be exposed: ${validation.reserved.join(", ")}`
+      );
+      return;
+    }
+    if (validation.invalid.length > 0) {
+      setPortsError("Ports must be positive integers.");
+      return;
+    }
+
+    setPortsError(null);
+    updatePortsMutation.mutate(
+      {
+        path: { id: String(environmentId) },
+        body: { teamSlugOrId, ports: validation.sanitized },
+      },
+      {
+        onSuccess: async () => {
+          setIsEditingPorts(false);
+          setPortInput("");
+          toast.success("Exposed ports updated");
+        },
+        onError: (error) => {
+          setPortsError(
+            error instanceof Error
+              ? error.message
+              : "Failed to update exposed ports"
+          );
+        },
+      }
+    );
+  };
+
+  const handleActivateSnapshot = (
+    versionId: Id<"environmentSnapshotVersions">
+  ) => {
+    const versionIdString = String(versionId);
+    setActivatingVersionId(versionIdString);
+    activateSnapshotMutation.mutate(
+      {
+        path: {
+          id: String(environmentId),
+          snapshotVersionId: versionIdString,
+        },
+        body: { teamSlugOrId },
+      },
+      {
+        onSuccess: async () => {
+          setActivatingVersionId(null);
+          toast.success("Snapshot version activated");
+        },
+        onError: (error) => {
+          setActivatingVersionId(null);
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "Failed to activate snapshot"
+          );
+        },
+      }
+    );
+  };
 
   const handleDelete = async () => {
     if (
@@ -227,32 +392,240 @@ function EnvironmentDetailsPage() {
               </div>
 
               {/* Exposed Ports */}
-              {environment.exposedPorts &&
-                environment.exposedPorts.length > 0 && (
-                  <div>
-                    <div className="flex items-center gap-2 mb-3">
-                      <Package className="w-4 h-4 text-neutral-500" />
-                      <h3 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
-                        Exposed Ports
-                      </h3>
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <Package className="w-4 h-4 text-neutral-500" />
+                    <h3 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                      Exposed Ports
+                    </h3>
+                  </div>
+                  {isEditingPorts ? (
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={handleSavePorts}
+                        disabled={updatePortsMutation.isPending}
+                        className="inline-flex items-center rounded-md bg-neutral-900 text-white px-3 py-1 text-xs font-medium hover:bg-neutral-800 disabled:opacity-60 disabled:cursor-not-allowed dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
+                      >
+                        {updatePortsMutation.isPending ? "Saving..." : "Save"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleCancelPorts}
+                        disabled={updatePortsMutation.isPending}
+                        className="inline-flex items-center rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-60 disabled:cursor-not-allowed dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
+                      >
+                        Cancel
+                      </button>
                     </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleStartEditingPorts}
+                      className="inline-flex items-center gap-1 rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
+                    >
+                      Edit
+                    </button>
+                  )}
+                </div>
+                {isEditingPorts ? (
+                  <div className="space-y-3">
                     <div className="flex flex-wrap gap-2">
-                      {environment.exposedPorts.map((port: number) => (
+                      {portsDraft.length > 0 ? (
+                        portsDraft.map((port) => (
+                          <span
+                            key={port}
+                            className="inline-flex items-center rounded-full bg-neutral-100 dark:bg-neutral-900 px-3 py-1 text-sm text-neutral-700 dark:text-neutral-300"
+                          >
+                            {port}
+                            <button
+                              type="button"
+                              onClick={() => handleRemovePort(port)}
+                              className="ml-2 text-neutral-500 hover:text-neutral-800 dark:text-neutral-500 dark:hover:text-neutral-200"
+                              aria-label={`Remove port ${port}`}
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-sm text-neutral-500 dark:text-neutral-500">
+                          No ports selected.
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        value={portInput}
+                        onChange={(event) => setPortInput(event.target.value)}
+                        placeholder="Add port"
+                        className="w-28 rounded-md border border-neutral-300 px-3 py-1 text-sm text-neutral-900 focus:outline-none focus:ring-2 focus:ring-neutral-300 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100 dark:focus:ring-neutral-700"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddPort}
+                        className="inline-flex items-center gap-1 rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
+                      >
+                        <Plus className="w-3 h-3" />
+                        Add port
+                      </button>
+                    </div>
+                    {portsError && (
+                      <p className="text-xs text-red-500">{portsError}</p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {environment.exposedPorts &&
+                    environment.exposedPorts.length > 0 ? (
+                      environment.exposedPorts.map((port: number) => (
                         <span
                           key={port}
                           className="inline-flex items-center rounded-full bg-neutral-100 dark:bg-neutral-900 px-3 py-1 text-sm text-neutral-700 dark:text-neutral-300"
                         >
                           {port}
                         </span>
-                      ))}
-                    </div>
+                      ))
+                    ) : (
+                      <span className="text-sm text-neutral-500 dark:text-neutral-500">
+                        No ports configured.
+                      </span>
+                    )}
                   </div>
                 )}
+              </div>
+
+              {/* Snapshot Versions */}
+              <div className="pt-4 border-t border-neutral-200 dark:border-neutral-800">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                    Snapshot Versions
+                  </h3>
+                  <button
+                    type="button"
+                    disabled={startSandboxMutation.isPending}
+                    onClick={() => {
+                      if (startSandboxMutation.isPending) {
+                        return;
+                      }
+                      startSandboxMutation.mutate(
+                        {
+                          body: {
+                            teamSlugOrId,
+                            environmentId: String(environmentId),
+                            snapshotId:
+                              environment.morphSnapshotId ?? undefined,
+                          },
+                        },
+                        {
+                          onSuccess: (data) => {
+                            const baseUrl = data.vscodeUrl;
+                            const hasQuery = baseUrl.includes("?");
+                            const vscodeUrlWithFolder = `${baseUrl}${
+                              hasQuery ? "&" : "?"
+                            }folder=/root/workspace`;
+                            navigate({
+                              to: "/$teamSlugOrId/environments/new-version",
+                              params: { teamSlugOrId },
+                              search: {
+                                sourceEnvironmentId: String(environmentId),
+                                selectedRepos: environment.selectedRepos ?? [],
+                                connectionLogin: undefined,
+                                repoSearch: undefined,
+                                instanceId: data.instanceId,
+                                vscodeUrl: vscodeUrlWithFolder,
+                                step: "configure",
+                              },
+                            });
+                          },
+                          onError: (error) => {
+                            const message =
+                              error instanceof Error
+                                ? error.message
+                                : "Failed to launch snapshot environment";
+                            toast.error(message);
+                          },
+                        }
+                      );
+                    }}
+                    className="inline-flex items-center gap-1 rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
+                  >
+                    {startSandboxMutation.isPending ? (
+                      <>
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                        Launching…
+                      </>
+                    ) : (
+                      "New snapshot version"
+                    )}
+                  </button>
+                </div>
+                <div className="space-y-2">
+                  {snapshotVersions.length === 0 ? (
+                    <p className="text-sm text-neutral-500 dark:text-neutral-500">
+                      No snapshot versions yet.
+                    </p>
+                  ) : (
+                    snapshotVersions.map((version) => (
+                      <div
+                        key={version._id}
+                        className="rounded-md border border-neutral-200 p-3 dark:border-neutral-800"
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-medium text-neutral-900 dark:text-neutral-100">
+                              Version {version.version}
+                              {version.isActive && (
+                                <span className="ml-2 inline-flex items-center rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-semibold text-green-700 dark:bg-green-900 dark:text-green-100">
+                                  Active
+                                </span>
+                              )}
+                            </p>
+                            <p className="text-xs text-neutral-500 dark:text-neutral-500">
+                              Snapshot ID: {version.morphSnapshotId}
+                            </p>
+                          </div>
+                          {!version.isActive && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleActivateSnapshot(version._id)
+                              }
+                              disabled={
+                                activateSnapshotMutation.isPending &&
+                                activatingVersionId === String(version._id)
+                              }
+                              className="inline-flex items-center rounded-md border border-neutral-300 px-3 py-1 text-xs font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-60 disabled:cursor-not-allowed dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
+                            >
+                              {activateSnapshotMutation.isPending &&
+                              activatingVersionId === String(version._id)
+                                ? "Activating..."
+                                : "Activate"}
+                            </button>
+                          )}
+                        </div>
+                        <div className="mt-2 space-y-1 text-xs text-neutral-500 dark:text-neutral-500">
+                          <p>
+                            Created{" "}
+                            {formatDistanceToNow(new Date(version.createdAt), {
+                              addSuffix: true,
+                            })}
+                          </p>
+                          <p>Created by {version.createdByUserId}</p>
+                          {version.label && <p>Label: {version.label}</p>}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
 
               {/* Technical Details */}
               <div className="pt-4 border-t border-neutral-200 dark:border-neutral-800">
                 <h3 className="text-sm font-medium text-neutral-900 dark:text-neutral-100 mb-3">
-                  Technical Details
+                  Current Version Details
                 </h3>
                 <dl className="space-y-2">
                   <div className="flex justify-between text-sm">

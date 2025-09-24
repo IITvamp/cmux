@@ -1,6 +1,6 @@
 import { createClient } from "@cmux/www-openapi-client/client";
-import { getAuthHeaderJson, getAuthToken } from "./requestContext.js";
-import { getWwwBaseUrl } from "./server-env.js";
+import { getAuthHeaderJson, getAuthToken } from "./requestContext";
+import { getWwwBaseUrl } from "./server-env";
 
 // Return a configured OpenAPI client bound to the current auth context
 export function getWwwClient() {

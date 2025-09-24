@@ -1,8 +1,8 @@
-import type { AgentConfig } from "../../agentConfig.js";
-import { ANTHROPIC_API_KEY } from "../../apiKeys.js";
-import { checkClaudeRequirements } from "./check-requirements.js";
-import { startClaudeCompletionDetector } from "./completion-detector.js";
-import { getClaudeEnvironment } from "./environment.js";
+import type { AgentConfig } from "../../agentConfig";
+import { ANTHROPIC_API_KEY } from "../../apiKeys";
+import { checkClaudeRequirements } from "./check-requirements";
+import { startClaudeCompletionDetector } from "./completion-detector";
+import { getClaudeEnvironment } from "./environment";
 
 export const CLAUDE_SONNET_CONFIG: AgentConfig = {
   name: "claude/sonnet-4",

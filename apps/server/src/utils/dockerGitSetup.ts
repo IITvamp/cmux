@@ -1,9 +1,9 @@
+import type { ConvexHttpClient } from "convex/browser";
 import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
-import { getGitHubTokenFromKeychain } from "./getGitHubToken.js";
-import { serverLogger } from "./fileLogger.js";
-import type { ConvexHttpClient } from "convex/browser";
+import { serverLogger } from "./fileLogger";
+import { getGitHubTokenFromKeychain } from "./getGitHubToken";
 
 export async function setupGitCredentialsForDocker(
   instanceId: string,

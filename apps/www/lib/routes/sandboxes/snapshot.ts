@@ -57,7 +57,20 @@ export const resolveTeamAndSnapshot = async ({
       (environment) => environment.morphSnapshotId === snapshotId
     );
 
-    if (!matchedEnvironment) {
+    if (matchedEnvironment) {
+      return {
+        team,
+        resolvedSnapshotId:
+          matchedEnvironment.morphSnapshotId || DEFAULT_MORPH_SNAPSHOT_ID,
+      };
+    }
+
+    const snapshotVersion = await convex.query(
+      api.environmentSnapshots.findBySnapshotId,
+      { teamSlugOrId, snapshotId }
+    );
+
+    if (!snapshotVersion) {
       throw new HTTPException(403, {
         message: "Forbidden: Snapshot does not belong to this team",
       });
@@ -66,7 +79,7 @@ export const resolveTeamAndSnapshot = async ({
     return {
       team,
       resolvedSnapshotId:
-        matchedEnvironment.morphSnapshotId || DEFAULT_MORPH_SNAPSHOT_ID,
+        snapshotVersion.morphSnapshotId || DEFAULT_MORPH_SNAPSHOT_ID,
     };
   }
 

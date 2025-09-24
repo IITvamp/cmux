@@ -4,8 +4,8 @@ import { exec } from "node:child_process";
 import { promises as fsp } from "node:fs";
 import * as path from "node:path";
 import { promisify } from "node:util";
-import { RepositoryManager } from "./repositoryManager.js";
-import { serverLogger } from "./utils/fileLogger.js";
+import { RepositoryManager } from "./repositoryManager";
+import { serverLogger } from "./utils/fileLogger";
 
 const execAsync = promisify(exec);
 

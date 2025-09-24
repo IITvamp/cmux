@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { getGitHubTokenFromKeychain } from "./getGitHubToken.js";
-import { markPrReady } from "./markPrReady.js";
-import { getOctokit } from "./octokit.js";
+import { getGitHubTokenFromKeychain } from "./getGitHubToken";
+import { markPrReady } from "./markPrReady";
+import { getOctokit } from "./octokit";
 
 // Temporarily disabled due to external GitHub API rate limits.
 // Re-enable when sufficient quota is available.

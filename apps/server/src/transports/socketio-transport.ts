@@ -1,25 +1,25 @@
-import { Server as SocketIOServer } from "socket.io";
-import type { Server as HttpServer } from "node:http";
 import type {
   ClientToServerEvents,
-  ServerToClientEvents,
   InterServerEvents,
+  ServerToClientEvents,
   SocketData,
 } from "@cmux/shared";
-import type { RealtimeServer, RealtimeSocket } from "../realtime.js";
-import { serverLogger } from "../utils/fileLogger.js";
-import { runWithAuth } from "../utils/requestContext.js";
+import type { Server as HttpServer } from "node:http";
+import { Server as SocketIOServer } from "socket.io";
+import type { RealtimeServer, RealtimeSocket } from "../realtime";
+import { serverLogger } from "../utils/fileLogger";
+import { runWithAuth } from "../utils/requestContext";
 
-export function createSocketIOTransport(httpServer: HttpServer): RealtimeServer {
+export function createSocketIOTransport(
+  httpServer: HttpServer
+): RealtimeServer {
   const allowedOriginsEnv = process.env.CMUX_ALLOWED_SOCKET_ORIGINS;
   const defaultAllowed = new Set([
     "http://localhost:5173",
     "https://cmux.local",
   ]);
   const dynamicAllowed = new Set(
-    (allowedOriginsEnv?.split(",") ?? [])
-      .map((s) => s.trim())
-      .filter(Boolean)
+    (allowedOriginsEnv?.split(",") ?? []).map((s) => s.trim()).filter(Boolean)
   );
 
   const isOriginAllowed = (origin?: string | null) => {

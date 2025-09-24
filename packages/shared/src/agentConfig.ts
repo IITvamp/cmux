@@ -1,37 +1,37 @@
 import type {
   EnvironmentContext,
   EnvironmentResult,
-} from "./providers/common/environment-result.js";
+} from "./providers/common/environment-result";
 
-import { AMP_CONFIG, AMP_GPT_5_CONFIG } from "./providers/amp/configs.js";
+import { AMP_CONFIG, AMP_GPT_5_CONFIG } from "./providers/amp/configs";
 import {
   CLAUDE_OPUS_4_1_CONFIG,
   CLAUDE_OPUS_4_CONFIG,
   CLAUDE_SONNET_CONFIG,
-} from "./providers/anthropic/configs.js";
+} from "./providers/anthropic/configs";
 import {
   CURSOR_GPT_5_CONFIG,
   CURSOR_OPUS_4_1_CONFIG,
   CURSOR_SONNET_4_CONFIG,
   CURSOR_SONNET_4_THINKING_CONFIG,
-} from "./providers/cursor/configs.js";
+} from "./providers/cursor/configs";
 import {
   GEMINI_FLASH_CONFIG,
   GEMINI_PRO_CONFIG,
-} from "./providers/gemini/configs.js";
+} from "./providers/gemini/configs";
 import {
   CODEX_GPT_4_1_CONFIG,
+  CODEX_GPT_5_CODEX_HIGH_REASONING_CONFIG,
+  CODEX_GPT_5_CODEX_LOW_REASONING_CONFIG,
+  CODEX_GPT_5_CODEX_MEDIUM_REASONING_CONFIG,
   CODEX_GPT_5_CONFIG,
+  CODEX_GPT_5_HIGH_REASONING_CONFIG,
   CODEX_GPT_5_LOW_REASONING_CONFIG,
   CODEX_GPT_5_MEDIUM_REASONING_CONFIG,
-  CODEX_GPT_5_HIGH_REASONING_CONFIG,
   CODEX_GPT_5_MINIMAL_REASONING_CONFIG,
   CODEX_O3_CONFIG,
   CODEX_O4_MINI_CONFIG,
-  CODEX_GPT_5_CODEX_LOW_REASONING_CONFIG,
-  CODEX_GPT_5_CODEX_MEDIUM_REASONING_CONFIG,
-  CODEX_GPT_5_CODEX_HIGH_REASONING_CONFIG,
-} from "./providers/openai/configs.js";
+} from "./providers/openai/configs";
 import {
   OPENCODE_GLM_Z1_32B_FREE_CONFIG,
   OPENCODE_GPT_5_CONFIG,
@@ -46,14 +46,14 @@ import {
   OPENCODE_OPUS_CONFIG,
   OPENCODE_QWEN3_CODER_CONFIG,
   OPENCODE_SONNET_CONFIG,
-} from "./providers/opencode/configs.js";
+} from "./providers/opencode/configs";
 import {
   QWEN_MODEL_STUDIO_CODER_PLUS_CONFIG,
   QWEN_OPENROUTER_CODER_FREE_CONFIG,
-} from "./providers/qwen/configs.js";
+} from "./providers/qwen/configs";
 
-export { checkDockerStatus } from "./providers/common/check-docker.js";
-export { checkGitStatus } from "./providers/common/check-git.js";
+export { checkDockerStatus } from "./providers/common/check-docker";
+export { checkGitStatus } from "./providers/common/check-git";
 
 export { type EnvironmentResult };
 

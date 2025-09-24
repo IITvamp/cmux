@@ -14,6 +14,7 @@ import {
 } from "@cmux/shared";
 import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
 
+import { getWorkerServerSocketOptions } from "@cmux/shared/node/socket";
 import { startAmpProxy } from "@cmux/shared/src/providers/amp/start-amp-proxy.ts";
 import { SerializeAddon } from "@xterm/addon-serialize";
 import * as xtermHeadless from "@xterm/headless";
@@ -30,12 +31,11 @@ import { cpus, platform, totalmem } from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { Server, type Namespace, type Socket } from "socket.io";
-import { getWorkerServerSocketOptions } from "@cmux/shared/node/socket";
-import { checkDockerReadiness } from "./checkDockerReadiness.js";
-import { detectTerminalIdle } from "./detectTerminalIdle.js";
-import { runWorkerExec } from "./execRunner.js";
-import { FileWatcher, computeGitDiff, getFileWithDiff } from "./fileWatcher.js";
-import { log } from "./logger.js";
+import { checkDockerReadiness } from "./checkDockerReadiness";
+import { detectTerminalIdle } from "./detectTerminalIdle";
+import { runWorkerExec } from "./execRunner";
+import { FileWatcher, computeGitDiff, getFileWithDiff } from "./fileWatcher";
+import { log } from "./logger";
 
 const execAsync = promisify(exec);
 
