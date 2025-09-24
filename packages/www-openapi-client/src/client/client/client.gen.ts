@@ -2,7 +2,6 @@
 
 import { createSseClient } from '../core/serverSentEvents.gen.js';
 import type { HttpMethod } from '../core/types.gen.js';
-import { getValidRequestBody } from '../core/utils.gen.js';
 import type {
   Client,
   Config,
@@ -61,12 +60,12 @@ export const createClient = (config: Config = {}): Client => {
       await opts.requestValidator(opts);
     }
 
-    if (opts.body !== undefined && opts.bodySerializer) {
+    if (opts.body && opts.bodySerializer) {
       opts.serializedBody = opts.bodySerializer(opts.body);
     }
 
     // remove Content-Type header if body is empty to avoid sending invalid requests
-    if (opts.body === undefined || opts.serializedBody === '') {
+    if (opts.serializedBody === undefined || opts.serializedBody === '') {
       opts.headers.delete('Content-Type');
     }
 
@@ -81,7 +80,7 @@ export const createClient = (config: Config = {}): Client => {
     const requestInit: ReqInit = {
       redirect: 'follow',
       ...opts,
-      body: getValidRequestBody(opts),
+      body: opts.serializedBody,
     };
 
     let request = new Request(url, requestInit);

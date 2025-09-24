@@ -6,6 +6,18 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { internalMutation, internalQuery } from "./_generated/server";
 import { authMutation, authQuery } from "./users/utils";
 
+function deriveGeneratedBranchName(
+  branch?: string | null
+): string | undefined {
+  if (!branch) return undefined;
+  const trimmed = branch.trim();
+  if (!trimmed) return undefined;
+  const idx = trimmed.lastIndexOf("-");
+  if (idx <= 0) return trimmed;
+  const candidate = trimmed.slice(0, idx);
+  return candidate || trimmed;
+}
+
 // Create a new task run
 export const create = authMutation({
   args: {
@@ -21,6 +33,10 @@ export const create = authMutation({
     const userId = ctx.identity.subject;
     const now = Date.now();
     const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
+    const task = await ctx.db.get(args.taskId);
+    if (!task || task.teamId !== teamId || task.userId !== userId) {
+      throw new Error("Task not found or unauthorized");
+    }
     if (args.environmentId) {
       const environment = await ctx.db.get(args.environmentId);
       if (!environment || environment.teamId !== teamId) {
@@ -40,6 +56,15 @@ export const create = authMutation({
       teamId,
       environmentId: args.environmentId,
     });
+    const generatedBranchName = deriveGeneratedBranchName(args.newBranch);
+    if (
+      generatedBranchName &&
+      task.generatedBranchName !== generatedBranchName
+    ) {
+      await ctx.db.patch(args.taskId, {
+        generatedBranchName,
+      });
+    }
     const jwt = await new SignJWT({
       taskRunId,
       teamId,
