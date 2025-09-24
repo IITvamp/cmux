@@ -832,3 +832,20 @@ export const crownWorkerScheduleStop = httpAction(async (ctx, req) => {
 
   return jsonResponse({ ok: true })
 })
+
+// Test endpoint to verify Crown HTTP is working
+export const crownHealthCheck = httpAction(async (_ctx, req) => {
+  console.log('[convex.crown] Health check endpoint called', {
+    path: req.url,
+    method: req.method,
+    timestamp: new Date().toISOString(),
+  })
+
+  return jsonResponse({
+    ok: true,
+    service: 'crown',
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    version: '1.0.0',
+  })
+})
