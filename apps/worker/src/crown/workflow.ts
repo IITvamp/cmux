@@ -100,9 +100,9 @@ async function convexRequest<T>(
   if (!baseUrl) return null
 
   const fullUrl = `${baseUrl}${path}`
-  log('DEBUG', `Making Crown HTTP request`, { 
+  log('DEBUG', `Making Crown HTTP request`, {
     url: fullUrl,
-    path 
+    path,
   })
 
   try {
@@ -128,10 +128,10 @@ async function convexRequest<T>(
 
     return (await response.json()) as T
   } catch (error) {
-    log('ERROR', 'Failed to reach crown endpoint', { 
+    log('ERROR', 'Failed to reach crown endpoint', {
       url: fullUrl,
-      path, 
-      error 
+      path,
+      error,
     })
     return null
   }
@@ -794,7 +794,7 @@ export async function handleWorkerTaskCompletion(
       )
 
       // Retry logic for checking all-complete status
-      const maxRetries = 5
+      const maxRetries = 3
       let allComplete = false
       let completionState: WorkerAllRunsCompleteResponse | null = null
 
@@ -864,6 +864,7 @@ export async function handleWorkerTaskCompletion(
         taskId: currentTaskId,
       })
 
+      // Check if evaluation already exists before proceeding
       const checkResponse = await convexRequest<CrownWorkerCheckResponse>(
         '/api/crown/check',
         runContext.token,
@@ -878,9 +879,10 @@ export async function handleWorkerTaskCompletion(
       }
 
       if (checkResponse.existingEvaluation) {
-        log('INFO', 'Crown evaluation already recorded', {
+        log('INFO', 'Crown evaluation already exists (another worker completed it)', {
           taskRunId,
           winnerRunId: checkResponse.existingEvaluation.winnerRunId,
+          evaluatedAt: new Date(checkResponse.existingEvaluation.evaluatedAt).toISOString(),
         })
         return
       }

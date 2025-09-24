@@ -11,53 +11,53 @@ import {
   type WorkerHeartbeat,
   type WorkerRegister,
   type WorkerToServerEvents,
-} from "@cmux/shared";
-import { AGENT_CONFIGS } from "@cmux/shared/agentConfig";
+} from '@cmux/shared'
+import { AGENT_CONFIGS } from '@cmux/shared/agentConfig'
 
-import { startAmpProxy } from "@cmux/shared/src/providers/amp/start-amp-proxy.ts";
-import { SerializeAddon } from "@xterm/addon-serialize";
-import * as xtermHeadless from "@xterm/headless";
-import express from "express";
-import multer from "multer";
+import { startAmpProxy } from '@cmux/shared/src/providers/amp/start-amp-proxy.ts'
+import { SerializeAddon } from '@xterm/addon-serialize'
+import * as xtermHeadless from '@xterm/headless'
+import express from 'express'
+import multer from 'multer'
 import {
   exec,
   spawn,
   type ChildProcessWithoutNullStreams,
-} from "node:child_process";
-import { promises as fs } from "node:fs";
-import { createServer } from "node:http";
-import { cpus, platform, totalmem } from "node:os";
-import * as path from "node:path";
-import { promisify } from "node:util";
-import { Server, type Namespace, type Socket } from "socket.io";
-import { getWorkerServerSocketOptions } from "@cmux/shared/node/socket";
-import { checkDockerReadiness } from "./checkDockerReadiness.js";
-import { detectTerminalIdle } from "./detectTerminalIdle.js";
-import { runWorkerExec } from "./execRunner.js";
-import { FileWatcher, computeGitDiff, getFileWithDiff } from "./fileWatcher.js";
-import { log } from "./logger.js";
+} from 'node:child_process'
+import { promises as fs } from 'node:fs'
+import { createServer } from 'node:http'
+import { cpus, platform, totalmem } from 'node:os'
+import * as path from 'node:path'
+import { promisify } from 'node:util'
+import { Server, type Namespace, type Socket } from 'socket.io'
+import { getWorkerServerSocketOptions } from '@cmux/shared/node/socket'
+import { checkDockerReadiness } from './checkDockerReadiness.js'
+import { detectTerminalIdle } from './detectTerminalIdle.js'
+import { runWorkerExec } from './execRunner.js'
+import { FileWatcher, computeGitDiff, getFileWithDiff } from './fileWatcher.js'
+import { log } from './logger.js'
 import {
   handleWorkerTaskCompletion,
   registerTaskRunContext,
-} from "./crown/workflow.js";
+} from './crown/workflow.js'
 
-const execAsync = promisify(exec);
+const execAsync = promisify(exec)
 
-const Terminal = xtermHeadless.Terminal;
+const Terminal = xtermHeadless.Terminal
 
 // Configuration
-const WORKER_ID = process.env.WORKER_ID || `worker-${Date.now()}`;
-const WORKER_PORT = parseInt(process.env.WORKER_PORT || "39377", 10);
-const CONTAINER_IMAGE = process.env.CONTAINER_IMAGE || "cmux-worker";
-const CONTAINER_VERSION = process.env.CONTAINER_VERSION || "0.0.1";
+const WORKER_ID = process.env.WORKER_ID || `worker-${Date.now()}`
+const WORKER_PORT = parseInt(process.env.WORKER_PORT || '39377', 10)
+const CONTAINER_IMAGE = process.env.CONTAINER_IMAGE || 'cmux-worker'
+const CONTAINER_VERSION = process.env.CONTAINER_VERSION || '0.0.1'
 
 // Create Express app
-const app = express();
+const app = express()
 
 // Health check endpoint
-app.get("/health", (_req, res) => {
+app.get('/health', (_req, res) => {
   res.json({
-    status: "healthy",
+    status: 'healthy',
     workerId: WORKER_ID,
     uptime: process.uptime(),
     mainServerConnected: !!mainServerSocket && mainServerSocket.connected,
@@ -68,116 +68,116 @@ app.get("/health", (_req, res) => {
       taskId: e.data.taskId,
       taskRunId: e.data.taskRunId,
     })),
-  });
-});
+  })
+})
 
 // Configure multer for file uploads
 const upload = multer({
   limits: { fileSize: 100 * 1024 * 1024 }, // 100MB limit
   storage: multer.memoryStorage(),
-});
+})
 
 // File upload endpoint
-app.post("/upload-image", upload.single("image"), async (req, res) => {
+app.post('/upload-image', upload.single('image'), async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded" });
+      return res.status(400).json({ error: 'No file uploaded' })
     }
 
-    const { path: imagePath } = req.body;
+    const { path: imagePath } = req.body
     if (!imagePath) {
-      return res.status(400).json({ error: "No path specified" });
+      return res.status(400).json({ error: 'No path specified' })
     }
 
-    log("INFO", `Received image upload request for path: ${imagePath}`, {
+    log('INFO', `Received image upload request for path: ${imagePath}`, {
       size: req.file.size,
       mimetype: req.file.mimetype,
       originalname: req.file.originalname,
-    });
+    })
 
     // Ensure directory exists
-    const dir = path.dirname(imagePath);
-    await fs.mkdir(dir, { recursive: true });
+    const dir = path.dirname(imagePath)
+    await fs.mkdir(dir, { recursive: true })
 
     // Write the file
-    await fs.writeFile(imagePath, req.file.buffer);
+    await fs.writeFile(imagePath, req.file.buffer)
 
-    log("INFO", `Successfully wrote image file: ${imagePath}`);
+    log('INFO', `Successfully wrote image file: ${imagePath}`)
 
     // Verify file was created
-    const stats = await fs.stat(imagePath);
+    const stats = await fs.stat(imagePath)
 
     res.json({
       success: true,
       path: imagePath,
       size: stats.size,
-    });
+    })
   } catch (error) {
-    log("ERROR", "Failed to upload image", error);
+    log('ERROR', 'Failed to upload image', error)
     res.status(500).json({
-      error: error instanceof Error ? error.message : "Upload failed",
-    });
+      error: error instanceof Error ? error.message : 'Upload failed',
+    })
   }
-});
+})
 
 // Create HTTP server with Express app
-const httpServer = createServer(app);
+const httpServer = createServer(app)
 
 // Socket.IO server with namespaces
-const io = new Server(httpServer, getWorkerServerSocketOptions());
+const io = new Server(httpServer, getWorkerServerSocketOptions())
 
 // Client namespace
-const vscodeIO = io.of("/vscode") as Namespace<
+const vscodeIO = io.of('/vscode') as Namespace<
   ClientToServerEvents,
   ServerToClientEvents,
   InterServerEvents,
   SocketData
->;
+>
 
 // Management namespace
-const managementIO = io.of("/management") as Namespace<
+const managementIO = io.of('/management') as Namespace<
   ServerToWorkerEvents,
   WorkerToServerEvents
->;
+>
 
 // Track connected main server
 let mainServerSocket: Socket<
   ServerToWorkerEvents,
   WorkerToServerEvents
-> | null = null;
+> | null = null
 
 // Track active file watchers by taskRunId
-const activeFileWatchers: Map<string, FileWatcher> = new Map();
+const activeFileWatchers: Map<string, FileWatcher> = new Map()
 
 // Track process exit codes by taskRunId
-const processExitCodes: Map<string, number> = new Map();
+const processExitCodes: Map<string, number> = new Map()
 
 // Queue for pending events when mainServerSocket is not connected
 interface PendingEvent {
-  event: string;
-  data: any;
-  timestamp: number;
+  event: string
+  data: any
+  timestamp: number
 }
-const pendingEvents: PendingEvent[] = [];
+const pendingEvents: PendingEvent[] = []
 
 /**
  * Emit an event to the main server, queuing it if not connected
  */
 function emitToMainServer(event: string, data: any) {
   if (mainServerSocket && mainServerSocket.connected) {
-    log("DEBUG", `Emitting ${event} to main server`, { event, data });
-    mainServerSocket.emit(event as any, data);
+    log('DEBUG', `Emitting ${event} to main server`, { event, data })
+    mainServerSocket.emit(event as any, data)
   } else {
-    log("WARNING", `Main server not connected, queuing ${event} event`, {
+    log('WARNING', `Main server not connected, queuing ${event} event`, {
       event,
       data,
       pendingEventsCount: pendingEvents.length + 1,
-    });
+    })
     pendingEvents.push({
       event,
       data,
       timestamp: Date.now(),
-    });
+    })
   }
 }
 
@@ -186,31 +186,31 @@ function emitToMainServer(event: string, data: any) {
  */
 function sendPendingEvents() {
   if (!mainServerSocket || !mainServerSocket.connected) {
-    log("WARNING", "Cannot send pending events - main server not connected");
-    return;
+    log('WARNING', 'Cannot send pending events - main server not connected')
+    return
   }
 
   if (pendingEvents.length === 0) {
-    return;
+    return
   }
 
-  log("INFO", `Sending ${pendingEvents.length} pending events to main server`);
+  log('INFO', `Sending ${pendingEvents.length} pending events to main server`)
 
-  const eventsToSend = [...pendingEvents];
-  pendingEvents.length = 0; // Clear the queue
+  const eventsToSend = [...pendingEvents]
+  pendingEvents.length = 0 // Clear the queue
 
   for (const pendingEvent of eventsToSend) {
-    const age = Date.now() - pendingEvent.timestamp;
+    const age = Date.now() - pendingEvent.timestamp
     log(
-      "DEBUG",
+      'DEBUG',
       `Sending pending ${pendingEvent.event} event (age: ${age}ms)`,
       {
         event: pendingEvent.event,
         data: pendingEvent.data,
         age,
       }
-    );
-    mainServerSocket.emit(pendingEvent.event as any, pendingEvent.data);
+    )
+    mainServerSocket.emit(pendingEvent.event as any, pendingEvent.data)
   }
 }
 
@@ -222,13 +222,13 @@ function sendPendingEvents() {
 function sanitizeTmuxSessionName(name: string): string {
   // Replace all invalid characters with underscores
   // Allow only alphanumeric characters, hyphens, and underscores
-  return name.replace(/[^a-zA-Z0-9_-]/g, "_");
+  return name.replace(/[^a-zA-Z0-9_-]/g, '_')
 }
 
 // Worker statistics
 function getWorkerStats(): WorkerHeartbeat {
-  const totalMem = totalmem();
-  const usedMem = process.memoryUsage().heapUsed;
+  const totalMem = totalmem()
+  const usedMem = process.memoryUsage().heapUsed
 
   return {
     workerId: WORKER_ID,
@@ -237,7 +237,7 @@ function getWorkerStats(): WorkerHeartbeat {
       cpuUsage: 0, // TODO: Implement actual CPU usage tracking
       memoryUsage: (usedMem / totalMem) * 100,
     },
-  };
+  }
 }
 
 // Send registration info when main server connects
@@ -248,7 +248,7 @@ function registerWithMainServer(
     workerId: WORKER_ID,
     capabilities: {
       maxConcurrentTerminals: 50, // Reduced from 50 to prevent resource exhaustion
-      supportedLanguages: ["javascript", "typescript", "python", "go", "rust"],
+      supportedLanguages: ['javascript', 'typescript', 'python', 'go', 'rust'],
       gpuAvailable: false,
       memoryMB: Math.floor(totalmem() / 1024 / 1024),
       cpuCores: cpus().length,
@@ -258,113 +258,113 @@ function registerWithMainServer(
       version: CONTAINER_VERSION,
       platform: platform(),
     },
-  };
+  }
 
-  socket.emit("worker:register", registration);
+  socket.emit('worker:register', registration)
   log(
-    "INFO",
+    'INFO',
     `Worker ${WORKER_ID} sent registration to main server`,
     registration
-  );
+  )
 }
 
 // Management socket server (main server connects to this)
-managementIO.on("connection", (socket) => {
+managementIO.on('connection', (socket) => {
   log(
-    "INFO",
+    'INFO',
     `Main server connected to worker ${WORKER_ID}`,
     {
-      from: socket.handshake.headers.referer || "unknown",
+      from: socket.handshake.headers.referer || 'unknown',
       socketId: socket.id,
     },
     WORKER_ID
-  );
-  mainServerSocket = socket;
+  )
+  mainServerSocket = socket
 
   // Send registration immediately
-  registerWithMainServer(socket);
+  registerWithMainServer(socket)
 
   // Send any pending events
-  sendPendingEvents();
+  sendPendingEvents()
 
   // Handle terminal operations from main server
-  socket.on("worker:create-terminal", async (data, callback) => {
+  socket.on('worker:create-terminal', async (data, callback) => {
     log(
-      "INFO",
-      "Management namespace: Received request to create terminal from main server",
+      'INFO',
+      'Management namespace: Received request to create terminal from main server',
       JSON.stringify(
         data,
         (_key, value) => {
-          if (typeof value === "string" && value.length > 1000) {
-            return value.slice(0, 1000) + "...";
+          if (typeof value === 'string' && value.length > 1000) {
+            return value.slice(0, 1000) + '...'
           }
-          return value;
+          return value
         },
         2
       ),
       WORKER_ID
-    );
+    )
     try {
-      const validated = WorkerCreateTerminalSchema.parse(data);
-      log("INFO", "worker:create-terminal validated", validated);
+      const validated = WorkerCreateTerminalSchema.parse(data)
+      log('INFO', 'worker:create-terminal validated', validated)
 
       // Handle auth files first if provided
       if (validated.authFiles && validated.authFiles.length > 0) {
         log(
-          "INFO",
+          'INFO',
           `Writing ${validated.authFiles.length} auth files...`,
           undefined,
           WORKER_ID
-        );
+        )
         for (const file of validated.authFiles) {
           try {
             // Expand $HOME in destination path
             const destPath = file.destinationPath.replace(
-              "$HOME",
-              process.env.HOME || "/root"
-            );
+              '$HOME',
+              process.env.HOME || '/root'
+            )
             log(
-              "INFO",
+              'INFO',
               `Writing auth file to: ${destPath}`,
               undefined,
               WORKER_ID
-            );
+            )
 
             // Ensure directory exists
-            const dir = path.dirname(destPath);
-            await fs.mkdir(dir, { recursive: true });
+            const dir = path.dirname(destPath)
+            await fs.mkdir(dir, { recursive: true })
 
             // Write the file
             await fs.writeFile(
               destPath,
-              Buffer.from(file.contentBase64, "base64")
-            );
+              Buffer.from(file.contentBase64, 'base64')
+            )
 
             // Set permissions if specified
             if (file.mode) {
-              await fs.chmod(destPath, parseInt(file.mode, 8));
+              await fs.chmod(destPath, parseInt(file.mode, 8))
             }
 
             log(
-              "INFO",
+              'INFO',
               `Successfully wrote auth file: ${destPath}`,
               undefined,
               WORKER_ID
-            );
+            )
           } catch (error) {
             log(
-              "ERROR",
+              'ERROR',
               `Failed to write auth file ${file.destinationPath}:`,
               error,
               WORKER_ID
-            );
+            )
           }
         }
       }
 
       log(
-        "INFO",
-        "Creating terminal with options",
+        'INFO',
+        'Creating terminal with options',
         {
           terminalId: validated.terminalId,
           cols: validated.cols,
@@ -377,7 +377,7 @@ managementIO.on("connection", (socket) => {
           taskRunId: validated.taskRunId,
         },
         WORKER_ID
-      );
+      )
 
       await createTerminal(validated.terminalId, {
         cols: validated.cols,
@@ -389,7 +389,7 @@ managementIO.on("connection", (socket) => {
         taskRunId: validated.taskRunId,
         agentModel: validated.agentModel,
         startupCommands: validated.startupCommands,
-      });
+      })
 
       callback({
         error: null,
@@ -397,93 +397,88 @@ managementIO.on("connection", (socket) => {
           workerId: WORKER_ID,
           terminalId: validated.terminalId,
         },
-      });
-      socket.emit("worker:terminal-created", {
+      })
+      socket.emit('worker:terminal-created', {
         workerId: WORKER_ID,
         terminalId: validated.terminalId,
-      });
+      })
     } catch (error) {
-      log(
-        "ERROR",
-        "Error creating terminal from main server",
-        error,
-        WORKER_ID
-      );
+      log('ERROR', 'Error creating terminal from main server', error, WORKER_ID)
       callback({
         error: error instanceof Error ? error : new Error(error as string),
         data: null,
-      });
-      socket.emit("worker:error", {
+      })
+      socket.emit('worker:error', {
         workerId: WORKER_ID,
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
+        error: error instanceof Error ? error.message : 'Unknown error',
+      })
     }
-  });
+  })
 
-  socket.on("worker:check-docker", async (callback) => {
-    console.log(`Worker ${WORKER_ID} checking Docker readiness`);
+  socket.on('worker:check-docker', async (callback) => {
+    console.log(`Worker ${WORKER_ID} checking Docker readiness`)
 
     try {
       // Check if Docker socket is accessible
-      const dockerReady = await checkDockerReadiness();
+      const dockerReady = await checkDockerReadiness()
 
       callback({
         ready: dockerReady,
-        message: dockerReady ? "Docker is ready" : "Docker is not ready",
-      });
+        message: dockerReady ? 'Docker is ready' : 'Docker is not ready',
+      })
     } catch (error) {
       callback({
         ready: false,
         message: `Error checking Docker: ${
-          error instanceof Error ? error.message : "Unknown error"
+          error instanceof Error ? error.message : 'Unknown error'
         }`,
-      });
+      })
     }
-  });
+  })
 
-  socket.on("worker:configure-git", async (data) => {
+  socket.on('worker:configure-git', async (data) => {
     try {
-      const validated = WorkerConfigureGitSchema.parse(data);
-      console.log(`Worker ${WORKER_ID} configuring git...`);
+      const validated = WorkerConfigureGitSchema.parse(data)
+      console.log(`Worker ${WORKER_ID} configuring git...`)
 
       // Create a custom git config file that includes the mounted one
-      const customGitConfigPath = "/root/.gitconfig.custom";
+      const customGitConfigPath = '/root/.gitconfig.custom'
 
       // Parse existing config into sections
-      const configSections: Map<string, Map<string, string>> = new Map();
+      const configSections: Map<string, Map<string, string>> = new Map()
 
       // Start by parsing the mounted config if it exists
       try {
         const { stdout: mountedConfig } = await execAsync(
-          "cat /root/.gitconfig 2>/dev/null || true"
-        );
+          'cat /root/.gitconfig 2>/dev/null || true'
+        )
         if (mountedConfig) {
-          let currentSection = "global";
-          const lines = mountedConfig.split("\n");
+          let currentSection = 'global'
+          const lines = mountedConfig.split('\n')
 
           for (const line of lines) {
-            const trimmedLine = line.trim();
-            if (!trimmedLine || trimmedLine.startsWith("#")) continue;
+            const trimmedLine = line.trim()
+            if (!trimmedLine || trimmedLine.startsWith('#')) continue
 
             // Check for section header
-            const sectionMatch = trimmedLine.match(/^\[(.+)\]$/);
+            const sectionMatch = trimmedLine.match(/^\[(.+)\]$/)
             if (sectionMatch) {
-              currentSection = sectionMatch[1] || "global";
+              currentSection = sectionMatch[1] || 'global'
               if (!configSections.has(currentSection)) {
-                configSections.set(currentSection, new Map());
+                configSections.set(currentSection, new Map())
               }
-              continue;
+              continue
             }
 
             // Parse key-value pairs
-            const keyValueMatch = line.match(/^\s*(\w+)\s*=\s*(.+)$/);
+            const keyValueMatch = line.match(/^\s*(\w+)\s*=\s*(.+)$/)
             if (keyValueMatch) {
-              const [, key, value] = keyValueMatch;
+              const [, key, value] = keyValueMatch
               if (key && value) {
                 if (!configSections.has(currentSection)) {
-                  configSections.set(currentSection, new Map());
+                  configSections.set(currentSection, new Map())
                 }
-                configSections.get(currentSection)!.set(key, value);
+                configSections.get(currentSection)!.set(key, value)
               }
             }
           }
@@ -493,110 +488,110 @@ managementIO.on("connection", (socket) => {
       }
 
       // Add the store credential helper
-      if (!configSections.has("credential")) {
-        configSections.set("credential", new Map());
+      if (!configSections.has('credential')) {
+        configSections.set('credential', new Map())
       }
-      configSections.get("credential")!.set("helper", "store");
+      configSections.get('credential')!.set('helper', 'store')
 
       // Create .git-credentials file if GitHub token is provided
       if (validated.githubToken) {
-        const credentialsPath = "/root/.git-credentials";
-        const credentialsContent = `https://oauth:${validated.githubToken}@github.com\n`;
-        await fs.writeFile(credentialsPath, credentialsContent);
-        await fs.chmod(credentialsPath, 0o600);
-        console.log("GitHub credentials stored in .git-credentials");
+        const credentialsPath = '/root/.git-credentials'
+        const credentialsContent = `https://oauth:${validated.githubToken}@github.com\n`
+        await fs.writeFile(credentialsPath, credentialsContent)
+        await fs.chmod(credentialsPath, 0o600)
+        console.log('GitHub credentials stored in .git-credentials')
       }
 
       // Add additional git settings if provided
       if (validated.gitConfig) {
         for (const [key, value] of Object.entries(validated.gitConfig)) {
-          const [section, ...keyParts] = key.split(".");
-          const configKey = keyParts.join(".");
+          const [section, ...keyParts] = key.split('.')
+          const configKey = keyParts.join('.')
 
           if (section && configKey) {
             if (!configSections.has(section)) {
-              configSections.set(section, new Map());
+              configSections.set(section, new Map())
             }
-            configSections.get(section)!.set(configKey, value);
+            configSections.get(section)!.set(configKey, value)
           }
         }
       }
 
       // Build the final config content
-      let gitConfigContent = "";
+      let gitConfigContent = ''
       for (const [section, settings] of configSections) {
-        if (section !== "global") {
-          gitConfigContent += `[${section}]\n`;
+        if (section !== 'global') {
+          gitConfigContent += `[${section}]\n`
           for (const [key, value] of settings) {
-            gitConfigContent += `\t${key} = ${value}\n`;
+            gitConfigContent += `\t${key} = ${value}\n`
           }
-          gitConfigContent += "\n";
+          gitConfigContent += '\n'
         }
       }
 
       // Write the custom config
-      await fs.writeFile(customGitConfigPath, gitConfigContent);
+      await fs.writeFile(customGitConfigPath, gitConfigContent)
 
       // Set GIT_CONFIG environment variable to use our custom config
-      process.env.GIT_CONFIG_GLOBAL = customGitConfigPath;
+      process.env.GIT_CONFIG_GLOBAL = customGitConfigPath
 
       // Also set it for all terminals
       await execAsync(
         `echo 'export GIT_CONFIG_GLOBAL=${customGitConfigPath}' >> /etc/profile`
-      );
+      )
       await execAsync(
         `echo 'export GIT_CONFIG_GLOBAL=${customGitConfigPath}' >> /root/.bashrc`
-      );
+      )
 
       // Set up SSH keys if provided
       if (validated.sshKeys) {
         // Check if .ssh is mounted (read-only)
-        const sshDir = "/root/.ssh";
-        let sshDirWritable = true;
+        const sshDir = '/root/.ssh'
+        let sshDirWritable = true
 
         try {
           // Try to create a test file
-          await fs.writeFile(path.join(sshDir, ".test"), "test");
+          await fs.writeFile(path.join(sshDir, '.test'), 'test')
           // If successful, remove it
-          await execAsync(`rm -f ${path.join(sshDir, ".test")}`);
+          await execAsync(`rm -f ${path.join(sshDir, '.test')}`)
         } catch {
           // SSH dir is read-only, use alternative location
-          sshDirWritable = false;
+          sshDirWritable = false
           console.log(
-            ".ssh directory is mounted read-only, using alternative SSH config"
-          );
+            '.ssh directory is mounted read-only, using alternative SSH config'
+          )
         }
 
         if (!sshDirWritable) {
           // Use alternative SSH directory
-          const altSshDir = "/root/.ssh-custom";
-          await fs.mkdir(altSshDir, { recursive: true });
+          const altSshDir = '/root/.ssh-custom'
+          await fs.mkdir(altSshDir, { recursive: true })
 
           if (validated.sshKeys.privateKey) {
-            const privateKeyPath = path.join(altSshDir, "id_rsa");
+            const privateKeyPath = path.join(altSshDir, 'id_rsa')
             await fs.writeFile(
               privateKeyPath,
-              Buffer.from(validated.sshKeys.privateKey, "base64")
-            );
-            await fs.chmod(privateKeyPath, 0o600);
+              Buffer.from(validated.sshKeys.privateKey, 'base64')
+            )
+            await fs.chmod(privateKeyPath, 0o600)
           }
 
           if (validated.sshKeys.publicKey) {
-            const publicKeyPath = path.join(altSshDir, "id_rsa.pub");
+            const publicKeyPath = path.join(altSshDir, 'id_rsa.pub')
             await fs.writeFile(
               publicKeyPath,
-              Buffer.from(validated.sshKeys.publicKey, "base64")
-            );
-            await fs.chmod(publicKeyPath, 0o644);
+              Buffer.from(validated.sshKeys.publicKey, 'base64')
+            )
+            await fs.chmod(publicKeyPath, 0o644)
           }
 
           if (validated.sshKeys.knownHosts) {
-            const knownHostsPath = path.join(altSshDir, "known_hosts");
+            const knownHostsPath = path.join(altSshDir, 'known_hosts')
             await fs.writeFile(
               knownHostsPath,
-              Buffer.from(validated.sshKeys.knownHosts, "base64")
-            );
-            await fs.chmod(knownHostsPath, 0o644);
+              Buffer.from(validated.sshKeys.knownHosts, 'base64')
+            )
+            await fs.chmod(knownHostsPath, 0o644)
           }
 
           // Create SSH config to use our custom directory
@@ -604,111 +599,111 @@ managementIO.on("connection", (socket) => {
   IdentityFile ${altSshDir}/id_rsa
   UserKnownHostsFile ${altSshDir}/known_hosts
   StrictHostKeyChecking accept-new
-`;
-          await fs.writeFile("/root/.ssh-config", sshConfigContent);
+`
+          await fs.writeFile('/root/.ssh-config', sshConfigContent)
 
           // Set GIT_SSH_COMMAND to use our custom config
-          process.env.GIT_SSH_COMMAND = "ssh -F /root/.ssh-config";
+          process.env.GIT_SSH_COMMAND = 'ssh -F /root/.ssh-config'
 
           // Also export it for all terminals
           await execAsync(
             `echo 'export GIT_SSH_COMMAND="ssh -F /root/.ssh-config"' >> /etc/profile`
-          );
+          )
           await execAsync(
             `echo 'export GIT_SSH_COMMAND="ssh -F /root/.ssh-config"' >> /root/.bashrc`
-          );
+          )
         } else {
           // SSH dir is writable, use it normally
           if (validated.sshKeys.privateKey) {
-            const privateKeyPath = path.join(sshDir, "id_rsa");
+            const privateKeyPath = path.join(sshDir, 'id_rsa')
             await fs.writeFile(
               privateKeyPath,
-              Buffer.from(validated.sshKeys.privateKey, "base64")
-            );
-            await fs.chmod(privateKeyPath, 0o600);
+              Buffer.from(validated.sshKeys.privateKey, 'base64')
+            )
+            await fs.chmod(privateKeyPath, 0o600)
           }
 
           if (validated.sshKeys.publicKey) {
-            const publicKeyPath = path.join(sshDir, "id_rsa.pub");
+            const publicKeyPath = path.join(sshDir, 'id_rsa.pub')
             await fs.writeFile(
               publicKeyPath,
-              Buffer.from(validated.sshKeys.publicKey, "base64")
-            );
-            await fs.chmod(publicKeyPath, 0o644);
+              Buffer.from(validated.sshKeys.publicKey, 'base64')
+            )
+            await fs.chmod(publicKeyPath, 0o644)
           }
 
           if (validated.sshKeys.knownHosts) {
-            const knownHostsPath = path.join(sshDir, "known_hosts");
+            const knownHostsPath = path.join(sshDir, 'known_hosts')
             await fs.writeFile(
               knownHostsPath,
-              Buffer.from(validated.sshKeys.knownHosts, "base64")
-            );
-            await fs.chmod(knownHostsPath, 0o644);
+              Buffer.from(validated.sshKeys.knownHosts, 'base64')
+            )
+            await fs.chmod(knownHostsPath, 0o644)
           }
         }
       }
 
-      console.log(`Worker ${WORKER_ID} git configuration complete`);
+      console.log(`Worker ${WORKER_ID} git configuration complete`)
     } catch (error) {
-      console.error("Error configuring git:", error);
-      socket.emit("worker:error", {
+      console.error('Error configuring git:', error)
+      socket.emit('worker:error', {
         workerId: WORKER_ID,
         error:
-          error instanceof Error ? error.message : "Failed to configure git",
-      });
+          error instanceof Error ? error.message : 'Failed to configure git',
+      })
     }
-  });
+  })
 
-  socket.on("worker:exec", async (data, callback) => {
+  socket.on('worker:exec', async (data, callback) => {
     try {
-      const validated = WorkerExecSchema.parse(data);
-      log("INFO", `Worker ${WORKER_ID} executing command:`, {
+      const validated = WorkerExecSchema.parse(data)
+      log('INFO', `Worker ${WORKER_ID} executing command:`, {
         command: validated.command,
         args: validated.args,
         cwd: validated.cwd,
-      });
+      })
 
-      const result = await runWorkerExec(validated);
+      const result = await runWorkerExec(validated)
 
-      const logLevel = result.exitCode === 0 ? "INFO" : "WARN";
+      const logLevel = result.exitCode === 0 ? 'INFO' : 'WARN'
       log(logLevel, `worker:exec completed: ${validated.command}`, {
         exitCode: result.exitCode,
         stdout: result.stdout.slice(0, 200),
         stderr: result.stderr.slice(0, 200),
-      });
+      })
 
       callback({
         error: null,
         data: result,
-      });
+      })
     } catch (error) {
-      log("ERROR", "Error executing command", error, WORKER_ID);
+      log('ERROR', 'Error executing command', error, WORKER_ID)
       callback({
         error: error instanceof Error ? error : new Error(String(error)),
         data: null,
-      });
+      })
     }
-  });
+  })
 
-  socket.on("worker:shutdown", () => {
-    console.log(`Worker ${WORKER_ID} received shutdown command`);
-    gracefulShutdown();
-  });
+  socket.on('worker:shutdown', () => {
+    console.log(`Worker ${WORKER_ID} received shutdown command`)
+    gracefulShutdown()
+  })
 
   // Handle file watcher start request
-  socket.on("worker:start-file-watch", async (data) => {
-    const { taskRunId, worktreePath } = data;
+  socket.on('worker:start-file-watch', async (data) => {
+    const { taskRunId, worktreePath } = data
 
     if (!taskRunId || !worktreePath) {
-      log("ERROR", "Missing taskRunId or worktreePath for file watch");
-      return;
+      log('ERROR', 'Missing taskRunId or worktreePath for file watch')
+      return
     }
 
     // Stop existing watcher if any
-    const existingWatcher = activeFileWatchers.get(taskRunId);
+    const existingWatcher = activeFileWatchers.get(taskRunId)
     if (existingWatcher) {
-      existingWatcher.stop();
-      activeFileWatchers.delete(taskRunId);
+      existingWatcher.stop()
+      activeFileWatchers.delete(taskRunId)
     }
 
     // Create new file watcher
@@ -718,70 +713,70 @@ managementIO.on("connection", (socket) => {
       debounceMs: 2000, // 2 second debounce
       gitIgnore: true,
       onFileChange: async (changes) => {
-        log("INFO", `[Worker] File changes detected for task ${taskRunId}:`, {
+        log('INFO', `[Worker] File changes detected for task ${taskRunId}:`, {
           changeCount: changes.length,
           taskRunId,
-        });
+        })
 
         // Compute git diff for changed files
-        const changedFiles = changes.map((c) => c.path);
-        const gitDiff = await computeGitDiff(worktreePath, changedFiles);
+        const changedFiles = changes.map((c) => c.path)
+        const gitDiff = await computeGitDiff(worktreePath, changedFiles)
 
         // Get detailed diffs for each file
-        const fileDiffs = [];
+        const fileDiffs = []
         for (const change of changes) {
-          const diff = await getFileWithDiff(change.path, worktreePath);
+          const diff = await getFileWithDiff(change.path, worktreePath)
           fileDiffs.push({
             path: change.path,
             type: change.type,
             ...diff,
-          });
+          })
         }
 
         // Emit file changes to main server
-        emitToMainServer("worker:file-changes", {
+        emitToMainServer('worker:file-changes', {
           workerId: WORKER_ID,
           taskRunId,
           changes,
           gitDiff,
           fileDiffs,
           timestamp: Date.now(),
-        });
+        })
       },
-    });
+    })
 
     // Start watching
-    await watcher.start();
-    activeFileWatchers.set(taskRunId, watcher);
+    await watcher.start()
+    activeFileWatchers.set(taskRunId, watcher)
 
     log(
-      "INFO",
+      'INFO',
       `[Worker] Started file watcher for task ${taskRunId} at ${worktreePath}`
-    );
-  });
+    )
+  })
 
   // Handle file watcher stop request
-  socket.on("worker:stop-file-watch", (data) => {
-    const { taskRunId } = data;
+  socket.on('worker:stop-file-watch', (data) => {
+    const { taskRunId } = data
 
-    const watcher = activeFileWatchers.get(taskRunId);
+    const watcher = activeFileWatchers.get(taskRunId)
     if (watcher) {
-      watcher.stop();
-      activeFileWatchers.delete(taskRunId);
-      log("INFO", `[Worker] Stopped file watcher for task ${taskRunId}`);
+      watcher.stop()
+      activeFileWatchers.delete(taskRunId)
+      log('INFO', `[Worker] Stopped file watcher for task ${taskRunId}`)
     }
-  });
+  })
 
-  socket.on("disconnect", (reason) => {
-    log("WARNING", `Main server disconnected from worker ${WORKER_ID}`, {
+  socket.on('disconnect', (reason) => {
+    log('WARNING', `Main server disconnected from worker ${WORKER_ID}`, {
       reason,
-    });
-    mainServerSocket = null;
+    })
+    mainServerSocket = null
 
     // Log if we have pending events that need to be sent
     if (pendingEvents.length > 0) {
       log(
-        "WARNING",
+        'WARNING',
         `Main server disconnected with ${pendingEvents.length} pending events`,
         {
           pendingEvents: pendingEvents.map((e) => ({
@@ -790,121 +785,71 @@ managementIO.on("connection", (socket) => {
           })),
           disconnectReason: reason,
         }
-      );
+      )
     }
-  });
-});
+  })
+})
 
 // Client socket server
-vscodeIO.on("connection", (socket) => {
+vscodeIO.on('connection', (socket) => {
   console.log(
     `VSCode connected to worker ${WORKER_ID}:`,
     socket.id,
-    "from",
-    socket.handshake.headers.referer || "unknown"
-  );
+    'from',
+    socket.handshake.headers.referer || 'unknown'
+  )
 
-  socket.on("disconnect", () => {
-    console.log(`Client disconnected from worker ${WORKER_ID}:`, socket.id);
-  });
-});
+  socket.on('disconnect', () => {
+    console.log(`Client disconnected from worker ${WORKER_ID}:`, socket.id)
+  })
+})
 
 // Create terminal helper function
 async function createTerminal(
   terminalId: string,
   options: {
-    cols?: number;
-    rows?: number;
-    cwd?: string;
-    env?: Record<string, string>;
-    command?: string;
-    args?: string[];
-    taskRunId?: string;
-    agentModel?: string;
-    startupCommands?: string[];
+    cols?: number
+    rows?: number
+    cwd?: string
+    env?: Record<string, string>
+    command?: string
+    args?: string[]
+    taskRunId?: string
+    agentModel?: string
+    startupCommands?: string[]
   } = {}
 ): Promise<void> {
   const {
     cols = SERVER_TERMINAL_CONFIG.cols,
     rows = SERVER_TERMINAL_CONFIG.rows,
-    cwd = process.env.HOME || "/",
+    cwd = process.env.HOME || '/',
     env = {},
     command,
     args = [],
     startupCommands = [],
-  } = options;
+  } = options
 
-  const envRecord = env as Record<string, string>;
-  const taskRunToken = envRecord["CMUX_TASK_RUN_JWT"];
-  const convexUrl = envRecord["NEXT_PUBLIC_CONVEX_URL"];
+  const envRecord = env as Record<string, string>
+  const taskRunToken = envRecord['CMUX_TASK_RUN_JWT']
+  const convexUrl = envRecord['NEXT_PUBLIC_CONVEX_URL']
 
   if (convexUrl) {
-    process.env.NEXT_PUBLIC_CONVEX_URL = convexUrl;
+    process.env.NEXT_PUBLIC_CONVEX_URL = convexUrl
   }
 
   if (options.taskRunId && taskRunToken) {
-    const promptValue =
-      envRecord["CMUX_PROMPT"] ?? envRecord["PROMPT"] ?? "";
+    const promptValue = envRecord['CMUX_PROMPT'] ?? envRecord['PROMPT'] ?? ''
     registerTaskRunContext(options.taskRunId, {
       token: taskRunToken,
       prompt: promptValue,
       agentModel: options.agentModel,
       convexUrl,
-    });
-
-    // Sanity check: Call crown health endpoint to verify connectivity
-    if (convexUrl) {
-      // Convert .convex.cloud URL to .convex.site for HTTP actions
-      const httpActionUrl = convexUrl.replace('.convex.cloud', '.convex.site');
-      
-      fetch(`${httpActionUrl}/api/crown/health`, {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      })
-        .then(async response => {
-          const statusCode = response.status;
-          const statusText = response.statusText;
-          
-          // Try to parse response, but handle empty responses gracefully
-          let data = null;
-          const contentLength = response.headers.get('content-length');
-          if (contentLength && contentLength !== '0') {
-            try {
-              data = await response.json();
-            } catch (_e) {
-              // Response body is not JSON or empty
-              data = await response.text();
-            }
-          }
-          
-          if (response.ok) {
-            log("INFO", `[Crown Health Check] Successfully connected to Crown service:`, { 
-              status: statusCode,
-              data 
-            });
-          } else {
-            log("WARN", `[Crown Health Check] Crown service responded with error:`, { 
-              status: statusCode,
-              statusText,
-              data,
-              httpActionUrl 
-            });
-          }
-        })
-        .catch(error => {
-          log("ERROR", `[Crown Health Check] Failed to reach Crown service:`, { 
-            error: error.message,
-            httpActionUrl: convexUrl.replace('.convex.cloud', '.convex.site')
-          });
-        });
-    }
+    })
   }
 
-  const shell = command || (platform() === "win32" ? "powershell.exe" : "bash");
+  const shell = command || (platform() === 'win32' ? 'powershell.exe' : 'bash')
 
-  log("INFO", `[createTerminal] Creating terminal ${terminalId}:`, {
+  log('INFO', `[createTerminal] Creating terminal ${terminalId}:`, {
     cols,
     rows,
     cwd,
@@ -912,57 +857,52 @@ async function createTerminal(
     args,
     envKeys: Object.keys(env),
     shell,
-  });
+  })
 
   // Prepare the spawn command and args
-  let spawnCommand: string;
-  let spawnArgs: string[];
+  let spawnCommand: string
+  let spawnArgs: string[]
 
-  if (command === "tmux") {
+  if (command === 'tmux') {
     // Direct tmux command from agent spawner
-    spawnCommand = command;
-    spawnArgs = args;
-    log("INFO", `[createTerminal] Using direct tmux command:`, {
+    spawnCommand = command
+    spawnArgs = args
+    log('INFO', `[createTerminal] Using direct tmux command:`, {
       spawnCommand,
       spawnArgs,
-    });
+    })
   } else {
     // Create tmux session with command
-    spawnCommand = "tmux";
-    spawnArgs = [
-      "new-session",
-      "-A",
-      "-s",
-      sanitizeTmuxSessionName(terminalId),
-    ];
-    spawnArgs.push("-x", cols.toString(), "-y", rows.toString());
+    spawnCommand = 'tmux'
+    spawnArgs = ['new-session', '-A', '-s', sanitizeTmuxSessionName(terminalId)]
+    spawnArgs.push('-x', cols.toString(), '-y', rows.toString())
 
     if (command) {
-      spawnArgs.push(command);
+      spawnArgs.push(command)
       if (args.length > 0) {
-        spawnArgs.push(...args);
+        spawnArgs.push(...args)
       }
     } else {
-      spawnArgs.push(shell);
+      spawnArgs.push(shell)
     }
-    log("INFO", `[createTerminal] Creating tmux session:`, {
+    log('INFO', `[createTerminal] Creating tmux session:`, {
       spawnCommand,
       spawnArgs,
-    });
+    })
   }
 
   const ptyEnv = {
     ...process.env,
     ...env, // Override with provided env vars
     WORKER_ID,
-    TERM: "xterm-256color",
-    PS1: "\\u@\\h:\\w\\$ ", // Basic prompt
-    SHELL: "/bin/bash",
-    USER: process.env.USER || "root",
-    HOME: process.env.HOME || "/root",
+    TERM: 'xterm-256color',
+    PS1: '\\u@\\h:\\w\\$ ', // Basic prompt
+    SHELL: '/bin/bash',
+    USER: process.env.USER || 'root',
+    HOME: process.env.HOME || '/root',
     PATH: `/root/.bun/bin:${
       process.env.PATH ||
-      "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+      '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
     }`,
     // Pass through git config if set
     ...(process.env.GIT_CONFIG_GLOBAL
@@ -971,55 +911,55 @@ async function createTerminal(
     ...(process.env.GIT_SSH_COMMAND
       ? { GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND }
       : {}),
-  };
+  }
 
   // Run optional startup commands prior to spawning the agent process
   if (startupCommands && startupCommands.length > 0) {
     log(
-      "INFO",
+      'INFO',
       `Running ${startupCommands.length} startup command(s) before spawn`,
       { startupCommands }
-    );
+    )
     for (const cmd of startupCommands) {
       try {
         await new Promise<void>((resolve, reject) => {
-          const p = spawn("bash", ["-lc", cmd], {
+          const p = spawn('bash', ['-lc', cmd], {
             cwd,
             env: ptyEnv,
-            stdio: ["ignore", "pipe", "pipe"],
-          });
-          let stderr = "";
-          p.stderr.on("data", (d) => {
-            stderr += d.toString();
-          });
-          p.on("exit", (code) => {
-            if (code === 0) resolve();
+            stdio: ['ignore', 'pipe', 'pipe'],
+          })
+          let stderr = ''
+          p.stderr.on('data', (d) => {
+            stderr += d.toString()
+          })
+          p.on('exit', (code) => {
+            if (code === 0) resolve()
             else
               reject(
                 new Error(`Startup command failed (${code}): ${cmd}\n${stderr}`)
-              );
-          });
-          p.on("error", (e) => reject(e));
-        });
+              )
+          })
+          p.on('error', (e) => reject(e))
+        })
       } catch (e) {
         log(
-          "ERROR",
+          'ERROR',
           `Startup command failed: ${cmd}`,
           e instanceof Error ? e : new Error(String(e))
-        );
+        )
       }
     }
   }
 
-  log("INFO", "Spawning process", {
+  log('INFO', 'Spawning process', {
     command: spawnCommand,
     args: spawnArgs,
     cwd,
     envKeys: Object.keys(ptyEnv),
-  });
+  })
 
-  let childProcess: ChildProcessWithoutNullStreams;
-  const processStartTime = Date.now();
+  let childProcess: ChildProcessWithoutNullStreams
+  const processStartTime = Date.now()
 
   try {
     // Add LINES and COLUMNS to environment for terminal size
@@ -1027,22 +967,22 @@ async function createTerminal(
       ...ptyEnv,
       LINES: rows.toString(),
       COLUMNS: cols.toString(),
-    };
+    }
 
     childProcess = spawn(spawnCommand, spawnArgs, {
       cwd,
       env: processEnv,
-      stdio: ["pipe", "pipe", "pipe"],
+      stdio: ['pipe', 'pipe', 'pipe'],
       shell: false,
-    });
+    })
 
-    log("INFO", "Process spawned successfully", {
+    log('INFO', 'Process spawned successfully', {
       pid: childProcess.pid,
       terminalId,
-    });
+    })
   } catch (error) {
-    log("ERROR", "Failed to spawn process", error);
-    return;
+    log('ERROR', 'Failed to spawn process', error)
+    return
   }
 
   const headlessTerminal = new Terminal({
@@ -1050,29 +990,29 @@ async function createTerminal(
     rows,
     scrollback: SERVER_TERMINAL_CONFIG.scrollback,
     allowProposedApi: SERVER_TERMINAL_CONFIG.allowProposedApi,
-  });
+  })
 
-  const serializeAddon = new SerializeAddon();
-  headlessTerminal.loadAddon(serializeAddon);
+  const serializeAddon = new SerializeAddon()
+  headlessTerminal.loadAddon(serializeAddon)
 
   // Increment active terminal count
-  log("INFO", "Terminal created", {
+  log('INFO', 'Terminal created', {
     terminalId,
-  });
+  })
 
   // Pipe data from child process to headless terminal
   // Capture initial stderr output for error reporting if startup fails
-  let initialStderrBuffer = "";
-  const INITIAL_ERROR_CAPTURE_WINDOW_MS = 30000; // capture up to first 30s
-  const stopErrorCaptureAt = Date.now() + INITIAL_ERROR_CAPTURE_WINDOW_MS;
+  let initialStderrBuffer = ''
+  const INITIAL_ERROR_CAPTURE_WINDOW_MS = 30000 // capture up to first 30s
+  const stopErrorCaptureAt = Date.now() + INITIAL_ERROR_CAPTURE_WINDOW_MS
 
   // Config-driven completion detector
-  const agentConfig = AGENT_CONFIGS.find((c) => c.name === options.agentModel);
+  const agentConfig = AGENT_CONFIGS.find((c) => c.name === options.agentModel)
 
   // if missing need to return early
   if (!agentConfig) {
-    log("ERROR", `Agent config not found for ${options.agentModel}`);
-    return;
+    log('ERROR', `Agent config not found for ${options.agentModel}`)
+    return
   }
 
   if (options.taskRunId && agentConfig?.completionDetector) {
@@ -1080,49 +1020,45 @@ async function createTerminal(
       void agentConfig
         .completionDetector(options.taskRunId)
         .then(() => {
-          emitToMainServer("worker:task-complete", {
+          emitToMainServer('worker:task-complete', {
             workerId: WORKER_ID,
             terminalId,
             taskRunId: options.taskRunId!,
             agentModel: options.agentModel,
             elapsedMs: Date.now() - processStartTime,
-          });
+          })
 
           log(
-            "INFO",
+            'INFO',
             `Starting crown evaluation for task ${options.taskRunId}`,
             {
               taskRunId: options.taskRunId,
               agentModel: options.agentModel,
               elapsedMs: Date.now() - processStartTime,
             }
-          );
+          )
 
           // Retrieve the exit code if the process has already exited
-          const storedExitCode = processExitCodes.get(options.taskRunId!);
-          
+          const storedExitCode = processExitCodes.get(options.taskRunId!)
+
           void handleWorkerTaskCompletion(options.taskRunId!, {
             agentModel: options.agentModel,
             elapsedMs: Date.now() - processStartTime,
             exitCode: storedExitCode ?? 0,
           })
             .then(() => {
-              log(
-                "INFO",
-                `Crown workflow completed for ${options.taskRunId}`,
-                {
-                  taskRunId: options.taskRunId,
-                  agentModel: options.agentModel,
-                }
-              );
+              log('INFO', `Crown workflow completed for ${options.taskRunId}`, {
+                taskRunId: options.taskRunId,
+                agentModel: options.agentModel,
+              })
               // Clean up stored exit code
               if (options.taskRunId) {
-                processExitCodes.delete(options.taskRunId);
+                processExitCodes.delete(options.taskRunId)
               }
             })
             .catch((error) => {
               log(
-                "ERROR",
+                'ERROR',
                 `Failed to handle crown workflow for ${options.taskRunId}`,
                 {
                   taskRunId: options.taskRunId,
@@ -1130,102 +1066,102 @@ async function createTerminal(
                   error: error instanceof Error ? error.message : String(error),
                   stack: error instanceof Error ? error.stack : undefined,
                 }
-              );
+              )
               // Clean up stored exit code even on error
               if (options.taskRunId) {
-                processExitCodes.delete(options.taskRunId);
+                processExitCodes.delete(options.taskRunId)
               }
-            });
+            })
         })
         .catch((e) => {
           log(
-            "ERROR",
+            'ERROR',
             `Completion detector error for ${options.agentModel}: ${String(e)}`
-          );
-        });
+          )
+        })
     } catch (e) {
       log(
-        "ERROR",
+        'ERROR',
         `Failed to start completion detector for ${options.agentModel}: ${String(e)}`
-      );
+      )
     }
   }
-  childProcess.stderr.on("data", (data: Buffer) => {
+  childProcess.stderr.on('data', (data: Buffer) => {
     // Accumulate stderr during startup window for diagnostic error reporting
     if (Date.now() <= stopErrorCaptureAt && initialStderrBuffer.length < 8000) {
       try {
-        initialStderrBuffer += data.toString();
+        initialStderrBuffer += data.toString()
       } catch {
         // ignore
       }
     }
-    headlessTerminal.write(data.toString());
-  });
+    headlessTerminal.write(data.toString())
+  })
 
   // Handle data from terminal (user input) to child process
   headlessTerminal.onData((data: string) => {
     if (childProcess.stdin.writable) {
-      childProcess.stdin.write(data);
+      childProcess.stdin.write(data)
     }
-  });
+  })
 
   // Handle process exit
-  childProcess.on("exit", (code, signal) => {
-    const runtime = Date.now() - processStartTime;
-    const exitCode = code ?? 0;
-    
-    log("INFO", `Process exited for terminal ${terminalId}`, {
+  childProcess.on('exit', (code, signal) => {
+    const runtime = Date.now() - processStartTime
+    const exitCode = code ?? 0
+
+    log('INFO', `Process exited for terminal ${terminalId}`, {
       code,
       signal,
       runtime,
       runtimeSeconds: (runtime / 1000).toFixed(2),
       command: spawnCommand,
       args: spawnArgs.slice(0, 5), // Log first 5 args for debugging
-    });
+    })
 
     // Store exit code for later use by crown workflow
     if (options.taskRunId) {
-      processExitCodes.set(options.taskRunId, exitCode);
-      log("INFO", `Stored exit code ${exitCode} for task ${options.taskRunId}`);
+      processExitCodes.set(options.taskRunId, exitCode)
+      log('INFO', `Stored exit code ${exitCode} for task ${options.taskRunId}`)
     }
 
     // Still emit to main server for backwards compatibility/logging
-    emitToMainServer("worker:terminal-exit", {
+    emitToMainServer('worker:terminal-exit', {
       workerId: WORKER_ID,
       terminalId,
       exitCode,
-    });
-  });
+    })
+  })
 
-  childProcess.on("error", (error) => {
-    log("ERROR", `Process error for terminal ${terminalId}`, error);
+  childProcess.on('error', (error) => {
+    log('ERROR', `Process error for terminal ${terminalId}`, error)
 
     if (mainServerSocket) {
-      mainServerSocket.emit("worker:error", {
+      mainServerSocket.emit('worker:error', {
         workerId: WORKER_ID,
         error: `Terminal ${terminalId} process error: ${error.message}`,
-      });
+      })
     }
-  });
+  })
 
-  log("INFO", "command=", command);
-  log("INFO", "args=", args);
+  log('INFO', 'command=', command)
+  log('INFO', 'args=', args)
 
   // detect idle - check if we're using tmux (either directly or as wrapper)
-  if (spawnCommand === "tmux" && spawnArgs.length > 0) {
+  if (spawnCommand === 'tmux' && spawnArgs.length > 0) {
     // Extract session name from tmux args
-    const sessionIndex = spawnArgs.indexOf("-s");
+    const sessionIndex = spawnArgs.indexOf('-s')
     const sessionName =
       sessionIndex !== -1 && spawnArgs[sessionIndex + 1]
         ? spawnArgs[sessionIndex + 1]
-        : terminalId;
+        : terminalId
 
-    log("INFO", "Setting up task completion detection for terminal", {
+    log('INFO', 'Setting up task completion detection for terminal', {
       terminalId,
       sessionName,
       agentModel: options.agentModel,
       taskRunId: options.taskRunId,
-    });
+    })
 
     if (!(agentConfig?.completionDetector && options.taskRunId)) {
       // Legacy fallback to terminal idle when no agentModel available
@@ -1233,88 +1169,88 @@ async function createTerminal(
         sessionName: sessionName || terminalId,
         idleTimeoutMs: 15000,
         onIdle: () => {
-          const elapsedMs = Date.now() - processStartTime;
+          const elapsedMs = Date.now() - processStartTime
           if (options.taskRunId) {
-            emitToMainServer("worker:terminal-idle", {
+            emitToMainServer('worker:terminal-idle', {
               workerId: WORKER_ID,
               terminalId,
               taskRunId: options.taskRunId,
               elapsedMs,
-            });
+            })
           }
         },
       }).catch((error) => {
         const errMsg =
           (initialStderrBuffer && initialStderrBuffer.trim()) ||
-          (error instanceof Error ? error.message : String(error));
-        emitToMainServer("worker:terminal-failed", {
+          (error instanceof Error ? error.message : String(error))
+        emitToMainServer('worker:terminal-failed', {
           workerId: WORKER_ID,
           terminalId,
           taskRunId: options.taskRunId,
           errorMessage: errMsg,
           elapsedMs: Date.now() - processStartTime,
-        });
-      });
+        })
+      })
     }
   }
 
-  log("INFO", "Terminal creation complete", { terminalId });
+  log('INFO', 'Terminal creation complete', { terminalId })
 }
 
-const ENABLE_HEARTBEAT = false;
+const ENABLE_HEARTBEAT = false
 if (ENABLE_HEARTBEAT) {
   // Heartbeat interval (send stats every 30 seconds)
   setInterval(() => {
-    const stats = getWorkerStats();
+    const stats = getWorkerStats()
 
     if (mainServerSocket) {
-      mainServerSocket.emit("worker:heartbeat", stats);
+      mainServerSocket.emit('worker:heartbeat', stats)
     } else {
       console.log(
         `Worker ${WORKER_ID} heartbeat (main server not connected):`,
         stats
-      );
+      )
     }
-  }, 30000);
+  }, 30000)
 }
 
 // Start server
 httpServer.listen(WORKER_PORT, () => {
   log(
-    "INFO",
+    'INFO',
     `Worker ${WORKER_ID} starting on port ${WORKER_PORT}`,
     undefined,
     WORKER_ID
-  );
+  )
   log(
-    "INFO",
-    "Namespaces:",
+    'INFO',
+    'Namespaces:',
     {
-      vscode: "/vscode",
-      management: "/management",
+      vscode: '/vscode',
+      management: '/management',
     },
     WORKER_ID
-  );
+  )
   log(
-    "INFO",
-    "Worker ready, waiting for terminal creation commands via socket.io",
+    'INFO',
+    'Worker ready, waiting for terminal creation commands via socket.io',
     undefined,
     WORKER_ID
-  );
-});
+  )
+})
 
 // Start AMP proxy via shared provider module
 startAmpProxy({
   ampUrl: process.env.AMP_URL,
   workerId: WORKER_ID,
   emitToMainServer: emitToMainServer,
-});
+})
 
 // Periodic maintenance for pending events
 setInterval(() => {
-  const MAX_EVENT_AGE = 30 * 60 * 1000; // 30 minutes (increased to handle longer tasks)
-  const now = Date.now();
-  const originalCount = pendingEvents.length;
+  const MAX_EVENT_AGE = 30 * 60 * 1000 // 30 minutes (increased to handle longer tasks)
+  const now = Date.now()
+  const originalCount = pendingEvents.length
 
   // First, try to send any pending events if we're connected
   if (
@@ -1322,41 +1258,41 @@ setInterval(() => {
     mainServerSocket &&
     mainServerSocket.connected
   ) {
-    log("INFO", "Retrying to send pending events (periodic check)");
-    sendPendingEvents();
+    log('INFO', 'Retrying to send pending events (periodic check)')
+    sendPendingEvents()
   }
 
   // Then clean up very old events
   const validEvents = pendingEvents.filter((event) => {
-    const age = now - event.timestamp;
+    const age = now - event.timestamp
     if (age > MAX_EVENT_AGE) {
       log(
-        "WARNING",
+        'WARNING',
         `Dropping old pending ${event.event} event (age: ${age}ms)`,
         {
           event: event.event,
           age,
           taskRunId: event.data.taskRunId,
         }
-      );
-      return false;
+      )
+      return false
     }
-    return true;
-  });
+    return true
+  })
 
   if (validEvents.length < originalCount) {
-    pendingEvents.length = 0;
-    pendingEvents.push(...validEvents);
+    pendingEvents.length = 0
+    pendingEvents.push(...validEvents)
     log(
-      "INFO",
+      'INFO',
       `Cleaned up ${originalCount - validEvents.length} old pending events`
-    );
+    )
   }
 
   // Log warning if we still have pending events
   if (pendingEvents.length > 0) {
     log(
-      "WARNING",
+      'WARNING',
       `Still have ${pendingEvents.length} pending events waiting to be sent`,
       {
         events: pendingEvents.map((e) => ({
@@ -1365,31 +1301,31 @@ setInterval(() => {
           taskRunId: e.data.taskRunId,
         })),
       }
-    );
+    )
   }
-}, 30000); // Run every 30 seconds
+}, 30000) // Run every 30 seconds
 
 // Graceful shutdown
 function gracefulShutdown() {
-  console.log(`Worker ${WORKER_ID} shutting down...`);
+  console.log(`Worker ${WORKER_ID} shutting down...`)
 
   // Stop all file watchers
   for (const [taskRunId, watcher] of activeFileWatchers) {
-    watcher.stop();
-    log("INFO", `Stopped file watcher for task ${taskRunId} during shutdown`);
+    watcher.stop()
+    log('INFO', `Stopped file watcher for task ${taskRunId} during shutdown`)
   }
-  activeFileWatchers.clear();
+  activeFileWatchers.clear()
 
   // Close server
   io.close(() => {
-    console.log("Socket.IO server closed");
-  });
+    console.log('Socket.IO server closed')
+  })
 
   httpServer.close(() => {
-    console.log("HTTP server closed");
-    process.exit(0);
-  });
+    console.log('HTTP server closed')
+    process.exit(0)
+  })
 }
 
-process.on("SIGTERM", gracefulShutdown);
-process.on("SIGINT", gracefulShutdown);
+process.on('SIGTERM', gracefulShutdown)
+process.on('SIGINT', gracefulShutdown)
