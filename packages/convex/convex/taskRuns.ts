@@ -9,33 +9,33 @@ import { authMutation, authQuery } from './users/utils'
 function rewriteMorphUrl(url: string): string {
   // do not rewrite ports 39376 39377 39378
   if (
-    url.includes("http.cloud.morph.so") &&
-    (url.startsWith("https://port-39376-") ||
-      url.startsWith("https://port-39377-") ||
-      url.startsWith("https://port-39378-"))
+    url.includes('http.cloud.morph.so') &&
+    (url.startsWith('https://port-39376-') ||
+      url.startsWith('https://port-39377-') ||
+      url.startsWith('https://port-39378-'))
   ) {
-    return url;
+    return url
   }
 
   // Transform morph URLs to cmux.sh format
   // https://port-8101-morphvm-jrtutqa3.http.cloud.morph.so/handler/sign-in -> https://port-8101-jrtutqa3.cmux.sh/handler/sign-in
-  if (url.includes("http.cloud.morph.so")) {
+  if (url.includes('http.cloud.morph.so')) {
     const result = url
-      .replace("morphvm-", "")
-      .replace("http.cloud.morph.so", "cmux.sh");
-    return result;
+      .replace('morphvm-', '')
+      .replace('http.cloud.morph.so', 'cmux.sh')
+    return result
   }
-  return url;
+  return url
 }
 
 function deriveGeneratedBranchName(branch?: string | null): string | undefined {
-  if (!branch) return undefined;
-  const trimmed = branch.trim();
-  if (!trimmed) return undefined;
-  const idx = trimmed.lastIndexOf("-");
-  if (idx <= 0) return trimmed;
-  const candidate = trimmed.slice(0, idx);
-  return candidate || trimmed;
+  if (!branch) return undefined
+  const trimmed = branch.trim()
+  if (!trimmed) return undefined
+  const idx = trimmed.lastIndexOf('-')
+  if (idx <= 0) return trimmed
+  const candidate = trimmed.slice(0, idx)
+  return candidate || trimmed
 }
 
 // Create a new task run
@@ -162,7 +162,7 @@ export const getByTask = authQuery({
       const networking = run.networking?.map((item) => ({
         ...item,
         url: rewriteMorphUrl(item.url),
-      }));
+      }))
 
       runMap.set(run._id, {
         ...run,
@@ -288,9 +288,9 @@ export const get = authQuery({
           ...item,
           url: rewriteMorphUrl(item.url),
         })),
-      };
+      }
     }
-    return doc;
+    return doc
   },
 })
 
@@ -312,9 +312,9 @@ export const subscribe = authQuery({
           ...item,
           url: rewriteMorphUrl(item.url),
         })),
-      };
+      }
     }
-    return doc;
+    return doc
   },
 })
 
@@ -547,20 +547,20 @@ export const updateVSCodePorts = authMutation({
 export const getByContainerName = authQuery({
   args: { teamSlugOrId: v.string(), containerName: v.string() },
   handler: async (ctx, args) => {
-    const userId = ctx.identity.subject;
-    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
+    const userId = ctx.identity.subject
+    const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId)
     const run =
       (await ctx.db
-        .query("taskRuns")
-        .withIndex("by_vscode_container_name", (q) =>
-          q.eq("vscode.containerName", args.containerName)
+        .query('taskRuns')
+        .withIndex('by_vscode_container_name', (q) =>
+          q.eq('vscode.containerName', args.containerName)
         )
-        .filter((q) => q.eq(q.field("teamId"), teamId))
-        .filter((q) => q.eq(q.field("userId"), userId))
-        .first()) ?? null;
+        .filter((q) => q.eq(q.field('teamId'), teamId))
+        .filter((q) => q.eq(q.field('userId'), userId))
+        .first()) ?? null
 
     if (!run) {
-      return null;
+      return null
     }
 
     if (run.networking) {
@@ -570,10 +570,10 @@ export const getByContainerName = authQuery({
           ...item,
           url: rewriteMorphUrl(item.url),
         })),
-      };
+      }
     }
 
-    return run;
+    return run
   },
 })
 
@@ -722,12 +722,12 @@ export const getActiveVSCodeInstances = authQuery({
       .withIndex('by_team_user', (q) =>
         q.eq('teamId', teamId).eq('userId', userId)
       )
-      .collect();
+      .collect()
     return runs
       .filter(
         (run) =>
           run.vscode &&
-          (run.vscode.status === "starting" || run.vscode.status === "running")
+          (run.vscode.status === 'starting' || run.vscode.status === 'running')
       )
       .map((run) => {
         if (run.networking) {
@@ -737,10 +737,10 @@ export const getActiveVSCodeInstances = authQuery({
               ...item,
               url: rewriteMorphUrl(item.url),
             })),
-          };
+          }
         }
-        return run;
-      });
+        return run
+      })
   },
 })
 
@@ -990,10 +990,10 @@ export const getContainersToStop = authQuery({
               ...item,
               url: rewriteMorphUrl(item.url),
             })),
-          };
+          }
         }
-        return run;
-      });
+        return run
+      })
 
     return containersToStop
   },
@@ -1078,18 +1078,18 @@ export const getRunningContainersByCleanupPriority = authQuery({
             ...item,
             url: rewriteMorphUrl(item.url),
           })),
-        };
+        }
       }
-      return container;
-    };
+      return container
+    }
 
     // Rewrite networking URLs in all containers
     const reviewContainersWithRewrittenUrls = reviewContainers.map(
       rewriteContainerNetworking
-    );
+    )
     const activeContainersWithRewrittenUrls = activeContainers.map(
       rewriteContainerNetworking
-    );
+    )
 
     // Return containers in cleanup priority order:
     // 1. Review period containers (oldest scheduled first)
