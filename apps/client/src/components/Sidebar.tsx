@@ -1,4 +1,4 @@
-import { TaskTree, type TaskWithRuns } from "@/components/TaskTree";
+import { TaskTree } from "@/components/TaskTree";
 import { TaskTreeSkeleton } from "@/components/TaskTreeSkeleton";
 import { useExpandTasks } from "@/contexts/expand-tasks/ExpandTasksContext";
 import { isElectron } from "@/lib/electron";
@@ -21,7 +21,6 @@ import { SidebarSectionLink } from "./sidebar/SidebarSectionLink";
 
 interface SidebarProps {
   tasks: Doc<"tasks">[] | undefined;
-  tasksWithRuns: TaskWithRuns[];
   teamSlugOrId: string;
 }
 
@@ -60,7 +59,7 @@ const navItems: SidebarNavItem[] = [
   },
 ];
 
-export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
+export function Sidebar({ tasks, teamSlugOrId }: SidebarProps) {
   const DEFAULT_WIDTH = 256;
   const MIN_WIDTH = 240;
   const MAX_WIDTH = 600;
@@ -249,8 +248,8 @@ export function Sidebar({ tasks, tasksWithRuns, teamSlugOrId }: SidebarProps) {
             <div className="space-y-px">
               {tasks === undefined ? (
                 <TaskTreeSkeleton count={5} />
-              ) : tasksWithRuns.length > 0 ? (
-                tasksWithRuns.map((task) => (
+              ) : tasks && tasks.length > 0 ? (
+                tasks.map((task) => (
                   <TaskTree
                     key={task._id}
                     task={task}

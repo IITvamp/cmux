@@ -101,6 +101,7 @@ const convexSchema = defineSchema({
     projectFullName: v.optional(v.string()),
     baseBranch: v.optional(v.string()),
     worktreePath: v.optional(v.string()),
+    generatedBranchName: v.optional(v.string()),
     createdAt: v.optional(v.number()),
     updatedAt: v.optional(v.number()),
     userId: v.string(), // Link to user who created the task
