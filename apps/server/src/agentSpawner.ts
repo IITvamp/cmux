@@ -28,6 +28,7 @@ import {
   getAuthToken,
   runWithAuth,
 } from "./utils/requestContext.js";
+import { env as serverEnv } from "./utils/server-env.js";
 import { getWwwClient } from "./utils/wwwClient.js";
 import { CmuxVSCodeInstance } from "./vscode/CmuxVSCodeInstance.js";
 import { DockerVSCodeInstance } from "./vscode/DockerVSCodeInstance.js";
@@ -217,6 +218,7 @@ export async function spawnAgent(
       CMUX_TASK_RUN_ID: taskRunId,
       CMUX_TASK_RUN_JWT: taskRunJwt,
       PROMPT: processedTaskDescription,
+      NEXT_PUBLIC_CONVEX_URL: serverEnv.NEXT_PUBLIC_CONVEX_URL,
     };
 
     if (options.environmentId) {

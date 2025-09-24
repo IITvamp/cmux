@@ -33,6 +33,7 @@ import type * as tasks from "../tasks.js";
 import type * as teams from "../teams.js";
 import type * as users_utils from "../users/utils.js";
 import type * as users from "../users.js";
+import type * as worker_http from "../worker_http.js";
 import type * as workspaceSettings from "../workspaceSettings.js";
 
 import type {
@@ -75,6 +76,7 @@ declare const fullApi: ApiFromModules<{
   teams: typeof teams;
   "users/utils": typeof users_utils;
   users: typeof users;
+  worker_http: typeof worker_http;
   workspaceSettings: typeof workspaceSettings;
 }>;
 declare const fullApiWithMounts: typeof fullApi;

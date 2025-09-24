@@ -107,9 +107,8 @@ export async function startServer({
     // Wait for Convex
     await waitForConvex();
 
-    // Crown evaluation is now triggered immediately after all tasks complete
-    // in agentSpawner.ts handleTaskCompletion() function
-    // No need for periodic checking
+    // Crown evaluation and task completion orchestration are handled by the worker
+    // via the Convex worker HTTP endpoints. The server no longer polls for crown updates.
 
     // Store default repo info if provided
     if (defaultRepo?.remoteName) {

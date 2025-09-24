@@ -36,6 +36,10 @@ import { detectTerminalIdle } from "./detectTerminalIdle.js";
 import { runWorkerExec } from "./execRunner.js";
 import { FileWatcher, computeGitDiff, getFileWithDiff } from "./fileWatcher.js";
 import { log } from "./logger.js";
+import {
+  handleWorkerTaskCompletion,
+  registerTaskRunContext,
+} from "./crown/workflow.js";
 
 const execAsync = promisify(exec);
 
@@ -827,6 +831,25 @@ async function createTerminal(
     startupCommands = [],
   } = options;
 
+  const envRecord = env as Record<string, string>;
+  const taskRunToken = envRecord["CMUX_TASK_RUN_JWT"];
+  const convexUrl = envRecord["NEXT_PUBLIC_CONVEX_URL"];
+
+  if (convexUrl) {
+    process.env.NEXT_PUBLIC_CONVEX_URL = convexUrl;
+  }
+
+  if (options.taskRunId && taskRunToken) {
+    const promptValue =
+      envRecord["CMUX_PROMPT"] ?? envRecord["PROMPT"] ?? "";
+    registerTaskRunContext(options.taskRunId, {
+      token: taskRunToken,
+      prompt: promptValue,
+      agentModel: options.agentModel,
+      convexUrl,
+    });
+  }
+
   const shell = command || (platform() === "win32" ? "powershell.exe" : "bash");
 
   log("INFO", `[createTerminal] Creating terminal ${terminalId}:`, {
@@ -1011,6 +1034,17 @@ async function createTerminal(
             taskRunId: options.taskRunId!,
             agentModel: options.agentModel,
             elapsedMs: Date.now() - processStartTime,
+          });
+
+          void handleWorkerTaskCompletion(options.taskRunId!, {
+            agentModel: options.agentModel,
+            elapsedMs: Date.now() - processStartTime,
+          }).catch((error) => {
+            log(
+              "ERROR",
+              `Failed to handle crown workflow for ${options.taskRunId}`,
+              error
+            );
           });
         })
         .catch((e) => {

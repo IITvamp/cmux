@@ -3,6 +3,8 @@ import {
   ArchiveTaskSchema,
   GitCompareRefsSchema,
   GitFullDiffRequestSchema,
+  GitLandedRefsSchema,
+  GitSmartRefsSchema,
   GitHubCreateDraftPrSchema,
   GitHubFetchBranchesSchema,
   GitHubFetchReposSchema,
@@ -13,6 +15,7 @@ import {
   StartTaskSchema,
   type AvailableEditors,
   type FileInfo,
+  checkDockerStatus,
 } from "@cmux/shared";
 import fuzzysort from "fuzzysort";
 import { minimatch } from "minimatch";
@@ -28,6 +31,7 @@ import { getRunDiffs } from "./diffs/getRunDiffs.js";
 import { execWithEnv } from "./execWithEnv.js";
 import { GitDiffManager } from "./gitDiff.js";
 import { getRustTime } from "./native/core.js";
+import { landedDiffForRepo, listRemoteBranches } from "./native/git.js";
 import type { RealtimeServer } from "./realtime.js";
 import { RepositoryManager } from "./repositoryManager.js";
 import type { GitRepoInfo } from "./server.js";
@@ -186,22 +190,18 @@ export function setupSocketHandlers(
     // Landed diff (closed-PR semantics): compute what actually landed on base
     socket.on("git-diff-landed", async (data, callback) => {
       try {
-        const { GitLandedRefsSchema } = await import("@cmux/shared");
         const { repoFullName, baseRef, headRef, b0Ref } =
           GitLandedRefsSchema.parse(data);
         serverLogger.info(
           "[socket] git-diff-landed",
           JSON.stringify({ repoFullName, baseRef, headRef, b0Ref })
         );
-        const { landedDiffForRepo } = await import("./native/git.js");
         // Ensure a local clone exists under our standard workspace
         let originPathOverride = "";
         try {
           const repoUrl = `https://github.com/${repoFullName}.git`;
           const repoManager = RepositoryManager.getInstance();
-          const { originPath } = await (
-            await import("./workspace.js")
-          ).getProjectPaths(repoUrl, safeTeam);
+          const { originPath } = await getProjectPaths(repoUrl, safeTeam);
           await repoManager.ensureRepository(repoUrl, originPath);
           originPathOverride = originPath;
         } catch (e) {
@@ -241,7 +241,6 @@ export function setupSocketHandlers(
     // Smart diff: prefer latest for unmerged branches, landed for merged
     socket.on("git-diff-smart", async (data, callback) => {
       try {
-        const { GitSmartRefsSchema } = await import("@cmux/shared");
         const { repoFullName, baseRef, headRef, b0Ref } =
           GitSmartRefsSchema.parse(data);
         serverLogger.info(
@@ -253,16 +252,12 @@ export function setupSocketHandlers(
         // try {
         //   const repoUrl = `https://github.com/${repoFullName}.git`;
         //   const repoManager = RepositoryManager.getInstance();
-        //   const { originPath } = await (
-        //     await import("./workspace.js")
-        //   ).getProjectPaths(repoUrl, safeTeam);
+        //   const { originPath } = await getProjectPaths(repoUrl, safeTeam);
         //   await repoManager.ensureRepository(repoUrl, originPath);
         //   originPathOverride = originPath;
         // } catch (e) {
         //   serverLogger.warn("Could not ensure local clone for smart diffs:", e);
         // }
-        const { compareRefsForRepo } = await import("./diffs/compareRefs.js");
-        const { landedDiffForRepo } = await import("./native/git.js");
         const t0 = Date.now();
         const latest = await compareRefsForRepo({
           ref1: baseRef,
@@ -389,7 +384,6 @@ export function setupSocketHandlers(
         // For local mode, ensure Docker is running before attempting to spawn
         if (!taskData.isCloudMode) {
           try {
-            const { checkDockerStatus } = await import("@cmux/shared");
             const docker = await checkDockerStatus();
             if (!docker.isRunning) {
               callback({
@@ -1496,7 +1490,6 @@ Please address the issue mentioned in the comment above.`;
       try {
         const { repo } = GitHubFetchBranchesSchema.parse(data);
 
-        const { listRemoteBranches } = await import("./native/git.js");
         const branches = await listRemoteBranches({ repoFullName: repo });
         callback({ success: true, branches: branches.map((b) => b.name) });
         return;

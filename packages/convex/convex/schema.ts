@@ -144,6 +144,9 @@ const convexSchema = defineSchema({
       v.literal("completed"),
       v.literal("failed")
     ),
+    workerStatus: v.optional(
+      v.union(v.literal("pending"), v.literal("complete"))
+    ), // Worker reported status for crown coordination
     // Optional log retained for backward compatibility; no longer written to.
     log: v.optional(v.string()), // CLI output log (deprecated)
     worktreePath: v.optional(v.string()), // Path to the git worktree for this run
