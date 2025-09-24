@@ -521,9 +521,12 @@ const SearchableSelect = forwardRef<
             ref={triggerRef}
             type="button"
             disabled={disabled}
-            className={`relative inline-flex h-7 items-center rounded-md border border-neutral-200 bg-white px-2.5 pr-6 text-sm text-neutral-900 transition-colors outline-none focus:outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 aria-expanded:bg-neutral-50 dark:aria-expanded:bg-neutral-900 w-auto ${className ?? ""}`}
+            className={clsx(
+              `relative inline-flex h-7 items-center rounded-md border border-neutral-200 bg-white px-2.5 pr-6 text-sm text-neutral-900 transition-colors outline-none focus:outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-60 dark:border-neutral-800 dark:bg-neutral-950 dark:text-neutral-100 aria-expanded:bg-neutral-50 dark:aria-expanded:bg-neutral-900 w-auto`,
+              className
+            )}
           >
-            <span className="flex-1 min-w-0 text-left text-[13.5px] inline-flex items-center gap-1.5 pr-1">
+            <span className="flex-1 min-w-0 text-left text-[13.5px] inline-flex items-center gap-1.5 pr-1 tabular-nums">
               {leftIcon ? (
                 <span className="shrink-0 inline-flex items-center justify-center">
                   {leftIcon}
@@ -542,8 +545,7 @@ const SearchableSelect = forwardRef<
           sideOffset={2}
           collisionPadding={{ top: 12, bottom: 12 }}
           onOpenAutoFocus={handleOpenAutoFocus}
-          className="z-[var(--z-modal)] rounded-md border overflow-hidden border-neutral-200 bg-white p-0 drop-shadow-xs outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 dark:border-neutral-800 dark:bg-neutral-950"
-          style={{ width: 300 }}
+          className="z-[var(--z-modal)] rounded-md border overflow-hidden border-neutral-200 bg-white p-0 drop-shadow-xs outline-none data-[state=closed]:animate-out data-[state=closed]:fade-out-0 dark:border-neutral-800 dark:bg-neutral-950 w-[300px]"
         >
           <Command loop shouldFilter={false} className="text-[13.5px]">
             {showSearch ? (

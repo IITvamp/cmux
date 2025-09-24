@@ -209,39 +209,43 @@ export const DashboardInputControls = memo(function DashboardInputControls({
     return map;
   }, [agentInstances]);
 
-  const sortedAgentSelections = useMemo(() => {
+  const aggregatedAgentSelections = useMemo(() => {
     const vendorOrder = new Map<string, number>();
     agentOptions.forEach((option, index) => {
       const vendor = option.iconKey ?? "other";
       if (!vendorOrder.has(vendor)) vendorOrder.set(vendor, index);
     });
 
-    return agentInstances
-      .map((instance) => {
-        const option = agentOptionsByValue.get(instance.agent);
-        if (!option) return null;
-        return { instance, option };
-      })
-      .filter(
-        (
-          entry
-        ): entry is {
-          instance: AgentSelectionInstance;
-          option: AgentOption;
-        } => entry !== null
-      )
-      .sort((a, b) => {
-        const vendorA = a.option.iconKey ?? "other";
-        const vendorB = b.option.iconKey ?? "other";
-        const rankA = vendorOrder.get(vendorA) ?? Number.MAX_SAFE_INTEGER;
-        const rankB = vendorOrder.get(vendorB) ?? Number.MAX_SAFE_INTEGER;
-        if (rankA !== rankB) return rankA - rankB;
-        const labelComparison = a.option.displayLabel.localeCompare(
-          b.option.displayLabel
-        );
-        if (labelComparison !== 0) return labelComparison;
-        return a.instance.id.localeCompare(b.instance.id);
-      });
+    const grouped = new Map<
+      string,
+      { option: AgentOption; instances: AgentSelectionInstance[] }
+    >();
+
+    for (const instance of agentInstances) {
+      const option = agentOptionsByValue.get(instance.agent);
+      if (!option) continue;
+      const existing = grouped.get(option.value);
+      if (existing) {
+        existing.instances.push(instance);
+      } else {
+        grouped.set(option.value, { option, instances: [instance] });
+      }
+    }
+
+    return Array.from(grouped.values()).sort((a, b) => {
+      const vendorA = a.option.iconKey ?? "other";
+      const vendorB = b.option.iconKey ?? "other";
+      const rankA = vendorOrder.get(vendorA) ?? Number.MAX_SAFE_INTEGER;
+      const rankB = vendorOrder.get(vendorB) ?? Number.MAX_SAFE_INTEGER;
+      if (rankA !== rankB) return rankA - rankB;
+      const labelComparison = a.option.displayLabel.localeCompare(
+        b.option.displayLabel
+      );
+      if (labelComparison !== 0) return labelComparison;
+      const idA = a.instances[0]?.id ?? "";
+      const idB = b.instances[0]?.id ?? "";
+      return idA.localeCompare(idB);
+    });
   }, [agentInstances, agentOptions, agentOptionsByValue]);
 
   const pillboxScrollRef = useRef<HTMLDivElement | null>(null);
@@ -321,19 +325,26 @@ export const DashboardInputControls = memo(function DashboardInputControls({
           className="max-h-32 overflow-y-auto py-2 px-2"
         >
           <div className="flex flex-wrap gap-1">
-            {sortedAgentSelections.map(({ instance, option }) => {
+            {aggregatedAgentSelections.map(({ option, instances }) => {
               const label = option.displayLabel;
+              const representativeInstance = instances[0];
+              if (!representativeInstance) {
+                return null;
+              }
+              const count = instances.length;
               return (
                 <div
-                  key={instance.id}
-                  className="inline-flex cursor-default items-center gap-1 rounded-full bg-neutral-200 dark:bg-neutral-800/80 pl-1.5 pr-2 py-1 text-[11px] text-neutral-700 dark:text-neutral-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60 hover:bg-neutral-300 dark:hover:bg-neutral-700/80"
+                  key={option.value}
+                  className="inline-flex cursor-default items-center rounded-full bg-neutral-200 dark:bg-neutral-800/80 pl-1.5 pr-2 py-1 text-[11px] text-neutral-700 dark:text-neutral-200 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60 hover:bg-neutral-300 dark:hover:bg-neutral-700/80"
                   role="button"
                   tabIndex={0}
-                  onClick={() => handleFocusAgentOption(instance.agent)}
+                  onClick={() =>
+                    handleFocusAgentOption(representativeInstance.agent)
+                  }
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
-                      handleFocusAgentOption(instance.agent);
+                      handleFocusAgentOption(representativeInstance.agent);
                     }
                   }}
                   aria-label={`Focus selection for ${label}`}
@@ -343,20 +354,23 @@ export const DashboardInputControls = memo(function DashboardInputControls({
                     onClick={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
-                      handleAgentRemove(instance.id);
+                      handleAgentRemove(representativeInstance.id);
                     }}
                     className="inline-flex h-4 w-4 items-center justify-center rounded-full transition-colors hover:bg-neutral-400/40 dark:hover:bg-neutral-500/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400/60"
                   >
                     <X className="h-3 w-3" aria-hidden="true" />
-                    <span className="sr-only">Remove {label}</span>
+                    <span className="sr-only">Remove all {label}</span>
                   </button>
                   {option.icon ? (
-                    <span className="inline-flex h-3.5 w-3.5 items-center justify-center">
+                    <span className="inline-flex h-3.5 w-3.5 items-center justify-center ml-0.5">
                       {option.icon}
                     </span>
                   ) : null}
-                  <span className="max-w-[118px] truncate text-left select-none">
+                  <span className="max-w-[118px] truncate text-left select-none ml-1.5">
                     {label}
+                  </span>
+                  <span className="inline-flex min-w-[1.125rem] items-center justify-center rounded-full bg-neutral-300/80 px-1 text-[10px] font-semibold leading-4 text-neutral-700 dark:bg-neutral-700/70 dark:text-neutral-100 ml-1.5 tabular-nums">
+                    {count}
                   </span>
                 </div>
               );
