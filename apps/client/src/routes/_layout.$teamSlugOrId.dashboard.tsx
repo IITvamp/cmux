@@ -60,6 +60,7 @@ function DashboardComponent() {
   });
 
   const [dockerReady, setDockerReady] = useState<boolean | null>(null);
+  const [dockerConfigured, setDockerConfigured] = useState<boolean | null>(null);
   const [providerStatus, setProviderStatus] =
     useState<ProviderStatusResponse | null>(null);
 
@@ -148,9 +149,12 @@ function DashboardComponent() {
       if (!response) return;
       setProviderStatus(response);
       if (response.success) {
-        const isRunning = response.dockerStatus?.isRunning;
-        if (typeof isRunning === "boolean") {
-          setDockerReady(isRunning);
+        const dockerStatus = response.dockerStatus;
+        if (typeof dockerStatus?.isRunning === "boolean") {
+          setDockerReady(dockerStatus.isRunning);
+        }
+        if (typeof dockerStatus?.isConfigured === "boolean") {
+          setDockerConfigured(dockerStatus.isConfigured);
         }
       }
     });
@@ -220,19 +224,48 @@ function DashboardComponent() {
     // For local mode, perform a fresh docker check right before starting
     if (!isEnvSelected && !isCloudMode) {
       let ready = dockerReady;
-      if (!ready && socket) {
-        ready = await new Promise<boolean>((resolve) => {
-          socket.emit("check-provider-status", (response) => {
-            const isRunning = !!response?.dockerStatus?.isRunning;
-            if (typeof isRunning === "boolean") {
-              setDockerReady(isRunning);
+      let configured = dockerConfigured;
+
+      if (socket) {
+        const response = await new Promise<ProviderStatusResponse | null>((resolve) => {
+          socket.emit("check-provider-status", (providerResponse) => {
+            if (!providerResponse) {
+              resolve(null);
+              return;
             }
-            resolve(isRunning);
+
+            setProviderStatus(providerResponse);
+            if (providerResponse.success) {
+              const dockerStatus = providerResponse.dockerStatus;
+              if (typeof dockerStatus?.isRunning === "boolean") {
+                setDockerReady(dockerStatus.isRunning);
+                ready = dockerStatus.isRunning;
+              }
+              if (typeof dockerStatus?.isConfigured === "boolean") {
+                setDockerConfigured(dockerStatus.isConfigured);
+                configured = dockerStatus.isConfigured;
+              }
+            }
+            resolve(providerResponse);
           });
         });
+
+        if (response && !response.success) {
+          ready = false;
+        }
       }
-      if (!ready) {
-        toast.error("Docker is not running. Start Docker Desktop.");
+
+      const effectiveReady = ready ?? false;
+      const effectiveConfigured = configured ?? null;
+
+      if (!effectiveReady) {
+        if (effectiveConfigured === false) {
+          toast.error(
+            "Docker is not configured. Install or configure Docker Desktop before running local tasks."
+          );
+        } else {
+          toast.error("Docker is not running. Start Docker Desktop.");
+        }
         return;
       }
     }
@@ -362,6 +395,7 @@ function DashboardComponent() {
     isCloudMode,
     isEnvSelected,
     dockerReady,
+    dockerConfigured,
     theme,
     generateUploadUrl,
   ]);

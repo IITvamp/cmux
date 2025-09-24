@@ -392,10 +392,12 @@ export function setupSocketHandlers(
             const { checkDockerStatus } = await import("@cmux/shared");
             const docker = await checkDockerStatus();
             if (!docker.isRunning) {
+              const message = docker.isConfigured
+                ? "Docker is not running. Please start Docker Desktop or switch to Cloud mode."
+                : "Docker is not configured. Install or configure Docker Desktop, or switch to Cloud mode.";
               callback({
                 taskId,
-                error:
-                  "Docker is not running. Please start Docker Desktop or switch to Cloud mode.",
+                error: message,
               });
               return;
             }

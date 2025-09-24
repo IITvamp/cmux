@@ -335,6 +335,7 @@ export const ProviderStatusSchema = z.object({
 
 export const DockerStatusSchema = z.object({
   isRunning: z.boolean(),
+  isConfigured: z.boolean(),
   version: z.string().optional(),
   error: z.string().optional(),
   workerImage: z

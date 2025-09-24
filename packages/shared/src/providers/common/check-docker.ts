@@ -1,5 +1,6 @@
 export async function checkDockerStatus(): Promise<{
   isRunning: boolean;
+  isConfigured: boolean;
   version?: string;
   error?: string;
   workerImage?: {
@@ -12,71 +13,87 @@ export async function checkDockerStatus(): Promise<{
   const { promisify } = await import("node:util");
   const execAsync = promisify(exec);
 
+  let version: string | undefined;
+
+  const buildFailure = (configured: boolean, error: unknown) => ({
+    isRunning: false,
+    isConfigured: configured,
+    ...(version ? { version } : {}),
+    error:
+      error instanceof Error
+        ? error.message
+        : typeof error === "string"
+          ? error
+          : configured
+            ? "Docker daemon is not running"
+            : "Docker is not installed or not accessible",
+  });
+
   try {
-    // Check if Docker is running
+    // Check if Docker CLI is available
     const { stdout: versionOutput } = await execAsync(
       "docker version --format '{{.Server.Version}}'"
     );
-    const version = versionOutput.trim();
+    version = versionOutput.trim();
+  } catch (error) {
+    return buildFailure(false, error);
+  }
 
+  try {
     // Check if Docker daemon is accessible
     await execAsync("docker ps");
+  } catch (error) {
+    return buildFailure(true, error);
+  }
 
-    const result: {
-      isRunning: boolean;
-      version?: string;
-      workerImage?: {
-        name: string;
-        isAvailable: boolean;
-        isPulling?: boolean;
-      };
-    } = {
-      isRunning: true,
-      version,
+  const result: {
+    isRunning: boolean;
+    isConfigured: boolean;
+    version?: string;
+    workerImage?: {
+      name: string;
+      isAvailable: boolean;
+      isPulling?: boolean;
     };
+  } = {
+    isRunning: true,
+    isConfigured: true,
+    version,
+  };
 
-    // Check for worker image (use same default as DockerVSCodeInstance)
-    const imageName = process.env.WORKER_IMAGE_NAME || "cmux-worker:0.0.1";
-    if (imageName) {
+  // Check for worker image (use same default as DockerVSCodeInstance)
+  const imageName = process.env.WORKER_IMAGE_NAME || "cmux-worker:0.0.1";
+  if (imageName) {
+    try {
+      // Check if image exists locally
+      await execAsync(`docker image inspect ${imageName}`);
+      result.workerImage = {
+        name: imageName,
+        isAvailable: true,
+      };
+    } catch {
+      // Image doesn't exist locally
+      // Check if a pull is in progress
       try {
-        // Check if image exists locally
-        await execAsync(`docker image inspect ${imageName}`);
+        const { stdout: psOutput } = await execAsync(
+          "docker ps -a --format '{{.Command}}'"
+        );
+        const isPulling = psOutput.includes(`pull ${imageName}`);
+
         result.workerImage = {
           name: imageName,
-          isAvailable: true,
+          isAvailable: false,
+          isPulling,
         };
       } catch {
-        // Image doesn't exist locally
-        // Check if a pull is in progress
-        try {
-          const { stdout: psOutput } = await execAsync(
-            "docker ps -a --format '{{.Command}}'"
-          );
-          const isPulling = psOutput.includes(`pull ${imageName}`);
-
-          result.workerImage = {
-            name: imageName,
-            isAvailable: false,
-            isPulling,
-          };
-        } catch {
-          result.workerImage = {
-            name: imageName,
-            isAvailable: false,
-            isPulling: false,
-          };
-        }
+        result.workerImage = {
+          name: imageName,
+          isAvailable: false,
+          isPulling: false,
+        };
       }
     }
-
-    return result;
-  } catch (error) {
-    return {
-      isRunning: false,
-      error:
-        error instanceof Error
-          ? error.message
-          : "Docker is not running or not installed",
-    };
   }
+
+  return result;
 }

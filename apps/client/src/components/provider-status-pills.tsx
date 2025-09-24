@@ -37,7 +37,13 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
   const unavailableProviders =
     status.providers?.filter((p: ProviderStatus) => !p.isAvailable) ?? [];
 
-  const dockerNotReady = !status.dockerStatus?.isRunning;
+  const dockerStatus = status.dockerStatus;
+  const dockerConfigured = dockerStatus?.isConfigured ?? null;
+  const dockerRunning = dockerStatus?.isRunning ?? false;
+  const dockerNeedsConfiguration = dockerConfigured === false;
+  const dockerStopped = dockerConfigured === true && !dockerRunning;
+  const showDockerIssue = dockerNeedsConfiguration || dockerStopped;
+
   const dockerImageNotReady =
     status.dockerStatus?.workerImage &&
     !status.dockerStatus.workerImage.isAvailable;
@@ -50,7 +56,7 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
   // If everything is ready, don't show anything
   if (
     unavailableProviders.length === 0 &&
-    !dockerNotReady &&
+    !showDockerIssue &&
     !dockerImageNotReady
   ) {
     return null;
@@ -114,7 +120,10 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
             <TooltipContent className="max-w-xs">
               <p className="font-medium mb-1">Configuration Needed</p>
               <div className="text-xs space-y-1">
-                {dockerNotReady && <p>• Docker needs to be running</p>}
+                {dockerNeedsConfiguration && (
+                  <p>• Docker must be installed and configured</p>
+                )}
+                {dockerStopped && <p>• Docker needs to be running</p>}
                 {dockerImageNotReady && !dockerImagePulling && (
                   <p>
                     • Docker image {status.dockerStatus?.workerImage?.name} not
@@ -134,7 +143,7 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
             </TooltipContent>
           </Tooltip>
 
-          {dockerNotReady && (
+          {showDockerIssue && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
@@ -154,9 +163,15 @@ export function ProviderStatusPills({ teamSlugOrId }: { teamSlugOrId: string }) 
                 </button>
               </TooltipTrigger>
               <TooltipContent>
-                <p className="font-medium">Docker Required</p>
+                <p className="font-medium">
+                  {dockerNeedsConfiguration
+                    ? "Docker Setup Required"
+                    : "Docker Required"}
+                </p>
                 <p className="text-xs opacity-90">
-                  Start Docker to enable containerized development environments
+                  {dockerNeedsConfiguration
+                    ? "Install or configure Docker Desktop to enable local development environments."
+                    : "Start Docker to enable containerized development environments."}
                 </p>
               </TooltipContent>
             </Tooltip>

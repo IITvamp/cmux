@@ -72,7 +72,10 @@ export function ProviderStatusSettings() {
 
   if (!status) return null;
 
-  const dockerOk = status.dockerStatus?.isRunning ?? false;
+  const dockerStatus = status.dockerStatus;
+  const dockerConfigured = dockerStatus?.isConfigured ?? false;
+  const dockerRunning = dockerStatus?.isRunning ?? false;
+  const dockerOk = dockerConfigured && dockerRunning;
   const gitOk = status.gitStatus?.isAvailable ?? false;
   const dockerImage = status.dockerStatus?.workerImage;
 
@@ -104,12 +107,18 @@ export function ProviderStatusSettings() {
             <XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
           )}
           <span className="text-xs text-neutral-700 dark:text-neutral-300 select-text">
-            Docker required
-            {dockerOk &&
-              status.dockerStatus?.version &&
-              ` ${status.dockerStatus.version}`}
+            {dockerConfigured
+              ? "Docker required"
+              : "Docker not configured"}
+            {dockerOk && dockerStatus?.version && ` ${dockerStatus.version}`}
           </span>
         </div>
+
+        {!dockerOk && dockerConfigured && dockerStatus?.error && (
+          <div className="col-span-2 pl-5 text-[11px] text-neutral-500 dark:text-neutral-400">
+            {dockerStatus.error}
+          </div>
+        )}
 
         {/* Docker Image Status */}
         {dockerImage && (
