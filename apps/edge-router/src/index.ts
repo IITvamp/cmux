@@ -111,15 +111,47 @@ function rewriteJavaScript(
 `
     : "";
 
-  // Replace various patterns of location access - keep it simple
-  const modified = code
+  // Replace various patterns of location access
+  let modified = code
     // Replace window.location
     .replace(/\bwindow\.location\b/g, "window.__cmuxLocation")
     // Replace document.location
-    .replace(/\bdocument\.location\b/g, "document.__cmuxLocation")
-    // Replace bare location (but not if preceded by . or word character)
-    .replace(/(?<![.\w])location\b/g, "__cmuxLocation")
-    // Fix any double replacements
+    .replace(/\bdocument\.location\b/g, "document.__cmuxLocation");
+
+  // For external files, DON'T replace bare 'location' at all
+  // It's too risky since we can't distinguish local variables from the global
+  // The prefix we add ensures __cmuxLocation exists as a fallback anyway
+  if (!isExternalFile) {
+    // For inline scripts (in HTML), we can be more aggressive since we control them
+    // But still be careful about obvious local variables
+    modified = modified.replace(/\blocation\b/g, (match, offset) => {
+      const before = modified.substring(Math.max(0, offset - 20), offset);
+      const after = modified.substring(offset + match.length, Math.min(modified.length, offset + match.length + 10));
+
+      // Don't replace if it's a variable declaration
+      if (/\b(const|let|var)\s+$/.test(before)) return match;
+
+      // Don't replace if it's a destructuring pattern
+      if (/[{,]\s*$/.test(before) && /\s*[:},]/.test(after)) return match;
+
+      // Don't replace if it's a function parameter
+      if (/\(\s*$/.test(before) || /^\s*[,)]/.test(after)) return match;
+
+      // Don't replace if it's a property access (preceded by .)
+      if (/\.\s*$/.test(before)) return match;
+
+      // Don't replace if it's an object property key
+      if (/^\s*:/.test(after)) return match;
+
+      // Don't replace if it's preceded by __cmux (to avoid double replacement)
+      if (/__cmux$/.test(before)) return match;
+
+      return "__cmuxLocation";
+    });
+  }
+
+  // Fix any accidental double replacements
+  modified = modified
     .replace(/window\.__cmux__cmuxLocation/g, "window.__cmuxLocation")
     .replace(/document\.__cmux__cmuxLocation/g, "document.__cmuxLocation")
     .replace(/__cmux__cmuxLocation/g, "__cmuxLocation");
