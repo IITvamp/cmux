@@ -217,10 +217,11 @@ function DashboardComponent() {
   );
 
   const handleStartTask = useCallback(async () => {
-    // For local mode, perform a fresh docker check right before starting
+    // For local mode, always perform a fresh docker check right before starting
     if (!isEnvSelected && !isCloudMode) {
+      // Always check Docker status, not just when cached as false
       let ready = dockerReady;
-      if (!ready && socket) {
+      if (socket) {
         ready = await new Promise<boolean>((resolve) => {
           socket.emit("check-provider-status", (response) => {
             const isRunning = !!response?.dockerStatus?.isRunning;
