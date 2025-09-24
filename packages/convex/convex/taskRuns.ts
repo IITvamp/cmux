@@ -477,17 +477,15 @@ export const getByContainerName = authQuery({
   handler: async (ctx, args) => {
     const userId = ctx.identity.subject;
     const teamId = await resolveTeamIdLoose(ctx, args.teamSlugOrId);
-    const runs = await ctx.db
+    const run = await ctx.db
       .query("taskRuns")
-      .withIndex("by_team_user", (q) =>
-        q.eq("teamId", teamId).eq("userId", userId)
+      .withIndex("by_vscode_container_name", (q) =>
+        q.eq("vscode.containerName", args.containerName)
       )
-      .filter((q) => q.eq(q.field("vscode.containerName"), args.containerName))
-      .collect();
-    return (
-      runs.find((run) => run.vscode?.containerName === args.containerName) ??
-      null
-    );
+      .filter((q) => q.eq(q.field("teamId"), teamId))
+      .filter((q) => q.eq(q.field("userId"), userId))
+      .first();
+    return run ?? null;
   },
 });
 
